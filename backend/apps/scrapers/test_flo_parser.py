@@ -5,7 +5,7 @@ import pytest
 
 from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
 from apps.scrapers.parsers.flo import FloParser, resolve_flo_shoe_category_slug
-from apps.scrapers.services import ScraperIntegrationService
+from apps.scrapers.services import ScraperIntegrationService, _scraped_product_identity
 from apps.catalog.models import Category
 
 
@@ -86,6 +86,29 @@ def test_flo_url_detection():
     )
     # чужой домен и нестандартный путь не считаем товаром FLO
     assert not FloParser.is_flo_product_url("https://www.lcw.com/urun-o-4827603")
+
+
+def test_scraped_product_identity_ignores_tracking_query():
+    product = ScrapedProduct(
+        name="Flo ürün",
+        source="FLO",
+        url="https://www.flo.com.tr/urun/model-12345?utm_source=catalog",
+    )
+
+    assert _scraped_product_identity(product) == (
+        "flo:https://www.flo.com.tr/urun/model-12345"
+    )
+
+
+def test_scraped_product_identity_prefers_external_id():
+    product = ScrapedProduct(
+        name="Flo ürün",
+        source="flo",
+        external_id="FLO-12345",
+        url="https://www.flo.com.tr/urun/renamed-12345",
+    )
+
+    assert _scraped_product_identity(product) == "flo:flo-12345"
 
 
 @pytest.mark.parametrize(

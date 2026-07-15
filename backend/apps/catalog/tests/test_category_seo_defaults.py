@@ -145,6 +145,10 @@ def test_category_serializer_excludes_inactive_portfolio_items_and_inactive_serv
         service=inactive_service,
         title="Кейс неактивной услуги",
     )
+    ServicePortfolioItem.objects.create(
+        category=category,
+        title="Кейс без услуги",
+    )
 
     data = CategorySerializer(category).data
 

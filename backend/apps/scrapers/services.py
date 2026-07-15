@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from django.utils import timezone
 from django.db import transaction
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 
 # Флаг потока — True во время активного парсинга.
 # Используется ai/signals.py чтобы не запускать AI во время сохранения спарсенных товаров.
@@ -75,6 +76,19 @@ import datetime
 # Типы товаров, для которых при парсинге обнуляется бренд (например книги)
 BRAND_CLEAR_PRODUCT_TYPES = {"books"}
 DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
+SCRAPER_TASK_SEEN_TTL = 7 * 24 * 60 * 60
+
+
+def _scraper_task_seen_cache_key(site_task_id: int) -> str:
+    return f"scraper:site-task:{site_task_id}:seen-products"
+
+
+def _scraped_product_identity(product: ScrapedProduct) -> str:
+    """Stable identity used to prevent the same catalog card crossing chunks twice."""
+    source = str(getattr(product, "source", "") or "").strip().casefold()
+    external_id = str(getattr(product, "external_id", "") or "").strip().casefold()
+    url = str(getattr(product, "url", "") or "").split("?", 1)[0].rstrip("/").casefold()
+    return f"{source}:{external_id or url}" if external_id or url else ""
 
 
 class ScraperTaskCancelled(Exception):
@@ -993,6 +1007,10 @@ class ScraperIntegrationService:
                 # сохраняется в БД сразу после парсинга, не накапливается в памяти.
                 incremental_results = {"found": 0, "created": 0, "updated": 0, "skipped": 0, "errors": 0}
                 checkpoint = 0
+                seen_cache_key = (
+                    _scraper_task_seen_cache_key(site_task_id) if site_task_id else None
+                )
+                seen_task_products = set(cache.get(seen_cache_key, [])) if seen_cache_key else set()
                 # start_page передаём только парсерам с настоящей пагинацией,
                 # иначе остальные упадут на неизвестном аргументе (TypeError).
                 list_kwargs = {"max_pages": session.max_pages}
@@ -1009,9 +1027,25 @@ class ScraperIntegrationService:
                         if parser_limit is not None and incremental_results["found"] >= parser_limit:
                             break
                         self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
+                        product_identity = _scraped_product_identity(product)
+                        if product_identity and product_identity in seen_task_products:
+                            incremental_results["skipped"] += 1
+                            self.logger.warning(
+                                "Повторная карточка между чанками пропущена: %s (task=%s)",
+                                product_identity,
+                                site_task_id,
+                            )
+                            continue
                         r = self._process_scraped_products(session, [product])
                         for k in incremental_results:
                             incremental_results[k] += r.get(k, 0)
+                        if product_identity and seen_cache_key:
+                            seen_task_products.add(product_identity)
+                            cache.set(
+                                seen_cache_key,
+                                list(seen_task_products),
+                                timeout=SCRAPER_TASK_SEEN_TTL,
+                            )
                         checkpoint += 1
                         session.products_found = incremental_results["found"]
                         session.products_created = incremental_results["created"]

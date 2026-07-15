@@ -5,7 +5,7 @@ import re
 import logging
 from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
-from django.db.models import Count, Q
+from django.db.models import Count
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 
@@ -763,8 +763,7 @@ class CategorySerializer(serializers.ModelSerializer):
             items_by_cat = {}
             portfolio_qs = ServicePortfolioItem.objects.filter(
                 is_active=True,
-            ).filter(
-                Q(service__isnull=True) | Q(service__is_active=True),
+                service__is_active=True,
             ).select_related('service', 'category').order_by('sort_order', '-created_at', '-id')
             for item in portfolio_qs:
                 items_by_cat.setdefault(item.category_id, []).append(item)
