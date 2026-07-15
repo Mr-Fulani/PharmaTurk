@@ -52,6 +52,16 @@ def test_only_paginating_parser_supports_chunking():
     assert UmmalandParser.SUPPORTS_PAGE_CHUNKING is False
 
 
+def test_ummaland_distinguishes_category_and_single_product_urls():
+    category_url = "https://umma-land.com/product-category/books"
+    product_url = "https://umma-land.com/product/example-book"
+
+    assert UmmalandParser.is_category_url(category_url)
+    assert not UmmalandParser.is_product_url(category_url)
+    assert UmmalandParser.is_product_url(product_url)
+    assert not UmmalandParser.is_category_url(product_url)
+
+
 @pytest.mark.parametrize(
     "parser_class",
     [FloParser, IkeaParser, IlacFiyatiParser, LcwParser, ZaraParser],

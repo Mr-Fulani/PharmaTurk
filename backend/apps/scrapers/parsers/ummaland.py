@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from typing import Dict, List, Optional, Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -18,6 +18,16 @@ class UmmalandParser(BaseScraper):
     """Парсер для сайта Ummaland.com."""
     
     API_URL = "https://umma-land.com/wp-json/filters/products/"
+
+    @classmethod
+    def is_category_url(cls, url: str) -> bool:
+        path = (urlparse(url or "").path or "").rstrip("/")
+        return path == "/product-category" or path.startswith("/product-category/")
+
+    @classmethod
+    def is_product_url(cls, url: str) -> bool:
+        path = (urlparse(url or "").path or "").rstrip("/")
+        return path.startswith("/product/") and not cls.is_category_url(url)
     
     def get_name(self) -> str:
         """Возвращает имя парсера."""
