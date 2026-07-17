@@ -316,7 +316,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
     list_display = [
         "scraper_config",
         "target_category",
-        "target_subcategory",
+        "target_subcategory_path",
         "target_brand",
         "gender_display",
         "status_badge",
@@ -333,6 +333,10 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "scraper_config",
         "target_category",
         "target_subcategory",
+        "target_subcategory__parent",
+        "target_subcategory__parent__parent",
+        "target_subcategory__parent__parent__parent",
+        "target_subcategory__parent__parent__parent__parent",
         "target_brand",
     ]
     list_filter = ["status", "scraper_config", "target_category", "created_at"]
@@ -416,6 +420,30 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         # Refresh здесь не нужен — он перезагружал страницу каждые 5с даже во время
         # работы пользователя.
         return super().changelist_view(request, extra_context=extra_context)
+
+    @admin.display(description="Иерархия подкатегорий", ordering="target_subcategory__name")
+    def target_subcategory_path(self, obj):
+        """Показывает путь ниже выбранной корневой категории без неоднозначных имён."""
+        category = obj.target_subcategory
+        if not category:
+            return "—"
+
+        chain = []
+        current = category
+        seen = set()
+        while current and current.pk not in seen:
+            seen.add(current.pk)
+            chain.append(current)
+            current = current.parent
+        chain.reverse()
+
+        if obj.target_category_id:
+            for index, item in enumerate(chain):
+                if item.pk == obj.target_category_id:
+                    chain = chain[index + 1:]
+                    break
+
+        return " › ".join(item.name for item in chain) or category.name
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         response = super().change_view(request, object_id, form_url, extra_context)
@@ -1586,8 +1614,10 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
 
     def target_category_display(self, obj):
         """Отображает выбранную категорию (FK или fallback slug)."""
+        if obj.target_subcategory:
+            return obj.target_subcategory.get_breadcrumb_path()
         if obj.target_category:
-            return obj.target_category.name
+            return obj.target_category.get_breadcrumb_path()
         # Fallback: показываем slug из CharField
         return obj.get_category_display() or "—"
 

@@ -247,13 +247,22 @@ def test_live_progress_is_saved_after_first_product(monkeypatch):
 def test_site_task_admin_list_displays_configured_subcategory():
     category_index = SiteScraperTaskAdmin.list_display.index("target_category")
 
-    assert SiteScraperTaskAdmin.list_display[category_index + 1] == "target_subcategory"
+    assert SiteScraperTaskAdmin.list_display[category_index + 1] == "target_subcategory_path"
     assert "target_subcategory" in SiteScraperTaskAdmin.list_select_related
+
+
+def test_site_task_admin_displays_subcategory_hierarchy_below_root(db):
+    root = Category.objects.create(name="Мебель", slug="furniture-admin-path")
+    room = Category.objects.create(name="Спальня", slug="bedroom-admin-path", parent=root)
+    leaf = Category.objects.create(name="Комоды", slug="dressers-admin-path", parent=room)
+    task = SiteScraperTask(target_category=root, target_subcategory=leaf)
+
+    assert SiteScraperTaskAdmin.target_subcategory_path(None, task) == "Спальня › Комоды"
 
 
 def test_site_task_admin_allows_configuring_brand_override():
     parsing_fields = SiteScraperTaskAdmin.fieldsets[0][1]["fields"]
-    subcategory_index = SiteScraperTaskAdmin.list_display.index("target_subcategory")
+    subcategory_index = SiteScraperTaskAdmin.list_display.index("target_subcategory_path")
 
     assert "target_brand" in parsing_fields
     assert "target_brand" in SiteScraperTaskAdmin.raw_id_fields
