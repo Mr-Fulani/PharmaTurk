@@ -62,8 +62,9 @@ class UmmalandParser(BaseScraper):
             # 1. Получаем ID категории со страницы
             category_id = self._get_category_id(category_url)
             if not category_id:
-                self.logger.error(f"Не удалось найти ID категории на странице {category_url}")
-                return []
+                raise RuntimeError(
+                    f"Ummaland: не удалось найти ID категории на странице {category_url}"
+                )
             
             self.logger.info(f"Найден ID категории: {category_id}")
             
@@ -136,6 +137,7 @@ class UmmalandParser(BaseScraper):
             raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге списка товаров: {e}")
+            raise
         
         return products
     
@@ -191,7 +193,7 @@ class UmmalandParser(BaseScraper):
             raise
         except Exception as e:
             self.logger.error(f"Ошибка API запроса: {e}")
-            return []
+            raise
 
     def _parse_api_item(self, item: Dict) -> Optional[ScrapedProduct]:
         """Преобразует элемент API в ScrapedProduct."""

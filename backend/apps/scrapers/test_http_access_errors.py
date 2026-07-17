@@ -102,6 +102,26 @@ def test_ummaland_api_does_not_swallow_403(monkeypatch):
         parser._fetch_products_from_api(10)
 
 
+def test_ummaland_api_does_not_turn_500_into_empty_catalog(monkeypatch):
+    parser = UmmalandParser(base_url="https://umma-land.com")
+    response = _httpx_response(500, parser.API_URL)
+    monkeypatch.setattr(parser.client, "post", lambda *args, **kwargs: response)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        parser._fetch_products_from_api(10)
+
+
+def test_ummaland_missing_category_id_is_a_task_error(monkeypatch):
+    parser = UmmalandParser(base_url="https://umma-land.com")
+    monkeypatch.setattr(parser, "_get_category_id", lambda url: None)
+
+    with pytest.raises(RuntimeError, match="не удалось найти ID категории"):
+        parser.parse_product_list(
+            "https://umma-land.com/product-category/books",
+            max_pages=1,
+        )
+
+
 @pytest.mark.parametrize("method_name", ["fetch_item_details", "search_items"])
 def test_ikea_api_does_not_swallow_403(monkeypatch, method_name):
     service = IkeaService()

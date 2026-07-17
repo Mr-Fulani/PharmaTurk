@@ -544,6 +544,12 @@ def test_ikea_parser_fetches_real_api_pages(monkeypatch):
     parser.max_products = 10
     requested_pages = []
 
+    monkeypatch.setattr(
+        parser.ikea_service,
+        "resolve_category_api_slug",
+        lambda category_url, fallback_slug: fallback_slug,
+    )
+
     def fake_category_products(category_slug, limit, *, language, page):
         requested_pages.append(page)
         if page == 2:

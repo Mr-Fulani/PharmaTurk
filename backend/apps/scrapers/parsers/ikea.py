@@ -55,6 +55,11 @@ class IkeaParser(BaseScraper):
             self.logger.warning(f"Не удалось извлечь категорию из URL: {category_url}")
             return []
 
+        api_category_slug = self.ikea_service.resolve_category_api_slug(
+            category_url,
+            category_slug,
+        )
+
         # Получаем краткие данные из поиска (язык из пути: /en/category/... vs /kategori/...)
         seen_spr: set[str] = set()
         yielded = 0
@@ -62,7 +67,7 @@ class IkeaParser(BaseScraper):
 
         for page in range(max(1, start_page), max(1, start_page) + max(1, max_pages)):
             brief_results = self.ikea_service.get_category_products(
-                category_slug,
+                api_category_slug,
                 limit=self.API_PAGE_SIZE,
                 language=site_language,
                 page=page,

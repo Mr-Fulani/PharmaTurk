@@ -1,7 +1,10 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from apps.catalog.services import IkeaService
-from apps.catalog.services.ikea_service import extract_ikea_color_from_variant_info
+from apps.catalog.services.ikea_service import (
+    IkeaCategoryAPIError,
+    extract_ikea_color_from_variant_info,
+)
 from apps.catalog.models import FurnitureProduct, FurnitureVariant, Brand
 
 @pytest.fixture
@@ -72,6 +75,42 @@ def test_search_items_passes_requested_page(monkeypatch):
 
     assert captured["size"] == 40
     assert captured["page"] == 3
+
+
+def test_resolve_category_api_slug_uses_localized_page_value(monkeypatch):
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=200)
+    response.url = "https://www.ikea.com.tr/kategori/sifonyerler"
+    response.text = """
+        <input id="ctl00_ContentPlaceHolder1_search_categoryUrl"
+               value="şifonyerler">
+    """
+    response.raise_for_status.return_value = None
+    monkeypatch.setattr(ikea_service.client, "get", lambda *args, **kwargs: response)
+
+    assert ikea_service.resolve_category_api_slug(
+        response.url,
+        "sifonyerler",
+    ) == "şifonyerler"
+
+
+def test_category_first_page_404_is_not_reported_as_empty(monkeypatch):
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=404)
+    response.url = "https://frontendapi.ikea.com.tr/api/search/products"
+    monkeypatch.setattr(ikea_service.client, "get", lambda *args, **kwargs: response)
+
+    with pytest.raises(IkeaCategoryAPIError, match="HTTP 404"):
+        ikea_service.get_category_products("missing-category", page=1)
+
+
+def test_category_later_page_404_means_catalog_end(monkeypatch):
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=404)
+    response.url = "https://frontendapi.ikea.com.tr/api/search/products"
+    monkeypatch.setattr(ikea_service.client, "get", lambda *args, **kwargs: response)
+
+    assert ikea_service.get_category_products("category", page=2) == []
 
 
 @pytest.mark.django_db

@@ -4,6 +4,7 @@ import time
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
+from bs4 import BeautifulSoup
 from django.conf import settings
 from django.utils.text import slugify
 from django.utils import timezone
@@ -19,6 +20,10 @@ from apps.catalog.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class IkeaCategoryAPIError(RuntimeError):
+    """IKEA category page exists, but its product API contract failed."""
 
 
 def extract_ikea_color_from_variant_info(variant_info: Any) -> str:
@@ -68,6 +73,46 @@ class IkeaService:
         self._brand = None
         self._default_category = None
         self.client = httpx.Client(headers=self.HEADERS, timeout=10.0)
+        self._last_search_status: Optional[int] = None
+        self._category_slug_cache: Dict[str, str] = {}
+
+    def resolve_category_api_slug(self, category_url: str, fallback_slug: str) -> str:
+        """Resolve a public SEO URL to IKEA's localized internal category key.
+
+        Public URLs are ASCII (``/kategori/sifonyerler``), while the API may
+        require locale-specific characters (``Category=şifonyerler``). IKEA
+        exposes the authoritative value in ``search_categoryUrl`` on both TR
+        and EN category pages.
+        """
+        cache_key = (category_url or "").strip()
+        if cache_key in self._category_slug_cache:
+            return self._category_slug_cache[cache_key]
+
+        response = self.client.get(category_url)
+        raise_for_blocked_status(
+            status_code=response.status_code,
+            url=str(response.url or category_url),
+            source="IKEA",
+        )
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        field = soup.select_one(
+            "#ctl00_ContentPlaceHolder1_search_categoryUrl, "
+            "input[name$='search_categoryUrl']"
+        )
+        resolved = str(field.get("value") or "").strip() if field else ""
+        resolved = resolved or fallback_slug
+        if not resolved:
+            raise IkeaCategoryAPIError(
+                f"IKEA category key is absent on page {category_url}"
+            )
+        self._category_slug_cache[cache_key] = resolved
+        logger.info(
+            "IKEA category resolver: SEO slug '%s' -> API key '%s'",
+            fallback_slug,
+            resolved,
+        )
+        return resolved
 
     @property
     def brand(self) -> Brand:
@@ -282,6 +327,7 @@ class IkeaService:
 
         try:
             response = self.client.get(url, params=params, headers=headers)
+            self._last_search_status = response.status_code
             raise_for_blocked_status(
                 status_code=response.status_code,
                 url=str(response.url or url),
@@ -299,6 +345,7 @@ class IkeaService:
         except ExternalAccessBlockedError:
             raise
         except Exception as e:
+            self._last_search_status = None
             logger.error(
                 f"Error searching IKEA for q='{query}', cat='{category}', lang='{language}': {str(e)}"
             )
@@ -319,6 +366,8 @@ class IkeaService:
         #
         # Английские URL (/en/category/four-seats) с language=tr часто дают 404 — пробуем en + tr.
 
+        response_statuses: List[Optional[int]] = []
+
         def try_langs(slug: str) -> List[Dict]:
             order: List[str] = []
             for lang in (language, "tr", "en"):
@@ -332,6 +381,7 @@ class IkeaService:
                     language=lang,
                     page=page,
                 )
+                response_statuses.append(self._last_search_status)
                 if found:
                     return found
             return []
@@ -365,6 +415,7 @@ class IkeaService:
                 headers = {**self.HEADERS, "x-bone-language": lang}
                 try:
                     response = self.client.get(url, params=params, headers=headers)
+                    response_statuses.append(response.status_code)
                     raise_for_blocked_status(
                         status_code=response.status_code,
                         url=str(response.url or url),
@@ -378,6 +429,13 @@ class IkeaService:
                     raise
                 except Exception as e:
                     logger.error(f"Error in fallback category search (lang={lang}): {e}")
+
+        if page == 1 and response_statuses and all(
+            status == 404 for status in response_statuses
+        ):
+            raise IkeaCategoryAPIError(
+                f"IKEA product API returned HTTP 404 for category '{category_slug}'"
+            )
 
         return products
 
