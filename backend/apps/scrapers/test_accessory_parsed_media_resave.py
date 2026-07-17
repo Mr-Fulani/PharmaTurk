@@ -259,6 +259,30 @@ def test_ikea_furniture_variant_images_resave_parsed_to_readable(
         assert "/products/parsed/" not in furniture.main_image
         assert "/products/parsed/" not in product.main_image
         assert default_storage.exists(key) is True
+
+        original_image_id = img.pk
+        original_file_name = img.image_file.name
+        with django_capture_on_commit_callbacks(execute=True):
+            changed_again = ScraperIntegrationService()._sync_furniture_color_variants(
+                furniture,
+                product,
+                [{
+                    "external_id": "ikea-var-1",
+                    "display_name": "IKEA KALLAX белый",
+                    "color": "white",
+                    "price": "100",
+                    "currency": "TRY",
+                    "external_url": "https://www.ikea.com.tr/urun/kallax-123",
+                    "images": [f"https://cdn.mudaroba.com/{key}"],
+                    "stock_quantity": 3,
+                    "is_available": True,
+                }],
+            )
+
+        assert changed_again is False
+        same_img = furniture.variants.get(external_id="ikea-var-1").images.get()
+        assert same_img.pk == original_image_id
+        assert same_img.image_file.name == original_file_name
     finally:
         default_storage.delete(key)
 
@@ -319,6 +343,30 @@ def test_fashion_variant_images_resave_parsed_to_readable(
         assert "/products/parsed/" not in clothing.main_image
         assert "/products/parsed/" not in product.main_image
         assert default_storage.exists(key) is True
+
+        original_image_id = img.pk
+        original_file_name = img.image_file.name
+        with django_capture_on_commit_callbacks(execute=True):
+            changed_again = ScraperIntegrationService()._sync_fashion_variants(
+                product,
+                variants=[{
+                    "external_id": "lcw-var-resave-1",
+                    "display_name": "LCW платье черное",
+                    "color": "black",
+                    "price": "100",
+                    "currency": "TRY",
+                    "external_url": "https://www.lcw.com/test",
+                    "images": [f"https://cdn.mudaroba.com/{key}"],
+                    "stock_quantity": 3,
+                    "is_available": True,
+                    "sizes": [{"size": "M", "is_available": True, "stock_quantity": 3, "sort_order": 0}],
+                }],
+            )
+
+        assert changed_again is False
+        same_img = clothing.variants.get(external_id="lcw-var-resave-1").images.get()
+        assert same_img.pk == original_image_id
+        assert same_img.image_file.name == original_file_name
     finally:
         default_storage.delete(key)
 

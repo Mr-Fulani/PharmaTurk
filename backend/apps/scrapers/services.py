@@ -1965,6 +1965,107 @@ class ScraperIntegrationService:
         except (InvalidOperation, TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _media_storage_key(value: Any) -> str:
+        """Return an R2/storage key for parser-owned media URLs and FileFields."""
+        raw = str(getattr(value, "name", value) or "").strip()
+        if not raw:
+            return ""
+        path = urlparse(raw).path or raw
+        marker = "products/"
+        pos = path.find(marker)
+        return path[pos:].lstrip("/") if pos >= 0 else ""
+
+    def _storage_digest(self, key: str) -> str:
+        if not key:
+            return ""
+        cache = getattr(self, "_media_digest_cache", None)
+        if cache is None:
+            cache = self._media_digest_cache = {}
+        if key in cache:
+            return cache[key]
+        try:
+            from django.core.files.storage import default_storage
+
+            digest = hashlib.sha256()
+            with default_storage.open(key, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            cache[key] = digest.hexdigest()
+        except Exception:
+            cache[key] = ""
+        return cache[key]
+
+    def _same_parser_media(self, existing_image: Any, incoming_url: str) -> bool:
+        """Match parsed and readable copies even though their URLs are different."""
+        if (getattr(existing_image, "image_url", "") or "") == incoming_url:
+            return True
+        incoming_key = self._media_storage_key(incoming_url)
+        existing_key = self._media_storage_key(getattr(existing_image, "image_file", None))
+        if not existing_key:
+            existing_key = self._media_storage_key(getattr(existing_image, "image_url", ""))
+        incoming_digest = self._storage_digest(incoming_key)
+        return bool(incoming_digest and incoming_digest == self._storage_digest(existing_key))
+
+    def _sync_variant_images(
+        self,
+        *,
+        variant: Any,
+        image_model: Any,
+        image_urls: List[str],
+        product_name: str,
+        color: str,
+    ) -> Tuple[bool, str]:
+        """Synchronize a variant gallery without recreating identical media rows."""
+        existing = list(variant.images.all().order_by("sort_order", "id"))
+        same_media = len(existing) == len(image_urls) and all(
+            self._same_parser_media(row, url)
+            for row, url in zip(existing, image_urls)
+        )
+        changed = False
+
+        if same_media:
+            for index, row in enumerate(existing):
+                desired = {
+                    "alt_text": build_image_alt_text(product_name, index=index, color=color),
+                    "sort_order": index,
+                    "is_main": index == 0,
+                }
+                updates = {
+                    field: value
+                    for field, value in desired.items()
+                    if hasattr(row, field) and getattr(row, field) != value
+                }
+                if updates:
+                    row.__class__.objects.filter(pk=row.pk).update(**updates)
+                    for field, value in updates.items():
+                        setattr(row, field, value)
+                    changed = True
+            first_url = (
+                (getattr(existing[0], "image_url", "") if existing else "")
+                or (getattr(getattr(existing[0], "image_file", None), "url", "") if existing else "")
+            )
+            return changed, first_url
+
+        variant.images.all().delete()
+        saved_images = []
+        for index, url in enumerate(image_urls):
+            image = image_model(
+                variant=variant,
+                image_url=url,
+                alt_text=build_image_alt_text(product_name, index=index, color=color),
+                sort_order=index,
+                is_main=index == 0,
+            )
+            image.save()
+            saved_images.append(image)
+        first_url = (
+            (getattr(saved_images[0], "image_url", "") if saved_images else "")
+            or (getattr(getattr(saved_images[0], "image_file", None), "url", "") if saved_images else "")
+            or (image_urls[0] if image_urls else "")
+        )
+        return True, first_url
+
     def _sync_furniture_color_variants(
         self, furniture_product: "FurnitureProduct", product: Product, variants: List[Dict[str, Any]]
     ) -> bool:
@@ -2013,6 +2114,7 @@ class ScraperIntegrationService:
                 defaults=defaults,
             )
             if not created:
+                variant_dirty = False
                 for field in (
                     "name",
                     "color",
@@ -2029,36 +2131,25 @@ class ScraperIntegrationService:
                     if nv is not None and getattr(variant, field) != nv:
                         setattr(variant, field, nv)
                         changed = True
-                variant.save()
+                        variant_dirty = True
+                if variant_dirty:
+                    variant.save()
 
             imgs = [u for u in (spec.get("images") or []) if isinstance(u, str) and u]
             if imgs:
-                variant.images.all().delete()
-                saved_images = []
-                for i, u in enumerate(imgs):
-                    img = FurnitureVariantImage(
-                        variant=variant,
-                        image_url=u,
-                        alt_text=build_image_alt_text(
-                            variant.name or furniture_product.name or product.name or "",
-                            index=i,
-                            color=raw_color,
-                        ),
-                        sort_order=i,
-                        is_main=(i == 0),
-                    )
-                    img.save()
-                    saved_images.append(img)
-                main_image_url = (
-                    getattr(saved_images[0], "image_url", "") or
-                    getattr(getattr(saved_images[0], "image_file", None), "url", "") or
-                    imgs[0]
+                images_changed, main_image_url = self._sync_variant_images(
+                    variant=variant,
+                    image_model=FurnitureVariantImage,
+                    image_urls=imgs,
+                    product_name=variant.name or furniture_product.name or product.name or "",
+                    color=raw_color,
                 )
                 if variant.main_image != main_image_url:
                     variant.main_image = main_image_url
                     # Полный save(): pre_save может заполнить main_image_file.
                     variant.save()
-                changed = True
+                    changed = True
+                changed = changed or images_changed
 
             vinfo = spec.get("variant_info")
             if vinfo is not None:
@@ -2241,22 +2332,34 @@ class ScraperIntegrationService:
                 if size_row.stock_quantity is not None:
                     bucket["stock_quantity"] = (bucket["stock_quantity"] or 0) + size_row.stock_quantity
 
-        product_item.sizes.all().delete()
-        bulk = []
+        desired = []
         for idx, row in enumerate(aggregate.values()):
             stock_value = row["stock_quantity"] if row["stock_quantity"] > 0 else None
-            bulk.append(
-                product_size_model(
-                    product=product_item,
-                    size=row["size"],
-                    is_available=bool(row["is_available"] or stock_value),
-                    stock_quantity=stock_value,
-                    sort_order=idx,
-                )
+            desired.append(
+                {
+                    "size": row["size"],
+                    "is_available": bool(row["is_available"] or stock_value),
+                    "stock_quantity": stock_value,
+                    "sort_order": idx,
+                }
             )
-        if bulk:
-            product_size_model.objects.bulk_create(bulk)
-        return bool(bulk)
+        existing = [
+            {
+                "size": row.size,
+                "is_available": row.is_available,
+                "stock_quantity": row.stock_quantity,
+                "sort_order": row.sort_order,
+            }
+            for row in product_item.sizes.all().order_by("sort_order", "id")
+        ]
+        if existing == desired:
+            return False
+        product_item.sizes.all().delete()
+        if desired:
+            product_size_model.objects.bulk_create(
+                [product_size_model(product=product_item, **row) for row in desired]
+            )
+        return True
 
     def _sync_fashion_variants(
         self,
@@ -2325,45 +2428,44 @@ class ScraperIntegrationService:
                 defaults=defaults,
             )
             if not created:
+                variant_dirty = False
                 for field, value in defaults.items():
                     if value is not None and getattr(variant, field) != value:
                         setattr(variant, field, value)
                         changed = True
-                variant.save()
+                        variant_dirty = True
+                if variant_dirty:
+                    variant.save()
             changed = changed or created
 
             images = [u for u in (spec.get("images") or []) if isinstance(u, str) and u]
             if images:
-                variant.images.all().delete()
-                saved_images = []
-                for image_idx, url in enumerate(images):
-                    img = VariantImageModel(
-                        variant=variant,
-                        image_url=url,
-                        alt_text=build_image_alt_text(
-                            defaults["name"] or getattr(domain_product, "name", "") or getattr(product, "name", ""),
-                            index=image_idx,
-                            color=color_value,
-                        ),
-                        sort_order=image_idx,
-                        is_main=(image_idx == 0),
-                    )
-                    img.save()
-                    saved_images.append(img)
-                main_image_url = (
-                    getattr(saved_images[0], "image_url", "") or
-                    getattr(getattr(saved_images[0], "image_file", None), "url", "") or
-                    images[0]
+                images_changed, main_image_url = self._sync_variant_images(
+                    variant=variant,
+                    image_model=VariantImageModel,
+                    image_urls=images,
+                    product_name=defaults["name"] or getattr(domain_product, "name", "") or getattr(product, "name", ""),
+                    color=color_value,
                 )
                 if variant.main_image != main_image_url:
                     variant.main_image = main_image_url
                     # Полный save(): pre_save может заполнить main_image_file.
                     variant.save()
-                changed = True
+                    changed = True
+                changed = changed or images_changed
 
             size_payload = self._normalize_variant_sizes_payload(spec.get("sizes") or [])
-            variant.sizes.all().delete()
-            if size_payload:
+            existing_sizes = [
+                {
+                    "size": row.size,
+                    "is_available": row.is_available,
+                    "stock_quantity": row.stock_quantity,
+                    "sort_order": row.sort_order,
+                }
+                for row in variant.sizes.all().order_by("sort_order", "id")
+            ]
+            if existing_sizes != size_payload:
+                variant.sizes.all().delete()
                 VariantSizeModel.objects.bulk_create(
                     [
                         VariantSizeModel(
