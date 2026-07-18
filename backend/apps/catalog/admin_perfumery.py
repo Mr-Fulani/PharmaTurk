@@ -15,6 +15,34 @@ from .models import (
 from .admin_base import RunAIActionMixin, ShadowProductCleanupAdminMixin
 
 
+class PerfumeryCategoryFilter(admin.SimpleListFilter):
+    """Иерархический фильтр только по категориям парфюмерии."""
+
+    title = _("Категория парфюмерии")
+    parameter_name = "perfumery_category"
+
+    def __init__(self, request, params, model, model_admin):
+        self.category_filter_path = getattr(
+            model_admin, "perfumery_category_filter_path", "category_id"
+        )
+        super().__init__(request, params, model, model_admin)
+
+    def lookups(self, request, model_admin):
+        categories = Category.objects.filter(
+            category_type__slug="perfumery",
+            is_active=True,
+        ).select_related("parent", "parent__parent", "parent__parent__parent")
+        return sorted(
+            ((str(category.pk), category.get_breadcrumb_path()) for category in categories),
+            key=lambda item: item[1].casefold(),
+        )
+
+    def queryset(self, request, queryset):
+        if not self.value():
+            return queryset
+        return queryset.filter(**{self.category_filter_path: self.value()})
+
+
 @admin.action(description=_("Сделать активными"))
 def activate_perfumery_variants(modeladmin, request, queryset):
     queryset.update(is_active=True)
@@ -35,12 +63,13 @@ class PerfumeryVariantImageInline(admin.TabularInline):
 @admin.register(PerfumeryVariant)
 class PerfumeryVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Админка для вариантов парфюмерии."""
+    perfumery_category_filter_path = "product__category_id"
     variant_activation_action_names = (
         "activate_perfumery_variants",
         "deactivate_perfumery_variants",
     )
     list_display = ('name', 'product', 'volume', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'currency', 'created_at')
+    list_filter = (PerfumeryCategoryFilter, 'is_active', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'volume', 'sku', 'barcode')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
@@ -92,17 +121,18 @@ class PerfumeryVariantInline(admin.TabularInline):
 class PerfumeryProductAdmin(RunAIActionMixin, ShadowProductCleanupAdminMixin, admin.ModelAdmin):
     """Админка для товаров парфюмерии."""
     list_display = (
-        'name', 'slug', 'category', 'brand',
+        'name', 'slug', 'category_path', 'brand',
         'price', 'currency', 'fragrance_type', 'gender',
         'is_available', 'is_active', 'created_at',
     )
     list_filter = (
         'is_active', 'is_available', 'is_new', 'is_featured',
         'fragrance_type', 'fragrance_family', 'gender',
-        'currency', 'category', 'brand', 'created_at',
+        'currency', PerfumeryCategoryFilter, 'brand', 'created_at',
     )
     search_fields = ('name', 'slug', 'description', 'external_id')
     ordering = ('-created_at',)
+    list_select_related = ('category', 'category__parent', 'category__parent__parent', 'brand')
     readonly_fields = ('slug', 'base_product', 'created_at', 'updated_at')
     date_hierarchy = 'created_at'
     list_per_page = 25
@@ -155,3 +185,7 @@ class PerfumeryProductAdmin(RunAIActionMixin, ShadowProductCleanupAdminMixin, ad
         PerfumeryProductImageInline,
         PerfumeryVariantInline,
     ]
+
+    @admin.display(description=_("Категория"), ordering="category__name")
+    def category_path(self, obj):
+        return obj.category.get_breadcrumb_path() if obj.category else "—"
