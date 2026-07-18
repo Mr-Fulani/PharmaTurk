@@ -4046,6 +4046,7 @@ ECOMMERCE_ATTRIBUTES = [
     ("cpu-clock-speed", "Частота процессора", "Clock Speed", 49, ["electronics"]),  # GHz
     ("compatibility", "Совместимость", "Compatibility", 50, ["electronics"]),  # Platform, Region
     # Furniture / Мебель
+    ("furniture-type", "Тип мебели", "Furniture Type", 49, ["furniture"]),
     ("width", "Ширина", "Width", 50, ["furniture", "accessories", "auto-parts", "tableware", "electronics", "sports"]),
     ("height", "Высота", "Height", 51, ["furniture", "accessories", "tableware", "electronics", "sports"]),
     ("depth", "Глубина", "Depth", 52, ["furniture", "accessories", "tableware", "electronics", "sports"]),
@@ -4053,6 +4054,10 @@ ECOMMERCE_ATTRIBUTES = [
     ("assembly-required", "Сборка", "Assembly", 54, ["furniture"]),  # Требуется сборка / Собранный
     ("style", "Стиль", "Style", 55, ["furniture", "islamic-clothing", "accessories", "headwear", "underwear"]),
     ("room-type", "Тип помещения", "Room Type", 56, ["furniture"]),
+    ("mattress-length", "Длина матраса", "Mattress Length", 57, ["furniture"]),
+    ("mattress-width", "Ширина матраса", "Mattress Width", 58, ["furniture"]),
+    ("headboard-height", "Высота изголовья", "Headboard Height", 59, ["furniture"]),
+    ("footboard-height", "Высота изножья", "Footboard Height", 60, ["furniture"]),
     # Beauty / Косметика (perfumery)
     ("skin-type", "Тип кожи", "Skin Type", 60, ["perfumery"]),
     ("volume", "Объём", "Volume", 61, ["perfumery", "incense"]),

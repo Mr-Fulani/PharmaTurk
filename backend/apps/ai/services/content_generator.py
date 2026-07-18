@@ -34,7 +34,11 @@ from apps.ai.services.llm_client import LLMClient
 from apps.ai.services.media_processor import R2MediaProcessor
 from apps.ai.services.variant_detector import VariantContentDetector
 from apps.ai.services.vector_store import QdrantManager
-from apps.ai.services.quality_checker import check_needs_moderation, create_moderation_task
+from apps.ai.services.quality_checker import (
+    check_needs_moderation,
+    create_moderation_task,
+    get_moderation_reasons,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +335,15 @@ class ContentGenerator:
             if auto_apply:
                 log_entry.status = AIProcessingStatus.COMPLETED
                 log_entry.save(update_fields=["status", "completed_at"])
+                blocking_reasons = {
+                    "title_category_mismatch",
+                    "untranslated_attribute",
+                }.intersection(get_moderation_reasons(log_entry))
+                if blocking_reasons:
+                    log_entry.status = AIProcessingStatus.MODERATION
+                    log_entry.save(update_fields=["status"])
+                    self._create_moderation_task(log_entry)
+                    return log_entry
                 try:
                     self.apply_log_to_product(
                         log_entry,
@@ -496,6 +509,21 @@ class ContentGenerator:
             if getattr(jewelry_item, "gender", None):
                 data["gender"] = jewelry_item.gender
 
+        furniture_item = getattr(product, "furniture_item", None)
+        if furniture_item:
+            for field in ("material", "dimensions", "furniture_type"):
+                value = getattr(furniture_item, field, None)
+                if value:
+                    data[field] = value
+            furniture_external = (
+                furniture_item.external_data
+                if isinstance(getattr(furniture_item, "external_data", None), dict)
+                else {}
+            )
+            furniture_attrs = furniture_external.get("attributes")
+            if isinstance(furniture_attrs, dict):
+                data["attributes"] = {**(data.get("attributes") or {}), **furniture_attrs}
+
         # Медицинские атрибуты из доменной модели MedicineProduct
         medicine_item = getattr(product, "medicine_item", None)
         if medicine_item:
@@ -526,7 +554,7 @@ class ContentGenerator:
         if product.external_data:
             raw_attrs = product.external_data.get("attributes") or {}
             if raw_attrs:
-                data["attributes"] = raw_attrs
+                data["attributes"] = {**(data.get("attributes") or {}), **raw_attrs}
             medicine_keys = (
                 "active_ingredient", "dosage_form", "administration_route",
                 "shelf_life", "storage_conditions", "sgk_status",
@@ -1944,6 +1972,7 @@ class ContentGenerator:
           • Для этой карточки приоритетно раскрывай факты именно из focus, а forbidden не включай в prose/SEO.
         - Для книг: author, pages, isbn, publisher, cover_type, language, publication_year. cover_type (переплёт) можно определить по фото.
         - Для украшений (jewelry): обязательно извлекай в attributes: jewelry_type (ring/bracelet/necklace/earrings/pendant), material (серебро/silver, золото/gold), metal_purity из текста про пробу («925 пробы», «585», «проба 750» → metal_purity: «925» / «585» / «750»), stone_type, carat_weight, gender — по описанию или по фото.
+        - Для мебели: category_context и furniture_type — канонические ограничения, а не подсказки. Не обобщай тип товара. Для category slug bed-bases используй «основание кровати» в RU и «bed base» в EN; не заменяй их просто на «кровать» / «bed». Технические факты возвращай только через разрешённые available_dynamic_attributes с отдельными value_ru и value_en.
         - Для медикаментов: ОЯЗАТЕЛЬНО переведи все технические поля из known_attributes на русский и английский. Если в raw_description или current_description есть инструкции по применению, побочные эффекты, противопоказания, показания (Ne İçin Kullanılır, Yan Etkileri, vs.) — ОБЯЗАТЕЛЬНО извлеки их, переведи на нужный язык (RU/EN) и заполни соответствующие поля (indications, usage_instructions, side_effects, contraindications, storage_conditions, administration_route, shelf_life, sgk_status, prescription_type, special_notes, origin_country) внутри объектов "ru" и "en". Например: "Subkütan" (TR) -> "Подкожно" (RU) / "Subcutaneous" (EN); "İthal" (TR) -> "Импортный" (RU) / "Imported" (EN).
         - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - Для одежды и обуви: title должен быть на языке ответа и не должен содержать турецкие цвета, цену, TL/TRY, SKU или код товара.

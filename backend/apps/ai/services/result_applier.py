@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional, List
 from django.db import transaction
 from django.utils.text import slugify as django_slugify
 from apps.catalog.models import Product, GlobalAttributeKey, ProductAttributeValue
+from apps.catalog.attribute_specs import get_dynamic_attribute_spec
+from apps.catalog.product_semantics import looks_untranslated_turkish
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +199,9 @@ class BaseAIApplier:
             slug = _canonical_attr_slug(row.get("slug") or "")
             if not slug:
                 continue
+            product_type = getattr(type(target), "_domain_product_type", None)
+            if get_dynamic_attribute_spec(product_type, slug) is None:
+                continue
             key = GlobalAttributeKey.objects.filter(slug=slug).first()
             if not key:
                 legacy_slug = slug.replace("-", "_")
@@ -208,6 +213,8 @@ class BaseAIApplier:
             value_ru = str(row.get("value_ru") or value or "").strip() or None
             value_en = str(row.get("value_en") or "").strip() or None
             if not value:
+                continue
+            if looks_untranslated_turkish(value_ru) or looks_untranslated_turkish(value_en):
                 continue
 
             current = existing.get(slug)

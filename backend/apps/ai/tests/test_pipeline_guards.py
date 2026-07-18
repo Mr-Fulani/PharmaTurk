@@ -70,6 +70,41 @@ def test_moderation_uses_currency_and_word_boundaries():
     assert get_moderation_reasons(log) == []
 
 
+def test_bed_base_title_cannot_be_reduced_to_bed():
+    category = SimpleNamespace(slug="bed-bases")
+    product = SimpleNamespace(category=category)
+    log = SimpleNamespace(
+        category_confidence=0.95,
+        input_data={},
+        generated_title="Кровать с ящиками TONSTAD",
+        generated_description=" ".join(["Подробное"] * 20),
+        extracted_attributes={},
+        product=product,
+    )
+
+    assert "title_category_mismatch" in get_moderation_reasons(log)
+
+    log.generated_title = "Основание кровати с ящиками TONSTAD"
+    assert "title_category_mismatch" not in get_moderation_reasons(log)
+
+
+def test_untranslated_turkish_dynamic_attribute_requires_moderation():
+    log = SimpleNamespace(
+        category_confidence=0.95,
+        input_data={},
+        generated_title="Стол",
+        generated_description=" ".join(["Подробное"] * 20),
+        extracted_attributes={
+            "dynamic_attributes": [
+                {"slug": "material", "value_ru": "Masif çam ağacı", "value_en": "Solid pine"}
+            ]
+        },
+        product=SimpleNamespace(category=SimpleNamespace(slug="tables")),
+    )
+
+    assert "untranslated_attribute" in get_moderation_reasons(log)
+
+
 def test_book_applier_does_not_invent_stock(monkeypatch):
     monkeypatch.setattr(BaseAIApplier, "apply", lambda self, target, ai_data: False)
     target = SimpleNamespace(stock_quantity=0, save=lambda: None)

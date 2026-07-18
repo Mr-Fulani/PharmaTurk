@@ -3812,6 +3812,14 @@ class ScraperIntegrationService:
             if handler:
                 updated = handler(product, attrs, session=session)
 
+        if product.product_type == "furniture":
+            from apps.catalog.models import FurnitureProduct
+            from apps.catalog.services.furniture_attributes import sync_furniture_dynamic_attributes
+
+            target = product.domain_item
+            if isinstance(target, FurnitureProduct):
+                updated = bool(sync_furniture_dynamic_attributes(target, attrs)) or updated
+
         # --- Общие поля → Product ---
 
         # Weight (e.g. "0,441" kg from ummaland)

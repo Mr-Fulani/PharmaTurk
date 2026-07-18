@@ -742,7 +742,11 @@ export default function ProductPage({
   const furnitureDescriptorLine = useMemo(() => {
     if (productType !== 'furniture' || !product) return null
     const parts: string[] = []
-    const ft = stripHtmlToPlainText(String(product.furniture_type || ''))
+    const localizedFurnitureType = product.dynamic_attributes?.find(
+      (attribute) => attribute.key === 'furniture-type'
+    )?.value
+    const categoryFallback = product.category?.slug !== 'furniture' ? product.category?.name : ''
+    const ft = stripHtmlToPlainText(String(localizedFurnitureType || categoryFallback || ''))
     if (ft) parts.push(ft)
     const col = String(selectedVariant?.color_display || selectedVariant?.color || '').trim()
     if (col) parts.push(col)
@@ -755,7 +759,9 @@ export default function ProductPage({
   }, [
     productType,
     product,
-    product?.furniture_type,
+    product?.dynamic_attributes,
+    product?.category?.name,
+    product?.category?.slug,
     furnitureVariantPickerBySlug,
     selectedVariant?.color_display,
     selectedVariant?.color,

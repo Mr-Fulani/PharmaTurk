@@ -4,6 +4,7 @@ import re
 from typing import List
 
 from apps.ai.models import AIProcessingLog, AIModerationQueue
+from apps.catalog.product_semantics import looks_untranslated_turkish, title_matches_category
 
 
 def get_moderation_reasons(log: AIProcessingLog) -> List[str]:
@@ -38,6 +39,23 @@ def get_moderation_reasons(log: AIProcessingLog) -> List[str]:
     if len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE)) < 20:
         reasons.append("short_description")
 
+    product = getattr(log, "product", None)
+    category = getattr(product, "category", None) if product is not None else None
+    if category is not None and not title_matches_category(
+        getattr(category, "slug", ""),
+        getattr(log, "generated_title", ""),
+        "ru",
+    ):
+        reasons.append("title_category_mismatch")
+
+    attrs = getattr(log, "extracted_attributes", None) or {}
+    for row in attrs.get("dynamic_attributes") or []:
+        if not isinstance(row, dict):
+            continue
+        if looks_untranslated_turkish(row.get("value_ru")) or looks_untranslated_turkish(row.get("value_en")):
+            reasons.append("untranslated_attribute")
+            break
+
     return reasons
 
 
@@ -53,7 +71,7 @@ def create_moderation_task(log: AIProcessingLog) -> None:
 
     reasons = get_moderation_reasons(log)
     reason = reasons[0] if reasons else "manual_review"
-    priority = 2 if reason == "low_confidence" else 3
+    priority = 2 if reason in {"low_confidence", "title_category_mismatch", "untranslated_attribute"} else 3
     AIModerationQueue.objects.get_or_create(
         log_entry=log,
         defaults={"priority": priority, "reason": reason},

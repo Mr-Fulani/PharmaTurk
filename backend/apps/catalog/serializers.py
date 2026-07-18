@@ -1082,15 +1082,19 @@ class ProductDynamicAttributeSerializer(serializers.ModelSerializer):
     def get_value(self, obj):
         # Получаем язык из контекста (через i18n middleware обычно)
         from django.utils import translation
-        lang = translation.get_language()
+        lang = (translation.get_language() or "ru").split("-")[0].lower()
         
         if lang == 'ru' and obj.value_ru:
             return obj.value_ru
         if lang == 'en' and obj.value_en:
             return obj.value_en
         
-        # Fallback на основное значение
-        return obj.value
+        # Числовые/языконезависимые значения безопасно показывать как fallback.
+        # Сырой турецкий текст в RU/EN-ответ не пропускаем.
+        from apps.catalog.product_semantics import looks_untranslated_turkish
+
+        raw = obj.value or ""
+        return "" if lang in {"ru", "en"} and looks_untranslated_turkish(raw) else raw
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):

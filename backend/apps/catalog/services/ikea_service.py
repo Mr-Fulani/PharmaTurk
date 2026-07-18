@@ -768,4 +768,15 @@ class IkeaService:
                     variant.main_image = main_image_url
                     variant.save()
 
+        from apps.catalog.services.furniture_attributes import sync_furniture_dynamic_attributes
+
+        sync_furniture_dynamic_attributes(
+            product,
+            {
+                "furniture_type": normalized.get("furniture_type", ""),
+                "material": normalized.get("material", ""),
+                "dimensions": normalized.get("dimensions", ""),
+            },
+        )
+
         return product
