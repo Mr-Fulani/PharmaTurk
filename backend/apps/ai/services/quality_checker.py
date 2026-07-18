@@ -4,7 +4,7 @@ import re
 from typing import List
 
 from apps.ai.models import AIProcessingLog, AIModerationQueue
-from apps.catalog.product_semantics import looks_untranslated_turkish, title_matches_category
+from apps.ai.services.semantic_validator import SemanticValidator
 
 
 def get_moderation_reasons(log: AIProcessingLog) -> List[str]:
@@ -39,24 +39,9 @@ def get_moderation_reasons(log: AIProcessingLog) -> List[str]:
     if len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE)) < 20:
         reasons.append("short_description")
 
-    product = getattr(log, "product", None)
-    category = getattr(product, "category", None) if product is not None else None
-    if category is not None and not title_matches_category(
-        getattr(category, "slug", ""),
-        getattr(log, "generated_title", ""),
-        "ru",
-    ):
-        reasons.append("title_category_mismatch")
+    reasons.extend(SemanticValidator().validate_log(log).reasons)
 
-    attrs = getattr(log, "extracted_attributes", None) or {}
-    for row in attrs.get("dynamic_attributes") or []:
-        if not isinstance(row, dict):
-            continue
-        if looks_untranslated_turkish(row.get("value_ru")) or looks_untranslated_turkish(row.get("value_en")):
-            reasons.append("untranslated_attribute")
-            break
-
-    return reasons
+    return list(dict.fromkeys(reasons))
 
 
 def check_needs_moderation(log: AIProcessingLog) -> bool:

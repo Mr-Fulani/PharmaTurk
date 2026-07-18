@@ -501,11 +501,18 @@ class AIResultApplier:
         # 'ummaland.uz': UmmalandAIApplier,
     }
     
-    def apply_to_product(self, product: Product, ai_data: Dict[str, Any]) -> bool:
+    def apply_to_product(
+        self,
+        product: Product,
+        ai_data: Dict[str, Any],
+        *,
+        rejected_fields: set[str] | None = None,
+    ) -> bool:
         """
         Главная точка входа для применения данных к продукту.
         Автоматически определяет домен и нужный обработчик.
         """
+        rejected_fields = rejected_fields or set()
         target = product.domain_item
         product_type = getattr(target, '_domain_product_type', product.product_type)
         
@@ -541,7 +548,7 @@ class AIResultApplier:
                     target.category = suggested_category
                     target.save(update_fields=["category"])
 
-            new_title = (ai_data.get("generated_title") or "").strip()
+            new_title = "" if "title" in rejected_fields else (ai_data.get("generated_title") or "").strip()
             if new_title and target is not None:
                 target.name = new_title[:500]
                 target.slug = _make_unique_slug_for_domain(
@@ -553,4 +560,15 @@ class AIResultApplier:
             elif new_title:
                 product.name = new_title[:500]
                 product.save(update_fields=["name"])
-            return handler.apply(target, ai_data)
+            cleaned_data = dict(ai_data)
+            attrs = dict(cleaned_data.get("extracted_attributes") or {})
+            dynamic = attrs.get("dynamic_attributes")
+            if isinstance(dynamic, list):
+                attrs["dynamic_attributes"] = [
+                    row for row in dynamic
+                    if not isinstance(row, dict)
+                    or f"dynamic_attributes:{_canonical_attr_slug(row.get('slug') or 'unknown')}"
+                    not in rejected_fields
+                ]
+            cleaned_data["extracted_attributes"] = attrs
+            return handler.apply(target, cleaned_data)

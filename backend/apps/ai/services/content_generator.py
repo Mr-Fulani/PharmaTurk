@@ -39,6 +39,7 @@ from apps.ai.services.quality_checker import (
     create_moderation_task,
     get_moderation_reasons,
 )
+from apps.ai.services.semantic_validator import SemanticValidator
 
 logger = logging.getLogger(__name__)
 
@@ -335,15 +336,6 @@ class ContentGenerator:
             if auto_apply:
                 log_entry.status = AIProcessingStatus.COMPLETED
                 log_entry.save(update_fields=["status", "completed_at"])
-                blocking_reasons = {
-                    "title_category_mismatch",
-                    "untranslated_attribute",
-                }.intersection(get_moderation_reasons(log_entry))
-                if blocking_reasons:
-                    log_entry.status = AIProcessingStatus.MODERATION
-                    log_entry.save(update_fields=["status"])
-                    self._create_moderation_task(log_entry)
-                    return log_entry
                 try:
                     self.apply_log_to_product(
                         log_entry,
@@ -2460,16 +2452,33 @@ class ContentGenerator:
                 "(описание/SEO/переводы пустые)."
             )
 
-        self._apply_changes_to_product(log.product, log)
-        log.status = AIProcessingStatus.APPROVED
+        semantic_report = SemanticValidator().validate_log(log)
+        self._apply_changes_to_product(
+            log.product,
+            log,
+            rejected_fields=semantic_report.rejected_fields,
+        )
+        log.status = (
+            AIProcessingStatus.MODERATION
+            if semantic_report.needs_moderation
+            else AIProcessingStatus.APPROVED
+        )
         if user is not None:
             log.processed_by = user
         log.moderation_date = timezone.now()
         log.error_message = ""
         log.save(update_fields=["status", "processed_by", "moderation_date", "error_message", "updated_at"])
+        if semantic_report.needs_moderation:
+            self._create_moderation_task(log)
         return log
 
-    def _apply_changes_to_product(self, product: Product, log: AIProcessingLog):
+    def _apply_changes_to_product(
+        self,
+        product: Product,
+        log: AIProcessingLog,
+        *,
+        rejected_fields: set[str] | None = None,
+    ):
         """Применение сгенерированных данных к товару через AIResultApplier."""
         original_name = product.name or ""
 
@@ -2496,6 +2505,7 @@ class ContentGenerator:
         fallback_seo_description = seo_en.get('meta_description') or log.generated_seo_description
         fallback_keywords = seo_en.get('meta_keywords') or log.generated_keywords
 
+        rejected_fields = rejected_fields or set()
         ai_data = {
             'generated_title': (log.generated_title or '').strip() or None,
             'generated_description': log.generated_description,
@@ -2540,5 +2550,14 @@ class ContentGenerator:
             }
         }
 
+        if "title" in rejected_fields:
+            ai_data["generated_title"] = None
+            ai_data["translations"]["ru"].pop("name", None)
+            ai_data["translations"]["en"].pop("name", None)
+
         # Делегируем применение результатов специализированному сервису
-        self.result_applier.apply_to_product(product, ai_data)
+        self.result_applier.apply_to_product(
+            product,
+            ai_data,
+            rejected_fields=rejected_fields,
+        )

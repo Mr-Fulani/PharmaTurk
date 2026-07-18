@@ -3,7 +3,7 @@
 from django.core.management.base import BaseCommand
 
 from apps.catalog.models import FurnitureProduct
-from apps.catalog.product_semantics import title_matches_category
+from apps.ai.services.semantic_validator import SemanticValidator
 from apps.catalog.services.furniture_attributes import (
     build_furniture_dynamic_attributes,
     sync_furniture_dynamic_attributes,
@@ -40,7 +40,12 @@ class Command(BaseCommand):
                     raw,
                     overwrite=options["overwrite"],
                 )
-            if product.category_id and not title_matches_category(product.category.slug, product.name, "ru"):
+            semantic_report = SemanticValidator().validate(
+                product.base_product,
+                generated_titles={"ru": product.name},
+                dynamic_attributes=[],
+            )
+            if "title" in semantic_report.rejected_fields:
                 title_mismatches += 1
                 self.stdout.write(
                     f"TITLE_MISMATCH product={product.pk} category={product.category.slug} name={product.name}"
