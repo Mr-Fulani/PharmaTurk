@@ -104,6 +104,9 @@ class CategoryRootFilter(SimpleListFilter):
     def lookups(self, request, model_admin):
         from .models import Category
         roots = Category.objects.filter(parent__isnull=True, is_active=True).order_by('sort_order', 'name')
+        required_type = getattr(model_admin, "required_category_type_slug", None)
+        if required_type:
+            roots = roots.filter(category_type__slug=required_type)
         return [(str(r.pk), r.name) for r in roots]
 
     def queryset(self, request, queryset):
@@ -120,6 +123,56 @@ class CategoryRootFilter(SimpleListFilter):
             ids.update(current)
             current = set(Category.objects.filter(parent_id__in=current).values_list('id', flat=True))
         return queryset.filter(id__in=ids)
+
+
+class ScopedParentCategoryFilter(SimpleListFilter):
+    """Показывает родителей только внутри выбранного/текущего дерева."""
+
+    title = _("Родительская категория")
+    parameter_name = "parent_id"
+
+    @staticmethod
+    def _tree_ids(root_id):
+        ids = {root_id}
+        current = {root_id}
+        while current:
+            current = set(
+                Category.objects.filter(parent_id__in=current).values_list("id", flat=True)
+            ) - ids
+            ids.update(current)
+        return ids
+
+    def lookups(self, request, model_admin):
+        root_id = request.GET.get(CategoryRootFilter.parameter_name)
+        required_type = getattr(model_admin, "required_category_type_slug", None)
+
+        # В общем каталоге без выбранного дерева этот фильтр намеренно скрыт:
+        # иначе Django снова построит один огромный плоский список.
+        if not root_id and not required_type:
+            return ()
+
+        parents = Category.objects.filter(children__isnull=False).distinct()
+        if root_id:
+            try:
+                parents = parents.filter(pk__in=self._tree_ids(int(root_id)))
+            except (TypeError, ValueError):
+                return ()
+        if required_type:
+            parents = parents.filter(category_type__slug=required_type)
+
+        parents = parents.select_related(
+            "parent", "parent__parent", "parent__parent__parent"
+        )
+        choices = (
+            (str(category.pk), category.get_breadcrumb_path())
+            for category in parents
+        )
+        return sorted(choices, key=lambda item: item[1].casefold())
+
+    def queryset(self, request, queryset):
+        if not self.value():
+            return queryset
+        return queryset.filter(parent_id=self.value())
 
 
 class ActiveRootFilter(SimpleListFilter):
@@ -615,7 +668,7 @@ class BaseCategoryAdmin(CategoryProductCountAdminMixin, AdminMediaHelpTextMixin,
         'is_active',
         CategoryLevelFilter,
         CategoryRootFilter,
-        ('parent', admin.RelatedOnlyFieldListFilter),
+        ScopedParentCategoryFilter,
         'category_type',
         'shipping_calculation',
         'clothing_type',
@@ -732,7 +785,7 @@ class AllCategoriesAdmin(CategoryProductCountAdminMixin, AdminMediaHelpTextMixin
         'is_active',
         CategoryLevelFilter,
         CategoryRootFilter,
-        ('parent', admin.RelatedOnlyFieldListFilter),
+        ScopedParentCategoryFilter,
         'category_type',
         'shipping_calculation',
         'created_at',
