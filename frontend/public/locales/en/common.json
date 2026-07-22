@@ -37,6 +37,8 @@
   "auth_or_register_with": "Or register with",
   "auth_google_login": "Sign in with Google",
   "auth_vk_login": "Sign in with VKontakte",
+  "auth_vk_open_error": "Could not open VK. Try again.",
+  "auth_vk_browser_error": "Open VK in an external browser.",
   "auth_social_error": "Social login error. Please try again.",
   "auth_csrf_error": "Security error. Refresh the page and try again.",
   "search_loading": "Searching...",

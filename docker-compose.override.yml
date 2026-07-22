@@ -37,6 +37,9 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      # Dev-сборка контейнера не должна делить .next с хостом: локальный
+      # `npm run build` очищает каталог и ломает уже запущенный Next dev server.
+      - /app/.next
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true

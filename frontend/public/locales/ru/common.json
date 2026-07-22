@@ -37,6 +37,8 @@
   "auth_or_register_with": "Или зарегистрироваться через",
   "auth_google_login": "Войти через Google",
   "auth_vk_login": "Войти через ВКонтакте",
+  "auth_vk_open_error": "Не удалось открыть VK. Попробуйте ещё раз.",
+  "auth_vk_browser_error": "Откройте VK во внешнем браузере.",
   "auth_social_error": "Ошибка входа через соцсеть. Попробуйте снова.",
   "auth_csrf_error": "Ошибка безопасности. Обновите страницу и попробуйте снова.",
   "search_loading": "Поиск…",

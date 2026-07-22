@@ -501,12 +501,16 @@ function VKLoginButton() {
         title={t('auth_vk_login', 'Войти через ВКонтакте')}
       />
       {error && (
-        <p
+        <div
           role="alert"
-          className="absolute left-1/2 top-full z-[60] mt-2 w-64 -translate-x-1/2 rounded-md border border-red-200 bg-white px-3 py-2 text-center text-xs leading-4 text-red-600 shadow-md dark:border-red-900 dark:bg-gray-900 dark:text-red-400"
+          aria-live="polite"
+          className="absolute left-1/2 top-[calc(100%+6px)] z-[60] flex w-max max-w-[12rem] -translate-x-1/2 items-start gap-1.5 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-left text-[11px] font-medium leading-tight text-red-600 shadow-md dark:border-red-900 dark:bg-gray-900 dark:text-red-400"
         >
-          {error}
-        </p>
+          <span aria-hidden="true" className="mt-px flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full bg-red-100 text-[9px] font-bold dark:bg-red-950">
+            !
+          </span>
+          <span>{error}</span>
+        </div>
       )}
     </div>
   )
