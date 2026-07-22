@@ -35,6 +35,14 @@ interface MenuItem {
 }
 
 const currencyOptions = ['RUB', 'USD', 'EUR', 'TRY', 'KZT', 'USDT']
+const currencySymbols: Record<string, string> = {
+  RUB: '₽',
+  USD: '$',
+  EUR: '€',
+  TRY: '₺',
+  KZT: '₸',
+  USDT: '₮',
+}
 const ITEM_GAP = 42
 const ITEM_SIZE = 40
 
@@ -152,14 +160,14 @@ export default function DotMenu({
     {
       key: 'currency',
       label: t('currency', 'Валюта'),
-      icon: <span className="text-[10px] font-extrabold leading-none">{currency}</span>,
+      icon: <CurrencyIcon code={currency} />,
       isCurrency: true,
       onClick: () => setShowCurrencyChoice((value) => !value),
     },
     {
       key: 'language',
       label: t('language', 'Язык'),
-      icon: <span className="text-xs font-extrabold">{router.locale?.toUpperCase() || 'EN'}</span>,
+      icon: <LanguageFlag locale={router.locale || 'en'} />,
       onClick: onToggleLocale,
     },
     {
@@ -202,7 +210,7 @@ export default function DotMenu({
 
   const currencyItemIndex = menuItems.findIndex((item) => item.isCurrency)
   const currencyItemX = menuCenter ? menuCenter.x - ITEM_GAP * (currencyItemIndex + 1) : 0
-  const currencyPanelWidth = 184
+  const currencyPanelWidth = 208
   const currencyPanelLeft = isClient
     ? Math.min(Math.max(currencyItemX - currencyPanelWidth / 2, 12), window.innerWidth - currencyPanelWidth - 12)
     : 12
@@ -226,7 +234,17 @@ export default function DotMenu({
                 key={item.key}
                 initial={{ x: 0, y: 0, scale: 0.25, opacity: 0 }}
                 animate={{ x: offset.x, y: offset.y, scale: 1, opacity: 1 }}
-                exit={{ x: 0, y: 0, scale: 0.25, opacity: 0 }}
+                exit={{
+                  x: 0,
+                  y: 0,
+                  scale: 0.25,
+                  opacity: 0,
+                  transition: {
+                    duration: 0.4,
+                    delay: (menuItems.length - 1 - index) * 0.045,
+                    ease: [0.22, 1, 0.36, 1],
+                  },
+                }}
                 transition={{
                   duration: 0.4,
                   delay: index * 0.045,
@@ -283,7 +301,8 @@ export default function DotMenu({
                   className={`${styles.currencyButton} ${currency === code ? styles.currencyButtonActive : ''}`}
                   role="menuitem"
                 >
-                  {code}
+                  <CurrencyIcon code={code} compact />
+                  <span>{code}</span>
                 </button>
               ))}
             </motion.div>
@@ -325,5 +344,129 @@ export default function DotMenu({
       </div>
       {portalContent}
     </>
+  )
+}
+
+function LanguageFlag({ locale }: { locale: string }) {
+  const isRussian = locale.toLowerCase() === 'ru'
+
+  return (
+    <svg
+      className={styles.languageFlag}
+      viewBox="0 0 32 32"
+      role="img"
+      aria-label={isRussian ? 'Русский' : 'English'}
+    >
+      <defs>
+        <clipPath id="dot-menu-language-flag">
+          <circle cx="16" cy="16" r="15" />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#dot-menu-language-flag)">
+        {isRussian ? (
+          <>
+            <rect width="32" height="11" y="0" fill="#fff" />
+            <rect width="32" height="11" y="11" fill="#1857a4" />
+            <rect width="32" height="10" y="22" fill="#d52b1e" />
+          </>
+        ) : (
+          <>
+            <rect width="32" height="32" fill="#fff" />
+            {[0, 4.92, 9.84, 14.76, 19.68, 24.6, 29.52].map((y) => (
+              <rect key={y} width="32" height="2.47" y={y} fill="#b22234" />
+            ))}
+            <rect width="17.5" height="17.25" fill="#3c3b6e" />
+            {[3, 8.5, 14].flatMap((y) => [3, 7, 11, 15].map((x) => (
+              <circle key={`${x}-${y}`} cx={x} cy={y} r="0.9" fill="#fff" />
+            )))}
+          </>
+        )}
+      </g>
+      <circle cx="16" cy="16" r="15" fill="none" stroke="rgba(15, 23, 42, 0.22)" />
+    </svg>
+  )
+}
+
+function CurrencyIcon({ code, compact = false }: { code: string; compact?: boolean }) {
+  const normalizedCode = code.toUpperCase()
+
+  return (
+    <span className={`${styles.currencyIcon} ${compact ? styles.currencyIconCompact : ''}`} aria-hidden="true">
+      <svg className={styles.currencyFlag} viewBox="0 0 32 32">
+        {normalizedCode === 'RUB' && (
+          <>
+            <rect width="32" height="11" fill="#fff" />
+            <rect width="32" height="11" y="11" fill="#1857a4" />
+            <rect width="32" height="10" y="22" fill="#d52b1e" />
+          </>
+        )}
+        {normalizedCode === 'USD' && (
+          <>
+            <rect width="32" height="32" fill="#fff" />
+            {[0, 4.92, 9.84, 14.76, 19.68, 24.6, 29.52].map((y) => (
+              <rect key={y} width="32" height="2.47" y={y} fill="#b22234" />
+            ))}
+            <rect width="17.5" height="17.25" fill="#3c3b6e" />
+            {[3, 8.5, 14].flatMap((y) => [3, 7, 11, 15].map((x) => (
+              <circle key={`${x}-${y}`} cx={x} cy={y} r="0.9" fill="#fff" />
+            )))}
+          </>
+        )}
+        {normalizedCode === 'EUR' && (
+          <>
+            <rect width="32" height="32" fill="#003399" />
+            {Array.from({ length: 12 }, (_, index) => {
+              const angle = (index * Math.PI * 2) / 12 - Math.PI / 2
+              return (
+                <circle
+                  key={index}
+                  cx={16 + Math.cos(angle) * 8.5}
+                  cy={16 + Math.sin(angle) * 8.5}
+                  r="1.25"
+                  fill="#ffcc00"
+                />
+              )
+            })}
+          </>
+        )}
+        {normalizedCode === 'TRY' && (
+          <>
+            <rect width="32" height="32" fill="#e30a17" />
+            <circle cx="13.2" cy="16" r="7.6" fill="#fff" />
+            <circle cx="15.7" cy="14.6" r="6.4" fill="#e30a17" />
+            <path d="m22.8 12.2 1.05 2.15 2.38.34-1.72 1.68.4 2.37-2.11-1.12-2.12 1.12.4-2.37-1.71-1.68 2.37-.34Z" fill="#fff" />
+          </>
+        )}
+        {normalizedCode === 'KZT' && (
+          <>
+            <rect width="32" height="32" fill="#00afca" />
+            <circle cx="16" cy="12.5" r="4.1" fill="#f6c445" />
+            {Array.from({ length: 12 }, (_, index) => {
+              const angle = (index * Math.PI * 2) / 12
+              return (
+                <path
+                  key={index}
+                  d="M16 6.3v2.1"
+                  stroke="#f6c445"
+                  strokeWidth="1.1"
+                  strokeLinecap="round"
+                  transform={`rotate(${(angle * 180) / Math.PI} 16 12.5)`}
+                />
+              )
+            })}
+            <path d="M7 21.3c3.2 1.1 5.8.45 9-2.35 3.2 2.8 5.8 3.45 9 2.35-2.1 4.7-15.9 4.7-18 0Z" fill="#f6c445" />
+          </>
+        )}
+        {normalizedCode === 'USDT' && (
+          <>
+            <rect width="32" height="32" fill="#26a17b" />
+            <path d="M8 8h16v4H18v2.1c5.4.25 9.4 1.25 9.4 2.45S23.4 18.75 18 19v6h-4v-6c-5.4-.25-9.4-1.25-9.4-2.45s4-2.2 9.4-2.45V12H8Zm6 8.2c-3.25.16-5.42.55-5.42 1s2.17.84 5.42 1Zm4 2c3.25-.16 5.42-.55 5.42-1s-2.17-.84-5.42-1Z" fill="#fff" />
+          </>
+        )}
+      </svg>
+      {!compact && (
+        <span className={styles.currencySymbol}>{currencySymbols[normalizedCode] || normalizedCode.slice(0, 1)}</span>
+      )}
+    </span>
   )
 }
