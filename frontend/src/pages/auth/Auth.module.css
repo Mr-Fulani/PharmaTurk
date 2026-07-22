@@ -188,8 +188,8 @@
 @media screen and (max-width: 768px){
     .container { 
         --mobile-toggle-height: 24%;
-        height: 750px;
-        min-height: 750px; 
+        height: 680px;
+        min-height: 680px;
         max-width: 450px;
         width: calc(100% - 32px);
     }
@@ -227,7 +227,22 @@
     .togglePanel { 
         width: 100%;
         height: var(--mobile-toggle-height);
-        padding: 20px;
+        padding: 10px 20px;
+    }
+
+    .togglePanel h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        line-height: 1.15;
+    }
+
+    .togglePanel p {
+        margin: 6px 0 10px;
+        font-size: 13.5px;
+    }
+
+    .togglePanel .btn {
+        height: 40px;
     }
     
     .toggleLeft { top: 0; }
