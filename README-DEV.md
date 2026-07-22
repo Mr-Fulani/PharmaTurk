@@ -212,6 +212,22 @@ docker compose run --rm backend poetry run python manage.py seed_catalog_data --
 docker compose exec backend poetry run python manage.py seed_catalog_data --categories-only
 ```
 
+### Backfill характеристик мебели
+
+```bash
+# Dry-run без изменения данных
+docker compose exec backend poetry run python manage.py backfill_furniture_attributes
+
+# Безопасное применение с пакетами по 200 товаров
+docker compose exec backend poetry run python manage.py backfill_furniture_attributes --apply --batch-size 200
+
+# Отдельный аудит заголовков
+docker compose exec backend poetry run python manage.py backfill_furniture_attributes --audit-titles
+```
+
+Полное описание флагов, продолжения с `--start-pk` и опасного режима
+`--overwrite`: [docs/FURNITURE_ATTRIBUTES_BACKFILL.md](docs/FURNITURE_ATTRIBUTES_BACKFILL.md).
+
 ### Frontend
 
 ```bash

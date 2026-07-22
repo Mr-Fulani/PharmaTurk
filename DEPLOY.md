@@ -60,7 +60,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend frontend
 ```
 
-Миграции, `collectstatic` и **seed каталога** выполняются при старте backend (см. `docker-entrypoint.sh`). Seed создаёт полную структуру: корневые категории, подкатегории (включая иерархию услуг L2–L5), типы атрибутов и бренды.
+Миграции и `collectstatic` выполняются при старте backend автоматически.
+`seed_catalog_data` запускается только при явном `RUN_SEED_CATALOG=1`; безопасное
+значение по умолчанию — `0`.
 
 ## 4. Первый запуск: индексация рекомендаций
 
@@ -149,6 +151,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend fr
 
 Миграции применяются при старте backend автоматически.
 
+Если обновление меняет нормализацию характеристик существующей мебели,
+используйте отдельную инструкцию:
+[Backfill характеристик мебели](docs/FURNITURE_ATTRIBUTES_BACKFILL.md).
+
 ## 8. Полезные команды
 
 | Действие | Команда |
@@ -167,8 +173,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend fr
 
 При первом деплое backend автоматически:
 1. Применяет миграции
-2. Запускает `seed_catalog_data` (категории, подкатегории, атрибуты, бренды)
-3. Собирает статику
+2. Собирает статику
+3. Загружает отсутствующие статические страницы
+
+`seed_catalog_data` выполняется только при `RUN_SEED_CATALOG=1`. Включайте его
+на первом запуске или после восстановления пустой базы, но не при каждом
+обычном деплое.
 
 Дополнительно выполните вручную:
 

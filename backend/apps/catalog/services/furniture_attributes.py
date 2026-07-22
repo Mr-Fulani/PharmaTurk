@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from html import unescape
-from typing import Any
+from typing import Any, Iterable
 
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.models import (
@@ -15,7 +17,6 @@ from apps.catalog.models import (
     GlobalAttributeKeyTranslation,
     ProductAttributeValue,
 )
-
 
 FURNITURE_TYPE_ALIASES = {
     "cift-kisilik-baza": ("Двуспальное основание кровати", "Double bed base"),
@@ -48,7 +49,9 @@ MATERIAL_ALIASES = (
 
 def _ascii_key(value: Any) -> str:
     text = unescape(re.sub(r"<[^>]+>", " ", str(value or ""))).strip().lower()
-    text = text.translate(str.maketrans({"ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u"}))
+    text = text.translate(
+        str.maketrans({"ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u"})
+    )
     return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
 
 
@@ -106,10 +109,24 @@ def build_furniture_dynamic_attributes(raw_attributes: dict[str, Any]) -> list[d
     rows: list[dict[str, str]] = []
     furniture_type = _localized_furniture_type(attrs.get("furniture_type"))
     if furniture_type:
-        rows.append({"slug": "furniture-type", "value": furniture_type[0], "value_ru": furniture_type[0], "value_en": furniture_type[1]})
+        rows.append(
+            {
+                "slug": "furniture-type",
+                "value": furniture_type[0],
+                "value_ru": furniture_type[0],
+                "value_en": furniture_type[1],
+            }
+        )
     material = _localized_material_summary(attrs.get("material"))
     if material:
-        rows.append({"slug": "material", "value": material[0], "value_ru": material[0], "value_en": material[1]})
+        rows.append(
+            {
+                "slug": "material",
+                "value": material[0],
+                "value_ru": material[0],
+                "value_en": material[1],
+            }
+        )
     for slug, value_ru, value_en in _dimension_rows(attrs.get("dimensions")):
         rows.append({"slug": slug, "value": value_ru, "value_ru": value_ru, "value_en": value_en})
     return rows
@@ -131,9 +148,13 @@ def sync_furniture_dynamic_attributes(
         spec = get_dynamic_attribute_spec("furniture", row["slug"])
         if spec is None:
             continue
-        key, _ = GlobalAttributeKey.objects.get_or_create(slug=spec.slug, defaults={"sort_order": spec.sort_order})
+        key, _ = GlobalAttributeKey.objects.get_or_create(
+            slug=spec.slug, defaults={"sort_order": spec.sort_order}
+        )
         for locale, name in (("ru", spec.name_ru), ("en", spec.name_en)):
-            GlobalAttributeKeyTranslation.objects.get_or_create(key_obj=key, locale=locale, defaults={"name": name})
+            GlobalAttributeKeyTranslation.objects.get_or_create(
+                key_obj=key, locale=locale, defaults={"name": name}
+            )
         if product.category_id:
             key.categories.add(product.category_id)
         current = ProductAttributeValue.objects.filter(
@@ -167,3 +188,136 @@ def sync_furniture_dynamic_attributes(
             current.save(update_fields=updates)
             changed += 1
     return changed
+
+
+def sync_furniture_dynamic_attributes_batch(
+    items: Iterable[tuple[FurnitureProduct, dict[str, Any]]],
+    *,
+    overwrite: bool = False,
+    write_batch_size: int = 500,
+) -> int:
+    """Bulk variant for one-off backfills.
+
+    Attribute definitions and existing values are loaded once per product
+    batch. Existing values remain untouched unless ``overwrite`` is enabled.
+    """
+    prepared: dict[tuple[int, str], tuple[FurnitureProduct, dict[str, str], Any]] = {}
+    category_ids_by_slug: dict[str, set[int]] = defaultdict(set)
+    specs: dict[str, Any] = {}
+
+    for product, raw_attributes in items:
+        for row in build_furniture_dynamic_attributes(raw_attributes):
+            spec = get_dynamic_attribute_spec("furniture", row["slug"])
+            if spec is None:
+                continue
+            specs[spec.slug] = spec
+            # Match the single-product implementation: the first value wins
+            # when the source repeats the same dimension more than once.
+            prepared.setdefault((product.pk, spec.slug), (product, row, spec))
+            if product.category_id:
+                category_ids_by_slug[spec.slug].add(product.category_id)
+
+    if not prepared:
+        return 0
+
+    with transaction.atomic():
+        keys_by_slug = {key.slug: key for key in GlobalAttributeKey.objects.filter(slug__in=specs)}
+        missing_keys = [
+            GlobalAttributeKey(slug=slug, sort_order=spec.sort_order)
+            for slug, spec in specs.items()
+            if slug not in keys_by_slug
+        ]
+        if missing_keys:
+            GlobalAttributeKey.objects.bulk_create(missing_keys, ignore_conflicts=True)
+            keys_by_slug = {
+                key.slug: key for key in GlobalAttributeKey.objects.filter(slug__in=specs)
+            }
+
+        key_ids = [key.pk for key in keys_by_slug.values()]
+        existing_translations = set(
+            GlobalAttributeKeyTranslation.objects.filter(
+                key_obj_id__in=key_ids,
+                locale__in=("ru", "en"),
+            ).values_list("key_obj_id", "locale")
+        )
+        translations = []
+        for slug, spec in specs.items():
+            key = keys_by_slug[slug]
+            for locale, name in (("ru", spec.name_ru), ("en", spec.name_en)):
+                if (key.pk, locale) not in existing_translations:
+                    translations.append(
+                        GlobalAttributeKeyTranslation(
+                            key_obj=key,
+                            locale=locale,
+                            name=name,
+                        )
+                    )
+        if translations:
+            GlobalAttributeKeyTranslation.objects.bulk_create(
+                translations,
+                ignore_conflicts=True,
+            )
+
+        # At most one M2M insert query per attribute key, not per product.
+        for slug, category_ids in category_ids_by_slug.items():
+            if category_ids:
+                keys_by_slug[slug].categories.add(*category_ids)
+
+        content_type = ContentType.objects.get_for_model(FurnitureProduct)
+        product_ids = {product_id for product_id, _ in prepared}
+        existing_values: dict[tuple[int, int], ProductAttributeValue] = {}
+        for value in ProductAttributeValue.objects.filter(
+            content_type=content_type,
+            object_id__in=product_ids,
+            attribute_key_id__in=key_ids,
+        ).order_by("pk"):
+            existing_values.setdefault(
+                (value.object_id, value.attribute_key_id),
+                value,
+            )
+
+        to_create: list[ProductAttributeValue] = []
+        to_update: list[ProductAttributeValue] = []
+        for (product_id, slug), (_product, row, spec) in prepared.items():
+            key = keys_by_slug[slug]
+            current = existing_values.get((product_id, key.pk))
+            if current is not None and not overwrite:
+                continue
+            if current is None:
+                to_create.append(
+                    ProductAttributeValue(
+                        content_type=content_type,
+                        object_id=product_id,
+                        attribute_key=key,
+                        value=row["value"][:500],
+                        value_ru=row["value_ru"][:500],
+                        value_en=row["value_en"][:500],
+                        sort_order=spec.sort_order,
+                    )
+                )
+                continue
+
+            dirty = False
+            for field in ("value", "value_ru", "value_en"):
+                value = row[field][:500]
+                if getattr(current, field) != value:
+                    setattr(current, field, value)
+                    dirty = True
+            if current.sort_order != spec.sort_order:
+                current.sort_order = spec.sort_order
+                dirty = True
+            if dirty:
+                to_update.append(current)
+
+        if to_create:
+            ProductAttributeValue.objects.bulk_create(
+                to_create,
+                batch_size=write_batch_size,
+            )
+        if to_update:
+            ProductAttributeValue.objects.bulk_update(
+                to_update,
+                fields=("value", "value_ru", "value_en", "sort_order"),
+                batch_size=write_batch_size,
+            )
+        return len(to_create) + len(to_update)
