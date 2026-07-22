@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
-from django.db.models import F, Exists, OuterRef, Subquery, Count, Q
+from django.db.models import F, Exists, OuterRef, Subquery, Count, Q, prefetch_related_objects
 from django.db.models.functions import Coalesce, Least
 from django.db.models import Case, When
 from django.http import HttpResponse, JsonResponse, Http404
@@ -1403,6 +1403,62 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
     serializer_class = ProductSerializer
     pagination_class = StandardPagination
     lookup_field = 'slug'
+
+    # Product is the canonical public identity for mixed catalog lists. Domain
+    # models are one-to-one detail projections and must not be merged into the
+    # same response as separate products.
+    _DOMAIN_CARD_RELATIONS = {
+        'clothing': ('clothing_item', 'images', 'variants'),
+        'shoes': ('shoe_item', 'images', 'variants'),
+        'electronics': ('electronics_item', 'images', None),
+        'furniture': ('furniture_item', 'images', 'variants'),
+        'jewelry': ('jewelry_item', 'images', 'variants'),
+        'books': ('book_item', 'images', 'book_variants'),
+        'perfumery': ('perfumery_item', 'images', 'variants'),
+        'medicines': ('medicine_item', 'gallery_images', None),
+        'supplements': ('supplement_item', 'gallery_images', None),
+        'medical_equipment': ('medical_equipment_item', 'gallery_images', None),
+        'tableware': ('tableware_item', 'gallery_images', None),
+        'accessories': ('accessory_item', 'gallery_images', None),
+        'incense': ('incense_item', 'gallery_images', None),
+        'sports': ('sports_item', 'images', 'variants'),
+        'auto_parts': ('auto_part_item', 'images', 'variants'),
+        'headwear': ('headwear_item', 'images', 'variants'),
+        'underwear': ('underwear_item', 'images', 'variants'),
+        'islamic_clothing': ('islamic_clothing_item', 'images', 'variants'),
+    }
+
+    @classmethod
+    def _prefetch_card_relations(cls, products):
+        """Prefetch only relations needed by the product types in a small card list."""
+        if not products:
+            return
+
+        prefetches = {
+            'translations',
+            'images',
+            'category__translations',
+            'brand__translations',
+            'dynamic_attributes__attribute_key__translations',
+            'book_authors__author',
+            'book_genres__genre',
+        }
+        product_types = {
+            str(product.product_type or '').strip().lower().replace('-', '_')
+            for product in products
+        }
+        for product_type in product_types:
+            config = cls._DOMAIN_CARD_RELATIONS.get(product_type)
+            if not config:
+                continue
+            relation, gallery_relation, variants_relation = config
+            prefetches.add(f'{relation}__translations')
+            prefetches.add(f'{relation}__{gallery_relation}')
+            if variants_relation:
+                prefetches.add(f'{relation}__{variants_relation}')
+                prefetches.add(f'{relation}__{variants_relation}__images')
+
+        prefetch_related_objects(products, *sorted(prefetches))
     
     def get_object(self):
         """Умный поиск объекта по slug для базовой модели Product."""
@@ -1833,20 +1889,39 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
     @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     @extend_schema(
         summary="Рекомендуемые товары",
-        description="Возвращает список рекомендуемых товаров"
+        description="Возвращает единый список рекомендуемых товаров без дублей доменных записей",
+        parameters=[
+            OpenApiParameter(
+                name="limit",
+                type=int,
+                required=False,
+                description="Количество товаров (1–20)",
+                default=10,
+            ),
+        ],
     )
     def featured(self, request):
-        """Получить рекомендуемые товары."""
-        featured_products = Product.objects.filter(
-            is_active=True, 
-            is_featured=True
+        """Return canonical Product rows for a mixed-category homepage list."""
+        try:
+            requested_limit = int(request.query_params.get('limit', 10))
+        except (TypeError, ValueError):
+            requested_limit = 10
+        limit = max(1, min(requested_limit, 20))
+
+        queryset = Product.objects.filter(
+            is_active=True,
+            is_featured=True,
         ).exclude(
-            models.Q(product_type__in=['clothing', 'shoes']) &
-            (
-                models.Q(external_data__has_key='source_variant_id') |
-                models.Q(external_data__has_key='source_variant_slug')
-            )
-        ).order_by('-created_at')[:10]
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
+        ).exclude(
+            models.Q(product_type='medicines') &
+            models.Q(external_data__has_key='is_stub') &
+            models.Q(external_data__is_stub=True)
+        ).select_related('category', 'brand').order_by('-created_at')
+
+        featured_products = list(queryset[:limit])
+        self._prefetch_card_relations(featured_products)
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
 

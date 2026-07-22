@@ -19,6 +19,7 @@ import { buildProductIdentityKey, favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../lib/price'
 import ProductCardImageGallery, { normalizeProductCardImages, ProductCardGalleryImage } from './ProductCardImageGallery'
+import { deduplicateFeaturedProducts } from '../lib/featuredProducts'
 
 const LazyYouTubeCard = dynamic(() => import('./LazyYouTubeCard'), { ssr: false })
 
@@ -69,34 +70,19 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        console.log('[PopularProducts] Fetching products...')
-        const [medicinesRes, clothingRes, shoesRes, electronicsRes, jewelryRes] = await Promise.allSettled([
-          api.get('/catalog/products/featured'),
-          api.get('/catalog/clothing/products/featured'),
-          api.get('/catalog/shoes/products/featured'),
-          api.get('/catalog/electronics/products/featured'),
-          api.get('/catalog/jewelry/products/featured'),
-        ])
-        console.log('[PopularProducts] Fetched, processing responses...')
-
-        const allProducts: Product[] = []
-        const processResponse = (res: PromiseSettledResult<any>, fallbackType: string) => {
-          if (res.status === 'fulfilled' && res.value.data) {
-            const data = res.value.data
-            const items = Array.isArray(data) ? data : data.results || []
-            return items.map((p: any) => ({ ...p, product_type: p.product_type || fallbackType }))
-          }
-          return []
-        }
-        allProducts.push(...processResponse(medicinesRes, 'medicines'))
-        allProducts.push(...processResponse(clothingRes, 'clothing'))
-        allProducts.push(...processResponse(shoesRes, 'shoes'))
-        allProducts.push(...processResponse(electronicsRes, 'electronics'))
-        allProducts.push(...processResponse(jewelryRes, 'jewelry'))
-
-        const uniqueAllProducts = Array.from(
-          new Map(allProducts.map(item => [item.id, item])).values()
-        )
+        const featuredResponse = await api.get('/catalog/products/featured', {
+          params: { limit: 20 },
+        })
+        const featuredData = featuredResponse.data
+        const featuredItems = Array.isArray(featuredData)
+          ? featuredData
+          : featuredData?.results || []
+        let uniqueAllProducts = deduplicateFeaturedProducts(
+          featuredItems.map((product: Product) => ({
+            ...product,
+            product_type: product.product_type || 'medicines',
+          }))
+        ) as Product[]
 
         if (uniqueAllProducts.length < 8) {
           try {
@@ -106,20 +92,19 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
             const data = response.data
             const productsList = Array.isArray(data) ? data : data.results || []
 
-            // Фильтруем дубликаты, если какие-то featured товары уже есть в списке последних
-            const existingIds = new Set(uniqueAllProducts.map((p: any) => p.id))
-            const newProducts = productsList
-              .filter((p: any) => !existingIds.has(p.id))
-              .map((p: any) => ({ ...p, product_type: p.product_type || 'medicines' }))
-
-            uniqueAllProducts.push(...newProducts)
+            uniqueAllProducts = deduplicateFeaturedProducts([
+              ...uniqueAllProducts,
+              ...productsList.map((product: Product) => ({
+                ...product,
+                product_type: product.product_type || 'medicines',
+              })),
+            ]) as Product[]
           } catch (error) {
             console.error('Failed to fetch latest products:', error)
           }
         }
 
-        const shuffled = uniqueAllProducts.sort(() => Math.random() - 0.5).slice(0, 20)
-        console.log('[PopularProducts] Sample product prices:', shuffled.slice(0, 3).map(p => ({ name: p.name, price: p.price, currency: p.currency })))
+        const shuffled = [...uniqueAllProducts].sort(() => Math.random() - 0.5).slice(0, 20)
         setProducts(shuffled)
       } catch (error) {
         console.error('Failed to fetch popular products:', error)

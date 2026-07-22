@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import api, { initCartSession } from '../lib/api'
 import { ProductTranslation } from '../lib/i18n'
 import { matchesFavoriteSlug } from '../lib/favoriteLinks'
+import { matchesFavoriteProductIdentity } from '../lib/favoriteIdentity'
 import { ProductCardGalleryImage } from '../components/ProductCardImageGallery'
 
 interface Favorite {
@@ -9,6 +10,7 @@ interface Favorite {
   chosen_size?: string
   product: {
     id: number
+    base_product_id?: number | null
     name: string
     slug: string
     price: string | number | null
@@ -191,7 +193,6 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
   ) => {
     const { favorites } = get()
     const want = normType(productType)
-    const wantSlug = (productSlug || '').trim().toLowerCase()
     return favorites.some((fav) => {
       const type = normType(fav.product._product_type || 'medicines')
       if (type !== want) return false
@@ -205,10 +206,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
         return slugOk && sizeOk
       }
       if (productId === undefined) return false
-      const sameId = fav.product.id === productId
-      if (sameId) return true
-      if (!wantSlug) return false
-      return (fav.product.slug || '').trim().toLowerCase() === wantSlug
+      return matchesFavoriteProductIdentity(fav.product, productId, productSlug)
     })
   },
 }))

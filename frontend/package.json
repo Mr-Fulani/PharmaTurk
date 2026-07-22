@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@vkid/sdk": "2.6.6",
     "axios": "1.7.3",
     "framer-motion": "^11.0.0",
     "i18next": "23.16.8",

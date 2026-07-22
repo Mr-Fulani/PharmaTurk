@@ -1365,22 +1365,20 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
 
     def get_slug(self, obj):
         """Слаг для ссылок на доменный detail API (если есть связанная доменная запись)."""
-        from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
-
         pt = (getattr(obj, 'product_type', None) or '').strip().lower().replace('-', '_')
+        accessor_by_type = {
+            'headwear': 'headwear_item',
+            'underwear': 'underwear_item',
+            'islamic_clothing': 'islamic_clothing_item',
+        }
+        accessor = accessor_by_type.get(pt)
+        if not accessor:
+            return obj.slug
+
         try:
-            if pt == 'headwear':
-                dom = HeadwearProduct.objects.filter(base_product_id=obj.pk).only('slug').first()
-                if dom and dom.slug:
-                    return dom.slug
-            elif pt == 'underwear':
-                dom = UnderwearProduct.objects.filter(base_product_id=obj.pk).only('slug').first()
-                if dom and dom.slug:
-                    return dom.slug
-            elif pt == 'islamic_clothing':
-                dom = IslamicClothingProduct.objects.filter(base_product_id=obj.pk).only('slug').first()
-                if dom and dom.slug:
-                    return dom.slug
+            domain = getattr(obj, accessor, None)
+            if domain and domain.slug:
+                return domain.slug
         except Exception:
             pass
         return obj.slug
@@ -2805,7 +2803,8 @@ class ClothingVariantSerializer(serializers.ModelSerializer):
 
 class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров одежды (краткая информация)."""
-    
+
+    base_product_id = serializers.IntegerField(read_only=True)
     category = ClothingCategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
@@ -2841,7 +2840,7 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
     class Meta:
         model = ClothingProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'id', 'base_product_id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
@@ -3215,7 +3214,8 @@ class ShoeProductSizeSerializer(serializers.ModelSerializer):
 
 class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров обуви (краткая информация)."""
-    
+
+    base_product_id = serializers.IntegerField(read_only=True)
     category = ShoeCategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
@@ -3245,7 +3245,7 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
     class Meta:
         model = ShoeProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'id', 'base_product_id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
@@ -3718,7 +3718,8 @@ class ElectronicsProductImageSerializer(serializers.ModelSerializer):
 
 class ElectronicsProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров электроники (краткая информация)."""
-    
+
+    base_product_id = serializers.IntegerField(read_only=True)
     category = ElectronicsCategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
@@ -3739,7 +3740,7 @@ class ElectronicsProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelS
     class Meta:
         model = ElectronicsProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'id', 'base_product_id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'model', 'specifications', 'warranty', 'power_consumption',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
@@ -4556,6 +4557,7 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
 
 class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров украшений (с вариантами и размерами)."""
+    base_product_id = serializers.IntegerField(read_only=True)
     product_type = serializers.SerializerMethodField()
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
@@ -4587,7 +4589,7 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
     class Meta:
         model = JewelryProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'id', 'base_product_id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight', 'gender',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',

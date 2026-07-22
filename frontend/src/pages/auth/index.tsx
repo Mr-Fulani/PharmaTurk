@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useId } from 'react'
 import Head from 'next/head'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useAuth } from '../../context/AuthContext'
-import { useTheme } from '../../context/ThemeContext'
 import { useRouter } from 'next/router'
 import styles from './Auth.module.css'
 import { SITE_NAME } from '../../lib/siteMeta'
@@ -13,11 +12,46 @@ import { sanitizeNextPath } from '../../lib/authRedirect'
 
 function usePostLoginRedirect() {
   const router = useRouter()
-  return () => {
+  return useCallback(() => {
     const next = sanitizeNextPath(router.query.next)
     if (next) router.push(next)
     else router.push('/')
-  }
+  }, [router])
+}
+
+let googleIdentityScriptPromise: Promise<void> | null = null
+
+function loadGoogleIdentityScript() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Google SDK is only available in the browser'))
+  if ((window as any).google?.accounts?.id) return Promise.resolve()
+  if (googleIdentityScriptPromise) return googleIdentityScriptPromise
+
+  googleIdentityScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-google-identity-sdk="true"]')
+    const script = existing || document.createElement('script')
+
+    const handleLoad = () => {
+      if ((window as any).google?.accounts?.id) resolve()
+      else reject(new Error('Google Identity SDK loaded without accounts.id'))
+    }
+    const handleError = () => reject(new Error('Не удалось загрузить Google Identity SDK'))
+
+    script.addEventListener('load', handleLoad, { once: true })
+    script.addEventListener('error', handleError, { once: true })
+
+    if (!existing) {
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.async = true
+      script.defer = true
+      script.dataset.googleIdentitySdk = 'true'
+      document.head.appendChild(script)
+    }
+  }).catch((error) => {
+    googleIdentityScriptPromise = null
+    throw error
+  })
+
+  return googleIdentityScriptPromise
 }
 
 // ─── Страница ────────────────────────────────────────────────────────────────
@@ -44,11 +78,11 @@ export default function AuthIndexPage() {
         <div className={`${styles.container} ${tab === 'register' ? styles.active : ''}`}>
           
           <div className={`${styles.formBox} ${styles.login}`}>
-            <LoginForm />
+            <LoginForm socialLoginActive={tab === 'login'} />
           </div>
 
           <div className={`${styles.formBox} ${styles.register}`}>
-            <RegisterForm />
+            <RegisterForm socialLoginActive={tab === 'register'} />
           </div>
 
           <div className={styles.toggleBox}>
@@ -83,14 +117,15 @@ export async function getServerSideProps(ctx: any) {
 
 function TelegramLoginWidget() {
   const { loginWithTelegram } = useAuth()
-  const router = useRouter()
   const redirect = usePostLoginRedirect()
   const containerRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation('common')
-  const uniqueId = useRef(`telegram-login-${Math.random().toString(36).substring(2, 9)}`)
+  const reactId = useId()
+  const uniqueId = `telegram-login-${reactId.replace(/:/g, '')}`
 
   useEffect(() => {
-    ; (window as any).onTelegramAuth = async (user: any) => {
+    const container = containerRef.current
+    const handleTelegramAuth = async (user: any) => {
       try {
         await loginWithTelegram(user)
         redirect()
@@ -102,9 +137,10 @@ function TelegramLoginWidget() {
         alert(msg)
       }
     }
+    ;(window as any).onTelegramAuth = handleTelegramAuth
 
     const botName = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
-    if (botName && containerRef.current && containerRef.current.children.length === 0) {
+    if (botName && container && container.children.length === 0) {
       const script = document.createElement('script')
       script.src = 'https://telegram.org/js/telegram-widget.js?22'
       script.setAttribute('data-telegram-login', botName)
@@ -113,16 +149,16 @@ function TelegramLoginWidget() {
       script.setAttribute('data-request-access', 'write')
       script.setAttribute('data-userpic', 'false')
       script.setAttribute('data-onauth', 'onTelegramAuth(user)')
-      script.id = uniqueId.current
+      script.id = uniqueId
       script.async = true
       
       // Очищаем контейнер перед добавлением скрипта
-      containerRef.current.innerHTML = ''
-      containerRef.current.appendChild(script)
+      container.replaceChildren()
+      container.appendChild(script)
     }
 
     const intervalId = setInterval(() => {
-      const wrapper = document.getElementById(uniqueId.current + '-wrapper')
+      const wrapper = document.getElementById(uniqueId + '-wrapper')
       if (!wrapper) return
       
       // Ищем сгенерированный Telegram iframe
@@ -169,8 +205,12 @@ function TelegramLoginWidget() {
       clearInterval(intervalId)
     }, 200)
 
-    return () => clearInterval(intervalId)
-  }, [loginWithTelegram, router, t])
+    return () => {
+      clearInterval(intervalId)
+      if ((window as any).onTelegramAuth === handleTelegramAuth) delete (window as any).onTelegramAuth
+      container?.replaceChildren()
+    }
+  }, [loginWithTelegram, redirect, t, uniqueId])
 
   return (
     <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden hover:opacity-80 transition-opacity">
@@ -179,7 +219,7 @@ function TelegramLoginWidget() {
           <path d="M22.5 3.5L2.8 11.1c-1 .4-1 .9-.2 1.1l5 1.6 1.9 5.7c.2.6.3.8.6.8.3 0 .5-.2.8-.5l2.5-2.4 5.2 3.9c1 .6 1.7.3 2-1l3.6-16.9c.4-1.6-.6-2.3-1.7-1.8zM9.3 14.9l-.7 2.6-.4-3.6 9.7-6.2-8.6 7.2z" />
         </svg>
       </div>
-      <div id={uniqueId.current + '-wrapper'} ref={containerRef} className="telegram-widget-wrapper absolute inset-0 z-50 flex items-center justify-center" style={{ cursor: 'pointer', pointerEvents: 'auto' }} />
+      <div id={uniqueId + '-wrapper'} ref={containerRef} className="telegram-widget-wrapper absolute inset-0 z-50 flex items-center justify-center" style={{ cursor: 'pointer', pointerEvents: 'auto' }} />
     </div>
   )
 }
@@ -192,11 +232,13 @@ function GoogleLoginButton() {
   const { t } = useTranslation('common')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { theme } = useTheme()
+  const containerRef = useRef<HTMLDivElement>(null)
+  const googleResponseRef = useRef<(response: any) => Promise<void>>(async () => {})
+  const translateRef = useRef(t)
 
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
-  const handleGoogleResponse = async (response: any) => {
+  const handleGoogleResponse = useCallback(async (response: any) => {
     const credential = response?.credential
     if (!credential) {
       setError(t('auth_social_error', 'Ошибка входа через Google'))
@@ -216,53 +258,57 @@ function GoogleLoginButton() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [loginWithSocial, redirect, t])
+  googleResponseRef.current = handleGoogleResponse
+  translateRef.current = t
 
   useEffect(() => {
     if (!googleClientId) return
 
-    const initGoogle = () => {
-      const google = (window as any).google
-      if (!google?.accounts?.id) return
-      
-      const btnWrappers = document.querySelectorAll('.google-signin-btn-wrapper')
-      
-      btnWrappers.forEach((btn, index) => {
-        const uniqueId = `google-signin-btn-${index}`
-        btn.id = uniqueId
-        btn.innerHTML = ''
-        
-        google.accounts.id.renderButton(
-          document.getElementById(uniqueId),
-          { theme: 'outline', size: 'large', type: 'icon', shape: 'circle' }
-        )
-      })
-      
-      google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleResponse,
-        auto_select: false,
-        cancel_on_tap_outside: true,
-      })
+    let cancelled = false
+    const container = containerRef.current
+
+    const initGoogle = async () => {
+      try {
+        await loadGoogleIdentityScript()
+        if (cancelled || !container) return
+
+        const google = (window as any).google?.accounts?.id
+        if (!google) throw new Error('Google Identity SDK недоступен')
+
+        // GIS требует initialize до renderButton. Инициализируем только текущую,
+        // реально смонтированную кнопку вместо обхода скрытых форм страницы.
+        google.initialize({
+          client_id: googleClientId,
+          callback: (response: any) => googleResponseRef.current(response),
+          auto_select: false,
+          cancel_on_tap_outside: true,
+        })
+        container.replaceChildren()
+        google.renderButton(container, {
+          theme: 'outline',
+          size: 'large',
+          type: 'icon',
+          shape: 'circle',
+        })
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || translateRef.current('auth_social_error', 'Ошибка входа через Google'))
+      }
     }
 
-    if ((window as any).google?.accounts?.id) {
-      initGoogle()
-    } else {
-      const script = document.createElement('script')
-      script.src = 'https://accounts.google.com/gsi/client'
-      script.async = true
-      script.defer = true
-      script.onload = initGoogle
-      document.head.appendChild(script)
+    initGoogle()
+    return () => {
+      cancelled = true
+      container?.replaceChildren()
     }
-  }, [googleClientId, theme])
+  }, [googleClientId])
 
   if (!googleClientId) return null
 
   return (
     <div className="flex flex-col items-center gap-1 hover:opacity-80 transition-opacity" style={{ colorScheme: 'light' }}>
       <div
+        ref={containerRef}
         className={`google-signin-btn-wrapper flex items-center justify-center ${loading ? 'opacity-60' : ''}`}
       />
       {error && <p className="text-xs text-red-500 absolute -bottom-5">{error}</p>}
@@ -278,97 +324,190 @@ function VKLoginButton() {
   const { t } = useTranslation('common')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [useFallbackLogin, setUseFallbackLogin] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const vkidRef = useRef<any>(null)
+  const authHandlersRef = useRef({ loginWithSocial, redirect, t })
+
+  useEffect(() => {
+    authHandlersRef.current = { loginWithSocial, redirect, t }
+  }, [loginWithSocial, redirect, t])
 
   const vkAppId = process.env.NEXT_PUBLIC_VK_APP_ID
+
+  const completeVKLogin = useCallback(async (VKID: any, payload: any) => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await VKID.Auth.exchangeCode(payload.code, payload.device_id)
+      await authHandlersRef.current.loginWithSocial('vk', data.access_token)
+      authHandlersRef.current.redirect()
+    } catch (e: any) {
+      const raw = e?.response?.data?.detail || e?.error_description || e?.error || e?.message || ''
+      const msg = String(raw).toLowerCase().includes('csrf')
+        ? authHandlersRef.current.t('auth_csrf_error')
+        : (raw || authHandlersRef.current.t('auth_social_error', 'Ошибка входа через ВКонтакте'))
+      setError(String(msg))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const handleFallbackLogin = useCallback(async () => {
+    if (!useFallbackLogin || loading) return
+    const VKID = vkidRef.current
+    if (!VKID) {
+      setError(authHandlersRef.current.t('auth_vk_open_error', 'Не удалось открыть VK. Попробуйте ещё раз.'))
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      const payload = await VKID.Auth.login()
+      if (payload?.code && payload?.device_id) await completeVKLogin(VKID, payload)
+      else setLoading(false)
+    } catch (e: any) {
+      const raw = e?.error_description || e?.error || e?.message || ''
+      const isPopupError = Number(e?.code) === 101 || String(raw).toLowerCase().includes('new tab')
+      setError(isPopupError
+        ? authHandlersRef.current.t('auth_vk_browser_error', 'Не удалось открыть VK. Попробуйте войти во внешнем браузере.')
+        : authHandlersRef.current.t('auth_vk_open_error', 'Не удалось открыть VK. Попробуйте ещё раз.'))
+      setLoading(false)
+    }
+  }, [completeVKLogin, loading, useFallbackLogin])
 
   useEffect(() => {
     if (!vkAppId) return
 
-    const initVK = () => {
-      if (!('VKIDSDK' in window)) return
-      const VKID = (window as any).VKIDSDK
+    let cancelled = false
+    let oneTap: any = null
+    const container = containerRef.current
+    const originalFetch = window.fetch
+    const guardedFetch: typeof window.fetch = async (input, init) => {
+      const requestUrl = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url
+      let isVkidTelemetry = false
 
-      VKID.Config.init({
-        app: Number(vkAppId),
-        redirectUrl: window.location.origin + '/auth/vk-callback',
-        responseMode: VKID.ConfigResponseMode.Callback,
-        source: VKID.ConfigSource.LOWCODE,
-        scope: '',
-      })
+      try {
+        const url = new URL(requestUrl, window.location.href)
+        isVkidTelemetry = (url.hostname === 'id.vk.ru' || url.hostname === 'id.vk.com')
+          && (url.pathname === '/stat_events_vkid_sdk' || url.pathname === '/vkid_sdk_get_config')
+      } catch {
+        // Для некорректного URL сохраняем стандартное поведение fetch.
+      }
 
-      const oneTap = new VKID.OneTap()
+      try {
+        return await originalFetch(input, init)
+      } catch (fetchError) {
+        if (!isVkidTelemetry) throw fetchError
+        // Эти запросы относятся только к статистике SDK. Если WebView их блокирует,
+        // возвращаем безопасный ответ вместо необработанного Promise rejection.
+        return new Response(JSON.stringify({ response: { active: 0 } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    }
+    window.fetch = guardedFetch
+    const handleVkidTelemetryFailure = (event: PromiseRejectionEvent) => {
+      const message = String(event.reason?.message || '')
+      const stack = String(event.reason?.stack || '')
+      const isBlockedTelemetry = message === 'Failed to fetch'
+        && stack.includes('@vkid/sdk')
+        && stack.includes('ProductionStatsCollector')
 
-      if (containerRef.current) {
-        containerRef.current.innerHTML = ''
+      if (isBlockedTelemetry) {
+        // В некоторых WebView заблокирована только статистика VK ID. Это не должно
+        // ронять всю страницу и не влияет на LOGIN_SUCCESS/exchangeCode.
+        event.preventDefault()
+        console.warn('VKID telemetry request was blocked by the browser')
+      }
+    }
+    window.addEventListener('unhandledrejection', handleVkidTelemetryFailure)
+
+    const initVK = async () => {
+      try {
+        const VKID = await import('@vkid/sdk')
+        if (cancelled || !container) return
+        vkidRef.current = VKID
+
+        VKID.Config.init({
+          app: Number(vkAppId),
+          redirectUrl: window.location.origin + '/auth/vk-callback',
+          responseMode: VKID.ConfigResponseMode.Callback,
+          source: VKID.ConfigSource.LOWCODE,
+          scope: '',
+        })
+
+        oneTap = new VKID.OneTap()
+        container.replaceChildren()
         oneTap.render({
-          container: containerRef.current,
+          container,
           showAlternativeLogin: false,
-          styles: {
-            width: 44, // Стараемся сделать фрейм компактным
-            height: 44,
-          }
+          styles: { width: 44, height: 44 },
         })
         .on(VKID.WidgetEvents.ERROR, (err: any) => {
-          console.warn('VKID SDK Widget Error:', err);
-          // Убрали setError, так как VKID генерирует ложно-срабатывающие ошибки при скрытии iframe
+          if (cancelled) return
+          console.warn('VKID SDK Widget Error:', err)
+          oneTap?.close?.()
+          setUseFallbackLogin(true)
+          // Переключение на резервный вход происходит незаметно: техническая
+          // ошибка виджета не должна отображаться рядом с иконкой.
+          setError('')
         })
         .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, function (payload: any) {
-          const code = payload.code;
-          const deviceId = payload.device_id;
-          
-          setLoading(true)
-          setError('')
-
-          VKID.Auth.exchangeCode(code, deviceId)
-            .then(async (data: any) => {
-               try {
-                  await loginWithSocial('vk', data.access_token)
-                  redirect()
-               } catch (e: any) {
-                  const raw = e?.response?.data?.detail || ''
-                  const msg = String(raw).toLowerCase().includes('csrf')
-                    ? t('auth_csrf_error')
-                    : (raw || t('auth_social_error', 'Ошибка входа через ВКонтакте'))
-                  setError(msg)
-               } finally {
-                  setLoading(false)
-               }
-            })
-            .catch(() => {
-               setError(t('auth_social_error', 'Ошибка обмена токена ВКонтакте'))
-               setLoading(false)
-            });
-        });
+          if (cancelled) return
+          void completeVKLogin(VKID, payload)
+        })
+      } catch (e: any) {
+        if (!cancelled) {
+          console.warn('VKID SDK initialization error:', e)
+          setError(e?.message || authHandlersRef.current.t('auth_social_error', 'Ошибка входа через ВКонтакте'))
+        }
       }
     }
 
-    if ('VKIDSDK' in window) {
-      initVK()
-    } else {
-      const script = document.createElement('script')
-      script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js'
-      script.async = true
-      script.onload = initVK
-      document.head.appendChild(script)
+    initVK()
+    return () => {
+      cancelled = true
+      window.removeEventListener('unhandledrejection', handleVkidTelemetryFailure)
+      if (window.fetch === guardedFetch) window.fetch = originalFetch
+      oneTap?.close?.()
+      container?.replaceChildren()
     }
-  }, [vkAppId, t, redirect, loginWithSocial])
+  }, [completeVKLogin, vkAppId])
 
   if (!vkAppId) return null
 
   return (
-    <div className={`relative flex h-10 w-10 items-center justify-center rounded-full bg-[#0077FF] shadow-sm hover:opacity-80 transition-opacity flex-shrink-0 ${loading ? 'opacity-60 grayscale cursor-not-allowed' : ''}`}>
+    <div
+      className={`relative flex h-10 w-10 items-center justify-center rounded-full bg-[#0077FF] shadow-sm hover:opacity-80 transition-opacity flex-shrink-0 ${loading ? 'opacity-60 grayscale cursor-not-allowed' : ''}`}
+      onClick={useFallbackLogin ? handleFallbackLogin : undefined}
+      role={useFallbackLogin ? 'button' : undefined}
+      aria-label={useFallbackLogin ? t('auth_vk_login', 'Войти через ВКонтакте') : undefined}
+    >
       {/* Настоящая SVG-иконка, которую видит пользователь */}
       <img src="/vk.svg" alt="VK" aria-hidden="true" className="h-[22px] w-[22px] object-cover pointer-events-none z-0" />
       
       {/* Скрытый виджет VK SDK, который безопасно перехватывает клик (без Security Error!) */}
       <div
         ref={containerRef}
-        className={`absolute inset-0 z-10 flex items-center justify-center overflow-hidden cursor-pointer ${loading ? 'pointer-events-none' : ''}`}
+        className={`absolute inset-0 z-10 flex items-center justify-center overflow-hidden cursor-pointer ${(loading || useFallbackLogin) ? 'pointer-events-none' : ''}`}
         style={{ opacity: 0.01 }} // opacity-0 иногда блокируется браузерами как clickjacking
         title={t('auth_vk_login', 'Войти через ВКонтакте')}
       />
-      {error && <p className="text-xs text-red-500 absolute -bottom-5 whitespace-nowrap">{error}</p>}
+      {error && (
+        <p
+          role="alert"
+          className="absolute left-1/2 top-full z-[60] mt-2 w-64 -translate-x-1/2 rounded-md border border-red-200 bg-white px-3 py-2 text-center text-xs leading-4 text-red-600 shadow-md dark:border-red-900 dark:bg-gray-900 dark:text-red-400"
+        >
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -389,7 +528,7 @@ function SocialLoginBlock() {
 
 // ─── Форма входа ──────────────────────────────────────────────────────────────
 
-function LoginForm() {
+function LoginForm({ socialLoginActive }: { socialLoginActive: boolean }) {
   const { login } = useAuth()
   const redirect = usePostLoginRedirect()
   const [loginMethod, setLoginMethod] = useState<'password' | 'sms'>('password')
@@ -534,7 +673,7 @@ function LoginForm() {
         </button>
 
         <p className="mt-6 mb-2 text-sm text-[var(--text-weak)]">{t('auth_or_login_with')}</p>
-        <SocialLoginBlock />
+        {socialLoginActive && <SocialLoginBlock />}
       </form>
     </div>
   )
@@ -542,7 +681,7 @@ function LoginForm() {
 
 // ─── Форма регистрации ────────────────────────────────────────────────────────
 
-function RegisterForm() {
+function RegisterForm({ socialLoginActive }: { socialLoginActive: boolean }) {
   const { register } = useAuth()
   const redirect = usePostLoginRedirect()
   const [email, setEmail] = useState('')
@@ -615,7 +754,7 @@ function RegisterForm() {
         </button>
 
         <p className="mt-6 mb-2 text-sm text-[var(--text-weak)]">{t('auth_or_register_with')}</p>
-        <SocialLoginBlock />
+        {socialLoginActive && <SocialLoginBlock />}
       </form>
     </div>
   )

@@ -52,6 +52,40 @@ def test_public_product_id_wins_over_colliding_domain_pk():
 
 
 @pytest.mark.django_db
+def test_add_favorite_uses_public_base_id_instead_of_colliding_domain_id():
+    suffix = uuid.uuid4().hex
+    intended_public = Product.objects.create(
+        id=900_000 + int(suffix[:5], 16),
+        name="Selected medicine",
+        slug=f"selected-medicine-{suffix}",
+        product_type="medicines",
+        price=20,
+        is_active=True,
+    )
+    intended_domain = MedicineProduct.objects.get(base_product=intended_public)
+
+    colliding_public = Product.objects.create(
+        id=intended_domain.pk,
+        name="Different public medicine",
+        slug=f"different-public-medicine-{suffix}",
+        product_type="medicines",
+        price=30,
+        is_active=True,
+    )
+
+    serializer = AddToFavoriteSerializer(data={
+        "product_id": intended_domain.base_product_id,
+        "product_type": "medicines",
+    })
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["_product"] == intended_domain
+    assert serializer.validated_data["_product"] != MedicineProduct.objects.get(
+        base_product=colliding_public
+    )
+
+
+@pytest.mark.django_db
 def test_perfumery_variant_slug_creates_stable_favorite_identity():
     suffix = uuid.uuid4().hex
     perfume = PerfumeryProduct.objects.create(
