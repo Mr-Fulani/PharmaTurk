@@ -435,7 +435,7 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
           )
         })}
 
-        <div className={`group relative cw-shell${open || isDragging ? ' cw-active' : ''}`}>
+        <div className={`group relative flex h-full w-full items-center justify-center cw-shell${open || isDragging ? ' cw-active' : ''}`}>
           <div className="pointer-events-none absolute -top-2 left-1/2 z-20 hidden -translate-x-1/2 -translate-y-full opacity-0 transition-opacity duration-200 md:block md:group-hover:opacity-100">
             <div className="bg-[var(--text-strong)] dark:!bg-[#1f2937] text-[var(--bg)] dark:!text-white dark:border dark:border-gray-600 rounded px-2 py-1 text-xs whitespace-nowrap shadow-lg">
               {t('contact_widget_tooltip', 'Поддержка')}
@@ -449,7 +449,7 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
             onPointerDown={handlePointerDown}
             aria-expanded={open}
             aria-label={t('contact_widget_tooltip', 'Поддержка')}
-            className="relative z-[2] flex h-[76px] w-[76px] items-center justify-center rounded-full border bg-[var(--surface)] p-1 shadow-[0_18px_40px_rgba(15,23,42,0.18)] transition-all duration-300 hover:-translate-y-0.5"
+            className="relative z-[2] flex h-16 w-16 items-center justify-center rounded-full border bg-[var(--surface)] p-1 shadow-[0_14px_30px_rgba(15,23,42,0.18)] transition-all duration-300 hover:-translate-y-0.5 md:h-[76px] md:w-[76px] md:shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
             style={{
               cursor: isDragging ? 'grabbing' : 'grab',
               touchAction: 'none',
@@ -463,7 +463,7 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
             }}
             >
             <span className="cw-media absolute inset-0 rounded-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.38),transparent_58%)] opacity-70" />
-            <span className="cw-media relative block h-[66px] w-[66px] overflow-hidden rounded-full border border-[rgba(67,113,247,0.18)]">
+            <span className="cw-media relative block h-14 w-14 overflow-hidden rounded-full border border-[rgba(67,113,247,0.18)] md:h-[66px] md:w-[66px]">
               <img
                 src="/support-contact-logo.jpg"
                 alt={t('contact_widget_tooltip', 'Поддержка')}
@@ -472,11 +472,39 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
                 decoding="async"
                 draggable={false}
               />
+              <OperatorHeadsetIcon />
             </span>
           </button>
         </div>
       </div>
     </>
+  )
+}
+
+function OperatorHeadsetIcon() {
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox="0 0 100 100"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M23 43c0-21 11-33 27-33s27 12 27 33"
+        stroke="#263244"
+        strokeWidth="5"
+        strokeLinecap="round"
+      />
+      <rect x="18" y="34" width="10" height="20" rx="5" fill="#263244" />
+      <rect x="72" y="34" width="10" height="20" rx="5" fill="#263244" />
+      <path
+        d="M78 53c0 7-5 11-14 11"
+        stroke="#263244"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+      <circle cx="62" cy="64" r="4" fill="#ef4444" stroke="#fff" strokeWidth="2" />
+    </svg>
   )
 }
 

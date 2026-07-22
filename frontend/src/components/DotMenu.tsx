@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
-import Link from 'next/link'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useTheme } from '../context/ThemeContext'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
-import { motion, AnimatePresence } from 'framer-motion'
 import styles from './DotMenu.module.css'
 
 interface DotMenuProps {
@@ -14,165 +14,274 @@ interface DotMenuProps {
   onCurrencyChange: (code: string) => void
   onToggleLocale: () => void
   isDark: boolean
+  forceClosed?: boolean
+  onOpenChange?: (open: boolean) => void
+  onOpenSearch?: () => void
+}
+
+interface MenuCenter {
+  x: number
+  y: number
+}
+
+interface MenuItem {
+  key: string
+  label: string
+  icon: React.ReactNode
+  href?: string
+  badge?: number
+  onClick?: () => void
+  isCurrency?: boolean
 }
 
 const currencyOptions = ['RUB', 'USD', 'EUR', 'TRY', 'KZT', 'USDT']
+const ITEM_GAP = 42
+const ITEM_SIZE = 40
 
-export default function DotMenu({ user, currency, onCurrencyChange, onToggleLocale, isDark }: DotMenuProps) {
+export default function DotMenu({
+  user,
+  currency,
+  onCurrencyChange,
+  onToggleLocale,
+  isDark,
+  forceClosed = false,
+  onOpenChange,
+  onOpenSearch,
+}: DotMenuProps) {
   const [active, setActive] = useState(false)
   const [showCurrencyChoice, setShowCurrencyChoice] = useState(false)
+  const [menuCenter, setMenuCenter] = useState<MenuCenter | null>(null)
+  const [isClient, setIsClient] = useState(false)
   const { toggleTheme } = useTheme()
   const { itemsCount } = useCartStore()
   const { count: favoritesCount } = useFavoritesStore()
   const { t } = useTranslation('common')
   const router = useRouter()
-  const menuRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const portalRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (active) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-      setShowCurrencyChoice(false)
-    }
-  }, [active])
-
-  const menuItems = [
-    {
-      i: 0, x: -1, y: -0.8,
-      icon: isDark ? (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 0 1 11.21 3 7 7 0 1 0 21 12.79Z" /></svg>
-      ) : (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.536-7.536-1.414 1.414M7.879 16.121 6.465 17.535m12.071 0-1.414-1.414M7.879 7.879 6.465 6.465" /></svg>
-      ),
-      onClick: () => toggleTheme(),
-      title: t('theme_dark_title')
-    },
-    {
-      i: 1, x: 0, y: -0.8,
-      icon: <span className="text-sm font-bold">{router.locale?.toUpperCase()}</span>,
-      onClick: () => onToggleLocale(),
-      title: t('language')
-    },
-    {
-      i: 2, x: 1, y: -0.8,
-      icon: <span className="text-xs font-bold leading-none">{currency}</span>,
-      onClick: () => setShowCurrencyChoice(!showCurrencyChoice),
-      title: t('currency')
-    },
-    {
-      i: 3, x: -1, y: 0.8,
-      icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>,
-      href: '/favorites',
-      badge: favoritesCount,
-      title: t('menu_favorites')
-    },
-    {
-      i: 4, x: 0, y: 0.8,
-      icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
-      href: '/profile',
-      title: t('header_profile')
-    },
-    {
-      i: 5, x: 1, y: 0.8,
-      icon: <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 6h15l-1.5 9h-12z" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 6l-1-3H3" /><circle cx="9" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>,
-      href: '/cart',
-      badge: itemsCount,
-      title: t('menu_cart')
-    }
-  ]
-
-  const closeMenu = () => {
+  const closeMenu = useCallback(() => {
     setActive(false)
     setShowCurrencyChoice(false)
+  }, [])
+
+  const updateMenuPosition = useCallback(() => {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    setMenuCenter({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    })
+  }, [])
+
+  useEffect(() => setIsClient(true), [])
+
+  useEffect(() => {
+    onOpenChange?.(active)
+  }, [active, onOpenChange])
+
+  useEffect(() => {
+    if (forceClosed) closeMenu()
+  }, [closeMenu, forceClosed])
+
+  useEffect(() => {
+    closeMenu()
+  }, [closeMenu, router.asPath])
+
+  useEffect(() => {
+    if (!active) return
+
+    updateMenuPosition()
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (!containerRef.current?.contains(target) && !portalRef.current?.contains(target)) {
+        closeMenu()
+      }
+    }
+    const syncPosition = () => updateMenuPosition()
+
+    document.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('resize', syncPosition)
+    window.addEventListener('scroll', syncPosition, true)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('resize', syncPosition)
+      window.removeEventListener('scroll', syncPosition, true)
+    }
+  }, [active, closeMenu, updateMenuPosition])
+
+  const menuItems: MenuItem[] = [
+    {
+      key: 'cart',
+      label: t('menu_cart', 'Корзина'),
+      icon: (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h15l-1.5 9h-12z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l-1-3H3" />
+          <circle cx="9" cy="20" r="1" />
+          <circle cx="18" cy="20" r="1" />
+        </svg>
+      ),
+      href: '/cart',
+      badge: itemsCount,
+    },
+    {
+      key: 'favorites',
+      label: t('menu_favorites', 'Избранное'),
+      icon: (
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+        </svg>
+      ),
+      href: '/favorites',
+      badge: favoritesCount,
+    },
+    {
+      key: 'profile',
+      label: t('header_profile', 'Профиль'),
+      icon: (
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+      ),
+      href: user ? '/profile' : '/auth?next=/profile',
+    },
+    {
+      key: 'currency',
+      label: t('currency', 'Валюта'),
+      icon: <span className="text-[10px] font-extrabold leading-none">{currency}</span>,
+      isCurrency: true,
+      onClick: () => setShowCurrencyChoice((value) => !value),
+    },
+    {
+      key: 'language',
+      label: t('language', 'Язык'),
+      icon: <span className="text-xs font-extrabold">{router.locale?.toUpperCase() || 'EN'}</span>,
+      onClick: onToggleLocale,
+    },
+    {
+      key: 'theme',
+      label: isDark ? t('theme_dark_title', 'Тёмная тема') : t('theme_light_title', 'Светлая тема'),
+      icon: isDark ? (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M21 12.79A9 9 0 0 1 11.21 3 7 7 0 1 0 21 12.79Z" />
+        </svg>
+      ) : (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.536-7.536-1.414 1.414M7.879 16.121 6.465 17.535m12.071 0-1.414-1.414M7.879 7.879 6.465 6.465" />
+        </svg>
+      ),
+      onClick: toggleTheme,
+    },
+    {
+      key: 'search',
+      label: t('search_open', 'Открыть поиск'),
+      icon: (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m16 16 5 5" strokeLinecap="round" />
+        </svg>
+      ),
+      onClick: onOpenSearch,
+    },
+  ]
+
+  const handleMenuItemClick = (item: MenuItem) => {
+    if (item.isCurrency) {
+      item.onClick?.()
+      return
+    }
+    if (item.onClick) item.onClick()
+    if (item.href) router.push(item.href)
+    closeMenu()
   }
 
-  return (
-    <div className="relative w-[44px] h-[44px]">
-      {/* Backdrop */}
-      <AnimatePresence>
-        {active && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed top-0 left-0 w-[100vw] h-[100vh] bg-black/60 backdrop-blur-md z-[990]"
-            onClick={closeMenu}
-          />
-        )}
-      </AnimatePresence>
+  const currencyItemIndex = menuItems.findIndex((item) => item.isCurrency)
+  const currencyItemX = menuCenter ? menuCenter.x - ITEM_GAP * (currencyItemIndex + 1) : 0
+  const currencyPanelWidth = 184
+  const currencyPanelLeft = isClient
+    ? Math.min(Math.max(currencyItemX - currencyPanelWidth / 2, 12), window.innerWidth - currencyPanelWidth - 12)
+    : 12
 
-      <div
-        ref={menuRef}
-        className={`${styles.navigation} ${active ? styles.active : ''}`}
-        onClick={() => setActive(!active)}
-        style={{
-          // Fixed positioning works relative to the nearest filter (Header's backdrop-blur)
-          // Therefore, % values take Header's size. Let's use vh to take viewport size!
-          position: active ? 'fixed' : 'relative',
-          top: active ? '15vh' : '0',
-          left: active ? '50vw' : '0',
-          transform: active ? 'translate(-50%, -50%)' : 'none',
-          zIndex: 1000
-        }}
-      >
-        <div className={styles.closeBar}></div>
-        <div className={styles.closeBar}></div>
+  const getItemOffset = (index: number) => {
+    const isLastItem = index === menuItems.length - 1
+    if (isClient && window.innerWidth < 360 && isLastItem) {
+      return { x: -ITEM_GAP, y: 48 }
+    }
+    return { x: -ITEM_GAP * (index + 1), y: 0 }
+  }
 
-        {menuItems.map((item) => {
-          const content = (
-            <span
-              key={item.i}
-              style={{
-                '--i': item.i,
-                '--x': item.x,
-                '--y': item.y
-              } as any}
-              onClick={(e) => {
-                if (active) {
-                  e.stopPropagation()
-                  if (item.onClick) {
-                    item.onClick()
-                    // Закрываем меню для всех айтемов, кроме выбора валюты (т.к. там открывается подменю)
-                    if (item.i !== 2) {
-                      closeMenu()
-                    }
-                  } else if (item.href) {
-                    closeMenu()
-                    // If we navigate using standard router, setActive(false) is good
-                    router.push(item.href)
-                  }
-                }
-              }}
-            >
-              <div className={`${styles.icon} flex items-center justify-center`}>
-                {item.icon}
-              </div>
-              {active && item.badge !== undefined && item.badge > 0 && (
-                <span className={styles.badge}>{item.badge > 99 ? '99+' : item.badge}</span>
-              )}
-            </span>
-          )
-
-          return content
-        })}
-
-        {/* Currency choice sub-menu */}
+  const portalContent = isClient && menuCenter
+    ? createPortal(
+      <div ref={portalRef} className={styles.portalLayer}>
         <AnimatePresence>
-          {showCurrencyChoice && active && (
+          {active && menuItems.map((item, index) => {
+            const offset = getItemOffset(index)
+            return (
+              <motion.div
+                key={item.key}
+                initial={{ x: 0, y: 0, scale: 0.25, opacity: 0 }}
+                animate={{ x: offset.x, y: offset.y, scale: 1, opacity: 1 }}
+                exit={{ x: 0, y: 0, scale: 0.25, opacity: 0 }}
+                transition={{
+                  duration: 0.4,
+                  delay: index * 0.045,
+                  ease: [0.22, 1, 0.36, 1],
+                }}
+                className={styles.menuItem}
+                style={{
+                  top: menuCenter.y - ITEM_SIZE / 2,
+                  left: menuCenter.x - ITEM_SIZE / 2,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleMenuItemClick(item)}
+                  className={`${styles.menuButton} ${item.isCurrency && showCurrencyChoice ? styles.menuButtonActive : ''}`}
+                  title={item.label}
+                  aria-label={item.label}
+                  aria-expanded={item.isCurrency ? showCurrencyChoice : undefined}
+                >
+                  {item.icon}
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className={styles.badge}>{item.badge > 99 ? '99+' : item.badge}</span>
+                  )}
+                </button>
+              </motion.div>
+            )
+          })}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {active && showCurrencyChoice && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              className="absolute z-[110] bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-2xl p-3 grid grid-cols-3 gap-2 w-[180px]"
-              style={{ top: 'calc(100% + 15px)', left: '50%', transform: 'translateX(-50%)' }}
-              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, y: -8, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.92 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className={styles.currencyPanel}
+              style={{
+                top: menuCenter.y + 30,
+                left: currencyPanelLeft,
+                width: currencyPanelWidth,
+              }}
+              role="menu"
+              aria-label={t('currency', 'Валюта')}
             >
               {currencyOptions.map((code) => (
                 <button
                   key={code}
-                  onClick={() => { onCurrencyChange(code); closeMenu() }}
-                  className={`px-2 py-1.5 text-xs font-bold rounded transition-colors ${currency === code ? 'bg-[var(--accent)] text-white' : 'hover:bg-[var(--accent-soft)]'}`}
+                  type="button"
+                  onClick={() => {
+                    closeMenu()
+                    onCurrencyChange(code)
+                  }}
+                  className={`${styles.currencyButton} ${currency === code ? styles.currencyButtonActive : ''}`}
+                  role="menuitem"
                 >
                   {code}
                 </button>
@@ -180,7 +289,41 @@ export default function DotMenu({ user, currency, onCurrencyChange, onToggleLoca
             </motion.div>
           )}
         </AnimatePresence>
+      </div>,
+      document.body
+    )
+    : null
+
+  return (
+    <>
+      <div ref={containerRef} className={styles.root}>
+        <motion.button
+          ref={triggerRef}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            if (!active) updateMenuPosition()
+            setShowCurrencyChoice(false)
+            setActive((value) => !value)
+          }}
+          initial={false}
+          animate={{ rotate: active ? 360 : 0 }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className={`${styles.trigger} ${active ? styles.triggerActive : ''}`}
+          aria-label={active ? t('header_menu_close', 'Закрыть меню') : t('header_menu_open', 'Открыть меню')}
+          title={active ? t('header_menu_close', 'Закрыть меню') : t('header_menu_open', 'Открыть меню')}
+          aria-expanded={active}
+        >
+          <span className={`${styles.dotGrid} ${active ? styles.dotGridHidden : ''}`} aria-hidden="true">
+            {Array.from({ length: 6 }, (_, index) => <span key={index} />)}
+          </span>
+          <span className={`${styles.closeIcon} ${active ? styles.closeIconVisible : ''}`} aria-hidden="true">
+            <span />
+            <span />
+          </span>
+        </motion.button>
       </div>
-    </div>
+      {portalContent}
+    </>
   )
 }

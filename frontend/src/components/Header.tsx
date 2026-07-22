@@ -27,6 +27,8 @@ export default function Header() {
   const [isClient, setIsClient] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false)
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [currency, setCurrency] = useState('RUB')
   const [scrolled, setScrolled] = useState(false)
   const [isLogoExpanded, setIsLogoExpanded] = useState(false)
@@ -34,6 +36,7 @@ export default function Header() {
   const [isTouchLogoMode, setIsTouchLogoMode] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const mobileSearchRef = useRef<HTMLDivElement>(null)
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null)
   const currencyRef = useRef<HTMLDivElement>(null)
   const mobileCurrencyRef = useRef<HTMLDivElement>(null)
   const logoRef = useRef<HTMLAnchorElement>(null)
@@ -128,7 +131,14 @@ export default function Header() {
   useEffect(() => {
     setShowSuggestions(false)
     setSuggestions([])
+    setIsMobileSearchOpen(false)
   }, [path])
+
+  useEffect(() => {
+    if (!isMobileSearchOpen) return
+    const frame = window.requestAnimationFrame(() => mobileSearchInputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [isMobileSearchOpen])
 
   // Закрываем выпадающее меню при клике вне его области
   useEffect(() => {
@@ -138,6 +148,7 @@ export default function Header() {
         || (mobileSearchRef.current && mobileSearchRef.current.contains(target))
       if (!isInsideSearch) {
         setShowSuggestions(false)
+        setIsMobileSearchOpen(false)
       }
       const isInsideCurrency = (currencyRef.current && currencyRef.current.contains(target))
         || (mobileCurrencyRef.current && mobileCurrencyRef.current.contains(target))
@@ -148,20 +159,28 @@ export default function Header() {
         setIsLogoExpanded(false)
       }
     }
-    if (showSuggestions || showCurrencyMenu || isLogoExpanded) {
+    if (showSuggestions || showCurrencyMenu || isLogoExpanded || isMobileSearchOpen) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showSuggestions, showCurrencyMenu, isLogoExpanded])
+  }, [showSuggestions, showCurrencyMenu, isLogoExpanded, isMobileSearchOpen])
 
   const goSearch = () => {
     const q = query.trim()
     if (!q) return
+    setIsMobileSearchOpen(false)
     router.push({ pathname: '/search', query: { query: q } })
   }
 
   const handleLogoClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     if (!isTouchLogoMode) return
+
+    if (isMobileSearchOpen) {
+      event.preventDefault()
+      setIsMobileSearchOpen(false)
+      setShowSuggestions(false)
+      return
+    }
 
     if (!isLogoExpanded) {
       event.preventDefault()
@@ -233,7 +252,7 @@ export default function Header() {
             onClick={handleLogoClick}
             onMouseEnter={() => setIsLogoHovered(true)}
             onMouseLeave={() => setIsLogoHovered(false)}
-            className="group relative flex items-center gap-0 overflow-visible transition-all duration-300 hover:opacity-90"
+            className="group relative flex flex-shrink-0 items-center gap-0 overflow-visible transition-all duration-300 hover:opacity-90"
             aria-label="MUDAROBA"
             title="MUDAROBA"
           >
@@ -343,29 +362,151 @@ export default function Header() {
               ) : null}
             </div>
           </div>
-          <div className="flex items-center gap-2 md:hidden">
-            {user ? (
-              <AnimatedLogoutButton
-                onLogout={() => { setShowSuggestions(false); logout() }}
-                isDark={isDark}
-                className="scale-90 origin-right"
-              />
-            ) : (
-              <Link
-                href="/auth"
-                onClick={() => setShowSuggestions(false)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200 hover:shadow-lg hover:scale-105 ${isDark ? 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]' : 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'}`}
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:hidden">
+            <motion.div
+              ref={mobileSearchRef}
+              initial={false}
+              animate={{
+                width: isMobileSearchOpen ? '100%' : 0,
+                opacity: isMobileSearchOpen && !isMobileMenuOpen ? 1 : 0,
+              }}
+              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+              onAnimationComplete={() => {
+                if (isMobileSearchOpen) mobileSearchInputRef.current?.focus()
+              }}
+              className={`relative h-10 min-w-0 flex-shrink-0 ${isMobileSearchOpen && !isMobileMenuOpen ? 'visible pointer-events-auto' : 'invisible pointer-events-none'}`}
+            >
+              <div aria-hidden={!isMobileSearchOpen} className={`absolute inset-0 flex transition-all duration-200 ${
+                isMobileSearchOpen ? 'visible pointer-events-auto scale-100 opacity-100' : 'invisible pointer-events-none scale-[0.98] opacity-0'
+              }`}>
+                <input
+                  ref={mobileSearchInputRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => { if (query.trim().length >= 2) setShowSuggestions(true) }}
+                  placeholder={placeholder}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      setShowSuggestions(false)
+                      goSearch()
+                    } else if (e.key === 'Escape') {
+                      setShowSuggestions(false)
+                      setIsMobileSearchOpen(false)
+                      e.currentTarget.blur()
+                    }
+                  }}
+                  className={`h-10 min-w-0 w-full rounded-l-lg border py-2 pl-3 pr-9 text-sm outline-none transition-colors duration-200 ${isDark
+                    ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500'
+                    : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-gray-400'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSuggestions(false)
+                    setIsMobileSearchOpen(false)
+                  }}
+                  aria-label={t('search_close', 'Закрыть поиск')}
+                  title={t('search_close', 'Закрыть поиск')}
+                  className={`absolute right-10 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full transition-colors ${isDark
+                    ? 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                    : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'
+                  }`}
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowSuggestions(false); goSearch() }}
+                  aria-label={t('search_button', 'Поиск')}
+                  title={t('search_button', 'Поиск')}
+                  className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 transition-all duration-200 ${isDark
+                    ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500 hover:bg-slate-700'
+                    : 'border-gray-300 bg-white text-gray-700 hover:border-red-400 hover:bg-red-50 hover:text-red-700'
+                  }`}
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m16 16 5 5" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+
+              {isMobileSearchOpen && showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
+                <div className={`absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border shadow-lg ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
+                  {loadingSuggest ? (
+                    <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>{t('search_loading')}</div>
+                  ) : suggestions.map((p) => (
+                    <button
+                      key={buildProductIdentityKey(p, p.is_service ? 'uslugi' : p.product_type)}
+                      onClick={() => {
+                        setShowSuggestions(false)
+                        setIsMobileSearchOpen(false)
+                        router.push(buildProductUrl(p.is_service ? 'uslugi' : (p.product_type || 'medicines'), p.slug))
+                      }}
+                      className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors duration-200 ${isDark ? 'text-slate-100 hover:bg-slate-700' : 'text-gray-800 hover:bg-red-50'}`}
+                    >
+                      <span className="line-clamp-1 pr-2">{p.name}</span>
+                      <span className={isDark ? 'whitespace-nowrap text-slate-300' : 'whitespace-nowrap text-gray-600'}>{p.price ? `${p.price} ${p.currency}` : ''}</span>
+                    </button>
+                  ))}
+                  {suggestions.length > 0 && (
+                    <div className={`border-t px-3 py-2 text-right ${isDark ? 'border-slate-700' : 'border-gray-200'}`}>
+                      <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`text-xs transition-colors duration-200 ${isDark ? 'text-slate-100 hover:text-white underline' : 'text-red-700 hover:text-red-800 hover:underline'}`}>{t('search_show_all')}</button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </motion.div>
+
+            <motion.div
+              initial={false}
+              animate={{ width: isMobileSearchOpen ? 0 : 'auto', opacity: isMobileSearchOpen ? 0 : 1, x: isMobileSearchOpen ? 8 : 0 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: 'easeOut' }}
+              aria-hidden={isMobileSearchOpen}
+              className={`flex flex-shrink-0 items-center gap-2 whitespace-nowrap ${isMobileSearchOpen ? 'invisible pointer-events-none' : 'visible pointer-events-auto'}`}
+            >
+              <motion.div
+                initial={false}
+                animate={{ width: isMobileMenuOpen ? 0 : 'auto', opacity: isMobileMenuOpen ? 0 : 1 }}
+                transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2, ease: 'easeOut' }}
+                aria-hidden={isMobileMenuOpen}
+                className={`flex flex-shrink-0 items-center ${isMobileMenuOpen ? 'invisible pointer-events-none' : 'visible pointer-events-auto'}`}
               >
-                {t('login', 'Войти')}
-              </Link>
-            )}
-            <DotMenu 
-              user={user}
-              currency={currency}
-              onCurrencyChange={handleCurrencyChange}
-              onToggleLocale={toggleLocale}
-              isDark={isDark}
-            />
+                {user ? (
+                  <AnimatedLogoutButton
+                    onLogout={() => { setShowSuggestions(false); logout() }}
+                    isDark={isDark}
+                    className="scale-90 origin-right"
+                  />
+                ) : (
+                  <Link
+                    href="/auth"
+                    onClick={() => setShowSuggestions(false)}
+                    className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-all duration-200 hover:scale-105 hover:bg-[var(--accent-strong)] hover:shadow-lg"
+                  >
+                    {t('login', 'Войти')}
+                  </Link>
+                )}
+              </motion.div>
+              <DotMenu
+                user={user}
+                currency={currency}
+                onCurrencyChange={handleCurrencyChange}
+                onToggleLocale={toggleLocale}
+                isDark={isDark}
+                forceClosed={isMobileSearchOpen}
+                onOpenChange={setIsMobileMenuOpen}
+                onOpenSearch={() => {
+                  setIsLogoExpanded(false)
+                  setShowCurrencyMenu(false)
+                  setIsMobileSearchOpen(true)
+                }}
+              />
+            </motion.div>
           </div>
           <nav className="relative z-50 hidden items-center gap-3 text-sm md:flex">
             <div ref={currencyRef} className="relative">
@@ -482,43 +623,6 @@ export default function Header() {
           </nav>
         </div>
 
-        <div className="md:hidden pb-4">
-          <div ref={mobileSearchRef} className="relative flex w-full items-center">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => { if (query.trim().length >= 2) setShowSuggestions(true) }}
-              placeholder={placeholder}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setShowSuggestions(false); goSearch() } }}
-              className={`w-full rounded-l-lg border px-3 py-2 text-base md:text-sm outline-none transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500' : 'border-gray-300 bg-white text-gray-900 focus:border-gray-400'}`}
-            />
-            <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`rounded-r-lg border border-l-0 px-3 py-2 text-sm transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:border-slate-500' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:text-red-700 hover:font-medium'}`}>{t('search_button', 'Поиск')}</button>
-            {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
-              <div className={`absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border shadow-lg ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
-                {loadingSuggest ? (
-                  <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>{t('search_loading')}</div>
-                ) : suggestions.map((p) => (
-                  <button
-                    key={buildProductIdentityKey(p, p.product_type)}
-                    onClick={() => {
-                      setShowSuggestions(false)
-                      router.push(buildProductUrl(p.is_service ? 'uslugi' : (p.product_type || 'medicines'), p.slug))
-                    }}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors duration-200 ${isDark ? 'text-slate-100 hover:bg-slate-700' : 'text-gray-800 hover:bg-red-50'}`}
-                  >
-                    <span className="line-clamp-1 pr-2">{p.name}</span>
-                    <span className={isDark ? 'whitespace-nowrap text-slate-300' : 'whitespace-nowrap text-gray-600'}>{p.price ? `${p.price} ${p.currency}` : ''}</span>
-                  </button>
-                ))}
-                {suggestions.length > 0 && (
-                  <div className={`border-t px-3 py-2 text-right ${isDark ? 'border-slate-700' : 'border-gray-200'}`}>
-                    <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`text-xs transition-colors duration-200 ${isDark ? 'text-slate-100 hover:text-white underline' : 'text-red-700 hover:text-red-800 hover:underline'}`}>{t('search_show_all')}</button>
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
-        </div>
       </div>
     </header>
   )
