@@ -69,6 +69,8 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
 
   useEffect(() => {
     const fetchProducts = async () => {
+      let uniqueAllProducts: Product[] = []
+
       try {
         const featuredResponse = await api.get('/catalog/products/featured', {
           params: { limit: 20 },
@@ -77,37 +79,41 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
         const featuredItems = Array.isArray(featuredData)
           ? featuredData
           : featuredData?.results || []
-        let uniqueAllProducts = deduplicateFeaturedProducts(
+        uniqueAllProducts = deduplicateFeaturedProducts(
           featuredItems.map((product: Product) => ({
             ...product,
             product_type: product.product_type || 'medicines',
           }))
         ) as Product[]
+      } catch (error) {
+        console.error('Failed to fetch featured products:', error)
+      }
 
-        if (uniqueAllProducts.length < 8) {
-          try {
-            const response = await api.get('/catalog/products', {
-              params: { ordering: '-created_at', limit: 20 },
-            })
-            const data = response.data
-            const productsList = Array.isArray(data) ? data : data.results || []
+      if (uniqueAllProducts.length < 8) {
+        try {
+          const response = await api.get('/catalog/products', {
+            params: { ordering: '-created_at', limit: 20 },
+          })
+          const data = response.data
+          const productsList = Array.isArray(data) ? data : data.results || []
 
-            uniqueAllProducts = deduplicateFeaturedProducts([
-              ...uniqueAllProducts,
-              ...productsList.map((product: Product) => ({
-                ...product,
-                product_type: product.product_type || 'medicines',
-              })),
-            ]) as Product[]
-          } catch (error) {
-            console.error('Failed to fetch latest products:', error)
-          }
+          uniqueAllProducts = deduplicateFeaturedProducts([
+            ...uniqueAllProducts,
+            ...productsList.map((product: Product) => ({
+              ...product,
+              product_type: product.product_type || 'medicines',
+            })),
+          ]) as Product[]
+        } catch (error) {
+          console.error('Failed to fetch latest products:', error)
         }
+      }
 
+      try {
         const shuffled = [...uniqueAllProducts].sort(() => Math.random() - 0.5).slice(0, 20)
         setProducts(shuffled)
       } catch (error) {
-        console.error('Failed to fetch popular products:', error)
+        console.error('Failed to prepare popular products:', error)
         setProducts([])
       } finally {
         setLoading(false)

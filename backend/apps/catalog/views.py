@@ -1439,9 +1439,6 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             'images',
             'category__translations',
             'brand__translations',
-            'dynamic_attributes__attribute_key__translations',
-            'book_authors__author',
-            'book_genres__genre',
         }
         product_types = {
             str(product.product_type or '').strip().lower().replace('-', '_')
@@ -1454,6 +1451,10 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             relation, gallery_relation, variants_relation = config
             prefetches.add(f'{relation}__translations')
             prefetches.add(f'{relation}__{gallery_relation}')
+            prefetches.add(f'{relation}__dynamic_attributes__attribute_key__translations')
+            if product_type == 'books':
+                prefetches.add(f'{relation}__book_authors__author')
+                prefetches.add(f'{relation}__book_genres__genre')
             if variants_relation:
                 prefetches.add(f'{relation}__{variants_relation}')
                 prefetches.add(f'{relation}__{variants_relation}__images')
