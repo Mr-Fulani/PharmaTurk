@@ -4,7 +4,13 @@ import { useTranslation } from 'next-i18next'
 import Image from 'next/image'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
-import { resolveMediaUrl, getPlaceholderImageUrl, getVideoEmbedUrl, withListingImageMaxWidth } from '../lib/media'
+import {
+  getPlaceholderImageUrl,
+  getVideoEmbedUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+  withListingImageMaxWidth,
+} from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -54,7 +60,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
   })
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
-  const [fallbackToPicsumIds, setFallbackToPicsumIds] = useState<Record<number, boolean>>({})
+  const [fallbackMediaIds, setFallbackMediaIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
   const initialMountRef = useRef(true)
@@ -236,7 +242,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
         onClick={index >= 1 ? handleThumbnailClick : undefined}
       >
         {(media.content_type === 'image' || media.content_type === 'gif') && (() => {
-          const isFallback = !fullUrl || fallbackToPicsumIds[media.id]
+          const isFallback = !fullUrl || fallbackMediaIds[media.id]
           const finalUrl = isFallback 
             ? getPlaceholderImageUrl({ type: 'product', id: media.id.toString() })
             : fullUrl
@@ -263,7 +269,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 }}
                 onError={() => {
                   if (!isFallback) {
-                    setFallbackToPicsumIds(prev => ({ ...prev, [media.id]: true }))
+                    setFallbackMediaIds(prev => ({ ...prev, [media.id]: true }))
                   }
                 }}
               />
@@ -285,6 +291,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
             muted
             playsInline
             className={styles.itemVideo}
+            onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, title || 'MUDAROBA')}
           >
             <source src={fullUrl} type={media.content_mime_type || 'video/mp4'} />
           </video>

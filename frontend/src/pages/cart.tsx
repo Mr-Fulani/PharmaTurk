@@ -5,7 +5,13 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
-import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../lib/media'
+import {
+  applyImageFallback,
+  getPlaceholderImageUrl,
+  isVideoUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../lib/media'
 import { needsTypeInPath } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
@@ -360,18 +366,14 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           autoPlay
                           preload="metadata"
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, localizedName)}
                         />
                       ) : resolvedImage ? (
                         <img
                           src={resolvedImage}
                           alt={localizedName}
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-                          onError={(e) => {
-                            e.currentTarget.src = getPlaceholderImageUrl({
-                              type: 'product',
-                              id: item.product || item.id,
-                            })
-                          }}
+                          onError={(event) => applyImageFallback(event.currentTarget)}
                         />
                       ) : (
                         <img
@@ -381,9 +383,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           })}
                           alt="No image"
                           className="h-full w-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.src = '/product-placeholder.svg'
-                          }}
+                          onError={(event) => applyImageFallback(event.currentTarget)}
                         />
                       )}
                     </Link>

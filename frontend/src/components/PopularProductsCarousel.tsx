@@ -13,6 +13,7 @@ import {
   getVideoEmbedUrl,
   extractYouTubeId,
   getYouTubeCardThumbnailUrl,
+  replaceFailedVideoWithFallback,
 } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { buildProductIdentityKey, favoriteApiProductId } from '../lib/product'
@@ -358,6 +359,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                         autoPlay
                         preload="metadata"
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, localizedName)}
                       />
                     ) : (
                       <ProductCardImageGallery

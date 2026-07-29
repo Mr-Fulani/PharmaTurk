@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { applyImageFallback, DEFAULT_MEDIA_FALLBACK } from '../lib/media'
 
 export type LazyYouTubeCardProps = {
   youtubeId: string
@@ -25,6 +26,13 @@ export default function LazyYouTubeCard({
   const rootRef = useRef<HTMLDivElement>(null)
   const [inView, setInView] = useState(false)
   const [wantsIframe, setWantsIframe] = useState(false)
+  const [iframeLoaded, setIframeLoaded] = useState(false)
+  const [iframeFailed, setIframeFailed] = useState(false)
+
+  useEffect(() => {
+    setIframeLoaded(false)
+    setIframeFailed(false)
+  }, [youtubeId])
 
   useEffect(() => {
     const el = rootRef.current
@@ -76,19 +84,20 @@ export default function LazyYouTubeCard({
       onMouseEnter={() => setWantsIframe(true)}
       onClick={() => setWantsIframe(true)}
     >
-      {youtubeThumb && (
+      {(youtubeThumb || iframeFailed) && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={youtubeThumb}
+          src={iframeFailed ? DEFAULT_MEDIA_FALLBACK : youtubeThumb || DEFAULT_MEDIA_FALLBACK}
           alt={alt || title || 'Video thumbnail'}
           loading="lazy"
           decoding="async"
           width={480}
           height={360}
-          className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${showIframe ? 'opacity-0' : 'opacity-100'}`}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${showIframe && iframeLoaded && !iframeFailed ? 'opacity-0' : 'opacity-100'}`}
+          onError={(event) => applyImageFallback(event.currentTarget)}
         />
       )}
-      {showIframe && (
+      {showIframe && !iframeFailed && (
         <iframe
           src={embedUrl}
           title={alt || title || 'YouTube'}
@@ -98,8 +107,10 @@ export default function LazyYouTubeCard({
           allowFullScreen={false}
           style={{ opacity: 0, transition: 'opacity 0.7s ease' }}
           onLoad={(e) => {
+            setIframeLoaded(true)
             e.currentTarget.style.opacity = '1'
           }}
+          onError={() => setIframeFailed(true)}
         />
       )}
     </div>

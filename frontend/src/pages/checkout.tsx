@@ -7,7 +7,12 @@ import { SITE_NAME } from '../lib/siteMeta'
 import { formatMoney } from '../lib/price'
 import Link from 'next/link'
 import api from '../lib/api'
-import { resolveMediaUrl, isVideoUrl } from '../lib/media'
+import {
+  applyImageFallback,
+  isVideoUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../lib/media'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
 import { useTheme } from '../context/ThemeContext'
@@ -1046,12 +1051,14 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                             autoPlay
                             preload="metadata"
                             className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-gray-200"
+                            onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, localizedName)}
                           />
                         ) : item.product_image_url ? (
                           <img
                             src={resolveMediaUrl(item.product_image_url)}
                             alt={localizedName}
                             className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-gray-200"
+                            onError={(event) => applyImageFallback(event.currentTarget)}
                           />
                         ) : (
                           <div className="w-20 h-20 rounded-lg flex-shrink-0 bg-gray-200 border border-gray-300 flex items-center justify-center">

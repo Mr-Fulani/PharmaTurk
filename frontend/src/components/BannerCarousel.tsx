@@ -4,7 +4,12 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
-import { resolveMediaUrl, getVideoEmbedUrl } from '../lib/media'
+import {
+  applyImageFallback,
+  getVideoEmbedUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -333,6 +338,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
             loading={isActive ? "eager" : "lazy"}
             decoding="async"
             draggable={false}
+            onError={(event) => applyImageFallback(event.currentTarget)}
           />
         )}
 
@@ -353,6 +359,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
             playsInline
             preload={isActive ? "auto" : "metadata"}
             className={styles.itemVideo}
+            onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, banner.title || 'MUDAROBA')}
           >
             <source src={fullUrl} type={media.content_mime_type || 'video/mp4'} />
           </video>

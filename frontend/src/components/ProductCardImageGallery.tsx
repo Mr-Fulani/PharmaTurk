@@ -1,5 +1,5 @@
 import { MouseEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { getPlaceholderImageUrl, resolveMediaUrl, withListingImageMaxWidth } from '../lib/media'
+import { applyImageFallback, getPlaceholderImageUrl, resolveMediaUrl, withListingImageMaxWidth } from '../lib/media'
 
 export interface ProductCardGalleryImage {
   id?: number | string
@@ -147,7 +147,7 @@ export default function ProductCardImageGallery({
           width={400}
           height={500}
           className={`h-full w-full ${imageFitClass} transition-transform duration-500 group-hover:scale-105`}
-          onError={(event) => { event.currentTarget.src = fallback }}
+          onError={(event) => applyImageFallback(event.currentTarget, fallback)}
         />
       </div>
 
@@ -170,7 +170,7 @@ export default function ProductCardImageGallery({
             height={500}
             draggable={false}
             className={`h-full w-full shrink-0 snap-center ${imageFitClass}`}
-            onError={(event) => { event.currentTarget.src = fallback }}
+            onError={(event) => applyImageFallback(event.currentTarget, fallback)}
           />
         ))}
       </div>

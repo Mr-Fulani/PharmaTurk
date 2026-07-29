@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
+import { applyImageFallback, DEFAULT_MEDIA_FALLBACK } from '../lib/media'
 
 export type InViewAutoplayVideoProps = {
   src: string
@@ -13,6 +14,8 @@ export type InViewAutoplayVideoProps = {
    */
   deferUntilInView?: boolean
   onError?: (e: React.SyntheticEvent<HTMLVideoElement>) => void
+  fallbackSrc?: string
+  alt?: string
 }
 
 export default function InViewAutoplayVideo({
@@ -23,9 +26,16 @@ export default function InViewAutoplayVideo({
   rootMargin = '80px',
   deferUntilInView = true,
   onError,
+  fallbackSrc = DEFAULT_MEDIA_FALLBACK,
+  alt = 'MUDAROBA',
 }: InViewAutoplayVideoProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [shouldLoad, setShouldLoad] = useState(!deferUntilInView)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [src])
 
   useEffect(() => {
     if (!deferUntilInView) {
@@ -52,7 +62,15 @@ export default function InViewAutoplayVideo({
 
   return (
     <div ref={wrapRef} className={`absolute inset-0 h-full w-full ${className}`}>
-      {shouldLoad ? (
+      {failed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={fallbackSrc}
+          alt={alt}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${videoClassName}`.trim()}
+          onError={(event) => applyImageFallback(event.currentTarget)}
+        />
+      ) : shouldLoad ? (
         <video
           src={src}
           poster={poster}
@@ -62,7 +80,10 @@ export default function InViewAutoplayVideo({
           playsInline
           autoPlay
           preload="metadata"
-          onError={onError}
+          onError={(event) => {
+            onError?.(event)
+            setFailed(true)
+          }}
         />
       ) : (
         poster ? (
@@ -72,6 +93,7 @@ export default function InViewAutoplayVideo({
             alt="Video poster"
             className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${videoClassName}`.trim()}
             loading="lazy"
+            onError={(event) => applyImageFallback(event.currentTarget, fallbackSrc)}
           />
         ) : null
       )}

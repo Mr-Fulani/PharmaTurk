@@ -17,6 +17,7 @@ import {
   withListingImageMaxWidth,
   pickPreferredVideoUrl,
   isGifUrl,
+  applyImageFallback,
 } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
@@ -185,6 +186,7 @@ export default function ProductCard({
             width={24}
             height={24}
             className="h-full w-full object-cover"
+            onError={(event) => applyImageFallback(event.currentTarget)}
           />
         </Link>
       ))}
@@ -230,6 +232,7 @@ export default function ProductCard({
             <InViewAutoplayVideo
               src={resolvedVideoUrl}
               poster={resolvedImage || undefined}
+              alt={localizedName}
               videoClassName="rounded-md"
               deferUntilInView={false}
             />
@@ -243,9 +246,7 @@ export default function ProductCard({
               width={400}
               height={400}
               className={`w-full h-full rounded-md ${imageFitClass}`}
-              onError={(e) => {
-                e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
-              }}
+              onError={(event) => applyImageFallback(event.currentTarget)}
             />
           ) : listingImgSrc || galleryImages?.length ? (
             <ProductCardImageGallery
@@ -266,9 +267,7 @@ export default function ProductCard({
               width={400}
               height={400}
               className={`w-full h-full rounded-md ${imageFitClass}`}
-              onError={(e) => {
-                e.currentTarget.src = '/product-placeholder.svg'
-              }}
+              onError={(event) => applyImageFallback(event.currentTarget)}
             />
           )}
           {badge && (
@@ -368,6 +367,7 @@ export default function ProductCard({
           <InViewAutoplayVideo
             src={resolvedVideoUrl}
             poster={resolvedImage || undefined}
+            alt={localizedName}
             videoClassName={hoverMediaClass}
             deferUntilInView={false}
           />
@@ -381,9 +381,7 @@ export default function ProductCard({
             width={400}
             height={500}
             className={`w-full h-full ${imageFitClass} ${hoverMediaClass}`}
-            onError={(e) => {
-              e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
-            }}
+            onError={(event) => applyImageFallback(event.currentTarget)}
           />
         ) : listingImgSrc || galleryImages?.length ? (
           <ProductCardImageGallery
@@ -403,9 +401,7 @@ export default function ProductCard({
             width={400}
             height={500}
             className={`w-full h-full ${imageFitClass} transition-transform duration-500 group-hover:scale-105`}
-            onError={(e) => {
-              e.currentTarget.src = '/product-placeholder.svg'
-            }}
+            onError={(event) => applyImageFallback(event.currentTarget)}
           />
         )}
         

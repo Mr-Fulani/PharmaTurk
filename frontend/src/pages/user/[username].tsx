@@ -133,11 +133,23 @@ export default function UserProfilePage() {
           <div className="bg-gradient-to-r from-red-100 via-red-50 to-rose-100 px-6 py-8">
             <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
               {profile.avatar_url ? (
-                <img
-                  src={resolveMediaUrl(profile.avatar_url)}
-                  alt={fullName}
-                  className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg"
-                />
+                <>
+                  <img
+                    src={resolveMediaUrl(profile.avatar_url)}
+                    alt={fullName}
+                    className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg"
+                    onError={(event) => {
+                      event.currentTarget.style.display = 'none'
+                      const fallback = event.currentTarget.nextElementSibling as HTMLElement | null
+                      if (fallback) fallback.style.display = 'flex'
+                    }}
+                  />
+                  <div className="hidden w-32 h-32 rounded-full bg-gray-300 items-center justify-center border-4 border-white shadow-lg">
+                    <span className="text-4xl text-gray-600 font-bold">
+                      {fullName.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                </>
               ) : (
                 <div className="w-32 h-32 rounded-full bg-gray-300 flex items-center justify-center border-4 border-white shadow-lg">
                   <span className="text-4xl text-gray-600 font-bold">

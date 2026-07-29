@@ -1,36 +1,29 @@
 import os
-import urllib.parse
 
 import django
+from django.db.models import Q
 
 
 def fix_book_images():
-    """Добавление placeholder изображений для книг без картинок"""
+    """Удаляет внешние placeholder-URL, чтобы фронтенд показал локальный fallback."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
     django.setup()
     from apps.catalog.models import Product
 
-    books_without_images = Product.objects.filter(
-        product_type='books',
-        main_image__isnull=True
+    books_with_external_placeholders = Product.objects.filter(product_type='books').filter(
+        Q(main_image__icontains='placehold.co')
+        | Q(main_image__icontains='via.placeholder.com')
+        | Q(main_image__icontains='picsum.photos')
     )
 
-    print(f"Найдено книг без изображений: {books_without_images.count()}")
+    print(
+        "Найдено книг с внешними placeholder-изображениями: "
+        f"{books_with_external_placeholders.count()}"
+    )
 
     updated_count = 0
-    for book in books_without_images:
-        # Создаем URL для placeholder изображения
-        # Используем первые 20 символов названия книги
-        book_name_short = book.name[:20].replace(' ', '+')
-        encoded_name = urllib.parse.quote(book_name_short)
-
-        # Используем placehold.co для генерации изображений
-        placeholder_url = (
-            "https://placehold.co/300x400/10B981/FFFFFF/png?text="
-            f"{encoded_name}"
-        )
-
-        book.main_image = placeholder_url
+    for book in books_with_external_placeholders:
+        book.main_image = ''
         book.save(update_fields=['main_image'])
 
         updated_count += 1
@@ -39,9 +32,8 @@ def fix_book_images():
     print(f"\n✅ Обновлено изображений: {updated_count}")
 
     # Проверяем результат
-    books_with_images = Product.objects.filter(
-        product_type='books',
-        main_image__isnull=False
+    books_with_images = Product.objects.filter(product_type='books').exclude(
+        Q(main_image__isnull=True) | Q(main_image='')
     ).count()
 
     total_books = Product.objects.filter(product_type='books').count()

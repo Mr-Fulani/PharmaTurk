@@ -249,7 +249,7 @@
   border: none;
 }
 
-/* Только для картинок-плейсхолдеров picsum в баннерах: заполняют весь слайд */
+/* Локальный брендированный placeholder в баннерах заполняет весь слайд */
 .itemPicsumPlaceholder {
   position: absolute;
   left: 0;

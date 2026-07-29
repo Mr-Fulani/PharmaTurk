@@ -17,7 +17,15 @@ import ServicePortfolioStaticList from '../../components/ServicePortfolioStaticL
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
-import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, pickPreferredVideoUrl } from '../../lib/media'
+import {
+  applyImageFallback,
+  getPlaceholderImageUrl,
+  getVideoEmbedUrl,
+  isVideoUrl,
+  pickPreferredVideoUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../../lib/media'
 import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { buildFavoriteProductHref } from '../../lib/favoriteLinks'
 import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
@@ -1304,7 +1312,7 @@ export default function ProductPage({
     (product.translations && product.translations.length > 0 ? '' : product.meta_keywords) ||
     ''
   ).trim()
-  const rawOgImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
+  const rawOgImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || getPlaceholderImageUrl()
   const resolvedOgImage = resolveMediaUrl(rawOgImage)
   const ogImage = resolvedOgImage.startsWith('http://') || resolvedOgImage.startsWith('https://')
     ? resolvedOgImage
@@ -1525,6 +1533,10 @@ export default function ProductPage({
                               muted
                               preload="metadata"
                               className="w-full h-full object-contain"
+                              onError={(event) => replaceFailedVideoWithFallback(
+                                event.currentTarget,
+                                img.alt_text || displayProductName || product.name
+                              )}
                             />
                           )
                         })()
@@ -1534,7 +1546,7 @@ export default function ProductPage({
                           src={resolvedUrl || getPlaceholderImageUrl({ type: 'product', id: product.id })}
                           alt={img.alt_text || displayProductName || product.name}
                           className="w-full h-full object-contain"
-                          onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
+                          onError={(event) => applyImageFallback(event.currentTarget)}
                         />
                       )}
                       {/* Индикация фото (точки) как в kiton */}
@@ -1564,7 +1576,7 @@ export default function ProductPage({
                       src={getPlaceholderImageUrl({ type: 'product', id: product.id, width: 800, height: 800 })}
                       alt="No image"
                       className="w-full h-full object-contain"
-                      onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
+                      onError={(event) => applyImageFallback(event.currentTarget)}
                     />
                     <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
                       <FavoriteButton
@@ -1637,6 +1649,10 @@ export default function ProductPage({
                                 preload="metadata"
                                 className="w-full h-full object-cover object-[center_60%] pointer-events-none"
                                 aria-label={img.alt_text || displayProductName || product.name}
+                                onError={(event) => replaceFailedVideoWithFallback(
+                                  event.currentTarget,
+                                  img.alt_text || displayProductName || product.name
+                                )}
                               />
                             )
                           })()
@@ -1648,7 +1664,7 @@ export default function ProductPage({
                             className="w-full h-full object-cover object-[center_60%] pointer-events-none"
                             onError={(e) => {
                               setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
-                              e.currentTarget.src = placeholderSmall
+                              applyImageFallback(e.currentTarget, placeholderSmall)
                             }}
                           />
                         )}
@@ -1689,6 +1705,10 @@ export default function ProductPage({
                         muted
                         preload="metadata"
                         className="max-w-full max-h-full rounded-xl object-contain"
+                        onError={(event) => replaceFailedVideoWithFallback(
+                          event.currentTarget,
+                          displayProductName || product.name
+                        )}
                       />
                     )
                   })()
@@ -1708,15 +1728,8 @@ export default function ProductPage({
                       decoding="async"
                       onLoad={() => setMainImageLoading(false)}
                       onError={(e) => {
-                        // Фолбек на picsum, завязанный на id товара
-                        const { getPlaceholderImageUrl } = require('../../lib/media')
                         setMainImageLoading(false)
-                        e.currentTarget.src = getPlaceholderImageUrl({
-                          type: 'product',
-                          id: product.id,
-                          width: 800,
-                          height: 800,
-                        })
+                        applyImageFallback(e.currentTarget)
                       }}
                     />
                     {/* Иконки в углу главного изображения: избранное + шаринг */}
@@ -1747,7 +1760,7 @@ export default function ProductPage({
                   <div className="relative w-full h-full min-h-[200px]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={require('../../lib/media').getPlaceholderImageUrl({
+                      src={getPlaceholderImageUrl({
                         type: 'product',
                         id: product.id,
                         width: 800,
@@ -1755,9 +1768,7 @@ export default function ProductPage({
                       })}
                       alt="No image"
                       className="max-w-full max-h-full rounded-xl object-contain"
-                      onError={(e) => {
-                        e.currentTarget.src = '/product-placeholder.svg'
-                      }}
+                      onError={(event) => applyImageFallback(event.currentTarget)}
                     />
                     {/* Иконки в углу плейсхолдера: избранное + шаринг */}
                     <div
@@ -2158,11 +2169,10 @@ export default function ProductPage({
                                 className="h-full w-full object-contain"
                                 data-fallback={placeholder}
                                 onError={(event) => {
-                                  const target = event.currentTarget
-                                  const fallback = target.dataset.fallback
-                                  if (fallback && target.src !== fallback) {
-                                    target.src = fallback
-                                  }
+                                  applyImageFallback(
+                                    event.currentTarget,
+                                    event.currentTarget.dataset.fallback || placeholder
+                                  )
                                 }}
                               />
                             </button>
@@ -2249,11 +2259,10 @@ export default function ProductPage({
                               className="h-full w-full object-contain"
                               data-fallback={placeholder}
                               onError={(event) => {
-                                const target = event.currentTarget
-                                const fallback = target.dataset.fallback
-                                if (fallback && target.src !== fallback) {
-                                  target.src = fallback
-                                }
+                                applyImageFallback(
+                                  event.currentTarget,
+                                  event.currentTarget.dataset.fallback || placeholder
+                                )
                               }}
                             />
                           </button>

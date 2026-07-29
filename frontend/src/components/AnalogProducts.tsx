@@ -3,6 +3,7 @@ import { useTranslation } from 'next-i18next'
 import Link from 'next/link'
 import Image from 'next/image'
 import api from '../lib/api'
+import { DEFAULT_MEDIA_FALLBACK } from '../lib/media'
 import { formatPrice as formatPriceNum } from '../lib/price'
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
@@ -108,11 +109,13 @@ function AnalogCard({ analog, productType }: AnalogCardProps) {
             onError={() => setImgError(true)}
           />
         ) : (
-          <div className="analog-card__img-placeholder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <path d="M9 12h6M9 16h6M7 4h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
-            </svg>
-          </div>
+          <Image
+            src={DEFAULT_MEDIA_FALLBACK}
+            alt={analog.name}
+            fill
+            sizes="(max-width: 768px) 50vw, 200px"
+            className="analog-card__img"
+          />
         )}
       </div>
 

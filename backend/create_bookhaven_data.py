@@ -53,10 +53,7 @@ def create_test_data():
     )
 
     # Создаем книги
-    it_image = (
-        "https://via.placeholder.com/300x400/4F46E5/FFFFFF"
-        "?text=It"
-    )
+    it_image = ''
     Book.objects.create(
         title='Оно',
         slug='it',
@@ -73,10 +70,7 @@ def create_test_data():
         is_new=False
     ).authors.add(author1)
 
-    sapiens_image = (
-        "https://via.placeholder.com/300x400/10B981/FFFFFF"
-        "?text=Sapiens"
-    )
+    sapiens_image = ''
     Book.objects.create(
         title='Sapiens: Краткая история человечества',
         slug='sapiens',
@@ -96,10 +90,7 @@ def create_test_data():
         is_new=False
     ).authors.add(author2)
 
-    business_image = (
-        "https://via.placeholder.com/300x400/F59E0B/FFFFFF"
-        "?text=Business+Model"
-    )
+    business_image = ''
     Book.objects.create(
         title='Бизнес-модель нового поколения',
         slug='business-model-generation',
@@ -118,10 +109,7 @@ def create_test_data():
         is_new=True
     ).authors.add(author3)
 
-    shining_image = (
-        "https://via.placeholder.com/300x400/EF4444/FFFFFF"
-        "?text=The+Shining"
-    )
+    shining_image = ''
     Book.objects.create(
         title='Сияние',
         slug='the-shining',
@@ -140,10 +128,7 @@ def create_test_data():
         is_new=False
     ).authors.add(author1)
 
-    deus_image = (
-        "https://via.placeholder.com/300x400/8B5CF6/FFFFFF"
-        "?text=Homo+Deus"
-    )
+    deus_image = ''
     Book.objects.create(
         title='Homo Deus: Краткая история будущего',
         slug='homo-deus',

@@ -1,7 +1,13 @@
 'use client'
 
 import { useTranslation } from 'next-i18next'
-import { isVideoUrl, resolveMediaUrl, getVideoEmbedUrl } from '../lib/media'
+import {
+  applyImageFallback,
+  getVideoEmbedUrl,
+  isVideoUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../lib/media'
 import { ServicePortfolioItem } from './ServicePortfolioGallery'
 
 interface ServicePortfolioStaticListProps {
@@ -91,6 +97,7 @@ export default function ServicePortfolioStaticList({ items }: ServicePortfolioSt
                           playsInline
                           preload="metadata"
                           muted
+                          onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, item.alt_text || item.title)}
                         />
                       )
                     ) : (
@@ -111,6 +118,7 @@ export default function ServicePortfolioStaticList({ items }: ServicePortfolioSt
                           alt={item.alt_text || item.title} 
                           className="h-full w-full object-cover"
                           loading="lazy"
+                          onError={(event) => applyImageFallback(event.currentTarget)}
                         />
                       </>
                     )}

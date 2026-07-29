@@ -2,7 +2,13 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'next-i18next'
-import { isVideoUrl, resolveMediaUrl, getVideoEmbedUrl } from '../lib/media'
+import {
+  applyImageFallback,
+  getVideoEmbedUrl,
+  isVideoUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../lib/media'
 
 export interface ServicePortfolioMedia {
   id: number
@@ -147,6 +153,7 @@ function LightboxModal({
                 playsInline
                 autoPlay
                 muted
+                onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, item.alt_text || item.title)}
               />
             )
 
@@ -168,6 +175,7 @@ function LightboxModal({
                 src={current.url}
                 alt={item.alt_text || item.title}
                 className="max-h-[60vh] max-w-full rounded-xl object-contain"
+                onError={(event) => applyImageFallback(event.currentTarget)}
               />
             </div>
           )}
@@ -202,7 +210,12 @@ function LightboxModal({
                 </div>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.url} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={m.url}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  onError={(event) => applyImageFallback(event.currentTarget)}
+                />
               )}
             </button>
           ))}
@@ -302,14 +315,26 @@ export default function ServicePortfolioGallery({
                       <div className="grid h-full w-full grid-cols-2">
                         <div className="relative overflow-hidden">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={resolveMediaUrl(item.before_image_url!)} alt={`${item.alt_text || item.title} — до`} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+                          <img
+                            src={resolveMediaUrl(item.before_image_url!)}
+                            alt={`${item.alt_text || item.title} — до`}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            loading="lazy"
+                            onError={(event) => applyImageFallback(event.currentTarget)}
+                          />
                           <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
                             {t('service_portfolio_before', 'До')}
                           </span>
                         </div>
                         <div className="relative overflow-hidden border-l border-white/20">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={resolveMediaUrl(item.after_image_url!)} alt={`${item.alt_text || item.title} — после`} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+                          <img
+                            src={resolveMediaUrl(item.after_image_url!)}
+                            alt={`${item.alt_text || item.title} — после`}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            loading="lazy"
+                            onError={(event) => applyImageFallback(event.currentTarget)}
+                          />
                           <span className="absolute left-2 top-2 rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
                             {t('service_portfolio_after', 'После')}
                           </span>
@@ -333,6 +358,7 @@ export default function ServicePortfolioGallery({
                           autoPlay
                           loop
                           muted
+                          onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, item.alt_text || item.title)}
                         />
                       )
                     ) : primaryMedia?.type === 'image' ? (
@@ -342,6 +368,7 @@ export default function ServicePortfolioGallery({
                         alt={item.alt_text || item.title}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
+                        onError={(event) => applyImageFallback(event.currentTarget)}
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-sm text-main/50">
@@ -384,7 +411,13 @@ export default function ServicePortfolioGallery({
                             </div>
                           ) : (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={m.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                            <img
+                              src={m.url}
+                              alt=""
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              onError={(event) => applyImageFallback(event.currentTarget)}
+                            />
                           )}
                         </button>
                       ))}

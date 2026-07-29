@@ -66,10 +66,7 @@ def create_book_data():
     )
 
     # Создаем книги через Product
-    book1_image = (
-        "https://via.placeholder.com/300x400/4F46E5/FFFFFF"
-        "?text=It"
-    )
+    book1_image = ''
     book1 = Product.objects.create(
         name='Оно',
         slug='it',
@@ -96,10 +93,7 @@ def create_book_data():
         is_new=False
     )
 
-    book2_image = (
-        "https://via.placeholder.com/300x400/10B981/FFFFFF"
-        "?text=Sapiens"
-    )
+    book2_image = ''
     book2 = Product.objects.create(
         name='Sapiens: Краткая история человечества',
         slug='sapiens',
@@ -129,10 +123,7 @@ def create_book_data():
         is_new=False
     )
 
-    book3_image = (
-        "https://via.placeholder.com/300x400/F59E0B/FFFFFF"
-        "?text=Business+Model"
-    )
+    book3_image = ''
     book3 = Product.objects.create(
         name='Бизнес-модель нового поколения',
         slug='business-model-generation',

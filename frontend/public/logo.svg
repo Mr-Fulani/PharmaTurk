@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">MUDAROBA</title>
+  <desc id="desc">Красный фирменный знак MUDAROBA</desc>
+  <defs>
+    <linearGradient id="logo-gradient" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#dc2626"/>
+      <stop offset="1" stop-color="#991b1b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#logo-gradient)"/>
+  <path d="M90 294h45L186 166l70 192 70-192 51 128h45" fill="none" stroke="#fff" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="422" cy="294" r="19" fill="#fff"/>
+</svg>

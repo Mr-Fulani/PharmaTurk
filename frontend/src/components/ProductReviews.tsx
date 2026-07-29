@@ -3,7 +3,11 @@ import { useRouter } from 'next/router'
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
-import { resolveMediaUrl } from '../lib/media'
+import {
+  applyImageFallback,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../lib/media'
 import { useAuth } from '../context/AuthContext'
 
 export interface ReviewSummary {
@@ -231,11 +235,22 @@ export default function ProductReviews({
                   {data.own_review.media.map((media) => media.media_type === 'image' ? (
                     <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer" className="h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-gray-100 dark:border-gray-600 dark:bg-gray-900">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={resolveMediaUrl(media.url) || media.url} alt="" className="h-full w-full object-cover" />
+                      <img
+                        src={resolveMediaUrl(media.url) || media.url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        onError={(event) => applyImageFallback(event.currentTarget)}
+                      />
                     </a>
                   ) : (
                     <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer" className="relative h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-black dark:border-gray-600">
-                      <video src={resolveMediaUrl(media.url) || media.url} muted preload="metadata" className="h-full w-full object-cover" />
+                      <video
+                        src={resolveMediaUrl(media.url) || media.url}
+                        muted
+                        preload="metadata"
+                        className="h-full w-full object-cover"
+                        onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, '')}
+                      />
                       <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white" aria-hidden="true">
                         <svg className="h-6 w-6 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                       </span>
@@ -303,8 +318,20 @@ export default function ProductReviews({
             <div className="flex items-start gap-3">
               {review.author_avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={resolveMediaUrl(review.author_avatar_url) || ''} alt="" className="h-10 w-10 rounded-full object-cover" />
+                <img
+                  src={resolveMediaUrl(review.author_avatar_url) || ''}
+                  alt=""
+                  className="h-10 w-10 rounded-full object-cover"
+                  onError={(event) => {
+                    event.currentTarget.style.display = 'none'
+                    const fallback = event.currentTarget.nextElementSibling as HTMLElement | null
+                    if (fallback) fallback.style.display = 'block'
+                  }}
+                />
               ) : <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />}
+              {review.author_avatar_url ? (
+                <div className="hidden h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
+              ) : null}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Link href={`/user/${encodeURIComponent(review.user_username)}`} className="font-medium text-gray-900 hover:text-red-600 dark:text-white">{review.author_name}</Link>
@@ -317,11 +344,22 @@ export default function ProductReviews({
                     {review.media.map((media) => media.media_type === 'image' ? (
                       <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer" className="h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-gray-100 dark:border-gray-600 dark:bg-gray-900">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={resolveMediaUrl(media.url) || media.url} alt="" className="h-full w-full object-cover" />
+                        <img
+                          src={resolveMediaUrl(media.url) || media.url}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          onError={(event) => applyImageFallback(event.currentTarget)}
+                        />
                       </a>
                     ) : (
                       <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer" className="relative h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-black dark:border-gray-600">
-                        <video src={resolveMediaUrl(media.url) || media.url} muted preload="metadata" className="h-full w-full object-cover" />
+                        <video
+                          src={resolveMediaUrl(media.url) || media.url}
+                          muted
+                          preload="metadata"
+                          className="h-full w-full object-cover"
+                          onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, '')}
+                        />
                         <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white" aria-hidden="true">
                           <svg className="h-6 w-6 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                         </span>

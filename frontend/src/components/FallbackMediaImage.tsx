@@ -1,5 +1,6 @@
 import Image from 'next/image'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { DEFAULT_MEDIA_FALLBACK } from '../lib/media'
 
 const DEFAULT_SIZES = '(max-width: 640px) 210px, (max-width: 1024px) 33vw, 400px'
 
@@ -17,18 +18,20 @@ export type FallbackMediaImageProps = {
 export default function FallbackMediaImage({
   src,
   alt,
-  fallbackSrc,
+  fallbackSrc = DEFAULT_MEDIA_FALLBACK,
   sizes = DEFAULT_SIZES,
 }: FallbackMediaImageProps) {
   const [imgSrc, setImgSrc] = useState(src)
+
+  useEffect(() => {
+    setImgSrc(src || fallbackSrc)
+  }, [src, fallbackSrc])
 
   const isProxyMedia = imgSrc.includes('/api/') || imgSrc.includes('proxy-media')
 
   const isExternal = imgSrc.startsWith('http')
   const allowedDomains = [
     'i.pinimg.com',
-    'fastly.picsum.photos',
-    'picsum.photos',
     'static.street-beat.ru',
     'img.youtube.com',
     'cdn.mudaroba.com',
@@ -53,7 +56,7 @@ export default function FallbackMediaImage({
         decoding="async"
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
         onError={() => {
-          if (fallbackSrc && imgSrc !== fallbackSrc) setImgSrc(fallbackSrc)
+          if (imgSrc !== fallbackSrc) setImgSrc(fallbackSrc)
         }}
       />
     )
@@ -68,7 +71,7 @@ export default function FallbackMediaImage({
       sizes={sizes}
       className="pointer-events-none object-cover"
       onError={() => {
-        if (fallbackSrc && imgSrc !== fallbackSrc) setImgSrc(fallbackSrc)
+        if (imgSrc !== fallbackSrc) setImgSrc(fallbackSrc)
       }}
     />
   )

@@ -41,21 +41,10 @@ export default function CardMasonryMedia({ mediaUrl, alt, placeholderType, id }:
     return (
       <InViewAutoplayVideo
         src={src}
+        alt={alt}
+        fallbackSrc={placeholder}
         // Как в ProductCard: без отложенной подгрузки — IO внутри Link + overflow-hidden часто не даёт src.
         deferUntilInView={false}
-        onError={(e) => {
-          if (!placeholder) return
-          // video → обёртка InViewAutoplayVideo → ячейка карточки
-          const wrapper = e.currentTarget.parentElement?.parentElement
-          if (!wrapper) return
-          const img = document.createElement('img')
-          img.src = placeholder
-          img.alt = alt
-          img.loading = 'lazy'
-          img.decoding = 'async'
-          img.className = 'pointer-events-none absolute inset-0 h-full w-full object-cover'
-          wrapper.replaceChildren(img)
-        }}
       />
     )
   }

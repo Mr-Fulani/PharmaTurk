@@ -7,7 +7,12 @@ import Link from 'next/link'
 import Cookies from 'js-cookie'
 import api from '../lib/api'
 import { setPreferredCurrency } from '../lib/api'
-import { resolveMediaUrl, isVideoUrl } from '../lib/media'
+import {
+  applyImageFallback,
+  isVideoUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../lib/media'
 import { needsTypeInPath } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { useAuth } from '../context/AuthContext'
@@ -643,11 +648,23 @@ export default function ProfilePage() {
               <div className="flex flex-col items-center mb-6">
                 <div className="relative">
                   {displayAvatar ? (
-                    <img
-                      src={displayAvatar}
-                      alt={displayName}
-                      className="w-32 h-32 rounded-full object-cover border-4 border-[var(--accent-soft)]"
-                    />
+                    <>
+                      <img
+                        src={displayAvatar}
+                        alt={displayName}
+                        className="w-32 h-32 rounded-full object-cover border-4 border-[var(--accent-soft)]"
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none'
+                          const fallback = event.currentTarget.nextElementSibling as HTMLElement | null
+                          if (fallback) fallback.style.display = 'flex'
+                        }}
+                      />
+                      <div className="hidden w-32 h-32 rounded-full bg-[var(--surface)] items-center justify-center border-4 border-[var(--accent-soft)]">
+                        <span className="text-4xl font-bold text-[var(--text-strong)]">
+                          {displayName.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    </>
                   ) : (
                     <div className="w-32 h-32 rounded-full bg-[var(--surface)] flex items-center justify-center border-4 border-[var(--accent-soft)]">
                       <span className="text-4xl font-bold text-[var(--text-strong)]">
@@ -1004,12 +1021,14 @@ export default function ProfilePage() {
                                       autoPlay
                                       preload="metadata"
                                       className="h-full w-full object-cover transition-transform duration-200 group-hover/item:scale-105"
+                                      onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, localizedName)}
                                     />
                                   ) : item.product_image_url ? (
                                     <img
                                       src={resolveMediaUrl(item.product_image_url)}
                                       alt={localizedName}
                                       className="h-full w-full object-cover transition-transform duration-200 group-hover/item:scale-105"
+                                      onError={(event) => applyImageFallback(event.currentTarget)}
                                     />
                                   ) : (
                                     <div className="h-full w-full flex items-center justify-center bg-gray-200">

@@ -221,7 +221,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
     '@type': 'Organization',
     name: 'Mudaroba',
     url: siteUrl,
-    logo: `${siteUrl}/logo.png`,
+    logo: `${siteUrl}/logo.svg`,
     contactPoint: {
       '@type': 'ContactPoint',
       telephone: footerSettings?.phone || '+90-552-582-14-97',

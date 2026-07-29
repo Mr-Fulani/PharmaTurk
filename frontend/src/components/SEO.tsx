@@ -123,7 +123,7 @@ export function buildOrganizationSchema() {
     '@type': 'Organization',
     name: SITE_NAME,
     url: SITE_URL,
-    logo: `${SITE_URL}/logo.png`,
+    logo: `${SITE_URL}/logo.svg`,
     contactPoint: {
       '@type': 'ContactPoint',
       telephone: '+90-552-582-14-97',

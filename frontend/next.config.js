@@ -25,14 +25,6 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'fastly.picsum.photos',
-      },
-      {
-        protocol: 'https',
-        hostname: 'picsum.photos',
-      },
-      {
-        protocol: 'https',
         hostname: 'static.street-beat.ru',
       },
       {

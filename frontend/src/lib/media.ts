@@ -6,6 +6,8 @@ export type MediaSource = {
   url: string | null | undefined
 }
 
+export const DEFAULT_MEDIA_FALLBACK = '/media-placeholder.svg'
+
 const VIDEO_EXT_REGEX = /\.(mp4|webm|mov|avi|mkv|m4v)(\?|$)/i
 const GIF_EXT_REGEX = /\.gif(\?|$)/i
 
@@ -161,7 +163,7 @@ const stripTrailingSlash = (value?: string | null) => (value || '').replace(/\/+
  * localhost / ngrok / production — всё строится динамически.
  */
 export const resolveMediaUrl = (url?: string | null) => {
-  if (!url) return '/product-placeholder.svg'
+  if (!url) return DEFAULT_MEDIA_FALLBACK
   if (url.startsWith('blob:')) return url
 
   const stripApiSuffix = (value?: string | null) => {
@@ -197,6 +199,15 @@ export const resolveMediaUrl = (url?: string | null) => {
   if (/^https?:\/\//i.test(url)) {
     try {
       const u = new URL(url)
+      const placeholderHosts = new Set([
+        'picsum.photos',
+        'fastly.picsum.photos',
+        'placehold.co',
+        'via.placeholder.com',
+      ])
+      if (placeholderHosts.has(u.hostname)) {
+        return DEFAULT_MEDIA_FALLBACK
+      }
       const isInternalBackend =
         u.hostname === 'backend' ||
         (u.hostname === 'localhost' && u.port === '8000') ||
@@ -252,7 +263,8 @@ export const pickMedia = (media?: MediaSource, fallback?: string) => {
 }
 
 /**
- * Универсальный генератор placeholder-изображений.
+ * Единое локальное брендированное изображение для недоступного медиа.
+ * Параметры сохранены для обратной совместимости со старыми вызовами.
  */
 export function getPlaceholderImageUrl(options?: {
   type?: 'brand' | 'category' | 'product' | 'banner' | 'testimonial'
@@ -261,16 +273,33 @@ export function getPlaceholderImageUrl(options?: {
   width?: number
   height?: number
 }): string {
-  const {
-    type = 'product',
-    id,
-    seed,
-    width = 400,
-    height = 300,
-  } = options || {}
+  void options
+  return DEFAULT_MEDIA_FALLBACK
+}
 
-  const baseSeed = seed || (id !== undefined && id !== null ? `${type}-${id}` : type)
-  const safeSeed = encodeURIComponent(String(baseSeed))
+/** Безопасно переключает обычный img на локальный fallback без повторного цикла ошибок. */
+export function applyImageFallback(
+  image: HTMLImageElement,
+  fallbackSrc = DEFAULT_MEDIA_FALLBACK
+): void {
+  if (image.dataset.mediaFallbackApplied === 'true') return
+  image.dataset.mediaFallbackApplied = 'true'
+  image.src = fallbackSrc
+}
 
-  return `https://picsum.photos/seed/${safeSeed}/${width}/${height}`
+/** Останавливает сломанное video и показывает локальный fallback как его poster. */
+export function replaceFailedVideoWithFallback(
+  video: HTMLVideoElement,
+  _alt: string,
+  fallbackSrc = DEFAULT_MEDIA_FALLBACK
+): void {
+  if (video.dataset.mediaFallbackApplied === 'true') return
+  video.dataset.mediaFallbackApplied = 'true'
+  video.pause()
+  video.autoplay = false
+  video.controls = false
+  video.removeAttribute('src')
+  video.querySelectorAll('source').forEach((source) => source.removeAttribute('src'))
+  video.poster = fallbackSrc
+  video.load()
 }

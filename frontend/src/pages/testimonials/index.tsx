@@ -11,7 +11,12 @@ import api from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/20/solid'
 import { PhotoIcon, VideoCameraIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
-import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
+import {
+  applyImageFallback,
+  getPlaceholderImageUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../../lib/media'
 import { getInternalApiUrl } from '../../lib/urls'
 import { buildTestimonialUrl, Testimonial, TestimonialMedia } from '../../lib/testimonials'
 import { buildAuthRedirectQuery } from '../../lib/authRedirect'
@@ -281,6 +286,7 @@ export default function TestimonialsPage({
           src={resolveMediaUrl(media.image_url)}
           alt={selectedTestimonial?.author_name || 'Testimonial'}
           className="w-full h-full object-cover"
+          onError={(event) => applyImageFallback(event.currentTarget)}
         />
       )
     }
@@ -455,6 +461,10 @@ export default function TestimonialsPage({
           controls
           playsInline
           className="w-full h-full object-cover"
+          onError={(event) => replaceFailedVideoWithFallback(
+            event.currentTarget,
+            selectedTestimonial?.author_name || 'MUDAROBA'
+          )}
         >
           <source src={resolveMediaUrl(media.video_file_url)} type="video/mp4" />
           {t('video_tag_unsupported', 'Ваш браузер не поддерживает видео.')}
@@ -472,9 +482,7 @@ export default function TestimonialsPage({
         src={placeholder}
         alt={selectedTestimonial?.author_name || 'Testimonial'}
         className="w-full h-full object-cover"
-        onError={(e) => {
-          e.currentTarget.src = '/product-placeholder.svg'
-        }}
+        onError={(event) => applyImageFallback(event.currentTarget)}
       />
     )
   }
@@ -628,6 +636,7 @@ export default function TestimonialsPage({
                               src={resolveMediaUrl(cardMedia.image_url)}
                               alt={testimonial.author_name}
                               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              onError={(event) => applyImageFallback(event.currentTarget)}
                             />
                           )}
                           {cardMedia.media_type === 'video' && cardMedia.video_url && (
@@ -639,6 +648,7 @@ export default function TestimonialsPage({
                                     src={thumbnail}
                                     alt={testimonial.author_name}
                                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                    onError={(event) => applyImageFallback(event.currentTarget)}
                                   />
                                 )
                               }
@@ -656,6 +666,7 @@ export default function TestimonialsPage({
                               playsInline
                               preload="metadata"
                               className="w-full h-full object-cover"
+                              onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, testimonial.author_name)}
                             />
                           )}
                         </div>
@@ -680,9 +691,7 @@ export default function TestimonialsPage({
                             src={resolveMediaUrl(testimonial.author_avatar_url)}
                             alt={testimonial.author_name}
                             className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                            onError={(e) => {
-                              e.currentTarget.src = '/product-placeholder.svg'
-                            }}
+                            onError={(event) => applyImageFallback(event.currentTarget)}
                           />
                         )}
                         <div className="text-xs font-semibold text-gray-900 truncate">
@@ -696,9 +705,7 @@ export default function TestimonialsPage({
                             src={resolveMediaUrl(testimonial.author_avatar_url)}
                             alt={testimonial.author_name}
                             className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                            onError={(e) => {
-                              e.currentTarget.src = '/product-placeholder.svg'
-                            }}
+                            onError={(event) => applyImageFallback(event.currentTarget)}
                           />
                         )}
                         <div className="text-xs font-semibold text-gray-900 truncate">
@@ -872,6 +879,7 @@ export default function TestimonialsPage({
                                 src={item.preview}
                                 alt={`Preview ${index + 1}`}
                                 className="w-full h-32 object-cover rounded-lg"
+                                onError={(event) => applyImageFallback(event.currentTarget)}
                               />
                             )}
                             {item.type === 'video_file' && (
@@ -990,6 +998,7 @@ export default function TestimonialsPage({
                         src={resolveMediaUrl(selectedTestimonial.author_avatar_url)}
                         alt={selectedTestimonial.author_name}
                         className="w-12 h-12 rounded-full mr-4 object-cover"
+                        onError={(event) => applyImageFallback(event.currentTarget)}
                       />
                     )}
                     <div className="min-w-0">

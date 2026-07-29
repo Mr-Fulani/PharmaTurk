@@ -8,7 +8,12 @@ import { ChevronLeftIcon, ChevronRightIcon, StarIcon } from '@heroicons/react/20
 import SEO from '../../components/SEO'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 import { getInternalApiUrl } from '../../lib/urls'
-import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
+import {
+  applyImageFallback,
+  getPlaceholderImageUrl,
+  replaceFailedVideoWithFallback,
+  resolveMediaUrl,
+} from '../../lib/media'
 import { buildTestimonialUrl, Testimonial } from '../../lib/testimonials'
 
 interface TestimonialDetailProps {
@@ -82,6 +87,7 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
                         src={resolveMediaUrl(currentMedia.image_url)}
                         alt={testimonial.author_name}
                         className="h-full w-full object-cover"
+                        onError={(event) => applyImageFallback(event.currentTarget)}
                       />
                     )}
                     {currentMedia.media_type === 'video_file' && currentMedia.video_file_url && (
@@ -89,6 +95,7 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
                         controls
                         playsInline
                         className="h-full w-full object-cover"
+                        onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, testimonial.author_name)}
                       >
                         <source src={resolveMediaUrl(currentMedia.video_file_url)} type="video/mp4" />
                       </video>
@@ -133,6 +140,7 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
                       src={getPlaceholderImageUrl({ type: 'testimonial', id: testimonial.id })}
                       alt={testimonial.author_name}
                       className="h-full w-full object-cover"
+                      onError={(event) => applyImageFallback(event.currentTarget)}
                     />
                   </div>
                 )}
@@ -150,7 +158,12 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
                           onClick={() => setCurrentMediaIndex(index)}
                           className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border ${index === currentMediaIndex ? 'border-red-500' : 'border-gray-200'}`}
                         >
-                          <img src={thumb} alt="" className="h-full w-full object-cover" />
+                          <img
+                            src={thumb}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            onError={(event) => applyImageFallback(event.currentTarget)}
+                          />
                         </button>
                       )
                     })}
@@ -166,6 +179,7 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
                         src={resolveMediaUrl(testimonial.author_avatar_url)}
                         alt={testimonial.author_name}
                         className="h-14 w-14 rounded-full object-cover"
+                        onError={(event) => applyImageFallback(event.currentTarget)}
                       />
                     )}
                     <div>

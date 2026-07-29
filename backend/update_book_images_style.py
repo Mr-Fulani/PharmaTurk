@@ -18,7 +18,7 @@ def update_book_images():
     updated_count = 0
     for book in books:
         # Устанавливаем main_image в пустую строку
-        # Фронтенд автоматически подставит /product-placeholder.svg
+        # Фронтенд автоматически подставит /media-placeholder.svg
 
         book.main_image = ''
         book.save(update_fields=['main_image'])
@@ -29,7 +29,7 @@ def update_book_images():
     print(f"\n✅ Обновлено изображений: {updated_count}")
     print(
         "✅ Все книги теперь будут использовать дефолтную картинку "
-        "/product-placeholder.svg"
+        "/media-placeholder.svg"
     )
 
 
