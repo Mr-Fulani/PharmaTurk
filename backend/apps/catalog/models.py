@@ -1172,6 +1172,19 @@ class AbstractDomainProduct(models.Model):
             return
 
         product = getattr(self, 'base_product', None)
+        # Сигнал Product.post_save может связать доменную запись с shadow Product
+        # после её первого сохранения. Экземпляр self при этом остаётся со старым
+        # base_product=None; перечитываем связь, чтобы повторное save() не создало
+        # второй shadow-товар.
+        if not product and self.pk:
+            base_product_id = (
+                self.__class__.objects.filter(pk=self.pk)
+                .values_list("base_product_id", flat=True)
+                .first()
+            )
+            if base_product_id:
+                product = Product.objects.filter(pk=base_product_id).first()
+                self.base_product = product
         if not product:
             # Создаём новую shadow-копию
             base_slug = self.slug

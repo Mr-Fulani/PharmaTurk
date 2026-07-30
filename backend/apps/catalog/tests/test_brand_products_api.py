@@ -283,16 +283,10 @@ def test_accessory_brand_card_uses_same_shadow_media_as_category_card(db):
         main_image="products/accessories/zara/sunglasses/main.webp",
         is_active=True,
     )
-    AccessoryProduct.objects.create(
-        base_product=shadow,
-        name=shadow.name,
-        slug=shadow.slug,
-        category=category,
-        brand=brand,
-        price=shadow.price,
-        currency=shadow.currency,
-        main_image="parsed/stale-zara-image.jpg",
-        is_active=True,
+    # Product.post_save создаёт доменную запись автоматически. Меняем её напрямую,
+    # чтобы проверить, что карточки всё равно используют медиа shadow Product.
+    AccessoryProduct.objects.filter(base_product=shadow).update(
+        main_image="parsed/stale-zara-image.jpg"
     )
 
     client = APIClient()
