@@ -22,6 +22,7 @@ from apps.catalog.models import (
     GlobalAttributeKey,
 )
 from apps.catalog.constants import ECOMMERCE_ATTRIBUTES
+from apps.catalog.attribute_specs import ATTRIBUTE_SPECS, normalize_product_type
 from apps.catalog.utils.variant_titles import (
     build_variant_display_title,
     should_replace_variant_title,
@@ -447,6 +448,7 @@ class ContentGenerator:
                 description = getattr(domain, "description", "") or ""
         data = {
             "name": product.name,
+            "product_type": product.product_type,
             "description": description,
             "price": str(product.price) if product.price is not None else None,
             "currency": getattr(product, "currency", None),
@@ -595,15 +597,25 @@ class ContentGenerator:
         }
 
     def _collect_dynamic_attribute_catalog(self, product: Product) -> List[Dict[str, str]]:
-        """Список доступных динамических атрибутов для категории товара."""
+        """Список разрешённых auto-атрибутов для типа и категории товара."""
         try:
             category = getattr(product, "category", None)
-            qs = GlobalAttributeKey.objects.all().prefetch_related("translations").order_by("sort_order", "slug")
+            product_type = normalize_product_type(getattr(product, "product_type", None))
+            allowed_slugs = {
+                spec.slug
+                for spec in ATTRIBUTE_SPECS
+                if product_type in spec.product_types and spec.auto_apply
+            }
+            if not allowed_slugs:
+                return []
+            qs = (
+                GlobalAttributeKey.objects.filter(slug__in=allowed_slugs)
+                .prefetch_related("translations")
+                .order_by("sort_order", "slug")
+            )
             if category is not None:
                 category_ids = self._get_category_lineage_ids(category)
-                filtered = qs.filter(categories__id__in=category_ids).distinct()
-                if filtered.exists():
-                    qs = filtered
+                qs = qs.filter(categories__id__in=category_ids).distinct()
             rows = []
             for key in qs[:30]:
                 ru_name = ""
@@ -1959,6 +1971,8 @@ class ContentGenerator:
           • Используй их как список допустимых динамических атрибутов для этой категории.
           • Если в source-тексте есть подтверждённый факт и ему подходит один из этих slug, добавь его в attributes.dynamic_attributes.
           • Не создавай вымышленные атрибуты и не используй slug, которых нет в available_dynamic_attributes.
+          • Каждый slug возвращай не более одного раза.
+          • material — основной материал корпуса/полотна товара. Не подменяй его материалом пряжки, застёжки, ножек, каркаса или другой отдельной детали.
         - Если есть category_family_rules:
           • family показывает семейство товара; focus — какие типы фактов особенно важны; forbidden — что нельзя тащить в описание или title.
           • Для этой карточки приоритетно раскрывай факты именно из focus, а forbidden не включай в prose/SEO.

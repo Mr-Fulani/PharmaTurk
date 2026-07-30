@@ -157,23 +157,21 @@ def sync_furniture_dynamic_attributes(
             )
         if product.category_id:
             key.categories.add(product.category_id)
-        current = ProductAttributeValue.objects.filter(
+        current, created = ProductAttributeValue.objects.get_or_create(
             content_type=content_type,
             object_id=product.pk,
             attribute_key=key,
-        ).first()
-        if current and not overwrite:
-            continue
-        if current is None:
-            ProductAttributeValue.objects.create(
-                content_object=product,
-                attribute_key=key,
-                value=row["value"][:500],
-                value_ru=row["value_ru"][:500],
-                value_en=row["value_en"][:500],
-                sort_order=spec.sort_order,
-            )
+            defaults={
+                "value": row["value"][:500],
+                "value_ru": row["value_ru"][:500],
+                "value_en": row["value_en"][:500],
+                "sort_order": key.sort_order,
+            },
+        )
+        if created:
             changed += 1
+            continue
+        if not overwrite:
             continue
         updates = []
         for field in ("value", "value_ru", "value_en"):
@@ -181,8 +179,8 @@ def sync_furniture_dynamic_attributes(
             if getattr(current, field) != value:
                 setattr(current, field, value)
                 updates.append(field)
-        if current.sort_order != spec.sort_order:
-            current.sort_order = spec.sort_order
+        if current.sort_order != key.sort_order:
+            current.sort_order = key.sort_order
             updates.append("sort_order")
         if updates:
             current.save(update_fields=updates)
@@ -292,7 +290,7 @@ def sync_furniture_dynamic_attributes_batch(
                         value=row["value"][:500],
                         value_ru=row["value_ru"][:500],
                         value_en=row["value_en"][:500],
-                        sort_order=spec.sort_order,
+                        sort_order=key.sort_order,
                     )
                 )
                 continue
@@ -303,8 +301,8 @@ def sync_furniture_dynamic_attributes_batch(
                 if getattr(current, field) != value:
                     setattr(current, field, value)
                     dirty = True
-            if current.sort_order != spec.sort_order:
-                current.sort_order = spec.sort_order
+            if current.sort_order != key.sort_order:
+                current.sort_order = key.sort_order
                 dirty = True
             if dirty:
                 to_update.append(current)
@@ -313,6 +311,7 @@ def sync_furniture_dynamic_attributes_batch(
             ProductAttributeValue.objects.bulk_create(
                 to_create,
                 batch_size=write_batch_size,
+                ignore_conflicts=True,
             )
         if to_update:
             ProductAttributeValue.objects.bulk_update(

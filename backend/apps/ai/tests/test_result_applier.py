@@ -1,13 +1,89 @@
 import pytest
+from django.db import IntegrityError, transaction
 
 from apps.ai.models import AIProcessingLog
 from apps.ai.models import AIProcessingStatus
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.result_applier import AIResultApplier
-from apps.catalog.models import MedicineProduct
+from apps.catalog.models import (
+    AccessoryProduct,
+    GlobalAttributeKey,
+    MedicineProduct,
+    ProductAttributeValue,
+)
 
 
 pytestmark = pytest.mark.django_db
+
+
+def test_dynamic_attribute_apply_is_idempotent_for_repeated_slug():
+    key, _ = GlobalAttributeKey.objects.get_or_create(
+        slug="material",
+        defaults={"sort_order": 17},
+    )
+    accessory = AccessoryProduct.objects.create(
+        name="Тестовый ремень",
+        slug="test-repeated-dynamic-attribute",
+    )
+    accessory.refresh_from_db()
+    product = accessory.base_product
+    applier = AIResultApplier()
+
+    applier.apply_to_product(
+        product,
+        {
+            "extracted_attributes": {
+                "dynamic_attributes": [
+                    {
+                        "slug": "material",
+                        "value": "кожа",
+                        "value_ru": "кожа",
+                        "value_en": "leather",
+                    },
+                    {
+                        "slug": "material",
+                        "value": "Искусственная кожа",
+                        "value_ru": "Искусственная кожа",
+                        "value_en": "Faux Leather",
+                    },
+                ]
+            }
+        },
+    )
+
+    values = accessory.dynamic_attributes.filter(attribute_key=key)
+    assert values.count() == 1
+    value = values.get()
+    assert value.value_ru == "Искусственная кожа"
+    assert value.value_en == "Faux Leather"
+    assert value.sort_order == key.sort_order
+
+    applier.apply_to_product(
+        product,
+        {
+            "extracted_attributes": {
+                "dynamic_attributes": [
+                    {
+                        "slug": "material",
+                        "value": "Натуральная кожа",
+                        "value_ru": "Натуральная кожа",
+                        "value_en": "Genuine Leather",
+                    }
+                ]
+            }
+        },
+    )
+
+    assert values.count() == 1
+    value.refresh_from_db()
+    assert value.value_ru == "Натуральная кожа"
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ProductAttributeValue.objects.create(
+            content_object=accessory,
+            attribute_key=key,
+            value="Повтор",
+        )
 
 
 def test_medicine_applier_saves_localized_translation_seo_fields():

@@ -8,7 +8,7 @@ from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.result_applier import AIResultApplier, BaseAIApplier, BookAIApplier
 from apps.ai.tasks import process_product_ai_task
-from apps.catalog.models import Category, Product
+from apps.catalog.models import Category, GlobalAttributeKey, Product
 
 
 def _generator():
@@ -55,6 +55,39 @@ def test_dynamic_attribute_gate_uses_structured_parser_attributes():
     }
 
     assert _generator()._apply_confidence_gate_to_dynamic_attributes(rows, input_data) == rows
+
+
+@pytest.mark.django_db
+def test_dynamic_attribute_catalog_only_returns_allowed_category_specs():
+    category = Category.objects.create(name="Ремни", slug="ai-attribute-belts")
+    material, _ = GlobalAttributeKey.objects.get_or_create(slug="material")
+    irrelevant, _ = GlobalAttributeKey.objects.get_or_create(slug="cpu")
+    material.categories.add(category)
+    irrelevant.categories.add(category)
+    product = Product.objects.create(
+        name="Ремень",
+        slug="ai-attribute-catalog",
+        product_type="accessories",
+        category=category,
+    )
+
+    rows = _generator()._collect_dynamic_attribute_catalog(product)
+
+    assert [row["slug"] for row in rows] == ["material"]
+
+
+@pytest.mark.django_db
+def test_dynamic_attribute_catalog_does_not_fallback_to_global_keys():
+    category = Category.objects.create(name="Ремни", slug="ai-empty-attribute-belts")
+    GlobalAttributeKey.objects.get_or_create(slug="material")
+    product = Product.objects.create(
+        name="Ремень",
+        slug="ai-empty-attribute-catalog",
+        product_type="accessories",
+        category=category,
+    )
+
+    assert _generator()._collect_dynamic_attribute_catalog(product) == []
 
 
 def test_moderation_uses_currency_and_word_boundaries():

@@ -1624,6 +1624,17 @@ class ScraperIntegrationService:
                     existing_by_external_id,
                 )
 
+        existing_by_source_url = self._find_existing_product_by_source_url(
+            scraped_product
+        )
+        if existing_by_source_url:
+            return self._update_existing_product(
+                session,
+                scraped_product,
+                existing_by_source_url,
+                source_identity_match=True,
+            )
+
         existing_by_ilacfiyati_url = self._find_ilacfiyati_medicine_product_by_source_url(scraped_product)
         if existing_by_ilacfiyati_url:
             return self._update_existing_product(
@@ -1662,6 +1673,31 @@ class ScraperIntegrationService:
 
         # Создаем новый товар
         return self._create_new_product(session, scraped_product)
+
+    def _find_existing_product_by_source_url(
+        self,
+        scraped_product: ScrapedProduct,
+    ) -> Optional[Product]:
+        """Точный URL того же парсера — стабильный fallback внешнего ID.
+
+        Некоторые источники меняют ID группы вариантов, хотя URL карточки
+        остаётся прежним. Матч ограничен тем же source; если старых строк уже
+        несколько, используем самую раннюю как стабильную каноническую запись,
+        но ничего автоматически не удаляем.
+        """
+        source_url = str(scraped_product.url or "").strip()
+        source = str(scraped_product.source or "").strip()
+        if not source_url or not source:
+            return None
+
+        return (
+            Product.objects.filter(
+                external_url=source_url,
+                external_data__source=source,
+            )
+            .order_by("pk")
+            .first()
+        )
 
     def _find_ilacfiyati_medicine_product_by_source_url(
         self, scraped_product: ScrapedProduct
@@ -2824,6 +2860,8 @@ class ScraperIntegrationService:
         session: ScrapingSession,
         scraped_product: ScrapedProduct,
         existing_product: Product,
+        *,
+        source_identity_match: bool = False,
     ) -> Tuple[str, Product]:
         """Обновляет существующий товар.
 
@@ -2849,7 +2887,8 @@ class ScraperIntegrationService:
         # В этом случае мы НЕ должны перезатирать общие поля базового товара (фото, цену, url)
         # специфичными данными конкретного варианта (цвета/ножек), чтобы не "создавать дублей/миксов"
         is_variant_update = bool(
-            scraped_product.external_id 
+            not source_identity_match
+            and scraped_product.external_id
             and external_id_for_variant_check
             and str(scraped_product.external_id) != str(external_id_for_variant_check)
         )

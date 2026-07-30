@@ -3691,8 +3691,11 @@ class ProductAttributeValue(models.Model):
         verbose_name = _("🛠️ Динамический атрибут товара")
         verbose_name_plural = _("🛠️ Динамические атрибуты товаров")
         ordering = ["sort_order", "attribute_key"]
-        indexes = [
-            models.Index(fields=["content_type", "object_id"]),
+        constraints = [
+            models.UniqueConstraint(
+                fields=["content_type", "object_id", "attribute_key"],
+                name="catalog_pav_object_key_uniq",
+            ),
         ]
 
     def save(self, *args, **kwargs):

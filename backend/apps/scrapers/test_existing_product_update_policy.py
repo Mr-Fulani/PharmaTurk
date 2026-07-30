@@ -8,6 +8,39 @@ from apps.scrapers.services import ScraperIntegrationService
 
 
 @pytest.mark.django_db
+def test_changed_group_id_reuses_unique_product_from_same_source_url():
+    service = ScraperIntegrationService()
+    source_url = "https://www.lcw.com/erkek-kemer-o-4579317"
+    product = Product.objects.create(
+        name="LCW Kemer",
+        slug="lcw-source-url-identity",
+        product_type="accessories",
+        price=100,
+        currency="TRY",
+        external_id="lcw-old-group-id",
+        external_url=source_url,
+        external_data={"source": "lcw"},
+    )
+    scraped = ScrapedProduct(
+        name=product.name,
+        price=125,
+        currency="TRY",
+        url=source_url,
+        external_id="lcw-new-group-id",
+        source="lcw",
+    )
+
+    status, updated = service._process_single_product(None, scraped)
+
+    updated.refresh_from_db()
+    assert status == "updated"
+    assert Product.objects.filter(external_url=source_url).count() == 1
+    assert updated.pk == product.pk
+    assert updated.external_id == "lcw-old-group-id"
+    assert updated.price == 125
+
+
+@pytest.mark.django_db
 def test_repeat_scrape_preserves_semantic_fields_but_updates_price_and_stock():
     service = ScraperIntegrationService()
     old_brand = Brand.objects.create(name="Edited Brand")
