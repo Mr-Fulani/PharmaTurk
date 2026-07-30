@@ -347,7 +347,7 @@ export default function DotMenu({
   )
 }
 
-function LanguageFlag({ locale }: { locale: string }) {
+export function LanguageFlag({ locale }: { locale: string }) {
   const isRussian = locale.toLowerCase() === 'ru'
 
   return (
@@ -387,7 +387,7 @@ function LanguageFlag({ locale }: { locale: string }) {
   )
 }
 
-function CurrencyIcon({ code, compact = false }: { code: string; compact?: boolean }) {
+export function CurrencyIcon({ code, compact = false }: { code: string; compact?: boolean }) {
   const normalizedCode = code.toUpperCase()
 
   return (
