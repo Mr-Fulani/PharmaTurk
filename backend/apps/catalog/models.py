@@ -3513,6 +3513,33 @@ class Service(models.Model):
                             'price_with_margin': price_margin,
                             'is_base_price': False
                         }
+
+                # Наценка USDT входит в курс и может быть изменена отдельно от
+                # цены услуги. Эти направления считаем по текущей настройке,
+                # пока фоновая задача обновляет сохранённые snapshots.
+                from .utils.currency_converter import currency_converter
+
+                dynamic_targets = (
+                    ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT']
+                    if base_currency == 'USDT'
+                    else ['USDT']
+                )
+                dynamic_prices = currency_converter.convert_to_multiple_currencies(
+                    info.base_price,
+                    base_currency,
+                    dynamic_targets,
+                    apply_margin=True,
+                )
+                for code in dynamic_targets:
+                    result = dynamic_prices.get(code)
+                    if not result:
+                        continue
+                    prices[code] = {
+                        'original_price': result['original_price'],
+                        'converted_price': result['converted_price'],
+                        'price_with_margin': result['price_with_margin'],
+                        'is_base_price': code == base_currency,
+                    }
         except Exception:
             pass
         return prices

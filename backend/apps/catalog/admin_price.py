@@ -51,6 +51,16 @@ class PublicCatalogPriceAdminMixin:
             getattr(obj, "base_currency", "")
         )
 
+    def _usdt_markup_summary(self):
+        from .currency_models import GlobalCurrencySettings
+
+        markup = GlobalCurrencySettings.load().usdt_markup_percentage
+        return f"наценка USDT {markup:.2f}%"
+
+    @admin.display(description="Наценка USDT")
+    def usdt_markup_display(self, obj):
+        return self._usdt_markup_summary()
+
     def _public_price(self, obj, currency):
         from .currency_price_snapshots import price_with_pair_margin
         from .utils.currency_converter import currency_converter
@@ -62,6 +72,21 @@ class PublicCatalogPriceAdminMixin:
 
         base_currency = (obj.base_currency or "").upper()
         currency = currency.upper()
+
+        # Глобальная USDT-наценка входит в сам курс. Считаем такие направления
+        # по текущей настройке сразу, не дожидаясь фонового обновления snapshot.
+        if currency == "USDT" or base_currency == "USDT":
+            try:
+                _original, _converted, value = currency_converter.convert_price(
+                    obj.base_price,
+                    base_currency,
+                    currency,
+                    apply_margin=True,
+                )
+            except (TypeError, ValueError):
+                return None
+            return apply_product_markup(value, product)
+
         value = getattr(obj, f"{currency.lower()}_price", None)
         if value is None and currency == base_currency:
             value = obj.base_price

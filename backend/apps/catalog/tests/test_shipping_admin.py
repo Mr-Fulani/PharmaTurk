@@ -140,6 +140,7 @@ def test_service_price_admin_and_inline_show_total_public_margin(monkeypatch):
     assert inline.public_rub_price(price) == Decimal("230.00")
     assert "public_rub_price" in flattened_fields(inline)
     assert "currency_pair_margin_display" in flattened_fields(inline)
+    assert "usdt_markup_display" in flattened_fields(inline)
     assert "rub_price_with_margin" not in flattened_fields(inline)
     assert str(inline.verbose_name) == (
         "Итоговые цены с маржой"
@@ -163,16 +164,22 @@ def test_service_price_inline_title_shows_dynamic_margin_source(monkeypatch):
         "_currency_pair_margin_summary_for_base",
         lambda base_currency: "валютная пара TRY→RUB 10.00%",
     )
+    monkeypatch.setattr(
+        inline,
+        "_usdt_markup_summary",
+        lambda: "наценка USDT 5.00%",
+    )
 
     inline._set_dynamic_margin_titles(SimpleNamespace(currency="TRY"))
 
     assert str(inline.verbose_name) == (
         "Итоговые цены — маржа услуги 25.00% (глобальная настройка); "
-        "валютная пара TRY→RUB 10.00%"
+        "валютная пара TRY→RUB 10.00%; наценка USDT 5.00%"
     )
     assert str(inline.verbose_name_plural) == (
         "Итоговые цены по валютам — маржа услуги 25.00% "
-        "(глобальная настройка); валютная пара TRY→RUB 10.00%"
+        "(глобальная настройка); валютная пара TRY→RUB 10.00%; "
+        "наценка USDT 5.00%"
     )
 
 
@@ -201,6 +208,34 @@ def test_service_admin_uses_current_pair_margin_without_waiting_for_snapshot(mon
     )
 
     assert service_admin.public_rub_price(price) == Decimal("253.00")
+
+
+def test_service_admin_uses_current_usdt_markup_without_waiting_for_snapshot(monkeypatch):
+    from apps.catalog.utils.currency_converter import currency_converter
+
+    monkeypatch.setattr(
+        currency_converter,
+        "convert_price",
+        lambda amount, from_currency, to_currency, apply_margin: (
+            Decimal("10000"),
+            Decimal("221.83"),
+            Decimal("221.83"),
+        ),
+    )
+    service_admin = admin.site._registry[ServicePrice]
+    price = SimpleNamespace(
+        service=SimpleNamespace(
+            brand=None,
+            category=SimpleNamespace(margin_percent=Decimal("15")),
+        ),
+        base_currency="TRY",
+        base_price=Decimal("10000"),
+        # Намеренно устаревшее значение, рассчитанное при USDT-наценке 3%.
+        usdt_price=Decimal("217.61"),
+        usdt_price_with_margin=Decimal("250.25"),
+    )
+
+    assert service_admin.public_usdt_price(price) == Decimal("255.10")
 
 
 def test_variant_admin_currency_columns_include_product_markup(monkeypatch):

@@ -304,6 +304,7 @@ class ProductPriceAdmin(PublicCatalogPriceAdminMixin, admin.ModelAdmin):
         *COMPUTED_CURRENCY_PRICE_FIELDS,
         'effective_product_markup_display',
         'currency_pair_margin_display',
+        'usdt_markup_display',
         'public_rub_price', 'public_usd_price', 'public_kzt_price',
         'public_eur_price', 'public_try_price', 'public_usdt_price',
         'created_at', 'updated_at',
@@ -317,6 +318,7 @@ class ProductPriceAdmin(PublicCatalogPriceAdminMixin, admin.ModelAdmin):
             'fields': (
                 'effective_product_markup_display',
                 'currency_pair_margin_display',
+                'usdt_markup_display',
             ),
             'description': (
                 'Итог включает текущую маржу валютной пары, затем товарную маржу '
@@ -479,6 +481,7 @@ class ProductVariantPriceAdmin(PublicCatalogPriceAdminMixin, admin.ModelAdmin):
         *COMPUTED_CURRENCY_PRICE_FIELDS,
         'effective_product_markup_display',
         'currency_pair_margin_display',
+        'usdt_markup_display',
         'public_rub_price', 'public_usd_price', 'public_kzt_price',
         'public_eur_price', 'public_try_price', 'public_usdt_price',
         'created_at', 'updated_at',
@@ -492,6 +495,7 @@ class ProductVariantPriceAdmin(PublicCatalogPriceAdminMixin, admin.ModelAdmin):
             'fields': (
                 'effective_product_markup_display',
                 'currency_pair_margin_display',
+                'usdt_markup_display',
             ),
             'description': (
                 'Итог включает текущую маржу валютной пары, затем товарную маржу '
@@ -645,6 +649,7 @@ class ServicePriceAdmin(PublicCatalogPriceAdminMixin, admin.ModelAdmin):
         *COMPUTED_CURRENCY_PRICE_FIELDS,
         'effective_product_markup_display',
         'currency_pair_margin_display',
+        'usdt_markup_display',
         'public_rub_price', 'public_usd_price', 'public_kzt_price',
         'public_eur_price', 'public_try_price', 'public_usdt_price',
         'created_at', 'updated_at',
@@ -658,6 +663,7 @@ class ServicePriceAdmin(PublicCatalogPriceAdminMixin, admin.ModelAdmin):
             'fields': (
                 'effective_product_markup_display',
                 'currency_pair_margin_display',
+                'usdt_markup_display',
             ),
             'description': (
                 'Итоговая цена включает текущую маржу валютной пары и актуальную маржу '

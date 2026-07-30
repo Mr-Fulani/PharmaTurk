@@ -26,6 +26,19 @@ def _clear_margin_caches():
     currency_converter.clear_margin_cache()
 
 
+def _clear_usdt_rate_caches():
+    """Публикует новую USDT-наценку во всех web/celery процессах."""
+    try:
+        cache.incr("usdt_rate_version")
+    except (ValueError, TypeError):
+        cache.set("usdt_rate_version", 2, timeout=None)
+
+    # Текущий процесс тоже не должен ждать истечения локального memo TTL.
+    from .utils.currency_service import clear_rate_memo
+
+    clear_rate_memo()
+
+
 class CurrencyRate(models.Model):
     """Модель для хранения курсов валют"""
     
@@ -148,13 +161,45 @@ class GlobalCurrencySettings(models.Model):
         
     def save(self, *args, **kwargs):
         """Гарантирует существование только одной записи (Singleton) и очищает кэш при сохранении."""
+        previous_usdt_markup = (
+            type(self).objects.filter(pk=1)
+            .values_list("usdt_markup_percentage", flat=True)
+            .first()
+        )
+        update_fields = kwargs.get("update_fields")
+        updates_usdt_markup = (
+            update_fields is None or "usdt_markup_percentage" in update_fields
+        )
         self.pk = 1
         super().save(*args, **kwargs)
         _clear_margin_caches()
+        usdt_markup_changed = (
+            updates_usdt_markup
+            and previous_usdt_markup is not None
+            and previous_usdt_markup != self.usdt_markup_percentage
+        )
+        if usdt_markup_changed:
+            _clear_usdt_rate_caches()
+            self._schedule_usdt_snapshot_refresh()
 
     def delete(self, *args, **kwargs):
         """Предотвращает удаление единственной записи."""
         pass
+
+    @staticmethod
+    def _schedule_usdt_snapshot_refresh():
+        """После commit обновляет все сохранённые цены, затронутые USDT."""
+        from django.db import transaction
+
+        def enqueue():
+            try:
+                from .tasks import refresh_usdt_price_snapshots_task
+
+                refresh_usdt_price_snapshots_task.delay()
+            except Exception:
+                logger.exception("Failed to enqueue USDT price snapshot refresh")
+
+        transaction.on_commit(enqueue, robust=True)
 
     @classmethod
     def load(cls):

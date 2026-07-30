@@ -621,6 +621,7 @@ class ServicePriceInline(PublicCatalogPriceAdminMixin, nested_admin.NestedStacke
     readonly_fields = (
         'effective_product_markup_display',
         'currency_pair_margin_display',
+        'usdt_markup_display',
         'rub_price', 'public_rub_price',
         'usd_price', 'public_usd_price',
         'kzt_price', 'public_kzt_price',
@@ -633,6 +634,7 @@ class ServicePriceInline(PublicCatalogPriceAdminMixin, nested_admin.NestedStacke
             'fields': (
                 'effective_product_markup_display',
                 'currency_pair_margin_display',
+                'usdt_markup_display',
             ),
         }),
         (_('RUB'), {'fields': ('rub_price', 'public_rub_price')}),
@@ -661,12 +663,14 @@ class ServicePriceInline(PublicCatalogPriceAdminMixin, nested_admin.NestedStacke
         pair_margin_label = self._currency_pair_margin_summary_for_base(
             service.currency
         )
+        usdt_markup_label = self._usdt_markup_summary()
         self.verbose_name = (
-            f"Итоговые цены — маржа услуги {margin_label}; {pair_margin_label}"
+            f"Итоговые цены — маржа услуги {margin_label}; "
+            f"{pair_margin_label}; {usdt_markup_label}"
         )
         self.verbose_name_plural = (
             f"Итоговые цены по валютам — маржа услуги {margin_label}; "
-            f"{pair_margin_label}"
+            f"{pair_margin_label}; {usdt_markup_label}"
         )
 
     def get_formset(self, request, obj=None, **kwargs):

@@ -80,6 +80,14 @@ def refresh_currency_margin_snapshots_task():
     return refresh_currency_margin_snapshots()
 
 
+@shared_task(name='currency.refresh_usdt_price_snapshots')
+def refresh_usdt_price_snapshots_task():
+    """Пересчитывает сохранённые цены после изменения глобальной USDT-наценки."""
+    from .currency_price_snapshots import refresh_usdt_price_snapshots
+
+    return refresh_usdt_price_snapshots()
+
+
 @shared_task(name='currency.cleanup_old_logs')
 def cleanup_old_currency_logs(days_to_keep=30):
     """Очистка старых логов обновления курсов."""
