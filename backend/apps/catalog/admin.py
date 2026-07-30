@@ -21,6 +21,7 @@ from .forms import (
 )
 from .admin_variant_ai import VariantAIAdminMixin
 from .admin_media import AdminMediaHelpTextMixin, resolve_media_url, render_media_preview
+from .admin_price import PublicCatalogPriceAdminMixin
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
@@ -608,29 +609,69 @@ class ProductAttributeValueInline(GenericTabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
-class ServicePriceInline(nested_admin.NestedStackedInline):
-    """Inline для просмотра конвертированных цен услуги."""
+class ServicePriceInline(PublicCatalogPriceAdminMixin, nested_admin.NestedStackedInline):
+    """Inline для просмотра итоговых публичных цен услуги."""
     model = ServicePrice
     can_delete = False
-    verbose_name = _("Конвертированные цены")
-    verbose_name_plural = _("Конвертированные цены по валютам")
+    verbose_name = _("Итоговые цены с маржой")
+    verbose_name_plural = _(
+        "Итоговые цены по валютам — маржа категории/глобальная + маржа валютной пары"
+    )
     classes = ('collapse',)
     readonly_fields = (
-        'rub_price', 'rub_price_with_margin',
-        'usd_price', 'usd_price_with_margin',
-        'kzt_price', 'kzt_price_with_margin',
-        'eur_price', 'eur_price_with_margin',
-        'try_price', 'try_price_with_margin',
-        'usdt_price', 'usdt_price_with_margin',
+        'effective_product_markup_display',
+        'currency_pair_margin_display',
+        'rub_price', 'public_rub_price',
+        'usd_price', 'public_usd_price',
+        'kzt_price', 'public_kzt_price',
+        'eur_price', 'public_eur_price',
+        'try_price', 'public_try_price',
+        'usdt_price', 'public_usdt_price',
     )
     fieldsets = (
-        (_('RUB'), {'fields': ('rub_price', 'rub_price_with_margin')}),
-        (_('USD'), {'fields': ('usd_price', 'usd_price_with_margin')}),
-        (_('KZT'), {'fields': ('kzt_price', 'kzt_price_with_margin')}),
-        (_('EUR'), {'fields': ('eur_price', 'eur_price_with_margin')}),
-        (_('TRY'), {'fields': ('try_price', 'try_price_with_margin')}),
-        (_('USDT'), {'fields': ('usdt_price', 'usdt_price_with_margin')}),
+        (_('Маржа'), {
+            'fields': (
+                'effective_product_markup_display',
+                'currency_pair_margin_display',
+            ),
+        }),
+        (_('RUB'), {'fields': ('rub_price', 'public_rub_price')}),
+        (_('USD'), {'fields': ('usd_price', 'public_usd_price')}),
+        (_('KZT'), {'fields': ('kzt_price', 'public_kzt_price')}),
+        (_('EUR'), {'fields': ('eur_price', 'public_eur_price')}),
+        (_('TRY'), {'fields': ('try_price', 'public_try_price')}),
+        (_('USDT'), {'fields': ('usdt_price', 'public_usdt_price')}),
     )
+
+    def _markup_product(self, obj):
+        return getattr(obj, 'service', None)
+
+    def _set_dynamic_margin_titles(self, service):
+        if not service:
+            return
+        from .utils.product_markup import get_effective_product_markup
+
+        margin, source = get_effective_product_markup(service)
+        source_label = {
+            'brand': 'бренд',
+            'category': 'категория',
+            'global': 'глобальная настройка',
+        }.get(source, 'не задана')
+        margin_label = f"{margin}% ({source_label})"
+        pair_margin_label = self._currency_pair_margin_summary_for_base(
+            service.currency
+        )
+        self.verbose_name = (
+            f"Итоговые цены — маржа услуги {margin_label}; {pair_margin_label}"
+        )
+        self.verbose_name_plural = (
+            f"Итоговые цены по валютам — маржа услуги {margin_label}; "
+            f"{pair_margin_label}"
+        )
+
+    def get_formset(self, request, obj=None, **kwargs):
+        self._set_dynamic_margin_titles(obj)
+        return super().get_formset(request, obj, **kwargs)
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -1522,7 +1563,8 @@ class ClothingVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, 
             data = results.get(target_currency)
             if not data:
                 return None
-            return data.get('price_with_margin')
+            from .utils.product_markup import apply_product_markup
+            return apply_product_markup(data.get('price_with_margin'), obj.product)
         except Exception:
             return None
 
@@ -1691,7 +1733,9 @@ class ClothingProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, 
                 data = results.get(cur)
                 if not data:
                     return '-'
-                return str(data.get('price_with_margin') or '-')
+                from .utils.product_markup import apply_product_markup
+                value = apply_product_markup(data.get('price_with_margin'), obj)
+                return str(value if value is not None else '-')
 
             rows.append(
                 (
@@ -1917,7 +1961,8 @@ class ShoeVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, Vari
             data = results.get(target_currency)
             if not data:
                 return None
-            return data.get('price_with_margin')
+            from .utils.product_markup import apply_product_markup
+            return apply_product_markup(data.get('price_with_margin'), obj.product)
         except Exception:
             return None
 
@@ -2143,7 +2188,9 @@ class ShoeProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, Shad
                 data = results.get(cur)
                 if not data:
                     return '-'
-                return str(data.get('price_with_margin') or '-')
+                from .utils.product_markup import apply_product_markup
+                value = apply_product_markup(data.get('price_with_margin'), obj)
+                return str(value if value is not None else '-')
 
             rows.append(
                 (
@@ -2563,7 +2610,9 @@ class JewelryProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, C
                 data = results.get(cur)
                 if not data:
                     return '-'
-                return str(data.get('price_with_margin') or '-')
+                from .utils.product_markup import apply_product_markup
+                value = apply_product_markup(data.get('price_with_margin'), obj)
+                return str(value if value is not None else '-')
 
             label = v.material or v.color or v.name or '-'
             rows.append(

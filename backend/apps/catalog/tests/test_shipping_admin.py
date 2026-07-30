@@ -8,8 +8,10 @@ from apps.catalog.currency_models import (
     GlobalShippingSettings,
     ProductPrice,
     ProductVariantPrice,
+    ServicePrice,
 )
-from apps.catalog.models import Category
+from apps.catalog.admin import ServicePriceInline
+from apps.catalog.models import Category, ClothingVariant, Service
 
 
 def flattened_fields(model_admin):
@@ -62,7 +64,14 @@ def test_currency_update_log_admin_uses_only_log_fields(rf, django_user_model):
     assert log_admin.get_actions(request) == {}
 
 
-def test_product_price_admin_shows_effective_product_markup_separately():
+def test_product_price_admin_shows_effective_product_markup_separately(monkeypatch):
+    from apps.catalog.utils.currency_converter import currency_converter
+
+    monkeypatch.setattr(
+        currency_converter,
+        "get_margin_rate",
+        lambda from_currency, to_currency: Decimal("0"),
+    )
     product_admin = admin.site._registry[ProductPrice]
     product = SimpleNamespace(
         brand=None,
@@ -72,14 +81,148 @@ def test_product_price_admin_shows_effective_product_markup_separately():
         product=product,
         base_currency="TRY",
         base_price=Decimal("100"),
+        rub_price=Decimal("200"),
         rub_price_with_margin=Decimal("200"),
+        usd_price=Decimal("5"),
         usd_price_with_margin=Decimal("5"),
+        kzt_price=None,
         kzt_price_with_margin=None,
+        eur_price=None,
         eur_price_with_margin=None,
+        try_price=Decimal("100"),
         try_price_with_margin=Decimal("100"),
+        usdt_price=None,
         usdt_price_with_margin=None,
     )
 
     assert product_admin.effective_product_markup_display(price) == "10% (категория)"
     assert product_admin.public_rub_price(price) == Decimal("220.00")
     assert product_admin.public_try_price(price) == Decimal("110.00")
+
+
+def test_service_price_admin_and_inline_show_total_public_margin(monkeypatch):
+    from apps.catalog.utils.currency_converter import currency_converter
+
+    monkeypatch.setattr(
+        currency_converter,
+        "get_margin_rate",
+        lambda from_currency, to_currency: Decimal("0"),
+    )
+    service_admin = admin.site._registry[ServicePrice]
+    service = SimpleNamespace(
+        brand=None,
+        category=SimpleNamespace(margin_percent=Decimal("15")),
+    )
+    price = SimpleNamespace(
+        service=service,
+        base_currency="TRY",
+        base_price=Decimal("100"),
+        rub_price=Decimal("200"),
+        rub_price_with_margin=Decimal("200"),
+        usd_price=Decimal("5"),
+        usd_price_with_margin=Decimal("5"),
+        kzt_price=None,
+        kzt_price_with_margin=None,
+        eur_price=None,
+        eur_price_with_margin=None,
+        try_price=Decimal("100"),
+        try_price_with_margin=Decimal("100"),
+        usdt_price=None,
+        usdt_price_with_margin=None,
+    )
+
+    assert service_admin.effective_product_markup_display(price) == "15% (категория)"
+    assert service_admin.public_rub_price(price) == Decimal("230.00")
+    assert service_admin.public_try_price(price) == Decimal("115.00")
+
+    inline = ServicePriceInline(Service, admin.site)
+    assert inline.effective_product_markup_display(price) == "15% (категория)"
+    assert inline.public_rub_price(price) == Decimal("230.00")
+    assert "public_rub_price" in flattened_fields(inline)
+    assert "currency_pair_margin_display" in flattened_fields(inline)
+    assert "rub_price_with_margin" not in flattened_fields(inline)
+    assert str(inline.verbose_name) == (
+        "Итоговые цены с маржой"
+    )
+    assert str(inline.verbose_name_plural) == (
+        "Итоговые цены по валютам — маржа категории/глобальная + маржа валютной пары"
+    )
+
+
+def test_service_price_inline_title_shows_dynamic_margin_source(monkeypatch):
+    from apps.catalog.utils import product_markup
+
+    monkeypatch.setattr(
+        product_markup,
+        "get_effective_product_markup",
+        lambda service: (Decimal("25.00"), "global"),
+    )
+    inline = ServicePriceInline(Service, admin.site)
+    monkeypatch.setattr(
+        inline,
+        "_currency_pair_margin_summary_for_base",
+        lambda base_currency: "валютная пара TRY→RUB 10.00%",
+    )
+
+    inline._set_dynamic_margin_titles(SimpleNamespace(currency="TRY"))
+
+    assert str(inline.verbose_name) == (
+        "Итоговые цены — маржа услуги 25.00% (глобальная настройка); "
+        "валютная пара TRY→RUB 10.00%"
+    )
+    assert str(inline.verbose_name_plural) == (
+        "Итоговые цены по валютам — маржа услуги 25.00% "
+        "(глобальная настройка); валютная пара TRY→RUB 10.00%"
+    )
+
+
+def test_service_admin_uses_current_pair_margin_without_waiting_for_snapshot(monkeypatch):
+    from apps.catalog.utils.currency_converter import currency_converter
+
+    monkeypatch.setattr(
+        currency_converter,
+        "get_margin_rate",
+        lambda from_currency, to_currency: (
+            Decimal("10") if (from_currency, to_currency) == ("TRY", "RUB")
+            else Decimal("0")
+        ),
+    )
+    service_admin = admin.site._registry[ServicePrice]
+    price = SimpleNamespace(
+        service=SimpleNamespace(
+            brand=None,
+            category=SimpleNamespace(margin_percent=Decimal("15")),
+        ),
+        base_currency="TRY",
+        base_price=Decimal("100"),
+        rub_price=Decimal("200"),
+        # Намеренно устаревший snapshot: админка не должна брать это значение.
+        rub_price_with_margin=Decimal("200"),
+    )
+
+    assert service_admin.public_rub_price(price) == Decimal("253.00")
+
+
+def test_variant_admin_currency_columns_include_product_markup(monkeypatch):
+    from apps.catalog.utils.currency_converter import currency_converter
+
+    monkeypatch.setattr(
+        currency_converter,
+        "convert_to_multiple_currencies",
+        lambda *args, **kwargs: {
+            "RUB": {"price_with_margin": Decimal("200.00")}
+        },
+    )
+    variant_admin = admin.site._registry[ClothingVariant]
+    variant = SimpleNamespace(
+        price=Decimal("100"),
+        currency="TRY",
+        product=SimpleNamespace(
+            price=Decimal("100"),
+            currency="TRY",
+            brand=None,
+            category=SimpleNamespace(margin_percent=Decimal("10")),
+        ),
+    )
+
+    assert variant_admin._converted_with_margin(variant, "RUB") == Decimal("220.00")

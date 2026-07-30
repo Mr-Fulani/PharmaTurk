@@ -152,6 +152,12 @@ def _apply_product_markup_to_payload(data, obj):
             price_data["price_with_margin"] = _apply_markup_value(
                 price_data["price_with_margin"], margin
             )
+    prices_info = data.get("prices_info")
+    if isinstance(prices_info, dict):
+        for currency in ("rub", "usd", "kzt", "eur", "try", "usdt"):
+            field = f"{currency}_price_with_margin"
+            if prices_info.get(field) is not None:
+                prices_info[field] = _apply_markup_value(prices_info[field], margin)
 
     data["product_markup_percent"] = margin
     data["product_markup_source"] = source
@@ -5102,6 +5108,11 @@ class ServiceSerializer(serializers.ModelSerializer):
             'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'product_type']
+
+    def to_representation(self, instance):
+        """Накладывает категорийную/глобальную наценку на публичные цены услуги."""
+        data = super().to_representation(instance)
+        return _apply_product_markup_to_payload(data, instance)
     
     def get_name(self, obj):
         """Локализованное название."""
