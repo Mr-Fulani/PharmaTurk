@@ -1218,6 +1218,14 @@ class AbstractDomainProduct(models.Model):
                 product.main_video_file = self.main_video_file
                 
             product.save()
+            # Product.post_save может успеть связать новый shadow-товар с другой
+            # доменной строкой (например, при совпадении slug во время импорта).
+            # OneToOne не позволяет затем привязать его к текущей строке. Текущая
+            # доменная запись — источник создания shadow Product, поэтому она
+            # должна владеть этой связью.
+            self.__class__.objects.filter(base_product=product).exclude(pk=self.pk).update(
+                base_product=None
+            )
             self.__class__.objects.filter(pk=self.pk).update(base_product=product)
             return
 
