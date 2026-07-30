@@ -168,30 +168,37 @@ def _get_product_price_for_currency(product, currency: str):
     from apps.catalog.utils.product_markup import apply_product_markup
 
     currency = (currency or 'RUB').upper()
-    if getattr(product, "product_type", None) == "jewelry":
-        base_price = getattr(product, "price", None)
-        if base_price is not None:
-            from_currency = (getattr(product, "currency", None) or "RUB").upper()
-            try:
-                _, _, price_with_margin = currency_converter.convert_price(
-                    Decimal(base_price),
-                    from_currency,
-                    currency,
-                    apply_margin=True,
-                )
-                return apply_product_markup(price_with_margin, product)
-            except Exception:
-                return Decimal(str(base_price))
+    base_price = getattr(product, "price", None)
+    base_currency = (getattr(product, "currency", None) or "RUB").upper()
+
+    # Для shadow-варианта сохранённый ProductPrice содержит фактическую
+    # базовую цену выбранного варианта. Целевую цену из snapshot не берём:
+    # она может ещё не успеть обновиться после изменения маржи.
     try:
         prices = product.get_all_prices() or {}
-        if currency in prices:
-            value = prices[currency].get('price_with_margin')
-            if value is not None:
-                return apply_product_markup(value, product)
+        for code, data in prices.items():
+            if data.get("is_base_price"):
+                base_price = data.get("original_price")
+                if base_price is None:
+                    base_price = data.get("converted_price")
+                base_currency = code.upper()
+                break
     except Exception:
         pass
+
+    if base_price is not None:
+        try:
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(str(base_price)),
+                base_currency,
+                currency,
+                apply_margin=True,
+            )
+            return apply_product_markup(price_with_margin, product)
+        except Exception:
+            return apply_product_markup(base_price, product)
     try:
-        return apply_product_markup(getattr(product, 'price', 0) or 0, product)
+        return apply_product_markup(0, product)
     except Exception:
         return Decimal('0')
 

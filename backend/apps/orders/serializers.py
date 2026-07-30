@@ -541,6 +541,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     final_price_usd = serializers.SerializerMethodField()  # Новое поле
     margin_percent_applied = serializers.SerializerMethodField()  # Новое поле
     prices_in_currencies = serializers.SerializerMethodField()  # Новое поле
+    total = serializers.SerializerMethodField()
 
     class Meta:
         model = CartItem
@@ -939,58 +940,52 @@ class CartItemSerializer(serializers.ModelSerializer):
             }
         except Exception:
             return None
+
+    def _get_base_price(self, obj):
+        product = obj.product
+        base_price = getattr(product, "price", None)
+        base_currency = (
+            getattr(product, "currency", None)
+            or getattr(obj, "currency", None)
+            or "RUB"
+        ).upper()
+        try:
+            for currency, data in (product.get_all_prices() or {}).items():
+                if data.get("is_base_price"):
+                    candidate = data.get("original_price")
+                    if candidate is None:
+                        candidate = data.get("converted_price")
+                    if candidate is not None:
+                        return candidate, currency.upper()
+        except Exception:
+            pass
+        return base_price, base_currency
+
+    def _get_live_currency_data(self, obj, target_currency):
+        base_price, base_currency = self._get_base_price(obj)
+        if base_price is None:
+            return None
+        original, converted, price_with_margin = currency_converter.convert_price(
+            Decimal(str(base_price)),
+            base_currency,
+            target_currency,
+            apply_margin=True,
+        )
+        return {
+            "original_price": original,
+            "converted_price": converted,
+            "price_with_margin": price_with_margin,
+            "is_base_price": base_currency == target_currency,
+        }
     
     def _get_price_without_product_markup(self, obj):
         """Получает цену в предпочитаемой валюте."""
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
-        product = obj.product
-        if product and product.product_type == "jewelry":
-            base_price = product.price
-            if base_price is not None:
-                from_currency = (product.currency or 'RUB').upper()
-                try:
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(base_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return price_with_margin
-                except Exception:
-                    return base_price
-        
-        # Получаем цену в предпочитаемой валюте
         try:
-            prices = obj.product.get_all_prices()
-            if prices and preferred_currency in prices:
-                return prices[preferred_currency].get('price_with_margin')
-            elif prices:
-                # Предпочитаемой валюты нет в кэше — конвертируем из базовой
-                base_price_val = None
-                base_curr = None
-                for currency, data in prices.items():
-                    if data.get('is_base_price'):
-                        base_price_val = data.get('price_with_margin') or data.get('converted_price')
-                        base_curr = currency
-                        break
-                if not base_curr and prices:
-                    first_key = list(prices.keys())[0]
-                    base_price_val = prices[first_key].get('price_with_margin')
-                    base_curr = first_key
-                if base_curr and base_price_val and base_curr.upper() != preferred_currency.upper():
-                    try:
-                        _, _, price = currency_converter.convert_price(
-                            Decimal(str(base_price_val)),
-                            base_curr,
-                            preferred_currency,
-                            apply_margin=True,
-                        )
-                        return price
-                    except Exception:
-                        pass
-                if base_price_val is not None:
-                    return base_price_val
+            data = self._get_live_currency_data(obj, preferred_currency)
+            if data:
+                return data["price_with_margin"]
         except Exception:
             pass
 
@@ -1012,6 +1007,11 @@ class CartItemSerializer(serializers.ModelSerializer):
         from apps.catalog.utils.product_markup import apply_product_markup
 
         return apply_product_markup(self._get_price_without_product_markup(obj), obj.product)
+
+    def get_total(self, obj):
+        return (
+            Decimal(str(self.get_price(obj) or 0)) * obj.quantity
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     
     def get_currency(self, obj):
         """Всегда возвращает предпочитаемую валюту — цены конвертируются в get_price."""
@@ -1044,18 +1044,18 @@ class CartItemSerializer(serializers.ModelSerializer):
             return None
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
-        if preferred_currency != from_currency:
-            try:
-                _, _, price_with_margin = currency_converter.convert_price(
-                    Decimal(old_price),
-                    from_currency,
-                    preferred_currency,
-                    apply_margin=True,
-                )
-                return price_with_margin
-            except Exception:
-                pass
-        return old_price
+        try:
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(old_price),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            from apps.catalog.utils.product_markup import apply_product_markup
+
+            return apply_product_markup(price_with_margin, product)
+        except Exception:
+            return old_price
 
     def get_old_price_formatted(self, obj):
         product = obj.product
@@ -1081,119 +1081,77 @@ class CartItemSerializer(serializers.ModelSerializer):
                             from_currency = (parent_product.currency or variant.currency or product.currency or 'RUB').upper()
         if old_price is None:
             return None
-        request = self.context.get('request')
-        preferred_currency = self._get_preferred_currency(request)
-        
-        # Применяем маржу даже если валюта совпадает (особенно для рублей)
-        try:
-            _, _, price_with_margin = currency_converter.convert_price(
-                Decimal(old_price),
-                from_currency,
-                preferred_currency,
-                apply_margin=True,
-            )
-            return f"{price_with_margin} {preferred_currency}"
-        except Exception:
-            # Fallback на исходное значение если конвертация не удалась
-            return f"{old_price} {from_currency}"
+        preferred_currency = self._get_preferred_currency(self.context.get('request'))
+        return f"{self.get_old_price(obj)} {preferred_currency}"
     
     def get_converted_price_rub(self, obj):
         """Получает конвертированную цену в RUB."""
-        if obj.product and obj.product.product_type == "jewelry":
-            data = self._get_jewelry_price_data(obj.product, "RUB")
-            if data:
-                return data.get("converted_price")
         try:
-            prices = obj.product.get_all_prices()
-            if 'RUB' in prices:
-                return prices['RUB'].get('converted_price')
+            data = self._get_live_currency_data(obj, "RUB")
+            return data.get("converted_price") if data else None
         except Exception:
             pass
         return None
     
     def get_converted_price_usd(self, obj):
         """Получает конвертированную цену в USD."""
-        if obj.product and obj.product.product_type == "jewelry":
-            data = self._get_jewelry_price_data(obj.product, "USD")
-            if data:
-                return data.get("converted_price")
         try:
-            prices = obj.product.get_all_prices()
-            if 'USD' in prices:
-                return prices['USD'].get('converted_price')
+            data = self._get_live_currency_data(obj, "USD")
+            return data.get("converted_price") if data else None
         except Exception:
             pass
         return None
     
     def get_final_price_rub(self, obj):
         """Получает финальную цену в RUB с маржой."""
-        if obj.product and obj.product.product_type == "jewelry":
-            data = self._get_jewelry_price_data(obj.product, "RUB")
-            if data:
-                return data.get("price_with_margin")
         try:
-            prices = obj.product.get_all_prices()
-            if 'RUB' in prices:
-                return prices['RUB'].get('price_with_margin')
+            from apps.catalog.utils.product_markup import apply_product_markup
+
+            data = self._get_live_currency_data(obj, "RUB")
+            return apply_product_markup(data["price_with_margin"], obj.product) if data else None
         except Exception:
             pass
         return None
     
     def get_final_price_usd(self, obj):
         """Получает финальную цену в USD с маржой."""
-        if obj.product and obj.product.product_type == "jewelry":
-            data = self._get_jewelry_price_data(obj.product, "USD")
-            if data:
-                return data.get("price_with_margin")
         try:
-            prices = obj.product.get_all_prices()
-            if 'USD' in prices:
-                return prices['USD'].get('price_with_margin')
+            from apps.catalog.utils.product_markup import apply_product_markup
+
+            data = self._get_live_currency_data(obj, "USD")
+            return apply_product_markup(data["price_with_margin"], obj.product) if data else None
         except Exception:
             pass
         return None
     
     def get_margin_percent_applied(self, obj):
         """Получает примененную маржу."""
-        if obj.product and obj.product.product_type == "jewelry":
-            return 0
         try:
-            prices = obj.product.get_all_prices()
-            if prices:
-                # Найдем базовую валюту
-                for currency, data in prices.items():
-                    if data.get('is_base_price'):
-                        return 0  # Для базовой валюты маржа 0%
-                
-                # Для других валют можно взять среднюю маржу
-                margins = []
-                for currency, data in prices.items():
-                    if not data.get('is_base_price') and data.get('price_with_margin') and data.get('converted_price'):
-                        if data['converted_price'] > 0:
-                            margin = ((data['price_with_margin'] - data['converted_price']) / data['converted_price']) * 100
-                            margins.append(margin)
-                
-                if margins:
-                    return sum(margins) / len(margins)
+            _, base_currency = self._get_base_price(obj)
+            return currency_converter.get_margin_rate(
+                base_currency,
+                self._get_preferred_currency(self.context.get("request")),
+            )
         except Exception:
             pass
         return 0
     
     def get_prices_in_currencies(self, obj):
-        """Получает цены во всех валютах."""
-        if obj.product and obj.product.product_type == "jewelry":
-            base_currency = (obj.product.currency or "RUB").upper()
-            prices = {}
-            for currency in ("RUB", "USD"):
-                data = self._get_jewelry_price_data(obj.product, currency)
+        """Получает актуальные публичные цены во всех валютах."""
+        from apps.catalog.utils.product_markup import apply_product_markup
+
+        prices = {}
+        for currency in ("RUB", "USD", "KZT", "EUR", "TRY", "USDT"):
+            try:
+                data = self._get_live_currency_data(obj, currency)
                 if data:
-                    data["is_base_price"] = currency == base_currency
+                    data["price_with_margin"] = apply_product_markup(
+                        data["price_with_margin"], obj.product
+                    )
                     prices[currency] = data
-            return prices
-        try:
-            return obj.product.get_all_prices()
-        except Exception:
-            return {}
+            except Exception:
+                continue
+        return prices
 
 
 class PromoCodeSerializer(serializers.ModelSerializer):

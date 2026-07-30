@@ -11,7 +11,7 @@ import { useFavoritesStore } from '../store/favorites'
 import AnimatedLogoutButton from './AnimatedLogoutButton'
 import { useTheme } from '../context/ThemeContext'
 import Cookies from 'js-cookie'
-import DotMenu from './DotMenu'
+import DotMenu, { CurrencyIcon, LanguageFlag } from './DotMenu'
 import { buildProductIdentityKey } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 
@@ -516,10 +516,7 @@ export default function Header() {
                 className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
                 title={t('currency', 'Валюта')}
               >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M8 12h8M10 8h4m-4 8h4" strokeLinecap="round" />
-                </svg>
+                <CurrencyIcon code={currency} />
                 <span>{currency}</span>
               </button>
               {showCurrencyMenu ? (
@@ -531,6 +528,7 @@ export default function Header() {
                       onClick={() => handleCurrencyChange(code)}
                       className={`flex w-full items-center justify-between px-3 py-2 text-xs transition-colors duration-200 ${currency === code ? (isDark ? 'bg-slate-700 text-white' : 'bg-red-50 text-red-700') : (isDark ? 'text-slate-100 hover:bg-slate-700' : 'text-gray-700 hover:bg-red-50')}`}
                     >
+                      <CurrencyIcon code={code} compact />
                       <span>{code}</span>
                     </button>
                   ))}
@@ -615,9 +613,10 @@ export default function Header() {
             </button>
             <button
               onClick={() => { setShowSuggestions(false); toggleLocale() }}
-              className={`rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
+              className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
               title={t('language', 'Язык')}
             >
+              <LanguageFlag locale={router.locale || 'en'} />
               {router.locale?.toUpperCase() || 'EN'}
             </button>
           </nav>

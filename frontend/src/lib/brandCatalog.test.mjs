@@ -76,6 +76,7 @@ test('gender filter is shown for fashion categories only', () => {
   assert.equal(shouldShowGenderFilter(['clothing', 'medicines']), true)
   assert.equal(shouldShowGenderFilter(['islamic_clothing']), true)
   assert.equal(shouldShowGenderFilter(['SHOES']), true)
+  assert.equal(shouldShowGenderFilter(['auto-parts']), false)
   assert.equal(shouldShowGenderFilter(['medicines', 'supplements']), false)
   assert.equal(shouldShowGenderFilter([]), false)
   assert.equal(shouldShowGenderFilter(undefined), false)

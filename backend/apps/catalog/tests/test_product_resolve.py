@@ -500,7 +500,9 @@ def test_sports_serializer_exposes_active_variant_contract():
 
     assert data["default_variant_slug"] == f"sports-variant-{first_variant.pk}"
     assert data["active_variant_slug"] == f"sports-variant-{first_variant.pk}"
-    assert data["active_variant_currency"] == "TRY"
+    # Публичная карточка использует выбранную валюту витрины (RUB по умолчанию),
+    # а не исходную TRY у варианта.
+    assert data["active_variant_currency"] == "RUB"
     assert data["active_variant_stock_quantity"] == 3
     assert data["variants"][0]["slug"] == f"sports-variant-{first_variant.pk}"
     assert data["variants"][0]["sizes"][0]["size"] == "M"
@@ -535,6 +537,6 @@ def test_auto_part_serializer_exposes_active_variant_contract():
 
     assert data["default_variant_slug"] == f"auto-part-variant-{first_variant.pk}"
     assert data["active_variant_slug"] == f"auto-part-variant-{first_variant.pk}"
-    assert data["active_variant_currency"] == "TRY"
+    assert data["active_variant_currency"] == "RUB"
     assert data["active_variant_stock_quantity"] == 4
     assert data["variants"][0]["slug"] == f"auto-part-variant-{first_variant.pk}"

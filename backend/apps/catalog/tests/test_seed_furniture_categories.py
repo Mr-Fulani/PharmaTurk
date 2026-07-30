@@ -37,21 +37,22 @@ def test_furniture_seed_tree_has_expected_top_level_and_unique_slugs():
 
 @pytest.mark.django_db
 def test_furniture_seed_is_idempotent_and_preserves_existing_categories():
-    root = Category.objects.create(
-        slug="furniture",
-        name="Мебель вручную",
-        description="Описание корня вручную",
-        is_active=False,
-        sort_order=77,
-    )
-    living_room = Category.objects.create(
-        slug="living-room",
-        name="Ручное название",
-        description="Ручное описание",
-        parent=root,
-        is_active=False,
-        sort_order=91,
-    )
+    # Часть окружений создаёт дерево мебели data-миграцией. Подготавливаем
+    # ручные данные поверх уже существующих строк, чтобы тест проверял именно
+    # идемпотентность команды, а не порядок миграций.
+    root, _ = Category.objects.get_or_create(slug="furniture")
+    root.name = "Мебель вручную"
+    root.description = "Описание корня вручную"
+    root.is_active = False
+    root.sort_order = 77
+    root.save()
+    living_room, _ = Category.objects.get_or_create(slug="living-room")
+    living_room.name = "Ручное название"
+    living_room.description = "Ручное описание"
+    living_room.parent = root
+    living_room.is_active = False
+    living_room.sort_order = 91
+    living_room.save()
     CategoryTranslation.objects.create(
         category=living_room,
         locale="ru",

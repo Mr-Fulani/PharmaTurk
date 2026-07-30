@@ -208,6 +208,12 @@ class CurrencyConverter:
         
         self._margin_cache[cache_key] = margin_rate
         return margin_rate
+
+    def get_margin_rate(self, from_currency: str, to_currency: str) -> Decimal:
+        """Публичный доступ к актуальной марже конкретной валютной пары."""
+        from_currency = _normalize_currency_for_rate(from_currency or "")
+        to_currency = _normalize_currency_for_rate(to_currency or "")
+        return self._get_margin_rate(from_currency, to_currency)
     
     def clear_margin_cache(self):
         """Очистка кэша маржи"""

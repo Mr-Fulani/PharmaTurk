@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # roundtrip в Redis, а для ОТСУТСТВУЮЩЕЙ пары — каскад пивот-запросов к БД
 # на каждую карточку (негативный результат Redis-кэшем не покрывается).
 # TTL короткий: актуальность курсов и так ограничена Redis-кэшем (300с).
-_RATE_MEMO: Dict[Tuple[str, str], Tuple[Optional[Decimal], float]] = {}
+_RATE_MEMO: Dict[Tuple[str, str, int], Tuple[Optional[Decimal], float]] = {}
 _RATE_MEMO_TTL_SECONDS = 120
 _RATE_MEMO_MAX_ENTRIES = 512
 
@@ -23,6 +23,14 @@ _RATE_MEMO_MAX_ENTRIES = 512
 def clear_rate_memo() -> None:
     """Сбрасывает мемо-кэш курсов (после обновления курсов или в тестах)."""
     _RATE_MEMO.clear()
+
+
+def _get_usdt_rate_version() -> int:
+    """Общая версия USDT-курсов для немедленной инвалидации всех процессов."""
+    try:
+        return int(cache.get("usdt_rate_version", 1))
+    except (TypeError, ValueError):
+        return 1
 
 # Символы → коды валют (для lookup курсов)
 _CURRENCY_SYMBOL_MAP = {
@@ -334,7 +342,12 @@ class CurrencyRateService:
         if from_currency == to_currency:
             return Decimal('1')
 
-        memo_key = (from_currency, to_currency)
+        usdt_version = (
+            _get_usdt_rate_version()
+            if from_currency == 'USDT' or to_currency == 'USDT'
+            else 0
+        )
+        memo_key = (from_currency, to_currency, usdt_version)
         memo_entry = _RATE_MEMO.get(memo_key)
         now = time.monotonic()
         if memo_entry is not None and memo_entry[1] > now:
@@ -351,7 +364,13 @@ class CurrencyRateService:
         return rate
 
     def _resolve_rate(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
-        cache_key = f'rate_{from_currency}_{to_currency}'
+        if from_currency == 'USDT' or to_currency == 'USDT':
+            cache_key = (
+                f'rate_usdt_v{_get_usdt_rate_version()}_'
+                f'{from_currency}_{to_currency}'
+            )
+        else:
+            cache_key = f'rate_{from_currency}_{to_currency}'
         try:
             cached_rate = cache.get(cache_key)
         except Exception as e:

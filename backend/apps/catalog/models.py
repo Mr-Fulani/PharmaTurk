@@ -1172,6 +1172,19 @@ class AbstractDomainProduct(models.Model):
             return
 
         product = getattr(self, 'base_product', None)
+        # Сигнал Product.post_save может связать доменную запись с shadow Product
+        # после её первого сохранения. Экземпляр self при этом остаётся со старым
+        # base_product=None; перечитываем связь, чтобы повторное save() не создало
+        # второй shadow-товар.
+        if not product and self.pk:
+            base_product_id = (
+                self.__class__.objects.filter(pk=self.pk)
+                .values_list("base_product_id", flat=True)
+                .first()
+            )
+            if base_product_id:
+                product = Product.objects.filter(pk=base_product_id).first()
+                self.base_product = product
         if not product:
             # Создаём новую shadow-копию
             base_slug = self.slug
@@ -1218,6 +1231,14 @@ class AbstractDomainProduct(models.Model):
                 product.main_video_file = self.main_video_file
                 
             product.save()
+            # Product.post_save может успеть связать новый shadow-товар с другой
+            # доменной строкой (например, при совпадении slug во время импорта).
+            # OneToOne не позволяет затем привязать его к текущей строке. Текущая
+            # доменная запись — источник создания shadow Product, поэтому она
+            # должна владеть этой связью.
+            self.__class__.objects.filter(base_product=product).exclude(pk=self.pk).update(
+                base_product=None
+            )
             self.__class__.objects.filter(pk=self.pk).update(base_product=product)
             return
 
@@ -3513,6 +3534,33 @@ class Service(models.Model):
                             'price_with_margin': price_margin,
                             'is_base_price': False
                         }
+
+                # Наценка USDT входит в курс и может быть изменена отдельно от
+                # цены услуги. Эти направления считаем по текущей настройке,
+                # пока фоновая задача обновляет сохранённые snapshots.
+                from .utils.currency_converter import currency_converter
+
+                dynamic_targets = (
+                    ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT']
+                    if base_currency == 'USDT'
+                    else ['USDT']
+                )
+                dynamic_prices = currency_converter.convert_to_multiple_currencies(
+                    info.base_price,
+                    base_currency,
+                    dynamic_targets,
+                    apply_margin=True,
+                )
+                for code in dynamic_targets:
+                    result = dynamic_prices.get(code)
+                    if not result:
+                        continue
+                    prices[code] = {
+                        'original_price': result['original_price'],
+                        'converted_price': result['converted_price'],
+                        'price_with_margin': result['price_with_margin'],
+                        'is_base_price': code == base_currency,
+                    }
         except Exception:
             pass
         return prices

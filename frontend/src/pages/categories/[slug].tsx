@@ -10,6 +10,7 @@ import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { buildCatalogPageQuery, parseBrandIds, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
+import { shouldShowGenderFilter } from '../../lib/brandCatalog'
 import { isCategoryInProductTree, selectExactCategory } from '../../lib/categoryRouting'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
@@ -789,7 +790,11 @@ export default function CategoryPage({
   const [availableAttributes, setAvailableAttributes] = useState<AvailableAttribute[]>(initialAvailableAttributes)
   const [availableGenders, setAvailableGenders] = useState<string[]>(initialAvailableGenders)
   const [availableFragranceTypes, setAvailableFragranceTypes] = useState<string[]>(initialAvailableFragranceTypes)
-  const showGenderFilter = (availableGenders || []).length > 0
+  const genderFilterAllowed = useMemo(
+    () => shouldShowGenderFilter([categoryTypeSlug, categoryType]),
+    [categoryTypeSlug, categoryType]
+  )
+  const showGenderFilter = genderFilterAllowed && (availableGenders || []).length > 0
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [letterFilter, setLetterFilter] = useState('')
@@ -873,11 +878,14 @@ export default function CategoryPage({
   useEffect(() => {
     if (!router.isReady) return
     const nextFilters = parseCatalogFiltersQuery(router.query, defaultFilters) as FilterState
+    if (!genderFilterAllowed) {
+      nextFilters.genders = []
+    }
     setFilters((prev) => {
       if (areFiltersEqual(prev, nextFilters)) return prev
       return nextFilters
     })
-  }, [router.isReady, router.asPath, router.query, defaultFilters])
+  }, [router.isReady, router.asPath, router.query, defaultFilters, genderFilterAllowed])
 
   useEffect(() => {
     const loadBrands = async () => {
@@ -998,7 +1006,7 @@ export default function CategoryPage({
         if (filters.brandSlugs.length > 0) {
           params.brand_slug = filters.brandSlugs.join(',')
         }
-        if ((filters.genders || []).length > 0) {
+        if (genderFilterAllowed && (filters.genders || []).length > 0) {
           params.gender = filters.genders!.join(',')
         }
         if ((filters.fragranceTypes || []).length > 0) {
@@ -1156,6 +1164,7 @@ export default function CategoryPage({
     JSON.stringify(filters.attributes || {}),
     currentPage,
     categoryType,
+    genderFilterAllowed,
     letterFilter,
     letterMode,
   ])

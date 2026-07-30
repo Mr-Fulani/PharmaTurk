@@ -152,6 +152,12 @@ def _apply_product_markup_to_payload(data, obj):
             price_data["price_with_margin"] = _apply_markup_value(
                 price_data["price_with_margin"], margin
             )
+    prices_info = data.get("prices_info")
+    if isinstance(prices_info, dict):
+        for currency in ("rub", "usd", "kzt", "eur", "try", "usdt"):
+            field = f"{currency}_price_with_margin"
+            if prices_info.get(field) is not None:
+                prices_info[field] = _apply_markup_value(prices_info[field], margin)
 
     data["product_markup_percent"] = margin
     data["product_markup_source"] = source
@@ -1363,6 +1369,27 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def _live_currency_price(self, obj, target_currency):
+        """Calculate from the base price so public responses never wait for snapshots."""
+        if obj.price is None:
+            return None
+        from .utils.currency_converter import currency_converter
+
+        source = (obj.currency or "RUB").upper()
+        target = (target_currency or source).upper()
+        original, converted, with_margin = currency_converter.convert_price(
+            Decimal(str(obj.price)),
+            source,
+            target,
+            apply_margin=True,
+        )
+        return {
+            "original_price": original,
+            "converted_price": converted,
+            "price_with_margin": with_margin,
+            "is_base_price": source == target,
+        }
+
     def get_slug(self, obj):
         """Слаг для ссылок на доменный detail API (если есть связанная доменная запись)."""
         pt = (getattr(obj, 'product_type', None) or '').strip().lower().replace('-', '_')
@@ -1871,30 +1898,14 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         """Получает цену в предпочитаемой валюте."""
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
-        
-        # 1. Пробуем получить из кэшированных цен
+
         try:
-            prices = obj.get_all_prices()
-            if prices and preferred_currency in prices:
-                return prices[preferred_currency].get('price_with_margin')
+            price = self._live_currency_price(obj, preferred_currency)
+            if price:
+                return price["price_with_margin"]
         except Exception:
             pass
-            
-        # 2. Fallback: конвертация на лету
-        if obj.price is not None:
-            from_currency = (obj.currency or 'RUB').upper()
-            try:
-                from .utils.currency_converter import currency_converter
-                _, _, price_with_margin = currency_converter.convert_price(
-                    Decimal(str(obj.price)),
-                    from_currency,
-                    preferred_currency,
-                    apply_margin=True,
-                )
-                return price_with_margin
-            except Exception:
-                pass
-        
+
         return obj.price
     
     def get_currency(self, obj):
@@ -1930,9 +1941,8 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     def get_converted_price_rub(self, obj):
         """Получает конвертированную цену в RUB."""
         try:
-            prices = obj.get_all_prices()
-            if 'RUB' in prices:
-                return prices['RUB'].get('converted_price')
+            price = self._live_currency_price(obj, "RUB")
+            return price["converted_price"] if price else None
         except Exception:
             pass
         return None
@@ -1940,9 +1950,8 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     def get_converted_price_usd(self, obj):
         """Получает конвертированную цену в USD."""
         try:
-            prices = obj.get_all_prices()
-            if 'USD' in prices:
-                return prices['USD'].get('converted_price')
+            price = self._live_currency_price(obj, "USD")
+            return price["converted_price"] if price else None
         except Exception:
             pass
         return None
@@ -1950,9 +1959,8 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     def get_final_price_rub(self, obj):
         """Получает финальную цену в RUB с маржой."""
         try:
-            prices = obj.get_all_prices()
-            if 'RUB' in prices:
-                return prices['RUB'].get('price_with_margin')
+            price = self._live_currency_price(obj, "RUB")
+            return price["price_with_margin"] if price else None
         except Exception:
             pass
         return None
@@ -1960,9 +1968,8 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     def get_final_price_usd(self, obj):
         """Получает финальную цену в USD с маржой."""
         try:
-            prices = obj.get_all_prices()
-            if 'USD' in prices:
-                return prices['USD'].get('price_with_margin')
+            price = self._live_currency_price(obj, "USD")
+            return price["price_with_margin"] if price else None
         except Exception:
             pass
         return None
@@ -1970,74 +1977,59 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     def get_margin_percent_applied(self, obj):
         """Получает примененную маржу."""
         try:
-            prices = obj.get_all_prices()
-            if prices:
-                # Найдем базовую валюту
-                for currency, data in prices.items():
-                    if data.get('is_base_price'):
-                        # Если это базовая валюта, маржа 0%
-                        return 0
-                
-                # Для других валют можно взять среднюю маржу
-                margins = []
-                for currency, data in prices.items():
-                    if not data.get('is_base_price') and data.get('price_with_margin') and data.get('converted_price'):
-                        if data['converted_price'] > 0:
-                            margin = ((data['price_with_margin'] - data['converted_price']) / data['converted_price']) * 100
-                            margins.append(margin)
-                
-                if margins:
-                    return sum(margins) / len(margins)
+            from .utils.currency_converter import currency_converter
+
+            return currency_converter.get_margin_rate(
+                (obj.currency or "RUB").upper(),
+                self._get_preferred_currency(self.context.get("request")),
+            )
         except Exception:
             pass
         return 0
     
     def get_prices_in_currencies(self, obj):
-        """Получает цены во всех валютах."""
-        try:
-            return obj.get_all_prices()
-        except Exception:
-            # Если ошибка, вернем базовую цену
-            if obj.price and obj.currency:
-                return {
-                    obj.currency: {
-                        'original_price': obj.price,
-                        'converted_price': obj.price,
-                        'price_with_margin': obj.price,
-                        'is_base_price': True
-                    }
-                }
+        """Возвращает актуальные цены, не ожидая фонового обновления snapshots."""
+        if obj.price is None:
             return {}
+        prices = {}
+        for currency in ("RUB", "USD", "KZT", "EUR", "TRY", "USDT"):
+            try:
+                price = self._live_currency_price(obj, currency)
+                if price:
+                    prices[currency] = price
+            except Exception:
+                continue
+        return prices
     
     def get_current_price(self, obj):
         """Получает текущую цену в предпочитаемой валюте."""
-        request = self.context.get('request')
-        preferred_currency = 'RUB'  # По умолчанию
-        
-        # Можно определить предпочитаемую валюту из заголовков или параметров запроса
-        if request:
-            # Проверяем заголовок X-Currency
-            preferred_currency = request.headers.get('X-Currency', 'RUB')
-            # Или параметр запроса currency
-            preferred_currency = request.query_params.get('currency', preferred_currency)
-        
-        price, currency = obj.get_current_price(preferred_currency)
-        
-        if price:
+        preferred_currency = self._get_preferred_currency(self.context.get("request"))
+        try:
+            live = self._live_currency_price(obj, preferred_currency)
+        except Exception:
+            live = None
+        if live:
+            price = live["price_with_margin"]
             return {
                 'amount': price,
-                'currency': currency,
-                'formatted': f"{price} {currency}"
+                'currency': preferred_currency,
+                'formatted': f"{price} {preferred_currency}"
             }
-        
         return None
     
     def get_price_breakdown(self, obj):
-        """Получает детализацию цены для базовой валюты товара."""
+        """Получает актуальную детализацию цены в выбранной валюте."""
         if obj.price and obj.currency:
-            breakdown = obj.get_price_breakdown('RUB')  # По умолчанию для RUB
-            if breakdown:
-                return breakdown
+            try:
+                from .utils.currency_converter import currency_converter
+
+                return currency_converter.get_price_breakdown(
+                    Decimal(str(obj.price)),
+                    obj.currency,
+                    self._get_preferred_currency(self.context.get("request")),
+                )
+            except Exception:
+                pass
         return None
 
 
@@ -5102,6 +5094,11 @@ class ServiceSerializer(serializers.ModelSerializer):
             'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'product_type']
+
+    def to_representation(self, instance):
+        """Накладывает категорийную/глобальную наценку на публичные цены услуги."""
+        data = super().to_representation(instance)
+        return _apply_product_markup_to_payload(data, instance)
     
     def get_name(self, obj):
         """Локализованное название."""

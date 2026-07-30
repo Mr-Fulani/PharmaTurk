@@ -1,8 +1,11 @@
+from decimal import Decimal
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from apps.catalog.models import Service, ServiceImage, validate_service_video_file_size
+from apps.catalog.currency_models import ServicePrice
+from apps.catalog.models import Category, Service, ServiceImage, validate_service_video_file_size
 from apps.catalog.serializers import ServiceImageSerializer, ServiceSerializer
 
 
@@ -59,6 +62,35 @@ def test_service_serializer_generates_seo_fallbacks(settings):
     assert data["og_title"] == data["meta_title"]
     assert data["og_description"] == data["meta_description"]
     assert "Установка кондиционера" in data["meta_keywords"]
+
+
+def test_service_serializer_applies_category_markup_to_public_prices():
+    category = Category.objects.create(
+        name="Монтаж",
+        slug="service-installation-margin",
+        margin_percent=Decimal("15"),
+    )
+    service = Service.objects.create(
+        name="Монтаж оборудования",
+        slug="equipment-installation-margin",
+        category=category,
+    )
+    ServicePrice.objects.create(
+        service=service,
+        base_currency="RUB",
+        base_price=Decimal("100.00"),
+        rub_price=Decimal("100.00"),
+        rub_price_with_margin=Decimal("100.00"),
+    )
+
+    data = ServiceSerializer(service).data
+
+    assert data["price"] == Decimal("115.00")
+    assert data["price_formatted"] == "115.00 RUB"
+    assert data["prices_info"]["base_price"] == "100.00"
+    assert data["prices_info"]["rub_price_with_margin"] == Decimal("115.00")
+    assert data["product_markup_percent"] == Decimal("15")
+    assert data["product_markup_source"] == "category"
 
 
 class _FakeSizedFile:
