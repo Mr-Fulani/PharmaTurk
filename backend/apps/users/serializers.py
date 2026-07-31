@@ -299,51 +299,13 @@ class UserSerializer(serializers.ModelSerializer):
     
     def get_total_orders(self, obj):
         """Расчет общего количества заказов пользователя"""
-        import logging
-        logger = logging.getLogger(__name__)
         from apps.orders.models import Order
-        
-        # Считаем все заказы пользователя (исключая отмененные)
-        count = Order.objects.filter(
+
+        return Order.objects.filter(
             user=obj
         ).exclude(
             status='cancelled'
         ).count()
-        
-        # Логирование для отладки
-        all_orders_count = Order.objects.filter(user=obj).count()
-        
-        user_email = obj.email
-        user_username = obj.username
-        
-        orders_by_email = Order.objects.filter(contact_email=user_email).exclude(status='cancelled').count() if user_email else 0
-        orders_without_user = Order.objects.filter(user__isnull=True, contact_email=user_email).exclude(status='cancelled').count() if user_email else 0
-        
-        if user_email:
-            all_orders_with_email = Order.objects.filter(contact_email=user_email).exclude(status='cancelled')
-            orders_info = []
-            for order in all_orders_with_email:
-                orders_info.append(f"order_id={order.id}, number={order.number}, user_id={order.user.id if order.user else None}, user_username={order.user.username if order.user else None}, contact_name={order.contact_name}")
-            if orders_info:
-                logger.info(f'All orders with email {user_email}: {"; ".join(orders_info)}')
-        
-        if user_username:
-            orders_by_name = Order.objects.filter(
-                contact_name__icontains=user_username
-            ).exclude(status='cancelled').exclude(user=obj)
-            if orders_by_name.exists():
-                orders_by_name_info = []
-                for order in orders_by_name:
-                    orders_by_name_info.append(f"order_id={order.id}, number={order.number}, user_id={order.user.id if order.user else None}, user_username={order.user.username if order.user else None}, contact_email={order.contact_email}, contact_name={order.contact_name}")
-                logger.info(f'Orders with username "{user_username}" in contact_name (not linked to this user): {"; ".join(orders_by_name_info)}')
-        
-        logger.info(
-            f'UserSerializer.get_total_orders: user={user_username} (id={obj.id}), '
-            f'email={user_email}, all_orders={all_orders_count}, non_cancelled={count}, '
-            f'orders_by_email={orders_by_email}, orders_without_user={orders_without_user}'
-        )
-        
-        return count
     
     def get_total_spent(self, obj):
         """Расчет общей суммы потраченных денег"""
@@ -550,49 +512,13 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     
     def get_total_orders(self, obj):
         """Расчет общего количества заказов пользователя"""
-        import logging
-        logger = logging.getLogger(__name__)
         from apps.orders.models import Order
-        
-        count = Order.objects.filter(
+
+        return Order.objects.filter(
             user=obj
         ).exclude(
             status='cancelled'
         ).count()
-        
-        all_orders_count = Order.objects.filter(user=obj).count()
-        
-        user_email = obj.email
-        user_username = obj.username
-        
-        orders_by_email = Order.objects.filter(contact_email=user_email).exclude(status='cancelled').count() if user_email else 0
-        orders_without_user = Order.objects.filter(user__isnull=True, contact_email=user_email).exclude(status='cancelled').count() if user_email else 0
-        
-        if user_email:
-            all_orders_with_email = Order.objects.filter(contact_email=user_email).exclude(status='cancelled')
-            orders_info = []
-            for order in all_orders_with_email:
-                orders_info.append(f"order_id={order.id}, number={order.number}, user_id={order.user.id if order.user else None}, user_username={order.user.username if order.user else None}, contact_name={order.contact_name}")
-            if orders_info:
-                logger.info(f'All orders with email {user_email}: {"; ".join(orders_info)}')
-        
-        if user_username:
-            orders_by_name = Order.objects.filter(
-                contact_name__icontains=user_username
-            ).exclude(status='cancelled').exclude(user=obj)
-            if orders_by_name.exists():
-                orders_by_name_info = []
-                for order in orders_by_name:
-                    orders_by_name_info.append(f"order_id={order.id}, number={order.number}, user_id={order.user.id if order.user else None}, user_username={order.user.username if order.user else None}, contact_email={order.contact_email}, contact_name={order.contact_name}")
-                logger.info(f'Orders with username "{user_username}" in contact_name (not linked to this user): {"; ".join(orders_by_name_info)}')
-        
-        logger.info(
-            f'PublicUserProfileSerializer.get_total_orders: user={user_username} (id={obj.id}), '
-            f'email={user_email}, all_orders={all_orders_count}, non_cancelled={count}, '
-            f'orders_by_email={orders_by_email}, orders_without_user={orders_without_user}'
-        )
-        
-        return count
     
     def get_testimonial_id(self, obj):
         """Получение ID отзыва пользователя, если есть"""

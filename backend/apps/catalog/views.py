@@ -94,6 +94,8 @@ from .serializers import (
     BannerSerializer,
     serialize_product_for_card,
 )
+from .card_payload import compact_card_product_payload
+from apps.feedback.review_aggregates import attach_review_aggregates
 
 
 def _category_prefetches():
@@ -190,6 +192,28 @@ class SmartSlugLookupMixin:
     а фронтенд прислал очищенную (короткую) версию, и наоборот.
     Также обрабатывает доменные префиксы (напр. 'headwear-' + 'cap').
     """
+    _compact_card_product = staticmethod(compact_card_product_payload)
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        if request.query_params.get('view') != 'card':
+            return response
+
+        payload = response.data
+        if isinstance(payload, dict) and isinstance(payload.get('results'), list):
+            payload['results'] = [
+                self._compact_card_product(row)
+                for row in payload['results']
+            ]
+            attach_review_aggregates(payload['results'])
+        elif isinstance(payload, list):
+            response.data = [
+                self._compact_card_product(row)
+                for row in payload
+            ]
+            attach_review_aggregates(response.data)
+        return response
+
     def get_object(self):
         queryset = self.get_queryset()
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
@@ -1233,11 +1257,13 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             previous_url = f"{path}?{query.urlencode()}"
         else:
             previous_url = None
+        results = [serialize_product_for_card(product, request) for product in page_items]
+        attach_review_aggregates(results)
         return Response({
             'count': total_count,
             'next': next_url,
             'previous': previous_url,
-            'results': [serialize_product_for_card(product, request) for product in page_items],
+            'results': results,
         })
 
     @extend_schema(
@@ -1924,7 +1950,11 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         featured_products = list(queryset[:limit])
         self._prefetch_card_relations(featured_products)
         serializer = self.get_serializer(featured_products, many=True)
-        return Response(serializer.data)
+        data = list(serializer.data)
+        if request.query_params.get('view') == 'card':
+            data = [self._compact_card_product(row) for row in data]
+            attach_review_aggregates(data)
+        return Response(data)
 
     @action(detail=True, methods=['get'])
     @extend_schema(
@@ -2001,6 +2031,21 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
                     algorithm="vector_combined",
                     session_id=session_key,
                 )
+            if request.query_params.get('view') == 'card':
+                reranked = [
+                    {
+                        **row,
+                        "product": self._compact_card_product(row.get("product")),
+                    }
+                    if isinstance(row, dict) and isinstance(row.get("product"), dict)
+                    else row
+                    for row in reranked
+                ]
+                attach_review_aggregates([
+                    row["product"]
+                    for row in reranked
+                    if isinstance(row, dict) and isinstance(row.get("product"), dict)
+                ])
             return Response({"count": len(reranked), "strategy": strategy, "results": reranked})
         except Exception as e:
             logger.warning(
@@ -3122,7 +3167,13 @@ class FavoriteViewSet(viewsets.ViewSet):
             favorites = Favorite.objects.none()
         
         serializer = FavoriteSerializer(favorites, many=True, context={'request': request})
-        return Response(_dedupe_favorites_serialized_rows(serializer.data))
+        rows = _dedupe_favorites_serialized_rows(serializer.data)
+        attach_review_aggregates([
+            row["product"]
+            for row in rows
+            if isinstance(row, dict) and isinstance(row.get("product"), dict)
+        ])
+        return Response(rows)
     
     @extend_schema(
         summary="Добавить товар в избранное",

@@ -14,7 +14,7 @@ import { buildProductUrl, getSiteOrigin } from '../../lib/urls'
 import { buildCatalogPageQuery, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
 import { buildBrandProductsParams, brandProductsRequestKey, shouldShowGenderFilter } from '../../lib/brandCatalog'
 import { ProductTranslation, BrandTranslation, getLocalizedBrandDescription, getLocalizedBrandName } from '../../lib/i18n'
-import api from '../../lib/api'
+import { getSingleFlight } from '../../lib/api'
 import { useViewMode } from '../../hooks/useViewMode'
 import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
 
@@ -40,6 +40,8 @@ interface Product {
   translations?: ProductTranslation[]
   base_product_id?: number
   has_manual_main_image?: boolean
+  rating?: number | string | null
+  reviews_count?: number | null
 }
 
 interface Category {
@@ -226,7 +228,7 @@ function BrandPageContent({
     const loadProducts = async () => {
       setLoading(true)
       try {
-        const response = await api.get(`/catalog/brands/${brandData.slug}/products`, { params })
+        const response = await getSingleFlight(`/catalog/brands/${brandData.slug}/products`, { params })
         if (cancelled) return
         const data = response.data
         setProducts(extractResults(data))
@@ -445,6 +447,9 @@ function BrandPageContent({
                         locale={i18n.language}
                         isNew={product.is_new}
                         isFeatured={product.is_featured}
+                        rating={product.rating}
+                        reviewsCount={product.reviews_count ?? undefined}
+                        brandName={localizedBrandName}
                       />
                     )
                   })}

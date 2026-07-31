@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'next-i18next'
-import api from '../lib/api'
+import api, { getSingleFlight } from '../lib/api'
 import {
   applyImageFallback,
   replaceFailedVideoWithFallback,
@@ -113,7 +113,7 @@ export default function ProductReviews({
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await api.get('/feedback/product-reviews/', {
+      const response = await getSingleFlight('/feedback/product-reviews/', {
         params: { product_type: productType, product_slug: productSlug },
       })
       const next = response.data as ReviewResponse

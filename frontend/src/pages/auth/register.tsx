@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { SITE_NAME } from '../../lib/siteMeta'
+import AnimatedPasswordInput from '../../components/AnimatedPasswordInput'
 
 export default function RegisterPage() {
   const { register } = useAuth()
@@ -53,14 +54,15 @@ export default function RegisterPage() {
         <form onSubmit={submit} className="mt-4 grid gap-3">
           <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('email', 'Email')} value={email} onChange={(e)=>setEmail(e.target.value)} required />
           <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('username', 'Имя пользователя')} value={username} onChange={(e)=>setUsername(e.target.value)} required />
-          <input
-            className={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400 auth-password-input ${
+          <AnimatedPasswordInput
+            inputClassName={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400 auth-password-input ${
               isDark ? 'border-gray-700 bg-gray-900 placeholder:text-gray-400' : ''
             }`}
             placeholder={t('password_placeholder')}
-            type="password"
             value={password}
             onChange={(e)=>setPassword(e.target.value)}
+            showLabel={t('auth_show_password', { defaultValue: 'Показать пароль' })}
+            hideLabel={t('auth_hide_password', { defaultValue: 'Скрыть пароль' })}
             required
           />
           {error ? <div className="text-sm text-red-600">{error}</div> : null}

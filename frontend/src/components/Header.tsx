@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useEffect, useState, useRef } from 'react'
-import api, { setPreferredCurrency } from '../lib/api'
+import api, { getSingleFlight, setPreferredCurrency } from '../lib/api'
 import { useTranslation } from 'next-i18next'
 import { motion, useReducedMotion } from 'framer-motion'
 import { useCartStore } from '../store/cart'
@@ -12,8 +12,10 @@ import AnimatedLogoutButton from './AnimatedLogoutButton'
 import { useTheme } from '../context/ThemeContext'
 import Cookies from 'js-cookie'
 import DotMenu, { CurrencyIcon, LanguageFlag } from './DotMenu'
+import ThemeToggle from './ThemeToggle'
 import { buildProductIdentityKey } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
+import { resolveMediaUrl } from '../lib/media'
 
 export default function Header() {
   const router = useRouter()
@@ -34,6 +36,7 @@ export default function Header() {
   const [isLogoExpanded, setIsLogoExpanded] = useState(false)
   const [isLogoHovered, setIsLogoHovered] = useState(false)
   const [isTouchLogoMode, setIsTouchLogoMode] = useState(false)
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const mobileSearchRef = useRef<HTMLDivElement>(null)
   const mobileSearchInputRef = useRef<HTMLInputElement>(null)
@@ -48,6 +51,24 @@ export default function Header() {
   const currencyOptions = ['RUB', 'USD', 'EUR', 'TRY', 'KZT', 'USDT']
   const logoLetters = 'MUDAROBA'.split('')
   const isLogoLabelVisible = isTouchLogoMode ? isLogoExpanded : isLogoHovered
+  const rawAvatarUrl = user?.avatar_url || user?.avatar
+  const profileAvatarUrl = rawAvatarUrl && !avatarLoadFailed
+    ? resolveMediaUrl(rawAvatarUrl)
+    : null
+  const profileInitials = (
+    [user?.first_name, user?.last_name]
+      .filter(Boolean)
+      .map((part) => String(part).trim().charAt(0))
+      .join('')
+      .slice(0, 2)
+    || user?.username?.trim().charAt(0)
+    || user?.email?.trim().charAt(0)
+    || '?'
+  ).toUpperCase()
+
+  useEffect(() => {
+    setAvatarLoadFailed(false)
+  }, [rawAvatarUrl])
 
   useEffect(() => {
     setIsClient(true)
@@ -218,8 +239,8 @@ export default function Header() {
       try {
         // Параллельно запрашиваем товары и услуги для подсказок
         const [productsRes, servicesRes] = await Promise.all([
-          api.get('/catalog/products', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] })),
-          api.get('/catalog/services', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] }))
+          getSingleFlight('/catalog/products', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] })),
+          getSingleFlight('/catalog/services', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] }))
         ])
 
         const products = Array.isArray(productsRes.data) ? productsRes.data : (productsRes.data.results || [])
@@ -539,19 +560,54 @@ export default function Header() {
               <Link
                 href="/profile"
                 onClick={() => setShowSuggestions(false)}
-                className={`transition-all duration-200 ${path.startsWith('/profile') ? (isDark ? 'font-medium text-white' : 'font-medium text-red-800') : (isDark ? 'text-slate-100 hover:text-white' : 'text-gray-700 hover:text-red-700 hover:font-medium')}`}
+                className={`relative inline-flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 transition-all duration-200 hover:scale-105 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${
+                  path.startsWith('/profile')
+                    ? 'border-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.18)]'
+                    : isDark
+                      ? 'border-slate-600 hover:border-slate-400'
+                      : 'border-red-200 hover:border-red-400'
+                }`}
+                title={t('header_profile', 'Профиль')}
+                aria-label={t('header_profile', 'Профиль')}
               >
-                {t('header_profile', 'Профиль')}
+                {profileAvatarUrl ? (
+                  // URL может вести как в локальное хранилище, так и в облако.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={profileAvatarUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    onError={() => setAvatarLoadFailed(true)}
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-full w-full items-center justify-center text-xs font-bold ${
+                      isDark ? 'bg-slate-700 text-white' : 'bg-red-50 text-red-800'
+                    }`}
+                  >
+                    {profileInitials}
+                  </span>
+                )}
               </Link>
             )}
             <Link
               href="/favorites"
               onClick={() => setShowSuggestions(false)}
-              className={`relative inline-flex items-center justify-center rounded-full p-2 transition-all duration-200 ${isDark ? 'text-slate-100 hover:bg-slate-800' : 'text-main hover:bg-[var(--surface)] hover:text-gray-900'}`}
+              className={`relative inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border transition-all duration-200 hover:scale-105 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${
+                path.startsWith('/favorites')
+                  ? isDark
+                    ? 'border-slate-600 bg-slate-800 text-white'
+                    : 'border-red-200 bg-red-50 text-red-700'
+                  : isDark
+                    ? 'border-transparent text-slate-100 hover:border-slate-700 hover:bg-slate-800'
+                    : 'border-transparent text-main hover:border-red-100 hover:bg-red-50 hover:text-red-700'
+              }`}
               title={t('menu_favorites', 'Избранное')}
               aria-label={t('menu_favorites', 'Избранное')}
             >
               <svg
+                aria-hidden="true"
                 className="h-5 w-5"
                 fill="none"
                 stroke="currentColor"
@@ -565,7 +621,10 @@ export default function Header() {
                 />
               </svg>
               {isClient && favoritesCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white shadow-sm"
+                >
                   {favoritesCount > 99 ? '99+' : favoritesCount}
                 </span>
               )}
@@ -573,9 +632,39 @@ export default function Header() {
             <Link
               href="/cart"
               onClick={() => setShowSuggestions(false)}
-              className={`transition-all duration-200 ${path.startsWith('/cart') ? (isDark ? 'font-medium text-white' : 'font-medium text-gray-900') : (isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900 hover:font-medium')}`}
+              className={`relative inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border transition-all duration-200 hover:scale-105 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${
+                path.startsWith('/cart')
+                  ? isDark
+                    ? 'border-slate-600 bg-slate-800 text-white'
+                    : 'border-red-200 bg-red-50 text-red-700'
+                  : isDark
+                    ? 'border-transparent text-slate-100 hover:border-slate-700 hover:bg-slate-800'
+                    : 'border-transparent text-main hover:border-red-100 hover:bg-red-50 hover:text-red-700'
+              }`}
+              title={t('menu_cart', 'Корзина')}
+              aria-label={t('menu_cart', 'Корзина')}
             >
-              {t('menu_cart', 'Корзина')}{isClient && itemsCount ? ` (${itemsCount})` : ''}
+              <svg
+                aria-hidden="true"
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h15l-1.5 9h-12z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6 5 3H3" />
+                <circle cx="9" cy="20" r="1" />
+                <circle cx="18" cy="20" r="1" />
+              </svg>
+              {isClient && itemsCount > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white shadow-sm"
+                >
+                  {itemsCount > 99 ? '99+' : itemsCount}
+                </span>
+              )}
             </Link>
             {user ? (
               <AnimatedLogoutButton
@@ -594,23 +683,15 @@ export default function Header() {
                 {t('login', 'Войти')}
               </Link>
             )}
-            <button
-              onClick={() => { setShowSuggestions(false); toggleTheme() }}
-              className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
-              title={isDark ? t('theme_dark_title', 'Тёмная тема') : t('theme_light_title', 'Светлая тема')}
-            >
-              {isDark ? (
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M21 12.79A9 9 0 0 1 11.21 3 7 7 0 1 0 21 12.79Z" />
-                </svg>
-              ) : (
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.536-7.536-1.414 1.414M7.879 16.121 6.465 17.535m12.071 0-1.414-1.414M7.879 7.879 6.465 6.465" />
-                </svg>
-              )}
-              <span>{isDark ? t('theme_dark', 'Тёмная') : t('theme_light', 'Светлая')}</span>
-            </button>
+            <ThemeToggle
+              isDark={isDark}
+              onToggle={() => {
+                setShowSuggestions(false)
+                toggleTheme()
+              }}
+              lightLabel={t('theme_enable_light', 'Включить светлую тему')}
+              darkLabel={t('theme_enable_dark', 'Включить тёмную тему')}
+            />
             <button
               onClick={() => { setShowSuggestions(false); toggleLocale() }}
               className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}

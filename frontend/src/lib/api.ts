@@ -1,4 +1,8 @@
-import axios, { type AxiosRequestHeaders } from 'axios'
+import axios, {
+  type AxiosRequestConfig,
+  type AxiosRequestHeaders,
+  type AxiosResponse,
+} from 'axios'
 import Cookies from 'js-cookie'
 import { getClientApiBase } from './urls'
 
@@ -8,6 +12,77 @@ const api = axios.create({
   baseURL: typeof window !== 'undefined' ? getClientApiBase() : '/api',
   withCredentials: false,
 })
+
+const inFlightGetRequests = new Map<string, Promise<AxiosResponse<unknown>>>()
+
+function stableRequestKey(value: unknown): string {
+  if (typeof value === 'undefined') {
+    return 'undefined'
+  }
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) as string
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableRequestKey).join(',')}]`
+  }
+  return `{${Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableRequestKey((value as Record<string, unknown>)[key])}`)
+    .join(',')}}`
+}
+
+function requestScopeFingerprint(value: string | undefined): string {
+  if (!value) return ''
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+/**
+ * Объединяет только одновременно выполняющиеся одинаковые GET-запросы в браузере.
+ * Результат не кэшируется: после завершения следующий вызов снова обращается к API.
+ * Это сохраняет актуальность корзины/профиля и устраняет двойные эффекты React Strict Mode.
+ */
+export function getSingleFlight<T = any>(
+  url: string,
+  config?: AxiosRequestConfig
+): Promise<AxiosResponse<T>> {
+  if (typeof window === 'undefined' || config?.signal || config?.cancelToken) {
+    return api.get<T>(url, config)
+  }
+
+  const key = stableRequestKey({
+    url,
+    params: config?.params || null,
+    // Заголовки могут содержать переданный вручную Authorization. Для ключа
+    // достаточно отпечатка: сырой токен не должен даже временно жить в Map.
+    headers: requestScopeFingerprint(stableRequestKey(config?.headers || null)),
+    responseType: config?.responseType || 'json',
+    language: Cookies.get('NEXT_LOCALE') || document.documentElement.lang || 'ru',
+    currency: Cookies.get('currency') || preferredCurrency || 'RUB',
+    // Интерцептор в любом случае создаёт cookie для анонимного запроса.
+    // Делаем это до построения ключа, чтобы два самых первых GET тоже совпали.
+    cartSession: requestScopeFingerprint(Cookies.get('cart_session') || ensureCartSession()),
+    access: requestScopeFingerprint(Cookies.get('access')),
+  })
+  const existing = inFlightGetRequests.get(key)
+  if (existing) {
+    return existing as Promise<AxiosResponse<T>>
+  }
+
+  const request = api.get<T>(url, config)
+  inFlightGetRequests.set(key, request as Promise<AxiosResponse<unknown>>)
+  const clear = () => {
+    if (inFlightGetRequests.get(key) === request) {
+      inFlightGetRequests.delete(key)
+    }
+  }
+  request.then(clear, clear)
+  return request
+}
 
 // Проставляем идентификатор корзины (сохраняем в cookie)
 // Инициализация/получение идентификатора сессии корзины в cookie (доступен на всем сайте)
@@ -76,9 +151,6 @@ api.interceptors.request.use((config) => {
       const cartSid = Cookies.get('cart_session')
       if (cartSid) {
         ; (config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
-        if (process.env.NODE_ENV === 'development') {
-          console.log('API: sending cart session for transfer:', cartSid)
-        }
       }
     }
   } else {

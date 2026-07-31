@@ -2,7 +2,7 @@ import Head from 'next/head'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
-import api from '../lib/api'
+import api, { getSingleFlight } from '../lib/api'
 import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
 import {
@@ -91,7 +91,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     
     const updateCart = async () => {
       try {
-        const r = await api.get('/orders/cart')
+        const r = await getSingleFlight('/orders/cart')
         if (!cancelled && r.data) {
           // Обновляем только если данные действительно изменились
           setCart(prevCart => {
@@ -132,7 +132,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
 
   const refreshCart = useCallback(async () => {
     try {
-      const r = await api.get('/orders/cart')
+      const r = await getSingleFlight('/orders/cart')
       if (r.data) {
         let shouldUpdateCount = false
         setCart(prevCart => {
@@ -548,9 +548,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex justify-between text-sm text-main">
+                  <div className="flex justify-between text-sm text-main dark:!text-gray-900">
                     <span>{t('cart_items_count', 'Товаров')}</span>
-                    <span className="font-medium text-main">{cart.items_count}</span>
+                    <span className="font-medium text-main dark:!text-gray-900">{cart.items_count}</span>
                   </div>
                   {showCartDiscountBreakdown ? (
                     <>

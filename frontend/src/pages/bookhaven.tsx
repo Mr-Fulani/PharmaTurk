@@ -6,7 +6,7 @@ import { Search, Filter, Grid, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ProductCard from '../components/ProductCard';
 import { useViewMode } from '../hooks/useViewMode';
-import api from '../lib/api';
+import { getSingleFlight } from '../lib/api';
 import { buildProductIdentityKey } from '../lib/product';
 import { ProductTranslation } from '../lib/i18n';
 import { parsePriceWithCurrency } from '../lib/price';
@@ -72,7 +72,7 @@ const BookHavenPage: React.FC = () => {
 
   const loadCategories = async () => {
     try {
-      const response = await api.get('/catalog/categories', {
+      const response = await getSingleFlight('/catalog/categories', {
         params: { slug: 'books', include_children: true }
       });
       const allCategories = response.data.results || response.data;
@@ -89,14 +89,15 @@ const BookHavenPage: React.FC = () => {
       setLoading(true);
       const params: any = {
         product_type: 'books',
-        page_size: 100
+        page_size: 100,
+        view: 'card'
       };
 
       if (searchTerm) params.search = searchTerm;
       if (selectedCategory) params.category_slug = selectedCategory;
       if (sortBy) params.ordering = sortBy;
 
-      const response = await api.get('/catalog/products', { params });
+      const response = await getSingleFlight('/catalog/products', { params });
       setBooks(response.data.results || []);
     } catch (error) {
       console.error('Failed to load books:', error);

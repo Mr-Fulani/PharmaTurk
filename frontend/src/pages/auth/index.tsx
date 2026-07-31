@@ -7,6 +7,7 @@ import { useRouter } from 'next/router'
 import styles from './Auth.module.css'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { sanitizeNextPath } from '../../lib/authRedirect'
+import AnimatedPasswordInput from '../../components/AnimatedPasswordInput'
 
 // ─── Утилита: редирект после входа ──────────────────────────────────────────
 
@@ -616,14 +617,15 @@ function LoginForm({ socialLoginActive }: { socialLoginActive: boolean }) {
               />
             </div>
             <div className={styles.inputBox}>
-              <input
-                className="auth-password-input"
+              <AnimatedPasswordInput
+                inputClassName="auth-password-input"
                 placeholder={t('password_placeholder')}
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
                 onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+                showLabel={t('auth_show_password', { defaultValue: 'Показать пароль' })}
+                hideLabel={t('auth_hide_password', { defaultValue: 'Скрыть пароль' })}
                 required
               />
             </div>
@@ -739,14 +741,15 @@ function RegisterForm({ socialLoginActive }: { socialLoginActive: boolean }) {
           />
         </div>
         <div className={styles.inputBox}>
-          <input
-            className="auth-password-input"
+          <AnimatedPasswordInput
+            inputClassName="auth-password-input"
             placeholder={t('password_placeholder')}
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
             onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+            showLabel={t('auth_show_password', { defaultValue: 'Показать пароль' })}
+            hideLabel={t('auth_hide_password', { defaultValue: 'Скрыть пароль' })}
             required
           />
         </div>

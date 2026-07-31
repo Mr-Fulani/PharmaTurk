@@ -34,7 +34,9 @@ class ParserRegistry:
         for domain in domains:
             self._domain_mapping[domain.lower()] = name
         
-        self.logger.info(f"Зарегистрирован парсер '{name}' для доменов: {domains}")
+        # Регистрация выполняется при импорте Django-команд, воркеров и тестов.
+        # Это диагностическая деталь, а не рабочее событие для production INFO.
+        self.logger.debug("Зарегистрирован парсер '%s' для доменов: %s", name, domains)
     
     def get_parser_by_name(self, name: str) -> Optional[Type[BaseScraper]]:
         """Получает класс парсера по имени.

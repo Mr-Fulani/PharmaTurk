@@ -1,7 +1,7 @@
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import { useEffect, useState } from 'react'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from '../components/ProductCard'
 import VisualSearch from '../components/VisualSearch'
@@ -22,8 +22,8 @@ export default function SearchPage() {
       try {
         // Запрашиваем товары и услуги параллельно
         const [productsRes, servicesRes] = await Promise.all([
-          api.get('/catalog/products', { params: { search: q, page_size: 24 } }),
-          api.get('/catalog/services', { params: { search: q, page_size: 24 } })
+          getSingleFlight('/catalog/products', { params: { search: q, page_size: 24, view: 'card' } }),
+          getSingleFlight('/catalog/services', { params: { search: q, page_size: 24, view: 'card' } })
         ])
 
         const products = Array.isArray(productsRes.data) ? productsRes.data : (productsRes.data.results || [])
@@ -75,6 +75,8 @@ export default function SearchPage() {
                   isBaseProduct={isBaseProductType(pt)}
                   isNew={(p as { is_new?: boolean }).is_new}
                   isFeatured={(p as { is_featured?: boolean }).is_featured}
+                  rating={p.rating}
+                  reviewsCount={p.reviews_count}
                   translations={p.translations}
                   locale={i18n.language}
                 />

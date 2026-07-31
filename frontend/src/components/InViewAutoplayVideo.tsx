@@ -30,7 +30,9 @@ export default function InViewAutoplayVideo({
   alt = 'MUDAROBA',
 }: InViewAutoplayVideoProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const [shouldLoad, setShouldLoad] = useState(!deferUntilInView)
+  const [isInView, setIsInView] = useState(!deferUntilInView)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -40,18 +42,20 @@ export default function InViewAutoplayVideo({
   useEffect(() => {
     if (!deferUntilInView) {
       setShouldLoad(true)
+      setIsInView(true)
       return
     }
     const el = wrapRef.current
     if (!el || typeof IntersectionObserver === 'undefined') {
       setShouldLoad(true)
+      setIsInView(true)
       return
     }
     const io = new IntersectionObserver(
       ([entry]) => {
+        setIsInView(entry.isIntersecting)
         if (entry.isIntersecting) {
           setShouldLoad(true)
-          io.disconnect()
         }
       },
       { rootMargin, threshold: 0.08 }
@@ -59,6 +63,16 @@ export default function InViewAutoplayVideo({
     io.observe(el)
     return () => io.disconnect()
   }, [deferUntilInView, rootMargin])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !deferUntilInView) return
+    if (isInView) {
+      void video.play().catch(() => undefined)
+    } else {
+      video.pause()
+    }
+  }, [deferUntilInView, isInView, shouldLoad])
 
   return (
     <div ref={wrapRef} className={`absolute inset-0 h-full w-full ${className}`}>
@@ -72,6 +86,7 @@ export default function InViewAutoplayVideo({
         />
       ) : shouldLoad ? (
         <video
+          ref={videoRef}
           src={src}
           poster={poster}
           className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${videoClassName}`.trim()}

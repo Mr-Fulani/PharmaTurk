@@ -1,0 +1,551 @@
+.button {
+  --button-background: var(--accent);
+  --button-background-hover: var(--accent-strong);
+  --button-foreground: #fff;
+  --button-border: transparent;
+  --shirt-primary: var(--accent);
+  --shirt-primary-logo: #fff;
+  --shirt-secondary: #fff;
+  --shirt-secondary-logo: var(--accent);
+  --cart-start: 16px;
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  min-width: 148px;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  border: 1px solid var(--button-border);
+  border-radius: 0.6rem;
+  background: transparent;
+  padding: 0.7rem 1rem;
+  color: var(--button-foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  cursor: pointer;
+  container-type: inline-size;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.button::before {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--button-background);
+  content: '';
+  transform: scaleX(1);
+  transition:
+    background 0.2s ease,
+    transform 0.18s ease;
+}
+
+.button:hover:not(:disabled)::before {
+  background: var(--button-background-hover);
+}
+
+.button:active:not(:disabled)::before {
+  transform: scaleX(0.98);
+}
+
+.button:focus-visible {
+  outline: 3px solid rgba(220, 38, 38, 0.28);
+  outline-offset: 3px;
+}
+
+.button:disabled {
+  cursor: wait;
+}
+
+.button[data-state='success']:disabled {
+  cursor: default;
+}
+
+.button[data-state='adding'] {
+  z-index: 10;
+}
+
+.button[data-state='success'] {
+  overflow: hidden;
+}
+
+.button[data-variant='light'] {
+  --button-background: #17171b;
+  --button-background-hover: #0a0a0c;
+  --button-foreground: #fff;
+  --button-border: transparent;
+  --shirt-primary: #17171b;
+  --shirt-primary-logo: #fff;
+  --shirt-secondary: #fff;
+  --shirt-secondary-logo: #17171b;
+}
+
+:global(.dark) .button[data-variant='light'] {
+  --button-background: #fff;
+  --button-background-hover: #f2f2f9;
+  --button-foreground: #17171b;
+  --button-border: transparent;
+  --shirt-primary: #fff;
+  --shirt-primary-logo: #17171b;
+  --shirt-secondary: #17171b;
+  --shirt-secondary-logo: #fff;
+}
+
+.label {
+  position: relative;
+  z-index: 2;
+  display: block;
+  max-width: calc(100% - 38px);
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 1;
+  transform: translateX(15px);
+}
+
+.button[data-icon-only='true'] {
+  min-width: 46px;
+  width: 46px;
+  padding-inline: 0;
+}
+
+.button[data-icon-only='true'] .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.cart {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: var(--cart-start);
+  width: 30px;
+  height: 23px;
+  color: currentColor;
+  pointer-events: none;
+  transform: translateY(-50%) scale(0.78);
+  transform-origin: 50% 65%;
+}
+
+.cart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.cartShape,
+.cartWheel,
+.cartTick {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cartShape {
+  stroke-width: 2;
+}
+
+.cartWheel {
+  stroke-width: 1.6;
+}
+
+.cartTick {
+  stroke: #22c55e;
+  stroke-width: 2.3;
+  stroke-dasharray: 11;
+  stroke-dashoffset: 11;
+}
+
+.cartFill {
+  position: absolute;
+  z-index: -1;
+  top: 7px;
+  left: 7px;
+  width: 18px;
+  height: 10px;
+  border-radius: 2px 2px 5px 5px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 0, 87% 100%, 13% 100%);
+  opacity: 0;
+  transform: scaleY(0);
+  transform-origin: 50% 100%;
+}
+
+.morph {
+  position: absolute;
+  z-index: 1;
+  top: -12px;
+  left: 50%;
+  display: block;
+  width: 64px;
+  height: 13px;
+  margin-left: -32px;
+  overflow: visible;
+  pointer-events: none;
+  transform: scaleY(0);
+  transform-origin: 50% 100%;
+}
+
+.morph path {
+  fill: var(--button-background);
+  transition: fill 0.2s ease;
+}
+
+.shirt {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  pointer-events: none;
+  transform: translateY(-16px) scale(0);
+  transform-origin: 50% 100%;
+}
+
+.shirt svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: 50% 100%;
+}
+
+.shirtSecondary {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(100% 0 0);
+}
+
+.shirtPrimary .shirtBody {
+  fill: var(--shirt-primary);
+}
+
+.shirtPrimary .shirtLogo {
+  fill: var(--shirt-primary-logo);
+}
+
+.shirtSecondary .shirtBody {
+  fill: var(--shirt-secondary);
+}
+
+.shirtSecondary .shirtLogo {
+  fill: var(--shirt-secondary-logo);
+}
+
+.button[data-icon-only='true'] .cart {
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.82);
+}
+
+.button[data-state='adding']::before {
+  animation: buttonBounce 1.48s both;
+}
+
+.button[data-state='adding'] .label {
+  animation: labelOut 0.3s ease forwards;
+}
+
+.button[data-state='adding'] .morph {
+  animation: surfaceDrop 0.4s ease-out both;
+}
+
+.button[data-state='adding'] .cart {
+  animation: cartReceive 0.4s cubic-bezier(0.42, 0, 1, 1) both;
+}
+
+.button[data-state='adding'] .cartFill {
+  animation: fillCart 0.06s 0.9s linear forwards;
+}
+
+.button[data-state='adding'] .shirt {
+  animation: shirtFlight 1.25s linear both;
+}
+
+.button[data-state='adding'] .shirt svg {
+  animation: shirtFabric 1.25s both;
+}
+
+.button[data-state='adding'] .shirt svg.shirtSecondary {
+  animation:
+    shirtFabric 1.25s both,
+    shirtColorReveal 1.25s linear both;
+}
+
+.button[data-state='success']::before {
+  animation: successPulse 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.button[data-state='success'] .label {
+  max-width: 100%;
+  animation: labelIn 0.38s 0.62s ease both;
+  transform: translateX(0);
+}
+
+.button[data-state='success'] .cart {
+  left: 50%;
+  animation: cartExit 0.92s ease-in-out both;
+}
+
+.button[data-state='success'] .cartFill {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.button[data-state='success'] .cartTick {
+  animation: drawTick 0.24s 0.08s ease-out forwards;
+}
+
+@keyframes buttonBounce {
+  0% {
+    transform: scaleX(1);
+  }
+
+  10% {
+    transform: scaleX(0.97);
+  }
+
+  19% {
+    transform: scaleX(0.97);
+  }
+
+  45% {
+    transform: scaleX(1.015);
+  }
+
+  66% {
+    transform: scaleX(0.995);
+  }
+
+  82% {
+    transform: scaleX(1.003);
+  }
+
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes surfaceDrop {
+  0%,
+  100% {
+    transform: scaleY(0);
+  }
+
+  62.5% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes labelOut {
+  to {
+    opacity: 0;
+    transform: translateX(0);
+  }
+}
+
+@keyframes labelIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cartReceive {
+  0% {
+    left: var(--cart-start);
+    transform: translateY(-50%) scale(0.78);
+  }
+
+  100% {
+    left: 50%;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes shirtFlight {
+  0% {
+    transform: translateY(-16px) scale(0);
+  }
+
+  32% {
+    transform: translateY(-42px) scale(1);
+  }
+
+  56% {
+    transform: translateY(-40px) scale(1);
+  }
+
+  76% {
+    transform: translateY(16px) scale(0.9);
+  }
+
+  100% {
+    transform: translateY(16px) scale(0);
+  }
+}
+
+@keyframes shirtFabric {
+  0%,
+  20% {
+    transform: scale(1);
+  }
+
+  40% {
+    transform: scaleX(1.08) scaleY(0.92);
+  }
+
+  56% {
+    transform: scale(1);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes shirtColorReveal {
+  0%,
+  66.8% {
+    clip-path: inset(100% 0 0);
+  }
+
+  76.4%,
+  100% {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes fillCart {
+  from {
+    opacity: 0;
+    transform: scaleY(0);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes drawTick {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cartExit {
+  0% {
+    left: 50%;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  28% {
+    left: 50%;
+    transform: translate(-50%, -56%) scale(1) rotate(-4deg);
+  }
+
+  46% {
+    left: 50%;
+    transform: translate(-50%, -50%) scale(1) rotate(0);
+  }
+
+  100% {
+    left: calc(100% + 34px);
+    transform: translate(-50%, -50%) scale(0.84) rotate(5deg);
+  }
+}
+
+@keyframes successPulse {
+  0% {
+    transform: scaleX(0.98);
+  }
+
+  55% {
+    transform: scaleX(1.015);
+  }
+
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+@container (max-width: 210px) {
+  .button {
+    --cart-start: 11px;
+    min-width: 44px;
+    padding-inline: 0.7rem;
+  }
+
+  .label {
+    max-width: calc(100% - 32px);
+    font-size: 0.8rem;
+    transform: translateX(13px);
+  }
+
+  .cart {
+    width: 27px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .button::before {
+    transition-duration: 0.01ms;
+  }
+
+  .button[data-state='adding'] .label,
+  .button[data-state='adding'] .morph,
+  .button[data-state='adding'] .cart,
+  .button[data-state='adding'] .cartFill,
+  .button[data-state='adding'] .shirt,
+  .button[data-state='adding'] .shirt svg,
+  .button[data-state='adding'] .shirt svg.shirtSecondary,
+  .button[data-state='success']::before,
+  .button[data-state='success'] .label,
+  .button[data-state='success'] .cart,
+  .button[data-state='success'] .cartTick {
+    animation: none;
+  }
+
+  .button[data-state='adding'] .label {
+    opacity: 0.55;
+  }
+
+  .button[data-state='adding'] .shirt {
+    display: none;
+  }
+
+  .button[data-state='adding'] .morph {
+    display: none;
+  }
+
+  .button[data-state='success'] .cart {
+    opacity: 0;
+  }
+
+  .button[data-state='success'] .label {
+    opacity: 1;
+  }
+}

@@ -506,13 +506,12 @@ def _get_or_create_cart(request) -> Cart:
         session_key='' if user else session_key,
         defaults={'currency': 'RUB'}  # Изменил на RUB для соответствия товарам
     )
-    try:
-        logger.info(
-            "cart.resolve user=%s header_sid=%s cookie_sid=%s django_sid=%s resolved=%s created=%s",
-            getattr(user, 'id', None), header_session, cookie_session, django_session, cart.session_key, created
-        )
-    except Exception:
-        pass
+    logger.debug(
+        "cart.resolve user_id=%s anonymous=%s created=%s",
+        getattr(user, 'id', None),
+        not bool(user),
+        created,
+    )
     return cart
 
 

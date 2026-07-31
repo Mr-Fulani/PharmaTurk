@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import Cookies from 'js-cookie'
-import api, { setPreferredCurrency } from '../lib/api'
+import api, { getSingleFlight, setPreferredCurrency } from '../lib/api'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
 
@@ -12,6 +12,8 @@ interface User {
   last_name?: string
   phone_number?: string
   currency?: string
+  avatar?: string
+  avatar_url?: string
 }
 
 interface AuthContextValue {
@@ -24,6 +26,7 @@ interface AuthContextValue {
   loginWithSMS?: (phone: string, code: string) => Promise<void>
   loginWithSocial: (provider: 'google' | 'vk', token: string) => Promise<void>
   loginWithTelegram: (telegramData: any) => Promise<void>
+  updateUser: (updates: Partial<User>) => void
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -40,6 +43,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshFavoritesRef.current = useFavoritesStore.getState().refresh
   }, [])
 
+  const updateUser = useCallback((updates: Partial<User>) => {
+    setUser((currentUser) => currentUser ? { ...currentUser, ...updates } : currentUser)
+  }, [])
+
   useEffect(() => {
     // Попытка получить профиль по access
     const access = Cookies.get('access')
@@ -48,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
       return
     }
-    api.get('/users/profile').then((r) => {
+    getSingleFlight('/users/profile').then((r) => {
       const profile = r.data?.[0]
       console.log('AuthContext: profile loaded:', profile ? 'success' : 'failed')
       if (profile) {
@@ -59,7 +66,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           first_name: profile.first_name,
           last_name: profile.last_name,
           phone_number: profile.phone_number,
-          currency: profile.currency
+          currency: profile.currency,
+          avatar: profile.avatar,
+          avatar_url: profile.avatar_url
         })
         // Не затираем уже выбранную валюту в cookie: при сбое PATCH профиль в БД старый,
         // а X-Currency в api.ts берётся из cookie — иначе снова «залипание» на USDT в шапке.
@@ -93,7 +102,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         first_name: user.first_name,
         last_name: user.last_name,
         phone_number: user.phone_number,
-        currency: user.currency
+        currency: user.currency,
+        avatar: user.avatar,
+        avatar_url: user.avatar_url
       })
       if (user.currency) {
         Cookies.set('currency', user.currency, { sameSite: 'Lax', path: '/' })
@@ -116,7 +127,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         first_name: userData.first_name,
         last_name: userData.last_name,
         phone_number: userData.phone_number,
-        currency: userData.currency
+        currency: userData.currency,
+        avatar: userData.avatar,
+        avatar_url: userData.avatar_url
       })
       if (userData.currency) {
         Cookies.set('currency', userData.currency, { sameSite: 'Lax', path: '/' })
@@ -137,7 +150,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         first_name: userData.first_name,
         last_name: userData.last_name,
         phone_number: userData.phone_number,
-        currency: userData.currency
+        currency: userData.currency,
+        avatar: userData.avatar,
+        avatar_url: userData.avatar_url
       })
       if (userData.currency) {
         Cookies.set('currency', userData.currency, { sameSite: 'Lax', path: '/' })
@@ -158,7 +173,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         first_name: user.first_name,
         last_name: user.last_name,
         phone_number: user.phone_number,
-        currency: user.currency
+        currency: user.currency,
+        avatar: user.avatar,
+        avatar_url: user.avatar_url
       })
       if (user.currency) {
         Cookies.set('currency', user.currency, { sameSite: 'Lax', path: '/' })
@@ -177,8 +194,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       // Очищаем избранное при выходе
       refreshFavoritesRef.current()
-    }
-  }), [user, loading])
+    },
+    updateUser
+  }), [user, loading, updateUser])
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

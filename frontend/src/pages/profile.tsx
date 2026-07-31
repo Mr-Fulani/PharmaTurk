@@ -5,8 +5,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
 import Cookies from 'js-cookie'
-import api from '../lib/api'
-import { setPreferredCurrency } from '../lib/api'
+import api, { getSingleFlight, setPreferredCurrency } from '../lib/api'
 import {
   applyImageFallback,
   isVideoUrl,
@@ -98,7 +97,7 @@ const ORDER_STATUS_MAP: Record<string, string> = {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { user, loading: authLoading, updateUser } = useAuth()
   const { t, i18n } = useTranslation('common')
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
@@ -217,7 +216,7 @@ export default function ProfilePage() {
   const loadProfile = async () => {
     try {
       // Получаем профиль пользователя
-      const profileResponse = await api.get('/users/profile')
+      const profileResponse = await getSingleFlight('/users/profile')
       const profileList = Array.isArray(profileResponse.data) ? profileResponse.data : [profileResponse.data]
       const profileData = profileList[0] || {}
 
@@ -256,7 +255,7 @@ export default function ProfilePage() {
 
   const loadOrders = async () => {
     try {
-      const response = await api.get('/orders/orders')
+      const response = await getSingleFlight('/orders/orders')
       setOrders(response.data || [])
     } catch (error) {
       console.error('Failed to load orders:', error)
@@ -265,7 +264,7 @@ export default function ProfilePage() {
 
   const loadAddresses = async () => {
     try {
-      const response = await api.get('/users/addresses')
+      const response = await getSingleFlight('/users/addresses')
       setAddresses(response.data || [])
     } catch (error) {
       console.error('Failed to load addresses:', error)
@@ -410,15 +409,19 @@ export default function ProfilePage() {
       if (avatarFile) {
         const formDataAvatar = new FormData()
         formDataAvatar.append('avatar', avatarFile)
-        await api.post('/users/profile/upload-avatar', formDataAvatar, {
+        const avatarResponse = await api.post('/users/profile/upload-avatar', formDataAvatar, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
         })
+        updateUser({
+          avatar: avatarResponse.data?.avatar,
+          avatar_url: avatarResponse.data?.avatar_url,
+        })
       }
 
       // Обновляем профиль (используем list endpoint для получения текущего профиля, затем обновляем по id)
-      const profileResponse = await api.get('/users/profile')
+      const profileResponse = await getSingleFlight('/users/profile')
       const profileList = Array.isArray(profileResponse.data) ? profileResponse.data : [profileResponse.data]
       const currentProfile = profileList[0]
 
@@ -530,7 +533,7 @@ export default function ProfilePage() {
   const handleBindTelegram = async () => {
     setIsBindingTelegram(true)
     try {
-      const response = await api.get('/users/profile/telegram-bind-link')
+      const response = await getSingleFlight('/users/profile/telegram-bind-link')
       if (response.data && response.data.link) {
         window.location.href = response.data.link
         // Дополнительно можно обновить профиль, чтобы проверить статус

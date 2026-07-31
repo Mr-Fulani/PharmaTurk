@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import Link from 'next/link'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
 import { SpeakerWaveIcon, SpeakerXMarkIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline'
 import {
@@ -527,7 +527,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   useEffect(() => {
     const fetchTestimonials = async () => {
       try {
-        const response = await api.get('/feedback/testimonials/')
+        const response = await getSingleFlight('/feedback/testimonials/')
         const data = response.data
         const testimonialsList = Array.isArray(data) ? data : data.results || []
         // Отладочная информация для проверки данных

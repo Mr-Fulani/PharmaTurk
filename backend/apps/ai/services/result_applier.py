@@ -4,7 +4,7 @@ import re
 from typing import Any, Dict, Optional, List
 from django.db import transaction
 from django.utils.text import slugify as django_slugify
-from apps.catalog.models import Product, GlobalAttributeKey, ProductAttributeValue
+from apps.catalog.models import Product, GlobalAttributeKey
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.product_semantics import looks_untranslated_turkish
 
@@ -193,7 +193,7 @@ class BaseAIApplier:
             if pav.attribute_key_id and pav.attribute_key and pav.attribute_key.slug
         }
 
-        for idx, row in enumerate(raw_dynamic):
+        for row in raw_dynamic:
             if not isinstance(row, dict):
                 continue
             slug = _canonical_attr_slug(row.get("slug") or "")
@@ -217,35 +217,44 @@ class BaseAIApplier:
             if looks_untranslated_turkish(value_ru) or looks_untranslated_turkish(value_en):
                 continue
 
+            value = value[:500]
+            value_ru = value_ru[:500] if value_ru else None
+            value_en = value_en[:500] if value_en else None
+            sort_order = key.sort_order
             current = existing.get(slug)
-            if current:
-                changed = False
-                if current.value != value:
-                    current.value = value
-                    changed = True
-                if (current.value_ru or None) != value_ru:
-                    current.value_ru = value_ru
-                    changed = True
-                if (current.value_en or None) != value_en:
-                    current.value_en = value_en
-                    changed = True
-                if current.sort_order != idx:
-                    current.sort_order = idx
-                    changed = True
-                if changed:
-                    current.save(update_fields=["value", "value_ru", "value_en", "sort_order"])
+            if current is None:
+                # get_or_create опирается на DB constraint и остаётся безопасным,
+                # если два воркера одновременно применяют результат к одному товару.
+                current, created = target.dynamic_attributes.get_or_create(
+                    attribute_key=key,
+                    defaults={
+                        "value": value,
+                        "value_ru": value_ru,
+                        "value_en": value_en,
+                        "sort_order": sort_order,
+                    },
+                )
+                existing[slug] = current
+                if created:
                     updated = True
-                continue
+                    continue
 
-            ProductAttributeValue.objects.create(
-                content_object=target,
-                attribute_key=key,
-                value=value[:500],
-                value_ru=(value_ru[:500] if value_ru else None),
-                value_en=(value_en[:500] if value_en else None),
-                sort_order=idx,
-            )
-            updated = True
+            changed = False
+            if current.value != value:
+                current.value = value
+                changed = True
+            if (current.value_ru or None) != value_ru:
+                current.value_ru = value_ru
+                changed = True
+            if (current.value_en or None) != value_en:
+                current.value_en = value_en
+                changed = True
+            if current.sort_order != sort_order:
+                current.sort_order = sort_order
+                changed = True
+            if changed:
+                current.save(update_fields=["value", "value_ru", "value_en", "sort_order"])
+                updated = True
 
         return updated
 

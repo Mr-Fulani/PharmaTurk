@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.feedback.models import ProductReview, ProductReviewMedia, get_product_review_media_upload_path
+from apps.feedback.review_aggregates import attach_review_aggregates
 from apps.users.models import User
 from apps.feedback.tasks import notify_admin_product_review
 from apps.catalog.models import Service
@@ -112,6 +113,67 @@ def test_approved_review_is_aggregated_and_edit_returns_to_moderation(review_use
     review.refresh_from_db()
     assert review.status == ProductReview.Status.PENDING
     assert review.published_at is None
+
+
+@pytest.mark.django_db
+def test_card_review_summaries_are_attached_in_one_query(review_user, django_assert_num_queries):
+    ProductReview.objects.create(
+        user=review_user,
+        product_type="furniture",
+        product_slug="reviewed-chair",
+        product_name="Reviewed chair",
+        author_name="Review Author",
+        rating=5,
+        text="Approved",
+        status=ProductReview.Status.APPROVED,
+    )
+    ProductReview.objects.create(
+        user=User.objects.create_user(
+            email="second-reviewer@example.com",
+            username="second-reviewer",
+            password="password",
+        ),
+        product_type="furniture",
+        product_slug="reviewed-chair",
+        product_name="Reviewed chair",
+        author_name="Second Reviewer",
+        rating=3,
+        text="Also approved",
+        status=ProductReview.Status.APPROVED,
+    )
+    ProductReview.objects.create(
+        user=User.objects.create_user(
+            email="pending-reviewer@example.com",
+            username="pending-reviewer",
+            password="password",
+        ),
+        product_type="clothing",
+        product_slug="pending-shirt",
+        product_name="Pending shirt",
+        author_name="Pending Reviewer",
+        rating=1,
+        text="Pending",
+        status=ProductReview.Status.PENDING,
+    )
+    rows = [
+        {"product_type": "furniture", "slug": "reviewed-chair"},
+        {"product_type": "clothing", "slug": "pending-shirt"},
+        {
+            "_product_type": "furniture",
+            "slug": "reviewed-chair-blue",
+            "favorite_parent_slug": "reviewed-chair",
+        },
+    ]
+
+    with django_assert_num_queries(1):
+        attach_review_aggregates(rows)
+
+    assert rows[0]["rating"] == 4.0
+    assert rows[0]["reviews_count"] == 2
+    assert "rating" not in rows[1]
+    assert "reviews_count" not in rows[1]
+    assert rows[2]["rating"] == 4.0
+    assert rows[2]["reviews_count"] == 2
 
 
 @pytest.mark.django_db

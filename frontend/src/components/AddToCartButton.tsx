@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
 import { useCartStore } from '../store/cart'
+import styles from './AddToCartButton.module.css'
 
 interface AddToCartButtonProps {
   productId?: number
@@ -30,17 +31,29 @@ export default function AddToCartButton({
 }: AddToCartButtonProps) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { refresh } = useCartStore()
   const { t } = useTranslation('common')
 
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) {
+        clearTimeout(resetTimerRef.current)
+      }
+    }
+  }, [])
+
   const add = async () => {
+    if (loading || done) return
+    if (requireSize && !size) {
+      alert(t('select_size', 'Выберите размер'))
+      return
+    }
+
+    const animationStartedAt = Date.now()
+    setDone(false)
     setLoading(true)
     try {
-      if (requireSize && !size) {
-        alert(t('select_size', 'Выберите размер'))
-        setLoading(false)
-        return
-      }
       initCartSession()
       const body = new URLSearchParams()
       body.set('quantity', String(quantity))
@@ -63,8 +76,21 @@ export default function AddToCartButton({
         await api.post('/orders/cart/add/', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
       }
       await refresh()
+
+      const minimumAnimationDuration = 1300
+      const remainingAnimationTime = Math.max(
+        0,
+        minimumAnimationDuration - (Date.now() - animationStartedAt)
+      )
+      if (remainingAnimationTime) {
+        await new Promise((resolve) => setTimeout(resolve, remainingAnimationTime))
+      }
+
       setDone(true)
-      setTimeout(()=>setDone(false), 1500)
+      resetTimerRef.current = setTimeout(() => {
+        setDone(false)
+        resetTimerRef.current = null
+      }, 1450)
     } catch (err: any) {
       const detail = err?.response?.data?.detail || err?.message || t('add_to_cart_error', 'Ошибка добавления в корзину')
       // Быстрый видимый фидбек пользователю
@@ -87,62 +113,78 @@ export default function AddToCartButton({
         ? `${baseLabel} - ${price}` 
         : baseLabel))
   
-  // Иконка корзины для отображения при наведении
-  const cartIcon = (
-    <svg 
-      className="w-5 h-5" 
-      fill="none" 
-      stroke="currentColor" 
-      viewBox="0 0 24 24"
-    >
-      <path 
-        strokeLinecap="round" 
-        strokeLinejoin="round" 
-        strokeWidth={2} 
-        d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" 
-      />
-    </svg>
-  )
-  
-  // Если показываем цену, используем светлый стиль с границей, иначе - стандартный акцентный
   const useLightStyle = showPrice && price
-  const buttonClassName = useLightStyle
-    ? `inline-flex items-center justify-center gap-2 rounded-md bg-stone-50 border border-gray-900 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-stone-100 disabled:opacity-60 transition-all duration-200 ${className || ''}`
-    : `inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:opacity-60 transition-all duration-200 ${className || ''} ${
-        isIconOnly ? 'group' : ''
-      }`
+  const state = done ? 'success' : loading ? 'adding' : 'idle'
+  const accessibleLabel = done
+    ? t('added', 'Добавлено')
+    : loading
+      ? t('adding', 'Добавляем...')
+      : baseLabel
   
   return (
     <button
+      type="button"
       onClick={add}
-      disabled={loading}
-      className={buttonClassName}
+      disabled={loading || done}
+      aria-busy={loading}
+      aria-label={accessibleLabel}
+      className={`${styles.button} ${className || ''}`}
+      data-state={state}
+      data-variant={useLightStyle ? 'light' : 'accent'}
+      data-icon-only={isIconOnly ? 'true' : 'false'}
     >
-      {loading ? (
-        <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      <span className={styles.label} aria-live="polite">
+        {displayText}
+      </span>
+
+      <svg className={styles.morph} viewBox="0 0 64 13" aria-hidden="true">
+        <path d="M0 12C6 12 20 10 32 0C43.9 10 58 12 64 12V13H0V12Z" />
+      </svg>
+
+      <span className={styles.shirt} aria-hidden="true">
+        <svg className={styles.shirtPrimary} viewBox="0 0 24 24">
+          <path
+            className={styles.shirtBody}
+            d="M5 3 9 1.5S10.69 3 12 3s3-1.5 3-1.5L19 3l3.5 5-3 2.5-.5-1-1.82 9.11a3 3 0 0 1-.85 1.51C15.43 20.93 13.71 22.31 12 23c-1.71-.69-3.43-2.07-4.34-2.88a3 3 0 0 1-.84-1.51L5 9.5l-.5 1-3-2.5L5 3Z"
+          />
+          <path
+            className={styles.shirtLogo}
+            d="M14.2 5.7h2.3v4.1h-2.3V5.7Zm.4.4v3.3h1.5V6.1h-1.5Z"
+          />
         </svg>
-      ) : useLightStyle ? (
-        displayText
-      ) : isIconOnly ? (
-        <>
-          <span className="group-hover:hidden transition-opacity duration-200">
-            {done ? t('added', 'Добавлено') : cartIcon}
-          </span>
-          <span className="hidden group-hover:block transition-opacity duration-200">
-            {cartIcon}
-          </span>
-        </>
-      ) : (
-        <>
-          <span className="group-hover:hidden transition-opacity duration-200">
-            {displayText}
-          </span>
-          <span className="hidden group-hover:block transition-opacity duration-200">
-            {cartIcon}
-          </span>
-        </>
-      )}
+        <svg className={styles.shirtSecondary} viewBox="0 0 24 24">
+          <path
+            className={styles.shirtBody}
+            d="M5 3 9 1.5S10.69 3 12 3s3-1.5 3-1.5L19 3l3.5 5-3 2.5-.5-1-1.82 9.11a3 3 0 0 1-.85 1.51C15.43 20.93 13.71 22.31 12 23c-1.71-.69-3.43-2.07-4.34-2.88a3 3 0 0 1-.84-1.51L5 9.5l-.5 1-3-2.5L5 3Z"
+          />
+          <path
+            className={styles.shirtLogo}
+            d="M14.2 5.7h2.3v4.1h-2.3V5.7Zm.4.4v3.3h1.5V6.1h-1.5Z"
+          />
+        </svg>
+      </span>
+
+      <span className={styles.cart} aria-hidden="true">
+        <span className={styles.cartFill} />
+        <svg viewBox="0 0 36 26">
+          <path
+            className={styles.cartShape}
+            d="M1 2.5H6L10 18.5H25.5L28.5 7.5H7.5"
+          />
+          <path
+            className={styles.cartWheel}
+            d="M11.5 25C12.6046 25 13.5 24.1046 13.5 23C13.5 21.8954 12.6046 21 11.5 21C10.3954 21 9.5 21.8954 9.5 23C9.5 24.1046 10.3954 25 11.5 25Z"
+          />
+          <path
+            className={styles.cartWheel}
+            d="M24 25C25.1046 25 26 24.1046 26 23C26 21.8954 25.1046 21 24 21C22.8954 21 22 21.8954 22 23C22 24.1046 22.8954 25 24 25Z"
+          />
+          <path
+            className={styles.cartTick}
+            d="M14.5 13.5L16.5 15.5L21.5 10.5"
+          />
+        </svg>
+      </span>
     </button>
   )
 }

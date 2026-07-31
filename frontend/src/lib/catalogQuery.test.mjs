@@ -1,7 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildCatalogPageQuery, parseBrandIds, parseCatalogFiltersQuery } from './catalogQuery.js'
+import {
+  buildCategoryBrandParams,
+  buildCatalogPageQuery,
+  normalizeCatalogFacets,
+  parseBrandIds,
+  parseCatalogFiltersQuery,
+} from './catalogQuery.js'
 
 test('pagination preserves the selected brand', () => {
   assert.deepEqual(
@@ -60,4 +66,61 @@ test('all sidebar filters survive pagination and can be restored from query', ()
     attr_color: ['red', 'blue'],
   })
   assert.deepEqual(parseCatalogFiltersQuery(pageTwoQuery, defaults), filters)
+})
+
+test('furniture brands use the category directory regardless of products and filters', () => {
+  assert.deepEqual(buildCategoryBrandParams({
+    productType: 'furniture',
+    categoryType: 'furniture',
+    routeSlug: 'furniture',
+    categorySlugs: ['bedroom'],
+    categoryIds: [32],
+    inStock: true,
+  }), {
+    product_type: 'furniture',
+    page_size: 500,
+    primary_category_slug: 'furniture',
+  })
+})
+
+test('other category brand lists can still follow active product filters', () => {
+  assert.deepEqual(buildCategoryBrandParams({
+    productType: 'clothing',
+    categoryType: 'clothing',
+    routeSlug: 'clothing',
+    categorySlugs: ['women-clothing'],
+    inStock: true,
+  }), {
+    product_type: 'clothing',
+    page_size: 500,
+    primary_category_slug: 'clothing',
+    category_slug: 'women-clothing',
+    in_stock: true,
+  })
+})
+
+test('missing facet fields clear state instead of retaining the previous category', () => {
+  assert.deepEqual(normalizeCatalogFacets({ results: [] }), {
+    attributes: [],
+    genders: [],
+    fragranceTypes: [],
+  })
+  assert.deepEqual(normalizeCatalogFacets(null), {
+    attributes: [],
+    genders: [],
+    fragranceTypes: [],
+  })
+})
+
+test('facet normalization preserves arrays returned by the API', () => {
+  const attributes = [{ key: 'color', name: 'Color', values: ['Blue'] }]
+  assert.deepEqual(normalizeCatalogFacets({
+    available_attributes: attributes,
+    available_genders: ['unisex'],
+    available_fragrance_types: ['eau-de-parfum'],
+  }), {
+    attributes,
+    genders: ['unisex'],
+    fragranceTypes: ['eau-de-parfum'],
+  })
 })

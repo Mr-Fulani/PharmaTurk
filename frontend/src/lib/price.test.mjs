@@ -29,3 +29,13 @@ test('uses locale-specific thousands separators', () => {
   assert.equal(money.parsePriceWithCurrency('1,500.00 TRY').price, 1500)
   assert.equal(money.parsePriceWithCurrency('1,500.00 TRY').currency, 'TRY')
 })
+
+test('uses currency symbols for public prices', () => {
+  assert.equal(money.getCurrencySymbol('RUB'), '₽')
+  assert.equal(money.getCurrencySymbol('usd'), '$')
+  assert.equal(money.getCurrencySymbol('EUR'), '€')
+  assert.equal(money.getCurrencySymbol('TRY'), '₺')
+  assert.equal(money.getCurrencySymbol('KZT'), '₸')
+  assert.equal(money.getCurrencySymbol('USDT'), '₮')
+  assert.equal(money.getCurrencySymbol('GBP'), 'GBP')
+})

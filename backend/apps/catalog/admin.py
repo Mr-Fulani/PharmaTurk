@@ -442,19 +442,80 @@ class PAVRootCategoryFilter(SimpleListFilter):
 
 @admin.register(ProductAttributeValue)
 class ProductAttributeValueAdmin(admin.ModelAdmin):
-    """Сводный список значений динамических атрибутов: ревизия и массовая чистка
-    легаси-данных (парсеры эти строки больше не создают)."""
+    """Сводный список значений из AI и детерминированных parser-синхронизаций."""
     form = ProductAttributeValueAdminForm
-    list_display = ('attribute_key', 'value', 'value_ru', 'value_en', 'product_label', 'sort_order')
+    list_display = (
+        'attribute_label',
+        'value',
+        'value_ru',
+        'value_en',
+        'product_label',
+        'product_identity',
+        'sort_order',
+    )
     list_editable = ('value_ru',)
     list_filter = (PAVRootCategoryFilter, 'content_type', 'attribute_key')
-    search_fields = ('value', 'value_ru', 'value_en')
+    search_fields = (
+        'value',
+        'value_ru',
+        'value_en',
+        '=object_id',
+        'attribute_key__slug',
+    )
     list_select_related = ('attribute_key', 'content_type')
     ordering = ('attribute_key__sort_order', 'value_ru')
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related('attribute_key', 'content_type')
+            .prefetch_related('content_object', 'attribute_key__translations')
+        )
+
+    @admin.display(description=_("Тип атрибута"), ordering='attribute_key__sort_order')
+    def attribute_label(self, obj):
+        key = obj.attribute_key
+        translations = list(key.translations.all())
+        from django.utils import translation
+
+        lang = (translation.get_language() or 'ru').split('-')[0]
+        translated = next((row.name for row in translations if row.locale == lang), None)
+        fallback = next((row.name for row in translations if row.locale == 'en'), None)
+        fallback_any = translations[0].name if translations else None
+        return translated or fallback or fallback_any or key.slug
 
     @admin.display(description=_("Товар"))
     def product_label(self, obj):
         return str(obj.content_object) if obj.content_object else "—"
+
+    @admin.display(description=_("Идентификаторы"))
+    def product_identity(self, obj):
+        product = obj.content_object
+        if product is None:
+            return format_html(
+                '<span title="{}">{} #{}</span>',
+                _("Связанный объект не найден"),
+                obj.content_type.model,
+                obj.object_id,
+            )
+
+        external_id = str(getattr(product, 'external_id', '') or '').strip()
+        base_product_id = getattr(product, 'base_product_id', None)
+        external_url = str(getattr(product, 'external_url', '') or '').strip()
+        parts = [f"{obj.content_type.model} #{obj.object_id}"]
+        if base_product_id:
+            parts.append(f"base #{base_product_id}")
+        if external_id:
+            parts.append(f"ext: {external_id}")
+        label = " · ".join(parts)
+        if external_url:
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+                external_url,
+                label,
+            )
+        return label
 
 class ServiceImageInline(AdminMediaHelpTextMixin, nested_admin.NestedTabularInline):
     """Inline для галереи изображений услуги."""

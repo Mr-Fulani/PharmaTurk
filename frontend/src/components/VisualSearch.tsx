@@ -27,6 +27,8 @@ interface Product {
   is_new?: boolean
   is_bestseller?: boolean
   is_featured?: boolean
+  rating?: number | string | null
+  reviews_count?: number | null
   translations?: ProductTranslation[]
   gender?: string | null
 }
@@ -182,6 +184,8 @@ export default function VisualSearch() {
               isBestseller={r.product.is_bestseller}
               isNew={r.product.is_new}
               isFeatured={r.product.is_featured}
+              rating={r.product.rating}
+              reviewsCount={r.product.reviews_count ?? undefined}
               translations={r.product.translations}
               locale={i18n.language}
             />

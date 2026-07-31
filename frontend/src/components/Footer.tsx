@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
 import { useTheme } from '../context/ThemeContext'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 import Link from 'next/link'
 
 interface StaticPageLink {
@@ -45,7 +45,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
 
   // Загружаем ссылки при монтировании компонента и обновляем при смене языка
   useEffect(() => {
-    api.get('/pages/')
+    getSingleFlight('/pages/')
       .then(response => {
         const pages = response.data?.results || response.data || []
         if (Array.isArray(pages) && pages.length > 0) {
@@ -86,7 +86,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
       initialSettings?.vk_url || initialSettings?.instagram_url
     
     if (!hasSocialFromSSR) {
-      api.get('/settings/footer-settings')
+      getSingleFlight('/settings/footer-settings')
         .then(response => {
           const data = response.data || {}
           setSettings((prev) => ({

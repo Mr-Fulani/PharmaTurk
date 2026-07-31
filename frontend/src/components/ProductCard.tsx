@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
+import { PointerEvent, useState } from 'react'
 import { useTranslation } from 'next-i18next'
+import { ChatBubbleOvalLeftIcon, StarIcon } from '@heroicons/react/20/solid'
 import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
 
@@ -22,7 +24,7 @@ import {
 import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { favoriteApiProductId } from '../lib/product'
-import { formatMoney, parseMoneyNumber } from '../lib/price'
+import { formatMoney, getCurrencySymbol, parseMoneyNumber } from '../lib/price'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import ProductCardImageGallery, { ProductCardGalleryImage } from './ProductCardImageGallery'
 
@@ -36,7 +38,8 @@ interface ProductCardProps {
   currency: string
   oldPrice?: string | number | null
   badge?: string | null
-  rating?: number | null
+  rating?: number | string | null
+  brandName?: string | null
   imageUrl?: string | null
   galleryImages?: ProductCardGalleryImage[] | null
   videoUrl?: string | null
@@ -85,6 +88,7 @@ export default function ProductCard({
   oldPrice,
   badge,
   rating,
+  brandName,
   imageUrl,
   galleryImages,
   videoUrl,
@@ -110,6 +114,10 @@ export default function ProductCard({
   imageFit = 'cover'
 }: ProductCardProps) {
   const { t, i18n } = useTranslation('common')
+  const [variantPreviewImage, setVariantPreviewImage] = useState<string | null>(null)
+  const resetVariantPreview = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse') setVariantPreviewImage(null)
+  }
 
   const localizedName = getLocalizedProductName(name, t, translations, locale || i18n.language)
   const rawDescription = getLocalizedProductDescription(
@@ -175,6 +183,16 @@ export default function ProductCard({
           href={buildFavoriteProductHref(baseProductHref, sw.slug)}
           title={sw.color || undefined}
           aria-label={sw.color || sw.slug}
+          onPointerEnter={(event) => {
+            if (event.pointerType === 'mouse') setVariantPreviewImage(sw.image!)
+          }}
+          onPointerMove={(event) => {
+            if (event.pointerType === 'mouse') {
+              setVariantPreviewImage((current) => current === sw.image ? current : sw.image!)
+            }
+          }}
+          onFocus={() => setVariantPreviewImage(sw.image!)}
+          onBlur={() => setVariantPreviewImage(null)}
           className="block h-6 w-6 overflow-hidden rounded-full border border-gray-200 transition-transform hover:scale-110 hover:border-[var(--accent)]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -204,6 +222,33 @@ export default function ProductCard({
   const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
     ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
     : null
+  const currentPriceColorClass =
+    discountPercent !== null ? 'text-green-600 dark:text-green-400' : 'text-[var(--accent)]'
+  const parsedRating = rating == null ? null : Number(rating)
+  const displayRating = parsedRating !== null && Number.isFinite(parsedRating) && parsedRating > 0
+    ? Math.min(5, parsedRating)
+    : null
+  const displayReviewsCount = typeof reviewsCount === 'number' && reviewsCount > 0
+    ? reviewsCount
+    : null
+  const reviewsLabel = displayReviewsCount !== null
+    ? t('product_reviews_count', {
+        count: displayReviewsCount,
+        formattedCount: new Intl.NumberFormat(locale || i18n.language).format(displayReviewsCount),
+      })
+    : t('product_reviews_title', 'Отзывы')
+  const displayBrandName = brandName?.trim() || null
+  const variantPreviewOverlay = variantPreviewImage ? (
+    // Миниатюра варианта уже загружена в свотче, поэтому подмена не создаёт
+    // отдельного API-запроса и не требует размонтировать видео под ней.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={variantPreviewImage}
+      alt={localizedName}
+      decoding="async"
+      className={`pointer-events-none absolute inset-0 z-[5] h-full w-full ${imageFitClass}`}
+    />
+  ) : null
 
   const favoriteProductId = favoriteApiProductId(
     { id, base_product_id: baseProductId },
@@ -212,7 +257,10 @@ export default function ProductCard({
 
   if (viewMode === 'list') {
     return (
-      <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
+      <div
+        className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1"
+        onPointerLeave={resetVariantPreview}
+      >
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0 overflow-hidden rounded-md">
           {/* Приоритет медиа: видео/youtube/ambient/gif выше галереи; галерея (с автосвайпом) — ниже */}
           {youtubeIdForCard ? (
@@ -234,7 +282,7 @@ export default function ProductCard({
               poster={resolvedImage || undefined}
               alt={localizedName}
               videoClassName="rounded-md"
-              deferUntilInView={false}
+              deferUntilInView
             />
           ) : showGif && resolvedGifSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -254,6 +302,7 @@ export default function ProductCard({
               name={localizedName}
               mainImageUrl={listingImgSrc}
               images={galleryImages}
+              previewImageUrl={variantPreviewImage}
               imageFitClass={imageFitClass}
               className="rounded-md overflow-hidden"
             />
@@ -270,8 +319,9 @@ export default function ProductCard({
               onError={(event) => applyImageFallback(event.currentTarget)}
             />
           )}
+          {variantPreviewOverlay}
           {badge && (
-            <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
+            <span className="absolute left-2 top-2 z-10 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
               {badge}
             </span>
           )}
@@ -305,25 +355,45 @@ export default function ProductCard({
             )}
             <div className="flex items-center gap-4 mb-3">
               <div className="flex items-baseline gap-2">
-                <div className="text-lg font-bold text-[var(--text-strong)]">
-                  {price ? `${formatMoney(price, currency, locale || i18n.language)} ${currency}` : t('price_on_request', 'Цена по запросу')}
+                <div className={`inline-flex items-center gap-1 text-lg font-bold ${currentPriceColorClass}`}>
+                  {price ? (
+                    <>
+                      {formatMoney(price, currency, locale || i18n.language)}
+                      <span>{getCurrencySymbol(currency)}</span>
+                    </>
+                  ) : t('price_on_request', 'Цена по запросу')}
                 </div>
                 {oldPrice && (
-                  <div className="text-sm text-gray-400 line-through">
-                    {`${formatMoney(oldPrice, currency, locale || i18n.language)} ${currency}`}
+                  <div className="inline-flex items-center gap-1 text-sm text-gray-400">
+                    <span className="line-through">
+                      {formatMoney(oldPrice, currency, locale || i18n.language)}
+                    </span>
+                    <span>{getCurrencySymbol(currency)}</span>
                   </div>
                 )}
                 {oldPrice && discountPercent !== null && (
                   <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
                 )}
               </div>
-              {typeof rating === 'number' && (
+              {displayRating !== null && (
                 <div className="flex items-center gap-1 text-sm text-amber-600">
                   <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
                     <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
                   </svg>
-                  <span>{rating.toFixed(1)}</span>
+                  <span>{displayRating.toFixed(1)}</span>
                 </div>
+              )}
+              <div className="inline-flex items-center gap-1 text-sm text-[var(--text-weak)]">
+                <ChatBubbleOvalLeftIcon className="h-4 w-4 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                <span>{reviewsLabel}</span>
+              </div>
+              {displayBrandName && (
+                <span
+                  className="ml-auto max-w-[45%] truncate text-xs font-semibold text-[var(--accent)]"
+                  title={displayBrandName}
+                >
+                  {displayBrandName}
+                </span>
               )}
             </div>
           </div>
@@ -343,7 +413,10 @@ export default function ProductCard({
   }
 
   return (
-    <div className="group flex flex-col gap-2 relative transition-all duration-300 hover:-translate-y-1">
+    <div
+      className="group relative flex h-full flex-col gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-[0_2px_10px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.16)] dark:hover:border-gray-600"
+      onPointerLeave={resetVariantPreview}
+    >
       <Link 
         href={href || buildProductUrl(productType, slug)}
         className="relative block w-full aspect-[4/5] rounded-xl overflow-hidden bg-gray-100/50"
@@ -369,7 +442,7 @@ export default function ProductCard({
             poster={resolvedImage || undefined}
             alt={localizedName}
             videoClassName={hoverMediaClass}
-            deferUntilInView={false}
+            deferUntilInView
           />
         ) : showGif && resolvedGifSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -389,6 +462,7 @@ export default function ProductCard({
             name={localizedName}
             mainImageUrl={listingImgSrc}
             images={galleryImages}
+            previewImageUrl={variantPreviewImage}
             imageFitClass={imageFitClass}
           />
         ) : (
@@ -404,6 +478,7 @@ export default function ProductCard({
             onError={(event) => applyImageFallback(event.currentTarget)}
           />
         )}
+        {variantPreviewOverlay}
         
         {(badge || isFeatured || isNew || (productType === 'books' && isBestseller)) && (
           <div className="absolute left-2 top-2 flex flex-col gap-1 z-10">
@@ -456,18 +531,28 @@ export default function ProductCard({
       {/* Свотчи расцветок: мини-фото вариантов + переход на конкретную расцветку */}
       {swatchStrip}
 
-      {/* Описание и цена (без рамок) */}
+      {/* Цена, название и рейтинг */}
       <Link
         href={href || buildProductUrl(productType, slug)}
-        className="flex flex-col px-1"
+        className="flex flex-1 flex-col px-1 pb-1"
       >
-        <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-base md:text-lg font-bold text-[var(--text-strong)] leading-tight tracking-tight">
-            {price ? `${formatMoney(price, currency, locale || i18n.language)} ${currency}` : t('price_on_request', 'Цена по запросу')}
+        <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span
+            className={`inline-flex items-center gap-1 text-base md:text-lg font-bold leading-tight tracking-tight ${currentPriceColorClass}`}
+          >
+            {price ? (
+              <>
+                {formatMoney(price, currency, locale || i18n.language)}
+                <span>{getCurrencySymbol(currency)}</span>
+              </>
+            ) : t('price_on_request', 'Цена по запросу')}
           </span>
           {oldPrice && (
-            <span className="text-xs md:text-sm text-gray-400 line-through">
-              {`${formatMoney(oldPrice, currency, locale || i18n.language)} ${currency}`}
+            <span className="inline-flex items-center gap-1 text-xs md:text-sm text-gray-400">
+              <span className="line-through">
+                {formatMoney(oldPrice, currency, locale || i18n.language)}
+              </span>
+              <span>{getCurrencySymbol(currency)}</span>
             </span>
           )}
           {oldPrice && discountPercent !== null && (
@@ -475,15 +560,9 @@ export default function ProductCard({
           )}
         </div>
         
-        <h3 className="uppercase text-sm font-semibold text-[var(--text-strong)] line-clamp-1 leading-tight tracking-wide">
+        <h3 className="line-clamp-2 min-h-[2.5rem] text-sm font-medium leading-5 text-[var(--text-strong)]">
           {localizedName}
         </h3>
-        
-        {localizedDescription && (
-          <p className="text-xs md:text-sm text-gray-500 line-clamp-1 mt-0.5 leading-tight">
-            {localizedDescription}
-          </p>
-        )}
 
         {/* Информация специфичная для книг */}
         {productType === 'books' && (
@@ -507,17 +586,26 @@ export default function ProductCard({
           </div>
         )}
 
-        {typeof rating === 'number' && (
-          <div className="mt-1.5 flex items-center gap-1 text-xs text-amber-500">
-            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
-              <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
-            </svg>
-            <span>{rating.toFixed(1)}</span>
-            {productType === 'books' && reviewsCount && (
-              <span className="text-gray-400 ml-0.5">({reviewsCount})</span>
-            )}
-          </div>
-        )}
+        <div className="mt-auto flex min-h-5 items-center gap-1.5 pt-2 text-xs">
+          {displayRating !== null && (
+            <>
+              <StarIcon className="h-4 w-4 flex-none text-amber-400" aria-hidden="true" />
+              <span className="font-semibold text-[var(--text-strong)]">{displayRating.toFixed(1)}</span>
+            </>
+          )}
+          <span className={`${displayRating !== null ? 'ml-1' : ''} inline-flex items-center gap-1 text-[var(--text-weak)]`}>
+            <ChatBubbleOvalLeftIcon className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+            {reviewsLabel}
+          </span>
+          {displayBrandName && (
+            <span
+              className="ml-auto max-w-[55%] truncate text-right font-semibold text-[var(--accent)]"
+              title={displayBrandName}
+            >
+              {displayBrandName}
+            </span>
+          )}
+        </div>
       </Link>
     </div>
   )

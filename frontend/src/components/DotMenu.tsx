@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useTheme } from '../context/ThemeContext'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
+import { getCurrencySymbol } from '../lib/price'
 import styles from './DotMenu.module.css'
 
 interface DotMenuProps {
@@ -35,14 +36,6 @@ interface MenuItem {
 }
 
 const currencyOptions = ['RUB', 'USD', 'EUR', 'TRY', 'KZT', 'USDT']
-const currencySymbols: Record<string, string> = {
-  RUB: '₽',
-  USD: '$',
-  EUR: '€',
-  TRY: '₺',
-  KZT: '₸',
-  USDT: '₮',
-}
 const ITEM_GAP = 42
 const ITEM_SIZE = 40
 
@@ -465,7 +458,7 @@ export function CurrencyIcon({ code, compact = false }: { code: string; compact?
         )}
       </svg>
       {!compact && (
-        <span className={styles.currencySymbol}>{currencySymbols[normalizedCode] || normalizedCode.slice(0, 1)}</span>
+        <span className={styles.currencySymbol}>{getCurrencySymbol(normalizedCode).slice(0, 1)}</span>
       )}
     </span>
   )
