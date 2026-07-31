@@ -17,6 +17,8 @@ import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
 import { useTheme } from '../context/ThemeContext'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import { useReducedMotion } from 'framer-motion'
+import AnimatedOrderButton, { OrderButtonState } from '../components/AnimatedOrderButton'
 
 interface CartItem {
   id: number
@@ -81,6 +83,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const { t, i18n } = useTranslation('common')
   const { theme } = useTheme()
   const isDark = theme === 'dark'
+  const prefersReducedMotion = useReducedMotion()
   const [cart, setCart] = useState<Cart | null>(initialCart || null)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null)
@@ -98,6 +101,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     holder: '',
   })
   const [submitting, setSubmitting] = useState(false)
+  const [orderButtonState, setOrderButtonState] = useState<OrderButtonState>('idle')
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [saveAddress, setSaveAddress] = useState(false)
@@ -234,7 +238,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       return
     }
 
+    const animationStartedAt = Date.now()
+    let orderCreated = false
     setSubmitting(true)
+    setOrderButtonState('processing')
     try {
       const body = new URLSearchParams()
       body.set('contact_name', contactName)
@@ -258,6 +265,22 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       const orderNumber = res.data?.number
       setItemsCount(0)
       await refreshCart()
+
+      const minimumAnimationDuration = prefersReducedMotion ? 0 : 7000
+      const remainingAnimationTime = Math.max(
+        0,
+        minimumAnimationDuration - (Date.now() - animationStartedAt)
+      )
+      if (remainingAnimationTime) {
+        await new Promise((resolve) => setTimeout(resolve, remainingAnimationTime))
+      }
+
+      orderCreated = true
+      setOrderButtonState('success')
+      if (!prefersReducedMotion) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+
       if (paymentMethod === 'crypto' && res.data?.payment_data && orderNumber) {
         const invoiceUrl = res.data.payment_data.invoice_url
         if (invoiceUrl) {
@@ -278,6 +301,9 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       const detail = err?.response?.data?.detail || err?.message || t('checkout_error_generic', 'Ошибка оформления заказа')
       alert(String(detail))
     } finally {
+      if (!orderCreated) {
+        setOrderButtonState('idle')
+      }
       setSubmitting(false)
     }
   }
@@ -1005,13 +1031,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 )}
               </div>
 
-              <button
-                type="submit"
+              <AnimatedOrderButton
+                state={orderButtonState}
                 disabled={submitting}
-                className="w-full rounded-md bg-violet-600 px-6 py-3 text-base font-medium text-white hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? t('checkout_submitting', 'Отправка...') : t('checkout_submit', 'Оформить заказ')}
-              </button>
+                defaultLabel={t('checkout_submit', 'Оформить заказ')}
+                processingLabel={t('checkout_submitting', 'Отправка...')}
+                successLabel={t('checkout_order_placed', 'Заказ оформлен')}
+              />
             </form>
           </div>
 

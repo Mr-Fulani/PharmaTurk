@@ -98,7 +98,7 @@ const ORDER_STATUS_MAP: Record<string, string> = {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { user, loading: authLoading, updateUser } = useAuth()
   const { t, i18n } = useTranslation('common')
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
@@ -410,10 +410,14 @@ export default function ProfilePage() {
       if (avatarFile) {
         const formDataAvatar = new FormData()
         formDataAvatar.append('avatar', avatarFile)
-        await api.post('/users/profile/upload-avatar', formDataAvatar, {
+        const avatarResponse = await api.post('/users/profile/upload-avatar', formDataAvatar, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
+        })
+        updateUser({
+          avatar: avatarResponse.data?.avatar,
+          avatar_url: avatarResponse.data?.avatar_url,
         })
       }
 

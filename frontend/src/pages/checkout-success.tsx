@@ -178,7 +178,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
       <Head>
         <title>{t('order_success_page_title')} — Mudaroba</title>
       </Head>
-      <main className="min-h-screen bg-gradient-to-b from-violet-50/60 via-white to-white py-12">
+      <main className="min-h-screen bg-gradient-to-b from-violet-50/60 via-white to-white py-12 transition-colors duration-200 dark:from-[#0f1624] dark:via-[#0f1624] dark:to-[#0b1420]">
         <div className="mx-auto w-full max-w-6xl px-4">
           {!number && (
             <div className="rounded-2xl border border-rose-100 bg-white/80 p-6 text-center shadow-sm">

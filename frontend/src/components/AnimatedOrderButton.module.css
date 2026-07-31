@@ -1,0 +1,548 @@
+.order {
+  --button-background: #1c212e;
+  --button-background-hover: #111827;
+  --button-text: #fff;
+  --primary: var(--accent);
+  --primary-light: #f87171;
+  --grey-dark: #3f4656;
+  --grey: #6c7486;
+  --grey-light: #cdd9ed;
+  --green: #16bf78;
+  --sand: #f59e0b;
+  --sand-light: #fbbf24;
+  --order-animation-duration: 7s;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 60px;
+  min-width: 0;
+  appearance: none;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--button-background);
+  padding: 0;
+  color: var(--button-text);
+  font: inherit;
+  cursor: pointer;
+  isolation: isolate;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.order:hover:not(:disabled) {
+  background: var(--button-background-hover);
+  box-shadow: 0 10px 24px rgba(28, 33, 46, 0.22);
+}
+
+.order:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.order:focus-visible {
+  outline: 3px solid rgba(239, 68, 68, 0.35);
+  outline-offset: 3px;
+}
+
+.order:disabled {
+  cursor: wait;
+}
+
+.order[data-state='success']:disabled {
+  cursor: default;
+}
+
+:global(.dark) .order {
+  --button-background: #0f172a;
+  --button-background-hover: #020617;
+  --grey-dark: #334155;
+  --grey: #64748b;
+  --grey-light: #cbd5e1;
+  border-color: #334155;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.default,
+.processing,
+.success {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  right: 12px;
+  left: 12px;
+  display: block;
+  overflow: hidden;
+  color: var(--button-text);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 24px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.28s ease;
+}
+
+.default {
+  opacity: 1;
+  transition-delay: 0.2s;
+}
+
+.processing {
+  font-size: 0.875rem;
+}
+
+.success svg {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  margin: 7px 0 0 5px;
+  fill: none;
+  stroke: var(--green);
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  vertical-align: top;
+}
+
+.order[data-state='processing'] .default {
+  opacity: 0;
+  transition-delay: 0s;
+}
+
+.order[data-state='processing'] .processing {
+  animation: revealProcessing var(--order-animation-duration) ease both;
+}
+
+.order[data-state='success'] .default,
+.order[data-state='success'] .processing {
+  opacity: 0;
+  transition-delay: 0s;
+}
+
+.order[data-state='success'] .success {
+  opacity: 1;
+}
+
+.order[data-state='success'] .success svg {
+  animation: drawTick 0.3s 0.3s ease forwards;
+}
+
+.lines {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: 6px;
+  height: 3px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: var(--button-text);
+  opacity: 0;
+  box-shadow:
+    15px 0 0 var(--button-text),
+    30px 0 0 var(--button-text),
+    45px 0 0 var(--button-text),
+    60px 0 0 var(--button-text),
+    75px 0 0 var(--button-text),
+    90px 0 0 var(--button-text),
+    105px 0 0 var(--button-text),
+    120px 0 0 var(--button-text),
+    135px 0 0 var(--button-text),
+    150px 0 0 var(--button-text),
+    165px 0 0 var(--button-text),
+    180px 0 0 var(--button-text),
+    195px 0 0 var(--button-text),
+    210px 0 0 var(--button-text),
+    225px 0 0 var(--button-text),
+    240px 0 0 var(--button-text),
+    255px 0 0 var(--button-text),
+    270px 0 0 var(--button-text),
+    285px 0 0 var(--button-text),
+    300px 0 0 var(--button-text),
+    315px 0 0 var(--button-text),
+    330px 0 0 var(--button-text);
+}
+
+.back,
+.box {
+  position: absolute;
+  border-radius: 2px;
+  background: linear-gradient(#fff, var(--grey-light));
+}
+
+.truck {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 100%;
+  width: 60px;
+  height: 41px;
+  margin-top: -20.5px;
+  pointer-events: none;
+  transform: translateX(24px);
+}
+
+.truck::before,
+.truck::after {
+  position: absolute;
+  right: 58px;
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--button-text);
+  content: '';
+  transform: rotate(-90deg);
+  transform-origin: 100% 50%;
+}
+
+.truck::before {
+  top: 4px;
+}
+
+.truck::after {
+  bottom: 4px;
+  transform: rotate(90deg);
+}
+
+.back {
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 60px;
+  height: 41px;
+}
+
+.front {
+  position: absolute;
+  left: 60px;
+  width: 26px;
+  height: 41px;
+  overflow: hidden;
+  border-radius: 2px 9px 9px 2px;
+}
+
+.front::before,
+.front::after {
+  position: absolute;
+  display: block;
+  content: '';
+}
+
+.front::before {
+  top: 14px;
+  left: 0;
+  width: 2px;
+  height: 13px;
+  background: linear-gradient(var(--grey), var(--grey-dark));
+}
+
+.front::after {
+  right: 0;
+  width: 24px;
+  height: 41px;
+  border-radius: 2px 9px 9px 2px;
+  background: var(--primary);
+}
+
+.window {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 2px;
+  width: 22px;
+  height: 41px;
+  overflow: hidden;
+  border-radius: 2px 8px 8px 2px;
+  background: var(--primary-light);
+  transform: perspective(4px) rotateY(3deg);
+  transform-origin: 0 50%;
+}
+
+.window::before,
+.window::after {
+  position: absolute;
+  right: 0;
+  content: '';
+}
+
+.window::before {
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  background: var(--button-background);
+}
+
+.window::after {
+  top: 7px;
+  width: 14px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 7px 0 rgba(255, 255, 255, 0.14);
+  transform: skewY(14deg);
+}
+
+.light {
+  position: absolute;
+  left: 83px;
+  width: 3px;
+  height: 8px;
+  border-radius: 2px;
+  background: #f0dc5f;
+  transform: scaleX(0.8);
+  transform-origin: 100% 50%;
+}
+
+.light::before {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 7px;
+  height: 4px;
+  margin-top: -2px;
+  background: linear-gradient(90deg, #f0dc5f, rgba(240, 220, 95, 0.7), rgba(240, 220, 95, 0));
+  content: '';
+  opacity: 0;
+  transform: perspective(2px) rotateY(-15deg) scaleX(0.94);
+  transform-origin: 0 50%;
+}
+
+.lightTop {
+  top: 4px;
+}
+
+.lightBottom {
+  bottom: 4px;
+}
+
+.box {
+  top: 50%;
+  left: -21px;
+  width: 21px;
+  height: 21px;
+  margin-top: -10.5px;
+  background: linear-gradient(var(--sand-light), var(--sand));
+}
+
+.box::before,
+.box::after {
+  position: absolute;
+  right: 0;
+  left: 0;
+  content: '';
+}
+
+.box::before {
+  top: 9px;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.box::after {
+  top: 10px;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.order[data-state='processing'] .truck {
+  animation: truck var(--order-animation-duration) ease forwards;
+}
+
+.order[data-state='processing'] .truck::before {
+  animation: doorTop 1.68s 0.21s ease forwards;
+}
+
+.order[data-state='processing'] .truck::after {
+  animation: doorBottom 1.68s 0.42s ease forwards;
+}
+
+.order[data-state='processing'] .light::before {
+  animation: headlights var(--order-animation-duration) ease forwards;
+}
+
+.order[data-state='processing'] .box {
+  animation: loadBox var(--order-animation-duration) ease forwards;
+}
+
+.order[data-state='processing'] .lines {
+  animation: roadLines var(--order-animation-duration) ease forwards;
+}
+
+@keyframes truck {
+  0% {
+    left: 100%;
+    transform: translateX(24px);
+  }
+
+  10%,
+  30% {
+    left: 50%;
+    transform: translateX(-44px);
+  }
+
+  40% {
+    left: 50%;
+    transform: translateX(16px);
+  }
+
+  60% {
+    left: 0;
+    transform: translateX(16px);
+  }
+
+  75%,
+  100% {
+    left: 100%;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes roadLines {
+  0%,
+  30% {
+    left: 100%;
+    opacity: 0;
+    transform: scaleY(0.7);
+  }
+
+  35%,
+  65% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 0;
+  }
+
+  100% {
+    left: -330px;
+    opacity: 0;
+    transform: scaleY(0.7);
+  }
+}
+
+@keyframes headlights {
+  0%,
+  30% {
+    opacity: 0;
+    transform: perspective(2px) rotateY(-15deg) scaleX(0.88);
+  }
+
+  40%,
+  100% {
+    opacity: 1;
+    transform: perspective(2px) rotateY(-15deg) scaleX(0.94);
+  }
+}
+
+@keyframes doorTop {
+  30%,
+  50% {
+    transform: rotate(32deg);
+  }
+}
+
+@keyframes doorBottom {
+  30%,
+  50% {
+    transform: rotate(-32deg);
+  }
+}
+
+@keyframes loadBox {
+  0% {
+    left: -21px;
+    opacity: 1;
+  }
+
+  8%,
+  10% {
+    left: 19px;
+    opacity: 1;
+  }
+
+  25% {
+    left: 50%;
+    opacity: 1;
+    transform: translateX(-10px);
+  }
+
+  26% {
+    left: 50%;
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+
+  27%,
+  100% {
+    left: -21px;
+    opacity: 0;
+    transform: translateX(0);
+  }
+}
+
+@keyframes revealProcessing {
+  0%,
+  84% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 0.72;
+  }
+}
+
+@keyframes drawTick {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .order {
+    height: 56px;
+  }
+
+  .default,
+  .processing,
+  .success {
+    font-size: 0.9375rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order {
+    transition-duration: 0.01ms;
+  }
+
+  .order[data-state='processing'] .truck,
+  .order[data-state='processing'] .truck::before,
+  .order[data-state='processing'] .truck::after,
+  .order[data-state='processing'] .light::before,
+  .order[data-state='processing'] .box,
+  .order[data-state='processing'] .lines,
+  .order[data-state='processing'] .processing,
+  .order[data-state='success'] .success svg {
+    animation: none;
+  }
+
+  .order[data-state='processing'] .truck,
+  .order[data-state='processing'] .box,
+  .order[data-state='processing'] .lines {
+    display: none;
+  }
+
+  .order[data-state='processing'] .processing {
+    opacity: 1;
+  }
+
+  .order[data-state='success'] .success svg {
+    stroke-dashoffset: 0;
+  }
+}

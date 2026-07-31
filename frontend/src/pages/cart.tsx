@@ -548,9 +548,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex justify-between text-sm text-main">
+                  <div className="flex justify-between text-sm text-main dark:!text-gray-900">
                     <span>{t('cart_items_count', 'Товаров')}</span>
-                    <span className="font-medium text-main">{cart.items_count}</span>
+                    <span className="font-medium text-main dark:!text-gray-900">{cart.items_count}</span>
                   </div>
                   {showCartDiscountBreakdown ? (
                     <>
