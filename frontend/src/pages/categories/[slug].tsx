@@ -9,7 +9,13 @@ import { resolveMediaUrl } from '../../lib/media'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
-import { buildCatalogPageQuery, parseBrandIds, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
+import {
+  buildCategoryBrandParams,
+  buildCatalogPageQuery,
+  normalizeCatalogFacets,
+  parseBrandIds,
+  parseCatalogFiltersQuery,
+} from '../../lib/catalogQuery'
 import { shouldShowGenderFilter } from '../../lib/brandCatalog'
 import { isCategoryInProductTree, selectExactCategory } from '../../lib/categoryRouting'
 import { GetServerSideProps } from 'next'
@@ -769,6 +775,12 @@ export default function CategoryPage({
   const router = useRouter()
   const { slug } = router.query
   const normalizedCategoryType = (categoryType || '').toString().replace(/_/g, '-')
+  const routeSlugForState = initialRouteSlug || (Array.isArray(slug) ? slug[0] : slug) || categoryType
+  const categoryStateKey = [
+    normalizeSlug(routeSlugForState),
+    normalizeSlug(categoryTypeSlug || categoryType),
+    normalizeSlug(router.locale || i18n.language),
+  ].join(':')
 
   // Сохранение и восстановление позиции скролла при возврате на страницу
   useEffect(() => {
@@ -933,9 +945,28 @@ export default function CategoryPage({
   const [currentPage, setCurrentPage] = useState(initialCurrentPage)
   const [totalPages, setTotalPages] = useState(initialTotalPages)
   const [loading, setLoading] = useState(false)
-  const [availableAttributes, setAvailableAttributes] = useState<AvailableAttribute[]>(initialAvailableAttributes)
-  const [availableGenders, setAvailableGenders] = useState<string[]>(initialAvailableGenders)
-  const [availableFragranceTypes, setAvailableFragranceTypes] = useState<string[]>(initialAvailableFragranceTypes)
+  const [facetState, setFacetState] = useState<{
+    categoryKey: string
+    attributes: AvailableAttribute[]
+    genders: string[]
+    fragranceTypes: string[]
+  }>(() => ({
+    categoryKey: categoryStateKey,
+    attributes: initialAvailableAttributes,
+    genders: initialAvailableGenders,
+    fragranceTypes: initialAvailableFragranceTypes,
+  }))
+  const activeFacetState = facetState.categoryKey === categoryStateKey
+    ? facetState
+    : {
+        categoryKey: categoryStateKey,
+        attributes: initialAvailableAttributes,
+        genders: initialAvailableGenders,
+        fragranceTypes: initialAvailableFragranceTypes,
+      }
+  const availableAttributes = activeFacetState.attributes
+  const availableGenders = activeFacetState.genders
+  const availableFragranceTypes = activeFacetState.fragranceTypes
   const genderFilterAllowed = useMemo(
     () => shouldShowGenderFilter([categoryTypeSlug, categoryType]),
     [categoryTypeSlug, categoryType]
@@ -951,16 +982,20 @@ export default function CategoryPage({
   }, [])
 
   const [viewMode, setViewMode] = useViewMode()
-  const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
+  const [brandState, setBrandState] = useState<{ categoryKey: string; options: Brand[] }>(() => ({
+    categoryKey: categoryStateKey,
+    options: brands || [],
+  }))
+  const brandOptions = useMemo(
+    () => brandState.categoryKey === categoryStateKey
+      ? brandState.options
+      : (brands || []),
+    [brandState, brands, categoryStateKey]
+  )
   const brandNameById = useMemo(
     () => new Map(brandOptions.map((brand) => [brand.id, brand.name])),
     [brandOptions]
   )
-  useEffect(() => {
-    if (brands.length > 0 && categoryType !== 'books') {
-      setBrandOptions(brands)
-    }
-  }, [brands])
   const defaultFilters = useMemo<FilterState>(() => ({
     categories: [],
     categorySlugs: [],
@@ -992,6 +1027,13 @@ export default function CategoryPage({
   }, [categoryType, categories, t])
   // Используем реальный тип из API если есть, иначе fallback на маппинг
   const resolvedBrandType = useMemo(() => categoryTypeSlug || resolveBrandProductType(categoryType), [categoryTypeSlug, categoryType])
+  const isFurnitureCategory = normalizeSlug(resolvedBrandType || categoryType) === 'furniture'
+  const sidebarAvailableAttributes = useMemo(
+    () => availableAttributes.filter((attribute) =>
+      !(isFurnitureCategory && normalizeSlug(attribute.key) === 'material')
+    ),
+    [availableAttributes, isFurnitureCategory]
+  )
 
   const updatePageQuery = useCallback((
     page: number,
@@ -1031,47 +1073,38 @@ export default function CategoryPage({
     if (!genderFilterAllowed) {
       nextFilters.genders = []
     }
+    if (isFurnitureCategory && nextFilters.attributes?.material) {
+      const remainingAttributes = { ...nextFilters.attributes }
+      delete remainingAttributes.material
+      nextFilters.attributes = remainingAttributes
+    }
     setFilters((prev) => {
       if (areFiltersEqual(prev, nextFilters)) return prev
       return nextFilters
     })
-  }, [router.isReady, router.asPath, router.query, defaultFilters, genderFilterAllowed])
+  }, [router.isReady, router.asPath, router.query, defaultFilters, genderFilterAllowed, isFurnitureCategory])
 
   useEffect(() => {
+    let isCancelled = false
+
     const loadBrands = async () => {
       try {
-        const params: Record<string, any> = {
-          product_type: resolvedBrandType,
-          // SSR загружает полный список (до 500), клиентский refresh должен
-          // соблюдать тот же контракт, иначе после hydration остаётся только
-          // первая страница брендов и Zara исчезает из длинных списков.
-          page_size: 500
-        }
-        const normalizedCategoryType = (categoryTypeSlug || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
-        const normalizedRouteSlug = (routeSlug || '').toString().toLowerCase().replace(/_/g, '-')
-        const isTypedCategory = ['shoes', 'clothing', 'electronics', 'jewelry'].includes(resolvedBrandType || '')
-        const isFurnitureCategory = normalizeSlug(resolvedBrandType || normalizedCategoryType) === 'furniture'
-        const brandPrimarySlug = (resolvedBrandType === 'perfumery')
-          ? 'perfumery'
-          : (isTypedCategory ? resolvedBrandType : (normalizedCategoryType || normalizedRouteSlug))
-        if (brandPrimarySlug && !isFurnitureCategory) {
-          params.primary_category_slug = brandPrimarySlug
-        }
-        // Важно: не отправляем category_id вместе с category_slug.
-        // category_id на бэкенде фильтрует строго по выбранным ID (без потомков),
-        // из-за чего ломается иерархия (родитель не включает детей).
-        if (filters.categorySlugs.length > 0) {
-          params.category_slug = filters.categorySlugs.join(',')
-        } else if (filters.categories.length > 0) {
-          params.category_id = filters.categories
-        }
-        if (filters.inStock) {
-          params.in_stock = true
-        }
+        const params = buildCategoryBrandParams({
+          productType: resolvedBrandType,
+          categoryType: categoryTypeSlug || categoryType,
+          routeSlug,
+          categorySlugs: filters.categorySlugs,
+          categoryIds: filters.categories,
+          inStock: filters.inStock,
+        })
         const response = await getSingleFlight('/catalog/brands', { params })
         const list = Array.isArray(response.data) ? response.data : response.data.results || []
         const normalizedList = ensureOtherBrand(list)
-        setBrandOptions(normalizedList)
+        if (isCancelled) return
+        setBrandState({
+          categoryKey: categoryStateKey,
+          options: normalizedList,
+        })
         // НЕ обновляем filters.brands если brand_id есть в URL - он должен быть установлен через инициализацию
         const brandIdsFromUrl = parseBrandIds(router.query.brand_id)
         if (brandIdsFromUrl.length > 0) {
@@ -1108,8 +1141,11 @@ export default function CategoryPage({
     }
 
     loadBrands()
+    return () => {
+      isCancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedBrandType, filters.categories, filters.categorySlugs, filters.inStock, router.query.brand_id, router.locale])
+  }, [resolvedBrandType, filters.categories, filters.categorySlugs, filters.inStock, router.query.brand_id, router.locale, categoryStateKey])
 
   // Загрузка товаров с фильтрами
   useEffect(() => {
@@ -1190,6 +1226,7 @@ export default function CategoryPage({
         }
         if (filters.attributes && Object.keys(filters.attributes).length > 0) {
           for (const [key, values] of Object.entries(filters.attributes)) {
+            if (isFurnitureCategory && normalizeSlug(key) === 'material') continue
             if (values && values.length > 0) {
               params[`attr_${key}`] = values.join(',')
             }
@@ -1257,20 +1294,23 @@ export default function CategoryPage({
           compactProductForCard(product as Product & Record<string, any>)
         )
         const count = data.count ?? filteredList.length
-        const attrs = data.available_attributes as AvailableAttribute[] | undefined
+        const {
+          attributes: attrs,
+          genders,
+          fragranceTypes,
+        } = normalizeCatalogFacets(data) as {
+          attributes: AvailableAttribute[]
+          genders: string[]
+          fragranceTypes: string[]
+        }
 
         if (isCancelled) return
-        if (attrs && Array.isArray(attrs)) {
-          setAvailableAttributes(attrs)
-        }
-        const genders = data.available_genders as string[] | undefined
-        if (genders && Array.isArray(genders)) {
-          setAvailableGenders(genders)
-        }
-        const fragranceTypes = data.available_fragrance_types as string[] | undefined
-        if (fragranceTypes && Array.isArray(fragranceTypes)) {
-          setAvailableFragranceTypes(fragranceTypes)
-        }
+        setFacetState({
+          categoryKey: categoryStateKey,
+          attributes: attrs,
+          genders,
+          fragranceTypes,
+        })
 
         console.log(`Loaded ${productsList.length} products (after filters: ${filteredList.length}), total count: ${count}`)
         console.log('Category type:', categoryType)
@@ -1318,6 +1358,7 @@ export default function CategoryPage({
     JSON.stringify(filters.attributes || {}),
     currentPage,
     categoryType,
+    categoryStateKey,
     genderFilterAllowed,
     letterFilter,
     letterMode,
@@ -1707,7 +1748,7 @@ export default function CategoryPage({
               brands={categoryType === 'books' ? [] : brandOptions}
               subcategories={categoryType === 'books' ? [] : displaySubcategories}
               categoryGroups={categoryGroups}
-              availableAttributes={categoryType === 'perfumery' ? [] : availableAttributes}
+              availableAttributes={categoryType === 'perfumery' ? [] : sidebarAvailableAttributes}
               availableFragranceTypes={categoryType === 'perfumery' ? availableFragranceTypes : []}
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
@@ -2076,18 +2117,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let brands: any[] = []
     if (categoryType !== 'books') {
       try {
-        const normalizedCategoryType = (categoryTypeFromApi || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
-        const normalizedRouteSlug = (routeSlug || '').toString().toLowerCase().replace(/_/g, '-')
-        const isTypedCategory = ['shoes', 'clothing', 'electronics', 'jewelry'].includes(brandProductType || '')
-        const brandPrimarySlug = (brandProductType === 'perfumery')
-          ? 'perfumery'
-          : (isTypedCategory ? brandProductType : (normalizedCategoryType || normalizedRouteSlug || undefined))
-        const brandParams: any = { page_size: 500 }
-        if (brandPrimarySlug) {
-          brandParams.primary_category_slug = brandPrimarySlug
-        }
-        // Всегда добавляем product_type для более точной фильтрации
-        brandParams.product_type = brandProductType
+        const brandParams = buildCategoryBrandParams({
+          productType: brandProductType,
+          categoryType: categoryTypeFromApi || categoryType,
+          routeSlug,
+        })
 
         const brandRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
         brands = ensureOtherBrand(brandRes.data.results || [])

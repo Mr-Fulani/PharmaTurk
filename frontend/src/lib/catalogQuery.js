@@ -2,6 +2,55 @@ export function parseBrandIds(value) {
   return parseNumberList(value)
 }
 
+function normalizeCatalogSlug(value) {
+  return String(value || '').trim().toLowerCase().replace(/_/g, '-')
+}
+
+export function buildCategoryBrandParams({
+  productType,
+  categoryType,
+  routeSlug,
+  categorySlugs = [],
+  categoryIds = [],
+  inStock = false,
+  pageSize = 500,
+}) {
+  const normalizedProductType = normalizeCatalogSlug(productType)
+  const normalizedCategoryType = normalizeCatalogSlug(categoryType)
+  const normalizedRouteSlug = normalizeCatalogSlug(routeSlug)
+  const isTypedCategory = ['shoes', 'clothing', 'electronics', 'jewelry'].includes(normalizedProductType)
+  const primaryCategorySlug = normalizedProductType === 'perfumery'
+    ? 'perfumery'
+    : (isTypedCategory ? normalizedProductType : (normalizedCategoryType || normalizedRouteSlug))
+  const isFurnitureCategory = normalizeCatalogSlug(normalizedProductType || normalizedCategoryType) === 'furniture'
+
+  const params = {
+    product_type: productType,
+    page_size: pageSize,
+  }
+  if (primaryCategorySlug) {
+    params.primary_category_slug = primaryCategorySlug
+  }
+
+  // Для мебели список брендов является справочником категории, а не фасетом
+  // текущей выдачи: показываем и бренды без опубликованных товаров.
+  if (!isFurnitureCategory) {
+    if (categorySlugs.length > 0) params.category_slug = categorySlugs.join(',')
+    else if (categoryIds.length > 0) params.category_id = categoryIds
+    if (inStock) params.in_stock = true
+  }
+
+  return params
+}
+
+export function normalizeCatalogFacets(payload) {
+  return {
+    attributes: Array.isArray(payload?.available_attributes) ? payload.available_attributes : [],
+    genders: Array.isArray(payload?.available_genders) ? payload.available_genders : [],
+    fragranceTypes: Array.isArray(payload?.available_fragrance_types) ? payload.available_fragrance_types : [],
+  }
+}
+
 function queryValues(value) {
   const rawValues = Array.isArray(value) ? value : value == null ? [] : [value]
   return rawValues
