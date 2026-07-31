@@ -35,3 +35,32 @@ def notify_admin_product_review(review_id: int, event: str = "created"):
         json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
         timeout=10,
     ).raise_for_status()
+
+
+@shared_task(ignore_result=True, autoretry_for=(requests.RequestException,), retry_backoff=True, max_retries=3)
+def notify_admin_product_question(question_id: int):
+    from .models import ProductQuestion
+
+    question = ProductQuestion.objects.select_related("user").filter(pk=question_id).first()
+    if not question:
+        return
+    token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        logger.warning("Product question Telegram notification skipped: credentials are missing")
+        return
+
+    admin_url = f"{getattr(settings, 'SITE_URL', '').rstrip('/')}/admin/feedback/productquestion/{question.pk}/change/"
+    username = getattr(question.user, "username", "") or "—"
+    text = (
+        "❓ Новый вопрос о товаре\n"
+        f"{question.product_name}\n"
+        f"Автор: {question.author_name} (@{username})\n"
+        f"{question.question[:1000]}\n\n"
+        f"Ответить в админке: {admin_url}"
+    )
+    requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+        timeout=10,
+    ).raise_for_status()

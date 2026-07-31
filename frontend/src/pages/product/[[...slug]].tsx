@@ -32,7 +32,7 @@ import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { useTheme } from '../../context/ThemeContext'
-import ProductReviews, { ReviewSummary } from '../../components/ProductReviews'
+import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
 
 type CategoryType = string
 
@@ -611,17 +611,24 @@ export default function ProductPage({
   const { theme } = useTheme()
   const [product, setProduct] = useState<Product | null>(initialProduct)
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary>({ averageRating: 0, count: 0 })
-  const [reviewsExpanded, setReviewsExpanded] = useState(false)
+  const [questionSummary, setQuestionSummary] = useState<QuestionSummary>({ count: 0 })
+  const [feedbackTab, setFeedbackTab] = useState<ProductFeedbackTab>('reviews')
 
   useEffect(() => {
     setProduct(initialProduct)
   }, [initialProduct])
 
   useEffect(() => {
-    if (!router.isReady || typeof window === 'undefined' || window.location.hash !== '#product-reviews') return
-    setReviewsExpanded(true)
+    if (!router.isReady || typeof window === 'undefined') return
+    const target = window.location.hash === '#product-questions'
+      ? 'questions'
+      : window.location.hash === '#product-reviews'
+        ? 'reviews'
+        : null
+    if (!target) return
+    setFeedbackTab(target)
     window.requestAnimationFrame(() => {
-      document.getElementById('product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      document.getElementById(`product-${target}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   }, [router.isReady])
   const variants = product?.variants || []
@@ -1810,32 +1817,54 @@ export default function ProductPage({
             >
               {displayProductName || product.name}
             </h1>
-            <a
-              href="#product-reviews"
-              onClick={(event) => {
-                event.preventDefault()
-                setReviewsExpanded(true)
-                window.requestAnimationFrame(() => {
-                  document.getElementById('product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                })
-              }}
-              className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-amber-600 hover:text-amber-700"
-            >
-              {reviewSummary.count > 0 ? (
-                <>
-                  <span className="inline-flex gap-0.5" aria-hidden="true">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <svg key={star} className={`h-4 w-4 fill-current ${star <= Math.round(reviewSummary.averageRating) ? 'text-amber-400' : 'text-gray-300'}`} viewBox="0 0 20 20">
-                        <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
-                      </svg>
-                    ))}
-                  </span>
-                  <span>{reviewSummary.averageRating.toFixed(1)} ({reviewSummary.count} {t('reviews', 'отзывов')})</span>
-                </>
-              ) : (
-                <span>{t('add_product_review', 'Оставить отзыв')}</span>
-              )}
-            </a>
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-medium">
+              <a
+                href="#product-reviews"
+                onClick={(event) => {
+                  event.preventDefault()
+                  setFeedbackTab('reviews')
+                  window.requestAnimationFrame(() => {
+                    document.getElementById('product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  })
+                }}
+                className="inline-flex items-center gap-2 text-amber-600 hover:text-amber-700"
+              >
+                {reviewSummary.count > 0 ? (
+                  <>
+                    <span className="inline-flex gap-0.5" aria-hidden="true">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <svg key={star} className={`h-4 w-4 fill-current ${star <= Math.round(reviewSummary.averageRating) ? 'text-amber-400' : 'text-gray-300'}`} viewBox="0 0 20 20">
+                          <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
+                        </svg>
+                      ))}
+                    </span>
+                    <span>
+                      {reviewSummary.averageRating.toFixed(1)} ({t('product_reviews_count', {
+                        count: reviewSummary.count,
+                        formattedCount: reviewSummary.count,
+                        defaultValue: '{{formattedCount}} отзывов',
+                      })})
+                    </span>
+                  </>
+                ) : (
+                  <span>{t('add_product_review', 'Оставить отзыв')}</span>
+                )}
+              </a>
+              <a
+                href="#product-questions"
+                onClick={(event) => {
+                  event.preventDefault()
+                  setFeedbackTab('questions')
+                  window.requestAnimationFrame(() => {
+                    document.getElementById('product-questions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  })
+                }}
+                className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.7 9a2.4 2.4 0 014.6 1c0 1.7-2.3 2-2.3 3.5M12 17h.01" /></svg>
+                <span>{questionSummary.count > 0 ? t('product_questions_count', { count: questionSummary.count, defaultValue: '{{count}} вопросов' }) : t('ask_product_question', 'Задать вопрос')}</span>
+              </a>
+            </div>
             {productType === 'furniture' && furnitureDescriptorLine && (
               <p
                 className="mt-2 text-base leading-snug"
@@ -2680,8 +2709,10 @@ export default function ProductPage({
           productType={productType}
           productSlug={product.slug}
           productName={displayProductName || product.name}
-          expanded={reviewsExpanded}
+          activeTab={feedbackTab}
+          onTabChange={setFeedbackTab}
           onSummaryChange={setReviewSummary}
+          onQuestionSummaryChange={setQuestionSummary}
         />
 
         {/* Похожие товары (RecSys когда доступен) */}
