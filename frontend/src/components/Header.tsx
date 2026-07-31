@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useEffect, useState, useRef } from 'react'
-import api, { setPreferredCurrency } from '../lib/api'
+import api, { getSingleFlight, setPreferredCurrency } from '../lib/api'
 import { useTranslation } from 'next-i18next'
 import { motion, useReducedMotion } from 'framer-motion'
 import { useCartStore } from '../store/cart'
@@ -239,8 +239,8 @@ export default function Header() {
       try {
         // Параллельно запрашиваем товары и услуги для подсказок
         const [productsRes, servicesRes] = await Promise.all([
-          api.get('/catalog/products', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] })),
-          api.get('/catalog/services', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] }))
+          getSingleFlight('/catalog/products', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] })),
+          getSingleFlight('/catalog/services', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] }))
         ])
 
         const products = Array.isArray(productsRes.data) ? productsRes.data : (productsRes.data.results || [])

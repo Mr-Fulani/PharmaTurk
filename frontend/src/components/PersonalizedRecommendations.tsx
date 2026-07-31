@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
@@ -29,6 +29,8 @@ interface Product {
   product_type?: string
   is_featured?: boolean
   is_new?: boolean
+  rating?: number | string | null
+  reviews_count?: number | null
   translations?: ProductTranslation[]
   gender?: string | null
 }
@@ -46,7 +48,7 @@ export default function PersonalizedRecommendations() {
     const fetchPersonalized = async () => {
       try {
         setLoading(true)
-        const res = await api.get('/recommendations/personalized/')
+        const res = await getSingleFlight('/recommendations/personalized/')
         const results = res.data.results || []
         setProducts(
           results.map((r: { product?: Product } & Product) =>
@@ -134,6 +136,8 @@ export default function PersonalizedRecommendations() {
                 isBaseProduct={isBaseProductType(pt)}
                 isNew={product.is_new}
                 isFeatured={product.is_featured}
+                rating={product.rating}
+                reviewsCount={product.reviews_count ?? undefined}
                 translations={product.translations}
                 locale={i18n.language}
               />

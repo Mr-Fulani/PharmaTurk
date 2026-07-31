@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import api, { initCartSession } from '../lib/api'
+import api, { getSingleFlight, initCartSession } from '../lib/api'
 import { ProductTranslation } from '../lib/i18n'
 import { matchesFavoriteSlug } from '../lib/favoriteLinks'
 import { matchesFavoriteProductIdentity } from '../lib/favoriteIdentity'
@@ -77,7 +77,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
     set({ refreshing: true, loading: true })
     try {
       initCartSession()
-      const response = await api.get('/catalog/favorites', {
+      const response = await getSingleFlight('/catalog/favorites', {
         headers: currency ? { 'X-Currency': currency } : undefined,
       })
       const favorites = response.data || []
@@ -177,7 +177,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
         if (productId === undefined || productId === null || Number(productId) <= 0) return false
         params.product_id = Number(productId)
       }
-      const response = await api.get('/catalog/favorites/check', { params })
+      const response = await getSingleFlight('/catalog/favorites/check', { params })
       return response.data?.is_favorite || false
     } catch (error) {
       console.error('Failed to check favorite:', error)

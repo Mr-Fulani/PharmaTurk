@@ -1317,6 +1317,8 @@
   "medicines_by_name": "By name",
   "add_product_review": "Leave a review",
   "product_reviews_title": "Reviews",
+  "product_reviews_count_one": "{{formattedCount}} review",
+  "product_reviews_count_other": "{{formattedCount}} reviews",
   "product_reviews_empty": "No reviews yet. Be the first!",
   "product_reviews_login_hint": "to leave a review",
   "product_reviews_rating": "Your rating",

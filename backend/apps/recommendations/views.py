@@ -4,6 +4,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 
+from apps.catalog.card_payload import compact_card_product_payload
+from apps.feedback.review_aggregates import attach_review_aggregates
+
 
 class RecommendationViewSet(viewsets.ViewSet):
     """API for vector recommendations (search by image, personalized, complete the look)."""
@@ -33,8 +36,15 @@ class RecommendationViewSet(viewsets.ViewSet):
                 continue
             row = dict(match)
             row.pop("payload", None)
-            row["product"] = serialize_product_for_card(product, request)
+            row["product"] = compact_card_product_payload(
+                serialize_product_for_card(product, request)
+            )
             result.append(row)
+        attach_review_aggregates([
+            row["product"]
+            for row in result
+            if isinstance(row.get("product"), dict)
+        ])
         return result
 
     @action(detail=False, methods=["post"])
@@ -95,8 +105,15 @@ class RecommendationViewSet(viewsets.ViewSet):
                 enriched.append({
                     "product_id": r["product_id"],
                     "similarity": r["score"],
-                    "product": serialize_product_for_card(product, request),
+                    "product": compact_card_product_payload(
+                        serialize_product_for_card(product, request)
+                    ),
                 })
+        attach_review_aggregates([
+            row["product"]
+            for row in enriched
+            if isinstance(row.get("product"), dict)
+        ])
         return Response({"results": enriched})
 
     @action(detail=False, methods=["get"])
@@ -149,9 +166,16 @@ class RecommendationViewSet(viewsets.ViewSet):
             product = product_map.get(r["product_id"])
             if product:
                 results.append({
-                    "product": serialize_product_for_card(product, request),
+                    "product": compact_card_product_payload(
+                        serialize_product_for_card(product, request)
+                    ),
                     "similarity_score": r.get("score"),
                 })
+        attach_review_aggregates([
+            row["product"]
+            for row in results
+            if isinstance(row.get("product"), dict)
+        ])
         return Response({
             "based_on": "your_history",
             "count": len(results),
@@ -218,9 +242,14 @@ class RecommendationViewSet(viewsets.ViewSet):
                 'medicine_item__gallery_images', 'supplement_item__gallery_images',
             )
         )[:12]
+        results = [
+            compact_card_product_payload(serialize_product_for_card(p, request))
+            for p in trending
+        ]
+        attach_review_aggregates(results)
         return Response({
             "based_on": "trending",
-            "results": [serialize_product_for_card(p, request) for p in trending],
+            "results": results,
         })
 
     def _get_complementary_categories(self, product):

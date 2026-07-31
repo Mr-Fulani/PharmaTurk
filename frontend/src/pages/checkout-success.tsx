@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import type { TFunction } from 'i18next'
-import api from '../lib/api'
+import api, { getSingleFlight } from '../lib/api'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface OrderItem {
@@ -107,7 +107,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
       setError(null)
       setIsAuthError(false)
       try {
-        const orderRes = await api.get(`/orders/orders/by-number/${number}`)
+        const orderRes = await getSingleFlight(`/orders/orders/by-number/${number}`)
         if (!active) return
         setOrder(orderRes.data)
         setSendEmail(orderRes.data?.contact_email || orderRes.data?.user?.email || '')
@@ -119,7 +119,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
         setError(status === 401 ? t('order_success_login_required', 'Войдите в аккаунт, чтобы увидеть заказ') : detail)
       }
       try {
-        const receiptRes = await api.get(`/orders/orders/receipt/${number}`)
+        const receiptRes = await getSingleFlight(`/orders/orders/receipt/${number}`)
         if (!active) return
         setReceipt(receiptRes.data)
       } catch {

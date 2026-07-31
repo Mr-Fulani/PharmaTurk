@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 
 interface CartState {
   itemsCount: number
@@ -16,7 +16,7 @@ export const useCartStore = create<CartState>((set) => ({
   async refresh() {
     try {
       console.log('Cart store: refreshing cart from API')
-      const r = await api.get('/orders/cart')
+      const r = await getSingleFlight('/orders/cart')
       const count = r.data?.items_count || 0
       console.log('Cart store: API returned items_count =', count)
       set({ itemsCount: count })

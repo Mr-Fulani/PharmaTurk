@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 
 const QR_URL = (text: string, size = 192) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}`
@@ -59,7 +59,7 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
   const fetchOrder = useCallback(async () => {
     if (!number) return
     try {
-      const res = await api.get<Order & { payment_data?: PaymentData }>(`/orders/orders/by-number/${number}`)
+      const res = await getSingleFlight<Order & { payment_data?: PaymentData }>(`/orders/orders/by-number/${number}`)
       if (res.data.payment_status === 'paid' || res.data.status === 'paid') {
         setOrder(res.data)
         setPaymentData(res.data.payment_data || null)

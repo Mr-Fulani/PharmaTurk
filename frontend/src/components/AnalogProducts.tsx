@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'next-i18next'
 import Link from 'next/link'
 import Image from 'next/image'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 import { DEFAULT_MEDIA_FALLBACK } from '../lib/media'
 import { formatPrice as formatPriceNum } from '../lib/price'
 
@@ -187,7 +187,7 @@ export default function AnalogProducts({
       setLoading(true)
       setError(false)
       // api.ts автоматически прокидывает X-Currency из куки — бэкенд конвертирует с маржой
-      const res = await api.get<AnalogsResponse>(
+      const res = await getSingleFlight<AnalogsResponse>(
         `/catalog/medicines/products/${encodeURIComponent(medicineSlug)}/analogs/`,
         { params: { limit } }
       )

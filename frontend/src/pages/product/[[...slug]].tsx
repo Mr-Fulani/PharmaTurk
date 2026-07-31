@@ -2,7 +2,7 @@ import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import Link from 'next/link'
 import axios from 'axios'
-import api from '../../lib/api'
+import api, { getSingleFlight } from '../../lib/api'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
@@ -642,7 +642,7 @@ export default function ProductPage({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      api.get('/settings/footer-settings')
+      getSingleFlight('/settings/footer-settings')
         .then(response => {
           if (response.data) {
             setFooterSettings({
@@ -904,7 +904,7 @@ export default function ProductPage({
     let cancelled = false
     const loadVariantDetails = async () => {
       try {
-        const res = await api.get(`catalog/products/resolve/${encodeURIComponent(productSlug)}`, {
+        const res = await getSingleFlight(`catalog/products/resolve/${encodeURIComponent(productSlug)}`, {
           params: { active_variant_slug: selectedVariantSlug },
         })
         const payload = res?.data?.payload

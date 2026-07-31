@@ -1,6 +1,19 @@
 /** Единое отображение публичных денежных сумм без изменения их значения. */
 
 const CENT_CURRENCIES = new Set(['USD', 'EUR', 'USDT'])
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  RUB: '₽',
+  USD: '$',
+  EUR: '€',
+  TRY: '₺',
+  KZT: '₸',
+  USDT: '₮',
+}
+
+export function getCurrencySymbol(currency?: string | null): string {
+  const normalizedCurrency = (currency || '').trim().toUpperCase()
+  return CURRENCY_SYMBOLS[normalizedCurrency] || normalizedCurrency
+}
 
 export function parseMoneyNumber(value: string | number | null | undefined): number | null {
   if (value === null || typeof value === 'undefined') return null

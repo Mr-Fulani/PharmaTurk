@@ -6,7 +6,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { SITE_NAME } from '../lib/siteMeta'
 import { formatMoney } from '../lib/price'
 import Link from 'next/link'
-import api from '../lib/api'
+import api, { getSingleFlight } from '../lib/api'
 import {
   applyImageFallback,
   isVideoUrl,
@@ -128,8 +128,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     const loadData = async () => {
       try {
         const [cartRes, addressesRes] = await Promise.all([
-          api.get('/orders/cart'),
-          api.get('/users/addresses').catch(() => ({ data: [] }))
+          getSingleFlight('/orders/cart'),
+          getSingleFlight('/users/addresses').catch(() => ({ data: [] }))
         ])
         setCart(cartRes.data)
         setAddresses(addressesRes.data || [])
@@ -215,7 +215,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     if (saveAddress) {
       try {
         await api.post('/users/addresses', addressFormData)
-        const response = await api.get('/users/addresses')
+        const response = await getSingleFlight('/users/addresses')
         setAddresses(response.data || [])
       } catch (error) {
         console.error('Failed to save address:', error)

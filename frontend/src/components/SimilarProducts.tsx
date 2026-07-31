@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
@@ -27,6 +27,8 @@ interface Product {
   main_gif_url?: string | null
   product_type?: string
   is_featured?: boolean
+  rating?: number | string | null
+  reviews_count?: number | null
   is_new?: boolean
   translations?: ProductTranslation[]
   base_product_id?: number | null
@@ -80,7 +82,7 @@ export default function SimilarProducts({
         const normalizedProductType = normalizeProductType(productType)
 
         if (normalizedProductType === 'medicines' && currentProductSlug) {
-          const analogResponse = await api.get(
+          const analogResponse = await getSingleFlight(
             `/catalog/medicines/products/${encodeURIComponent(currentProductSlug)}/analogs`,
             { params: { limit } }
           )
@@ -125,9 +127,9 @@ export default function SimilarProducts({
 
         // RecSys similar только для Product; jewelry — в JewelryProductViewSet, эндпоинта /similar нет
         if (useRecsys && currentProductSlug && productType !== 'jewelry') {
-          const response = await api.get(
+          const response = await getSingleFlight(
             `/catalog/products/${encodeURIComponent(currentProductSlug)}/similar`,
-            { params: { limit: limit + 1, strategy: 'balanced' } } // Берем +1 на случай если API вернет текущий товар
+            { params: { limit: limit + 1, strategy: 'balanced', view: 'card' } } // Берем +1 на случай если API вернет текущий товар
           )
           const results: SimilarProductResult[] = response.data.results || []
           if (results.length > 0) {
@@ -170,10 +172,11 @@ export default function SimilarProducts({
           endpoint = '/catalog/products'
         }
 
-        const response = await api.get(endpoint, {
+        const response = await getSingleFlight(endpoint, {
           params: {
             limit: limit + 1,
-            ordering: '-created_at'
+            ordering: '-created_at',
+            view: 'card',
           }
         })
 
@@ -299,6 +302,8 @@ export default function SimilarProducts({
                 isBaseProduct={isBaseProduct}
                 isNew={product.is_new}
                 isFeatured={product.is_featured}
+                rating={product.rating}
+                reviewsCount={product.reviews_count ?? undefined}
                 translations={product.translations}
                 locale={i18n.language}
               />

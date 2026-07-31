@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 import styles from './BannerCarousel.module.css'
 import {
   applyImageFallback,
@@ -57,7 +57,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
 
     const fetchBanners = async () => {
       try {
-        const response = await api.get('/catalog/banners', {
+        const response = await getSingleFlight('/catalog/banners', {
           params: { position }
         })
         const data = response.data || []

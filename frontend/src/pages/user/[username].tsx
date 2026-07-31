@@ -3,7 +3,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-import api from '../../lib/api'
+import { getSingleFlight } from '../../lib/api'
 import { resolveMediaUrl } from '../../lib/media'
 import Link from 'next/link'
 import { buildTestimonialUrl } from '../../lib/testimonials'
@@ -65,7 +65,7 @@ export default function UserProfilePage() {
         if (username) params.username = username
         if (testimonial_id) params.testimonial_id = testimonial_id
 
-        const response = await api.get('/users/public-profile/', { params })
+        const response = await getSingleFlight('/users/public-profile/', { params })
         console.log('Profile data from API:', response.data)
         console.log('Avatar URL:', response.data?.avatar_url)
         setProfile(response.data)

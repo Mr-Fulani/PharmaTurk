@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useTranslation } from 'next-i18next'
-import api from '../lib/api'
+import { ChatBubbleOvalLeftIcon, StarIcon } from '@heroicons/react/20/solid'
+import { getSingleFlight } from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
@@ -13,14 +14,14 @@ import {
   getVideoEmbedUrl,
   extractYouTubeId,
   getYouTubeCardThumbnailUrl,
-  replaceFailedVideoWithFallback,
 } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { buildProductIdentityKey, favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
-import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../lib/price'
+import { formatPrice, getCurrencySymbol, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../lib/price'
 import ProductCardImageGallery, { normalizeProductCardImages, ProductCardGalleryImage } from './ProductCardImageGallery'
 import { deduplicateFeaturedProducts } from '../lib/featuredProducts'
+import InViewAutoplayVideo from './InViewAutoplayVideo'
 
 const LazyYouTubeCard = dynamic(() => import('./LazyYouTubeCard'), { ssr: false })
 
@@ -39,6 +40,7 @@ interface Product {
   active_variant_old_price_formatted?: string | null
   badge?: string | null
   rating?: number | null
+  reviews_count?: number | null
   main_image_url?: string | null
   images?: ProductCardGalleryImage[] | null
   video_url?: string | null
@@ -73,8 +75,8 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
       let uniqueAllProducts: Product[] = []
 
       try {
-        const featuredResponse = await api.get('/catalog/products/featured', {
-          params: { limit: 20 },
+        const featuredResponse = await getSingleFlight('/catalog/products/featured', {
+          params: { limit: 20, view: 'card' },
         })
         const featuredData = featuredResponse.data
         const featuredItems = Array.isArray(featuredData)
@@ -92,8 +94,8 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
 
       if (uniqueAllProducts.length < 8) {
         try {
-          const response = await api.get('/catalog/products', {
-            params: { ordering: '-created_at', limit: 20 },
+          const response = await getSingleFlight('/catalog/products', {
+            params: { ordering: '-created_at', limit: 20, view: 'card' },
           })
           const data = response.data
           const productsList = Array.isArray(data) ? data : data.results || []
@@ -296,6 +298,19 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
               const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
                 ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
                 : null
+              const ratingValue = product.rating == null ? null : Number(product.rating)
+              const displayRating = ratingValue !== null && Number.isFinite(ratingValue) && ratingValue > 0
+                ? Math.min(5, ratingValue)
+                : null
+              const displayReviewsCount = typeof product.reviews_count === 'number' && product.reviews_count > 0
+                ? product.reviews_count
+                : null
+              const reviewsLabel = displayReviewsCount !== null
+                ? t('product_reviews_count', {
+                    count: displayReviewsCount,
+                    formattedCount: new Intl.NumberFormat(i18n.language).format(displayReviewsCount),
+                  })
+                : t('product_reviews_title', 'Отзывы')
 
               const localizedName = getLocalizedProductName(product.name, t, product.translations, i18n.language)
               const carouselRawVideo =
@@ -317,7 +332,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
               return (
                 <div
                   key={buildProductIdentityKey(product, product.product_type)}
-                  className="flex-shrink-0 w-44 md:w-60 group flex flex-col gap-2 relative transition-all duration-300 hover:-translate-y-1 snap-start"
+                  className="group relative flex h-full w-44 flex-shrink-0 snap-start flex-col gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-[0_2px_10px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.16)] dark:hover:border-gray-600 md:w-60"
                 >
                   <Link
                     href={buildProductUrl(product.product_type || 'medicines', product.slug)}
@@ -347,19 +362,14 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                         allowFullScreen
                       />
                     ) : carouselVideoSrc ? (
-                      <video
+                      <InViewAutoplayVideo
                         src={carouselVideoSrc}
                         poster={
                           (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
                           getPlaceholderImageUrl({ type: 'product', id: product.id })
                         }
-                        muted
-                        playsInline
-                        loop
-                        autoPlay
-                        preload="metadata"
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, localizedName)}
+                        videoClassName="transition-transform duration-500 group-hover:scale-105"
+                        alt={localizedName}
                       />
                     ) : (
                       <ProductCardImageGallery
@@ -407,21 +417,31 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
 
                   <Link 
                     href={buildProductUrl(product.product_type || 'medicines', product.slug)}
-                    className="flex flex-col px-1"
+                    className="flex flex-1 flex-col px-1 pb-1"
                   >
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-base md:text-lg font-bold text-[var(--text-strong)] leading-tight tracking-tight">
-                        {displayPriceLabel
-                          ? displayCurrencyLabel
-                            ? `${displayPriceLabel} ${displayCurrencyLabel}`
-                            : displayPriceLabel
-                          : t('price_on_request', 'Цена по запросу')}
+                    <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span
+                        className={`inline-flex items-center gap-1 text-base md:text-lg font-bold leading-tight tracking-tight ${
+                          discountPercent !== null
+                            ? 'text-green-600 dark:text-green-400'
+                            : 'text-[var(--accent)]'
+                        }`}
+                      >
+                        {displayPriceLabel ? (
+                          <>
+                            {displayPriceLabel}
+                            {displayCurrencyLabel && (
+                              <span>{getCurrencySymbol(displayCurrencyLabel)}</span>
+                            )}
+                          </>
+                        ) : t('price_on_request', 'Цена по запросу')}
                       </span>
                       {displayOldPriceLabel && (
-                        <span className="text-xs md:text-sm text-gray-400 line-through">
-                          {displayOldCurrencyLabel
-                            ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
-                            : displayOldPriceLabel}
+                        <span className="inline-flex items-center gap-1 text-xs md:text-sm text-gray-400">
+                          <span className="line-through">{displayOldPriceLabel}</span>
+                          {displayOldCurrencyLabel && (
+                            <span>{getCurrencySymbol(displayOldCurrencyLabel)}</span>
+                          )}
                         </span>
                       )}
                       {displayOldPriceLabel && discountPercent !== null && (
@@ -433,9 +453,21 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                         {product.brand.name}
                       </div>
                     )}
-                    <h3 className="uppercase text-sm font-semibold text-[var(--text-strong)] line-clamp-2 leading-tight tracking-wide">
+                    <h3 className="line-clamp-2 min-h-[2.5rem] text-sm font-medium leading-5 text-[var(--text-strong)]">
                       {localizedName}
                     </h3>
+                    <div className="mt-auto flex min-h-5 items-center gap-1.5 pt-2 text-xs">
+                      {displayRating !== null && (
+                        <>
+                          <StarIcon className="h-4 w-4 flex-none text-amber-400" aria-hidden="true" />
+                          <span className="font-semibold text-[var(--text-strong)]">{displayRating.toFixed(1)}</span>
+                        </>
+                      )}
+                      <span className={`${displayRating !== null ? 'ml-1' : ''} inline-flex items-center gap-1 text-[var(--text-weak)]`}>
+                        <ChatBubbleOvalLeftIcon className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                        {reviewsLabel}
+                      </span>
+                    </div>
                   </Link>
                 </div>
               )

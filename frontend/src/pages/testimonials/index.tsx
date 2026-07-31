@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
-import api from '../../lib/api'
+import api, { getSingleFlight } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/20/solid'
 import { PhotoIcon, VideoCameraIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
@@ -268,7 +268,7 @@ export default function TestimonialsPage({
       }, 5000) // Скрываем через 5 секунд
 
       // Обновляем список отзывов (только активные)
-      const updatedResponse = await api.get('/feedback/testimonials/')
+      const updatedResponse = await getSingleFlight('/feedback/testimonials/')
       const updatedData = updatedResponse.data
       setTestimonials(Array.isArray(updatedData) ? updatedData : updatedData.results || [])
     } catch (error) {

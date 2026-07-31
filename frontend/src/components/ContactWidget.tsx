@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
-import api from '../lib/api'
+import { getSingleFlight } from '../lib/api'
 import type { FooterSettingsData } from '../lib/footerSettings'
 
 type ContactItem = {
@@ -167,7 +167,7 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
 
     let isCancelled = false
 
-    api.get('/settings/footer-settings')
+    getSingleFlight('/settings/footer-settings')
       .then((response) => {
         if (isCancelled) return
         const data = response.data || {}

@@ -5,8 +5,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
 import Cookies from 'js-cookie'
-import api from '../lib/api'
-import { setPreferredCurrency } from '../lib/api'
+import api, { getSingleFlight, setPreferredCurrency } from '../lib/api'
 import {
   applyImageFallback,
   isVideoUrl,
@@ -217,7 +216,7 @@ export default function ProfilePage() {
   const loadProfile = async () => {
     try {
       // Получаем профиль пользователя
-      const profileResponse = await api.get('/users/profile')
+      const profileResponse = await getSingleFlight('/users/profile')
       const profileList = Array.isArray(profileResponse.data) ? profileResponse.data : [profileResponse.data]
       const profileData = profileList[0] || {}
 
@@ -256,7 +255,7 @@ export default function ProfilePage() {
 
   const loadOrders = async () => {
     try {
-      const response = await api.get('/orders/orders')
+      const response = await getSingleFlight('/orders/orders')
       setOrders(response.data || [])
     } catch (error) {
       console.error('Failed to load orders:', error)
@@ -265,7 +264,7 @@ export default function ProfilePage() {
 
   const loadAddresses = async () => {
     try {
-      const response = await api.get('/users/addresses')
+      const response = await getSingleFlight('/users/addresses')
       setAddresses(response.data || [])
     } catch (error) {
       console.error('Failed to load addresses:', error)
@@ -422,7 +421,7 @@ export default function ProfilePage() {
       }
 
       // Обновляем профиль (используем list endpoint для получения текущего профиля, затем обновляем по id)
-      const profileResponse = await api.get('/users/profile')
+      const profileResponse = await getSingleFlight('/users/profile')
       const profileList = Array.isArray(profileResponse.data) ? profileResponse.data : [profileResponse.data]
       const currentProfile = profileList[0]
 
@@ -534,7 +533,7 @@ export default function ProfilePage() {
   const handleBindTelegram = async () => {
     setIsBindingTelegram(true)
     try {
-      const response = await api.get('/users/profile/telegram-bind-link')
+      const response = await getSingleFlight('/users/profile/telegram-bind-link')
       if (response.data && response.data.link) {
         window.location.href = response.data.link
         // Дополнительно можно обновить профиль, чтобы проверить статус

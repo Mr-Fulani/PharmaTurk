@@ -14,6 +14,7 @@ interface ProductCardImageGalleryProps {
   name: string
   mainImageUrl?: string | null
   images?: ProductCardGalleryImage[] | null
+  previewImageUrl?: string | null
   imageFitClass: string
   className?: string
 }
@@ -59,6 +60,7 @@ export default function ProductCardImageGallery({
   name,
   mainImageUrl,
   images,
+  previewImageUrl,
   imageFitClass,
   className = '',
 }: ProductCardImageGalleryProps) {
@@ -140,7 +142,7 @@ export default function ProductCardImageGallery({
       <div className="hidden h-full w-full md:block">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={effectiveGallery[activeIndex]?.image_url || fallback}
+          src={previewImageUrl || effectiveGallery[activeIndex]?.image_url || fallback}
           alt={effectiveGallery[activeIndex]?.alt_text || name}
           loading="lazy"
           decoding="async"

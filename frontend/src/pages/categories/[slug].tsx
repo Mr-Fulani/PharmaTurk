@@ -15,7 +15,7 @@ import { isCategoryInProductTree, selectExactCategory } from '../../lib/category
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
-import api, { getApiForCategory } from '../../lib/api'
+import { getSingleFlight } from '../../lib/api'
 import ProductCard from '../../components/ProductCard'
 import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection, AvailableAttribute } from '../../components/CategorySidebar'
 import Pagination from '../../components/Pagination'
@@ -49,6 +49,8 @@ interface Product {
   is_available: boolean
   is_featured: boolean
   is_new?: boolean
+  rating?: number | string | null
+  reviews_count?: number | null
   created_at?: string
   publication_date?: string | null
   category?: {
@@ -61,6 +63,7 @@ interface Product {
     name: string
     slug: string
   }
+  brand_id?: number | null
   size?: string
   color?: string
   material?: string
@@ -126,7 +129,6 @@ interface Brand {
 interface CategoryPageProps {
   products: Product[]
   categories: Category[]
-  sidebarCategories: Category[]
   brands: Brand[]
   bookAuthors?: Array<{ id: number; name: string }>
   bookGenres?: Category[]
@@ -597,10 +599,154 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
   return result
 }
 
+const withoutUndefined = <T extends Record<string, any>>(value: T): T =>
+  Object.fromEntries(
+    Object.entries(value).filter(([, fieldValue]) => typeof fieldValue !== 'undefined')
+  ) as T
+
+const compactProductForCard = (product: Product & Record<string, any>): Product => {
+  const compactImages = Array.isArray(product.images)
+    ? product.images.map((image: ProductCardGalleryImage & Record<string, any>) => withoutUndefined({
+        id: image.id,
+        image_url: image.image_url,
+        alt_text: image.alt_text,
+        sort_order: image.sort_order,
+        is_main: image.is_main,
+        // Эти поля нужны свотчам вариантов в ProductCard, хотя базовый тип галереи
+        // их не объявляет: API добавляет их только для вариативных товаров.
+        variant_slug: image.variant_slug,
+        color: image.color,
+      }))
+    : product.images
+  const compactTranslations = Array.isArray(product.translations)
+    ? product.translations.map((translation: ProductTranslation) => withoutUndefined({
+        locale: translation.locale,
+        name: translation.name,
+        description: typeof translation.description === 'string'
+          ? translation.description.slice(0, 240)
+          : translation.description,
+      }))
+    : product.translations
+
+  return withoutUndefined({
+    id: product.id,
+    base_product_id: product.base_product_id,
+    name: product.name,
+    slug: product.slug,
+    description: typeof product.description === 'string'
+      ? product.description.slice(0, 240)
+      : '',
+    product_type: product.product_type,
+    price: product.price,
+    price_formatted: product.price_formatted,
+    old_price: product.old_price,
+    old_price_formatted: product.old_price_formatted,
+    active_variant_price: product.active_variant_price,
+    active_variant_currency: product.active_variant_currency,
+    active_variant_old_price_formatted: product.active_variant_old_price_formatted,
+    currency: product.currency,
+    main_image: product.main_image,
+    main_image_url: product.main_image_url,
+    images: compactImages as ProductCardGalleryImage[] | null | undefined,
+    video_url: product.video_url,
+    main_video_url: product.main_video_url,
+    main_gif_url: product.main_gif_url,
+    has_manual_main_image: product.has_manual_main_image,
+    is_available: product.is_available,
+    is_featured: product.is_featured,
+    is_new: product.is_new,
+    created_at: product.created_at,
+    publication_date: product.publication_date,
+    translations: compactTranslations,
+    rating: product.rating,
+    reviews_count: product.reviews_count,
+    brand_id: product.brand_id ?? product.brand?.id,
+    isbn: product.isbn,
+    publisher: product.publisher,
+    pages: product.pages,
+    language: product.language,
+    book_authors: Array.isArray(product.book_authors)
+      ? product.book_authors.map((author: Record<string, any>) => withoutUndefined({
+          id: author.id,
+          author: author.author && withoutUndefined({
+            id: author.author.id,
+            full_name: author.author.full_name,
+            full_name_en: author.author.full_name_en,
+          }),
+        }))
+      : product.book_authors,
+    is_bestseller: product.is_bestseller,
+  }) as Product
+}
+
+const compactCategoryForListing = (
+  category: Category & Record<string, any>,
+  includeDetails: boolean = false,
+  includePortfolio: boolean = false,
+  locale?: string
+): Category => withoutUndefined({
+  id: category.id,
+  name: category.name,
+  slug: category.slug,
+  description: includeDetails && typeof category.description === 'string'
+    ? category.description.slice(0, 1200)
+    : undefined,
+  card_media_url: includeDetails ? (category.card_media_url || undefined) : undefined,
+  product_count: category.product_count,
+  parent: category.parent,
+  sort_order: category.sort_order,
+  translations: Array.isArray(category.translations)
+    ? category.translations
+      .filter((translation: CategoryTranslation) => {
+        if (!locale) return true
+        const expected = locale.toLowerCase().split('-')[0]
+        return translation.locale?.toLowerCase().split('-')[0] === expected
+      })
+      .map((translation: CategoryTranslation) => withoutUndefined({
+        locale: translation.locale,
+        name: translation.name,
+        description: includeDetails && typeof translation.description === 'string'
+          ? translation.description.slice(0, 1200)
+          : undefined,
+      }))
+    : category.translations,
+  ancestors: includeDetails && Array.isArray(category.ancestors)
+    ? category.ancestors.map((ancestor: Record<string, any>) => withoutUndefined({
+        id: ancestor.id,
+        name: ancestor.name,
+        slug: ancestor.slug,
+      }))
+    : undefined,
+  meta_title: includeDetails ? category.meta_title : undefined,
+  meta_description: includeDetails ? category.meta_description : undefined,
+  meta_keywords: includeDetails ? category.meta_keywords : undefined,
+  og_title: includeDetails ? category.og_title : undefined,
+  og_description: includeDetails ? category.og_description : undefined,
+  og_image_url: includeDetails ? category.og_image_url : undefined,
+  portfolio_items: includePortfolio ? category.portfolio_items : undefined,
+}) as Category
+
+const compactBrandForFilter = (brand: Brand & Record<string, any>): Brand =>
+  withoutUndefined({
+    id: brand.id,
+    name: brand.name,
+    slug: brand.slug,
+    description: typeof brand.description === 'string'
+      ? brand.description.slice(0, 300)
+      : '',
+    logo: brand.logo,
+    product_count: brand.product_count ?? brand.products_count,
+    translations: Array.isArray(brand.translations)
+      ? brand.translations.map((translation: BrandTranslation) => withoutUndefined({
+          locale: translation.locale,
+          name: translation.name,
+        }))
+      : brand.translations,
+  }) as Brand
+
 export default function CategoryPage({
   products: initialProducts,
   categories,
-  sidebarCategories,
   brands,
   bookAuthors = [],
   bookGenres = [],
@@ -806,6 +952,10 @@ export default function CategoryPage({
 
   const [viewMode, setViewMode] = useViewMode()
   const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
+  const brandNameById = useMemo(
+    () => new Map(brandOptions.map((brand) => [brand.id, brand.name])),
+    [brandOptions]
+  )
   useEffect(() => {
     if (brands.length > 0 && categoryType !== 'books') {
       setBrandOptions(brands)
@@ -918,7 +1068,7 @@ export default function CategoryPage({
         if (filters.inStock) {
           params.in_stock = true
         }
-        const response = await api.get('/catalog/brands', { params })
+        const response = await getSingleFlight('/catalog/brands', { params })
         const list = Array.isArray(response.data) ? response.data : response.data.results || []
         const normalizedList = ensureOtherBrand(list)
         setBrandOptions(normalizedList)
@@ -979,7 +1129,8 @@ export default function CategoryPage({
       try {
         const params: any = {
           page: currentPage,
-          page_size: 12
+          page_size: 12,
+          view: 'card',
         }
 
         // Ограничиваем выдачу конкретным слагом категории из URL, чтобы не падать в default (medicines)
@@ -1098,10 +1249,13 @@ export default function CategoryPage({
         const productsEndpoint = resolveProductsEndpoint(categoryType).replace('/api/', '')
 
         console.log('Loading products with params:', params)
-        const response = await api.get(productsEndpoint, { params })
+        const response = await getSingleFlight(productsEndpoint, { params })
         const data = response.data
         const productsList = Array.isArray(data) ? data : (data.results || [])
         const filteredList = filterProductsByExtraFilters(productsList, filters, categoryType)
+        const cardProducts = filteredList.map((product: Product) =>
+          compactProductForCard(product as Product & Record<string, any>)
+        )
         const count = data.count ?? filteredList.length
         const attrs = data.available_attributes as AvailableAttribute[] | undefined
 
@@ -1121,7 +1275,7 @@ export default function CategoryPage({
         console.log(`Loaded ${productsList.length} products (after filters: ${filteredList.length}), total count: ${count}`)
         console.log('Category type:', categoryType)
         console.log('Sample product:', productsList[0])
-        setProducts(filteredList)
+        setProducts(cardProducts)
         setTotalCount(count)
         setTotalPages(Math.ceil(count / 12))
       } catch (error) {
@@ -1221,11 +1375,11 @@ export default function CategoryPage({
       try {
         let candidates: any[] = []
         if (routeSlug) {
-          const childRes = await api.get('/catalog/categories', { params: { parent_slug: routeSlug, page_size: 200 } })
+          const childRes = await getSingleFlight('/catalog/categories', { params: { parent_slug: routeSlug, page_size: 200 } })
           candidates = extractResults(childRes.data)
         }
         if (candidates.length === 0) {
-          const res = await api.get('/catalog/categories', { params: { top_level: true, page_size: 200 } })
+          const res = await getSingleFlight('/catalog/categories', { params: { top_level: true, page_size: 200 } })
           const allList = extractResults(res.data)
           const normalizedType = normalizeSlug(categoryType)
           const root = allList.find((c: any) => normalizeSlug(c.slug) === normalizeSlug(routeSlug))
@@ -1267,12 +1421,7 @@ export default function CategoryPage({
   }, [resolvedSubcategories, categoryType])
 
   // Фиксируем список категорий для сайтбара на первом рендере, чтобы он не затирался гидрацией
-  const initialSidebarCategoriesRef = useRef<Category[]>(Array.isArray(sidebarCategories) && sidebarCategories.length > 0 ? sidebarCategories : categories)
-  useEffect(() => {
-    if (initialSidebarCategoriesRef.current.length === 0 && sidebarCategories.length > 0) {
-      initialSidebarCategoriesRef.current = sidebarCategories
-    }
-  }, [sidebarCategories])
+  const initialSidebarCategoriesRef = useRef<Category[]>(categories)
   const sidebarCategoriesData = useMemo(() => {
     const base = initialSidebarCategoriesRef.current || []
     if (!base.length) return base
@@ -1689,11 +1838,15 @@ export default function CategoryPage({
                         pages={effectiveProductType === 'books' ? (product as any).pages : undefined}
                         language={effectiveProductType === 'books' ? (product as any).language : undefined}
                         authors={effectiveProductType === 'books' ? (product as any).book_authors : undefined}
-                        reviewsCount={effectiveProductType === 'books' ? (product as any).reviews_count : undefined}
+                        reviewsCount={product.reviews_count}
                         isBestseller={effectiveProductType === 'books' ? (product as any).is_bestseller : undefined}
                         isNew={(product as any).is_new}
                         isFeatured={(product as any).is_featured}
-                        rating={effectiveProductType === 'books' ? (product as any).rating : undefined}
+                        rating={product.rating}
+                        brandName={
+                          product.brand?.name ||
+                          (product.brand_id != null ? brandNameById.get(product.brand_id) : undefined)
+                        }
                       />
                     )
                   })}
@@ -1944,7 +2097,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
 
     // --- Товары: всегда общий эндпоинт, чтобы не получать 404 для кастомных категорий ---
-    const productParams: any = { page, page_size: pageSize }
+    const productParams: any = { page, page_size: pageSize, view: 'card' }
     if (routeSlug) {
       // Для книг используем product_type чтобы показать все книги из всех жанров
       if (categoryType === 'books') {
@@ -1983,8 +2136,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       productsData = { results: [], count: 0 }
     }
 
-    const products = Array.isArray(productsData) ? productsData : (productsData.results || [])
-    const totalCount = productsData.count || products.length
+    const rawProducts = Array.isArray(productsData) ? productsData : (productsData.results || [])
+    const products = rawProducts.map((product: Product) =>
+      compactProductForCard(product as Product & Record<string, any>)
+    )
+    const totalCount = productsData.count || rawProducts.length
     const availableAttributes: AvailableAttribute[] = Array.isArray(productsData?.available_attributes)
       ? productsData.available_attributes
       : []
@@ -2185,16 +2341,33 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // Пробуем по categoryType, потом по slug (для кастомных типов), потом fallbackInfo
     const categoryInfo = categoryNames[categoryType] || categoryNames[routeSlug || ''] || fallbackInfo
 
-    // Заменяем categories на уже отфильтрованный список для сайтбара,
-    // чтобы на клиенте не пришёл полный набор и не затёр отображение.
-    categories = sidebarCategories
+    // Заменяем categories на уже отфильтрованный и компактный список для сайтбара.
+    // Не передаём его второй раз отдельным prop: это удваивало SSR payload.
+    categories = sidebarCategories.map((category: Category) =>
+      compactCategoryForListing(
+        category as Category & Record<string, any>,
+        normalizeSlug(category.slug) === routeNorm,
+        categoryType === 'uslugi',
+        context.locale
+      )
+    )
+    subcategories = subcategories.map((category: Category) =>
+      compactCategoryForListing(
+        category as Category & Record<string, any>,
+        false,
+        false,
+        context.locale
+      )
+    )
+    brands = brands.map((brand: Brand) =>
+      compactBrandForFilter(brand as Brand & Record<string, any>)
+    )
 
     const footerSettings = await fetchFooterSettings()
     return {
       props: {
         products,
         categories,
-        sidebarCategories,
         footerSettings,
         brands,
         bookAuthors,
