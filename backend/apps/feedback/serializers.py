@@ -2,6 +2,7 @@ from urllib.parse import quote, urlparse
 from django.conf import settings
 from rest_framework import serializers
 from .models import (
+    ProductQuestion,
     ProductReview,
     ProductReviewMedia,
     Testimonial,
@@ -247,6 +248,37 @@ class ProductReviewSerializer(serializers.ModelSerializer):
         return _resolve_file_url(getattr(obj.user, "avatar", None), self.context.get("request"))
 
 
+def _resolve_product_target(attrs, request, instance=None, *, move_error):
+    product_type = str(attrs.get("product_type", getattr(instance, "product_type", ""))).strip().lower().replace("_", "-")
+    product_slug = str(attrs.get("product_slug", getattr(instance, "product_slug", ""))).strip()
+
+    if instance and (product_type != instance.product_type or product_slug != instance.product_slug):
+        raise serializers.ValidationError(move_error)
+
+    from apps.catalog.services.product_resolve import resolve_product_payload
+    from django.test import RequestFactory
+
+    resolve_request = RequestFactory().get(
+        "/",
+        secure=request.is_secure(),
+        HTTP_HOST=request.get_host(),
+        HTTP_ACCEPT_LANGUAGE=request.headers.get("Accept-Language", ""),
+        HTTP_X_CURRENCY=request.headers.get("X-Currency", ""),
+    )
+    resolved = resolve_product_payload(resolve_request, product_slug)
+    if not resolved:
+        raise serializers.ValidationError({"product_slug": "Товар или услуга не найдены"})
+    payload, _source, resolved_type = resolved
+    resolved_type = resolved_type.replace("_", "-")
+    if resolved_type != product_type:
+        raise serializers.ValidationError({"product_type": "Тип не соответствует товару"})
+
+    attrs["product_type"] = product_type
+    attrs["product_slug"] = str(payload.get("slug") or product_slug)
+    attrs["product_name"] = str(payload.get("name") or attrs.get("product_name") or product_slug)[:500]
+    return attrs
+
+
 class ProductReviewWriteSerializer(serializers.ModelSerializer):
     product_type = serializers.CharField(max_length=64)
     product_slug = serializers.SlugField(max_length=600)
@@ -265,32 +297,67 @@ class ProductReviewWriteSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        request = self.context["request"]
-        instance = self.instance
-        product_type = str(attrs.get("product_type", getattr(instance, "product_type", ""))).strip().lower().replace("_", "-")
-        product_slug = str(attrs.get("product_slug", getattr(instance, "product_slug", ""))).strip()
-
-        if instance and (product_type != instance.product_type or product_slug != instance.product_slug):
-            raise serializers.ValidationError("Нельзя перенести отзыв на другой товар")
-
-        from apps.catalog.services.product_resolve import resolve_product_payload
-        from django.test import RequestFactory
-        resolve_request = RequestFactory().get(
-            "/",
-            secure=request.is_secure(),
-            HTTP_HOST=request.get_host(),
-            HTTP_ACCEPT_LANGUAGE=request.headers.get("Accept-Language", ""),
-            HTTP_X_CURRENCY=request.headers.get("X-Currency", ""),
+        return _resolve_product_target(
+            attrs,
+            self.context["request"],
+            self.instance,
+            move_error="Нельзя перенести отзыв на другой товар",
         )
-        resolved = resolve_product_payload(resolve_request, product_slug)
-        if not resolved:
-            raise serializers.ValidationError({"product_slug": "Товар или услуга не найдены"})
-        payload, _source, resolved_type = resolved
-        resolved_type = resolved_type.replace("_", "-")
-        if resolved_type != product_type:
-            raise serializers.ValidationError({"product_type": "Тип не соответствует товару"})
 
-        attrs["product_type"] = product_type
-        attrs["product_slug"] = str(payload.get("slug") or product_slug)
-        attrs["product_name"] = str(payload.get("name") or attrs.get("product_name") or product_slug)[:500]
-        return attrs
+
+class ProductQuestionSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+    user_username = serializers.SerializerMethodField()
+    author_avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductQuestion
+        fields = (
+            "id", "product_type", "product_slug", "product_name", "author_name",
+            "user_username", "author_avatar_url", "is_anonymous", "question", "answer",
+            "status", "created_at", "updated_at", "answered_at",
+        )
+
+    def _can_reveal_author(self, obj):
+        request = self.context.get("request")
+        return not obj.is_anonymous or bool(
+            request and request.user.is_authenticated and request.user.pk == obj.user_id
+        )
+
+    def get_author_name(self, obj):
+        return obj.author_name if self._can_reveal_author(obj) else ""
+
+    def get_user_username(self, obj):
+        return obj.user.username if self._can_reveal_author(obj) else ""
+
+    def get_author_avatar_url(self, obj):
+        if not self._can_reveal_author(obj):
+            return None
+        return _resolve_file_url(getattr(obj.user, "avatar", None), self.context.get("request"))
+
+
+class ProductQuestionWriteSerializer(serializers.ModelSerializer):
+    product_type = serializers.CharField(max_length=64)
+    product_slug = serializers.SlugField(max_length=600)
+    product_name = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    is_anonymous = serializers.BooleanField(required=False, default=True)
+
+    class Meta:
+        model = ProductQuestion
+        fields = ("product_type", "product_slug", "product_name", "question", "is_anonymous")
+
+    def validate_question(self, value):
+        value = value.strip()
+        if len(value) < 5:
+            raise serializers.ValidationError("Вопрос должен содержать не менее 5 символов")
+        if len(value) > 2000:
+            raise serializers.ValidationError("Вопрос не должен превышать 2000 символов")
+        return value
+
+    def validate(self, attrs):
+        return _resolve_product_target(
+            attrs,
+            self.context["request"],
+            self.instance,
+            move_error="Нельзя перенести вопрос на другой товар",
+        )

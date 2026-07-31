@@ -100,6 +100,7 @@ def test_approved_review_is_aggregated_and_edit_returns_to_moderation(review_use
     )
     assert public.data["reviews_count"] == 1
     assert public.data["average_rating"] == 4.0
+    assert public.data["rating_distribution"] == {"1": 0, "2": 0, "3": 0, "4": 1, "5": 0}
 
     client = APIClient()
     client.force_authenticate(review_user)

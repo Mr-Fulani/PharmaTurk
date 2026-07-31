@@ -5,22 +5,23 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from django.utils.text import slugify
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Q
 import logging
-import os
 import os
 import uuid
 from api.authentication import JWTSafeAuthentication
-from .models import ProductReview, ProductReviewMedia, Testimonial, TestimonialSectionSettings
+from .models import ProductQuestion, ProductReview, ProductReviewMedia, Testimonial, TestimonialSectionSettings
 from .review_policy import can_user_review
 from .serializers import (
     ProductReviewSerializer,
     ProductReviewWriteSerializer,
+    ProductQuestionSerializer,
+    ProductQuestionWriteSerializer,
     TestimonialSerializer,
     TestimonialCreateSerializer,
     TestimonialSectionSettingsSerializer,
 )
-from .tasks import notify_admin_product_review
+from .tasks import notify_admin_product_question, notify_admin_product_review
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,14 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
 
         target_qs = self.get_queryset().filter(product_type=product_type, product_slug=product_slug)
         approved = target_qs.filter(status=ProductReview.Status.APPROVED)
-        aggregate = approved.aggregate(average_rating=Avg("rating"), reviews_count=Count("id"))
+        aggregate = approved.aggregate(
+            average_rating=Avg("rating"),
+            reviews_count=Count("id"),
+            **{
+                f"rating_{rating}": Count("id", filter=Q(rating=rating))
+                for rating in range(1, 6)
+            },
+        )
         own_review = None
         if request.user.is_authenticated:
             own_review = target_qs.filter(user=request.user).first()
@@ -183,6 +191,10 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
         return Response({
             "average_rating": round(float(aggregate["average_rating"] or 0), 1),
             "reviews_count": aggregate["reviews_count"],
+            "rating_distribution": {
+                str(rating): aggregate[f"rating_{rating}"]
+                for rating in range(1, 6)
+            },
             "reviews": ProductReviewSerializer(approved, many=True, context={"request": request}).data,
             "own_review": ProductReviewSerializer(own_review, context={"request": request}).data if own_review else None,
             "can_review": can_user_review(request.user, product_type, product_slug),
@@ -295,6 +307,83 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Недостаточно прав"}, status=status.HTTP_403_FORBIDDEN)
         review.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ProductQuestionViewSet(viewsets.GenericViewSet):
+    authentication_classes = [JWTSafeAuthentication]
+    queryset = ProductQuestion.objects.select_related("user", "answered_by")
+
+    def get_serializer_class(self):
+        return ProductQuestionWriteSerializer if self.action == "create" else ProductQuestionSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated()] if self.action == "create" else [AllowAny()]
+
+    @staticmethod
+    def _target(request):
+        product_type = str(request.query_params.get("product_type") or "").strip().lower().replace("_", "-")
+        product_slug = str(request.query_params.get("product_slug") or "").strip()
+        return product_type, product_slug
+
+    @staticmethod
+    def _author_name(user):
+        return " ".join(filter(None, [user.first_name, user.last_name])).strip() or user.username or user.email
+
+    def list(self, request, *args, **kwargs):
+        product_type, product_slug = self._target(request)
+        if not product_type or not product_slug:
+            return Response({"detail": "Укажите product_type и product_slug"}, status=status.HTTP_400_BAD_REQUEST)
+
+        target_qs = self.get_queryset().filter(product_type=product_type, product_slug=product_slug)
+        answered = target_qs.filter(status=ProductQuestion.Status.ANSWERED).exclude(answer="")
+        own_questions = ProductQuestion.objects.none()
+        if request.user.is_authenticated:
+            own_questions = target_qs.filter(user=request.user).exclude(status=ProductQuestion.Status.ANSWERED)
+
+        context = {"request": request}
+        return Response({
+            "questions_count": answered.count(),
+            "questions": ProductQuestionSerializer(answered, many=True, context=context).data,
+            "own_questions": ProductQuestionSerializer(own_questions, many=True, context=context).data,
+        })
+
+    def retrieve(self, request, *args, **kwargs):
+        question = self.get_object()
+        is_owner = request.user.is_authenticated and request.user.pk == question.user_id
+        is_published = question.status == ProductQuestion.Status.ANSWERED and bool(question.answer.strip())
+        if not is_published and not is_owner:
+            return Response({"detail": "Вопрос не найден"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(ProductQuestionSerializer(question, context={"request": request}).data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        target = serializer.validated_data
+        pending_count = ProductQuestion.objects.filter(
+            user=request.user,
+            product_type=target["product_type"],
+            product_slug=target["product_slug"],
+            status=ProductQuestion.Status.PENDING,
+        ).count()
+        if pending_count >= 3:
+            return Response(
+                {"detail": "Дождитесь ответа на ранее отправленные вопросы"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        question = serializer.save(
+            user=request.user,
+            author_name=self._author_name(request.user),
+            status=ProductQuestion.Status.PENDING,
+        )
+        try:
+            notify_admin_product_question.delay(question.pk)
+        except Exception:
+            logger.exception("Failed to enqueue product question Telegram notification")
+        return Response(
+            ProductQuestionSerializer(question, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class TestimonialSectionSettingsView(APIView):

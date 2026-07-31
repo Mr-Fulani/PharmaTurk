@@ -224,6 +224,57 @@ class ProductReview(models.Model):
         return f"{self.author_name}: {self.product_name} ({self.rating}/5)"
 
 
+class ProductQuestion(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает ответа"
+        ANSWERED = "answered", "Ответ опубликован"
+        REJECTED = "rejected", "Отклонён"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="product_questions",
+        verbose_name="Пользователь",
+    )
+    product_type = models.CharField("Тип товара/услуги", max_length=64, db_index=True)
+    product_slug = models.SlugField("Slug родительской карточки", max_length=600, db_index=True)
+    product_name = models.CharField("Название товара/услуги", max_length=500)
+    author_name = models.CharField("Имя автора", max_length=150)
+    is_anonymous = models.BooleanField("Скрывать имя на сайте", default=True)
+    question = models.TextField("Вопрос")
+    answer = models.TextField("Ответ", blank=True)
+    status = models.CharField(
+        "Статус",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    answered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="answered_product_questions",
+        verbose_name="Ответил",
+    )
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+    updated_at = models.DateTimeField("Изменён", auto_now=True)
+    answered_at = models.DateTimeField("Ответ опубликован", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "❓ Вопрос о товаре/услуге"
+        verbose_name_plural = "❓ Вопросы — Товары и услуги"
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=("product_type", "product_slug", "status"), name="feedback_pq_target_idx"),
+            models.Index(fields=("user", "status"), name="feedback_pq_user_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.product_name}: {self.question[:80]}"
+
+
 class ProductReviewMedia(models.Model):
     class MediaType(models.TextChoices):
         IMAGE = "image", "Изображение"

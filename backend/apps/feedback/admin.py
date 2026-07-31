@@ -3,7 +3,7 @@ from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils import timezone
-from .models import ProductReview, ProductReviewMedia, Testimonial, TestimonialMedia, TestimonialSectionSettings
+from .models import ProductQuestion, ProductReview, ProductReviewMedia, Testimonial, TestimonialMedia, TestimonialSectionSettings
 
 
 class TestimonialMediaInline(admin.TabularInline):
@@ -135,3 +135,65 @@ class ProductReviewAdmin(admin.ModelAdmin):
     def reject_reviews(self, request, queryset):
         count = queryset.update(status=ProductReview.Status.REJECTED, published_at=None)
         self.message_user(request, f"Отклонено отзывов: {count}")
+
+
+@admin.register(ProductQuestion)
+class ProductQuestionAdmin(admin.ModelAdmin):
+    list_display = ("product_name", "question_preview", "author_name", "status", "created_at", "answered_at")
+    list_filter = ("status", "product_type", "is_anonymous", "created_at", "answered_at")
+    search_fields = (
+        "product_name", "product_slug", "question", "answer", "author_name",
+        "user__username", "user__email",
+    )
+    readonly_fields = (
+        "user", "product_type", "product_slug", "product_name", "author_name",
+        "created_at", "updated_at", "answered_by", "answered_at",
+    )
+    date_hierarchy = "created_at"
+    actions = ("publish_answered", "reject_questions")
+    fieldsets = (
+        ("Товар или услуга", {"fields": ("product_name", "product_type", "product_slug")}),
+        ("Автор", {"fields": ("user", "author_name", "is_anonymous")}),
+        ("Вопрос и ответ", {
+            "description": "Введите ответ и сохраните — вопрос автоматически появится на странице товара.",
+            "fields": ("question", "answer", "status"),
+        }),
+        ("Даты", {"fields": ("created_at", "updated_at", "answered_by", "answered_at")}),
+    )
+
+    @admin.display(description="Вопрос")
+    def question_preview(self, obj):
+        return obj.question[:100]
+
+    def save_model(self, request, obj, form, change):
+        obj.answer = obj.answer.strip()
+        if obj.answer:
+            obj.status = ProductQuestion.Status.ANSWERED
+            obj.answered_by = request.user
+            obj.answered_at = timezone.now()
+        elif obj.status == ProductQuestion.Status.ANSWERED:
+            obj.status = ProductQuestion.Status.PENDING
+            obj.answered_by = None
+            obj.answered_at = None
+        elif obj.status != ProductQuestion.Status.ANSWERED:
+            obj.answered_by = None
+            obj.answered_at = None
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description="Опубликовать вопросы с заполненным ответом")
+    def publish_answered(self, request, queryset):
+        count = queryset.exclude(answer="").update(
+            status=ProductQuestion.Status.ANSWERED,
+            answered_by=request.user,
+            answered_at=timezone.now(),
+        )
+        self.message_user(request, f"Опубликовано ответов: {count}")
+
+    @admin.action(description="Отклонить выбранные вопросы")
+    def reject_questions(self, request, queryset):
+        count = queryset.update(
+            status=ProductQuestion.Status.REJECTED,
+            answered_by=None,
+            answered_at=None,
+        )
+        self.message_user(request, f"Отклонено вопросов: {count}")
