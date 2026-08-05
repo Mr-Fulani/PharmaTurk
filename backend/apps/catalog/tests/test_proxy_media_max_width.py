@@ -21,9 +21,20 @@ def small_jpeg_bytes():
     return buf.getvalue()
 
 
-@pytest.mark.django_db
+def _proxy_media_view():
+    # Importing catalog.views builds category prefetches and normally checks the
+    # live schema. The proxy view itself does not need a database connection.
+    with patch(
+        'apps.catalog.models.service_portfolio_translation_fields_ready',
+        return_value=False,
+    ):
+        from apps.catalog.views import proxy_media
+
+    return proxy_media
+
+
 def test_proxy_media_max_width_returns_smaller_webp(rf, small_jpeg_bytes):
-    from apps.catalog.views import proxy_media
+    proxy_media = _proxy_media_view()
 
     cache.clear()
     mock_storage = MagicMock()
@@ -51,3 +62,43 @@ def test_proxy_media_max_width_returns_smaller_webp(rf, small_jpeg_bytes):
     img = Image.open(io.BytesIO(data))
     assert img.format == 'WEBP'
     assert max(img.size) <= 200
+
+
+def test_proxy_media_max_width_does_not_decode_oversized_image(rf):
+    proxy_media = _proxy_media_view()
+
+    class SizedBytesIO(io.BytesIO):
+        @property
+        def size(self):
+            return len(self.getbuffer())
+
+    cache.clear()
+    resize_source = SizedBytesIO(b'image header')
+    resize_cm = MagicMock()
+    resize_cm.__enter__.return_value = resize_source
+    resize_cm.__exit__.return_value = None
+    original_source = SizedBytesIO(b'original image bytes')
+
+    mock_storage = MagicMock()
+    mock_storage.open.side_effect = [resize_cm, original_source]
+
+    oversized_image = MagicMock()
+    oversized_image.size = (8000, 4000)
+
+    with override_settings(R2_PUBLIC_URL='https://test.r2.dev'):
+        with patch(
+            'apps.catalog.utils.media_path.resolve_existing_media_storage_key',
+            return_value='products/oversized.jpg',
+        ):
+            with patch('django.core.files.storage.default_storage', mock_storage):
+                with patch('PIL.Image.open', return_value=oversized_image):
+                    with patch('PIL.ImageOps.exif_transpose') as exif_transpose:
+                        req = rf.get(
+                            '/api/catalog/proxy-media/',
+                            {'path': 'products/oversized.jpg', 'max_width': '480'},
+                        )
+                        resp = proxy_media(req)
+
+    assert resp.status_code == 200
+    assert resp['Content-Type'] == 'image/jpeg'
+    exif_transpose.assert_not_called()

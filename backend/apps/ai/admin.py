@@ -242,6 +242,10 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     form = AIProcessingLogForm
     change_list_template = "admin/ai/aiprocessinglog/change_list.html"
     change_form_template = "admin/ai/aiprocessinglog/change_form.html"
+    # The production catalog contains thousands of products and categories.
+    # Rendering all of them as <select> options on every log change page causes
+    # large allocations in the already memory-constrained gunicorn workers.
+    raw_id_fields = ("product", "suggested_category", "processed_by")
     list_display = (
         "view_log_link",
         "id",

@@ -3636,6 +3636,26 @@ _PROXY_MEDIA_TYPES = {
     '.gif': 'image/gif',
 }
 
+# Pillow decodes the full source image before thumbnailing it. A highly
+# compressed but very large image can therefore consume hundreds of megabytes
+# in a gunicorn worker. Keep both compressed-size and decoded-pixel guards.
+_PROXY_MEDIA_MAX_SOURCE_BYTES = 8 * 1024 * 1024
+_PROXY_MEDIA_MAX_SOURCE_PIXELS = 16_000_000
+
+
+def _proxy_media_image_limit_reason(file_obj, image):
+    source_size = getattr(file_obj, 'size', None)
+    if source_size is not None and source_size > _PROXY_MEDIA_MAX_SOURCE_BYTES:
+        return f'source file is {source_size} bytes'
+
+    width, height = image.size
+    if width <= 0 or height <= 0:
+        return f'invalid dimensions {width}x{height}'
+    pixels = width * height
+    if pixels > _PROXY_MEDIA_MAX_SOURCE_PIXELS:
+        return f'source image is {width}x{height} ({pixels} pixels)'
+    return None
+
 
 @require_GET
 def proxy_media(request):
@@ -3737,6 +3757,9 @@ def proxy_media(request):
             try:
                 with default_storage.open(resolved_path, 'rb') as rf:
                     img = Image.open(rf)
+                    limit_reason = _proxy_media_image_limit_reason(rf, img)
+                    if limit_reason:
+                        raise ValueError(f'resize skipped: {limit_reason}')
                     img = ImageOps.exif_transpose(img)
                     if img.mode in ('RGBA', 'P', 'LA'):
                         if img.mode == 'P':
@@ -3773,31 +3796,41 @@ def proxy_media(request):
                 
                 if webp_data is None:
                     # Пропускаем преобразование на лету для файлов > 8MB чтобы избежать OOM
-                    if file_obj.size > 8 * 1024 * 1024:
+                    if file_obj.size > _PROXY_MEDIA_MAX_SOURCE_BYTES:
                         webp_data = None
                     else:
                         # Читаем файл в память
                         try:
                             img = Image.open(file_obj)
-                            img = ImageOps.exif_transpose(img) # Сохраняем ориентацию
-                            
-                            # Конвертируем прозрачность/палитру в RGB для Jpeg/WebP
-                            if img.mode in ('RGBA', 'P', 'LA'):
-                                # Для PNG сохраняем прозрачность в WebP 
-                                if img.mode == 'P':
-                                    img = img.convert('RGBA')
+                            limit_reason = _proxy_media_image_limit_reason(file_obj, img)
+                            if limit_reason:
+                                logger.warning(
+                                    'WebP conversion skipped for %s: %s',
+                                    resolved_path,
+                                    limit_reason,
+                                )
+                                file_obj.seek(0)
+                                webp_data = None
                             else:
-                                if img.mode != 'RGB':
-                                    img = img.convert('RGB')
-                            
-                            output = io.BytesIO()
-                            # Снижаем method до 1 или 2 чтобы значительно сократить потребление памяти и CPU 
-                            img.save(output, format='WEBP', quality=80, method=1)
-                            webp_data = output.getvalue()
-                            
-                            # Кэшируем до 5 МБ в Memcached/Redis на 30 дней
-                            if len(webp_data) < 5 * 1024 * 1024:
-                                cache.set(cache_key, webp_data, 30 * 86400)
+                                img = ImageOps.exif_transpose(img) # Сохраняем ориентацию
+
+                                # Конвертируем прозрачность/палитру в RGB для Jpeg/WebP
+                                if img.mode in ('RGBA', 'P', 'LA'):
+                                    # Для PNG сохраняем прозрачность в WebP
+                                    if img.mode == 'P':
+                                        img = img.convert('RGBA')
+                                else:
+                                    if img.mode != 'RGB':
+                                        img = img.convert('RGB')
+
+                                output = io.BytesIO()
+                                # Снижаем method до 1 или 2 чтобы значительно сократить потребление памяти и CPU
+                                img.save(output, format='WEBP', quality=80, method=1)
+                                webp_data = output.getvalue()
+
+                                # Кэшируем до 5 МБ в Memcached/Redis на 30 дней
+                                if len(webp_data) < 5 * 1024 * 1024:
+                                    cache.set(cache_key, webp_data, 30 * 86400)
                         except Exception as img_err:
                             # В случае ошибки конвертации падаем в фолбэк к оригиналу
                             logger.warning(f"WebP conversion failed for {resolved_path}: {img_err}")
