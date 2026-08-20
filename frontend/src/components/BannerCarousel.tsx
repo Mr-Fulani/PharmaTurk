@@ -107,7 +107,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
     }
 
     fetchBanners()
-  }, [position, router.locale])
+  }, [position, router.locale, initialBanners.length])
 
   // Автоматическая смена медиа внутри баннера каждые 5 секунд
   useEffect(() => {

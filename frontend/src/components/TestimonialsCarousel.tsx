@@ -364,6 +364,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
   // Отслеживаем изменения состояния воспроизведения для video_file
   useEffect(() => {
+    const currentVideoRefs = videoRefs.current
     const handlePlay = (e: Event) => {
       const video = e.target as HTMLVideoElement
       const testimonialId = Array.from(videoRefs.current.entries()).find(([_, v]) => v === video)?.[0]
@@ -395,7 +396,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       }
     }
 
-    videoRefs.current.forEach((video) => {
+    currentVideoRefs.forEach((video) => {
       if (video) {
         video.addEventListener('play', handlePlay)
         video.addEventListener('pause', handlePause)
@@ -403,7 +404,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     })
 
     return () => {
-      videoRefs.current.forEach((video) => {
+      currentVideoRefs.forEach((video) => {
         if (video) {
           video.removeEventListener('play', handlePlay)
           video.removeEventListener('pause', handlePause)
@@ -515,12 +516,13 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
   // Cleanup таймаутов при размонтировании компонента
   useEffect(() => {
+    const muteToggleTimeouts = muteToggleTimeoutRef.current
     return () => {
       // Очищаем все активные таймауты debounce
-      muteToggleTimeoutRef.current.forEach((timeout) => {
+      muteToggleTimeouts.forEach((timeout) => {
         clearTimeout(timeout)
       })
-      muteToggleTimeoutRef.current.clear()
+      muteToggleTimeouts.clear()
     }
   }, [])
 
@@ -954,8 +956,9 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   }, [youtubeApiReady, testimonials])
 
   useEffect(() => {
+    const players = youtubePlayers.current
     return () => {
-      youtubePlayers.current.forEach((player) => {
+      players.forEach((player) => {
         try {
           const iframe = player.getIframe ? player.getIframe() : null
           if (iframe && iframe.parentNode) {
@@ -965,7 +968,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           // Игнорируем ошибки
         }
       })
-      youtubePlayers.current.clear()
+      players.clear()
       updatePlayerReady((map) => map.clear())
     }
   }, [])

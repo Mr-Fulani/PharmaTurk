@@ -1827,7 +1827,7 @@ changed = True
 
 ### Entrypoint бэкенда (`docker-entrypoint.sh`)
 
-У контейнера **`backend`** точка входа — `backend/docker-entrypoint.sh`: при **каждом** старте контейнера выполняются `migrate --noinput`, `collectstatic`, затем gunicorn/runserver. То есть после `git pull` и **`docker compose up -d --build backend`** (или `restart backend`) миграции часто уже применятся сами.
+У контейнера **`backend`** точка входа — `backend/docker-entrypoint.sh`. В локальной разработке при `RUN_MIGRATIONS=1` он выполняет `migrate --noinput`, затем `collectstatic` и gunicorn/runserver. В staging/production release-процессе используется `RUN_MIGRATIONS=0`, а миграции применяются один раз отдельным `migrate` service из профиля `ops`; не рассчитывайте на обычный restart как на способ изменить схему.
 
 Если нужно применить миграции **без** пересоздания backend (только команда внутри работающего контейнера), из **корня репозитория**:
 
@@ -1863,7 +1863,7 @@ docker compose restart celeryworker celery_ai celerybeat
 
 ### Если `service "backend" is not running` или `No such image: mudaroba-backend`
 
-Образ **`mudaroba-backend`** в `docker-compose.yml` собирается локально (`build`), в реестр публично не выкладывается. Режим **`./restart.sh --fast` / `--quick`** **не** вызывает `docker compose build` и передаёт **`--no-build`**: на чистом сервере или после `prune` образа не будет — контейнеры не поднимутся.
+Образ **`mudaroba-backend:${IMAGE_TAG:-local}`** в `docker-compose.yml` собирается локально (`build`), в реестр публично не выкладывается. Режим **`./restart.sh --fast` / `--quick`** **не** вызывает `docker compose build` и передаёт **`--no-build`**: на чистом сервере или после `prune` SHA-образа не будет — контейнеры не поднимутся.
 
 **Что сделать на проде (из корня репозитория, с нужными `-f`, например prod-override):**
 
@@ -1872,8 +1872,8 @@ docker compose restart celeryworker celery_ai celerybeat
 ./restart.sh --logs
 
 # Или только сборка backend, затем up:
-docker compose -p pharmaturk -f docker-compose.yml -f docker-compose.prod.yml build backend
-docker compose -p pharmaturk -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build backend
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 Дальше, когда образ уже есть на машине, для быстрого рестарта можно снова использовать **`--fast`**.

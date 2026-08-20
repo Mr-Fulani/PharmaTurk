@@ -49,7 +49,9 @@ class InditexSiblingParser(ZaraParser):
             },
         }
         if self.proxies:
-            session_kwargs.update({"proxies": self.proxies, "verify": False})
+            session_kwargs.update(
+                {"proxies": self.proxies, "verify": self.proxy_tls_verify}
+            )
         self.ajax_session = curl_requests.Session(**session_kwargs)
 
     @abstractmethod

@@ -1,148 +1,183 @@
-# Celery Beat: задачи по расписанию
+# Celery: очереди и задачи по расписанию
 
-Список задач, которые **не тратят токены OpenAI**. AI-задачи (категоризация, описания, повтор неудачных) только вручную — `/admin/ai/manual-tasks/`.
+Источник правды для расписания — `CELERY_BEAT_SCHEDULE` в `backend/config/settings.py`. Инициализация приложения находится в `backend/config/celery.py`; задачи обнаруживаются через `autodiscover_tasks()`.
 
----
+Временная зона проекта — `Europe/Moscow`. Расписания `crontab` ниже указаны в этой зоне. Интервалы (`10 минут`, `4 часа`, `7 дней`) отсчитываются Celery Beat и не привязаны к конкретному часу суток.
 
-## Задачи в работе
+## Очереди и workers
 
-### currency-update-rates
-**Расписание:** каждые 4 часа
+| Шаблон задачи | Очередь | Worker в Compose |
+|---|---|---|
+| `apps.ai.tasks.*` | `ai` | `celery_ai` |
+| `apps.recommendations.tasks.*` | `recsys` | `celery_recsys` |
+| `apps.payments.tasks.*` | `celery` | `celeryworker` |
+| `currency.*` | `celery` | `celeryworker` |
+| Остальные задачи без route | очередь Celery по умолчанию | `celeryworker` |
 
-**Что делает:** Обновление курсов валют из внешнего источника (API). Сохраняет в `CurrencyRate`.
+Beat только публикует задачи. Для исполнения должны одновременно работать Redis и worker нужной очереди. В одном окружении должен быть только один активный экземпляр `celerybeat`, иначе периодические задачи могут публиковаться несколько раз.
 
-**Текущее состояние:** Работает. Использует `CurrencyRateService`.
+## Активное расписание
 
----
+| Имя schedule | Задача | Расписание | Очередь | Основной эффект |
+|---|---|---|---|---|
+| `enrich-medicine-media-nightly` | `catalog.enrich_medicine_media` | ежедневно `03:00` | `celery` | Дополняет галерею `MedicineProduct` до 3 изображений. |
+| `currency-update-rates` | `currency.update_rates` | каждые 4 часа | `celery` | Обновляет курсы валют. |
+| `currency-update-prices` | `currency.update_product_prices` | каждые 24 часа | `celery` | Вызывает `update_product_prices`, batch size 200. |
+| `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | каждые 7 дней | `celery` | Удаляет сессии и логи скрапинга старше 30 дней. |
+| `orders-cleanup-stale-anonymous-carts` | `orders.cleanup_stale_anonymous_carts` | ежедневно `04:10` | `celery` | Батчами удаляет неактивные анонимные корзины; user carts не затрагивает. |
+| `scrapers-weekly-duplicate-candidates` | `apps.scrapers.tasks.find_and_merge_duplicates` | понедельник `04:30` | `celery` | Ищет и сохраняет кандидатов на ручную дедупликацию. |
+| `cleanup-orphaned-media` | `catalog.cleanup_orphaned_media` | ежедневно `03:00` | `celery` | Удаляет безопасно определённые orphaned media. |
+| `payments-expire-crypto-invoices` | `apps.payments.tasks.expire_pending_crypto_payments` | каждые 10 минут | `celery` | Помечает просроченные pending crypto invoices как `expired`. |
+| `ai-cleanup-old-logs` | `apps.ai.tasks.cleanup_old_ai_logs` | каждые 7 дней | `ai` | Удаляет `completed`/`approved` AI-логи старше 30 дней. |
+| `recsys-sync-stale-nightly` | `apps.recommendations.tasks.sync_stale_products_to_qdrant` | ежедневно `02:15` | `recsys` | Ставит на индексацию до 200 новых/изменённых товаров батчами по 25. |
+| `cleanup-temp-images` | `apps.recommendations.tasks.cleanup_temp_images` | каждый час | `recsys` | Удаляет файлы старше часа из storage-префикса `temp/`. |
 
-### currency-update-prices
-**Расписание:** раз в день
+### Обогащение медиа лекарств
 
-**Что делает:** Пересчитывает цены товаров по актуальным курсам валют. Обходит товары батчами (batch_size=200).
+Периодический вызов использует значения по умолчанию:
 
-**Текущее состояние:** Работает. Вызывает management-команду `update_product_prices`.
-
----
-
-### cleanup-scraper-sessions
-**Расписание:** раз в неделю
-
-**Что делает:** Удаляет старые сессии парсинга (`ScrapingSession`) и логи (`ScrapedProductLog`) старше 30 дней.
-
-**Текущее состояние:** Работает. Освобождает БД от старых логов парсинга.
-
-**Что нужно:** Решить — оставить 30 дней или изменить срок хранения.
-
----
-
-### cleanup-orphaned-media
-**Расписание:** раз в день
-
-**Что делает:** Удаляет файлы из R2/локального хранилища, на которые нет ссылок в БД. Исключает защищённые пути (AI, temp).
-
-**Текущее состояние:** Работает. Экономит место в storage.
-
-**Что нужно:** Решить — оставить или отключить (если не используете R2/медиа).
-
----
-
-### ai-cleanup-old-logs
-**Расписание:** раз в неделю
-
-**Что делает:** Удаляет завершённые/одобренные логи AI (`AIProcessingLog`) старше месяца (30 дней).
-
-**Текущее состояние:** Работает. Не тратит токены. Можно также запускать вручную в `/admin/ai/manual-tasks/` с нужным количеством дней.
-
----
-
-### recsys-sync-stale-nightly
-**Расписание:** ежедневно в 02:15 (`Europe/Moscow`)
-
-**Что делает:** Инкрементально индексирует только новые/изменённые товары, максимум 200 за запуск, пакетами по 25. Использует локальные SentenceTransformer и CLIP, без OpenAI.
-
-**Очередь:** `recsys` обслуживается отдельным воркером **celery_recsys**. Он не занимает слоты ручной AI-обработки и по умолчанию не перезапускается `restart.sh`.
-
-**Текущее состояние:** Работает. Нужна для рекомендаций «похожие товары», «дополнить образ» и т.п.
-
-> Важно: эта задача индексирует **товары**, но не формирует пользовательские
-> профили. Персональный блок «Вам может понравиться» на главной пока отложен:
-> `UserEmbedding.update_from_behavior()` не реализован, поэтому режим
-> `trending` намеренно скрывается как дубль «Хитов продаж». Не включайте блок
-> простым удалением фронтенд-проверки. План доработки:
-> [`docs/PERSONALIZED_RECOMMENDATIONS.md`](docs/PERSONALIZED_RECOMMENDATIONS.md).
-
-**Ручной запуск (все товары):**
-```bash
-# Docker (Poetry)
-docker compose exec backend poetry run python manage.py sync_product_vectors --full
-
-# или частями (backend 1.5g — OOM при загрузке CLIP; использовать celery_recsys 3g):
-docker compose exec celery_recsys poetry run python manage.py sync_product_vectors --batch 25
-# до конца: --until-done (повторяет батчи пока remaining > 0)
-docker compose exec celery_recsys poetry run python manage.py sync_product_vectors --until-done
-# при рассинхроне (No vector found): --force --until-done (сброс last_synced, полная переиндексация)
-docker compose exec celery_recsys poetry run python manage.py sync_product_vectors --force --until-done
-# конкретный товар: --product-id 946 --product-id 947
-
-# После переиндексации — если похожие не показываются, очистить кэш:
-docker compose exec backend poetry run python manage.py clear_similar_cache
-
-# Локально (из backend/)
-poetry run python manage.py sync_product_vectors --full
+```python
+model_name="MedicineProduct"
+max_images_per_product=3
 ```
-Полная синхронизация — только ручная операция. Прогресс — в логах `celery_recsys`.
 
-**Процедура при «No vector found» или пустых похожих:**
-1. `sync_product_vectors --force --until-done` (сбрасывает last_synced, переиндексирует всё; кэш очищается автоматически)
-2. Для конкретных товаров: `sync_product_vectors --product-id X --product-id Y` (обходит is_available)
-3. Если похожие всё ещё пустые: `clear_similar_cache` (теперь удаляет все rec:similar:* по паттерну Redis)
+Задача также умеет вручную обрабатывать `SupplementProduct` через `model_name`, но scheduled entry этого не делает. При ручной передаче `product_ids` задача обрабатывает выбранные записи независимо от текущего числа изображений.
 
-Проблема только в recsys: sync_product_vectors и clear_similar_cache. Другие задачи (currency, scrapers, ai-cleanup) не используют Qdrant/векторы.
+Эта задача и `cleanup-orphaned-media` запланированы одновременно на `03:00` и работают в одной очереди. При изменении concurrency или storage-политики следует проверить, допустимо ли их параллельное выполнение; проще развести cron-время.
 
----
+### Валюты
 
-## Отключённые задачи
+`currency.update_rates` вызывает `CurrencyRateService.update_rates()`. `currency.update_product_prices` запускает management-команду пересчёта и не обновляет курс повторно внутри того же запуска.
 
-### find-merge-duplicates
-**Статус:** Включено в расписание раз в неделю + доступно для ручного запуска.
+Обе задачи перехватывают исключения и возвращают `{"status": "error"}` вместо обязательного Celery failure. Поэтому мониторинг должен проверять не только state задачи, но и её result/log message.
 
-**Что делает:** Ищет кандидатов в дубликаты товаров по нескольким сигналам: `external_id`, `external_url`, `barcode`, `sku`, `gtin`, `mpn`, нормализованное имя, бренд, категория и тип товара. Автоматически не объединяет — создаёт записи на ручную модерацию в админке.
+### Очистка скраперных данных
 
-**Расписание:** Раз в неделю, по понедельникам в `04:30`, задача `apps.scrapers.tasks.find_and_merge_duplicates`.
+`cleanup_old_sessions(30)` удаляет `ScrapingSession` и `ScrapedProductLog` старше cutoff. Это реальное удаление данных, поэтому изменение retention требует отдельного решения по аудиту и резервному копированию.
 
-**Уведомление:** Если найдены новые или обновлённые кандидаты, администратору отправляется Telegram-сводка в `TELEGRAM_CHAT_ID`.
+### Очистка анонимных корзин
 
-**Ручной запуск:** Массовое действие «Поиск кандидатов в дубликаты (на модерацию)» в админке на страницах товаров (любой тип). Выберите товары → действие → применить. **Задача всегда выполняется по всему каталогу** — выбор не влияет. Требует `mem_limit: 2g` для celeryworker.
+`orders.cleanup_stale_anonymous_carts` удаляет только `Cart` с `user IS NULL`, у которых
+не было записей ни в саму корзину, ни в её `CartItem` после cutoff. Корзины
+авторизованных пользователей не удаляются. Retention и batch задаются через
+`ANONYMOUS_CART_TTL_DAYS` (по умолчанию 30) и `ANONYMOUS_CART_CLEANUP_BATCH_SIZE` (по умолчанию 500,
+допустимо 1..10000).
 
-**Где модерировать:** `/admin/scrapers/productduplicatecandidate/`
+Перед сменой retention проверьте объём без удаления:
 
----
+```bash
+docker compose exec backend poetry run python manage.py shell -c \
+  "from apps.orders.tasks import cleanup_stale_anonymous_carts as t; print(t.run(days=30, dry_run=True))"
+```
 
-### refresh-stock, run-all-scrapers
-**Статус:** Отключено — доработаем после парсеров.
+Результат содержит `matched`, `deleted`, `dry_run`, `retention_days`. В production сначала
+выполните dry-run и оцените `matched`; сам scheduled cleanup не является backup-механизмом.
 
-**Что делают:**
-- `refresh-stock` — проверка наличия товаров на складе/у поставщиков (каждые 2 ч). Сейчас заглушка — логики нет.
-- `run-all-scrapers` — запуск всех активных парсеров (каждые 12 ч). Работает, но временно выключен.
+### Кандидаты в дубликаты
 
-**Как включить:** Раскомментировать блоки в `backend/config/settings.py` → `CELERY_BEAT_SCHEDULE`.
+Несмотря на историческое имя `find_and_merge_duplicates`, scheduled task **не объединяет товары автоматически**. Она:
 
----
+1. сканирует каталог;
+2. создаёт или обновляет `ProductDuplicateCandidate`;
+3. оставляет кандидатов в `pending_moderation`;
+4. отправляет Telegram-сводку, если поиск нашёл кандидатов и уведомления настроены.
 
-### VAPI (vapi-sync-products, vapi-sync-categories, vapi-full-sync)
-**Статус:** Отключено — фича не используется.
+Модерация находится в `/admin/scrapers/productduplicatecandidate/`. То же сканирование доступно из admin action; выбор отдельных товаров не ограничивает область — проверяется весь каталог.
 
-**Что делают:**
-- `vapi-sync-products` — подтягивает товары из VAPI API (каждые 6 ч)
-- `vapi-sync-categories` — синхронизирует категории и бренды (раз в день)
-- `vapi-full-sync` — полная синхронизация каталога (раз в 3 дня)
+### Очистка orphaned media
 
-**Как включить:** Раскомментировать блок в `backend/config/settings.py` → `CELERY_BEAT_SCHEDULE`. Указать `VAPI_BASE_URL` и `VAPI_API_KEY` в `.env`.
+`catalog.cleanup_orphaned_media`:
 
----
+- в `DEBUG=True` пропускает выполнение;
+- исключает защищённые AI/temp/avatar и чужие environment prefixes;
+- прекращает удаление, если в БД найдено меньше 100 media paths;
+- прекращает удаление, если кандидаты составляют более половины storage;
+- возвращает `skipped`/`aborted`/`error` как результат, поэтому эти состояния нужно мониторить отдельно.
 
-## Дополнительные задачи (не в Beat)
+Это защитные ограничения, а не гарантия резервного копирования. Перед сменой `R2_PREFIX`, storage backend или структуры media paths необходим отдельный dry audit.
 
-- `currency.cleanup_old_logs` — очистка старых логов курсов (можно добавить в расписание)
-- `currency.health_check` — проверка здоровья системы валют
-- `index_product_vectors` — индексация одного/нескольких товаров (вызывается при сохранении товара или через `sync_all_products_to_qdrant`)
+### Истечение крипто-инвойсов
+
+Каждые 10 минут задача одним DB update переводит записи `CryptoPayment` со статусом `pending` и прошедшим `expires_at` в `expired`. Остатки она не изменяет и уведомление об истечении не отправляет. Если таблица ещё не создана во время rollout, известная ошибка `does not exist` обрабатывается как временный no-op.
+
+### Очистка AI-логов
+
+Единственная AI-задача в Beat не вызывает OpenAI. Она удаляет только старые логи со статусами `completed` и `approved`; `failed`, `moderation`, `pending`, `processing` и `rejected` этим фильтром не удаляются.
+
+Она маршрутизируется в `ai`, поэтому остановленный `celery_ai` задержит и эту сервисную очистку, даже если стандартный worker работает.
+
+### Инкрементальная RecSys-индексация
+
+Ночной scheduler выбирает доступные товары без актуального `vector_data.last_synced`, не более 200 за запуск, и публикует батчи по 25. Redis lock на 6 часов защищает от повторной постановки того же scheduled прохода.
+
+Эта задача использует локальные SentenceTransformer/CLIP и Qdrant, не OpenAI. Она не строит пользовательские профили. Полная переиндексация остаётся ручной операцией:
+
+```bash
+docker compose exec celery_recsys poetry run python manage.py sync_product_vectors --full
+docker compose exec celery_recsys poetry run python manage.py sync_product_vectors --until-done
+docker compose exec celery_recsys poetry run python manage.py sync_product_vectors --force --until-done
+docker compose exec backend poetry run python manage.py clear_similar_cache
+```
+
+`--force` сбрасывает marker синхронизации и создаёт существенно более тяжёлую нагрузку; применять его следует только при подтверждённом рассинхроне.
+
+### Временные изображения visual search
+
+Каждый час `cleanup_temp_images` проверяет файлы непосредственно в `temp/` через `default_storage` и удаляет те, чьё время изменения старше одного часа. Задача работает и с локальным, и с S3-совместимым storage, но результат зависит от поддержки `listdir()` и `get_modified_time()` конкретным backend.
+
+## AI-задачи, исключённые из Beat
+
+Следующие задачи существуют, но запускаются вручную через `/admin/ai/manual-tasks/`, потому что могут расходовать OpenAI-токены:
+
+- `process_uncategorized` — категоризация товаров без категории;
+- `process_without_description` — генерация отсутствующих описаний;
+- `retry_failed_processing` — повтор AI-ошибок за последние 7 дней.
+
+Они публикуются в очередь `ai` и по умолчанию используют `auto_apply=False`.
+
+## Другие отключённые scheduled entries
+
+В `CELERY_BEAT_SCHEDULE` закомментированы:
+
+- `refresh-stock` — текущая реализация является заглушкой;
+- `run-all-scrapers` — автоматический запуск всех активных скраперов;
+- `vapi-sync-products`, `vapi-sync-categories`, `vapi-full-sync` — VAPI-интеграция.
+
+Для включения недостаточно только раскомментировать строку: нужно проверить credentials, идемпотентность, время выполнения, queue capacity и наблюдаемость. VAPI HTTP API проекта отдельно защищён staff-only permissions; это не заменяет проверку фоновых credentials.
+
+## Задачи без Beat
+
+Существуют, но не планируются автоматически:
+
+- `currency.cleanup_old_logs`;
+- `currency.health_check`;
+- `currency.refresh_margin_snapshots`;
+- `currency.refresh_usdt_price_snapshots`;
+- `catalog.sync_ikea_products`;
+- точечная и полная индексация рекомендаций;
+- AI batch/variant tasks;
+- задачи уведомлений заказов и криптоплатежей.
+
+## Операционная проверка
+
+Статус процессов и последние логи:
+
+```bash
+docker compose ps celeryworker celery_ai celery_recsys celerybeat redis
+docker compose logs --tail=200 celerybeat
+docker compose logs --tail=200 celeryworker
+docker compose logs --tail=200 celery_ai
+docker compose logs --tail=200 celery_recsys
+```
+
+Зарегистрированные задачи и текущая загрузка workers:
+
+```bash
+docker compose exec celeryworker poetry run celery -A config inspect registered
+docker compose exec celeryworker poetry run celery -A config inspect active
+docker compose exec celeryworker poetry run celery -A config inspect reserved
+```
+
+`inspect scheduled` показывает ETA/countdown задачи, уже переданные workers, но не является полным представлением будущего расписания Beat. Для проверки конфигурации сравнивайте `CELERY_BEAT_SCHEDULE` и startup logs `celerybeat`.
+
+После изменения schedule или task routes необходимо перезапустить Beat и затронутые workers. Не удаляйте файл состояния Beat во время работающего процесса; сначала корректно остановите единственный экземпляр.

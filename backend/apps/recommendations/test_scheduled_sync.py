@@ -26,6 +26,11 @@ def test_scheduled_sync_submits_small_incremental_batches(monkeypatch):
 
     result = sync_stale_products_to_qdrant(batch_size=3, max_products=7)
 
-    assert result == {"submitted": 7, "batches": 3, "status": "scheduled"}
+    assert result == {
+        "submitted": 7,
+        "deindex_submitted": 0,
+        "batches": 3,
+        "status": "scheduled",
+    }
     assert [len(call["kwargs"]["product_ids"]) for call in submitted] == [3, 3, 1]
     assert all(call["priority"] == 3 for call in submitted)

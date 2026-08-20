@@ -1,341 +1,283 @@
-# Утилиты для разработки
+# Разработка Mudaroba
 
-## Скрипт перезапуска проекта
+Практическое руководство для локальной разработки и проверки изменений. Обзор продукта и быстрый старт находятся в [README.md](README.md), production-процедуры — в [DEPLOY.md](DEPLOY.md).
 
-### `restart.sh` (Linux/macOS)
+## Зафиксированный toolchain
 
-Скрипт для полного перезапуска проекта с опциями очистки и пересборки.
+- Python `3.12.13`;
+- Poetry `2.4.1`;
+- Node.js `22.23.2` (см. `frontend/.nvmrc`);
+- npm `10.x`, lockfile обязателен;
+- Django `5.2.17`;
+- Next.js `15.5.21`;
+- PostgreSQL `15.18`, Redis `7.4.10`, Qdrant `1.18.2`.
 
-**Использование:**
-```bash
-./restart.sh [опции]
-```
+Не используйте `npm install` вместо `npm ci` в CI или воспроизводимой сборке. Backend-зависимости задаются только `backend/pyproject.toml` и `backend/poetry.lock`; устаревший `requirements.txt` больше не является источником правды.
 
-**Опции:**
-- `--clean` - Удалить volumes (база данных будет очищена!)
-- `--no-cache` - Пересобрать образы без кэша Docker
-- `--rebuild` - Полная пересборка (--clean + --no-cache)
-- `--fast`, `--quick` - Быстрый повседневный рестарт без пересборки; `seed_catalog_data` при старте backend пропускается
-- `--fast-rebuild` - Быстрая пересборка только `backend` и `frontend`
-- `--with-seed` - Принудительно выполнить `seed_catalog_data` при старте backend
-- `--skip-seed` - Пропустить `seed_catalog_data` при старте backend
-- `--logs` - Показать логи после запуска
-- `--help` - Показать справку
+## Вариант 1: локальный запуск без Docker
 
-**Примеры:**
-```bash
-# Обычный перезапуск
-./restart.sh
+Этот режим удобен для кода и быстрых unit-тестов. Интеграционные сценарии требуют доступных PostgreSQL, Redis и Qdrant.
 
-# Быстрый лёгкий dev-рестарт
-./restart.sh --fast --logs
-
-# Быстрый рестарт, но с seed каталога
-./restart.sh --fast --with-seed --logs
-
-# Пересборка без кэша
-./restart.sh --no-cache
-
-# С очисткой базы данных
-./restart.sh --clean
-
-# Полная пересборка с логами
-./restart.sh --rebuild --logs
-```
-
-**Как теперь работает seed каталога при старте backend:**
-- `./restart.sh --fast` и `./restart.sh --quick` по умолчанию **не** запускают `seed_catalog_data`, чтобы dev-старт был заметно быстрее.
-- Обычный `./restart.sh` и `./restart.sh --rebuild` по умолчанию **запускают** `seed_catalog_data`.
-- Если нужно принудительно восстановить категории, подкатегории, атрибуты и бренды при старте, используй `--with-seed`.
-- Если нужно пропустить seed явно, используй `--skip-seed`.
-- В `docker-compose.yml` безопасный дефолт для `RUN_SEED_CATALOG` теперь равен `0`, поэтому на проде без явной переменной автосид не запустится.
-
-### `restart.bat` (Windows)
-
-Аналогичный скрипт для Windows.
-
-**Использование:**
-```cmd
-restart.bat [опции]
-```
-
-## Утилиты для разработки
-
-### `dev-utils.sh` (Linux/macOS)
-
-Набор полезных функций для ежедневной разработки.
-
-**Загрузка утилит:**
-```bash
-source dev-utils.sh
-# или
-. dev-utils.sh
-```
-
-**Доступные команды:**
-
-#### Основные команды
-- `restart_backend` - Перезапустить backend
-- `restart_frontend` - Перезапустить frontend
-- `logs [service]` - Показать логи (всех или конкретного сервиса)
-- `status` - Показать статус контейнеров
-
-#### Django команды
-- `manage <command>` - Выполнить manage.py команду
-- `makemigrations [app]` - Создать миграции
-- `migrate` - Применить миграции
-- `createsuperuser` - Создать суперпользователя
-- `shell` - Открыть Django shell
-- `collectstatic` - Собрать статику
-
-#### Очистка
-- `clear_python_cache` - Очистить кэш Python
-- `clear_next_cache` - Очистить кэш Next.js
-- `clear_all_cache` - Очистить все кэши
-
-#### Другое
-- `backend_exec <command>` - Выполнить команду в backend контейнере
-- `frontend_exec <command>` - Выполнить команду в frontend контейнере
-- `disk_usage` - Показать использование дискового пространства
-
-**Примеры использования:**
-```bash
-# Загрузить утилиты
-. dev-utils.sh
-
-# Показать логи backend
-logs backend
-
-# Создать миграции
-makemigrations users
-
-# Применить миграции
-migrate
-
-# Открыть Django shell
-shell
-
-# Очистить все кэши
-clear_all_cache
-```
-
-## Быстрые команды Docker Compose
-
-### Просмотр логов
-```bash
-# Все сервисы
-docker compose logs -f
-
-# Конкретный сервис
-docker compose logs -f backend
-docker compose logs -f frontend
-```
-
-### Выполнение команд в контейнерах
-```bash
-# Backend
-docker compose exec backend poetry run python manage.py <command>
-docker compose exec backend poetry shell
-
-# Frontend
-docker compose exec frontend npm run <command>
-docker compose exec frontend sh
-```
-
-### Перезапуск сервисов
-```bash
-# Все сервисы
-docker compose restart
-
-# Конкретный сервис
-docker compose restart backend
-docker compose restart frontend
-```
-
-### Остановка и запуск
-```bash
-# Остановить все
-docker compose stop
-
-# Запустить все
-docker compose start
-
-# Остановить и удалить контейнеры
-docker compose down
-
-# Остановить и удалить контейнеры + volumes
-docker compose down -v
-```
-
-## Полезные команды для разработки
-
-### Django
+### Backend
 
 ```bash
-# Создать суперпользователя
-docker compose exec backend poetry run python manage.py createsuperuser
-
-# Применить миграции
-docker compose exec backend poetry run python manage.py migrate
-
-# Создать миграции
-docker compose exec backend poetry run python manage.py makemigrations
-
-# Django shell
-docker compose exec backend poetry run python manage.py shell
-
-# Собрать статику
-docker compose exec backend poetry run python manage.py collectstatic
-
-# Сбросить пароль пользователя
-docker compose exec backend poetry run python manage.py shell -c "from django.contrib.auth import get_user_model; User = get_user_model(); user = User.objects.get(username='admin'); user.set_password('newpassword'); user.save()"
-
-# Восстановление каталога (seed: категории, атрибуты, бренды)
-docker compose run --rm backend poetry run python manage.py seed_catalog_data
-
-# То же, если контейнер backend уже запущен
-docker compose exec backend poetry run python manage.py seed_catalog_data
-
-# Только категории (без брендов)
-docker compose run --rm backend poetry run python manage.py seed_catalog_data --categories-only
-
-# Только бренды
-docker compose run --rm backend poetry run python manage.py seed_catalog_data --brands-only
-
-# Только типы динамических атрибутов
-docker compose run --rm backend poetry run python manage.py seed_catalog_data --attributes-only
-
-# Исправить parent у подкатегорий
-docker compose run --rm backend poetry run python manage.py seed_catalog_data --fix-hierarchy
-
-# Если backend уже запущен
-docker compose exec backend poetry run python manage.py seed_catalog_data --categories-only
+cd backend
+poetry install
+cp ../.env.example .env
+# Скорректируйте DATABASE_URL, три Redis URL (broker/cache/results), QDRANT_HOST и секреты.
+poetry run python manage.py migrate
+poetry run python manage.py runserver 0.0.0.0:8000
 ```
 
-### Backfill характеристик мебели
+При `DJANGO_DEBUG=0` обязательны секрет длиной не менее 32 символов и явный список hosts. Для обычной локальной разработки используйте `DJANGO_DEBUG=1`; не переносите этот режим в production.
 
-```bash
-# Dry-run без изменения данных
-docker compose exec backend poetry run python manage.py backfill_furniture_attributes
+Celery broker, Django cache/throttles и Celery result backend используют один
+Redis-сервис, но разные logical DB: соответственно `/0`, `/1` и `/2`. Не
+сводите их к одной DB — очистка cache не должна затрагивать очередь задач.
+На production с ограниченным `maxmemory` предпочтительны отдельные instances,
+поскольку logical DB всё равно делят память и eviction policy.
 
-# Безопасное применение с пакетами по 200 товаров
-docker compose exec backend poetry run python manage.py backfill_furniture_attributes --apply --batch-size 200
-
-# Отдельный аудит заголовков
-docker compose exec backend poetry run python manage.py backfill_furniture_attributes --audit-titles
-```
-
-Полное описание флагов, продолжения с `--start-pk` и опасного режима
-`--overwrite`: [docs/FURNITURE_ATTRIBUTES_BACKFILL.md](docs/FURNITURE_ATTRIBUTES_BACKFILL.md).
+Для scraper proxy TLS всегда проверяется. Если провайдер инспектирует HTTPS,
+укажите путь к его PEM bundle в `SCRAPER_PROXY_CA_BUNDLE`; `verify=False` в
+парсерах запрещён.
 
 ### Frontend
 
 ```bash
-# Установить зависимости
-docker compose exec frontend npm install
-
-# Запустить линтер
-docker compose exec frontend npm run lint
-
-# Собрать проект
-docker compose exec frontend npm run build
+cd frontend
+npm ci
+npm run dev
 ```
 
-### Очистка
+Прямой `npm run dev` слушает `3000`, а development Compose публикует frontend на `3001`.
+
+## Вариант 2: Docker Compose
 
 ```bash
-# Очистить кэш Python
-find . -type d -name __pycache__ -exec rm -r {} +
-find . -type f -name "*.pyc" -delete
-
-# Очистить кэш Next.js
-rm -rf frontend/.next
-rm -rf frontend/node_modules/.cache
-
-# Очистить Docker кэш
-docker system prune -f
-
-# Очистить неиспользуемые образы
-docker image prune -a -f
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.override.yml up -d --build
+docker compose ps
+docker compose logs -f backend frontend
 ```
 
-## Документация по подсистемам (`docs/`)
+Development override монтирует исходники и включает Django/Next hot reload. Production-профиль задаётся отдельным файлом:
 
-- **[Избранное, доменные id, proxy-медиа, R2](docs/CATALOG_FAVORITES_PROXY_MEDIA.md)** — контракт избранного (headwear/underwear/islamic), `base_product_id`, дедупликация списка, настройки R2 и Next proxy.
-- [Гидрация Next.js](docs/HYDRATION_ERRORS_GUIDE.md)
-- [Уведомления и чеки](docs/notifications-and-receipts.md)
-- [OAuth в продакшене](docs/SOCIAL_AUTH_PRODUCTION.md)
-
-## SEO/медиа памятка
-
-- Карточка категории/бренда: в админке `Catalog -> Category/Brand` заполнить поле `card_media_url` (можно загрузить файл в медиа и вставить URL). Рекомендации: формат webp/avif, до 300–400 КБ, пропорции 4:3 или 1:1; для видео — короткие mp4/webm.
-- Кэш: в разработке (DEBUG=True) кэш заголовков для robots/sitemap отключён. В проде ставится `Cache-Control: public, max-age=3600` только для SEO эндпоинтов, чтобы не мешать разработке.
-- Sitemap/robots: отдаются бэкендом (`/sitemap.xml`, `/robots.txt`) и включают категории, бренды и товары (до 5000 товаров); обновление происходит на каждый запрос.
-
-## Доступные сервисы
-
-После запуска проекта доступны:
-
-- **Backend API**: http://localhost:8000
-- **Frontend**: http://localhost:3001
-- **Admin Panel**: http://localhost:8000/admin/
-- **Swagger Docs**: http://localhost:8000/api/docs/
-- **PostgreSQL**: localhost:5433
-- **Redis**: localhost:6379
-- **OpenSearch**: http://localhost:9200
-
-## Работа с товарами вручную
-
-В админке (`/admin/catalog/product/`) появился расширенный интерфейс ручного добавления товаров:
-
-- тип товара, бренд и категория можно выбрать или создать "на лету" благодаря `autocomplete_fields`.
-- SEO-поля (meta/og) для русского и английского языков, а также локализованные названия и описания помогают настроить карточку под поисковые системы.
-- Для логистики доступны вес/габариты, GTIN/MPN, MOQ, упаковка и страна происхождения, чтобы правильно отображать карточку в каталогах.
-- Раздел "Медиа" поддерживает до 5 изображений, требуя одного главного, а в списке и инлайнах показываются превью.
-- Swagger-документация автоматически отражает новые поля `product_type`, `availability_status` и `country_of_origin` для фильтрации.
-- Валюта выбирается из фиксированного списка (`RUB`, `USD`, `EUR`, `TRY`, `GBP`, `USDT`), поэтому оператору видно, какие расчётные единицы доступны для товара.
- - SEO- и OpenGraph-поля заполняются только на английском, их надо использовать для отображения карточки в англоязычном интерфейсе.
- - Обувь и одежда на сайте тянутся из моделей `ShoeProduct`/`ClothingProduct`, а не из общей `Product`. Если нужно, чтобы товар появился в каталоге одежды/обуви, создавайте его в соответствующей модели (они тоже располагаются в админке `Catalog`), иначе обычный `Product` будет попадать только в общие разделы.
-- Для обуви добавлена галерея изображений (инлайн в админке) и выпадающий список размеров (EU-формат). Если нужной категории нет — создайте её в `ShoeCategory`; главное изображение задаётся в поле `main_image`, дополнительные — через галерею.
-
-### Варианты одежды и обуви
-
-- Родительские карточки: `ShoeProduct`/`ClothingProduct` (slug, SEO, бренд, категория, описание).
-- Вариант = цвет: создавайте в инлайне `ShoeVariant`/`ClothingVariant` у родителя. Заполняйте цвет, цену/валюту, остаток по цвету, `is_active`, при необходимости загрузите главное изображение и до 5 фото (флаг `is_main` обязателен, если нет `main_image` у варианта).
-- Размеры внутри варианта: в инлайне `ShoeVariantSize`/`ClothingVariantSize` указывайте размер, доступность и остаток. У одного цвета может быть до 5 фото, но размеры не имеют своих фото.
-- Если у родителя нет ни одного варианта, можно добавлять в корзину саму карточку по её slug — бэкенд создаст связанный базовый `Product` автоматически.
-- Добавление в корзину:
-  - Базовые товары: `product_id`.
-  - Вариант цвета одежды/обуви: `product_type` (`clothing`/`shoes`) + `product_slug` (slug варианта-цвета) + `size`.
-- Фронт: на странице товара переключение цвета выбирает slug варианта-цвета; сетка размеров берется из `sizes` выбранного варианта. AddToCart отправляет slug варианта, `product_type` и выбранный `size`. Галерея показывает фото выбранного варианта, при его отсутствии — фото родителя.
-
-## Решение проблем
-
-### Проблемы с портами
-
-Если порты заняты, измените их в `docker-compose.yml`:
-```yaml
-ports:
-  - "8001:8000"  # Вместо 8000:8000
-```
-
-### Проблемы с кэшем
-
-Используйте полную пересборку:
 ```bash
-./restart.sh --rebuild
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
 ```
 
-### Проблемы с базой данных
+Эта команда только валидирует объединённую конфигурацию. Реальный production-запуск и работа с секретами описаны в [DEPLOY.md](DEPLOY.md).
 
-Очистите volumes (⚠️ удалит все данные):
+Backend-образ работает от непривилегированного UID/GID `10001`; вложенный
+anonymous volume `/app/.venv` сохраняет собранное окружение при dev bind-mount и
+не создаёт root-owned virtualenv в рабочей копии.
+
+На первом этапе аудита 9 августа 2026 года Docker был занят другим приложением.
+20 августа проверки завершены в отдельном `mudaroba_audit` project без host
+ports: оба production image, миграции, Gunicorn health, Celery worker/Beat и
+PostgreSQL/Redis/Qdrant persistence прошли. Перед выпуском gate всё равно нужно
+повторить на CI/staging с production ingress и secret injection.
+
+## Сервисы и очереди
+
+| Сервис | Назначение |
+| --- | --- |
+| `backend` | Django/DRF и admin |
+| `frontend` | Next.js Pages Router |
+| `postgres` | транзакционные данные |
+| `redis` | cache, Celery broker/result backend |
+| `qdrant` | векторы товаров и визуальный поиск |
+| `celeryworker` | общая очередь `celery` |
+| `celery_ai` | очередь `ai` |
+| `celery_recsys` | очередь `recsys` |
+| `celerybeat` | расписание фоновых задач |
+| `nginx` | production reverse proxy |
+
+Production Compose изолирует stateful services во внутренней сети `data`:
+frontend не имеет прямого маршрута к PostgreSQL, Redis или Qdrant. Dev override
+публикует их порты на host только для локальной диагностики.
+
+OpenSearch не входит в актуальный Compose: в проекте не было исполняемого потребителя этого сервиса.
+
+## Seed и миграции
+
+### Миграции
+
+Создание миграции — явное действие разработчика:
+
 ```bash
-./restart.sh --clean
+cd backend
+poetry run python manage.py makemigrations <app>
+poetry run python manage.py migrate
+poetry run python manage.py makemigrations --check --dry-run
 ```
 
-### Проблемы с зависимостями
+В контейнере:
 
-Пересоберите образы без кэша:
 ```bash
-./restart.sh --no-cache
+docker compose exec backend poetry run python manage.py showmigrations
+docker compose exec backend poetry run python manage.py migrate
 ```
+
+Entry point выполняет только `migrate`, но не `makemigrations`.
+
+### Каталог
+
+`RUN_SEED_CATALOG` имеет безопасный default `0`: seed выполняется только по явному запросу.
+
+```bash
+docker compose exec backend poetry run python manage.py seed_catalog_data
+docker compose exec backend poetry run python manage.py seed_catalog_data --categories-only
+docker compose exec backend poetry run python manage.py seed_catalog_data --attributes-only
+docker compose exec backend poetry run python manage.py seed_catalog_data --brands-only
+docker compose exec backend poetry run python manage.py seed_catalog_data --fix-hierarchy
+```
+
+Полный seed создаёт 19 корневых доменов и вложенные категории. Он идемпотентен, но всё равно меняет данные — перед запуском на production сделайте backup и dry-run доступных обслуживающих команд.
+
+`load_initial_pages` создаёт только отсутствующие privacy/delivery/returns страницы и не перезаписывает существующий контент.
+
+## Ежедневные проверки
+
+### Backend
+
+```bash
+cd backend
+poetry check --lock
+poetry run python -m pip check
+poetry run python manage.py check
+poetry run python manage.py makemigrations --check --dry-run
+poetry run pytest -q
+```
+
+### Секреты
+
+CI сканирует текущее дерево и всю доступную Git history через Gitleaks. Перед
+push ту же blocking-проверку можно выполнить установленным локально бинарём:
+
+```bash
+gitleaks git --redact --verbose .
+```
+
+`--redact` обязателен при сохранении вывода в CI artifact или при передаче
+лога другому человеку. Найденный реальный ключ сначала ротируется у провайдера,
+и только затем удаляется из истории согласованной процедурой.
+Подтверждённые placeholders допускается исключать только по точному fingerprint
+в `.gitleaksignore`; не добавляйте allowlist для всего commit или каталога.
+
+Production settings дополнительно проверяются с реальными безопасными env:
+
+```bash
+DJANGO_DEBUG=0 \
+DJANGO_SECRET_KEY='<unique-random-secret-at-least-50-characters>' \
+DJANGO_ALLOWED_HOSTS='example.com' \
+DATABASE_URL='postgresql://app:<unique-password-at-least-16-characters>@localhost:5432/app' \
+REDIS_URL='redis://localhost:6379/0' \
+REDIS_CACHE_URL='redis://localhost:6379/1' \
+CELERY_RESULT_BACKEND_URL='redis://localhost:6379/2' \
+CRYPTO_DUMMY_MODE=0 \
+TELEGRAM_BOT_TOKEN='' \
+SECURE_SSL_REDIRECT=1 \
+SECURE_HSTS_SECONDS=31536000 \
+SECURE_HSTS_INCLUDE_SUBDOMAINS=1 \
+poetry run python manage.py check --deploy --tag security --fail-level ERROR
+```
+
+Некоторые миграции используют PostgreSQL-specific SQL, поэтому полную DB-серию нельзя считать проверенной на SQLite.
+
+### Frontend
+
+```bash
+cd frontend
+npm ci
+npm audit --omit=dev --audit-level=high
+npm run lint
+npx tsc --noEmit
+npm test
+npm run build
+```
+
+### Изменения API и схемы
+
+После изменения serializer/view/route проверьте:
+
+```bash
+cd backend
+poetry run python manage.py spectacular --validate --file /tmp/mudaroba-schema.yml
+```
+
+Предупреждения генератора нельзя маскировать коммитом заведомо устаревшей схемы. Swagger UI должен отражать реальные permissions, обязательные поля и ответы `4xx/5xx`.
+
+## Модель доступа
+
+- глобальный DRF default: `IsAuthenticated`;
+- публичные read-only catalog/settings, auth, health и webhook endpoints помечаются `AllowAny` явно;
+- VAPI и все AI API требуют `IsAdminUser`;
+- `POST /api/payments/init/` требует staff;
+- CoinRemitter webhook публичен по транспортной природе, но финальный статус, invoice identity, сумма и привязка заказа сверяются через авторизованный provider API;
+- registration, login, email verification, JWT refresh/verify, social/Telegram
+  login и загрузка изображений имеют отдельные IP/user throttles.
+
+При добавлении endpoint нельзя полагаться на неявный default. Выберите permission осознанно и добавьте regression test.
+
+## Визуальный поиск и загрузка файлов
+
+Допустимы JPEG, PNG и WebP размером до 5 МБ. Backend проверяет фактический формат изображения, MIME, размеры/число пикселей и потоковый лимит.
+
+Загрузка по URL проходит через общий safe fetcher:
+
+- только HTTP/HTTPS и разрешённые порты;
+- запрет credentials в URL;
+- проверка всех DNS-адресов на global-routability;
+- DNS pinning, ограниченные redirect и download size;
+- generic error messages без утечки внутренних адресов.
+
+Новые места загрузки внешнего изображения должны переиспользовать этот fetcher, а не вызывать `requests.get()` напрямую.
+
+## Каталог и ручное наполнение
+
+Общая модель `Product` сосуществует с доменными моделями. Одежду и обувь создавайте как `ClothingProduct` / `ShoeProduct`; их цветовые варианты и размеры живут в отдельных variant/size моделях. Обычный `Product` не заменяет доменную карточку в соответствующем разделе.
+
+Для медиа категории/бренда используется `card_media_url`. Для оптимальной карточки предпочтительны WebP/AVIF до 300–400 КБ и пропорции 4:3 или 1:1. Подробности избранного, доменных id и proxy-media: [docs/CATALOG_FAVORITES_PROXY_MEDIA.md](docs/CATALOG_FAVORITES_PROXY_MEDIA.md).
+
+Backfill характеристик мебели:
+
+```bash
+docker compose exec backend poetry run python manage.py backfill_furniture_attributes
+docker compose exec backend poetry run python manage.py backfill_furniture_attributes --apply --batch-size 200
+```
+
+Все флаги и безопасное продолжение: [docs/FURNITURE_ATTRIBUTES_BACKFILL.md](docs/FURNITURE_ATTRIBUTES_BACKFILL.md).
+
+## Скрипт `restart.sh`
+
+Для повседневного контейнерного цикла доступны:
+
+```bash
+./restart.sh --quick --logs
+./restart.sh --fast-rebuild
+./restart.sh --with-seed
+./restart.sh --help
+```
+
+`--with-seed` — явное разрешение на seed. `--clean` и `--rebuild` могут удалить volumes и данные; перед подтверждением проверьте target Compose project и наличие backup. Не используйте очистку как стандартный способ исправить проблему зависимостей или кэша.
+
+## Рабочий процесс
+
+1. Создайте отдельную ветку.
+2. Для bugfix сначала добавьте тест, воспроизводящий дефект.
+3. Выполните релевантные backend/frontend проверки.
+4. Для checkout/payments вручную пройдите staging-сценарий и проверьте повтор webhook.
+5. Для SEO проверьте ru/en canonical, hreflang, robots и sitemap.
+6. В PR перечислите команды проверки и отдельно укажите, запускались ли Docker/staging tests.
+
+CI проверяет lock-файлы, зависимости, Django settings и миграции, pytest, frontend lint/types/tests/build, dependency audit и Compose configuration. Flake8 пока информационный из-за накопленного legacy-baseline; новые ошибки добавлять нельзя.
+
+## Документация
+
+- [docs/README.md](docs/README.md) — единый индекс и статус документов;
+- [docs/DEVELOPMENT_RULES.md](docs/DEVELOPMENT_RULES.md) — правила кода, SEO и e-commerce;
+- [docs/ROADMAP.md](docs/ROADMAP.md) — текущие приоритеты;
+- [docs/HYDRATION_ERRORS_GUIDE.md](docs/HYDRATION_ERRORS_GUIDE.md) — диагностика hydration;
+- [docs/PERSONALIZED_RECOMMENDATIONS.md](docs/PERSONALIZED_RECOMMENDATIONS.md) — ограничения персонализации;
+- [CELERY_TASKS.md](CELERY_TASKS.md), [AI_GUIDE.md](AI_GUIDE.md), [SCRAPERS_GUIDE.md](SCRAPERS_GUIDE.md) — тематические руководства.

@@ -1,19 +1,48 @@
-import logging
 import io
+import logging
+import os
+from dataclasses import dataclass
 from typing import List, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from PIL import Image
 import imagehash
+from PIL import Image
 from django.conf import settings
-from django.core.files.base import ContentFile
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.db import models
-
 from django.utils import timezone
+from django.utils.text import get_valid_filename
+
 from apps.catalog.models import MediaEnrichmentStatus
+from apps.recommendations.services import safe_image_fetcher
 
 logger = logging.getLogger(__name__)
+
+
+def _candidate_host(url: str) -> str:
+    """Return a query-free diagnostic label for an untrusted candidate URL."""
+    try:
+        return (urlsplit(url).hostname or "invalid-host")[:253]
+    except (TypeError, ValueError):
+        return "invalid-host"
+
+
+def _query_free_source_url(url: str) -> str:
+    """Avoid persisting short-lived CDN signatures after the bytes are saved."""
+    parsed = urlsplit(url)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+
+@dataclass(frozen=True)
+class FetchedMedicineImage:
+    """A fully fetched and decoded image that is safe to persist."""
+
+    content: bytes
+    extension: str
+    width: int
+    height: int
 
 
 class OpenFoodFactsClient:
@@ -165,33 +194,47 @@ class MedicineMediaEnricher:
                     
         return list(dict.fromkeys(urls))
 
-    def validate_image(self, url: str) -> bool:
-        logger.info("Validating image candidate: %s", url)
+    def fetch_validated_image(self, url: str) -> Optional[FetchedMedicineImage]:
+        """Fetch one candidate once, with SSRF, byte and decode limits enforced."""
+        candidate_host = _candidate_host(url)
+        logger.info("Fetching image candidate from host=%s", candidate_host)
         try:
-            with httpx.Client(timeout=10.0, follow_redirects=True) as client:
-                with client.stream("GET", url) as response:
-                    # Check Content-Length if available to prevent OOM
-                    content_length = response.headers.get("Content-Length")
-                    if content_length and int(content_length) > 5 * 1024 * 1024:  # 5 MB limit (reduced from 10)
-                        logger.warning("Image %s is too heavy (%s bytes). Skipping to prevent OOM.", url, content_length)
-                        return False
-                    
-                    response.read()
-                    response.raise_for_status()
-                    
-                    image_data = response.content
-                    with Image.open(io.BytesIO(image_data)) as img:
-                        width, height = img.size
-                        if width >= self.min_width and height >= self.min_height:
-                            logger.info("Image %s is valid. Size: %dx%d.", url, width, height)
-                            return True
-                        else:
-                            logger.warning("Image %s is too small (%dx%d). Required minimum is %dx%d.", 
-                                           url, width, height, self.min_width, self.min_height)
-            return False
-        except Exception as e:
-            logger.warning("Image validation failed for %s: %s", url, e)
-            return False
+            image_data, content_type = safe_image_fetcher.fetch_public_image_bytes(url)
+            validated = safe_image_fetcher.validate_image_bytes(
+                image_data,
+                expected_content_type=content_type,
+            )
+            try:
+                width, height = validated.image.size
+                image_format = validated.format
+            finally:
+                validated.image.close()
+
+            if width < self.min_width or height < self.min_height:
+                logger.warning(
+                    "Image from host=%s is too small (%dx%d). Required minimum is %dx%d.",
+                    candidate_host,
+                    width,
+                    height,
+                    self.min_width,
+                    self.min_height,
+                )
+                return None
+
+            extension = safe_image_fetcher.FORMAT_EXTENSIONS[image_format]
+            logger.info("Image from host=%s is valid. Size: %dx%d.", candidate_host, width, height)
+            return FetchedMedicineImage(
+                content=image_data,
+                extension=extension,
+                width=width,
+                height=height,
+            )
+        except safe_image_fetcher.ImageFetchError as error:
+            logger.warning("Image candidate rejected for host=%s: %s", candidate_host, error.code)
+            return None
+        except Exception:
+            logger.error("Unexpected image validation failure for host=%s", candidate_host)
+            return None
 
     def get_image_hash(self, image_data: bytes) -> Optional[str]:
         try:
@@ -209,63 +252,86 @@ class MedicineMediaEnricher:
             logger.warning("Failed to calculate image hash: %s", e)
             return None
 
-    def download_and_save(self, product: models.Model, url: str) -> Optional[models.Model]:
+    def save_validated_image(
+        self,
+        product: models.Model,
+        url: str,
+        fetched: FetchedMedicineImage,
+    ) -> Optional[models.Model]:
+        """Persist bytes already fetched and validated by ``fetch_validated_image``."""
         try:
-            with httpx.Client(timeout=10.0, follow_redirects=True) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                
-                image_data = response.content
-                
-                # Calculate perceptual hash to detect duplicates
-                current_hash = self.get_image_hash(image_data)
-                
-                if current_hash:
-                    # Check against existing images (compute their hash if missing)
-                    existing_images = product.gallery_images.all()
-                    for ext_img in existing_images:
-                        ext_hash = ext_img.image_hash
-                        # If existing image doesn't have a hash, try to compute and save it
-                        if not ext_hash and ext_img.image_file:
-                            try:
-                                with ext_img.image_file.open('rb') as f:
-                                    ext_hash = self.get_image_hash(f.read())
-                                    if ext_hash:
-                                        ext_img.image_hash = ext_hash
-                                        ext_img.save(update_fields=['image_hash'])
-                            except Exception as e:
-                                logger.warning("Could not compute hash for existing image %s: %s", ext_img.id, e)
-                        
-                        if ext_hash:
-                            # If difference between hashes is small (< 10), images are visually identical
-                            if imagehash.hex_to_hash(current_hash) - imagehash.hex_to_hash(ext_hash) < 10:
-                                logger.info("Image %s is visually identical to existing image %s (hash match). Skipping.", url, ext_img.id)
-                                return None
-                
-                # Check if product has a main image
-                has_main = product.gallery_images.filter(is_main=True).exists()
-                
-                # Create the image record
-                filename = url.split("/")[-1].split("?")[0]
-                if not filename or "." not in filename:
-                    filename = f"product_{product.id}_image.jpg"
-                # Узнаем модель картинки из связанных полей
-                ImageModel = product.gallery_images.model
-                
-                image_record = ImageModel(
-                    product=product,
-                    image_url=url,
-                    is_main=not has_main,
-                    image_hash=current_hash
-                )
-                image_record.image_file.save(filename, ContentFile(image_data), save=False)
-                image_record.save()
-                
-                logger.info("Successfully downloaded and saved image %s for product %s.", url, product.id)
-                return image_record
+            # Calculate perceptual hash to detect duplicates.
+            current_hash = self.get_image_hash(fetched.content)
+
+            if current_hash:
+                # Check against existing images (compute their hash if missing).
+                existing_images = product.gallery_images.all()
+                for ext_img in existing_images:
+                    ext_hash = ext_img.image_hash
+                    if not ext_hash and ext_img.image_file:
+                        try:
+                            with ext_img.image_file.open('rb') as f:
+                                ext_hash = self.get_image_hash(f.read())
+                                if ext_hash:
+                                    ext_img.image_hash = ext_hash
+                                    ext_img.save(update_fields=['image_hash'])
+                        except Exception as e:
+                            logger.warning("Could not compute hash for existing image %s: %s", ext_img.id, e)
+
+                    if ext_hash:
+                        # If difference between hashes is small (< 10), images are visually identical.
+                        if imagehash.hex_to_hash(current_hash) - imagehash.hex_to_hash(ext_hash) < 10:
+                            logger.info(
+                                "Image from host=%s is visually identical to existing image %s (hash match). Skipping.",
+                                _candidate_host(url),
+                                ext_img.id,
+                            )
+                            return None
+
+            has_main = product.gallery_images.filter(is_main=True).exists()
+
+            parsed_path = urlsplit(url).path
+            original_stem = os.path.splitext(os.path.basename(parsed_path))[0]
+            safe_stem = get_valid_filename(original_stem)[:100].strip("._-")
+            if not safe_stem:
+                safe_stem = f"product_{product.id}_image"
+            filename = f"{safe_stem}{fetched.extension}"
+            ImageModel = product.gallery_images.model
+
+            image_record = ImageModel(
+                product=product,
+                image_url=_query_free_source_url(url),
+                is_main=not has_main,
+                image_hash=current_hash,
+            )
+            image_record.image_file.save(
+                filename,
+                ContentFile(fetched.content),
+                save=False,
+            )
+            image_record.save()
+
+            logger.info(
+                "Successfully saved validated image from host=%s for product %s.",
+                _candidate_host(url),
+                product.id,
+            )
+            return image_record
         except Exception as e:
-            logger.error("Failed to download and save image %s for product %s: %s", url, product.id, e)
+            logger.error(
+                "Failed to save validated image from host=%s for product %s (error=%s)",
+                _candidate_host(url),
+                product.id,
+                type(e).__name__,
+            )
             return None
+
+    def process_candidate(self, product: models.Model, url: str) -> Optional[models.Model]:
+        """Fetch, validate and persist a candidate without a second network request."""
+        fetched = self.fetch_validated_image(url)
+        if fetched is None:
+            return None
+        return self.save_validated_image(product, url, fetched)
 
     def enrich(self, product: models.Model, max_images: int, ignore_cache: bool = False) -> int:
         logger.info("Starting enrichment for product ID: %s (Name: '%s')", product.id, product.name)
@@ -311,10 +377,9 @@ class MedicineMediaEnricher:
                     logger.info("URL %s is already attached to product %s. Skipping.", url, product.id)
                     continue
                     
-                if self.validate_image(url):
-                    saved_image = self.download_and_save(product, url)
-                    if saved_image:
-                        added_count += 1
+                saved_image = self.process_candidate(product, url)
+                if saved_image:
+                    added_count += 1
                         
             if added_count == 0:
                 logger.info("Candidates were found but none were valid/saved. Caching failure for 7 days.")
@@ -331,9 +396,13 @@ class MedicineMediaEnricher:
             return added_count
             
         except Exception as e:
-            logger.exception("Catastrophic failure during enrichment for product %s: %s", product.id, e)
+            logger.error(
+                "Catastrophic failure during enrichment for product %s (error=%s)",
+                product.id,
+                type(e).__name__,
+            )
             product.media_enrichment_status = MediaEnrichmentStatus.FAILED
-            product.media_enrichment_error = str(e)
+            product.media_enrichment_error = type(e).__name__
             product.media_enrichment_last_at = timezone.now()
             product.save(update_fields=['media_enrichment_status', 'media_enrichment_last_at', 'media_enrichment_error'])
             return 0

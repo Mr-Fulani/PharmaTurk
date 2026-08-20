@@ -463,7 +463,11 @@ def test_resolve_api_variant_slug_redirect_contract_for_variant_domains(
 
 
 @pytest.mark.django_db
-def test_sports_serializer_exposes_active_variant_contract():
+def test_sports_serializer_exposes_active_variant_contract(monkeypatch):
+    monkeypatch.setattr(
+        "apps.catalog.serializers._public_price",
+        lambda amount, currency, request: (amount, "RUB"),
+    )
     category = Category.objects.create(name="Sports", slug=f"sports-{uuid.uuid4().hex[:8]}")
     brand = Brand.objects.create(name=f"Sport Brand {uuid.uuid4().hex[:6]}", slug=f"sport-brand-{uuid.uuid4().hex[:8]}")
     product = SportsProduct.objects.create(
@@ -509,7 +513,11 @@ def test_sports_serializer_exposes_active_variant_contract():
 
 
 @pytest.mark.django_db
-def test_auto_part_serializer_exposes_active_variant_contract():
+def test_auto_part_serializer_exposes_active_variant_contract(monkeypatch):
+    monkeypatch.setattr(
+        "apps.catalog.serializers._public_price",
+        lambda amount, currency, request: (amount, "RUB"),
+    )
     category = Category.objects.create(name="Auto", slug=f"auto-{uuid.uuid4().hex[:8]}")
     brand = Brand.objects.create(name=f"Auto Brand {uuid.uuid4().hex[:6]}", slug=f"auto-brand-{uuid.uuid4().hex[:8]}")
     product = AutoPartProduct.objects.create(

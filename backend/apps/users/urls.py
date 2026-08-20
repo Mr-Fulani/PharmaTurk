@@ -1,11 +1,8 @@
 from django.urls import path, include, re_path
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-    TokenVerifyView
-)
+
+from api.views import JWTObtainPairView, JWTRefreshView, JWTVerifyView
 
 from .views import (
     UserRegistrationView,
@@ -34,9 +31,9 @@ router.register(r'addresses', UserAddressViewSet, basename='user-addresses')
 
 urlpatterns = [
     # JWT токены
-    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('token/', JWTObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', JWTRefreshView.as_view(), name='token_refresh'),
+    path('token/verify/', JWTVerifyView.as_view(), name='token_verify'),
     
     # Аутентификация
     path('register/', UserRegistrationView.as_view(), name='user-register'),

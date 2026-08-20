@@ -1,21 +1,28 @@
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
 from rest_framework import status, generics, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+)
 from datetime import timedelta
 import random
 import string
 import uuid
 import logging
 import os
+import hmac
 from django.utils.text import slugify
 
 from .models import User, UserAddress, UserSession
@@ -26,10 +33,21 @@ from .serializers import (
     UserAddressSerializer, UserSerializer, UserPasswordChangeSerializer,
     UserEmailVerificationSerializer, UserSessionSerializer, UserStatsSerializer,
     SMSSendCodeSerializer, SMSVerifyCodeSerializer, SocialAuthSerializer,
-    PublicUserProfileSerializer
+    PublicUserProfileSerializer, DetailResponseSerializer, ErrorResponseSerializer,
+    LogoutRequestSerializer, MessageResponseSerializer,
+    SMSUnavailableResponseSerializer,
+    TelegramAuthRequestSerializer, TelegramWebhookRequestSerializer,
+    TelegramWebhookResponseSerializer, UserAuthResponseSerializer,
 )
 from .telegram_auth import generate_telegram_sync_token, process_telegram_webhook
+from .order_claims import link_guest_orders_for_verified_user
 from api.authentication import JWTSafeAuthentication
+from api.throttles import (
+    LOGIN_THROTTLES,
+    REGISTRATION_THROTTLES,
+    VERIFICATION_THROTTLES,
+    get_trusted_client_ip,
+)
 
 
 def create_user_session(user, request):
@@ -66,13 +84,8 @@ def _build_avatar_filename(user, original_name):
 
 
 def get_client_ip(request):
-    """Получение IP адреса клиента"""
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
+    """Return the client IP set by the trusted reverse proxy."""
+    return get_trusted_client_ip(request)
 
 
 class UserRegistrationView(APIView):
@@ -81,14 +94,18 @@ class UserRegistrationView(APIView):
     """
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = REGISTRATION_THROTTLES
     
     @extend_schema(
         summary="Регистрация пользователя",
         description="Создание нового аккаунта пользователя",
         request=UserRegistrationSerializer,
         responses={
-            201: UserSerializer,
-            400: "Ошибка валидации"
+            201: UserAuthResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки валидации по полям",
+            ),
         },
         examples=[
             OpenApiExample(
@@ -110,18 +127,6 @@ class UserRegistrationView(APIView):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            
-            # Связываем заказы без пользователя по email
-            try:
-                from apps.orders.models import Order
-                linked_orders = Order.objects.filter(
-                    user__isnull=True,
-                    contact_email=user.email
-                ).exclude(status='cancelled').update(user=user)
-                if linked_orders > 0:
-                    logger.info(f'Linked {linked_orders} orders to new user {user.username} (id={user.id}) by email {user.email}')
-            except Exception as e:
-                logger.error(f'Error linking orders to new user {user.username}: {e}')
             
             # Генерируем JWT токены
             refresh = RefreshToken.for_user(user)
@@ -147,27 +152,18 @@ class UserLoginView(APIView):
     """
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = LOGIN_THROTTLES
     
     @extend_schema(
         summary="Вход пользователя",
         description="Аутентификация пользователя и получение JWT токенов",
         request=UserLoginSerializer,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "user": {"type": "object"},
-                    "tokens": {
-                        "type": "object",
-                        "properties": {
-                            "access": {"type": "string"},
-                            "refresh": {"type": "string"}
-                        }
-                    },
-                    "message": {"type": "string"}
-                }
-            },
-            400: "Ошибка аутентификации"
+            200: UserAuthResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибка аутентификации или валидации",
+            ),
         }
     )
     def post(self, request):
@@ -181,17 +177,15 @@ class UserLoginView(APIView):
             user.last_login_ip = get_client_ip(request)
             user.save()
             
-            # Связываем заказы без пользователя по email
+            # Гостевые заказы раскрываются только после доказанного владения email.
             try:
-                from apps.orders.models import Order
-                linked_orders = Order.objects.filter(
-                    user__isnull=True,
-                    contact_email=user.email
-                ).exclude(status='cancelled').update(user=user)
-                if linked_orders > 0:
-                    logger.info(f'Linked {linked_orders} orders to user {user.username} (id={user.id}) by email {user.email}')
-            except Exception as e:
-                logger.error(f'Error linking orders to user {user.username}: {e}')
+                link_guest_orders_for_verified_user(user)
+            except Exception as exc:
+                logger.error(
+                    'Error linking verified guest orders to user_id=%s: %s',
+                    user.id,
+                    type(exc).__name__,
+                )
             
             # Генерируем JWT токены
             refresh = RefreshToken.for_user(user)
@@ -220,13 +214,10 @@ class UserLogoutView(APIView):
     @extend_schema(
         summary="Выход пользователя",
         description="Выход из системы и инвалидация токенов",
+        request=LogoutRequestSerializer,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "message": {"type": "string"}
-                }
-            }
+            200: MessageResponseSerializer,
+            400: MessageResponseSerializer,
         }
     )
     def post(self, request):
@@ -264,9 +255,23 @@ class TelegramWebhookView(APIView):
     @extend_schema(
         summary="Вебхук Telegram",
         description="Эндпоинт для принятия сообщений от Telegram-бота для привязки аккаунтов.",
-        responses={200: {"type": "object", "properties": {"status": {"type": "string"}}}}
+        request=TelegramWebhookRequestSerializer,
+        responses={
+            200: TelegramWebhookResponseSerializer,
+            403: TelegramWebhookResponseSerializer,
+            503: TelegramWebhookResponseSerializer,
+        },
     )
     def post(self, request):
+        expected_secret = getattr(settings, "TELEGRAM_WEBHOOK_SECRET", "") or ""
+        supplied_secret = request.META.get("HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN", "")
+        if not expected_secret:
+            logger.error("Telegram webhook is disabled: TELEGRAM_WEBHOOK_SECRET is not configured")
+            return Response({"status": "unavailable"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        if not hmac.compare_digest(str(supplied_secret), str(expected_secret)):
+            logger.warning("Telegram webhook rejected: invalid secret header")
+            return Response({"status": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
         # Telegram отправляет JSON
         payload = request.data or {}
         logger.info(
@@ -288,28 +293,17 @@ class TelegramAuthView(APIView):
     Авторизация через Telegram Widget.
     CSRF отключён: данные валидируются криптографически (HMAC с bot token).
     """
-    authentication_classes = []
+    authentication_classes = [JWTSafeAuthentication]
     permission_classes = [AllowAny]
+    throttle_classes = LOGIN_THROTTLES
     
     @extend_schema(
         summary="Вход через Telegram Widget",
         description="Аутентификация пользователя через Telegram Widget (1-click login) и получение JWT токенов.",
+        request=TelegramAuthRequestSerializer,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "user": {"type": "object"},
-                    "tokens": {
-                        "type": "object",
-                        "properties": {
-                            "access": {"type": "string"},
-                            "refresh": {"type": "string"}
-                        }
-                    },
-                    "message": {"type": "string"}
-                }
-            },
-            400: "Ошибка аутентификации"
+            200: UserAuthResponseSerializer,
+            400: DetailResponseSerializer,
         }
     )
     def post(self, request):
@@ -404,6 +398,15 @@ class TelegramAuthView(APIView):
         user.last_login = timezone.now()
         user.last_login_ip = get_client_ip(request)
         user.save(update_fields=['last_login', 'last_login_ip'])
+
+        try:
+            link_guest_orders_for_verified_user(user)
+        except Exception as exc:
+            logger.error(
+                'Error linking verified guest orders to user_id=%s: %s',
+                user.id,
+                type(exc).__name__,
+            )
         
         # Генерируем JWT токены
         refresh = RefreshToken.for_user(user)
@@ -508,25 +511,17 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Файл аватара не предоставлен'}, status=status.HTTP_400_BAD_REQUEST)
         
         avatar_file = request.FILES['avatar']
-        
-        # Валидация размера файла (максимум 5MB)
-        if avatar_file.size > 5 * 1024 * 1024:
-            return Response({'error': 'Размер файла не должен превышать 5MB'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Валидация типа файла
-        allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-        if avatar_file.content_type not in allowed_types:
-            return Response({'error': 'Недопустимый тип файла. Разрешены: JPEG, PNG, GIF, WebP'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Оптимизация изображения перед сохранением (R2/локальное хранилище)
         try:
-            from apps.catalog.utils.image_optimizer import ImageOptimizer
-            optimizer = ImageOptimizer()
-            avatar_file = optimizer.optimize_image(avatar_file, quality=85, max_size=(800, 800))
-        except Exception:
-            pass  # сохраняем как есть при ошибке оптимизации
+            from .avatar_security import normalize_avatar_upload
 
-        avatar_file.name = _build_avatar_filename(request.user, avatar_file.name)
+            avatar_file = normalize_avatar_upload(avatar_file)
+        except Exception:
+            return Response(
+                {'error': 'Недопустимое изображение. Разрешены JPEG, PNG и WebP до 5 МБ.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        avatar_file.name = _build_avatar_filename(request.user, "avatar.jpg")
         request.user.avatar = avatar_file
         request.user.save()
         
@@ -609,7 +604,7 @@ class UserAddressViewSet(viewsets.ModelViewSet):
     @extend_schema(
         summary="Удалить адрес",
         description="Мягкое удаление адреса (деактивация)",
-        responses={204: "Адрес успешно удален"}
+        responses={204: OpenApiResponse(description="Адрес успешно удалён")},
     )
     def destroy(self, request, *args, **kwargs):
         """Мягкое удаление адреса"""
@@ -630,13 +625,11 @@ class UserPasswordChangeView(APIView):
         description="Смена пароля текущего пользователя",
         request=UserPasswordChangeSerializer,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "message": {"type": "string"}
-                }
-            },
-            400: "Ошибка валидации"
+            200: MessageResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки валидации по полям",
+            ),
         }
     )
     def post(self, request):
@@ -658,20 +651,20 @@ class UserEmailVerificationView(APIView):
     """
     Подтверждение email пользователя
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = VERIFICATION_THROTTLES
     
     @extend_schema(
         summary="Подтвердить email",
         description="Подтверждение email с помощью кода верификации",
         request=UserEmailVerificationSerializer,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "message": {"type": "string"}
-                }
-            },
-            400: "Ошибка валидации"
+            200: MessageResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки валидации по полям",
+            ),
         }
     )
     def post(self, request):
@@ -683,6 +676,15 @@ class UserEmailVerificationView(APIView):
             user.verification_code = ''
             user.verification_code_expires = None
             user.save()
+
+            try:
+                link_guest_orders_for_verified_user(user)
+            except Exception as exc:
+                logger.error(
+                    'Error linking verified guest orders to user_id=%s: %s',
+                    user.id,
+                    type(exc).__name__,
+                )
             
             return Response({
                 'message': _('Email успешно подтвержден')
@@ -696,13 +698,18 @@ class UserRequestVerificationCodeView(APIView):
     Запрос кода подтверждения email. Генерирует 6-значный код и отправляет на email.
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = VERIFICATION_THROTTLES
 
     @extend_schema(
         summary="Запросить код подтверждения email",
         description="Генерирует код и отправляет на email текущего пользователя",
+        request=None,
         responses={
-            200: {"type": "object", "properties": {"message": {"type": "string"}}},
-            400: "Ошибка (email уже подтверждён или недавно запрашивали)"
+            200: MessageResponseSerializer,
+            400: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Email уже подтверждён",
+            ),
         }
     )
     def post(self, request):
@@ -730,8 +737,11 @@ class UserRequestVerificationCodeView(APIView):
                 recipient_list=[user.email],
                 fail_silently=True,
             )
-        except Exception as e:
-            logger.warning('Failed to send verification email: %s', e)
+        except Exception as exc:
+            logger.warning(
+                'Failed to send verification email: %s',
+                type(exc).__name__,
+            )
         return Response({'message': _('Код отправлен на ваш email')})
 
 
@@ -938,32 +948,30 @@ class SMSSendCodeView(APIView):
     Отправка SMS кода на номер телефона.
     TODO: Реализовать после интеграции SMS провайдера.
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = VERIFICATION_THROTTLES
     
     @extend_schema(
         summary="Отправить SMS код",
         description="Отправка SMS кода на номер телефона для входа",
         request=SMSSendCodeSerializer,
         responses={
-            200: {"description": "Код отправлен"},
-            400: "Ошибка валидации"
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки валидации по полям",
+            ),
+            501: SMSUnavailableResponseSerializer,
         }
     )
     def post(self, request):
         """Отправка SMS кода"""
         serializer = SMSSendCodeSerializer(data=request.data)
         if serializer.is_valid():
-            phone_number = serializer.validated_data['phone_number']
-            
-            # TODO: Реализовать отправку SMS
-            # from .sms_auth import send_sms_code
-            # verification = send_sms_code(phone_number)
-            
             return Response({
-                'message': _('SMS код будет отправлен в ближайшее время'),
-                'phone_number': phone_number,
+                'message': _('Отправка SMS пока недоступна'),
                 'note': 'Функционал находится в разработке'
-            }, status=status.HTTP_200_OK)
+            }, status=status.HTTP_501_NOT_IMPLEMENTED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -973,22 +981,20 @@ class SMSVerifyCodeView(APIView):
     Проверка SMS кода и вход/регистрация пользователя.
     TODO: Реализовать после интеграции SMS провайдера.
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = VERIFICATION_THROTTLES
     
     @extend_schema(
         summary="Войти по SMS коду",
         description="Проверка SMS кода и аутентификация пользователя",
         request=SMSVerifyCodeSerializer,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "user": {"type": "object"},
-                    "tokens": {"type": "object"},
-                    "message": {"type": "string"}
-                }
-            },
-            400: "Ошибка валидации"
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки валидации по полям",
+            ),
+            501: SMSUnavailableResponseSerializer,
         }
     )
     def post(self, request):
@@ -1025,39 +1031,36 @@ class SocialAuthView(APIView):
     через соответствующий API и возвращает JWT токены.
     CSRF отключён: OAuth callback приходит без CSRF-токена.
     """
-    authentication_classes = []
+    authentication_classes = [JWTSafeAuthentication]
     permission_classes = [AllowAny]
+    throttle_classes = LOGIN_THROTTLES
 
     @extend_schema(
         summary="Войти через соцсеть",
         description=(
             "Авторизация через Google или VK. "
-            "Для Google передайте `credential` (id_token из Google One Tap) или `access_token` (OAuth2 popup). "
+            "Для Google передайте `credential` (ID token из Google Identity Services) "
+            "в исторически названном поле `access_token`; обычный OAuth access token "
+            "не принимается. "
             "Для VK передайте `access_token` из VK ID SDK. "
             "Опционально: `vk_user_id` для VK."
         ),
         request=SocialAuthSerializer,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "user": {"type": "object"},
-                    "tokens": {
-                        "type": "object",
-                        "properties": {
-                            "access": {"type": "string"},
-                            "refresh": {"type": "string"}
-                        }
-                    },
-                    "message": {"type": "string"}
-                }
-            },
-            400: "Ошибка валидации или данные от провайдера недействительны"
+            200: UserAuthResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибка валидации или недействительные данные провайдера",
+            ),
         }
     )
     def post(self, request):
         """Авторизация через Google или VK"""
-        from .social_auth import PROVIDERS, get_or_create_social_user
+        from .social_auth import (
+            PROVIDERS,
+            get_or_create_social_user,
+            get_verified_social_email,
+        )
 
         serializer = SocialAuthSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1066,7 +1069,7 @@ class SocialAuthView(APIView):
         provider_name: str = serializer.validated_data['provider']
         access_token: str = serializer.validated_data['access_token']
         # vk_user_id — опциональный параметр для VK (из VK ID SDK)
-        vk_user_id = request.data.get('vk_user_id')
+        vk_user_id = serializer.validated_data.get('vk_user_id')
 
         provider_class = PROVIDERS.get(provider_name)
         if not provider_class:
@@ -1089,13 +1092,36 @@ class SocialAuthView(APIView):
 
         # Если пользователь уже авторизован (например, через Telegram) — привязываем соцсеть к текущему аккаунту
         if request.user and request.user.is_authenticated:
-            existing_by_provider = User.objects.filter(**{id_field: provider_id}).exclude(pk=request.user.pk).first()
+            existing_by_provider = (
+                User.objects.filter(**{id_field: provider_id})
+                .exclude(pk=request.user.pk)
+                .first()
+            )
             if existing_by_provider:
                 return Response(
                     {"detail": _("Этот аккаунт уже привязан к другому пользователю.")},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
             user = request.user
+            trusted_email = get_verified_social_email(user_info)
+            current_email = str(user.email or "").strip()
+            if trusted_email and current_email.lower().endswith("@mudaroba.local"):
+                email_conflict = (
+                    User.objects.filter(email__iexact=trusted_email)
+                    .exclude(pk=user.pk)
+                    .exists()
+                )
+                if email_conflict:
+                    return Response(
+                        {
+                            "detail": _(
+                                "Этот подтверждённый email уже принадлежит другому аккаунту."
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
             setattr(user, id_field, provider_id)
             update_fields = [id_field]
             if user_info.get('first_name') and not user.first_name:
@@ -1104,9 +1130,19 @@ class SocialAuthView(APIView):
             if user_info.get('last_name') and not user.last_name:
                 user.last_name = user_info['last_name']
                 update_fields.append('last_name')
-            if user_info.get('email') and user.email.endswith('@mudaroba.local'):
-                user.email = user_info['email']
+            if trusted_email and current_email.lower().endswith("@mudaroba.local"):
+                user.email = trusted_email
                 update_fields.append('email')
+                if not user.is_verified:
+                    user.is_verified = True
+                    update_fields.append('is_verified')
+            elif (
+                trusted_email
+                and current_email.casefold() == trusted_email.casefold()
+                and not user.is_verified
+            ):
+                user.is_verified = True
+                update_fields.append('is_verified')
             user.save(update_fields=update_fields)
             logger.info(f"Social [{provider_name}] привязан к существующему пользователю id={user.id}")
         else:
@@ -1116,6 +1152,15 @@ class SocialAuthView(APIView):
         user.last_login = timezone.now()
         user.last_login_ip = get_client_ip(request)
         user.save(update_fields=['last_login', 'last_login_ip'])
+
+        try:
+            link_guest_orders_for_verified_user(user)
+        except Exception as exc:
+            logger.error(
+                'Error linking verified guest orders to user_id=%s: %s',
+                user.id,
+                type(exc).__name__,
+            )
 
         # Генерируем JWT токены
         refresh = RefreshToken.for_user(user)
@@ -1158,7 +1203,14 @@ class PublicUserProfileView(APIView):
         ],
         responses={
             200: PublicUserProfileSerializer,
-            404: "Пользователь не найден или профиль не публичный"
+            404: OpenApiResponse(
+                response=ErrorResponseSerializer,
+                description="Пользователь не найден",
+            ),
+            403: OpenApiResponse(
+                response=ErrorResponseSerializer,
+                description="Профиль не публичный",
+            ),
         }
     )
     def get(self, request):
@@ -1196,11 +1248,6 @@ class PublicUserProfileView(APIView):
         # Проверяем, является ли профиль публичным
         # Если это текущий пользователь (и он аутентифицирован), показываем профиль в любом случае
         is_own_profile = request.user.is_authenticated and request.user == user
-        
-        # Отладочная информация
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f'Public profile check: user={user.username}, is_public_profile={user.is_public_profile}, is_own_profile={is_own_profile}, request_user={request.user}')
         
         if not user.is_public_profile and not is_own_profile:
             return Response(

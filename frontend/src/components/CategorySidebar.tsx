@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedBrandName, CategoryTranslation, BrandTranslation } from '../lib/i18n'
@@ -185,40 +185,28 @@ export default function CategorySidebar({
     attributes: {},
   }
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters)
-  const [isMounted, setIsMounted] = useState(false)
+  const initialFiltersRef = useRef(initialFilters)
+  const filtersRef = useRef(filters)
+  const onFilterChangeRef = useRef(onFilterChange)
+  initialFiltersRef.current = initialFilters
+  filtersRef.current = filters
+  onFilterChangeRef.current = onFilterChange
 
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  const initialFiltersSignature = JSON.stringify(initialFilters ?? null)
+  const filtersSignature = JSON.stringify(filters)
 
   // Синхронизация с внешними фильтрами
   useEffect(() => {
-    if (initialFilters) {
-      setFilters(initialFilters)
+    const nextFilters = initialFiltersRef.current
+    if (nextFilters) {
+      setFilters(nextFilters)
       // Синхронизируем ценовой диапазон
       setPriceRange({
-        min: initialFilters.priceMin?.toString() || '',
-        max: initialFilters.priceMax?.toString() || ''
+        min: nextFilters.priceMin?.toString() || '',
+        max: nextFilters.priceMax?.toString() || ''
       })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    initialFilters?.brands?.join(','),
-    initialFilters?.categories?.join(','),
-    initialFilters?.subcategories?.join(','),
-    initialFilters?.genders?.join(','),
-    initialFilters?.fragranceTypes?.join(','),
-    initialFilters?.authorIds?.join(','),
-    initialFilters?.genreIds?.join(','),
-    initialFilters?.publishers?.join(','),
-    initialFilters?.languages?.join(','),
-    JSON.stringify(initialFilters?.attributes || {}),
-    initialFilters?.inStock,
-    initialFilters?.isNew,
-    initialFilters?.sortBy,
-    initialFilters?.priceMin,
-    initialFilters?.priceMax
-  ])
+  }, [initialFiltersSignature])
 
   const [priceRange, setPriceRange] = useState({
     min: initialFilters?.priceMin?.toString() || '',
@@ -236,30 +224,10 @@ export default function CategorySidebar({
   const [expandedTreeItems, setExpandedTreeItems] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    if (onFilterChange) {
-      onFilterChange(filters)
+    if (onFilterChangeRef.current) {
+      onFilterChangeRef.current(filtersRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    filters.brands.join(','),
-    filters.categories.join(','),
-    filters.subcategories.join(','),
-    filters.genders?.join(','),
-    filters.fragranceTypes?.join(','),
-    filters.brandSlugs.join(','),
-    filters.categorySlugs.join(','),
-    filters.subcategorySlugs.join(','),
-    filters.authorIds?.join(','),
-    filters.genreIds?.join(','),
-    filters.publishers?.join(','),
-    filters.languages?.join(','),
-    filters.priceMin,
-    filters.priceMax,
-    filters.inStock,
-    filters.isNew,
-    filters.sortBy,
-    JSON.stringify(filters.attributes || {})
-  ])
+  }, [filtersSignature])
 
   const updateFilters = (updater: (prev: FilterState) => FilterState) => {
     setFilters((prev) => updater(prev))
@@ -346,7 +314,7 @@ export default function CategorySidebar({
     return slug || name
   }
 
-  const getSubcategoryLabel = (subcategory: Category) => {
+  const getSubcategoryLabel = useCallback((subcategory: Category) => {
     const localized = getLocalizedCategoryName(subcategory.slug, subcategory.name, t, subcategory.translations, router.locale)
     if (categoryType === 'shoes') {
       return localized.replace(/\s*\([^)]*\)\s*$/, '')
@@ -360,7 +328,7 @@ export default function CategorySidebar({
       return name
     }
     return localized
-  }
+  }, [categoryType, router.locale, t])
 
   const uniqueSubcategories = useMemo(() => {
     const normalizeLabel = (label: string) => {
@@ -388,7 +356,7 @@ export default function CategorySidebar({
       seen.add(key)
       return true
     })
-  }, [subcategories, categoryType, t, router.locale, isMounted])
+  }, [subcategories, categoryType, getSubcategoryLabel])
 
   const handlePriceChange = () => {
     const minValue = parseNumber(priceRange.min)

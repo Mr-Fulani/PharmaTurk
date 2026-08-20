@@ -1,0 +1,7 @@
+# Verified placeholder JWT examples for localhost-only curl commands.
+# Keep these entries fingerprint-specific so new findings remain blocking.
+256d6f79d969b860ee0dcd2752da7d2432e0f34a:AI_QUICK_TEST.md:curl-auth-header:41
+256d6f79d969b860ee0dcd2752da7d2432e0f34a:AI_QUICK_TEST.md:curl-auth-header:48
+256d6f79d969b860ee0dcd2752da7d2432e0f34a:AI_QUICK_TEST.md:curl-auth-header:126
+256d6f79d969b860ee0dcd2752da7d2432e0f34a:AI_TEST_COMMANDS.md:curl-auth-header:35
+256d6f79d969b860ee0dcd2752da7d2432e0f34a:AI_MODULE_OVERVIEW.md:curl-auth-header:87

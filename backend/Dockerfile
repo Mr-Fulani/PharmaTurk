@@ -1,9 +1,14 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+
+FROM python:3.12.13-slim-bookworm AS application
 
 ARG DEPENDENCY_LOCK_HASH=unknown
+ARG VCS_REF=unknown
 LABEL com.mudaroba.poetry-lock-hash=$DEPENDENCY_LOCK_HASH
+LABEL org.opencontainers.image.revision=$VCS_REF
 
-ENV POETRY_VERSION=1.8.3 \
+ENV POETRY_VERSION=2.4.1 \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -20,7 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpangoft2-1.0-0 \
     libpangocairo-1.0-0 \
     libgdk-pixbuf-xlib-2.0-0 \
-    libgobject-2.0-0 \
     libffi-dev \
     libjpeg-dev \
     libopenjp2-7-dev \
@@ -39,24 +43,48 @@ RUN echo "precedence ::ffff:0:0/96 100" >> /etc/gai.conf && \
 RUN pip install --no-cache-dir "poetry==${POETRY_VERSION}"
 ENV PATH="/usr/local/bin:$PATH"
 
+RUN groupadd --gid 10001 app && \
+    useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app && \
+    mkdir -p /app && chown app:app /app
+
 WORKDIR /app
 
 # Манифесты и lock для воспроизводимой установки зависимостей
-COPY pyproject.toml poetry.toml poetry.lock ./
+COPY --chown=app:app pyproject.toml poetry.toml poetry.lock ./
 
-RUN poetry install --no-root --no-interaction --no-ansi
+USER app
+
+RUN --mount=type=cache,target=/home/app/.cache/pypoetry,uid=10001,gid=10001,sharing=locked \
+    poetry install --only main --no-root --no-interaction --no-ansi
 
 # Copy app source
-COPY . .
+COPY --chown=app:app . .
 
-# Copy and make entrypoint script executable
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+# Make entrypoint script executable
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Compile translations and collect static at build-time
-RUN poetry run django-admin compilemessages || true \
- && poetry run python manage.py collectstatic --noinput || true
+RUN export DJANGO_DEBUG=0 \
+    DJANGO_SECRET_KEY=build-only-key-7f2bc6c348c545cd9cc8fa02fbac1102 \
+    DJANGO_ALLOWED_HOSTS=localhost \
+    DATABASE_URL=postgresql://build:build-only-db-password@localhost:5432/build \
+    REDIS_URL=redis://localhost:6379/0 \
+    REDIS_CACHE_URL=redis://localhost:6379/1 \
+    CELERY_RESULT_BACKEND_URL=redis://localhost:6379/2 \
+ && poetry run python manage.py compilemessages \
+ && poetry run python manage.py collectstatic --noinput
+
+# Backend, Celery workers and Beat inherit this non-root runtime user.
+USER app
 
 EXPOSE 8000
 
 CMD ["bash", "/app/docker-entrypoint.sh"]
+
+# CI/predeploy-only stage. Production remains the final stage and contains only
+# runtime dependencies; the test stage adds pytest/linters from Poetry's dev group.
+FROM application AS test
+RUN --mount=type=cache,target=/home/app/.cache/pypoetry,uid=10001,gid=10001,sharing=locked \
+    poetry install --with dev --no-root --no-interaction --no-ansi
+
+FROM application AS production

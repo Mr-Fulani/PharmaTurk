@@ -1,350 +1,189 @@
-# Turk-Export - MVP интернет-магазина
+# Mudaroba
 
-Мультикатегорийная онлайн-платформа для поиска, заказа и оплаты турецких медикаментов, БАДов, одежды и обуви с автоматическим обновлением данных.
+Mudaroba — двуязычная (ru/en) мультикатегорийная площадка турецких товаров и услуг. Репозиторий исторически называется `PharmaTurk`, но актуальное имя продукта, Docker-образов и API — **Mudaroba**.
 
-## 🚀 Быстрый старт
+Проект объединяет публичный каталог, корзину и заказы, JWT-аутентификацию, криптооплату через CoinRemitter, импорт данных, AI-инструменты для контента и визуальные рекомендации на Qdrant.
 
-### Предварительные требования
+## Состояние проекта
 
-- Docker и Docker Compose
-- Python 3.12+ (для локальной разработки)
-- Poetry (для управления зависимостями)
+На 9 августа 2026 года основной стек зафиксирован на следующих версиях:
 
-### 1. Клонирование репозитория
+| Компонент | Версия / роль |
+| --- | --- |
+| Python | 3.12.13 |
+| Django | 5.2.17 |
+| Django REST Framework | 3.18.0 |
+| Node.js | 22.23.2 |
+| Next.js | 15.5.21 (Pages Router) |
+| PostgreSQL | 15.18 |
+| Redis | 7.4.10 |
+| Qdrant | 1.18.2 |
+| Celery | фоновые задачи и отдельные очереди AI/RecSys |
+| Nginx | входной reverse proxy в production |
 
-```bash
-git clone <repository-url>
-cd PharmaTurk
+OpenSearch удалён из актуальной архитектуры как неиспользуемый компонент. Обычные поисковые и фильтрующие запросы каталога обслуживает основная БД, а векторный поиск — Qdrant.
+
+## Возможности
+
+- 19 корневых доменов каталога: от медикаментов, одежды и электроники до книг, услуг и благовоний;
+- отдельные доменные модели и API для разных типов товаров;
+- корзина, оформление заказа, уведомления и PDF-чеки;
+- криптоинвойсы CoinRemitter и сверка webhook с данными провайдера;
+- поиск по изображению с CLIP/Qdrant, лимитом 5 МБ, проверкой формата и защитой загрузки по URL от SSRF;
+- двуязычные SEO-страницы, sitemap и товарные фиды;
+- импорт VAPI, парсеры и AI-обработка контента;
+- Cloudflare R2 для медиа (опционально для каталога с локальным fallback, но
+  обязательно, если включена генерация и отправка PDF-чеков);
+- Prometheus-метрики и опциональная отправка ошибок в Sentry.
+
+Административные API VAPI и AI доступны только staff-пользователям. Глобальный DRF-default требует аутентификацию; публичные catalog/settings/health/webhook endpoints открываются явно в коде.
+
+## Архитектура
+
+```text
+Client
+  -> Nginx
+      -> Next.js frontend
+      -> Django/DRF backend
+           -> PostgreSQL
+           -> Redis -> Celery workers / Celery Beat
+           -> Qdrant
+           -> CoinRemitter / VAPI / OpenAI / R2 (если настроены)
 ```
 
-## Новые функции: Поиск по фото (Визуальный поиск)
-Добавлен полноценный функционал поиска товаров по фото:
-- Загрузка изображений пользователем напрямую с устройства.
-- Поиск по URL изображений.
-- Автоматическая валидация размера (до 5 МБ) и формата файлов.
-- Встроенная безопасность от спама (rate-limiting 10 запросов/минуту).
-- Фоновая очистка временных файлов загрузок каждый час через Celery, чтобы сервер не переполнялся.
-- Векторный поиск по загруженному фото с использованием моделей CLIP и БД Qdrant для обеспечения выдачи похожих визуально товаров.
+Основные каталоги:
 
-## Основные компоненты системы
-
-### 2. Настройка переменных окружения
-
-Скопируйте пример файла с переменными окружения:
-
-```bash
-cp env.example .env
+```text
+backend/          Django, DRF, Celery, миграции и тесты
+frontend/         Next.js Pages Router, ru/en UI
+docs/             актуальные правила, roadmap и тематические документы
+nginx/            reverse proxy и production routing
+.github/workflows CI-проверки
 ```
 
-Отредактируйте файл `.env` и установите необходимые значения:
+## Быстрый старт через Docker Compose
+
+Требуются Docker Engine и Docker Compose v2.
 
 ```bash
-# Обязательные настройки
-VAPI_API_KEY=your-vapi-api-key-here
-
-# Опциональные настройки
-DJANGO_SECRET_KEY=your-super-secret-key-change-in-production-12345
-```
-
-### 3. Запуск проекта
-
-```bash
-# Сборка и запуск всех сервисов
-docker compose up -d --build
-
-# Проверка статуса
+cp .env.example .env
+# Заполните переменные в .env по комментариям, прежде всего SECRET_KEY и URL сервисов.
+docker compose -f docker-compose.yml -f docker-compose.override.yml up -d --build
 docker compose ps
-
-# Просмотр логов
-docker compose logs -f backend
 ```
 
-### 4. Проверка работоспособности
+Локальные адреса development-профиля:
+
+- frontend: <http://localhost:3001>;
+- backend API: <http://localhost:8000>;
+- Django Admin: <http://localhost:8000/admin/>;
+- OpenAPI UI: <http://localhost:8000/api/docs/>;
+- readiness: <http://localhost:8000/api/health/>;
+- liveness: <http://localhost:8000/api/live/>;
+- PostgreSQL: `localhost:5433`;
+- Redis: `localhost:6379`;
+- Qdrant HTTP/gRPC: `localhost:6333` / `localhost:6334`.
+
+`/api/health/` проверяет PostgreSQL и Redis cache/throttle backend и возвращает
+`503`, если сервис не готов. `/api/live/` не обращается к зависимостям и
+показывает, что процесс Django жив.
+
+### Seed каталога
+
+Автоматический seed выключен безопасным значением `RUN_SEED_CATALOG=0`. Запускайте его только осознанно:
 
 ```bash
-# Проверка health check
-curl http://localhost:8000/api/health/
-
-# Swagger документация
-open http://localhost:8000/api/docs/
+docker compose exec backend poetry run python manage.py seed_catalog_data
 ```
 
-### 5. Мобильное приложение (Flutter)
+Команда идемпотентно создаёт 19 корневых категорий, дерево подкатегорий, типы динамических атрибутов и бренды. Доступны флаги `--categories-only`, `--attributes-only`, `--brands-only`, `--fix-hierarchy` и `--category-seo-only`.
 
-Мобильное приложение вынесено в отдельный репозиторий: [pharmaturk-mobile](https://github.com/Mr-Fulani/pharmaturk-mobile) (Flutter, iOS/Android).
+## Локальный запуск без Docker
 
-## 📋 Структура проекта
-
-```
-PharmaTurk/
-├── backend/                 # Django backend
-│   ├── apps/
-│   │   ├── catalog/        # Каталог товаров
-│   │   ├── orders/         # Заказы и корзина
-│   │   ├── payments/       # Платежные провайдеры
-│   │   ├── users/          # Пользователи
-│   │   └── vapi/           # Интеграция с Vapi API
-│   ├── config/             # Настройки Django
-│   └── api/                # Основные API эндпоинты
-├── frontend/               # Next.js веб-приложение
-├── docs/                   # Документация
-├── docker-compose.yml      # Конфигурация Docker
-├── env.example             # Пример переменных окружения
-└── README.md               # Документация
-```
-
-## 🔧 Технологический стек
-
-### Backend
-- **Django 4.2+** - основной фреймворк
-- **Django REST Framework** - API
-- **PostgreSQL 15+** - основная база данных
-- **Redis** - кэширование и очереди
-- **Celery** - фоновые задачи
-- **OpenSearch** - полнотекстовый поиск
-
-### Интеграции
-- **Vapi API (vapi.co)** - каталог лекарств и БАДов
-- **ЮKassa/CloudPayments** - платежные провайдеры
-- **СДЭК/Почта РФ/DPD** - доставка
-
-### Мониторинг
-- **Prometheus + Grafana** - метрики
-- **Sentry** - отслеживание ошибок
-- **ELK Stack** - логирование
-
-## 📊 API Endpoints
-
-### Каталог товаров
-```
-GET  /api/catalog/products/           # Список товаров
-GET  /api/catalog/products/{slug}/    # Детали товара
-GET  /api/catalog/products/search/    # Поиск товаров
-GET  /api/catalog/categories/         # Категории
-GET  /api/catalog/brands/             # Бренды
-```
-
-### Vapi интеграция
-```
-POST /api/vapi/pull/                  # Загрузка товаров
-POST /api/vapi/search/                # Поиск в Vapi
-POST /api/vapi/sync-categories/       # Синхронизация справочников
-POST /api/vapi/full-sync/             # Полная синхронизация
-```
-
-### Платежи (заглушки)
-```
-POST /api/payments/init/              # Инициализация платежа
-```
-
-## 🔑 Настройка Vapi API
-
-### 1. Регистрация на vapi.co
-
-1. Перейдите на [vapi.co](https://vapi.co)
-2. Зарегистрируйтесь и выберите тариф
-3. Получите API ключ
-
-### 2. Настройка переменных
+Для полного backend нужны доступные PostgreSQL, Redis и Qdrant. Версии Python и Node должны совпадать с зафиксированными в Dockerfile и `.nvmrc`.
 
 ```bash
-# В файле .env
-VAPI_BASE_URL=https://api.vapi.co
-VAPI_API_KEY=your-actual-api-key-here
-```
-
-### 3. Тестирование интеграции
-
-```bash
-# Загрузка тестовых данных
-curl -X POST 'http://localhost:8000/api/vapi/pull/?page=1&page_size=5'
-
-# Поиск лекарств
-curl -X POST 'http://localhost:8000/api/vapi/search/?query=парацетамол&limit=10'
-```
-
-## 📈 Мониторинг и логи
-
-### Просмотр логов
-
-```bash
-# Логи всех сервисов
-docker compose logs -f
-
-# Логи конкретного сервиса
-docker compose logs -f backend
-docker compose logs -f celeryworker
-```
-
-### Метрики
-
-```bash
-# Prometheus метрики
-curl http://localhost:8000/metrics/
-
-# Grafana (если настроена)
-open http://localhost:3000
-```
-
-## 🛠 Разработка
-
-### Локальная разработка
-
-```bash
-# Установка зависимостей
 cd backend
 poetry install
-
-# Применение миграций
 poetry run python manage.py migrate
-
-# Запуск сервера разработки
 poetry run python manage.py runserver
 ```
 
-### Управление миграциями
-
-**Локально (через Docker Compose):**
 ```bash
-docker compose exec backend poetry run python manage.py makemigrations
-docker compose exec backend poetry run python manage.py migrate
+cd frontend
+npm ci
+npm run dev
 ```
 
-**На продакшене (через прямой docker exec):**
-> Используйте этот способ, если `docker compose exec` выдает ошибку "service not running".
+Frontend по умолчанию слушает порт `3000` при прямом запуске; порт `3001` используется development Compose.
 
-
-# Сухой прогон (посмотреть что найдет)
-docker exec -it pharmaturk-backend-1 poetry run python manage.py download_banner_media --dry-run
-
-# Реальное скачивание
-docker exec -it pharmaturk-backend-1 poetry run python manage.py download_banner_media
-
-
+## Проверки
 
 ```bash
-# Посмотреть статус всех миграций
-docker exec -it pharmaturk-backend-1 poetry run python manage.py showmigrations
-
-# Применить миграции вручную
-docker exec -it pharmaturk-backend-1 poetry run python manage.py migrate
-```
-
-### Создание суперпользователя
-
-```bash
-docker compose exec backend poetry run python manage.py createsuperuser
-```
-
-### Восстановление каталога (seed)
-
-Команда `seed_catalog_data` создаёт полную структуру каталога: 18 корневых категорий (медицина, БАДы, медтехника, одежда, обувь, электроника, мебель, посуда, аксессуары, украшения, нижнее бельё, головные уборы, парфюмерия, книги, услуги, спорттовары, автозапчасти, исламская одежда, благовония), подкатегории с иерархией L2–L5, типы динамических атрибутов и бренды. **При первом запуске backend seed выполняется автоматически** (см. `docker-entrypoint.sh`).
-
-```bash
-# Полное восстановление (категории + атрибуты + бренды)
-docker compose run --rm backend poetry run python manage.py seed_catalog_data
-
-# Только категории (без брендов)
-docker compose run --rm backend poetry run python manage.py seed_catalog_data --categories-only
-
-# Только бренды
-docker compose run --rm backend poetry run python manage.py seed_catalog_data --brands-only
-
-# Только типы динамических атрибутов (GlobalAttributeKey)
-docker compose run --rm backend poetry run python manage.py seed_catalog_data --attributes-only
-
-# Исправить parent у подкатегорий (после миграций)
-docker compose run --rm backend poetry run python manage.py seed_catalog_data --fix-hierarchy
-```
-
-### Статические страницы (privacy, delivery, returns)
-
-Команда `load_initial_pages` создаёт страницы «Политика конфиденциальности», «Доставка и оплата», «Возврат товара» с контентом на ru/en. **Создаёт только отсутствующие страницы, не перезаписывает существующий контент.** Выполняется автоматически при старте backend (см. `docker-entrypoint.sh`).
-
-```bash
-# Ручной запуск (если нужно)
-docker compose exec backend poetry run python manage.py load_initial_pages
-```
-
-Если backend уже запущен:
-
-```bash
-docker compose exec backend poetry run python manage.py seed_catalog_data --categories-only
-```
-
-## 🔒 Безопасность
-
-### Продакшен настройки
-
-1. Измените `DJANGO_SECRET_KEY` на уникальный
-2. Установите `DJANGO_DEBUG=0`
-3. Настройте `DJANGO_ALLOWED_HOSTS`
-4. Добавьте SSL сертификаты
-5. Настройте Sentry для мониторинга ошибок
-
-### Переменные окружения
-
-```bash
-# Обязательные для продакшена
-DJANGO_SECRET_KEY=your-production-secret-key
-DJANGO_DEBUG=0
-DJANGO_ALLOWED_HOSTS=your-domain.com
-
-# Мониторинг
-SENTRY_DSN=your-sentry-dsn
-
-# Платежи
-YUKASSA_SHOP_ID=your-shop-id
-YUKASSA_SECRET_KEY=your-secret-key
-```
-
-## � Instagram Parser
-
-Парсер для автоматического сбора товаров из Instagram постов с медиа и описаниями.
-
-### Быстрый старт
-
-```bash
-# Инициализация парсера
 cd backend
-poetry run python manage.py init_instagram_scraper
-
-# Тестовый запуск
-poetry run python manage.py run_instagram_scraper \
-  --username bookstore_example \
-  --max-posts 5 \
-  --dry-run
-
-# Реальный запуск
-poetry run python manage.py run_instagram_scraper \
-  --username bookstore_example \
-  --max-posts 30 \
-  --category books
+poetry check --lock
+poetry run python manage.py check
+poetry run python manage.py makemigrations --check --dry-run
+poetry run pytest -q
 ```
 
-### Возможности
+```bash
+cd frontend
+npm ci
+npm run lint
+npx tsc --noEmit
+npm test
+npm run build
+```
 
-- ✅ Парсинг постов из профилей Instagram
-- ✅ Парсинг по хештегам
-- ✅ Извлечение медиа (изображения/видео)
-- ✅ Автоматическое создание товаров в каталоге
-- ✅ Поддержка аутентификации
+Эти же классы проверок выполняются в GitHub Actions. Во время аудита 9 августа 2026 года локальные Docker-контейнеры и Docker-сборки намеренно не запускались, поскольку Docker был занят другим приложением; контейнерный smoke-test остаётся обязательным перед production-деплоем.
 
-### Документация
+## Production-безопасность
 
-- 📖 Полное руководство: [`INSTAGRAM_PARSER_GUIDE.md`](INSTAGRAM_PARSER_GUIDE.md)
-- 🚀 Быстрый старт: [`backend/INSTAGRAM_PARSER_QUICKSTART.md`](backend/INSTAGRAM_PARSER_QUICKSTART.md)
+При `DJANGO_DEBUG=0` приложение аварийно останавливается, если:
 
-**Важно**: Цены устанавливаются вручную через Django Admin после парсинга.
+- `DJANGO_SECRET_KEY` отсутствует, является заглушкой или короче 32 символов;
+- `DJANGO_ALLOWED_HOSTS` пуст или содержит `*`;
+- `DATABASE_URL` неполон или содержит известный dev/placeholder password;
+- включён тестовый `CRYPTO_DUMMY_MODE`;
+- задан Telegram bot token без отдельного webhook secret длиной не менее 32
+  символов;
+- Celery broker, Django cache и Celery result backend направлены в одну Redis
+  DB вместо раздельных targets.
 
-## �📝 Лицензия
+Frontend получает только явно перечисленные public/SSR variables и находится
+в сети `edge`; PostgreSQL, Redis и Qdrant изолированы во внутренней `data` и не
+доступны frontend-контейнеру напрямую.
 
-Проект разработан для Turk-Export. Все права защищены.
+TLS redirect и HSTS включаются только после проверки HTTPS-прокси через `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS` и `SECURE_HSTS_PRELOAD`. Не копируйте development-секреты и пароли в production. Подробный чек-лист находится в [DEPLOY.md](DEPLOY.md).
 
-## 🤝 Поддержка
+## Ключевые API
 
-Для получения поддержки обращайтесь к команде разработки.
+```text
+GET  /api/catalog/products/             публичный каталог
+POST /api/auth/jwt/create/              JWT login с rate limiting
+POST /api/payments/init/                фиксированный тест DummyProvider (staff)
+POST /api/payments/crypto/webhook       CoinRemitter webhook
+POST /api/recommendations/search_by_image поиск по изображению
+POST /api/vapi/*                        VAPI, только staff
+*    /api/ai/*                          AI-инструменты, только staff
+```
 
----
+Полный контракт доступен в Swagger/OpenAPI UI после запуска backend.
 
-**Примечание**: Это MVP версия. Для продакшена требуется дополнительная настройка безопасности, мониторинга и оптимизации производительности.
+## Документация
+
+- [README-DEV.md](README-DEV.md) — рабочий процесс разработчика и команды проверок;
+- [docs/README.md](docs/README.md) — индекс актуальной и исторической документации;
+- [docs/AUDIT_2026-08-09.md](docs/AUDIT_2026-08-09.md) — полный аудит, результаты проверок и release gates;
+- [docs/ROADMAP.md](docs/ROADMAP.md) — текущие задачи и отделённый исторический snapshot;
+- [DEPLOY.md](DEPLOY.md) — production deployment;
+- [CRYPTO_PAYMENTS.md](CRYPTO_PAYMENTS.md) — CoinRemitter и криптоплатежи;
+- [docs/notifications-and-receipts.md](docs/notifications-and-receipts.md) — уведомления и чеки;
+- [docs/DEVELOPMENT_RULES.md](docs/DEVELOPMENT_RULES.md) — соглашения проекта.
+
+Мобильный Flutter-клиент находится в отдельном репозитории: [pharmaturk-mobile](https://github.com/Mr-Fulani/pharmaturk-mobile).
+
+## Лицензия
+
+Проект Mudaroba является проприетарным. Все права защищены.

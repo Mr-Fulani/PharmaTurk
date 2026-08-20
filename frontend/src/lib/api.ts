@@ -182,50 +182,86 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-let isRefreshing = false
-let queue: Array<() => void> = []
+let refreshPromise: Promise<string | null> | null = null
+
+async function refreshAccessToken(baseURL?: string): Promise<string | null> {
+  const refresh = Cookies.get('refresh')
+  if (!refresh) return null
+
+  // Use the global axios client deliberately. Sending refresh through `api`
+  // would run this response interceptor again and can deadlock on an invalid
+  // refresh token while waiting for its own in-flight refresh operation.
+  const response = await axios.post(
+    '/auth/jwt/refresh/',
+    { refresh },
+    {
+      baseURL: baseURL || (typeof window !== 'undefined' ? getClientApiBase() : '/api'),
+      withCredentials: false,
+    },
+  )
+  const newAccess = response.data?.access
+  if (!newAccess) return null
+
+  const cookieOptions = {
+    sameSite: 'Lax' as const,
+    path: '/',
+    secure: process.env.NODE_ENV === 'production',
+  }
+  Cookies.set('access', newAccess, cookieOptions)
+  const newRefresh = response.data?.refresh
+  if (newRefresh) Cookies.set('refresh', newRefresh, cookieOptions)
+  return newAccess
+}
 
 api.interceptors.response.use(
   (r) => r,
   async (error) => {
-    // ВСЕГДА логируем ошибки для диагностики на мобильных устройствах (даже в production)
-    console.error('[API Error]', {
-      url: error.config?.url,
-      baseURL: error.config?.baseURL,
-      fullUrl: error.config ? `${error.config.baseURL}${error.config.url}` : 'unknown',
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      message: error.message,
-      code: error.code,
-      responseData: error.response?.data,
-      origin: typeof window !== 'undefined' ? window.location.origin : 'server',
-      userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server'
-    })
+    // Production responses may contain validation details or personal data.
+    // Keep full diagnostics local to development and log only operational
+    // metadata in production.
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[API Error]', {
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullUrl: error.config ? `${error.config.baseURL}${error.config.url}` : 'unknown',
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.message,
+        code: error.code,
+        responseData: error.response?.data,
+        origin: typeof window !== 'undefined' ? window.location.origin : 'server',
+        userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server',
+      })
+    } else {
+      console.error('[API Error]', {
+        url: error.config?.url,
+        status: error.response?.status,
+        code: error.code,
+      })
+    }
 
     const original = error.config
-    if (error?.response?.status === 401 && !original._retry) {
+    const isRefreshRequest = original?.url?.includes('/auth/jwt/refresh/')
+    if (error?.response?.status === 401 && original && !original._retry && !isRefreshRequest) {
       original._retry = true
-      if (isRefreshing) {
-        await new Promise<void>((resolve) => queue.push(resolve))
-      } else {
-        isRefreshing = true
-        try {
-          const refresh = Cookies.get('refresh')
-          if (refresh) {
-            const resp = await api.post('/auth/jwt/refresh/', { refresh })
-            const newAccess = resp.data?.access
-            if (newAccess) Cookies.set('access', newAccess, { sameSite: 'Lax', path: '/' })
-            const newRefresh = resp.data?.refresh
-            if (newRefresh) Cookies.set('refresh', newRefresh, { sameSite: 'Lax', path: '/' })
-          }
-        } finally {
-          isRefreshing = false
-          queue.forEach((fn) => fn())
-          queue = []
-        }
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken(original.baseURL).finally(() => {
+          refreshPromise = null
+        })
       }
-      const access = Cookies.get('access')
+      let access: string | null
+      try {
+        access = await refreshPromise
+      } catch {
+        access = null
+      }
+      if (!access) {
+        Cookies.remove('access', { path: '/' })
+        Cookies.remove('refresh', { path: '/' })
+        return Promise.reject(error)
+      }
       if (access) {
+        if (!original.headers) original.headers = {} as AxiosRequestHeaders
         original.headers['Authorization'] = `Bearer ${access}`
       }
       return api(original)

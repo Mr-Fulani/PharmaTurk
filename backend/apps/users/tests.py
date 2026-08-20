@@ -1,10 +1,12 @@
 from django.urls import reverse
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 from apps.users.models import User
 from apps.users.telegram_auth import generate_telegram_sync_token
 from unittest.mock import patch, MagicMock
 
+@override_settings(TELEGRAM_WEBHOOK_SECRET="test-telegram-webhook-secret")
 class TelegramIntegrationTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -58,7 +60,12 @@ class TelegramIntegrationTests(APITestCase):
         # The webhook endpoint should be public
         self.client.logout()
         url = reverse('telegram-webhook')
-        response = self.client.post(url, payload, format='json')
+        response = self.client.post(
+            url,
+            payload,
+            format='json',
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="test-telegram-webhook-secret",
+        )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -66,6 +73,7 @@ class TelegramIntegrationTests(APITestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.telegram_id, '987654321')
         self.assertEqual(self.user.telegram_username, 'testuser_tg')
+        self.assertTrue(self.user.telegram_notifications)
         self.assertIsNone(self.user.telegram_sync_token)  # Token should be cleared
 
     def test_telegram_webhook_invalid_token(self):
@@ -84,13 +92,27 @@ class TelegramIntegrationTests(APITestCase):
         
         self.client.logout()
         url = reverse('telegram-webhook')
-        response = self.client.post(url, payload, format='json')
+        response = self.client.post(
+            url,
+            payload,
+            format='json',
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="test-telegram-webhook-secret",
+        )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # User should not be modified
         self.user.refresh_from_db()
         self.assertIn(self.user.telegram_id, [None, ''])
+
+    def test_telegram_webhook_rejects_missing_secret_header(self):
+        response = self.client.post(reverse('telegram-webhook'), {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @override_settings(TELEGRAM_WEBHOOK_SECRET="")
+    def test_telegram_webhook_is_unavailable_without_configured_secret(self):
+        response = self.client.post(reverse('telegram-webhook'), {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
 
     @patch('apps.users.telegram_auth.validate_telegram_data')
     def test_telegram_auth_invalid_data(self, mock_validate):
@@ -156,14 +178,16 @@ class SocialAuthTests(APITestCase):
             'email': 'testgoogle@gmail.com',
             'first_name': 'Google',
             'last_name': 'User',
-            'avatar_url': 'https://lh3.googleusercontent.com/photo.jpg',
+            'avatar_url': None,
+            'email_verified': True,
         }
         self.vk_user_info = {
             'provider_id': '123456789',
             'email': None,
             'first_name': 'VK',
             'last_name': 'User',
-            'avatar_url': 'https://vk.com/photo.jpg',
+            'avatar_url': None,
+            'email_verified': False,
         }
 
     @patch('apps.users.social_auth.PROVIDERS')

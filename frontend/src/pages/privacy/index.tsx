@@ -7,6 +7,7 @@ import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { Lock, FileText, Database, Shield, Cookie } from 'lucide-react'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
+import { sanitizeRichHtml } from '../../lib/sanitizeHtml'
 
 export default function PrivacyPage({ pageData }: { pageData: any }) {
     const { t } = useTranslation('common')
@@ -45,7 +46,7 @@ export default function PrivacyPage({ pageData }: { pageData: any }) {
                     {pageData?.content ? (
                         <div
                             className="prose prose-indigo max-w-none text-main/80 mb-12"
-                            dangerouslySetInnerHTML={{ __html: pageData.content }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(pageData.content) }}
                         />
                     ) : (
                         <p className="mb-12 text-lg text-main/80 text-center max-w-2xl mx-auto">

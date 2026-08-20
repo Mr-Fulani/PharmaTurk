@@ -5,7 +5,6 @@ View `PageDetailView` возвращает JSON с локализованным�
 
 from rest_framework import generics, permissions
 from rest_framework.response import Response
-from rest_framework import status
 from .models import Page
 from .serializers import PageSerializer
 
@@ -35,13 +34,15 @@ class PageListView(generics.ListAPIView):
 
 
 class PageDetailView(generics.RetrieveAPIView):
-    """Возвращает данные страницы по её slug.
+    """Возвращает данные опубликованной страницы по её slug.
 
-    Public endpoint: доступен всем (permissions.AllowAny). При отсутствии объекта возвращается 404.
+    Public endpoint: доступен всем (permissions.AllowAny). Неактивная или
+    отсутствующая страница возвращает 404.
     Поддерживает GET-параметр `lang` для выбора языка (ru/en).
     """
 
-    queryset = Page.objects.all()
+    # Draft/unpublished pages must not be addressable by guessing their slug.
+    queryset = Page.objects.filter(is_active=True)
     serializer_class = PageSerializer
     permission_classes = [permissions.AllowAny]
     lookup_field = "slug"
@@ -55,10 +56,6 @@ class PageDetailView(generics.RetrieveAPIView):
             or request.headers.get("X-Language", "").split("-")[0].lower() or "ru"
         )
         self.serializer_class = PageSerializer
-        try:
-            page = self.get_object()
-        except Exception:
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
+        page = self.get_object()
         serializer = self.get_serializer(page, context={"lang": lang})
         return Response(serializer.data)

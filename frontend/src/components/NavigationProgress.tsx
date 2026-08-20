@@ -86,8 +86,10 @@ export default function NavigationProgress() {
     setVisible(false)
   }, [clearShowTimer, clearWatchdog])
 
+  const routerEvents = router.events
+
   useEffect(() => {
-    const { events } = router
+    const events = routerEvents
     events.on('routeChangeStart', onRouteChangeStart)
     events.on('routeChangeComplete', onRouteChangeEnd)
     events.on('routeChangeError', onRouteChangeEnd)
@@ -96,7 +98,7 @@ export default function NavigationProgress() {
       events.off('routeChangeComplete', onRouteChangeEnd)
       events.off('routeChangeError', onRouteChangeEnd)
     }
-  }, [router.events, onRouteChangeStart, onRouteChangeEnd])
+  }, [routerEvents, onRouteChangeStart, onRouteChangeEnd])
 
   useEffect(() => {
     const onClickCapture = (e: MouseEvent) => {

@@ -216,17 +216,14 @@ else
 fi
 export DEPENDENCY_LOCK_HASH
 
-BUILT_DEPENDENCY_LOCK_HASH=$(docker image inspect mudaroba-backend \
+BUILT_DEPENDENCY_LOCK_HASH=$(docker image inspect "mudaroba-backend:${IMAGE_TAG:-local}" \
     --format '{{ index .Config.Labels "com.mudaroba.poetry-lock-hash" }}' 2>/dev/null || true)
 if [ "$FAST" = true ] && [ "$BUILT_DEPENDENCY_LOCK_HASH" != "$DEPENDENCY_LOCK_HASH" ]; then
     DEPENDENCY_REBUILD=true
     warning "Poetry-зависимости изменились: backend будет пересобран даже в FAST режиме"
 fi
 
-RUN_SEED_CATALOG_VALUE=1
-if [ "$FAST" = true ] && [ "$WITH_SEED" = false ] && [ "$SKIP_SEED" = false ]; then
-    RUN_SEED_CATALOG_VALUE=0
-fi
+RUN_SEED_CATALOG_VALUE=0
 if [ "$WITH_SEED" = true ]; then
     RUN_SEED_CATALOG_VALUE=1
 fi
@@ -342,7 +339,7 @@ if [ "$RUN_SEED_CATALOG" = "1" ]; then
 else
     info "Seed каталога при старте backend: пропущен"
 fi
-CORE_SERVICES="postgres redis opensearch qdrant backend frontend celeryworker celery_ai celerybeat nginx"
+CORE_SERVICES="postgres redis qdrant backend frontend celeryworker celery_ai celerybeat nginx"
 docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS up $UP_OPTS $CORE_SERVICES
 UP_EXIT_CODE=$?
 if [ $UP_EXIT_CODE -eq 0 ]; then
@@ -430,7 +427,6 @@ info "  - Swagger Docs:   http://localhost:8000/api/docs/"
 info ""
 info "  - PostgreSQL:     localhost:5433"
 info "  - Redis:          localhost:6379"
-info "  - OpenSearch:     localhost:9200"
 info "  - Qdrant (AI):    localhost:6333"
 info ""
 info "Команды Django в Docker (запускать после старта контейнеров):"

@@ -5,6 +5,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../lib/urls'
 import { SITE_NAME, SITE_URL } from '../lib/siteMeta'
+import { sanitizeRichHtml } from '../lib/sanitizeHtml'
 import ShareButton from '../components/ShareButton'
 
 interface PageData {
@@ -283,7 +284,7 @@ export default function GenericStaticPage({ pageData, pageLocale }: GenericStati
             className={isAboutPage
               ? 'about-rich max-w-none mb-12'
               : 'prose prose-indigo max-w-none text-main/80 mb-12 dark:prose-invert'}
-            dangerouslySetInnerHTML={{ __html: pageData.content }}
+            dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(pageData.content) }}
           />
 
 

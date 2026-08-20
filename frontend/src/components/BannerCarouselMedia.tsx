@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import Image from 'next/image'
@@ -90,7 +90,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
     }
 
     fetchBanners()
-  }, [position, router.locale])
+  }, [position, router.locale, initialBanners.length])
 
   useEffect(() => {
     if (banners.length > 0) {
@@ -108,7 +108,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
     }
   }, [banners])
   // Функция для сброса и перезапуска автоматического переключения
-  const resetAutoPlay = () => {
+  const resetAutoPlay = useCallback(() => {
     if (autoPlayIntervalRef.current) {
       clearInterval(autoPlayIntervalRef.current)
     }
@@ -117,11 +117,18 @@ export default function BannerCarousel({ position, className = '', initialBanner
       autoPlayIntervalRef.current = setInterval(() => {
         const timeSinceLastManual = Date.now() - lastManualActionRef.current
         if (timeSinceLastManual > 6000) {
-          goToNextMedia(false)
+          setDisplayMedia((prev) => {
+            if (prev.length <= 1) return prev
+            const nextMedia = [...prev]
+            const firstItem = nextMedia.shift()
+            if (firstItem) nextMedia.push(firstItem)
+            if (nextMedia[0]) setActiveMediaId(nextMedia[0].id)
+            return nextMedia
+          })
         }
       }, 8000)
     }
-  }
+  }, [banners.length, displayMedia.length])
 
   // Автоматическая смена медиа каждые 5 секунд
   useEffect(() => {
@@ -132,7 +139,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
         clearInterval(autoPlayIntervalRef.current)
       }
     }
-  }, [banners, displayMedia.length])
+  }, [resetAutoPlay])
 
   // Принудительное обновление при изменении активного медиа для запуска анимации
   useEffect(() => {

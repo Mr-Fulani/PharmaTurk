@@ -1,0 +1,45 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: release_test
+      POSTGRES_USER: release_test
+      POSTGRES_PASSWORD: release-test-postgres-password
+
+  backend_tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: test
+      args:
+        DEPENDENCY_LOCK_HASH: ${DEPENDENCY_LOCK_HASH:-unknown}
+        VCS_REF: ${IMAGE_TAG:-local}
+    image: mudaroba-backend-test:${IMAGE_TAG:-local}
+    profiles: [test]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://release_test:release-test-postgres-password@postgres:5432/release_test
+      REDIS_URL: redis://redis:6379/0
+      REDIS_CACHE_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND_URL: redis://redis:6379/2
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      DJANGO_DEBUG: 0
+      DJANGO_SECRET_KEY: release-test-key-1fe1cfaad50f4272b6b3404249624479
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      CRYPTO_DUMMY_MODE: 0
+      USE_R2: 0
+      TELEGRAM_BOT_TOKEN: ""
+      COINREMITTER_API_KEY: ""
+      COINREMITTER_API_PASSWORD: ""
+      OPENAI_API_KEY: ""
+      EMAIL_HOST: ""
+      EMAIL_API_PROVIDER: ""
+    entrypoint: ["poetry"]
+    command: ["check", "--lock"]
+    networks: [data]

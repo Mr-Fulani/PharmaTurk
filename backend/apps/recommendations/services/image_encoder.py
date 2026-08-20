@@ -1,10 +1,10 @@
 """Image encoder for recommendations (CLIP, 512-dim)."""
 import logging
-from io import BytesIO
 from typing import Optional, Union
 import numpy as np
-import requests
 from PIL import Image
+
+from .safe_image_fetcher import ImageFetchError, fetch_search_image, validate_image_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,9 @@ class CLIPEncoder:
         return cls._instance
 
     def __init__(self):
-        if CLIPEncoder._model is None:
-            self._load_model()
+        # Model loading is intentionally lazy: an invalid public image must be
+        # rejected before it can trigger a large model initialization.
+        pass
 
     def _load_model(self):
         try:
@@ -36,8 +37,15 @@ class CLIPEncoder:
             return
         logger.info("Loading CLIP model...")
         model_name = "openai/clip-vit-base-patch32"
-        CLIPEncoder._model = CLIPModel.from_pretrained(model_name)
-        CLIPEncoder._processor = CLIPProcessor.from_pretrained(model_name)
+        CLIPEncoder._model = CLIPModel.from_pretrained(
+            model_name,
+            trust_remote_code=False,
+            use_safetensors=True,
+        )
+        CLIPEncoder._processor = CLIPProcessor.from_pretrained(
+            model_name,
+            trust_remote_code=False,
+        )
         CLIPEncoder._model.eval()
         if torch.cuda.is_available():
             CLIPEncoder._model = CLIPEncoder._model.cuda()
@@ -54,6 +62,8 @@ class CLIPEncoder:
         return CLIPEncoder._processor
 
     def _encode_image_impl(self, image: Image.Image) -> Optional[np.ndarray]:
+        if CLIPEncoder._model is None:
+            self._load_model()
         if self.model == "unavailable" or self.model is None:
             return None
         import torch
@@ -84,8 +94,8 @@ class CLIPEncoder:
                 return None
         elif isinstance(image_input, bytes):
             try:
-                image = Image.open(BytesIO(image_input)).convert("RGB")
-            except Exception as e:
+                image = validate_image_bytes(image_input).image
+            except ImageFetchError as e:
                 logger.warning("Failed to open image bytes: %s", e)
                 return None
         elif isinstance(image_input, Image.Image):
@@ -95,12 +105,10 @@ class CLIPEncoder:
         return self._encode_image_impl(image)
 
     def encode_image_from_url(self, url: str) -> Optional[np.ndarray]:
-        """Load and encode image from URL."""
+        """Load an external image through the SSRF-safe fetcher and encode it."""
         try:
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-            image = Image.open(BytesIO(response.content)).convert("RGB")
+            image = fetch_search_image(url)
             return self._encode_image_impl(image)
-        except Exception as e:
-            logger.error("Failed to encode image from %s: %s", url, e)
+        except ImageFetchError as e:
+            logger.warning("Image URL rejected before encoding: %s", e.code)
             return None

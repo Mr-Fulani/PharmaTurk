@@ -19,6 +19,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
+import { safeJsonLd } from '../lib/sanitizeHtml'
 
 // Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle, добавляем fallback (Skeleton) для предотвращения CLS
 const PopularProductsCarousel = dynamic(() => import('../components/PopularProductsCarousel'), { 
@@ -321,12 +322,12 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(organizationSchema) }}
         />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteSchema) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(webSiteSchema) }}
         />
       </Head>
 

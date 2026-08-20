@@ -1,5 +1,4 @@
-// TODO: Функционал чеков временно отключен. Будет доработан позже.
-// Включает: формирование чека, отправку по email, интеграцию с админкой.
+// Authenticated order summary with printable and email receipt actions.
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -9,6 +8,7 @@ import { useTranslation } from 'next-i18next'
 import type { TFunction } from 'i18next'
 import api, { getSingleFlight } from '../lib/api'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import { escapeHtml } from '../lib/sanitizeHtml'
 
 interface OrderItem {
   id: number
@@ -80,18 +80,17 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
   const [sendState, setSendState] = useState<SendState>('idle')
   const [sendMessage, setSendMessage] = useState('')
 
-  // Восстановление языка при возврате с внешней оплаты (crypto): ?locale=ru → /ru/checkout-success
+  // Restore the locale after returning from an external payment page. Let
+  // Next.js apply its configured default-locale prefix policy.
   useEffect(() => {
     const qLocale = (router.query?.locale as string)?.toLowerCase()
-    if (qLocale === 'ru' && router.locale !== 'ru') {
+    if ((qLocale === 'ru' || qLocale === 'en') && router.locale !== qLocale) {
       const num = (router.query?.number as string) || ''
-      router.replace(`/ru/checkout-success?number=${encodeURIComponent(num)}`)
-      return
-    }
-    if (qLocale === 'en' && router.locale !== 'en') {
-      const num = (router.query?.number as string) || ''
-      router.replace(`/checkout-success?number=${encodeURIComponent(num)}`)
-      return
+      router.replace(
+        { pathname: '/checkout-success', query: { number: num } },
+        undefined,
+        { locale: qLocale },
+      )
     }
   }, [router.query?.locale, router.locale, router])
 
@@ -143,26 +142,24 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     ]
   }, [receipt, t])
 
-  // TODO: Функционал чеков временно отключен. Будет доработан позже.
   const handlePrintReceipt = () => {
     if (!receipt) return
     const html = buildReceiptDocument(receipt, router.locale || 'ru', t)
     const printWindow = window.open('', '_blank', 'width=800,height=1000')
     if (!printWindow) return
+    printWindow.opener = null
     printWindow.document.write(html)
     printWindow.document.close()
     printWindow.focus()
     printWindow.print()
   }
 
-  // TODO: Функционал чеков временно отключен. Будет доработан позже.
   const handleSendReceipt = async () => {
     if (!number || !sendEmail || sendState === 'sending') return
     setSendState('sending')
     setSendMessage('')
     try {
-      const res = await api.post(`/orders/orders/send-receipt/${number}`, {
-        email: sendEmail,
+      await api.post(`/orders/orders/send-receipt/${number}`, {
         locale: router.locale || 'ru',
       })
       setSendState('success')
@@ -320,7 +317,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                     <input
                       type="email"
                       value={sendEmail}
-                      onChange={(e) => setSendEmail(e.target.value)}
+                      readOnly
                       placeholder={t('order_success_send_receipt_placeholder') ?? ''}
                       className="flex-1 rounded-2xl border border-violet-200 bg-white/70 px-4 py-3 text-sm text-gray-700 outline-none ring-violet-500/40 focus:border-violet-500 focus:ring-2"
                     />
@@ -423,39 +420,42 @@ function StatisticCard({ label, value, accent }: { label: string; value: string;
   )
 }
 
-// TODO: Функционал чеков временно отключен. Будет доработан позже.
 function buildReceiptDocument(
   receipt: OrderReceipt,
   locale: string,
   t: TFunction<'common'>
 ) {
-  const formatter = (value: string) => `${value} ${receipt.totals.currency}`
+  const formatter = (value: string) => escapeHtml(`${value} ${receipt.totals.currency}`)
   const rows = receipt.items
     .map((item) => {
       const localizedName = getLocalizedProductName(item.product_name, t, item.product_translations, locale)
-      return `<tr><td>${localizedName}</td><td>${item.quantity}</td><td>${formatter(item.price)}</td><td>${formatter(
+      return `<tr><td>${escapeHtml(localizedName)}</td><td>${escapeHtml(item.quantity)}</td><td>${formatter(item.price)}</td><td>${formatter(
         item.total
       )}</td></tr>`
     })
     .join('')
 
-  const title = t('receipt_print_title', 'Чек заказа №')
-  const issued = t('receipt_print_issued', 'Выдан')
-  const product = t('receipt_print_product', 'Товар')
-  const qty = t('receipt_print_qty', 'Кол-во')
-  const price = t('receipt_print_price', 'Цена')
-  const totalCol = t('receipt_print_total_col', 'Сумма')
-  const totalLabel = t('receipt_print_total_label', 'Итого')
+  const title = escapeHtml(t('receipt_print_title', 'Чек заказа №'))
+  const issued = escapeHtml(t('receipt_print_issued', 'Выдан'))
+  const product = escapeHtml(t('receipt_print_product', 'Товар'))
+  const qty = escapeHtml(t('receipt_print_qty', 'Кол-во'))
+  const price = escapeHtml(t('receipt_print_price', 'Цена'))
+  const totalCol = escapeHtml(t('receipt_print_total_col', 'Сумма'))
+  const totalLabel = escapeHtml(t('receipt_print_total_label', 'Итого'))
 
   const lang = locale === 'en' ? 'en' : 'ru'
-  const issuedStr = new Date(receipt.issued_at).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU')
+  const issuedStr = escapeHtml(
+    new Date(receipt.issued_at).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU')
+  )
+  const receiptNumber = escapeHtml(receipt.number)
 
   return `
     <!DOCTYPE html>
     <html lang="${lang}">
       <head>
         <meta charSet="utf-8" />
-        <title>${title}${receipt.number}</title>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'" />
+        <title>${title}${receiptNumber}</title>
         <style>
           body { font-family: -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif; background:#f4f3ff; padding:40px; color:#1f1f35; }
           .card { max-width:800px; margin:0 auto; background:#fff; border-radius:32px; padding:40px; box-shadow:0 20px 60px rgba(31,31,53,.1); }
@@ -468,7 +468,7 @@ function buildReceiptDocument(
       </head>
       <body>
         <div class="card">
-          <h1>${title}${receipt.number}</h1>
+          <h1>${title}${receiptNumber}</h1>
           <p>${issued}: ${issuedStr}</p>
           <table>
             <thead><tr><th>${product}</th><th>${qty}</th><th>${price}</th><th>${totalCol}</th></tr></thead>

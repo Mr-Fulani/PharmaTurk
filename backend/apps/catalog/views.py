@@ -4,7 +4,9 @@ from typing import List
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone as dt_timezone
 import re
+from urllib.parse import urlsplit
 
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
@@ -16,20 +18,55 @@ from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_GET
 from django.core.cache import cache
 from django.utils import timezone
-from rest_framework import viewsets, status, filters
+from rest_framework import serializers, viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.serializers import ValidationError as FavoriteResolveValidationError
 from rest_framework.pagination import PageNumberPagination
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from rest_framework.permissions import AllowAny
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    extend_schema,
+)
 import logging
 import requests
 import hashlib
 import os
 
 from api.authentication import JWTSafeAuthentication
+from api.throttles import get_trusted_client_ip
+from apps.recommendations.services.safe_image_fetcher import (
+    ImageFetchError,
+    fetch_public_image_bytes,
+    validate_image_bytes,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _bounded_query_int(request, name, default, *, minimum=1, maximum=100):
+    """Parse an integer query parameter without exposing an unbounded DB/API cost."""
+    try:
+        value = int(request.query_params.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _get_public_variant(variant_model, slug):
+    """Resolve only variants whose parent product is also published."""
+    if not slug:
+        return None
+    return (
+        variant_model.objects.filter(
+            slug=slug,
+            is_active=True,
+            product__is_active=True,
+        )
+        .select_related('product')
+        .first()
+    )
 
 from .models import (
     Category, Brand, Product, PriceHistory, Favorite, Author,
@@ -747,6 +784,8 @@ class CategoryPagination(PageNumberPagination):
 class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями."""
 
+    permission_classes = [AllowAny]
+
     # parent-цепочка в select_related: SEO-методы модели (meta_title/og_image)
     # ходят по родителям — без этого N+1 на каждую категорию списка.
     _CATEGORY_SELECT_RELATED = (
@@ -756,8 +795,11 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         'parent__parent__parent', 'parent__parent__parent__category_type',
     )
 
+    # Keep module import side-effect free: ``_category_prefetches()`` performs
+    # schema introspection while supporting rolling deployments, so it must
+    # only run when a request actually builds the queryset.
     queryset = Category.objects.filter(is_active=True).select_related(*_CATEGORY_SELECT_RELATED).prefetch_related(
-        *_category_prefetches()
+        "translations"
     )
     serializer_class = CategorySerializer
     pagination_class = CategoryPagination
@@ -888,6 +930,8 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
 class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с брендами."""
+
+    permission_classes = [AllowAny]
     
     queryset = Brand.objects.filter(is_active=True).prefetch_related('translations')
     serializer_class = BrandSerializer
@@ -1416,6 +1460,8 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
 class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами."""
+
+    permission_classes = [AllowAny]
     
     # Теневые варианты исключены на уровне класса (защита от случаев когда get_queryset не вызывается)
     queryset = Product.objects.filter(is_active=True).exclude(
@@ -1882,7 +1928,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
     def price_history(self, request, slug=None):
         """Получить историю цен товара."""
         product = self.get_object()
-        days = int(request.query_params.get('days', 30))
+        days = _bounded_query_int(request, 'days', 30, maximum=365)
         
         service = CatalogService()
         history = service.get_price_history(product.id, days)
@@ -1907,7 +1953,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        limit = int(request.query_params.get('limit', 20))
+        limit = _bounded_query_int(request, 'limit', 20, maximum=100)
         service = CatalogService()
         products = service.get_products(search=query, limit=limit)
         serializer = self.get_serializer(products, many=True)
@@ -1973,7 +2019,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
     def similar(self, request, slug=None):
         """GET /api/catalog/products/{slug}/similar/ — похожие товары (RecSys)."""
         product = self.get_object()
-        n_results = int(request.query_params.get("limit", 12))
+        n_results = _bounded_query_int(request, "limit", 12, maximum=50)
         strategy = request.query_params.get("strategy", "balanced")
         exclude_brand = request.query_params.get("exclude_same_brand", "false").lower() == "true"
         filters = {}
@@ -2053,7 +2099,12 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
                 product.id, e, exc_info=True,
             )
             return Response(
-                {"count": 0, "strategy": strategy, "results": [], "error": str(e)},
+                {
+                    "count": 0,
+                    "strategy": strategy,
+                    "results": [],
+                    "error": "recommendations_unavailable",
+                },
                 status=status.HTTP_200_OK,
             )
 
@@ -2066,7 +2117,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
     def visually_similar(self, request, slug=None):
         """GET /api/catalog/products/{slug}/visually_similar/ — по визуалу."""
         product = self.get_object()
-        n_results = int(request.query_params.get("limit", 12))
+        n_results = _bounded_query_int(request, "limit", 12, maximum=50)
         try:
             from apps.recommendations.services.vector_engine import QdrantRecommendationEngine
             engine = QdrantRecommendationEngine()
@@ -2107,7 +2158,11 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
                 product.id, e, exc_info=True,
             )
             return Response(
-                {"count": 0, "results": [], "error": str(e)},
+                {
+                    "count": 0,
+                    "results": [],
+                    "error": "recommendations_unavailable",
+                },
                 status=status.HTTP_200_OK,
             )
 
@@ -2119,6 +2174,8 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
 
 class ClothingCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями одежды."""
+
+    permission_classes = [AllowAny]
     
     queryset = Category.objects.filter(clothing_type__isnull=False).exclude(clothing_type='').filter(is_active=True)
     serializer_class = ClothingCategorySerializer
@@ -2166,6 +2223,8 @@ class ClothingCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
 
 class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами одежды."""
+
+    permission_classes = [AllowAny]
     
     # Теневые варианты исключены на уровне класса
     queryset = ClothingProduct.objects.filter(is_active=True).exclude(
@@ -2308,7 +2367,7 @@ class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vie
         active_variant_slug = None
         obj = None
         if slug:
-            variant = ClothingVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(ClothingVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -2324,6 +2383,8 @@ class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vie
 
 class ShoeCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями обуви. Использует иерархию (category_type), не shoe_type."""
+
+    permission_classes = [AllowAny]
 
     queryset = Category.objects.none()
     serializer_class = ShoeCategorySerializer
@@ -2367,6 +2428,8 @@ class ShoeCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
 class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами обуви."""
+
+    permission_classes = [AllowAny]
     
     # Теневые варианты исключены на уровне класса
     queryset = ShoeProduct.objects.filter(is_active=True).exclude(
@@ -2516,7 +2579,7 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
         active_variant_slug = None
         obj = None
         if slug:
-            variant = ShoeVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(ShoeVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -2532,6 +2595,8 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
 
 class ElectronicsCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями электроники."""
+
+    permission_classes = [AllowAny]
     
     queryset = Category.objects.filter(device_type__isnull=False).exclude(device_type='').filter(is_active=True)
     serializer_class = ElectronicsCategorySerializer
@@ -2573,6 +2638,8 @@ class ElectronicsCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelVie
 
 class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами электроники."""
+
+    permission_classes = [AllowAny]
     
     queryset = ElectronicsProduct.objects.filter(is_active=True)
     serializer_class = ElectronicsProductSerializer
@@ -2674,6 +2741,8 @@ class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, 
 
 class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для товаров украшений (с вариантами и размерами)."""
+
+    permission_classes = [AllowAny]
     queryset = JewelryProduct.objects.filter(is_active=True)
     serializer_class = JewelryProductSerializer
     pagination_class = StandardPagination
@@ -2787,7 +2856,7 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
         active_variant_slug = None
         obj = None
         if slug:
-            variant = JewelryVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(JewelryVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -2814,6 +2883,8 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
 
 class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами мебели."""
+
+    permission_classes = [AllowAny]
     
     queryset = FurnitureProduct.objects.filter(is_active=True)
     serializer_class = FurnitureProductSerializer
@@ -2962,7 +3033,7 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
         active_variant_slug = None
         obj = None
         if slug:
-            variant = FurnitureVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(FurnitureVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -2978,6 +3049,8 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
 
 class ServiceViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с услугами."""
+
+    permission_classes = [AllowAny]
     
     queryset = Service.objects.filter(is_active=True)
     serializer_class = ServiceSerializer
@@ -3275,7 +3348,14 @@ class FavoriteViewSet(viewsets.ViewSet):
         summary="Удалить товар из избранного",
         description="Удаляет товар из избранного по ID товара",
         request=AddToFavoriteSerializer,
-        responses={200: {"detail": "Товар удален из избранного"}, 404: None},
+        responses={
+            200: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+                "required": ["detail"],
+            },
+            404: None,
+        },
         examples=[
             OpenApiExample(
                 'Запрос',
@@ -3373,7 +3453,14 @@ class FavoriteViewSet(viewsets.ViewSet):
         parameters=[
             OpenApiParameter(name="product_id", type=int, required=True, description="ID товара")
         ],
-        responses={200: {"is_favorite": True}, 404: None}
+        responses={
+            200: {
+                "type": "object",
+                "properties": {"is_favorite": {"type": "boolean"}},
+                "required": ["is_favorite"],
+            },
+            404: None,
+        }
     )
     @action(detail=False, methods=['get'], url_path='check')
     def check(self, request):
@@ -3458,7 +3545,13 @@ class FavoriteViewSet(viewsets.ViewSet):
     @extend_schema(
         summary="Получить количество товаров в избранном",
         description="Возвращает количество товаров в избранном для текущего пользователя или сессии",
-        responses={200: {"count": 5}}
+        responses={
+            200: {
+                "type": "object",
+                "properties": {"count": {"type": "integer", "minimum": 0}},
+                "required": ["count"],
+            }
+        }
     )
     @action(detail=False, methods=['get'], url_path='count')
     def count(self, request):
@@ -3500,7 +3593,7 @@ class BannerViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         ),
     )
     serializer_class = BannerSerializer
-    permission_classes = []  # Публичный доступ
+    permission_classes = [AllowAny]
     
     @extend_schema(
         summary="Получить список баннеров",
@@ -3538,89 +3631,109 @@ def proxy_image(request):
     Прокси для Instagram изображений с кешированием.
     Принимает URL изображения напрямую через параметр url.
     """
-    from urllib.parse import unquote
-
-    # Получаем URL и убираем лишнее кодирование (quote в сериализаторе мог закодировать уже закодированный %)
-    raw_url = request.GET.get('url')
-    if not raw_url:
+    image_url = (request.GET.get('url') or '').strip()
+    if not image_url:
         return JsonResponse({'error': 'url parameter required'}, status=400)
 
-    # Нормализуем URL: убираем двойное/тройное кодирование (%2525 -> %25 -> %)
-    image_url = raw_url
-    for _ in range(5):
-        prev = image_url
-        image_url = unquote(image_url)
-        if image_url == prev:
-            break
-
-    urls_to_try = [image_url]
-    mid = unquote(raw_url)
-    if mid not in urls_to_try:
-        urls_to_try.append(mid)
-    if raw_url not in urls_to_try:
-        urls_to_try.append(raw_url)
-
-    # Логирование для отладки
-    logger.info(f"Resolved URL: {image_url[:120]}...")
-    logger.info(f"Contains instagram.f: {'instagram.f' in image_url}")
-    logger.info(f"Contains cdninstagram: {'cdninstagram.com' in image_url}")
-    
-    # Разрешённые домены для прокси (Instagram, CDN проекта)
-    _ALLOWED_PROXY_DOMAINS = ('instagram.f', 'cdninstagram.com', 'cdn.mudaroba.com', 'r2.dev')
-    if not any(d in image_url for d in _ALLOWED_PROXY_DOMAINS):
-        logger.error(f"Invalid domain check failed for URL: {image_url[:100]}")
-        return JsonResponse({'error': f'Invalid domain: {image_url[:100]}...'}, status=400)
+    if not _proxy_image_host_allowed(image_url):
+        return JsonResponse({'error': 'invalid image URL'}, status=400)
     
     # Создаем ключ кеша
-    cache_key = f"insta_img_{hashlib.md5(image_url.encode()).hexdigest()}"
+    cache_key = f"insta_img_{hashlib.sha256(image_url.encode()).hexdigest()}"
     
     # Проверяем кеш
     cached_response = cache.get(cache_key)
-    if cached_response:
-        return HttpResponse(cached_response, content_type='image/jpeg')
+    if isinstance(cached_response, dict):
+        return _proxy_image_response(
+            cached_response.get('body', b''),
+            cached_response.get('content_type', 'image/jpeg'),
+        )
+
+    if not _proxy_image_cache_miss_allowed(request):
+        response = JsonResponse({'error': 'rate_limited'}, status=429)
+        response['Retry-After'] = '60'
+        return response
     
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Referer': 'https://www.instagram.com/',
-            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-        }
-        response = None
-        for candidate in urls_to_try:
-            try:
-                r = requests.get(candidate, headers=headers, timeout=10)
-                if r.status_code == 200:
-                    response = r
-                    image_url = candidate
-                    break
-            except Exception:
-                continue
-        if response is None:
-            try:
-                response = requests.get(image_url, headers=headers, timeout=10)
-            except Exception:
-                response = None
+        body, content_type = fetch_public_image_bytes(image_url)
+        validate_image_bytes(body, expected_content_type=content_type)
+        if len(body) <= _PROXY_IMAGE_MAX_CACHE_BYTES:
+            cache.set(
+                cache_key,
+                {'body': body, 'content_type': content_type},
+                86400,
+            )
+        return _proxy_image_response(body, content_type)
+    except ImageFetchError:
+        return _proxy_image_placeholder()
 
-        if response is not None and response.status_code == 200:
-            # Content-Type из ответа или по расширению
-            ct = response.headers.get('Content-Type', '').split(';')[0].strip()
-            if not ct or ct == 'application/octet-stream':
-                path_lower = (image_url.split('?')[0] or '').lower()
-                ext_map = {'.webp': 'image/webp', '.png': 'image/png', '.gif': 'image/gif',
-                           '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg'}
-                ct = next((ext_map[e] for e in ['.webp', '.png', '.gif', '.jpeg', '.jpg'] if path_lower.endswith(e)), 'image/jpeg')
-            cache.set(cache_key, response.content, 86400)
-            django_response = HttpResponse(response.content, content_type=ct)
-            django_response['Cache-Control'] = 'public, max-age=2592000, immutable'
-            django_response['Access-Control-Allow-Origin'] = '*'
-            return django_response
 
-        # При любой ошибке CDN (404, 400, 403, 500 и т.д.) возвращаем placeholder
-        gif_1x1 = b'GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
-        return HttpResponse(gif_1x1, content_type='image/gif')
-            
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+_PROXY_IMAGE_PUBLIC_SUFFIXES = (
+    'cdninstagram.com',
+    'fbcdn.net',
+)
+
+_PROXY_IMAGE_MISSES_PER_MINUTE = 30
+_PROXY_IMAGE_MAX_CACHE_BYTES = 1024 * 1024
+
+
+def _proxy_image_cache_miss_allowed(request):
+    """Bound unique upstream fetches while allowing already cached media freely."""
+    client_ip = get_trusted_client_ip(request)
+    if not client_ip:
+        return False
+    from time import time
+
+    bucket = int(time() // 60)
+    digest = hashlib.sha256(client_ip.encode()).hexdigest()[:20]
+    key = f'proxy_image_miss:{bucket}:{digest}'
+    if cache.add(key, 1, timeout=70):
+        return True
+    try:
+        return cache.incr(key) <= _PROXY_IMAGE_MISSES_PER_MINUTE
+    except (ValueError, TypeError):
+        return False
+
+
+def _hostname_matches(hostname: str, domain: str) -> bool:
+    return hostname == domain or hostname.endswith(f'.{domain}')
+
+
+def _proxy_image_host_allowed(url: str) -> bool:
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return False
+    if parsed.scheme.lower() != 'https' or not parsed.hostname or parsed.username or parsed.password:
+        return False
+    hostname = parsed.hostname.rstrip('.').lower()
+    configured_hosts = {'cdn.mudaroba.com'}
+    for configured_url in (
+        getattr(settings, 'R2_PUBLIC_URL', ''),
+        getattr(settings, 'R2_CONFIG', {}).get('public_url', ''),
+    ):
+        try:
+            configured_host = urlsplit(configured_url).hostname
+        except (TypeError, ValueError):
+            configured_host = None
+        if configured_host:
+            configured_hosts.add(configured_host.rstrip('.').lower())
+    return hostname in configured_hosts or any(
+        _hostname_matches(hostname, suffix)
+        for suffix in _PROXY_IMAGE_PUBLIC_SUFFIXES
+    )
+
+
+def _proxy_image_response(body: bytes, content_type: str) -> HttpResponse:
+    response = HttpResponse(body, content_type=content_type)
+    response['Cache-Control'] = 'public, max-age=2592000, immutable'
+    response['Access-Control-Allow-Origin'] = '*'
+    return response
+
+
+def _proxy_image_placeholder() -> HttpResponse:
+    gif_1x1 = b'GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+    return HttpResponse(gif_1x1, content_type='image/gif')
 
 
 # Content-Type по расширению для прокси R2-медиа
@@ -3655,6 +3768,37 @@ def _proxy_media_image_limit_reason(file_obj, image):
     if pixels > _PROXY_MEDIA_MAX_SOURCE_PIXELS:
         return f'source image is {width}x{height} ({pixels} pixels)'
     return None
+
+
+_PROXY_MEDIA_PUBLIC_PREFIXES = (
+    'avatars/',
+    'brands/',
+    'categories/',
+    'marketing/',
+    'pages/',
+    'products/',
+    'reviews/',
+    'services/',
+    'testimonials/',
+)
+
+
+def _is_public_proxy_media_key(key):
+    """Keep private/default-storage namespaces such as receipts and temp out of the proxy."""
+    normalized = (key or '').lstrip('/')
+    removable_prefixes = ['media']
+    r2_prefix = (getattr(settings, 'R2_PREFIX', '') or '').strip('/')
+    if r2_prefix:
+        removable_prefixes.append(r2_prefix)
+    changed = True
+    while changed:
+        changed = False
+        for prefix in removable_prefixes:
+            marker = f'{prefix}/'
+            if normalized.startswith(marker):
+                normalized = normalized[len(marker):]
+                changed = True
+    return normalized.startswith(_PROXY_MEDIA_PUBLIC_PREFIXES)
 
 
 @require_GET
@@ -3738,6 +3882,10 @@ def proxy_media(request):
                 break
 
     if not resolved_path:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    if not _is_public_proxy_media_key(resolved_path):
+        logger.warning('proxy_media rejected non-public storage key')
         return JsonResponse({'error': 'Not found'}, status=404)
 
     try:
@@ -3848,7 +3996,7 @@ def proxy_media(request):
         size = file_obj.size
         
         range_header = request.META.get('HTTP_RANGE', '').strip()
-        range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+        range_match = re.fullmatch(r'bytes=(\d+)-(\d*)', range_header)
         
         if range_match:
             first_byte, last_byte = range_match.groups()
@@ -3856,6 +4004,12 @@ def proxy_media(request):
             last_byte = int(last_byte) if last_byte else size - 1
             if last_byte >= size:
                 last_byte = size - 1
+            if first_byte >= size or last_byte < first_byte:
+                file_obj.close()
+                response = HttpResponse(status=416)
+                response['Content-Range'] = f'bytes */{size}'
+                response['Accept-Ranges'] = 'bytes'
+                return response
             length = last_byte - first_byte + 1
             
             # Используем обертку для ограничения стриминга
@@ -3875,9 +4029,9 @@ def proxy_media(request):
         response['X-Accel-Buffering'] = 'no'
         return response
 
-    except Exception as e:
+    except Exception:
         logger.exception('proxy_media error for path %s', path)
-        return JsonResponse({'error': str(e)}, status=500)
+        return JsonResponse({'error': 'media_unavailable'}, status=500)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -3886,6 +4040,8 @@ def proxy_media(request):
 
 class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами-книгами."""
+
+    permission_classes = [AllowAny]
 
     queryset = BookProduct.objects.filter(is_active=True)
     serializer_class = BookProductSerializer
@@ -4006,7 +4162,7 @@ class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         active_variant_slug = None
         obj = None
         if slug:
-            variant = BookVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(BookVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -4026,6 +4182,8 @@ class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
 class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами парфюмерии."""
+
+    permission_classes = [AllowAny]
 
     queryset = PerfumeryProduct.objects.filter(is_active=True)
     serializer_class = PerfumeryProductSerializer
@@ -4147,7 +4305,7 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
         active_variant_slug = None
         obj = None
         if slug:
-            variant = PerfumeryVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(PerfumeryVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -4167,6 +4325,8 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
 
 class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """Базовый ViewSet для простых доменов без вариантов."""
+
+    permission_classes = [AllowAny]
     pagination_class = StandardPagination
     lookup_field = 'slug'
 
@@ -4349,7 +4509,7 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
     def analogs(self, request, slug=None):
         """GET /api/catalog/medicines/{slug}/analogs/ — препараты-аналоги по active_ingredient / atc_code."""
         product = self.get_object()
-        limit = min(int(request.query_params.get('limit', 10)), 50)
+        limit = _bounded_query_int(request, 'limit', 10, maximum=50)
 
         # Предпочитаемая валюта (как в ProductSerializer.get_prices_in_currencies)
         preferred_currency = (
@@ -4795,7 +4955,7 @@ class HeadwearProductViewSet(_SimpleDomainViewSet):
         active_variant_slug = None
         obj = None
         if slug:
-            variant = HeadwearVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(HeadwearVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -4825,7 +4985,7 @@ class UnderwearProductViewSet(_SimpleDomainViewSet):
         active_variant_slug = None
         obj = None
         if slug:
-            variant = UnderwearVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(UnderwearVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -4855,7 +5015,7 @@ class IslamicClothingProductViewSet(_SimpleDomainViewSet):
         active_variant_slug = None
         obj = None
         if slug:
-            variant = IslamicClothingVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            variant = _get_public_variant(IslamicClothingVariant, slug)
             if variant:
                 obj = variant.product
                 active_variant_slug = variant.slug
@@ -4893,6 +5053,21 @@ _SITEMAP_DOMAIN_MAP = {
 }
 
 
+class SitemapProductSerializer(serializers.Serializer):
+    slug = serializers.CharField()
+    product_type = serializers.CharField()
+    updated_at = serializers.DateTimeField(allow_null=True)
+
+
+class SitemapProductsResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    results = SitemapProductSerializer(many=True)
+
+
+class SitemapErrorSerializer(serializers.Serializer):
+    error = serializers.CharField()
+
+
 class SitemapProductsView(_APIView):
     """Лёгкий эндпоинт для sitemap.xml — только slug + updated_at, без тяжёлой сериализации.
 
@@ -4900,6 +5075,18 @@ class SitemapProductsView(_APIView):
     """
     permission_classes = [_AllowAny]
 
+    @extend_schema(
+        summary="Получить товары для sitemap.xml",
+        parameters=[
+            OpenApiParameter(name="domain", type=str, required=True),
+            OpenApiParameter(name="page", type=int, required=False, default=1),
+            OpenApiParameter(name="page_size", type=int, required=False, default=500),
+        ],
+        responses={
+            200: SitemapProductsResponseSerializer,
+            400: SitemapErrorSerializer,
+        },
+    )
     def get(self, request):
         domain = request.query_params.get('domain', '').strip()
         try:

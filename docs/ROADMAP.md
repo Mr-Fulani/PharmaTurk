@@ -1,139 +1,305 @@
-# Роадмап улучшений Mudaroba (июнь 2026)
+# Roadmap Mudaroba
 
-Результат полного аудита проекта: SEO, производительность, бизнес-логика, инфраструктура.
-Приоритеты: **P0** — теряем индексацию/деньги прямо сейчас; **P1** — серьёзный эффект, делать в ближайший спринт; **P2** — техдолг и оптимизации; **P3** — желательно.
+Обновлено: **21 августа 2026 года** по результатам аудита кода, конфигурации и документации.
 
----
+Этот документ разделяет:
 
-## P0 — Критично (индексация ломается прямо сейчас)
+1. актуальные открытые задачи — то, что ещё требует работы или проверки;
+2. завершённые изменения текущего аудита;
+3. исторический snapshot июня 2026 года — полезный контекст, но не автоматически актуальный backlog.
 
-### P0.1 Редиректы и дубли с префиксом /ru ✅ (исправлено 2026-06-12)
-`frontend/src/pages/product/[[...slug]].tsx:2647`:
-```ts
-const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
-```
-Для дефолтной локали `ru` это давало редиректы на `/ru/product/...`. Проверка на проде-сборке показала: Next 14 (pages router) отдаёт `/ru/*` как **200-дубликат** той же страницы (не 404, как предполагалось изначально). Итог: canonical-редиректы вели на дублирующую форму URL, противоречащую canonical-тегу самой страницы, а `/ru/...`-дубли могли индексироваться — это и есть «страницы в индексе без учёта локализации».
+Приоритеты: **P0** — блокирует безопасный production-релиз; **P1** — ближайший спринт; **P2** — системный техдолг; **P3** — улучшение продукта.
 
-**Фикс (сделан):** (1) `localePrefix` строится только для не-дефолтной локали — в карточке товара и в редиректах shoes/furniture в `categories/[slug].tsx`; (2) nginx 301 `/ru/*` → `/*` (внутри Next это не решается — i18n-нормализация срезает префикс до middleware/redirects; проверено экспериментально).
+## Текущий baseline
 
-### P0.2 Любая ошибка бэкенда = 404 для Googlebot
-`product/[[...slug]].tsx:2728`: `catch { return { notFound: true } }`. Таймаут/рестарт бэкенда → бот получает 404 → страница выкидывается из индекса. То же надо проверить на категориях/брендах.
+- продукт и API называются Mudaroba; `PharmaTurk` остаётся историческим именем репозитория;
+- Python 3.12.13, Django 5.2.17;
+- Node.js 22.23.2, Next.js 15.5.21;
+- PostgreSQL 15.18, Redis 7.4.10, Qdrant 1.18.2;
+- OpenSearch удалён как неиспользуемый;
+- каталог содержит 19 корневых доменов;
+- криптооплата реализована через CoinRemitter;
+- VAPI и AI API доступны только staff;
+- seed каталога должен выполняться только явно;
+- production settings используют fail-fast вместо опасных fallback.
 
-**Фикс:** различать ответы: 404 от API → `notFound`; сетевые ошибки/5xx → пробрасывать исключение (Next отдаст 500, бот вернётся позже).
+## P0 — release gates
 
-### P0.3 Canonical захардкожен на RU-версию на ряде страниц
-EN-версии этих страниц никогда не попадут в индекс (canonical указывает на RU):
-- `testimonials/index.tsx:538` — `${SITE_URL}/testimonials`
-- `testimonials/[id].tsx:35` — без локального префикса
-- `how-to-order-medicines.tsx:28` — захардкожен
-- `categories/[slug]/works.tsx:28` — без префикса локали и **без hreflang**
-- `categories/index.tsx` — **canonical отсутствует вообще**
+### P0.1 Полная интеграционная проверка на PostgreSQL
 
-**Фикс:** единый паттерн `localePrefix = router.locale === router.defaultLocale ? '' : '/'+router.locale` (как уже сделано в `brands/index.tsx`, `categories/[slug].tsx`).
+Чистая PostgreSQL 15.18 и полный suite подтверждены 21 августа 2026 года:
+**963 passed**, 4 deprecation warnings, migration drift отсутствует. Dedup и
+создание partial unique indexes корзины разделены на миграции `0008`/`0009`.
+Остаётся прогон миграций поверх production-like snapshot и staging payment E2E.
 
-### P0.4 Компонент `SEO.tsx` сломан и никем не используется
-`frontend/src/components/SEO.tsx:55-60` — canonical **инвертирован** (ru → `/ru/...`, en → без префикса), т.е. ровно наоборот к реальному роутингу. Сейчас он мёртвый код, но это мина: первый, кто его подключит, поломает страницу.
+Критерии готовности:
 
-**Фикс:** исправить логику canonical, добавить hreflang, и перевести все страницы на этот единый компонент (сейчас каждая страница реализует мету сама — отсюда и разнобой из P0.3).
+- миграции применяются с нуля и поверх production-like snapshot;
+- повторный и конкурентный webhook не списывает остаток дважды;
+- нет известных payment/order failures в карантине CI;
+- `makemigrations --check --dry-run` не создаёт новых файлов.
 
----
+### P0.2 Container и staging smoke-test
 
-## P1 — Высокий приоритет (ближайший спринт)
+Локальный gate повторно выполнен 21 августа 2026 года отдельными одноразовыми
+`mudaroba-predeploy-*` и `mudaroba-smoke-*` projects: Compose merge,
+PostgreSQL/Redis/Qdrant, SHA-tagged production images, non-root runtime,
+одноразовые migrations, Gunicorn readiness/liveness, Nginx security headers и
+canonical redirect подтверждены. Временные containers и volumes удалены.
+Backend использует воспроизводимый `torch=2.13.0+cpu`; frontend dependency audit
+— 0 vulnerabilities.
 
-### P1.1 SSR-резолв товара = до 20 последовательных запросов
-`backend/apps/catalog/services/product_resolve.py` перебирает ServiceViewSet + 18 доменных ViewSet + generic Product **последовательно**, каждый — полный DRF dispatch с запросами в БД. Это горячий путь каждого открытия карточки.
+До релиза остаётся повторить container gate на CI runner с гарантированным
+запасом диска и затем на staging с production secret injection/ingress.
 
-**Фикс:** одним запросом определить тип по slug (общая таблица/запрос `Product.objects.filter(slug=...).values('product_type')` + слаги доменных моделей), затем диспатчить сразу в нужный ViewSet. Кэшировать `slug → product_type` в Redis.
+### P0.3 E2E оплаты на staging
 
-### P1.2 HTML не кэшируется — каждый хит бота бьёт по Django
-`s-maxage` стоит только на главной (60с). Cloudflare по умолчанию **не кэширует HTML** — нужны Cache Rules. Карточки/категории рендерятся заново на каждый запрос.
+Провести реальный sandbox/минимальный CoinRemitter-сценарий:
 
-**Фикс:** `Cache-Control: public, s-maxage=300, stale-while-revalidate=86400` на товары/категории/бренды + Cache Rule в Cloudflare на кэширование HTML с уважением заголовков. Альтернатива — ISR, но при SSR-зависимости от валюты-cookie сначала вынести валюту в клиент.
+1. создать заказ и инвойс;
+2. подтвердить совпадение provider id, order binding, валюты и суммы;
+3. принять pending/paid/expired webhook;
+4. повторить webhook и убедиться в идемпотентности;
+5. смоделировать provider timeout и неверный payload;
+6. проверить остатки, статус заказа, уведомление и чек.
 
-### P1.3 Медиа и видео идут через sync-воркеры gunicorn
-`proxy_media` (`catalog/views.py:3125`) стримит видео и ресайзит картинки через 4 sync-воркера. Один зритель видео занимает воркер на всё время просмотра → API голодает. Плюс на каждый запрос (даже при попадании в кэш ресайза) сначала делаются existence-проверки в R2 (`resolve_existing_media_storage_key`).
+Добавлены read-only команда `reconcile_coinremitter` и эксплуатационный runbook.
+До релиза всё ещё нужен реальный staging-прогон; исправление drift должно идти
+через подлинный webhook/утверждённую процедуру, а не прямую запись статуса в БД.
 
-**Фикс:**
-1. Картинки/видео отдавать напрямую с `cdn.mudaroba.com` (R2 public + Cloudflare) — proxy_media оставить только как fallback.
-2. В proxy_media проверять кэш ресайза **до** обращения к R2.
-3. gunicorn → `--worker-class gthread --threads 8` (или отдельный пул под медиа).
+### P0.4 Production secrets и TLS
 
-### P1.4 Дубли и конфликт меты из `_document.tsx`
-`_document.tsx` глобально вставляет `og:url`, `og:type`, hreflang — страницы вставляют то же самое со своими значениями. Дубли `og:url` с разными значениями → соцсети/боты берут случайный. hreflang проставляется даже на noindex-страницы (cart, profile).
+Перед включением production-профиля:
 
-**Фикс:** убрать из `_document` всё, что должно задаваться постранично (og:url, og:type, hreflang); оставить только site_name, theme-color, верификации, GTM.
+- ротировать все внешние credentials, обнаруженные в локальном ignored `.env`
+  (включая Telegram, email/API, Cloudflare/R2, OAuth, AI, платежные и parser
+  integrations), и проверить audit logs провайдеров; значения в отчёт не
+  копируются;
+- выдать уникальные `DJANGO_SECRET_KEY`, DB/R2/CoinRemitter/OpenAI credentials;
+- оставить Redis доступным только во внутренней сети или включить ACL/password
+  на управляемом Redis; broker/cache/result должны использовать отдельные
+  targets либо логические DB;
+- проверить явные `DJANGO_ALLOWED_HOSTS`, CORS и CSRF origins;
+- сначала подтвердить корректный `X-Forwarded-Proto`, затем включить SSL redirect;
+- включить HSTS поэтапно, preload — только после проверки всех поддоменов;
+- убедиться, что `.env`, логи и CI artifacts не содержат секретов.
 
-### P1.5 Два расходящихся sitemap
-`backend/api/seo.py` — второй sitemap без hreflang и без `/en`-URL, со своим списком BASE_PRODUCT_TYPES (уже разъехался с фронтовым: нет `furniture`, `books`, `perfumery`). Если он где-то отдаётся — боты получают противоречивые данные.
+Публичный smoke 20 августа подтвердил валидный TLS 1.3 сертификат apex/wildcard,
+но `http://mudaroba.com` и `http://www.mudaroba.com` отвечают 200 вместо HTTPS
+redirect, HSTS отсутствует, а проектные Nginx headers не видны. Production
+backend также отстаёт от проверенной ревизии: `/api/live/` отвечает 404, а
+`/api/health/` возвращает старый контракт только с `db`.
 
-**Фикс:** оставить один источник (фронтовый `sitemap.xml.tsx`), бэкендовый удалить или закрыть. Списки типов вынести в один источник правды (бэкенд отдаёт, фронт потребляет).
+CI теперь выполняет blocking Gitleaks scan по полной доступной Git history.
+Локальный Gitleaks 8.28.0 просканировал 761 commits и нашёл 5 curl-auth
+совпадений в одном достижимом commit со старыми AI-инструкциями. Проверка
+21 августа подтвердила, что все пять значений — невалидные localhost-only JWT
+placeholders, а не внешние credentials. Для них добавлены только точные
+fingerprints в `.gitleaksignore`; повторный history scan чистый. Rewrite history
+и ротация Telegram/email/Resend/VK/Serper по этим срабатываниям не требуются.
 
-### P1.6 Безопасность настроек
-- `ALLOWED_HOSTS` default `["*"]`, `SECRET_KEY` default `"please-change-me"` (`config/settings.py:22-23`) — убедиться, что в проде заданы env, и убрать опасные дефолты (fail-fast при отсутствии).
-- Открытых критичных портов нет (уже закрыто ранее) — оставить как есть.
+Локальный `.env` игнорируется Git и его права в ходе аудита ужесточены с `0644`
+до `0600`. Текущие чувствительные значения не найдены в Git history, локальных
+логах или неигнорируемых артефактах; ротация нужна только при иных признаках
+экспозиции или по регламентному сроку. В
+этом файле также отсутствуют явные `REDIS_CACHE_URL` и
+`CELERY_RESULT_BACKEND_URL`; production fail-fast не позволит стартовать с
+общим Redis target.
 
-### P1.7 Нет CI
-Ни одного workflow. Тесты есть, но запускаются вручную.
+### P0.5 Очистка legacy PDF-чеков
 
-**Фикс:** GitHub Actions: lint (flake8 + eslint + tsc) → тесты (pytest + node) → build обоих образов. Блокировать merge в main без зелёного CI.
+Новый код пишет и читает чеки только из HMAC-namespaced ключей. Безопасный
+inventory внешнего R2 выполнен 20 августа без вывода ключей: inspected=6,
+legacy=6, bytes=125568. До релиза эти объекты нужно удалить либо переместить
+после backup/retention decision и проверки публичности PII namespace. Команда
+`cleanup_legacy_receipts` требует `--apply`, точного `--confirm-bucket` и
+непредсказуемого `--quarantine-prefix`; сначала создаёт recoverable-копии всех
+объектов и не удаляет источники при ошибке копирования.
 
----
+## P1 — ближайший спринт
 
-## P2 — Средний приоритет (техдолг)
+### P1.1 OpenAPI как проверяемый контракт
 
-### P2.1 Холодный кэш после каждого деплоя
-`docker-entrypoint.sh` на каждый старт: `poetry install` (зависимость от сети при буте), `manage.py clear_cache` (**вайпит весь Redis** — включая 30-дневный кэш ресайзов картинок → всплеск латентности после каждого рестарта), `collectstatic`.
+Схема теперь генерируется без ошибок и защищена regression test; CI не допускает
+рост выше текущего baseline **605 warnings (598 unique)**. Свести их к нулю или
+к короткому документированному allowlist. При каждом исправлении снижать
+`OPENAPI_UNIQUE_WARNING_BASELINE`, генерировать схему в CI и сравнивать
+изменения и не хранить заведомо устаревший `schema.yml`.
 
-**Фикс:** зависимости ставить только при сборке образа; clear_cache убрать (версионировать ключи кэша вместо вайпа); collectstatic — в сборку.
+Особое внимание: permissions, ограничения VAPI/AI serializers, throttled auth/upload responses, health `503` и webhook errors.
 
-### P2.2 Соединения с БД
-`CONN_MAX_AGE` не задан → новое подключение к Postgres на каждый запрос. Поставить `CONN_MAX_AGE=60` + `CONN_HEALTH_CHECKS=True`.
+### P1.2 SEO-аудит после обновления Next.js
 
-### P2.3 Слаги с дублями лечатся кодом, а не в данных
-`deduplicateSlug` («cap-cap» → «cap») продублирован в 3 местах: `frontend/src/lib/urls.ts`, `sitemap.xml.tsx`, `backend/.../product_resolve.py`. Это патч поверх грязных данных от парсеров.
+Повторно проверить на Next.js 15.5.21:
 
-**Фикс:** data-миграция, чистящая слаги в БД + валидация слага при создании (парсеры, админка, AI-пайплайн). После этого код дедупликации удалить.
+- только `404` API превращается в `notFound`, а timeout/5xx остаются временной ошибкой;
+- canonical/hreflang для ru без префикса и en с `/en`;
+- отсутствие дублей `og:url`/hreflang из `_document`;
+- единый sitemap, trailing slash и `/ru/*` redirect;
+- noindex для cart/checkout/profile/auth/search/pagination.
 
-### P2.4 Главная страница: серийная пагинация брендов в SSR — ✅ СДЕЛАНО (2026-07)
-`index.tsx` переведён на один запрос `page_size=1000`; тот же паттерн убран из `brands/index.tsx` и `brand/[slug].tsx` (там бренд берётся точечно по slug). While-циклов пагинации в gSSP не осталось.
+Проверка должна включать rendered HTML, а не только чтение JSX.
 
-### P2.5 nginx
-- `/media/*` идёт двойным прокси: nginx → Next rewrite → Django. Добавить `location /media/ { proxy_pass http://backend:8000; }`.
-- Кэширующий слой для `/api/catalog/proxy-media` (proxy_cache) — снять нагрузку с Django.
+### P1.3 Производительность product resolve и SSR
 
-### P2.6 Гигантские компоненты
-`product/[[...slug]].tsx` — 2731 строк, `categories/[slug].tsx` — 2325, `catalog/views.py` — 4338, `serializers.py` — 7384. Разбивать при каждом следующем заходе в файл (правило бойскаута), без отдельного «большого рефакторинга».
+Убрать последовательный перебор всех доменных ViewSet при resolve slug. Целевая схема — единый реестр `slug -> domain type -> id`, затем один прямой dispatch. Добавить query-count и latency tests.
 
-### P2.7 Мелкие SEO-несоответствия
-- Главная: canonical en `https://site/en` vs hreflang `https://site/en/` — расхождение в трейлинг-слэше.
-- `sitemap.xml.tsx:186` — переменные перепутаны местами (`[enPath, ruPath]` при сигнатуре `buildUrl(ruPath, enPath)`); сейчас пути совпадают, но это ловушка.
-- Sitemap XML не кэшируется Cloudflare по умолчанию (HTML/XML вне default cache) — добавить Cache Rule.
+Для публичных SSR-страниц определить cache policy (`s-maxage`/`stale-while-revalidate`) и проверить Cloudflare Cache Rules. Персональную валюту и корзину не кэшировать в общем HTML.
 
-### P2.8 JSON-LD товара неполный
-Нет `aggregateRating`/`review` (отзывы в системе есть!), `priceValidUntil`, `itemCondition`. Рейтинг в сниппете Google заметно повышает CTR.
+### P1.4 Медиа вне request workers
 
-### P2.9 Персональные рекомендации на главной — отложено
+Основной путь изображений/видео должен идти через R2/CDN. Django proxy оставить контролируемым fallback с cache-first, range support, размерными лимитами и отдельными метриками. Не допускать длительного video streaming через API workers.
 
-Компонент и API существуют, но автоматическое формирование
-`UserEmbedding.preference_vector` не реализовано: метод
-`update_from_behavior()` остаётся заглушкой. Поэтому API почти всегда
-возвращает `based_on: "trending"`, а фронтенд намеренно скрывает эту выдачу,
-чтобы она не дублировала «Хиты продаж».
+### P1.5 Наблюдаемость
 
-**Не включать блок простым удалением проверки `basedOn === 'trending'`.**
-Сначала нужно подключить сбор пользовательских сигналов, расчёт и фоновое
-обновление профиля, фильтрацию дублей/вариантов, тесты и feature flag.
+В репозитории подтверждены Prometheus endpoint, JSON logging и опциональный Sentry. Grafana, ELK и готовые dashboards в состав проекта не входят.
 
-Полный план и критерии готовности:
-[`docs/PERSONALIZED_RECOMMENDATIONS.md`](PERSONALIZED_RECOMMENDATIONS.md).
+Нужно добавить:
 
----
+- dashboard/alerts для 5xx, p95/p99, DB pool, очередей Celery и payment failures;
+- correlation/request id в web и tasks;
+- alert на backlog/retry/dead-letter-like состояния;
+- synthetic checks для homepage, catalog, checkout readiness и webhook reachability;
+- runbook с владельцем каждого алерта.
 
-## P3 — Желательно
+### P1.6 Тестовые и lint-gates
 
-- **Merchant-фиды:** YML уже есть (`views_yml.py`) — добавить Google Merchant (XML) фид для бесплатных листингов Google Shopping.
-- **Структурированный лог запросов** (`django-structlog` или middleware с длительностью) + алёрты на 5xx.
-- **Мониторинг Core Web Vitals** (CrUX / отчёт PageSpeed по крону) и Search Console API — автоматический контроль выпадения страниц из индекса.
-- **Очистка корня репозитория:** ~30 MD-документов в корне → переместить в `docs/`, устаревшие удалить.
-- **Архитектура каталога:** 18 доменных моделей с теневыми generic-строками — стратегически двигаться к slug-реестру (единая таблица slug → тип → id), это упростит resolve, sitemap и валидацию.
-- **Тег релизов:** начать тегировать прод-деплои (`v2026.06.1`), чтобы был быстрый откат и понятный changelog.
+Добавлены schema, receipt-isolation, trusted-IP throttle и критические permission
+tests. Flake8 остаётся информационным из-за большого legacy-baseline. Остаётся:
+
+- завершить permission matrix для всех API routes;
+- frontend tests visual search ошибок `413/415/429`;
+- заменить 44 оставшихся `<img>` (hooks warnings уже закрыты), снижая обязательный
+  `--max-warnings 44`, и обновить deprecated ESLint 8; online audit полного и
+  production-only дерева уже чист;
+- зафиксировать flake8 baseline по каталогам, запретить рост и постепенно
+  перевести проверку в обязательный gate.
+
+### P1.7 Надёжность checkout/payment orchestration
+
+Создание CoinRemitter invoice сейчас выполняется во время открытой DB
+транзакции. Если провайдер создаст invoice, а локальная транзакция затем
+откатится, останется orphan invoice. Перевести поток на pending order +
+идемпотентный provider request/outbox, добавить reconciliation job и метрику
+расхождений.
+
+### P1.8 Browser security policy
+
+Security headers включены, но строгий CSP пока не развёрнут из-за inline-кода
+Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-only, собрать
+нарушения, затем включить enforcement без `unsafe-inline` для пользовательского
+контента.
+
+## P2 — архитектура и техдолг
+
+### P2.1 Унификация каталога
+
+19 доменных моделей и связанные generic-строки создают сложность в resolve, sitemap, favorites и serializers. Планировать постепенный slug registry и единый контракт domain adapters, без большого одномоментного переписывания.
+
+### P2.2 Нормализация slug
+
+Устранить дублирующий `deduplicateSlug` data-миграцией и валидацией на всех входах: admin, parser, VAPI и AI. Старые URL сохранить через таблицу redirects.
+
+### P2.3 Декомпозиция крупных файлов
+
+Разбивать `catalog/views.py`, большие serializers и frontend product/category pages при каждом функциональном изменении. Цель — изолированные domain modules и тестируемые selectors/services, а не механический split без границ ответственности.
+
+### P2.4 Персональные рекомендации
+
+Не показывать trending как «персональную» выдачу. Сначала реализовать пользовательские сигналы, обновление embedding, privacy/retention policy, дедупликацию вариантов, feature flag и offline/online quality metrics. Критерии: [PERSONALIZED_RECOMMENDATIONS.md](PERSONALIZED_RECOMMENDATIONS.md).
+
+### P2.5 Документация и релизы
+
+- сократить множество пересекающихся Markdown-файлов в корне;
+- каждый legacy-документ либо актуализировать, либо явно пометить датой/статусом;
+- вести CHANGELOG и теги `vYYYY.MM.N`;
+- для каждого production deploy хранить проверяемый checklist и rollback target.
+
+### P2.6 Потоковые выгрузки и privileged ingestion
+
+- YML feed сейчас строит XML целиком и создаёт риск памяти/N+1; генерировать его
+  фоново, хранить готовый объект и отдавать с ETag;
+- унифицировать оставшиеся privileged download paths (`catalog/signals.py`,
+  `parser_media_handler.py`, `vk_market_sync.py`) с bounded/pinned safe fetcher;
+- на масштабе вынести broker/cache/result из логических Redis DB в физически
+  раздельные managed instances.
+
+## P3 — продуктовые улучшения
+
+- Google Merchant feed поверх уже существующего YML-контракта;
+- Core Web Vitals/CrUX и Search Console monitoring;
+- автоматизированная проверка ru/en structured data;
+- quality dashboard рекомендаций и визуального поиска;
+- SLO для checkout, платежей и freshness каталога.
+
+## Завершено в аудите августа 2026
+
+### Платежи
+
+- webhook больше не доверяет входному статусу: invoice повторно читается через авторизованный CoinRemitter API;
+- проверяются identity, order binding, сумма, валюта и paid amount;
+- транзакция и row locks защищают от двойного списания остатков;
+- повтор webhook идемпотентен, provider outage возвращает retryable error;
+- исправлена передача `Decimal` и хранение суммы/валюты заказа.
+
+### Доступ и входные данные
+
+- глобальный DRF default изменён на `IsAuthenticated`;
+- публичные endpoints открыты явно;
+- VAPI/AI требуют staff, testimonial create — авторизацию;
+- добавлена строгая сериализация query/body параметров VAPI и AI;
+- login/token endpoints и загрузки имеют отдельные throttles.
+
+### Загрузка изображений
+
+- общий safe fetcher закрывает private/mixed DNS, DNS rebinding, userinfo и нестандартные порты;
+- redirect/download/pixel limits ограничены;
+- проверяются реальный формат и соответствие MIME;
+- temp uploads и visual search имеют server/client limits и безопасные ошибки;
+- тяжёлые ML-модели загружаются лениво.
+
+### Production defaults и инфраструктура
+
+- production запускается fail-fast при placeholder secret или wildcard hosts;
+- TLS/HSTS стали управляемыми env, cookies secure вне debug;
+- readiness отделён от liveness;
+- DB/Redis connection timeouts ограничены, а stateful dev-порты привязаны к
+  `127.0.0.1`;
+- зависимости frontend/backend устанавливаются воспроизводимо из lock-файлов;
+- версии runtime/images выровнены и Qdrant зафиксирован;
+- OpenSearch удалён как неиспользуемый;
+- зависимости больше не ставятся при production boot, Redis cache не очищается при каждом старте;
+- включены persistent PostgreSQL connections;
+- CI проверяет frontend, backend, зависимости, миграции и Compose config.
+- backend image build получает безопасное build-only окружение и не конфликтует
+  с production fail-fast;
+- новые PDF-чеки используют HMAC namespace, legacy predictable fallback удалён.
+
+## Исторический snapshot: июнь 2026
+
+Ниже — статус пунктов прежнего аудита. Номера сохранены для ссылок из старых обсуждений. Статус «перепроверить» означает, что наблюдение нельзя считать закрытым только по старому номеру строки после обновления зависимостей и большого изменения кода.
+
+| Старый пункт | Наблюдение июня 2026 | Статус на 2026-08-09 |
+| --- | --- | --- |
+| P0.1 | `/ru/*` дубли и неверные redirect | исправлено в июне; нужен regression smoke после Next 15 |
+| P0.2 | backend timeout/5xx превращался в SEO 404 | перепроверить в P1.2 |
+| P0.3 | canonical ряда EN-страниц указывал на RU | перепроверить в P1.2 |
+| P0.4 | старый `SEO.tsx` имел инвертированную locale-логику | перепроверить/унифицировать в P1.2 |
+| P1.1 | до ~20 последовательных dispatch при product resolve | открыт, P1.3 |
+| P1.2 | публичный SSR HTML без согласованного edge cache | открыт, P1.3 |
+| P1.3 | медиа занимало sync workers | частично смягчено gthread; целевой CDN-путь открыт, P1.4 |
+| P1.4 | конфликтующие meta из `_document` | перепроверить, P1.2 |
+| P1.5 | два sitemap | backend route удалён; проверить rendered sitemap в P1.2 |
+| P1.6 | небезопасные settings defaults | закрыто текущим аудитом |
+| P1.7 | CI отсутствовал | закрыто текущим аудитом |
+| P2.1 | install/cache flush на каждом boot | основные причины устранены; boot smoke входит в P0.2 |
+| P2.2 | новое DB connection на каждый request | закрыто (`CONN_MAX_AGE` + health checks) |
+| P2.3 | slug-дубли лечились в нескольких местах | открыт, P2.2 |
+| P2.4 | серийная пагинация брендов в SSR | закрыто в июле 2026 |
+| P2.5 | лишние media proxy hops/cache | частично открыто, P1.4 |
+| P2.6 | гигантские компоненты/views | открыт, P2.3 |
+| P2.7 | мелкие canonical/sitemap расхождения | перепроверить, P1.2 |
+| P2.8 | неполный Product JSON-LD | включить в P1.2 |
+| P2.9 | персонализация фактически возвращала trending | открыт, P2.4 |
+
+Исторические номера не определяют новый приоритет: для планирования используются актуальные разделы выше.

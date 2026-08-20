@@ -38,9 +38,6 @@ services:
   redis:
     restart: always
 
-  opensearch:
-    restart: always
-
   qdrant:
     restart: always
 

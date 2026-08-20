@@ -5,6 +5,8 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 
 from .models import AIProcessingLog, AIProcessingStatus, AIModerationQueue, AITemplate
 from .serializers import (
@@ -12,7 +14,12 @@ from .serializers import (
     AIProcessingDetailSerializer,
     AIModerationQueueSerializer,
     AITemplateSerializer,
+    AIStatsQuerySerializer,
     GenerateContentRequestSerializer,
+    ProcessProductBodySerializer,
+    ProcessProductRequestSerializer,
+    AIQueuedResponseSerializer,
+    AIStatsResponseSerializer,
 )
 from .tasks import enqueue_product_ai_task
 
@@ -20,7 +27,7 @@ from .tasks import enqueue_product_ai_task
 class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AIProcessingLog.objects.all()
     serializer_class = AIProcessingLogSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
         qs = AIProcessingLog.objects.select_related(
@@ -84,7 +91,7 @@ class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
 class AIModerationQueueViewSet(viewsets.ModelViewSet):
     queryset = AIModerationQueue.objects.all()
     serializer_class = AIModerationQueueSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
         return AIModerationQueue.objects.select_related(
@@ -130,12 +137,23 @@ class AIModerationQueueViewSet(viewsets.ModelViewSet):
 class AITemplateViewSet(viewsets.ModelViewSet):
     queryset = AITemplate.objects.select_related("category").all()
     serializer_class = AITemplateSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
 
 
 class GenerateContentView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
 
+    @extend_schema(
+        summary="Запустить AI-обработку товара",
+        request=GenerateContentRequestSerializer,
+        responses={
+            202: AIQueuedResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки валидации по полям",
+            ),
+        },
+    )
     def post(self, request):
         serializer = GenerateContentRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -174,20 +192,35 @@ class GenerateContentView(APIView):
 class ProcessProductView(APIView):
     """Ручной запуск обработки товара по ID в URL."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
 
+    @extend_schema(
+        summary="Запустить полную AI-обработку товара",
+        request=ProcessProductBodySerializer,
+        responses={
+            202: AIQueuedResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки валидации по полям",
+            ),
+        },
+    )
     def post(self, request, product_id):
+        payload = request.data.copy()
+        payload["product_id"] = product_id
+        serializer = ProcessProductRequestSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         options = {
-            "generate_description": request.data.get("generate_description", True),
-            "categorize": request.data.get("categorize", True),
-            "analyze_images": request.data.get("analyze_images", True),
-            "use_images": request.data.get("use_images", True),
+            "generate_description": data["generate_description"],
+            "categorize": data["categorize"],
+            "analyze_images": data["analyze_images"],
+            "use_images": data["use_images"],
         }
-        auto_apply = request.data.get("auto_apply", False)
         log_entry, task_id, submitted = enqueue_product_ai_task(
-            product_id=product_id,
+            product_id=data["product_id"],
             processing_type="full",
-            auto_apply=auto_apply,
+            auto_apply=data["auto_apply"],
             options=options,
         )
         return Response(
@@ -205,10 +238,23 @@ class ProcessProductView(APIView):
 class AIStatsView(APIView):
     """Статистика AI обработки за период."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
 
+    @extend_schema(
+        summary="Получить статистику AI-обработки",
+        parameters=[AIStatsQuerySerializer],
+        responses={
+            200: AIStatsResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки валидации query-параметров",
+            ),
+        },
+    )
     def get(self, request):
-        days = int(request.query_params.get("days", 30))
+        serializer = AIStatsQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        days = serializer.validated_data["days"]
         since = timezone.now() - timedelta(days=days)
         qs = AIProcessingLog.objects.filter(created_at__gte=since)
         stats = qs.aggregate(

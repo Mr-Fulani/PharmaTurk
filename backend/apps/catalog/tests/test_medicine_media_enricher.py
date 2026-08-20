@@ -1,8 +1,10 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from django.core.files.base import ContentFile
 from apps.catalog.models import MedicineProduct, MedicineProductImage
-from apps.catalog.services.medicine_media_enricher import MedicineMediaEnricher
+from apps.catalog.services.medicine_media_enricher import (
+    FetchedMedicineImage,
+    MedicineMediaEnricher,
+)
 
 @pytest.fixture
 def medicine_product(db):
@@ -54,8 +56,8 @@ class TestMedicineMediaEnricher:
             urls = enricher.fetch_candidates(medicine_product)
             mock_fetch.assert_not_called()
 
-    @patch('apps.catalog.services.medicine_media_enricher.httpx.Client.stream')
-    def test_validate_image_too_small(self, mock_stream, enricher):
+    @patch('apps.catalog.services.medicine_media_enricher.safe_image_fetcher.fetch_public_image_bytes')
+    def test_validate_image_too_small(self, mock_fetch, enricher):
         # Create a tiny 100x100 image
         from PIL import Image
         import io
@@ -64,18 +66,13 @@ class TestMedicineMediaEnricher:
         img.save(img_byte_arr, format='JPEG')
         img_bytes = img_byte_arr.getvalue()
         
-        mock_context = MagicMock()
-        mock_response = MagicMock()
-        mock_response.headers = {"Content-Length": str(len(img_bytes))}
-        mock_response.content = img_bytes
-        mock_context.__enter__.return_value = mock_response
-        mock_stream.return_value = mock_context
-        
-        is_valid = enricher.validate_image("http://example.com/small.jpg")
-        assert is_valid is False
+        mock_fetch.return_value = (img_bytes, "image/jpeg")
 
-    @patch('apps.catalog.services.medicine_media_enricher.httpx.Client.stream')
-    def test_validate_image_ok(self, mock_stream, enricher):
+        fetched = enricher.fetch_validated_image("https://example.com/small.jpg")
+        assert fetched is None
+
+    @patch('apps.catalog.services.medicine_media_enricher.safe_image_fetcher.fetch_public_image_bytes')
+    def test_validate_image_ok(self, mock_fetch, enricher):
         # Create a 500x500 image (above min width 400)
         from PIL import Image
         import io
@@ -84,27 +81,36 @@ class TestMedicineMediaEnricher:
         img.save(img_byte_arr, format='JPEG')
         img_bytes = img_byte_arr.getvalue()
         
-        mock_context = MagicMock()
-        mock_response = MagicMock()
-        mock_response.headers = {"Content-Length": str(len(img_bytes))}
-        mock_response.content = img_bytes
-        mock_context.__enter__.return_value = mock_response
-        mock_stream.return_value = mock_context
-        
-        is_valid = enricher.validate_image("http://example.com/ok.jpg")
-        assert is_valid is True
+        mock_fetch.return_value = (img_bytes, "image/jpeg")
 
-    @patch('apps.catalog.services.medicine_media_enricher.httpx.Client.get')
-    def test_download_and_save_creates_record(self, mock_get, enricher, medicine_product):
-        mock_response = MagicMock()
-        mock_response.content = b"fake_image_data"
-        mock_get.return_value = mock_response
-        
-        image = enricher.download_and_save(medicine_product, "http://example.com/test.jpg")
+        fetched = enricher.fetch_validated_image("https://example.com/ok.jpg")
+        assert fetched is not None
+        assert fetched.content == img_bytes
+        assert fetched.extension == ".jpg"
+        assert (fetched.width, fetched.height) == (500, 500)
+
+    def test_download_and_save_creates_record(self, enricher, medicine_product):
+        from PIL import Image
+        import io
+
+        output = io.BytesIO()
+        Image.new('RGB', (500, 500)).save(output, format='JPEG')
+        image_data = output.getvalue()
+
+        image = enricher.save_validated_image(
+            medicine_product,
+            "https://example.com/test.jpg",
+            FetchedMedicineImage(
+                content=image_data,
+                extension=".jpg",
+                width=500,
+                height=500,
+            ),
+        )
         
         assert image is not None
         assert image.product == medicine_product
-        assert image.image_url == "http://example.com/test.jpg"
+        assert image.image_url == "https://example.com/test.jpg"
         assert image.is_main is True
         assert MedicineProductImage.objects.count() == 1
 

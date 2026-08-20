@@ -15,10 +15,13 @@ from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from .models import Category, Product
 from .models_vk import VKCategoryMapping
 from .views import _get_category_ids_with_descendants
+from .throttles import YMLExportThrottle
 
 # Fallback-маппинг если в БД для product_type ещё нет записи.
 # Обновляйте этот словарь ТОЛЬКО если не хотите использовать Admin.
@@ -68,7 +71,20 @@ class YMLExportView(APIView):
     - Медиа: все изображения из галереи (ProductImage) и первое видео.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [YMLExportThrottle]
 
+    @extend_schema(
+        summary="Экспортировать публичный каталог в YML",
+        parameters=[
+            OpenApiParameter(
+                name="category",
+                type=str,
+                required=False,
+                description="Slug категории; экспорт включает её потомков",
+            )
+        ],
+        responses={(200, "application/xml"): OpenApiTypes.BINARY},
+    )
     def get(self, request, *args, **kwargs):
         category_slug = request.query_params.get("category")
 

@@ -1,20 +1,89 @@
 """API views for recommendations (search_by_image, personalized, complete_the_look)."""
+import logging
+
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
+from drf_spectacular.utils import extend_schema
 
 from apps.catalog.card_payload import compact_card_product_payload
 from apps.feedback.review_aggregates import attach_review_aggregates
+from .selectors import public_recommendation_products
+from .serializers import (
+    CompleteTheLookRequestSerializer,
+    CompleteTheLookResponseSerializer,
+    PersonalizedRecommendationsResponseSerializer,
+    RecommendationErrorSerializer,
+    VisualSearchRequestSerializer,
+    VisualSearchResponseSerializer,
+)
+from .services.safe_image_fetcher import ImageFetchError, fetch_search_image
+from .throttles import (
+    RecommendationAnonThrottle,
+    RecommendationUserThrottle,
+    VisualSearchAnonThrottle,
+    VisualSearchUserThrottle,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+_CARD_PREFETCH_RELATED = (
+    "images",
+    "book_item",
+    "book_item__images",
+    "book_item__book_variants",
+    "clothing_item__images",
+    "clothing_item__variants",
+    "clothing_item__variants__images",
+    "shoe_item__images",
+    "shoe_item__variants",
+    "shoe_item__variants__images",
+    "jewelry_item__images",
+    "electronics_item__images",
+    "furniture_item__images",
+    "medicine_item__gallery_images",
+    "supplement_item__gallery_images",
+)
+
+
+def _public_card_products(product_ids=None):
+    """Canonical public candidates, with legacy variant-shadow rows removed."""
+    queryset = public_recommendation_products()
+    if product_ids is not None:
+        queryset = queryset.filter(id__in=product_ids)
+    return (
+        queryset.exclude(
+            Q(product_type__in=["clothing", "shoes"])
+            & (
+                Q(external_data__has_key="source_variant_id")
+                | Q(external_data__has_key="source_variant_slug")
+            )
+        )
+        .select_related("category", "brand")
+        .prefetch_related(*_CARD_PREFETCH_RELATED)
+    )
 
 
 class RecommendationViewSet(viewsets.ViewSet):
     """API for vector recommendations (search by image, personalized, complete the look)."""
     permission_classes = [AllowAny]
+    throttle_classes = [RecommendationAnonThrottle, RecommendationUserThrottle]
 
     def _get_engine(self):
         from .services.vector_engine import QdrantRecommendationEngine
         return QdrantRecommendationEngine()
+
+    def get_throttles(self):
+        # `search_by_image` also has an explicit no-slash route, so selecting
+        # throttles by action protects both router variants.
+        if getattr(self, "action", None) == "search_by_image":
+            return [VisualSearchAnonThrottle(), VisualSearchUserThrottle()]
+        return super().get_throttles()
 
     @staticmethod
     def _serialize_matches(matches, request):
@@ -23,11 +92,10 @@ class RecommendationViewSet(viewsets.ViewSet):
         Цена из векторного индекса нужна для фильтрации/ранжирования, но не должна
         показываться покупателю: она исходная и может не содержать текущую маржу.
         """
-        from apps.catalog.models import Product
         from apps.catalog.serializers import serialize_product_for_card
 
         ids = [match.get("product_id") for match in matches if match.get("product_id")]
-        products = Product.objects.filter(id__in=ids).select_related("category", "brand")
+        products = _public_card_products(ids)
         product_map = {product.id: product for product in products}
         result = []
         for match in matches:
@@ -47,56 +115,63 @@ class RecommendationViewSet(viewsets.ViewSet):
         ])
         return result
 
+    @extend_schema(
+        request=VisualSearchRequestSerializer,
+        responses={
+            200: VisualSearchResponseSerializer,
+            400: RecommendationErrorSerializer,
+            503: RecommendationErrorSerializer,
+        },
+    )
     @action(detail=False, methods=["post"])
     def search_by_image(self, request):
         """POST /api/recommendations/search_by_image/ — visual search by image URL."""
-        image_url = request.data.get("image_url")
-        if not image_url:
+        if not request.data.get("image_url"):
             return Response(
                 {"error": "image_url required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        n_results = int(request.data.get("limit", 20))
+
+        serializer = VisualSearchRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            error = "invalid_image_url" if "image_url" in serializer.errors else "invalid_limit"
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        image_url = serializer.validated_data["image_url"]
+        n_results = serializer.validated_data["limit"]
         try:
-            engine = self._get_engine()
-            results = engine.find_similar_by_image(
-                image_url=image_url,
-                n_results=n_results,
-            )
-        except ValueError as e:
-            if str(e) == "invalid_image_url":
-                return Response(
-                    {"error": "invalid_image_url", "message": "Failed to process the image URL. Please ensure it points directly to a valid image file (e.g., .jpg, .png)."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            # Validate and fully decode before loading CLIP or contacting Qdrant.
+            image = fetch_search_image(image_url, request=request)
+        except ImageFetchError:
             return Response(
-                {"error": str(e)},
+                {
+                    "error": "invalid_image_url",
+                    "message": "Failed to process the image URL. Please ensure it points directly to a valid image file (e.g., .jpg, .png).",
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except Exception as e:
-            # Usually caused by other unexpected errors
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+
+        try:
+            from .services.image_encoder import CLIPEncoder
+
+            image_vector = CLIPEncoder().encode_image(image)
+            if image_vector is None:
+                raise RuntimeError("image encoder unavailable")
+            engine = self._get_engine()
+            results = engine.find_similar_by_image_vector(
+                image_vector=image_vector,
+                n_results=n_results,
             )
-        from apps.catalog.models import Product
+        except Exception:
+            logger.exception("Visual search backend unavailable")
+            return Response(
+                {"error": "search_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         from apps.catalog.serializers import serialize_product_for_card
-        from django.db.models import Q
         
         product_ids = [r["product_id"] for r in results]
-        products = Product.objects.filter(id__in=product_ids).exclude(
-            Q(product_type__in=['clothing', 'shoes']) &
-            (
-                Q(external_data__has_key='source_variant_id') |
-                Q(external_data__has_key='source_variant_slug')
-            )
-        ).prefetch_related(
-            'images', 'book_item', 'book_item__images', 'book_item__book_variants',
-            'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
-            'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
-            'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
-            'medicine_item__gallery_images', 'supplement_item__gallery_images',
-        )
+        products = _public_card_products(product_ids)
         product_map = {p.id: p for p in products}
         enriched = []
         for r in results:
@@ -116,6 +191,10 @@ class RecommendationViewSet(viewsets.ViewSet):
         ])
         return Response({"results": enriched})
 
+    @extend_schema(
+        request=None,
+        responses={200: PersonalizedRecommendationsResponseSerializer},
+    )
     @action(detail=False, methods=["get"])
     def personalized(self, request):
         """GET /api/recommendations/personalized/ — personalized or trending."""
@@ -137,29 +216,13 @@ class RecommendationViewSet(viewsets.ViewSet):
                 n_results=20,
                 diversity_factor=0.4,
             )
-        except Exception as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        from apps.catalog.models import Product
+        except Exception:
+            logger.exception("Personalized recommendations unavailable")
+            return self._get_trending(request)
         from apps.catalog.serializers import serialize_product_for_card
-        from django.db.models import Q
         
         product_ids = [r["product_id"] for r in recs]
-        products = Product.objects.filter(id__in=product_ids).exclude(
-            Q(product_type__in=['clothing', 'shoes']) &
-            (
-                Q(external_data__has_key='source_variant_id') |
-                Q(external_data__has_key='source_variant_slug')
-            )
-        ).prefetch_related(
-            'images', 'book_item', 'book_item__images', 'book_item__book_variants',
-            'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
-            'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
-            'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
-            'medicine_item__gallery_images', 'supplement_item__gallery_images',
-        )
+        products = _public_card_products(product_ids)
         product_map = {p.id: p for p in products}
         results = []
         for r in recs:
@@ -182,65 +245,79 @@ class RecommendationViewSet(viewsets.ViewSet):
             "results": results,
         })
 
+    @extend_schema(
+        request=None,
+        parameters=[CompleteTheLookRequestSerializer],
+        responses={
+            200: CompleteTheLookResponseSerializer,
+            400: RecommendationErrorSerializer,
+            404: RecommendationErrorSerializer,
+            503: RecommendationErrorSerializer,
+        },
+    )
     @action(detail=False, methods=["get"])
     def complete_the_look(self, request):
         """GET /api/recommendations/complete_the_look/?product_id=... — complementary products."""
-        product_id = request.query_params.get("product_id")
-        if not product_id:
+        serializer = CompleteTheLookRequestSerializer(data=request.query_params)
+        if not serializer.is_valid():
+            error = (
+                "product_id required"
+                if "product_id" not in request.query_params
+                else "invalid_product_id"
+            )
             return Response(
-                {"error": "product_id required"},
+                {"error": error},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        from apps.catalog.models import Product
-        from django.shortcuts import get_object_or_404
-        product = get_object_or_404(Product, pk=product_id)
+        product_id = serializer.validated_data["product_id"]
+        product = get_object_or_404(
+            public_recommendation_products().select_related("category"),
+            pk=product_id,
+        )
         complementary = self._get_complementary_categories(product)
-        engine = self._get_engine()
+        if not complementary:
+            return Response({
+                "base_product_id": product.id,
+                "complementary_items": [],
+            })
+
         results = []
-        for cat_id, relation_type in complementary:
-            if cat_id is None:
-                continue
-            similar = engine.find_similar(
-                product_id=product.id,
-                vector_type="combined",
-                n_results=3,
-                filters={"category_id": cat_id},
+        try:
+            engine = self._get_engine()
+            for cat_id, relation_type in complementary:
+                if cat_id is None:
+                    continue
+                similar = engine.find_similar(
+                    product_id=product.id,
+                    vector_type="combined",
+                    n_results=3,
+                    filters={"category_id": cat_id},
+                )
+                if similar:
+                    results.append({
+                        "relation_type": relation_type,
+                        "category_id": cat_id,
+                        "items": self._serialize_matches(similar[:2], request),
+                    })
+        except Exception:
+            logger.exception("Complete-the-look recommendations unavailable")
+            return Response(
+                {"error": "recommendations_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-            if similar:
-                results.append({
-                    "relation_type": relation_type,
-                    "category_id": cat_id,
-                    "items": self._serialize_matches(similar[:2], request),
-                })
         return Response({
-            "base_product_id": int(product_id),
+            "base_product_id": product.id,
             "complementary_items": results,
         })
 
     def _get_trending(self, request):
         """Fallback: recent/trending products."""
-        from apps.catalog.models import Product
         from apps.catalog.serializers import serialize_product_for_card
-        from django.db.models import Q
         
         trending = (
-            Product.objects.filter(is_available=True)
+            _public_card_products()
             .exclude(product_type="jewelry")
-            .exclude(
-                Q(product_type__in=['clothing', 'shoes']) &
-                (
-                    Q(external_data__has_key='source_variant_id') |
-                    Q(external_data__has_key='source_variant_slug')
-                )
-            )
             .order_by("-created_at")
-            .prefetch_related(
-                'images', 'book_item', 'book_item__images', 'book_item__book_variants',
-                'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
-                'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
-                'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
-                'medicine_item__gallery_images', 'supplement_item__gallery_images',
-            )
         )[:12]
         results = [
             compact_card_product_payload(serialize_product_for_card(p, request))
@@ -274,7 +351,7 @@ class RecommendationViewSet(viewsets.ViewSet):
                 continue
             comps = mapping.get(key, [])
             for comp in comps:
-                cat = Category.objects.filter(slug=comp).first()
+                cat = Category.objects.filter(slug=comp, is_active=True).first()
                 if cat:
                     out.append((cat.id, comp))
         return out[:4] if out else []

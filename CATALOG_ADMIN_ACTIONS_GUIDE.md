@@ -97,7 +97,7 @@ AI-действия и действия по дублям в `ServiceAdmin` не
 
 Подробности:
 
-- [DUPLICATE_MODERATION_GUIDE.md](/Users/user/PharmaTurk/DUPLICATE_MODERATION_GUIDE.md)
+- [DUPLICATE_MODERATION_GUIDE.md](DUPLICATE_MODERATION_GUIDE.md)
 
 ---
 

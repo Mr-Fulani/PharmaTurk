@@ -168,7 +168,6 @@ function BrandPageContent({
     brandData.translations,
     router.locale
   )
-  const gendersKey = (filters.genders || []).join(',')
   const showGenderFilter = useMemo(
     () => shouldShowGenderFilter(categories.map((category) => category.slug)),
     [categories]
@@ -252,14 +251,7 @@ function BrandPageContent({
     router.isReady,
     brandData.slug,
     currentPage,
-    filters.categories,
-    filters.categorySlugs,
-    gendersKey,
-    filters.priceMin,
-    filters.priceMax,
-    filters.inStock,
-    filters.isNew,
-    filters.sortBy,
+    filters,
   ])
 
   if (!brandData) {

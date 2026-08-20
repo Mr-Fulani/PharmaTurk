@@ -19,7 +19,15 @@ class CryptoPayment(models.Model):
         verbose_name=_("Заказ"),
     )
     provider = models.CharField(_("Провайдер"), max_length=32, default="coinremitter")
+    # Historical rows store CoinRemitter's long ``id`` in invoice_id. Keep the
+    # field stable and persist the provider's short ``invoice_id`` separately.
     invoice_id = models.CharField(_("ID инвойса"), max_length=128, db_index=True)
+    invoice_code = models.CharField(
+        _("Короткий ID инвойса"),
+        max_length=128,
+        blank=True,
+        db_index=True,
+    )
     address = models.CharField(_("Адрес для оплаты"), max_length=256)
     amount_crypto = models.DecimalField(
         _("Сумма в крипте"), max_digits=20, decimal_places=8, default=0

@@ -25,7 +25,11 @@ class TextEncoder:
     def _load_model(self):
         logger.info("Loading text encoder model...")
         model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        TextEncoder._model = SentenceTransformer(model_name)
+        TextEncoder._model = SentenceTransformer(
+            model_name,
+            trust_remote_code=False,
+            model_kwargs={"use_safetensors": True},
+        )
         logger.info("Text encoder loaded: %s", model_name)
 
     @property

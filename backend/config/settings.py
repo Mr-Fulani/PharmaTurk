@@ -10,6 +10,13 @@ from pathlib import Path
 import environ
 import sentry_sdk
 
+from .security import (
+    validate_production_settings,
+    validate_database_url,
+    validate_redis_separation,
+    validate_telegram_webhook_settings,
+)
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,6 +28,21 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 DEBUG: bool = env("DJANGO_DEBUG")
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="please-change-me")
 ALLOWED_HOSTS: list[str] = env.list("DJANGO_ALLOWED_HOSTS", default=["*"])
+CRYPTO_DUMMY_MODE = env.bool("CRYPTO_DUMMY_MODE", default=False)
+
+validate_production_settings(
+    debug=DEBUG,
+    secret_key=SECRET_KEY,
+    allowed_hosts=ALLOWED_HOSTS,
+    crypto_dummy_mode=CRYPTO_DUMMY_MODE,
+)
+validate_database_url(
+    debug=DEBUG,
+    database_url=env(
+        "DATABASE_URL",
+        default="postgres://mudaroba:mudaroba@localhost:5432/mudaroba",
+    ),
+)
 
 
 # Приложения
@@ -45,7 +67,7 @@ INSTALLED_APPS = [
     "corsheaders",
 
     # Проектные
-    "api",
+    "api.apps.ApiConfig",
     "apps.users",
     "apps.catalog",
     "apps.marketing",
@@ -125,24 +147,48 @@ DATABASES = {
 # Переиспользуем соединения с Postgres вместо нового на каждый запрос
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)
 DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+DATABASES["default"].setdefault("OPTIONS", {})["connect_timeout"] = env.int(
+    "DB_CONNECT_TIMEOUT_SECONDS",
+    default=5,
+)
 
 
-# Кэш и Celery брокер
+# Cache, Celery broker and result backend use separate logical databases. A
+# cache eviction/clear must never delete queued tasks or their results.
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+REDIS_CACHE_URL = env("REDIS_CACHE_URL", default=REDIS_URL)
+CELERY_RESULT_BACKEND_URL = env("CELERY_RESULT_BACKEND_URL", default=REDIS_URL)
+REDIS_CONNECT_TIMEOUT_SECONDS = env.float("REDIS_CONNECT_TIMEOUT_SECONDS", default=3.0)
+REDIS_SOCKET_TIMEOUT_SECONDS = env.float("REDIS_SOCKET_TIMEOUT_SECONDS", default=3.0)
+validate_redis_separation(
+    debug=DEBUG,
+    broker_url=REDIS_URL,
+    cache_url=REDIS_CACHE_URL,
+    result_url=CELERY_RESULT_BACKEND_URL,
+)
 
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": REDIS_URL,
+        "LOCATION": REDIS_CACHE_URL,
+        "OPTIONS": {
+            "socket_connect_timeout": REDIS_CONNECT_TIMEOUT_SECONDS,
+            "socket_timeout": REDIS_SOCKET_TIMEOUT_SECONDS,
+        },
     }
 }
 
 # Celery
 CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_RESULT_BACKEND = CELERY_RESULT_BACKEND_URL
 CELERY_TASK_ALWAYS_EAGER = False
 # Глобальный дефолт — 30 минут. Для скрейперов переопределяем ниже через CELERY_TASK_ANNOTATIONS.
 CELERY_TASK_TIME_LIMIT = 60 * 30
+ANONYMOUS_CART_TTL_DAYS = env.int("ANONYMOUS_CART_TTL_DAYS", default=30)
+ANONYMOUS_CART_CLEANUP_BATCH_SIZE = env.int(
+    "ANONYMOUS_CART_CLEANUP_BATCH_SIZE",
+    default=500,
+)
 CELERY_TASK_SOFT_TIME_LIMIT = 60 * 25
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # Redis возвращает неподтверждённую задачу в очередь после visibility timeout.
@@ -203,6 +249,15 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24 * 7,  # неделя
         "args": (30,),  # хранить 30 дней
     },
+    # Ограничиваем storage amplification от брошенных гостевых корзин.
+    "orders-cleanup-stale-anonymous-carts": {
+        "task": "orders.cleanup_stale_anonymous_carts",
+        "schedule": crontab(hour=4, minute=10),
+        "kwargs": {
+            "days": ANONYMOUS_CART_TTL_DAYS,
+            "batch_size": ANONYMOUS_CART_CLEANUP_BATCH_SIZE,
+        },
+    },
     # Поиск кандидатов в дубликаты товаров — раз в неделю, с уведомлением админа
     "scrapers-weekly-duplicate-candidates": {
         "task": "apps.scrapers.tasks.find_and_merge_duplicates",
@@ -249,6 +304,9 @@ LANGUAGES = [
 TIME_ZONE = "Europe/Moscow"
 USE_I18N = True
 USE_TZ = True
+
+# Django 6 changes the default URL form-field scheme to HTTPS. Opt in now so
+# validation is stable across the supported Django 5.2 -> 6.0 upgrade path.
 LOCALE_PATHS = [BASE_DIR / 'locale']
 
 
@@ -332,7 +390,7 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.AllowAny",
+        "rest_framework.permissions.IsAuthenticated",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
@@ -342,6 +400,7 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "MVP API для интернет-магазина турецких товаров",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 
 
@@ -376,9 +435,20 @@ CORS_ALLOW_HEADERS = [
 # Безопасность (базовые параметры для dev/QA)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_PROTECTION = True
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
+SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
+    "SECURE_HSTS_INCLUDE_SUBDOMAINS",
+    default=False,
+)
+SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 X_FRAME_OPTIONS = "DENY"
+# Opt into Django 6's safer URLField default while this Django 5 transition
+# setting still exists. Remove the setting itself during the Django 6 upgrade.
+FORMS_URLFIELD_ASSUME_HTTPS = True
 
 # Отключаем автоматическое добавление завершающего слэша, чтобы не ломать POST-запросы
 APPEND_SLASH = False
@@ -415,12 +485,23 @@ BOOKS_SEO_SITE_NAME = env("BOOKS_SEO_SITE_NAME", default=COMPANY_NAME)
 # Прокси для парсеров (например турецкий residential/mobile для обхода
 # репутационных блокировок Akamai на Zara). Пусто = прямое соединение.
 SCRAPER_PROXY_URL = env("SCRAPER_PROXY_URL", default="")
+# PEM bundle of the proxy CA when the provider performs TLS inspection.
+# Certificate verification is never disabled automatically.
+SCRAPER_PROXY_CA_BUNDLE = env("SCRAPER_PROXY_CA_BUNDLE", default="")
 
 
 # Sentry (неактивен, если DSN пуст)
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
-    sentry_sdk.init(dsn=SENTRY_DSN, enable_tracing=True)
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        enable_tracing=True,
+        traces_sample_rate=min(
+            max(env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.05), 0.0),
+            1.0,
+        ),
+        send_default_pii=False,
+    )
 
 
 # Логирование в JSON
@@ -529,6 +610,12 @@ FRONTEND_SITE_URL = env("FRONTEND_SITE_URL", default="").rstrip("/") or SITE_URL
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="") or env("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME", default="")
 TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")
+TELEGRAM_WEBHOOK_SECRET = env("TELEGRAM_WEBHOOK_SECRET", default="")
+validate_telegram_webhook_settings(
+    debug=DEBUG,
+    bot_token=TELEGRAM_BOT_TOKEN,
+    webhook_secret=TELEGRAM_WEBHOOK_SECRET,
+)
 
 # authenticated: любой авторизованный; purchased: только покупатель доставленного заказа.
 PRODUCT_REVIEW_ACCESS_POLICY = env("PRODUCT_REVIEW_ACCESS_POLICY", default="authenticated")

@@ -1,11 +1,8 @@
-"""
-Утилиты для формирования и отправки чеков по заказам.
-
-TODO: Функционал чеков временно отключен. Будет доработан позже.
-Включает: формирование чека, отправку по email, интеграцию с админкой.
-"""
+"""Утилиты для формирования и отправки чеков по заказам."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 from decimal import Decimal
 from typing import Any, Dict, List
 
@@ -189,7 +186,6 @@ def _serialize_product_translations(product) -> List[Dict[str, Any]]:
     return _resolve_variant_translations(product)
 
 
-# TODO: Функционал чеков временно отключен. Будет доработан позже.
 def build_order_receipt_payload(order: Order, locale: str = 'ru') -> Dict[str, Any]:
     """Формирует структуру данных для отображения/отправки чека."""
     issued_at = timezone.now()
@@ -326,7 +322,6 @@ RECEIPT_LABELS = {
 }
 
 
-# TODO: Функционал чеков временно отключен. Будет доработан позже.
 def get_receipt_filename(order: Order) -> str:
     """Имя файла чека с данными клиента для ясности: receipt_ДАТА_НОМЕР_ИМЯ.pdf"""
     date_str = (order.created_at or timezone.now()).strftime('%Y%m%d')
@@ -350,6 +345,26 @@ def render_receipt_html(
     return render_to_string("emails/order_receipt.html", context)
 
 
+def _deny_receipt_external_resource(url: str, *args, **kwargs):
+    """Receipts are self-contained; never let the PDF renderer access a URL."""
+    raise ValueError("External resources are disabled for receipt rendering")
+
+
+def get_receipt_storage_key(order: Order) -> str:
+    """Return a deterministic but unguessable object key for a private document."""
+    identity = f"{getattr(order, 'pk', None) or getattr(order, 'id', '')}:{order.number}"
+    digest = hmac.new(
+        settings.SECRET_KEY.encode("utf-8"),
+        f"receipt:{identity}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+    safe_number = "".join(
+        character if character.isalnum() or character in "-_" else "_"
+        for character in str(order.number)
+    )[:64]
+    return get_r2_path(f"receipts/{digest}/{safe_number}.pdf")
+
+
 def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | None, bytes | None]:
     """Генерирует PDF-версию чека и сохраняет её в Cloudflare R2 (или ином S3-хранилище).
     Возвращает (URL чека на CDN, сырые байты PDF).
@@ -362,10 +377,13 @@ def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | N
             return None, None
         html_string = render_receipt_html(order, locale=locale)
         from weasyprint import HTML  # lazy import — требует системных библиотек Pango/Cairo
-        pdf_file = HTML(string=html_string).write_pdf()
+        pdf_file = HTML(
+            string=html_string,
+            url_fetcher=_deny_receipt_external_resource,
+        ).write_pdf(presentational_hints=False)
 
         # Настраиваем boto3 клиент для работы с R2
-        file_key = get_r2_path(f"receipts/{order.number}.pdf")
+        file_key = get_receipt_storage_key(order)
         s3 = get_r2_client()
         bucket_name = settings.R2_CONFIG['bucket_name']
 
@@ -390,8 +408,12 @@ def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | N
 
         return receipt_url, pdf_file
 
-    except Exception as e:
-        import traceback
-        logger.error(f"CRITICAL ERROR generating/saving receipt for order {order.number}: {str(e)}")
-        logger.error(traceback.format_exc())
+    except Exception as exc:
+        # Storage/rendering exceptions may contain endpoint URLs or document
+        # context; keep logs diagnostic without copying those values.
+        logger.error(
+            "Receipt generation failed for order %s: %s",
+            order.number,
+            type(exc).__name__,
+        )
         return None, None

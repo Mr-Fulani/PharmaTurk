@@ -3,7 +3,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
-import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation, stripHtml } from '../../lib/i18n'
+import {
+  findCategoryTranslation,
+  getLocalizedCategoryName,
+  getLocalizedCategoryDescription,
+  type CategoryTranslation,
+  type ProductTranslation,
+  type BrandTranslation,
+  stripHtml,
+} from '../../lib/i18n'
 import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { resolveMediaUrl } from '../../lib/media'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
@@ -20,7 +28,7 @@ import { shouldShowGenderFilter } from '../../lib/brandCatalog'
 import { isCategoryInProductTree, selectExactCategory } from '../../lib/categoryRouting'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import { getSingleFlight } from '../../lib/api'
 import ProductCard from '../../components/ProductCard'
 import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection, AvailableAttribute } from '../../components/CategorySidebar'
@@ -29,6 +37,7 @@ import CategoryHero from '../../components/CategoryHero'
 import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
 import { ProductCardGalleryImage } from '../../components/ProductCardImageGallery'
 import { useViewMode } from '../../hooks/useViewMode'
+import { safeJsonLd } from '../../lib/sanitizeHtml'
 
 interface Product {
   id: number
@@ -89,12 +98,6 @@ interface Product {
   og_image_url?: string | null
   translations?: ProductTranslation[]
   gender?: string | null
-}
-
-interface CategoryTranslation {
-  locale: string
-  name: string
-  description?: string
 }
 
 interface Category {
@@ -869,7 +872,7 @@ export default function CategoryPage({
     const routeSlug = Array.isArray(slug) ? slug[0] : slug
     const normalizedSlug = routeSlug ? routeSlug.toLowerCase().replace(/_/g, '-') : null
 
-    // Используем функцию локализации, которая проверяет JSON, потом API, потом fallback
+    // API-перевод имеет приоритет, JSON и базовое имя — fallback.
     if (currentCategory) {
       return getLocalizedCategoryName(
         currentCategory.slug,
@@ -1147,6 +1150,10 @@ export default function CategoryPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedBrandType, filters.categories, filters.categorySlugs, filters.inStock, router.query.brand_id, router.locale, categoryStateKey])
 
+  const gendersFilterKey = (filters.genders || []).join(',')
+  const fragranceTypesFilterKey = (filters.fragranceTypes || []).join(',')
+  const attributesFilterKey = JSON.stringify(filters.attributes || {})
+
   // Загрузка товаров с фильтрами
   useEffect(() => {
     let isCancelled = false
@@ -1344,8 +1351,8 @@ export default function CategoryPage({
     filters.brandSlugs,
     filters.subcategories,
     filters.subcategorySlugs,
-    filters.genders?.join(','),
-    filters.fragranceTypes?.join(','),
+    gendersFilterKey,
+    fragranceTypesFilterKey,
     filters.authorIds,
     filters.genreIds,
     filters.publishers,
@@ -1355,7 +1362,7 @@ export default function CategoryPage({
     filters.inStock,
     filters.isNew,
     filters.sortBy,
-    JSON.stringify(filters.attributes || {}),
+    attributesFilterKey,
     currentPage,
     categoryType,
     categoryStateKey,
@@ -1657,23 +1664,23 @@ export default function CategoryPage({
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbSchema) }}
         />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionPageSchema) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(collectionPageSchema) }}
         />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(itemListSchema) }}
         />
         {portfolioSchema ? (
           <script
             type="application/ld+json"
             // eslint-disable-next-line react/no-danger
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(portfolioSchema) }}
+            dangerouslySetInnerHTML={{ __html: safeJsonLd(portfolioSchema) }}
           />
         ) : null}
       </Head>
@@ -2024,9 +2031,11 @@ function MedicineAlphabetSection({
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { slug, page = 1, brand, brand_id } = context.query
   const pageSize = 12
+  const requestLocale = context.locale || context.defaultLocale || 'ru'
 
   // HTML зависит от валюты из cookie — кэшируем в CDN только дефолтный вариант
   const hasCurrencyCookie = /(?:^|;\s*)currency=/.test(context.req.headers.cookie || '')
+  context.res.setHeader('Vary', 'Cookie, Accept-Language')
   context.res.setHeader(
     'Cache-Control',
     hasCurrencyCookie ? 'private, no-store' : 'public, s-maxage=300, stale-while-revalidate=86400'
@@ -2037,13 +2046,28 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const { getInternalApiUrl } = await import('../../lib/urls')
     const { fetchFooterSettings } = await import('../../lib/footerSettings')
+    const languageHeaders = {
+      'Accept-Language': requestLocale,
+      'X-Language': requestLocale,
+    }
+    const categoryApiGet = <T = any,>(path: string, config: AxiosRequestConfig = {}) =>
+      axios.get<T>(getInternalApiUrl(path), {
+        ...config,
+        // Cookie запроса намеренно не проксируется во внутренний API. SSR получает
+        // только явно выбранные язык и валюту, поэтому публичный кэш не смешивает
+        // авторизованные ответы разных пользователей.
+        headers: {
+          ...(config.headers || {}),
+          ...languageHeaders,
+        },
+      })
 
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null
     let catData: any = null
     if (routeSlug) {
       try {
-        const catApiRes = await axios.get(getInternalApiUrl('catalog/categories'), {
+        const catApiRes = await categoryApiGet('catalog/categories', {
           params: { slug: routeSlug, include_children: false, page_size: 1 }
         })
         const exactCategories = extractResults(catApiRes.data)
@@ -2123,7 +2147,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
           routeSlug,
         })
 
-        const brandRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
+        const brandRes = await categoryApiGet('catalog/brands', { params: brandParams })
         brands = ensureOtherBrand(brandRes.data.results || [])
       } catch {
         brands = []
@@ -2158,11 +2182,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let productsData: any = { results: [], count: 0 }
     try {
       const productsEndpoint = resolveProductsEndpoint(categoryType)
-      const prodRes = await axios.get(getInternalApiUrl(productsEndpoint.replace(/^\/api\//, '')), {
+      const prodRes = await categoryApiGet(productsEndpoint.replace(/^\/api\//, ''), {
         params: productParams,
         headers: {
           'X-Currency': currency,
-          'Accept-Language': context.locale || 'en'
         }
       })
       productsData = prodRes.data || {}
@@ -2196,9 +2219,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         if (routeSlug) {
           bookParams.category_slug = routeSlug
         }
-        const bookRes = await axios.get(getInternalApiUrl('catalog/products/book-filters'), {
+        const bookRes = await categoryApiGet('catalog/products/book-filters', {
           params: bookParams,
-          headers: { 'Accept-Language': context.locale || 'ru' }
         })
         bookAuthors = bookRes.data?.authors || []
         bookGenres = bookRes.data?.genres || []
@@ -2224,7 +2246,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         catParams.top_level = true
       }
       catParams.page_size = routeSlug ? 500 : 200
-      const catRes = await axios.get(getInternalApiUrl('catalog/categories'), { params: catParams })
+      const catRes = await categoryApiGet('catalog/categories', { params: catParams })
       categories = extractResults(catRes.data)
     } catch {
       categories = []
@@ -2235,7 +2257,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const hasChildren = categories.some((c: any) => c.parent !== null && typeof c.parent !== 'undefined')
       if (!hasChildren) {
         try {
-          const childRes = await axios.get(getInternalApiUrl('catalog/categories'), {
+          const childRes = await categoryApiGet('catalog/categories', {
             params: { parent_slug: routeSlug, page_size: 500 }
           })
           const childList = extractResults(childRes.data)
@@ -2280,7 +2302,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const isRootCategoryPage = Boolean(routeSlug && normalizeSlug(routeSlug) === normalizeSlug(categoryType))
     if (isRootCategoryPage && subcategories.length === 0) {
       try {
-        const allRes = await axios.get(getInternalApiUrl('catalog/categories'), { params: { all: true, page_size: 1000 } })
+        const allRes = await categoryApiGet('catalog/categories', { params: { all: true, page_size: 1000 } })
         const allList = extractResults(allRes.data)
         const normalizedType = normalizeSlug(categoryType)
         const rootFromAll = allList.find((c: any) => normalizeSlug(c.slug) === routeNorm)
@@ -2323,7 +2345,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     // Локализация названий категорий
     const getCategoryNames = (locale: string = 'ru'): Record<string, { name: string; description: string }> => {
-      if (locale === 'en') {
+      if (locale.toLowerCase().replace(/_/g, '-').split('-')[0] === 'en') {
         return {
           medicines: { name: 'Medicines', description: 'Medicinal preparations and medicines from Turkey' },
           supplements: { name: 'Supplements', description: 'Dietary supplements' },
@@ -2359,21 +2381,22 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     }
 
-    const categoryNames = getCategoryNames(context.locale)
-    const fallbackName = context.locale === 'en' ? 'Products' : 'Товары'
-    // Выбираем локализованное описание из переводов API, если язык не RU
-    const mainCatLocalizedDescription = (() => {
-      if (!mainCat) return ''
-      const locale = context.locale || 'ru'
-      const translations = Array.isArray(mainCat.translations) ? mainCat.translations : []
-      const tr = translations.find((t: any) => t.locale === locale || t.locale === locale.split('-')[0])
-      return (tr?.description) || mainCat.description || ''
-    })()
-    const fallbackInfo =
-      (mainCat && { name: mainCat.name, description: mainCatLocalizedDescription }) ||
-      { name: fallbackName, description: '' }
-    // Пробуем по categoryType, потом по slug (для кастомных типов), потом fallbackInfo
-    const categoryInfo = categoryNames[categoryType] || categoryNames[routeSlug || ''] || fallbackInfo
+    const categoryNames = getCategoryNames(requestLocale)
+    const fallbackName = requestLocale.toLowerCase().split('-')[0] === 'en' ? 'Products' : 'Товары'
+    const categoryFromApi = mainCat || catData
+    const apiTranslation = findCategoryTranslation(
+      Array.isArray(categoryFromApi?.translations) ? categoryFromApi.translations : [],
+      requestLocale
+    )
+    const legacyInfo = categoryNames[categoryType] || categoryNames[routeSlug || '']
+
+    // CategoryTranslation из API — источник истины. Статическая таблица
+    // оставлена только для legacy-категорий без заполненных переводов.
+    const categoryInfo = {
+      name: apiTranslation?.name || legacyInfo?.name || categoryFromApi?.name || fallbackName,
+      description:
+        apiTranslation?.description || legacyInfo?.description || categoryFromApi?.description || '',
+    }
 
     // Заменяем categories на уже отфильтрованный и компактный список для сайтбара.
     // Не передаём его второй раз отдельным prop: это удваивало SSR payload.
@@ -2382,7 +2405,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         category as Category & Record<string, any>,
         normalizeSlug(category.slug) === routeNorm,
         categoryType === 'uslugi',
-        context.locale
+        requestLocale
       )
     )
     subcategories = subcategories.map((category: Category) =>
@@ -2390,7 +2413,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         category as Category & Record<string, any>,
         false,
         false,
-        context.locale
+        requestLocale
       )
     )
     brands = brands.map((brand: Brand) =>
@@ -2420,7 +2443,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         categoryType,
         categoryTypeSlug: categoryTypeFromApi || null,
         initialRouteSlug: routeSlug || '',
-        ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
+        ...(await serverSideTranslations(requestLocale, ['common'])),
       },
     }
   } catch (error) {

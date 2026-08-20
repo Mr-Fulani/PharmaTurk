@@ -9,7 +9,6 @@ from django.db import transaction
 from django.utils import timezone
 import uuid
 from django.core.files.base import ContentFile
-import requests
 from django.utils.text import slugify
 from apps.catalog.models import (
     Product,
@@ -211,8 +210,13 @@ class ContentGenerator:
                 llm_model=self.llm.model,
             )
 
+        requested_image_analysis = (options or {}).get("analyze_images", True)
         requested_use_images = (options or {}).get("use_images", True)
-        use_images = requested_use_images and self._should_use_images_for_product(product)
+        use_images = (
+            requested_image_analysis
+            and requested_use_images
+            and self._should_use_images_for_product(product)
+        )
         try:
             # 1. Подготовка изображений (если нужно)
             images_data = []

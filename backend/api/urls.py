@@ -1,22 +1,29 @@
 """URL-маршруты для публичного API (v1)."""
 from django.urls import path, include, re_path
-from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import HealthCheckView, JWTObtainPairView, TempImageUploadView
-
-TokenRefresh = TokenRefreshView.as_view()
+from .views import (
+    HealthCheckView,
+    JWTObtainPairView,
+    JWTRefreshView,
+    LivenessCheckView,
+    TempImageUploadView,
+)
 
 urlpatterns = [
     # Проверка здоровья сервиса
     path("health/", HealthCheckView.as_view(), name="health-check"),
+    path("live/", LivenessCheckView.as_view(), name="liveness-check"),
     
     # Временная загрузка файлов
     re_path(r"^upload/temp/?$", TempImageUploadView.as_view(), name="temp-upload"),
 
     # Аутентификация (JWT): в теле username или email + password
     path("auth/jwt/create/", JWTObtainPairView.as_view(), name="jwt-create"),
-    path("auth/jwt/refresh/", TokenRefresh, name="jwt-refresh"),
-    re_path(r"^auth/jwt/refresh/?$", TokenRefresh),  # для совместимости с/без trailing slash
+    re_path(
+        r"^auth/jwt/refresh/?$",
+        JWTRefreshView.as_view(),
+        name="jwt-refresh",
+    ),
 
     # Пользователи
     path("users/", include("apps.users.urls")),
@@ -45,4 +52,3 @@ urlpatterns = [
     # Маркетинг: cookie consent, аналитика
     path("marketing/", include("apps.marketing.urls")),
 ]
-

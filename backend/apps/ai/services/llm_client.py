@@ -54,8 +54,9 @@ class LLMClient:
                     timeout=5
                 )
                 cache.set(cache_key, True, 3600)  # Раз в час
-            except Exception as e:
-                logger.error(f"Failed to send Telegram quota alert: {e}")
+            except Exception:
+                # The requests exception can contain Telegram's tokenized URL.
+                logger.error("Failed to send Telegram quota alert")
 
     def get_embedding(self, text: str) -> List[float]:
         """Получить векторное представление текста."""
