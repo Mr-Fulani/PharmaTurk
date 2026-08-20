@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from apps.catalog.models import Product
 from apps.recommendations.models import ProductVector
+from apps.recommendations.selectors import is_public_recommendation_product
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,9 @@ class QdrantRecommendationEngine:
             "brand_id": product.brand_id or 0,
             "brand_name": product.brand.name if product.brand else None,
             "color": self._extract_color(product),
-            "is_active": product.is_available,
+            # Qdrant's historical field name is retained for compatibility,
+            # but it now means the complete public recommendation policy.
+            "is_active": is_public_recommendation_product(product),
             "created_at": product.created_at.isoformat() if product.created_at else None,
             "image_url": image_url or None,
         }
@@ -136,6 +139,12 @@ class QdrantRecommendationEngine:
         image_vector: Optional[List[float]] = None,
         combined_vector: Optional[List[float]] = None,
     ) -> bool:
+        # Defense in depth for callers outside the scheduled indexing tasks.
+        # Never write a withdrawn or unavailable product into the public index.
+        if not is_public_recommendation_product(product):
+            self.delete_product(product.id)
+            return False
+
         from qdrant_client.http import models as qmodels
         payload = self._product_payload(product)
         if combined_vector is None and image_vector is not None:
@@ -168,7 +177,7 @@ class QdrantRecommendationEngine:
                 "price": product.price,
                 "brand_id": product.brand_id,
                 "color": payload["color"],
-                "is_active": product.is_available,
+                "is_active": is_public_recommendation_product(product),
                 "last_synced": timezone.now(),
             },
         )
@@ -180,7 +189,12 @@ class QdrantRecommendationEngine:
         import redis
         from django.conf import settings
         try:
-            redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
+            # Cache and Celery broker intentionally use separate Redis DBs.
+            redis_url = getattr(
+                settings,
+                "REDIS_CACHE_URL",
+                getattr(settings, "REDIS_URL", "redis://localhost:6379/0"),
+            )
             client = redis.from_url(redis_url)
             for pattern in (f"*rec:similar:{product_id}:*", f"*rec:no_vector:{product_id}:*"):
                 for key in client.scan_iter(match=pattern, count=50):
@@ -340,6 +354,19 @@ class QdrantRecommendationEngine:
         image_vector = encoder.encode_image_from_url(image_url)
         if image_vector is None:
             raise ValueError("invalid_image_url")
+        return self.find_similar_by_image_vector(
+            image_vector=image_vector,
+            n_results=n_results,
+            filters=filters,
+        )
+
+    def find_similar_by_image_vector(
+        self,
+        image_vector: np.ndarray,
+        n_results: int = 12,
+        filters: Optional[Dict] = None,
+    ) -> List[Dict]:
+        """Query Qdrant with an already validated and encoded image."""
         qfilter = self._build_filter(filters=filters)
         try:
             results = self.client.query_points(
@@ -445,7 +472,8 @@ class QdrantRecommendationEngine:
             for hit in points[:n_results]
         ]
 
-    def delete_product(self, product_id: int) -> None:
+    def delete_product(self, product_id: int) -> bool:
+        """Delete remotely first and retain the local marker for retry on failure."""
         try:
             from qdrant_client.http import models as qmodels
             self.client.delete(
@@ -454,7 +482,10 @@ class QdrantRecommendationEngine:
             )
         except Exception as e:
             logger.warning("Qdrant delete product %s: %s", product_id, e)
+            return False
         ProductVector.objects.filter(product_id=product_id).delete()
+        self._invalidate_similar_cache(product_id)
+        return True
 
     def get_collection_stats(self) -> Dict[str, Any]:
         info = self.client.get_collection(self.COLLECTION_NAME)

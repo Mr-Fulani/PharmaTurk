@@ -1,129 +1,196 @@
-# AI модуль: быстрый тест после запуска
+# AI-модуль: быстрый smoke-тест
 
-После `./restart.sh --fast --logs` (или полного рестарта) контейнеры подняты. Ниже — что сделать по шагам.
+Эта инструкция может выполнять реальные запросы OpenAI и расходовать quota; исключение — шаги, явно помеченные как dry-run. Запускайте её только на тестовых товарах и оставляйте `auto_apply=false`, пока результат не проверен.
 
----
+Команды ниже приведены для Docker Compose. Если стек уже занят или недоступен, не запускайте второй экземпляр поверх него: выполните только статические/unit-проверки либо дождитесь доступного тестового окружения.
 
-## Минимальный чеклист: как потестить всё по порядку
+## Предусловия
 
-| # | Что сделать | Команда / действие |
-|---|-------------|--------------------|
-| 0 | Поднять проект | `./restart.sh --fast --logs` (или `docker compose up -d`) |
-| 1 | RAG (один раз) | `docker compose exec backend poetry run python manage.py setup_ai_rag` |
-| 2 | Прогон по 2 товарам (синхронно, без очереди) | `docker compose exec backend poetry run python manage.py benchmark_ai 2` |
-| 3 | Посмотреть результат в админке | http://localhost:8000/admin/ → **AI** → **Логи AI обработки** |
-| 4 | (Опционально) Запуск через API в очередь | Получить JWT (`POST /api/auth/jwt/create/`), затем `POST /api/ai/process/<id>/`; смотреть логи `celery_ai`. |
+Нужны:
 
-**Быстрый прогон без очереди:** шаги 1 + 2 выполняются в контейнере `backend`, воркер `celery_ai` для benchmark не нужен (он нужен только для задач, поставленных через API). В конце `benchmark_ai` в консоли будет сводка: успех/ошибки, cost_usd, средняя уверенность.
+- PostgreSQL, Redis и Qdrant;
+- backend и worker `celery_ai` для асинхронного API-теста;
+- `OPENAI_API_KEY`;
+- хотя бы один товар;
+- Django-пользователь с `is_staff=True` и его JWT.
 
----
+AI API защищён `IsAdminUser`. Обычный аутентифицированный пользователь получает `403`, даже если JWT корректен. Анонимный запрос получает `401`.
 
-## 1. Подготовка RAG (один раз или после смены категорий/шаблонов)
-
-В отдельном терминале (контейнеры должны быть запущены):
+Проверить сервисы без изменения данных:
 
 ```bash
-# Создать коллекции Qdrant и загрузить категории + шаблоны
+docker compose ps backend redis qdrant celery_ai
+docker compose logs --tail=100 celery_ai
+```
+
+## 1. Безопасная проверка выбора товаров
+
+`--dry-run` не вызывает OpenAI и не создаёт AI-лог:
+
+```bash
+docker compose exec backend poetry run python manage.py benchmark_ai 2 --dry-run
+```
+
+Ожидается список ID либо сообщение, что товаров нет.
+
+## 2. Подготовка RAG
+
+Выполняйте при первом развёртывании и после существенного изменения категорий или AI-шаблонов:
+
+```bash
 docker compose exec backend poetry run python manage.py setup_ai_rag
 ```
 
-Если категорий много, команда может занять минуту (эмбеддинги через OpenAI). Без `OPENAI_API_KEY` в `.env` упадёт с ошибкой — ключ обязателен.
+Команда создаёт коллекции `categories` и `templates`, затем записывает embeddings категорий и шаблонов. Она расходует OpenAI embeddings. Просмотрите весь вывод: отдельные команды выводят warnings и могут пропустить конкретные записи, поэтому финальная строка сама по себе не доказывает полноту индекса.
 
----
-
-## 2. Проверка API AI
-
-Backend уже отдаёт эндпоинты под префиксом `/api/ai/`. Нужна авторизация (JWT или сессия админки).
-
-**Статистика (GET):**
-```bash
-# С токеном (подставьте свой JWT после логина в админке или через /api/auth/jwt/create/)
-curl -s -H "Authorization: Bearer YOUR_JWT" http://localhost:8000/api/ai/stats/
-# или через браузер, залогинившись в админку: http://localhost:8000/api/ai/stats/
-```
-
-**Ручной запуск обработки одного товара (POST):**
-```bash
-# Замените 1 на реальный ID товара из каталога
-curl -X POST http://localhost:8000/api/ai/process/1/ \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_JWT" \
-  -d '{"generate_description": true, "categorize": true, "analyze_images": true, "auto_apply": false}'
-```
-
-Ответ: `202` и `task_id` — задача ушла в очередь `ai`. Её обрабатывает воркер **celery_ai** (если он запущен).
-
----
-
-## 3. Проверка через админку Django
-
-1. Открыть http://localhost:8000/admin/
-2. Войти под суперпользователем.
-3. Разделы:
-   - **AI → Логи AI обработки** — список логов, фильтр по статусу, товару.
-   - **AI → AI шаблоны** — шаблоны для RAG.
-   - **AI → Очередь на модерацию** — записи, отправленные на модерацию (низкая уверенность и т.п.).
-4. Для конкретного товара (например, из «Товары» каталога): запомнить ID, затем вручную вызвать обработку через API (см. выше) или добавить в коде/админке кнопку «Запустить AI» (если реализовано).
-
-Логи AI: по каждой записи видно статус, сгенерированное описание, категорию, уверенность, стоимость. Действия: «Одобрить», «Отклонить», «Перезапустить AI».
-
----
-
-## 4. Тест на нескольких товарах (benchmark)
-
-В терминале:
+## 3. Синхронный тест одного товара
 
 ```bash
-# Сухой прогон: только показать, какие товары будут обработаны (без вызова OpenAI)
-docker compose exec backend poetry run python manage.py benchmark_ai 3 --dry-run
-
-# Реальный прогон по 3 товарам (без применения к товару)
-docker compose exec backend poetry run python manage.py benchmark_ai 3
-
-# С автоматическим применением результатов к товару
-docker compose exec backend poetry run python manage.py benchmark_ai 2 --auto-apply
+docker compose exec backend poetry run python manage.py benchmark_ai 1
 ```
 
-В логах контейнера **celery_ai** (или в общих логах `docker compose logs -f celery_ai`) будут сообщения о выполнении задач. Итоговая сводка (успех/ошибки, стоимость, уверенность) выводится в консоль после выполнения `benchmark_ai`.
+Этот путь вызывает `ContentGenerator` прямо внутри management-команды:
 
----
+- worker `celery_ai` ему не нужен;
+- OpenAI и база нужны;
+- Qdrant нужен для полноценного RAG, но pipeline может продолжить работу без RAG;
+- результат не применяется к товару, потому что `--auto-apply` не указан.
 
-## 5. Очередь Celery `ai`
+Если для выбранного товара уже есть успешный лог того же типа, сервис может вернуть его без нового LLM-вызова. Benchmark не устанавливает `force=True`.
 
-Задачи из `apps.ai.tasks` маршрутизируются в очередь **ai**. Их обрабатывает только воркер **celery_ai**:
+Проверьте итоговый статус, confidence и `cost_usd`, затем откройте Django Admin → AI → Логи AI обработки. Статус может быть `completed` или `moderation`; `failed` требует проверки `error_message` и traceback лога.
+
+`--auto-apply` в smoke-тесте не используйте, пока результат не проверен. Этот флаг сразу изменяет товар.
+
+## 4. Получение staff JWT
+
+Получите access token от staff-пользователя:
 
 ```bash
-docker compose ps celery_ai
-docker compose logs -f celery_ai
+curl -i -X POST http://localhost:8000/api/auth/jwt/create/ \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"<staff-user>","password":"<password>"}'
 ```
 
-Если **celery_ai** не запущен, задачи будут копиться в Redis в очереди `ai` и не выполняться до старта воркера.
+Скопируйте поле `access` из ответа. Вход обычного пользователя тоже выдаёт JWT, но вызов `/api/ai/...` с ним корректно завершится `403 Forbidden`.
 
----
+## 5. Асинхронный API-тест
 
-## 6. Типичные проблемы
+Получить существующий ID можно без предположений о конкретной базе:
 
-| Проблема | Что проверить |
-|----------|----------------|
-| `setup_ai_rag` падает | `OPENAI_API_KEY` в `.env`, доступность Qdrant (`docker compose ps qdrant`). |
-| Задача в очереди, но ничего не происходит | Запущен ли `celery_ai`: `docker compose ps celery_ai`. |
-| Ошибка `cleanup_orphaned_media` в логах celeryworker | В настройках расписание должно указывать на задачу `catalog.cleanup_orphaned_media` (уже исправлено в конфиге). |
-| 401 на `/api/ai/...` | Нужен заголовок `Authorization: Bearer <JWT>`. Получить JWT: POST `/api/auth/jwt/create/` с username/password. |
+```bash
+docker compose exec backend poetry run python manage.py shell -c \
+  "from apps.catalog.models import Product; print(Product.objects.values_list('id', flat=True).first())"
+```
 
----
+Поставьте обработку в очередь:
 
-## Краткий чеклист первого прогона
+```bash
+curl -i -X POST http://localhost:8000/api/ai/process/<product-id>/ \
+  -H 'Authorization: Bearer <YOUR_ACCESS_TOKEN> \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "generate_description": true,
+    "categorize": true,
+    "analyze_images": true,
+    "use_images": true,
+    "auto_apply": false
+  }'
+```
 
-1. ~~`docker compose exec backend poetry run python manage.py setup_ai_rag`~~ — уже сделано.
-2. **Запустить тест на 1–2 товарах (синхронно, без очереди):**
-   ```bash
-   docker compose exec backend poetry run python manage.py benchmark_ai 2
-   ```
-   Обработка пойдёт прямо в контейнере; в конце будет сводка (успех/ошибки, стоимость, уверенность). Логи появятся в **AI → Логи AI обработки** в админке.
-3. В админке: http://localhost:8000/admin/ → **AI** → **Логи AI обработки** — посмотреть запись, при необходимости **Одобрить** или **Отклонить**.
-4. (Опционально) Запуск через очередь (нужен работающий `celery_ai`):
-   - Взять ID товара из каталога.
-   - `curl -X POST http://localhost:8000/api/ai/process/1/ -H "Content-Type: application/json" -H "Authorization: Bearer YOUR_JWT" -d '{}'`
-   - Смотреть выполнение: `docker compose logs -f celery_ai`.
+Ожидаемый HTTP status — `202 Accepted`. В JSON должны быть:
 
-После этого можно тестировать модерацию (approve/reject), повторный запуск и пакетную обработку через API.
+- `task_id` — идентификатор Celery-задачи;
+- `log_id` — заранее созданный `pending`-лог;
+- `submitted` — была ли создана новая задача;
+- `status: "queued"`.
+
+`submitted=false` не является ошибкой: enqueue-сервис нашёл существующий активный или готовый лог того же типа и не продублировал расход.
+
+Наблюдение за worker:
+
+```bash
+docker compose logs -f --tail=100 celery_ai
+```
+
+После завершения запросите конкретный лог:
+
+```bash
+curl -i \
+  -H 'Authorization: Bearer <YOUR_ACCESS_TOKEN> \
+  http://localhost:8000/api/ai/logs/<log-id>/
+```
+
+Для проверки без Vision достаточно выключить любой из двух флагов; в примере
+оба выключены для явности:
+
+```json
+{
+  "generate_description": true,
+  "categorize": true,
+  "analyze_images": false,
+  "use_images": false,
+  "auto_apply": false
+}
+```
+
+`use_images=false` — фактический запрет загрузки изображений. Одного `analyze_images=false` недостаточно, когда описание и категоризация оставляют обработку в режиме `full`.
+
+## 6. Проверка permissions
+
+Минимальная матрица ожидаемого поведения для любого `/api/ai/...` endpoint:
+
+| Клиент | Ожидаемый ответ |
+|---|---|
+| Без токена | `401 Unauthorized` |
+| JWT обычного пользователя (`is_staff=False`) | `403 Forbidden` |
+| JWT staff-пользователя | запрос допускается; далее status зависит от данных |
+
+Проверка статистики staff-токеном:
+
+```bash
+curl -i \
+  -H 'Authorization: Bearer <YOUR_ACCESS_TOKEN> \
+  'http://localhost:8000/api/ai/stats/?days=30'
+```
+
+`days` должен быть целым числом от `1` до `365`.
+
+## 7. Проверка модерации и применения
+
+В Django Admin:
+
+1. откройте AI → Логи AI обработки;
+2. проверьте сгенерированные RU/EN поля, категорию, атрибуты, исходные данные и стоимость;
+3. если статус `moderation`, откройте связанную очередь и причину;
+4. применяйте только проверенный лог через action «Применить результат к товару» или approve;
+5. для повторного прогона используйте reprocess/rerun — он ставит `force=True`, но сохраняет `auto_apply=False`.
+
+Кнопки «Запустить AI» в сессиях и задачах скрапинга являются ручными. После обычного парсинга AI автоматически не стартует.
+
+## 8. Быстрые unit-проверки без Docker
+
+Если зависимости уже установлены локально, permissions и валидацию API можно проверить без внешних OpenAI/Qdrant вызовов:
+
+```bash
+cd backend
+poetry run pytest \
+  apps/ai/tests/test_api_permissions.py \
+  apps/ai/tests/test_api_validation.py \
+  apps/ai/tests/test_queueing.py
+```
+
+`test_queueing.py` использует Django DB и может требовать настроенное тестовое подключение PostgreSQL. Первые два файла проверяют permissions/serializers с mock и не являются end-to-end проверкой инфраструктуры.
+
+## Диагностика
+
+| Симптом | Проверка |
+|---|---|
+| `401` | Передан ли `Authorization: Bearer <YOUR_ACCESS_TOKEN> не истёк ли токен. |
+| `403` | У пользователя должен быть `is_staff=True`; обычного JWT недостаточно. |
+| `202`, но лог остаётся `pending` | Работают ли Redis и `celery_ai`, попала ли задача в очередь `ai`. |
+| `submitted=false` | Уже существует лог подходящего типа; для осознанного повторного запуска используйте admin reprocess. |
+| Ошибка OpenAI | Проверьте ключ, quota, сетевой доступ и `error_message` в AI-логе. |
+| RAG пустой | Проверьте Qdrant и вывод `setup_ai_rag`; pipeline может завершиться без RAG. |
+| Изображения не проанализированы | Проверьте `use_images`, наличие URL и `input_data.image_urls_failed` в логе. |
+| Товар неожиданно изменился | Проверьте, не использовался ли `auto_apply=true` или admin action с авто-применением. |

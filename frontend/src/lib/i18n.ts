@@ -1,4 +1,4 @@
-import { TFunction } from 'next-i18next'
+import type { TFunction } from 'next-i18next'
 
 /**
  * Интерфейс для перевода категории из API
@@ -7,6 +7,29 @@ export interface CategoryTranslation {
   locale: string
   name: string
   description?: string
+}
+
+/**
+ * Возвращает перевод категории для точной локали или её базового языка.
+ * Точное совпадение проверяется первым, чтобы `en-US` не было случайно
+ * перекрыто более ранней записью `en`.
+ */
+export function findCategoryTranslation(
+  translations?: CategoryTranslation[],
+  currentLocale: string = 'ru'
+): CategoryTranslation | undefined {
+  if (!translations || translations.length === 0) return undefined
+
+  const locale = currentLocale.trim().toLowerCase().replace(/_/g, '-') || 'ru'
+  const exact = translations.find((translation) =>
+    translation.locale?.trim().toLowerCase().replace(/_/g, '-') === locale
+  )
+  if (exact) return exact
+
+  const language = locale.split('-')[0]
+  return translations.find((translation) =>
+    translation.locale?.trim().toLowerCase().replace(/_/g, '-') === language
+  )
 }
 
 /**
@@ -54,11 +77,9 @@ export function getLocalizedCategoryName(
   const locale = currentLocale || 'ru'
 
   // 1. Сначала проверяем переводы из API
-  if (translations && translations.length > 0) {
-    const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
-    if (apiTranslation && apiTranslation.name) {
-      return apiTranslation.name
-    }
+  const apiTranslation = findCategoryTranslation(translations, locale)
+  if (apiTranslation?.name) {
+    return apiTranslation.name
   }
 
   // 2. Затем проверяем JSON файлы (специфичные для категорий)
@@ -95,16 +116,13 @@ export function getLocalizedCategoryDescription(
   translations?: CategoryTranslation[],
   currentLocale?: string
 ): string | null {
-  if (!fallbackDescription) return null
-
   const normalizedSlug = normalizeCategorySlug(slug)
   const locale = currentLocale || 'ru'
 
-  if (translations && translations.length > 0) {
-    const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
-    if (apiTranslation && apiTranslation.description) {
-      return apiTranslation.description
-    }
+  // API-перевод проверяется даже при пустом базовом описании категории.
+  const apiTranslation = findCategoryTranslation(translations, locale)
+  if (apiTranslation?.description) {
+    return apiTranslation.description
   }
 
   const jsonKey = `category_${normalizedSlug}_description`
@@ -113,7 +131,7 @@ export function getLocalizedCategoryDescription(
     return jsonTranslated
   }
 
-  return fallbackDescription
+  return fallbackDescription || null
 }
 
 /**

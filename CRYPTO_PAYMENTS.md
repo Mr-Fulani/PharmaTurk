@@ -13,7 +13,7 @@
 
 ---
 
-## 2. Режим разработки (localhost / ngrok)
+## 2. Разработка и тестовый callback
 
 ### 2.1. Тестовая монета TCN
 
@@ -23,26 +23,24 @@
 4. В `.env`:
    ```env
    COINREMITTER_API_KEY=ваш_api_key
-   COINREMITTER_API_PASSWORD=ваш_пароль
-   COINREMITTER_COIN=TCN
-   SITE_URL=http://localhost:3001
+COINREMITTER_API_PASSWORD=ваш_пароль
+COINREMITTER_COIN=TCN
+COINREMITTER_WEBHOOK_IP_WHITELIST=
+SITE_URL=http://localhost:3001
    ```
 
 **Ограничение TCN:** максимум 10 TCN на один инвойс. Сумма заказа в фиате конвертируется в TCN — следите, чтобы не превысить лимит.
 
-### 2.2. Доступ через ngrok (мобильные устройства, внешние тесты)
+### 2.2. Публичный callback
 
-1. Запустите туннель на **frontend** (порт 3001):
-   ```bash
-   ngrok http 3001
-   ```
-2. В `.env` укажите ngrok-URL:
-   ```env
-   SITE_URL=https://ваш-поддомен.ngrok-free.dev
-   ```
-3. Frontend автоматически добавляет заголовок `ngrok-skip-browser-warning` для обхода страницы предупреждения ngrok free tier.
+CoinRemitter получает `notify_url` только для публичного HTTPS-адреса. Провайдер
+в коде намеренно не передаёт localhost и стандартные домены
+`ngrok-free.dev`/`ngrok.io`/`ngrok.app`: их interstitial-страница мешает
+серверной проверке callback. Для end-to-end теста используйте staging-домен,
+Cloudflare Tunnel или другой tunnel без промежуточной HTML-страницы.
 
-**Важно:** CoinRemitter проверяет `notify_url` POST-запросом. URL должен быть публично доступен. При `SITE_URL` с localhost webhook не передаётся — инвойс создаётся, но уведомления о статусе не приходят. При ngrok всё работает.
+При локальном `SITE_URL=http://localhost:3001` инвойс может быть создан, но
+callback URL не передаётся и автоматического подтверждения заказа не будет.
 
 ---
 
@@ -68,6 +66,10 @@
 COINREMITTER_API_KEY=ваш_боевой_api_key
 COINREMITTER_API_PASSWORD=ваш_боевой_пароль
 COINREMITTER_COIN=USDTTRC20
+# Необязательный comma-separated allowlist IP CoinRemitter. Заполняйте только
+# после trusted-ingress real-IP normalization; за Cloudflare без неё Nginx
+# видит адрес edge, а не CoinRemitter.
+COINREMITTER_WEBHOOK_IP_WHITELIST=
 
 # URL для webhook (должен вести на backend)
 # Вариант A: backend на отдельном поддомене
@@ -89,10 +91,63 @@ FRONTEND_SITE_URL=https://mudaroba.com
 
 Формируемые URL:
 - `notify_url`: `{SITE_URL}/api/payments/crypto/webhook/` — CoinRemitter шлёт сюда POST при смене статуса
-- `success_url`: `{FRONTEND_SITE_URL}/checkout-success?number=...` — редирект после успешной оплаты
-- `fail_url`: `{FRONTEND_SITE_URL}/checkout-crypto?number=...` — редирект при отмене
+- `success_url`: для `ru` — `{FRONTEND_SITE_URL}/checkout-success?number=...`,
+  для `en` — `{FRONTEND_SITE_URL}/en/checkout-success?number=...`;
+- `fail_url`: для `ru` — `{FRONTEND_SITE_URL}/checkout-crypto?number=...`,
+  для `en` — `{FRONTEND_SITE_URL}/en/checkout-crypto?number=...`.
 
-### 3.5. Nginx и маршрутизация
+### 3.5. Модель доверия webhook
+
+CoinRemitter webhook не считается аутентифицированным источником статуса. Поля
+`id`/`invoice_id` используются только для поиска локального платежа. Backend
+затем вызывает `invoice/get` с API credentials и проверяет идентификаторы,
+`custom_data1` (номер заказа), fiat currency, total/paid amounts и provider
+status. Только после этой сверки под блокировкой строк заказ переводится в paid
+и один раз списываются остатки. Повторный callback идемпотентен, а поздний
+`expired` не понижает уже оплаченный заказ.
+
+Если `COINREMITTER_WEBHOOK_IP_WHITELIST` непуст, запрос до разбора payload
+отклоняется с `403`, когда доверенный `X-Real-IP` не входит в список. Не
+передавайте клиентский `X-Forwarded-For` напрямую в Django; Nginx должен
+перезаписывать `X-Real-IP` значением нормализованного `$remote_addr`.
+
+Важно: в стандартном `nginx/default.conf` `$remote_addr` намеренно означает
+неподделываемый непосредственный peer. За Cloudflare это адрес edge-узла, а не
+исходный адрес CoinRemitter. Поэтому allowlist оставляют пустым, пока внешний
+trusted ingress не проверяет proxy source и не выполняет real-IP normalization
+(либо IP-фильтрацию делают на самом edge). Даже без IP allowlist статус не
+принимается на веру: backend делает авторизованный `invoice/get` и полную сверку.
+
+CoinRemitter возвращает два идентификатора: длинный `id` и короткий
+`invoice_id`, используемый методом `invoice/get`. Проект сохраняет их отдельно
+как `CryptoPayment.invoice_id` и `CryptoPayment.invoice_code`. Для исторических
+строк без `invoice_code` поле безопасно дозаполняется после успешной
+аутентифицированной проверки webhook.
+
+### 3.6. Read-only reconciliation
+
+До и после релиза сверяйте локальные платежи с авторизованным `invoice/get`:
+
+```bash
+cd backend
+poetry run python manage.py reconcile_coinremitter \
+  --limit 100 --older-than-minutes 10
+
+# Проверить все локальные статусы и вернуть ненулевой exit code при drift.
+poetry run python manage.py reconcile_coinremitter \
+  --all-statuses --fail-on-drift
+```
+
+Команда всегда работает в режиме **READ ONLY**: она не меняет заказ, платёж или
+инвойс провайдера. По умолчанию проверяются только pending-платежи старше пяти
+минут. Категория `needs_local_confirmation` является критическим расхождением:
+сначала сохраните вывод и provider audit trail, затем повторно доставьте
+подлинный webhook либо выполните утверждённую оператором процедуру исправления.
+Не меняйте статусы напрямую в БД: подтверждение должно пройти штатную атомарную
+логику списания остатков и уведомлений. `provider_unavailable` означает, что
+сверку нужно повторить после восстановления исходящего HTTPS/API credentials.
+
+### 3.7. Nginx и маршрутизация
 
 Webhook должен доходить до backend. Пример конфигурации:
 
@@ -140,14 +195,18 @@ server {
 ```
 В этом случае `SITE_URL=https://mudaroba.com` — запросы на `/api/payments/crypto/webhook/` пойдут на backend.
 
-### 3.6. Проверка webhook
+### 3.8. Проверка доступности webhook
 
 ```bash
 curl -X POST https://ваш-домен/api/payments/crypto/webhook \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
-Ожидается ответ `200 OK` с телом `{"ok":true}` (валидационный ping).
+При пустом IP allowlist ожидается ответ `200 OK` с телом `{"ok":true}` — это
+только валидационный ping, а не имитация оплаты. При включённом allowlist запрос
+с постороннего адреса ожидаемо вернёт `403`. Для проверки подтверждения
+используйте тестовый инвойс: произвольный `status=paid` в POST не принимается на
+доверие.
 
 ---
 
@@ -190,12 +249,17 @@ curl -X POST https://ваш-домен/api/payments/crypto/webhook \
 - [ ] `DJANGO_ALLOWED_HOSTS` включает домен backend
 - [ ] Nginx (или другой reverse proxy) проксирует `/api/` на backend
 - [ ] SSL сертификаты настроены
+- [ ] Read-only reconciliation не показывает drift/provider_unavailable
 
 ---
 
-## 7. Режим dummy (fallback)
+## 7. Dummy-режим для локальной разработки
 
-При ошибке CoinRemitter (неверный webhook, лимиты, сеть) и `DEBUG=1` используется тестовый режим с фиктивным адресом `TDevWallet123456789012345678901`. В production при ошибке API инвойс не создаётся, пользователь получает сообщение об ошибке.
+Dummy не включается самим `DEBUG`. Он активируется только явным
+`CRYPTO_DUMMY_MODE=1` и используется после ошибки CoinRemitter. При
+`DJANGO_DEBUG=0` Django отклоняет такую конфигурацию при старте. Значение
+создаёт лишь локальный pending-инвойс и не должно использоваться для проверки
+webhook, списания остатков или production-платежей.
 
 ---
 
@@ -205,9 +269,9 @@ curl -X POST https://ваш-домен/api/payments/crypto/webhook \
 |----------|---------|
 | "Maximum 10 TCN" | Используется TCN; сумма в TCN > 10. Уменьшите сумму или перейдите на боевую монету. |
 | "Invalid notify url" | Webhook возвращает не 200. Проверьте доступность URL, trailing slash, Nginx. |
-| Dummy-адрес в production | Ошибка CoinRemitter. Проверьте логи backend, ключи, webhook. |
+| Django не стартует с `CRYPTO_DUMMY_MODE` | Dummy запрещён при `DJANGO_DEBUG=0`; установите `CRYPTO_DUMMY_MODE=0`. |
 | Нет редиректа после оплаты | `success_url`/`fail_url` не передаются (localhost) или указаны неверно. Задайте публичный `FRONTEND_SITE_URL`. |
-| 404 на /api/... через ngrok | Добавлен заголовок `ngrok-skip-browser-warning` в `api.ts` — проверьте, что frontend обновлён. |
+| Callback отсутствует при localhost/ngrok | Используйте публичный staging/tunnel без interstitial; эти URL намеренно не передаются CoinRemitter. |
 
 ---
 

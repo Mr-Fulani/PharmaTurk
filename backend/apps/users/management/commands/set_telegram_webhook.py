@@ -7,20 +7,22 @@ Telegram будет отправлять обновления (сообщени�
 
 Требует в .env:
     TELEGRAM_BOT_TOKEN — токен бота
-    SITE_URL — базовый URL сайта (например https://it-dev.space)
+    TELEGRAM_WEBHOOK_SECRET — секрет заголовка Telegram webhook
+    SITE_URL — базовый URL сайта (например https://mudaroba.com)
 """
 
-import logging
+import re
 
 import requests
 from django.conf import settings
-from django.core.management.base import BaseCommand
-
-logger = logging.getLogger(__name__)
+from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
-    help = "Регистрирует webhook для Telegram-бота (привязка аккаунтов, уведомления)"
+    help = (
+        "Регистрирует webhook для Telegram-бота "
+        "(привязка аккаунтов, уведомления)"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -37,40 +39,58 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
         if not token:
-            self.stderr.write(self.style.ERROR("TELEGRAM_BOT_TOKEN не задан в .env"))
-            return
+            raise CommandError("TELEGRAM_BOT_TOKEN не задан в .env")
 
         site_url = getattr(settings, "SITE_URL", "") or ""
         if not options["delete"] and not options.get("url") and not site_url:
-            self.stderr.write(
-                self.style.ERROR(
-                    "SITE_URL не задан в .env. Укажите --url или задайте SITE_URL."
-                )
+            raise CommandError(
+                "SITE_URL не задан в .env. Укажите --url или задайте SITE_URL."
             )
-            return
 
         if options["delete"]:
             self._delete_webhook(token)
             return
 
-        webhook_url = options.get("url") or f"{site_url.rstrip('/')}/api/users/telegram/webhook/"
-        self._set_webhook(token, webhook_url)
+        webhook_secret = getattr(settings, "TELEGRAM_WEBHOOK_SECRET", "") or ""
+        if not webhook_secret:
+            raise CommandError(
+                "TELEGRAM_WEBHOOK_SECRET не задан: webhook без secret_token не регистрируется"
+            )
+        if len(webhook_secret) > 256 or not re.fullmatch(
+            r"[A-Za-z0-9_-]+", webhook_secret
+        ):
+            raise CommandError(
+                "TELEGRAM_WEBHOOK_SECRET должен содержать "
+                "1–256 символов A-Z, a-z, 0-9, _ или -"
+            )
 
-    def _set_webhook(self, token: str, url: str) -> None:
+        webhook_url = (
+            options.get("url")
+            or f"{site_url.rstrip('/')}/api/users/telegram/webhook/"
+        )
+        self._set_webhook(token, webhook_url, webhook_secret)
+
+    def _set_webhook(self, token: str, url: str, webhook_secret: str) -> None:
         api_url = f"https://api.telegram.org/bot{token}/setWebhook"
         try:
-            resp = requests.post(api_url, json={"url": url}, timeout=10)
+            resp = requests.post(
+                api_url,
+                json={"url": url, "secret_token": webhook_secret},
+                timeout=10,
+            )
             data = resp.json()
             if data.get("ok"):
                 self.stdout.write(
                     self.style.SUCCESS(f"Webhook зарегистрирован: {url}")
                 )
             else:
-                self.stderr.write(
-                    self.style.ERROR(f"Ошибка Telegram API: {data.get('description', 'Неизвестно')}")
+                raise CommandError(
+                    f"Ошибка Telegram API: {data.get('description', 'Неизвестно')}"
                 )
-        except requests.RequestException as e:
-            self.stderr.write(self.style.ERROR(f"Ошибка запроса: {e}"))
+        except requests.RequestException:
+            # The Telegram API URL contains the bot token; do not include the
+            # requests exception/URL in command output, chaining or logs.
+            raise CommandError("Ошибка запроса к Telegram API") from None
 
     def _delete_webhook(self, token: str) -> None:
         api_url = f"https://api.telegram.org/bot{token}/deleteWebhook"
@@ -80,8 +100,6 @@ class Command(BaseCommand):
             if data.get("ok"):
                 self.stdout.write(self.style.SUCCESS("Webhook удалён"))
             else:
-                self.stderr.write(
-                    self.style.ERROR(f"Ошибка: {data.get('description', 'Неизвестно')}")
-                )
-        except requests.RequestException as e:
-            self.stderr.write(self.style.ERROR(f"Ошибка запроса: {e}"))
+                raise CommandError(f"Ошибка: {data.get('description', 'Неизвестно')}")
+        except requests.RequestException:
+            raise CommandError("Ошибка запроса к Telegram API") from None

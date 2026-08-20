@@ -1,5 +1,6 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
+import { safeJsonLd } from '../lib/sanitizeHtml'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || 'Mudaroba'
@@ -107,7 +108,7 @@ export default function SEO({
         <script
           key={idx}
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
         />
       ))}
     </Head>

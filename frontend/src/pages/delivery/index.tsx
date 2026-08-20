@@ -7,6 +7,7 @@ import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { Plane, Truck, Ship, CreditCard, ShieldCheck } from 'lucide-react'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
+import { sanitizeRichHtml } from '../../lib/sanitizeHtml'
 
 export default function DeliveryPage({ pageData, footerSettings }: { pageData: any; footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
     const { t } = useTranslation('common')
@@ -47,7 +48,7 @@ export default function DeliveryPage({ pageData, footerSettings }: { pageData: a
                     {pageData?.content ? (
                         <div
                             className="prose prose-red max-w-none text-main/80 mb-12"
-                            dangerouslySetInnerHTML={{ __html: pageData.content }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(pageData.content) }}
                         />
                     ) : (
                         <p className="mb-12 text-lg text-main/80 text-center max-w-2xl mx-auto">

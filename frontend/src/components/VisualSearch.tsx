@@ -9,6 +9,16 @@ import { ProductTranslation } from '../lib/i18n'
 import { ProductCardGalleryImage } from './ProductCardImageGallery'
 
 const UPLOAD_TEMP_ENABLED = true // set true when /api/upload/temp/ exists
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+type ApiError = {
+  message?: string
+  response?: {
+    status?: number
+    data?: { error?: string }
+  }
+}
 
 interface Product {
   id: number
@@ -51,8 +61,16 @@ export default function VisualSearch() {
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !file.type.startsWith('image/')) {
+    if (!file) {
       setError(t('select_image', 'Выберите изображение'))
+      return
+    }
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      setError(t('unsupported_image_format', 'Поддерживаются только JPEG, PNG и WebP'))
+      return
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError(t('image_too_large', 'Размер изображения не должен превышать 5 МБ'))
       return
     }
     setError(null)
@@ -75,9 +93,12 @@ export default function VisualSearch() {
         setError(t('upload_unavailable', 'Загрузка файла недоступна. Вставьте URL изображения ниже.'))
       }
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        || (err as Error)?.message
-        || t('search_error', 'Ошибка поиска')
+      const apiError = err as ApiError
+      const msg = apiError.response?.status === 429
+        ? t('visual_search_rate_limited', 'Слишком много запросов. Подождите минуту и попробуйте снова.')
+        : apiError.response?.data?.error
+          || apiError.message
+          || t('search_error', 'Ошибка поиска')
       setError(String(msg))
       setResults([])
     } finally {
@@ -101,11 +122,14 @@ export default function VisualSearch() {
         setError(t('products_not_found', 'Товары не найдены'))
       }
     } catch (err: unknown) {
-      const errorData = (err as { response?: { data?: { error?: string } } })?.response?.data
-      if (errorData?.error === "invalid_image_url") {
-        setError(t('invalid_image_url', 'Не удалось обработать URL. Убедитесь, что ссылка ведет на картинку (.jpg, .png), а не на веб-страницу.'))
+      const apiError = err as ApiError
+      const errorData = apiError.response?.data
+      if (apiError.response?.status === 429) {
+        setError(t('visual_search_rate_limited', 'Слишком много запросов. Подождите минуту и попробуйте снова.'))
+      } else if (errorData?.error === "invalid_image_url") {
+        setError(t('invalid_image_url', 'Не удалось обработать URL. Ссылка должна вести прямо на JPEG, PNG или WebP.'))
       } else {
-        const msg = errorData?.error || (err as Error)?.message || t('search_error', 'Ошибка поиска')
+        const msg = errorData?.error || apiError.message || t('search_error', 'Ошибка поиска')
         setError(String(msg))
       }
       setResults([])
@@ -122,7 +146,7 @@ export default function VisualSearch() {
       <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
         <input
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
           onChange={handleImageUpload}
           className="hidden"
           id="visual-search-file"

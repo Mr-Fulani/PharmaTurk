@@ -1,6 +1,7 @@
 import Document, { Html, Head, Main, NextScript, DocumentContext, DocumentInitialProps } from 'next/document'
 
-const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID
+const rawGtmId = process.env.NEXT_PUBLIC_GTM_ID || ''
+const GTM_ID = /^GTM-[A-Z0-9]+$/i.test(rawGtmId) ? rawGtmId : ''
 
 interface MyDocumentProps extends DocumentInitialProps {
   locale?: string

@@ -30,11 +30,19 @@ def notify_admin_product_review(review_id: int, event: str = "created"):
         f"{review.text[:500]}\n\n"
         f"{admin_url}"
     )
-    requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
-        timeout=10,
-    ).raise_for_status()
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+            timeout=10,
+        )
+        if not response.ok:
+            raise requests.RequestException(
+                f"Telegram API returned HTTP {response.status_code}"
+            )
+    except requests.RequestException:
+        # Preserve Celery autoretry semantics without retaining a tokenized URL.
+        raise requests.RequestException("Telegram API request failed") from None
 
 
 @shared_task(ignore_result=True, autoretry_for=(requests.RequestException,), retry_backoff=True, max_retries=3)
@@ -59,8 +67,15 @@ def notify_admin_product_question(question_id: int):
         f"{question.question[:1000]}\n\n"
         f"Ответить в админке: {admin_url}"
     )
-    requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
-        timeout=10,
-    ).raise_for_status()
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+            timeout=10,
+        )
+        if not response.ok:
+            raise requests.RequestException(
+                f"Telegram API returned HTTP {response.status_code}"
+            )
+    except requests.RequestException:
+        raise requests.RequestException("Telegram API request failed") from None

@@ -8,7 +8,8 @@ packages = [{ include = "config" }, { include = "api" }, { include = "apps" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-Django = "^5.0.6"
+Django = "^5.2.17"
+sqlparse = ">=0.6.0,<0.7.0"
 djangorestframework = "^3.15.2"
 drf-spectacular = "^0.27.2"
 djangorestframework-simplejwt = "^5.3.1"
@@ -18,19 +19,18 @@ redis = "^5.0.4"
 django-environ = "^0.11.2"
 django-cors-headers = "^4.4.0"
 whitenoise = "^6.6.0"
-gunicorn = "^21.2.0"
-opensearch-py = "^2.5.0"
+gunicorn = "^22.0.0"
 django-prometheus = "^2.3.1"
 sentry-sdk = {version = "^2.9.0", extras = ["django"]}
 python-json-logger = "^2.0.7"
 httpx = "^0.27.0"
-Pillow = "^10.2.0"
+Pillow = "^12.3.0"
 boto3 = "^1.35.33"
 imagehash = "^4.3.1"
 python-telegram-bot = "^21.6"
 django-storages = {version = "^1.14.4", extras = ["s3"]}
 beautifulsoup4 = "^4.12.3"
-lxml = "^5.2.2"
+lxml = "^6.1.1"
 fake-useragent = "^1.5.1"
 selenium = "^4.21.0"
 instaloader = "^4.13"
@@ -38,19 +38,27 @@ transliterate = "^1.10.2"
 openai = "^2.16.0"
 qdrant-client = "^1.16.2"
 numpy = ">=1.26.0,<3"
-torch = "^2.0.0"
-transformers = "^4.36.0"
-sentence-transformers = "^2.2.0"
+torch = [
+    { version = "2.13.0", markers = "sys_platform == 'darwin'" },
+    { version = "2.13.0+cpu", source = "pytorch-cpu", markers = "sys_platform != 'darwin'" },
+]
+transformers = "^5.14.1"
+sentence-transformers = "^5.7.0"
 requests = "^2.31.0"
 weasyprint = "^68.1"
 ikea-api = ">=2.4.0"
 django-nested-admin = "^4.1.6"
-curl-cffi = "^0.13.0"
+curl-cffi = "^0.16.0"
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.3.2"
+pytest = "^9.0.3"
 pytest-django = "^4.8.0"
-black = "^24.8.0"
+black = "^26.3.1"
 isort = "^5.13.2"
 flake8 = "^7.1.1"
 
@@ -65,5 +73,3 @@ line_length = 100
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
-
-

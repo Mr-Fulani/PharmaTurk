@@ -3,11 +3,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+)
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
+from rest_framework.permissions import IsAdminUser
 
 from .tasks import (
     pull_products,
@@ -16,14 +23,32 @@ from .tasks import (
     sync_categories_and_brands,
     full_catalog_sync
 )
+from .serializers import (
+    VapiFullSyncQuerySerializer,
+    VapiProductDetailsQuerySerializer,
+    VapiPullQuerySerializer,
+    VapiPullResponseSerializer,
+    VapiSearchQuerySerializer,
+    VapiSearchResponseSerializer,
+    VapiProductDetailsResponseSerializer,
+    VapiTaskResponseSerializer,
+    VapiFullSyncResponseSerializer,
+)
 
 
-class VapiPullView(APIView):
+class VapiAdminAPIView(APIView):
+    """Base class for catalog synchronization endpoints restricted to staff."""
+
+    permission_classes = [IsAdminUser]
+
+
+class VapiPullView(VapiAdminAPIView):
     """Запускает задачу Celery по загрузке товаров из API парсера."""
 
     @extend_schema(
         summary="Старт фоновой загрузки товаров из API парсера",
         description="Запускает асинхронную задачу для загрузки товаров с указанными параметрами",
+        request=None,
         parameters=[
             OpenApiParameter(
                 name="page", 
@@ -59,14 +84,11 @@ class VapiPullView(APIView):
             ),
         ],
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "task_id": {"type": "string", "description": "ID задачи Celery"},
-                    "message": {"type": "string", "description": "Сообщение о запуске"},
-                    "parameters": {"type": "object", "description": "Параметры задачи"}
-                }
-            }
+            200: VapiPullResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки query-параметров",
+            ),
         },
         examples=[
             OpenApiExample(
@@ -86,12 +108,15 @@ class VapiPullView(APIView):
         ]
     )
     def post(self, request: Request) -> Response:
-        # Получаем параметры из запроса
-        page = int(request.query_params.get("page", 1))
-        page_size = int(request.query_params.get("page_size", 100))
-        category = request.query_params.get("category")
-        brand = request.query_params.get("brand")
-        search = request.query_params.get("search")
+        serializer = VapiPullQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        parameters = serializer.validated_data
+
+        page = parameters["page"]
+        page_size = parameters["page_size"]
+        category = parameters.get("category")
+        brand = parameters.get("brand")
+        search = parameters.get("search")
         
         # Запускаем задачу
         task = pull_products.delay(
@@ -115,12 +140,13 @@ class VapiPullView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class VapiProductDetailsView(APIView):
+class VapiProductDetailsView(VapiAdminAPIView):
     """Запускает задачу по загрузке деталей товара."""
 
     @extend_schema(
         summary="Загрузка деталей товара",
         description="Запускает асинхронную задачу для загрузки детальной информации о товаре",
+        request=None,
         parameters=[
             OpenApiParameter(
                 name="product_id", 
@@ -130,24 +156,17 @@ class VapiProductDetailsView(APIView):
             ),
         ],
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "task_id": {"type": "string", "description": "ID задачи Celery"},
-                    "message": {"type": "string", "description": "Сообщение о запуске"},
-                    "product_id": {"type": "string", "description": "ID товара"}
-                }
-            }
-        }
+            200: VapiProductDetailsResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки query-параметров",
+            ),
+        },
     )
     def post(self, request: Request) -> Response:
-        product_id = request.query_params.get("product_id")
-        
-        if not product_id:
-            return Response(
-                {"error": "product_id обязателен"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        serializer = VapiProductDetailsQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        product_id = serializer.validated_data["product_id"]
         
         task = pull_product_details.delay(product_id)
         
@@ -158,12 +177,13 @@ class VapiProductDetailsView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class VapiSearchView(APIView):
+class VapiSearchView(VapiAdminAPIView):
     """Запускает задачу поиска товаров."""
 
     @extend_schema(
         summary="Поиск товаров",
         description="Запускает асинхронную задачу для поиска товаров по запросу",
+        request=None,
         parameters=[
             OpenApiParameter(
                 name="query", 
@@ -180,26 +200,18 @@ class VapiSearchView(APIView):
             ),
         ],
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "task_id": {"type": "string", "description": "ID задачи Celery"},
-                    "message": {"type": "string", "description": "Сообщение о запуске"},
-                    "query": {"type": "string", "description": "Поисковый запрос"},
-                    "limit": {"type": "integer", "description": "Лимит результатов"}
-                }
-            }
-        }
+            200: VapiSearchResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки query-параметров",
+            ),
+        },
     )
     def post(self, request: Request) -> Response:
-        query = request.query_params.get("query")
-        limit = int(request.query_params.get("limit", 50))
-        
-        if not query:
-            return Response(
-                {"error": "query обязателен"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        serializer = VapiSearchQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        query = serializer.validated_data["query"]
+        limit = serializer.validated_data["limit"]
         
         task = search_products_task.delay(query, limit)
         
@@ -211,21 +223,14 @@ class VapiSearchView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class VapiSyncCategoriesView(APIView):
+class VapiSyncCategoriesView(VapiAdminAPIView):
     """Запускает задачу синхронизации категорий и брендов."""
 
     @extend_schema(
         summary="Синхронизация категорий и брендов",
         description="Запускает асинхронную задачу для синхронизации справочников категорий и брендов",
-        responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "task_id": {"type": "string", "description": "ID задачи Celery"},
-                    "message": {"type": "string", "description": "Сообщение о запуске"}
-                }
-            }
-        }
+        request=None,
+        responses={200: VapiTaskResponseSerializer},
     )
     def post(self, request: Request) -> Response:
         task = sync_categories_and_brands.delay()
@@ -236,12 +241,13 @@ class VapiSyncCategoriesView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class VapiFullSyncView(APIView):
+class VapiFullSyncView(VapiAdminAPIView):
     """Запускает задачу полной синхронизации каталога."""
 
     @extend_schema(
         summary="Полная синхронизация каталога",
         description="Запускает асинхронную задачу для полной синхронизации всего каталога товаров",
+        request=None,
         parameters=[
             OpenApiParameter(
                 name="max_pages", 
@@ -252,18 +258,17 @@ class VapiFullSyncView(APIView):
             ),
         ],
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "task_id": {"type": "string", "description": "ID задачи Celery"},
-                    "message": {"type": "string", "description": "Сообщение о запуске"},
-                    "max_pages": {"type": "integer", "description": "Максимальное количество страниц"}
-                }
-            }
-        }
+            200: VapiFullSyncResponseSerializer,
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Ошибки query-параметров",
+            ),
+        },
     )
     def post(self, request: Request) -> Response:
-        max_pages = int(request.query_params.get("max_pages", 100))
+        serializer = VapiFullSyncQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        max_pages = serializer.validated_data["max_pages"]
         
         task = full_catalog_sync.delay(max_pages)
         
@@ -272,5 +277,3 @@ class VapiFullSyncView(APIView):
             "message": "Задача полной синхронизации каталога запущена",
             "max_pages": max_pages
         }, status=status.HTTP_200_OK)
-
-

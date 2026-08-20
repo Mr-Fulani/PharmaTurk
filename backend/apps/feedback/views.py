@@ -1,11 +1,15 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema
 from django.utils.text import slugify
 from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, Q
+from django.core.files.base import ContentFile
+from io import BytesIO
+from urllib.parse import urlsplit
 import logging
 import os
 import uuid
@@ -22,8 +26,105 @@ from .serializers import (
     TestimonialSectionSettingsSerializer,
 )
 from .tasks import notify_admin_product_question, notify_admin_product_review
+from .throttles import TESTIMONIAL_CREATE_THROTTLES
 
 logger = logging.getLogger(__name__)
+
+_TESTIMONIAL_VIDEO_HOSTS = {
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "youtube-nocookie.com",
+    "www.youtube-nocookie.com",
+    "youtu.be",
+    "vimeo.com",
+    "www.vimeo.com",
+    "player.vimeo.com",
+}
+_TESTIMONIAL_VIDEO_TYPES = {
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "video/x-m4v",
+}
+_TESTIMONIAL_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v"}
+
+
+def _validate_testimonial_video_url(url: str) -> str:
+    value = str(url or "").strip()
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        raise ValueError("Некорректный URL видео") from None
+    hostname = (parsed.hostname or "").rstrip(".").lower()
+    if (
+        parsed.scheme.lower() != "https"
+        or hostname not in _TESTIMONIAL_VIDEO_HOSTS
+        or parsed.username
+        or parsed.password
+        or len(value) > 500
+    ):
+        raise ValueError("Разрешены только HTTPS-ссылки YouTube и Vimeo")
+    return value
+
+
+def _normalize_testimonial_image(uploaded) -> ContentFile:
+    from apps.recommendations.services.safe_image_fetcher import (
+        MAX_IMAGE_BYTES,
+        validate_image_bytes,
+    )
+
+    data = uploaded.read(MAX_IMAGE_BYTES + 1)
+    validated = validate_image_bytes(
+        data,
+        expected_content_type=getattr(uploaded, "content_type", None),
+    )
+    image = validated.image
+    image.thumbnail((1200, 1200))
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=85, optimize=True)
+    return ContentFile(output.getvalue(), name="testimonial.jpg")
+
+
+def _validate_testimonial_video_file(uploaded):
+    content_type = str(getattr(uploaded, "content_type", "") or "").lower()
+    extension = os.path.splitext(str(getattr(uploaded, "name", "")))[1].lower()
+    if content_type not in _TESTIMONIAL_VIDEO_TYPES or extension not in _TESTIMONIAL_VIDEO_EXTENSIONS:
+        raise ValueError("Разрешены видео MP4, WebM и MOV")
+    if int(getattr(uploaded, "size", 0) or 0) > 20 * 1024 * 1024:
+        raise ValueError("Видео превышает лимит 20 МБ")
+    return uploaded
+
+
+def _validate_testimonial_media_items(media_items: list[dict]) -> list[dict]:
+    if len(media_items) > 3:
+        raise ValueError("К отзыву можно прикрепить не более трёх медиа")
+    validated: list[dict] = []
+    for item in media_items:
+        if not isinstance(item, dict):
+            raise ValueError("Некорректное описание медиа")
+        media_type = item.get("media_type")
+        if media_type == "image" and item.get("image") is not None:
+            validated.append(
+                {"media_type": "image", "image": _normalize_testimonial_image(item["image"])}
+            )
+        elif media_type == "video" and item.get("video_url"):
+            validated.append(
+                {
+                    "media_type": "video",
+                    "video_url": _validate_testimonial_video_url(item["video_url"]),
+                }
+            )
+        elif media_type == "video_file" and item.get("video_file") is not None:
+            validated.append(
+                {
+                    "media_type": "video_file",
+                    "video_file": _validate_testimonial_video_file(item["video_file"]),
+                }
+            )
+        else:
+            raise ValueError("Тип медиа не соответствует переданному файлу или URL")
+    return validated
 
 
 def _build_testimonial_media_filename(user, media_type, original_name):
@@ -59,9 +160,17 @@ class TestimonialViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """Разрешения для разных действий."""
-        if self.action == 'create':
-            return [IsAuthenticated()]  # Только зарегистрированные пользователи могут создавать отзывы
-        return [AllowAny()]
+        permission_class = {
+            'list': AllowAny,
+            'retrieve': AllowAny,
+            'create': IsAuthenticated,
+        }.get(self.action, IsAdminUser)
+        return [permission_class()]
+
+    def get_throttles(self):
+        if getattr(self, 'action', None) == 'create':
+            return [throttle() for throttle in TESTIMONIAL_CREATE_THROTTLES]
+        return super().get_throttles()
 
     def list(self, request, *args, **kwargs):
         """Получение списка активных отзывов."""
@@ -87,6 +196,11 @@ class TestimonialViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Создание нового отзыва с медиа."""
+        if Testimonial.objects.filter(user=request.user).count() >= 3:
+            return Response(
+                {'detail': 'Для одного пользователя разрешено не более трёх отзывов'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
         serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         
@@ -119,12 +233,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
             
             if media_type == 'image' and image_key in request.FILES:
                 image_file = request.FILES[image_key]
-                try:
-                    from apps.catalog.utils.image_optimizer import ImageOptimizer
-                    optimizer = ImageOptimizer()
-                    image_file = optimizer.optimize_image(image_file, quality=85, max_size=(1200, 1200))
-                except Exception:
-                    pass
                 image_file.name = _build_testimonial_media_filename(request.user, 'image', image_file.name)
                 media_item['image'] = image_file
             elif media_type == 'video' and video_url_key in request.data:
@@ -138,6 +246,29 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                 media_items.append(media_item)
             
             file_index += 1
+
+        try:
+            media_items = _validate_testimonial_media_items(media_items)
+        except Exception as error:
+            logger.warning("Rejected testimonial media: %s", type(error).__name__)
+            return Response(
+                {'media_items': ['Некорректное или неподдерживаемое медиа']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for media_item in media_items:
+            if media_item.get('image') is not None:
+                media_item['image'].name = _build_testimonial_media_filename(
+                    request.user,
+                    'image',
+                    'testimonial.jpg',
+                )
+            if media_item.get('video_file') is not None:
+                media_item['video_file'].name = _build_testimonial_media_filename(
+                    request.user,
+                    'video',
+                    media_item['video_file'].name,
+                )
         
         # Создаем копию validated_data и добавляем media_items
         validated_data = serializer.validated_data.copy()
@@ -224,17 +355,18 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
             content_type = str(getattr(uploaded, "content_type", "") or "").lower()
             extension = os.path.splitext(str(uploaded.name))[1].lower()
             if content_type.startswith("image/"):
-                if extension not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+                if int(getattr(uploaded, "size", 0) or 0) > 5 * 1024 * 1024:
+                    raise ValueError(f"Файл {uploaded.name} превышает лимит 5 МБ")
+                if extension not in {".jpg", ".jpeg", ".png", ".webp"}:
                     raise ValueError("Неподдерживаемый формат изображения")
                 try:
-                    from PIL import Image
-                    image = Image.open(uploaded)
-                    image.verify()
-                    uploaded.seek(0)
+                    uploaded = _normalize_testimonial_image(uploaded)
                 except Exception as error:
                     raise ValueError("Повреждённый или неподдерживаемый файл изображения") from error
-                media_type, max_size = ProductReviewMedia.MediaType.IMAGE, 10 * 1024 * 1024
+                media_type, max_size = ProductReviewMedia.MediaType.IMAGE, 5 * 1024 * 1024
             elif content_type.startswith("video/"):
+                if int(getattr(uploaded, "size", 0) or 0) > 50 * 1024 * 1024:
+                    raise ValueError(f"Файл {uploaded.name} превышает лимит 50 МБ")
                 if extension not in {".mp4", ".webm", ".mov", ".m4v"}:
                     raise ValueError("Поддерживаются видео MP4, WebM и MOV")
                 media_type, max_size = ProductReviewMedia.MediaType.VIDEO, 50 * 1024 * 1024
@@ -389,6 +521,10 @@ class ProductQuestionViewSet(viewsets.GenericViewSet):
 class TestimonialSectionSettingsView(APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Получить настройки секции отзывов",
+        responses={200: TestimonialSectionSettingsSerializer},
+    )
     def get(self, request, *args, **kwargs):
         settings_obj = TestimonialSectionSettings.load()
         serializer = TestimonialSectionSettingsSerializer(settings_obj)

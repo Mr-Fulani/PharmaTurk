@@ -34,7 +34,6 @@ urlpatterns = [
 
     # Основной API
     path("api/", include("api.urls")),
-    path('api/orders/', include('apps.orders.urls')),
     path('api/favorites/', include('apps.favorites.urls')),
     path('api/feedback/', include('apps.feedback.urls')),
     path('api/pages/', include('apps.pages.urls')),

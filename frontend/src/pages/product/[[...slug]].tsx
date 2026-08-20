@@ -31,6 +31,7 @@ import { buildFavoriteProductHref } from '../../lib/favoriteLinks'
 import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
+import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
 
@@ -663,7 +664,7 @@ export default function ProductPage({
         })
         .catch(err => console.error('Error fetching footer settings:', err))
     }
-  }, [])
+  }, [envSupportEmail])
 
   // Выбираем дефолтный вариант-цвет: активный, либо первый доступный
   const initialVariant =
@@ -774,9 +775,6 @@ export default function ProductPage({
   }, [
     productType,
     product,
-    product?.dynamic_attributes,
-    product?.category?.name,
-    product?.category?.slug,
     furnitureVariantPickerBySlug,
     selectedVariant?.color_display,
     selectedVariant?.color,
@@ -795,9 +793,6 @@ export default function ProductPage({
   }, [
     productType,
     product,
-    product?.external_id,
-    product?.sku,
-    product?.product_code,
     selectedVariant?.sku,
   ])
 
@@ -1470,12 +1465,12 @@ export default function ProductPage({
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(productSchema) }}
         />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbSchema) }}
         />
       </Head>
       <div className="mx-auto max-w-6xl px-3 pt-3 pb-0 sm:py-3 flex items-center justify-between overflow-x-auto no-scrollbar">
@@ -2598,7 +2593,7 @@ export default function ProductPage({
                         <div
                           className="max-w-3xl whitespace-pre-wrap text-[16px] leading-8"
                           style={{ color: theme === 'dark' ? '#F3F4F6' : '#2F2F2F' }}
-                          dangerouslySetInnerHTML={{ __html: body }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(body) }}
                         />
                       </div>
                     </div>
@@ -2682,10 +2677,11 @@ export default function ProductPage({
                               const content = section.content;
                               if (!content) return '';
                               const urlRegex = /((https?:\/\/[^\s<"']+)|(www\.[^\s<"']+))/gi;
-                              return content.replace(urlRegex, (url) => {
+                              const linkifiedContent = content.replace(urlRegex, (url) => {
                                 const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-                                return `<a href="${href}" target="_self" style="color: #EF4444; font-weight: 600; text-decoration: underline; word-break: break-all;">${url}</a>`;
+                                return `<a href="${href}" class="text-red-500 hover:text-red-700 font-semibold underline underline-offset-2 break-all">${url}</a>`;
                               });
+                              return sanitizeRichHtml(linkifiedContent);
                             })()
                           }}
                         />

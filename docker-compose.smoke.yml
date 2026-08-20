@@ -1,0 +1,58 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: release_smoke
+      POSTGRES_USER: release_smoke
+      POSTGRES_PASSWORD: release-smoke-postgres-password
+
+  backend:
+    environment:
+      USE_RUNSERVER: 0
+      RUN_MIGRATIONS: 0
+      DJANGO_DEBUG: 0
+      DJANGO_SECRET_KEY: release-smoke-key-9230748940e342e2be44208a0ac7e3b3
+      DJANGO_ALLOWED_HOSTS: mudaroba.com,www.mudaroba.com,localhost,127.0.0.1
+      DATABASE_URL: postgresql://release_smoke:release-smoke-postgres-password@postgres:5432/release_smoke
+      REDIS_URL: redis://redis:6379/0
+      REDIS_CACHE_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND_URL: redis://redis:6379/2
+      CRYPTO_DUMMY_MODE: 0
+      USE_R2: 0
+      TELEGRAM_BOT_TOKEN: ""
+      COINREMITTER_API_KEY: ""
+      COINREMITTER_API_PASSWORD: ""
+      OPENAI_API_KEY: ""
+      EMAIL_HOST: ""
+      EMAIL_API_PROVIDER: ""
+
+  frontend:
+    build:
+      target: production
+    command: npm run start
+    environment:
+      NODE_ENV: production
+
+  nginx:
+    ports:
+      - "127.0.0.1:${SMOKE_PORT:-18080}:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - staticfiles:/app/staticfiles:ro
+
+  migrate:
+    environment:
+      DJANGO_DEBUG: 0
+      DJANGO_SECRET_KEY: release-smoke-key-9230748940e342e2be44208a0ac7e3b3
+      DJANGO_ALLOWED_HOSTS: mudaroba.com,www.mudaroba.com,localhost,127.0.0.1
+      DATABASE_URL: postgresql://release_smoke:release-smoke-postgres-password@postgres:5432/release_smoke
+      REDIS_URL: redis://redis:6379/0
+      REDIS_CACHE_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND_URL: redis://redis:6379/2
+      CRYPTO_DUMMY_MODE: 0
+      USE_R2: 0
+      TELEGRAM_BOT_TOKEN: ""
+      COINREMITTER_API_KEY: ""
+      COINREMITTER_API_PASSWORD: ""
+      OPENAI_API_KEY: ""
+      EMAIL_HOST: ""
+      EMAIL_API_PROVIDER: ""

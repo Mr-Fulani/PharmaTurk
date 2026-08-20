@@ -115,7 +115,6 @@ echo   - Admin Panel:    http://localhost:8000/admin/
 echo   - Swagger Docs:   http://localhost:8000/api/docs/
 echo   - PostgreSQL:     localhost:5433
 echo   - Redis:          localhost:6379
-echo   - OpenSearch:     localhost:9200
 
 exit /b 0
 
@@ -138,4 +137,3 @@ echo     restart.bat --no-cache         # Пересборка без кэша
 echo     restart.bat --clean            # С очисткой базы данных
 echo     restart.bat --rebuild --logs   # Полная пересборка с логами
 exit /b 0
-

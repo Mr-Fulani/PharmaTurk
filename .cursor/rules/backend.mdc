@@ -1,26 +1,83 @@
 ---
-description: Разработка бэкенда (API, модели, архитектура)
+description: Разработка backend API, моделей и сервисов
 globs: backend/**/*
 ---
 
-# Воркфлоу: Бэкенд-разработка
+# Воркфлоу backend-разработки
 
-При выполнении бэкенд-задач:
+Эти правила самодостаточны и не зависят от локальных ignored-файлов.
 
-1. Ознакомиться с задачей (создание API, структура БД, рефакторинг).
-2. Использовать рекомендации из навыка `backend-developer`.
-3. Соблюдать структуру `backend/` (доменные модели, сервисы).
-4. Использовать импорты от корня `backend` (например, `from apps.catalog...`).
-5. Временные скрипты создавать ТОЛЬКО в `backend/scripts/` и удалять после использования.
-6. Проверять отсутствие ошибок линтера (Pylance/Pyright).
+## Перед изменениями
 
-## Миграции Django (Docker и Poetry)
+1. Найти затронутый домен в `backend/apps/<app>/` и прочитать модели,
+   serializers, views/services, urls и существующие тесты.
+2. Проверить общие настройки в `backend/config/`, если изменение касается auth,
+   middleware, БД, кэша, Celery, CORS/CSRF или production security.
+3. Не запускать, не останавливать и не перенастраивать общую Docker-инфраструктуру
+   без необходимости и согласования. Если сервисы заняты другой задачей,
+   использовать доступные локальные/static проверки и явно отметить отложенные
+   integration tests.
 
-Описание и **точные команды** — в [`.agents/workflows/ru-rules.md`](.agents/workflows/ru-rules.md). Из корня репозитория (где `docker-compose.yml`):
+## Код и архитектура
+
+- Соблюдать доменные границы `apps/<app>`; сложную бизнес-логику выносить из
+  views в services/tasks, когда это улучшает атомарность и тестируемость.
+- Использовать импорты от корня backend, например `from apps.catalog...`.
+- Для публичных endpoints задавать `AllowAny` явно; для остальных полагаться на
+  безопасный global default либо указывать более строгий permission class.
+- Валидировать вход через serializers/forms. Не доверять status, amount, URL,
+  идентификаторам пользователя и другим security-sensitive полям клиента.
+- Денежные и складские изменения выполнять атомарно; при конкуренции применять
+  `transaction.atomic`, блокировки строк и идемпотентность.
+- Внешние вызовы ограничивать timeout, размером ответа и безопасными ошибками;
+  не логировать credentials, tokens или персональные данные без необходимости.
+- Обновлять OpenAPI schema и тесты одновременно с контрактом API.
+- Временные диагностические скрипты хранить только в `backend/scripts/` и
+  удалить до завершения задачи.
+
+## Миграции Django
+
+Создавать migration только при изменении состояния модели. Из каталога
+`backend/` в локальном Poetry-окружении:
 
 ```bash
-docker compose exec backend poetry run python manage.py makemigrations
+poetry run python manage.py makemigrations <app>
+poetry run python manage.py migrate
+```
+
+В уже запущенном Compose-окружении эквивалентные команды выполняются из корня
+репозитория:
+
+```bash
+docker compose exec backend poetry run python manage.py makemigrations <app>
 docker compose exec backend poetry run python manage.py migrate
 ```
 
-При необходимости указать приложение: `makemigrations catalog` (и аналогично `migrate catalog`). Локально без Docker (из каталога `backend/`): `poetry run python manage.py makemigrations` / `migrate`. При старте контейнера `backend` в `docker-entrypoint.sh` выполняется `migrate --noinput`.
+Всегда просматривать сгенерированную migration. Не редактировать и не удалять
+уже применённые production migrations ради «чистой истории». Для data migration
+задавать обратимость или явно документировать её отсутствие.
+
+## Минимальные quality gates
+
+Из `backend/`:
+
+```bash
+poetry check --lock
+poetry run python manage.py check
+poetry run python manage.py makemigrations --check --dry-run
+poetry run pytest -q
+```
+
+Для изменённых Python-файлов дополнительно использовать настроенные в проекте
+проверки:
+
+```bash
+poetry run black --check <paths>
+poetry run isort --check-only <paths>
+poetry run flake8 <paths>
+```
+
+Сначала запускать узкие тесты затронутого приложения, затем полный suite, если
+окружение позволяет. Тесты, требующие PostgreSQL/Redis/Qdrant или внешней сети,
+не заменять mock-прохождением молча: отдельно перечислить, что реально было
+проверено и что осталось для CI/integration environment.

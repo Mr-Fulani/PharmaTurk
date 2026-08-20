@@ -102,3 +102,53 @@ def test_proxy_media_max_width_does_not_decode_oversized_image(rf):
     assert resp.status_code == 200
     assert resp['Content-Type'] == 'image/jpeg'
     exif_transpose.assert_not_called()
+
+
+def test_proxy_media_does_not_expose_receipt_storage_keys(rf):
+    proxy_media = _proxy_media_view()
+    mock_storage = MagicMock()
+
+    with override_settings(R2_PUBLIC_URL='https://test.r2.dev', R2_PREFIX='dev'):
+        with patch(
+            'apps.catalog.utils.media_path.resolve_existing_media_storage_key',
+            return_value='dev/receipts/ORDER123.pdf',
+        ):
+            with patch('django.core.files.storage.default_storage', mock_storage):
+                req = rf.get(
+                    '/api/catalog/proxy-media/',
+                    {'path': 'receipts/ORDER123.pdf'},
+                )
+                resp = proxy_media(req)
+
+    assert resp.status_code == 404
+    mock_storage.open.assert_not_called()
+
+
+def test_proxy_media_rejects_unsatisfiable_range(rf):
+    proxy_media = _proxy_media_view()
+
+    class SizedBytesIO(io.BytesIO):
+        @property
+        def size(self):
+            return len(self.getbuffer())
+
+    source = SizedBytesIO(b'0123456789')
+    mock_storage = MagicMock()
+    mock_storage.open.return_value = source
+
+    with override_settings(R2_PUBLIC_URL='https://test.r2.dev'):
+        with patch(
+            'apps.catalog.utils.media_path.resolve_existing_media_storage_key',
+            return_value='products/demo/video.mp4',
+        ):
+            with patch('django.core.files.storage.default_storage', mock_storage):
+                req = rf.get(
+                    '/api/catalog/proxy-media/',
+                    {'path': 'products/demo/video.mp4'},
+                    HTTP_RANGE='bytes=100-200',
+                )
+                resp = proxy_media(req)
+
+    assert resp.status_code == 416
+    assert resp['Content-Range'] == 'bytes */10'
+    assert resp['Accept-Ranges'] == 'bytes'

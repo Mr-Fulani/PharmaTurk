@@ -1,11 +1,12 @@
 import logging
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Optional, Tuple
 
 from django.conf import settings
 from django.http import Http404, HttpResponse
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiExample, extend_schema
@@ -47,11 +48,12 @@ def _create_crypto_invoice(number: str, total, cart_currency: str, locale: str =
     site = (getattr(settings, "SITE_URL", None) or "").rstrip("/")
     frontend = (getattr(settings, "FRONTEND_SITE_URL", None) or "").rstrip("/") or site
     notify_url = f"{site}/api/payments/crypto/webhook/" if site else ""
-    # Next.js i18n: defaultLocale=en без префикса, ru — с /ru/
+    # next-i18next.config.js uses defaultLocale=ru: Russian has no prefix,
+    # while English routes live under /en/.
     loc = (locale or "").strip().lower()
     if loc not in ("ru", "en"):
-        loc = "en"
-    path_prefix = f"/{loc}" if loc == "ru" else ""
+        loc = "ru"
+    path_prefix = "/en" if loc == "en" else ""
     success_path = f"{path_prefix}/checkout-success" if path_prefix else "/checkout-success"
     fail_path = f"{path_prefix}/checkout-crypto" if path_prefix else "/checkout-crypto"
     q = f"number={number}&locale={loc}"
@@ -60,7 +62,7 @@ def _create_crypto_invoice(number: str, total, cart_currency: str, locale: str =
     fiat_currency = (cart_currency or "USD").upper()[:3]
 
     invoice_data = create_invoice(
-        amount_fiat=float(total),
+        amount_fiat=Decimal(str(total)),
         fiat_currency=fiat_currency,
         order_number=number,
         notify_url=notify_url,
@@ -122,10 +124,14 @@ def _save_crypto_payment(order, invoice_data: dict, cart_currency: str):
         order=order,
         provider=provider,
         invoice_id=invoice_data["invoice_id"],
+        invoice_code=invoice_data.get("invoice_code") or "",
         address=invoice_data["address"],
         amount_crypto=invoice_data["amount"],
-        amount_fiat=invoice_data["amount_usd"],
-        currency=invoice_data.get("currency") or fiat_currency,
+        # Persist exactly what the customer was charged. amount_usd is only a
+        # display/conversion field returned by CoinRemitter and may not match
+        # the order currency.
+        amount_fiat=order.total_amount,
+        currency=(order.currency or fiat_currency).upper()[:3],
         status="pending",
         qr_code_url=invoice_data.get("qr_code") or "",
         invoice_url=invoice_data.get("invoice_url") or "",
@@ -137,13 +143,18 @@ from .serializers import (
     CartItemSerializer,
     CartSerializer,
     CreateOrderSerializer,
-    OrderReceiptSerializer,  # TODO: Функционал чеков временно отключен. Будет доработан позже.
+    OrderReceiptSerializer,
     OrderSerializer,
     PromoCodeSerializer,
     UpdateCartItemSerializer,
 )
-from .services import build_order_receipt_payload, render_receipt_html, get_order_customer_email  # TODO: Функционал чеков временно отключен. Будет доработан позже.
-from .tasks import send_order_receipt_task, notify_new_order_telegram  # TODO: Функционал чеков временно отключен. Будет доработан позже.
+from .services import build_order_receipt_payload, render_receipt_html, get_order_customer_email
+from .tasks import send_order_receipt_task, notify_new_order_telegram
+from .throttles import (
+    CART_MUTATION_THROTTLES,
+    CHECKOUT_THROTTLES,
+    RECEIPT_EMAIL_THROTTLES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -426,6 +437,111 @@ def _get_cart_with_prefetch(cart: Cart):
     ).get()
 
 
+def _normalise_cart_session_key(value) -> str | None:
+    """Return a bounded session bearer token suitable for the Cart column."""
+    if value is None:
+        return None
+    try:
+        value = str(value).strip()
+    except (TypeError, ValueError):
+        return None
+    if not value or len(value) > Cart._meta.get_field('session_key').max_length:
+        return None
+    return value
+
+
+def _anonymous_cart_session_candidates(request) -> list[str]:
+    """Resolve existing anonymous identifiers without creating a Django session."""
+    header_session = request.META.get('HTTP_X_CART_SESSION')
+    if not header_session:
+        header_session = getattr(request, 'headers', {}).get('X-Cart-Session')
+    cookie_session = getattr(request, 'COOKIES', {}).get('cart_session')
+
+    django_session = None
+    stored_cart_session = None
+    session = getattr(request, 'session', None)
+    if session is not None:
+        django_session = getattr(session, 'session_key', None)
+        stored_cart_session = session.get('cart_session_key')
+
+    candidates: list[str] = []
+    for raw_value in (
+        header_session,
+        cookie_session,
+        django_session,
+        stored_cart_session,
+    ):
+        value = _normalise_cart_session_key(raw_value)
+        if value and value not in candidates:
+            candidates.append(value)
+    return candidates
+
+
+def _get_existing_cart_for_read(request) -> Cart | None:
+    """Look up an anonymous cart without allocating a session or database row."""
+    for session_key in _anonymous_cart_session_candidates(request):
+        cart = Cart.objects.filter(user=None, session_key=session_key).first()
+        if cart is not None:
+            return cart
+    return None
+
+
+def _get_existing_cart_for_mutation(request) -> Cart | None:
+    """Resolve a current cart for a no-op-capable mutation without creating one."""
+    user = request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
+    if user:
+        cart = Cart.objects.filter(user=user).first()
+        if cart is not None:
+            return cart
+    return _get_existing_cart_for_read(request)
+
+
+class _EmptyCartItems(tuple):
+    """Tiny relation-like value accepted by CartSerializer and its method fields."""
+
+    def all(self):
+        return self
+
+
+def _empty_cart_payload(request) -> dict:
+    """Serialize a non-persistent empty cart with the regular response schema."""
+    empty_cart = SimpleNamespace(
+        id=0,
+        user=None,
+        session_key='',
+        currency='RUB',
+        items=_EmptyCartItems(),
+        items_count=0,
+        promo_code=None,
+        created_at=None,
+        updated_at=None,
+    )
+    return CartSerializer(empty_cart, context={'request': request}).data
+
+
+def _get_or_create_cart_record(*, user, session_key: str, defaults: dict) -> tuple[Cart, bool]:
+    """Create one identity cart and recover cleanly from a concurrent winner."""
+    lookup = {
+        'user': user,
+        'session_key': session_key,
+    }
+    try:
+        # The savepoint keeps a uniqueness failure from poisoning an outer
+        # checkout transaction before we fetch the row created by the winner.
+        with transaction.atomic():
+            return Cart.objects.get_or_create(**lookup, defaults=defaults)
+    except IntegrityError:
+        identity_lookup = lookup if user is None else {'user': user}
+        return Cart.objects.get(**identity_lookup), False
+
+
+def _touch_cart(cart: Cart) -> None:
+    """Record write activity used by anonymous-cart TTL cleanup."""
+    touched_at = timezone.now()
+    Cart.objects.filter(pk=cart.pk).update(updated_at=touched_at)
+    cart.updated_at = touched_at
+
+
 def _get_or_create_cart(request) -> Cart:
     """Получить или создать корзину для пользователя или сессии.
     Для анонимных клиентов поддерживаем пользовательский ключ из заголовка X-Cart-Session
@@ -436,13 +552,13 @@ def _get_or_create_cart(request) -> Cart:
     # 1) Ключ из заголовка (для фронтенда) или cookie (fallback)
     header_session = request.META.get('HTTP_X_CART_SESSION') or getattr(request, 'headers', {}).get('X-Cart-Session')
     cookie_session = getattr(request, 'COOKIES', {}).get('cart_session')
-    custom_session = header_session or cookie_session
+    custom_session = _normalise_cart_session_key(header_session or cookie_session)
 
     # 2) Стандартная сессия Django
     django_session = None
-    if hasattr(request, 'session'):
+    if not user and hasattr(request, 'session'):
         django_session = request.session.session_key
-        if not django_session:
+        if not custom_session and not django_session:
             # Гарантируем наличие session_key, если потребуется
             request.session.save()
             django_session = request.session.session_key
@@ -470,7 +586,8 @@ def _get_or_create_cart(request) -> Cart:
                         product=item.product,
                         quantity=item.quantity,
                         price=item.price,
-                        currency=item.currency
+                        currency=item.currency,
+                        chosen_size=item.chosen_size,
                     )
                 # Удаляем анонимную корзину
                 anonymous_cart.delete()
@@ -486,7 +603,11 @@ def _get_or_create_cart(request) -> Cart:
             anonymous_cart = Cart.objects.filter(session_key=custom_session, user=None).first()
             if anonymous_cart and anonymous_cart.items.exists():
                 # Создаем новую корзину для пользователя
-                cart = Cart.objects.create(user=user, currency=anonymous_cart.currency)
+                cart, _created = _get_or_create_cart_record(
+                    user=user,
+                    session_key='',
+                    defaults={'currency': anonymous_cart.currency},
+                )
                 # Копируем товары из анонимной корзины
                 for item in anonymous_cart.items.all():
                     CartItem.objects.create(
@@ -494,17 +615,18 @@ def _get_or_create_cart(request) -> Cart:
                         product=item.product,
                         quantity=item.quantity,
                         price=item.price,
-                        currency=item.currency
+                        currency=item.currency,
+                        chosen_size=item.chosen_size,
                     )
                 # Удаляем анонимную корзину
                 anonymous_cart.delete()
                 return cart
 
     # Создаем новую корзину
-    cart, created = Cart.objects.get_or_create(
+    cart, created = _get_or_create_cart_record(
         user=user if user else None,
         session_key='' if user else session_key,
-        defaults={'currency': 'RUB'}  # Изменил на RUB для соответствия товарам
+        defaults={'currency': 'RUB'},
     )
     logger.debug(
         "cart.resolve user_id=%s anonymous=%s created=%s",
@@ -517,12 +639,16 @@ def _get_or_create_cart(request) -> Cart:
 
 class CartViewSet(viewsets.ViewSet):
     """Управление корзиной."""
+    serializer_class = CartSerializer
     permission_classes = [AllowAny]
     # Исключаем SessionAuthentication: она применяет CSRF к POST/DELETE даже при AllowAny
     authentication_classes = [JWTSafeAuthentication]
 
     @extend_schema(
-        description="Получить текущую корзину",
+        description=(
+            "Получить текущую корзину. Для анонимного клиента без существующей "
+            "cart-session возвращает пустую корзину (id=0), не создавая сессию или строку Cart."
+        ),
         responses=CartSerializer,
         examples=[
             OpenApiExample(
@@ -551,7 +677,13 @@ class CartViewSet(viewsets.ViewSet):
         ]
     )
     def list(self, request):
-        cart = _get_or_create_cart(request)
+        user = request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
+        if user:
+            cart = _get_or_create_cart(request)
+        else:
+            cart = _get_existing_cart_for_read(request)
+            if cart is None:
+                return Response(_empty_cart_payload(request))
         cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 
@@ -599,32 +731,59 @@ class CartViewSet(viewsets.ViewSet):
             )
         ]
     )
-    @action(detail=False, methods=['post'], url_path=r'add/?')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path=r'add/?',
+        throttle_classes=CART_MUTATION_THROTTLES,
+    )
     @extend_schema(
         description="Добавить товар в корзину (для вариантов обуви/одежды требуется размер).",
         request=AddToCartSerializer,
         responses=CartSerializer,
     )
     def add(self, request):
-        cart = _get_or_create_cart(request)
         serializer = AddToCartSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
         except Exception as exc:
-            # Логируем входящие данные и ошибки для диагностики проблем добавления
+            submitted_fields = sorted(
+                set(request.data.keys()) & set(serializer.fields.keys())
+            )
             logger.warning(
                 "cart.add validation failed",
-                extra={"data": dict(request.data), "errors": getattr(exc, "detail", str(exc))}
+                extra={
+                    "submitted_fields": submitted_fields,
+                    "error_codes": (
+                        exc.get_codes()
+                        if hasattr(exc, "get_codes")
+                        else "validation_error"
+                    ),
+                },
             )
             raise
         product = serializer.validated_data['product']
         quantity = serializer.validated_data['quantity']
-        preferred_currency = _get_preferred_currency(request, fallback=cart.currency or 'RUB')
-        item_price = _get_product_price_for_currency(product, preferred_currency)
         chosen_size = serializer.validated_data.get('chosen_size', '')
+        existing_cart = _get_existing_cart_for_mutation(request)
+        preferred_currency = _get_preferred_currency(
+            request,
+            fallback=(
+                existing_cart.currency
+                if existing_cart is not None and existing_cart.currency
+                else 'RUB'
+            ),
+        )
+        item_price = _get_product_price_for_currency(product, preferred_currency)
 
-        # Проверка остатка (учитываем суммарное количество в корзине)
-        existing = CartItem.objects.filter(cart=cart, product=product, chosen_size=chosen_size).first()
+        # Validate stock before allocating an anonymous session/Cart row.
+        existing = None
+        if existing_cart is not None:
+            existing = CartItem.objects.filter(
+                cart=existing_cart,
+                product=product,
+                chosen_size=chosen_size,
+            ).first()
         new_total_qty = quantity + (existing.quantity if existing else 0)
         available_stock, _source = _get_stock_for_cart_product(product, chosen_size)
         if available_stock is not None and new_total_qty > available_stock:
@@ -633,6 +792,8 @@ class CartViewSet(viewsets.ViewSet):
                 "available": available_stock,
             })
 
+        cart = _get_or_create_cart(request)
+        _touch_cart(cart)
         item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
@@ -697,15 +858,23 @@ class CartViewSet(viewsets.ViewSet):
             ),
         ]
     )
-    @action(detail=True, methods=['post'], url_path='update')
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='update',
+        throttle_classes=CART_MUTATION_THROTTLES,
+    )
     def update_item(self, request, pk=None):
-        cart = _get_or_create_cart(request)
+        serializer = UpdateCartItemSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cart = _get_existing_cart_for_mutation(request)
+        if cart is None:
+            return Response({"detail": _("Корзина не найдена")}, status=404)
+        _touch_cart(cart)
         try:
             item = cart.items.get(pk=pk)
         except CartItem.DoesNotExist:
             return Response({"detail": _("Позиция не найдена")}, status=404)
-        serializer = UpdateCartItemSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
 
         desired_qty = serializer.validated_data['quantity']
         available_stock, _source = _get_stock_for_cart_product(item.product, item.chosen_size)
@@ -739,9 +908,17 @@ class CartViewSet(viewsets.ViewSet):
             )
         ]
     )
-    @action(detail=True, methods=['delete'], url_path='remove')
+    @action(
+        detail=True,
+        methods=['delete'],
+        url_path='remove',
+        throttle_classes=CART_MUTATION_THROTTLES,
+    )
     def remove_item(self, request, pk=None):
-        cart = _get_or_create_cart(request)
+        cart = _get_existing_cart_for_mutation(request)
+        if cart is None:
+            return Response({"detail": _("Корзина не найдена")}, status=404)
+        _touch_cart(cart)
         try:
             item = cart.items.get(pk=pk)
         except CartItem.DoesNotExist:
@@ -769,9 +946,17 @@ class CartViewSet(viewsets.ViewSet):
             )
         ]
     )
-    @action(detail=False, methods=['post'], url_path='clear')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='clear',
+        throttle_classes=CART_MUTATION_THROTTLES,
+    )
     def clear(self, request):
-        cart = _get_or_create_cart(request)
+        cart = _get_existing_cart_for_mutation(request)
+        if cart is None:
+            return Response(_empty_cart_payload(request))
+        _touch_cart(cart)
         cart.items.all().delete()
         cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
@@ -809,11 +994,14 @@ class CartViewSet(viewsets.ViewSet):
             )
         ]
     )
-    @action(detail=False, methods=['post'], url_path='apply-promo')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='apply-promo',
+        throttle_classes=CART_MUTATION_THROTTLES,
+    )
     def apply_promo(self, request):
         """Применить промокод к корзине."""
-        cart = _get_or_create_cart(request)
-        logger.info("apply_promo: request.data=%s", request.data)
         serializer = ApplyPromoCodeSerializer(data=request.data)
         if not serializer.is_valid():
             err_msg = serializer.errors.get("code", [serializer.errors])[0]
@@ -821,7 +1009,12 @@ class CartViewSet(viewsets.ViewSet):
                 err_msg = err_msg[0] if err_msg else _("Неверные данные")
             logger.warning("apply_promo: validation failed: %s", serializer.errors)
             return Response({"detail": str(err_msg)}, status=400)
-        
+
+        cart = _get_existing_cart_for_mutation(request)
+        if cart is None:
+            return Response({"detail": _("Корзина не найдена")}, status=404)
+        _touch_cart(cart)
+
         code = serializer.validated_data['code']
         try:
             promo_code = PromoCode.objects.get(code__iexact=code)
@@ -845,7 +1038,7 @@ class CartViewSet(viewsets.ViewSet):
         
         # Применяем промокод
         cart.promo_code = promo_code
-        cart.save()
+        cart.save(update_fields=['promo_code', 'updated_at'])
         
         # Возвращаем обновленную корзину
         cart = _get_cart_with_prefetch(cart)
@@ -873,12 +1066,20 @@ class CartViewSet(viewsets.ViewSet):
             )
         ]
     )
-    @action(detail=False, methods=['post'], url_path='remove-promo')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='remove-promo',
+        throttle_classes=CART_MUTATION_THROTTLES,
+    )
     def remove_promo(self, request):
         """Удалить промокод из корзины."""
-        cart = _get_or_create_cart(request)
+        cart = _get_existing_cart_for_mutation(request)
+        if cart is None:
+            return Response(_empty_cart_payload(request))
+        _touch_cart(cart)
         cart.promo_code = None
-        cart.save()
+        cart.save(update_fields=['promo_code', 'updated_at'])
         
         # Возвращаем обновленную корзину
         cart = _get_cart_with_prefetch(cart)
@@ -887,6 +1088,7 @@ class CartViewSet(viewsets.ViewSet):
 
 class OrderViewSet(viewsets.ViewSet):
     """Управление заказами."""
+    serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
     # SessionAuthentication вызывает CSRF-ошибки для POST — используем только JWT
     authentication_classes = [JWTSafeAuthentication]
@@ -975,8 +1177,6 @@ class OrderViewSet(viewsets.ViewSet):
                 pass
         return Response(data)
 
-    # TODO: Функционал чеков временно отключен. Будет доработан позже.
-    # Включает: формирование чека, отправку по email, интеграцию с админкой.
     @extend_schema(description="Получить подготовленный чек по заказу", responses=OrderReceiptSerializer)
     @action(detail=False, methods=['get'], url_path=r'receipt/(?P<number>[^/]+)')
     def receipt(self, request, number: str):
@@ -991,14 +1191,18 @@ class OrderViewSet(viewsets.ViewSet):
         serializer = OrderReceiptSerializer(receipt)
         return Response(serializer.data)
 
-    # TODO: Функционал чеков временно отключен. Будет доработан позже.
-    # Включает: формирование чека, отправку по email, интеграцию с админкой.
     @extend_schema(description="Отправить чек по email", request=None, responses=None)
-    @action(detail=False, methods=['post'], url_path=r'send-receipt/(?P<number>[^/]+)')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path=r'send-receipt/(?P<number>[^/]+)',
+        throttle_classes=RECEIPT_EMAIL_THROTTLES,
+    )
     def send_receipt(self, request, number: str):
         order = self._get_order_for_user(request.user, number)
-        # Если email не указан в запросе, используем контактный email заказа или email покупателя
-        email = request.data.get('email') or get_order_customer_email(order)
+        # Не превращаем endpoint в авторизованный email relay: получатель всегда
+        # берётся из принадлежащего пользователю заказа/профиля.
+        email = get_order_customer_email(order)
         if not email:
             return Response({"detail": _("Не указан email для отправки чека")}, status=400)
         try:
@@ -1047,19 +1251,31 @@ class OrderViewSet(viewsets.ViewSet):
             )
         ]
     )
-    @action(detail=False, methods=['post'], url_path='create-from-cart')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='create-from-cart',
+        throttle_classes=CHECKOUT_THROTTLES,
+    )
     @transaction.atomic
     def create_from_cart(self, request):
         """Создание заказа из текущей корзины.
         Требует аутентификацию. Примеры запросов в Swagger.
         """
         cart = _get_or_create_cart(request)
-        if cart.items.count() == 0:
+        # Serialize checkout attempts for one cart. A concurrent retry waits for
+        # this transaction and then observes the emptied cart instead of
+        # creating a second order/invoice from the same items.
+        cart = Cart.objects.select_for_update().get(pk=cart.pk)
+        locked_items = list(
+            cart.items.select_for_update().select_related('product').all()
+        )
+        if not locked_items:
             return Response({"detail": _("Корзина пуста")}, status=400)
         serializer = CreateOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        for item in cart.items.select_related('product').all():
+        for item in locked_items:
             product = item.product
             if not product:
                 continue
@@ -1110,19 +1326,20 @@ class OrderViewSet(viewsets.ViewSet):
         
         discount = 0
         promo_code = None
+        consume_promo = False
 
         # Проверка и применение промокода из корзины или из запроса
         promo_code_value = serializer.validated_data.get('promo_code') or (cart.promo_code.code if cart.promo_code else None)
         if promo_code_value:
             try:
-                promo_code = PromoCode.objects.get(code__iexact=promo_code_value)
+                promo_code = PromoCode.objects.select_for_update().get(
+                    code__iexact=promo_code_value
+                )
                 # Проверка валидности промокода
                 is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal), cart_currency=order_currency)
                 if is_valid:
                     discount = promo_code.calculate_discount(float(subtotal), currency=order_currency)
-                    # Увеличиваем счетчик использований
-                    promo_code.used_count += 1
-                    promo_code.save(update_fields=['used_count'])
+                    consume_promo = True
                 else:
                     promo_code = None
             except PromoCode.DoesNotExist:
@@ -1136,9 +1353,9 @@ class OrderViewSet(viewsets.ViewSet):
         is_crypto = payment_method == 'crypto'
 
         # Крипто: создаём инвойс ДО заказа, чтобы не терять корзину при ошибке провайдера
-        locale = (serializer.validated_data.get("locale") or "").strip() or request.META.get("HTTP_ACCEPT_LANGUAGE", "").split(",")[0].split("-")[0] or "en"
+        locale = (serializer.validated_data.get("locale") or "").strip() or request.META.get("HTTP_ACCEPT_LANGUAGE", "").split(",")[0].split("-")[0] or "ru"
         if locale not in ("ru", "en"):
-            locale = "en"
+            locale = "ru"
 
         if is_crypto:
             invoice_data, payment_data = _create_crypto_invoice(number, total, order_currency, locale=locale)
@@ -1147,6 +1364,12 @@ class OrderViewSet(viewsets.ViewSet):
                     {"detail": _("Не удалось создать платёжную ссылку. Попробуйте позже или выберите другой способ оплаты.")},
                     status=503,
                 )
+
+        # Consume the locked promo only after the external invoice (if any)
+        # succeeded. Any later DB error rolls this update back with the order.
+        if promo_code is not None and consume_promo:
+            promo_code.used_count += 1
+            promo_code.save(update_fields=['used_count'])
 
         order = Order.objects.create(
             user=request.user,
@@ -1216,7 +1439,7 @@ class OrderViewSet(viewsets.ViewSet):
         if is_crypto:
             # Крипто: сохраняем CryptoPayment, позиции заказа без списания остатка
             _save_crypto_payment(order, invoice_data, order_currency)
-            for item in cart.items.select_related('product').all():
+            for item in locked_items:
                 item_price = converted_prices.get(item.id, item.price)
                 OrderItem.objects.create(
                     order=order,
@@ -1227,13 +1450,13 @@ class OrderViewSet(viewsets.ViewSet):
                     quantity=item.quantity,
                     total=Decimal(str(item_price)) * item.quantity,
                 )
-            cart.items.all().delete()
+            CartItem.objects.filter(pk__in=[item.pk for item in locked_items]).delete()
             response_data = OrderSerializer(order).data
             response_data["payment_data"] = payment_data
             return Response(response_data, status=201)
         else:
             # Позиции заказа + атомарное списание остатка
-            for item in cart.items.select_related('product').all():
+            for item in locked_items:
                 _decrement_stock_for_cart_item(item.product, item.chosen_size, item.quantity)
                 item_price = converted_prices.get(item.id, item.price)
                 OrderItem.objects.create(
@@ -1245,7 +1468,7 @@ class OrderViewSet(viewsets.ViewSet):
                     quantity=item.quantity,
                     total=Decimal(str(item_price)) * item.quantity,
                 )
-            cart.items.all().delete()
+            CartItem.objects.filter(pk__in=[item.pk for item in locked_items]).delete()
 
             from django.db import transaction
 

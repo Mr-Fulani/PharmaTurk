@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import styles from './ImageSlider.module.css'
 import { resolveMediaUrl } from '../lib/media'
@@ -34,18 +34,7 @@ export default function ImageSlider({
     }
   }, [items])
 
-  // Автоматическая смена слайдов
-  useEffect(() => {
-    if (autoPlayInterval <= 0 || items.length <= 1) return
-
-    const interval = setInterval(() => {
-      handleNext()
-    }, autoPlayInterval)
-
-    return () => clearInterval(interval)
-  }, [autoPlayInterval, items.length])
-
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (items.length <= 1) return
     setDisplayItems((prev) => {
       const newItems = [...prev]
@@ -55,7 +44,16 @@ export default function ImageSlider({
       }
       return newItems
     })
-  }
+  }, [items.length])
+
+  // Автоматическая смена слайдов
+  useEffect(() => {
+    if (autoPlayInterval <= 0 || items.length <= 1) return
+
+    const interval = setInterval(handleNext, autoPlayInterval)
+
+    return () => clearInterval(interval)
+  }, [autoPlayInterval, items.length, handleNext])
 
   const handlePrev = () => {
     if (items.length <= 1) return
@@ -136,4 +134,3 @@ export default function ImageSlider({
     </div>
   )
 }
-

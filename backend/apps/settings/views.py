@@ -1,6 +1,7 @@
 """Представления для настроек сайта."""
 
 from rest_framework import viewsets
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 
@@ -10,7 +11,8 @@ from .serializers import FooterSettingsSerializer
 
 class FooterSettingsViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet для получения настроек футера."""
-    
+
+    permission_classes = [AllowAny]
     queryset = FooterSettings.objects.all()
     serializer_class = FooterSettingsSerializer
     pagination_class = None
@@ -25,4 +27,3 @@ class FooterSettingsViewSet(viewsets.ReadOnlyModelViewSet):
         settings = FooterSettings.load()
         serializer = self.get_serializer(settings)
         return Response(serializer.data)
-

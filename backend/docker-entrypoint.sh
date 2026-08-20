@@ -13,7 +13,7 @@ echo "✅ Кэш Python очищен"
 # смонтирован поверх /app и pyproject/lock могут быть новее образа.
 # В проде зависимости ставятся при сборке образа; install на буте — лишняя
 # зависимость от сети при каждом рестарте.
-if [ "$USE_RUNSERVER" = "1" ]; then
+if [ "${USE_RUNSERVER:-0}" = "1" ]; then
     echo "📦 Синхронизация зависимостей Poetry (dev)..."
     poetry install --no-interaction --no-ansi --no-root
 
@@ -29,9 +29,14 @@ fi
 # (proxy_media) — их вайп давал всплеск латентности после каждого деплоя.
 # При несовместимых изменениях формата кэша версионировать ключи (v1 → v2).
 
-# Применяем миграции (makemigrations должен выполняться ВРУЧНУЮ разработчиком, а не при старте!)
-echo "Применяем миграции..."
-poetry run python manage.py migrate --noinput
+# В release-процессе миграции выполняет отдельный одноразовый compose service.
+# Значение 1 сохраняет удобное прежнее поведение для локальной разработки.
+if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
+  echo "Применяем миграции..."
+  poetry run python manage.py migrate --noinput
+else
+  echo "Пропускаем миграции (RUN_MIGRATIONS=${RUN_MIGRATIONS:-0})"
+fi
 
 echo "Сборка статических файлов (collectstatic)..."
 poetry run python manage.py collectstatic --noinput
@@ -41,7 +46,7 @@ if [ "${RUN_SEED_CATALOG:-0}" = "1" ]; then
   echo "Восстанавливаем категории и бренды (seed_catalog_data)..."
   poetry run python manage.py seed_catalog_data 2>/dev/null || true
 else
-  echo "Пропускаем seed_catalog_data (RUN_SEED_CATALOG=${RUN_SEED_CATALOG})"
+  echo "Пропускаем seed_catalog_data (RUN_SEED_CATALOG=${RUN_SEED_CATALOG:-0})"
 fi
 
 # Статические страницы (privacy, delivery, returns) — создаём только если ещё нет
@@ -54,15 +59,21 @@ if [ $# -gt 0 ]; then
     exec poetry run "$@"
 fi
 
-# Регистрируем Telegram webhook — только при старте сервера
-# (если заданы TELEGRAM_BOT_TOKEN и SITE_URL)
-if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$SITE_URL" ]; then
+# Registration mutates provider-side state. Keep it explicit so a staging
+# container can never redirect a shared production bot during an ordinary boot.
+if [ "${REGISTER_TELEGRAM_WEBHOOK_ON_START:-0}" = "1" ] && \
+   [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && \
+   [ -n "${SITE_URL:-}" ] && \
+   [ -n "${TELEGRAM_WEBHOOK_SECRET:-}" ]; then
   echo "Регистрируем Telegram webhook..."
-  poetry run python manage.py set_telegram_webhook 2>/dev/null || true
+  poetry run python manage.py set_telegram_webhook || \
+    echo "⚠️  Telegram webhook не зарегистрирован; проверьте настройки и доступ к API"
+elif [ "${REGISTER_TELEGRAM_WEBHOOK_ON_START:-0}" = "1" ]; then
+  echo "⚠️  Telegram webhook пропущен: нужны TELEGRAM_BOT_TOKEN, SITE_URL и TELEGRAM_WEBHOOK_SECRET"
 fi
 
 # Запускаем сервер в зависимости от режима
-if [ "$USE_RUNSERVER" = "1" ]; then
+if [ "${USE_RUNSERVER:-0}" = "1" ]; then
     echo "Запускаем Django runserver (hot-reload включен)..."
     exec poetry run python manage.py runserver 0.0.0.0:8000
 else
@@ -72,7 +83,7 @@ else
     # gthread: длинные ответы (proxy_media: стриминг видео, ресайз) не занимают
     # целый sync-воркер — иначе 4 зрителя видео блокировали весь API
     GUNICORN_ARGS="--bind 0.0.0.0:8000 --workers $WORKERS --worker-class gthread --threads $THREADS --timeout 60"
-    if [ "$DJANGO_DEBUG" = "1" ] || [ "$DJANGO_DEBUG" = "True" ]; then
+    if [ "${DJANGO_DEBUG:-0}" = "1" ] || [ "${DJANGO_DEBUG:-0}" = "True" ]; then
         exec poetry run gunicorn config.wsgi:application $GUNICORN_ARGS --reload
     else
         exec poetry run gunicorn config.wsgi:application $GUNICORN_ARGS

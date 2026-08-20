@@ -1,34 +1,148 @@
-"""
-Celery-задачи для заказов.
-
-TODO: Функционал чеков временно отключен. Будет доработан позже.
-Включает: формирование чека, отправку по email, интеграцию с админкой.
-"""
+"""Celery-задачи для заказов, чеков и уведомлений."""
 from __future__ import annotations
 
 import base64
 import logging
 import socket
+from datetime import timedelta
 
 import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.core.mail.backends.smtp import EmailBackend
+from django.db import transaction
+from django.db.models import Exists, OuterRef
+from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.translation import gettext_lazy as _
 
 from config.celery import app
+from apps.catalog.utils.r2_utils import get_r2_client
 
 logger = logging.getLogger(__name__)
 
-from .models import Order
+MAX_RECEIPT_PDF_BYTES = 5 * 1024 * 1024
+
+from .models import Cart, CartItem, Order
 from .services import (
     build_order_receipt_payload,
     render_receipt_html,
     generate_and_save_receipt,
     get_receipt_filename,
+    get_receipt_storage_key,
     get_order_customer_email,
 )
+
+
+def _stale_anonymous_carts(cutoff):
+    """Anonymous carts with no cart/item write at or after the cutoff."""
+    recent_items = CartItem.objects.filter(
+        cart_id=OuterRef("pk"),
+        updated_at__gte=cutoff,
+    )
+    return Cart.objects.filter(
+        user__isnull=True,
+        updated_at__lt=cutoff,
+    ).filter(~Exists(recent_items))
+
+
+@app.task(name="orders.cleanup_stale_anonymous_carts")
+def cleanup_stale_anonymous_carts(
+    days: int | None = None,
+    batch_size: int | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Delete inactive anonymous carts in bounded batches; never user carts."""
+    retention_days = int(
+        days
+        if days is not None
+        else getattr(settings, "ANONYMOUS_CART_TTL_DAYS", 30)
+    )
+    cleanup_batch_size = int(
+        batch_size
+        if batch_size is not None
+        else getattr(settings, "ANONYMOUS_CART_CLEANUP_BATCH_SIZE", 500)
+    )
+    if retention_days < 1:
+        raise ValueError("days must be at least 1")
+    if cleanup_batch_size < 1 or cleanup_batch_size > 10_000:
+        raise ValueError("batch_size must be between 1 and 10000")
+
+    cutoff = timezone.now() - timedelta(days=retention_days)
+    matched = _stale_anonymous_carts(cutoff).count()
+    result = {
+        "matched": matched,
+        "deleted": 0,
+        "dry_run": bool(dry_run),
+        "retention_days": retention_days,
+    }
+    if dry_run or matched == 0:
+        return result
+
+    deleted = 0
+    while True:
+        with transaction.atomic():
+            cart_ids = list(
+                _stale_anonymous_carts(cutoff)
+                .select_for_update(skip_locked=True)
+                .order_by("pk")
+                .values_list("pk", flat=True)[:cleanup_batch_size]
+            )
+            if not cart_ids:
+                break
+            _cascade_count, deleted_by_model = Cart.objects.filter(
+                user__isnull=True,
+                pk__in=cart_ids,
+            ).delete()
+            deleted += deleted_by_model.get(Cart._meta.label, 0)
+
+    result["deleted"] = deleted
+    logger.info(
+        "Anonymous cart cleanup matched=%s deleted=%s retention_days=%s",
+        matched,
+        deleted,
+        retention_days,
+    )
+    return result
+
+
+def _load_receipt_pdf_from_storage(order: Order) -> bytes | None:
+    """Read the deterministic receipt object directly from trusted R2 storage."""
+    bucket_name = (getattr(settings, "R2_CONFIG", {}) or {}).get("bucket_name")
+    if not bucket_name:
+        return None
+    # Never fall back to the legacy predictable ``receipts/{order.number}.pdf``
+    # namespace. Missing receipts are regenerated under the HMAC namespace.
+    keys = [get_receipt_storage_key(order)]
+    client = get_r2_client()
+    last_error_name = ""
+    for key in dict.fromkeys(keys):
+        body_stream = None
+        try:
+            response = client.get_object(Bucket=bucket_name, Key=key)
+            body_stream = response.get("Body")
+            declared_size = int(response.get("ContentLength") or 0)
+            if declared_size < 0 or declared_size > MAX_RECEIPT_PDF_BYTES:
+                continue
+            if body_stream is None:
+                continue
+            data = body_stream.read(MAX_RECEIPT_PDF_BYTES + 1)
+            if len(data) > MAX_RECEIPT_PDF_BYTES or not data.startswith(b"%PDF-"):
+                continue
+            return data
+        except Exception as exc:
+            last_error_name = type(exc).__name__
+        finally:
+            if body_stream is not None and hasattr(body_stream, "close"):
+                body_stream.close()
+
+    if last_error_name:
+        logger.warning(
+            "Could not load receipt PDF from storage for order %s: %s",
+            order.number,
+            last_error_name,
+        )
+    return None
 
 
 class IPv4EmailBackend(EmailBackend):
@@ -284,7 +398,6 @@ def _send_email_via_api(message) -> bool:
     return False
 
 
-# TODO: Функционал чеков временно отключен. Будет доработан позже.
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=60, max_retries=3)
 def send_order_receipt_task(
     self, order_id: int, email: str | None = None, locale: str = "ru"
@@ -298,7 +411,7 @@ def send_order_receipt_task(
         logger.warning("No recipient email found for order %s", order.number)
         return False
 
-    logger.info("Sending receipt email for order %s to %s", order.number, recipient)
+    logger.info("Sending receipt email for order %s", order.number)
 
     loc = "en" if (locale or "").strip().lower() == "en" else "ru"
     receipt = build_order_receipt_payload(order, locale=loc)
@@ -334,7 +447,7 @@ def send_order_receipt_task(
     logger.info("--- SMTP START ---")
     try:
         # Пытаемся отправить через Django. При сетевой ошибке делаем IPv4-фоллбек.
-        logger.info(f"Sending email via Django to {recipient} (HOST: {settings.EMAIL_HOST})")
+        logger.info("Sending email via Django (HOST: %s)", settings.EMAIL_HOST)
         logger.info("Configured EMAIL_API_PROVIDER: %s", getattr(settings, "EMAIL_API_PROVIDER", ""))
         _send_email_with_ipv4_fallback(message)
 
@@ -353,7 +466,7 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
     """Уведомляет (Telegram) о создании нового заказа.
     Может запускаться как Celery link после send_order_receipt_task — тогда первым аргументом
     приходит результат предыдущей задачи (_email_result), который игнорируется.
-    PDF чека берётся из order.receipt_url (уже загружен в R2 email-задачей).
+    PDF чека читается напрямую из доверенного R2 bucket либо генерируется заново.
     """
     if order_id is None:
         logger.warning("notify_new_order_telegram: order_id not provided")
@@ -369,36 +482,17 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
 
     user = order.user
     user_chat_id = ""
-    if user:
+    if user and getattr(user, "telegram_notifications", False):
         utg = getattr(user, "telegram_id", None) or ""
         if utg:
             user_chat_id = str(utg).strip()
 
     is_ru = locale != "en"
 
-    # Получаем PDF-чек. Логика устойчива к race-condition с удалением старых файлов.
-    pdf_bytes: bytes | None = None
-    receipt_url = getattr(order, "receipt_url", None)
+    # Не загружаем order.receipt_url через HTTP: поле/redirect не должны становиться SSRF.
+    pdf_bytes = _load_receipt_pdf_from_storage(order)
 
-    # 1. Сначала пытаемся скачать по существующему URL
-    if receipt_url:
-        try:
-            r = requests.get(receipt_url, timeout=15)
-            if r.ok:
-                pdf_bytes = r.content
-            else:
-                logger.warning(
-                    "Could not download receipt PDF for order %s (status: %s). It might have been deleted. Will try to regenerate.",
-                    order.number, r.status_code
-                )
-                # Если файл не найден (404) или доступ запрещен (403), сбрасываем pdf_bytes, чтобы сгенерировать заново
-                if r.status_code in [404, 403]:
-                    pdf_bytes = None
-        except Exception as dl_err:
-            logger.warning("Error downloading receipt PDF for order %s: %s. Will try to regenerate.", order.number, dl_err)
-            pdf_bytes = None
-
-    # 2. Если скачать не удалось (или URL не было), генерируем PDF заново.
+    # Если прочитать объект не удалось, генерируем PDF заново.
     if not pdf_bytes:
         logger.info("Generating PDF receipt on-the-fly for Telegram task (order: %s)", order.number)
         try:
@@ -428,11 +522,15 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
                 resp = requests.post(base_url + "sendMessage", json=json_data, timeout=10)
 
             if not resp.ok:
-                logger.warning("Telegram notification failed for order %s: %s", order.number, resp.text)
+                logger.warning(
+                    "Telegram notification failed for order %s: HTTP %s",
+                    order.number,
+                    resp.status_code,
+                )
             else:
-                logger.info("Telegram notification sent for order %s → chat_id=%s", order.number, chat_id)
-        except requests.RequestException as e:
-            logger.warning("Telegram send error for order %s: %s", order.number, e)
+                logger.info("Telegram notification sent for order %s", order.number)
+        except requests.RequestException:
+            logger.warning("Telegram send error for order %s", order.number)
 
     from .services import translate_method, PAYMENT_METHOD_TRANSLATIONS, SHIPPING_METHOD_TRANSLATIONS
 

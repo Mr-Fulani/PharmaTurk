@@ -1,42 +1,35 @@
-name: pharmaturk
+name: mudaroba
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.18-alpine3.24
     environment:
-      POSTGRES_DB: pharmaturk
-      POSTGRES_USER: pharmaturk
-      POSTGRES_PASSWORD: pharmaturk
+      POSTGRES_DB: ${POSTGRES_DB:-pharmaturk}
+      POSTGRES_USER: ${POSTGRES_USER:-pharmaturk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pharmaturk}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pharmaturk"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 2s
       timeout: 3s
       retries: 15
       start_period: 5s
+    networks: [data]
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.10-alpine3.21
     volumes:
       - redis_data:/data
-
-  opensearch:
-    image: opensearchproject/opensearch:2.13.0
-    environment:
-      - discovery.type=single-node
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=yourStrongPassword123!
-      - OPENSEARCH_JAVA_OPTS=-Xms768m -Xmx768m
-    volumes:
-      - opensearch_data:/usr/share/opensearch/data
-    mem_limit: 1.5g
+    networks: [data]
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.18.2
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
+    networks: [data]
 
   backend:
     build:
@@ -44,7 +37,8 @@ services:
       dockerfile: Dockerfile
       args:
         DEPENDENCY_LOCK_HASH: ${DEPENDENCY_LOCK_HASH:-unknown}
-    image: mudaroba-backend
+        VCS_REF: ${IMAGE_TAG:-local}
+    image: mudaroba-backend:${IMAGE_TAG:-local}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/ || exit 1"]
       interval: 5s
@@ -56,8 +50,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      opensearch:
-        condition: service_started
       qdrant:
         condition: service_started
     env_file:
@@ -65,20 +57,21 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-1}
       RUN_SEED_CATALOG: ${RUN_SEED_CATALOG:-0}
+      REGISTER_TELEGRAM_WEBHOOK_ON_START: ${REGISTER_TELEGRAM_WEBHOOK_ON_START:-0}
     volumes:
-      - ./backend:/app
       - staticfiles:/app/staticfiles
-      - /app/__pycache__
-      - /app/*/__pycache__
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
     mem_limit: 1.5g
+    networks: [edge, data]
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
+        - VCS_REF=${IMAGE_TAG:-local}
         - NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME:-}
         - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
         - NEXT_PUBLIC_VK_APP_ID=${NEXT_PUBLIC_VK_APP_ID:-}
@@ -86,14 +79,10 @@ services:
         - NEXT_PUBLIC_GTM_ID=${NEXT_PUBLIC_GTM_ID:-}
         - NEXT_PUBLIC_GA4_ID=${NEXT_PUBLIC_GA4_ID:-}
         - NEXT_PUBLIC_YM_ID=${NEXT_PUBLIC_YM_ID:-}
+    image: mudaroba-frontend:${IMAGE_TAG:-local}
     working_dir: /app
-    tty: true
-    stdin_open: true
-    env_file:
-      - .env
     environment:
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_DISABLE_SWC_NATIVE=1
       - WATCHPACK_POLLING=true
       - INTERNAL_API_BASE=http://backend:8000
       - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-}
@@ -107,9 +96,10 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    networks: [edge]
 
   celeryworker:
-    image: mudaroba-backend
+    image: mudaroba-backend:${IMAGE_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,9 +114,10 @@ services:
       QDRANT_PORT: 6333
     command: bash -c "poetry run celery -A config worker -Q celery --loglevel=info --concurrency=2"
     mem_limit: 3g
+    networks: [data, egress]
 
   celery_ai:
-    image: mudaroba-backend
+    image: mudaroba-backend:${IMAGE_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,9 +132,10 @@ services:
       QDRANT_PORT: 6333
     command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2"
     mem_limit: 3g
+    networks: [data, egress]
 
   celery_recsys:
-    image: mudaroba-backend
+    image: mudaroba-backend:${IMAGE_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,9 +150,10 @@ services:
       QDRANT_PORT: 6333
     command: bash -c "poetry run celery -A config worker -Q recsys -n recsys_worker@%h --loglevel=info --concurrency=1"
     mem_limit: 3g
+    networks: [data, egress]
 
   celerybeat:
-    image: mudaroba-backend
+    image: mudaroba-backend:${IMAGE_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
@@ -169,16 +162,42 @@ services:
     env_file:
       - .env
     command: bash -c "poetry run celery -A config beat --loglevel=info"
+    networks: [data]
+
+  # One-shot schema operation used by release tooling. It never starts during a
+  # regular compose up because it is behind the explicit ops profile.
+  migrate:
+    image: mudaroba-backend:${IMAGE_TAG:-local}
+    profiles: [ops]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    entrypoint: ["poetry", "run", "python", "manage.py"]
+    command: ["migrate", "--noinput"]
+    networks: [data]
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.30.4-alpine3.24
     depends_on:
       - frontend
       - backend
+    networks: [edge]
 
 volumes:
   postgres_data:
   redis_data:
-  opensearch_data:
   qdrant_data:
   staticfiles:
+
+networks:
+  edge:
+  egress:
+  data:
+    internal: true

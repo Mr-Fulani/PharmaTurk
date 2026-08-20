@@ -53,15 +53,19 @@ def notify_crypto_payment_confirmed(self, order_id: int) -> None:
 
     user = order.user
     user_chat_id = ""
-    if user:
-        utg = getattr(user, "telegram_chat_id", None) or getattr(user, "tg_chat_id", None)
+    if user and getattr(user, "telegram_notifications", False):
+        utg = getattr(user, "telegram_id", None) or ""
         if utg:
-            user_chat_id = str(utg)
+            user_chat_id = str(utg).strip()
 
     amount_info = ""
     try:
         cp = CryptoPayment.objects.get(order=order)
-        amount_info = f"\n💰 Оплачено: {cp.amount_crypto} USDT (≈ {cp.amount_fiat} {cp.currency})"
+        coin_code = (getattr(settings, "COINREMITTER_COIN", "") or "crypto").upper()
+        amount_info = (
+            f"\n💰 Оплачено: {cp.amount_crypto} {coin_code} "
+            f"(≈ {cp.amount_fiat} {cp.currency})"
+        )
     except CryptoPayment.DoesNotExist:
         pass
 
@@ -79,11 +83,15 @@ def notify_crypto_payment_confirmed(self, order_id: int) -> None:
                 timeout=10,
             )
             if not resp.ok:
-                logger.warning("Telegram notification failed for order %s: %s", order.number, resp.text)
+                logger.warning(
+                    "Telegram notification failed for order %s: HTTP %s",
+                    order.number,
+                    resp.status_code,
+                )
             else:
-                logger.info("Telegram notification sent for order %s → chat_id=%s", order.number, chat_id)
-        except requests.RequestException as e:
-            logger.warning("Telegram send error for order %s: %s", order.number, e)
+                logger.info("Telegram notification sent for order %s", order.number)
+        except requests.RequestException:
+            logger.warning("Telegram send error for order %s", order.number)
 
     # Уведомление админу
     if admin_chat_id:
@@ -113,7 +121,7 @@ def notify_crypto_payment_confirmed(self, order_id: int) -> None:
         if user_email:
             # Отправка чека по email
             send_order_receipt_task.delay(order_id=order.id, email=user_email)
-            logger.info("Triggered order receipt email for order %s to %s", order.number, user_email)
+            logger.info("Triggered order receipt email for order %s", order.number)
     except Exception as e:
         logger.error("Failed to trigger send_order_receipt_task for order %s: %s", order.number, e)
 
@@ -133,8 +141,7 @@ def notify_crypto_payment_expired(self, order_id: int) -> None:
 
     user = order.user
     user_chat_id = ""
-    if user:
-        # В модели User поле называется telegram_id
+    if user and getattr(user, "telegram_notifications", False):
         utg = getattr(user, "telegram_id", None) or ""
         if utg:
             user_chat_id = str(utg).strip()
@@ -153,11 +160,15 @@ def notify_crypto_payment_expired(self, order_id: int) -> None:
                 timeout=10,
             )
             if not resp.ok:
-                logger.warning("Telegram notification failed for order %s: %s", order.number, resp.text)
+                logger.warning(
+                    "Telegram notification failed for order %s: HTTP %s",
+                    order.number,
+                    resp.status_code,
+                )
             else:
-                logger.info("Telegram notification sent for order %s → chat_id=%s", order.number, chat_id)
-        except requests.RequestException as e:
-            logger.warning("Telegram send error for order %s: %s", order.number, e)
+                logger.info("Telegram notification sent for order %s", order.number)
+        except requests.RequestException:
+            logger.warning("Telegram send error for order %s", order.number)
 
     if admin_chat_id:
         admin_text = (

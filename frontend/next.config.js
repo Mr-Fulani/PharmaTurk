@@ -12,7 +12,6 @@ const nextConfig = {
     proxyTimeout: Number(process.env.NEXT_PROXY_TIMEOUT_MS || 180000),
   },
   // Оптимизация производительности
-  swcMinify: true,
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },

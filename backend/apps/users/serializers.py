@@ -150,21 +150,21 @@ class SMSVerifyCodeSerializer(serializers.Serializer):
 
 
 class SocialAuthSerializer(serializers.Serializer):
-    """
-    Сериализатор для авторизации через социальные сети.
-    TODO: Реализовать после интеграции OAuth провайдеров.
-    """
+    """Вход через фактически поддерживаемые Google и VK providers."""
     provider = serializers.ChoiceField(
-        choices=['google', 'facebook', 'vk', 'yandex', 'apple'],
+        choices=['google', 'vk'],
         help_text="Провайдер социальной сети"
     )
     access_token = serializers.CharField(
+        max_length=8192,
         help_text="Access token от провайдера"
     )
     id_token = serializers.CharField(
         required=False,
+        max_length=8192,
         help_text="ID token (для некоторых провайдеров)"
     )
+    vk_user_id = serializers.CharField(required=False, max_length=128)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -546,3 +546,54 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             links['yandex'] = f"https://yandex.ru/profile/{obj.yandex_id}"
         
         return links
+
+
+class TokenPairSerializer(serializers.Serializer):
+    access = serializers.CharField()
+    refresh = serializers.CharField()
+
+
+class UserAuthResponseSerializer(serializers.Serializer):
+    user = UserSerializer()
+    tokens = TokenPairSerializer()
+    message = serializers.CharField()
+
+
+class MessageResponseSerializer(serializers.Serializer):
+    message = serializers.CharField()
+
+
+class DetailResponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+
+
+class ErrorResponseSerializer(serializers.Serializer):
+    error = serializers.CharField()
+
+
+class LogoutRequestSerializer(serializers.Serializer):
+    refresh = serializers.CharField(required=False, allow_blank=False)
+
+
+class TelegramWebhookRequestSerializer(serializers.Serializer):
+    update_id = serializers.IntegerField(required=False)
+    message = serializers.JSONField(required=False)
+
+
+class TelegramWebhookResponseSerializer(serializers.Serializer):
+    status = serializers.CharField()
+
+
+class TelegramAuthRequestSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    username = serializers.CharField(required=False, allow_blank=True)
+    photo_url = serializers.URLField(required=False, allow_blank=True)
+    auth_date = serializers.IntegerField()
+    hash = serializers.CharField()
+
+
+class SMSUnavailableResponseSerializer(serializers.Serializer):
+    message = serializers.CharField()
+    note = serializers.CharField()

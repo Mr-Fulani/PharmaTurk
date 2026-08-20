@@ -92,11 +92,14 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
     }
   }, [paymentData?.invoice_url])
 
+  const hasOrder = order !== null
+  const paymentStatus = order?.payment_status
+  const orderStatus = order?.status
   useEffect(() => {
-    if (!number || !order || order.payment_status === 'paid' || order.status === 'paid') return
+    if (!number || !hasOrder || paymentStatus === 'paid' || orderStatus === 'paid') return
     const id = setInterval(fetchOrder, POLL_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [number, order?.payment_status, order?.status, fetchOrder])
+  }, [number, hasOrder, paymentStatus, orderStatus, fetchOrder])
 
   // После отображения успеха — ждём 2.5 сек и редирект на страницу заказа
   const PAID_REDIRECT_DELAY_MS = 2500

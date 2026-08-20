@@ -142,6 +142,10 @@ class BaseScraper(ABC):
         # Активен только при use_proxy=True и заданном SCRAPER_PROXY_URL.
         # Пусто = прямое соединение (поведение по умолчанию не меняется).
         self.proxy_url = self._resolve_proxy_url()
+        # TLS verification stays enabled for proxy traffic.  A proxy that
+        # performs TLS inspection must expose its CA bundle explicitly rather
+        # than silently downgrading every scraper request to verify=False.
+        self.proxy_tls_verify = self._resolve_proxy_ca_bundle() or True
         # requests-стиль для парсеров на requests.Session (Zara, Ummaland).
         self.proxies = (
             {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
@@ -181,6 +185,15 @@ class BaseScraper(ABC):
         except Exception:
             return ""
 
+    @staticmethod
+    def _resolve_proxy_ca_bundle() -> str:
+        try:
+            from django.conf import settings
+
+            return str(getattr(settings, "SCRAPER_PROXY_CA_BUNDLE", "") or "").strip()
+        except Exception:
+            return ""
+
     def _setup_client(self):
         # Настройка HTTP клиента
         self.ua = UserAgent()
@@ -207,15 +220,7 @@ class BaseScraper(ABC):
         )
         if self.proxy_url:
             client_kwargs["proxy"] = self.proxy_url
-            # Bright Data residential инспектирует SSL — стандартный CA цепочку
-            # не валидирует. Прокси — доверенная инфраструктура (авторизация по
-            # user:pass), поэтому отключаем проверку сертификата только при прокси.
-            client_kwargs["verify"] = False
-            try:
-                import urllib3
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            except Exception:
-                pass
+            client_kwargs["verify"] = self.proxy_tls_verify
         self.client = httpx.Client(**client_kwargs)
     
     def __enter__(self):

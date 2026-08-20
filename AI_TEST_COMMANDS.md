@@ -11,7 +11,10 @@
 - В списке действий выбери **«Запустить AI обработку»** → Применить.
 - Результаты смотри в **AI → Логи AI обработки**.
 
-Для вызова API из браузера после входа в админку токен не нужен (работает сессия).
+Для вызова API из браузера после входа в админку работает session auth, но для
+любого изменяющего `POST/PATCH/DELETE` запроса нужно также передать действующий
+Django CSRF token (`csrftoken` cookie и заголовок `X-CSRFToken`). Admin action
+выше делает это автоматически своей формой.
 
 ---
 
@@ -32,11 +35,11 @@ curl -s -X POST http://localhost:8000/api/auth/jwt/create/ \
 Подставь **только access** в `Bearer ПОСЛЕ_ПРОБЕЛА`:
 
 ```bash
-curl -s -H "Authorization: Bearer СЮДА_ВСТАВЬ_ТОЛЬКО_ACCESS" http://localhost:8000/api/ai/stats/
+curl -s -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" http://localhost:8000/api/ai/stats/
 ```
 
 Пример (подставь свой access):  
-`curl -s -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." http://localhost:8000/api/ai/stats/`
+`curl -s -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" http://localhost:8000/api/ai/stats/`
 
 ---
 
@@ -45,7 +48,7 @@ curl -s -H "Authorization: Bearer СЮДА_ВСТАВЬ_ТОЛЬКО_ACCESS" htt
 ```bash
 curl -s -X POST http://localhost:8000/api/ai/process/1/ \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ВСТАВЬ_ACCESS_СЮДА" \
+  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
   -d '{"auto_apply": false}'
 ```
 

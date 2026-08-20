@@ -21,8 +21,10 @@ import { ymPageHit } from '../lib/ym'
 // eslint-disable-next-line
 const nextI18NextConfig = require('../../next-i18next.config.js')
 
-const YM_ID = process.env.NEXT_PUBLIC_YM_ID
-const GA4_ID = process.env.NEXT_PUBLIC_GA4_ID
+const rawYmId = process.env.NEXT_PUBLIC_YM_ID || ''
+const rawGa4Id = process.env.NEXT_PUBLIC_GA4_ID || ''
+const YM_ID = /^\d+$/.test(rawYmId) ? rawYmId : ''
+const GA4_ID = /^G-[A-Z0-9]+$/i.test(rawGa4Id) ? rawGa4Id : ''
 
 function App({ Component, pageProps }: AppProps) {
   const router = useRouter()

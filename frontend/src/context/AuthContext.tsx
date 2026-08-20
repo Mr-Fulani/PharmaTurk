@@ -30,6 +30,11 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+const AUTH_COOKIE_OPTIONS = {
+  sameSite: 'Lax' as const,
+  path: '/',
+  secure: process.env.NODE_ENV === 'production',
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -93,8 +98,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // loginValue может быть email, username или телефон
       const res = await api.post('/users/login/', { email: loginValue, password })
       const { tokens, user } = res.data
-      if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
-      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
+      if (tokens?.access) Cookies.set('access', tokens.access, AUTH_COOKIE_OPTIONS)
+      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, AUTH_COOKIE_OPTIONS)
       setUser({
         id: user.id,
         email: user.email,
@@ -118,8 +123,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async loginWithSocial(provider, token) {
       const res = await api.post('/users/social-auth/', { provider, access_token: token })
       const { tokens, user: userData } = res.data
-      if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
-      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
+      if (tokens?.access) Cookies.set('access', tokens.access, AUTH_COOKIE_OPTIONS)
+      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, AUTH_COOKIE_OPTIONS)
       setUser({
         id: userData.id,
         email: userData.email,
@@ -141,8 +146,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async loginWithTelegram(telegramData) {
       const res = await api.post('/users/telegram/login/', telegramData)
       const { tokens, user: userData } = res.data
-      if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
-      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
+      if (tokens?.access) Cookies.set('access', tokens.access, AUTH_COOKIE_OPTIONS)
+      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, AUTH_COOKIE_OPTIONS)
       setUser({
         id: userData.id,
         email: userData.email,
@@ -164,8 +169,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async register(email, username, password) {
       const res = await api.post('/users/register/', { email, username, password, password_confirm: password })
       const { tokens, user } = res.data
-      if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
-      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
+      if (tokens?.access) Cookies.set('access', tokens.access, AUTH_COOKIE_OPTIONS)
+      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, AUTH_COOKIE_OPTIONS)
       setUser({
         id: user.id,
         email: user.email,

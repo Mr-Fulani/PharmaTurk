@@ -86,12 +86,16 @@ def _send_duplicate_candidates_notification(result: Dict) -> bool:
             timeout=10,
         )
         if not response.ok:
-            logger.warning("Не удалось отправить Telegram-уведомление о дубликатах: %s", response.text)
+            logger.warning(
+                "Не удалось отправить Telegram-уведомление о дубликатах: HTTP %s",
+                response.status_code,
+            )
             return False
         logger.info("Telegram-уведомление о кандидатах в дубликаты отправлено")
         return True
-    except requests.RequestException as exc:
-        logger.warning("Ошибка отправки Telegram-уведомления о дубликатах: %s", exc)
+    except requests.RequestException:
+        # requests exceptions may include the API URL, which embeds the bot token.
+        logger.warning("Ошибка отправки Telegram-уведомления о дубликатах")
         return False
 
 

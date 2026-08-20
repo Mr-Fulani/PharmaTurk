@@ -1747,8 +1747,6 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return None
 
 
-# TODO: Функционал чеков временно отключен. Будет доработан позже.
-# Включает: формирование чека, отправку по email, интеграцию с админкой.
 class OrderReceiptItemSerializer(serializers.Serializer):
     """Позиция в чеке заказа."""
     id = serializers.IntegerField()
@@ -1760,8 +1758,6 @@ class OrderReceiptItemSerializer(serializers.Serializer):
     currency = serializers.CharField()
 
 
-# TODO: Функционал чеков временно отключен. Будет доработан позже.
-# Включает: формирование чека, отправку по email, интеграцию с админкой.
 class OrderReceiptSerializer(serializers.Serializer):
     """Структура данных чека заказа."""
     number = serializers.CharField()

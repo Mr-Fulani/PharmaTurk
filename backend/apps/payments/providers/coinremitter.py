@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone as py_tz
 from decimal import Decimal
 from typing import Any
 
@@ -37,12 +38,29 @@ def _get_invoice(config: dict[str, str], invoice_id: str) -> dict | None:
             timeout=15,
         )
         data = resp.json()
-        if data.get("success") and data.get("data"):
+        if isinstance(data, dict) and data.get("success") and isinstance(data.get("data"), dict):
             return data["data"]
         logger.warning("CoinRemitter invoice/get failed: %s", data)
-    except requests.RequestException as e:
+    except (requests.RequestException, ValueError) as e:
         logger.warning("CoinRemitter invoice/get request failed: %s", e)
     return None
+
+
+def get_invoice(invoice_id: str) -> dict | None:
+    """Fetch an invoice through CoinRemitter's authenticated API.
+
+    Webhook payloads are not authenticated by CoinRemitter, so callers must use
+    this response as the authoritative source for invoice status and amounts.
+    """
+    normalized_id = str(invoice_id or "").strip()
+    if not normalized_id:
+        return None
+
+    config = _get_config()
+    if not config["api_key"] or not config["api_password"]:
+        logger.error("CoinRemitter invoice/get skipped: API credentials are not configured")
+        return None
+    return _get_invoice(config, normalized_id)
 
 
 def create_invoice(
@@ -58,7 +76,7 @@ def create_invoice(
     """
     Create a CoinRemitter invoice for the given amount.
 
-    Returns dict with: invoice_id, address, qr_code, amount (crypto), amount_usd, expires_at, invoice_url.
+    Returns both provider identifiers plus address, amounts and expiry details.
     Returns None on API error.
     """
     config = _get_config()
@@ -176,7 +194,6 @@ def create_invoice(
         amount_usd = Decimal(str(amount_fiat))
 
     # -- Время истечения ------------------------------------------------------
-    from datetime import datetime, timezone as py_tz
     from django.utils import timezone as django_tz
     expires_at = None
     if "expire_on_timestamp" in inner:
@@ -197,6 +214,9 @@ def create_invoice(
 
     return {
         "invoice_id": inner.get("id") or inner.get("invoice_id") or "",
+        # Keep the long provider id and short invoice/get code separate.
+        "provider_id": inner.get("id") or "",
+        "invoice_code": inner.get("invoice_id") or "",
         "address": address,
         "qr_code": qr_code,
         "amount": amount_crypto,

@@ -136,7 +136,20 @@ class Cart(models.Model):
             models.Index(fields=["user", "session_key"]),
         ]
         constraints = [
-            models.CheckConstraint(check=~(models.Q(user__isnull=True) & models.Q(session_key="")), name="cart_user_or_session"),
+            models.CheckConstraint(
+                condition=~(models.Q(user__isnull=True) & models.Q(session_key="")),
+                name="cart_user_or_session",
+            ),
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(user__isnull=False),
+                name="unique_cart_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["session_key"],
+                condition=models.Q(user__isnull=True),
+                name="unique_anonymous_cart_session",
+            ),
         ]
 
     def __str__(self) -> str:
