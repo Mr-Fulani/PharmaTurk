@@ -167,12 +167,13 @@ jobs:
     needs: [secrets, frontend, backend, compose]
     env:
       IMAGE_TAG: ${{ github.sha }}
-      DEPENDENCY_LOCK_HASH: ${{ hashFiles('backend/pyproject.toml', 'backend/poetry.lock') }}
     steps:
       - uses: actions/checkout@v4
       - name: Prepare non-secret build configuration
         run: cp .env.example .env
       - name: Build exact production images
+        env:
+          DEPENDENCY_LOCK_HASH: ${{ hashFiles('backend/pyproject.toml', 'backend/poetry.lock') }}
         run: docker compose -f docker-compose.yml -f docker-compose.prod.yml build backend frontend
       - name: Verify immutable revision labels and runtime users
         run: |
