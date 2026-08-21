@@ -22,7 +22,6 @@ release_validate_environment "$ENVIRONMENT"
 release_validate_tag "$RELEASE_ID"
 release_require_command docker
 release_require_command git
-release_require_command npm
 release_require_env_file
 
 if [[ "$ENVIRONMENT" = "local" ]]; then
@@ -85,14 +84,20 @@ test_compose --profile test run --rm backend_tests run python manage.py makemigr
 test_compose --profile test run --rm backend_tests run pytest -q
 
 release_log "running frontend release gates"
-(
-  cd "${RELEASE_REPO_ROOT}/frontend"
-  npm audit --omit=dev --audit-level=high
-  npm run lint
-  npx tsc --noEmit
-  npm test
-  npm run build
-)
+docker run --rm \
+  --mount "type=bind,src=${RELEASE_REPO_ROOT}/frontend,dst=/app,readonly" \
+  --mount "type=volume,dst=/app/node_modules" \
+  --mount "type=volume,dst=/app/.next" \
+  --workdir /app \
+  node:22.23.2-bookworm-slim \
+  sh -ec '
+    npm ci --include=dev
+    npm audit --omit=dev --audit-level=high
+    npm run lint
+    npx tsc --noEmit --incremental false
+    npm test
+    npm run build
+  '
 
 release_log "predeploy passed for ${ENVIRONMENT}:${RELEASE_ID}"
 if [[ "$ALLOW_DIRTY" = "1" ]]; then
