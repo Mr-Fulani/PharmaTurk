@@ -18,6 +18,12 @@ from .services.moderation import (
     get_workflow_title,
     reject_log,
 )
+from .services.size_inventory import (
+    merge_confirmed_sizes,
+    parse_moderator_size_list,
+    strip_size_inventory_sentences,
+    supports_size_inventory,
+)
 
 
 # Атрибуты украшений для формы модерации (применяются к JewelryProduct)
@@ -75,6 +81,15 @@ class AIProcessingLogForm(forms.ModelForm):
         help_text="og:description для соцсетей (латиница).",
         widget=forms.Textarea(attrs={"rows": 2, "cols": 80}),
     )
+    inventory_sizes = forms.CharField(
+        required=False,
+        label="Доступные размеры",
+        help_text=(
+            "Через запятую. При применении размеры добавятся в карточку товара; "
+            "существующие размеры и остатки не удаляются."
+        ),
+        widget=forms.TextInput(attrs={"size": 80, "placeholder": "M, XL, 2XL"}),
+    )
     # Атрибуты украшений (применяются к JewelryProduct при «Сохранить и применить»)
     jewelry_type = forms.ChoiceField(
         choices=JEWELRY_TYPE_CHOICES,
@@ -127,8 +142,10 @@ class AIProcessingLogForm(forms.ModelForm):
         self.fields["generated_seo_title"].label = "SEO title (RU)"
         self.fields["generated_seo_description"].label = "SEO description (RU)"
         self.fields["generated_keywords"].label = "Ключевые слова (RU)"
+        product = getattr(self.instance, "product", None) if self.instance else None
+        product_type = getattr(product, "product_type", None)
+        attrs = self.instance.extracted_attributes or {} if self.instance else {}
         if self.instance and self.instance.pk:
-            attrs = self.instance.extracted_attributes or {}
             seo_translations = attrs.get("seo_translations") or {}
             seo_en = seo_translations.get("en") or attrs.get("seo_en") or {}
             self.fields["generated_en_title"].initial = seo_en.get("generated_title") or ""
@@ -142,7 +159,6 @@ class AIProcessingLogForm(forms.ModelForm):
             self.fields["stone_type"].initial = attrs.get("stone_type") or ""
             self.fields["carat_weight"].initial = attrs.get("carat_weight")
             self.fields["gender"].initial = attrs.get("gender") or ""
-            product = getattr(self.instance, "product", None)
             if product and getattr(product, "product_type", None) == "jewelry":
                 domain = getattr(product, "jewelry_item", None)
                 if domain and not attrs.get("metal_purity") and getattr(domain, "metal_purity", None):
@@ -161,6 +177,37 @@ class AIProcessingLogForm(forms.ModelForm):
                 # одноимённые ключи extracted_attributes чужой категории.
                 for field_name in JEWELRY_FORM_FIELDS:
                     self.fields.pop(field_name, None)
+        elif product_type != "jewelry":
+            for field_name in JEWELRY_FORM_FIELDS:
+                self.fields.pop(field_name, None)
+
+        if supports_size_inventory(product_type):
+            effective_attrs = merge_confirmed_sizes(
+                attrs,
+                getattr(self.instance, "input_data", None) or {},
+                product_type,
+                allow_moderator_override=True,
+            )
+            self.fields["inventory_sizes"].initial = ", ".join(
+                row["size"] for row in effective_attrs.get("sizes") or []
+            )
+            # Legacy logs may still contain size inventory in generated prose.
+            # Show the moderator exactly the cleaned values that the applier
+            # will write, instead of making the preview and edit form disagree.
+            self.initial["generated_description"] = strip_size_inventory_sentences(
+                getattr(self.instance, "generated_description", "")
+            )
+            self.initial["generated_seo_description"] = strip_size_inventory_sentences(
+                getattr(self.instance, "generated_seo_description", "")
+            )
+            self.fields["generated_en_description"].initial = strip_size_inventory_sentences(
+                self.fields["generated_en_description"].initial
+            )
+            self.fields["og_description"].initial = strip_size_inventory_sentences(
+                self.fields["og_description"].initial
+            )
+        else:
+            self.fields.pop("inventory_sizes", None)
 
     def save(self, commit=True):
         obj = super().save(commit=commit)
@@ -193,6 +240,14 @@ class AIProcessingLogForm(forms.ModelForm):
             seo_translations["en"] = seo_en
             attrs["seo_translations"] = seo_translations
             attrs["seo_en"] = seo_en
+            product_type = getattr(getattr(obj, "product", None), "product_type", None)
+            if "inventory_sizes" in self.cleaned_data and supports_size_inventory(product_type):
+                moderator_sizes = parse_moderator_size_list(
+                    self.cleaned_data.get("inventory_sizes"),
+                    product_type,
+                )
+                attrs["moderator_sizes"] = moderator_sizes
+                attrs["sizes"] = moderator_sizes
             # Атрибуты украшений
             for key, field_name in [
                 ("jewelry_type", "jewelry_type"),
@@ -390,6 +445,16 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Размеры и наличие",
+            {
+                "fields": ("inventory_sizes",),
+                "description": (
+                    "Размеры хранятся в отдельных полях карточки и не попадут в описание. "
+                    "Если у товара есть варианты, применение будет остановлено до выбора варианта."
+                ),
+            },
+        ),
+        (
             "Атрибуты украшения (применяются к карточке товара)",
             {
                 "fields": (
@@ -480,6 +545,10 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 fieldset
                 for fieldset in fieldsets
                 if fieldset[0] != "Атрибуты украшения (применяются к карточке товара)"
+            ]
+        if not supports_size_inventory(product_type):
+            fieldsets = [
+                fieldset for fieldset in fieldsets if fieldset[0] != "Размеры и наличие"
             ]
         return fieldsets
 

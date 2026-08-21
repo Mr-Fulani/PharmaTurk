@@ -5,16 +5,22 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from django.test import override_settings
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.catalog.models import Product
+from apps.recommendations.models import ProductVector
 from apps.recommendations.selectors import (
     is_public_recommendation_product,
     public_recommendation_products,
 )
 from apps.recommendations.serializers import CompleteTheLookRequestSerializer
+from apps.recommendations.services.reranker import BusinessReranker
 from apps.recommendations.services.vector_engine import QdrantRecommendationEngine
-from apps.recommendations.tasks import index_product_vectors, remove_product_vectors
+from apps.recommendations.tasks import (
+    _unpublished_vector_product_ids,
+    index_product_vectors,
+    remove_product_vectors,
+)
 from apps.recommendations.views import RecommendationViewSet
 
 
@@ -29,10 +35,17 @@ def test_complete_the_look_serializer_rejects_invalid_product_ids(product_id):
 
 def test_public_selector_requires_published_and_available_product():
     sentinel = object()
-    with patch.object(Product.objects, "filter", return_value=sentinel) as product_filter:
+    base_queryset = MagicMock()
+    without_shadows = MagicMock()
+    base_queryset.exclude.return_value = without_shadows
+    without_shadows.exclude.return_value = sentinel
+
+    with patch.object(Product.objects, "filter", return_value=base_queryset) as product_filter:
         assert public_recommendation_products() is sentinel
 
     product_filter.assert_called_once_with(is_active=True, is_available=True)
+    base_queryset.exclude.assert_called_once()
+    without_shadows.exclude.assert_called_once()
     assert is_public_recommendation_product(
         SimpleNamespace(is_active=True, is_available=True)
     )
@@ -42,6 +55,162 @@ def test_public_selector_requires_published_and_available_product():
     assert not is_public_recommendation_product(
         SimpleNamespace(is_active=True, is_available=False)
     )
+    assert not is_public_recommendation_product(
+        SimpleNamespace(
+            is_active=True,
+            is_available=True,
+            product_type="medicines",
+            external_data={"is_stub": True},
+        )
+    )
+    assert not is_public_recommendation_product(
+        SimpleNamespace(
+            is_active=True,
+            is_available=True,
+            product_type="clothing",
+            external_data={"source_variant_slug": None},
+        )
+    )
+
+
+@pytest.mark.django_db
+def test_public_selector_excludes_medicine_stubs_and_variant_shadows():
+    public_product = Product.objects.create(
+        name="Public medicine",
+        slug="public-medicine-recommendation-test",
+        product_type="medicines",
+        external_data={},
+        is_active=True,
+        is_available=True,
+    )
+    Product.objects.create(
+        name="Medicine analog stub",
+        slug="medicine-analog-stub-recommendation-test",
+        product_type="medicines",
+        external_data={"is_stub": True},
+        is_active=True,
+        is_available=True,
+    )
+    Product.objects.create(
+        name="Legacy variant shadow",
+        slug="legacy-variant-shadow-recommendation-test",
+        product_type="accessories",
+        external_data={"source_variant_id": 17},
+        is_active=True,
+        is_available=True,
+    )
+
+    selected_ids = set(
+        public_recommendation_products().values_list("id", flat=True)
+    )
+
+    assert selected_ids == {public_product.id}
+
+
+@pytest.mark.django_db
+def test_reranker_drops_stale_qdrant_candidate_that_is_not_public():
+    target = Product.objects.create(
+        name="Recommendation target",
+        slug="recommendation-target-reranker-test",
+        product_type="medicines",
+        external_data={},
+    )
+    public_candidate = Product.objects.create(
+        name="Public candidate",
+        slug="public-candidate-reranker-test",
+        product_type="medicines",
+        external_data={},
+    )
+    stub_candidate = Product.objects.create(
+        name="Stub candidate",
+        slug="stub-candidate-reranker-test",
+        product_type="medicines",
+        external_data={"is_stub": True},
+    )
+    reranker = BusinessReranker()
+
+    with patch.object(
+        reranker,
+        "_serialize_results",
+        side_effect=lambda ranked, request=None: ranked,
+    ):
+        results = reranker.rerank(
+            [
+                {"product_id": stub_candidate.id, "score": 0.99},
+                {"product_id": public_candidate.id, "score": 0.8},
+            ],
+            target,
+        )
+
+    assert [row["product"].id for row in results] == [public_candidate.id]
+
+
+@pytest.mark.django_db
+def test_vector_cleanup_marks_medicine_stub_as_unpublished():
+    public_product = Product.objects.create(
+        name="Public vector product",
+        slug="public-vector-product-cleanup-test",
+        product_type="medicines",
+        external_data={},
+    )
+    stub_product = Product.objects.create(
+        name="Stub vector product",
+        slug="stub-vector-product-cleanup-test",
+        product_type="medicines",
+        external_data={"is_stub": True},
+    )
+    ProductVector.objects.create(product=public_product, qdrant_id=str(public_product.id))
+    ProductVector.objects.create(product=stub_product, qdrant_id=str(stub_product.id))
+
+    assert _unpublished_vector_product_ids() == [stub_product.id]
+
+
+@pytest.mark.django_db
+def test_similar_endpoint_never_returns_unresolvable_medicine_stub():
+    target = Product.objects.create(
+        name="Similar endpoint target",
+        slug="similar-endpoint-target-test",
+        product_type="medicines",
+        external_data={},
+    )
+    public_candidate = Product.objects.create(
+        name="Resolvable recommendation",
+        slug="resolvable-recommendation-test",
+        product_type="medicines",
+        external_data={},
+    )
+    stub_candidate = Product.objects.create(
+        name="Unresolvable recommendation stub",
+        slug="unresolvable-recommendation-stub-test",
+        product_type="medicines",
+        external_data={"is_stub": True},
+    )
+    engine = Mock()
+    engine.find_similar.return_value = [
+        {"product_id": stub_candidate.id, "score": 0.99},
+        {"product_id": public_candidate.id, "score": 0.8},
+    ]
+    client = APIClient()
+
+    with patch(
+        "apps.recommendations.services.vector_engine.QdrantRecommendationEngine",
+        return_value=engine,
+    ), patch("apps.recommendations.tasks.log_recommendation_event.delay"):
+        response = client.get(
+            f"/api/catalog/products/{target.slug}/similar",
+            {"limit": 8, "strategy": "balanced", "view": "card"},
+        )
+
+    assert response.status_code == 200
+    assert [row["product"]["id"] for row in response.data["results"]] == [
+        public_candidate.id
+    ]
+    assert client.get(
+        f"/api/catalog/products/resolve/{public_candidate.slug}"
+    ).status_code == 200
+    assert client.get(
+        f"/api/catalog/products/resolve/{stub_candidate.slug}"
+    ).status_code == 404
 
 
 def _get_complete_the_look(params):

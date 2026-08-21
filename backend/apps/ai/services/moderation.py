@@ -16,6 +16,12 @@ from django.utils import timezone
 from apps.ai.models import AIApplicationStatus, AIProcessingStatus
 from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.semantic_validator import SemanticValidator
+from apps.ai.services.size_inventory import (
+    current_product_sizes,
+    merge_confirmed_sizes,
+    strip_size_inventory_sentences,
+    supports_size_inventory,
+)
 
 
 MODERATION_REASON_LABELS = {
@@ -27,6 +33,10 @@ MODERATION_REASON_LABELS = {
     "title_identity_lost": "В названии потеряна модель или серия товара",
     "forbidden_attribute": "AI предложил атрибут, недопустимый для этого типа товара",
     "untranslated_attribute": "Атрибут содержит непереведённый турецкий текст",
+    "ambiguous_variant_sizes": (
+        "У товара есть варианты: размеры нужно привязать к конкретному варианту вручную"
+    ),
+    "unsupported_sizes": "Этот тип товара не поддерживает автоматическое применение размеров",
     "manual_review": "Результат вручную отправлен на проверку",
 }
 
@@ -272,7 +282,13 @@ def build_change_preview(log) -> list[PreviewRow]:
     """Return the exact human-facing candidate fields for any product type."""
     product = log.product
     target = product.domain_item
-    attrs = log.extracted_attributes or {}
+    product_type = getattr(product, "product_type", None)
+    attrs = merge_confirmed_sizes(
+        log.extracted_attributes or {},
+        log.input_data or {},
+        product_type,
+        allow_moderator_override=True,
+    )
     seo = attrs.get("seo_translations") or {}
     seo_ru = seo.get("ru") or {}
     seo_en = seo.get("en") or attrs.get("seo_en") or {}
@@ -282,10 +298,19 @@ def build_change_preview(log) -> list[PreviewRow]:
     }
     semantic_report = SemanticValidator().validate_log(log)
     rejected = semantic_report.rejected_fields
-    title_reason = (
-        MODERATION_REASON_LABELS.get(semantic_report.reasons[0], semantic_report.reasons[0])
-        if "title" in rejected and semantic_report.reasons
-        else ""
+    title_reason_code = next(
+        (
+            reason
+            for reason in semantic_report.reasons
+            if reason in {"title_category_mismatch", "title_identity_lost"}
+        ),
+        "",
+    )
+    title_reason = MODERATION_REASON_LABELS.get(title_reason_code, title_reason_code)
+    clean_size_prose = (
+        strip_size_inventory_sentences
+        if supports_size_inventory(product_type)
+        else lambda value: value
     )
     rows: list[PreviewRow] = []
 
@@ -323,7 +348,7 @@ def build_change_preview(log) -> list[PreviewRow]:
         "Контент RU",
         "Описание",
         getattr(ru, "description", None) or getattr(target, "description", None),
-        seo_ru.get("generated_description") or log.generated_description,
+        clean_size_prose(seo_ru.get("generated_description") or log.generated_description),
     )
     _row(
         rows,
@@ -338,7 +363,7 @@ def build_change_preview(log) -> list[PreviewRow]:
         "Контент EN",
         "Описание",
         getattr(en, "description", None),
-        seo_en.get("generated_description") or log.generated_description,
+        clean_size_prose(seo_en.get("generated_description") or log.generated_description),
     )
 
     seo_fields = (
@@ -361,6 +386,8 @@ def build_change_preview(log) -> list[PreviewRow]:
                 proposed = log.generated_seo_title
             if proposed in (None, "") and model_field == "og_description":
                 proposed = log.generated_seo_description
+            if model_field in {"meta_description", "og_description"}:
+                proposed = clean_size_prose(proposed)
             _row(
                 rows,
                 f"SEO {locale}",
@@ -397,6 +424,27 @@ def build_change_preview(log) -> list[PreviewRow]:
             proposed,
             blocked_reason=reason,
         )
+
+    proposed_sizes = [row["size"] for row in attrs.get("sizes") or []]
+    size_reason = ""
+    if "sizes" in rejected:
+        size_reason_code = next(
+            (
+                reason
+                for reason in semantic_report.reasons
+                if reason in {"ambiguous_variant_sizes", "unsupported_sizes"}
+            ),
+            "unsupported_sizes",
+        )
+        size_reason = MODERATION_REASON_LABELS[size_reason_code]
+    _row(
+        rows,
+        "Размеры и наличие",
+        "Доступные размеры",
+        current_product_sizes(target),
+        proposed_sizes,
+        blocked_reason=size_reason,
+    )
 
     _book_rows(rows, target, attrs)
     _jewelry_rows(rows, target, attrs)

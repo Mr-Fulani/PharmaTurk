@@ -7,6 +7,7 @@ from django.utils.text import slugify as django_slugify
 from apps.catalog.models import Product, GlobalAttributeKey
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.product_semantics import looks_untranslated_turkish
+from apps.ai.services.size_inventory import apply_size_inventory
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,15 @@ class BaseAIApplier:
 
         # 4. Динамические атрибуты
         updated |= self._apply_dynamic_attributes(target, ai_data)
+
+        # 5. Размерный ряд для поддерживаемых apparel-доменов. Остатки не
+        # меняются; товары с вариантами отсекаются семантической проверкой.
+        attrs = ai_data.get("extracted_attributes") or {}
+        updated |= apply_size_inventory(
+            target,
+            attrs.get("sizes") if isinstance(attrs, dict) else [],
+            getattr(type(target), "_domain_product_type", None),
+        )
             
         if updated:
             target.save()
@@ -579,5 +589,7 @@ class AIResultApplier:
                     or f"dynamic_attributes:{_canonical_attr_slug(row.get('slug') or 'unknown')}"
                     not in rejected_fields
                 ]
+            if "sizes" in rejected_fields:
+                attrs.pop("sizes", None)
             cleaned_data["extracted_attributes"] = attrs
             return handler.apply(target, cleaned_data)

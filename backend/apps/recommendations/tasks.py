@@ -57,14 +57,19 @@ def _exclude_variant_shadows(queryset):
 
 
 def _unpublished_vector_product_ids(limit=None) -> list[int]:
-    """Find local vector markers whose authoritative product is not public."""
-    from django.db.models import Q
+    """Find local vector markers whose authoritative product is not public.
 
+    This includes withdrawn/unavailable products, legacy variant shadows and
+    medicine stubs.  The subquery deliberately reuses the canonical selector
+    so cleanup cannot drift from the API publication policy.
+    """
     from .models import ProductVector
 
     queryset = (
-        ProductVector.objects.filter(
-            Q(product__is_active=False) | Q(product__is_available=False)
+        ProductVector.objects.exclude(
+            product_id__in=public_recommendation_products().values_list(
+                "id", flat=True
+            )
         )
         .order_by("product_id")
         .values_list("product_id", flat=True)
@@ -208,8 +213,7 @@ def sync_all_products_to_qdrant():
     from .models import ProductVector
 
     ProductVector.objects.filter(
-        product__is_active=True,
-        product__is_available=True,
+        product_id__in=public_recommendation_products().values_list("id", flat=True)
     ).update(last_synced=None)
     base_qs = _exclude_variant_shadows(
         public_recommendation_products()

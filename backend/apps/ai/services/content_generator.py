@@ -45,6 +45,12 @@ from apps.ai.services.quality_checker import (
     get_moderation_reasons,
 )
 from apps.ai.services.semantic_validator import SemanticValidator
+from apps.ai.services.size_inventory import (
+    extract_sizes_from_input,
+    merge_confirmed_sizes,
+    strip_size_inventory_sentences,
+    supports_size_inventory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -599,6 +605,10 @@ class ContentGenerator:
         if dynamic_attribute_catalog:
             data["available_dynamic_attributes"] = dynamic_attribute_catalog
         data["category_family_rules"] = self._get_category_family_rules(product)
+
+        detected_sizes = extract_sizes_from_input(data, product.product_type)
+        if detected_sizes:
+            data["detected_sizes"] = detected_sizes
 
         return data
 
@@ -1938,6 +1948,7 @@ class ContentGenerator:
             known_attrs.update(medicine_attrs)
         data = {
             "product_name": input_data["name"],
+            "product_type": input_data.get("product_type"),
             "current_description": input_data["description"],
             "brand": input_data["brand"] or "Unknown",
             "category_context": input_data.get("category_context") or {},
@@ -1945,6 +1956,8 @@ class ContentGenerator:
             "source_attributes": input_data.get("attributes") or {},
             "image_analysis": image_analysis,
         }
+        if input_data.get("detected_sizes"):
+            data["detected_sizes"] = input_data["detected_sizes"]
         # raw_description — оригинал от парсера (Instagram и др.); AI использует для извлечения цены, автора и т.д.
         if input_data.get("raw_description") and input_data["raw_description"] != input_data.get("description"):
             data["raw_description"] = input_data["raw_description"]
@@ -2011,6 +2024,11 @@ class ContentGenerator:
         - Если есть category_family_rules:
           • family показывает семейство товара; focus — какие типы фактов особенно важны; forbidden — что нельзя тащить в описание или title.
           • Для этой карточки приоритетно раскрывай факты именно из focus, а forbidden не включай в prose/SEO.
+        - Если product_type — clothing, shoes, headwear, underwear или islamic_clothing:
+          • Размеры из source возвращай ТОЛЬКО в attributes.sizes и не повторяй их в title, generated_description, SEO или OG.
+          • detected_sizes рассчитаны из source детерминированно: используй их как подтверждённый размерный ряд и не добавляй размеры, которых там нет.
+          • Не придумывай stock_quantity. is_available=true ставь только когда source явно говорит «в наличии», «остались», available/in stock/mevcut/stokta.
+          • Если detected_sizes пуст, верни пустой sizes и не угадывай размер по фотографии.
         - Для книг: author, pages, isbn, publisher, cover_type, language, publication_year. cover_type (переплёт) можно определить по фото.
         - Для украшений (jewelry): обязательно извлекай в attributes: jewelry_type (ring/bracelet/necklace/earrings/pendant), material (серебро/silver, золото/gold), metal_purity из текста про пробу («925 пробы», «585», «проба 750» → metal_purity: «925» / «585» / «750»), stone_type, carat_weight, gender — по описанию или по фото.
         - Для мебели: category_context и furniture_type — канонические ограничения, а не подсказки. Не обобщай тип товара. Для category slug bed-bases используй «основание кровати» в RU и «bed base» в EN; не заменяй их просто на «кровать» / «bed». Технические факты возвращай только через разрешённые available_dynamic_attributes с отдельными value_ru и value_en.
@@ -2019,7 +2037,7 @@ class ContentGenerator:
         - Для одежды и обуви: title должен быть на языке ответа и не должен содержать турецкие цвета, цену, TL/TRY, SKU или код товара.
         - SEO в "ru" пиши на русском, SEO в "en" — на английском. Не смешивай языки внутри одного языкового блока.
         - В "ru" — название, описание и SEO на русском; в "en" — название, описание и SEO на английском.
-        - Никогда не предлагай и не изменяй stock_quantity, цену или доступность товара: это не задача AI.
+        - Никогда не предлагай и не изменяй stock_quantity, цену или общую доступность товара. Исключение: attributes.sizes[].is_available можно подтвердить только явной фразой о наличии конкретных размеров в source.
 
         Верни JSON (опускай только технические поля без данных — не опускай описание и SEO, если есть текст или image_analysis). Описание ru и en — один смысл, перевод; каждое от 20 до 100 слов:
         {{
@@ -2074,6 +2092,16 @@ class ContentGenerator:
                 "stone_type": "Only for jewelry if has stones",
                 "carat_weight": "Only for jewelry if applicable",
                 "gender": "For jewelry/clothing: женский/мужской/унисекс",
+                "sizes": [
+                    {{
+                        "size": "M",
+                        "is_available": true,
+                        "availability_explicit": true,
+                        "stock_quantity": null,
+                        "source": "source_text",
+                        "confidence": 1.0
+                    }}
+                ],
                 "dynamic_attributes": [
                     {{
                         "slug": "material",
@@ -2207,8 +2235,6 @@ class ContentGenerator:
                 continue
             if "sku" in lowered or "ürün kodu" in lowered or "product code" in lowered:
                 continue
-            if remove_sizes and ("размер" in lowered or "size options" in lowered or "sizes available" in lowered):
-                continue
             kept.append(candidate)
         cleaned = " ".join(kept).strip()
         cleaned = re.sub(r"\s{2,}", " ", cleaned)
@@ -2219,7 +2245,10 @@ class ContentGenerator:
         }
         for old, new in replacements.items():
             cleaned = cleaned.replace(old, new)
-        return cleaned or normalized
+        result = cleaned or normalized
+        if remove_sizes:
+            result = strip_size_inventory_sentences(result)
+        return result
 
     def _apply_confidence_gate_to_dynamic_attributes(self, dynamic_attrs: List[Dict[str, Any]], input_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not isinstance(dynamic_attrs, list):
@@ -2289,25 +2318,39 @@ class ContentGenerator:
         if not isinstance(content, dict):
             return content
 
+        remove_sizes = variant_mode or supports_size_inventory(input_data.get("product_type"))
         for locale in ("ru", "en"):
             bucket = content.get(locale)
             if not isinstance(bucket, dict):
                 continue
-            if bucket.get("generated_description"):
-                bucket["generated_description"] = self._sanitize_description_text(
-                    bucket["generated_description"],
-                    remove_sizes=variant_mode,
-                )
+            for field in (
+                "generated_description",
+                "seo_description",
+                "meta_description",
+                "og_description",
+            ):
+                if bucket.get(field):
+                    bucket[field] = self._sanitize_description_text(
+                        bucket[field],
+                        remove_sizes=remove_sizes,
+                    )
             if bucket.get("generated_title"):
                 bucket["generated_title"] = self._strip_price_and_codes_from_title(bucket["generated_title"])
 
-        attrs = content.get("attributes")
-        if isinstance(attrs, dict) and isinstance(attrs.get("dynamic_attributes"), list):
+        had_attributes = isinstance(content.get("attributes"), dict)
+        attrs = content.get("attributes") if had_attributes else {}
+        if isinstance(attrs.get("dynamic_attributes"), list):
             attrs["dynamic_attributes"] = self._apply_confidence_gate_to_dynamic_attributes(
-                attrs.get("dynamic_attributes") or [],
-                input_data,
+                attrs.get("dynamic_attributes") or [], input_data
             )
-            content["attributes"] = self._merge_dynamic_attributes_into_top_level(attrs)
+            attrs = self._merge_dynamic_attributes_into_top_level(attrs)
+        attrs = merge_confirmed_sizes(
+            attrs,
+            input_data,
+            input_data.get("product_type"),
+        )
+        if attrs or had_attributes:
+            content["attributes"] = attrs
         return content
 
     def _parse_and_save_results(self, log: AIProcessingLog, content):
@@ -2435,6 +2478,13 @@ class ContentGenerator:
     def _log_has_applicable_content(self, log: AIProcessingLog) -> bool:
         """Проверяет, есть ли в логе реальный результат для авто-применения."""
         attrs = log.extracted_attributes if isinstance(log.extracted_attributes, dict) else {}
+        attrs = merge_confirmed_sizes(
+            attrs,
+            log.input_data or {},
+            getattr(log.product, "product_type", None),
+            allow_moderator_override=True,
+        )
+        has_sizes = bool(attrs.get("sizes"))
         seo_translations = attrs.get("seo_translations") if isinstance(attrs.get("seo_translations"), dict) else {}
         translations_data = attrs.get("translations_data") if isinstance(attrs.get("translations_data"), dict) else {}
 
@@ -2451,7 +2501,7 @@ class ContentGenerator:
                 if isinstance(payload, dict)
             )
         if log.processing_type == "description_only":
-            return has_description
+            return has_description or has_sizes
 
         has_seo = bool((log.generated_seo_title or "").strip() or (log.generated_seo_description or "").strip())
         if not has_seo:
@@ -2478,7 +2528,7 @@ class ContentGenerator:
             # For medicines, translations_data (indications, usage, etc.) is the core content.
             # Allow apply if either translations or description is present.
             return has_translations or has_description
-        return has_description and (has_seo or has_translations)
+        return (has_description and (has_seo or has_translations)) or has_sizes
 
     def apply_log_to_product(
         self,
@@ -2590,6 +2640,13 @@ class ContentGenerator:
 
         # Для украшений: дополняем extracted_attributes из image_analysis при применении (LLM мог не вернуть metal_purity)
         attrs = dict(log.extracted_attributes or {})
+        product_type = getattr(product, "product_type", None)
+        attrs = merge_confirmed_sizes(
+            attrs,
+            log.input_data or {},
+            product_type,
+            allow_moderator_override=True,
+        )
         if getattr(product, "product_type", None) == "jewelry" and log.image_analysis:
             img = log.image_analysis if isinstance(log.image_analysis, dict) else (log.image_analysis[0] if log.image_analysis else None)
             if isinstance(img, dict):
@@ -2601,26 +2658,41 @@ class ContentGenerator:
         seo_translations = dict(attrs.get('seo_translations') or {})
         seo_ru = dict(seo_translations.get('ru') or {})
         seo_en = dict(seo_translations.get('en') or {})
-        en_description = seo_en.get('generated_description') or log.generated_description or ""
+        clean_size_prose = (
+            strip_size_inventory_sentences
+            if supports_size_inventory(product_type)
+            else lambda value: value
+        )
+        en_description = clean_size_prose(
+            seo_en.get('generated_description') or log.generated_description or ""
+        )
         en_name = seo_en.get('generated_title') or log.generated_title or original_name
-        ru_description = seo_ru.get('generated_description') or log.generated_description or ""
+        ru_description = clean_size_prose(
+            seo_ru.get('generated_description') or log.generated_description or ""
+        )
         ru_name = seo_ru.get('generated_title') or log.generated_title or original_name
         # Нелокализованные поля доменной модели — EN fallback для всех категорий,
         # а не только лекарств. RU/EN значения отдельно живут в translations.
         fallback_seo_title = seo_en.get('meta_title') or log.generated_seo_title
-        fallback_seo_description = seo_en.get('meta_description') or log.generated_seo_description
+        fallback_seo_description = clean_size_prose(
+            seo_en.get('meta_description') or log.generated_seo_description
+        )
         fallback_keywords = seo_en.get('meta_keywords') or log.generated_keywords
 
         rejected_fields = rejected_fields or set()
         ai_data = {
             'generated_title': (log.generated_title or '').strip() or None,
-            'generated_description': log.generated_description,
+            'generated_description': clean_size_prose(log.generated_description),
             'generated_seo_title': fallback_seo_title,
             'generated_seo_description': fallback_seo_description,
             'generated_keywords': fallback_keywords,
             # OG-поля: og_title / og_description из seo_en; og_image_url из изображения товара
             'og_title': seo_en.get('og_title') or seo_ru.get('og_title') or log.generated_seo_title,
-            'og_description': seo_en.get('og_description') or seo_ru.get('og_description') or log.generated_seo_description,
+            'og_description': clean_size_prose(
+                seo_en.get('og_description')
+                or seo_ru.get('og_description')
+                or log.generated_seo_description
+            ),
             'og_image_url': (
                 self._get_preferred_og_image_url(product)
                 or product.main_image
@@ -2634,10 +2706,16 @@ class ContentGenerator:
                     'name': ru_name.strip(),
                     'description': ru_description,
                     'meta_title': seo_ru.get('meta_title') or log.generated_seo_title,
-                    'meta_description': seo_ru.get('meta_description') or log.generated_seo_description,
+                    'meta_description': clean_size_prose(
+                        seo_ru.get('meta_description') or log.generated_seo_description
+                    ),
                     'meta_keywords': seo_ru.get('meta_keywords') or log.generated_keywords,
                     'og_title': seo_ru.get('og_title') or seo_ru.get('meta_title') or log.generated_seo_title,
-                    'og_description': seo_ru.get('og_description') or seo_ru.get('meta_description') or log.generated_seo_description,
+                    'og_description': clean_size_prose(
+                        seo_ru.get('og_description')
+                        or seo_ru.get('meta_description')
+                        or log.generated_seo_description
+                    ),
                     **{
                         k: ("" if self._looks_untranslated_turkish(v) else v)
                         for k, v in attrs.get('translations_data', {}).get('ru', {}).items()
@@ -2647,10 +2725,16 @@ class ContentGenerator:
                     'name': en_name,
                     'description': en_description,
                     'meta_title': seo_en.get('meta_title') or log.generated_seo_title,
-                    'meta_description': seo_en.get('meta_description') or log.generated_seo_description,
+                    'meta_description': clean_size_prose(
+                        seo_en.get('meta_description') or log.generated_seo_description
+                    ),
                     'meta_keywords': seo_en.get('meta_keywords') or log.generated_keywords,
                     'og_title': seo_en.get('og_title') or seo_en.get('meta_title') or log.generated_seo_title,
-                    'og_description': seo_en.get('og_description') or seo_en.get('meta_description') or log.generated_seo_description,
+                    'og_description': clean_size_prose(
+                        seo_en.get('og_description')
+                        or seo_en.get('meta_description')
+                        or log.generated_seo_description
+                    ),
                     **attrs.get('translations_data', {}).get('en', {})
                 }
             }

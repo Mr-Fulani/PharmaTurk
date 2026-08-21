@@ -4,6 +4,7 @@ from django.utils import timezone
 from datetime import timedelta
 
 from apps.catalog.models import Product
+from apps.recommendations.selectors import public_recommendation_products
 
 
 class BusinessReranker:
@@ -20,7 +21,8 @@ class BusinessReranker:
             return []
         product_ids = [c["product_id"] for c in candidates]
         products = (
-            Product.objects.filter(id__in=product_ids)
+            public_recommendation_products()
+            .filter(id__in=product_ids)
             .select_related("category", "brand")
             .prefetch_related(
                 "images",

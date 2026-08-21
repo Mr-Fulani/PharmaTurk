@@ -9,6 +9,10 @@ from typing import Any, Iterable
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.category_policy import CATEGORY_POLICY_OVERRIDES, build_category_policy
 from apps.catalog.product_semantics import looks_untranslated_turkish
+from apps.ai.services.size_inventory import (
+    merge_confirmed_sizes,
+    size_inventory_block_reason,
+)
 
 
 @dataclass
@@ -37,15 +41,25 @@ def _contains_phrase(text: str, phrase: str) -> bool:
 
 def _identity_tokens(value: Any) -> set[str]:
     # Stable model/series tokens, not ordinary title words.
-    return {
-        token.upper()
-        for token in re.findall(r"[A-Za-z0-9ÅÄÖÜ][A-Za-z0-9ÅÄÖÜ/_-]{2,}", str(value or ""))
-        if (
-            any(char.isdigit() for char in token)
-            or "/" in token
-            or (len(token) >= 3 and token == token.upper())
+    result: set[str] = set()
+    for token in re.findall(
+        r"[A-Za-z0-9ÅÄÖÜ][A-Za-z0-9ÅÄÖÜ/_-]{2,}",
+        str(value or ""),
+    ):
+        upper = token.upper()
+        if re.fullmatch(r"(?:[2-9]XL|X{1,4}[SML]|ONE[-_]?SIZE)", upper):
+            continue
+        is_alphanumeric_model = any(char.isdigit() for char in token) and any(
+            char.isalpha() for char in token
         )
-    }
+        is_uppercase_code = (
+            len(token) >= 3
+            and any(char.isalpha() for char in token)
+            and token == upper
+        )
+        if is_alphanumeric_model or "/" in token or is_uppercase_code:
+            result.add(upper)
+    return result
 
 
 class CategorySemanticIndex:
@@ -194,7 +208,13 @@ class SemanticValidator:
         product = getattr(log, "product", None)
         if product is None:
             return SemanticValidationReport()
-        attrs = getattr(log, "extracted_attributes", None) or {}
+        product_type = getattr(product, "product_type", None)
+        attrs = merge_confirmed_sizes(
+            getattr(log, "extracted_attributes", None) or {},
+            getattr(log, "input_data", None) or {},
+            product_type,
+            allow_moderator_override=True,
+        )
         translations = (
             attrs.get("seo_translations") if isinstance(attrs.get("seo_translations"), dict) else {}
         )
@@ -205,6 +225,7 @@ class SemanticValidator:
                 "en": (translations.get("en") or {}).get("generated_title", ""),
             },
             dynamic_attributes=attrs.get("dynamic_attributes") or [],
+            sizes=attrs.get("sizes") or [],
         )
 
     def validate(
@@ -213,6 +234,7 @@ class SemanticValidator:
         *,
         generated_titles: dict[str, Any],
         dynamic_attributes: list[dict[str, Any]],
+        sizes: list[dict[str, Any]] | None = None,
     ) -> SemanticValidationReport:
         category = getattr(product, "category", None)
         product_type = getattr(product, "product_type", None)
@@ -224,7 +246,16 @@ class SemanticValidator:
         report = SemanticValidationReport(
             canonical_product_kind=policy.canonical_product_kind if policy else ""
         )
+        size_reason = size_inventory_block_reason(
+            getattr(product, "domain_item", product),
+            product_type,
+            sizes or [],
+        )
+        if size_reason:
+            report.rejected_fields.add("sizes")
+            report.reasons.append(size_reason)
         if policy is None:
+            report.reasons = list(dict.fromkeys(report.reasons))
             return report
 
         original_tokens = _identity_tokens(getattr(product, "name", ""))

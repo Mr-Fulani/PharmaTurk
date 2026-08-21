@@ -2055,17 +2055,22 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             reranked = reranker.rerank(similar_list, product, strategy=strategy, request=request)
             rec_ids = [r["product"]["id"] for r in reranked]
 
-            # Исключаем теневые варианты (shadow variants) из результатов
+            # Финальная authoritative-проверка защищает от устаревших точек
+            # Qdrant и от будущих реализаций reranker, которые могут вернуть
+            # служебный shadow/stub товар без публичной detail-страницы.
             if rec_ids:
-                shadow_ids = set(
-                    Product.objects.filter(id__in=rec_ids).filter(
-                        models.Q(external_data__has_key='source_variant_id') |
-                        models.Q(external_data__has_key='source_variant_slug')
-                    ).values_list('id', flat=True)
+                from apps.recommendations.selectors import public_recommendation_products
+
+                public_rec_ids = set(
+                    public_recommendation_products()
+                    .filter(id__in=rec_ids)
+                    .values_list('id', flat=True)
                 )
-                if shadow_ids:
-                    reranked = [r for r in reranked if r["product"]["id"] not in shadow_ids]
-                    rec_ids = [rid for rid in rec_ids if rid not in shadow_ids]
+                reranked = [
+                    row for row in reranked
+                    if row["product"]["id"] in public_rec_ids
+                ]
+                rec_ids = [row["product"]["id"] for row in reranked]
 
             if rec_ids:
                 session_key = getattr(request.session, "session_key", None) or ""
