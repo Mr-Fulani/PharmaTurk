@@ -5061,7 +5061,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
     category = CategorySerializer(read_only=True)
-    product_type = serializers.ReadOnlyField(default='uslugi')
+    product_type = serializers.CharField(read_only=True, default='uslugi')
     main_image_url = serializers.SerializerMethodField()
     main_video_url = serializers.SerializerMethodField()
     main_gif_url = serializers.SerializerMethodField()

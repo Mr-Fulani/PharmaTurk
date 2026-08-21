@@ -566,6 +566,9 @@ class UserAddressViewSet(viewsets.ModelViewSet):
     authentication_classes = [JWTSafeAuthentication]
     permission_classes = [IsAuthenticated]
     serializer_class = UserAddressSerializer
+    # Schema generation can infer the integer lookup type without evaluating
+    # the request-bound get_queryset below.
+    queryset = UserAddress.objects.none()
     
     def get_queryset(self):
         """Получение адресов текущего пользователя"""

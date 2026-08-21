@@ -7,7 +7,7 @@ from api.schema import canonicalize_compatibility_routes
 # Existing serializers predate the OpenAPI contract and still produce many
 # type-inference warnings. Keep the debt explicit and prevent it from growing;
 # every warning removed can lower this number in the same change.
-OPENAPI_UNIQUE_WARNING_BASELINE = 581
+OPENAPI_UNIQUE_WARNING_BASELINE = 570
 
 
 def test_openapi_keeps_only_canonical_route_from_compatibility_pair():
@@ -42,6 +42,7 @@ def test_openapi_schema_has_no_generator_errors(tmp_path):
         warnings = list(GENERATOR_STATS._warn_cache)  # noqa: SLF001
         assert errors == []
         assert len(warnings) <= OPENAPI_UNIQUE_WARNING_BASELINE
+        assert all("unable to resolve type hint" in warning for warning in warnings)
         assert schema_path.read_text(encoding="utf-8").startswith("openapi: 3.0.3")
     finally:
         GENERATOR_STATS.reset()

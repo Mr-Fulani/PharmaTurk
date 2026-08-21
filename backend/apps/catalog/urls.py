@@ -181,7 +181,11 @@ urlpatterns = [
     path('proxy-media/', proxy_media, name='proxy_media'),
     path('proxy-media', proxy_media, name='proxy_media_no_slash'),
     # Экспорт товаров в формате YML — поддерживает / и /catalog.yml
-    re_path(r'^export/yml(/|/catalog\.(xml|yml))?$', YMLExportView.as_view(), name='export-yml'),
+    re_path(
+        r'^export/yml(?:/|/catalog\.(?:xml|yml))?$',
+        YMLExportView.as_view(),
+        name='export-yml',
+    ),
     # Лёгкий эндпоинт для генерации sitemap.xml (slug + updated_at, без тяжёлой сериализации)
     path('sitemap-products', SitemapProductsView.as_view(), name='sitemap-products'),
     path('sitemap-products/', SitemapProductsView.as_view(), name='sitemap-products-slash'),

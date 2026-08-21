@@ -640,6 +640,7 @@ def _get_or_create_cart(request) -> Cart:
 class CartViewSet(viewsets.ViewSet):
     """Управление корзиной."""
     serializer_class = CartSerializer
+    queryset = CartItem.objects.none()
     permission_classes = [AllowAny]
     # Исключаем SessionAuthentication: она применяет CSRF к POST/DELETE даже при AllowAny
     authentication_classes = [JWTSafeAuthentication]
@@ -864,7 +865,7 @@ class CartViewSet(viewsets.ViewSet):
         url_path='update',
         throttle_classes=CART_MUTATION_THROTTLES,
     )
-    def update_item(self, request, pk=None):
+    def update_item(self, request, pk: int | None = None):
         serializer = UpdateCartItemSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         cart = _get_existing_cart_for_mutation(request)
@@ -1089,6 +1090,7 @@ class CartViewSet(viewsets.ViewSet):
 class OrderViewSet(viewsets.ViewSet):
     """Управление заказами."""
     serializer_class = OrderSerializer
+    queryset = Order.objects.none()
     permission_classes = [IsAuthenticated]
     # SessionAuthentication вызывает CSRF-ошибки для POST — используем только JWT
     authentication_classes = [JWTSafeAuthentication]
@@ -1148,7 +1150,7 @@ class OrderViewSet(viewsets.ViewSet):
         )
         return Response(OrderSerializer(orders, many=True, context={'request': request}).data)
 
-    def retrieve(self, request, pk=None):
+    def retrieve(self, request, pk: int | None = None):
         order = Order.objects.filter(user=request.user, pk=pk).prefetch_related('items', 'items__product__translations').first()
         if not order:
             raise Http404(_("Заказ не найден"))

@@ -402,6 +402,14 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
     "PREPROCESSING_HOOKS": ["api.schema.canonicalize_compatibility_routes"],
+    "ENUM_NAME_OVERRIDES": {
+        "AIProcessingStatusEnum": "apps.ai.models.AIProcessingStatus",
+        "CatalogCurrencyEnum": "apps.catalog.models.CURRENCY_CHOICES",
+        "CatalogLocaleEnum": "apps.catalog.models.CategoryTranslation.LOCALE_CHOICES",
+        "ExtendedCatalogLocaleEnum": (
+            "apps.catalog.models.SportsProductTranslation.LOCALE_CHOICES"
+        ),
+    },
 }
 
 

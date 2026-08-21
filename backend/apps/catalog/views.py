@@ -1794,11 +1794,6 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         serializer = self.get_serializer(product)
         return Response(serializer.data)
 
-    @action(
-        detail=False,
-        methods=['get'],
-        url_path=r'resolve/(?P<product_slug>[^/.]+)',
-    )
     @extend_schema(
         summary='Единая резолюция товара или услуги по slug',
         description=(
@@ -1823,7 +1818,12 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             ),
         ],
     )
-    def resolve_product(self, request, product_slug=None, **kwargs):
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path=r'resolve/(?P<product_slug>[^/.]+)',
+    )
+    def resolve_product(self, request, product_slug: str | None = None, **kwargs):
         from apps.catalog.services.product_resolve import build_resolve_response
 
         return build_resolve_response(request, (product_slug or '').strip())

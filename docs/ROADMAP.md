@@ -1,6 +1,7 @@
 # Roadmap Mudaroba
 
-Обновлено: **21 августа 2026 года** по результатам аудита кода, конфигурации и документации.
+Обновлено: **21 августа 2026 года** после production-релиза и повторной сверки
+кода, конфигурации, документации и эксплуатационного состояния.
 
 Этот документ разделяет:
 
@@ -16,21 +17,31 @@
 - Python 3.12.13, Django 5.2.17;
 - Node.js 22.23.2, Next.js 15.5.21;
 - PostgreSQL 15.18, Redis 7.4.10, Qdrant 1.18.3;
-- OpenSearch удалён как неиспользуемый;
+- OpenSearch исключён из кода и актуального Compose как неиспользуемый; legacy
+  container остановлен, а его image/volume временно сохранены только для rollback;
 - каталог содержит 19 корневых доменов;
 - криптооплата реализована через CoinRemitter;
 - VAPI и AI API доступны только staff;
 - seed каталога должен выполняться только явно;
 - production settings используют fail-fast вместо опасных fallback.
 
-## P0 — release gates
+## P0 — статус release gates
+
+Все application release gates для ревизии `0bcfc8a` выполнены 21 августа 2026
+года. Эта ревизия находилась одновременно в `main`, production containers и
+immutable GHCR images; публичные smoke-проверки прошли. Открытых P0-дефектов в
+коде не зафиксировано. Реальный CoinRemitter staging E2E остаётся внешней P1
+проверкой и не должен подменяться ручным изменением статусов в БД.
 
 ### P0.1 Полная интеграционная проверка на PostgreSQL
 
 Чистая PostgreSQL 15.18 и полный suite подтверждены 21 августа 2026 года:
 **963 passed**, 4 deprecation warnings, migration drift отсутствует. Dedup и
 создание partial unique indexes корзины разделены на миграции `0008`/`0009`.
-Остаётся прогон миграций поверх production-like snapshot и staging payment E2E.
+Production dump был восстановлен только во временную копию volume, после чего
+миграции и проверки были успешно выполнены без записи в исходный production
+volume. PostgreSQL и Qdrant backups скопированы за пределы Docker volumes, их
+контрольные суммы совпали на сервере и в локальной копии.
 
 Критерии готовности:
 
@@ -39,7 +50,7 @@
 - нет известных payment/order failures в карантине CI;
 - `makemigrations --check --dry-run` не создаёт новых файлов.
 
-### P0.2 Container и staging smoke-test
+### P0.2 Container, CI и production smoke-test
 
 Локальный gate повторно выполнен 21 августа 2026 года отдельными одноразовыми
 `mudaroba-predeploy-*` и `mudaroba-smoke-*` projects: Compose merge,
@@ -49,46 +60,20 @@ canonical redirect подтверждены. Временные containers и vo
 Backend использует воспроизводимый `torch=2.13.0+cpu`; frontend dependency audit
 — 0 vulnerabilities.
 
-До релиза остаётся повторить container gate на CI runner с гарантированным
-запасом диска и затем на staging с production secret injection/ingress.
+Container gate затем прошёл на GitHub-hosted CI runner: frontend/backend tests,
+dependency audits, Compose validation, production image build и публикация
+immutable SHA-тегов завершились успешно. После production deploy главная
+страница, `/api/live/` и `/api/health/` отвечали `200`; restart count оставался
+нулевым, критических ошибок в проверенном окне логов не обнаружено.
 
-### P0.3 E2E оплаты на staging
+### P0.3 Production secrets и TLS
 
-Провести реальный sandbox/минимальный CoinRemitter-сценарий:
-
-1. создать заказ и инвойс;
-2. подтвердить совпадение provider id, order binding, валюты и суммы;
-3. принять pending/paid/expired webhook;
-4. повторить webhook и убедиться в идемпотентности;
-5. смоделировать provider timeout и неверный payload;
-6. проверить остатки, статус заказа, уведомление и чек.
-
-Добавлены read-only команда `reconcile_coinremitter` и эксплуатационный runbook.
-До релиза всё ещё нужен реальный staging-прогон; исправление drift должно идти
-через подлинный webhook/утверждённую процедуру, а не прямую запись статуса в БД.
-
-### P0.4 Production secrets и TLS
-
-Перед включением production-профиля:
-
-- ротировать все внешние credentials, обнаруженные в локальном ignored `.env`
-  (включая Telegram, email/API, Cloudflare/R2, OAuth, AI, платежные и parser
-  integrations), и проверить audit logs провайдеров; значения в отчёт не
-  копируются;
-- выдать уникальные `DJANGO_SECRET_KEY`, DB/R2/CoinRemitter/OpenAI credentials;
-- оставить Redis доступным только во внутренней сети или включить ACL/password
-  на управляемом Redis; broker/cache/result должны использовать отдельные
-  targets либо логические DB;
-- проверить явные `DJANGO_ALLOWED_HOSTS`, CORS и CSRF origins;
-- сначала подтвердить корректный `X-Forwarded-Proto`, затем включить SSL redirect;
-- включить HSTS поэтапно, preload — только после проверки всех поддоменов;
-- убедиться, что `.env`, логи и CI artifacts не содержат секретов.
-
-Публичный smoke 20 августа подтвердил валидный TLS 1.3 сертификат apex/wildcard,
-но `http://mudaroba.com` и `http://www.mudaroba.com` отвечают 200 вместо HTTPS
-redirect, HSTS отсутствует, а проектные Nginx headers не видны. Production
-backend также отстаёт от проверенной ревизии: `/api/live/` отвечает 404, а
-`/api/health/` возвращает старый контракт только с `db`.
+Production использует явные hosts/origins, уникальные application/database
+credentials и раздельные Redis logical DB для broker/cache/result. Публичная
+повторная проверка подтвердила redirect с HTTP на canonical HTTPS, HSTS и
+согласованные security headers. `/api/live/` проверяет процесс, а readiness
+`/api/health/` — PostgreSQL и Redis cache; оба endpoint отвечали `200` после
+deploy.
 
 CI теперь выполняет blocking Gitleaks scan по полной доступной Git history.
 Локальный Gitleaks 8.28.0 просканировал 761 commits и нашёл 5 curl-auth
@@ -100,29 +85,47 @@ fingerprints в `.gitleaksignore`; повторный history scan чистый.
 
 Локальный `.env` игнорируется Git и его права в ходе аудита ужесточены с `0644`
 до `0600`. Текущие чувствительные значения не найдены в Git history, локальных
-логах или неигнорируемых артефактах; ротация нужна только при иных признаках
-экспозиции или по регламентному сроку. В
-этом файле также отсутствуют явные `REDIS_CACHE_URL` и
-`CELERY_RESULT_BACKEND_URL`; production fail-fast не позволит стартовать с
-общим Redis target.
+логах или неигнорируемых артефактах. По принятому операторскому решению старые
+Telegram/email/Resend/VK/Serper credentials не ротировались: обязательная
+ротация нужна при признаках экспозиции, отзыве доступа либо по регламентному
+сроку. Production Redis URLs явно разделены на `/0`, `/1` и `/2`; fail-fast не
+позволит запустить production с общим target.
 
-### P0.5 Очистка legacy PDF-чеков
+### P0.4 Очистка legacy PDF-чеков
 
 Новый код пишет и читает чеки только из HMAC-namespaced ключей. Безопасный
-inventory внешнего R2 выполнен 20 августа без вывода ключей: inspected=6,
-legacy=6, bytes=125568. До релиза эти объекты нужно удалить либо переместить
-после backup/retention decision и проверки публичности PII namespace. Команда
-`cleanup_legacy_receipts` требует `--apply`, точного `--confirm-bucket` и
-непредсказуемого `--quarantine-prefix`; сначала создаёт recoverable-копии всех
-объектов и не удаляет источники при ошибке копирования.
+inventory выявил 10 legacy PDF: 6 в корневом и 4 в dev namespace. Все 10 сначала
+скопированы в recoverable quarantine, затем удалены только старые предсказуемые
+ключи; итоговая повторная инвентаризация показала `legacy=0`. HMAC-namespaced
+объекты не затрагивались. Команда `cleanup_legacy_receipts` по-прежнему требует
+`--apply`, точного `--confirm-bucket` и непредсказуемого
+`--quarantine-prefix`, а при ошибке копирования не удаляет источник.
 
 ## P1 — ближайший спринт
+
+### P1.0 E2E оплаты на staging
+
+Провести реальный sandbox/минимальный CoinRemitter-сценарий:
+
+1. создать заказ и инвойс;
+2. подтвердить совпадение provider id, order binding, валюты и суммы;
+3. принять pending/paid/expired webhook;
+4. повторить webhook и убедиться в идемпотентности;
+5. смоделировать provider timeout и неверный payload;
+6. проверить остатки, статус заказа, уведомление и чек.
+
+Read-only команда `reconcile_coinremitter` и эксплуатационный runbook уже
+добавлены. Исправление drift должно идти через подлинный webhook или утверждённую
+операционную процедуру, а не через прямую запись статуса в БД.
 
 ### P1.1 OpenAPI как проверяемый контракт
 
 Схема теперь генерируется без ошибок и защищена regression test; CI не допускает
-рост выше текущего baseline **588 warnings (581 unique)**. Свести их к нулю или
-к короткому документированному allowlist. При каждом исправлении снижать
+рост выше текущего baseline **573 warnings (570 unique)**. Конкретные проблемы
+path parameters, неявного поля `product_type` и конфликтующих enum names закрыты;
+оставшийся baseline состоит только из отсутствующих return type hints у старых
+`SerializerMethodField` в пяти serializer-модулях. Свести его к нулю или к
+короткому документированному allowlist. При каждом исправлении снижать
 `OPENAPI_UNIQUE_WARNING_BASELINE`, генерировать схему в CI и сравнивать
 изменения и не хранить заведомо устаревший `schema.yml`.
 
@@ -271,6 +274,7 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
 - зависимости больше не ставятся при production boot, Redis cache не очищается при каждом старте;
 - включены persistent PostgreSQL connections;
 - CI проверяет frontend, backend, зависимости, миграции и Compose config.
+- GitHub Actions переведены на Node 24-compatible checkout/setup и Gitleaks v3;
 - backend image build получает безопасное build-only окружение и не конфликтует
   с production fail-fast;
 - новые PDF-чеки используют HMAC namespace, legacy predictable fallback удалён.
