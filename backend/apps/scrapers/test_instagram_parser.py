@@ -166,6 +166,82 @@ def test_profile_fallback_retries_post_that_failed_in_primary_payload(monkeypatc
     assert attempts == 2
 
 
+def test_profile_task_callbacks_publish_each_post_without_accumulating(monkeypatch):
+    parser = InstagramParser(max_retries=1)
+    _patch_product_conversion(monkeypatch, parser)
+    monkeypatch.setattr(
+        instaloader.Profile,
+        "from_username",
+        lambda *args, **kwargs: SimpleNamespace(
+            get_posts=lambda: iter([_post("POST1"), _post("POST2")])
+        ),
+    )
+    controls = []
+    saved = []
+    progress = []
+    parser.configure_task_callbacks(
+        control_callback=lambda: controls.append("checked"),
+        product_callback=lambda product: saved.append(product.external_id) or True,
+        progress_callback=lambda *args: progress.append(args),
+    )
+
+    products = parser.parse_product_list(
+        "https://www.instagram.com/business.profile/",
+        max_pages=2,
+    )
+
+    assert products == []
+    assert saved == ["POST1", "POST2"]
+    assert len(controls) == 2
+    assert [item[0] for item in progress] == [1, 2]
+    assert [item[2] for item in progress] == ["POST1", "POST2"]
+
+
+def test_profile_task_callback_can_stop_after_safely_publishing_current_post(monkeypatch):
+    parser = InstagramParser(max_retries=1)
+    _patch_product_conversion(monkeypatch, parser)
+    monkeypatch.setattr(
+        instaloader.Profile,
+        "from_username",
+        lambda *args, **kwargs: SimpleNamespace(
+            get_posts=lambda: iter([_post("POST1"), _post("POST2")])
+        ),
+    )
+    saved = []
+    progress = []
+    parser.configure_task_callbacks(
+        product_callback=lambda product: saved.append(product.external_id) or False,
+        progress_callback=lambda *args: progress.append(args),
+    )
+
+    parser.parse_product_list(
+        "https://www.instagram.com/business.profile/",
+        max_pages=2,
+    )
+
+    assert saved == ["POST1"]
+    assert len(progress) == 1
+    assert progress[0][2] == "POST1"
+
+
+def test_profile_task_control_exception_is_not_swallowed(monkeypatch):
+    parser = InstagramParser(max_retries=1)
+    monkeypatch.setattr(
+        instaloader.Profile,
+        "from_username",
+        lambda *args, **kwargs: SimpleNamespace(get_posts=lambda: iter([_post("POST1")])),
+    )
+    parser.configure_task_callbacks(
+        control_callback=lambda: (_ for _ in ()).throw(RuntimeError("paused")),
+    )
+
+    with pytest.raises(RuntimeError, match="paused"):
+        parser.parse_product_list(
+            "https://www.instagram.com/business.profile/",
+            max_pages=1,
+        )
+
+
 def test_instagram_api_failure_is_not_returned_as_empty_success(monkeypatch):
     parser = InstagramParser(max_retries=1)
 

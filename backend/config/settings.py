@@ -206,6 +206,10 @@ CELERY_TASK_ANNOTATIONS = {
         "time_limit": 60 * 60 * 2,       # hard limit: 2 часа
         "soft_time_limit": 60 * 60 * 1,  # soft limit: 1 час (можно перехватить SoftTimeLimitExceeded)
     },
+    "apps.scrapers.tasks.run_instagram_scraper_task": {
+        "time_limit": 60 * 60 * 2,
+        "soft_time_limit": 60 * 60,
+    },
 }
 from celery.schedules import crontab
 

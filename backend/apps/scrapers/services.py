@@ -35,6 +35,7 @@ def scraping_in_progress_context():
 
 
 from .models import (
+    InstagramScraperTask,
     ProductDuplicateCandidate,
     ScraperConfig,
     ScrapingSession,
@@ -82,6 +83,11 @@ SCRAPER_TASK_SEEN_TTL = 7 * 24 * 60 * 60
 def _scraper_task_product_cache_key(site_task_id: int, identity: str) -> str:
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     return f"scraper:site-task:{site_task_id}:product:{digest}"
+
+
+def _instagram_task_product_cache_key(run_token: str, identity: str) -> str:
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return f"scraper:instagram-run:{run_token}:product:{digest}"
 
 
 def _scraped_product_identity(product: ScrapedProduct) -> str:
@@ -804,6 +810,10 @@ class ScraperIntegrationService:
         total_analog_stubs_created: int = 0,
         total_analog_stubs_upgraded: int = 0,
         total_analog_errors: int = 0,
+        instagram_task_id: Optional[int] = None,
+        instagram_run_token: str = "",
+        total_posts_processed: int = 0,
+        total_errors_count: int = 0,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -834,6 +844,8 @@ class ScraperIntegrationService:
         # админка должна показывать живой запуск и его логи с первого товара.
         if site_task_id:
             SiteScraperTask.objects.filter(id=site_task_id).update(session=session)
+        if instagram_task_id:
+            InstagramScraperTask.objects.filter(id=instagram_task_id).update(session=session)
         # Пол из настроек задачи (men/women/unisex или пусто). Транзиентно: применяется
         # в _process_scraped_products как явный override, в БД сессии не хранится.
         session._override_gender = gender or ""
@@ -887,6 +899,10 @@ class ScraperIntegrationService:
                     total_analog_stubs_upgraded=total_analog_stubs_upgraded,
                     total_analog_errors=total_analog_errors,
                     celery_task_id=celery_task_id,
+                    instagram_task_id=instagram_task_id,
+                    instagram_run_token=instagram_run_token,
+                    total_posts_processed=total_posts_processed,
+                    total_errors_count=total_errors_count,
                 )
 
                 # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
@@ -966,6 +982,10 @@ class ScraperIntegrationService:
         total_analogs_found: int = 0, total_analog_links_saved: int = 0,
         total_analog_stubs_created: int = 0, total_analog_stubs_upgraded: int = 0,
         total_analog_errors: int = 0,
+        instagram_task_id: Optional[int] = None,
+        instagram_run_token: str = "",
+        total_posts_processed: int = 0,
+        total_errors_count: int = 0,
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -978,6 +998,7 @@ class ScraperIntegrationService:
 
         try:
             self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
+            self._ensure_instagram_task_active(instagram_task_id, celery_task_id)
             # Анализируем URL
             parsed_url = urlparse(start_url)
             path_parts = [p for p in parsed_url.path.strip('/').split('/') if p]
@@ -1171,14 +1192,161 @@ class ScraperIntegrationService:
                 # 2. Reels:            instagram.com/reel/SHORTCODE/
                 # 3. Профиль:          instagram.com/username/
                 # 4. Хештег:           instagram.com/explore/tags/tag/
-                if "/p/" in start_url or "/reel/" in start_url:
-                    # Парсим один пост
+                if instagram_task_id:
+                    # В управляемой Instagram-задаче каждый пост сразу сохраняется в
+                    # БД. Так пауза/остановка не теряет уже скачанные карточки, а
+                    # админка получает live-счётчики и построчный журнал.
+                    incremental_results = {
+                        "found": 0,
+                        "created": 0,
+                        "updated": 0,
+                        "skipped": 0,
+                        "errors": 0,
+                    }
+                    run_token = instagram_run_token or str(instagram_task_id)
+                    remaining_limit = max(0, int(getattr(parser, "max_products", 0) or 0))
+                    post_outcomes: Dict[str, str] = {}
+
+                    def ensure_active() -> None:
+                        self._ensure_instagram_task_active(
+                            instagram_task_id,
+                            celery_task_id,
+                        )
+
+                    def process_product(product: ScrapedProduct) -> bool:
+                        ensure_active()
+                        identity = _scraped_product_identity(product)
+                        shortcode = str(getattr(product, "external_id", "") or "")
+                        product_cache_key = (
+                            _instagram_task_product_cache_key(run_token, identity)
+                            if identity
+                            else None
+                        )
+                        if product_cache_key and cache.get(product_cache_key):
+                            post_outcomes[shortcode] = "уже сохранён до паузы"
+                            return True
+                        if incremental_results["found"] >= remaining_limit:
+                            post_outcomes[shortcode] = "достигнут лимит товаров"
+                            return False
+
+                        result = self._process_scraped_products(session, [product])
+                        for key in incremental_results:
+                            incremental_results[key] += int(result.get(key, 0) or 0)
+                        if product_cache_key and result.get("errors", 0) == 0:
+                            cache.set(product_cache_key, True, timeout=SCRAPER_TASK_SEEN_TTL)
+
+                        if result.get("created"):
+                            post_outcomes[shortcode] = "товар создан"
+                        elif result.get("updated"):
+                            post_outcomes[shortcode] = "товар обновлён"
+                        elif result.get("skipped"):
+                            post_outcomes[shortcode] = "товар пропущен"
+                        else:
+                            post_outcomes[shortcode] = "ошибка сохранения"
+                        return incremental_results["found"] < remaining_limit
+
+                    def publish_progress(
+                        processed: int,
+                        total: int,
+                        shortcode: str,
+                        valid: bool,
+                        error_message: str,
+                    ) -> None:
+                        if error_message:
+                            incremental_results["errors"] += 1
+                            outcome = f"ошибка разбора: {error_message}"
+                        elif not valid:
+                            outcome = "пропущен: недостаточно данных"
+                        else:
+                            outcome = post_outcomes.pop(shortcode, "товар обработан")
+
+                        session.posts_processed = max(
+                            total_posts_processed,
+                            int(processed or 0),
+                        )
+                        session.pages_processed = int(processed or 0)
+                        session.products_found = incremental_results["found"]
+                        session.products_created = incremental_results["created"]
+                        session.products_updated = incremental_results["updated"]
+                        session.products_skipped = incremental_results["skipped"]
+                        session.errors_count = incremental_results["errors"]
+                        ScrapingSession.objects.filter(id=session.id).update(
+                            pages_processed=session.pages_processed,
+                            products_found=session.products_found,
+                            products_created=session.products_created,
+                            products_updated=session.products_updated,
+                            products_skipped=session.products_skipped,
+                            errors_count=session.errors_count,
+                        )
+                        self._checkpoint_instagram_task(
+                            instagram_task_id=instagram_task_id,
+                            expected_task_id=celery_task_id,
+                            posts_processed=max(total_posts_processed, int(processed or 0)),
+                            products_found=total_scraped + incremental_results["found"],
+                            products_created=total_created + incremental_results["created"],
+                            products_updated=total_updated + incremental_results["updated"],
+                            products_skipped=total_skipped + incremental_results["skipped"],
+                            errors_count=total_errors_count + incremental_results["errors"],
+                            log_line=(
+                                f"[{timezone.now().isoformat()}] Пост "
+                                f"{processed}/{total} {shortcode or '-'}: {outcome}. "
+                                f"Товаров: {total_scraped + incremental_results['found']}"
+                            ),
+                        )
+
+                    configure_callbacks = getattr(parser, "configure_task_callbacks", None)
+                    if callable(configure_callbacks):
+                        configure_callbacks(
+                            control_callback=ensure_active,
+                            product_callback=process_product,
+                            progress_callback=publish_progress,
+                        )
+
+                    if "/p/" in start_url or "/reel/" in start_url:
+                        self.logger.info("Instagram: парсинг отдельного поста %s", start_url)
+                        ensure_active()
+                        detail_result = parser.parse_product_detail(start_url)
+                        ensure_active()
+                        detail_products = (
+                            [p for p in detail_result if p is not None]
+                            if isinstance(detail_result, list)
+                            else ([detail_result] if detail_result is not None else [])
+                        )
+                        valid = False
+                        shortcode = path_parts[-1] if path_parts else ""
+                        for product in detail_products:
+                            valid = True
+                            process_product(product)
+                            shortcode = str(product.external_id or shortcode)
+                        publish_progress(1, 1, shortcode, valid, "")
+                    else:
+                        self.logger.info(
+                            "Instagram: парсинг профиля/хештега %s (макс. %d постов)",
+                            start_url,
+                            session.max_pages,
+                        )
+                        ensure_active()
+                        products = parser.parse_product_list(
+                            start_url,
+                            max_pages=session.max_pages,
+                        )
+                        # Обратная совместимость: если иной Instagram parser не
+                        # поддерживает callbacks, сохраняем его результат здесь.
+                        for product in products:
+                            if not process_product(product):
+                                break
+                    session.pages_processed = max(
+                        session.pages_processed,
+                        min(session.max_pages, total_posts_processed),
+                    )
+                elif "/p/" in start_url or "/reel/" in start_url:
+                    # Неуправляемый вызов (CLI/старый код) остаётся без изменений.
                     self.logger.info("Instagram: парсинг отдельного поста %s", start_url)
                     self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                     detail_result = parser.parse_product_detail(start_url)
                     self._extend_from_product_detail(scraped_products, detail_result)
+                    session.pages_processed += 1
                 else:
-                    # Парсим профиль или хештег — возвращает список постов
                     self.logger.info(
                         "Instagram: парсинг профиля/хештега %s (макс. %d постов)",
                         start_url,
@@ -1187,7 +1355,7 @@ class ScraperIntegrationService:
                     self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                     products = parser.parse_product_list(start_url, max_pages=session.max_pages)
                     scraped_products.extend(products)
-                session.pages_processed += 1
+                    session.pages_processed += 1
 
             else:
                 # Парсинг всех категорий
@@ -1242,6 +1410,73 @@ class ScraperIntegrationService:
             raise ScraperTaskCancelled("Задача остановлена пользователем.")
         if status == "paused":
             raise ScraperTaskPaused("Задача поставлена на паузу пользователем.")
+
+    @staticmethod
+    def _ensure_instagram_task_active(
+        instagram_task_id: Optional[int], expected_task_id: Optional[str] = None
+    ) -> None:
+        """Проверяет stop/pause и защищает задачу от старого Celery worker."""
+        if not instagram_task_id:
+            return
+        row = InstagramScraperTask.objects.filter(id=instagram_task_id).values(
+            "status",
+            "task_id",
+        ).first()
+        status = row.get("status") if row else None
+        current_task_id = row.get("task_id") if row else ""
+        if expected_task_id and current_task_id and current_task_id != expected_task_id:
+            raise ScraperTaskSuperseded(
+                f"Запуск {expected_task_id} заменён новым запуском {current_task_id}."
+            )
+        if status == "cancelled":
+            raise ScraperTaskCancelled("Instagram-задача остановлена пользователем.")
+        if status == "paused":
+            raise ScraperTaskPaused("Instagram-задача поставлена на паузу пользователем.")
+
+    @staticmethod
+    def _checkpoint_instagram_task(
+        *,
+        instagram_task_id: int,
+        expected_task_id: Optional[str],
+        posts_processed: int,
+        products_found: int,
+        products_created: int,
+        products_updated: int,
+        products_skipped: int,
+        errors_count: int,
+        log_line: str,
+    ) -> None:
+        """Атомарно сохраняет live-progress и строку журнала Instagram."""
+        with transaction.atomic():
+            task = (
+                InstagramScraperTask.objects.select_for_update()
+                .filter(id=instagram_task_id)
+                .first()
+            )
+            if not task:
+                return
+            if expected_task_id and task.task_id != expected_task_id:
+                return
+            task.posts_processed = posts_processed
+            task.products_found = products_found
+            task.products_created = products_created
+            task.products_updated = products_updated
+            task.products_skipped = products_skipped
+            task.errors_count = errors_count
+            task.log_output = "\n".join(
+                part for part in (task.log_output.rstrip(), log_line) if part
+            )
+            task.save(
+                update_fields=[
+                    "posts_processed",
+                    "products_found",
+                    "products_created",
+                    "products_updated",
+                    "products_skipped",
+                    "errors_count",
+                    "log_output",
+                ]
+            )
 
     def _process_scraped_products(
         self, session: ScrapingSession, products: List[ScrapedProduct]

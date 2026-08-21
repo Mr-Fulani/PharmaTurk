@@ -5,7 +5,7 @@ import random
 import re
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, urlparse
 
 import instaloader
@@ -129,6 +129,51 @@ class InstagramParser(BaseScraper):
         self.password = password
         self._authenticated = False
         self._authentication_attempted = False
+        # Необязательные callbacks используются только Celery-задачей Instagram.
+        # Обычный вызов парсера и все остальные источники работают как раньше.
+        self._task_control_callback: Optional[Callable[[], None]] = None
+        self._task_product_callback: Optional[Callable[[ScrapedProduct], bool]] = None
+        self._task_progress_callback: Optional[
+            Callable[[int, int, str, bool, str], None]
+        ] = None
+
+    def configure_task_callbacks(
+        self,
+        *,
+        control_callback: Optional[Callable[[], None]] = None,
+        product_callback: Optional[Callable[[ScrapedProduct], bool]] = None,
+        progress_callback: Optional[Callable[[int, int, str, bool, str], None]] = None,
+    ) -> None:
+        """Подключает управление и live-progress для фоновой Instagram-задачи."""
+        self._task_control_callback = control_callback
+        self._task_product_callback = product_callback
+        self._task_progress_callback = progress_callback
+
+    def _check_task_control(self) -> None:
+        if self._task_control_callback:
+            self._task_control_callback()
+
+    def _publish_task_product(self, product: ScrapedProduct) -> bool:
+        if not self._task_product_callback:
+            return True
+        return self._task_product_callback(product) is not False
+
+    def _publish_task_progress(
+        self,
+        processed: int,
+        total: int,
+        shortcode: str,
+        valid: bool,
+        error_message: str = "",
+    ) -> None:
+        if self._task_progress_callback:
+            self._task_progress_callback(
+                processed,
+                total,
+                shortcode,
+                valid,
+                error_message,
+            )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Закрывает обе HTTP-сессии парсера."""
@@ -394,25 +439,44 @@ class InstagramParser(BaseScraper):
             shortcode = post.shortcode
             if shortcode in seen_shortcodes:
                 continue
+            self._check_task_control()
+            product = None
+            error_message = ""
             try:
                 product = self._parse_post(post)
                 seen_shortcodes.add(shortcode)
-                if product and self.validate_product(product):
-                    products.append(product)
-                    self.logger.info(
-                        "  [%d/%d] Спарсен пост %s: %s",
-                        len(seen_shortcodes),
-                        max_posts,
-                        shortcode,
-                        product.name[:60],
-                    )
             except instaloader.exceptions.InstaloaderException:
                 raise
             except ScraperAccessBlockedError:
                 raise
             except Exception as e:
                 seen_shortcodes.add(shortcode)
+                error_message = str(e)
                 self.logger.warning("  Ошибка при парсинге поста %s: %s", shortcode, e)
+
+            valid = bool(product and self.validate_product(product))
+            should_continue = True
+            if valid:
+                if self._task_product_callback:
+                    should_continue = self._publish_task_product(product)
+                else:
+                    products.append(product)
+                self.logger.info(
+                    "  [%d/%d] Спарсен пост %s: %s",
+                    len(seen_shortcodes),
+                    max_posts,
+                    shortcode,
+                    product.name[:60],
+                )
+            self._publish_task_progress(
+                len(seen_shortcodes),
+                max_posts,
+                shortcode,
+                valid,
+                error_message,
+            )
+            if not should_continue:
+                break
 
     def _iter_mobile_feed_posts(self, username: str, *, max_posts: int):
         """Fallback для business-профилей и сломанной GraphQL-пагинации Instagram."""
@@ -503,24 +567,42 @@ class InstagramParser(BaseScraper):
             for idx, post in enumerate(hashtag_obj.get_posts()):
                 if idx >= max_posts:
                     break
+                self._check_task_control()
+                product = None
+                error_message = ""
                 try:
                     product = self._parse_post(post)
-                    if product and self.validate_product(product):
-                        products.append(product)
-                        self.logger.info(
-                            "  [%d/%d] Спарсен пост %s: %s",
-                            idx + 1,
-                            max_posts,
-                            post.shortcode,
-                            product.name[:60],
-                        )
                 except instaloader.exceptions.InstaloaderException:
                     raise
                 except ScraperAccessBlockedError:
                     raise
                 except Exception as e:
+                    error_message = str(e)
                     self.logger.warning("  Ошибка при парсинге поста %s: %s", post.shortcode, e)
-                    continue
+
+                valid = bool(product and self.validate_product(product))
+                should_continue = True
+                if valid:
+                    if self._task_product_callback:
+                        should_continue = self._publish_task_product(product)
+                    else:
+                        products.append(product)
+                    self.logger.info(
+                        "  [%d/%d] Спарсен пост %s: %s",
+                        idx + 1,
+                        max_posts,
+                        post.shortcode,
+                        product.name[:60],
+                    )
+                self._publish_task_progress(
+                    idx + 1,
+                    max_posts,
+                    post.shortcode,
+                    valid,
+                    error_message,
+                )
+                if not should_continue:
+                    break
 
         except ScraperAccessBlockedError:
             raise

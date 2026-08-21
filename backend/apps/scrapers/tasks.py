@@ -11,7 +11,12 @@ from django.db.models import F
 from django.utils import timezone
 
 from .base.scraper import ScraperAccessBlockedError
-from .models import ScraperConfig, ScrapingSession, SiteScraperTask
+from .models import (
+    InstagramScraperTask,
+    ScraperConfig,
+    ScrapingSession,
+    SiteScraperTask,
+)
 from .parsers.registry import get_parser
 from .services import (
     ScraperIntegrationService,
@@ -202,6 +207,310 @@ def revoke_site_scraper_task(task: SiteScraperTask, *, terminate: bool = True) -
         return False
     current_app.control.revoke(task.task_id, terminate=terminate, signal="SIGTERM")
     return True
+
+
+def revoke_instagram_scraper_task(
+    task: InstagramScraperTask,
+    *,
+    terminate: bool = True,
+) -> bool:
+    """Отзывает текущую Celery-задачу Instagram, если её ID уже известен."""
+    if not task.task_id:
+        return False
+    current_app.control.revoke(task.task_id, terminate=terminate, signal="SIGTERM")
+    return True
+
+
+def _append_instagram_task_log(
+    task_id: int,
+    line: str,
+    *,
+    expected_task_id: str = "",
+) -> None:
+    """Добавляет строку в журнал задачи, не затирая live-progress worker-а."""
+    from django.db import transaction
+
+    with transaction.atomic():
+        task = (
+            InstagramScraperTask.objects.select_for_update()
+            .filter(id=task_id)
+            .first()
+        )
+        if not task:
+            return
+        if expected_task_id and task.task_id != expected_task_id:
+            return
+        task.log_output = "\n".join(
+            part for part in (task.log_output.rstrip(), line) if part
+        )
+        task.save(update_fields=["log_output"])
+
+
+def _resolve_instagram_task_category(task: InstagramScraperTask):
+    """Подкатегория → целевая категория → legacy slug."""
+    from apps.catalog.models import Category
+
+    if task.target_subcategory_id:
+        return task.target_subcategory
+    if task.target_category_id:
+        return task.target_category
+    if task.category:
+        category = Category.objects.filter(slug=task.category).first()
+        if category:
+            return category
+    return None
+
+
+def _get_instagram_scraper_config(default_category=None) -> ScraperConfig:
+    """Возвращает Instagram config или безопасно создаёт его при наличии категории."""
+    from apps.catalog.models import Category
+
+    config = ScraperConfig.objects.filter(parser_class="instagram").first()
+    if config:
+        if not config.is_enabled:
+            raise ValueError("Конфигурация парсера Instagram отключена")
+        return config
+
+    default_category = default_category or Category.objects.first()
+    if default_category is None:
+        raise ValueError(
+            "ScraperConfig для Instagram не найден и не может быть создан: "
+            "в каталоге нет ни одной категории"
+        )
+    return ScraperConfig.objects.create(
+        name="instagram",
+        parser_class="instagram",
+        base_url="https://www.instagram.com",
+        is_enabled=True,
+        delay_min=5.0,
+        delay_max=15.0,
+        max_pages_per_run=100,
+        max_products_per_run=100,
+        max_images_per_product=10,
+        default_category=default_category,
+    )
+
+
+@shared_task(bind=True, acks_late=True, reject_on_worker_lost=True)
+def run_instagram_scraper_task(
+    self,
+    instagram_task_id: int,
+    resume: bool = False,
+) -> Dict:
+    """Асинхронный запуск Instagram с live-progress и управлением из Admin."""
+    try:
+        task = InstagramScraperTask.objects.select_related(
+            "target_category",
+            "target_subcategory",
+        ).get(id=instagram_task_id)
+    except InstagramScraperTask.DoesNotExist:
+        return {
+            "status": "error",
+            "error": f"Instagram-задача с ID {instagram_task_id} не найдена",
+        }
+
+    celery_task_id = str(self.request.id or "")
+    if task.status == "cancelled":
+        return {"status": "cancelled", "message": "Задача остановлена до запуска"}
+    if task.status == "paused":
+        return {"status": "paused", "message": "Задача поставлена на паузу до запуска"}
+    if celery_task_id and task.task_id and task.task_id != celery_task_id:
+        return {
+            "status": "superseded",
+            "message": f"Задачу уже выполняет другой запуск {task.task_id}",
+        }
+
+    baseline_found = task.products_found if resume else 0
+    baseline_created = task.products_created if resume else 0
+    baseline_updated = task.products_updated if resume else 0
+    baseline_skipped = task.products_skipped if resume else 0
+    baseline_posts = task.posts_processed if resume else 0
+    baseline_errors = task.errors_count if resume else 0
+    username = (task.instagram_username or "").strip().lstrip("@")
+    start_url = task.post_url or (
+        f"https://www.instagram.com/{username}/" if username else ""
+    )
+    if not start_url:
+        error_msg = "Не задана ссылка на пост или Instagram username"
+        InstagramScraperTask.objects.filter(id=task.id).update(
+            status="failed",
+            error_message=error_msg,
+            finished_at=timezone.now(),
+        )
+        return {"status": "error", "error": error_msg}
+
+    InstagramScraperTask.objects.filter(id=task.id).update(
+        status="running",
+        task_id=celery_task_id,
+        started_at=task.started_at or timezone.now(),
+        finished_at=None,
+        error_message="",
+    )
+    mode = "Продолжение" if resume else "Запуск"
+    _append_instagram_task_log(
+        task.id,
+        "\n".join(
+            [
+                f"--- {mode} Instagram-задачи ---",
+                f"Источник: {start_url}",
+                f"Максимум постов: {task.max_posts}",
+                f"Celery task id: {celery_task_id or '-'}",
+                f"Старт: {timezone.now().isoformat()}",
+            ]
+        ),
+        expected_task_id=celery_task_id,
+    )
+
+    try:
+        if baseline_found >= task.max_posts:
+            InstagramScraperTask.objects.filter(
+                id=task.id,
+                task_id=celery_task_id,
+            ).update(
+                status="completed",
+                finished_at=timezone.now(),
+            )
+            _append_instagram_task_log(
+                task.id,
+                "Лимит товаров уже достигнут; задача завершена.",
+                expected_task_id=celery_task_id,
+            )
+            return {"status": "success", "instagram_task_id": task.id}
+
+        target_category = _resolve_instagram_task_category(task)
+        scraper_config = _get_instagram_scraper_config(target_category)
+        session = ScraperIntegrationService().run_scraper(
+            scraper_config=scraper_config,
+            start_url=start_url,
+            max_pages=task.max_posts,
+            max_products=task.max_posts,
+            target_category=target_category,
+            instagram_task_id=task.id,
+            instagram_run_token=str(task.run_token),
+            total_scraped=baseline_found,
+            total_created=baseline_created,
+            total_updated=baseline_updated,
+            total_skipped=baseline_skipped,
+            total_posts_processed=baseline_posts,
+            total_errors_count=baseline_errors,
+            celery_task_id=celery_task_id,
+        )
+
+        totals = {
+            "products_found": baseline_found + session.products_found,
+            "products_created": baseline_created + session.products_created,
+            "products_updated": baseline_updated + session.products_updated,
+            "products_skipped": baseline_skipped + session.products_skipped,
+            "errors_count": baseline_errors + session.errors_count,
+            "posts_processed": max(baseline_posts, session.pages_processed),
+        }
+        updated = InstagramScraperTask.objects.filter(
+            id=task.id,
+            task_id=celery_task_id,
+        ).update(
+            status="completed",
+            session=session,
+            finished_at=timezone.now(),
+            error_message="",
+            **totals,
+        )
+        if not updated:
+            return {
+                "status": "superseded",
+                "message": "Результат старого Instagram-запуска отброшен",
+            }
+        _append_instagram_task_log(
+            task.id,
+            "\n".join(
+                [
+                    "--- Итог ---",
+                    f"Сессия: #{session.id}",
+                    f"Постов обработано: {totals['posts_processed']}/{task.max_posts}",
+                    f"Товаров найдено: {totals['products_found']}",
+                    f"Создано: {totals['products_created']}",
+                    f"Обновлено: {totals['products_updated']}",
+                    f"Пропущено: {totals['products_skipped']}",
+                    f"Ошибок: {totals['errors_count']}",
+                    f"Финиш: {timezone.now().isoformat()}",
+                ]
+            ),
+            expected_task_id=celery_task_id,
+        )
+        return {
+            "status": "success",
+            "instagram_task_id": task.id,
+            "session_id": session.id,
+            **totals,
+        }
+
+    except ScraperTaskSuperseded as exc:
+        logger.info("Instagram-задача #%s заменена новым запуском: %s", task.id, exc)
+        return {"status": "superseded", "message": str(exc)}
+    except ScraperTaskPaused as exc:
+        InstagramScraperTask.objects.filter(id=task.id, task_id=celery_task_id).update(
+            status="paused",
+            finished_at=timezone.now(),
+            error_message=str(exc),
+        )
+        _append_instagram_task_log(
+            task.id,
+            f"Пауза: {exc}",
+            expected_task_id=celery_task_id,
+        )
+        return {"status": "paused", "message": str(exc)}
+    except ScraperTaskCancelled as exc:
+        InstagramScraperTask.objects.filter(id=task.id, task_id=celery_task_id).update(
+            status="cancelled",
+            finished_at=timezone.now(),
+            error_message=str(exc),
+        )
+        _append_instagram_task_log(
+            task.id,
+            f"Остановлено: {exc}",
+            expected_task_id=celery_task_id,
+        )
+        return {"status": "cancelled", "message": str(exc)}
+    except SoftTimeLimitExceeded:
+        error_msg = (
+            "Instagram-задача автоматически поставлена на паузу после достижения "
+            "лимита времени. Нажмите «Продолжить» — уже сохранённые посты не потеряны."
+        )
+        InstagramScraperTask.objects.filter(
+            id=task.id,
+            task_id=celery_task_id,
+        ).update(
+            status="paused",
+            finished_at=timezone.now(),
+            error_message=error_msg,
+        )
+        _append_instagram_task_log(
+            task.id,
+            error_msg,
+            expected_task_id=celery_task_id,
+        )
+        return {"status": "paused", "message": error_msg}
+    except Exception as exc:
+        error_msg = _proxy_account_error_message(exc) or str(exc)
+        updated = InstagramScraperTask.objects.filter(
+            id=task.id,
+            task_id=celery_task_id,
+        ).update(
+            status="failed",
+            finished_at=timezone.now(),
+            error_message=error_msg,
+        )
+        if updated:
+            _append_instagram_task_log(
+                task.id,
+                f"Ошибка: {error_msg}\nФиниш: {timezone.now().isoformat()}",
+                expected_task_id=celery_task_id,
+            )
+        logger.exception("Ошибка Instagram-задачи #%s", task.id)
+        return {
+            "status": "error",
+            "instagram_task_id": task.id,
+            "error": error_msg,
+        }
 
 
 @shared_task(

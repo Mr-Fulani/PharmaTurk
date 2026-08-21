@@ -1,5 +1,7 @@
 """Модели для системы парсеров."""
 
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -443,6 +445,8 @@ class InstagramScraperTask(models.Model):
     STATUS_CHOICES = [
         ("pending", _("Ожидает")),
         ("running", _("Выполняется")),
+        ("paused", _("На паузе")),
+        ("cancelled", _("Остановлено")),
         ("completed", _("Завершено")),
         ("failed", _("Ошибка")),
     ]
@@ -520,9 +524,27 @@ class InstagramScraperTask(models.Model):
 
     # Статус и результаты
     status = models.CharField(_("Статус"), max_length=20, choices=STATUS_CHOICES, default="pending")
+    task_id = models.CharField(_("ID задачи Celery"), max_length=100, blank=True)
+    run_token = models.UUIDField(
+        _("ID запуска"),
+        default=uuid.uuid4,
+        editable=False,
+        help_text=_("Технический идентификатор для безопасного продолжения задачи без повторного сохранения постов."),
+    )
+    session = models.ForeignKey(
+        ScrapingSession,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="instagram_tasks",
+        verbose_name=_("Сессия парсинга"),
+    )
+    posts_processed = models.PositiveIntegerField(_("Обработано постов"), default=0)
+    products_found = models.PositiveIntegerField(_("Найдено товаров"), default=0)
     products_created = models.PositiveIntegerField(_("Создано товаров"), default=0)
     products_updated = models.PositiveIntegerField(_("Обновлено товаров"), default=0)
     products_skipped = models.PositiveIntegerField(_("Пропущено товаров"), default=0)
+    errors_count = models.PositiveIntegerField(_("Количество ошибок"), default=0)
 
     # Логи
     log_output = models.TextField(_("Лог выполнения"), blank=True)

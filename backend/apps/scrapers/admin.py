@@ -1,6 +1,7 @@
 """Админ-интерфейс для управления парсерами."""
 
 import logging
+import uuid
 
 from django import forms
 from django.contrib import admin
@@ -27,7 +28,13 @@ from .models import (
     InstagramScraperTask,
     SiteScraperTask,
 )
-from .tasks import run_scraper_task, run_stub_refresh_task, revoke_site_scraper_task
+from .tasks import (
+    revoke_instagram_scraper_task,
+    revoke_site_scraper_task,
+    run_instagram_scraper_task,
+    run_scraper_task,
+    run_stub_refresh_task,
+)
 from .services import DeduplicationService
 
 logger = logging.getLogger(__name__)
@@ -1584,20 +1591,16 @@ class ProductDuplicateCandidateAdmin(admin.ModelAdmin):
 
 @admin.register(InstagramScraperTask)
 class InstagramScraperTaskAdmin(admin.ModelAdmin):
-    """Админ для задач парсинга Instagram.
-
-    Парсинг запускается напрямую через ScraperIntegrationService (без subprocess),
-    что обеспечивает полноценное логирование через ScrapingSession,
-    скачивание медиа в R2 и корректную дедупликацию товаров.
-    """
+    """Управляемые фоновые задачи Instagram с live-progress и журналом."""
 
     form = InstagramScraperTaskForm
+    change_list_template = "admin/scrapers/sitescrapertask/change_list.html"
 
     list_display = [
         "source_display",
         "target_category_display",
         "status_badge",
-        "max_posts",
+        "posts_progress",
         "products_stats",
         "created_at",
         "duration_display",
@@ -1607,6 +1610,7 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
     search_fields = ["instagram_username", "post_url", "error_message"]
     ordering = ["-created_at"]
     raw_id_fields = ["target_category", "target_subcategory"]
+    list_select_related = ["target_category", "target_subcategory", "session"]
 
     fieldsets = [
         (
@@ -1635,9 +1639,14 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             {
                 "fields": [
                     "status",
+                    "task_id",
+                    "session",
+                    "posts_processed",
+                    "products_found",
                     "products_created",
                     "products_updated",
                     "products_skipped",
+                    "errors_count",
                 ]
             },
         ),
@@ -1645,14 +1654,25 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             "Временные метки",
             {"fields": ["created_at", "started_at", "finished_at"], "classes": ["collapse"]},
         ),
-        ("Логи", {"fields": ["log_output", "error_message"], "classes": ["collapse"]}),
+        (
+            "Логи",
+            {
+                "fields": ["log_output", "error_message"],
+                "description": "Во время выполнения обновите страницу, чтобы увидеть новые строки.",
+            },
+        ),
     ]
 
     readonly_fields = [
         "status",
+        "task_id",
+        "session",
+        "posts_processed",
+        "products_found",
         "products_created",
         "products_updated",
         "products_skipped",
+        "errors_count",
         "log_output",
         "error_message",
         "created_at",
@@ -1660,7 +1680,39 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
         "finished_at",
     ]
 
-    actions = ["run_instagram_scraping", "rerun_instagram_scraping"]
+    actions = [
+        "run_instagram_scraping",
+        "rerun_instagram_scraping",
+        "pause_instagram_scraping",
+        "resume_instagram_scraping",
+        "cancel_instagram_scraping",
+    ]
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        response = super().change_view(request, object_id, form_url, extra_context)
+        try:
+            if InstagramScraperTask.objects.only("status").get(pk=object_id).status == "running":
+                response["Refresh"] = "20"
+        except InstagramScraperTask.DoesNotExist:
+            pass
+        return response
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not change and obj.status == "pending" and not obj.task_id:
+            task_pk = obj.pk
+
+            def enqueue_after_commit():
+                try:
+                    task = InstagramScraperTask.objects.get(pk=task_pk)
+                    self._enqueue_instagram_task(task, reset_stats=True)
+                except Exception:
+                    logger.exception(
+                        "Не удалось автоматически запустить Instagram-задачу #%s",
+                        task_pk,
+                    )
+
+            transaction.on_commit(enqueue_after_commit)
 
     # -----------------------------------------------------------------------
     # Колонки списка
@@ -1671,6 +1723,8 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
         colors = {
             "pending": "blue",
             "running": "orange",
+            "paused": "#7c3aed",
+            "cancelled": "gray",
             "completed": "green",
             "failed": "red",
         }
@@ -1694,20 +1748,28 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
 
     target_category_display.short_description = "Категория"
 
+    def posts_progress(self, obj):
+        return f"{obj.posts_processed}/{obj.max_posts}"
+
+    posts_progress.short_description = "Посты"
+
     def products_stats(self, obj):
-        """Статистика: создано / обновлено / пропущено."""
+        """Статистика: найдено / создано / обновлено / пропущено / ошибки."""
         if obj.status == "pending":
             return "-"
         return format_html(
-            '<span style="color: green;">+{}</span> / '
+            '<strong>{}</strong> / <span style="color: green;">+{}</span> / '
             '<span style="color: blue;">~{}</span> / '
-            '<span style="color: gray;">-{}</span>',
+            '<span style="color: gray;">-{}</span> / '
+            '<span style="color: red;">!{}</span>',
+            obj.products_found,
             obj.products_created,
             obj.products_updated,
             obj.products_skipped,
+            obj.errors_count,
         )
 
-    products_stats.short_description = "Создано / Обновлено / Пропущено"
+    products_stats.short_description = "Найдено / + / ~ / - / Ошибки"
 
     def duration_display(self, obj):
         """Продолжительность выполнения задачи."""
@@ -1745,237 +1807,141 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             return f"пост {s}"
         return f"@{task.instagram_username}"
 
-    def _resolve_task_category(self, task):
-        """Определяет категорию для задачи по приоритетам.
-
-        Приоритет:
-        1. task.target_category (ForeignKey) — выбрана в Admin
-        2. task.category (CharField slug) — fallback
-        3. None — товары будут без категории
-
-        Returns:
-            Объект Category или None.
-        """
-        from apps.catalog.models import Category
-
-        # Приоритет 0: Подкатегория (самая специфичная)
-        if hasattr(task, 'target_subcategory') and getattr(task, 'target_subcategory_id', None):
-            return task.target_subcategory
-
-        # Приоритет 1: FK-категория
-        if task.target_category_id:
-            return task.target_category
-
-        # Приоритет 2: slug из CharField
-        if task.category:
-            cat = Category.objects.filter(slug=task.category).first()
-            if cat:
-                return cat
-
-        return None
-
-    def _build_start_url(self, task):
-        """Формирует start_url из параметров задачи."""
-        if task.post_url:
-            return task.post_url
-        if task.instagram_username:
-            return f"https://www.instagram.com/{task.instagram_username}/"
-        return None
-
-    def _get_or_create_scraper_config(self, default_category=None):
-        """Находит активный ScraperConfig для Instagram или создаёт временный.
-
-        Args:
-            default_category: Категория по умолчанию — используется только при
-                автосоздании конфига (обязательное поле ScraperConfig).
-                Передаётся target_category из задачи.
-
-        Returns:
-            ScraperConfig или None если конфиг не найден и категория не задана.
-        """
-        from .models import ScraperConfig
-
-        config = ScraperConfig.objects.filter(
-            parser_class="instagram", is_enabled=True
-        ).first()
-
-        if not config:
-            # Если ScraperConfig нет — пытаемся создать временный.
-            # Для создания обязательно нужна default_category (ограничение БД).
-            if default_category is None:
-                # Fallback: берём любую категорию из каталога
-                from apps.catalog.models import Category
-                default_category = Category.objects.first()
-
-            if default_category is None:
-                # Категорий нет вообще — создать конфиг невозможно
-                return None
-
-            config = ScraperConfig(
-                name="instagram",
-                parser_class="instagram",
-                base_url="https://www.instagram.com",
-                is_enabled=True,
-                delay_min=5.0,
-                delay_max=15.0,
-                max_pages_per_run=100,
-                max_products_per_run=100,
-                max_images_per_product=10,
-                default_category=default_category,
-            )
-            config.save()
-
-        return config
-
-    def _run_task(self, task, reset_stats: bool = False):
-        """Запускает парсинг одной задачи через ScraperIntegrationService.
-
-        Заменяет старый подход через subprocess.run(). Теперь парсинг
-        выполняется в том же процессе Django, что обеспечивает:
-        - Корректное создание ScrapingSession с логами
-        - Скачивание всех медиа в R2 через _normalize_scraped_media()
-        - Дедупликацию товаров через _process_single_product()
-        - Правильную запись авторов, BookProduct и т.д.
-
-        Args:
-            task: Объект InstagramScraperTask.
-            reset_stats: Если True — сбрасывает статистику (для повторного запуска).
-
-        Returns:
-            Tuple (success: bool, message: str).
-        """
-        from django.utils import timezone
-        from apps.scrapers.services import ScraperIntegrationService
-
+    def _enqueue_instagram_task(
+        self,
+        task: InstagramScraperTask,
+        *,
+        reset_stats: bool,
+        resume: bool = False,
+    ):
+        """Сохраняет состояние запуска и ставит Instagram в Celery очередь."""
         if reset_stats:
+            task.posts_processed = 0
+            task.products_found = 0
             task.products_created = 0
             task.products_updated = 0
             task.products_skipped = 0
+            task.errors_count = 0
             task.log_output = ""
-            task.error_message = ""
+            task.run_token = uuid.uuid4()
 
-        # Обновляем статус на «выполняется»
         task.status = "running"
         task.started_at = timezone.now()
         task.finished_at = None
+        task.error_message = ""
+        task.session = None
+        task.task_id = ""
         task.save()
 
         try:
-            # Формируем start_url из параметров задачи
-            start_url = self._build_start_url(task)
-            if not start_url:
-                raise ValueError("Не задан post_url и instagram_username")
-
-            # Определяем категорию: target_category (FK) → category (slug) → None
-            target_category = self._resolve_task_category(task)
-
-            # Получаем/создаём ScraperConfig для Instagram.
-            # Передаём target_category как default_category при автосоздании.
-            config = self._get_or_create_scraper_config(
-                default_category=target_category
+            celery_task = run_instagram_scraper_task.delay(
+                instagram_task_id=task.id,
+                resume=resume,
             )
-            if config is None:
-                raise ValueError(
-                    "ScraperConfig для Instagram не найден и не может быть создан "
-                    "(нет категорий в каталоге). Создайте ScraperConfig вручную в "
-                    "/admin/scrapers/scraperconfig/add/"
-                )
-
-            # Запускаем через ScraperIntegrationService — единый пайплайн
-            service = ScraperIntegrationService()
-            session = service.run_scraper(
-                scraper_config=config,
-                start_url=start_url,
-                max_pages=task.max_posts,
-                max_products=task.max_posts,
-                target_category=target_category,
-            )
-
-            # Обновляем задачу по результатам сессии
-            task.products_created = session.products_created
-            task.products_updated = session.products_updated
-            task.products_skipped = session.products_skipped
-            task.log_output = (
-                f"Сессия #{session.id}\n"
-                f"Найдено: {session.products_found}\n"
-                f"Создано: {session.products_created}\n"
-                f"Обновлено: {session.products_updated}\n"
-                f"Пропущено: {session.products_skipped}\n"
-            )
-
-            if session.status == "completed":
-                task.status = "completed"
-                return True, (
-                    f"Парсинг {self._task_label(task)} завершён: "
-                    f"создано {session.products_created}, "
-                    f"обновлено {session.products_updated}"
-                )
-            else:
-                task.status = "failed"
-                task.error_message = session.error_message or "Неизвестная ошибка"
-                return False, f"Ошибка парсинга {self._task_label(task)}: {task.error_message}"
-
-        except Exception as e:
+        except Exception as exc:
             task.status = "failed"
-            task.error_message = str(e)
-            return False, f"Ошибка: {e}"
-
-        finally:
-            # Всегда фиксируем время завершения
+            task.error_message = f"Не удалось поставить задачу в очередь Celery: {exc}"
             task.finished_at = timezone.now()
-            task.save()
+            task.save(update_fields=["status", "error_message", "finished_at"])
+            raise
+        task.task_id = celery_task.id
+        task.save(update_fields=["task_id"])
+        return celery_task
 
     # -----------------------------------------------------------------------
     # Admin-действия
     # -----------------------------------------------------------------------
 
     def run_instagram_scraping(self, request, queryset):
-        """Действие: запустить парсинг для выбранных задач (только pending)."""
-        # Берём только задачи в статусе «Ожидает» с заданным источником
+        """Ставит выбранные ожидающие задачи в очередь."""
         valid_tasks = queryset.filter(status="pending").filter(
             models.Q(post_url__isnull=False) | models.Q(instagram_username__iregex=r".+")
         )
-
+        queued = 0
         for task in valid_tasks:
-            success, msg = self._run_task(task, reset_stats=False)
-            if success:
-                messages.success(request, msg)
-            else:
-                messages.error(request, msg)
+            try:
+                self._enqueue_instagram_task(task, reset_stats=True)
+                queued += 1
+            except Exception as exc:
+                task.status = "failed"
+                task.error_message = str(exc)
+                task.finished_at = timezone.now()
+                task.save(update_fields=["status", "error_message", "finished_at"])
+        self.message_user(request, f"Поставлено в очередь: {queued}", messages.SUCCESS)
 
     run_instagram_scraping.short_description = "Запустить парсинг Instagram"
 
     def rerun_instagram_scraping(self, request, queryset):
-        """Действие: повторно запустить парсинг (любые задачи кроме running)."""
+        """Начинает выбранные задачи заново со сбросом статистики."""
         valid_tasks = queryset.exclude(status="running").filter(
             models.Q(post_url__isnull=False) | models.Q(instagram_username__iregex=r".+")
         )
-
+        queued = 0
         for task in valid_tasks:
-            # reset_stats=True — обнуляем счётчики перед повторным запуском
-            success, msg = self._run_task(task, reset_stats=True)
-            if success:
-                messages.success(request, msg)
-            else:
-                messages.error(request, msg)
+            self._enqueue_instagram_task(task, reset_stats=True)
+            queued += 1
+        self.message_user(request, f"Перезапущено задач: {queued}", messages.SUCCESS)
 
     rerun_instagram_scraping.short_description = "Запустить снова (повторный парсинг)"
+
+    @admin.action(description="Поставить Instagram-задачи на паузу")
+    def pause_instagram_scraping(self, request, queryset):
+        count = 0
+        for task in queryset.filter(status="running"):
+            self._pause_task(task)
+            count += 1
+        self.message_user(request, f"Поставлено на паузу: {count}", messages.SUCCESS)
+
+    @admin.action(description="Продолжить Instagram-задачи")
+    def resume_instagram_scraping(self, request, queryset):
+        count = 0
+        for task in queryset.filter(status="paused"):
+            self._enqueue_instagram_task(task, reset_stats=False, resume=True)
+            count += 1
+        self.message_user(request, f"Возобновлено: {count}", messages.SUCCESS)
+
+    @admin.action(description="Остановить Instagram-задачи")
+    def cancel_instagram_scraping(self, request, queryset):
+        count = 0
+        for task in queryset.filter(status__in=["pending", "running", "paused"]):
+            self._cancel_task(task)
+            count += 1
+        self.message_user(request, f"Остановлено: {count}", messages.SUCCESS)
 
     # -----------------------------------------------------------------------
     # Кнопка быстрого запуска в колонке списка
     # -----------------------------------------------------------------------
 
     def actions_column(self, obj):
-        """Кнопка «Запустить снова» в колонке списка."""
-        if obj.status != "running":
-            rerun_url = reverse("admin:scrapers_instagramscrapertask_rerun", args=[obj.pk])
-            return format_html('<a href="{}" class="button">🔄 Запустить снова</a>', rerun_url)
-        return format_html('<span style="color: orange;">⏳ Выполняется...</span>')
+        rerun_url = reverse("admin:scrapers_instagramscrapertask_rerun", args=[obj.pk])
+        cancel_url = reverse("admin:scrapers_instagramscrapertask_cancel", args=[obj.pk])
+        if obj.status == "running":
+            pause_url = reverse("admin:scrapers_instagramscrapertask_pause", args=[obj.pk])
+            force_url = reverse("admin:scrapers_instagramscrapertask_force_rerun", args=[obj.pk])
+            return format_html(
+                '<a href="{}" class="button" style="margin-right:4px;background:#7c3aed;color:#fff;">Пауза</a>'
+                '<a href="{}" class="button" style="margin-right:4px;background:#4b5563;color:#fff;">Остановить</a>'
+                '<a href="{}" class="button" style="background:#b91c1c;color:#fff;">Перезапустить</a>',
+                pause_url,
+                cancel_url,
+                force_url,
+            )
+        if obj.status == "paused":
+            resume_url = reverse("admin:scrapers_instagramscrapertask_resume", args=[obj.pk])
+            return format_html(
+                '<a href="{}" class="button" style="margin-right:4px;background:#16a34a;color:#fff;">Продолжить</a>'
+                '<a href="{}" class="button" style="margin-right:4px;">Начать заново</a>'
+                '<a href="{}" class="button" style="background:#4b5563;color:#fff;">Остановить</a>',
+                resume_url,
+                rerun_url,
+                cancel_url,
+            )
+        label = "Запустить" if obj.status == "pending" else "Запустить снова"
+        return format_html('<a href="{}" class="button">{}</a>', rerun_url, label)
 
     actions_column.short_description = "Действия"
 
     def get_urls(self):
-        """Регистрируем кастомный URL для быстрого повторного запуска."""
         from django.urls import path
 
         urls = super().get_urls()
@@ -1985,29 +1951,135 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.rerun_task_view),
                 name="scrapers_instagramscrapertask_rerun",
             ),
+            path(
+                "<int:task_id>/force-rerun/",
+                self.admin_site.admin_view(self.force_rerun_task_view),
+                name="scrapers_instagramscrapertask_force_rerun",
+            ),
+            path(
+                "<int:task_id>/pause/",
+                self.admin_site.admin_view(self.pause_task_view),
+                name="scrapers_instagramscrapertask_pause",
+            ),
+            path(
+                "<int:task_id>/resume/",
+                self.admin_site.admin_view(self.resume_task_view),
+                name="scrapers_instagramscrapertask_resume",
+            ),
+            path(
+                "<int:task_id>/cancel/",
+                self.admin_site.admin_view(self.cancel_task_view),
+                name="scrapers_instagramscrapertask_cancel",
+            ),
         ]
         return custom_urls + urls
 
     def rerun_task_view(self, request, task_id):
-        """Обработчик URL для кнопки «Запустить снова» из колонки списка."""
         try:
             task = InstagramScraperTask.objects.get(id=task_id)
-
             if task.status == "running":
-                messages.warning(
-                    request, f"Задача {self._task_label(task)} уже выполняется"
-                )
+                messages.warning(request, f"Задача {self._task_label(task)} уже выполняется")
             else:
-                success, msg = self._run_task(task, reset_stats=True)
-                if success:
-                    messages.success(request, msg)
-                else:
-                    messages.error(request, msg)
-
+                celery_task = self._enqueue_instagram_task(task, reset_stats=True)
+                messages.success(request, f"Задача поставлена в очередь: {celery_task.id}")
         except InstagramScraperTask.DoesNotExist:
             messages.error(request, "Задача не найдена")
-        except Exception as e:
-            messages.error(request, f"Ошибка запуска: {e}")
+        except Exception as exc:
+            messages.error(request, f"Ошибка запуска: {exc}")
+
+        return HttpResponseRedirect(reverse("admin:scrapers_instagramscrapertask_changelist"))
+
+    def force_rerun_task_view(self, request, task_id):
+        try:
+            task = InstagramScraperTask.objects.get(id=task_id)
+            revoke_instagram_scraper_task(task, terminate=True)
+            celery_task = self._enqueue_instagram_task(task, reset_stats=True)
+            messages.success(request, f"Задача перезапущена: {celery_task.id}")
+        except InstagramScraperTask.DoesNotExist:
+            messages.error(request, "Задача не найдена")
+        except Exception as exc:
+            messages.error(request, f"Ошибка перезапуска: {exc}")
+        return HttpResponseRedirect(reverse("admin:scrapers_instagramscrapertask_changelist"))
+
+    def _pause_task(self, task):
+        try:
+            revoke_instagram_scraper_task(task, terminate=False)
+        except Exception as exc:
+            logger.warning("Не удалось отозвать ожидающую Instagram-задачу #%s: %s", task.id, exc)
+        task.status = "paused"
+        task.error_message = "Задача поставлена на паузу пользователем."
+        task.finished_at = timezone.now()
+        task.log_output = "\n".join(
+            part
+            for part in (
+                task.log_output.rstrip(),
+                f"Пауза запрошена: {timezone.now().isoformat()}",
+            )
+            if part
+        )
+        task.save(update_fields=["status", "error_message", "finished_at", "log_output"])
+
+    def pause_task_view(self, request, task_id):
+        try:
+            task = InstagramScraperTask.objects.get(id=task_id)
+            if task.status != "running":
+                messages.warning(request, "Поставить на паузу можно только выполняющуюся задачу")
+            else:
+                self._pause_task(task)
+                messages.success(request, "Пауза запрошена; текущий пост будет завершён безопасно")
+        except InstagramScraperTask.DoesNotExist:
+            messages.error(request, "Задача не найдена")
+        return HttpResponseRedirect(reverse("admin:scrapers_instagramscrapertask_changelist"))
+
+    def resume_task_view(self, request, task_id):
+        try:
+            task = InstagramScraperTask.objects.get(id=task_id)
+            if task.status != "paused":
+                messages.warning(request, "Продолжить можно только задачу на паузе")
+            else:
+                celery_task = self._enqueue_instagram_task(
+                    task,
+                    reset_stats=False,
+                    resume=True,
+                )
+                messages.success(request, f"Задача продолжена: {celery_task.id}")
+        except InstagramScraperTask.DoesNotExist:
+            messages.error(request, "Задача не найдена")
+        except Exception as exc:
+            messages.error(request, f"Ошибка возобновления: {exc}")
+        return HttpResponseRedirect(reverse("admin:scrapers_instagramscrapertask_changelist"))
+
+    def _cancel_task(self, task):
+        try:
+            revoke_instagram_scraper_task(task, terminate=True)
+        except Exception as exc:
+            logger.warning("Не удалось отозвать Instagram-задачу #%s: %s", task.id, exc)
+        task.status = "cancelled"
+        task.error_message = "Задача остановлена пользователем."
+        task.finished_at = timezone.now()
+        task.log_output = "\n".join(
+            part
+            for part in (
+                task.log_output.rstrip(),
+                f"Остановлено пользователем: {timezone.now().isoformat()}",
+            )
+            if part
+        )
+        task.save(update_fields=["status", "error_message", "finished_at", "log_output"])
+        if task.session_id:
+            ScrapingSession.objects.filter(id=task.session_id).update(
+                status="cancelled",
+                error_message=task.error_message,
+                finished_at=timezone.now(),
+            )
+
+    def cancel_task_view(self, request, task_id):
+        try:
+            task = InstagramScraperTask.objects.get(id=task_id)
+            self._cancel_task(task)
+            messages.success(request, "Instagram-задача остановлена")
+        except InstagramScraperTask.DoesNotExist:
+            messages.error(request, "Задача не найдена")
 
         return HttpResponseRedirect(reverse("admin:scrapers_instagramscrapertask_changelist"))
 
