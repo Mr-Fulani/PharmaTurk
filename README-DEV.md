@@ -10,7 +10,7 @@
 - npm `10.x`, lockfile обязателен;
 - Django `5.2.17`;
 - Next.js `15.5.21`;
-- PostgreSQL `15.18`, Redis `7.4.10`, Qdrant `1.18.2`.
+- PostgreSQL `15.18`, Redis `7.4.10`, Qdrant `1.18.3`.
 
 Не используйте `npm install` вместо `npm ci` в CI или воспроизводимой сборке. Backend-зависимости задаются только `backend/pyproject.toml` и `backend/poetry.lock`; устаревший `requirements.txt` больше не является источником правды.
 

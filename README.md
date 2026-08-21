@@ -17,7 +17,7 @@ Mudaroba — двуязычная (ru/en) мультикатегорийная �
 | Next.js | 15.5.21 (Pages Router) |
 | PostgreSQL | 15.18 |
 | Redis | 7.4.10 |
-| Qdrant | 1.18.2 |
+| Qdrant | 1.18.3 |
 | Celery | фоновые задачи и отдельные очереди AI/RecSys |
 | Nginx | входной reverse proxy в production |
 
