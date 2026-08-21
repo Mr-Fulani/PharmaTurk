@@ -176,10 +176,23 @@ jobs:
       packages: write
     env:
       IMAGE_TAG: ${{ github.sha }}
+      NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${{ vars.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME }}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+      NEXT_PUBLIC_VK_APP_ID: ${{ vars.NEXT_PUBLIC_VK_APP_ID }}
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      NEXT_PUBLIC_GTM_ID: ${{ vars.NEXT_PUBLIC_GTM_ID }}
+      NEXT_PUBLIC_GA4_ID: ${{ vars.NEXT_PUBLIC_GA4_ID }}
+      NEXT_PUBLIC_YM_ID: ${{ vars.NEXT_PUBLIC_YM_ID }}
     steps:
       - uses: actions/checkout@v6
       - name: Prepare non-secret build configuration
         run: cp .env.example .env
+      - name: Validate public production build configuration
+        run: |
+          test -n "${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}"
+          test -n "${NEXT_PUBLIC_GOOGLE_CLIENT_ID}"
+          test -n "${NEXT_PUBLIC_VK_APP_ID}"
+          test -n "${NEXT_PUBLIC_SITE_URL}"
       - name: Build exact production images
         env:
           DEPENDENCY_LOCK_HASH: ${{ hashFiles('backend/pyproject.toml', 'backend/poetry.lock') }}

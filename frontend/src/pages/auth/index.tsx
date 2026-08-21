@@ -9,6 +9,11 @@ import { SITE_NAME } from '../../lib/siteMeta'
 import { sanitizeNextPath } from '../../lib/authRedirect'
 import AnimatedPasswordInput from '../../components/AnimatedPasswordInput'
 
+const TELEGRAM_BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+const VK_APP_ID = process.env.NEXT_PUBLIC_VK_APP_ID
+const SOCIAL_LOGIN_ENABLED = Boolean(TELEGRAM_BOT_USERNAME || GOOGLE_CLIENT_ID || VK_APP_ID)
+
 // ─── Утилита: редирект после входа ──────────────────────────────────────────
 
 function usePostLoginRedirect() {
@@ -140,7 +145,7 @@ function TelegramLoginWidget() {
     }
     ;(window as any).onTelegramAuth = handleTelegramAuth
 
-    const botName = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+    const botName = TELEGRAM_BOT_USERNAME
     if (botName && container && container.children.length === 0) {
       const script = document.createElement('script')
       script.src = 'https://telegram.org/js/telegram-widget.js?22'
@@ -213,6 +218,8 @@ function TelegramLoginWidget() {
     }
   }, [loginWithTelegram, redirect, t, uniqueId])
 
+  if (!TELEGRAM_BOT_USERNAME) return null
+
   return (
     <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden hover:opacity-80 transition-opacity">
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm pointer-events-none relative z-10">
@@ -237,7 +244,7 @@ function GoogleLoginButton() {
   const googleResponseRef = useRef<(response: any) => Promise<void>>(async () => {})
   const translateRef = useRef(t)
 
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+  const googleClientId = GOOGLE_CLIENT_ID
 
   const handleGoogleResponse = useCallback(async (response: any) => {
     const credential = response?.credential
@@ -334,7 +341,7 @@ function VKLoginButton() {
     authHandlersRef.current = { loginWithSocial, redirect, t }
   }, [loginWithSocial, redirect, t])
 
-  const vkAppId = process.env.NEXT_PUBLIC_VK_APP_ID
+  const vkAppId = VK_APP_ID
 
   const completeVKLogin = useCallback(async (VKID: any, payload: any) => {
     setLoading(true)
@@ -520,13 +527,13 @@ function VKLoginButton() {
 // ─── Блок соцсетей ────────────────────────────────────────────────────────────
 
 function SocialLoginBlock() {
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
-  const vkAppId = process.env.NEXT_PUBLIC_VK_APP_ID
+  if (!SOCIAL_LOGIN_ENABLED) return null
+
   return (
     <div className={styles.socialIcons}>
-      <TelegramLoginWidget />
-      {googleClientId && <GoogleLoginButton />}
-      {vkAppId && <VKLoginButton />}
+      {TELEGRAM_BOT_USERNAME && <TelegramLoginWidget />}
+      {GOOGLE_CLIENT_ID && <GoogleLoginButton />}
+      {VK_APP_ID && <VKLoginButton />}
     </div>
   )
 }
@@ -678,8 +685,12 @@ function LoginForm({ socialLoginActive }: { socialLoginActive: boolean }) {
           {loading ? t('auth_logging_in') : t('login')}
         </button>
 
-        <p className="mt-6 mb-2 text-sm text-[var(--text-weak)]">{t('auth_or_login_with')}</p>
-        {socialLoginActive && <SocialLoginBlock />}
+        {socialLoginActive && SOCIAL_LOGIN_ENABLED && (
+          <>
+            <p className="mt-6 mb-2 text-sm text-[var(--text-weak)]">{t('auth_or_login_with')}</p>
+            <SocialLoginBlock />
+          </>
+        )}
       </form>
     </div>
   )
@@ -760,8 +771,12 @@ function RegisterForm({ socialLoginActive }: { socialLoginActive: boolean }) {
           {loading ? t('auth_registering') : t('auth_register_button')}
         </button>
 
-        <p className="mt-6 mb-2 text-sm text-[var(--text-weak)]">{t('auth_or_register_with')}</p>
-        {socialLoginActive && <SocialLoginBlock />}
+        {socialLoginActive && SOCIAL_LOGIN_ENABLED && (
+          <>
+            <p className="mt-6 mb-2 text-sm text-[var(--text-weak)]">{t('auth_or_register_with')}</p>
+            <SocialLoginBlock />
+          </>
+        )}
       </form>
     </div>
   )
