@@ -1,25 +1,23 @@
 import json
 from django import forms
 from django.contrib import admin, messages
-from django.utils import timezone
 from django.utils.html import format_html, escape
 from django.utils.safestring import mark_safe
 from django.urls import reverse, NoReverseMatch
-from apps.catalog.models import (
-    MedicineProduct,
-    SupplementProduct,
-    MedicalEquipmentProduct,
-    TablewareProduct,
-    FurnitureProduct,
-    AccessoryProduct,
-    JewelryProduct,
-    ClothingProduct,
-    BookProduct,
-    IncenseProduct,
-    ShoeProduct,
-    PerfumeryProduct,
+from .models import (
+    AIApplicationStatus,
+    AIProcessingLog,
+    AIProcessingStatus,
+    AIModerationQueue,
+    AITemplate,
 )
-from .models import AIProcessingLog, AITemplate, AIModerationQueue, AIProcessingStatus
+from .services.moderation import (
+    APPLICATION_LABELS,
+    build_change_preview,
+    get_moderation_reason_labels,
+    get_workflow_title,
+    reject_log,
+)
 
 
 # Атрибуты украшений для формы модерации (применяются к JewelryProduct)
@@ -38,6 +36,14 @@ GENDER_CHOICES_FORM = [
     ("unisex", "Унисекс"),
     ("kids", "Детская"),
 ]
+JEWELRY_FORM_FIELDS = (
+    "jewelry_type",
+    "material",
+    "metal_purity",
+    "stone_type",
+    "carat_weight",
+    "gender",
+)
 
 
 class AIProcessingLogForm(forms.ModelForm):
@@ -116,6 +122,11 @@ class AIProcessingLogForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["generated_title"].label = "Название (RU)"
+        self.fields["generated_description"].label = "Описание (RU)"
+        self.fields["generated_seo_title"].label = "SEO title (RU)"
+        self.fields["generated_seo_description"].label = "SEO description (RU)"
+        self.fields["generated_keywords"].label = "Ключевые слова (RU)"
         if self.instance and self.instance.pk:
             attrs = self.instance.extracted_attributes or {}
             seo_translations = attrs.get("seo_translations") or {}
@@ -144,13 +155,32 @@ class AIProcessingLogForm(forms.ModelForm):
                     self.fields["stone_type"].initial = domain.stone_type
                 if domain and getattr(domain, "gender", None):
                     self.fields["gender"].initial = domain.gender or ""
+            else:
+                # Эти поля имеют смысл только для JewelryAIApplier. Если оставить
+                # их в bound-форме другого типа, пустые значения могут затереть
+                # одноимённые ключи extracted_attributes чужой категории.
+                for field_name in JEWELRY_FORM_FIELDS:
+                    self.fields.pop(field_name, None)
 
     def save(self, commit=True):
         obj = super().save(commit=commit)
-        if commit and obj.pk:
+        if obj.pk:
             attrs = dict(obj.extracted_attributes or {})
             seo_translations = dict(attrs.get("seo_translations") or {})
+            seo_ru = dict(seo_translations.get("ru") or {})
             seo_en = dict(seo_translations.get("en") or attrs.get("seo_en") or {})
+            # RU-поля формы — единственный редактируемый источник истины.
+            # Без этой синхронизации apply предпочитал старый вложенный RU payload
+            # и мог проигнорировать видимую правку модератора.
+            seo_ru.update(
+                {
+                    "generated_title": (obj.generated_title or "").strip() or None,
+                    "generated_description": (obj.generated_description or "").strip() or None,
+                    "meta_title": (obj.generated_seo_title or "").strip() or None,
+                    "meta_description": (obj.generated_seo_description or "").strip() or None,
+                    "meta_keywords": obj.generated_keywords or [],
+                }
+            )
             if self.cleaned_data.get("generated_en_title") is not None:
                 seo_en["generated_title"] = (self.cleaned_data.get("generated_en_title") or "").strip() or None
             if self.cleaned_data.get("generated_en_description") is not None:
@@ -159,6 +189,7 @@ class AIProcessingLogForm(forms.ModelForm):
                 seo_en["og_title"] = (self.cleaned_data.get("og_title") or "").strip() or None
             if self.cleaned_data.get("og_description") is not None:
                 seo_en["og_description"] = (self.cleaned_data.get("og_description") or "").strip() or None
+            seo_translations["ru"] = seo_ru
             seo_translations["en"] = seo_en
             attrs["seo_translations"] = seo_translations
             attrs["seo_en"] = seo_en
@@ -171,6 +202,8 @@ class AIProcessingLogForm(forms.ModelForm):
                 ("carat_weight", "carat_weight"),
                 ("gender", "gender"),
             ]:
+                if field_name not in self.cleaned_data:
+                    continue
                 val = self.cleaned_data.get(field_name)
                 if val is not None:
                     if val == "" or (isinstance(val, (int, float)) and val == 0 and key != "carat_weight"):
@@ -178,59 +211,19 @@ class AIProcessingLogForm(forms.ModelForm):
                     else:
                         attrs[key] = val
             obj.extracted_attributes = attrs
-            obj.save(update_fields=["extracted_attributes"])
+            if commit:
+                obj.save(update_fields=["extracted_attributes"])
         return obj
 
 
 def _get_product_admin_url(product):
-    """
-    Возвращает URL change-страницы доменной модели (BookProduct, ClothingProduct и т.д.)
-    для базового товара Product.
-
-    ВАЖНО: ID доменной модели НЕ совпадает с ID Product, поэтому нужно находить
-    доменную запись через связь base_product (related_name вида *_item).
-    """
-
-    # Карта: product_type -> (модель доменного товара, related_name от Product)
-    product_type_map = {
-        "medicines": (MedicineProduct, "medicine_item"),
-        "supplements": (SupplementProduct, "supplement_item"),
-        "medical_equipment": (MedicalEquipmentProduct, "medical_equipment_item"),
-        "tableware": (TablewareProduct, "tableware_item"),
-        "furniture": (FurnitureProduct, "furniture_item"),
-        "accessories": (AccessoryProduct, "accessory_item"),
-        "jewelry": (JewelryProduct, "jewelry_item"),
-        "clothing": (ClothingProduct, "clothing_item"),
-        "underwear": (ClothingProduct, "clothing_item"),
-        "headwear": (ClothingProduct, "clothing_item"),
-        "shoes": (ShoeProduct, "shoe_item"),
-        "books": (BookProduct, "book_item"),
-        "perfumery": (PerfumeryProduct, "perfumery_item"),
-        "incense": (IncenseProduct, "incense_item"),
-    }
-
-    entry = product_type_map.get(product.product_type)
-    if not entry:
+    """URL фактической доменной карточки для любого зарегистрированного типа."""
+    if product is None:
         return None
-
-    model, rel_name = entry
-
-    # Пытаемся взять доменный объект через related_name (book_item, clothing_item и т.д.)
-    domain_obj = getattr(product, rel_name, None)
-
-    # Fallback: если по каким-то причинам related_name не сработал, ищем по base_product
-    if domain_obj is None:
-        try:
-            domain_obj = model.objects.filter(base_product=product).first()
-        except Exception:
-            domain_obj = None
-
-    if not domain_obj:
-        return None
-
+    domain_obj = product.domain_item
     try:
         return reverse(
-            f"admin:{model._meta.app_label}_{model._meta.model_name}_change",
+            f"admin:{domain_obj._meta.app_label}_{domain_obj._meta.model_name}_change",
             args=[domain_obj.pk],
         )
     except NoReverseMatch:
@@ -245,12 +238,13 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     # The production catalog contains thousands of products and categories.
     # Rendering all of them as <select> options on every log change page causes
     # large allocations in the already memory-constrained gunicorn workers.
-    raw_id_fields = ("product", "suggested_category", "processed_by")
+    raw_id_fields = ("suggested_category",)
     list_display = (
         "view_log_link",
         "id",
         "product_link",
-        "status",
+        "workflow_state",
+        "application_state",
         "processing_type",
         "celery_task_id",
         "created_at",
@@ -261,6 +255,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "status",
+        "application_status",
         "processing_type",
         "created_at",
         "processed_by",
@@ -270,6 +265,14 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     list_select_related = ("product",)
     date_hierarchy = "created_at"
     readonly_fields = (
+        "workflow_overview",
+        "change_preview",
+        "product",
+        "status",
+        "application_status",
+        "application_report_view",
+        "applied_at",
+        "processed_by",
         "created_at",
         "updated_at",
         "completed_at",
@@ -285,45 +288,87 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     )
     actions = (
         "apply_to_product",
+        "reject_results",
         "rerun_ai_full",
         "rerun_ai_description_only",
-        "mark_status_moderation",
-        "mark_status_approved",
-        "mark_status_rejected",
-        "clear_moderation_notes",
     )
 
     @admin.display(description="Celery task", ordering="created_at")
     def celery_task_id(self, obj):
         return str((obj.input_data or {}).get("celery_task_id") or "—")
 
+    @admin.display(description="Состояние", ordering="status")
+    def workflow_state(self, obj):
+        title, tone = get_workflow_title(obj)
+        colors = {
+            "success": ("#166534", "#dcfce7"),
+            "warning": ("#92400e", "#fef3c7"),
+            "danger": ("#991b1b", "#fee2e2"),
+            "info": ("#075985", "#e0f2fe"),
+            "neutral": ("#374151", "#f3f4f6"),
+        }
+        foreground, background = colors.get(tone, colors["neutral"])
+        return format_html(
+            '<span style="display:inline-block;padding:3px 8px;border-radius:999px;'
+            'font-weight:600;color:{};background:{};">{}</span>',
+            foreground,
+            background,
+            title,
+        )
+
+    @admin.display(description="Применение", ordering="application_status")
+    def application_state(self, obj):
+        return APPLICATION_LABELS.get(obj.application_status, obj.get_application_status_display())
+
     fieldsets = (
         (
-            "Основная информация",
+            "Состояние и товар",
             {
                 "fields": (
+                    "workflow_overview",
                     "product",
-                    "status",
                     "processing_type",
+                    "status",
+                    "application_status",
                     "processed_by",
-                )
+                    "moderation_date",
+                    "applied_at",
+                ),
             },
         ),
         (
-            "Результаты генерации",
+            "Что изменится в товаре",
+            {
+                "fields": ("change_preview",),
+                "description": (
+                    "Сравнение строится по фактической доменной карточке товара. "
+                    "Заблокированные поля сервис применения не запишет."
+                ),
+            },
+        ),
+        (
+            "Контент на русском",
             {
                 "fields": (
                     "generated_title",
                     "generated_description",
-                    "suggested_category",
-                    "category_confidence",
-                    "extracted_attributes",
                 ),
-                "description": "Все поля в блоках «Результаты генерации», «SEO» и «EN / OG» применяются к товару по кнопке «Сохранить и применить к товару».",
+                "description": "Можно исправить предложение AI перед применением.",
             },
         ),
         (
-            "SEO",
+            "Категория",
+            {
+                "fields": (
+                    "suggested_category",
+                    "category_confidence",
+                    "category_alternatives",
+                ),
+                "description": "Категория применяется только при уверенности не ниже 75%.",
+            },
+        ),
+        (
+            "SEO на русском",
             {
                 "fields": (
                     "generated_seo_title",
@@ -333,7 +378,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "EN / OG (применяются к переводам и карточке)",
+            "Контент и SEO на английском",
             {
                 "fields": (
                     "generated_en_title",
@@ -341,7 +386,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     "og_title",
                     "og_description",
                 ),
-                "description": "Эти поля попадают в перевод en и в og:title / og:description на карточке товара.",
+                "description": "Эти поля попадут в перевод EN и SEO/OG карточки.",
             },
         ),
         (
@@ -355,21 +400,35 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     "carat_weight",
                     "gender",
                 ),
-                "description": "Заполняются AI или вручную. При нажатии «Сохранить и применить к товару» записываются в карточку JewelryProduct.",
+                "description": "Этот блок отображается только для товаров типа «Украшения».",
+            },
+        ),
+        (
+            "Решение модератора",
+            {
+                "fields": ("moderation_notes",),
+                "description": (
+                    "Оставьте пояснение для коллег. Основная кнопка одновременно сохранит правки, "
+                    "применит разрешённые поля и закроет очередь при полном успехе."
+                ),
+            },
+        ),
+        (
+            "Извлечённые атрибуты (JSON)",
+            {
+                "classes": ("collapse",),
+                "fields": ("extracted_attributes",),
+                "description": (
+                    "Техническое редактирование атрибутов для всех категорий. "
+                    "Итоговые значения показаны в таблице сравнения выше."
+                ),
             },
         ),
         (
             "Анализ изображений",
-            {"fields": ("input_images_urls", "image_urls_failed_warning", "image_analysis")},
-        ),
-        (
-            "Модерация",
             {
-                "fields": ("moderation_notes", "moderation_date", "updated_at"),
-                "description": (
-                    "Оставьте заметки для себя или коллег. После правки сгенерированных полей "
-                    "нажмите «Сохранить и применить к товару» — изменения сразу уйдут в карточку."
-                ),
+                "classes": ("collapse",),
+                "fields": ("input_images_urls", "image_urls_failed_warning", "image_analysis"),
             },
         ),
         (
@@ -383,17 +442,18 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     "processing_time_ms",
                     "created_at",
                     "completed_at",
+                    "updated_at",
+                    "application_report_view",
                 ),
             },
         ),
         (
-            "Ответ LLM (для просмотра и правки выше)",
+            "Исходный ответ AI",
             {
-                "classes": (),
+                "classes": ("collapse",),
                 "fields": ("formatted_llm_content",),
                 "description": (
-                    "Ниже — ответ модели в удобном виде. Редактируйте поля в блоках «Результаты генерации» и «SEO» выше — "
-                    "именно они будут применены к товару по кнопке «Сохранить и применить к товару»."
+                    "Только для сверки. Источником применения служат редактируемые поля выше."
                 ),
             },
         ),
@@ -411,6 +471,137 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        product_type = getattr(getattr(obj, "product", None), "product_type", None)
+        if product_type != "jewelry":
+            fieldsets = [
+                fieldset
+                for fieldset in fieldsets
+                if fieldset[0] != "Атрибуты украшения (применяются к карточке товара)"
+            ]
+        return fieldsets
+
+    @admin.display(description="Итог обработки")
+    def workflow_overview(self, obj):
+        if not obj or not obj.pk:
+            return "—"
+        title, tone = get_workflow_title(obj)
+        colors = {
+            "success": ("#166534", "#dcfce7", "#86efac"),
+            "warning": ("#92400e", "#fef3c7", "#fcd34d"),
+            "danger": ("#991b1b", "#fee2e2", "#fca5a5"),
+            "info": ("#075985", "#e0f2fe", "#7dd3fc"),
+            "neutral": ("#374151", "#f3f4f6", "#d1d5db"),
+        }
+        foreground, background, border = colors.get(tone, colors["neutral"])
+        reasons = []
+        if obj.status in (AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION):
+            try:
+                reasons = get_moderation_reason_labels(obj)
+            except Exception as exc:
+                reasons = [f"Не удалось рассчитать причины: {exc}"]
+        product_url = _get_product_admin_url(obj.product)
+        product_link = escape(obj.product.name)
+        if product_url:
+            product_link = (
+                f'<a href="{escape(product_url)}" target="_blank" rel="noopener" '
+                f'style="font-weight:700;">{escape(obj.product.name)} ↗</a>'
+            )
+        reason_html = ""
+        if reasons:
+            reason_html = (
+                '<ul style="margin:8px 0 0 18px;">'
+                + "".join(f"<li>{escape(reason)}</li>" for reason in reasons)
+                + "</ul>"
+            )
+        application_label = APPLICATION_LABELS.get(
+            obj.application_status,
+            obj.get_application_status_display(),
+        )
+        return mark_safe(
+            f'<div class="ai-workflow-card" style="padding:14px 16px;border:1px solid {border};'
+            f'border-left:5px solid {border};background:{background};color:{foreground};'
+            'border-radius:6px;max-width:1100px;">'
+            f'<div style="font-size:17px;font-weight:800;">{escape(title)}</div>'
+            f'<div style="margin-top:6px;color:inherit;">Товар: {product_link}</div>'
+            f'<div style="margin-top:3px;color:inherit;">Тип: '
+            f'{escape(obj.product.get_product_type_display())} · Применение: '
+            f'<strong>{escape(application_label)}</strong></div>'
+            f'{reason_html}</div>'
+        )
+
+    @admin.display(description="Сравнение текущего товара и результата AI")
+    def change_preview(self, obj):
+        if not obj or not obj.pk:
+            return "—"
+        try:
+            rows = build_change_preview(obj)
+        except Exception as exc:
+            return format_html(
+                '<div style="color:#991b1b;background:#fee2e2;padding:10px;border-radius:4px;">'
+                "Не удалось построить сравнение: {}</div>",
+                str(exc),
+            )
+        if not rows:
+            return mark_safe(
+                '<div style="padding:10px;background:#f3f4f6;border-radius:4px;">'
+                "AI не предложил полей, которые поддерживает текущий обработчик товара.</div>"
+            )
+        decision_colors = {
+            "apply": ("#166534", "#dcfce7"),
+            "unchanged": ("#374151", "#f3f4f6"),
+            "blocked": ("#991b1b", "#fee2e2"),
+            "preserved": ("#92400e", "#fef3c7"),
+            "empty": ("#6b7280", "#f9fafb"),
+        }
+        body = []
+        previous_section = None
+        for row in rows:
+            if row.section != previous_section:
+                body.append(
+                    '<tr class="ai-preview-section"><th colspan="4" '
+                    'style="text-align:left;padding:9px 10px;background:#e5e7eb;color:#111827;">'
+                    f'{escape(row.section)}</th></tr>'
+                )
+                previous_section = row.section
+            foreground, background = decision_colors.get(
+                row.decision,
+                decision_colors["unchanged"],
+            )
+            reason = (
+                f'<div style="font-size:11px;margin-top:3px;">{escape(row.reason)}</div>'
+                if row.reason
+                else ""
+            )
+            body.append(
+                "<tr>"
+                f'<td style="font-weight:650;min-width:150px;">{escape(row.label)}</td>'
+                f'<td><div class="ai-preview-value">{escape(row.current)}</div></td>'
+                f'<td><div class="ai-preview-value">{escape(row.proposed)}</div></td>'
+                f'<td><span style="display:inline-block;padding:3px 7px;border-radius:999px;'
+                f'font-weight:650;color:{foreground};background:{background};">'
+                f'{escape(row.decision_label)}</span>{reason}</td>'
+                "</tr>"
+            )
+        return mark_safe(
+            '<div class="ai-preview-wrap" style="overflow-x:auto;max-width:1200px;">'
+            '<table class="ai-preview-table" style="width:100%;border-collapse:collapse;">'
+            '<thead><tr><th>Поле</th><th>Сейчас в товаре</th><th>Предложение AI</th>'
+            '<th>Что произойдёт</th></tr></thead><tbody>'
+            + "".join(body)
+            + "</tbody></table></div>"
+        )
+
+    @admin.display(description="Последний отчёт применения")
+    def application_report_view(self, obj):
+        if not obj or not obj.application_report:
+            return "—"
+        return format_html(
+            '<pre style="white-space:pre-wrap;max-height:260px;overflow:auto;">{}</pre>',
+            json.dumps(obj.application_report, ensure_ascii=False, indent=2),
+        )
 
     def formatted_llm_content(self, obj):
         """
@@ -501,32 +692,96 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     formatted_llm_content.short_description = "Ответ LLM (читабельный вид)"
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
-        """Добавляем кнопку «Сохранить и применить к товару» в форму лога."""
+        """Добавить контекст однозначных действий модератора."""
         extra_context = extra_context or {}
-        extra_context["show_save_and_apply"] = True
+        obj = self.get_object(request, object_id)
+        if obj is not None:
+            extra_context.update(
+                {
+                    "can_review_and_apply": obj.status
+                    in (
+                        AIProcessingStatus.COMPLETED,
+                        AIProcessingStatus.MODERATION,
+                        AIProcessingStatus.APPROVED,
+                    ),
+                    "can_reject_result": obj.status
+                    in (AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION),
+                    "can_rerun_ai": obj.status
+                    not in (AIProcessingStatus.PENDING, AIProcessingStatus.PROCESSING),
+                    "is_reapply": obj.status == AIProcessingStatus.APPROVED,
+                    "product_admin_url": _get_product_admin_url(obj.product),
+                }
+            )
         return super().change_view(request, object_id, form_url, extra_context)
 
     def response_change(self, request, obj):
-        """Обрабатываем нажатие кнопки «Сохранить и применить к товару»."""
+        """Обработать review/apply, reject и re-run из формы лога."""
         if "_save_and_apply" in request.POST:
-            # Применяем отредактированные AI-данные к товару
-            if obj.status not in (AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION):
+            if obj.status not in (
+                AIProcessingStatus.COMPLETED,
+                AIProcessingStatus.MODERATION,
+                AIProcessingStatus.APPROVED,
+            ):
                 messages.warning(
                     request,
                     f"Лог #{obj.id}: применение невозможно — статус «{obj.get_status_display()}». "
-                    "Нужен статус «Завершено» или «На модерации».",
+                    "Нужен завершённый, проверяемый или уже применённый результат.",
                 )
                 return self._response_post_save(request, obj)
             try:
                 from .services.content_generator import ContentGenerator
                 gen = ContentGenerator()
-                gen.apply_log_to_product(obj, user=request.user)
-                messages.success(
-                    request,
-                    f"Лог #{obj.id}: результаты применены к товару «{obj.product.name}».",
+                gen.apply_log_to_product(
+                    obj,
+                    user=request.user,
+                    allow_approved=True,
                 )
+                if obj.application_status == AIApplicationStatus.PARTIAL:
+                    rejected = (obj.application_report or {}).get("rejected_fields") or []
+                    messages.warning(
+                        request,
+                        f"Лог #{obj.id}: безопасные поля применены, но результат остался "
+                        f"на модерации. Заблокировано полей: {len(rejected)}.",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"Лог #{obj.id}: проверено и применено к товару «{obj.product.name}». "
+                        "Очередь модерации закрыта.",
+                    )
             except Exception as e:
                 messages.error(request, f"Ошибка при применении: {e}")
+            return self._response_post_save(request, obj)
+        if "_reject_result" in request.POST:
+            try:
+                reject_log(
+                    obj,
+                    user=request.user,
+                    notes=obj.moderation_notes or "",
+                )
+                messages.success(request, f"Лог #{obj.id}: результат отклонён.")
+            except ValueError as exc:
+                messages.warning(request, str(exc))
+            return self._response_post_save(request, obj)
+        if "_rerun_ai" in request.POST:
+            from .tasks import enqueue_product_ai_task
+
+            try:
+                queued_log, _task_id, submitted = enqueue_product_ai_task(
+                    product_id=obj.product_id,
+                    processing_type=obj.processing_type,
+                    auto_apply=False,
+                    force=True,
+                )
+                if submitted:
+                    messages.success(
+                        request,
+                        f"Создан новый AI-лог #{queued_log.id}; результат не будет применён автоматически.",
+                    )
+                else:
+                    messages.warning(request, "Повторный запуск уже находится в очереди.")
+            except Exception as exc:
+                messages.error(request, f"Не удалось перезапустить AI: {exc}")
             return self._response_post_save(request, obj)
         return super().response_change(request, obj)
 
@@ -590,21 +845,33 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     image_urls_failed_warning.short_description = "Предупреждение: недоступные изображения"
 
     def apply_to_product(self, request, queryset):
-        """Применить результат AI к товару (описание, SEO, авторы и т.д.)."""
+        """Проверить и применить результат AI к товару."""
         from .services.content_generator import ContentGenerator
         gen = ContentGenerator()
         applied = 0
+        partial = 0
+        skipped = 0
         for log in queryset:
             if log.status not in (
                 AIProcessingStatus.COMPLETED,
                 AIProcessingStatus.MODERATION,
+                AIProcessingStatus.APPROVED,
             ):
+                skipped += 1
                 continue
             if not log.product_id:
+                skipped += 1
                 continue
             try:
-                gen.apply_log_to_product(log, user=request.user)
-                applied += 1
+                gen.apply_log_to_product(
+                    log,
+                    user=request.user,
+                    allow_approved=True,
+                )
+                if log.application_status == AIApplicationStatus.PARTIAL:
+                    partial += 1
+                else:
+                    applied += 1
             except Exception as e:
                 messages.error(
                     request,
@@ -613,10 +880,33 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         if applied:
             messages.success(
                 request,
-                f"Результаты применены к {applied} товарам.",
+                f"Проверено и полностью применено к товарам: {applied}.",
             )
+        if partial:
+            messages.warning(
+                request,
+                f"Частично применено, очередь оставлена открытой: {partial}.",
+            )
+        if skipped:
+            messages.info(request, f"Пропущено логов с неподходящим статусом: {skipped}.")
 
-    apply_to_product.short_description = "Применить результат к товару"
+    apply_to_product.short_description = "Проверено — применить к товару"
+
+    def reject_results(self, request, queryset):
+        rejected = 0
+        skipped = 0
+        for log in queryset.select_related("product"):
+            try:
+                reject_log(log, user=request.user)
+                rejected += 1
+            except ValueError:
+                skipped += 1
+        if rejected:
+            messages.success(request, f"Отклонено результатов: {rejected}.")
+        if skipped:
+            messages.info(request, f"Пропущено логов с неподходящим статусом: {skipped}.")
+
+    reject_results.short_description = "Отклонить результат"
 
     def rerun_ai_full(self, request, queryset):
         from .tasks import enqueue_product_ai_task
@@ -634,7 +924,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         messages.success(
             request,
             f"Запущена AI обработка (full) для {len(product_ids)} товаров. "
-            "Результаты появятся в логах; применить к товару — вручную после одобрения.",
+            "Результаты появятся в логах; применить к товару — вручную после проверки.",
         )
 
     rerun_ai_full.short_description = (
@@ -656,53 +946,13 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             )
         message = (
             "Запущена AI обработка (description_only) для "
-            f"{len(product_ids)} товаров. Результаты в логах; применить — вручную после одобрения."
+            f"{len(product_ids)} товаров. Результаты в логах; применить — вручную после проверки."
         )
         messages.success(request, message)
 
     rerun_ai_description_only.short_description = (
         "Перезапустить AI (description_only) по товарам"
     )
-
-    def mark_status_moderation(self, request, queryset):
-        updated = queryset.update(
-            status="moderation",
-            moderation_date=timezone.now(),
-        )
-        messages.success(request, f"Отправлено на модерацию: {updated}")
-
-    mark_status_moderation.short_description = "Отправить в модерацию"
-
-    def mark_status_approved(self, request, queryset):
-        updated = queryset.update(
-            status="approved",
-            moderation_date=timezone.now(),
-        )
-        messages.success(request, f"Одобрено: {updated}")
-
-    mark_status_approved.short_description = "Одобрить"
-
-    def mark_status_rejected(self, request, queryset):
-        updated = queryset.update(
-            status="rejected",
-            moderation_date=timezone.now(),
-        )
-        messages.success(request, f"Отклонено: {updated}")
-
-    mark_status_rejected.short_description = "Отклонить"
-
-    def clear_moderation_notes(self, request, queryset):
-        updated = queryset.update(
-            moderation_notes="",
-            moderation_date=None,
-        )
-        messages.success(
-            request,
-            f"Очищены заметки модератора: {updated}",
-        )
-
-    clear_moderation_notes.short_description = "Очистить заметки модератора"
-
 
 @admin.register(AITemplate)
 class AITemplateAdmin(admin.ModelAdmin):
@@ -733,13 +983,21 @@ class AIModerationQueueAdmin(admin.ModelAdmin):
         "id",
         "log_link",
         "product_link",
+        "log_status",
+        "application_state",
         "priority",
-        "reason",
+        "human_reason",
         "assigned_to",
         "created_at",
         "resolved_at",
     )
-    list_filter = ("priority", "created_at", "assigned_to", "reason")
+    list_filter = (
+        "priority",
+        "created_at",
+        "assigned_to",
+        "reason",
+        ("resolved_at", admin.EmptyFieldListFilter),
+    )
     list_select_related = (
         "log_entry",
         "assigned_to",
@@ -747,7 +1005,6 @@ class AIModerationQueueAdmin(admin.ModelAdmin):
     )
     date_hierarchy = "created_at"
     actions = (
-        "mark_resolved_now",
         "set_priority_low",
         "set_priority_medium",
         "set_priority_high",
@@ -755,7 +1012,8 @@ class AIModerationQueueAdmin(admin.ModelAdmin):
 
     def log_link(self, obj):
         return format_html(
-            '<a href="/admin/ai/aiprocessinglog/{}/change/">Log #{}</a>',
+            '<a href="/admin/ai/aiprocessinglog/{}/change/" style="font-weight:700;">'
+            "Проверить результат #{}</a>",
             obj.log_entry.id,
             obj.log_entry.id,
         )
@@ -777,11 +1035,23 @@ class AIModerationQueueAdmin(admin.ModelAdmin):
 
     product_link.short_description = "Товар"
 
-    def mark_resolved_now(self, request, queryset):
-        updated = queryset.update(resolved_at=timezone.now())
-        messages.success(request, f"Отмечено как решено: {updated}")
+    @admin.display(description="Состояние AI", ordering="log_entry__status")
+    def log_status(self, obj):
+        title, _tone = get_workflow_title(obj.log_entry)
+        return title
 
-    mark_resolved_now.short_description = "Отметить как решено"
+    @admin.display(description="Применение", ordering="log_entry__application_status")
+    def application_state(self, obj):
+        return APPLICATION_LABELS.get(
+            obj.log_entry.application_status,
+            obj.log_entry.get_application_status_display(),
+        )
+
+    @admin.display(description="Причина", ordering="reason")
+    def human_reason(self, obj):
+        from .services.moderation import MODERATION_REASON_LABELS
+
+        return MODERATION_REASON_LABELS.get(obj.reason, obj.reason)
 
     def set_priority_low(self, request, queryset):
         updated = queryset.update(priority=1)

@@ -49,15 +49,28 @@ def check_needs_moderation(log: AIProcessingLog) -> bool:
     return bool(get_moderation_reasons(log))
 
 
-def create_moderation_task(log: AIProcessingLog) -> None:
-    """Создать запись в очереди модерации для лога."""
-    if getattr(log, "moderation_queue", None):
-        return
-
-    reasons = get_moderation_reasons(log)
+def create_moderation_task(
+    log: AIProcessingLog,
+    reasons: List[str] | None = None,
+) -> None:
+    """Создать или повторно открыть запись в очереди модерации для лога."""
+    reasons = reasons if reasons is not None else get_moderation_reasons(log)
     reason = reasons[0] if reasons else "manual_review"
     priority = 2 if reason in {"low_confidence", "title_category_mismatch", "untranslated_attribute"} else 3
-    AIModerationQueue.objects.get_or_create(
+    task, created = AIModerationQueue.objects.get_or_create(
         log_entry=log,
         defaults={"priority": priority, "reason": reason},
     )
+    if not created:
+        update_fields = []
+        if task.reason != reason:
+            task.reason = reason
+            update_fields.append("reason")
+        if task.priority != priority:
+            task.priority = priority
+            update_fields.append("priority")
+        if task.resolved_at is not None:
+            task.resolved_at = None
+            update_fields.append("resolved_at")
+        if update_fields:
+            task.save(update_fields=update_fields)

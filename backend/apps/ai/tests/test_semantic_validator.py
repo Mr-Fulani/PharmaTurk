@@ -1,6 +1,11 @@
 import pytest
 
-from apps.ai.models import AIModerationQueue, AIProcessingLog, AIProcessingStatus
+from apps.ai.models import (
+    AIApplicationStatus,
+    AIModerationQueue,
+    AIProcessingLog,
+    AIProcessingStatus,
+)
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidator
@@ -161,4 +166,6 @@ def test_partial_apply_keeps_rejected_title_but_applies_valid_content_and_modera
     assert furniture.translations.get(locale="en").name == "TONSTAD/LINDBÅDEN bed base"
     assert furniture.translations.get(locale="en").description == "New valid English description"
     assert log.status == AIProcessingStatus.MODERATION
-    assert AIModerationQueue.objects.filter(log_entry=log).exists()
+    assert log.application_status == AIApplicationStatus.PARTIAL
+    moderation_task = AIModerationQueue.objects.get(log_entry=log)
+    assert moderation_task.resolved_at is None

@@ -29,7 +29,12 @@ from apps.catalog.utils.variant_titles import (
     translate_common_color,
 )
 from apps.catalog.utils.tr_vocab import TR_COLOR_DICTIONARY
-from apps.ai.models import AIProcessingLog, AIProcessingStatus, AITemplate
+from apps.ai.models import (
+    AIApplicationStatus,
+    AIProcessingLog,
+    AIProcessingStatus,
+    AITemplate,
+)
 from apps.ai.services.llm_client import LLMClient
 from apps.ai.services.media_processor import R2MediaProcessor
 from apps.ai.services.variant_detector import VariantContentDetector
@@ -177,8 +182,21 @@ class ContentGenerator:
                             e,
                         )
                         existing_log.status = AIProcessingStatus.FAILED
+                        existing_log.application_status = AIApplicationStatus.FAILED
+                        existing_log.application_report = {
+                            "error": str(e),
+                            "result": AIApplicationStatus.FAILED,
+                        }
                         existing_log.error_message = f"Error applying changes: {str(e)}"
-                        existing_log.save(update_fields=["status", "error_message", "updated_at"])
+                        existing_log.save(
+                            update_fields=[
+                                "status",
+                                "application_status",
+                                "application_report",
+                                "error_message",
+                                "updated_at",
+                            ]
+                        )
                 else:
                     logger.info(f"Product {product_id} already processed (log {existing_log.id}), skipping.")
                     return existing_log
@@ -349,8 +367,21 @@ class ContentGenerator:
                 except Exception as e:
                     logger.exception(f"Error applying AI changes to product {product_id}: {e}")
                     log_entry.status = AIProcessingStatus.FAILED
+                    log_entry.application_status = AIApplicationStatus.FAILED
+                    log_entry.application_report = {
+                        "error": str(e),
+                        "result": AIApplicationStatus.FAILED,
+                    }
                     log_entry.error_message = f"Error applying changes: {str(e)}"
-                    log_entry.save(update_fields=["status", "error_message", "updated_at"])
+                    log_entry.save(
+                        update_fields=[
+                            "status",
+                            "application_status",
+                            "application_report",
+                            "error_message",
+                            "updated_at",
+                        ]
+                    )
                     raise
             else:
                 # Без авто-применения: проверяем нужна ли ручная модерация
@@ -2394,8 +2425,12 @@ class ContentGenerator:
     def _check_needs_moderation(self, log: AIProcessingLog) -> bool:
         return check_needs_moderation(log)
 
-    def _create_moderation_task(self, log: AIProcessingLog) -> None:
-        create_moderation_task(log)
+    def _create_moderation_task(
+        self,
+        log: AIProcessingLog,
+        reasons: list[str] | None = None,
+    ) -> None:
+        create_moderation_task(log, reasons=reasons)
 
     def _log_has_applicable_content(self, log: AIProcessingLog) -> bool:
         """Проверяет, есть ли в логе реальный результат для авто-применения."""
@@ -2470,24 +2505,77 @@ class ContentGenerator:
                 "(описание/SEO/переводы пустые)."
             )
 
+        review_reasons = get_moderation_reasons(log)
         semantic_report = SemanticValidator().validate_log(log)
-        self._apply_changes_to_product(
-            log.product,
-            log,
-            rejected_fields=semantic_report.rejected_fields,
-        )
-        log.status = (
-            AIProcessingStatus.MODERATION
-            if semantic_report.needs_moderation
-            else AIProcessingStatus.APPROVED
-        )
-        if user is not None:
-            log.processed_by = user
-        log.moderation_date = timezone.now()
-        log.error_message = ""
-        log.save(update_fields=["status", "processed_by", "moderation_date", "error_message", "updated_at"])
-        if semantic_report.needs_moderation:
-            self._create_moderation_task(log)
+        applied_at = timezone.now()
+        try:
+            with transaction.atomic():
+                product_updated = bool(
+                    self._apply_changes_to_product(
+                        log.product,
+                        log,
+                        rejected_fields=semantic_report.rejected_fields,
+                    )
+                )
+                is_partial = semantic_report.needs_moderation
+                log.status = (
+                    AIProcessingStatus.MODERATION
+                    if is_partial
+                    else AIProcessingStatus.APPROVED
+                )
+                log.application_status = (
+                    AIApplicationStatus.PARTIAL
+                    if is_partial
+                    else AIApplicationStatus.APPLIED
+                )
+                log.application_report = {
+                    "result": log.application_status,
+                    "product_updated": product_updated,
+                    "product_type": log.product.product_type,
+                    "review_reasons_before_apply": review_reasons,
+                    "semantic_reasons": semantic_report.reasons,
+                    "rejected_fields": sorted(semantic_report.rejected_fields),
+                    "applied_at": applied_at.isoformat(),
+                }
+                log.applied_at = applied_at
+                if user is not None:
+                    log.processed_by = user
+                log.moderation_date = applied_at
+                log.error_message = ""
+                log.save(
+                    update_fields=[
+                        "status",
+                        "application_status",
+                        "application_report",
+                        "applied_at",
+                        "processed_by",
+                        "moderation_date",
+                        "error_message",
+                        "updated_at",
+                    ]
+                )
+                if is_partial:
+                    self._create_moderation_task(log, reasons=semantic_report.reasons)
+                else:
+                    moderation_task = getattr(log, "moderation_queue", None)
+                    if moderation_task and moderation_task.resolved_at is None:
+                        moderation_task.resolved_at = applied_at
+                        moderation_task.save(update_fields=["resolved_at"])
+        except Exception as exc:
+            log.application_status = AIApplicationStatus.FAILED
+            log.application_report = {
+                "result": AIApplicationStatus.FAILED,
+                "error": str(exc),
+                "failed_at": timezone.now().isoformat(),
+            }
+            log.save(
+                update_fields=[
+                    "application_status",
+                    "application_report",
+                    "updated_at",
+                ]
+            )
+            raise
         return log
 
     def _apply_changes_to_product(
@@ -2574,7 +2662,7 @@ class ContentGenerator:
             ai_data["translations"]["en"].pop("name", None)
 
         # Делегируем применение результатов специализированному сервису
-        self.result_applier.apply_to_product(
+        return self.result_applier.apply_to_product(
             product,
             ai_data,
             rejected_fields=rejected_fields,

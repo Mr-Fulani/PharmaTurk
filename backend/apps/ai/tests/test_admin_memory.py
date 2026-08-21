@@ -12,8 +12,9 @@ def test_ai_processing_log_admin_avoids_large_foreign_key_selects():
 
     form_class = model_admin.get_form(request)
 
-    for field_name in ('product', 'suggested_category', 'processed_by'):
-        assert isinstance(
-            form_class.base_fields[field_name].widget,
-            ForeignKeyRawIdWidget,
-        )
+    assert "product" not in form_class.base_fields
+    assert "processed_by" not in form_class.base_fields
+    assert isinstance(
+        form_class.base_fields["suggested_category"].widget,
+        ForeignKeyRawIdWidget,
+    )

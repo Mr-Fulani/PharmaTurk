@@ -1,0 +1,265 @@
+import json
+from unittest.mock import patch
+
+import pytest
+from rest_framework.test import APIRequestFactory, force_authenticate
+
+from apps.ai.admin import AIProcessingLogForm, AIProcessingLogAdmin, _get_product_admin_url
+from apps.ai.models import (
+    AIApplicationStatus,
+    AIModerationQueue,
+    AIProcessingLog,
+    AIProcessingStatus,
+)
+from apps.ai.services.content_generator import ContentGenerator
+from apps.ai.services.moderation import build_change_preview, reject_log
+from apps.ai.services.result_applier import AIResultApplier
+from apps.ai.views import AIProcessingLogViewSet
+from apps.catalog.models import (
+    AccessoryProduct,
+    AutoPartProduct,
+    ElectronicsProduct,
+    HeadwearProduct,
+    IslamicClothingProduct,
+    JewelryProduct,
+    SportsProduct,
+    UnderwearProduct,
+)
+
+
+pytestmark = pytest.mark.django_db
+
+
+def _generator():
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator.result_applier = AIResultApplier()
+    return generator
+
+
+def _reviewable_log(product, **overrides):
+    data = {
+        "product": product,
+        "processing_type": "full",
+        "status": AIProcessingStatus.COMPLETED,
+        "input_data": {},
+        "generated_title": "Новое проверенное название MODEL-101",
+        "generated_description": " ".join(["Подробное описание товара"] * 10),
+        "generated_seo_title": "SEO заголовок товара",
+        "generated_seo_description": "Подробное SEO описание товара для каталога.",
+        "generated_keywords": ["товар", "каталог"],
+        "extracted_attributes": {
+            "seo_translations": {
+                "ru": {
+                    "generated_title": "Новое проверенное название MODEL-101",
+                    "generated_description": " ".join(["Подробное описание товара"] * 10),
+                    "meta_title": "SEO заголовок товара",
+                    "meta_description": "Подробное SEO описание товара для каталога.",
+                },
+                "en": {
+                    "generated_title": "Verified product MODEL-101",
+                    "generated_description": "Detailed English product description.",
+                    "meta_title": "Product SEO title",
+                    "meta_description": "Detailed product SEO description.",
+                },
+            }
+        },
+    }
+    data.update(overrides)
+    return AIProcessingLog.objects.create(**data)
+
+
+def test_full_apply_tracks_application_and_resolves_existing_queue():
+    accessory = AccessoryProduct.objects.create(
+        name="MODEL-101 ремень",
+        slug="moderation-full-apply-accessory",
+        description="Старое описание",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product)
+    queue = AIModerationQueue.objects.create(
+        log_entry=log,
+        reason="short_description",
+        priority=3,
+    )
+
+    _generator().apply_log_to_product(log)
+
+    log.refresh_from_db()
+    queue.refresh_from_db()
+    assert log.status == AIProcessingStatus.APPROVED
+    assert log.application_status == AIApplicationStatus.APPLIED
+    assert log.applied_at is not None
+    assert log.application_report["result"] == AIApplicationStatus.APPLIED
+    assert queue.resolved_at is not None
+
+
+def test_reject_closes_queue_without_claiming_product_was_applied():
+    accessory = AccessoryProduct.objects.create(
+        name="Rejected accessory",
+        slug="moderation-rejected-accessory",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product)
+    queue = AIModerationQueue.objects.create(
+        log_entry=log,
+        reason="manual_review",
+    )
+
+    reject_log(log, notes="Описание не соответствует товару")
+
+    log.refresh_from_db()
+    queue.refresh_from_db()
+    assert log.status == AIProcessingStatus.REJECTED
+    assert log.application_status == AIApplicationStatus.NOT_APPLIED
+    assert log.moderation_notes == "Описание не соответствует товару"
+    assert queue.resolved_at is not None
+
+
+def test_approve_api_returns_the_actual_application_result(django_user_model):
+    accessory = AccessoryProduct.objects.create(
+        name="MODEL-101 API accessory",
+        slug="moderation-api-accessory",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product)
+    user = django_user_model.objects.create_user(
+        username="ai-moderator",
+        password="test-password",
+        is_staff=True,
+    )
+    request = APIRequestFactory().post(f"/api/ai/logs/{log.pk}/approve/", {}, format="json")
+    force_authenticate(request, user=user)
+
+    with patch("apps.ai.services.content_generator.ContentGenerator") as generator_class:
+        generator_class.return_value.apply_log_to_product.side_effect = (
+            lambda target_log, user: _generator().apply_log_to_product(target_log, user=user)
+        )
+        response = AIProcessingLogViewSet.as_view({"post": "approve"})(request, pk=log.pk)
+
+    assert response.status_code == 200
+    assert response.data == {
+        "status": AIProcessingStatus.APPROVED,
+        "application_status": AIApplicationStatus.APPLIED,
+        "partial": False,
+    }
+
+
+def test_preview_is_read_only_and_uses_actual_domain_product():
+    accessory = AccessoryProduct.objects.create(
+        name="Current MODEL-101",
+        slug="moderation-preview-accessory",
+        description="Current description",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product)
+
+    rows = build_change_preview(log)
+
+    accessory.refresh_from_db()
+    assert accessory.name == "Current MODEL-101"
+    assert any(row.label == "Название" and row.decision == "apply" for row in rows)
+    assert any(row.section == "Контент EN" for row in rows)
+
+
+def test_non_jewelry_form_hides_and_does_not_process_jewelry_fields():
+    accessory = AccessoryProduct.objects.create(
+        name="Accessory form",
+        slug="moderation-accessory-form",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product)
+
+    form = AIProcessingLogForm(instance=log)
+
+    assert not set(form.fields).intersection(
+        {"jewelry_type", "material", "metal_purity", "stone_type", "carat_weight", "gender"}
+    )
+
+
+def test_jewelry_form_keeps_specialized_fields():
+    jewelry = JewelryProduct.objects.create(
+        name="Jewelry form",
+        slug="moderation-jewelry-form",
+    )
+    jewelry.refresh_from_db()
+    log = _reviewable_log(jewelry.base_product)
+
+    form = AIProcessingLogForm(instance=log)
+
+    assert {"jewelry_type", "material", "metal_purity", "stone_type"}.issubset(form.fields)
+
+
+def test_form_synchronizes_visible_ru_edits_with_nested_apply_payload():
+    accessory = AccessoryProduct.objects.create(
+        name="RU edit accessory",
+        slug="moderation-ru-edit-accessory",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product)
+    data = {
+        "product": log.product_id,
+        "processing_type": log.processing_type,
+        "status": log.status,
+        "application_status": log.application_status,
+        "input_data": '{"source": "test"}',
+        "input_images_urls": "[]",
+        "generated_title": "Исправленное название RU",
+        "generated_description": "Исправленное описание RU",
+        "generated_seo_title": "Исправленный SEO RU",
+        "generated_seo_description": "Исправленное SEO описание RU",
+        "generated_keywords": '["исправлено"]',
+        "category_alternatives": '[{"name": "Аксессуары"}]',
+        "extracted_attributes": json.dumps(log.extracted_attributes, ensure_ascii=False),
+        "image_analysis": "{}",
+        "llm_model": log.llm_model,
+        "tokens_used": '{"total": 0}',
+        "application_report": "{}",
+        "generated_en_title": "Verified product MODEL-101",
+        "generated_en_description": "Detailed English product description.",
+        "og_title": "",
+        "og_description": "",
+    }
+    form = AIProcessingLogForm(data=data, instance=log)
+
+    assert form.is_valid(), form.errors
+    # Django Admin calls ModelForm.save(commit=False), then save_model().
+    saved = form.save(commit=False)
+    saved.save()
+    ru = saved.extracted_attributes["seo_translations"]["ru"]
+    assert ru["generated_title"] == "Исправленное название RU"
+    assert ru["generated_description"] == "Исправленное описание RU"
+    assert ru["meta_title"] == "Исправленный SEO RU"
+    assert ru["meta_keywords"] == ["исправлено"]
+
+
+@pytest.mark.parametrize(
+    "model",
+    (
+        ElectronicsProduct,
+        SportsProduct,
+        AutoPartProduct,
+        HeadwearProduct,
+        UnderwearProduct,
+        IslamicClothingProduct,
+    ),
+)
+def test_admin_product_link_supports_every_previously_unmapped_domain(model):
+    domain = model.objects.create(
+        name=f"Admin link {model.__name__}",
+        slug=f"moderation-admin-{model._meta.model_name}",
+    )
+    domain.refresh_from_db()
+
+    url = _get_product_admin_url(domain.base_product)
+
+    assert url is not None
+    assert model._meta.model_name in url
+
+
+def test_admin_exposes_only_unambiguous_bulk_actions():
+    assert AIProcessingLogAdmin.actions == (
+        "apply_to_product",
+        "reject_results",
+        "rerun_ai_full",
+        "rerun_ai_description_only",
+    )

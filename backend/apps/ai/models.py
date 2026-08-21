@@ -11,6 +11,21 @@ class AIProcessingStatus(models.TextChoices):
     APPROVED = 'approved', 'Одобрено'
     REJECTED = 'rejected', 'Отклонено'
 
+
+class AIApplicationStatus(models.TextChoices):
+    """Отдельное состояние переноса AI-результата в карточку товара.
+
+    ``AIProcessingStatus`` оставлен без изменений для обратной совместимости:
+    его используют очередь, API, Celery и существующие отчёты. Это поле отвечает
+    только на отдельный вопрос — были ли данные реально записаны в товар.
+    """
+
+    UNKNOWN = 'unknown', 'Неизвестно (старый лог)'
+    NOT_APPLIED = 'not_applied', 'Не применено'
+    PARTIAL = 'partial', 'Применено частично'
+    APPLIED = 'applied', 'Применено'
+    FAILED = 'failed', 'Ошибка применения'
+
 class AIProcessingLog(models.Model):
     """
     Полный лог AI обработки товара.
@@ -51,6 +66,24 @@ class AIProcessingLog(models.Model):
         choices=AIProcessingStatus.choices,
         default=AIProcessingStatus.PENDING,
         verbose_name='Статус'
+    )
+    application_status = models.CharField(
+        max_length=20,
+        choices=AIApplicationStatus.choices,
+        default=AIApplicationStatus.NOT_APPLIED,
+        db_index=True,
+        verbose_name='Применение к товару',
+    )
+    application_report = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name='Отчёт применения',
+        help_text='Итог применения: изменён ли товар, отклонённые поля и причины.',
+    )
+    applied_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Дата применения',
     )
 
     # Входные данные (сохраняем полностью для воспроизводимости)

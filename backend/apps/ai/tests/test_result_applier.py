@@ -1,7 +1,7 @@
 import pytest
 from django.db import IntegrityError, transaction
 
-from apps.ai.models import AIProcessingLog
+from apps.ai.models import AIApplicationStatus, AIProcessingLog
 from apps.ai.models import AIProcessingStatus
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.result_applier import AIResultApplier
@@ -270,6 +270,7 @@ def test_auto_apply_existing_completed_log_applies_saved_medicine_seo():
 
     medicine.refresh_from_db()
     assert log.status == AIProcessingStatus.APPROVED
+    assert log.application_status == AIApplicationStatus.APPLIED
     assert medicine.meta_title == "English SEO"
     assert medicine.meta_description == "English SEO description"
     assert medicine.translations.get(locale="ru").meta_title == "Русский SEO"

@@ -5896,6 +5896,18 @@ components:
           allOf:
           - $ref: '#/components/schemas/AIProcessingStatusEnum'
           title: Статус
+        application_status:
+          allOf:
+          - $ref: '#/components/schemas/AIApplicationStatusEnum'
+          title: Применение к товару
+        application_report:
+          title: Отчёт применения
+          description: 'Итог применения: изменён ли товар, отклонённые поля и причины.'
+        applied_at:
+          type: string
+          format: date-time
+          nullable: true
+          title: Дата применения
         input_data:
           title: Входные данные
           description: 'Сырые данные от парсера: title, description, specs, images_urls
@@ -6027,6 +6039,11 @@ components:
           - $ref: '#/components/schemas/AIProcessingStatusEnum'
           readOnly: true
           title: Статус
+        application_status:
+          allOf:
+          - $ref: '#/components/schemas/AIApplicationStatusEnum'
+          readOnly: true
+          title: Применение к товару
         processing_type:
           allOf:
           - $ref: '#/components/schemas/ProcessingTypeEnum'
@@ -6058,7 +6075,14 @@ components:
           format: date-time
           readOnly: true
           nullable: true
+        applied_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
       required:
+      - application_status
+      - applied_at
       - category_confidence
       - completed_at
       - created_at
@@ -6069,6 +6093,20 @@ components:
       - product
       - product_name
       - status
+    AIApplicationStatusEnum:
+      enum:
+      - unknown
+      - not_applied
+      - partial
+      - applied
+      - failed
+      type: string
+      description: |-
+        * `unknown` - Неизвестно (старый лог)
+        * `not_applied` - Не применено
+        * `partial` - Применено частично
+        * `applied` - Применено
+        * `failed` - Ошибка применения
     AIProcessingStatusEnum:
       enum:
       - pending

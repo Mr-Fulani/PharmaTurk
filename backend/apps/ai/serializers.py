@@ -12,12 +12,14 @@ class AIProcessingLogSerializer(serializers.ModelSerializer):
             "product",
             "product_name",
             "status",
+            "application_status",
             "processing_type",
             "generated_title",
             "generated_description",
             "category_confidence",
             "created_at",
             "completed_at",
+            "applied_at",
         ]
         read_only_fields = fields
 

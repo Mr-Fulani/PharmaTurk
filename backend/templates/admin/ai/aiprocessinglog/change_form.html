@@ -4,7 +4,30 @@
 {% block extrastyle %}
   {{ block.super }}
   <style>
-    /* Тёмная тема: читаемость блока «Ответ LLM» (.theme-dark — Django admin, [data-theme="dark"] — альтернатива) */
+    .ai-actions-row {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      margin-bottom: 1em; padding: 12px; background: #f8f9fa;
+      border: 1px solid #d1d5db; border-radius: 6px;
+    }
+    .ai-action-button, .ai-product-link {
+      display: inline-block; border: 1px solid transparent; border-radius: 4px;
+      padding: 7px 13px; cursor: pointer; font-weight: 700;
+      text-decoration: none; line-height: 1.2;
+    }
+    .ai-action-apply { color: #fff; background: #15803d; border-color: #166534; }
+    .ai-action-reject { color: #fff; background: #b91c1c; border-color: #991b1b; }
+    .ai-action-rerun { color: #1f2937; background: #fff; border-color: #9ca3af; }
+    .ai-product-link { color: #075985; background: #e0f2fe; border-color: #7dd3fc; }
+    .ai-actions-hint { width: 100%; margin-top: 2px; color: #4b5563; }
+    .ai-preview-table th, .ai-preview-table td {
+      padding: 8px 10px; border: 1px solid #d1d5db;
+      text-align: left; vertical-align: top;
+    }
+    .ai-preview-table thead th { background: #f3f4f6; color: #111827; }
+    .ai-preview-value {
+      white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px;
+      overflow-y: auto; min-width: 180px;
+    }
     .theme-dark .formatted-llm-content,
     [data-theme="dark"] .formatted-llm-content,
     .theme-dark .formatted-llm-content .formatted-llm-section,
@@ -14,43 +37,66 @@
     .theme-dark .formatted-llm-content .formatted-llm-block,
     .theme-dark .formatted-llm-content pre,
     [data-theme="dark"] .formatted-llm-content .formatted-llm-block,
-    [data-theme="dark"] .formatted-llm-content pre { background: #2d2d2d !important; color: #d4d4d4 !important; border-radius: 4px; }
-    .theme-dark .formatted-llm-content details summary,
-    [data-theme="dark"] .formatted-llm-content details summary { color: #7ec8e3 !important; }
-    /* Верхняя панель «Действия» в тёмной теме */
+    [data-theme="dark"] .formatted-llm-content pre { background: #2d2d2d !important; color: #d4d4d4 !important; }
     .theme-dark .ai-actions-row,
-    [data-theme="dark"] .ai-actions-row { background: #2d2d2d !important; border-color: #444 !important; }
-    .theme-dark .ai-actions-row .ai-actions-hint,
-    [data-theme="dark"] .ai-actions-row .ai-actions-hint { color: #aaa !important; }
+    [data-theme="dark"] .ai-actions-row { background: #252525; border-color: #555; }
+    .theme-dark .ai-actions-hint,
+    [data-theme="dark"] .ai-actions-hint { color: #c4c4c4; }
+    .theme-dark .ai-preview-table td, .theme-dark .ai-preview-table th,
+    [data-theme="dark"] .ai-preview-table td,
+    [data-theme="dark"] .ai-preview-table th { border-color: #555; }
+    .theme-dark .ai-preview-table thead th,
+    [data-theme="dark"] .ai-preview-table thead th,
+    .theme-dark .ai-preview-section th,
+    [data-theme="dark"] .ai-preview-section th { background: #333 !important; color: #eee !important; }
   </style>
 {% endblock %}
 
 {% block content %}
-  {% if show_save_and_apply and original %}
-    <div class="submit-row ai-actions-row" style="margin-bottom: 1em; padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
-      <strong>Действия:</strong>
-      <button type="button" id="ai-save-and-apply-top" class="default" style="background: #28a745; color: #fff; border-color: #1e7e34; font-weight: bold; margin-left: 8px; cursor: pointer; padding: 5px 15px;"
-        title="Сохранить отредактированные поля и сразу применить результат к карточке товара">
-        💾 Сохранить и применить к товару
-      </button>
-      <span class="ai-actions-hint" style="margin-left: 8px; color: #666;">— применит результаты из этой формы к карточке товара.</span>
+  {% if original %}
+    <div class="ai-actions-row">
+      {% if product_admin_url %}
+        <a href="{{ product_admin_url }}" target="_blank" rel="noopener" class="ai-product-link">
+          Открыть карточку товара ↗
+        </a>
+      {% endif %}
+      {% if can_review_and_apply %}
+        <button type="button" class="ai-action-button ai-action-apply" data-ai-action="_save_and_apply">
+          {% if is_reapply %}Сохранить и повторно применить{% else %}Проверено — применить к товару{% endif %}
+        </button>
+      {% endif %}
+      {% if can_reject_result %}
+        <button type="button" class="ai-action-button ai-action-reject" data-ai-action="_reject_result"
+                data-confirm="Отклонить этот AI-результат? Товар изменён не будет.">
+          Отклонить результат
+        </button>
+      {% endif %}
+      {% if can_rerun_ai %}
+        <button type="button" class="ai-action-button ai-action-rerun" data-ai-action="_rerun_ai"
+                data-confirm="Запустить новую AI-обработку? Будет создан отдельный лог без авто-применения.">
+          Перезапустить AI
+        </button>
+      {% endif %}
+      <div class="ai-actions-hint">
+        Обычная кнопка «Сохранить» сохраняет только правки в логе. Зелёная кнопка сохраняет правки и переносит разрешённые поля в товар.
+      </div>
     </div>
     <script>
       (function() {
-        var btn = document.getElementById('ai-save-and-apply-top');
-        if (btn) {
-          btn.addEventListener('click', function() {
+        document.querySelectorAll('[data-ai-action]').forEach(function(button) {
+          button.addEventListener('click', function() {
+            var confirmation = button.getAttribute('data-confirm');
+            if (confirmation && !window.confirm(confirmation)) return;
             var form = document.querySelector('#content-main form');
-            if (form) {
-              var input = document.createElement('input');
-              input.type = 'hidden';
-              input.name = '_save_and_apply';
-              input.value = '1';
-              form.appendChild(input);
-              form.submit();
-            }
+            if (!form) return;
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = button.getAttribute('data-ai-action');
+            input.value = '1';
+            form.appendChild(input);
+            form.submit();
           });
-        }
+        });
       })();
     </script>
   {% endif %}
@@ -59,16 +105,11 @@
 
 {% block submit_buttons_bottom %}
   {{ block.super }}
-  {% if show_save_and_apply and original %}
-    <div class="submit-row" style="margin-top: 0; padding-top: 0; border-top: none;">
-      <input
-        type="submit"
-        name="_save_and_apply"
-        value="💾 Сохранить и применить к товару"
-        class="default"
-        style="background: #28a745; color: #fff; border-color: #1e7e34; font-weight: bold;"
-        title="Сохранить отредактированные поля и сразу применить результат к карточке товара"
-      >
+  {% if original and can_review_and_apply %}
+    <div class="submit-row" style="margin-top:0;padding-top:0;border-top:none;">
+      <input type="submit" name="_save_and_apply"
+             value="{% if is_reapply %}Сохранить и повторно применить{% else %}Проверено — применить к товару{% endif %}"
+             class="default" style="background:#15803d;color:#fff;border-color:#166534;font-weight:700;">
     </div>
   {% endif %}
 {% endblock %}

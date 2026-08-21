@@ -22,6 +22,7 @@ from .serializers import (
     AIStatsResponseSerializer,
 )
 from .tasks import enqueue_product_ai_task
+from .services.moderation import reject_log
 
 
 class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
@@ -46,7 +47,7 @@ class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
-        """Одобрить результат и применить к товару."""
+        """Проверить результат и применить к товару; вернуть фактический итог."""
         log = self.get_object()
         if log.status not in (AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION):
             return Response(
@@ -55,24 +56,30 @@ class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
             )
         from .services.content_generator import ContentGenerator
         gen = ContentGenerator()
-        gen.apply_log_to_product(log, user=request.user)
-        if getattr(log, "moderation_queue", None):
-            log.moderation_queue.resolved_at = timezone.now()
-            log.moderation_queue.save(update_fields=["resolved_at"])
-        return Response({"status": "approved"})
+        try:
+            gen.apply_log_to_product(log, user=request.user)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "status": log.status,
+                "application_status": log.application_status,
+                "partial": log.status == AIProcessingStatus.MODERATION,
+            }
+        )
 
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
         """Отклонить результат."""
         log = self.get_object()
-        log.status = AIProcessingStatus.REJECTED
-        log.processed_by = request.user
-        log.moderation_date = timezone.now()
-        log.moderation_notes = request.data.get("notes", "") or log.moderation_notes
-        log.save()
-        if getattr(log, "moderation_queue", None):
-            log.moderation_queue.resolved_at = timezone.now()
-            log.moderation_queue.save(update_fields=["resolved_at"])
+        try:
+            reject_log(
+                log,
+                user=request.user,
+                notes=request.data.get("notes", "") or "",
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"status": "rejected"})
 
     @action(detail=True, methods=["post"])
@@ -117,21 +124,35 @@ class AIModerationQueueViewSet(viewsets.ModelViewSet):
         if action_type == "approve":
             from .services.content_generator import ContentGenerator
             gen = ContentGenerator()
-            gen.apply_log_to_product(log, user=request.user)
+            try:
+                gen.apply_log_to_product(log, user=request.user)
+            except ValueError as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            resolved = log.status == AIProcessingStatus.APPROVED
         elif action_type == "reject":
-            log.status = AIProcessingStatus.REJECTED
-            log.processed_by = request.user
-            log.moderation_date = timezone.now()
-            log.moderation_notes = request.data.get("notes", "") or log.moderation_notes
-            log.save()
+            try:
+                reject_log(
+                    log,
+                    user=request.user,
+                    notes=request.data.get("notes", "") or "",
+                )
+            except ValueError as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            resolved = True
         else:
             return Response(
                 {"error": "action must be 'approve' or 'reject'"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        task.resolved_at = timezone.now()
-        task.save(update_fields=["resolved_at"])
-        return Response({"resolved": True, "action": action_type})
+        task.refresh_from_db(fields=["resolved_at"])
+        return Response(
+            {
+                "resolved": resolved,
+                "action": action_type,
+                "status": log.status,
+                "application_status": log.application_status,
+            }
+        )
 
 
 class AITemplateViewSet(viewsets.ModelViewSet):
