@@ -274,7 +274,8 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
 - зависимости больше не ставятся при production boot, Redis cache не очищается при каждом старте;
 - включены persistent PostgreSQL connections;
 - CI проверяет frontend, backend, зависимости, миграции и Compose config.
-- GitHub Actions переведены на Node 24-compatible checkout/setup и Gitleaks v3;
+- GitHub Actions переведены на Node 24-compatible checkout/setup, Docker login
+  и Gitleaks v3;
 - backend image build получает безопасное build-only окружение и не конфликтует
   с production fail-fast;
 - новые PDF-чеки используют HMAC namespace, legacy predictable fallback удалён.
