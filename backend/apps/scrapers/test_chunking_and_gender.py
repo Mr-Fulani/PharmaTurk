@@ -185,6 +185,53 @@ def test_paginating_parser_chains_next_chunk(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_paginating_parser_uses_reported_resume_cursor_and_persists_analog_stats(monkeypatch):
+    task = _build_task("ilacfiyati")
+    task.start_url = "https://ilacfiyati.com/ilaclar?brand=Rinvoq"
+    task.save(update_fields=["start_url"])
+    session = _session_with_products(task)
+    session.analogs_found = 7
+    session.analog_links_saved = 7
+    session.analog_stubs_created = 5
+    session.analog_stubs_upgraded = 1
+    session.analog_errors = 2
+    session.errors_count = 2
+    session.save()
+    session._next_start_page = 2
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", lambda *a, **k: session)
+    queued = {}
+
+    def capture_apply_async(*args, **kwargs):
+        queued.update(kwargs.get("kwargs", {}))
+        return SimpleNamespace(id="same-page-next-chunk")
+
+    monkeypatch.setattr(run_scraper_task, "apply_async", capture_apply_async)
+
+    run_scraper_task.run(
+        scraper_config_id=task.scraper_config_id,
+        start_url=task.start_url,
+        max_pages=task.max_pages,
+        max_products=task.max_products,
+        max_images_per_product=task.max_images_per_product,
+        site_task_id=task.id,
+        start_page=2,
+    )
+
+    assert queued["start_page"] == 2
+    assert queued["total_analogs_found"] == 7
+    assert queued["total_analog_stubs_created"] == 5
+    task.refresh_from_db()
+    assert task.analogs_found == 7
+    assert task.analog_links_saved == 7
+    assert task.analog_stubs_created == 5
+    assert task.analog_stubs_upgraded == 1
+    assert task.analog_errors == 2
+    assert task.resume_page == 2
+    assert "Заглушек аналогов создано: 5" in task.log_output
+
+
+@pytest.mark.django_db
 def test_paginating_parser_does_not_chain_after_explicit_last_page(monkeypatch):
     task = _build_task("flo")
     task.start_url = "https://www.flo.com.tr/sandalet"

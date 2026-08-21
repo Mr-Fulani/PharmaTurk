@@ -205,6 +205,11 @@ class ScrapingSession(models.Model):
     products_created = models.PositiveIntegerField(_("Создано товаров"), default=0)
     products_updated = models.PositiveIntegerField(_("Обновлено товаров"), default=0)
     products_skipped = models.PositiveIntegerField(_("Пропущено товаров"), default=0)
+    analogs_found = models.PositiveIntegerField(_("Найдено аналогов"), default=0)
+    analog_links_saved = models.PositiveIntegerField(_("Сохранено связей аналогов"), default=0)
+    analog_stubs_created = models.PositiveIntegerField(_("Создано заглушек аналогов"), default=0)
+    analog_stubs_upgraded = models.PositiveIntegerField(_("Заполнено заглушек аналогов"), default=0)
+    analog_errors = models.PositiveIntegerField(_("Ошибки обработки аналогов"), default=0)
     errors_count = models.PositiveIntegerField(_("Количество ошибок"), default=0)
 
     # Временные метки
@@ -668,6 +673,11 @@ class SiteScraperTask(models.Model):
     products_updated = models.PositiveIntegerField(_("Обновлено товаров"), default=0)
     products_skipped = models.PositiveIntegerField(_("Пропущено товаров"), default=0)
     pages_processed = models.PositiveIntegerField(_("Обработано страниц"), default=0)
+    analogs_found = models.PositiveIntegerField(_("Найдено аналогов"), default=0)
+    analog_links_saved = models.PositiveIntegerField(_("Сохранено связей аналогов"), default=0)
+    analog_stubs_created = models.PositiveIntegerField(_("Создано заглушек аналогов"), default=0)
+    analog_stubs_upgraded = models.PositiveIntegerField(_("Заполнено заглушек аналогов"), default=0)
+    analog_errors = models.PositiveIntegerField(_("Ошибки обработки аналогов"), default=0)
     errors_count = models.PositiveIntegerField(_("Количество ошибок"), default=0)
 
     resume_page = models.PositiveIntegerField(

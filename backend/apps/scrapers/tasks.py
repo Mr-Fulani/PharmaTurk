@@ -224,7 +224,12 @@ def run_scraper_task(self,
                     total_scraped: int = 0,
                     total_created: int = 0,
                     total_updated: int = 0,
-                    total_skipped: int = 0) -> Dict:
+                    total_skipped: int = 0,
+                    total_analogs_found: int = 0,
+                    total_analog_links_saved: int = 0,
+                    total_analog_stubs_created: int = 0,
+                    total_analog_stubs_upgraded: int = 0,
+                    total_analog_errors: int = 0) -> Dict:
     """Задача: запуск парсера.
 
     start_page / total_scraped используются для авточепочки при парсинге больших каталогов.
@@ -345,8 +350,18 @@ def run_scraper_task(self,
             total_created=total_created,
             total_updated=total_updated,
             total_skipped=total_skipped,
+            total_analogs_found=total_analogs_found,
+            total_analog_links_saved=total_analog_links_saved,
+            total_analog_stubs_created=total_analog_stubs_created,
+            total_analog_stubs_upgraded=total_analog_stubs_upgraded,
+            total_analog_errors=total_analog_errors,
             celery_task_id=self.request.id,
         )
+        session_analogs_found = int(getattr(session, "analogs_found", 0) or 0)
+        session_analog_links_saved = int(getattr(session, "analog_links_saved", 0) or 0)
+        session_analog_stubs_created = int(getattr(session, "analog_stubs_created", 0) or 0)
+        session_analog_stubs_upgraded = int(getattr(session, "analog_stubs_upgraded", 0) or 0)
+        session_analog_errors = int(getattr(session, "analog_errors", 0) or 0)
 
         result = {
             'status': 'success',
@@ -357,21 +372,51 @@ def run_scraper_task(self,
             'products_created': session.products_created,
             'products_updated': session.products_updated,
             'products_skipped': session.products_skipped,
+            'analogs_found': session_analogs_found,
+            'analog_links_saved': session_analog_links_saved,
+            'analog_stubs_created': session_analog_stubs_created,
+            'analog_stubs_upgraded': session_analog_stubs_upgraded,
+            'analog_errors': session_analog_errors,
             'pages_processed': session.pages_processed,
             'errors_count': session.errors_count,
+            'stop_reason': str(getattr(session, "_stop_reason", "") or ""),
             'duration': str(session.duration) if session.duration else None,
             'timestamp': timezone.now().isoformat()
         }
 
+        is_ilacfiyati = getattr(parser_class, "__name__", "") == "IlacFiyatiParser"
+        primary_label = "Основных препаратов" if is_ilacfiyati else "Товаров"
+        show_analog_stats = is_ilacfiyati or any(
+            (
+                session_analogs_found,
+                session_analog_links_saved,
+                session_analog_stubs_created,
+                session_analog_stubs_upgraded,
+                session_analog_errors,
+            )
+        )
         log_lines.extend([
-            f"Найдено товаров (чанк): {session.products_found}",
-            f"Создано: {session.products_created}",
-            f"Обновлено: {session.products_updated}",
-            f"Пропущено: {session.products_skipped}",
+            f"{primary_label} найдено (чанк): {session.products_found}",
+            f"{primary_label} создано: {session.products_created}",
+            f"{primary_label} обновлено: {session.products_updated}",
+            f"{primary_label} пропущено: {session.products_skipped}",
+        ])
+        if show_analog_stats:
+            log_lines.extend([
+                f"Аналогов найдено в источнике: {session_analogs_found}",
+                f"Связей аналогов сохранено: {session_analog_links_saved}",
+                f"Заглушек аналогов создано: {session_analog_stubs_created}",
+                f"Заглушек заполнено полными данными: {session_analog_stubs_upgraded}",
+                f"Ошибок обработки аналогов: {session_analog_errors}",
+            ])
+        log_lines.extend([
             f"Обработано страниц: {session.pages_processed}",
-            f"Ошибок: {session.errors_count}",
+            f"Ошибок всего: {session.errors_count}",
             f"Финиш: {timezone.now().isoformat()}"
         ])
+        stop_reason = str(getattr(session, "_stop_reason", "") or "")
+        if stop_reason:
+            log_lines.append(f"Причина остановки: {stop_reason}")
 
         if site_task:
             site_task.refresh_from_db()
@@ -380,9 +425,33 @@ def run_scraper_task(self,
             new_created = total_created + session.products_created
             new_updated = total_updated + session.products_updated
             new_skipped = total_skipped + session.products_skipped
+            new_analogs_found = total_analogs_found + session_analogs_found
+            new_analog_links_saved = total_analog_links_saved + session_analog_links_saved
+            new_analog_stubs_created = total_analog_stubs_created + session_analog_stubs_created
+            new_analog_stubs_upgraded = total_analog_stubs_upgraded + session_analog_stubs_upgraded
+            new_analog_errors = total_analog_errors + session_analog_errors
             new_pages_total = site_task.pages_processed + session.pages_processed
             chunk_pages = session.max_pages
             effective_max = site_task.max_products
+            reported_next_page = getattr(session, "_next_start_page", None)
+            next_start_page = (
+                reported_next_page
+                if isinstance(reported_next_page, int) and reported_next_page >= 1
+                else start_page + chunk_pages
+            )
+
+            log_lines.extend([
+                "--- Итого по всей задаче ---",
+                f"{primary_label} найдено: {new_total}",
+            ])
+            if show_analog_stats:
+                log_lines.extend([
+                    f"Аналогов найдено в источнике: {new_analogs_found}",
+                    f"Связей аналогов сохранено: {new_analog_links_saved}",
+                    f"Заглушек аналогов создано: {new_analog_stubs_created}",
+                    f"Заглушек заполнено полными данными: {new_analog_stubs_upgraded}",
+                    f"Ошибок обработки аналогов: {new_analog_errors}",
+                ])
 
             # Абсолютные значения (не F()): live-апдейт в процессе ставит ту же
             # абсолютную сумму total_X + текущий чанк, поэтому финал чанка совпадает
@@ -393,6 +462,11 @@ def run_scraper_task(self,
                 products_created=new_created,
                 products_updated=new_updated,
                 products_skipped=new_skipped,
+                analogs_found=new_analogs_found,
+                analog_links_saved=new_analog_links_saved,
+                analog_stubs_created=new_analog_stubs_created,
+                analog_stubs_upgraded=new_analog_stubs_upgraded,
+                analog_errors=new_analog_errors,
                 pages_processed=F('pages_processed') + session.pages_processed,
                 errors_count=F('errors_count') + session.errors_count,
                 log_output="\n".join(log_lines),
@@ -430,11 +504,20 @@ def run_scraper_task(self,
             else:
                 supports_chunking = bool(getattr(parser_class, "SUPPORTS_PAGE_CHUNKING", False))
 
-            # Продолжаем цепочку если: парсер это поддерживает, нашли хоть что-то И не достигли лимита
+            # Повторно сохранённые товары могли быть отфильтрованы cache, а при
+            # soft-timeout следующий чанк обязан начать с той же страницы.
+            chunk_made_progress = bool(
+                products_this_chunk > 0
+                or session.pages_processed > 0
+                or (
+                    getattr(session, "_chunk_interrupted", False)
+                    and getattr(session, "_reports_next_start_page", False)
+                )
+            )
             should_chain = (
                 supports_chunking
                 and site_task.status != "cancelled"
-                and products_this_chunk > 0
+                and chunk_made_progress
                 and new_total < effective_max
                 and getattr(session, "_has_more_pages", None) is not False
             )
@@ -447,20 +530,26 @@ def run_scraper_task(self,
                     max_products=max_products,
                     max_images_per_product=max_images_per_product,
                     site_task_id=site_task_id,
-                    start_page=start_page + chunk_pages,
+                    start_page=next_start_page,
                     total_scraped=new_total,
                     total_created=new_created,
                     total_updated=new_updated,
                     total_skipped=new_skipped,
+                    total_analogs_found=new_analogs_found,
+                    total_analog_links_saved=new_analog_links_saved,
+                    total_analog_stubs_created=new_analog_stubs_created,
+                    total_analog_stubs_upgraded=new_analog_stubs_upgraded,
+                    total_analog_errors=new_analog_errors,
                 ))
                 SiteScraperTask.objects.filter(id=site_task.id).update(
                     **common_updates,
                     task_id=next_task.id,
+                    resume_page=next_start_page,
                 )
                 logger.info(
                     f"Парсер {scraper_config.name}: чанк стр.{start_page} готов "
                     f"({products_this_chunk} товаров, всего {new_total}/{effective_max}). "
-                    f"Следующий чанк со стр.{start_page + chunk_pages}"
+                    f"Следующий чанк со стр.{next_start_page}"
                 )
             else:
                 SiteScraperTask.objects.filter(id=site_task.id).update(

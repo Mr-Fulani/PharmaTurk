@@ -1,11 +1,94 @@
 import pytest
 from decimal import Decimal
+from types import SimpleNamespace
 from rest_framework.test import APIRequestFactory
 
 from apps.catalog.currency_models import GlobalCurrencySettings
 from apps.catalog.models import MedicineAnalog, Product
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.services import ScraperIntegrationService
+
+
+def _analog_stats_session():
+    return SimpleNamespace(
+        analogs_found=0,
+        analog_links_saved=0,
+        analog_stubs_created=0,
+        analog_stubs_upgraded=0,
+        analog_errors=0,
+    )
+
+
+def test_explicit_analog_without_codes_creates_stub_and_updates_stats(monkeypatch):
+    service = ScraperIntegrationService.__new__(ScraperIntegrationService)
+    service.logger = SimpleNamespace(exception=lambda *args, **kwargs: None)
+    source_product = SimpleNamespace(name="SOURCE", product_type="medicines")
+    medicine = SimpleNamespace(active_ingredient="", atc_code="")
+    analog_ref = SimpleNamespace()
+    created_product = SimpleNamespace(product_type="medicines")
+    session = _analog_stats_session()
+    captured = {}
+
+    monkeypatch.setattr(service, "_get_medicine_product", lambda _product: medicine)
+    monkeypatch.setattr(
+        service,
+        "_upsert_medicine_analog_reference",
+        lambda *args, **kwargs: analog_ref,
+    )
+    monkeypatch.setattr(
+        service,
+        "_find_existing_medicine_analog_product",
+        lambda **kwargs: None,
+    )
+
+    def fake_create(create_session, stub):
+        captured["session"] = create_session
+        captured["stub"] = stub
+        return "created", created_product
+
+    monkeypatch.setattr(service, "_create_new_product", fake_create)
+    monkeypatch.setattr(
+        service,
+        "_link_medicine_analog_reference",
+        lambda *args, **kwargs: captured.setdefault("linked", True),
+    )
+    scraped = ScrapedProduct(
+        name="SOURCE",
+        source="ilacfiyati",
+        category="Medicines",
+        analogs=[
+            {
+                "name": "ANALOG WITHOUT CODES",
+                "url": "https://ilacfiyati.com/ilaclar/analog-without-codes",
+                "external_id": "analog-without-codes",
+                "source_tab": "Eşdeğeri",
+            }
+        ],
+    )
+
+    service._process_medicine_analogs(source_product, scraped, session)
+
+    assert captured["session"] is session
+    assert captured["stub"].attributes["is_stub"] is True
+    assert captured["stub"].attributes["active_ingredient"] == ""
+    assert captured["stub"].attributes["atc_code"] == ""
+    assert captured["linked"] is True
+    assert session.analogs_found == 1
+    assert session.analog_links_saved == 1
+    assert session.analog_stubs_created == 1
+    assert session.analog_errors == 0
+
+
+def test_analog_tab_fetch_errors_are_counted_without_dropping_main_product():
+    service = ScraperIntegrationService.__new__(ScraperIntegrationService)
+    session = _analog_stats_session()
+    scraped = ScrapedProduct(name="SOURCE", source="ilacfiyati")
+    scraped.analog_fetch_errors = 2
+
+    service._process_medicine_analogs(SimpleNamespace(), scraped, session)
+
+    assert session.analog_errors == 2
+    assert session.analogs_found == 0
 
 
 @pytest.mark.django_db
@@ -66,6 +149,98 @@ def test_medicine_analogs_are_saved_and_matched_by_barcode():
     assert analog_medicine.active_ingredient == "Asiklovir"
     assert analog_medicine.atc_code == "D06BB03"
     assert analog_medicine.sgk_equivalent_code == "E007D"
+
+
+@pytest.mark.django_db
+def test_explicit_analog_is_linked_without_active_ingredient_or_atc():
+    service = ScraperIntegrationService()
+    source_product = Product.objects.create(
+        name="SOURCE WITHOUT CODES",
+        slug="source-without-codes",
+        product_type="medicines",
+        external_id="source-without-codes",
+        external_data={},
+    )
+    source_medicine = service._get_medicine_product(source_product)
+    analog_product = Product.objects.create(
+        name="EXPLICIT ANALOG WITHOUT CODES",
+        slug="explicit-analog-without-codes",
+        product_type="medicines",
+        external_id="explicit-analog-without-codes",
+        external_data={},
+    )
+    analog_medicine = service._get_medicine_product(analog_product)
+    session = _analog_stats_session()
+    scraped = ScrapedProduct(
+        name=source_product.name,
+        source="ilacfiyati",
+        analogs=[
+            {
+                "name": analog_product.name,
+                "url": "https://ilacfiyati.com/ilaclar/explicit-analog-without-codes",
+                "external_id": analog_product.external_id,
+                "source_tab": "Eşdeğeri",
+            }
+        ],
+    )
+
+    service._process_medicine_analogs(source_product, scraped, session=session)
+
+    assert MedicineAnalog.objects.filter(
+        product=source_medicine,
+        analog_product=analog_medicine,
+        external_id=analog_product.external_id,
+    ).exists()
+    assert session.analogs_found == 1
+    assert session.analog_links_saved == 1
+    assert session.analog_stubs_created == 0
+    assert session.analog_errors == 0
+
+
+@pytest.mark.django_db
+def test_api_product_conflict_still_saves_explicit_analogs():
+    service = ScraperIntegrationService()
+    api_product = Product.objects.create(
+        name="API SOURCE",
+        slug="api-source",
+        product_type="medicines",
+        external_id="api-source",
+        external_data={"source": "api"},
+    )
+    source_medicine = service._get_medicine_product(api_product)
+    analog_product = Product.objects.create(
+        name="API EXPLICIT ANALOG",
+        slug="api-explicit-analog",
+        product_type="medicines",
+        external_id="api-explicit-analog",
+        external_data={},
+    )
+    analog_medicine = service._get_medicine_product(analog_product)
+    session = _analog_stats_session()
+    scraped = ScrapedProduct(
+        name=api_product.name,
+        external_id=api_product.external_id,
+        source="ilacfiyati",
+        analogs=[
+            {
+                "name": analog_product.name,
+                "url": "https://ilacfiyati.com/ilaclar/api-explicit-analog",
+                "external_id": analog_product.external_id,
+                "source_tab": "SGK Eşdeğeri",
+            }
+        ],
+    )
+
+    action, product = service._process_single_product(session, scraped)
+
+    assert action == "updated"
+    assert product.pk == api_product.pk
+    assert MedicineAnalog.objects.filter(
+        product=source_medicine,
+        analog_product=analog_medicine,
+    ).exists()
+    assert session.analogs_found == 1
+    assert session.analog_links_saved == 1
 
 
 @pytest.mark.django_db

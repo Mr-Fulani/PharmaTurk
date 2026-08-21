@@ -1,7 +1,11 @@
 import json
 from decimal import Decimal
 
-from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
+import pytest
+from celery.exceptions import SoftTimeLimitExceeded
+
+from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser, IlacFiyatiSourceError
 
 
 def test_ilacfiyati_parser_fetches_instruction_tabs(monkeypatch):
@@ -44,9 +48,18 @@ def test_ilacfiyati_parser_fetches_instruction_tabs(monkeypatch):
             </tr>
           </table>
         """,
+        "sgk-esdegeri": """
+          <h3>SGK EŞDEĞERİ</h3>
+          <table>
+            <tr>
+              <td><a href="/ilaclar/asiviral-400-mg-25-tablet">ASIVIRAL 400 MG 25 TABLET</a></td>
+              <td>SGK Eşdeğer Kodu: E007D</td>
+            </tr>
+          </table>
+        """,
     }
 
-    responses = {product_url: main_html, f"{product_url}/sgk-esdegeri": ""}
+    responses = {product_url: main_html}
     responses.update(
         {
             f"{product_url}/{path}": f"<html><body>{html}<h6>İlaç Katılım Payı Hesaplama</h6></body></html>"
@@ -77,12 +90,13 @@ def test_ilacfiyati_parser_fetches_instruction_tabs(monkeypatch):
             "url": "https://ilacfiyati.com/ilaclar/asiviral-400-mg-25-tablet",
             "price": None,
             "external_id": "asiviral-400-mg-25-tablet",
-            "source_tab": "Eşdeğeri",
+            "source_tab": "Eşdeğeri, SGK Eşdeğeri",
             "barcode": "8699546090114",
             "atc_code": "D06BB03",
             "sgk_equivalent_code": "E007D",
         }
     ]
+    assert product.analog_fetch_errors == 0
 
 
 def test_ilacfiyati_parser_uses_product_slug_as_external_id_for_tab_urls():
@@ -140,3 +154,93 @@ def test_scraped_product_to_dict_is_json_serializable_with_decimal_analogs(monke
     assert product is not None
     assert product.analogs[0]["price"] == Decimal("125.45")
     assert json.dumps(product.to_dict())
+
+
+def test_ilacfiyati_listing_page_url_preserves_filters():
+    url = "https://ilacfiyati.com/ilaclar?brand=Rinvoq&status=active"
+
+    assert IlacFiyatiParser._listing_page_url(url, 1) == url
+    assert (
+        IlacFiyatiParser._listing_page_url(url, 2)
+        == "https://ilacfiyati.com/ilaclar?brand=Rinvoq&status=active&pg=2"
+    )
+    assert (
+        IlacFiyatiParser._listing_page_url(f"{url}&pg=7", 3)
+        == "https://ilacfiyati.com/ilaclar?brand=Rinvoq&status=active&pg=3"
+    )
+
+
+def test_ilacfiyati_filtered_catalog_reports_exact_page_progress(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    category_url = "https://ilacfiyati.com/ilaclar?brand=Rinvoq"
+    requested = []
+    pages = {
+        category_url: '<a href="/ilaclar/rinvoq-15-mg-28-tablet">Rinvoq 15</a>',
+        f"{category_url}&pg=2": '<a href="/ilaclar/rinvoq-30-mg-28-tablet">Rinvoq 30</a>',
+    }
+
+    def fake_request(url):
+        requested.append(url)
+        return pages[url]
+
+    monkeypatch.setattr(parser, "_make_request", fake_request)
+    monkeypatch.setattr(
+        parser,
+        "parse_product_detail",
+        lambda url: ScrapedProduct(name="RINVOQ", url=url, source="ilacfiyati"),
+    )
+
+    products = list(parser.parse_product_list(category_url, max_pages=1, start_page=2))
+
+    assert len(products) == 1
+    assert requested[:2] == [category_url, f"{category_url}&pg=2"]
+    assert parser.pages_processed == 1
+    assert parser.next_start_page == 3
+    assert parser.has_more_pages is True
+
+
+def test_ilacfiyati_empty_filtered_page_explains_zero_result(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    category_url = "https://ilacfiyati.com/ilaclar?brand=Rinvoq"
+    pages = {
+        category_url: '<a href="/ilaclar/rinvoq-15-mg-28-tablet">Rinvoq</a>',
+        f"{category_url}&pg=2": "<html><body>no products</body></html>",
+    }
+    monkeypatch.setattr(parser, "_make_request", lambda url: pages[url])
+
+    assert list(parser.parse_product_list(category_url, max_pages=1, start_page=2)) == []
+    assert parser.pages_processed == 0
+    assert parser.has_more_pages is False
+    assert "странице 2" in parser.stop_reason
+    assert "товары не найдены" in parser.stop_reason
+
+
+def test_ilacfiyati_soft_timeout_keeps_current_page_as_resume_cursor(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    category_url = "https://ilacfiyati.com/ilaclar"
+    page_html = """
+      <a href="/ilaclar/first-drug">First</a>
+      <a href="/ilaclar/second-drug">Second</a>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: page_html)
+
+    def parse_detail(url):
+        if url.endswith("second-drug"):
+            raise SoftTimeLimitExceeded()
+        return ScrapedProduct(name="FIRST", url=url, source="ilacfiyati")
+
+    monkeypatch.setattr(parser, "parse_product_detail", parse_detail)
+
+    with pytest.raises(SoftTimeLimitExceeded):
+        list(parser.parse_product_list(category_url, max_pages=1, start_page=1))
+
+    assert parser.pages_processed == 0
+    assert parser.next_start_page == 1
+
+
+def test_ilacfiyati_invalid_detail_page_is_not_silent_success(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    monkeypatch.setattr(parser, "_make_request", lambda _url: "<html><body>blocked</body></html>")
+
+    with pytest.raises(IlacFiyatiSourceError, match="название препарата не найдено"):
+        parser.parse_product_detail("https://ilacfiyati.com/ilaclar/missing")

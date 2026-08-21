@@ -324,6 +324,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "max_products",
         "max_images_per_product",
         "products_stats",
+        "analog_stats",
         "ai_status_display",
         "created_at",
         "duration_display",
@@ -377,6 +378,11 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     "products_created",
                     "products_updated",
                     "products_skipped",
+                    "analogs_found",
+                    "analog_links_saved",
+                    "analog_stubs_created",
+                    "analog_stubs_upgraded",
+                    "analog_errors",
                     "pages_processed",
                     "errors_count",
                 ]
@@ -395,6 +401,11 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "products_created",
         "products_updated",
         "products_skipped",
+        "analogs_found",
+        "analog_links_saved",
+        "analog_stubs_created",
+        "analog_stubs_upgraded",
+        "analog_errors",
         "pages_processed",
         "errors_count",
         "log_output",
@@ -507,6 +518,29 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         )
 
     products_stats.short_description = "Создано / Обновлено / Пропущено"
+
+    def analog_stats(self, obj):
+        is_ilacfiyati = str(obj.scraper_config.parser_class or "").strip().lower() == "ilacfiyati"
+        if not is_ilacfiyati and not any(
+            (
+                obj.analogs_found,
+                obj.analog_links_saved,
+                obj.analog_stubs_created,
+                obj.analog_stubs_upgraded,
+                obj.analog_errors,
+            )
+        ):
+            return "—"
+        return format_html(
+            "найдено {} / связей {} / заглушек +{} / заполнено {} / ошибок {}",
+            obj.analogs_found,
+            obj.analog_links_saved,
+            obj.analog_stubs_created,
+            obj.analog_stubs_upgraded,
+            obj.analog_errors,
+        )
+
+    analog_stats.short_description = "Аналоги"
 
     def duration_display(self, obj):
         if obj.duration:
@@ -670,6 +704,11 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             task.products_created = 0
             task.products_updated = 0
             task.products_skipped = 0
+            task.analogs_found = 0
+            task.analog_links_saved = 0
+            task.analog_stubs_created = 0
+            task.analog_stubs_upgraded = 0
+            task.analog_errors = 0
             task.pages_processed = 0
             task.errors_count = 0
             task.resume_page = 1
@@ -705,6 +744,11 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                 run_kwargs["total_created"] = task.products_created
                 run_kwargs["total_updated"] = task.products_updated
                 run_kwargs["total_skipped"] = task.products_skipped
+                run_kwargs["total_analogs_found"] = task.analogs_found
+                run_kwargs["total_analog_links_saved"] = task.analog_links_saved
+                run_kwargs["total_analog_stubs_created"] = task.analog_stubs_created
+                run_kwargs["total_analog_stubs_upgraded"] = task.analog_stubs_upgraded
+                run_kwargs["total_analog_errors"] = task.analog_errors
             celery_task = run_scraper_task.delay(task.scraper_config_id, **run_kwargs)
         task.task_id = celery_task.id
         task.save(update_fields=["task_id"])
@@ -1129,6 +1173,7 @@ class ScrapingSessionAdmin(admin.ModelAdmin):
         "started_at",
         "duration_display",
         "products_stats",
+        "analog_stats",
         "pages_processed",
         "errors_count",
         "actions_column",
@@ -1149,6 +1194,9 @@ class ScrapingSessionAdmin(admin.ModelAdmin):
                 "fields": [
                     ("products_found", "products_created"),
                     ("products_updated", "products_skipped"),
+                    ("analogs_found", "analog_links_saved"),
+                    ("analog_stubs_created", "analog_stubs_upgraded"),
+                    "analog_errors",
                     ("pages_processed", "errors_count"),
                 ]
             },
@@ -1209,6 +1257,29 @@ class ScrapingSessionAdmin(admin.ModelAdmin):
         )
 
     products_stats.short_description = "Создано / Обновлено / Пропущено"
+
+    def analog_stats(self, obj):
+        is_ilacfiyati = str(obj.scraper_config.parser_class or "").strip().lower() == "ilacfiyati"
+        if not is_ilacfiyati and not any(
+            (
+                obj.analogs_found,
+                obj.analog_links_saved,
+                obj.analog_stubs_created,
+                obj.analog_stubs_upgraded,
+                obj.analog_errors,
+            )
+        ):
+            return "—"
+        return format_html(
+            "найдено {} / связей {} / заглушек +{} / заполнено {} / ошибок {}",
+            obj.analogs_found,
+            obj.analog_links_saved,
+            obj.analog_stubs_created,
+            obj.analog_stubs_upgraded,
+            obj.analog_errors,
+        )
+
+    analog_stats.short_description = "Аналоги"
 
     def actions_column(self, obj):
         run_ai_url = reverse("admin:scrapers_scrapingsession_run_ai", args=[obj.pk])

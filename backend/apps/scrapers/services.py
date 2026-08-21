@@ -799,6 +799,11 @@ class ScraperIntegrationService:
         total_updated: int = 0,
         total_skipped: int = 0,
         celery_task_id: Optional[str] = None,
+        total_analogs_found: int = 0,
+        total_analog_links_saved: int = 0,
+        total_analog_stubs_created: int = 0,
+        total_analog_stubs_upgraded: int = 0,
+        total_analog_errors: int = 0,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -876,6 +881,11 @@ class ScraperIntegrationService:
                     total_created=total_created,
                     total_updated=total_updated,
                     total_skipped=total_skipped,
+                    total_analogs_found=total_analogs_found,
+                    total_analog_links_saved=total_analog_links_saved,
+                    total_analog_stubs_created=total_analog_stubs_created,
+                    total_analog_stubs_upgraded=total_analog_stubs_upgraded,
+                    total_analog_errors=total_analog_errors,
                     celery_task_id=celery_task_id,
                 )
 
@@ -886,6 +896,10 @@ class ScraperIntegrationService:
                 else:
                     results = self._process_scraped_products(session, scraped_products)
 
+                # Ошибки дополнительных вкладок не отменяют сохранение основной
+                # карточки, но входят в общий итог и видны отдельным счётчиком.
+                results["errors"] += int(getattr(session, "analog_errors", 0) or 0)
+
                 # Обновляем сессию
                 session.status = "completed"
                 session.finished_at = timezone.now()
@@ -893,6 +907,7 @@ class ScraperIntegrationService:
                 session.products_created = results["created"]
                 session.products_updated = results["updated"]
                 session.products_skipped = results["skipped"]
+                session.errors_count = results["errors"]
                 session.save()
 
                 # Обновляем статистику конфигурации
@@ -948,6 +963,9 @@ class ScraperIntegrationService:
         start_page: int = 1, site_task_id: Optional[int] = None, total_scraped: int = 0,
         total_created: int = 0, total_updated: int = 0, total_skipped: int = 0,
         celery_task_id: Optional[str] = None,
+        total_analogs_found: int = 0, total_analog_links_saved: int = 0,
+        total_analog_stubs_created: int = 0, total_analog_stubs_upgraded: int = 0,
+        total_analog_errors: int = 0,
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -1052,7 +1070,9 @@ class ScraperIntegrationService:
                         session.products_created = incremental_results["created"]
                         session.products_updated = incremental_results["updated"]
                         session.products_skipped = incremental_results["skipped"]
-                        session.errors_count = incremental_results["errors"]
+                        session.errors_count = incremental_results["errors"] + int(
+                            getattr(session, "analog_errors", 0) or 0
+                        )
                         # IKEA и другие media-heavy источники могут обрабатывать один
                         # товар несколько минут. Фиксируем checkpoint после каждого
                         # товара: это два коротких UPDATE без дополнительных SELECT и
@@ -1064,7 +1084,18 @@ class ScraperIntegrationService:
                                 products_created=incremental_results["created"],
                                 products_updated=incremental_results["updated"],
                                 products_skipped=incremental_results["skipped"],
-                                errors_count=incremental_results["errors"],
+                                analogs_found=int(getattr(session, "analogs_found", 0) or 0),
+                                analog_links_saved=int(
+                                    getattr(session, "analog_links_saved", 0) or 0
+                                ),
+                                analog_stubs_created=int(
+                                    getattr(session, "analog_stubs_created", 0) or 0
+                                ),
+                                analog_stubs_upgraded=int(
+                                    getattr(session, "analog_stubs_upgraded", 0) or 0
+                                ),
+                                analog_errors=int(getattr(session, "analog_errors", 0) or 0),
+                                errors_count=session.errors_count,
                             )
                         if site_task_id:
                             SiteScraperTask.objects.filter(id=site_task_id).update(
@@ -1073,6 +1104,21 @@ class ScraperIntegrationService:
                                 products_created=total_created + incremental_results["created"],
                                 products_updated=total_updated + incremental_results["updated"],
                                 products_skipped=total_skipped + incremental_results["skipped"],
+                                analogs_found=total_analogs_found + int(
+                                    getattr(session, "analogs_found", 0) or 0
+                                ),
+                                analog_links_saved=total_analog_links_saved + int(
+                                    getattr(session, "analog_links_saved", 0) or 0
+                                ),
+                                analog_stubs_created=total_analog_stubs_created + int(
+                                    getattr(session, "analog_stubs_created", 0) or 0
+                                ),
+                                analog_stubs_upgraded=total_analog_stubs_upgraded + int(
+                                    getattr(session, "analog_stubs_upgraded", 0) or 0
+                                ),
+                                analog_errors=total_analog_errors + int(
+                                    getattr(session, "analog_errors", 0) or 0
+                                ),
                                 errors_count=incremental_results["errors"],
                             )
                 except SoftTimeLimitExceeded:
@@ -1085,11 +1131,23 @@ class ScraperIntegrationService:
                         "(спарсено %s товаров, цепочка продолжится).",
                         incremental_results["found"],
                     )
+                    session._chunk_interrupted = True
+                parser_item_errors = max(0, int(getattr(parser, "item_errors", 0) or 0))
+                incremental_results["errors"] += parser_item_errors
                 if getattr(parser, "REPORTS_PAGES_PROCESSED", False):
                     session.pages_processed += parser.pages_processed
                 elif incremental_results["found"]:
                     session.pages_processed += incremental_results["found"] // 20 + 1
                 session._has_more_pages = getattr(parser, "has_more_pages", None)
+                session._stop_reason = str(getattr(parser, "stop_reason", "") or "")
+                session._reports_next_start_page = bool(
+                    getattr(parser, "REPORTS_NEXT_START_PAGE", False)
+                )
+                session._next_start_page = (
+                    getattr(parser, "next_start_page", start_page)
+                    if session._reports_next_start_page
+                    else start_page + session.max_pages
+                )
 
             elif is_search:
                 # Поиск товаров
@@ -1601,7 +1659,7 @@ class ScraperIntegrationService:
 
         if api_product:
             # Товар уже есть из API - пропускаем или обновляем дополнительные данные
-            return self._handle_api_conflict(scraped_product, api_product)
+            return self._handle_api_conflict(session, scraped_product, api_product)
 
         # Для парсеров (не API) тоже привязываемся по external_id, если он уже есть
         if scraped_product.external_id:
@@ -1740,7 +1798,10 @@ class ScraperIntegrationService:
         ).first()
 
     def _handle_api_conflict(
-        self, scraped_product: ScrapedProduct, api_product: Product
+        self,
+        session: ScrapingSession,
+        scraped_product: ScrapedProduct,
+        api_product: Product,
     ) -> Tuple[str, Product]:
         """Обрабатывает конфликт с товаром из API."""
         # API данные имеют приоритет, но можем обновить дополнительную информацию
@@ -1759,6 +1820,8 @@ class ScraperIntegrationService:
             updated = True
 
         # Добавляем информацию о парсере в external_data
+        if not isinstance(api_product.external_data, dict):
+            api_product.external_data = {}
         if "scraped_sources" not in api_product.external_data:
             api_product.external_data["scraped_sources"] = []
 
@@ -1774,9 +1837,13 @@ class ScraperIntegrationService:
 
         if updated:
             api_product.save()
-            return "updated", api_product
-        else:
-            return "skipped", api_product
+
+        # API остаётся приоритетным источником полей карточки, но явные связи
+        # Eşdeğeri/SGK Eşdeğeri относятся к отдельной сущности и не должны теряться.
+        if api_product.product_type == "medicines" and self._has_medicine_analog_work(scraped_product):
+            self._process_medicine_analogs(api_product, scraped_product, session)
+
+        return ("updated" if updated else "skipped"), api_product
 
     def _calculate_product_similarity(
         self, scraped_product: ScrapedProduct, existing_product: Product
@@ -3051,6 +3118,7 @@ class ScraperIntegrationService:
                     and existing_product.external_data.get("is_stub")
                 ):
                     existing_product.external_data["is_stub"] = False
+                    self._increment_session_counter(session, "analog_stubs_upgraded")
                     updated = True
 
         # Всё значимое выше уже выставило updated=True (цена/наличие/описание/медиа-ссылки/
@@ -3110,7 +3178,7 @@ class ScraperIntegrationService:
             existing_product.save()
 
         # Обрабатываем аналоги, если это медицина
-        if existing_product.product_type == "medicines" and getattr(scraped_product, "analogs", None):
+        if existing_product.product_type == "medicines" and self._has_medicine_analog_work(scraped_product):
             self._process_medicine_analogs(existing_product, scraped_product, session)
 
         # Всегда нормализуем медиа (обновляем галереи) независимо от того,
@@ -3725,101 +3793,100 @@ class ScraperIntegrationService:
         self, product: Product, scraped_product: ScrapedProduct, session: ScrapingSession
     ) -> None:
         """Обрабатывает спарсенные аналоги (создает заглушки, если их нет)."""
-        if not getattr(scraped_product, 'analogs', None):
+        analogs = list(getattr(scraped_product, "analogs", None) or [])
+        fetch_errors = max(0, int(getattr(scraped_product, "analog_fetch_errors", 0) or 0))
+        self._increment_session_counter(session, "analog_errors", fetch_errors)
+        if not analogs:
             return
-            
+
         medicine_product = self._get_medicine_product(product)
         active_ingredient = medicine_product.active_ingredient
         atc_code = medicine_product.atc_code
-        
-        # Если у основного препарата нет ни active_ingredient, ни atc_code, мы не сможем их неявно связать
-        if not active_ingredient and not atc_code:
-            return
-            
-        for analog_data in scraped_product.analogs:
+
+        for analog_data in analogs:
+            self._increment_session_counter(session, "analogs_found")
             analog_name = analog_data.get('name')
             if not analog_name:
+                self._increment_session_counter(session, "analog_errors")
                 continue
 
-            analog_url = analog_data.get('url', '')
-            analog_external_id = str(
-                analog_data.get("external_id")
-                or (urlparse(analog_url).path.rstrip("/").split("/")[-1] if analog_url else "")
-                or ""
-            ).strip()
-            analog_barcode = str(analog_data.get("barcode") or "").strip()
-            analog_atc_code = str(analog_data.get("atc_code") or "").strip()
-            analog_sgk_code = str(analog_data.get("sgk_equivalent_code") or "").strip()
-            analog_source_tab = str(analog_data.get("source_tab") or "").strip()
+            try:
+                analog_url = analog_data.get('url', '')
+                analog_external_id = str(
+                    analog_data.get("external_id")
+                    or (urlparse(analog_url).path.rstrip("/").split("/")[-1] if analog_url else "")
+                    or ""
+                ).strip()
+                analog_barcode = str(analog_data.get("barcode") or "").strip()
+                analog_atc_code = str(analog_data.get("atc_code") or "").strip()
+                analog_sgk_code = str(analog_data.get("sgk_equivalent_code") or "").strip()
+                analog_source_tab = str(analog_data.get("source_tab") or "").strip()
 
-            analog_ref = self._upsert_medicine_analog_reference(
-                medicine_product,
-                name=analog_name,
-                barcode=analog_barcode,
-                atc_code=analog_atc_code or atc_code,
-                sgk_equivalent_code=analog_sgk_code,
-                external_id=analog_external_id,
-                source=scraped_product.source,
-                source_tab=analog_source_tab,
-            )
-
-            # Проверяем, существует ли уже такой препарат. Коды надежнее названия:
-            # названия на ilacfiyati часто отличаются процентами, пробелами и упаковкой.
-            existing = self._find_existing_medicine_analog_product(
-                name=analog_name,
-                barcode=analog_barcode,
-                external_id=analog_external_id,
-                url=analog_url,
-            )
-            if existing:
-                med = self._get_medicine_product(existing)
-                updated = False
-                if analog_barcode and not med.barcode:
-                    med.barcode = analog_barcode[:100]
-                    updated = True
-                if active_ingredient and not med.active_ingredient:
-                    med.active_ingredient = active_ingredient
-                    updated = True
-                if (analog_atc_code or atc_code) and not med.atc_code:
-                    med.atc_code = (analog_atc_code or atc_code)[:100]
-                    updated = True
-                if analog_sgk_code and not med.sgk_equivalent_code:
-                    med.sgk_equivalent_code = analog_sgk_code[:100]
-                    updated = True
-                if updated:
-                    med.save()
-                self._link_medicine_analog_reference(
-                    analog_ref,
-                    med,
+                analog_ref = self._upsert_medicine_analog_reference(
+                    medicine_product,
+                    name=analog_name,
                     barcode=analog_barcode,
                     atc_code=analog_atc_code or atc_code,
                     sgk_equivalent_code=analog_sgk_code,
+                    external_id=analog_external_id,
+                    source=scraped_product.source,
+                    source_tab=analog_source_tab,
                 )
-                continue
-                
-            # Если не существует, создаем базовую заглушку
-            # Парсер затем сможет ее обновить при прямом парсинге
-            analog_price = analog_data.get('price')
-            
-            stub_scraped = ScrapedProduct(
-                name=analog_name,
-                price=analog_price,
-                url=analog_url,
-                category=scraped_product.category,
-                source=scraped_product.source,
-                external_id=analog_external_id,
-                barcode=analog_barcode,
-                is_available=True,
-                attributes={
-                    'is_stub': True,
-                    'active_ingredient': active_ingredient,
-                    'atc_code': analog_atc_code or atc_code,
-                    'barcode': analog_barcode,
-                    'sgk_equivalent_code': analog_sgk_code,
-                }
-            )
-            # Чтобы избежать зацикливания, не передаем analogs
-            try:
+
+                # Проверяем, существует ли уже такой препарат. Коды надежнее названия:
+                # названия на ilacfiyati часто отличаются процентами, пробелами и упаковкой.
+                existing = self._find_existing_medicine_analog_product(
+                    name=analog_name,
+                    barcode=analog_barcode,
+                    external_id=analog_external_id,
+                    url=analog_url,
+                )
+                if existing:
+                    med = self._get_medicine_product(existing)
+                    updated = False
+                    if analog_barcode and not med.barcode:
+                        med.barcode = analog_barcode[:100]
+                        updated = True
+                    if active_ingredient and not med.active_ingredient:
+                        med.active_ingredient = active_ingredient
+                        updated = True
+                    if (analog_atc_code or atc_code) and not med.atc_code:
+                        med.atc_code = (analog_atc_code or atc_code)[:100]
+                        updated = True
+                    if analog_sgk_code and not med.sgk_equivalent_code:
+                        med.sgk_equivalent_code = analog_sgk_code[:100]
+                        updated = True
+                    if updated:
+                        med.save()
+                    self._link_medicine_analog_reference(
+                        analog_ref,
+                        med,
+                        barcode=analog_barcode,
+                        atc_code=analog_atc_code or atc_code,
+                        sgk_equivalent_code=analog_sgk_code,
+                    )
+                    self._increment_session_counter(session, "analog_links_saved")
+                    continue
+
+                # Если не существует, создаем базовую заглушку. Явная ссылка
+                # достаточна для связи даже без active_ingredient/ATC у основной карточки.
+                stub_scraped = ScrapedProduct(
+                    name=analog_name,
+                    price=analog_data.get('price'),
+                    url=analog_url,
+                    category=scraped_product.category,
+                    source=scraped_product.source,
+                    external_id=analog_external_id,
+                    barcode=analog_barcode,
+                    is_available=True,
+                    attributes={
+                        'is_stub': True,
+                        'active_ingredient': active_ingredient,
+                        'atc_code': analog_atc_code or atc_code,
+                        'barcode': analog_barcode,
+                        'sgk_equivalent_code': analog_sgk_code,
+                    }
+                )
                 _, created_product = self._create_new_product(session, stub_scraped)
                 created_med = self._get_medicine_product(created_product)
                 self._link_medicine_analog_reference(
@@ -3829,8 +3896,28 @@ class ScraperIntegrationService:
                     atc_code=analog_atc_code or atc_code,
                     sgk_equivalent_code=analog_sgk_code,
                 )
+                self._increment_session_counter(session, "analog_stubs_created")
+                self._increment_session_counter(session, "analog_links_saved")
             except Exception as e:
-                self.logger.error(f"Ошибка создания аналога {analog_name}: {e}")
+                self._increment_session_counter(session, "analog_errors")
+                self.logger.exception("Ошибка сохранения аналога %s: %s", analog_name, e)
+
+    @staticmethod
+    def _has_medicine_analog_work(scraped_product: ScrapedProduct) -> bool:
+        return bool(
+            getattr(scraped_product, "analogs", None)
+            or getattr(scraped_product, "analog_fetch_errors", 0)
+        )
+
+    @staticmethod
+    def _increment_session_counter(
+        session: Optional[ScrapingSession],
+        field_name: str,
+        amount: int = 1,
+    ) -> None:
+        if session is None or amount <= 0:
+            return
+        setattr(session, field_name, int(getattr(session, field_name, 0) or 0) + amount)
 
     def _update_product_attributes(
         self,
@@ -3970,7 +4057,7 @@ class ScraperIntegrationService:
         self._apply_authoritative_product_overrides(product, scraped_product)
 
         # Обрабатываем аналоги, если это медицина
-        if product.product_type == "medicines" and getattr(scraped_product, "analogs", None):
+        if product.product_type == "medicines" and self._has_medicine_analog_work(scraped_product):
             self._process_medicine_analogs(product, scraped_product, session)
 
         # После создания доменной модели нужно переназначить галерею на неё, а не на Product.

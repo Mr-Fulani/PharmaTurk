@@ -3,7 +3,7 @@
 import logging
 import re
 from typing import Dict, List, Optional, Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
 from bs4 import BeautifulSoup
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -11,11 +11,17 @@ from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedErro
 from ..base.utils import clean_text, normalize_price, extract_currency
 
 
+class IlacFiyatiSourceError(RuntimeError):
+    """Источник вернул пустую или неожиданную страницу вместо данных лекарства."""
+
+
 class IlacFiyatiParser(BaseScraper):
     """Парсер для сайта ilacfiyati.com."""
 
     # Настоящая пагинация через ?pg= и поддержка start_page — авточепочка безопасна.
     SUPPORTS_PAGE_CHUNKING = True
+    REPORTS_PAGES_PROCESSED = True
+    REPORTS_NEXT_START_PAGE = True
 
     DETAIL_TABS = {
         "ilac_bilgileri": {
@@ -122,6 +128,15 @@ class IlacFiyatiParser(BaseScraper):
             parts = parts[:2]
         path = "/" + "/".join(parts)
         return parsed._replace(path=path, params="", query="", fragment="").geturl().rstrip("/")
+
+    @staticmethod
+    def _listing_page_url(category_url: str, page: int) -> str:
+        """Добавляет/заменяет pg, не ломая brand и другие фильтры URL."""
+        parsed = urlparse(category_url)
+        query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "pg"]
+        if page > 1 or any(key == "pg" for key, _ in parse_qsl(parsed.query, keep_blank_values=True)):
+            query.append(("pg", str(page)))
+        return parsed._replace(query=urlencode(query, doseq=True), fragment="").geturl()
 
     def _clean_tab_text(self, text: str) -> str:
         text = str(text or "").strip()
@@ -305,6 +320,10 @@ class IlacFiyatiParser(BaseScraper):
         max_pages — сколько страниц обработать в этом вызове (размер чанка).
         """
         self.has_more_pages = True
+        self.pages_processed = 0
+        self.next_start_page = start_page
+        self.item_errors = 0
+        self.stop_reason = ""
         count = 0
         page = start_page
         pages_parsed = 0
@@ -325,7 +344,7 @@ class IlacFiyatiParser(BaseScraper):
             return urls
 
         if page > 1:
-            previous_url = f"{category_url}?pg={page - 1}"
+            previous_url = self._listing_page_url(category_url, page - 1)
             previous_html = self._make_request(previous_url)
             if previous_html:
                 previous_page_urls = extract_product_urls(previous_html)
@@ -334,18 +353,26 @@ class IlacFiyatiParser(BaseScraper):
             self.logger.info(f"Начинаем парсинг товаров: {category_url} (страницы {start_page}+{max_pages})")
 
             while pages_parsed < max_pages:
-                url = f"{category_url}?pg={page}" if page > 1 else category_url
+                # Пока страница не завершена, безопасный курсор указывает на неё:
+                # после soft-timeout уже сохранённые товары отсеет cache задачи.
+                self.next_start_page = page
+                url = self._listing_page_url(category_url, page)
                 self.logger.info(f"Запрос страницы {page}: {url}")
 
                 html = self._make_request(url)
                 if not html:
-                    self.has_more_pages = False
-                    break
+                    raise IlacFiyatiSourceError(
+                        f"IlacFiyati вернул пустую страницу каталога: {url}"
+                    )
 
                 product_urls = extract_product_urls(html)
 
                 if not product_urls:
-                    self.logger.info("Ссылки на товары не найдены, завершаем пагинацию.")
+                    self.stop_reason = (
+                        f"На странице {page} по заданным фильтрам товары не найдены; "
+                        "каталог или выборка закончились."
+                    )
+                    self.logger.info(self.stop_reason)
                     self.has_more_pages = False
                     break
 
@@ -354,30 +381,49 @@ class IlacFiyatiParser(BaseScraper):
                         "IlacFiyati: страница %s повторяет предыдущую, каталог исчерпан.",
                         page,
                     )
+                    self.stop_reason = (
+                        f"Страница {page} повторяет предыдущую; каталог закончился."
+                    )
                     self.has_more_pages = False
                     break
 
                 for product_url in product_urls:
-                    if self.max_products and count >= self.max_products:
+                    if self.max_products is not None and count >= self.max_products:
                         return
 
-                    detail = self.parse_product_detail(product_url)
+                    try:
+                        detail = self.parse_product_detail(product_url)
+                    except SoftTimeLimitExceeded:
+                        raise
+                    except ScraperAccessBlockedError:
+                        raise
+                    except IlacFiyatiSourceError as exc:
+                        self.item_errors += 1
+                        self.logger.error(
+                            "IlacFiyati: карточка %s пропущена из-за ошибки источника: %s",
+                            product_url,
+                            exc,
+                        )
+                        continue
                     if detail and self.validate_product(detail):
                         count += 1
                         yield detail
 
                 pages_parsed += 1
+                self.pages_processed = pages_parsed
                 previous_page_urls = product_urls
                 page += 1
+                self.next_start_page = page
 
         except SoftTimeLimitExceeded:
             raise
         except ScraperAccessBlockedError:
             raise
-        except Exception as e:
-            self.logger.error(f"Ошибка при парсимге списка товаров: {e}")
+        except Exception:
+            self.logger.exception("Ошибка при парсинге списка товаров IlacFiyati")
+            raise
 
-    def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
+    def parse_product_detail(self, product_url: str) -> ScrapedProduct:
         """
         Парсит детальную страницу товара.
         Извлекает название, цену и характеристики.
@@ -386,7 +432,9 @@ class IlacFiyatiParser(BaseScraper):
             self.logger.info(f"Парсинг деталей товара: {product_url}")
             html = self._make_request(product_url)
             if not html:
-                return None
+                raise IlacFiyatiSourceError(
+                    f"IlacFiyati вернул пустую карточку: {product_url}"
+                )
 
             soup = BeautifulSoup(html, 'html.parser')
             
@@ -402,8 +450,9 @@ class IlacFiyatiParser(BaseScraper):
                     name = clean_text(title_elem.text)
             
             if not name:
-                self.logger.warning(f"Не удалось найти название на странице {product_url}")
-                return None
+                raise IlacFiyatiSourceError(
+                    f"IlacFiyati: название препарата не найдено на странице {product_url}"
+                )
 
             # 2. Цена
             price = None
@@ -574,6 +623,7 @@ class IlacFiyatiParser(BaseScraper):
             # 5. Аналоги (Eşdeğeri / SGK Eşdeğeri)
             # На сайте ilacfiyati аналоги лежат на отдельных подстраницах /esdegeri и /sgk-esdegeri
             analogs = []
+            analog_fetch_errors = 0
             sub_paths = [('/esdegeri', 'Eşdeğeri'), ('/sgk-esdegeri', 'SGK Eşdeğeri')]
             canonical_product_url = self._canonical_product_url(product_url)
             
@@ -585,37 +635,61 @@ class IlacFiyatiParser(BaseScraper):
                     time.sleep(1.5)
                     
                     sub_html = self._make_request(sub_url)
-                    if sub_html:
-                        sub_soup = BeautifulSoup(sub_html, 'html.parser')
-                        # Ищем все ссылки на лекарства на этой странице
-                        # Обычно они в таблицах или списках в центральной колонке
-                        links = sub_soup.find_all('a', href=True)
-                        for a in links:
-                            analog = self._extract_analog_from_link(
-                                a,
-                                current_product_url=canonical_product_url,
-                                source_tab=source_tab,
-                            )
-                            if analog:
-                                analogs.append(analog)
+                    if not sub_html:
+                        raise IlacFiyatiSourceError(
+                            f"IlacFiyati вернул пустую вкладку аналогов: {sub_url}"
+                        )
+                    sub_soup = BeautifulSoup(sub_html, 'html.parser')
+                    # Ищем все ссылки на лекарства на этой странице
+                    # Обычно они в таблицах или списках в центральной колонке
+                    links = sub_soup.find_all('a', href=True)
+                    for a in links:
+                        analog = self._extract_analog_from_link(
+                            a,
+                            current_product_url=canonical_product_url,
+                            source_tab=source_tab,
+                        )
+                        if analog:
+                            analogs.append(analog)
                 except SoftTimeLimitExceeded:
                     raise
                 except ScraperAccessBlockedError:
                     raise
                 except Exception as e:
+                    analog_fetch_errors += 1
                     self.logger.error(f"Error fetching analogs from {sub_url}: {e}")
             
-            # Удаляем дубликаты по URL
-            seen_urls = set()
-            unique_analogs = []
-            for an in analogs:
-                if an['url'] not in seen_urls:
-                    seen_urls.add(an['url'])
-                    unique_analogs.append(an)
+            # Один препарат может присутствовать в обеих вкладках. Объединяем
+            # строки по URL, сохраняя коды и происхождение из обеих вкладок.
+            analogs_by_url = {}
+            for analog in analogs:
+                analog_url = analog["url"]
+                existing = analogs_by_url.get(analog_url)
+                if existing is None:
+                    analogs_by_url[analog_url] = dict(analog)
+                    continue
+                for field_name in (
+                    "barcode",
+                    "atc_code",
+                    "sgk_equivalent_code",
+                    "price",
+                ):
+                    if not existing.get(field_name) and analog.get(field_name):
+                        existing[field_name] = analog[field_name]
+                source_tabs = [
+                    value.strip()
+                    for value in str(existing.get("source_tab") or "").split(",")
+                    if value.strip()
+                ]
+                next_source_tab = str(analog.get("source_tab") or "").strip()
+                if next_source_tab and next_source_tab not in source_tabs:
+                    source_tabs.append(next_source_tab)
+                existing["source_tab"] = ", ".join(source_tabs)
+            unique_analogs = list(analogs_by_url.values())
             
             self.logger.info(f"Товар {name}: найдено аналогов {len(unique_analogs)}")
 
-            return ScrapedProduct(
+            product = ScrapedProduct(
                 name=name,
                 description=description,
                 price=price,
@@ -630,11 +704,19 @@ class IlacFiyatiParser(BaseScraper):
                 attributes=attributes,
                 analogs=unique_analogs
             )
+            # Диагностика нужна интеграционному сервису для счётчиков запуска,
+            # но не должна попадать в атрибуты/БД самого препарата.
+            product.analog_fetch_errors = analog_fetch_errors
+            return product
 
         except SoftTimeLimitExceeded:
             raise
         except ScraperAccessBlockedError:
             raise
+        except IlacFiyatiSourceError:
+            raise
         except Exception as e:
-            self.logger.error(f"Ошибка при парсинге детальной страницы {product_url}: {e}")
-            return None
+            self.logger.exception("Ошибка при парсинге детальной страницы %s", product_url)
+            raise IlacFiyatiSourceError(
+                f"Не удалось разобрать карточку IlacFiyati {product_url}: {e}"
+            ) from e
