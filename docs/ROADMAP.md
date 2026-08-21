@@ -20,7 +20,9 @@
 - OpenSearch исключён из кода и актуального Compose как неиспользуемый; legacy
   container остановлен, а его image/volume временно сохранены только для rollback;
 - каталог содержит 19 корневых доменов;
-- криптооплата реализована через CoinRemitter;
+- криптооплата реализована через CoinRemitter, но production credentials пока
+  принадлежат тестовому TCN-кошельку; реальные платежи до замены wallet
+  credentials не готовы;
 - VAPI и AI API доступны только staff;
 - seed каталога должен выполняться только явно;
 - production settings используют fail-fast вместо опасных fallback.
@@ -103,16 +105,45 @@ inventory выявил 10 legacy PDF: 6 в корневом и 4 в dev namespac
 
 ## P1 — ближайший спринт
 
-### P1.0 E2E оплаты на staging
+### P1.0 Production-кошелёк CoinRemitter и E2E оплаты
 
-Провести реальный sandbox/минимальный CoinRemitter-сценарий:
+Диагностика 21 августа 2026 года подтвердила, что production API key относится
+к тестовому кошельку TCN. При заказе на `18884.00 RUB` CoinRemitter вернул
+HTTP 400 / error `1001`: инвойс превышает лимит `10 TCN`. Значение
+`COINREMITTER_COIN=USDT` не выбирает кошелёк: фактическую монету определяет
+пара `COINREMITTER_API_KEY` / `COINREMITTER_API_PASSWORD`. Поэтому изменение
+только `COINREMITTER_COIN` проблему не исправит.
 
-1. создать заказ и инвойс;
-2. подтвердить совпадение provider id, order binding, валюты и суммы;
-3. принять pending/paid/expired webhook;
-4. повторить webhook и убедиться в идемпотентности;
-5. смоделировать provider timeout и неверный payload;
-6. проверить остатки, статус заказа, уведомление и чек.
+До закрытия задачи TCN разрешён только в изолированном local/staging-контуре и
+только для небольшого инвойса в пределах лимита провайдера. Нельзя подменять
+сумму production-заказа тестовой суммой: authoritative webhook verification
+должна обнаружить расхождение. Реальную криптооплату на витрине следует считать
+неготовой и не предлагать покупателям до прохождения критериев ниже.
+
+План включения USDT TRC20:
+
+1. создать или выбрать реальный кошелёк `USDT TRC20` в CoinRemitter;
+2. выпустить относящиеся именно к нему API Key и API Password;
+3. безопасно заменить в production `.env` значения
+   `COINREMITTER_API_KEY`, `COINREMITTER_API_PASSWORD` и установить
+   `COINREMITTER_COIN=USDTTRC20`, не передавая секреты через Git, логи или чат;
+4. перезапустить backend и все Celery-процессы без пересоздания state volumes;
+5. создать минимальный тестовый инвойс без отправки реальных средств и
+   подтвердить, что provider возвращает USDT TRC20, корректные fiat/crypto
+   суммы, invoice URL и expiry;
+6. провести контролируемый минимальный платёж на staging/production только
+   после успешного шага 5;
+7. подтвердить совпадение provider id, order binding, валюты и суммы;
+8. принять pending/paid/expired webhook, повторить webhook и убедиться в
+   идемпотентности;
+9. смоделировать provider timeout и неверный payload;
+10. проверить остатки, статус заказа, уведомление, чек и read-only
+    `reconcile_coinremitter` без drift.
+
+Критерий закрытия: реальные wallet credentials установлены, TCN-ошибка больше
+не воспроизводится, тестовый инвойс и webhook проходят, reconciliation не
+находит расхождений, а rollback предыдущего `.env` сохранён в защищённом
+операционном backup.
 
 Read-only команда `reconcile_coinremitter` и эксплуатационный runbook уже
 добавлены. Исправление drift должно идти через подлинный webhook или утверждённую
