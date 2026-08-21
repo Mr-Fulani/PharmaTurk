@@ -24,7 +24,7 @@ services:
     networks: [data]
 
   qdrant:
-    image: qdrant/qdrant:v1.18.2
+    image: qdrant/qdrant:v1.18.3
     volumes:
       - qdrant_data:/qdrant/storage
     environment:

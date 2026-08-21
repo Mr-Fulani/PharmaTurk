@@ -798,7 +798,13 @@ class UserSessionsView(APIView):
         
         serializer = UserSessionSerializer(sessions, many=True)
         return Response(serializer.data)
-    
+
+
+class UserSessionDetailView(APIView):
+    """Завершение конкретной пользовательской сессии."""
+
+    permission_classes = [IsAuthenticated]
+
     @extend_schema(
         summary="Завершить сессию",
         description="Завершение конкретной сессии пользователя",

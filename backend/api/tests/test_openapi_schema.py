@@ -1,11 +1,27 @@
 from django.core.management import call_command
 from drf_spectacular.drainage import GENERATOR_STATS
 
+from api.schema import canonicalize_compatibility_routes
+
 
 # Existing serializers predate the OpenAPI contract and still produce many
 # type-inference warnings. Keep the debt explicit and prevent it from growing;
 # every warning removed can lower this number in the same change.
-OPENAPI_UNIQUE_WARNING_BASELINE = 598
+OPENAPI_UNIQUE_WARNING_BASELINE = 581
+
+
+def test_openapi_keeps_only_canonical_route_from_compatibility_pair():
+    callback = object()
+    endpoints = [
+        ("/api/example", "api/example", "GET", callback),
+        ("/api/example/", "api/example/", "GET", callback),
+        ("/api/no-pair", "api/no-pair", "POST", callback),
+    ]
+
+    assert canonicalize_compatibility_routes(endpoints) == [
+        ("/api/example/", "api/example/", "GET", callback),
+        ("/api/no-pair", "api/no-pair", "POST", callback),
+    ]
 
 
 def test_openapi_schema_has_no_generator_errors(tmp_path):

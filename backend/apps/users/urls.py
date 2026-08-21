@@ -15,6 +15,7 @@ from .views import (
     UserRequestVerificationCodeView,
     UserStatsView,
     UserSessionsView,
+    UserSessionDetailView,
     AppConfigView,
     SMSSendCodeView,
     SMSVerifyCodeView,
@@ -71,7 +72,7 @@ urlpatterns = [
     
     # Сессии
     path('sessions/', UserSessionsView.as_view(), name='user-sessions'),
-    path('sessions/<int:session_id>/', UserSessionsView.as_view(), name='user-session-detail'),
+    path('sessions/<int:session_id>/', UserSessionDetailView.as_view(), name='user-session-detail'),
     
     # Конфигурация приложения
     path('config/', AppConfigView.as_view(), name='app-config'),

@@ -401,6 +401,7 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "PREPROCESSING_HOOKS": ["api.schema.canonicalize_compatibility_routes"],
 }
 
 
