@@ -57,7 +57,9 @@ both new and previous SHA-labelled images and the validated backup manifest. It
 prints the migration plan, stops Nginx/web/workers for a controlled maintenance
 window, starts data services without deleting volumes, applies committed
 migrations once, starts all application services on one SHA with automatic
-migrations disabled, and runs public HTTPS smoke checks.
+migrations disabled, and runs public HTTPS smoke checks. Existing PostgreSQL,
+Redis, and Qdrant containers are never recreated by the deploy script; state
+service upgrades are a separate, explicitly planned maintenance operation.
 
 Use the same release SHA in staging and production. Never rebuild between them.
 After all CI gates pass on `main`, the image job publishes only immutable SHA
