@@ -142,6 +142,13 @@ def test_instagram_structured_403_becomes_common_access_error(monkeypatch):
         raise instaloader.exceptions.QueryReturnedForbiddenException("HTTP 403")
 
     monkeypatch.setattr(instaloader.Profile, "from_username", forbidden)
+    monkeypatch.setattr(
+        parser,
+        "_iter_mobile_feed_posts",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            instaloader.exceptions.QueryReturnedForbiddenException("HTTP 403")
+        ),
+    )
 
     with pytest.raises(ExternalAccessBlockedError) as exc_info:
         parser._parse_profile("test_profile", max_posts=1)

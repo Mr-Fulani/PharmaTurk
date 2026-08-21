@@ -1,14 +1,21 @@
 """Парсер для Instagram — сбор постов с медиа и описаниями для карточек товаров."""
 
-import re
 import logging
-from typing import Dict, List, Optional, Any, Tuple
+import random
+import re
+import time
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote, urlparse
 
 import instaloader
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.utils import clean_text
+
+
+class InstagramSourceError(RuntimeError):
+    """Instagram ответил ошибкой, которую нельзя считать пустым результатом."""
 
 
 class InstagramParser(BaseScraper):
@@ -28,13 +35,51 @@ class InstagramParser(BaseScraper):
     # Инициализация
     # -----------------------------------------------------------------------
 
-    def _raise_forbidden(self, exc: Exception) -> None:
-        """Преобразует структурированный 403 Instaloader в общую ошибку задачи."""
-        raise ScraperAccessBlockedError(
-            source="Instagram",
-            status_code=403,
-            url=self.base_url,
-        ) from exc
+    MOBILE_FEED_APP_ID = "936619743392459"
+    MOBILE_FEED_ASBD_ID = "198387"
+
+    @staticmethod
+    def _status_code_from_exception(exc: Exception) -> int:
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", 0) or 0
+        if status_code:
+            return int(status_code)
+
+        match = re.search(r"(?:HTTP\s+)?(400|401|403|404|407|429|5\d\d)\b", str(exc))
+        return int(match.group(1)) if match else 0
+
+    def _raise_source_error(
+        self,
+        exc: Exception,
+        *,
+        operation: str,
+        url: Optional[str] = None,
+    ) -> None:
+        """Не позволяет ошибкам Instaloader превращаться в успешный пустой результат."""
+        if isinstance(exc, ScraperAccessBlockedError):
+            raise exc
+
+        status_code = self._status_code_from_exception(exc)
+        source_url = url or self.base_url
+        if isinstance(exc, instaloader.exceptions.QueryReturnedForbiddenException):
+            status_code = status_code or 403
+        if status_code in (401, 403, 407):
+            raise ScraperAccessBlockedError(
+                message=(
+                    f"Instagram отклонил запрос при операции «{operation}» "
+                    f"(HTTP {status_code}, {source_url})"
+                ),
+                source="Instagram",
+                status_code=status_code,
+                url=source_url,
+            ) from exc
+
+        if isinstance(exc, instaloader.exceptions.ProfileNotExistsException):
+            message = f"Instagram-профиль недоступен или не существует: {source_url}"
+        else:
+            status_suffix = f" (HTTP {status_code})" if status_code else ""
+            message = f"Ошибка Instagram при операции «{operation}»{status_suffix}: {exc}"
+        raise InstagramSourceError(message) from exc
 
     def __init__(
         self,
@@ -70,17 +115,83 @@ class InstagramParser(BaseScraper):
             save_metadata=False,
             compress_json=False,
             post_metadata_txt_pattern="",
-            max_connection_attempts=3,
-            request_timeout=30.0,
+            max_connection_attempts=max(1, self.max_retries),
+            request_timeout=float(self.timeout),
         )
+
+        # Instaloader использует собственную requests.Session, поэтому настройки
+        # BaseScraper нужно применить к ней отдельно. Прокси доступен уже здесь;
+        # headers/cookies придут позднее через configure_request_identity().
+        self._configure_loader_transport()
 
         # Учётные данные для авторизации (опционально)
         self.username = username
         self.password = password
         self._authenticated = False
+        self._authentication_attempted = False
 
-        if username and password:
-            self._authenticate()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Закрывает обе HTTP-сессии парсера."""
+        try:
+            self.loader.context.close()
+        finally:
+            super().__exit__(exc_type, exc_val, exc_tb)
+
+    def _configure_loader_transport(
+        self,
+        *,
+        user_agent: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+        cookies: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Применяет ScraperConfig к внутренней requests.Session Instaloader."""
+        session = self.loader.context._session
+        if self.proxies:
+            session.proxies.update(self.proxies)
+
+        clean_headers = {
+            str(key): str(value)
+            for key, value in (headers or {}).items()
+            if key and value is not None
+        }
+        clean_cookies = {
+            str(key): str(value)
+            for key, value in (cookies or {}).items()
+            if key and value is not None
+        }
+        if user_agent:
+            clean_headers["User-Agent"] = str(user_agent)
+        if clean_headers:
+            session.headers.update(clean_headers)
+        if clean_cookies:
+            session.cookies.update(clean_cookies)
+
+    def configure_request_identity(
+        self,
+        *,
+        user_agent: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+        cookies: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Настраивает как общий HTTP-клиент, так и транспорт Instaloader."""
+        super().configure_request_identity(
+            user_agent=user_agent,
+            headers=headers,
+            cookies=cookies,
+        )
+        self._configure_loader_transport(
+            user_agent=user_agent,
+            headers=headers,
+            cookies=cookies,
+        )
+        self._ensure_authenticated()
+
+    def _ensure_authenticated(self) -> None:
+        """Авторизуется один раз и только после применения proxy/headers/cookies."""
+        if self._authentication_attempted or not (self.username and self.password):
+            return
+        self._authentication_attempted = True
+        self._authenticate()
 
     # -----------------------------------------------------------------------
     # Обязательные методы BaseScraper
@@ -111,23 +222,19 @@ class InstagramParser(BaseScraper):
         Returns:
             Список спарсенных товаров.
         """
-        products = []
-
         try:
+            self._ensure_authenticated()
             # Определяем тип URL: хештег или профиль
             if "/explore/tags/" in category_url or category_url.lstrip().startswith("#"):
                 hashtag = self._extract_hashtag(category_url)
-                products = self._parse_hashtag(hashtag, max_pages)
-            else:
-                username = self._extract_username(category_url)
-                products = self._parse_profile(username, max_pages)
-
+                return self._parse_hashtag(hashtag, max_pages)
+            username = self._extract_username(category_url)
+            return self._parse_profile(username, max_pages)
         except ScraperAccessBlockedError:
             raise
         except Exception as e:
             self.logger.error("Ошибка при парсинге списка товаров: %s", e)
-
-        return products
+            raise
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
         """Парсит один конкретный пост Instagram по URL.
@@ -140,23 +247,26 @@ class InstagramParser(BaseScraper):
             Спарсенный товар или None при ошибке.
         """
         try:
+            self._ensure_authenticated()
             shortcode = self._extract_shortcode(product_url)
             if not shortcode:
-                self.logger.error(
-                    "Не удалось извлечь shortcode из URL: %s", product_url
-                )
+                self.logger.error("Не удалось извлечь shortcode из URL: %s", product_url)
                 return None
 
             post = instaloader.Post.from_shortcode(self.loader.context, shortcode)
             return self._parse_post(post)
 
-        except instaloader.exceptions.QueryReturnedForbiddenException as e:
-            self._raise_forbidden(e)
         except ScraperAccessBlockedError:
             raise
+        except instaloader.exceptions.InstaloaderException as e:
+            self._raise_source_error(
+                e,
+                operation="получение поста",
+                url=product_url,
+            )
         except Exception as e:
             self.logger.error("Ошибка при парсинге поста %s: %s", product_url, e)
-            return None
+            raise
 
     def validate_product(self, product: ScrapedProduct) -> bool:
         """Проверяет минимальную валидность товара перед добавлением в список.
@@ -196,10 +306,12 @@ class InstagramParser(BaseScraper):
             self._authenticated = True
             self.logger.info("Успешная авторизация для @%s", self.username)
         except instaloader.exceptions.QueryReturnedForbiddenException as e:
-            self._raise_forbidden(e)
-        except ScraperAccessBlockedError:
-            raise
-        except Exception as e:
+            self._raise_source_error(
+                e,
+                operation=f"авторизация @{self.username}",
+                url=self.base_url,
+            )
+        except instaloader.exceptions.InstaloaderException as e:
             self.logger.warning(
                 "Ошибка авторизации для @%s: %s. Продолжаем без авторизации.",
                 self.username,
@@ -210,9 +322,7 @@ class InstagramParser(BaseScraper):
     # Парсинг профиля и хештега
     # -----------------------------------------------------------------------
 
-    def _parse_profile(
-        self, username: str, max_posts: int = 50
-    ) -> List[ScrapedProduct]:
+    def _parse_profile(self, username: str, max_posts: int = 50) -> List[ScrapedProduct]:
         """Парсит последние посты из публичного профиля.
 
         Args:
@@ -222,52 +332,159 @@ class InstagramParser(BaseScraper):
         Returns:
             Список спарсенных товаров.
         """
-        products = []
-
+        products: List[ScrapedProduct] = []
+        seen_shortcodes = set()
         try:
-            self.logger.info(
-                "Начинаем парсинг профиля @%s (макс. %d постов)", username, max_posts
-            )
-            profile = instaloader.Profile.from_username(
-                self.loader.context, username
-            )
+            self.logger.info("Начинаем парсинг профиля @%s (макс. %d постов)", username, max_posts)
+            profile = instaloader.Profile.from_username(self.loader.context, username)
 
-            for idx, post in enumerate(profile.get_posts()):
-                if idx >= max_posts:
-                    break
-                try:
-                    product = self._parse_post(post)
-                    if product and self.validate_product(product):
-                        products.append(product)
-                        self.logger.info(
-                            "  [%d/%d] Спарсен пост %s: %s",
-                            idx + 1,
-                            max_posts,
-                            post.shortcode,
-                            product.name[:60],
-                        )
-                except instaloader.exceptions.QueryReturnedForbiddenException as e:
-                    self._raise_forbidden(e)
-                except ScraperAccessBlockedError:
-                    raise
-                except Exception as e:
-                    self.logger.warning(
-                        "  Ошибка при парсинге поста %s: %s", post.shortcode, e
-                    )
-                    continue
-
-        except instaloader.exceptions.QueryReturnedForbiddenException as e:
-            self._raise_forbidden(e)
+            self._consume_profile_posts(
+                profile.get_posts(),
+                products=products,
+                seen_shortcodes=seen_shortcodes,
+                max_posts=max_posts,
+            )
+            return products
         except ScraperAccessBlockedError:
             raise
+        except instaloader.exceptions.InstaloaderException as primary_error:
+            self.logger.warning(
+                "Основной Instagram API недоступен для @%s: %s. "
+                "Пробуем совместимый mobile-feed fallback.",
+                username,
+                primary_error,
+            )
+            try:
+                self._consume_profile_posts(
+                    self._iter_mobile_feed_posts(username, max_posts=max_posts),
+                    products=products,
+                    seen_shortcodes=seen_shortcodes,
+                    max_posts=max_posts,
+                )
+                return products
+            except ScraperAccessBlockedError:
+                raise
+            except Exception as fallback_error:
+                self.logger.error(
+                    "Mobile-feed fallback Instagram не сработал для @%s: %s",
+                    username,
+                    fallback_error,
+                )
+                self._raise_source_error(
+                    fallback_error,
+                    operation=f"получение профиля @{username} через fallback",
+                    url=f"https://www.instagram.com/{username}/",
+                )
         except Exception as e:
             self.logger.error("Ошибка при парсинге профиля @%s: %s", username, e)
+            raise
 
-        return products
+    def _consume_profile_posts(
+        self,
+        posts,
+        *,
+        products: List[ScrapedProduct],
+        seen_shortcodes: set,
+        max_posts: int,
+    ) -> None:
+        """Обрабатывает посты, сохраняя лимит и дедупликацию между API/fallback."""
+        for post in posts:
+            if len(seen_shortcodes) >= max_posts:
+                break
+            shortcode = post.shortcode
+            if shortcode in seen_shortcodes:
+                continue
+            try:
+                product = self._parse_post(post)
+                seen_shortcodes.add(shortcode)
+                if product and self.validate_product(product):
+                    products.append(product)
+                    self.logger.info(
+                        "  [%d/%d] Спарсен пост %s: %s",
+                        len(seen_shortcodes),
+                        max_posts,
+                        shortcode,
+                        product.name[:60],
+                    )
+            except instaloader.exceptions.InstaloaderException:
+                raise
+            except ScraperAccessBlockedError:
+                raise
+            except Exception as e:
+                seen_shortcodes.add(shortcode)
+                self.logger.warning("  Ошибка при парсинге поста %s: %s", shortcode, e)
 
-    def _parse_hashtag(
-        self, hashtag: str, max_posts: int = 50
-    ) -> List[ScrapedProduct]:
+    def _iter_mobile_feed_posts(self, username: str, *, max_posts: int):
+        """Fallback для business-профилей и сломанной GraphQL-пагинации Instagram."""
+        if max_posts <= 0:
+            return
+
+        encoded_username = quote(username, safe="")
+        url = f"https://www.instagram.com/api/v1/feed/user/{encoded_username}/username/"
+        headers = {
+            "X-IG-App-ID": self.MOBILE_FEED_APP_ID,
+            "X-ASBD-ID": self.MOBILE_FEED_ASBD_ID,
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": f"https://www.instagram.com/{encoded_username}/",
+        }
+        params = {"count": min(12, max_posts)}
+        yielded = 0
+
+        while yielded < max_posts:
+            response = self.loader.context._session.get(
+                url,
+                headers=headers,
+                params=params,
+                timeout=float(self.timeout),
+            )
+            status_code = int(getattr(response, "status_code", 0) or 0)
+            if status_code in (401, 403, 407):
+                raise ScraperAccessBlockedError(
+                    message=(
+                        "Instagram отклонил mobile-feed fallback "
+                        f"(HTTP {status_code}, профиль @{username})"
+                    ),
+                    source="Instagram",
+                    status_code=status_code,
+                    url=url,
+                )
+            response.raise_for_status()
+
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise InstagramSourceError(
+                    f"Instagram вернул невалидный JSON для профиля @{username}"
+                ) from exc
+
+            if payload.get("status") == "fail":
+                raise InstagramSourceError(
+                    f"Instagram mobile feed отклонил профиль @{username}: "
+                    f"{payload.get('message') or 'неизвестная ошибка'}"
+                )
+
+            items = payload.get("items") or []
+            for item in items:
+                if yielded >= max_posts:
+                    break
+                yield instaloader.Post.from_iphone_struct(self.loader.context, item)
+                yielded += 1
+
+            if not payload.get("more_available"):
+                break
+            next_max_id = payload.get("next_max_id")
+            if not next_max_id:
+                break
+            params["max_id"] = next_max_id
+            params["count"] = min(12, max_posts - yielded)
+            self._wait_between_mobile_feed_pages()
+
+    def _wait_between_mobile_feed_pages(self) -> None:
+        """Соблюдает настроенную паузу только между fallback-страницами."""
+        low, high = self.delay_range
+        time.sleep(random.uniform(min(low, high), max(low, high)))
+
+    def _parse_hashtag(self, hashtag: str, max_posts: int = 50) -> List[ScrapedProduct]:
         """Парсит последние посты по хештегу.
 
         Args:
@@ -280,9 +497,7 @@ class InstagramParser(BaseScraper):
         products = []
 
         try:
-            self.logger.info(
-                "Начинаем парсинг хештега #%s (макс. %d постов)", hashtag, max_posts
-            )
+            self.logger.info("Начинаем парсинг хештега #%s (макс. %d постов)", hashtag, max_posts)
             hashtag_obj = instaloader.Hashtag.from_name(self.loader.context, hashtag)
 
             for idx, post in enumerate(hashtag_obj.get_posts()):
@@ -299,28 +514,51 @@ class InstagramParser(BaseScraper):
                             post.shortcode,
                             product.name[:60],
                         )
-                except instaloader.exceptions.QueryReturnedForbiddenException as e:
-                    self._raise_forbidden(e)
+                except instaloader.exceptions.InstaloaderException:
+                    raise
                 except ScraperAccessBlockedError:
                     raise
                 except Exception as e:
-                    self.logger.warning(
-                        "  Ошибка при парсинге поста %s: %s", post.shortcode, e
-                    )
+                    self.logger.warning("  Ошибка при парсинге поста %s: %s", post.shortcode, e)
                     continue
 
-        except instaloader.exceptions.QueryReturnedForbiddenException as e:
-            self._raise_forbidden(e)
         except ScraperAccessBlockedError:
             raise
+        except instaloader.exceptions.InstaloaderException as e:
+            self._raise_source_error(
+                e,
+                operation=f"получение хештега #{hashtag}",
+                url=f"https://www.instagram.com/explore/tags/{hashtag}/",
+            )
         except Exception as e:
             self.logger.error("Ошибка при парсинге хештега #%s: %s", hashtag, e)
+            raise
 
         return products
 
     # -----------------------------------------------------------------------
     # Парсинг одного поста
     # -----------------------------------------------------------------------
+
+    def _post_metric(self, post: instaloader.Post, property_name: str, iphone_key: str):
+        """Читает необязательный счётчик без дополнительного GraphQL-запроса."""
+        iphone_struct = getattr(post, "_iphone_struct_", None) or {}
+        if iphone_key in iphone_struct:
+            return iphone_struct.get(iphone_key)
+        try:
+            return getattr(post, property_name)
+        except (
+            instaloader.exceptions.InstaloaderException,
+            AttributeError,
+            KeyError,
+            TypeError,
+        ) as exc:
+            self.logger.warning(
+                "Не удалось получить необязательный Instagram-счётчик %s: %s",
+                property_name,
+                exc,
+            )
+            return None
 
     def _parse_post(self, post: instaloader.Post) -> Optional[ScrapedProduct]:
         """Преобразует объект поста Instaloader в ScrapedProduct.
@@ -369,8 +607,12 @@ class InstagramParser(BaseScraper):
             # для генерации описания и SEO-данных.
             attributes: Dict[str, Any] = {
                 # Метаданные поста
-                "likes_count": post.likes,
-                "comments_count": post.comments,
+                "likes_count": self._post_metric(post, "likes", "like_count"),
+                "comments_count": self._post_metric(
+                    post,
+                    "comments",
+                    "comment_count",
+                ),
                 "hashtags": hashtags,
                 "post_date": post.date_utc.isoformat() if post.date_utc else None,
                 "username": post.owner_username,
@@ -422,8 +664,8 @@ class InstagramParser(BaseScraper):
 
             return product
 
-        except instaloader.exceptions.QueryReturnedForbiddenException as e:
-            self._raise_forbidden(e)
+        except instaloader.exceptions.InstaloaderException:
+            raise
         except ScraperAccessBlockedError:
             raise
         except Exception as e:
@@ -775,8 +1017,8 @@ class InstagramParser(BaseScraper):
                 if post.url:
                     images.append(post.url)
 
-        except instaloader.exceptions.QueryReturnedForbiddenException as e:
-            self._raise_forbidden(e)
+        except instaloader.exceptions.InstaloaderException:
+            raise
         except ScraperAccessBlockedError:
             raise
         except Exception as e:
@@ -803,10 +1045,23 @@ class InstagramParser(BaseScraper):
 
         Например: https://www.instagram.com/ummaland_books/ → ummaland_books
         """
-        match = re.search(r"instagram\.com/([^/?#]+)", url)
-        if match:
-            return match.group(1).rstrip("/")
-        return url
+        candidate = (url or "").strip()
+        if "://" in candidate:
+            parsed = urlparse(candidate)
+            host = (parsed.hostname or "").lower()
+            if host not in self.get_supported_domains():
+                raise ValueError(f"Неподдерживаемый Instagram URL: {url}")
+            path_parts = [part for part in parsed.path.split("/") if part]
+            if not path_parts:
+                raise ValueError("В Instagram URL не указан username профиля")
+            candidate = path_parts[0]
+
+        candidate = candidate.lstrip("@").strip("/")
+        if candidate in {"p", "reel", "reels", "explore", "stories"}:
+            raise ValueError(f"URL не является ссылкой на Instagram-профиль: {url}")
+        if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", candidate):
+            raise ValueError(f"Некорректный Instagram username: {candidate}")
+        return candidate
 
     def _extract_hashtag(self, url: str) -> str:
         """Извлекает название хештега из URL или строки.

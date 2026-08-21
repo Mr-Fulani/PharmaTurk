@@ -111,7 +111,14 @@ class Command(BaseCommand):
 
         # --- Режим --config-id: используем конфигурацию из БД ---
         if config_id:
-            self._run_with_config(config_id, max_posts, category_slug)
+            self._run_with_config(
+                config_id,
+                max_posts,
+                category_slug,
+                username=username,
+                hashtag=hashtag,
+                post_url=post_url,
+            )
             return
 
         # --- Основной режим: через ScraperIntegrationService ---
@@ -145,8 +152,8 @@ class Command(BaseCommand):
         ScraperConfig для Instagram, резолвит target_category из slug,
         затем вызывает единый сервис интеграции — как для сайтовых парсеров.
         """
-        from apps.scrapers.services import ScraperIntegrationService
         from apps.scrapers.models import ScraperConfig
+        from apps.scrapers.services import ScraperIntegrationService
 
         # --- Формируем start_url ---
         if post_url:
@@ -160,6 +167,9 @@ class Command(BaseCommand):
             self.stdout.write(f"Источник: хештег #{hashtag}")
         else:
             raise CommandError("Не задан источник (--username, --hashtag или --post-url)")
+
+        # Категория нужна и для запуска, и для безопасного автосоздания конфига.
+        target_category = self._resolve_category(category_slug)
 
         # --- Находим или авто-создаём ScraperConfig для Instagram ---
         # ScraperConfig нужен ScraperIntegrationService для создания ScrapingSession.
@@ -179,6 +189,7 @@ class Command(BaseCommand):
             default_cat = target_category
             if default_cat is None:
                 from apps.catalog.models import Category
+
                 default_cat = Category.objects.first()
             if default_cat is None:
                 raise CommandError(
@@ -203,8 +214,6 @@ class Command(BaseCommand):
             config.scraper_username = login
             config.scraper_password = password
 
-        # --- Резолвим target_category из slug ---
-        target_category = self._resolve_category(category_slug)
         if target_category:
             self.stdout.write(f"Категория: {target_category.name}")
         else:
@@ -236,7 +245,16 @@ class Command(BaseCommand):
     # Режим --config-id
     # -----------------------------------------------------------------------
 
-    def _run_with_config(self, config_id: int, max_posts: int, category_slug: str):
+    def _run_with_config(
+        self,
+        config_id: int,
+        max_posts: int,
+        category_slug: str,
+        *,
+        username=None,
+        hashtag=None,
+        post_url=None,
+    ):
         """Запускает парсер используя ScraperConfig из БД по ID."""
         from apps.scrapers.models import ScraperConfig
         from apps.scrapers.services import ScraperIntegrationService
@@ -255,11 +273,27 @@ class Command(BaseCommand):
         self.stdout.write(f"Base URL: {config.base_url}")
 
         target_category = self._resolve_category(category_slug)
+        if post_url:
+            start_url = post_url
+        elif username:
+            start_url = f"https://www.instagram.com/{username}/"
+        elif hashtag:
+            start_url = f"https://www.instagram.com/explore/tags/{hashtag}/"
+        else:
+            from urllib.parse import urlparse
+
+            start_url = config.base_url
+            if not urlparse(start_url).path.strip("/"):
+                raise CommandError(
+                    "Для --config-id укажите также --username, --hashtag или --post-url; "
+                    "в base_url конфигурации нет профиля или поста."
+                )
 
         service = ScraperIntegrationService()
         try:
             session = service.run_scraper(
                 scraper_config=config,
+                start_url=start_url,
                 max_pages=max_posts,
                 max_products=max_posts,
                 target_category=target_category,
