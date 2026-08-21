@@ -26,8 +26,14 @@ release_validate_sha "$PREVIOUS_RELEASE"
 
 if command -v pg_restore >/dev/null 2>&1; then
   pg_restore --list "$POSTGRES_DUMP" >/dev/null || release_die "PostgreSQL dump is not readable by pg_restore"
+elif [[ -n "${PG_RESTORE_CONTAINER:-}" ]]; then
+  release_require_command docker
+  docker inspect "$PG_RESTORE_CONTAINER" >/dev/null 2>&1 || \
+    release_die "PG_RESTORE_CONTAINER does not exist"
+  docker exec -i "$PG_RESTORE_CONTAINER" pg_restore --list < "$POSTGRES_DUMP" >/dev/null || \
+    release_die "PostgreSQL dump is not readable by container pg_restore"
 else
-  release_die "pg_restore is required to validate the PostgreSQL dump"
+  release_die "pg_restore or an explicit PG_RESTORE_CONTAINER is required"
 fi
 
 output_dir="$(cd "$(dirname "$OUTPUT_FILE")" && pwd)"
