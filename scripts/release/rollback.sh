@@ -39,7 +39,7 @@ release_log "entering a controlled maintenance window for code rollback"
 release_compose_prod stop \
   nginx frontend backend celeryworker celery_ai celery_recsys celerybeat
 release_log "rolling all application containers back without changing database schema"
-release_compose_prod up -d --no-build \
+release_compose_prod up -d --no-build --no-deps --wait --wait-timeout 180 \
   backend frontend celeryworker celery_ai celery_recsys celerybeat nginx
 release_compose_prod ps
 "${RELEASE_SCRIPT_DIR}/postdeploy-smoke.sh" --base-url "$BASE_URL"

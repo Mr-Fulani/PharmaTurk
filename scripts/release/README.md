@@ -60,6 +60,8 @@ migrations once, starts all application services on one SHA with automatic
 migrations disabled, and runs public HTTPS smoke checks. Existing PostgreSQL,
 Redis, and Qdrant containers are never recreated by the deploy script; state
 service upgrades are a separate, explicitly planned maintenance operation.
+Migration one-shots and application startup disable implicit dependency
+creation, and startup waits for the backend health check before public smoke.
 
 Use the same release SHA in staging and production. Never rebuild between them.
 After all CI gates pass on `main`, the image job publishes only immutable SHA

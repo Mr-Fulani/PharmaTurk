@@ -48,16 +48,16 @@ release_assert_image "mudaroba-backend:${PREVIOUS_RELEASE}" "$PREVIOUS_RELEASE"
 release_assert_image "mudaroba-frontend:${PREVIOUS_RELEASE}" "$PREVIOUS_RELEASE"
 
 release_log "printing migration plan"
-release_compose_prod --profile ops run --rm migrate migrate --plan
+release_compose_prod --profile ops run --rm --no-deps migrate migrate --plan
 release_log "entering a controlled maintenance window before schema changes"
 release_compose_prod stop \
   nginx frontend backend celeryworker celery_ai celery_recsys celerybeat
 release_log "ensuring existing state services are running without recreating containers or volumes"
 release_compose_prod up -d --no-recreate postgres redis qdrant
 release_log "applying committed migrations exactly once"
-release_compose_prod --profile ops run --rm migrate migrate --noinput
+release_compose_prod --profile ops run --rm --no-deps migrate migrate --noinput
 release_log "starting one consistent release without rebuilding or automatic migrations"
-release_compose_prod up -d --no-build \
+release_compose_prod up -d --no-build --no-deps --wait --wait-timeout 180 \
   backend frontend celeryworker celery_ai celery_recsys celerybeat nginx
 release_compose_prod ps
 
