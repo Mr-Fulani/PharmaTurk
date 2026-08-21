@@ -38,6 +38,18 @@ snapshot:
   --output /secure/backups/release.manifest
 ```
 
+If the host has no PostgreSQL client installed, validate through the already
+running database container without exposing a port or password:
+
+```bash
+PG_RESTORE_CONTAINER=mudaroba-postgres-1 \
+  ./scripts/release/prepare-backup-manifest.sh \
+  --postgres-dump /secure/backups/postgres.dump \
+  --qdrant-snapshot /secure/backups/qdrant.snapshot \
+  --previous-release PREVIOUS_FULL_GIT_SHA \
+  --output /secure/backups/release.manifest
+```
+
 ## 3. Staging, then production
 
 `deploy.sh` requires an exact confirmation string, an explicit Compose project,
@@ -48,8 +60,18 @@ migrations once, starts all application services on one SHA with automatic
 migrations disabled, and runs public HTTPS smoke checks.
 
 Use the same release SHA in staging and production. Never rebuild between them.
-The current project has no registry integration, so copy/pull the exact images
-to the target host and verify their OCI revision labels before deployment.
+After all CI gates pass on `main`, the image job publishes only immutable SHA
+tags to GHCR. It never publishes or moves a `latest` tag. Pull and verify those
+exact images on the target host before deployment:
+
+```bash
+./scripts/release/pull-images.sh --release-id FULL_GIT_SHA
+```
+
+The GHCR packages must be public for an unauthenticated production pull, or the
+operator must run `docker login ghcr.io` with a read-only package token first.
+The pull script verifies the OCI revision labels and the non-root runtime users
+before creating the local `mudaroba-*:<SHA>` tags required by Compose.
 
 ## 4. Rollback
 

@@ -127,16 +127,18 @@ Cloudflare Tunnel. Режим Flexible не используйте: участо
 1. HTTP-запрос к публичному домену получает один redirect на HTTPS;
 2. HTTPS-запрос достигает Django с `X-Forwarded-Proto=https` и возвращает
    конечный ответ, а не новый redirect на тот же URL;
-3. origin недоступен напрямую либо принимает трафик только от доверенного
-   ingress/диапазонов Cloudflare;
+3. origin недоступен напрямую: `nginx/cloudflare-realip.inc` принимает public
+   Host только от официальных диапазонов Cloudflare, а private/loopback ranges
+   оставлены для локальных smoke checks; диапазоны сверяются с официальными
+   endpoints при каждом уведомлении Cloudflare об изменении;
 4. `/api/live/` и `/api/health/` проходят через тот же production hostname.
 
 Та же граница доверия относится к IP throttles и CoinRemitter allowlist.
-Проектный Nginx всегда перезаписывает `X-Real-IP` своим `$remote_addr`; за
-Cloudflare это по умолчанию адрес edge. Не начинайте доверять произвольному
-`CF-Connecting-IP`/`X-Forwarded-For`: сначала ограничьте source ranges или
-используйте Tunnel/trusted ingress с real-IP normalization. До этого применяйте
-per-client rate limiting на Cloudflare, а provider IP allowlist оставьте пустым.
+Проектный Nginx принимает public Host только от перечисленных Cloudflare source
+ranges, доверяет `CF-Connecting-IP` исключительно для такого TCP peer и затем
+перезаписывает `X-Real-IP` для Django. Не удаляйте source-range gate и не
+доверяйте произвольному `X-Forwarded-For`. Provider IP allowlist оставьте пустым
+до отдельной проверки CoinRemitter ingress.
 
 До выполнения этих условий оставьте Django redirect/HSTS выключенными и
 принудительно используйте HTTPS на внешнем ingress. HSTS preload включайте

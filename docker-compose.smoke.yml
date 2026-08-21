@@ -37,6 +37,7 @@ services:
       - "127.0.0.1:${SMOKE_PORT:-18080}:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/cloudflare-realip.inc:/etc/nginx/cloudflare-realip.inc:ro
       - staticfiles:/app/staticfiles:ro
 
   migrate:
