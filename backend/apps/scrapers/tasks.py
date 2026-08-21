@@ -544,7 +544,6 @@ def run_scraper_task(self,
                 SiteScraperTask.objects.filter(id=site_task.id).update(
                     **common_updates,
                     task_id=next_task.id,
-                    resume_page=next_start_page,
                 )
                 logger.info(
                     f"Парсер {scraper_config.name}: чанк стр.{start_page} готов "
