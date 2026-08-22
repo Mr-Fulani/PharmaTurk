@@ -639,12 +639,22 @@ class AIResultApplier:
             cleaned_data["extracted_attributes"] = attrs
             translations = cleaned_data.get("translations")
             if isinstance(translations, dict):
+                moderator_decisions = attrs.get("medicine_moderator_decisions")
+                moderator_kept_fields = {
+                    field_name
+                    for field_name, decision in (
+                        moderator_decisions.items()
+                        if isinstance(moderator_decisions, dict)
+                        else ()
+                    )
+                    if decision == "keep_current"
+                }
                 rejected_medicine_fields = {
                     field_name.split(":", 1)[1]
                     for field_name in rejected_fields
                     if field_name.startswith("medicine_translation:")
                     and ":" in field_name
-                }
+                } | moderator_kept_fields
                 for locale_payload in translations.values():
                     if not isinstance(locale_payload, dict):
                         continue

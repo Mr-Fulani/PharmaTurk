@@ -2645,6 +2645,17 @@ class ContentGenerator:
             log,
             semantic_report=semantic_report,
         )
+        attrs = log.extracted_attributes if isinstance(log.extracted_attributes, dict) else {}
+        moderator_decisions = attrs.get("medicine_moderator_decisions")
+        moderator_kept_fields = sorted(
+            field_name
+            for field_name, decision in (
+                moderator_decisions.items()
+                if isinstance(moderator_decisions, dict)
+                else ()
+            )
+            if decision == "keep_current"
+        )
         applied_at = timezone.now()
         try:
             with transaction.atomic():
@@ -2673,6 +2684,7 @@ class ContentGenerator:
                     "review_reasons_before_apply": review_reasons,
                     "semantic_reasons": semantic_report.reasons,
                     "rejected_fields": sorted(semantic_report.rejected_fields),
+                    "moderator_kept_fields": moderator_kept_fields,
                     "applied_at": applied_at.isoformat(),
                 }
                 log.applied_at = applied_at

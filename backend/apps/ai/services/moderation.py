@@ -160,10 +160,13 @@ def _decision(
     proposed: Any,
     *,
     blocked_reason: str = "",
+    preserved_reason: str = "",
     fill_empty_only: bool = False,
 ) -> tuple[str, str, str]:
     if blocked_reason:
         return "blocked", "Не будет применено", blocked_reason
+    if preserved_reason:
+        return "preserved", "Сохранится текущее значение", preserved_reason
     if proposed in (None, "", [], {}):
         return "empty", "AI не предложил значение", ""
     if fill_empty_only and current not in (None, ""):
@@ -184,6 +187,7 @@ def _row(
     proposed: Any,
     *,
     blocked_reason: str = "",
+    preserved_reason: str = "",
     fill_empty_only: bool = False,
     proposed_display: Any = _DISPLAY_UNSET,
     note: str = "",
@@ -194,6 +198,7 @@ def _row(
         current,
         proposed,
         blocked_reason=blocked_reason,
+        preserved_reason=preserved_reason,
         fill_empty_only=fill_empty_only,
     )
     if note and not reason:
@@ -334,15 +339,19 @@ def _medicine_rows(
     }
     translations_data = attrs.get("translations_data") or {}
     quality = attrs.get("medicine_translation_quality") or {}
+    moderator_decisions = attrs.get("medicine_moderator_decisions") or {}
     for locale in ("ru", "en"):
         current_translation = translations.get(locale)
         proposed_translation = translations_data.get(locale) or {}
         for field, label in translation_labels.items():
             proposed = proposed_translation.get(field)
             blocked_reason = ""
+            preserved_reason = ""
             quality_note = ""
+            if moderator_decisions.get(field) == "keep_current":
+                preserved_reason = "Модератор выбрал «Оставить текущее значение товара»"
             details = quality.get(field) if isinstance(quality, dict) else None
-            if isinstance(details, dict):
+            if isinstance(details, dict) and not preserved_reason:
                 quality_note = (
                     f"Источник: {details.get('source_length', 0)} симв.; "
                     f"RU: {details.get('ru_length', 0)}; EN: {details.get('en_length', 0)}"
@@ -351,7 +360,11 @@ def _medicine_rows(
                     blocked_reason = (
                         "Полнота перевода не подтверждена; поле оставлено для проверки"
                     )
-            if locale == "ru" and looks_untranslated_turkish(proposed):
+            if (
+                locale == "ru"
+                and not preserved_reason
+                and looks_untranslated_turkish(proposed)
+            ):
                 blocked_reason = "Поле содержит непереведённый турецкий текст"
             _row(
                 rows,
@@ -360,6 +373,7 @@ def _medicine_rows(
                 getattr(current_translation, field, None) if current_translation else None,
                 proposed,
                 blocked_reason=blocked_reason,
+                preserved_reason=preserved_reason,
                 note=quality_note,
             )
 

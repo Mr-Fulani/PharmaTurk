@@ -6,6 +6,8 @@ from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.utils.html import format_html, escape
 from django.utils.safestring import mark_safe
 from django.urls import path, reverse, NoReverseMatch
+from apps.catalog.product_semantics import looks_untranslated_turkish
+
 from .models import (
     AIApplicationStatus,
     AIProcessingLog,
@@ -15,6 +17,7 @@ from .models import (
 )
 from .services.moderation import (
     APPLICATION_LABELS,
+    MEDICINE_TRANSLATION_FIELD_LABELS,
     build_change_preview,
     get_moderation_reason_labels,
     get_rejected_field_labels,
@@ -52,6 +55,53 @@ JEWELRY_FORM_FIELDS = (
     "stone_type",
     "carat_weight",
     "gender",
+)
+
+MEDICINE_EDITOR_FIELDS = tuple(MEDICINE_TRANSLATION_FIELD_LABELS)
+MEDICINE_CLINICAL_FIELDS = frozenset(
+    {
+        "indications",
+        "usage_instructions",
+        "side_effects",
+        "contraindications",
+        "storage_conditions",
+    }
+)
+MEDICINE_LONG_TEXT_FIELDS = MEDICINE_CLINICAL_FIELDS | {"special_notes"}
+MEDICINE_EDITOR_DECISIONS = (
+    ("apply", "Применить исправленные RU/EN"),
+    ("keep_current", "Оставить текущее значение товара"),
+)
+
+
+def _medicine_editor_field_name(field_name, suffix):
+    return f"medicine_{field_name}_{suffix}"
+
+
+def _medicine_editor_label(field_name):
+    return MEDICINE_TRANSLATION_FIELD_LABELS[field_name].removesuffix(" RU/EN").capitalize()
+
+
+MEDICINE_EDITOR_FORM_FIELDS = tuple(
+    _medicine_editor_field_name(field_name, suffix)
+    for field_name in MEDICINE_EDITOR_FIELDS
+    for suffix in ("ru", "en", "decision")
+)
+MEDICINE_CLINICAL_EDITOR_ROWS = tuple(
+    tuple(
+        _medicine_editor_field_name(field_name, suffix)
+        for suffix in ("ru", "en", "decision")
+    )
+    for field_name in MEDICINE_EDITOR_FIELDS
+    if field_name in MEDICINE_CLINICAL_FIELDS
+)
+MEDICINE_DETAIL_EDITOR_ROWS = tuple(
+    tuple(
+        _medicine_editor_field_name(field_name, suffix)
+        for suffix in ("ru", "en", "decision")
+    )
+    for field_name in MEDICINE_EDITOR_FIELDS
+    if field_name not in MEDICINE_CLINICAL_FIELDS
 )
 
 
@@ -134,6 +184,39 @@ class AIProcessingLogForm(forms.ModelForm):
         widget=forms.Select(attrs={"style": "max-width: 120px"}),
     )
 
+    # Поля объявляются на уровне класса, чтобы Django Admin мог безопасно
+    # включать их в fieldsets. В форме они остаются только для medicines.
+    for _medicine_field in MEDICINE_EDITOR_FIELDS:
+        _medicine_label = _medicine_editor_label(_medicine_field)
+        _medicine_widget = (
+            forms.Textarea(attrs={"rows": 6, "cols": 72})
+            if _medicine_field in MEDICINE_LONG_TEXT_FIELDS
+            else forms.TextInput(attrs={"size": 72})
+        )
+        locals()[_medicine_editor_field_name(_medicine_field, "ru")] = forms.CharField(
+            required=False,
+            label=f"{_medicine_label} (RU)",
+            widget=_medicine_widget,
+        )
+        _medicine_widget_en = (
+            forms.Textarea(attrs={"rows": 6, "cols": 72})
+            if _medicine_field in MEDICINE_LONG_TEXT_FIELDS
+            else forms.TextInput(attrs={"size": 72})
+        )
+        locals()[_medicine_editor_field_name(_medicine_field, "en")] = forms.CharField(
+            required=False,
+            label=f"{_medicine_label} (EN)",
+            widget=_medicine_widget_en,
+        )
+        locals()[_medicine_editor_field_name(_medicine_field, "decision")] = forms.ChoiceField(
+            required=False,
+            label=f"Действие: {_medicine_label}",
+            choices=MEDICINE_EDITOR_DECISIONS,
+            initial="apply",
+            widget=forms.Select(attrs={"style": "min-width: 270px"}),
+        )
+    del _medicine_field, _medicine_label, _medicine_widget, _medicine_widget_en
+
     class Meta:
         model = AIProcessingLog
         fields = "__all__"
@@ -148,6 +231,7 @@ class AIProcessingLogForm(forms.ModelForm):
         product = getattr(self.instance, "product", None) if self.instance else None
         product_type = getattr(product, "product_type", None)
         attrs = self.instance.extracted_attributes or {} if self.instance else {}
+        self._medicine_initial_values = {}
         if self.instance and self.instance.pk:
             seo_translations = attrs.get("seo_translations") or {}
             seo_en = seo_translations.get("en") or attrs.get("seo_en") or {}
@@ -212,6 +296,50 @@ class AIProcessingLogForm(forms.ModelForm):
         else:
             self.fields.pop("inventory_sizes", None)
 
+        if product_type == "medicines":
+            translations_data = (
+                attrs.get("translations_data")
+                if isinstance(attrs.get("translations_data"), dict)
+                else {}
+            )
+            quality = (
+                attrs.get("medicine_translation_quality")
+                if isinstance(attrs.get("medicine_translation_quality"), dict)
+                else {}
+            )
+            decisions = (
+                attrs.get("medicine_moderator_decisions")
+                if isinstance(attrs.get("medicine_moderator_decisions"), dict)
+                else {}
+            )
+            for medicine_field in MEDICINE_EDITOR_FIELDS:
+                ru_field = _medicine_editor_field_name(medicine_field, "ru")
+                en_field = _medicine_editor_field_name(medicine_field, "en")
+                decision_field = _medicine_editor_field_name(medicine_field, "decision")
+                ru_value = str((translations_data.get("ru") or {}).get(medicine_field) or "")
+                en_value = str((translations_data.get("en") or {}).get(medicine_field) or "")
+                decision = decisions.get(medicine_field) or "apply"
+                self.fields[ru_field].initial = ru_value
+                self.fields[en_field].initial = en_value
+                self.fields[decision_field].initial = decision
+                self._medicine_initial_values[medicine_field] = {
+                    "ru": ru_value,
+                    "en": en_value,
+                    "decision": decision,
+                }
+                details = quality.get(medicine_field)
+                if isinstance(details, dict) and not details.get("complete", False):
+                    warning = (
+                        "Сейчас заблокировано: источник "
+                        f"{details.get('source_length', 0)} симв., "
+                        f"RU {details.get('ru_length', 0)}, EN {details.get('en_length', 0)}. "
+                        "Исправьте обе версии либо выберите «Оставить текущее»."
+                    )
+                    self.fields[ru_field].help_text = warning
+        else:
+            for field_name in MEDICINE_EDITOR_FORM_FIELDS:
+                self.fields.pop(field_name, None)
+
     def save(self, commit=True):
         obj = super().save(commit=commit)
         if obj.pk:
@@ -268,6 +396,67 @@ class AIProcessingLogForm(forms.ModelForm):
                         attrs[key] = None
                     else:
                         attrs[key] = val
+            if product_type == "medicines":
+                translations_data = dict(attrs.get("translations_data") or {})
+                translations_ru = dict(translations_data.get("ru") or {})
+                translations_en = dict(translations_data.get("en") or {})
+                quality = dict(attrs.get("medicine_translation_quality") or {})
+                decisions = dict(attrs.get("medicine_moderator_decisions") or {})
+                overrides = dict(attrs.get("medicine_moderator_overrides") or {})
+                for medicine_field in MEDICINE_EDITOR_FIELDS:
+                    ru_field = _medicine_editor_field_name(medicine_field, "ru")
+                    en_field = _medicine_editor_field_name(medicine_field, "en")
+                    decision_field = _medicine_editor_field_name(medicine_field, "decision")
+                    if decision_field not in self.cleaned_data:
+                        continue
+                    ru_value = str(self.cleaned_data.get(ru_field) or "").strip()
+                    en_value = str(self.cleaned_data.get(en_field) or "").strip()
+                    decision = self.cleaned_data.get(decision_field) or "apply"
+                    initial = self._medicine_initial_values.get(medicine_field, {})
+                    changed = (
+                        ru_value != initial.get("ru", "")
+                        or en_value != initial.get("en", "")
+                        or decision != initial.get("decision", "apply")
+                    )
+                    if not changed:
+                        continue
+                    decisions[medicine_field] = decision
+                    overrides[medicine_field] = {
+                        "ru": ru_value,
+                        "en": en_value,
+                        "decision": decision,
+                    }
+                    if decision == "keep_current":
+                        continue
+                    if ru_value:
+                        translations_ru[medicine_field] = ru_value
+                    else:
+                        translations_ru.pop(medicine_field, None)
+                    if en_value:
+                        translations_en[medicine_field] = en_value
+                    else:
+                        translations_en.pop(medicine_field, None)
+                    if medicine_field in MEDICINE_CLINICAL_FIELDS:
+                        details = dict(quality.get(medicine_field) or {})
+                        ru_complete = bool(ru_value) and not looks_untranslated_turkish(ru_value)
+                        en_complete = bool(en_value)
+                        details.update(
+                            {
+                                "ru_length": len(ru_value),
+                                "en_length": len(en_value),
+                                "ru_complete": ru_complete,
+                                "en_complete": en_complete,
+                                "complete": ru_complete and en_complete,
+                                "moderator_reviewed": True,
+                            }
+                        )
+                        quality[medicine_field] = details
+                translations_data["ru"] = translations_ru
+                translations_data["en"] = translations_en
+                attrs["translations_data"] = translations_data
+                attrs["medicine_translation_quality"] = quality
+                attrs["medicine_moderator_decisions"] = decisions
+                attrs["medicine_moderator_overrides"] = overrides
             obj.extracted_attributes = attrs
             if commit:
                 obj.save(update_fields=["extracted_attributes"])
@@ -469,6 +658,28 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Исправление медицинских разделов RU/EN",
+            {
+                "fields": MEDICINE_CLINICAL_EDITOR_ROWS,
+                "description": (
+                    "Исправьте обе языковые версии до применения. После сохранения проверка "
+                    "будет пересчитана. Если раздел менять не нужно, выберите «Оставить "
+                    "текущее значение товара». Этот блок отображается только для лекарств."
+                ),
+            },
+        ),
+        (
+            "Остальные медицинские поля RU/EN",
+            {
+                "classes": ("collapse",),
+                "fields": MEDICINE_DETAIL_EDITOR_ROWS,
+                "description": (
+                    "Локализованные атрибуты препарата. Ручные правки сохраняются в AI-логе "
+                    "и используются при следующем применении."
+                ),
+            },
+        ),
+        (
             "Размеры и наличие",
             {
                 "fields": ("inventory_sizes",),
@@ -570,6 +781,16 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 for fieldset in fieldsets
                 if fieldset[0] != "Атрибуты украшения (применяются к карточке товара)"
             ]
+        if product_type != "medicines":
+            fieldsets = [
+                fieldset
+                for fieldset in fieldsets
+                if fieldset[0]
+                not in {
+                    "Исправление медицинских разделов RU/EN",
+                    "Остальные медицинские поля RU/EN",
+                }
+            ]
         if not supports_size_inventory(product_type):
             fieldsets = [
                 fieldset for fieldset in fieldsets if fieldset[0] != "Размеры и наличие"
@@ -592,10 +813,19 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         reasons = []
         if obj.status in (AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION):
             try:
+                semantic_report = self._semantic_report(obj)
                 reasons = get_moderation_reason_labels(
                     obj,
-                    semantic_report=self._semantic_report(obj),
+                    semantic_report=semantic_report,
                 )
+                rejected_labels = get_rejected_field_labels(
+                    sorted(semantic_report.rejected_fields)
+                )
+                if rejected_labels:
+                    reasons.insert(
+                        0,
+                        "Не будут применены: " + ", ".join(rejected_labels),
+                    )
             except Exception as exc:
                 reasons = [f"Не удалось рассчитать причины: {exc}"]
         product_url = _get_product_admin_url(obj.product)
@@ -905,10 +1135,22 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                         "одобрение не требуется.",
                     )
                 else:
+                    kept_fields = (obj.application_report or {}).get(
+                        "moderator_kept_fields"
+                    ) or []
+                    kept_note = ""
+                    if kept_fields:
+                        kept_note = (
+                            " По решению модератора сохранены текущими: "
+                            + ", ".join(get_rejected_field_labels(
+                                [f"medicine_translation:{field}" for field in kept_fields]
+                            ))
+                            + "."
+                        )
                     messages.success(
                         request,
                         f"Лог #{obj.id}: проверено и применено к товару «{obj.product.name}». "
-                        "Очередь модерации закрыта.",
+                        f"Очередь модерации закрыта.{kept_note}",
                     )
             except Exception as e:
                 messages.error(request, f"Ошибка при применении: {e}")

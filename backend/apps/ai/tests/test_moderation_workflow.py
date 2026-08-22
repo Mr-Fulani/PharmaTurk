@@ -7,7 +7,12 @@ from django.contrib.admin.sites import AdminSite
 from django.urls import reverse
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.ai.admin import AIProcessingLogForm, AIProcessingLogAdmin, _get_product_admin_url
+from apps.ai.admin import (
+    MEDICINE_EDITOR_FORM_FIELDS,
+    AIProcessingLogAdmin,
+    AIProcessingLogForm,
+    _get_product_admin_url,
+)
 from apps.ai.models import (
     AIApplicationStatus,
     AIModerationQueue,
@@ -18,7 +23,7 @@ from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.moderation import build_change_preview, get_workflow_title, reject_log
 from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.result_applier import AIResultApplier
-from apps.ai.services.semantic_validator import SemanticValidationReport
+from apps.ai.services.semantic_validator import SemanticValidationReport, SemanticValidator
 from apps.ai.views import AIProcessingLogViewSet
 from apps.catalog.models import (
     AccessoryProduct,
@@ -29,6 +34,7 @@ from apps.catalog.models import (
     IslamicClothingProduct,
     JewelryProduct,
     MedicineProduct,
+    MedicineProductTranslation,
     SportsProduct,
     UnderwearProduct,
 )
@@ -73,6 +79,41 @@ def _reviewable_log(product, **overrides):
     }
     data.update(overrides)
     return AIProcessingLog.objects.create(**data)
+
+
+def _bound_admin_form_data(log):
+    """Build the technical ModelAdmin payload around user-facing editor fields."""
+    return {
+        "product": log.product_id,
+        "processing_type": log.processing_type,
+        "status": log.status,
+        "application_status": log.application_status,
+        "input_data": json.dumps(log.input_data or {}, ensure_ascii=False),
+        "input_images_urls": json.dumps(log.input_images_urls or [], ensure_ascii=False),
+        "generated_title": log.generated_title,
+        "generated_description": log.generated_description,
+        "generated_seo_title": log.generated_seo_title,
+        "generated_seo_description": log.generated_seo_description,
+        "generated_keywords": json.dumps(log.generated_keywords or [], ensure_ascii=False),
+        "category_alternatives": json.dumps(log.category_alternatives or [], ensure_ascii=False),
+        "extracted_attributes": json.dumps(log.extracted_attributes or {}, ensure_ascii=False),
+        "image_analysis": json.dumps(log.image_analysis or {}, ensure_ascii=False),
+        "llm_model": log.llm_model,
+        "tokens_used": json.dumps(log.tokens_used or {}, ensure_ascii=False),
+        "application_report": json.dumps(log.application_report or {}, ensure_ascii=False),
+        "generated_en_title": (
+            ((log.extracted_attributes or {}).get("seo_translations") or {})
+            .get("en", {})
+            .get("generated_title", "")
+        ),
+        "generated_en_description": (
+            ((log.extracted_attributes or {}).get("seo_translations") or {})
+            .get("en", {})
+            .get("generated_description", "")
+        ),
+        "og_title": "",
+        "og_description": "",
+    }
 
 
 def test_full_apply_tracks_application_and_resolves_existing_queue():
@@ -239,6 +280,192 @@ def test_non_jewelry_form_hides_and_does_not_process_jewelry_fields():
     assert not set(form.fields).intersection(
         {"jewelry_type", "material", "metal_purity", "stone_type", "carat_weight", "gender"}
     )
+    assert not set(form.fields).intersection(MEDICINE_EDITOR_FORM_FIELDS)
+
+
+def test_medicine_form_exposes_translation_editor_without_changing_other_categories():
+    medicine = MedicineProduct.objects.create(
+        name="TESTMED 10 MG TABLET",
+        slug="moderation-medicine-editor-fields",
+    )
+    medicine.refresh_from_db()
+    log = _reviewable_log(
+        medicine.base_product,
+        extracted_attributes={
+            "translations_data": {
+                "ru": {"storage_conditions": "Хранить в сухом месте."},
+                "en": {},
+            },
+            "medicine_translation_quality": {
+                "storage_conditions": {
+                    "source_length": 100,
+                    "ru_length": 21,
+                    "en_length": 0,
+                    "complete": False,
+                }
+            },
+        },
+    )
+
+    form = AIProcessingLogForm(instance=log)
+    model_admin = AIProcessingLogAdmin(AIProcessingLog, AdminSite())
+    fieldset_titles = [title for title, _options in model_admin.get_fieldsets(None, log)]
+
+    assert set(MEDICINE_EDITOR_FORM_FIELDS).issubset(form.fields)
+    assert form.fields["medicine_storage_conditions_ru"].initial == "Хранить в сухом месте."
+    assert form.fields["medicine_storage_conditions_en"].initial == ""
+    assert "Сейчас заблокировано" in form.fields["medicine_storage_conditions_ru"].help_text
+    assert "Исправление медицинских разделов RU/EN" in fieldset_titles
+
+
+def test_moderator_can_fix_blocked_medicine_translation_then_apply_it():
+    medicine = MedicineProduct.objects.create(
+        name="TESTMED 10 MG TABLET",
+        slug="moderation-fix-medicine-translation",
+    )
+    medicine.refresh_from_db()
+    MedicineProductTranslation.objects.create(
+        product=medicine,
+        locale="ru",
+        storage_conditions="Старые условия хранения RU",
+    )
+    MedicineProductTranslation.objects.create(
+        product=medicine,
+        locale="en",
+        storage_conditions="Old storage conditions EN",
+    )
+    log = _reviewable_log(
+        medicine.base_product,
+        generated_title="TESTMED 10 мг, таблетки",
+        generated_description=(
+            "Краткое точное описание препарата содержит действующее вещество форму выпуска "
+            "дозировку количество таблеток способ приема и сведения изготовителя"
+        ),
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_title": "TESTMED 10 мг, таблетки"},
+                "en": {"generated_title": "TESTMED 10 mg tablets"},
+            },
+            "translations_data": {
+                "ru": {"storage_conditions": "Хранить ниже 25 °C в сухом месте."},
+                "en": {},
+            },
+            "medicine_translation_quality": {
+                "storage_conditions": {
+                    "source_length": 120,
+                    "source_sha256": "source-hash",
+                    "ru_length": 34,
+                    "en_length": 0,
+                    "ru_complete": True,
+                    "en_complete": False,
+                    "complete": False,
+                }
+            },
+        },
+    )
+    initial_form = AIProcessingLogForm(instance=log)
+    data = _bound_admin_form_data(log)
+    for field_name in MEDICINE_EDITOR_FORM_FIELDS:
+        data[field_name] = initial_form.fields[field_name].initial or ""
+    data["medicine_storage_conditions_en"] = "Store below 25 °C in a dry place."
+
+    form = AIProcessingLogForm(data=data, instance=log)
+
+    assert form.is_valid(), form.errors
+    saved = form.save(commit=False)
+    saved.save()
+    report = SemanticValidator().validate_log(saved)
+    assert "medicine_translation:storage_conditions" not in report.rejected_fields
+    quality = saved.extracted_attributes["medicine_translation_quality"]["storage_conditions"]
+    assert quality["complete"] is True
+    assert quality["moderator_reviewed"] is True
+
+    _generator().apply_log_to_product(saved)
+
+    medicine.refresh_from_db()
+    saved.refresh_from_db()
+    assert (
+        medicine.translations.get(locale="ru").storage_conditions
+        == "Хранить ниже 25 °C в сухом месте."
+    )
+    assert (
+        medicine.translations.get(locale="en").storage_conditions
+        == "Store below 25 °C in a dry place."
+    )
+    assert saved.status == AIProcessingStatus.APPROVED
+    assert saved.application_status == AIApplicationStatus.APPLIED
+
+
+def test_moderator_can_keep_current_blocked_medicine_section_and_close_review():
+    medicine = MedicineProduct.objects.create(
+        name="KEEPMED 20 MG TABLET",
+        slug="moderation-keep-current-medicine-translation",
+    )
+    medicine.refresh_from_db()
+    MedicineProductTranslation.objects.create(
+        product=medicine,
+        locale="ru",
+        storage_conditions="Проверенное текущее хранение RU",
+    )
+    MedicineProductTranslation.objects.create(
+        product=medicine,
+        locale="en",
+        storage_conditions="Verified current storage EN",
+    )
+    log = _reviewable_log(
+        medicine.base_product,
+        generated_title="KEEPMED 20 мг, таблетки",
+        generated_description=(
+            "Краткое точное описание препарата содержит действующее вещество форму выпуска "
+            "дозировку количество таблеток способ приема и сведения изготовителя"
+        ),
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_title": "KEEPMED 20 мг, таблетки"},
+                "en": {"generated_title": "KEEPMED 20 mg tablets"},
+            },
+            "translations_data": {
+                "ru": {"storage_conditions": "Неполное предложение RU"},
+                "en": {},
+            },
+            "medicine_translation_quality": {
+                "storage_conditions": {
+                    "source_length": 500,
+                    "ru_length": 22,
+                    "en_length": 0,
+                    "complete": False,
+                }
+            },
+        },
+    )
+    initial_form = AIProcessingLogForm(instance=log)
+    data = _bound_admin_form_data(log)
+    for field_name in MEDICINE_EDITOR_FORM_FIELDS:
+        data[field_name] = initial_form.fields[field_name].initial or ""
+    data["medicine_storage_conditions_decision"] = "keep_current"
+
+    form = AIProcessingLogForm(data=data, instance=log)
+
+    assert form.is_valid(), form.errors
+    saved = form.save(commit=False)
+    saved.save()
+    report = SemanticValidator().validate_log(saved)
+    assert report.rejected_fields == set()
+
+    _generator().apply_log_to_product(saved)
+
+    medicine.refresh_from_db()
+    saved.refresh_from_db()
+    assert (
+        medicine.translations.get(locale="ru").storage_conditions
+        == "Проверенное текущее хранение RU"
+    )
+    assert (
+        medicine.translations.get(locale="en").storage_conditions
+        == "Verified current storage EN"
+    )
+    assert saved.application_report["moderator_kept_fields"] == ["storage_conditions"]
+    assert saved.status == AIProcessingStatus.APPROVED
 
 
 def test_category_alternatives_accepts_an_empty_list_in_admin_form():

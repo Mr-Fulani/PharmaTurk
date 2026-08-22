@@ -447,9 +447,21 @@ class SemanticValidator:
                 report.reasons.append("untranslated_attribute")
 
         if product_type == "medicines":
+            moderator_decisions = attrs.get("medicine_moderator_decisions")
+            kept_current_fields = {
+                field_name
+                for field_name, decision in (
+                    moderator_decisions.items()
+                    if isinstance(moderator_decisions, dict)
+                    else ()
+                )
+                if decision == "keep_current"
+            }
             quality = attrs.get("medicine_translation_quality")
             if isinstance(quality, dict):
                 for field_name, details in quality.items():
+                    if field_name in kept_current_fields:
+                        continue
                     if isinstance(details, dict) and not details.get("complete", False):
                         report.rejected_fields.add(f"medicine_translation:{field_name}")
                         report.reasons.append("incomplete_medicine_translation")
@@ -461,6 +473,8 @@ class SemanticValidator:
                 else {}
             )
             for field_name, value in ru_data.items():
+                if field_name in kept_current_fields:
+                    continue
                 if looks_untranslated_turkish(value):
                     report.rejected_fields.add(f"medicine_translation:{field_name}")
                     report.reasons.append("untranslated_medicine_field")

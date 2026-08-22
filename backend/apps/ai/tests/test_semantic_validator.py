@@ -18,6 +18,7 @@ from apps.catalog.models import (
     IslamicClothingProduct,
     MedicineProduct,
 )
+from apps.catalog.product_semantics import looks_untranslated_turkish
 
 
 pytestmark = pytest.mark.django_db
@@ -215,6 +216,47 @@ def test_medicine_translation_quality_and_turkish_ru_fields_require_moderation()
     assert "untranslated_medicine_field" in report.reasons
     assert "medicine_translation:indications" in report.rejected_fields
     assert "medicine_translation:special_notes" in report.rejected_fields
+
+
+def test_shared_language_validator_preserves_turkish_acronyms_in_russian_text():
+    translated = (
+        "Сообщите врачу о нежелательной реакции и направьте сведения в TÜFAM. "
+        "Дополнительная информация опубликована на сайте TİTCK."
+    )
+    untranslated = "İlacı çocukların göremeyeceği yerde saklayınız."
+
+    assert looks_untranslated_turkish(translated) is False
+    assert looks_untranslated_turkish(untranslated) is True
+
+
+def test_medicine_semantic_validation_does_not_block_tufam_as_untranslated_text():
+    medicine = MedicineProduct.objects.create(
+        name="TESTMED 10 MG TABLET",
+        slug="medicine-tufam-semantic-validation",
+    )
+    medicine.refresh_from_db()
+    log = AIProcessingLog.objects.create(
+        product=medicine.base_product,
+        processing_type="full",
+        input_data={},
+        generated_title="TESTMED 10 мг, таблетки",
+        extracted_attributes={
+            "translations_data": {
+                "ru": {
+                    "side_effects": (
+                        "При появлении нежелательных реакций сообщите врачу и направьте "
+                        "сведения в TÜFAM."
+                    )
+                },
+                "en": {"side_effects": "Report adverse reactions to TÜFAM."},
+            }
+        },
+    )
+
+    report = SemanticValidator().validate_log(log)
+
+    assert "untranslated_medicine_field" not in report.reasons
+    assert "medicine_translation:side_effects" not in report.rejected_fields
 
 
 def test_partial_apply_keeps_rejected_title_but_applies_valid_content_and_moderates():
