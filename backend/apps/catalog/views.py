@@ -1044,11 +1044,17 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
         if model is Product:
             queryset = queryset.exclude(non_public_shadow_product_q())
-        elif 'external_data' in field_names:
-            queryset = queryset.exclude(
-                models.Q(external_data__has_key='source_variant_id') |
-                models.Q(external_data__has_key='source_variant_slug')
-            )
+        else:
+            if 'external_data' in field_names:
+                queryset = queryset.exclude(
+                    models.Q(external_data__has_key='source_variant_id') |
+                    models.Q(external_data__has_key='source_variant_slug')
+                )
+            # Domain sync can create a MedicineProduct projection for a
+            # service/stub Product.  The domain row is still non-public when
+            # its canonical base product is a variant or medicine stub.
+            if 'base_product' in field_names:
+                queryset = queryset.exclude(non_public_shadow_product_q('base_product__'))
         if excluded_product_types is not None:
             # Теневой Product: типы, обслуживаемые доменными моделями.
             queryset = queryset.exclude(product_type__in=excluded_product_types)

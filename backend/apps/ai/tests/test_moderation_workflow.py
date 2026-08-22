@@ -88,7 +88,10 @@ def _bound_admin_form_data(log):
         "processing_type": log.processing_type,
         "status": log.status,
         "application_status": log.application_status,
-        "input_data": json.dumps(log.input_data or {}, ensure_ascii=False),
+        # Django's required JSONField treats an empty object as an empty form
+        # value.  The real admin excludes these read-only fields from POST, but
+        # this direct ModelForm test must still provide non-empty technical data.
+        "input_data": json.dumps(log.input_data or {"test_payload": True}, ensure_ascii=False),
         "input_images_urls": json.dumps(log.input_images_urls or [], ensure_ascii=False),
         "generated_title": log.generated_title,
         "generated_description": log.generated_description,
@@ -99,7 +102,7 @@ def _bound_admin_form_data(log):
         "extracted_attributes": json.dumps(log.extracted_attributes or {}, ensure_ascii=False),
         "image_analysis": json.dumps(log.image_analysis or {}, ensure_ascii=False),
         "llm_model": log.llm_model,
-        "tokens_used": json.dumps(log.tokens_used or {}, ensure_ascii=False),
+        "tokens_used": json.dumps(log.tokens_used or {"total": 0}, ensure_ascii=False),
         "application_report": json.dumps(log.application_report or {}, ensure_ascii=False),
         "generated_en_title": (
             ((log.extracted_attributes or {}).get("seo_translations") or {})
