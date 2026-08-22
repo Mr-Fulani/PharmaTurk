@@ -23,8 +23,10 @@ from apps.catalog.models import (
     GlobalAttributeKey,
     GlobalAttributeKeyTranslation,
     HeadwearProduct,
+    HeadwearProductTranslation,
     HeadwearVariant,
     IslamicClothingProduct,
+    IslamicClothingProductTranslation,
     IslamicClothingVariant,
     IncenseProduct,
     MedicalEquipmentProduct,
@@ -39,6 +41,7 @@ from apps.catalog.models import (
     SupplementProduct,
     TablewareProduct,
     UnderwearProduct,
+    UnderwearProductTranslation,
     UnderwearVariant,
 )
 from django.contrib.contenttypes.models import ContentType
@@ -337,6 +340,79 @@ def test_resolve_api_underwear_variant_slug_returns_all_variants():
     assert payload["active_variant_slug"] == first_variant.slug
     assert payload["default_variant_slug"] == first_variant.slug
     assert [variant["slug"] for variant in payload["variants"]] == [first_variant.slug, second_variant.slug]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("product_model", "translation_model", "product_type"),
+    [
+        (HeadwearProduct, HeadwearProductTranslation, "headwear"),
+        (UnderwearProduct, UnderwearProductTranslation, "underwear"),
+        (IslamicClothingProduct, IslamicClothingProductTranslation, "islamic-clothing"),
+    ],
+)
+def test_resolve_api_exposes_simple_domain_product_translations(
+    product_model,
+    translation_model,
+    product_type,
+):
+    from rest_framework.test import APIClient
+
+    suffix = uuid.uuid4().hex[:8]
+    category = Category.objects.create(name=f"Category {suffix}", slug=f"category-{suffix}")
+    brand = Brand.objects.create(name=f"Brand {suffix}", slug=f"brand-{suffix}")
+    product = product_model.objects.create(
+        name="Русское название",
+        slug=f"translated-{product_type}-{suffix}",
+        description="Русское описание",
+        category=category,
+        brand=brand,
+        price=100,
+        currency="TRY",
+        is_active=True,
+    )
+    translation_model.objects.create(
+        product=product,
+        locale="ru",
+        name="Русское название",
+        description="Русское описание",
+    )
+    translation_model.objects.create(
+        product=product,
+        locale="en",
+        name="English title",
+        description="English description",
+    )
+
+    response = APIClient().get(
+        f"/api/catalog/products/resolve/{product.slug}",
+        HTTP_ACCEPT_LANGUAGE="en",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["product_type"] == product_type
+    assert response.data["payload"]["translations"] == [
+        {
+            "locale": "en",
+            "name": "English title",
+            "description": "English description",
+            "meta_title": "",
+            "meta_description": "",
+            "meta_keywords": "",
+            "og_title": "",
+            "og_description": "",
+        },
+        {
+            "locale": "ru",
+            "name": "Русское название",
+            "description": "Русское описание",
+            "meta_title": "",
+            "meta_description": "",
+            "meta_keywords": "",
+            "og_title": "",
+            "og_description": "",
+        },
+    ]
 
 
 @pytest.mark.django_db

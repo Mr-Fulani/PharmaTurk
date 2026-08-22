@@ -4948,7 +4948,7 @@ from .serializers import HeadwearProductSerializer, UnderwearProductSerializer, 
 class HeadwearProductViewSet(_SimpleDomainViewSet):
     """API для работы с головными уборами."""
     queryset = HeadwearProduct.objects.filter(is_active=True).prefetch_related(
-        'variants', 'variants__images',
+        'translations', 'variants', 'variants__images',
     ).order_by('-created_at')
     serializer_class = HeadwearProductSerializer
 
@@ -4978,7 +4978,7 @@ class HeadwearProductViewSet(_SimpleDomainViewSet):
 class UnderwearProductViewSet(_SimpleDomainViewSet):
     """API для работы с нижним бельем."""
     queryset = UnderwearProduct.objects.filter(is_active=True).prefetch_related(
-        'variants', 'variants__images',
+        'translations', 'variants', 'variants__images',
     ).order_by('-created_at')
     serializer_class = UnderwearProductSerializer
 
@@ -5008,7 +5008,7 @@ class UnderwearProductViewSet(_SimpleDomainViewSet):
 class IslamicClothingProductViewSet(_SimpleDomainViewSet):
     """API для работы с исламской одеждой."""
     queryset = IslamicClothingProduct.objects.filter(is_active=True).prefetch_related(
-        'variants', 'variants__images',
+        'translations', 'variants', 'variants__images',
     ).order_by('-created_at')
     serializer_class = IslamicClothingProductSerializer
 

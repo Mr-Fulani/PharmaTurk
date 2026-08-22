@@ -7337,13 +7337,20 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
 # ============================================================================
 
 from .models import (
-    HeadwearProduct, HeadwearProductImage, HeadwearProductSize, HeadwearVariant,
+    HeadwearProduct, HeadwearProductImage, HeadwearProductSize, HeadwearProductTranslation, HeadwearVariant,
     HeadwearVariantImage, HeadwearVariantSize,
-    UnderwearProduct, UnderwearProductImage, UnderwearProductSize, UnderwearVariant,
+    UnderwearProduct, UnderwearProductImage, UnderwearProductSize, UnderwearProductTranslation, UnderwearVariant,
     UnderwearVariantImage, UnderwearVariantSize,
-    IslamicClothingProduct, IslamicClothingProductImage, IslamicClothingProductSize, IslamicClothingVariant,
+    IslamicClothingProduct, IslamicClothingProductImage, IslamicClothingProductSize,
+    IslamicClothingProductTranslation, IslamicClothingVariant,
     IslamicClothingVariantImage, IslamicClothingVariantSize
 )
+
+class HeadwearProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HeadwearProductTranslation
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
+
 
 class HeadwearProductImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -7454,6 +7461,7 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = HeadwearProductSizeSerializer(many=True, read_only=True)
+    translations = HeadwearProductTranslationSerializer(many=True, read_only=True)
     # Явно: при множественных переопределениях полей миксина надёжнее не полагаться только на merge.
     product_type = serializers.SerializerMethodField(read_only=True)
 
@@ -7470,7 +7478,7 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'size', 'color', 'video_url', 'sizes', 
+            'size', 'color', 'video_url', 'sizes', 'translations',
             'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url'
@@ -7565,6 +7573,12 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
 
     def get_product_type(self, obj):
         return _SimpleDomainMixin.get_product_type(self, obj)
+
+
+class UnderwearProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UnderwearProductTranslation
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class UnderwearProductImageSerializer(serializers.ModelSerializer):
@@ -7676,6 +7690,7 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = UnderwearProductSizeSerializer(many=True, read_only=True)
+    translations = UnderwearProductTranslationSerializer(many=True, read_only=True)
     product_type = serializers.SerializerMethodField(read_only=True)
 
     _image_serializer_class = UnderwearProductImageSerializer
@@ -7691,7 +7706,7 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'size', 'color', 'video_url', 'sizes', 
+            'size', 'color', 'video_url', 'sizes', 'translations',
             'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url'
@@ -7786,6 +7801,12 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
 
     def get_product_type(self, obj):
         return _SimpleDomainMixin.get_product_type(self, obj)
+
+
+class IslamicClothingProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IslamicClothingProductTranslation
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class IslamicClothingProductImageSerializer(serializers.ModelSerializer):
@@ -7897,6 +7918,7 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = IslamicClothingProductSizeSerializer(many=True, read_only=True)
+    translations = IslamicClothingProductTranslationSerializer(many=True, read_only=True)
     product_type = serializers.SerializerMethodField(read_only=True)
 
     _image_serializer_class = IslamicClothingProductImageSerializer
@@ -7912,7 +7934,7 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'size', 'color', 'video_url', 'sizes', 
+            'size', 'color', 'video_url', 'sizes', 'translations',
             'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url'
