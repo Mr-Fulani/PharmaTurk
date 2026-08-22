@@ -99,6 +99,78 @@ def get_rejected_field_labels(fields: list[str] | set[str] | tuple[str, ...]) ->
     return labels
 
 
+def get_incomplete_medicine_field_messages(
+    log,
+    rejected_fields: list[str] | set[str] | tuple[str, ...],
+) -> list[str]:
+    """Explain missing medicine locales and confirm what happened to current data."""
+    if getattr(getattr(log, "product", None), "product_type", None) != "medicines":
+        return []
+    attrs = log.extracted_attributes if isinstance(log.extracted_attributes, dict) else {}
+    translations_data = (
+        attrs.get("translations_data")
+        if isinstance(attrs.get("translations_data"), dict)
+        else {}
+    )
+    quality = (
+        attrs.get("medicine_translation_quality")
+        if isinstance(attrs.get("medicine_translation_quality"), dict)
+        else {}
+    )
+    target = getattr(log.product, "domain_item", None)
+    current_translations = {}
+    manager = getattr(target, "translations", None)
+    if manager is not None:
+        for locale in ("ru", "en"):
+            current_translations[locale] = manager.filter(locale=locale).first()
+
+    messages = []
+    for rejected_field in sorted(rejected_fields):
+        if not rejected_field.startswith("medicine_translation:"):
+            continue
+        field_name = rejected_field.split(":", 1)[1]
+        details = quality.get(field_name) if isinstance(quality, dict) else {}
+        details = details if isinstance(details, dict) else {}
+        missing = []
+        incomplete = []
+        existing = []
+        for locale in ("ru", "en"):
+            candidate = str(
+                ((translations_data.get(locale) or {}).get(field_name) or "")
+            ).strip()
+            complete = details.get(f"{locale}_complete")
+            if not candidate:
+                missing.append(locale.upper())
+            elif complete is False:
+                incomplete.append(locale.upper())
+            current_translation = current_translations.get(locale)
+            if current_translation is not None and str(
+                getattr(current_translation, field_name, "") or ""
+            ).strip():
+                existing.append(locale.upper())
+
+        label = MEDICINE_TRANSLATION_FIELD_LABELS.get(
+            field_name,
+            field_name,
+        ).removesuffix(" RU/EN")
+        problems = []
+        if missing:
+            problems.append("AI не создал " + "/".join(missing))
+        if incomplete:
+            problems.append("AI создал неполный " + "/".join(incomplete))
+        problem_text = "; ".join(problems) or "полнота RU/EN не подтверждена"
+        preserved_text = (
+            " Текущие " + "/".join(existing) + " товара сохранены без изменений."
+            if existing
+            else ""
+        )
+        messages.append(
+            f"Для «{label}»: {problem_text}. Раздел не применён ни в одном языке."
+            f"{preserved_text}"
+        )
+    return messages
+
+
 @dataclass(frozen=True)
 class PreviewRow:
     section: str
@@ -350,6 +422,12 @@ def _medicine_rows(
             quality_note = ""
             if moderator_decisions.get(field) == "keep_current":
                 preserved_reason = "Модератор выбрал «Оставить текущее значение товара»"
+            preserved_locales = attrs.get("medicine_moderator_preserved_locales") or {}
+            if locale in (preserved_locales.get(field) or []):
+                preserved_reason = (
+                    f"Использовано текущее значение {locale.upper()} товара; "
+                    "AI не создал этот язык"
+                )
             details = quality.get(field) if isinstance(quality, dict) else None
             if isinstance(details, dict) and not preserved_reason:
                 quality_note = (
@@ -587,6 +665,8 @@ def get_workflow_title(log) -> tuple[str, str]:
         return "Результат применён к товару", "success"
     if log.status == AIProcessingStatus.MODERATION:
         if log.application_status == AIApplicationStatus.PARTIAL:
+            if (log.application_report or {}).get("product_updated") is False:
+                return "Товар не изменён — требуется решение по полям", "warning"
             return "Применено частично — требуется проверка", "warning"
         return "Требуется проверка модератора", "warning"
     return "Готово к проверке — товар ещё не изменён", "info"

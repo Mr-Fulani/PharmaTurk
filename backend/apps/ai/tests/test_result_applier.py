@@ -561,6 +561,53 @@ def test_medicine_full_translation_discards_short_preview_and_marks_failed_cover
     assert not content["attributes"]["medicine_translation_quality"]["indications"]["complete"]
 
 
+def test_medicine_translation_retries_only_missing_locale_for_omitted_field():
+    source_text = "RINVOQ nemden korunarak 25 derece altında saklanmalıdır. " * 12
+    ru_text = "Храните RINVOQ в сухом месте при температуре ниже 25 градусов. " * 12
+    en_text = "Store RINVOQ in a dry place below 25 degrees. " * 12
+
+    class MissingEnglishThenRecoveredLLM:
+        def __init__(self):
+            self.calls = []
+
+        def generate_content(self, **kwargs):
+            self.calls.append(kwargs)
+            content = (
+                {"ru": {"storage_conditions": ru_text}, "en": {}}
+                if len(self.calls) == 1
+                else {"en": {"storage_conditions": en_text}}
+            )
+            return {
+                "content": content,
+                "tokens": {"prompt": 10, "completion": 10, "total": 20},
+                "cost_usd": 0.001,
+                "processing_time_ms": 10,
+            }
+
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator.llm = MissingEnglishThenRecoveredLLM()
+    content = {"ru": {}, "en": {}}
+
+    result = generator._translate_medicine_source_sections(
+        content,
+        {"storage_conditions": source_text},
+        product_id=8299,
+    )
+
+    assert len(generator.llm.calls) == 2
+    assert '"en": {"field": "full translation"}' in generator.llm.calls[1]["user_prompt"]
+    assert '"ru": {"field": "full translation"}' not in generator.llm.calls[1]["user_prompt"]
+    assert result["failed_fields"] == []
+    assert result["retried_fields"] == ["storage_conditions"]
+    assert result["translated_fields"] == ["storage_conditions"]
+    assert result["tokens"]["total"] == 40
+    assert content["ru"]["storage_conditions"] == ru_text.strip()
+    assert content["en"]["storage_conditions"] == en_text.strip()
+    quality = content["attributes"]["medicine_translation_quality"]["storage_conditions"]
+    assert quality["complete"] is True
+    assert quality["retried_locales"] == ["en"]
+
+
 def test_partial_apply_blocks_incomplete_medicine_section_in_both_locales():
     category = Category.objects.create(
         name="Медицина для проверки блокировки",

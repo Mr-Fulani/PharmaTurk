@@ -399,6 +399,94 @@ def test_moderator_can_fix_blocked_medicine_translation_then_apply_it():
     assert saved.application_status == AIApplicationStatus.APPLIED
 
 
+def test_missing_medicine_en_defaults_to_current_product_value_and_closes_review():
+    medicine = MedicineProduct.objects.create(
+        name="MERGEMED 15 MG TABLET",
+        slug="moderation-merge-current-medicine-translation",
+    )
+    medicine.refresh_from_db()
+    current_ru = "Проверенные прежние условия хранения препарата на русском языке."
+    current_en = "Verified current medicine storage conditions in English."
+    MedicineProductTranslation.objects.create(
+        product=medicine,
+        locale="ru",
+        storage_conditions=current_ru,
+    )
+    MedicineProductTranslation.objects.create(
+        product=medicine,
+        locale="en",
+        storage_conditions=current_en,
+    )
+    new_ru = "Новые проверенные условия хранения препарата на русском языке."
+    log = _reviewable_log(
+        medicine.base_product,
+        generated_title="MERGEMED 15 мг, таблетки",
+        generated_description=(
+            "Краткое точное описание препарата содержит действующее вещество форму выпуска "
+            "дозировку количество таблеток способ приема и сведения изготовителя"
+        ),
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_title": "MERGEMED 15 мг, таблетки"},
+                "en": {"generated_title": "MERGEMED 15 mg tablets"},
+            },
+            "translations_data": {
+                "ru": {"storage_conditions": new_ru},
+                "en": {},
+            },
+            "medicine_translation_quality": {
+                "storage_conditions": {
+                    "source_length": 100,
+                    "ru_length": len(new_ru),
+                    "en_length": 0,
+                    "ru_complete": True,
+                    "en_complete": False,
+                    "complete": False,
+                }
+            },
+            # Simulates an old partial attempt made before merge_current existed.
+            "medicine_moderator_decisions": {"storage_conditions": "apply"},
+        },
+    )
+    queue = AIModerationQueue.objects.create(
+        log_entry=log,
+        reason="incomplete_medicine_translation",
+    )
+
+    initial_form = AIProcessingLogForm(instance=log)
+
+    assert initial_form.fields["medicine_storage_conditions_en"].initial == current_en
+    assert (
+        initial_form.fields["medicine_storage_conditions_decision"].initial
+        == "merge_current"
+    )
+    assert "AI не создал EN" in initial_form.fields["medicine_storage_conditions_en"].help_text
+
+    data = _bound_admin_form_data(log)
+    for field_name in MEDICINE_EDITOR_FORM_FIELDS:
+        data[field_name] = initial_form.fields[field_name].initial or ""
+    form = AIProcessingLogForm(data=data, instance=log)
+
+    assert form.is_valid(), form.errors
+    saved = form.save(commit=False)
+    saved.save()
+    assert SemanticValidator().validate_log(saved).rejected_fields == set()
+
+    _generator().apply_log_to_product(saved)
+
+    medicine.refresh_from_db()
+    saved.refresh_from_db()
+    queue.refresh_from_db()
+    assert medicine.translations.get(locale="ru").storage_conditions == new_ru
+    assert medicine.translations.get(locale="en").storage_conditions == current_en
+    assert saved.status == AIProcessingStatus.APPROVED
+    assert saved.application_status == AIApplicationStatus.APPLIED
+    assert saved.application_report["moderator_preserved_locales"] == {
+        "storage_conditions": ["en"]
+    }
+    assert queue.resolved_at is not None
+
+
 def test_moderator_can_keep_current_blocked_medicine_section_and_close_review():
     medicine = MedicineProduct.objects.create(
         name="KEEPMED 20 MG TABLET",
@@ -567,6 +655,27 @@ def test_legacy_approved_log_does_not_claim_confirmed_application():
         "Одобрено — применение не подтверждено (старый лог)",
         "warning",
     )
+
+
+def test_partial_attempt_without_changes_does_not_claim_partial_application():
+    accessory = AccessoryProduct.objects.create(
+        name="No changes application state",
+        slug="moderation-no-changes-application-state",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(
+        accessory.base_product,
+        status=AIProcessingStatus.MODERATION,
+        application_status=AIApplicationStatus.PARTIAL,
+        application_report={"product_updated": False},
+    )
+    model_admin = AIProcessingLogAdmin(AIProcessingLog, AdminSite())
+
+    assert get_workflow_title(log) == (
+        "Товар не изменён — требуется решение по полям",
+        "warning",
+    )
+    assert model_admin.application_state(log) == "Товар не изменён; есть нерешённые поля"
 
 
 def test_jewelry_form_keeps_specialized_fields():

@@ -1606,6 +1606,7 @@ class ContentGenerator:
             "repaired_fields": extra_result.get("repaired_fields", []),
             "translated_fields": extra_result.get("translated_fields", []),
             "failed_fields": extra_result.get("failed_fields", []),
+            "retried_fields": extra_result.get("retried_fields", []),
         }
         for token_key, value in (extra_result.get("tokens") or {}).items():
             generation_result["tokens"][token_key] = generation_result["tokens"].get(token_key, 0) + value
@@ -1811,6 +1812,7 @@ class ContentGenerator:
 
         translated_fields = []
         failed_fields = []
+        retried_fields = []
         quality = {}
         total_tokens = {"prompt": 0, "completion": 0, "total": 0}
         total_cost = 0.0
@@ -1873,6 +1875,98 @@ class ContentGenerator:
             total_cost += (result or {}).get("cost_usd", 0) or 0
             total_time += (result or {}).get("processing_time_ms", 0) or 0
 
+        # Large medicine instructions may be translated correctly except for
+        # one omitted JSON key (for example EN storage_conditions).  Retry only
+        # the missing languages of each failed field in a small isolated
+        # request instead of sending the entire instruction through AI again.
+        for field in list(dict.fromkeys(failed_fields)):
+            source_text = clinical_sections[field]
+            existing_ru = str(ru_data.get(field) or "").strip()
+            existing_en = str(en_data.get(field) or "").strip()
+            missing_locales = tuple(
+                locale
+                for locale, value in (("ru", existing_ru), ("en", existing_en))
+                if not self._medicine_translation_has_coverage(
+                    source_text,
+                    value,
+                    locale=locale,
+                )
+            )
+            if not missing_locales:
+                continue
+            retried_fields.append(field)
+            retry_result = self._translate_medicine_sections_batch(
+                {field: source_text},
+                product_id=product_id,
+                locales=missing_locales,
+            )
+            retry_payload = (retry_result or {}).get("content") or {}
+            retry_ru_payload = (
+                retry_payload.get("ru") if isinstance(retry_payload, dict) else {}
+            )
+            retry_en_payload = (
+                retry_payload.get("en") if isinstance(retry_payload, dict) else {}
+            )
+            retry_ru_payload = retry_ru_payload if isinstance(retry_ru_payload, dict) else {}
+            retry_en_payload = retry_en_payload if isinstance(retry_en_payload, dict) else {}
+            retry_ru = str(retry_ru_payload.get(field) or "").strip()
+            retry_en = str(retry_en_payload.get(field) or "").strip()
+            if self._medicine_translation_has_coverage(
+                source_text,
+                retry_ru,
+                locale="ru",
+            ):
+                existing_ru = retry_ru
+            if self._medicine_translation_has_coverage(
+                source_text,
+                retry_en,
+                locale="en",
+            ):
+                existing_en = retry_en
+
+            ru_ok = self._medicine_translation_has_coverage(
+                source_text,
+                existing_ru,
+                locale="ru",
+            )
+            en_ok = self._medicine_translation_has_coverage(
+                source_text,
+                existing_en,
+                locale="en",
+            )
+            quality[field].update(
+                {
+                    "ru_length": len(existing_ru),
+                    "en_length": len(existing_en),
+                    "ru_complete": ru_ok,
+                    "en_complete": en_ok,
+                    "complete": ru_ok and en_ok,
+                    "retried_locales": list(missing_locales),
+                }
+            )
+            if ru_ok:
+                ru_data[field] = existing_ru
+            if en_ok:
+                en_data[field] = existing_en
+            if ru_ok and en_ok:
+                failed_fields = [name for name in failed_fields if name != field]
+                if field not in translated_fields:
+                    translated_fields.append(field)
+            else:
+                logger.warning(
+                    "Medicine product %s section %s remained incomplete after isolated retry "
+                    "(ru=%s, en=%s)",
+                    product_id,
+                    field,
+                    len(existing_ru),
+                    len(existing_en),
+                )
+
+            for token_key, value in ((retry_result or {}).get("tokens") or {}).items():
+                total_tokens[token_key] = total_tokens.get(token_key, 0) + value
+            total_cost += (retry_result or {}).get("cost_usd", 0) or 0
+            total_time += (retry_result or {}).get("processing_time_ms", 0) or 0
+
         content["ru"] = ru_data
         content["en"] = en_data
         attrs = content.setdefault("attributes", {})
@@ -1884,6 +1978,7 @@ class ContentGenerator:
             "processing_time_ms": total_time,
             "translated_fields": translated_fields,
             "failed_fields": failed_fields,
+            "retried_fields": retried_fields,
         }
 
     @staticmethod
@@ -1929,10 +2024,23 @@ class ContentGenerator:
         sections: Dict[str, str],
         *,
         product_id: Optional[int] = None,
+        locales: tuple[str, ...] = ("ru", "en"),
     ) -> Optional[Dict[str, Any]]:
+        requested_locales = tuple(
+            locale for locale in ("ru", "en") if locale in set(locales)
+        ) or ("ru", "en")
+        language_names = {
+            "ru": "русский",
+            "en": "английский",
+        }
+        requested_names = " и ".join(language_names[locale] for locale in requested_locales)
+        response_example = ", ".join(
+            f'"{locale}": {{"field": "full translation"}}'
+            for locale in requested_locales
+        )
         system_prompt = (
             "Ты профессиональный медицинский переводчик. Переводи официальную инструкцию препарата "
-            "с турецкого одновременно на русский и английский. Не сокращай, не пересказывай, не добавляй "
+            f"с турецкого на {requested_names}. Не сокращай, не пересказывай, не добавляй "
             "факты. Сохраняй каждый абзац, список, предупреждение, дозировку, число и название препарата. "
             "Терминология: oblong = продолговатые, yaygın olmayan = нечастые, uzatılmış salımlı tablet = "
             "таблетки пролонгированного высвобождения, kısıtlanmış beyaz reçete = ограниченный белый рецепт, "
@@ -1941,8 +2049,7 @@ class ContentGenerator:
         user_prompt = (
             "Переведи полностью значения всех полей. Ключи полей не меняй. Русский должен быть "
             "естественным переводом, а не кириллической транслитерацией турецкого. "
-            "Верни JSON вида {\"ru\": {\"field\": \"полный перевод\"}, "
-            "\"en\": {\"field\": \"full translation\"}}.\n\n"
+            f"Верни JSON вида {{{response_example}}}. Не пропускай ни одного запрошенного ключа.\n\n"
             f"Исходные разделы:\n{json.dumps(sections, ensure_ascii=False)}"
         )
         try:
@@ -2656,6 +2763,11 @@ class ContentGenerator:
             )
             if decision == "keep_current"
         )
+        moderator_preserved_locales = attrs.get(
+            "medicine_moderator_preserved_locales"
+        )
+        if not isinstance(moderator_preserved_locales, dict):
+            moderator_preserved_locales = {}
         applied_at = timezone.now()
         try:
             with transaction.atomic():
@@ -2685,6 +2797,7 @@ class ContentGenerator:
                     "semantic_reasons": semantic_report.reasons,
                     "rejected_fields": sorted(semantic_report.rejected_fields),
                     "moderator_kept_fields": moderator_kept_fields,
+                    "moderator_preserved_locales": moderator_preserved_locales,
                     "applied_at": applied_at.isoformat(),
                 }
                 log.applied_at = applied_at
