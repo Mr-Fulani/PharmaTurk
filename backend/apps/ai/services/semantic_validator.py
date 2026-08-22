@@ -15,6 +15,49 @@ from apps.ai.services.size_inventory import (
 )
 
 
+# These words are legitimate medicine dosage forms, but they also exist as
+# unrelated catalog categories (most notably English ``tablets`` in the
+# electronics tree).  A medicine title must not be rejected merely because it
+# contains its dosage form; brand/strength/pack identity is validated below.
+_MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES = {
+    "ru": frozenset(
+        {
+            "таблетка",
+            "таблетки",
+            "капсула",
+            "капсулы",
+            "сироп",
+            "крем",
+            "гель",
+            "капли",
+            "спрей",
+            "мазь",
+            "порошок",
+            "инъекция",
+            "суппозиторий",
+        }
+    ),
+    "en": frozenset(
+        {
+            "tablet",
+            "tablets",
+            "capsule",
+            "capsules",
+            "syrup",
+            "cream",
+            "gel",
+            "drops",
+            "spray",
+            "ointment",
+            "powder",
+            "injection",
+            "suppository",
+            "suppositories",
+        }
+    ),
+}
+
+
 @dataclass
 class SemanticValidationReport:
     rejected_fields: set[str] = field(default_factory=set)
@@ -364,6 +407,12 @@ class SemanticValidator:
                 locale,
                 own_match_words,
             )
+            if (
+                product_type == "medicines"
+                and conflicting_match
+                in _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES.get(locale, frozenset())
+            ):
+                conflicting_match = ""
             if conflicting_match:
                 report.rejected_fields.add("title")
                 report.reasons.append("title_category_mismatch")

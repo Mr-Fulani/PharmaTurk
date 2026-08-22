@@ -39,8 +39,15 @@ def get_moderation_reasons(
     if re.search(r"\b(реплика|копия|fake|подделка|replica|copy)\b", desc, re.IGNORECASE):
         reasons.append("sensitive_content")
 
-    # Слишком короткое описание
-    if len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE)) < 20:
+    # Карточка лекарства намеренно краткая: клинические сведения хранятся в
+    # отдельных полях, а не раздувают маркетинговое описание. Для остальных
+    # категорий сохраняем прежний порог.
+    product_type = getattr(getattr(log, "product", None), "product_type", None)
+    minimum_description_words = 12 if product_type == "medicines" else 20
+    if (
+        len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE))
+        < minimum_description_words
+    ):
         reasons.append("short_description")
 
     semantic_report = semantic_report or SemanticValidator().validate_log(log)

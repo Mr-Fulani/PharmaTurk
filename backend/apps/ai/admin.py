@@ -17,6 +17,7 @@ from .services.moderation import (
     APPLICATION_LABELS,
     build_change_preview,
     get_moderation_reason_labels,
+    get_rejected_field_labels,
     get_workflow_title,
     reject_log,
 )
@@ -889,10 +890,17 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 )
                 if obj.application_status == AIApplicationStatus.PARTIAL:
                     rejected = (obj.application_report or {}).get("rejected_fields") or []
+                    rejected_labels = ", ".join(get_rejected_field_labels(rejected))
+                    updated = bool((obj.application_report or {}).get("product_updated"))
+                    applied_message = (
+                        "Разрешённые изменения перенесены."
+                        if updated
+                        else "Новых разрешённых изменений нет: они уже совпадают с товаром."
+                    )
                     messages.warning(
                         request,
-                        f"Лог #{obj.id}: разрешённые поля применены, но "
-                        f"заблокированных полей не перенесено: {len(rejected)}. "
+                        f"Лог #{obj.id}: {applied_message} "
+                        f"Не перенесены: {rejected_labels or 'поля, требующие проверки'}. "
                         "Запись остаётся на модерации; отдельное предварительное "
                         "одобрение не требуется.",
                     )
@@ -933,10 +941,21 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             if submitted:
                 messages.success(
                     request,
-                    f"Создан новый AI-лог #{queued_log.id}; результат не будет применён автоматически.",
+                    f"Создан новый AI-лог #{queued_log.id}; открыта его страница. "
+                    "Результат не будет применён автоматически.",
+                )
+                return HttpResponseRedirect(
+                    reverse("admin:ai_aiprocessinglog_change", args=[queued_log.id])
                 )
             else:
-                messages.warning(request, "Повторный запуск уже находится в очереди.")
+                messages.warning(
+                    request,
+                    f"AI-лог #{queued_log.id} уже находится в очереди или обрабатывается; "
+                    "открыта его страница.",
+                )
+                return HttpResponseRedirect(
+                    reverse("admin:ai_aiprocessinglog_change", args=[queued_log.id])
+                )
         except Exception as exc:
             messages.error(request, f"Не удалось перезапустить AI: {exc}")
         return self._response_post_save(request, obj)
@@ -1005,7 +1024,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         gen = ContentGenerator()
         applied = 0
         partial = 0
-        partial_ids = []
+        partial_details = []
         skipped = 0
         for log in queryset:
             if log.status not in (
@@ -1026,7 +1045,11 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 )
                 if log.application_status == AIApplicationStatus.PARTIAL:
                     partial += 1
-                    partial_ids.append(log.id)
+                    rejected = (log.application_report or {}).get("rejected_fields") or []
+                    labels = ", ".join(get_rejected_field_labels(rejected))
+                    partial_details.append(
+                        f"#{log.id} — {labels or 'поля, требующие проверки'}"
+                    )
                 else:
                     applied += 1
             except Exception as e:
@@ -1040,13 +1063,14 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 f"Проверено и полностью применено к товарам: {applied}.",
             )
         if partial:
-            visible_ids = ", ".join(f"#{log_id}" for log_id in partial_ids[:5])
-            if len(partial_ids) > 5:
-                visible_ids += ", …"
+            visible_details = "; ".join(partial_details[:5])
+            if len(partial_details) > 5:
+                visible_details += "; …"
             messages.warning(
                 request,
-                f"Разрешённые поля применены, но заблокированные поля не перенесены: "
-                f"{partial} ({visible_ids}). Записи остаются на модерации; отдельное "
+                f"Частично применено AI-логов: {partial}. {visible_details}. "
+                "Это количество логов, а заблокированные поля перечислены после каждого ID. "
+                "Записи остаются на модерации; отдельное "
                 "предварительное одобрение не требуется.",
             )
         if skipped:

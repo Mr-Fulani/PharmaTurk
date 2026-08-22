@@ -7,6 +7,7 @@ from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.result_applier import AIResultApplier
 from apps.catalog.models import (
     AccessoryProduct,
+    Category,
     GlobalAttributeKey,
     MedicineProduct,
     ProductAttributeValue,
@@ -429,6 +430,23 @@ def test_medicine_ru_translation_repair_replaces_untranslated_turkish_fields():
     assert repaired["ru"]["usage_instructions"] == "Русский перевод способа применения."
 
 
+def test_medicine_ru_translation_allows_official_turkish_acronym():
+    generator = ContentGenerator.__new__(ContentGenerator)
+    translated = (
+        "Если возникнут побочные эффекты, обратитесь к врачу или фармацевту. "
+        "Сообщить о реакции также можно в Турецкий центр фармаконадзора TÜFAM. "
+        * 8
+    )
+    source = "Yan etki bildirimi hakkında resmi hasta bilgilendirme metni. " * 10
+
+    assert generator._looks_untranslated_turkish(translated) is False
+    assert generator._medicine_translation_has_coverage(
+        source,
+        translated,
+        locale="ru",
+    )
+
+
 def test_medicine_ru_translation_repair_catches_cyrillic_turkish_transliteration():
     class FakeLLM:
         def generate_content(self, **_kwargs):
@@ -541,6 +559,71 @@ def test_medicine_full_translation_discards_short_preview_and_marks_failed_cover
     assert "indications" not in content["ru"]
     assert "indications" not in content["en"]
     assert not content["attributes"]["medicine_translation_quality"]["indications"]["complete"]
+
+
+def test_partial_apply_blocks_incomplete_medicine_section_in_both_locales():
+    category = Category.objects.create(
+        name="Медицина для проверки блокировки",
+        slug="medicines-block-incomplete-section",
+    )
+    medicine = MedicineProduct.objects.create(
+        name="TESTMED 10 MG TABLET (20 ADET)",
+        slug="testmed-block-incomplete-section",
+        description="Старое описание",
+        category=category,
+    )
+    medicine.refresh_from_db()
+    medicine.translations.create(
+        locale="ru",
+        side_effects="Проверенные старые побочные эффекты RU",
+    )
+    medicine.translations.create(
+        locale="en",
+        side_effects="Verified old side effects EN",
+    )
+    log = AIProcessingLog.objects.create(
+        product=medicine.base_product,
+        processing_type="full",
+        status=AIProcessingStatus.COMPLETED,
+        input_data={},
+        generated_title="TESTMED 10 MG TABLET (20 ADET)",
+        generated_description=(
+            "Подробное описание препарата содержит форму выпуска действующее вещество "
+            "количество единиц способ приема и сведения об упаковке для карточки товара."
+        ),
+        extracted_attributes={
+            "medicine_translation_quality": {
+                "side_effects": {
+                    "source_length": 1000,
+                    "ru_length": 900,
+                    "en_length": 920,
+                    "complete": False,
+                }
+            },
+            "translations_data": {
+                "ru": {"side_effects": "Новый неполный текст RU"},
+                "en": {"side_effects": "New incomplete text EN"},
+            },
+        },
+    )
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator.result_applier = AIResultApplier()
+
+    generator.apply_log_to_product(log)
+
+    log.refresh_from_db()
+    assert log.application_status == AIApplicationStatus.PARTIAL
+    assert log.application_report["rejected_fields"] == [
+        "medicine_translation:side_effects"
+    ]
+    assert (
+        medicine.translations.get(locale="ru").side_effects
+        == "Проверенные старые побочные эффекты RU"
+    )
+    assert (
+        medicine.translations.get(locale="en").side_effects
+        == "Verified old side effects EN"
+    )
 
 
 def test_apply_log_with_turkish_ru_sections_blanks_turkish_fields():

@@ -16,6 +16,7 @@ from apps.ai.models import (
 )
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.moderation import build_change_preview, get_workflow_title, reject_log
+from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidationReport
 from apps.ai.views import AIProcessingLogViewSet
@@ -27,6 +28,7 @@ from apps.catalog.models import (
     HeadwearProduct,
     IslamicClothingProduct,
     JewelryProduct,
+    MedicineProduct,
     SportsProduct,
     UnderwearProduct,
 )
@@ -273,12 +275,50 @@ def test_admin_rerun_endpoint_does_not_validate_current_log_form(client, django_
         response = client.post(url, data={})
 
     assert response.status_code == 302
+    assert response.url == reverse("admin:ai_aiprocessinglog_change", args=[999])
     enqueue.assert_called_once_with(
         product_id=log.product_id,
         processing_type=log.processing_type,
         auto_apply=False,
         force=True,
     )
+
+
+def test_short_medicine_card_uses_clinical_sections_instead_of_padding_description():
+    description = (
+        "Краткое точное описание препарата содержит действующее вещество форму выпуска "
+        "количество таблеток и способ приема"
+    )
+    medicine = MedicineProduct.objects.create(
+        name="TESTMED 10 MG TABLET",
+        slug="moderation-short-medicine-card",
+    )
+    medicine.refresh_from_db()
+    medicine_log = _reviewable_log(
+        medicine.base_product,
+        generated_description=description,
+    )
+    accessory = AccessoryProduct.objects.create(
+        name="Short accessory",
+        slug="moderation-short-accessory-card",
+    )
+    accessory.refresh_from_db()
+    accessory_log = _reviewable_log(
+        accessory.base_product,
+        generated_description=description,
+    )
+
+    medicine_reasons = get_moderation_reasons(
+        medicine_log,
+        semantic_report=SemanticValidationReport(),
+    )
+    accessory_reasons = get_moderation_reasons(
+        accessory_log,
+        semantic_report=SemanticValidationReport(),
+    )
+
+    assert "short_description" not in medicine_reasons
+    assert "short_description" in accessory_reasons
 
 
 def test_legacy_approved_log_does_not_claim_confirmed_application():

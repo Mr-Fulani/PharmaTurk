@@ -62,6 +62,34 @@ def test_enqueue_is_idempotent_while_product_is_pending(
 
 
 @pytest.mark.django_db
+def test_forced_rerun_does_not_duplicate_an_active_task(
+    monkeypatch, product, django_capture_on_commit_callbacks
+):
+    submitted = []
+    monkeypatch.setattr(
+        "apps.ai.tasks.process_product_ai_task.apply_async",
+        lambda **kwargs: submitted.append(kwargs),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        first, first_task_id, first_submitted = enqueue_product_ai_task(
+            product_id=product.id,
+            force=True,
+        )
+        second, second_task_id, second_submitted = enqueue_product_ai_task(
+            product_id=product.id,
+            force=True,
+        )
+
+    assert first_submitted is True
+    assert second_submitted is False
+    assert second.id == first.id
+    assert second_task_id == first_task_id
+    assert AIProcessingLog.objects.filter(product=product).count() == 1
+    assert len(submitted) == 1
+
+
+@pytest.mark.django_db
 def test_enqueue_marks_log_failed_when_broker_publish_fails(
     monkeypatch, product, django_capture_on_commit_callbacks
 ):

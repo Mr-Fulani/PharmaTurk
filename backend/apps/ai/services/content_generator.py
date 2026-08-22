@@ -1620,14 +1620,23 @@ class ContentGenerator:
 
     def _looks_untranslated_turkish(self, text: Any) -> bool:
         value = str(text or "").strip()
-        if re.search(r"[çğıöşüÇĞİÖŞÜ]", value):
+        # Preserve official all-caps abbreviations and brand names such as
+        # TÜFAM/TİTCK/AUGMENTİN.  A single Turkish diacritic in a proper name
+        # does not make an otherwise complete Russian translation Turkish.
+        language_sample = re.sub(r"https?://\S+|www\.\S+", " ", value)
+        language_sample = re.sub(
+            r"\b[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9._/-]{1,}\b",
+            " ",
+            language_sample,
+        )
+        if re.search(r"[çğıöşüÇĞİÖŞÜ]", language_sample):
             return True
         if len(value) < 30:
             return False
         if self._looks_turkish_transliteration(value):
             return True
-        cyrillic_count = len(re.findall(r"[А-Яа-яЁё]", value))
-        turkish_char_count = len(re.findall(r"[çğıöşüÇĞİÖŞÜ]", value))
+        cyrillic_count = len(re.findall(r"[А-Яа-яЁё]", language_sample))
+        turkish_char_count = len(re.findall(r"[çğıöşüÇĞİÖŞÜ]", language_sample))
         turkish_word_count = len(
             re.findall(
                 r"\b("
@@ -1636,7 +1645,7 @@ class ContentGenerator:
                 r"muhafaza|çocukların|yetişkin|çocuklar|doz|yan etkiler|alerjik|reaksiyon|"
                 r"durumlarda|dikkatli|için|veya|değilse|yutunuz|başvurunuz"
                 r")\b",
-                value,
+                language_sample,
                 flags=re.IGNORECASE,
             )
         )

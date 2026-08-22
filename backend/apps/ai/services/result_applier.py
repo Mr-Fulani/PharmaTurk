@@ -637,4 +637,17 @@ class AIResultApplier:
             if "sizes" in rejected_fields:
                 attrs.pop("sizes", None)
             cleaned_data["extracted_attributes"] = attrs
+            translations = cleaned_data.get("translations")
+            if isinstance(translations, dict):
+                rejected_medicine_fields = {
+                    field_name.split(":", 1)[1]
+                    for field_name in rejected_fields
+                    if field_name.startswith("medicine_translation:")
+                    and ":" in field_name
+                }
+                for locale_payload in translations.values():
+                    if not isinstance(locale_payload, dict):
+                        continue
+                    for field_name in rejected_medicine_fields:
+                        locale_payload.pop(field_name, None)
             return handler.apply(target, cleaned_data)

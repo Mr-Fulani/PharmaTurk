@@ -140,6 +140,9 @@ def test_burkini_title_is_not_confused_with_swimming_context():
 
 def test_medicine_identity_allows_localized_form_but_preserves_brand_dose_and_pack():
     category = Category.objects.create(name="Медицина", slug="medicines")
+    electronics = Category.objects.create(name="Электроника", slug="electronics")
+    Category.objects.create(name="Планшеты", slug="tablets", parent=electronics)
+    Category.objects.create(name="Ноутбуки", slug="laptop", parent=electronics)
     medicine = MedicineProduct.objects.create(
         name="RINVOQ 15 MG UZATILMIS SALIMLI TABLET (28 ADET)",
         slug="rinvoq-medicine-identity",
@@ -151,7 +154,8 @@ def test_medicine_identity_allows_localized_form_but_preserves_brand_dose_and_pa
     valid = validator.validate(
         medicine.base_product,
         generated_titles={
-            "ru": "RINVOQ 15 мг, таблетки пролонгированного высвобождения, 28 шт."
+            "ru": "RINVOQ 15 мг, таблетки пролонгированного высвобождения, 28 шт.",
+            "en": "RINVOQ 15 MG tablets (28 pieces)",
         },
         dynamic_attributes=[],
     )
@@ -160,11 +164,21 @@ def test_medicine_identity_allows_localized_form_but_preserves_brand_dose_and_pa
         generated_titles={"ru": "RINVOQ, таблетки пролонгированного высвобождения, 28 шт."},
         dynamic_attributes=[],
     )
+    wrong_kind = validator.validate(
+        medicine.base_product,
+        generated_titles={
+            "ru": "RINVOQ 15 мг, таблетки пролонгированного высвобождения, 28 шт.",
+            "en": "RINVOQ 15 MG laptop (28 pieces)",
+        },
+        dynamic_attributes=[],
+    )
 
     assert "title" not in valid.rejected_fields
     assert "title_identity_lost" not in valid.reasons
     assert "title" in missing_dose.rejected_fields
     assert "title_identity_lost" in missing_dose.reasons
+    assert "title" in wrong_kind.rejected_fields
+    assert "title_category_mismatch" in wrong_kind.reasons
 
 
 def test_medicine_translation_quality_and_turkish_ru_fields_require_moderation():

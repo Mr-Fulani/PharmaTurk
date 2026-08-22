@@ -46,21 +46,26 @@ def enqueue_product_ai_task(
     # Блокировка строки товара делает проверку/создание pending-лога атомарной
     # при двойном клике или параллельных admin/API запросах.
     product = Product.objects.select_for_update().get(pk=product_id)
+    reusable_statuses = [
+        AIProcessingStatus.PENDING,
+        AIProcessingStatus.PROCESSING,
+    ]
     if not force:
-        existing = AIProcessingLog.objects.filter(
-            product=product,
-            processing_type=resolved_type,
-            status__in=[
-                AIProcessingStatus.PENDING,
-                AIProcessingStatus.PROCESSING,
+        reusable_statuses.extend(
+            [
                 AIProcessingStatus.COMPLETED,
                 AIProcessingStatus.APPROVED,
                 AIProcessingStatus.MODERATION,
-            ],
-        ).order_by("-created_at").first()
-        if existing:
-            task_id = str((existing.input_data or {}).get("celery_task_id") or "")
-            return existing, task_id, False
+            ]
+        )
+    existing = AIProcessingLog.objects.filter(
+        product=product,
+        processing_type=resolved_type,
+        status__in=reusable_statuses,
+    ).order_by("-created_at").first()
+    if existing:
+        task_id = str((existing.input_data or {}).get("celery_task_id") or "")
+        return existing, task_id, False
 
     task_id = str(uuid.uuid4())
     log_entry = AIProcessingLog.objects.create(

@@ -51,10 +51,52 @@ MODERATION_REASON_LABELS = {
 APPLICATION_LABELS = {
     AIApplicationStatus.UNKNOWN: "Нет надёжных данных (старый лог)",
     AIApplicationStatus.NOT_APPLIED: "Товар ещё не изменён",
-    AIApplicationStatus.PARTIAL: "Безопасные поля применены частично",
+    AIApplicationStatus.PARTIAL: (
+        "Разрешённые поля применены; заблокированные оставлены на проверке"
+    ),
     AIApplicationStatus.APPLIED: "Результат применён к товару",
     AIApplicationStatus.FAILED: "Ошибка при применении к товару",
 }
+
+
+REJECTED_FIELD_LABELS = {
+    "title": "название RU/EN",
+    "sizes": "размеры и наличие",
+}
+
+MEDICINE_TRANSLATION_FIELD_LABELS = {
+    "indications": "показания RU/EN",
+    "usage_instructions": "способ применения RU/EN",
+    "side_effects": "побочные эффекты RU/EN",
+    "contraindications": "противопоказания RU/EN",
+    "storage_conditions": "условия хранения RU/EN",
+    "administration_route": "путь введения RU/EN",
+    "shelf_life": "срок годности RU/EN",
+    "sgk_status": "статус SGK RU/EN",
+    "prescription_type": "тип рецепта RU/EN",
+    "special_notes": "особые указания RU/EN",
+    "origin_country": "страна происхождения RU/EN",
+    "dosage_form": "лекарственная форма RU/EN",
+    "active_ingredient": "действующее вещество RU/EN",
+    "volume": "объём RU/EN",
+}
+
+
+def get_rejected_field_labels(fields: list[str] | set[str] | tuple[str, ...]) -> list[str]:
+    """Translate internal field gates into compact moderator-facing labels."""
+    labels: list[str] = []
+    for field_name in fields:
+        label = REJECTED_FIELD_LABELS.get(field_name)
+        if label is None and field_name.startswith("medicine_translation:"):
+            medicine_field = field_name.split(":", 1)[1]
+            label = MEDICINE_TRANSLATION_FIELD_LABELS.get(
+                medicine_field,
+                f"медицинское поле «{medicine_field}» RU/EN",
+            )
+        if label is None and field_name.startswith("dynamic_attributes:"):
+            label = f"атрибут «{field_name.split(':', 1)[1]}»"
+        labels.append(label or field_name)
+    return labels
 
 
 @dataclass(frozen=True)
