@@ -300,6 +300,7 @@ class SemanticValidator:
             },
             dynamic_attributes=attrs.get("dynamic_attributes") or [],
             sizes=attrs.get("sizes") or [],
+            extracted_attributes=attrs,
         )
 
     def validate(
@@ -309,7 +310,9 @@ class SemanticValidator:
         generated_titles: dict[str, Any],
         dynamic_attributes: list[dict[str, Any]],
         sizes: list[dict[str, Any]] | None = None,
+        extracted_attributes: dict[str, Any] | None = None,
     ) -> SemanticValidationReport:
+        attrs = extracted_attributes or {}
         category = getattr(product, "category", None)
         product_type = getattr(product, "product_type", None)
         # The detached-object path below is useful for lightweight unit tests.

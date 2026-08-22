@@ -253,7 +253,13 @@ def test_category_alternatives_accepts_an_empty_list_in_admin_form():
     assert form.fields["category_alternatives"].clean("[]") == []
 
 
-def test_admin_rerun_endpoint_does_not_validate_current_log_form(admin_client):
+def test_admin_rerun_endpoint_does_not_validate_current_log_form(client, django_user_model):
+    admin_user = django_user_model.objects.create_superuser(
+        username="ai-admin",
+        email="ai-admin@example.com",
+        password="test-password",
+    )
+    client.force_login(admin_user)
     accessory = AccessoryProduct.objects.create(
         name="Accessory rerun endpoint",
         slug="moderation-rerun-endpoint",
@@ -264,7 +270,7 @@ def test_admin_rerun_endpoint_does_not_validate_current_log_form(admin_client):
 
     with patch("apps.ai.tasks.enqueue_product_ai_task") as enqueue:
         enqueue.return_value = (SimpleNamespace(id=999), "task-id", True)
-        response = admin_client.post(url, data={})
+        response = client.post(url, data={})
 
     assert response.status_code == 302
     enqueue.assert_called_once_with(
