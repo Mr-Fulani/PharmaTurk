@@ -144,6 +144,7 @@ class AIProcessingLog(models.Model):
     )
     category_alternatives = models.JSONField(
         default=list,
+        blank=True,
         verbose_name='Альтернативные категории',
         help_text='Топ-3 альтернативы с confidence score'
     )

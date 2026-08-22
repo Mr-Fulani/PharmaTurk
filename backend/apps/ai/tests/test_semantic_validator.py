@@ -16,6 +16,7 @@ from apps.catalog.models import (
     FurnitureProduct,
     FurnitureProductTranslation,
     IslamicClothingProduct,
+    MedicineProduct,
 )
 
 
@@ -135,6 +136,71 @@ def test_burkini_title_is_not_confused_with_swimming_context():
 
     assert report.rejected_fields == set()
     assert report.reasons == []
+
+
+def test_medicine_identity_allows_localized_form_but_preserves_brand_dose_and_pack():
+    category = Category.objects.create(name="Медицина", slug="medicines")
+    medicine = MedicineProduct.objects.create(
+        name="RINVOQ 15 MG UZATILMIS SALIMLI TABLET (28 ADET)",
+        slug="rinvoq-medicine-identity",
+        category=category,
+    )
+    medicine.refresh_from_db()
+    validator = SemanticValidator()
+
+    valid = validator.validate(
+        medicine.base_product,
+        generated_titles={
+            "ru": "RINVOQ 15 мг, таблетки пролонгированного высвобождения, 28 шт."
+        },
+        dynamic_attributes=[],
+    )
+    missing_dose = validator.validate(
+        medicine.base_product,
+        generated_titles={"ru": "RINVOQ, таблетки пролонгированного высвобождения, 28 шт."},
+        dynamic_attributes=[],
+    )
+
+    assert "title" not in valid.rejected_fields
+    assert "title_identity_lost" not in valid.reasons
+    assert "title" in missing_dose.rejected_fields
+    assert "title_identity_lost" in missing_dose.reasons
+
+
+def test_medicine_translation_quality_and_turkish_ru_fields_require_moderation():
+    category = Category.objects.create(name="Медицина quality", slug="medicines-quality")
+    medicine = MedicineProduct.objects.create(
+        name="TESTMED 10 MG TABLET (20 ADET)",
+        slug="medicine-translation-quality",
+        category=category,
+    )
+    medicine.refresh_from_db()
+    log = AIProcessingLog.objects.create(
+        product=medicine.base_product,
+        processing_type="full",
+        input_data={},
+        generated_title="TESTMED 10 мг, таблетки, 20 шт.",
+        extracted_attributes={
+            "medicine_translation_quality": {
+                "indications": {
+                    "source_length": 5000,
+                    "ru_length": 400,
+                    "en_length": 450,
+                    "complete": False,
+                }
+            },
+            "translations_data": {
+                "ru": {"special_notes": "Ek izlemeye tabi ilaç!"},
+            },
+        },
+    )
+
+    report = SemanticValidator().validate_log(log)
+
+    assert "incomplete_medicine_translation" in report.reasons
+    assert "untranslated_medicine_field" in report.reasons
+    assert "medicine_translation:indications" in report.rejected_fields
+    assert "medicine_translation:special_notes" in report.rejected_fields
 
 
 def test_partial_apply_keeps_rejected_title_but_applies_valid_content_and_moderates():

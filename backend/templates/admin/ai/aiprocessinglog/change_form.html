@@ -72,13 +72,16 @@
         </button>
       {% endif %}
       {% if can_rerun_ai %}
-        <button type="button" class="ai-action-button ai-action-rerun" data-ai-action="_rerun_ai"
-                data-confirm="Запустить новую AI-обработку? Будет создан отдельный лог без авто-применения.">
-          Перезапустить AI
-        </button>
+        <form method="post" action="{{ rerun_url }}" style="display:inline;margin:0;">
+          {% csrf_token %}
+          <button type="submit" class="ai-action-button ai-action-rerun"
+                  onclick="return window.confirm('Запустить новую AI-обработку? Будет создан отдельный лог без авто-применения. Правки текущего лога сохраняться не будут.');">
+            Перезапустить AI
+          </button>
+        </form>
       {% endif %}
       <div class="ai-actions-hint">
-        Обычная кнопка «Сохранить» сохраняет только правки в логе. Зелёная кнопка сохраняет правки и переносит разрешённые поля в товар.
+        «Сохранить» сохраняет только правки в логе. Зелёная кнопка сохраняет правки и переносит разрешённые поля в товар. Перезапуск создаёт новый лог и не зависит от полей текущей формы.
       </div>
     </div>
     <script>

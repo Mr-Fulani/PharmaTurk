@@ -1,9 +1,11 @@
 import json
 from django import forms
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
+from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.utils.html import format_html, escape
 from django.utils.safestring import mark_safe
-from django.urls import reverse, NoReverseMatch
+from django.urls import path, reverse, NoReverseMatch
 from .models import (
     AIApplicationStatus,
     AIProcessingLog,
@@ -348,6 +350,27 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         "rerun_ai_description_only",
     )
 
+    def get_urls(self):
+        """Keep rerun independent from validation of the editable log form."""
+        custom_urls = [
+            path(
+                "<path:object_id>/rerun/",
+                self.admin_site.admin_view(self.rerun_view),
+                name="ai_aiprocessinglog_rerun",
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def rerun_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        obj = self.get_object(request, object_id)
+        if obj is None:
+            raise Http404("AI processing log does not exist")
+        if not self.has_change_permission(request, obj):
+            raise PermissionDenied
+        return self._enqueue_rerun(request, obj)
+
     @admin.display(description="Celery task", ordering="created_at")
     def celery_task_id(self, obj):
         return str((obj.input_data or {}).get("celery_task_id") or "—")
@@ -633,10 +656,27 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         }
         body = []
         previous_section = None
+        hide_unchanged = getattr(obj.product, "product_type", None) == "medicines"
+        unchanged_count = sum(row.decision == "unchanged" for row in rows)
+        changed_count = sum(row.decision == "apply" for row in rows)
+        blocked_count = sum(row.decision == "blocked" for row in rows)
+        table_id = f"ai-preview-{obj.pk}"
+        section_decisions = {}
+        for preview_row in rows:
+            section_decisions.setdefault(preview_row.section, []).append(preview_row.decision)
         for row in rows:
             if row.section != previous_section:
+                section_hidden = (
+                    hide_unchanged
+                    and all(
+                        decision == "unchanged"
+                        for decision in section_decisions.get(row.section, [])
+                    )
+                )
+                section_class = "ai-preview-unchanged" if section_hidden else "ai-preview-section"
+                section_style = "display:none;" if section_hidden else ""
                 body.append(
-                    '<tr class="ai-preview-section"><th colspan="4" '
+                    f'<tr class="ai-preview-section {section_class}" style="{section_style}"><th colspan="4" '
                     'style="text-align:left;padding:9px 10px;background:#e5e7eb;color:#111827;">'
                     f'{escape(row.section)}</th></tr>'
                 )
@@ -650,8 +690,11 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 if row.reason
                 else ""
             )
+            row_hidden = hide_unchanged and row.decision == "unchanged"
+            row_class = "ai-preview-unchanged" if row_hidden else ""
+            row_style = "display:none;" if row_hidden else ""
             body.append(
-                "<tr>"
+                f'<tr class="{row_class}" style="{row_style}">'
                 f'<td style="font-weight:650;min-width:150px;">{escape(row.label)}</td>'
                 f'<td><div class="ai-preview-value">{escape(row.current)}</div></td>'
                 f'<td><div class="ai-preview-value">{escape(row.proposed)}</div></td>'
@@ -660,9 +703,26 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 f'{escape(row.decision_label)}</span>{reason}</td>'
                 "</tr>"
             )
+        toggle = ""
+        if hide_unchanged and unchanged_count:
+            toggle = (
+                f'<button type="button" class="button" style="margin-left:8px;" '
+                f'onclick="var rows=document.querySelectorAll(\'#{table_id} .ai-preview-unchanged\');'
+                "var show=Array.prototype.some.call(rows,function(row){return row.style.display===\'none\';});"
+                "Array.prototype.forEach.call(rows,function(row){row.style.display=show?\'table-row\':\'none\';});"
+                f'this.textContent=show?\'Скрыть неизменённые ({unchanged_count})\':\'Показать неизменённые ({unchanged_count})\';">'
+                f'Показать неизменённые ({unchanged_count})</button>'
+            )
+        summary = (
+            '<div style="margin:0 0 10px;padding:8px 10px;background:#f3f4f6;border-radius:4px;">'
+            f'<strong>Будет изменено: {changed_count}</strong> · '
+            f'Заблокировано: {blocked_count} · Без изменений: {unchanged_count}{toggle}</div>'
+        )
         return mark_safe(
+            summary
+            +
             '<div class="ai-preview-wrap" style="overflow-x:auto;max-width:1200px;">'
-            '<table class="ai-preview-table" style="width:100%;border-collapse:collapse;">'
+            f'<table id="{table_id}" class="ai-preview-table" style="width:100%;border-collapse:collapse;">'
             '<thead><tr><th>Поле</th><th>Сейчас в товаре</th><th>Предложение AI</th>'
             '<th>Что произойдёт</th></tr></thead><tbody>'
             + "".join(body)
@@ -797,6 +857,10 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     not in (AIProcessingStatus.PENDING, AIProcessingStatus.PROCESSING),
                     "is_reapply": obj.status == AIProcessingStatus.APPROVED,
                     "product_admin_url": _get_product_admin_url(obj.product),
+                    "rerun_url": reverse(
+                        "admin:ai_aiprocessinglog_rerun",
+                        args=[obj.pk],
+                    ),
                 }
             )
         return super().change_view(request, object_id, form_url, extra_context)
@@ -853,30 +917,32 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 messages.warning(request, str(exc))
             return self._response_post_save(request, obj)
         if "_rerun_ai" in request.POST:
-            from .tasks import enqueue_product_ai_task
-
-            try:
-                queued_log, _task_id, submitted = enqueue_product_ai_task(
-                    product_id=obj.product_id,
-                    processing_type=obj.processing_type,
-                    auto_apply=False,
-                    force=True,
-                )
-                if submitted:
-                    messages.success(
-                        request,
-                        f"Создан новый AI-лог #{queued_log.id}; результат не будет применён автоматически.",
-                    )
-                else:
-                    messages.warning(request, "Повторный запуск уже находится в очереди.")
-            except Exception as exc:
-                messages.error(request, f"Не удалось перезапустить AI: {exc}")
-            return self._response_post_save(request, obj)
+            return self._enqueue_rerun(request, obj)
         return super().response_change(request, obj)
+
+    def _enqueue_rerun(self, request, obj):
+        from .tasks import enqueue_product_ai_task
+
+        try:
+            queued_log, _task_id, submitted = enqueue_product_ai_task(
+                product_id=obj.product_id,
+                processing_type=obj.processing_type,
+                auto_apply=False,
+                force=True,
+            )
+            if submitted:
+                messages.success(
+                    request,
+                    f"Создан новый AI-лог #{queued_log.id}; результат не будет применён автоматически.",
+                )
+            else:
+                messages.warning(request, "Повторный запуск уже находится в очереди.")
+        except Exception as exc:
+            messages.error(request, f"Не удалось перезапустить AI: {exc}")
+        return self._response_post_save(request, obj)
 
     def _response_post_save(self, request, obj):
         """Редирект обратно на форму после сохранения."""
-        from django.http import HttpResponseRedirect
         return HttpResponseRedirect(
             reverse("admin:ai_aiprocessinglog_change", args=[obj.pk])
         )

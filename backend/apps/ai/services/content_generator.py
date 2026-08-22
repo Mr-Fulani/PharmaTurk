@@ -1,5 +1,6 @@
 import logging
 import json
+import hashlib
 import traceback
 import re
 import math
@@ -323,16 +324,6 @@ class ContentGenerator:
                     source_sections = self._build_medicine_source_sections(input_data)
                     if not isinstance(content, dict) or not content:
                         content = self._build_medicine_fallback_content(input_data)
-                    content, repair_result = self._repair_medicine_ru_translation_content(
-                        content,
-                        product_id=product_id,
-                    )
-                    if repair_result:
-                        self._merge_generation_usage(
-                            generation_result,
-                            repair_result,
-                            "translation_repair",
-                        )
                     section_result = self._translate_medicine_source_sections(
                         content,
                         source_sections,
@@ -343,6 +334,16 @@ class ContentGenerator:
                             generation_result,
                             section_result,
                             "section_translation",
+                        )
+                    content, repair_result = self._repair_medicine_ru_translation_content(
+                        content,
+                        product_id=product_id,
+                    )
+                    if repair_result:
+                        self._merge_generation_usage(
+                            generation_result,
+                            repair_result,
+                            "translation_repair",
                         )
                     generation_result["content"] = content
                 log_entry.raw_llm_response = generation_result
@@ -1246,10 +1247,9 @@ class ContentGenerator:
         return """
         Ты - медицинский редактор-локализатор для справочных карточек лекарственных препаратов Mudaroba.
 
-        Главная задача: перевести и структурировать уже спарсенные разделы препарата.
-        Не пересказывай длинные разделы инструкции: переводи их полностью, сохраняя смысл, порядок и списки.
-        Коротким должен быть только generated_description; поля indications/usage_instructions/side_effects/
-        contraindications/storage_conditions должны быть полным переводом соответствующего source-раздела.
+        Главная задача этого шага: подготовить название, короткое нейтральное описание, SEO и
+        структурированные технические поля. Полные медицинские разделы переводятся отдельным шагом
+        непосредственно из исходника; не пытайся восстанавливать или пересказывать их по preview.
 
         Правила:
         1. Не придумывай показания, диагнозы, лечебный эффект, дозировки, противопоказания, побочные действия,
@@ -1265,11 +1265,13 @@ class ContentGenerator:
            "İthal" -> "импортный" / "imported";
            "İMAL" или "Imal" -> "произведено" / "manufactured";
            "Ay" -> "месяц/месяца/месяцев" / "months".
-        5. Если поле "indications", "usage_instructions", "side_effects", "contraindications",
-           "storage_conditions" или "special_notes" не подтверждено source, верни пустую строку.
+        5. Не возвращай indications, usage_instructions, side_effects, contraindications и
+           storage_conditions: они будут заполнены отдельным полным переводом исходных разделов.
         6. SEO для ru пиши на русском, SEO для en — на английском. SEO не должно содержать неподтвержденные
            заболевания или обещания лечения.
         7. Название нормализуй минимально: сохрани бренд, дозировку/процент, форму и объем. Не добавляй назначение.
+           Не транслитерируй турецкие слова кириллицей. Например, "UZATILMIS SALIMLI TABLET" переводи
+           как "таблетки пролонгированного высвобождения", а не "УЗАТИЛМИШ САЛИМЛИ ТАБЛЕТ".
 
         Ответ — строго JSON по указанной структуре.
         """
@@ -1301,6 +1303,7 @@ class ContentGenerator:
     ) -> str:
         input_data = self._collect_input_data(product)
         source_sections = self._build_medicine_source_sections(input_data)
+        source_summary = source_sections.get("summary") or ""
 
         medicine_attrs_keys = (
             "active_ingredient",
@@ -1335,11 +1338,11 @@ class ContentGenerator:
             "source_sections": {
                 key: {
                     "available": True,
-                    "preview": value[:700],
                     "length": len(value),
                 }
                 for key, value in source_sections.items()
             },
+            "source_summary_preview": source_summary[:1200],
         }
         if not source_sections:
             data["source_description"] = (
@@ -1373,23 +1376,14 @@ class ContentGenerator:
         - Учитывай category_context как назначенный путь категории товара; используй одинаковый тип товара в RU/EN названиях, описаниях и SEO.
         - Используй только факты из source_sections, source_description, known_attributes или image_analysis.
         - Если source_sections не пустой, НЕ используй source_description и НЕ пересказывай разделы.
-        - source_sections.indications -> indications.
-        - source_sections.contraindications -> contraindications.
-        - source_sections.usage_instructions -> usage_instructions.
-        - source_sections.side_effects -> side_effects.
-        - source_sections.storage_conditions -> storage_conditions.
-        - Каждый такой раздел переводи полностью на RU и EN. Не сокращай до 1-2 строк, не делай summary.
-        - Сохраняй абзацы, перечисления, предупреждения и условия из source; убирай только навигационный мусор.
-        - source_sections.summary используй для короткого generated_description, но не копируй туда всю инструкцию.
+        - source_summary_preview используй только для короткого generated_description.
+        - Не возвращай длинные медицинские разделы: отдельный этап переведёт полный исходный текст.
         - Если source содержит только регистрационные/ценовые данные, описание всё равно заполни:
           укажи форму, действующее вещество, путь введения, объем, тип рецепта и срок годности, если они есть.
         - Не включай цену, валюту, публичные цены, скидки, "активный статус", внешний ID и технические SGK-коды в описание.
           Коды можно вернуть только в attributes, если они есть в known_attributes.
         - Не пиши, что препарат лечит конкретное заболевание, если это заболевание явно не указано в source.
         - Не превращай "prescription_type" в "special_notes": тип рецепта должен быть только в prescription_type.
-        - Поля indications / usage_instructions / side_effects / contraindications заполняй только при явном тексте
-          о показаниях / применении / побочных действиях / противопоказаниях в source или source_tabs.
-        - Если сведений для такого поля нет, верни пустую строку.
         - ru.generated_description и en.generated_description должны быть смысловыми переводами друг друга.
         - ru.generated_description: русский язык, 2-5 справочных предложений.
         - en.generated_description: английский язык, 2-4 sentences.
@@ -1404,11 +1398,9 @@ class ContentGenerator:
                 "seo_title": "Русский SEO title без неподтвержденных медицинских обещаний",
                 "seo_description": "Русское SEO description по фактам карточки",
                 "keywords": ["бренд", "форма", "действующее вещество"],
-                "indications": "Полный перевод source_sections.indications на русский, если есть",
-                "usage_instructions": "Полный перевод source_sections.usage_instructions на русский, если есть",
-                "side_effects": "Полный перевод source_sections.side_effects на русский, если есть",
-                "contraindications": "Полный перевод source_sections.contraindications на русский, если есть",
-                "storage_conditions": "Полный перевод source_sections.storage_conditions на русский, если есть",
+                "dosage_form": "Лекарственная форма (RU), если явно указана",
+                "active_ingredient": "Действующее вещество (RU), если явно указано",
+                "volume": "Объём или количество (RU), если явно указано",
                 "administration_route": "Путь введения (RU), если есть",
                 "shelf_life": "Срок годности (RU), если есть",
                 "sgk_status": "Статус SGK (RU), если есть",
@@ -1422,11 +1414,9 @@ class ContentGenerator:
                 "seo_title": "English SEO title without unverified medical claims",
                 "seo_description": "English SEO description based only on source facts",
                 "keywords": ["brand", "form", "active ingredient"],
-                "indications": "Full English translation of source_sections.indications, if present",
-                "usage_instructions": "Full English translation of source_sections.usage_instructions, if present",
-                "side_effects": "Full English translation of source_sections.side_effects, if present",
-                "contraindications": "Full English translation of source_sections.contraindications, if present",
-                "storage_conditions": "Full English translation of source_sections.storage_conditions, if present",
+                "dosage_form": "Dosage form (EN), if explicitly present",
+                "active_ingredient": "Active ingredient (EN), if explicitly present",
+                "volume": "Volume or pack quantity (EN), if explicitly present",
                 "administration_route": "Administration route (EN), if present",
                 "shelf_life": "Shelf life (EN), if present",
                 "sgk_status": "SGK status (EN), if present",
@@ -1468,7 +1458,20 @@ class ContentGenerator:
             "topikal": "топическое применение",
             "oral": "перорально",
             "rektal": "ректально",
+            "tablet": "таблетки",
+            "capsule": "капсулы",
+            "syrup": "сироп",
+            "drops": "капли",
+            "ointment": "мазь",
+            "cream": "крем",
+            "gel": "гель",
+            "injection": "инъекция",
+            "powder": "порошок",
+            "spray": "спрей",
+            "suppository": "суппозитории",
             "beyaz reçete": "белый рецепт",
+            "kısıtlanmış beyaz reçete": "ограниченный белый рецепт",
+            "ek izlemeye tabi ilaç!": "препарат под дополнительным наблюдением",
             "bedeli ödenir": "оплачивается SGK",
             "bedeli ödenmez": "не оплачивается SGK",
             "imal": "произведено",
@@ -1480,7 +1483,20 @@ class ContentGenerator:
             "topikal": "topical use",
             "oral": "oral",
             "rektal": "rectal",
+            "tablet": "tablets",
+            "capsule": "capsules",
+            "syrup": "syrup",
+            "drops": "drops",
+            "ointment": "ointment",
+            "cream": "cream",
+            "gel": "gel",
+            "injection": "injection",
+            "powder": "powder",
+            "spray": "spray",
+            "suppository": "suppositories",
             "beyaz reçete": "white prescription",
+            "kısıtlanmış beyaz reçete": "restricted white prescription",
+            "ek izlemeye tabi ilaç!": "subject to additional monitoring",
             "bedeli ödenir": "covered by SGK",
             "bedeli ödenmez": "not covered by SGK",
             "imal": "manufactured",
@@ -1551,6 +1567,9 @@ class ContentGenerator:
                 "seo_title": f"{name} - информация о препарате"[:70],
                 "seo_description": description_ru[:160],
                 "keywords": keywords_ru,
+                "dosage_form": self._translate_medicine_term(form, "ru"),
+                "active_ingredient": active,
+                "volume": volume,
                 "administration_route": route_ru,
                 "shelf_life": self._translate_medicine_term(input_data.get("shelf_life"), "ru"),
                 "sgk_status": self._translate_medicine_term(input_data.get("sgk_status"), "ru"),
@@ -1564,6 +1583,9 @@ class ContentGenerator:
                 "seo_title": f"{name} - medicine information"[:70],
                 "seo_description": description_en[:160],
                 "keywords": keywords_en,
+                "dosage_form": self._translate_medicine_term(form, "en"),
+                "active_ingredient": active,
+                "volume": volume,
                 "administration_route": route_en,
                 "shelf_life": self._translate_medicine_term(input_data.get("shelf_life"), "en"),
                 "sgk_status": self._translate_medicine_term(input_data.get("sgk_status"), "en"),
@@ -1583,6 +1605,7 @@ class ContentGenerator:
             "processing_time_ms": extra_result.get("processing_time_ms"),
             "repaired_fields": extra_result.get("repaired_fields", []),
             "translated_fields": extra_result.get("translated_fields", []),
+            "failed_fields": extra_result.get("failed_fields", []),
         }
         for token_key, value in (extra_result.get("tokens") or {}).items():
             generation_result["tokens"][token_key] = generation_result["tokens"].get(token_key, 0) + value
@@ -1597,6 +1620,8 @@ class ContentGenerator:
 
     def _looks_untranslated_turkish(self, text: Any) -> bool:
         value = str(text or "").strip()
+        if re.search(r"[çğıöşüÇĞİÖŞÜ]", value):
+            return True
         if len(value) < 30:
             return False
         if self._looks_turkish_transliteration(value):
@@ -1754,129 +1779,179 @@ class ContentGenerator:
             return None
         ru_data = content.setdefault("ru", {})
         en_data = content.setdefault("en", {})
+        clinical_sections = {
+            field: str(source_sections.get(field) or "").strip()
+            for field in (
+                "indications",
+                "usage_instructions",
+                "side_effects",
+                "contraindications",
+                "storage_conditions",
+            )
+            if str(source_sections.get(field) or "").strip()
+        }
+        if not clinical_sections:
+            return None
+
+        # The short-card generation step only sees section lengths and a summary
+        # preview. Remove any unsolicited partial clinical text before writing a
+        # translation made from the complete source.
+        for field in clinical_sections:
+            ru_data.pop(field, None)
+            en_data.pop(field, None)
+
         translated_fields = []
+        failed_fields = []
+        quality = {}
         total_tokens = {"prompt": 0, "completion": 0, "total": 0}
         total_cost = 0.0
         total_time = 0
 
-        for field, source_text in source_sections.items():
-            source_text = str(source_text or "").strip()
-            if not source_text:
-                continue
-            ru_current = ru_data.get(field)
-            en_current = en_data.get(field)
-            needs_ru = not ru_current or self._looks_untranslated_turkish(ru_current)
-            needs_en = not en_current
-            if not needs_ru and not needs_en:
-                continue
+        for batch in self._medicine_translation_batches(clinical_sections):
+            result = self._translate_medicine_sections_batch(
+                batch,
+                product_id=product_id,
+            )
+            payload = (result or {}).get("content") or {}
+            ru_payload = payload.get("ru") if isinstance(payload, dict) else {}
+            en_payload = payload.get("en") if isinstance(payload, dict) else {}
+            ru_payload = ru_payload if isinstance(ru_payload, dict) else {}
+            en_payload = en_payload if isinstance(en_payload, dict) else {}
 
-            field_written = False
-            section_results = []
-            if needs_ru:
-                ru_result = self._translate_medicine_section_locale(
-                    field,
+            for field, source_text in batch.items():
+                ru_text = str(ru_payload.get(field) or "").strip()
+                en_text = str(en_payload.get(field) or "").strip()
+                ru_ok = self._medicine_translation_has_coverage(
                     source_text,
+                    ru_text,
                     locale="ru",
-                    product_id=product_id,
                 )
-                if ru_result:
-                    section_results.append(ru_result)
-                    translated = ru_result.get("text")
-                    if self._looks_russian_text(translated):
-                        ru_data[field] = translated
-                        field_written = True
-                    else:
-                        logger.warning(
-                            "Medicine product %s section %s did not produce valid RU translation",
-                            product_id,
-                            field,
-                        )
-            if needs_en:
-                en_result = self._translate_medicine_section_locale(
-                    field,
+                en_ok = self._medicine_translation_has_coverage(
                     source_text,
+                    en_text,
                     locale="en",
-                    product_id=product_id,
                 )
-                if en_result:
-                    section_results.append(en_result)
-                    translated = str(en_result.get("text") or "").strip()
-                    if translated and not translated.endswith((" Ye", "\nYe", " Ye.")):
-                        en_data[field] = translated
-                        field_written = True
+                source_length = len(source_text)
+                quality[field] = {
+                    "source_length": source_length,
+                    "source_sha256": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+                    "ru_length": len(ru_text),
+                    "en_length": len(en_text),
+                    "ru_complete": ru_ok,
+                    "en_complete": en_ok,
+                    "complete": ru_ok and en_ok,
+                }
+                if ru_ok:
+                    ru_data[field] = ru_text
+                if en_ok:
+                    en_data[field] = en_text
+                if ru_ok and en_ok:
+                    translated_fields.append(field)
+                else:
+                    failed_fields.append(field)
+                    logger.warning(
+                        "Medicine product %s section %s failed full-translation coverage "
+                        "(source=%s, ru=%s, en=%s)",
+                        product_id,
+                        field,
+                        source_length,
+                        len(ru_text),
+                        len(en_text),
+                    )
 
-            if field_written:
-                translated_fields.append(field)
-            for result in section_results:
-                for token_key, value in (result.get("tokens") or {}).items():
-                    total_tokens[token_key] = total_tokens.get(token_key, 0) + value
-                total_cost += result.get("cost_usd", 0) or 0
-                total_time += result.get("processing_time_ms", 0) or 0
+            for token_key, value in ((result or {}).get("tokens") or {}).items():
+                total_tokens[token_key] = total_tokens.get(token_key, 0) + value
+            total_cost += (result or {}).get("cost_usd", 0) or 0
+            total_time += (result or {}).get("processing_time_ms", 0) or 0
 
         content["ru"] = ru_data
         content["en"] = en_data
-        if not translated_fields:
-            return None
+        attrs = content.setdefault("attributes", {})
+        if isinstance(attrs, dict):
+            attrs["medicine_translation_quality"] = quality
         return {
             "tokens": total_tokens,
             "cost_usd": round(total_cost, 6),
             "processing_time_ms": total_time,
             "translated_fields": translated_fields,
+            "failed_fields": failed_fields,
         }
 
-    def _translate_medicine_section_locale(
+    @staticmethod
+    def _medicine_translation_batches(
+        source_sections: Dict[str, str],
+        *,
+        max_source_chars: int = 24000,
+    ) -> List[Dict[str, str]]:
+        batches: List[Dict[str, str]] = []
+        current: Dict[str, str] = {}
+        current_length = 0
+        for field, source_text in source_sections.items():
+            source_length = len(source_text)
+            if current and current_length + source_length > max_source_chars:
+                batches.append(current)
+                current = {}
+                current_length = 0
+            current[field] = source_text
+            current_length += source_length
+        if current:
+            batches.append(current)
+        return batches
+
+    def _medicine_translation_has_coverage(
         self,
-        field: str,
         source_text: str,
+        translated_text: str,
         *,
         locale: str,
+    ) -> bool:
+        source_text = str(source_text or "").strip()
+        translated_text = str(translated_text or "").strip()
+        if not source_text or not translated_text:
+            return False
+        if len(source_text) >= 300 and len(translated_text) / len(source_text) < 0.45:
+            return False
+        if locale == "ru":
+            return self._looks_russian_text(translated_text)
+        return len(translated_text) >= 10
+
+    def _translate_medicine_sections_batch(
+        self,
+        sections: Dict[str, str],
+        *,
         product_id: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
-        language_name = "русский" if locale == "ru" else "English"
-        output_key = "text"
         system_prompt = (
-            "Ты профессиональный медицинский переводчик. Переводи инструкцию препарата с турецкого. "
-            "Не сокращай, не пересказывай, не добавляй факты. Сохраняй абзацы, списки, предупреждения, "
-            "дозировки, числа и название препарата. Ответ верни строго JSON."
-        )
-        extra_ru = (
-            "Русский текст должен быть нормальным русским переводом. Запрещена кириллическая транслитерация "
-            "турецких слов: не пиши «НАСИЛ КУЛЛАНИЛЫР», «демир йетершизлиинде», «докторунуз»."
-            if locale == "ru"
-            else ""
+            "Ты профессиональный медицинский переводчик. Переводи официальную инструкцию препарата "
+            "с турецкого одновременно на русский и английский. Не сокращай, не пересказывай, не добавляй "
+            "факты. Сохраняй каждый абзац, список, предупреждение, дозировку, число и название препарата. "
+            "Терминология: oblong = продолговатые, yaygın olmayan = нечастые, uzatılmış salımlı tablet = "
+            "таблетки пролонгированного высвобождения, kısıtlanmış beyaz reçete = ограниченный белый рецепт, "
+            "ek izlemeye tabi ilaç = препарат под дополнительным наблюдением. Ответ верни строго JSON."
         )
         user_prompt = (
-            f"Раздел: {field}\n"
-            f"Переведи весь исходный турецкий текст на {language_name}.\n"
-            f"{extra_ru}\n"
-            f"Верни JSON вида {{\"{output_key}\": \"полный перевод\"}}.\n\n"
-            f"Исходный турецкий текст:\n{source_text}"
+            "Переведи полностью значения всех полей. Ключи полей не меняй. Русский должен быть "
+            "естественным переводом, а не кириллической транслитерацией турецкого. "
+            "Верни JSON вида {\"ru\": {\"field\": \"полный перевод\"}, "
+            "\"en\": {\"field\": \"full translation\"}}.\n\n"
+            f"Исходные разделы:\n{json.dumps(sections, ensure_ascii=False)}"
         )
         try:
             result = self.llm.generate_content(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                max_tokens=8000,
+                max_tokens=16000,
                 temperature=0.0,
                 max_retries=3,
             )
         except Exception as exc:
             logger.exception(
-                "Failed to translate medicine section %s/%s for product %s: %s",
-                field,
-                locale,
+                "Failed to translate medicine section batch %s for product %s: %s",
+                sorted(sections),
                 product_id,
                 exc,
             )
             return None
-
-        payload = result.get("content")
-        if isinstance(payload, str):
-            payload = self._extract_json_from_response(payload)
-        text = ""
-        if isinstance(payload, dict):
-            text = str(payload.get(output_key) or payload.get(locale) or "").strip()
-        result["text"] = text
         return result
 
     def _construct_user_prompt(

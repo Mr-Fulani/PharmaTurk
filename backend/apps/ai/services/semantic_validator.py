@@ -68,6 +68,67 @@ def _identity_tokens(value: Any) -> set[str]:
     return result
 
 
+def _medicine_identity_tokens(value: Any) -> set[str]:
+    """Identity facts for localized medicine titles.
+
+    Turkish dosage-form words may legitimately become Russian or English, so
+    the medicine gate preserves brand/series, strength and pack size instead
+    of requiring every uppercase source word verbatim.
+    """
+    text = str(value or "")
+    upper = text.upper()
+    result: set[str] = set()
+    generic_prefix_words = {
+        "TABLET",
+        "TABLETLER",
+        "KAPSUL",
+        "KAPSÜL",
+        "KREM",
+        "JEL",
+        "SURUP",
+        "ŞURUP",
+        "SPREY",
+        "DAMLA",
+        "MERHEM",
+        "ILAC",
+        "İLAÇ",
+    }
+    prefix = re.split(r"(?=\d|%)", upper, maxsplit=1)[0]
+    for token in re.findall(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9_-]{2,}", prefix):
+        if token not in generic_prefix_words:
+            result.add(f"BRAND:{token}")
+
+    unit_aliases = {
+        "MG": "MG",
+        "МГ": "MG",
+        "MCG": "MCG",
+        "МCG": "MCG",
+        "МКГ": "MCG",
+        "G": "G",
+        "GR": "G",
+        "Г": "G",
+        "ГР": "G",
+        "ML": "ML",
+        "МЛ": "ML",
+    }
+    for match in re.finditer(
+        r"(\d+(?:[.,]\d+)?)\s*(MG|MCG|G|GR|ML|МГ|МКГ|Г|ГР|МЛ)\b",
+        upper,
+    ):
+        number = match.group(1).replace(",", ".")
+        result.add(f"DOSE:{number}:{unit_aliases[match.group(2)]}")
+    for match in re.finditer(r"%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%", upper):
+        number = (match.group(1) or match.group(2)).replace(",", ".")
+        result.add(f"DOSE:{number}:%")
+    pack_match = re.search(
+        r"(?:\(|\b)(\d+)\s*(?:ADET|TABLET|TABLETS|KAPSUL|KAPSÜL|CAPSULES?|ШТ|ШТУК|ТАБЛЕТ(?:ОК|КИ)?|КАПСУЛ(?:А|Ы)?)\b",
+        upper,
+    )
+    if pack_match:
+        result.add(f"PACK:{pack_match.group(1)}")
+    return result
+
+
 class CategorySemanticIndex:
     """In-memory category policy index for bulk semantic validation.
 
@@ -276,7 +337,10 @@ class SemanticValidator:
             report.reasons = list(dict.fromkeys(report.reasons))
             return report
 
-        original_tokens = _identity_tokens(getattr(product, "name", ""))
+        identity_tokens = (
+            _medicine_identity_tokens if product_type == "medicines" else _identity_tokens
+        )
+        original_tokens = identity_tokens(getattr(product, "name", ""))
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
                 continue
@@ -304,7 +368,7 @@ class SemanticValidator:
             if (
                 locale == "ru"
                 and original_tokens
-                and not original_tokens.issubset(_identity_tokens(title))
+                and not original_tokens.issubset(identity_tokens(title))
             ):
                 report.rejected_fields.add("title")
                 report.reasons.append("title_identity_lost")
@@ -329,6 +393,25 @@ class SemanticValidator:
             ):
                 report.rejected_fields.add(f"dynamic_attributes:{slug or 'unknown'}")
                 report.reasons.append("untranslated_attribute")
+
+        if product_type == "medicines":
+            quality = attrs.get("medicine_translation_quality")
+            if isinstance(quality, dict):
+                for field_name, details in quality.items():
+                    if isinstance(details, dict) and not details.get("complete", False):
+                        report.rejected_fields.add(f"medicine_translation:{field_name}")
+                        report.reasons.append("incomplete_medicine_translation")
+            translations_data = attrs.get("translations_data")
+            ru_data = (
+                translations_data.get("ru")
+                if isinstance(translations_data, dict)
+                and isinstance(translations_data.get("ru"), dict)
+                else {}
+            )
+            for field_name, value in ru_data.items():
+                if looks_untranslated_turkish(value):
+                    report.rejected_fields.add(f"medicine_translation:{field_name}")
+                    report.reasons.append("untranslated_medicine_field")
 
         report.reasons = list(dict.fromkeys(report.reasons))
         return report

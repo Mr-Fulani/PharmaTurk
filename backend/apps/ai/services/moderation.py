@@ -22,6 +22,7 @@ from apps.ai.services.size_inventory import (
     strip_size_inventory_sentences,
     supports_size_inventory,
 )
+from apps.catalog.product_semantics import looks_untranslated_turkish
 
 
 MODERATION_REASON_LABELS = {
@@ -33,6 +34,12 @@ MODERATION_REASON_LABELS = {
     "title_identity_lost": "В названии потеряна модель или серия товара",
     "forbidden_attribute": "AI предложил атрибут, недопустимый для этого типа товара",
     "untranslated_attribute": "Атрибут содержит непереведённый турецкий текст",
+    "incomplete_medicine_translation": (
+        "Медицинский раздел переведён не полностью и не будет применён"
+    ),
+    "untranslated_medicine_field": (
+        "Русское поле лекарства содержит непереведённый турецкий текст"
+    ),
     "ambiguous_variant_sizes": (
         "У товара есть варианты: размеры нужно привязать к конкретному варианту вручную"
     ),
@@ -137,6 +144,7 @@ def _row(
     blocked_reason: str = "",
     fill_empty_only: bool = False,
     proposed_display: Any = _DISPLAY_UNSET,
+    note: str = "",
 ) -> None:
     if proposed in (None, "", [], {}) and current in (None, "", [], {}):
         return
@@ -146,6 +154,8 @@ def _row(
         blocked_reason=blocked_reason,
         fill_empty_only=fill_empty_only,
     )
+    if note and not reason:
+        reason = note
     rows.append(
         PreviewRow(
             section=section,
@@ -243,6 +253,16 @@ def _medicine_rows(
         "sgk_equivalent_code": "Код эквивалента SGK",
         "sgk_active_ingredient_code": "Код действующего вещества SGK",
         "sgk_public_no": "Публичный номер SGK",
+        "dosage_form": "Лекарственная форма (исходное значение)",
+        "active_ingredient": "Действующее вещество (исходное значение)",
+        "volume": "Объём/количество (исходное значение)",
+        "origin_country": "Происхождение (исходное значение)",
+        "administration_route": "Путь введения (исходное значение)",
+        "shelf_life": "Срок годности (исходное значение)",
+        "storage_conditions": "Хранение (исходное значение)",
+        "sgk_status": "Статус SGK (исходное значение)",
+        "prescription_type": "Тип рецепта (исходное значение)",
+        "special_notes": "Особые указания (исходное значение)",
     }
     for field, label in model_labels.items():
         _row(
@@ -271,16 +291,34 @@ def _medicine_rows(
         "volume": "Объём",
     }
     translations_data = attrs.get("translations_data") or {}
+    quality = attrs.get("medicine_translation_quality") or {}
     for locale in ("ru", "en"):
         current_translation = translations.get(locale)
         proposed_translation = translations_data.get(locale) or {}
         for field, label in translation_labels.items():
+            proposed = proposed_translation.get(field)
+            blocked_reason = ""
+            quality_note = ""
+            details = quality.get(field) if isinstance(quality, dict) else None
+            if isinstance(details, dict):
+                quality_note = (
+                    f"Источник: {details.get('source_length', 0)} симв.; "
+                    f"RU: {details.get('ru_length', 0)}; EN: {details.get('en_length', 0)}"
+                )
+                if not details.get("complete", False):
+                    blocked_reason = (
+                        "Полнота перевода не подтверждена; поле оставлено для проверки"
+                    )
+            if locale == "ru" and looks_untranslated_turkish(proposed):
+                blocked_reason = "Поле содержит непереведённый турецкий текст"
             _row(
                 rows,
                 f"Лекарство {locale.upper()}",
                 label,
                 getattr(current_translation, field, None) if current_translation else None,
-                proposed_translation.get(field),
+                proposed,
+                blocked_reason=blocked_reason,
+                note=quality_note,
             )
 
 
@@ -484,6 +522,12 @@ def get_workflow_title(log) -> tuple[str, str]:
     if log.status == AIProcessingStatus.REJECTED:
         return "Результат отклонён", "danger"
     if log.status == AIProcessingStatus.APPROVED:
+        if log.application_status == AIApplicationStatus.UNKNOWN:
+            return "Одобрено — применение не подтверждено (старый лог)", "warning"
+        if log.application_status == AIApplicationStatus.NOT_APPLIED:
+            return "Одобрено — товар ещё не изменён", "warning"
+        if log.application_status == AIApplicationStatus.FAILED:
+            return "Одобрено, но применение завершилось ошибкой", "danger"
         return "Результат применён к товару", "success"
     if log.status == AIProcessingStatus.MODERATION:
         if log.application_status == AIApplicationStatus.PARTIAL:

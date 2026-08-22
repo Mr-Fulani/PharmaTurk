@@ -1,8 +1,10 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 from django.contrib.admin.sites import AdminSite
+from django.urls import reverse
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.ai.admin import AIProcessingLogForm, AIProcessingLogAdmin, _get_product_admin_url
@@ -13,7 +15,7 @@ from apps.ai.models import (
     AIProcessingStatus,
 )
 from apps.ai.services.content_generator import ContentGenerator
-from apps.ai.services.moderation import build_change_preview, reject_log
+from apps.ai.services.moderation import build_change_preview, get_workflow_title, reject_log
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidationReport
 from apps.ai.views import AIProcessingLogViewSet
@@ -234,6 +236,60 @@ def test_non_jewelry_form_hides_and_does_not_process_jewelry_fields():
 
     assert not set(form.fields).intersection(
         {"jewelry_type", "material", "metal_purity", "stone_type", "carat_weight", "gender"}
+    )
+
+
+def test_category_alternatives_accepts_an_empty_list_in_admin_form():
+    accessory = AccessoryProduct.objects.create(
+        name="Accessory empty alternatives",
+        slug="moderation-empty-category-alternatives",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product, category_alternatives=[])
+
+    form = AIProcessingLogForm(instance=log)
+
+    assert form.fields["category_alternatives"].required is False
+    assert form.fields["category_alternatives"].clean("[]") == []
+
+
+def test_admin_rerun_endpoint_does_not_validate_current_log_form(admin_client):
+    accessory = AccessoryProduct.objects.create(
+        name="Accessory rerun endpoint",
+        slug="moderation-rerun-endpoint",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product, category_alternatives=[])
+    url = reverse("admin:ai_aiprocessinglog_rerun", args=[log.pk])
+
+    with patch("apps.ai.tasks.enqueue_product_ai_task") as enqueue:
+        enqueue.return_value = (SimpleNamespace(id=999), "task-id", True)
+        response = admin_client.post(url, data={})
+
+    assert response.status_code == 302
+    enqueue.assert_called_once_with(
+        product_id=log.product_id,
+        processing_type=log.processing_type,
+        auto_apply=False,
+        force=True,
+    )
+
+
+def test_legacy_approved_log_does_not_claim_confirmed_application():
+    accessory = AccessoryProduct.objects.create(
+        name="Legacy application state",
+        slug="moderation-legacy-application-state",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(
+        accessory.base_product,
+        status=AIProcessingStatus.APPROVED,
+        application_status=AIApplicationStatus.UNKNOWN,
+    )
+
+    assert get_workflow_title(log) == (
+        "Одобрено — применение не подтверждено (старый лог)",
+        "warning",
     )
 
 

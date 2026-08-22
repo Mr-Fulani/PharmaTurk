@@ -219,11 +219,40 @@ def test_medicine_prompt_uses_structured_sections_without_duplicate_raw_descript
     prompt = generator._construct_medicine_user_prompt(product, {}, "full")
 
     assert "source_sections" in prompt
-    assert "LASİRİN nedir ve ne için kullanılır" in prompt
+    assert '"indications": {"available": true, "length": 55}' in prompt
+    assert "LASİRİN nedir ve ne için kullanılır" not in prompt
     assert "DUPLICATED DESCRIPTION SHOULD NOT BE SENT" not in prompt
     assert "DUPLICATED RAW SHOULD NOT BE SENT" not in prompt
-    assert "переводи полностью" in prompt
-    assert "Не сокращай до 1-2 строк" in prompt
+    assert "отдельный этап переведёт полный исходный текст" in prompt
+
+
+def test_medicine_applier_fills_source_backed_structured_fields_only_when_empty():
+    medicine = MedicineProduct.objects.create(
+        name="RINVOQ 15 MG",
+        slug="rinvoq-source-backed-fields",
+        dosage_form="tablet",
+        volume="28",
+        active_ingredient="",
+    )
+    medicine.refresh_from_db()
+
+    AIResultApplier().apply_to_product(
+        medicine.base_product,
+        {
+            "extracted_attributes": {
+                "dosage_form": "capsule",
+                "volume": "98",
+                "active_ingredient": "upadacitinib",
+                "sgk_status": "Bedeli Ödenir",
+            }
+        },
+    )
+
+    medicine.refresh_from_db()
+    assert medicine.dosage_form == "tablet"
+    assert medicine.volume == "28"
+    assert medicine.active_ingredient == "upadacitinib"
+    assert medicine.sgk_status == "Bedeli Ödenir"
 
 
 def test_auto_apply_existing_completed_log_applies_saved_medicine_seo():
@@ -442,7 +471,12 @@ def test_medicine_section_translation_overrides_bad_ru_long_section():
         def generate_content(self, **_kwargs):
             return {
                 "content": {
-                    "text": "3. Как применять FERRO SANOL DUODENAL?\nВсегда принимайте препарат так, как рекомендовал врач. Дозу следует подбирать по клиническим показателям."
+                    "ru": {
+                        "usage_instructions": "Всегда принимайте препарат так, как рекомендовал врач. " * 20,
+                    },
+                    "en": {
+                        "usage_instructions": "Always take the medicine as instructed by your doctor. " * 20,
+                    },
                 },
                 "tokens": {"prompt": 100, "completion": 50, "total": 150},
                 "cost_usd": 0.001,
@@ -451,6 +485,7 @@ def test_medicine_section_translation_overrides_bad_ru_long_section():
 
     generator = ContentGenerator.__new__(ContentGenerator)
     generator.llm = FakeLLM()
+    source_text = "Doktorunuzun söylediği şekilde kullanınız. " * 20
     content = {
         "ru": {
             "usage_instructions": "3. FERRO SANOL DUODENAL НАСИЛ КУЛЛАНИЛИР? Докторунуз тавсие эттиги шеклде алыныз.",
@@ -463,14 +498,49 @@ def test_medicine_section_translation_overrides_bad_ru_long_section():
     result = generator._translate_medicine_source_sections(
         content,
         {
-            "usage_instructions": "3. FERRO SANOL DUODENAL NASIL KULLANILIR? Doktorunuz tavsiye ettiği şekilde alınız.",
+            "summary": "Этот раздел не должен переводиться отдельным полным переводом." * 100,
+            "usage_instructions": source_text,
         },
         product_id=1,
     )
 
     assert result["translated_fields"] == ["usage_instructions"]
     assert "НАСИЛ" not in content["ru"]["usage_instructions"]
-    assert content["ru"]["usage_instructions"].startswith("3. Как применять")
+    assert content["ru"]["usage_instructions"].startswith("Всегда принимайте препарат")
+    assert content["attributes"]["medicine_translation_quality"]["usage_instructions"]["complete"]
+    assert "summary" not in content["attributes"]["medicine_translation_quality"]
+
+
+def test_medicine_full_translation_discards_short_preview_and_marks_failed_coverage():
+    class ShortLLM:
+        def generate_content(self, **_kwargs):
+            return {
+                "content": {
+                    "ru": {"indications": "Короткий перевод."},
+                    "en": {"indications": "Short translation."},
+                },
+                "tokens": {"prompt": 10, "completion": 10, "total": 20},
+                "cost_usd": 0.001,
+                "processing_time_ms": 10,
+            }
+
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator.llm = ShortLLM()
+    content = {
+        "ru": {"indications": "Старый перевод первых 700 символов."},
+        "en": {"indications": "Old translation of the first 700 characters."},
+    }
+
+    result = generator._translate_medicine_source_sections(
+        content,
+        {"indications": "Kaynak metin. " * 500},
+        product_id=1,
+    )
+
+    assert result["failed_fields"] == ["indications"]
+    assert "indications" not in content["ru"]
+    assert "indications" not in content["en"]
+    assert not content["attributes"]["medicine_translation_quality"]["indications"]["complete"]
 
 
 def test_apply_log_with_turkish_ru_sections_blanks_turkish_fields():

@@ -429,7 +429,44 @@ class MedicineAIApplier(BaseAIApplier):
         ('sgk_equivalent_code', 'sgk_equivalent_code', 100),
         ('sgk_active_ingredient_code', 'sgk_active_ingredient_code', 100),
         ('sgk_public_no', 'sgk_public_no', 100),
+        ('dosage_form', 'dosage_form', 20),
+        ('active_ingredient', 'active_ingredient', 300),
+        ('volume', 'volume', 100),
+        ('origin_country', 'origin_country', 500),
+        ('administration_route', 'administration_route', 500),
+        ('shelf_life', 'shelf_life', 200),
+        ('storage_conditions', 'storage_conditions', 500),
+        ('sgk_status', 'sgk_status', 500),
+        ('prescription_type', 'prescription_type', 500),
+        ('special_notes', 'special_notes', None),
     ]
+
+    _DOSAGE_FORM_ALIASES = {
+        'tablet': 'tablet',
+        'tabletler': 'tablet',
+        'kapsül': 'capsule',
+        'kapsul': 'capsule',
+        'capsule': 'capsule',
+        'şurup': 'syrup',
+        'surup': 'syrup',
+        'syrup': 'syrup',
+        'damla': 'drops',
+        'drops': 'drops',
+        'merhem': 'ointment',
+        'ointment': 'ointment',
+        'krem': 'cream',
+        'cream': 'cream',
+        'jel': 'gel',
+        'gel': 'gel',
+        'enjeksiyon': 'injection',
+        'injection': 'injection',
+        'toz': 'powder',
+        'powder': 'powder',
+        'sprey': 'spray',
+        'spray': 'spray',
+        'fitil': 'suppository',
+        'suppository': 'suppository',
+    }
 
     # Поля перевода MedicineProductTranslation
     _TRANSLATION_FIELDS = [
@@ -451,6 +488,14 @@ class MedicineAIApplier(BaseAIApplier):
             if not val:
                 continue
             val = str(val).strip()
+            if model_field == 'dosage_form':
+                val = self._DOSAGE_FORM_ALIASES.get(val.casefold(), val.casefold())
+                valid_values = {
+                    choice[0]
+                    for choice in target._meta.get_field('dosage_form').choices
+                }
+                if val not in valid_values:
+                    continue
             if max_len:
                 val = val[:max_len]
             # Не перезаписываем если в модели уже есть значение
