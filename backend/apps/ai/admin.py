@@ -99,6 +99,121 @@ def _usable_current_medicine_translation(value, *, locale, source_length=0):
     return True
 
 
+def _medicine_current_translation_fallbacks(log):
+    """Return usable current RU/EN values missing from an incomplete AI result."""
+    product = getattr(log, "product", None)
+    if getattr(product, "product_type", None) != "medicines":
+        return {}
+    attrs = log.extracted_attributes if isinstance(log.extracted_attributes, dict) else {}
+    translations_data = (
+        attrs.get("translations_data")
+        if isinstance(attrs.get("translations_data"), dict)
+        else {}
+    )
+    quality = (
+        attrs.get("medicine_translation_quality")
+        if isinstance(attrs.get("medicine_translation_quality"), dict)
+        else {}
+    )
+    target = getattr(product, "domain_item", None)
+    translation_manager = getattr(target, "translations", None)
+    if translation_manager is None:
+        return {}
+    current_translations = {
+        locale: translation_manager.filter(locale=locale).first()
+        for locale in ("ru", "en")
+    }
+    fallbacks = {}
+    for medicine_field in MEDICINE_CLINICAL_FIELDS:
+        details = quality.get(medicine_field)
+        if not isinstance(details, dict) or details.get("complete", False):
+            continue
+        source_length = int(details.get("source_length") or 0)
+        field_fallbacks = {}
+        for locale in ("ru", "en"):
+            proposed = str(
+                (translations_data.get(locale) or {}).get(medicine_field) or ""
+            ).strip()
+            if proposed:
+                continue
+            current_translation = current_translations.get(locale)
+            current_value = (
+                getattr(current_translation, medicine_field, "")
+                if current_translation is not None
+                else ""
+            )
+            if _usable_current_medicine_translation(
+                current_value,
+                locale=locale,
+                source_length=source_length,
+            ):
+                field_fallbacks[locale] = str(current_value).strip()
+        if field_fallbacks:
+            fallbacks[medicine_field] = field_fallbacks
+    return fallbacks
+
+
+def _persist_medicine_current_translation_fallbacks(log):
+    """Persist safe current-locale fallbacks for the one-click medicine action."""
+    fallbacks = _medicine_current_translation_fallbacks(log)
+    if not fallbacks:
+        return {}
+    attrs = dict(log.extracted_attributes or {})
+    translations_data = dict(attrs.get("translations_data") or {})
+    translations = {
+        locale: dict(translations_data.get(locale) or {})
+        for locale in ("ru", "en")
+    }
+    quality = dict(attrs.get("medicine_translation_quality") or {})
+    decisions = dict(attrs.get("medicine_moderator_decisions") or {})
+    overrides = dict(attrs.get("medicine_moderator_overrides") or {})
+    preserved_locales = dict(attrs.get("medicine_moderator_preserved_locales") or {})
+    used_fallbacks = {}
+    for medicine_field, field_fallbacks in fallbacks.items():
+        if decisions.get(medicine_field, "apply") not in {"apply", "merge_current"}:
+            continue
+        for locale, value in field_fallbacks.items():
+            translations[locale][medicine_field] = value
+        decisions[medicine_field] = "merge_current"
+        used_locales = [
+            locale for locale in ("ru", "en") if locale in field_fallbacks
+        ]
+        preserved_locales[medicine_field] = used_locales
+        ru_value = str(translations["ru"].get(medicine_field) or "").strip()
+        en_value = str(translations["en"].get(medicine_field) or "").strip()
+        overrides[medicine_field] = {
+            "ru": ru_value,
+            "en": en_value,
+            "decision": "merge_current",
+        }
+        details = dict(quality.get(medicine_field) or {})
+        ru_complete = bool(ru_value) and not looks_untranslated_turkish(ru_value)
+        en_complete = bool(en_value)
+        details.update(
+            {
+                "ru_length": len(ru_value),
+                "en_length": len(en_value),
+                "ru_complete": ru_complete,
+                "en_complete": en_complete,
+                "complete": ru_complete and en_complete,
+                "moderator_reviewed": True,
+            }
+        )
+        quality[medicine_field] = details
+        used_fallbacks[medicine_field] = used_locales
+    if not used_fallbacks:
+        return {}
+    translations_data.update(translations)
+    attrs["translations_data"] = translations_data
+    attrs["medicine_translation_quality"] = quality
+    attrs["medicine_moderator_decisions"] = decisions
+    attrs["medicine_moderator_overrides"] = overrides
+    attrs["medicine_moderator_preserved_locales"] = preserved_locales
+    log.extracted_attributes = attrs
+    log.save(update_fields=["extracted_attributes", "updated_at"])
+    return used_fallbacks
+
+
 MEDICINE_EDITOR_FORM_FIELDS = tuple(
     _medicine_editor_field_name(field_name, suffix)
     for field_name in MEDICINE_EDITOR_FIELDS
@@ -330,14 +445,9 @@ class AIProcessingLogForm(forms.ModelForm):
                 if isinstance(attrs.get("medicine_moderator_decisions"), dict)
                 else {}
             )
-            target = getattr(product, "domain_item", None)
-            current_translations = {}
-            translation_manager = getattr(target, "translations", None)
-            if translation_manager is not None:
-                for locale in ("ru", "en"):
-                    current_translations[locale] = translation_manager.filter(
-                        locale=locale
-                    ).first()
+            medicine_fallbacks = _medicine_current_translation_fallbacks(
+                self.instance
+            )
             for medicine_field in MEDICINE_EDITOR_FIELDS:
                 ru_field = _medicine_editor_field_name(medicine_field, "ru")
                 en_field = _medicine_editor_field_name(medicine_field, "en")
@@ -346,34 +456,13 @@ class AIProcessingLogForm(forms.ModelForm):
                 en_value = str((translations_data.get("en") or {}).get(medicine_field) or "")
                 stored_decision = decisions.get(medicine_field) or "apply"
                 details = quality.get(medicine_field)
-                source_length = (
-                    int(details.get("source_length") or 0)
-                    if isinstance(details, dict)
-                    else 0
-                )
                 display_values = {"ru": ru_value, "en": en_value}
-                fallback_values = {}
-                if (
-                    medicine_field in MEDICINE_CLINICAL_FIELDS
-                    and isinstance(details, dict)
-                    and not details.get("complete", False)
-                ):
-                    for locale in ("ru", "en"):
-                        if display_values[locale]:
-                            continue
-                        current_translation = current_translations.get(locale)
-                        current_value = (
-                            getattr(current_translation, medicine_field, "")
-                            if current_translation is not None
-                            else ""
-                        )
-                        if _usable_current_medicine_translation(
-                            current_value,
-                            locale=locale,
-                            source_length=source_length,
-                        ):
-                            fallback_values[locale] = str(current_value).strip()
-                            display_values[locale] = fallback_values[locale]
+                fallback_values = dict(
+                    medicine_fallbacks.get(medicine_field) or {}
+                )
+                for locale, value in fallback_values.items():
+                    if not display_values[locale]:
+                        display_values[locale] = value
                 decision = stored_decision
                 if fallback_values and stored_decision in {"apply", "merge_current"}:
                     decision = "merge_current"
@@ -1416,6 +1505,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         applied = 0
         partial = 0
         partial_details = []
+        auto_preserved_details = []
         skipped = 0
         for log in queryset:
             if log.status not in (
@@ -1429,6 +1519,20 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 skipped += 1
                 continue
             try:
+                preserved = _persist_medicine_current_translation_fallbacks(log)
+                if preserved:
+                    preserved_parts = []
+                    for field_name, locales in preserved.items():
+                        label = MEDICINE_TRANSLATION_FIELD_LABELS.get(
+                            field_name,
+                            field_name,
+                        ).removesuffix(" RU/EN")
+                        preserved_parts.append(
+                            f"{label}: текущий {'/'.join(locale.upper() for locale in locales)}"
+                        )
+                    auto_preserved_details.append(
+                        f"#{log.id} — " + "; ".join(preserved_parts)
+                    )
                 gen.apply_log_to_product(
                     log,
                     user=request.user,
@@ -1454,10 +1558,19 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     request,
                     f"Лог #{log.id}: не удалось применить — {e}",
                 )
+        preserved_note = ""
+        if auto_preserved_details:
+            preserved_note = (
+                " Сохранены существующие языковые версии товара: "
+                + "; ".join(auto_preserved_details[:5])
+                + ("; …" if len(auto_preserved_details) > 5 else "")
+                + "."
+            )
         if applied:
             messages.success(
                 request,
-                f"Проверено и полностью применено к товарам: {applied}.",
+                f"Проверено и полностью применено к товарам: {applied}."
+                f"{preserved_note}",
             )
         if partial:
             visible_details = "; ".join(partial_details[:5])
@@ -1467,7 +1580,8 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 request,
                 f"Не полностью обработано AI-логов: {partial}. {visible_details}. "
                 "Если товар не изменён, это указано в самом логе. Записи остаются на "
-                "модерации только до решения по перечисленным полям.",
+                "модерации только до решения по перечисленным полям."
+                f"{preserved_note}",
             )
         if skipped:
             messages.info(request, f"Пропущено логов с неподходящим статусом: {skipped}.")

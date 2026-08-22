@@ -487,6 +487,90 @@ def test_missing_medicine_en_defaults_to_current_product_value_and_closes_review
     assert queue.resolved_at is not None
 
 
+def test_bulk_apply_preserves_current_medicine_en_and_closes_review():
+    medicine = MedicineProduct.objects.create(
+        name="BULKMERGE 15 MG TABLET",
+        slug="moderation-bulk-merge-current-medicine-translation",
+    )
+    medicine.refresh_from_db()
+    current_en = "Verified current medicine storage conditions in English."
+    MedicineProductTranslation.objects.create(
+        product=medicine,
+        locale="ru",
+        storage_conditions="Проверенные прежние условия хранения препарата.",
+    )
+    MedicineProductTranslation.objects.create(
+        product=medicine,
+        locale="en",
+        storage_conditions=current_en,
+    )
+    new_ru = "Новые проверенные условия хранения препарата на русском языке."
+    log = _reviewable_log(
+        medicine.base_product,
+        generated_title="BULKMERGE 15 мг, таблетки",
+        generated_description=(
+            "Краткое точное описание препарата содержит действующее вещество форму выпуска "
+            "дозировку количество таблеток способ приема и сведения изготовителя"
+        ),
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_title": "BULKMERGE 15 мг, таблетки"},
+                "en": {"generated_title": "BULKMERGE 15 mg tablets"},
+            },
+            "translations_data": {
+                "ru": {"storage_conditions": new_ru},
+                "en": {},
+            },
+            "medicine_translation_quality": {
+                "storage_conditions": {
+                    "source_length": 100,
+                    "ru_length": len(new_ru),
+                    "en_length": 0,
+                    "ru_complete": True,
+                    "en_complete": False,
+                    "complete": False,
+                }
+            },
+            "medicine_moderator_decisions": {"storage_conditions": "apply"},
+        },
+    )
+    queue = AIModerationQueue.objects.create(
+        log_entry=log,
+        reason="incomplete_medicine_translation",
+    )
+    model_admin = AIProcessingLogAdmin(AIProcessingLog, AdminSite())
+    request = SimpleNamespace(user=None)
+    generator = _generator()
+
+    with (
+        patch(
+            "apps.ai.services.content_generator.ContentGenerator",
+            return_value=generator,
+        ),
+        patch("apps.ai.admin.messages.success") as success_message,
+    ):
+        model_admin.apply_to_product(
+            request,
+            AIProcessingLog.objects.filter(pk=log.pk),
+        )
+
+    medicine.refresh_from_db()
+    log.refresh_from_db()
+    queue.refresh_from_db()
+    assert medicine.translations.get(locale="ru").storage_conditions == new_ru
+    assert medicine.translations.get(locale="en").storage_conditions == current_en
+    assert log.status == AIProcessingStatus.APPROVED
+    assert log.application_status == AIApplicationStatus.APPLIED
+    assert log.extracted_attributes["medicine_moderator_decisions"] == {
+        "storage_conditions": "merge_current"
+    }
+    assert log.application_report["moderator_preserved_locales"] == {
+        "storage_conditions": ["en"]
+    }
+    assert queue.resolved_at is not None
+    assert "текущий EN" in success_message.call_args.args[1]
+
+
 def test_moderator_can_keep_current_blocked_medicine_section_and_close_review():
     medicine = MedicineProduct.objects.create(
         name="KEEPMED 20 MG TABLET",
