@@ -388,7 +388,7 @@ class AIProcessingLogForm(forms.ModelForm):
                 self._medicine_fallback_values[medicine_field] = fallback_values
                 if isinstance(details, dict) and not details.get("complete", False):
                     warning = (
-                        "AI-результат неполный: источник "
+                        "Сейчас заблокировано: AI-результат неполный; источник "
                         f"{details.get('source_length', 0)} симв., "
                         f"RU {details.get('ru_length', 0)}, EN {details.get('en_length', 0)}. "
                         "Заполните недостающий язык либо сохраните его текущее значение товара."
