@@ -132,6 +132,7 @@ from .serializers import (
     serialize_product_for_card,
 )
 from .card_payload import compact_card_product_payload
+from .querysets import non_public_shadow_product_q
 from apps.feedback.review_aggregates import attach_review_aggregates
 
 
@@ -1041,19 +1042,16 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         queryset = model.objects.filter(is_active=True, brand_id=brand_id)
         field_names = {field.name for field in model._meta.get_fields()}
 
-        if 'external_data' in field_names:
+        if model is Product:
+            queryset = queryset.exclude(non_public_shadow_product_q())
+        elif 'external_data' in field_names:
             queryset = queryset.exclude(
                 models.Q(external_data__has_key='source_variant_id') |
                 models.Q(external_data__has_key='source_variant_slug')
             )
         if excluded_product_types is not None:
-            # Теневой Product: типы, обслуживаемые доменными моделями, и заглушки медикаментов.
+            # Теневой Product: типы, обслуживаемые доменными моделями.
             queryset = queryset.exclude(product_type__in=excluded_product_types)
-            queryset = queryset.exclude(
-                models.Q(product_type='medicines') &
-                models.Q(external_data__has_key='is_stub') &
-                models.Q(external_data__is_stub=True)
-            )
         if 'is_available' in field_names:
             queryset = queryset.filter(is_available=True)
         return queryset, field_names
@@ -1154,16 +1152,18 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Фильтрует бренды по типу товара/категории."""
-        # Аннотируем точный счётчик товаров в наличии одним запросом через
-        # теневой Product (related_name='products') + prefetch переводов —
-        # чтобы сериализатор не делал per-brand count() и не недосчитывал.
+        # Считаем по каноническим shadow Product правилами публичной витрины:
+        # активные и доступные товары, без вариантов и заглушек.
         queryset = (
             Brand.objects.filter(is_active=True)
             .prefetch_related('translations')
             .annotate(
                 _products_count=models.Count(
                     'products',
-                    filter=models.Q(products__is_active=True, products__is_available=True),
+                    filter=(
+                        models.Q(products__is_active=True, products__is_available=True)
+                        & ~non_public_shadow_product_q('products__')
+                    ),
                     distinct=True,
                 )
             )
@@ -1272,6 +1272,7 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             )
 
         total_count = len(entries)
+        brand._products_count = total_count
         entries.sort(key=lambda entry: (entry[0], entry[1]), reverse=descending)
         page_entries = entries[offset:offset + page_size]
 
@@ -1288,6 +1289,12 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             for _, pk, label in page_entries
             if (label, pk) in objects_by_key
         ]
+        for product in page_items:
+            if getattr(product, 'brand_id', None) == brand.id:
+                product.brand = brand
+            base_product = getattr(product, 'base_product', None)
+            if base_product is not None and getattr(base_product, 'brand_id', None) == brand.id:
+                base_product.brand = brand
         query = request.query_params.copy()
         query['page_size'] = str(page_size)
         path = request.build_absolute_uri(request.path)
@@ -1587,18 +1594,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         """Фильтрация товаров по параметрам."""
         queryset = Product.objects.filter(is_active=True)
         queryset = queryset.exclude(product_type='jewelry')
-        # Универсально исключаем все теневые варианты (для любых product_type)
-        queryset = queryset.exclude(
-            models.Q(external_data__has_key='source_variant_id') |
-            models.Q(external_data__has_key='source_variant_slug')
-        )
-        # Medicine-заглушки нужны для связывания аналогов в админке, но не являются
-        # полноценными карточками товара и не должны попадать на витрину/поиск.
-        queryset = queryset.exclude(
-            models.Q(product_type='medicines') &
-            models.Q(external_data__has_key='is_stub') &
-            models.Q(external_data__is_stub=True)
-        )
+        queryset = queryset.exclude(non_public_shadow_product_q())
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')

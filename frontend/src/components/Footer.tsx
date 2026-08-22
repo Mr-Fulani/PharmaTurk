@@ -2,11 +2,21 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
 import { useTheme } from '../context/ThemeContext'
 import { getSingleFlight } from '../lib/api'
+import { buildFooterPagesParams, normalizeFooterLocale, type FooterLocale } from '../lib/footerLocale'
 import Link from 'next/link'
 
 interface StaticPageLink {
   slug: string
   title: string
+}
+
+interface StaticPageListResponse {
+  results?: StaticPageLink[]
+}
+
+interface LocalizedFooterLinks {
+  locale: FooterLocale | null
+  links: StaticPageLink[]
 }
 
 interface FooterSettings {
@@ -41,22 +51,40 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   })
 
   // Отдельное состояние для ссылок футера — не зависит от initialSettings
-  const [footerLinks, setFooterLinks] = useState<StaticPageLink[]>([])
+  const [footerLinks, setFooterLinks] = useState<LocalizedFooterLinks>({ locale: null, links: [] })
+  const footerLocale = normalizeFooterLocale(i18n.language || i18n.resolvedLanguage)
+  const visibleFooterLinks = footerLinks.locale === footerLocale ? footerLinks.links : []
 
   // Загружаем ссылки при монтировании компонента и обновляем при смене языка
   useEffect(() => {
-    getSingleFlight('/pages/')
+    let isCurrentLocaleRequest = true
+
+    getSingleFlight<StaticPageLink[] | StaticPageListResponse>('/pages/', {
+      params: buildFooterPagesParams(footerLocale),
+    })
       .then(response => {
-        const pages = response.data?.results || response.data || []
-        if (Array.isArray(pages) && pages.length > 0) {
-          setFooterLinks(pages.map((p: any) => ({
-            slug: p.slug,
-            title: p.title
-          })))
+        if (!isCurrentLocaleRequest) return
+
+        const data = response.data
+        const pages = Array.isArray(data) ? data : data?.results ?? []
+        const links = pages
+          .filter((page) => typeof page?.slug === 'string' && typeof page?.title === 'string')
+          .map((page) => ({ slug: page.slug, title: page.title.trim() }))
+          .filter((page) => page.slug.length > 0 && page.title.length > 0)
+
+        setFooterLinks({ locale: footerLocale, links })
+      })
+      .catch(err => {
+        if (isCurrentLocaleRequest) {
+          console.error('Error fetching footer pages:', err)
+          setFooterLinks({ locale: footerLocale, links: [] })
         }
       })
-      .catch(err => console.error('Error fetching footer pages:', err))
-  }, [i18n.language]) // добавлена зависимость от языка
+
+    return () => {
+      isCurrentLocaleRequest = false
+    }
+  }, [footerLocale])
 
   useEffect(() => {
     const isNonRu = !i18n.language?.toLowerCase().startsWith('ru')
@@ -274,8 +302,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
           <div className="text-center sm:text-left lg:pl-6 xl:pl-10">
             <div className="mb-2 text-sm font-medium text-main">{t('footer_information')}</div>
             <ul className="space-y-1 text-sm text-main/80">
-              {footerLinks.length > 0 ? (
-                footerLinks.map((link) => (
+              {visibleFooterLinks.length > 0 ? (
+                visibleFooterLinks.map((link) => (
                   <li key={link.slug}>
                     <Link 
                       href={`/${link.slug}`} 
@@ -287,8 +315,9 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                 ))
               ) : (
                 <>
-                  <li><Link href="/delivery" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_delivery_payment', 'Доставка и оплата')}</Link></li>
+                  <li><Link href="/about-us" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_about_us', 'О Нас')}</Link></li>
                   <li><Link href="/returns" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_return', 'Возврат товара')}</Link></li>
+                  <li><Link href="/delivery" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_delivery_payment', 'Доставка и оплата')}</Link></li>
                   <li><Link href="/privacy" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_privacy', 'Политика конфиденциальности')}</Link></li>
                 </>
               )}

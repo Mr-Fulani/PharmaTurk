@@ -171,6 +171,70 @@ def test_brand_products_ignores_foreign_brand_id_param(brand_catalog):
 
 
 @pytest.mark.django_db
+def test_brand_products_count_matches_public_brand_inventory(db):
+    """Счётчик бренда не включает варианты и служебные заглушки."""
+    suffix = _suffix()
+    brand = Brand.objects.create(
+        name=f"CountBrand {suffix}",
+        slug=f"count-brand-{suffix}",
+    )
+    Product.objects.create(
+        name="Public service",
+        slug=f"public-service-{suffix}",
+        brand=brand,
+        product_type="uslugi",
+        price=100,
+        currency="TRY",
+        is_active=True,
+        is_available=True,
+    )
+    Product.objects.create(
+        name="Variant by id",
+        slug=f"variant-id-{suffix}",
+        brand=brand,
+        product_type="uslugi",
+        price=100,
+        currency="TRY",
+        is_active=True,
+        is_available=True,
+        external_data={"source_variant_id": 101},
+    )
+    Product.objects.create(
+        name="Variant by slug",
+        slug=f"variant-slug-{suffix}",
+        brand=brand,
+        product_type="uslugi",
+        price=100,
+        currency="TRY",
+        is_active=True,
+        is_available=True,
+        external_data={"source_variant_slug": "hidden-variant"},
+    )
+    Product.objects.create(
+        name="Medicine stub",
+        slug=f"medicine-stub-{suffix}",
+        brand=brand,
+        product_type="medicines",
+        price=100,
+        currency="TRY",
+        is_active=True,
+        is_available=True,
+        external_data={"is_stub": True},
+    )
+
+    client = APIClient()
+    detail = client.get(f"/api/catalog/brands/{brand.slug}")
+    products = client.get(f"/api/catalog/brands/{brand.slug}/products")
+
+    assert detail.status_code == status.HTTP_200_OK
+    assert products.status_code == status.HTTP_200_OK
+    assert products.json()["count"] == 1
+    assert detail.json()["products_count"] == products.json()["count"]
+    nested_brand_count = products.json()["results"][0]["brand"]["products_count"]
+    assert nested_brand_count == products.json()["count"]
+
+
+@pytest.mark.django_db
 def test_brand_products_category_slug_filter_includes_descendants(brand_catalog):
     client = APIClient()
     brand = brand_catalog["brand"]

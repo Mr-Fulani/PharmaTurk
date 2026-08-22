@@ -377,13 +377,15 @@ export default function ProductReviews({
               id={`product-${tab}-tab`}
               aria-controls={`product-${tab}-panel`}
               onClick={() => onTabChange?.(tab)}
-              className={`flex-1 whitespace-nowrap border-b-2 px-2 py-3 text-sm font-semibold transition-colors sm:flex-none sm:px-4 sm:text-xl ${selected ? 'border-blue-600 text-gray-950 dark:text-white' : 'border-transparent text-gray-500 hover:text-blue-600 dark:text-gray-400'}`}
+              className={`group flex flex-1 cursor-pointer items-center justify-center whitespace-nowrap rounded-t-xl border-b-2 px-3 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset sm:flex-none sm:px-4 sm:text-xl ${selected ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-transparent text-gray-600 hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 dark:text-gray-300 dark:hover:border-blue-700 dark:hover:bg-blue-950/30 dark:hover:text-blue-300'}`}
               aria-selected={selected}
             >
-              {tab === 'reviews'
-                ? t('product_reviews_tab', 'Отзывы о товаре')
-                : t('product_questions_tab', 'Вопросы о товаре')}
-              <sup className="ml-1 text-xs font-medium text-gray-500">{count}</sup>
+              <span>
+                {tab === 'reviews'
+                  ? t('product_reviews_tab', 'Отзывы о товаре')
+                  : t('product_questions_tab', 'Вопросы о товаре')}
+              </span>
+              <span className={`ml-2 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-white/20 text-white ring-1 ring-inset ring-white/40' : 'bg-gray-200 text-gray-700 group-hover:bg-blue-100 group-hover:text-blue-700 dark:bg-gray-700 dark:text-gray-200 dark:group-hover:bg-blue-900 dark:group-hover:text-blue-200'}`}>{count}</span>
             </button>
           )
         })}
@@ -416,10 +418,13 @@ export default function ProductReviews({
             )}
 
             {!user && (
-              <p className="mb-6 text-gray-600 dark:text-gray-300">
-                <Link href={loginHref} className="font-semibold text-blue-600 hover:underline">{t('login', 'Войти')}</Link>{' '}
-                {t('product_reviews_login_hint', 'чтобы оставить отзыв')}
-              </p>
+              <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-blue-900 dark:bg-blue-950/30">
+                <Link href={loginHref} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950">
+                  {t('login', 'Войти')}
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-6-6 6 6-6 6" /></svg>
+                </Link>
+                <span className="text-sm text-gray-700 dark:text-gray-200">{t('product_reviews_login_hint', 'чтобы оставить отзыв')}</span>
+              </div>
             )}
 
             {user && reviews?.can_review && (!reviews.own_review || editing) && (
@@ -450,8 +455,10 @@ export default function ProductReviews({
 
             <div className="mt-6 flex flex-wrap items-center gap-3 border-b border-gray-200 pb-4 dark:border-gray-700">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t('product_reviews_sort_label', 'Показать сначала:')}</span>
-              <button type="button" onClick={() => setReviewSort('newest')} className={`text-sm font-semibold ${reviewSort === 'newest' ? 'text-blue-600' : 'text-gray-500 hover:text-blue-600'}`}>{t('product_reviews_sort_newest', 'новые')}</button>
-              <button type="button" onClick={() => setReviewSort('highest')} className={`text-sm font-semibold ${reviewSort === 'highest' ? 'text-blue-600' : 'text-gray-500 hover:text-blue-600'}`}>{t('product_reviews_sort_highest', 'с высокой оценкой')}</button>
+              <div role="group" aria-label={t('product_reviews_sort_label', 'Показать сначала:')} className="flex flex-wrap gap-2">
+                <button type="button" aria-pressed={reviewSort === 'newest'} onClick={() => setReviewSort('newest')} className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950 ${reviewSort === 'newest' ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-blue-600 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'}`}>{t('product_reviews_sort_newest', 'новые')}</button>
+                <button type="button" aria-pressed={reviewSort === 'highest'} onClick={() => setReviewSort('highest')} className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950 ${reviewSort === 'highest' ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-blue-600 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'}`}>{t('product_reviews_sort_highest', 'с высокой оценкой')}</button>
+              </div>
             </div>
 
             {reviewError && !(user && reviews?.can_review && (!reviews.own_review || editing)) && <p className="mt-4 text-sm text-red-600">{reviewError}</p>}
@@ -462,7 +469,7 @@ export default function ProductReviews({
                 const authorLabel = review.author_name || t('product_questions_name_hidden', 'Имя скрыто')
                 const profileHref = review.user_username ? `/user/${encodeURIComponent(review.user_username)}` : undefined
                 const author = profileHref ? (
-                  <Link href={profileHref} className="font-semibold text-gray-950 hover:text-blue-600 dark:text-white">{authorLabel}</Link>
+                  <Link href={profileHref} className="font-semibold text-blue-700 underline decoration-blue-300 underline-offset-4 hover:text-blue-800 hover:decoration-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-300 dark:decoration-blue-700 dark:hover:text-blue-200">{authorLabel}</Link>
                 ) : <span className="font-semibold text-gray-950 dark:text-white">{authorLabel}</span>
                 return (
                   <article key={review.id} className="py-7">
@@ -534,7 +541,13 @@ export default function ProductReviews({
                   {questionSuccess && <p className="mt-3 text-sm font-medium text-green-600 dark:text-green-400">{questionSuccess}</p>}
                 </form>
               ) : (
-                <p className="mt-5 text-gray-600 dark:text-gray-300"><Link href={loginHref} className="font-semibold text-blue-600 hover:underline">{t('login', 'Войти')}</Link>{' '}{t('product_questions_login_hint', 'чтобы задать вопрос')}</p>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <Link href={loginHref} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900">
+                    {t('login', 'Войти')}
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-6-6 6 6-6 6" /></svg>
+                  </Link>
+                  <span className="text-sm text-gray-700 dark:text-gray-200">{t('product_questions_login_hint', 'чтобы задать вопрос')}</span>
+                </div>
               )}
             </div>
 
@@ -547,8 +560,9 @@ export default function ProductReviews({
               </div>
             ))}
 
-            <div className="mt-6 flex justify-end border-b border-gray-200 pb-4 dark:border-gray-700">
-              <select value={questionSort} onChange={(event) => setQuestionSort(event.target.value as 'newest' | 'oldest')} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200">
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-b border-gray-200 pb-4 dark:border-gray-700">
+              <label htmlFor="product-questions-sort" className="text-sm font-medium text-gray-700 dark:text-gray-200">{t('product_reviews_sort_label', 'Показать сначала:')}</label>
+              <select id="product-questions-sort" value={questionSort} onChange={(event) => setQuestionSort(event.target.value as 'newest' | 'oldest')} className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:border-blue-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-blue-600 dark:focus:ring-blue-950">
                 <option value="newest">{t('product_questions_sort_newest', 'Сначала новые')}</option>
                 <option value="oldest">{t('product_questions_sort_oldest', 'Сначала старые')}</option>
               </select>
@@ -562,7 +576,7 @@ export default function ProductReviews({
                 const authorLabel = question.author_name || t('product_questions_name_hidden', 'Имя скрыто')
                 const profileHref = question.user_username ? `/user/${encodeURIComponent(question.user_username)}` : undefined
                 const author = profileHref ? (
-                  <Link href={profileHref} className="font-medium text-gray-500 hover:text-blue-600 dark:hover:text-blue-400">{authorLabel}</Link>
+                  <Link href={profileHref} className="font-medium text-blue-700 underline decoration-blue-300 underline-offset-4 hover:text-blue-800 hover:decoration-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-300 dark:decoration-blue-700 dark:hover:text-blue-200">{authorLabel}</Link>
                 ) : <span className="font-medium text-gray-500">{authorLabel}</span>
                 return (
                   <article key={question.id} className="py-7">

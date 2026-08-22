@@ -37,6 +37,7 @@ from .utils.media_path import normalize_duplicated_media_path
 from .utils.storage_paths import detect_media_type
 from .utils.variant_titles import build_variant_display_title
 from .utils.product_markup import apply_product_markup, get_effective_product_markup
+from .querysets import non_public_shadow_product_q
 
 TRANSLATION_SEO_FIELDS = [
     'meta_title',
@@ -890,44 +891,13 @@ class BrandSerializer(serializers.ModelSerializer):
         if annotated is not None:
             return annotated
 
-        model_map = {
-            'jewelry': JewelryProduct,
-            'clothing': ClothingProduct,
-            'shoes': ShoeProduct,
-            'electronics': ElectronicsProduct,
-            'furniture': FurnitureProduct,
-            'underwear': ClothingProduct,
-            'headwear': ClothingProduct,
-        }
-        # Фильтр по наличию
-        available_filter = {'is_active': True, 'is_available': True}
-
-        primary_slug = obj.primary_category_slug
-        if primary_slug:
-            # 1. Если задана специализация бренда, считаем только её
-            normalized_type = primary_slug.replace('-', '_')
-            if primary_slug in model_map:
-                return model_map[primary_slug].objects.filter(brand=obj, **available_filter).count()
-            if normalized_type in model_map:
-                return model_map[normalized_type].objects.filter(brand=obj, **available_filter).count()
-
-            # Если для типа нет доменной модели (например, medicines), считаем в базе
-            return obj.products.filter(is_active=True, is_available=True, product_type=normalized_type).count()
-
-        # 2. Если специализация не задана, суммируем все легитимные товары в наличии
-        count = JewelryProduct.objects.filter(brand=obj, **available_filter).count()
-        count += ClothingProduct.objects.filter(brand=obj, **available_filter).count()
-        count += ShoeProduct.objects.filter(brand=obj, **available_filter).count()
-        count += ElectronicsProduct.objects.filter(brand=obj, **available_filter).count()
-        count += FurnitureProduct.objects.filter(brand=obj, **available_filter).count()
-
-        # Добавляем легаси-типы, исключая те, что уже должны быть в доменах
-        refactored_types = ['jewelry', 'clothing', 'shoes', 'electronics', 'furniture', 'underwear', 'headwear']
-        count += obj.products.filter(is_active=True, is_available=True).exclude(
-            product_type__in=refactored_types
-        ).count()
-
-        return count
+        # Канонические shadow Product создаются для всех доменных товаров.
+        # Считаем их теми же правилами, что BrandViewSet и публичная витрина.
+        return (
+            obj.products.filter(is_active=True, is_available=True)
+            .exclude(non_public_shadow_product_q())
+            .count()
+        )
 
     def get_logo(self, obj):
         """URL логотипа. Прокси для R2/cdn — устраняет CORS/SSL на мобильном."""
