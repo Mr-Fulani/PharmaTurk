@@ -85,12 +85,16 @@ test_compose --profile test run --rm backend_tests run pytest -q
 
 release_log "running frontend release gates"
 docker run --rm \
-  --mount "type=bind,src=${RELEASE_REPO_ROOT}/frontend,dst=/app,readonly" \
-  --mount "type=volume,dst=/app/node_modules" \
-  --mount "type=volume,dst=/app/.next" \
+  --mount "type=bind,src=${RELEASE_REPO_ROOT}/frontend,dst=/src,readonly" \
+  --mount "type=volume,dst=/app" \
   --workdir /app \
   node:22.23.2-bookworm-slim \
   sh -ec '
+    tar \
+      --exclude=./node_modules \
+      --exclude=./.next \
+      --exclude=./tsconfig.tsbuildinfo \
+      -C /src -cf - . | tar -C /app -xf -
     npm ci --include=dev
     npm audit --omit=dev --audit-level=high
     npm run lint
