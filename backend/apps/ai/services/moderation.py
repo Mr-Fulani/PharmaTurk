@@ -124,6 +124,9 @@ def _decision(
     return "apply", "Будет изменено", ""
 
 
+_DISPLAY_UNSET = object()
+
+
 def _row(
     rows: list[PreviewRow],
     section: str,
@@ -133,6 +136,7 @@ def _row(
     *,
     blocked_reason: str = "",
     fill_empty_only: bool = False,
+    proposed_display: Any = _DISPLAY_UNSET,
 ) -> None:
     if proposed in (None, "", [], {}) and current in (None, "", [], {}):
         return
@@ -147,7 +151,9 @@ def _row(
             section=section,
             label=label,
             current=_display(current),
-            proposed=_display(proposed),
+            proposed=_display(
+                proposed if proposed_display is _DISPLAY_UNSET else proposed_display
+            ),
             decision=decision,
             decision_label=decision_label,
             reason=reason,
@@ -278,7 +284,11 @@ def _medicine_rows(
             )
 
 
-def build_change_preview(log) -> list[PreviewRow]:
+def build_change_preview(
+    log,
+    *,
+    semantic_report=None,
+) -> list[PreviewRow]:
     """Return the exact human-facing candidate fields for any product type."""
     product = log.product
     target = product.domain_item
@@ -296,7 +306,7 @@ def build_change_preview(log) -> list[PreviewRow]:
         "ru": _translation(target, "ru"),
         "en": _translation(target, "en"),
     }
-    semantic_report = SemanticValidator().validate_log(log)
+    semantic_report = semantic_report or SemanticValidator().validate_log(log)
     rejected = semantic_report.rejected_fields
     title_reason_code = next(
         (
@@ -318,7 +328,11 @@ def build_change_preview(log) -> list[PreviewRow]:
     proposed_category = log.suggested_category
     confidence = log.category_confidence
     category_reason = ""
-    if proposed_category is not None and (confidence is None or confidence < 0.75):
+    category_changes = (
+        proposed_category is not None
+        and getattr(proposed_category, "pk", None) != getattr(current_category, "pk", None)
+    )
+    if category_changes and (confidence is None or confidence < 0.75):
         category_reason = "Категория применяется только при уверенности не ниже 75%"
     proposed_category_text = None
     if proposed_category is not None:
@@ -329,8 +343,9 @@ def build_change_preview(log) -> list[PreviewRow]:
         "Основные поля",
         "Категория",
         current_category,
-        proposed_category_text,
+        proposed_category,
         blocked_reason=category_reason,
+        proposed_display=proposed_category_text,
     )
 
     ru = translations["ru"]
@@ -452,8 +467,11 @@ def build_change_preview(log) -> list[PreviewRow]:
     return rows
 
 
-def get_moderation_reason_labels(log) -> list[str]:
-    return [MODERATION_REASON_LABELS.get(reason, reason) for reason in get_moderation_reasons(log)]
+def get_moderation_reason_labels(log, *, semantic_report=None) -> list[str]:
+    return [
+        MODERATION_REASON_LABELS.get(reason, reason)
+        for reason in get_moderation_reasons(log, semantic_report=semantic_report)
+    ]
 
 
 def get_workflow_title(log) -> tuple[str, str]:

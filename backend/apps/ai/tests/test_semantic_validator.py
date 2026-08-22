@@ -10,7 +10,13 @@ from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.catalog.category_policy import build_category_policy
-from apps.catalog.models import Category, FurnitureProduct, FurnitureProductTranslation
+from apps.catalog.models import (
+    Category,
+    CategoryTranslation,
+    FurnitureProduct,
+    FurnitureProductTranslation,
+    IslamicClothingProduct,
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -96,6 +102,39 @@ def test_validator_is_policy_driven_for_non_furniture_categories():
 
     assert report.canonical_product_kind == "perfumery-test"
     assert report.rejected_fields == {"title"}
+
+
+def test_burkini_title_is_not_confused_with_swimming_context():
+    burkini = Category.objects.create(name="Буркини", slug="burkini")
+    CategoryTranslation.objects.create(
+        category=burkini,
+        locale="en",
+        name="Burkinis",
+    )
+    swimming = Category.objects.create(name="Плавание", slug="swimming")
+    CategoryTranslation.objects.create(
+        category=swimming,
+        locale="en",
+        name="Swimming",
+    )
+    domain = IslamicClothingProduct.objects.create(
+        name="Последние буркини из лайкры ниже колена для бассейна",
+        slug="burkini-semantic-context",
+        category=burkini,
+    )
+    domain.refresh_from_db()
+
+    report = SemanticValidator().validate(
+        domain.base_product,
+        generated_titles={
+            "ru": "Буркини из лайкры ниже колена для бассейна",
+            "en": "Lycra Burkini for Swimming",
+        },
+        dynamic_attributes=[],
+    )
+
+    assert report.rejected_fields == set()
+    assert report.reasons == []
 
 
 def test_partial_apply_keeps_rejected_title_but_applies_valid_content_and_moderates():

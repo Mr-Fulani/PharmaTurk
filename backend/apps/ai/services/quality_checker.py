@@ -4,10 +4,14 @@ import re
 from typing import List
 
 from apps.ai.models import AIProcessingLog, AIModerationQueue
-from apps.ai.services.semantic_validator import SemanticValidator
+from apps.ai.services.semantic_validator import SemanticValidationReport, SemanticValidator
 
 
-def get_moderation_reasons(log: AIProcessingLog) -> List[str]:
+def get_moderation_reasons(
+    log: AIProcessingLog,
+    *,
+    semantic_report: SemanticValidationReport | None = None,
+) -> List[str]:
     """
     Определить, требуется ли ручная модерация результата.
     Критерии: низкая уверенность в категории, подозрительная цена,
@@ -39,7 +43,8 @@ def get_moderation_reasons(log: AIProcessingLog) -> List[str]:
     if len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE)) < 20:
         reasons.append("short_description")
 
-    reasons.extend(SemanticValidator().validate_log(log).reasons)
+    semantic_report = semantic_report or SemanticValidator().validate_log(log)
+    reasons.extend(semantic_report.reasons)
 
     return list(dict.fromkeys(reasons))
 

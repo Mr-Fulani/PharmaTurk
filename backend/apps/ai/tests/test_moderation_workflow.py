@@ -2,6 +2,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+from django.contrib.admin.sites import AdminSite
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.ai.admin import AIProcessingLogForm, AIProcessingLogAdmin, _get_product_admin_url
@@ -14,10 +15,12 @@ from apps.ai.models import (
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.moderation import build_change_preview, reject_log
 from apps.ai.services.result_applier import AIResultApplier
+from apps.ai.services.semantic_validator import SemanticValidationReport
 from apps.ai.views import AIProcessingLogViewSet
 from apps.catalog.models import (
     AccessoryProduct,
     AutoPartProduct,
+    Category,
     ElectronicsProduct,
     HeadwearProduct,
     IslamicClothingProduct,
@@ -93,6 +96,23 @@ def test_full_apply_tracks_application_and_resolves_existing_queue():
     assert queue.resolved_at is not None
 
 
+def test_apply_calculates_semantic_validation_only_once():
+    accessory = AccessoryProduct.objects.create(
+        name="MODEL-101 semantic cache",
+        slug="moderation-apply-semantic-cache",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product)
+
+    with patch(
+        "apps.ai.services.content_generator.SemanticValidator.validate_log",
+        return_value=SemanticValidationReport(),
+    ) as validate_log:
+        _generator().apply_log_to_product(log)
+
+    validate_log.assert_called_once_with(log)
+
+
 def test_reject_closes_queue_without_claiming_product_was_applied():
     accessory = AccessoryProduct.objects.create(
         name="Rejected accessory",
@@ -159,6 +179,47 @@ def test_preview_is_read_only_and_uses_actual_domain_product():
     assert accessory.name == "Current MODEL-101"
     assert any(row.label == "Название" and row.decision == "apply" for row in rows)
     assert any(row.section == "Контент EN" for row in rows)
+
+
+def test_preview_marks_the_same_category_as_unchanged():
+    category = Category.objects.create(name="Буркини", slug="burkini-preview-same")
+    domain = IslamicClothingProduct.objects.create(
+        name="Буркини",
+        slug="moderation-preview-same-category",
+        category=category,
+    )
+    domain.refresh_from_db()
+    log = _reviewable_log(
+        domain.base_product,
+        suggested_category=category,
+        category_confidence=0.95,
+    )
+
+    rows = build_change_preview(log)
+
+    category_row = next(row for row in rows if row.label == "Категория")
+    assert category_row.current == "Буркини"
+    assert category_row.proposed == "Буркини (95%)"
+    assert category_row.decision == "unchanged"
+
+
+def test_admin_reuses_semantic_validation_between_summary_and_preview():
+    accessory = AccessoryProduct.objects.create(
+        name="MODEL-101 admin semantic cache",
+        slug="moderation-admin-semantic-cache",
+    )
+    accessory.refresh_from_db()
+    log = _reviewable_log(accessory.base_product)
+    model_admin = AIProcessingLogAdmin(AIProcessingLog, AdminSite())
+
+    with patch(
+        "apps.ai.services.semantic_validator.SemanticValidator.validate_log",
+        return_value=SemanticValidationReport(),
+    ) as validate_log:
+        model_admin.workflow_overview(log)
+        model_admin.change_preview(log)
+
+    validate_log.assert_called_once_with(log)
 
 
 def test_non_jewelry_form_hides_and_does_not_process_jewelry_fields():

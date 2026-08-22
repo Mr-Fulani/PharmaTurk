@@ -56,6 +56,13 @@ def build_category_policy(category, product_type: str | None = None) -> Category
     aliases: dict[str, list[str]] = {"ru": [], "en": []}
     if getattr(category, "name", None):
         aliases["ru"].append(category.name)
+    # Slugs are the stable catalog identifier and are commonly the canonical
+    # English singular (for example ``burkini`` while the visible translation
+    # is ``Burkinis``).  Include only plain alphabetic slugs so technical IDs
+    # do not accidentally become semantic title aliases.
+    slug_alias = str(getattr(category, "slug", "") or "").replace("-", " ").strip()
+    if slug_alias and slug_alias.replace(" ", "").isalpha() and slug_alias.isascii():
+        aliases["en"].append(slug_alias)
     translation_manager = getattr(category, "translations", None)
     for translation in translation_manager.all() if translation_manager is not None else ():
         locale = str(translation.locale or "").split("-")[0]

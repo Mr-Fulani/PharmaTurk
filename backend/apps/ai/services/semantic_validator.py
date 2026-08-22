@@ -39,6 +39,12 @@ def _contains_phrase(text: str, phrase: str) -> bool:
     )
 
 
+def _alias_specificity(value: str) -> tuple[int, int]:
+    """Prefer multi-word product kinds; character length only breaks ties."""
+    normalized = _normalized(value)
+    return len(normalized.split()), len(normalized)
+
+
 def _identity_tokens(value: Any) -> set[str]:
     # Stable model/series tokens, not ordinary title words.
     result: set[str] = set()
@@ -121,13 +127,13 @@ class CategorySemanticIndex:
         current_category: Any,
         title_text: str,
         locale: str,
-        own_match: int,
+        own_match_words: int,
     ) -> str:
         best = self._configured_override_match(
             current_category,
             title_text,
             locale,
-            own_match,
+            own_match_words,
         )
         current_id = getattr(current_category, "pk", None)
         if current_id is None:
@@ -140,7 +146,10 @@ class CategorySemanticIndex:
             # A more specific descendant is compatible with the current kind.
             if current_id in self._ancestor_ids(candidate_id):
                 continue
-            if len(normalized_alias) <= own_match or len(normalized_alias) <= len(best):
+            candidate_words, _candidate_length = _alias_specificity(normalized_alias)
+            if own_match_words and candidate_words <= own_match_words:
+                continue
+            if _alias_specificity(normalized_alias) <= _alias_specificity(best):
                 continue
             if _contains_phrase(title_text, alias):
                 best = normalized_alias
@@ -181,7 +190,7 @@ class CategorySemanticIndex:
         current_category: Any,
         title_text: str,
         locale: str,
-        own_match: int,
+        own_match_words: int,
     ) -> str:
         best = ""
         current_slug = getattr(current_category, "slug", "")
@@ -190,9 +199,13 @@ class CategorySemanticIndex:
                 continue
             for alias in (config.get("aliases") or {}).get(locale, ()):
                 normalized_alias = _normalized(alias)
-                if len(normalized_alias) > own_match and len(normalized_alias) > len(best):
-                    if _contains_phrase(title_text, alias):
-                        best = normalized_alias
+                candidate_words, _candidate_length = _alias_specificity(normalized_alias)
+                if own_match_words and candidate_words <= own_match_words:
+                    continue
+                if _alias_specificity(normalized_alias) <= _alias_specificity(best):
+                    continue
+                if _contains_phrase(title_text, alias):
+                    best = normalized_alias
         return best
 
 
@@ -238,6 +251,11 @@ class SemanticValidator:
     ) -> SemanticValidationReport:
         category = getattr(product, "category", None)
         product_type = getattr(product, "product_type", None)
+        # The detached-object path below is useful for lightweight unit tests.
+        # Real catalog categories use one preloaded index, avoiding an N+1 walk
+        # through the entire category tree for every title locale.
+        if self.category_index is None and getattr(category, "pk", None):
+            self.category_index = CategorySemanticIndex.from_database()
         policy = (
             self.category_index.policy_for(category, product_type)
             if self.category_index is not None
@@ -264,19 +282,20 @@ class SemanticValidator:
                 continue
             title_text = _normalized(title)
             own_aliases = policy.aliases.get(locale, ())
-            own_match = max(
-                (
-                    len(_normalized(alias))
-                    for alias in own_aliases
-                    if _contains_phrase(title_text, alias)
-                ),
+            matching_own_aliases = [
+                _normalized(alias)
+                for alias in own_aliases
+                if _contains_phrase(title_text, alias)
+            ]
+            own_match_words = max(
+                (_alias_specificity(alias)[0] for alias in matching_own_aliases),
                 default=0,
             )
             conflicting_match = self._longest_conflicting_category_match(
                 category,
                 title_text,
                 locale,
-                own_match,
+                own_match_words,
             )
             if conflicting_match:
                 report.rejected_fields.add("title")
@@ -319,14 +338,14 @@ class SemanticValidator:
         current_category,
         title_text: str,
         locale: str,
-        own_match: int,
+        own_match_words: int,
     ) -> str:
         if self.category_index is not None:
             return self.category_index.longest_conflicting_match(
                 current_category,
                 title_text,
                 locale,
-                own_match,
+                own_match_words,
             )
 
         from apps.catalog.models import Category
@@ -347,9 +366,13 @@ class SemanticValidator:
                 continue
             for alias in (config.get("aliases") or {}).get(locale, ()):
                 normalized_alias = _normalized(alias)
-                if len(normalized_alias) > own_match and len(normalized_alias) > len(best):
-                    if _contains_phrase(title_text, alias):
-                        best = normalized_alias
+                candidate_words, _candidate_length = _alias_specificity(normalized_alias)
+                if own_match_words and candidate_words <= own_match_words:
+                    continue
+                if _alias_specificity(normalized_alias) <= _alias_specificity(best):
+                    continue
+                if _contains_phrase(title_text, alias):
+                    best = normalized_alias
 
         # Lightweight test/detached objects still receive configured policy
         # validation without requiring a database identity.
@@ -379,7 +402,10 @@ class SemanticValidator:
                 continue
             for alias in candidate_policy.aliases.get(locale, ()):
                 normalized_alias = _normalized(alias)
-                if len(normalized_alias) <= own_match or len(normalized_alias) <= len(best):
+                candidate_words, _candidate_length = _alias_specificity(normalized_alias)
+                if own_match_words and candidate_words <= own_match_words:
+                    continue
+                if _alias_specificity(normalized_alias) <= _alias_specificity(best):
                     continue
                 if _contains_phrase(title_text, alias):
                     best = normalized_alias

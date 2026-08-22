@@ -45,6 +45,19 @@ _SIZE_TOKEN_RE = re.compile(
     r")(?![A-Za-zА-Яа-яЁё0-9])",
     re.IGNORECASE,
 )
+_STOCK_URGENCY_RE = re.compile(
+    r"(?:"
+    r"\b(?:поспешите|успейте)\b|"
+    r"\bhurry(?:\s+up)?\b|"
+    r"\bwhile\s+(?:stocks?|supplies)\s+last\b|"
+    r"\bостал(?:ся|ись|ось)\b[^.!?]*\b\d+\b[^.!?]*"
+    r"\b(?:комплект\w*|штук\w*|товар\w*)\b|"
+    r"\bonly\s+\d+\b[^.!?]*\b(?:sets?|items?|pieces?)\b[^.!?]*\bleft\b|"
+    r"\b(?:последн\w*)\s+(?:комплект\w*|штук\w*|товар\w*)\b|"
+    r"\b(?:last)\s+(?:sets?|items?|pieces?)\b"
+    r")",
+    re.IGNORECASE,
+)
 
 
 def supports_size_inventory(product_type: str | None) -> bool:
@@ -357,7 +370,7 @@ def apply_size_inventory(
 
 
 def strip_size_inventory_sentences(text: Any) -> str:
-    """Remove inventory-size claims from prose while preserving product copy."""
+    """Remove apparel size/stock urgency while preserving stable product copy."""
     source = str(text or "").strip()
     if not source:
         return ""
@@ -379,6 +392,8 @@ def strip_size_inventory_sentences(text: Any) -> str:
             )
         )
         if has_context and (has_size_token or inventory_wording):
+            continue
+        if _STOCK_URGENCY_RE.search(candidate):
             continue
         kept.append(candidate)
     return re.sub(r"\s{2,}", " ", " ".join(kept)).strip()

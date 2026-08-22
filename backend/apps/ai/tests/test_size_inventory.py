@@ -107,13 +107,22 @@ def test_full_content_sanitizer_moves_sizes_to_attributes_and_removes_prose():
     content = {
         "ru": {
             "generated_title": "Буркини Adasea",
-            "generated_description": "Удобный буркини. В наличии размеры M, XL и 2XL.",
-            "seo_description": "Доступны размеры M, XL и 2XL. Для бассейна.",
+            "generated_description": (
+                "Удобный буркини. В наличии размеры M, XL и 2XL. "
+                "Осталось всего 6 комплектов, так что поспешите!"
+            ),
+            "seo_description": (
+                "Доступны размеры M, XL и 2XL. Для бассейна. "
+                "Успейте приобрести последние комплекты!"
+            ),
             "og_description": "Остались размеры M, XL, 2XL. Буркини Adasea.",
         },
         "en": {
             "generated_title": "Adasea burkini",
-            "generated_description": "Comfortable burkini. Available in sizes M, XL and 2XL.",
+            "generated_description": (
+                "Comfortable burkini. Available in sizes M, XL and 2XL. "
+                "Only 6 sets left, so hurry up!"
+            ),
             "seo_description": "Available in sizes M and XL. Made for swimming.",
         },
         "attributes": {
@@ -132,6 +141,8 @@ def test_full_content_sanitizer_moves_sizes_to_attributes_and_removes_prose():
     assert [row["size"] for row in sanitized["attributes"]["sizes"]] == ["M", "XL", "2XL"]
     assert "размер" not in sanitized["ru"]["generated_description"].lower()
     assert "sizes" not in sanitized["en"]["generated_description"].lower()
+    assert "6 комплектов" not in sanitized["ru"]["generated_description"].lower()
+    assert "hurry" not in sanitized["en"]["generated_description"].lower()
     assert sanitized["ru"]["seo_description"] == "Для бассейна."
     assert sanitized["ru"]["og_description"] == "Буркини Adasea."
 
@@ -358,6 +369,24 @@ def test_unrelated_category_is_unchanged_and_has_no_size_form_field():
     assert "inventory_sizes" not in form.fields
 
 
+def test_stock_urgency_cleanup_does_not_change_unrelated_categories():
+    content = {
+        "ru": {
+            "generated_description": "Осталось всего 6 комплектов, так что поспешите!"
+        },
+        "attributes": {},
+    }
+
+    sanitized = _generator()._sanitize_ai_content(
+        content,
+        {"product_type": "accessories"},
+    )
+
+    assert sanitized["ru"]["generated_description"] == (
+        "Осталось всего 6 комплектов, так что поспешите!"
+    )
+
+
 def test_prompt_declares_structured_size_contract(monkeypatch):
     generator = ContentGenerator.__new__(ContentGenerator)
     generator.vector_store = None
@@ -383,3 +412,4 @@ def test_prompt_declares_structured_size_contract(monkeypatch):
     assert '"sizes": [' in prompt
     assert "ТОЛЬКО в attributes.sizes" in prompt
     assert "не повторяй их в title, generated_description, SEO или OG" in prompt
+    assert "Не включай в описание/SEO временный остаток" in prompt

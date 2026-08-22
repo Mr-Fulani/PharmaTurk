@@ -2028,6 +2028,7 @@ class ContentGenerator:
           • Размеры из source возвращай ТОЛЬКО в attributes.sizes и не повторяй их в title, generated_description, SEO или OG.
           • detected_sizes рассчитаны из source детерминированно: используй их как подтверждённый размерный ряд и не добавляй размеры, которых там нет.
           • Не придумывай stock_quantity. is_available=true ставь только когда source явно говорит «в наличии», «остались», available/in stock/mevcut/stokta.
+          • Не включай в описание/SEO временный остаток («осталось 6 комплектов», only 6 left) и рекламную срочность («поспешите», hurry up, while stocks last).
           • Если detected_sizes пуст, верни пустой sizes и не угадывай размер по фотографии.
         - Для книг: author, pages, isbn, publisher, cover_type, language, publication_year. cover_type (переплёт) можно определить по фото.
         - Для украшений (jewelry): обязательно извлекай в attributes: jewelry_type (ring/bracelet/necklace/earrings/pendant), material (серебро/silver, золото/gold), metal_purity из текста про пробу («925 пробы», «585», «проба 750» → metal_purity: «925» / «585» / «750»), stone_type, carat_weight, gender — по описанию или по фото.
@@ -2555,8 +2556,11 @@ class ContentGenerator:
                 "(описание/SEO/переводы пустые)."
             )
 
-        review_reasons = get_moderation_reasons(log)
         semantic_report = SemanticValidator().validate_log(log)
+        review_reasons = get_moderation_reasons(
+            log,
+            semantic_report=semantic_report,
+        )
         applied_at = timezone.now()
         try:
             with transaction.atomic():

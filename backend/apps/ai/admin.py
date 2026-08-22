@@ -568,7 +568,10 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         reasons = []
         if obj.status in (AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION):
             try:
-                reasons = get_moderation_reason_labels(obj)
+                reasons = get_moderation_reason_labels(
+                    obj,
+                    semantic_report=self._semantic_report(obj),
+                )
             except Exception as exc:
                 reasons = [f"Не удалось рассчитать причины: {exc}"]
         product_url = _get_product_admin_url(obj.product)
@@ -606,7 +609,10 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         if not obj or not obj.pk:
             return "—"
         try:
-            rows = build_change_preview(obj)
+            rows = build_change_preview(
+                obj,
+                semantic_report=self._semantic_report(obj),
+            )
         except Exception as exc:
             return format_html(
                 '<div style="color:#991b1b;background:#fee2e2;padding:10px;border-radius:4px;">'
@@ -662,6 +668,18 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             + "".join(body)
             + "</tbody></table></div>"
         )
+
+    @staticmethod
+    def _semantic_report(obj):
+        """Calculate semantic validation once for all read-only admin blocks."""
+        cache_attr = "_ai_admin_semantic_report"
+        report = getattr(obj, cache_attr, None)
+        if report is None:
+            from .services.semantic_validator import SemanticValidator
+
+            report = SemanticValidator().validate_log(obj)
+            setattr(obj, cache_attr, report)
+        return report
 
     @admin.display(description="Последний отчёт применения")
     def application_report_view(self, obj):
@@ -809,8 +827,10 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     rejected = (obj.application_report or {}).get("rejected_fields") or []
                     messages.warning(
                         request,
-                        f"Лог #{obj.id}: безопасные поля применены, но результат остался "
-                        f"на модерации. Заблокировано полей: {len(rejected)}.",
+                        f"Лог #{obj.id}: разрешённые поля применены, но "
+                        f"заблокированных полей не перенесено: {len(rejected)}. "
+                        "Запись остаётся на модерации; отдельное предварительное "
+                        "одобрение не требуется.",
                     )
                 else:
                     messages.success(
@@ -919,6 +939,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         gen = ContentGenerator()
         applied = 0
         partial = 0
+        partial_ids = []
         skipped = 0
         for log in queryset:
             if log.status not in (
@@ -939,6 +960,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 )
                 if log.application_status == AIApplicationStatus.PARTIAL:
                     partial += 1
+                    partial_ids.append(log.id)
                 else:
                     applied += 1
             except Exception as e:
@@ -952,9 +974,14 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 f"Проверено и полностью применено к товарам: {applied}.",
             )
         if partial:
+            visible_ids = ", ".join(f"#{log_id}" for log_id in partial_ids[:5])
+            if len(partial_ids) > 5:
+                visible_ids += ", …"
             messages.warning(
                 request,
-                f"Частично применено, очередь оставлена открытой: {partial}.",
+                f"Разрешённые поля применены, но заблокированные поля не перенесены: "
+                f"{partial} ({visible_ids}). Записи остаются на модерации; отдельное "
+                "предварительное одобрение не требуется.",
             )
         if skipped:
             messages.info(request, f"Пропущено логов с неподходящим статусом: {skipped}.")
