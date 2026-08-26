@@ -875,16 +875,22 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   if (loading) return <div className={`py-12 ${className}`} />
 
   const renderMedia = (testimonial: ReviewFeedItem) => {
-    // Используем массив media; если его нет — показываем placeholder
+    // Медиа клиента приоритетно. Для товарного отзыва без вложений используем
+    // изображение товара/услуги, а общая заглушка остаётся последним fallback.
     if (!testimonial.media || testimonial.media.length === 0) {
       const placeholder = getPlaceholderImageUrl({
         type: 'testimonial',
         id: testimonial.uid,
       })
+      const subjectImage = testimonial.source_type === 'product_review'
+        ? testimonial.subject_image_url
+        : null
       return (
         <img
-          src={placeholder}
-          alt={t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
+          src={subjectImage ? resolveMediaUrl(subjectImage) : placeholder}
+          alt={subjectImage
+            ? testimonial.product_name || t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)
+            : t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
           className="w-full h-full object-cover"
           onError={(event) => applyImageFallback(event.currentTarget)}
         />

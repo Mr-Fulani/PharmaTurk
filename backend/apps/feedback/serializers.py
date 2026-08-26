@@ -14,7 +14,7 @@ from .models import (
 def _build_proxy_media_url(file_field, request):
     if not file_field:
         return None
-    path = getattr(file_field, "name", None)
+    path = str(file_field).strip() if isinstance(file_field, str) else getattr(file_field, "name", None)
     if not path:
         url = getattr(file_field, "url", None)
         if not url:
@@ -244,6 +244,7 @@ class ReviewFeedItemSerializer(serializers.Serializer):
     product_type = serializers.CharField(allow_null=True)
     product_slug = serializers.CharField(allow_null=True)
     product_name = serializers.CharField(allow_null=True)
+    subject_image_url = serializers.CharField(allow_null=True)
     homepage_priority = serializers.IntegerField()
 
 
@@ -270,17 +271,41 @@ class ProductReviewSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(read_only=True)
     user_username = serializers.CharField(source="user.username", read_only=True)
     author_avatar_url = serializers.SerializerMethodField()
+    subject_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductReview
         fields = (
             "id", "product_type", "product_slug", "product_name", "author_name",
             "rating", "text", "status", "media", "user_id", "user_username",
-            "author_avatar_url", "created_at", "updated_at",
+            "author_avatar_url", "subject_image_url", "created_at", "updated_at",
         )
 
     def get_author_avatar_url(self, obj):
         return _resolve_file_url(getattr(obj.user, "avatar", None), self.context.get("request"))
+
+    def get_subject_image_url(self, obj):
+        """Return catalog media annotated by the review-feed queryset."""
+        request = self.context.get("request")
+        candidates = (
+            ("file", getattr(obj, "subject_main_image_file", None)),
+            ("url", getattr(obj, "subject_main_image_url", None)),
+            ("file", getattr(obj, "subject_gallery_image_file", None)),
+            ("url", getattr(obj, "subject_gallery_image_url", None)),
+        )
+        for value_type, raw_value in candidates:
+            value = str(raw_value or "").strip()
+            if not value:
+                continue
+            if value_type == "file":
+                resolved = _build_proxy_media_url(value, request)
+            else:
+                from apps.catalog.serializers import _resolve_media_url
+
+                resolved = _resolve_media_url(value, request) or value
+            if resolved:
+                return resolved
+        return None
 
 
 def _resolve_product_target(attrs, request, instance=None, *, move_error):

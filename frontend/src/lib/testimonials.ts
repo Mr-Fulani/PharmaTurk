@@ -41,6 +41,7 @@ export interface ReviewFeedItem {
   product_type: string | null
   product_slug: string | null
   product_name: string | null
+  subject_image_url: string | null
   homepage_priority: number
 }
 

@@ -1,4 +1,16 @@
-from django.db.models import Case, CharField, DateTimeField, F, IntegerField, Prefetch, Value, When
+from django.db.models import (
+    Case,
+    CharField,
+    DateTimeField,
+    Exists,
+    F,
+    IntegerField,
+    OuterRef,
+    Prefetch,
+    Subquery,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 
 from .models import ProductReview, ProductReviewMedia, Testimonial, TestimonialMedia
@@ -79,13 +91,70 @@ def _testimonial_queryset(ids):
 
 
 def _product_review_queryset(ids):
+    from apps.catalog.models import Product, ProductImage, Service, ServiceImage
+
     media_queryset = ProductReviewMedia.objects.only(
         "id", "review_id", "media_type", "file", "order",
     ).order_by("order", "id")
+
+    products = Product.objects.filter(
+        slug=OuterRef("product_slug"),
+        is_active=True,
+    ).order_by("pk")
+    product_images = ProductImage.objects.filter(
+        product__slug=OuterRef("product_slug"),
+        product__is_active=True,
+    ).order_by("-is_main", "sort_order", "created_at", "pk")
+    services = Service.objects.filter(
+        slug=OuterRef("product_slug"),
+        is_active=True,
+    ).order_by("pk")
+    service_images = ServiceImage.objects.filter(
+        service__slug=OuterRef("product_slug"),
+        service__is_active=True,
+    ).order_by("-is_main", "sort_order", "created_at", "pk")
+
+    def image_value(queryset, field_name):
+        return Subquery(
+            queryset.values(field_name)[:1],
+            output_field=CharField(max_length=2000),
+        )
+
+    def subject_value(product_value, service_value):
+        return Case(
+            When(has_feed_media=True, then=Value(None)),
+            When(product_type="uslugi", then=service_value),
+            default=product_value,
+            output_field=CharField(max_length=2000),
+        )
+
     return (
         ProductReview.objects.filter(pk__in=ids)
         .select_related("user")
         .prefetch_related(Prefetch("media", queryset=media_queryset))
+        .annotate(
+            has_feed_media=Exists(
+                ProductReviewMedia.objects.filter(review_id=OuterRef("pk"))
+            ),
+        )
+        .annotate(
+            subject_main_image_file=subject_value(
+                image_value(products, "main_image_file"),
+                image_value(services, "main_image_file"),
+            ),
+            subject_main_image_url=subject_value(
+                image_value(products, "main_image"),
+                image_value(services, "main_image"),
+            ),
+            subject_gallery_image_file=subject_value(
+                image_value(product_images, "image_file"),
+                image_value(service_images, "image_file"),
+            ),
+            subject_gallery_image_url=subject_value(
+                image_value(product_images, "image_url"),
+                image_value(service_images, "image_url"),
+            ),
+        )
         .only(
             "id", "user_id", "user__id", "user__username", "user__avatar",
             "product_type", "product_slug", "product_name", "author_name", "rating",
@@ -150,6 +219,7 @@ def serialize_review_feed_page(rows, *, request):
                 "product_type": None,
                 "product_slug": None,
                 "product_name": None,
+                "subject_image_url": None,
                 "homepage_priority": priority,
             })
             continue
@@ -184,6 +254,7 @@ def serialize_review_feed_page(rows, *, request):
             "product_type": item["product_type"],
             "product_slug": item["product_slug"],
             "product_name": item["product_name"],
+            "subject_image_url": item["subject_image_url"] if not media else None,
             "homepage_priority": priority,
         })
     return ReviewFeedItemSerializer(result, many=True).data

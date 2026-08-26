@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from apps.catalog.models import Product, Service
 from apps.feedback.models import (
     ProductReview,
     ProductReviewMedia,
@@ -81,6 +82,13 @@ def mixed_reviews(feed_user):
         show_on_homepage=True,
         homepage_priority=20,
     )
+    Product.objects.create(
+        name="Reviewed chair",
+        slug="reviewed-chair",
+        product_type="furniture",
+        main_image="https://cdn.example.com/reviewed-chair.jpg",
+        is_active=True,
+    )
     unfeatured = ProductReview.objects.create(
         user=feed_user,
         product_type="books",
@@ -134,10 +142,16 @@ def test_homepage_feed_mixes_active_platform_and_selected_approved_reviews(mixed
     assert service["product_slug"] == "cleaning-service"
     assert service["media"][0]["media_type"] == "video_file"
     assert service["media"][0]["video_file_url"].endswith("video.mp4")
+    assert service["subject_image_url"] is None
+
+    product = response.data["results"][1]
+    assert product["media"] == []
+    assert product["subject_image_url"] == "https://cdn.example.com/reviewed-chair.jpg"
 
     platform = response.data["results"][2]
     assert platform["review_type"] == "platform"
     assert platform["product_type"] is None
+    assert platform["subject_image_url"] is None
     assert platform["media"][0]["image_url"].endswith("platform.jpg")
 
 
@@ -156,6 +170,37 @@ def test_all_feed_contains_unfeatured_approved_reviews_but_not_pending_or_inacti
         f"product_review:{mixed_reviews['product'].pk}",
         f"product_review:{mixed_reviews['unfeatured'].pk}",
     }
+
+
+@pytest.mark.django_db
+def test_service_review_without_own_media_uses_service_image(feed_user):
+    service = Service.objects.create(
+        name="Delivery service",
+        slug="delivery-service",
+        main_image="https://cdn.example.com/delivery-service.jpg",
+        is_active=True,
+    )
+    review = ProductReview.objects.create(
+        user=feed_user,
+        product_type="uslugi",
+        product_slug=service.slug,
+        product_name=service.name,
+        author_name="Service author",
+        rating=5,
+        text="Service without review media",
+        status=ProductReview.Status.APPROVED,
+    )
+
+    response = APIClient().get(
+        "/api/feedback/reviews-feed/",
+        {"placement": "all", "username": feed_user.username, "page_size": 20},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    item = next(row for row in response.data["results"] if row["id"] == review.pk)
+    assert item["review_type"] == "service"
+    assert item["media"] == []
+    assert item["subject_image_url"] == "https://cdn.example.com/delivery-service.jpg"
 
 
 @pytest.mark.django_db

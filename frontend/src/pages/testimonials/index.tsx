@@ -150,7 +150,16 @@ export default function TestimonialsPage({
   const allMedia = selectedTestimonial
     ? (selectedTestimonial.media && selectedTestimonial.media.length > 0
       ? selectedTestimonial.media
-      : [])
+      : (selectedTestimonial.source_type === 'product_review' && selectedTestimonial.subject_image_url
+        ? [{
+          id: -selectedTestimonial.id,
+          media_type: 'image' as const,
+          image_url: selectedTestimonial.subject_image_url,
+          video_url: null,
+          video_file_url: null,
+          order: 0,
+        }]
+        : []))
     : []
 
   const nextMedia = () => {
@@ -508,6 +517,17 @@ export default function TestimonialsPage({
         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
       />
     )
+
+    if (!cardMedia && testimonial.source_type === 'product_review' && testimonial.subject_image_url) {
+      return (
+        <FallbackMediaImage
+          src={resolveMediaUrl(testimonial.subject_image_url)}
+          alt={testimonial.product_name || testimonial.author_name}
+          fallbackSrc={placeholder}
+          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+        />
+      )
+    }
 
     if (!cardMedia) return fallback
 
