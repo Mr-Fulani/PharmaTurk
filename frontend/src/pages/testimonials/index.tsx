@@ -494,6 +494,69 @@ export default function TestimonialsPage({
     )
   }
 
+  const renderCardMedia = (testimonial: ReviewFeedItem) => {
+    const cardMedia = testimonial.media?.[0]
+    const placeholder = getPlaceholderImageUrl({
+      type: 'testimonial',
+      id: testimonial.uid,
+    })
+    const fallback = (
+      <img
+        src={placeholder}
+        alt={testimonial.author_name}
+        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+        onError={(event) => applyImageFallback(event.currentTarget)}
+      />
+    )
+
+    if (!cardMedia) return fallback
+
+    if (cardMedia.media_type === 'image' && cardMedia.image_url) {
+      return (
+        <img
+          src={resolveMediaUrl(cardMedia.image_url)}
+          alt={testimonial.author_name}
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+          onError={(event) => applyImageFallback(event.currentTarget)}
+        />
+      )
+    }
+
+    if (cardMedia.media_type === 'video' && cardMedia.video_url) {
+      const thumbnail = getExternalVideoThumbnail(cardMedia.video_url)
+      if (thumbnail) {
+        return (
+          <img
+            src={thumbnail}
+            alt={testimonial.author_name}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+            onError={(event) => applyImageFallback(event.currentTarget)}
+          />
+        )
+      }
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white">
+          {t('video_preview_unavailable', 'Предпросмотр недоступен')}
+        </div>
+      )
+    }
+
+    if (cardMedia.media_type === 'video_file' && cardMedia.video_file_url) {
+      return (
+        <video
+          src={`${resolveMediaUrl(cardMedia.video_file_url)}#t=0.5`}
+          muted
+          playsInline
+          preload="metadata"
+          className="w-full h-full object-cover"
+          onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, testimonial.author_name)}
+        />
+      )
+    }
+
+    return fallback
+  }
+
   const extractYouTubeId = (url: string): string | null => {
     if (!url) return null
 
@@ -642,51 +705,9 @@ export default function TestimonialsPage({
                     className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 flex flex-col"
                   >
                     <Link href={reviewUrl} className="block">
-                      {testimonial.media && testimonial.media.length > 0 && (() => {
-                        const cardMedia = testimonial.media[0]
-                        return (
-                          <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
-                            {cardMedia.media_type === 'image' && cardMedia.image_url && (
-                              <img
-                                src={resolveMediaUrl(cardMedia.image_url)}
-                                alt={testimonial.author_name}
-                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                onError={(event) => applyImageFallback(event.currentTarget)}
-                              />
-                            )}
-                            {cardMedia.media_type === 'video' && cardMedia.video_url && (
-                              (() => {
-                                const thumbnail = getExternalVideoThumbnail(cardMedia.video_url || '')
-                                if (thumbnail) {
-                                  return (
-                                    <img
-                                      src={thumbnail}
-                                      alt={testimonial.author_name}
-                                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                      onError={(event) => applyImageFallback(event.currentTarget)}
-                                    />
-                                  )
-                                }
-                                return (
-                                  <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white">
-                                    {t('video_preview_unavailable', 'Предпросмотр недоступен')}
-                                  </div>
-                                )
-                              })()
-                            )}
-                            {cardMedia.media_type === 'video_file' && cardMedia.video_file_url && (
-                              <video
-                                src={`${resolveMediaUrl(cardMedia.video_file_url)}#t=0.5`}
-                                muted
-                                playsInline
-                                preload="metadata"
-                                className="w-full h-full object-cover"
-                                onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, testimonial.author_name)}
-                              />
-                            )}
-                          </div>
-                        )
-                      })()}
+                      <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
+                        {renderCardMedia(testimonial)}
+                      </div>
 
                       <div className="flex-1 p-4 min-h-[100px]">
                         <span className="mb-2 block line-clamp-2 text-xs font-semibold text-red-600">
