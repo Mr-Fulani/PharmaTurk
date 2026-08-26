@@ -1226,27 +1226,26 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                       key={testimonial.uid}
                       className="flex-shrink-0 w-64 bg-white dark:bg-[var(--surface)] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
                     >
-                      {testimonial.media && testimonial.media.length > 0 && (
-                        <Link
-                          href={reviewUrl}
-                          className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100 block"
-                          onClick={(e) => {
-                            // Не перехватываем клик, если кликнули на кнопку пользователя
-                            const target = e.target as HTMLElement
-                            if (target.closest('button[type="button"]')) {
-                              e.preventDefault()
-                              e.stopPropagation()
-                            }
-                          }}
-                        >
-                          <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
-                            {renderMedia(testimonial)}
-                          </div>
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                          {testimonial.media && testimonial.media.some(
-                            m => (m.media_type === 'video_file' && m.video_file_url) ||
-                              (m.media_type === 'video' && m.video_url)
-                          ) && (
+                      <Link
+                        href={reviewUrl}
+                        className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100 block"
+                        onClick={(e) => {
+                          // Не перехватываем клик, если кликнули на кнопку пользователя
+                          const target = e.target as HTMLElement
+                          if (target.closest('button[type="button"]')) {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }
+                        }}
+                      >
+                        <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
+                          {renderMedia(testimonial)}
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        {testimonial.media && testimonial.media.some(
+                          m => (m.media_type === 'video_file' && m.video_file_url) ||
+                            (m.media_type === 'video' && m.video_url)
+                        ) && (
                               <>
                                 {/* Кнопка play/pause - для ВСЕХ видео */}
                                 <button
@@ -1293,8 +1292,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                                   )}
                               </>
                             )}
-                        </Link>
-                      )}
+                      </Link>
 
                       {/* Текст отзыва - по центру */}
                       <Link
