@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import SEO from '../../components/SEO'
+import FallbackMediaImage from '../../components/FallbackMediaImage'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 import Link from 'next/link'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -501,11 +502,10 @@ export default function TestimonialsPage({
       id: testimonial.uid,
     })
     const fallback = (
-      <img
+      <FallbackMediaImage
         src={placeholder}
         alt={testimonial.author_name}
-        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-        onError={(event) => applyImageFallback(event.currentTarget)}
+        sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
       />
     )
 
