@@ -32,7 +32,7 @@ export default function AddToCartButton({
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { refresh } = useCartStore()
+  const { refresh, setItemsCount } = useCartStore()
   const { t } = useTranslation('common')
 
   useEffect(() => {
@@ -50,7 +50,6 @@ export default function AddToCartButton({
       return
     }
 
-    const animationStartedAt = Date.now()
     setDone(false)
     setLoading(true)
     try {
@@ -70,20 +69,14 @@ export default function AddToCartButton({
           body.set('size', size)
         }
       }
-      try {
-        await api.post('/orders/cart/add', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
-      } catch (e: any) {
-        await api.post('/orders/cart/add/', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
-      }
-      await refresh()
-
-      const minimumAnimationDuration = 1300
-      const remainingAnimationTime = Math.max(
-        0,
-        minimumAnimationDuration - (Date.now() - animationStartedAt)
-      )
-      if (remainingAnimationTime) {
-        await new Promise((resolve) => setTimeout(resolve, remainingAnimationTime))
+      const response = await api.post('/orders/cart/add', body, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      })
+      const itemsCount = Number(response.data?.items_count)
+      if (Number.isFinite(itemsCount)) {
+        setItemsCount(itemsCount)
+      } else {
+        await refresh()
       }
 
       setDone(true)

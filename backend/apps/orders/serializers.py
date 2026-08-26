@@ -186,6 +186,12 @@ BASE_PRODUCT_TYPES = {
     'accessories',
     'underwear',
     'headwear',
+    'islamic_clothing',
+    'books',
+    'perfumery',
+    'sports',
+    'auto_parts',
+    'incense',
 }
 
 
@@ -443,14 +449,6 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
         fv = FurnitureVariant.objects.filter(slug=product_slug, is_active=True).first()
         if fv:
             return ensure_product_from_variant(fv, effective_type, effective_type)
-    # JSON-запросы без product_type: в теле часто medicines по умолчанию, а slug — вариант мебели
-    if effective_type == "medicines" and not Product.objects.filter(
-        slug=product_slug, is_active=True
-    ).exists():
-        fv_med = FurnitureVariant.objects.filter(slug=product_slug, is_active=True).first()
-        if fv_med:
-            return ensure_product_from_variant(fv_med, "furniture", "furniture")
-
     # Сначала вариант: у базовых типов (парфюмерия, книги, головные уборы и т.д.)
     # прежний порядок сразу искал Product и никогда не доходил до variant-модели.
     variant_model = VARIANT_MODEL_MAP.get(effective_type)
@@ -471,7 +469,11 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
             return ensure_product_from_variant(variant, effective_type, effective_type)
 
     if effective_type in BASE_PRODUCT_TYPES:
-        return Product.objects.get(slug=product_slug, is_active=True)
+        return Product.objects.get(
+            slug=product_slug,
+            product_type=effective_type,
+            is_active=True,
+        )
 
     # Базовая карточка без вариантов (обувь/одежда/украшения), если slug есть в соответствующей модели
     base_model_map = {
@@ -507,7 +509,11 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
 
     model = variant_model
     if not model:
-        return Product.objects.get(slug=product_slug, is_active=True)
+        return Product.objects.get(
+            slug=product_slug,
+            product_type=effective_type,
+            is_active=True,
+        )
 
     try:
         variant = model.objects.get(slug=product_slug, is_active=True)
@@ -1490,8 +1496,13 @@ class AddToCartSerializer(serializers.Serializer):
         if not product_slug:
             raise serializers.ValidationError({"detail": _("Не указан product_slug или product_id")})
 
-        # Если тип не передан, считаем базовым
-        effective_type = product_type or 'medicines'
+        # Slug имеет смысл только внутри явно указанного типа: одинаковые slug
+        # допустимы в разных variant-таблицах и не должны резолвиться наугад.
+        if not str(product_type or '').strip():
+            raise serializers.ValidationError({
+                "product_type": _("product_type обязателен при использовании product_slug")
+            })
+        effective_type = product_type
 
         normalized = normalize_product_type(effective_type)
 
@@ -1547,7 +1558,11 @@ class AddToCartSerializer(serializers.Serializer):
                             raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
         else:
             # Базовые типы (без вариантов) — пробуем найти продукт по slug сразу
-            base = Product.objects.filter(slug=product_slug, is_active=True).first()
+            base = Product.objects.filter(
+                slug=product_slug,
+                product_type=normalized,
+                is_active=True,
+            ).first()
             if base:
                 attrs['product'] = base
                 attrs['chosen_size'] = chosen_size

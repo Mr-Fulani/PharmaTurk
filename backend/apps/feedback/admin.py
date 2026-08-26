@@ -100,18 +100,23 @@ class ProductReviewMediaInline(admin.TabularInline):
 
 @admin.register(ProductReview)
 class ProductReviewAdmin(admin.ModelAdmin):
-    list_display = ("product_name", "author_name", "rating", "status", "media_count", "created_at")
-    list_filter = ("status", "rating", "product_type", "created_at")
+    list_display = (
+        "product_name", "author_name", "rating", "status", "show_on_homepage",
+        "homepage_priority", "media_count", "created_at",
+    )
+    list_filter = ("status", "show_on_homepage", "rating", "product_type", "created_at")
+    list_editable = ("show_on_homepage", "homepage_priority")
     search_fields = ("product_name", "product_slug", "author_name", "text", "user__username", "user__email")
     readonly_fields = ("user", "product_type", "product_slug", "product_name", "author_name", "created_at", "updated_at", "published_at")
     raw_id_fields = ()
     date_hierarchy = "created_at"
     inlines = (ProductReviewMediaInline,)
-    actions = ("approve_reviews", "reject_reviews")
+    actions = ("approve_reviews", "reject_reviews", "show_reviews_on_homepage", "hide_reviews_from_homepage")
     fieldsets = (
         ("Товар или услуга", {"fields": ("product_name", "product_type", "product_slug")}),
         ("Автор", {"fields": ("user", "author_name")}),
         ("Отзыв", {"fields": ("rating", "text", "status")}),
+        ("Главная страница", {"fields": ("show_on_homepage", "homepage_priority")}),
         ("Даты", {"fields": ("created_at", "updated_at", "published_at")}),
     )
 
@@ -124,6 +129,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
             obj.published_at = timezone.now()
         elif obj.status != ProductReview.Status.APPROVED:
             obj.published_at = None
+            obj.show_on_homepage = False
         super().save_model(request, obj, form, change)
 
     @admin.action(description="Одобрить выбранные отзывы")
@@ -133,8 +139,27 @@ class ProductReviewAdmin(admin.ModelAdmin):
 
     @admin.action(description="Отклонить выбранные отзывы")
     def reject_reviews(self, request, queryset):
-        count = queryset.update(status=ProductReview.Status.REJECTED, published_at=None)
+        count = queryset.update(
+            status=ProductReview.Status.REJECTED,
+            published_at=None,
+            show_on_homepage=False,
+        )
         self.message_user(request, f"Отклонено отзывов: {count}")
+
+    @admin.action(description="Показывать выбранные отзывы на главной")
+    def show_reviews_on_homepage(self, request, queryset):
+        approved = queryset.filter(status=ProductReview.Status.APPROVED)
+        count = approved.update(show_on_homepage=True)
+        skipped = queryset.count() - count
+        message = f"Добавлено в блок на главной: {count}"
+        if skipped:
+            message += f"; пропущено неопубликованных: {skipped}"
+        self.message_user(request, message)
+
+    @admin.action(description="Скрыть выбранные отзывы с главной")
+    def hide_reviews_from_homepage(self, request, queryset):
+        count = queryset.update(show_on_homepage=False)
+        self.message_user(request, f"Скрыто с главной: {count}")
 
 
 @admin.register(ProductQuestion)

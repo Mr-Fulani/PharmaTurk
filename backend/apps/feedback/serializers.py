@@ -219,6 +219,41 @@ class TestimonialSectionSettingsSerializer(serializers.ModelSerializer):
         fields = ('show_on_homepage',)
 
 
+class ReviewFeedMediaSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    media_type = serializers.ChoiceField(choices=("image", "video", "video_file"))
+    image_url = serializers.CharField(allow_null=True)
+    video_url = serializers.CharField(allow_null=True)
+    video_file_url = serializers.CharField(allow_null=True)
+    order = serializers.IntegerField()
+
+
+class ReviewFeedItemSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    id = serializers.IntegerField()
+    source_type = serializers.ChoiceField(choices=("testimonial", "product_review"))
+    review_type = serializers.ChoiceField(choices=("platform", "product", "service"))
+    author_name = serializers.CharField()
+    author_avatar_url = serializers.CharField(allow_null=True)
+    text = serializers.CharField()
+    rating = serializers.IntegerField(allow_null=True)
+    media = ReviewFeedMediaSerializer(many=True)
+    created_at = serializers.DateTimeField()
+    user_id = serializers.IntegerField(allow_null=True)
+    user_username = serializers.CharField(allow_null=True)
+    product_type = serializers.CharField(allow_null=True)
+    product_slug = serializers.CharField(allow_null=True)
+    product_name = serializers.CharField(allow_null=True)
+    homepage_priority = serializers.IntegerField()
+
+
+class ReviewFeedPageSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
+    results = ReviewFeedItemSerializer(many=True)
+
+
 class ProductReviewMediaSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
 

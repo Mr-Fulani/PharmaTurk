@@ -205,6 +205,16 @@ class ProductReview(models.Model):
     created_at = models.DateTimeField("Создан", auto_now_add=True)
     updated_at = models.DateTimeField("Изменён", auto_now=True)
     published_at = models.DateTimeField("Опубликован", null=True, blank=True)
+    show_on_homepage = models.BooleanField(
+        "Показывать на главной",
+        default=False,
+        help_text="Добавляет опубликованный отзыв в общий блок отзывов на главной странице.",
+    )
+    homepage_priority = models.PositiveSmallIntegerField(
+        "Приоритет на главной",
+        default=100,
+        help_text="Чем меньше число, тем раньше отзыв показывается в блоке на главной.",
+    )
 
     class Meta:
         verbose_name = "⭐ Отзыв о товаре/услуге"
@@ -218,6 +228,10 @@ class ProductReview(models.Model):
         ]
         indexes = [
             models.Index(fields=("product_type", "product_slug", "status"), name="feedback_pr_target_idx"),
+            models.Index(
+                fields=("status", "show_on_homepage", "homepage_priority"),
+                name="feedback_pr_home_idx",
+            ),
         ]
 
     def __str__(self):

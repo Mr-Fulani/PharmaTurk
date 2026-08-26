@@ -3240,9 +3240,17 @@ class FavoriteViewSet(viewsets.ViewSet):
             self._merge_session_favorites(user, session_key)
         
         if user:
-            favorites = Favorite.objects.filter(user=user).select_related('content_type')
+            favorites = (
+                Favorite.objects.filter(user=user)
+                .select_related('content_type')
+                .prefetch_related('product')
+            )
         elif session_key:
-            favorites = Favorite.objects.filter(session_key=session_key).select_related('content_type')
+            favorites = (
+                Favorite.objects.filter(session_key=session_key)
+                .select_related('content_type')
+                .prefetch_related('product')
+            )
         else:
             favorites = Favorite.objects.none()
         
@@ -3306,17 +3314,6 @@ class FavoriteViewSet(viewsets.ViewSet):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # Старые записи избранного по shadow Product для того же headwear/underwear/islamic
-        base_pk = getattr(product, 'base_product_id', None)
-        if base_pk and product.__class__.__name__ in (
-            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct', 'BookProduct',
-        ):
-            pct = ContentType.objects.get_for_model(Product)
-            if user:
-                Favorite.objects.filter(user=user, content_type=pct, object_id=base_pk).delete()
-            else:
-                Favorite.objects.filter(session_key=session_key, content_type=pct, object_id=base_pk).delete()
-        
         chosen_size = serializer.validated_data.get('_chosen_size', '') or ''
 
         # Новая семантика избранного: один вариант = одна запись, размер необязателен.
@@ -3345,8 +3342,15 @@ class FavoriteViewSet(viewsets.ViewSet):
                 chosen_size=chosen_size,
             )
 
-        favorite = Favorite.objects.filter(pk=favorite.pk).select_related('content_type').first()
+        favorite = (
+            Favorite.objects.filter(pk=favorite.pk)
+            .select_related('content_type')
+            .prefetch_related('product')
+            .first()
+        )
         payload = FavoriteSerializer(favorite, context={'request': request}).data
+        if isinstance(payload.get('product'), dict):
+            attach_review_aggregates([payload['product']])
         # Идемпотентность: двойной клик, гонки, React Strict Mode — не 400.
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(payload, status=status_code)
@@ -3570,9 +3574,17 @@ class FavoriteViewSet(viewsets.ViewSet):
             self._merge_session_favorites(user, session_key)
         
         if user:
-            favorites = Favorite.objects.filter(user=user).select_related('content_type')
+            favorites = (
+                Favorite.objects.filter(user=user)
+                .select_related('content_type')
+                .prefetch_related('product')
+            )
         elif session_key:
-            favorites = Favorite.objects.filter(session_key=session_key).select_related('content_type')
+            favorites = (
+                Favorite.objects.filter(session_key=session_key)
+                .select_related('content_type')
+                .prefetch_related('product')
+            )
         else:
             favorites = Favorite.objects.none()
 

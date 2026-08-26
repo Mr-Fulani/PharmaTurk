@@ -5,7 +5,7 @@ import { matchesFavoriteSlug } from '../lib/favoriteLinks'
 import { matchesFavoriteProductIdentity } from '../lib/favoriteIdentity'
 import { ProductCardGalleryImage } from '../components/ProductCardImageGallery'
 
-interface Favorite {
+export interface Favorite {
   id: number
   chosen_size?: string
   product: {
@@ -63,6 +63,35 @@ interface FavoritesStore {
 const normType = (t: string | undefined) =>
   (t || '').toString().trim().replace(/_/g, '-').toLowerCase()
 
+let mutationVersion = 0
+
+const isFavoritePayload = (value: unknown): value is Favorite => {
+  const row = value as Favorite | null
+  return Boolean(row && Number(row.id) > 0 && row.product && typeof row.product === 'object')
+}
+
+const matchesFavorite = (
+  favorite: Favorite,
+  productId: number | undefined,
+  productType?: string,
+  variant?: FavoriteVariantOpts,
+  productSlug?: string
+) => {
+  const type = normType(favorite.product._product_type || 'medicines')
+  if (type !== normType(productType)) return false
+  if (variant?.productSlug) {
+    const slugOk = matchesFavoriteSlug(
+      favorite.product.favorite_variant_slug,
+      favorite.product.slug,
+      variant.productSlug
+    )
+    const sizeOk = !variant.size || (favorite.product.favorite_chosen_size || '') === variant.size
+    return slugOk && sizeOk
+  }
+  if (productId === undefined) return false
+  return matchesFavoriteProductIdentity(favorite.product, productId, productSlug)
+}
+
 export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
   favorites: [],
   count: 0,
@@ -74,6 +103,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       return
     }
 
+    const startedAtMutation = mutationVersion
     set({ refreshing: true, loading: true })
     try {
       initCartSession()
@@ -81,10 +111,14 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
         headers: currency ? { 'X-Currency': currency } : undefined,
       })
       const favorites = response.data || []
-      set({ favorites, count: favorites.length, loading: false, refreshing: false })
+      if (startedAtMutation === mutationVersion) {
+        set({ favorites, count: favorites.length, loading: false, refreshing: false })
+      } else {
+        set({ loading: false, refreshing: false })
+      }
     } catch (error) {
       console.error('Failed to fetch favorites:', error)
-      set({ favorites: [], count: 0, loading: false, refreshing: false })
+      set({ loading: false, refreshing: false })
     }
   },
 
@@ -96,8 +130,9 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
           ? String(productType).trim()
           : 'medicines'
       const slug = variant?.productSlug?.trim()
+      let response
       if (slug) {
-        await api.post('/catalog/favorites/add', {
+        response = await api.post('/catalog/favorites/add', {
           product_type: pt,
           product_slug: slug,
           size: variant?.size || '',
@@ -106,12 +141,23 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
         if (productId === undefined || productId === null || Number(productId) <= 0) {
           throw new Error('Нужен product_id или product_slug')
         }
-        await api.post('/catalog/favorites/add', {
+        response = await api.post('/catalog/favorites/add', {
           product_type: pt,
           product_id: Number(productId),
         })
       }
-      await get().refresh()
+      if (isFavoritePayload(response.data)) {
+        mutationVersion += 1
+        set((state) => {
+          const favorites = [
+            response.data,
+            ...state.favorites.filter((favorite) => favorite.id !== response.data.id),
+          ]
+          return { favorites, count: favorites.length }
+        })
+      } else {
+        await get().refresh()
+      }
     } catch (error: any) {
       const detail = error?.response?.data?.detail || error?.message || 'Ошибка добавления в избранное'
       throw new Error(detail)
@@ -130,7 +176,11 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
         await api.delete('/catalog/favorites/remove', {
           data: { favorite_id: favoriteId },
         })
-        await get().refresh()
+        mutationVersion += 1
+        set((state) => {
+          const favorites = state.favorites.filter((favorite) => favorite.id !== favoriteId)
+          return { favorites, count: favorites.length }
+        })
         return
       }
       const pt =
@@ -154,7 +204,13 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
           data: { product_type: pt, product_id: Number(productId) },
         })
       }
-      await get().refresh()
+      mutationVersion += 1
+      set((state) => {
+        const favorites = state.favorites.filter(
+          (favorite) => !matchesFavorite(favorite, productId, pt, variant)
+        )
+        return { favorites, count: favorites.length }
+      })
     } catch (error: any) {
       const detail = error?.response?.data?.detail || error?.message || 'Ошибка удаления из избранного'
       throw new Error(detail)
@@ -192,21 +248,8 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
     productSlug?: string
   ) => {
     const { favorites } = get()
-    const want = normType(productType)
-    return favorites.some((fav) => {
-      const type = normType(fav.product._product_type || 'medicines')
-      if (type !== want) return false
-      if (variant?.productSlug) {
-        const slugOk = matchesFavoriteSlug(
-          fav.product.favorite_variant_slug,
-          fav.product.slug,
-          variant.productSlug
-        )
-        const sizeOk = !variant.size || (fav.product.favorite_chosen_size || '') === variant.size
-        return slugOk && sizeOk
-      }
-      if (productId === undefined) return false
-      return matchesFavoriteProductIdentity(fav.product, productId, productSlug)
-    })
+    return favorites.some((favorite) =>
+      matchesFavorite(favorite, productId, productType, variant, productSlug)
+    )
   },
 }))

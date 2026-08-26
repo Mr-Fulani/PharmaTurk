@@ -11,6 +11,11 @@ import {
   replaceFailedVideoWithFallback,
   resolveMediaUrl,
 } from '../lib/media'
+import {
+  buildReviewAuthorUrl,
+  buildReviewDetailUrl,
+  ReviewFeedItem,
+} from '../lib/testimonials'
 
 declare global {
   interface Window {
@@ -47,27 +52,6 @@ declare global {
   }
 }
 
-interface TestimonialMedia {
-  id: number
-  media_type: 'image' | 'video' | 'video_file'
-  image_url: string | null
-  video_url: string | null
-  video_file_url: string | null
-  order: number
-}
-
-interface Testimonial {
-  id: number
-  author_name: string
-  author_avatar_url: string | null
-  text: string
-  rating: number | null
-  media: TestimonialMedia[]
-  created_at: string
-  user_id?: number | null
-  user_username?: string | null
-}
-
 interface TestimonialsCarouselProps {
   className?: string
 }
@@ -79,29 +63,29 @@ function classNames(...classes: (string | boolean)[]) {
 export default function TestimonialsCarousel({ className = '' }: TestimonialsCarouselProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
-  const [testimonials, setTestimonials] = useState<Testimonial[]>([])
+  const [testimonials, setTestimonials] = useState<ReviewFeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
   /** YouTube/Vimeo iframe только для карточек, попавших в viewport (или по клику play) — иначе PSI тянет base.js на всю страницу */
-  const [lazyEmbedIds, setLazyEmbedIds] = useState<Set<number>>(() => new Set())
+  const [lazyEmbedIds, setLazyEmbedIds] = useState<Set<string>>(() => new Set())
   const autoPlayRef = useRef<NodeJS.Timeout | null>(null)
-  const videoRefs = useRef<Map<number, HTMLVideoElement>>(new Map())
-  const iframeRefs = useRef<Map<number, HTMLIFrameElement>>(new Map())
-  const iframeUrls = useRef<Map<number, string>>(new Map()) // Фиксированные URL для iframe
-  const youtubePlayers = useRef<Map<number, any>>(new Map()) // YouTube IFrame API players
-  const videoMutedRef = useRef<Map<number, boolean>>(new Map())
-  const [videoMuted, setVideoMuted] = useState<Map<number, boolean>>(videoMutedRef.current)
-  const videoPlayingRef = useRef<Map<number, boolean>>(new Map()) // Состояние воспроизведения видео
-  const [videoPlaying, setVideoPlaying] = useState<Map<number, boolean>>(new Map()) // Для UI
-  const isProgrammaticPauseRef = useRef<Map<number, boolean>>(new Map()) // Флаг программной паузы (при скролле)
+  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
+  const iframeRefs = useRef<Map<string, HTMLIFrameElement>>(new Map())
+  const iframeUrls = useRef<Map<string, string>>(new Map()) // Фиксированные URL для iframe
+  const youtubePlayers = useRef<Map<string, any>>(new Map()) // YouTube IFrame API players
+  const videoMutedRef = useRef<Map<string, boolean>>(new Map())
+  const [videoMuted, setVideoMuted] = useState<Map<string, boolean>>(videoMutedRef.current)
+  const videoPlayingRef = useRef<Map<string, boolean>>(new Map()) // Состояние воспроизведения видео
+  const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map()) // Для UI
+  const isProgrammaticPauseRef = useRef<Map<string, boolean>>(new Map()) // Флаг программной паузы (при скролле)
   const [youtubeApiReady, setYoutubeApiReady] = useState(false)
-  const playerReadyMapRef = useRef<Map<number, boolean>>(new Map())
+  const playerReadyMapRef = useRef<Map<string, boolean>>(new Map())
   const itemsPerPage = 3 // A "page" for pagination dots
-  const muteToggleTimeoutRef = useRef<Map<number, NodeJS.Timeout>>(new Map()) // Debounce для мобильных
+  const muteToggleTimeoutRef = useRef<Map<string, NodeJS.Timeout>>(new Map()) // Debounce для мобильных
 
-  const updateVideoMuted = (mutator: (map: Map<number, boolean>) => void) => {
+  const updateVideoMuted = (mutator: (map: Map<string, boolean>) => void) => {
     // Обновляем ref сразу для мгновенного доступа
     const newMap = new Map(videoMutedRef.current)
     mutator(newMap)
@@ -111,7 +95,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   }
 
   // Оптимизированный обработчик переключения звука - полностью синхронный для мгновенного отклика
-  const handleToggleMute = useCallback((testimonialId: number, e: React.MouseEvent) => {
+  const handleToggleMute = useCallback((testimonialId: string, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
 
@@ -246,7 +230,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   }, [])
 
   // Обработчик переключения play/pause для видео
-  const handleTogglePlay = useCallback((testimonialId: number, e: React.MouseEvent) => {
+  const handleTogglePlay = useCallback((testimonialId: string, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
 
@@ -413,7 +397,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     }
   }, [testimonials])
 
-  const updatePlayerReady = (mutator: (map: Map<number, boolean>) => void) => {
+  const updatePlayerReady = (mutator: (map: Map<string, boolean>) => void) => {
     mutator(playerReadyMapRef.current)
   }
 
@@ -433,8 +417,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         setLazyEmbedIds((prev) => {
           const next = new Set(prev)
           nodes.forEach((node) => {
-            const id = Number(node.dataset.testimonialEmbedLazy)
-            if (Number.isFinite(id)) next.add(id)
+            const id = node.dataset.testimonialEmbedLazy
+            if (id) next.add(id)
           })
           return next
         })
@@ -445,8 +429,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         (entries) => {
           entries.forEach((en) => {
             if (!en.isIntersecting) return
-            const id = Number((en.target as HTMLElement).dataset.testimonialEmbedLazy)
-            if (!Number.isFinite(id)) return
+            const id = (en.target as HTMLElement).dataset.testimonialEmbedLazy
+            if (!id) return
             setLazyEmbedIds((prev) => {
               if (prev.has(id)) return prev
               const next = new Set(prev)
@@ -529,7 +513,9 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   useEffect(() => {
     const fetchTestimonials = async () => {
       try {
-        const response = await getSingleFlight('/feedback/testimonials/')
+        const response = await getSingleFlight('/feedback/reviews-feed/', {
+          params: { placement: 'homepage', page_size: 18 },
+        })
         const data = response.data
         const testimonialsList = Array.isArray(data) ? data : data.results || []
         // Отладочная информация для проверки данных
@@ -569,17 +555,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
   useEffect(() => {
     testimonials.forEach((testimonial) => {
-      if (!videoMutedRef.current.has(testimonial.id)) {
+      if (!videoMutedRef.current.has(testimonial.uid)) {
         updateVideoMuted((map) => {
-          map.set(testimonial.id, true)
+          map.set(testimonial.uid, true)
         })
       }
       // Инициализируем состояние воспроизведения (по умолчанию пауза)
-      if (!videoPlayingRef.current.has(testimonial.id)) {
-        videoPlayingRef.current.set(testimonial.id, false)
+      if (!videoPlayingRef.current.has(testimonial.uid)) {
+        videoPlayingRef.current.set(testimonial.uid, false)
         setVideoPlaying((prev) => {
           const newMap = new Map(prev)
-          newMap.set(testimonial.id, false)
+          newMap.set(testimonial.uid, false)
           return newMap
         })
       }
@@ -875,15 +861,15 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       const firstMedia = testimonial.media[0]
       if (firstMedia.media_type !== 'video' || !firstMedia.video_url) return
 
-      const iframe = iframeRefs.current.get(testimonial.id)
+      const iframe = iframeRefs.current.get(testimonial.uid)
       if (!iframe) return
 
       const videoId = extractYouTubeId(firstMedia.video_url)
       if (!videoId) return
 
-      if (!youtubePlayers.current.has(testimonial.id)) {
+      if (!youtubePlayers.current.has(testimonial.uid)) {
         try {
-          const isMuted = videoMutedRef.current.get(testimonial.id) !== false
+          const isMuted = videoMutedRef.current.get(testimonial.uid) !== false
           const player = new window.YT.Player(iframe, {
             videoId,
             playerVars: {
@@ -899,11 +885,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             events: {
               onReady: (event: any) => {
                 // Обновляем состояние готовности плеера
-                playerReadyMapRef.current.set(testimonial.id, true)
+                playerReadyMapRef.current.set(testimonial.uid, true)
                 console.log('YouTube player ready:', {
-                  testimonialId: testimonial.id,
+                  testimonialId: testimonial.uid,
                   playerReadyMapRef: Array.from(playerReadyMapRef.current.entries()),
-                  justSet: playerReadyMapRef.current.get(testimonial.id)
+                  justSet: playerReadyMapRef.current.get(testimonial.uid)
                 })
 
                 try {
@@ -911,10 +897,10 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                   // Звук включится при первом playVideo() в handleTogglePlay
                   event.target.setVolume(0)
                   // Инициализируем состояние воспроизведения (по умолчанию пауза, так как autoplay=0)
-                  videoPlayingRef.current.set(testimonial.id, false)
+                  videoPlayingRef.current.set(testimonial.uid, false)
                   setVideoPlaying((prev) => {
                     const newMap = new Map(prev)
-                    newMap.set(testimonial.id, false)
+                    newMap.set(testimonial.uid, false)
                     return newMap
                   })
                   console.log('YouTube player initialized with volume:', event.target.getVolume())
@@ -926,7 +912,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                 // YT.PlayerState.UNSTARTED = -1, ENDED = 0, PLAYING = 1, PAUSED = 2, BUFFERING = 3, CUED = 5
                 const isPlaying = event.data === 1
                 console.log('YouTube state changed:', {
-                  testimonialId: testimonial.id,
+                  testimonialId: testimonial.uid,
                   state: event.data,
                   isPlaying,
                   stateNames: {
@@ -938,16 +924,16 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     '5': 'CUED'
                   }
                 })
-                videoPlayingRef.current.set(testimonial.id, isPlaying)
+                videoPlayingRef.current.set(testimonial.uid, isPlaying)
                 setVideoPlaying((prev) => {
                   const newMap = new Map(prev)
-                  newMap.set(testimonial.id, isPlaying)
+                  newMap.set(testimonial.uid, isPlaying)
                   return newMap
                 })
               },
             },
           })
-          youtubePlayers.current.set(testimonial.id, player)
+          youtubePlayers.current.set(testimonial.uid, player)
         } catch (error) {
           console.error('Error creating YouTube player:', error)
         }
@@ -975,12 +961,12 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
   if (loading) return <div className={`py-12 ${className}`} />
 
-  const renderMedia = (testimonial: Testimonial) => {
+  const renderMedia = (testimonial: ReviewFeedItem) => {
     // Используем массив media; если его нет — показываем placeholder
     if (!testimonial.media || testimonial.media.length === 0) {
       const placeholder = getPlaceholderImageUrl({
         type: 'testimonial',
-        id: testimonial.id,
+        id: testimonial.uid,
       })
       return (
         <img
@@ -1076,7 +1062,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       if (isValidEmbedUrl) {
         // Создаем фиксированный URL один раз (с muted=1 по умолчанию)
         // Управление звуком будет через YouTube API, без изменения src
-        let finalUrl = iframeUrls.current.get(testimonial.id)
+        let finalUrl = iframeUrls.current.get(testimonial.uid)
         if (!finalUrl) {
           // Создаем URL только один раз при первом рендере
           try {
@@ -1100,28 +1086,28 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           }
 
           // Сохраняем фиксированный URL
-          iframeUrls.current.set(testimonial.id, finalUrl)
+          iframeUrls.current.set(testimonial.uid, finalUrl)
         }
 
         // Отладочная информация
         if (process.env.NODE_ENV === 'development') {
-          console.log('YouTube iframe URL:', { testimonialId: testimonial.id, finalUrl })
+          console.log('YouTube iframe URL:', { testimonialId: testimonial.uid, finalUrl })
         }
 
         const thumbnail = getYouTubeThumbnail(firstMedia.video_url || embedUrl)
-        const showEmbed = lazyEmbedIds.has(testimonial.id)
+        const showEmbed = lazyEmbedIds.has(testimonial.uid)
 
         return (
           <div
             className="w-full h-full relative"
-            key={`container-${testimonial.id}`}
-            data-testimonial-embed-lazy={testimonial.id}
+            key={`container-${testimonial.uid}`}
+            data-testimonial-embed-lazy={testimonial.uid}
           >
             {thumbnail && (
               <img
                 src={thumbnail}
                 alt={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
-                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${showEmbed && playerReadyMapRef.current.get(testimonial.id) ? 'opacity-0' : 'opacity-100'}`}
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${showEmbed && playerReadyMapRef.current.get(testimonial.uid) ? 'opacity-0' : 'opacity-100'}`}
                 onError={(event) => applyImageFallback(event.currentTarget)}
               />
             )}
@@ -1129,10 +1115,10 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               <iframe
                 ref={(el) => {
                   if (el) {
-                    iframeRefs.current.set(testimonial.id, el)
+                    iframeRefs.current.set(testimonial.uid, el)
                   } else {
-                    iframeRefs.current.delete(testimonial.id)
-                    iframeUrls.current.delete(testimonial.id)
+                    iframeRefs.current.delete(testimonial.uid)
+                    iframeUrls.current.delete(testimonial.uid)
                   }
                 }}
                 src={finalUrl}
@@ -1152,15 +1138,15 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     }
 
     if (firstMedia.media_type === 'video_file' && firstMedia.video_file_url) {
-      const isMuted = videoMuted.get(testimonial.id) !== false
+      const isMuted = videoMuted.get(testimonial.uid) !== false
       return (
         <video
           ref={(el) => {
             if (el) {
-              videoRefs.current.set(testimonial.id, el)
+              videoRefs.current.set(testimonial.uid, el)
               el.muted = isMuted
             } else {
-              videoRefs.current.delete(testimonial.id)
+              videoRefs.current.delete(testimonial.uid)
             }
           }}
           controls={false}
@@ -1221,21 +1207,28 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               >
                 {testimonials.map((testimonial) => {
                   const hasUser = testimonial.user_id != null && testimonial.user_username
+                  const reviewUrl = buildReviewDetailUrl(testimonial)
+                  const authorUrl = buildReviewAuthorUrl(testimonial)
+                  const subjectLabel = testimonial.review_type === 'service'
+                    ? t('review_about_service', 'Отзыв об услуге: {{name}}', { name: testimonial.product_name || '' })
+                    : testimonial.review_type === 'product'
+                      ? t('review_about_product', 'Отзыв о товаре: {{name}}', { name: testimonial.product_name || '' })
+                      : t('review_about_platform', 'Отзыв о платформе')
                   if (hasUser) {
                     console.log('Rendering testimonial with user:', {
-                      id: testimonial.id,
+                      id: testimonial.uid,
                       user_id: testimonial.user_id,
                       user_username: testimonial.user_username
                     })
                   }
                   return (
                     <div
-                      key={testimonial.id}
+                      key={testimonial.uid}
                       className="flex-shrink-0 w-64 bg-white dark:bg-[var(--surface)] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
                     >
                       {testimonial.media && testimonial.media.length > 0 && (
                         <Link
-                          href="/testimonials"
+                          href={reviewUrl}
                           className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100 block"
                           onClick={(e) => {
                             // Не перехватываем клик, если кликнули на кнопку пользователя
@@ -1257,17 +1250,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                               <>
                                 {/* Кнопка play/pause - для ВСЕХ видео */}
                                 <button
-                                  onClick={(e) => handleTogglePlay(testimonial.id, e)}
+                                  onClick={(e) => handleTogglePlay(testimonial.uid, e)}
                                   className="absolute top-2 left-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
-                                  aria-label={videoPlaying.get(testimonial.id) ? 'Пауза' : 'Воспроизведение'}
+                                  aria-label={videoPlaying.get(testimonial.uid) ? 'Пауза' : 'Воспроизведение'}
                                 >
                                   <div className="relative w-5 h-5">
                                     <PauseIcon
-                                      className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoPlaying.get(testimonial.id) ? 'opacity-100' : 'opacity-0'
+                                      className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoPlaying.get(testimonial.uid) ? 'opacity-100' : 'opacity-0'
                                         }`}
                                     />
                                     <PlayIcon
-                                      className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoPlaying.get(testimonial.id) ? 'opacity-0' : 'opacity-100'
+                                      className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoPlaying.get(testimonial.uid) ? 'opacity-0' : 'opacity-100'
                                         }`}
                                     />
                                   </div>
@@ -1282,17 +1275,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                                       !m.video_url.includes('vimeo.com'))
                                 ) && (
                                     <button
-                                      onClick={(e) => handleToggleMute(testimonial.id, e)}
+                                      onClick={(e) => handleToggleMute(testimonial.uid, e)}
                                       className="absolute top-2 right-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
-                                      aria-label={videoMuted.get(testimonial.id) !== false ? 'Включить звук' : 'Выключить звук'}
+                                      aria-label={videoMuted.get(testimonial.uid) !== false ? 'Включить звук' : 'Выключить звук'}
                                     >
                                       <div className="relative w-5 h-5">
                                         <SpeakerXMarkIcon
-                                          className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoMuted.get(testimonial.id) !== false ? 'opacity-100' : 'opacity-0'
+                                          className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoMuted.get(testimonial.uid) !== false ? 'opacity-100' : 'opacity-0'
                                             }`}
                                         />
                                         <SpeakerWaveIcon
-                                          className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoMuted.get(testimonial.id) !== false ? 'opacity-0' : 'opacity-100'
+                                          className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoMuted.get(testimonial.uid) !== false ? 'opacity-0' : 'opacity-100'
                                             }`}
                                         />
                                       </div>
@@ -1305,7 +1298,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
                       {/* Текст отзыва - по центру */}
                       <Link
-                        href="/testimonials"
+                        href={reviewUrl}
                         className="flex-1 p-4 min-h-[100px] cursor-pointer"
                         onClick={(e) => {
                           // Не перехватываем клик, если кликнули на кнопку пользователя
@@ -1316,6 +1309,9 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                           }
                         }}
                       >
+                        <span className="mb-2 block line-clamp-2 text-xs font-semibold text-red-600 dark:text-red-400">
+                          {subjectLabel}
+                        </span>
                         <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-4">
                           &quot;{testimonial.text}&quot;
                         </p>
@@ -1323,7 +1319,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
                       {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
                       <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 dark:border-gray-700 mt-auto">
-                        {testimonial.user_id != null && testimonial.user_username ? (
+                        {testimonial.user_id != null && testimonial.user_username && authorUrl ? (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1332,11 +1328,10 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                               console.log('Clicking on user profile:', {
                                 username: testimonial.user_username,
                                 userId: testimonial.user_id,
-                                testimonialId: testimonial.id
+                                testimonialId: testimonial.uid
                               })
-                              const url = `/user/${testimonial.user_username}?testimonial_id=${testimonial.id}`
-                              console.log('Navigating to:', url)
-                              router.push(url).catch(err => {
+                              console.log('Navigating to:', authorUrl)
+                              router.push(authorUrl).catch(err => {
                                 console.error('Navigation error:', err)
                               })
                             }}

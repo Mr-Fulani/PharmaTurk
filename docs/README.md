@@ -22,6 +22,7 @@
 | [README.md](../README.md) | продукт, архитектура, быстрый старт и security baseline | актуализирован 2026-08-21 |
 | [README-DEV.md](../README-DEV.md) | локальная разработка, тесты, seed и permissions | актуализирован 2026-08-21 |
 | [ROADMAP.md](ROADMAP.md) | текущий backlog и отделённый snapshot июня 2026 | актуализирован 2026-08-21 |
+| [TECH_DEBT.md](TECH_DEBT.md) | реестр подтверждённого открытого технического долга | актуализирован 2026-08-22 |
 | [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | актуализирован и проверен 2026-08-21 |
 | [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) | правила SEO, backend/frontend и e-commerce | актуализирован 2026-08-09 |
 

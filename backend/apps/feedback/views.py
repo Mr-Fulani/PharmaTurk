@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from django.utils.text import slugify
 from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, Q
@@ -23,8 +23,11 @@ from .serializers import (
     ProductQuestionWriteSerializer,
     TestimonialSerializer,
     TestimonialCreateSerializer,
+    ReviewFeedPageSerializer,
     TestimonialSectionSettingsSerializer,
 )
+from .pagination import ReviewFeedPagination
+from .review_feed import build_review_feed_rows, serialize_review_feed_page
 from .tasks import notify_admin_product_question, notify_admin_product_review
 from .throttles import TESTIMONIAL_CREATE_THROTTLES
 
@@ -282,6 +285,43 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
+class ReviewFeedView(APIView):
+    """Public mixed feed of platform, product, and service reviews."""
+
+    permission_classes = [AllowAny]
+    pagination_class = ReviewFeedPagination
+
+    @extend_schema(
+        summary="Получить общую ленту отзывов",
+        parameters=[
+            OpenApiParameter(
+                "placement",
+                str,
+                description="all — все опубликованные отзывы; homepage — отобранные для главной.",
+                enum=("all", "homepage"),
+                default="all",
+            ),
+            OpenApiParameter("username", str, description="Ограничить отзывы одним пользователем."),
+            OpenApiParameter("page", int),
+            OpenApiParameter("page_size", int),
+        ],
+        responses={200: ReviewFeedPageSerializer},
+    )
+    def get(self, request, *args, **kwargs):
+        placement = str(request.query_params.get("placement") or "all").strip().lower()
+        if placement not in {"all", "homepage"}:
+            return Response(
+                {"placement": ["Допустимые значения: all, homepage"]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        username = str(request.query_params.get("username") or "").strip()
+        rows = build_review_feed_rows(placement=placement, username=username)
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(rows, request, view=self)
+        data = serialize_review_feed_page(page, request=request)
+        return paginator.get_paginated_response(data)
+
+
 class ProductReviewViewSet(viewsets.ModelViewSet):
     authentication_classes = [JWTSafeAuthentication]
     queryset = ProductReview.objects.select_related("user").prefetch_related("media")
@@ -424,6 +464,7 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
                 author_name=self._author_name(request.user),
                 status=ProductReview.Status.PENDING,
                 published_at=None,
+                show_on_homepage=False,
             )
             start = review.media.count()
             for offset, (media_type, uploaded) in enumerate(media):

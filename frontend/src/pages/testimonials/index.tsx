@@ -18,7 +18,12 @@ import {
   resolveMediaUrl,
 } from '../../lib/media'
 import { getInternalApiUrl } from '../../lib/urls'
-import { buildTestimonialUrl, Testimonial, TestimonialMedia } from '../../lib/testimonials'
+import {
+  buildReviewAuthorUrl,
+  buildReviewDetailUrl,
+  ReviewFeedItem,
+  TestimonialMedia,
+} from '../../lib/testimonials'
 import { buildAuthRedirectQuery } from '../../lib/authRedirect'
 
 interface MediaItem {
@@ -29,7 +34,7 @@ interface MediaItem {
 }
 
 interface TestimonialsPageProps {
-  initialTestimonials: Testimonial[]
+  initialTestimonials: ReviewFeedItem[]
   initialUsernameFilter: string | null
 }
 
@@ -40,16 +45,16 @@ export default function TestimonialsPage({
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { user } = useAuth()
-  const [testimonials, setTestimonials] = useState<Testimonial[]>(initialTestimonials)
+  const [testimonials, setTestimonials] = useState<ReviewFeedItem[]>(initialTestimonials)
   const [loading, setLoading] = useState(false)
-  const [selectedTestimonial, setSelectedTestimonial] = useState<Testimonial | null>(null)
+  const [selectedTestimonial, setSelectedTestimonial] = useState<ReviewFeedItem | null>(null)
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0)
   const [showForm, setShowForm] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const modalIframeRef = useRef<HTMLIFrameElement | null>(null)
   const modalIframeUrl = useRef<string | null>(null)
-  const [videoMuted, setVideoMuted] = useState<Map<number, boolean>>(new Map())
+  const [videoMuted, setVideoMuted] = useState<Map<string, boolean>>(new Map())
 
   // Form state
   const [formData, setFormData] = useState({
@@ -104,10 +109,10 @@ export default function TestimonialsPage({
     if (selectedTestimonial) {
       document.body.style.overflow = 'hidden'
       // Инициализируем muted состояние для выбранного отзыва, если еще не установлено
-      if (!videoMuted.has(selectedTestimonial.id)) {
+      if (!videoMuted.has(selectedTestimonial.uid)) {
         setVideoMuted((prev) => {
           const newMap = new Map(prev)
-          newMap.set(selectedTestimonial.id, true) // По умолчанию muted
+          newMap.set(selectedTestimonial.uid, true) // По умолчанию muted
           return newMap
         })
       }
@@ -187,8 +192,8 @@ export default function TestimonialsPage({
 
     setVideoMuted((prev) => {
       const newMap = new Map(prev)
-      const currentMuted = newMap.get(selectedTestimonial.id) !== false
-      newMap.set(selectedTestimonial.id, !currentMuted)
+      const currentMuted = newMap.get(selectedTestimonial.uid) !== false
+      newMap.set(selectedTestimonial.uid, !currentMuted)
       return newMap
     })
   }
@@ -250,7 +255,7 @@ export default function TestimonialsPage({
         }
       })
 
-      const response = await api.post('/feedback/testimonials/', formDataToSend, {
+      await api.post('/feedback/testimonials/', formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -268,7 +273,9 @@ export default function TestimonialsPage({
       }, 5000) // Скрываем через 5 секунд
 
       // Обновляем список отзывов (только активные)
-      const updatedResponse = await getSingleFlight('/feedback/testimonials/')
+      const updatedResponse = await getSingleFlight('/feedback/reviews-feed/', {
+        params: { placement: 'all', page_size: 1000 },
+      })
       const updatedData = updatedResponse.data
       setTestimonials(Array.isArray(updatedData) ? updatedData : updatedData.results || [])
     } catch (error) {
@@ -368,17 +375,17 @@ export default function TestimonialsPage({
         modalIframeUrl.current = embedUrl
 
         // Инициализируем muted состояние, если еще не установлено (по умолчанию true - без звука)
-        if (selectedTestimonial && !videoMuted.has(selectedTestimonial.id)) {
+        if (selectedTestimonial && !videoMuted.has(selectedTestimonial.uid)) {
           setVideoMuted((prev) => {
             const newMap = new Map(prev)
-            newMap.set(selectedTestimonial.id, true) // По умолчанию muted (без звука)
+            newMap.set(selectedTestimonial.uid, true) // По умолчанию muted (без звука)
             return newMap
           })
         }
 
         // Получаем текущее состояние muted (по умолчанию true)
         const isMuted = selectedTestimonial
-          ? (videoMuted.get(selectedTestimonial.id) !== false)
+          ? (videoMuted.get(selectedTestimonial.uid) !== false)
           : true
 
         // Создаем URL с правильным параметром muted
@@ -433,12 +440,12 @@ export default function TestimonialsPage({
 
         // Отладочная информация
         if (process.env.NODE_ENV === 'development') {
-          console.log('YouTube iframe URL (modal):', { testimonialId: selectedTestimonial?.id, isMuted, finalUrl })
+          console.log('YouTube iframe URL (modal):', { testimonialId: selectedTestimonial?.uid, isMuted, finalUrl })
         }
 
         return (
           <iframe
-            key={`modal-${selectedTestimonial?.id || 'video'}-${isMuted ? 'muted' : 'unmuted'}`}
+            key={`modal-${selectedTestimonial?.uid || 'video'}-${isMuted ? 'muted' : 'unmuted'}`}
             ref={(el) => {
               modalIframeRef.current = el
             }}
@@ -475,7 +482,7 @@ export default function TestimonialsPage({
     // Если медиа нет или оно некорректно – показываем placeholder
     const placeholder = getPlaceholderImageUrl({
       type: 'testimonial',
-      id: selectedTestimonial?.id || media.id,
+      id: selectedTestimonial?.uid || media.id,
     })
     return (
       <img
@@ -620,115 +627,127 @@ export default function TestimonialsPage({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {testimonials.map((testimonial) => (
-                <div
-                  key={testimonial.id}
-                  id={`testimonial-${testimonial.id}`}
-                  className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 flex flex-col"
-                >
-                  <Link href={buildTestimonialUrl(testimonial.id)} className="block">
-                    {testimonial.media && testimonial.media.length > 0 && (() => {
-                      const cardMedia = testimonial.media[0]
-                      return (
-                        <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
-                          {cardMedia.media_type === 'image' && cardMedia.image_url && (
+              {testimonials.map((testimonial) => {
+                const reviewUrl = buildReviewDetailUrl(testimonial)
+                const authorUrl = buildReviewAuthorUrl(testimonial)
+                const subjectLabel = testimonial.review_type === 'service'
+                  ? t('review_about_service', 'Отзыв об услуге: {{name}}', { name: testimonial.product_name || '' })
+                  : testimonial.review_type === 'product'
+                    ? t('review_about_product', 'Отзыв о товаре: {{name}}', { name: testimonial.product_name || '' })
+                    : t('review_about_platform', 'Отзыв о платформе')
+                return (
+                  <div
+                    key={testimonial.uid}
+                    id={`testimonial-${testimonial.uid}`}
+                    className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 flex flex-col"
+                  >
+                    <Link href={reviewUrl} className="block">
+                      {testimonial.media && testimonial.media.length > 0 && (() => {
+                        const cardMedia = testimonial.media[0]
+                        return (
+                          <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
+                            {cardMedia.media_type === 'image' && cardMedia.image_url && (
+                              <img
+                                src={resolveMediaUrl(cardMedia.image_url)}
+                                alt={testimonial.author_name}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                onError={(event) => applyImageFallback(event.currentTarget)}
+                              />
+                            )}
+                            {cardMedia.media_type === 'video' && cardMedia.video_url && (
+                              (() => {
+                                const thumbnail = getExternalVideoThumbnail(cardMedia.video_url || '')
+                                if (thumbnail) {
+                                  return (
+                                    <img
+                                      src={thumbnail}
+                                      alt={testimonial.author_name}
+                                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                      onError={(event) => applyImageFallback(event.currentTarget)}
+                                    />
+                                  )
+                                }
+                                return (
+                                  <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white">
+                                    {t('video_preview_unavailable', 'Предпросмотр недоступен')}
+                                  </div>
+                                )
+                              })()
+                            )}
+                            {cardMedia.media_type === 'video_file' && cardMedia.video_file_url && (
+                              <video
+                                src={`${resolveMediaUrl(cardMedia.video_file_url)}#t=0.5`}
+                                muted
+                                playsInline
+                                preload="metadata"
+                                className="w-full h-full object-cover"
+                                onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, testimonial.author_name)}
+                              />
+                            )}
+                          </div>
+                        )
+                      })()}
+
+                      <div className="flex-1 p-4 min-h-[100px]">
+                        <span className="mb-2 block line-clamp-2 text-xs font-semibold text-red-600">
+                          {subjectLabel}
+                        </span>
+                        <p className="text-gray-600 text-sm line-clamp-4">
+                          &quot;{testimonial.text}&quot;
+                        </p>
+                      </div>
+                    </Link>
+
+                    <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
+                      {testimonial.user_id && testimonial.user_username && authorUrl ? (
+                        <Link
+                          href={authorUrl}
+                          className="flex items-center flex-1 min-w-0 hover:opacity-80 transition-opacity"
+                        >
+                          {testimonial.author_avatar_url && (
                             <img
-                              src={resolveMediaUrl(cardMedia.image_url)}
+                              src={resolveMediaUrl(testimonial.author_avatar_url)}
                               alt={testimonial.author_name}
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
                               onError={(event) => applyImageFallback(event.currentTarget)}
                             />
                           )}
-                          {cardMedia.media_type === 'video' && cardMedia.video_url && (
-                            (() => {
-                              const thumbnail = getExternalVideoThumbnail(cardMedia.video_url || '')
-                              if (thumbnail) {
-                                return (
-                                  <img
-                                    src={thumbnail}
-                                    alt={testimonial.author_name}
-                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                    onError={(event) => applyImageFallback(event.currentTarget)}
-                                  />
-                                )
-                              }
-                              return (
-                                <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white">
-                                  {t('video_preview_unavailable', 'Предпросмотр недоступен')}
-                                </div>
-                              )
-                            })()
-                          )}
-                          {cardMedia.media_type === 'video_file' && cardMedia.video_file_url && (
-                            <video
-                              src={`${resolveMediaUrl(cardMedia.video_file_url)}#t=0.5`}
-                              muted
-                              playsInline
-                              preload="metadata"
-                              className="w-full h-full object-cover"
-                              onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, testimonial.author_name)}
+                          <div className="text-xs font-semibold text-gray-900 truncate">
+                            {testimonial.author_name}
+                          </div>
+                        </Link>
+                      ) : (
+                        <div className="flex items-center flex-1 min-w-0">
+                          {testimonial.author_avatar_url && (
+                            <img
+                              src={resolveMediaUrl(testimonial.author_avatar_url)}
+                              alt={testimonial.author_name}
+                              className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                              onError={(event) => applyImageFallback(event.currentTarget)}
                             />
                           )}
+                          <div className="text-xs font-semibold text-gray-900 truncate">
+                            {testimonial.author_name}
+                          </div>
                         </div>
-                      )
-                    })()}
-
-                    <div className="flex-1 p-4 min-h-[100px]">
-                      <p className="text-gray-600 text-sm line-clamp-4">
-                        &quot;{testimonial.text}&quot;
-                      </p>
+                      )}
+                      {testimonial.rating && (
+                        <div className="flex items-center ml-2 flex-shrink-0">
+                          {[0, 1, 2, 3, 4].map((rating) => (
+                            <StarIcon
+                              key={rating}
+                              className={`h-4 w-4 ${(testimonial.rating || 0) > rating
+                                ? 'text-yellow-400'
+                                : 'text-gray-300'
+                                }`}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </Link>
-
-                  <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
-                    {testimonial.user_id && testimonial.user_username ? (
-                      <Link
-                        href={`/user/${testimonial.user_username}?testimonial_id=${testimonial.id}`}
-                        className="flex items-center flex-1 min-w-0 hover:opacity-80 transition-opacity"
-                      >
-                        {testimonial.author_avatar_url && (
-                          <img
-                            src={resolveMediaUrl(testimonial.author_avatar_url)}
-                            alt={testimonial.author_name}
-                            className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                            onError={(event) => applyImageFallback(event.currentTarget)}
-                          />
-                        )}
-                        <div className="text-xs font-semibold text-gray-900 truncate">
-                          {testimonial.author_name}
-                        </div>
-                      </Link>
-                    ) : (
-                      <div className="flex items-center flex-1 min-w-0">
-                        {testimonial.author_avatar_url && (
-                          <img
-                            src={resolveMediaUrl(testimonial.author_avatar_url)}
-                            alt={testimonial.author_name}
-                            className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                            onError={(event) => applyImageFallback(event.currentTarget)}
-                          />
-                        )}
-                        <div className="text-xs font-semibold text-gray-900 truncate">
-                          {testimonial.author_name}
-                        </div>
-                      </div>
-                    )}
-                    {testimonial.rating && (
-                      <div className="flex items-center ml-2 flex-shrink-0">
-                        {[0, 1, 2, 3, 4].map((rating) => (
-                          <StarIcon
-                            key={rating}
-                            className={`h-4 w-4 ${(testimonial.rating || 0) > rating
-                              ? 'text-yellow-400'
-                              : 'text-gray-300'
-                              }`}
-                          />
-                        ))}
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -1054,12 +1073,12 @@ export default function TestimonialsPage({
 export const getServerSideProps: GetServerSideProps = async ({ locale, query, res }) => {
   // Кэшируем HTML в CDN: контент одинаков для всех посетителей локали
   res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
-  let initialTestimonials: Testimonial[] = []
+  let initialTestimonials: ReviewFeedItem[] = []
   const username = typeof query.username === 'string' ? query.username : null
 
   try {
     const response = await fetch(
-      `${getInternalApiUrl('feedback/testimonials')}${username ? `?username=${encodeURIComponent(username)}` : ''}`
+      `${getInternalApiUrl('feedback/reviews-feed/')}?placement=all&page_size=1000${username ? `&username=${encodeURIComponent(username)}` : ''}`
     )
     if (response.ok) {
       const data = await response.json()

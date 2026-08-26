@@ -2304,6 +2304,13 @@ class FavoriteSerializer(serializers.ModelSerializer):
             product_data = ServiceSerializer(product, context={'request': request}).data
         else:
             # Fallback для неизвестных типов
+            base_product_id = getattr(product, 'base_product_id', None)
+            base_product = getattr(product, 'base_product', None) if base_product_id else None
+            product_type = (
+                getattr(base_product, 'product_type', None)
+                or getattr(product, '_domain_product_type', None)
+                or product_type
+            )
             product_data = {
                 'id': getattr(product, 'id', None),
                 'name': getattr(product, 'name', 'Unknown'),
@@ -2313,6 +2320,13 @@ class FavoriteSerializer(serializers.ModelSerializer):
                 'main_image_url': getattr(product, 'main_image', None) or getattr(product, 'main_image_url', None),
                 'video_url': getattr(product, 'video_url', None) or getattr(product, 'main_video_url', None) or getattr(product, 'main_video', None)
             }
+
+        # Старые Favorite могли указывать на доменную таблицу. Во внешнем API
+        # идентичность всегда каноническая: Product.id + product_type. Это не
+        # позволяет одинаковым PK разных доменных таблиц смешиваться на клиенте.
+        canonical_product_id = getattr(product, 'base_product_id', None)
+        if canonical_product_id:
+            _pin_base_product_fields(product_data, canonical_product_id)
 
         # Тип для фронта: дефисы (как в URL и TYPES_NEEDING_PATH)
         api_pt = str(product_type).replace('_', '-')
@@ -2331,172 +2345,50 @@ class FavoriteSerializer(serializers.ModelSerializer):
 
 def resolve_product_for_favorites_api(product_id, product_type_raw):
     """
-    Единая резолвация товара для add/remove/check избранного.
+    Resolve the public identity accepted by favorites and cart APIs.
 
-    Для headwear / underwear / islamic_clothing / books допускается id доменной строки или id shadow Product
-    (как в листингах и карточках). Избранное хранится на доменной модели; ответ списка по-прежнему
-    отдаёт id shadow Product в поле id (см. FavoriteSerializer), если у домена задан base_product_id.
+    ``product_id`` is always Product.id, never a primary key from a domain
+    table. Domain PKs overlap, so accepting them here makes an ID ambiguous
+    even when ``product_type`` is present. Services are the only non-Product
+    identity and are selected only by an explicit service type.
     """
-    from django.core.exceptions import ObjectDoesNotExist
-
-    from .models import (
-        ClothingProduct,
-        ShoeProduct,
-        ElectronicsProduct,
-        FurnitureProduct,
-        JewelryProduct,
-        Service,
-        MedicineProduct,
-        SupplementProduct,
-        HeadwearProduct,
-        UnderwearProduct,
-        IslamicClothingProduct,
-    )
-
     try:
         pid = int(product_id)
     except (TypeError, ValueError):
         raise serializers.ValidationError({"product_id": "Некорректный product_id"})
 
-    product_type = (product_type_raw or 'medicines').strip().lower().replace('-', '_')
-    product_type = {
+    requested_type = str(product_type_raw or '').strip().lower().replace('-', '_')
+    requested_type = {
         'medical_accessories': 'accessories',
         'medical_accessory': 'accessories',
         'accessory': 'accessories',
-    }.get(product_type, product_type)
+    }.get(requested_type, requested_type)
 
-    def _ensure_active(obj):
-        if hasattr(obj, 'is_active') and not obj.is_active:
-            raise serializers.ValidationError({"product_id": "Товар неактивен"})
-        return obj
+    if requested_type in {'uslugi', 'services', 'service'}:
+        service = Service.objects.filter(id=pid, is_active=True).first()
+        if service is None:
+            raise serializers.ValidationError({"product_id": "Услуга не найдена"})
+        return service, 'uslugi'
 
-    shadow_product = Product.objects.filter(id=pid, is_active=True).first()
-    shadow_product_type = ''
-    if shadow_product is not None:
-        shadow_external = getattr(shadow_product, 'external_data', None) or {}
-        shadow_product_type = str(
-            shadow_external.get('effective_type')
-            or getattr(shadow_product, 'product_type', None)
-            or ''
-        ).strip().lower().replace('-', '_')
-
-    def _resolve_matching_shadow(model_cls=None):
-        """Public Product ids win only when their declared type matches the request.
-
-        PK values overlap between Product and every domain table. Mixed catalog endpoints
-        expose Product ids, while domain endpoints expose domain ids, so resolving a number
-        against the domain table first can silently select an unrelated item.
-        """
-        if shadow_product is None or shadow_product_type != product_type:
-            return None
-        if model_cls is not None and model_cls is not Product:
-            base_field = any(field.name == 'base_product' for field in model_cls._meta.fields)
-            if base_field:
-                domain = model_cls.objects.filter(base_product_id=pid).first()
-                if domain is not None:
-                    return _ensure_active(domain)
-        return _ensure_active(shadow_product)
-
-    def _resolve_domain_triplet(model_cls, reverse_attr):
-        matched_shadow = _resolve_matching_shadow(model_cls)
-        if matched_shadow is not None:
-            return matched_shadow
-        try:
-            return _ensure_active(model_cls.objects.get(id=pid))
-        except model_cls.DoesNotExist:
-            pass
-        row = model_cls.objects.filter(base_product_id=pid).first()
-        if row:
-            return _ensure_active(row)
-        try:
-            p = Product.objects.get(id=pid)
-        except Product.DoesNotExist:
-            raise serializers.ValidationError({"product_id": "Товар не найден"})
-        try:
-            dom = getattr(p, reverse_attr)
-        except ObjectDoesNotExist:
-            raise serializers.ValidationError({"product_id": "Товар не найден"})
-        return _ensure_active(dom)
-
-    if product_type == 'headwear':
-        return _resolve_domain_triplet(HeadwearProduct, 'headwear_item'), product_type
-    if product_type == 'underwear':
-        return _resolve_domain_triplet(UnderwearProduct, 'underwear_item'), product_type
-    if product_type == 'islamic_clothing':
-        return _resolve_domain_triplet(IslamicClothingProduct, 'islamic_clothing_item'), product_type
-
-    # Книги: число pid может быть id shadow Product (витрина /catalog/products) или pk BookProduct (домен).
-    # Если в Product есть строка books с этим pk — сначала трактуем как shadow (избранное по base_product_id),
-    # иначе — как доменный pk; иначе коллизия «pk книги = id чужого shadow» ломала добавление.
-    if product_type == 'books':
-        from .models import BookProduct
-
-        matched_shadow = _resolve_matching_shadow(BookProduct)
-        if matched_shadow is not None:
-            return matched_shadow, product_type
-        shadow_book = BookProduct.objects.filter(base_product_id=pid).first()
-        dom_book = BookProduct.objects.filter(pk=pid).first()
-        prod_is_book_shadow = Product.objects.filter(pk=pid, product_type='books', is_active=True).exists()
-        if prod_is_book_shadow and shadow_book:
-            return _ensure_active(shadow_book), product_type
-        if dom_book:
-            return _ensure_active(dom_book), product_type
-        if shadow_book:
-            return _ensure_active(shadow_book), product_type
-        try:
-            p = Product.objects.get(id=pid)
-        except Product.DoesNotExist:
-            raise serializers.ValidationError({"product_id": "Товар не найден"})
-        pt = (getattr(p, "product_type", None) or "").strip().lower().replace("-", "_")
-        if pt != "books":
-            raise serializers.ValidationError({"product_id": "Товар не найден"})
-        try:
-            dom = p.book_item
-        except BookProduct.DoesNotExist:
-            raise serializers.ValidationError({"product_id": "Товар не найден"})
-        return _ensure_active(dom), product_type
-
-    try:
-        from .models import MedicalEquipmentProduct
-    except ImportError:
-        MedicalEquipmentProduct = None
-
-    domain_maps = {}
-    if MedicalEquipmentProduct:
-        domain_maps['medical_equipment'] = MedicalEquipmentProduct
-
-    PRODUCT_MODEL_MAP = {
-        'medicines': MedicineProduct,
-        'supplements': SupplementProduct if SupplementProduct else Product,
-        'medical_equipment': domain_maps.get('medical_equipment', Product),
-        'tableware': Product,
-        'accessories': Product,
-        'jewelry': JewelryProduct,
-        'perfumery': Product,
-        'clothing': ClothingProduct,
-        'shoes': ShoeProduct,
-        'electronics': ElectronicsProduct,
-        'furniture': FurnitureProduct,
-        'uslugi': Service,
-    }
-
-    model_class = PRODUCT_MODEL_MAP.get(product_type) or Product
-
-    matched_shadow = _resolve_matching_shadow(model_class)
-    if matched_shadow is not None:
-        return matched_shadow, product_type
-
-    try:
-        product = model_class.objects.get(id=pid)
-        return _ensure_active(product), product_type
-    except model_class.DoesNotExist:
-        if model_class is not Product:
-            try:
-                product = Product.objects.get(id=pid)
-                return _ensure_active(product), product_type
-            except Product.DoesNotExist:
-                raise serializers.ValidationError({"product_id": "Товар не найден"})
+    product = Product.objects.filter(id=pid, is_active=True).first()
+    if product is None:
         raise serializers.ValidationError({"product_id": "Товар не найден"})
+
+    external_data = product.external_data if isinstance(product.external_data, dict) else {}
+    actual_type = str(
+        external_data.get('effective_type') or product.product_type or 'medicines'
+    ).strip().lower().replace('-', '_')
+    actual_type = {
+        'medical_accessories': 'accessories',
+        'medical_accessory': 'accessories',
+        'accessory': 'accessories',
+    }.get(actual_type, actual_type)
+
+    # ID-only legacy clients are safe because Product.pk is global. If a type
+    # is supplied, it becomes part of the contract and must match exactly.
+    if requested_type and requested_type != actual_type:
+        raise serializers.ValidationError({"product_id": "Тип товара не соответствует product_id"})
+    return product, actual_type
 
 
 class AddToFavoriteSerializer(serializers.Serializer):
@@ -2523,6 +2415,10 @@ class AddToFavoriteSerializer(serializers.Serializer):
         # Иначе клиенты с product_id: 0 / мусором + product_slug получали 400.
         if slug:
             normalized_type = str(ptype or '').strip().lower().replace('-', '_')
+            if not normalized_type:
+                raise serializers.ValidationError({
+                    "product_type": _("product_type обязателен при использовании product_slug")
+                })
             if normalized_type in {'uslugi', 'services', 'service'}:
                 service = Service.objects.filter(slug=slug, is_active=True).first()
                 if service is None:

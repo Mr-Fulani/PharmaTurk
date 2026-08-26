@@ -89,6 +89,7 @@ export default function FavoriteButton({
   if (cornerIcon) {
     return (
       <button
+        type="button"
         onClick={(e) => toggle(e)}
         disabled={loading}
         title={favorite ? t('remove_from_favorites', 'Удалить из избранного') : t('add_to_favorites', 'В избранное')}
@@ -141,6 +142,7 @@ export default function FavoriteButton({
   if (iconOnly) {
     return (
       <button
+        type="button"
         onClick={(e) => toggle(e)}
         disabled={loading}
         className={`inline-flex items-center justify-center rounded-full p-2 transition-all duration-200 ${favorite
@@ -174,6 +176,7 @@ export default function FavoriteButton({
 
   return (
     <button
+      type="button"
       onClick={(e) => toggle(e)}
       disabled={loading}
       className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200 ${favorite

@@ -1,6 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ProductQuestionViewSet, ProductReviewViewSet, TestimonialViewSet, TestimonialSectionSettingsView
+from .views import (
+    ProductQuestionViewSet,
+    ProductReviewViewSet,
+    ReviewFeedView,
+    TestimonialSectionSettingsView,
+    TestimonialViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'testimonials', TestimonialViewSet, basename='testimonial')
@@ -15,6 +21,8 @@ testimonials_list = TestimonialViewSet.as_view({
 
 urlpatterns = [
     path('testimonials', testimonials_list),
+    path('reviews-feed/', ReviewFeedView.as_view(), name='reviews-feed'),
+    path('reviews-feed', ReviewFeedView.as_view()),
     path('testimonials-section-settings', TestimonialSectionSettingsView.as_view()),
     path('', include(router.urls)),
 ]

@@ -93,6 +93,7 @@ def test_approved_review_is_aggregated_and_edit_returns_to_moderation(review_use
         rating=4,
         text="Original review",
         status=ProductReview.Status.APPROVED,
+        show_on_homepage=True,
     )
     public = APIClient().get(
         "/api/feedback/product-reviews/",
@@ -114,6 +115,7 @@ def test_approved_review_is_aggregated_and_edit_returns_to_moderation(review_use
     review.refresh_from_db()
     assert review.status == ProductReview.Status.PENDING
     assert review.published_at is None
+    assert review.show_on_homepage is False
 
 
 @pytest.mark.django_db
