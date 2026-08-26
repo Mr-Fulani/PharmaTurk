@@ -1,10 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import Link from 'next/link'
+import { LazyMotion, domAnimation, m, useReducedMotion } from 'framer-motion'
 import { getSingleFlight } from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
-import { SpeakerWaveIcon, SpeakerXMarkIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline'
+import {
+  ArrowUpRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
+  PlayIcon,
+  PauseIcon,
+} from '@heroicons/react/24/outline'
 import {
   applyImageFallback,
   getPlaceholderImageUrl,
@@ -62,10 +70,12 @@ function classNames(...classes: (string | boolean)[]) {
 
 export default function TestimonialsCarousel({ className = '' }: TestimonialsCarouselProps) {
   const { t } = useTranslation('common')
-  const router = useRouter()
+  const shouldReduceMotion = useReducedMotion()
   const [testimonials, setTestimonials] = useState<ReviewFeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
+  const [isPointerOver, setIsPointerOver] = useState(false)
+  const [hasFocusWithin, setHasFocusWithin] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
   /** YouTube/Vimeo iframe только для карточек, попавших в viewport (или по клику play) — иначе PSI тянет base.js на всю страницу */
@@ -109,13 +119,6 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     // Используем ref для получения текущего состояния без перерендера
     const currentMuted = videoMutedRef.current.get(testimonialId) !== false
     const newMuted = !currentMuted
-
-    console.log('handleToggleMute called:', {
-      testimonialId,
-      currentMuted,
-      newMuted,
-      videoMutedRef: Array.from(videoMutedRef.current.entries())
-    })
 
     // СНАЧАЛА обновляем UI мгновенно для визуального отклика
     updateVideoMuted((map) => {
@@ -181,47 +184,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     } else if (iframe) {
       // Управление звуком для YouTube/Vimeo iframe через API - синхронно
       const player = youtubePlayers.current.get(testimonialId)
-      console.log('Toggle mute for YouTube:', {
-        testimonialId,
-        hasPlayer: !!player,
-        hasYT: !!window.YT,
-        newMuted,
-        volumeBefore: player ? player.getVolume() : 'N/A',
-        isMutedBefore: player ? player.isMuted() : 'N/A'
-      })
       if (player && window.YT) {
         try {
-          const volumeBefore = player.getVolume()
-          const isMutedBefore = player.isMuted()
-          console.log('Toggle mute for YouTube:', {
-            testimonialId,
-            hasPlayer: !!player,
-            hasYT: !!window.YT,
-            newMuted,
-            volumeBefore,
-            isMutedBefore,
-          })
-
           if (newMuted) {
             // Выключаем звук - ТОЛЬКО через setVolume (без mute())
             player.setVolume(0)
-            console.log('YouTube muted:', testimonialId, 'volume:', player.getVolume())
           } else {
             // Включаем звук - ТОЛЬКО через setVolume (БЕЗ playVideo() и unMute())
             // НЕ вызываем playVideo(), т.к. YouTube блокирует это и ПАУЗИТ видео
             // Кнопка звука ТОЛЬКО переключает громкость, НЕ управляет воспроизведением
             player.setVolume(100)
-            console.log('YouTube unmuted:', testimonialId, 'volume:', player.getVolume())
           }
-
-          // Проверяем результат после небольшой задержки
-          setTimeout(() => {
-            console.log('YouTube after toggle (delayed check):', {
-              volume: player.getVolume(),
-              isMuted: player.isMuted(),
-              playerState: player.getPlayerState()
-            })
-          }, 100)
         } catch (error) {
           console.error('Error toggling mute via API:', error)
         }
@@ -243,17 +216,6 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
     const video = videoRefs.current.get(testimonialId)
     const iframe = iframeRefs.current.get(testimonialId)
-    const player = youtubePlayers.current.get(testimonialId)
-
-    console.log('handleTogglePlay called:', {
-      testimonialId,
-      hasVideo: !!video,
-      hasIframe: !!iframe,
-      hasPlayer: !!player,
-      videoRefs: Array.from(videoRefs.current.keys()),
-      iframeRefs: Array.from(iframeRefs.current.keys()),
-      youtubePlayers: Array.from(youtubePlayers.current.keys())
-    })
 
     if (video) {
       // Управление воспроизведением для video_file
@@ -288,17 +250,10 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       if (player && window.YT && isPlayerReady) {
         try {
           const playerState = player.getPlayerState()
-          console.log('YouTube player state:', {
-            testimonialId,
-            playerState,
-            YT_PLAYING: window.YT.PlayerState.PLAYING,
-            YT_PAUSED: window.YT.PlayerState.PAUSED
-          })
 
           // YT.PlayerState.PLAYING = 1, YT.PlayerState.PAUSED = 2
           if (playerState === 1) {
             // Воспроизводится - ставим на паузу
-            console.log('Pausing YouTube video:', testimonialId)
             player.pauseVideo()
             videoPlayingRef.current.set(testimonialId, false)
             setVideoPlaying((prev) => {
@@ -308,13 +263,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             })
           } else {
             // На паузе или не запущено - воспроизводим СО ЗВУКОМ
-            console.log('Playing YouTube video:', testimonialId)
             player.playVideo()
             // СРАЗУ включаем звук (обход Autoplay Policy: видео запускается muted=1, потом unmute)
             setTimeout(() => {
               try {
                 player.setVolume(100)
-                console.log('YouTube volume set to 100 after play:', testimonialId)
               } catch (e) {
                 console.error('Error setting volume after play:', e)
               }
@@ -335,13 +288,6 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             playerState: player ? player.getPlayerState() : 'N/A'
           })
         }
-      } else {
-        console.log('YouTube player not ready:', {
-          testimonialId,
-          hasPlayer: !!player,
-          hasYT: !!window.YT,
-          isPlayerReady
-        })
       }
     }
   }, [])
@@ -518,22 +464,6 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         })
         const data = response.data
         const testimonialsList = Array.isArray(data) ? data : data.results || []
-        // Отладочная информация для проверки данных
-        console.log('Testimonials loaded:', testimonialsList.map(t => ({
-          id: t.id,
-          author_name: t.author_name,
-          user_id: t.user_id,
-          user_username: t.user_username,
-          hasUser: !!(t.user_id && t.user_username),
-          user_id_type: typeof t.user_id,
-          user_username_type: typeof t.user_username
-        })))
-        console.log('Full testimonials data (first item):', testimonialsList[0])
-        console.log('First testimonial user_id:', testimonialsList[0]?.user_id)
-        console.log('First testimonial user_username:', testimonialsList[0]?.user_username)
-        testimonialsList.forEach((t, idx) => {
-          console.log(`Testimonial ${idx + 1} (ID: ${t.id}): user_id=${t.user_id}, user_username=${t.user_username}`)
-        })
         setTestimonials(testimonialsList)
       } catch (error: any) {
         console.error('Failed to fetch testimonials:', {
@@ -572,50 +502,51 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     })
   }, [testimonials])
 
-  const totalPages = Math.ceil(testimonials.length / itemsPerPage)
-
-  const goToPage = (page: number) => {
-    if (scrollContainerRef.current) {
-      const card = scrollContainerRef.current.children[0] as HTMLElement
-      if (card) {
-        const cardWidth = card.offsetWidth
-        const gap = 16 // Corresponds to `gap-4`
-        const targetIndex = page * itemsPerPage
-        const maxScrollLeft = scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth
-        const scrollAmount = Math.min(targetIndex * (cardWidth + gap), maxScrollLeft)
-
-        scrollContainerRef.current.scrollTo({
-          left: scrollAmount,
-          behavior: 'smooth',
-        })
-      }
+  const testimonialPages = useMemo(() => {
+    const pages: ReviewFeedItem[][] = []
+    for (let index = 0; index < testimonials.length; index += itemsPerPage) {
+      pages.push(testimonials.slice(index, index + itemsPerPage))
     }
-  }
+    return pages
+  }, [testimonials])
+
+  const totalPages = testimonialPages.length
+  const isAutoplayPaused = isPointerOver || hasFocusWithin
+  const isAnyVideoPlaying = useMemo(
+    () => Array.from(videoPlaying.values()).some(Boolean),
+    [videoPlaying]
+  )
+
+  const goToPage = useCallback((page: number) => {
+    const container = scrollContainerRef.current
+    if (!container || totalPages === 0) return
+
+    const normalizedPage = (page + totalPages) % totalPages
+    const pageElement = container.children[normalizedPage] as HTMLElement | undefined
+    if (!pageElement) return
+
+    container.scrollTo({
+      left: pageElement.offsetLeft,
+      behavior: shouldReduceMotion ? 'auto' : 'smooth',
+    })
+    setCurrentPage(normalizedPage)
+  }, [shouldReduceMotion, totalPages])
 
   useEffect(() => {
-    if (totalPages <= 1) return
-    const startAutoPlay = () => {
-      autoPlayRef.current = setInterval(() => {
-        if (scrollContainerRef.current) {
-          const container = scrollContainerRef.current
-          const card = container.children[0] as HTMLElement
-          if (!card) return
-          const cardWidth = card.offsetWidth
-          const gap = 16
-          const scrollAmount = cardWidth + gap
-          if (container.scrollLeft + container.clientWidth >= container.scrollWidth - 1) {
-            container.scrollTo({ left: 0, behavior: 'smooth' })
-          } else {
-            container.scrollBy({ left: scrollAmount, behavior: 'smooth' })
-          }
-        }
-      }, 7000) // Slower scroll for testimonials
-    }
-    startAutoPlay()
+    setCurrentPage((page) => Math.min(page, Math.max(totalPages - 1, 0)))
+  }, [totalPages])
+
+  useEffect(() => {
+    if (totalPages <= 1 || isAutoplayPaused || isAnyVideoPlaying) return
+
+    autoPlayRef.current = setInterval(() => {
+      goToPage(currentPage + 1)
+    }, 7000)
+
     return () => {
       if (autoPlayRef.current) clearInterval(autoPlayRef.current)
     }
-  }, [totalPages])
+  }, [currentPage, goToPage, isAnyVideoPlaying, isAutoplayPaused, totalPages])
 
   // Единый обработчик для управления видео при скролле
   useEffect(() => {
@@ -630,7 +561,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       videoRefs.current.forEach((video, testimonialId) => {
         if (!video || !video.parentElement) return
 
-        const cardElement = video.closest('.flex-shrink-0') as HTMLElement
+        const cardElement = video.closest('.testimonial-card') as HTMLElement
         if (!cardElement) return
 
         const containerRect = container.getBoundingClientRect()
@@ -683,7 +614,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         const player = youtubePlayers.current.get(testimonialId)
         if (!player || typeof player.getPlayerState !== 'function') return
 
-        const cardElement = iframe.closest('.flex-shrink-0') as HTMLElement
+        const cardElement = iframe.closest('.testimonial-card') as HTMLElement
         if (!cardElement) return
 
         const containerRect = container.getBoundingClientRect()
@@ -737,14 +668,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       // Обновление страницы с debounce
       clearTimeout(pageUpdateTimeout)
       pageUpdateTimeout = setTimeout(() => {
-        const card = container.children[0] as HTMLElement
-        if (!card) return
+        const pages = Array.from(container.children) as HTMLElement[]
+        if (pages.length === 0) return
 
-        const cardWidth = card.offsetWidth
-        const gap = 16
-        const pageWidth = itemsPerPage * (cardWidth + gap)
-        const newPage = Math.floor((container.scrollLeft + pageWidth / 2) / pageWidth)
-        if (newPage < totalPages && newPage !== currentPage) {
+        const newPage = pages.reduce((closestIndex, page, index) => {
+          const closestPage = pages[closestIndex]
+          const distance = Math.abs(page.offsetLeft - container.scrollLeft)
+          const closestDistance = Math.abs(closestPage.offsetLeft - container.scrollLeft)
+          return distance < closestDistance ? index : closestIndex
+        }, 0)
+
+        if (newPage !== currentPage) {
           setCurrentPage(newPage)
         }
       }, 100)
@@ -777,21 +711,19 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     container.addEventListener('scroll', throttledHandleScroll, { passive: true })
     // Добавляем обработчик скролла страницы для остановки видео при вертикальном скролле
     window.addEventListener('scroll', throttledCheckVideos, { passive: true })
+    window.addEventListener('resize', throttledCheckVideos, { passive: true })
 
     // Первоначальная проверка
     checkAndControlVideos()
 
-    // Периодическая проверка на случай пропущенных событий
-    const intervalId = setInterval(checkAndControlVideos, 200)
-
     return () => {
       container.removeEventListener('scroll', throttledHandleScroll)
       window.removeEventListener('scroll', throttledCheckVideos)
-      clearInterval(intervalId)
+      window.removeEventListener('resize', throttledCheckVideos)
       clearTimeout(scrollTimeout)
       clearTimeout(pageUpdateTimeout)
     }
-  }, [testimonials, videoMuted, currentPage, totalPages, itemsPerPage])
+  }, [testimonials, videoMuted, currentPage, totalPages])
 
   // Автовоспроизведение отключено - не останавливаем видео при смене страницы
   // Пользователь управляет воспроизведением вручную
@@ -886,11 +818,6 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               onReady: (event: any) => {
                 // Обновляем состояние готовности плеера
                 playerReadyMapRef.current.set(testimonial.uid, true)
-                console.log('YouTube player ready:', {
-                  testimonialId: testimonial.uid,
-                  playerReadyMapRef: Array.from(playerReadyMapRef.current.entries()),
-                  justSet: playerReadyMapRef.current.get(testimonial.uid)
-                })
 
                 try {
                   // Инициализируем БЕЗ звука (для обхода Autoplay Policy)
@@ -903,7 +830,6 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     newMap.set(testimonial.uid, false)
                     return newMap
                   })
-                  console.log('YouTube player initialized with volume:', event.target.getVolume())
                 } catch (e) {
                   console.error('Error setting volume on ready:', e)
                 }
@@ -911,19 +837,6 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               onStateChange: (event: any) => {
                 // YT.PlayerState.UNSTARTED = -1, ENDED = 0, PLAYING = 1, PAUSED = 2, BUFFERING = 3, CUED = 5
                 const isPlaying = event.data === 1
-                console.log('YouTube state changed:', {
-                  testimonialId: testimonial.uid,
-                  state: event.data,
-                  isPlaying,
-                  stateNames: {
-                    '-1': 'UNSTARTED',
-                    '0': 'ENDED',
-                    '1': 'PLAYING',
-                    '2': 'PAUSED',
-                    '3': 'BUFFERING',
-                    '5': 'CUED'
-                  }
-                })
                 videoPlayingRef.current.set(testimonial.uid, isPlaying)
                 setVideoPlaying((prev) => {
                   const newMap = new Map(prev)
@@ -1089,11 +1002,6 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           iframeUrls.current.set(testimonial.uid, finalUrl)
         }
 
-        // Отладочная информация
-        if (process.env.NODE_ENV === 'development') {
-          console.log('YouTube iframe URL:', { testimonialId: testimonial.uid, finalUrl })
-        }
-
         const thumbnail = getYouTubeThumbnail(firstMedia.video_url || embedUrl)
         const showEmbed = lazyEmbedIds.has(testimonial.uid)
 
@@ -1165,272 +1073,497 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     return null
   }
 
-  return (
-    <section ref={sectionRef} className={`py-12 ${className}`}>
-      <div className="mx-auto max-w-6xl px-4">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-main text-center">
-            {t('testimonials_title', 'Что говорят наши клиенты')}
-          </h2>
-        </div>
+  const renderVideoControls = (testimonial: ReviewFeedItem, compact: boolean) => {
+    const hasVideo = testimonial.media?.some(
+      media => (media.media_type === 'video_file' && media.video_file_url) ||
+        (media.media_type === 'video' && media.video_url)
+    )
+    if (!hasVideo) return null
 
-        {testimonials.length === 0 ? (
-          <div className="text-center py-12 bg-white dark:bg-[var(--surface)] rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm mb-8">
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <p className="text-gray-500 text-lg mb-4">
-              {t('no_testimonials_yet', 'Пока нет отзывов. Станьте первым!')}
-            </p>
-            <div className="mt-8">
-              <Link
-                href="/testimonials?action=add"
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm hover:shadow"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span>{t('add_testimonial', 'Оставить отзыв')}</span>
-              </Link>
+    const canToggleMute = testimonial.media?.some(
+      media => (media.media_type === 'video_file' && media.video_file_url) ||
+        (media.media_type === 'video' && media.video_url &&
+          !media.video_url.includes('youtube.com') &&
+          !media.video_url.includes('youtu.be') &&
+          !media.video_url.includes('vimeo.com'))
+    )
+    const controlClass = compact ? 'h-9 w-9' : 'h-11 w-11'
+    const iconClass = compact ? 'h-4 w-4' : 'h-5 w-5'
+
+    return (
+      <>
+        <button
+          type="button"
+          onClick={(event) => handleTogglePlay(testimonial.uid, event)}
+          className={classNames(
+            'absolute left-3 top-3 z-20 inline-flex items-center justify-center rounded-full',
+            'border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md',
+            'transition duration-200 hover:scale-105 hover:bg-black/65 active:scale-95',
+            controlClass
+          )}
+          aria-label={videoPlaying.get(testimonial.uid) ? 'Пауза' : 'Воспроизведение'}
+        >
+          <span className={classNames('relative block', iconClass)}>
+            <PauseIcon
+              className={classNames(
+                'absolute inset-0 transition-opacity duration-150',
+                iconClass,
+                videoPlaying.get(testimonial.uid) ? 'opacity-100' : 'opacity-0'
+              )}
+            />
+            <PlayIcon
+              className={classNames(
+                'absolute inset-0 transition-opacity duration-150',
+                iconClass,
+                videoPlaying.get(testimonial.uid) ? 'opacity-0' : 'opacity-100'
+              )}
+            />
+          </span>
+        </button>
+
+        {canToggleMute && (
+          <button
+            type="button"
+            onClick={(event) => handleToggleMute(testimonial.uid, event)}
+            className={classNames(
+              'absolute right-3 top-3 z-20 inline-flex items-center justify-center rounded-full',
+              'border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md',
+              'transition duration-200 hover:scale-105 hover:bg-black/65 active:scale-95',
+              controlClass
+            )}
+            aria-label={videoMuted.get(testimonial.uid) !== false ? 'Включить звук' : 'Выключить звук'}
+          >
+            <span className={classNames('relative block', iconClass)}>
+              <SpeakerXMarkIcon
+                className={classNames(
+                  'absolute inset-0 transition-opacity duration-150',
+                  iconClass,
+                  videoMuted.get(testimonial.uid) !== false ? 'opacity-100' : 'opacity-0'
+                )}
+              />
+              <SpeakerWaveIcon
+                className={classNames(
+                  'absolute inset-0 transition-opacity duration-150',
+                  iconClass,
+                  videoMuted.get(testimonial.uid) !== false ? 'opacity-0' : 'opacity-100'
+                )}
+              />
+            </span>
+          </button>
+        )}
+      </>
+    )
+  }
+
+  const renderRating = (testimonial: ReviewFeedItem, compact: boolean) => {
+    if (!testimonial.rating) return null
+
+    return (
+      <div
+        className="flex flex-shrink-0 items-center gap-0.5"
+        aria-label={`${testimonial.rating} из 5`}
+      >
+        {[0, 1, 2, 3, 4].map((rating) => (
+          <StarIcon
+            key={rating}
+            className={classNames(
+              compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
+              (testimonial.rating || 0) > rating ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600'
+            )}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  const renderAuthor = (testimonial: ReviewFeedItem, compact: boolean) => {
+    const authorUrl = buildReviewAuthorUrl(testimonial)
+    const content = (
+      <>
+        {testimonial.author_avatar_url ? (
+          <img
+            src={resolveMediaUrl(testimonial.author_avatar_url)}
+            alt={testimonial.author_name}
+            className={classNames(
+              'flex-shrink-0 rounded-full object-cover ring-2 ring-white dark:ring-gray-800',
+              compact ? 'h-7 w-7' : 'h-9 w-9'
+            )}
+            onError={(event) => applyImageFallback(event.currentTarget)}
+          />
+        ) : (
+          <span
+            aria-hidden="true"
+            className={classNames(
+              'inline-flex flex-shrink-0 items-center justify-center rounded-full bg-red-50 font-bold text-red-600 ring-2 ring-white dark:bg-red-950/50 dark:text-red-300 dark:ring-gray-800',
+              compact ? 'h-7 w-7 text-[10px]' : 'h-9 w-9 text-xs'
+            )}
+          >
+            {testimonial.author_name.trim().charAt(0).toUpperCase() || 'M'}
+          </span>
+        )}
+        <span className="min-w-0 truncate font-semibold text-[var(--text-strong)]">
+          {testimonial.author_name}
+        </span>
+      </>
+    )
+
+    const className = classNames(
+      'flex min-w-0 items-center gap-2 transition-opacity hover:opacity-75',
+      compact ? 'text-xs' : 'text-sm'
+    )
+
+    return authorUrl ? (
+      <Link href={authorUrl} className={className} title={`Профиль ${testimonial.author_name}`}>
+        {content}
+      </Link>
+    ) : (
+      <div className={className}>{content}</div>
+    )
+  }
+
+  const renderTestimonialCard = (
+    testimonial: ReviewFeedItem,
+    featured: boolean,
+    cardIndex: number,
+    pageSize: number
+  ) => {
+    const reviewUrl = buildReviewDetailUrl(testimonial)
+    const isTallSecondary = !featured && pageSize === 2
+    const isSingleCard = featured && pageSize === 1
+    const subjectLabel = testimonial.review_type === 'service'
+      ? t('review_about_service', 'Отзыв об услуге: {{name}}', { name: testimonial.product_name || '' })
+      : testimonial.review_type === 'product'
+        ? t('review_about_product', 'Отзыв о товаре: {{name}}', { name: testimonial.product_name || '' })
+        : t('review_about_platform', 'Отзыв о платформе')
+    const kindLabel = testimonial.review_type === 'service'
+      ? t('review_kind_service', 'Услуга')
+      : testimonial.review_type === 'product'
+        ? t('review_kind_product', 'Товар')
+        : t('review_kind_platform', 'Платформа')
+
+    return (
+      <m.article
+        key={testimonial.uid}
+        layout={!shouldReduceMotion}
+        data-testid="homepage-testimonial-card"
+        data-testimonial-id={testimonial.uid}
+        data-featured={featured ? 'true' : 'false'}
+        initial={shouldReduceMotion ? false : { opacity: 0, y: 24, scale: 0.97 }}
+        whileInView={{ opacity: 1, y: 0, scale: 1 }}
+        viewport={{ once: true, amount: 0.18 }}
+        transition={{
+          layout: { type: 'spring', stiffness: 260, damping: 30 },
+          opacity: { duration: 0.35, delay: cardIndex * 0.07 },
+          y: { type: 'spring', stiffness: 220, damping: 24, delay: cardIndex * 0.07 },
+          scale: { type: 'spring', stiffness: 220, damping: 24, delay: cardIndex * 0.07 },
+        }}
+        whileHover={shouldReduceMotion ? undefined : { y: featured ? -6 : -4, scale: featured ? 1.004 : 1.01 }}
+        className={classNames(
+          'testimonial-card group relative isolate overflow-hidden rounded-[1.75rem]',
+          'border border-white/80 bg-white/95 shadow-[0_20px_60px_-32px_rgba(15,23,42,0.45)]',
+          'dark:border-white/10 dark:bg-[var(--surface)] dark:shadow-black/30',
+          'focus-within:ring-2 focus-within:ring-red-500/60',
+          featured
+            ? 'min-h-[510px] sm:col-span-2 lg:col-span-1 lg:row-span-2'
+            : 'min-h-[224px] sm:col-span-1 lg:col-start-2',
+          isTallSecondary && 'lg:row-span-2',
+          isSingleCard && 'lg:col-span-2'
+        )}
+      >
+        <div
+          className={classNames(
+            'grid h-full min-h-[inherit]',
+            featured
+              ? 'md:grid-cols-[minmax(0,1.16fr)_minmax(260px,0.84fr)]'
+              : 'grid-cols-[42%_58%]',
+            isTallSecondary && 'lg:grid-cols-1 lg:grid-rows-[minmax(0,1.15fr)_auto]'
+          )}
+        >
+          <div
+            className={classNames(
+              'relative min-w-0 overflow-hidden bg-gray-100 dark:bg-gray-900',
+              featured ? 'min-h-[300px] md:min-h-0' : 'min-h-[224px]',
+              isTallSecondary && 'lg:min-h-[300px]'
+            )}
+          >
+            <Link
+              href={reviewUrl}
+              className="absolute inset-0 block overflow-hidden"
+              aria-label={`${subjectLabel}: ${testimonial.text}`}
+            >
+              <div className="h-full w-full transition-transform duration-700 ease-out group-hover:scale-[1.045]">
+                {renderMedia(testimonial)}
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 via-slate-950/5 to-transparent" />
+              <span className="absolute bottom-3 left-3 rounded-full border border-white/25 bg-black/35 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white backdrop-blur-md">
+                {kindLabel}
+              </span>
+            </Link>
+            {renderVideoControls(testimonial, !featured)}
+          </div>
+
+          <div className={classNames('relative flex min-w-0 flex-col', featured ? 'p-6 sm:p-7' : 'p-4')}>
+            <span
+              aria-hidden="true"
+              className={classNames(
+                'pointer-events-none absolute right-4 top-1 select-none font-serif leading-none text-red-500/10 dark:text-red-300/10',
+                featured ? 'text-[8rem]' : 'text-7xl'
+              )}
+            >
+              “
+            </span>
+
+            <Link href={reviewUrl} className="relative z-10 flex min-h-0 flex-1 flex-col">
+              <span className={classNames(
+                'mb-3 block font-bold leading-snug text-red-600 dark:text-red-400',
+                featured ? 'line-clamp-3 text-sm' : 'line-clamp-2 text-[11px]'
+              )}>
+                {subjectLabel}
+              </span>
+              <blockquote className={classNames(
+                'text-balance text-gray-700 dark:text-gray-300',
+                featured
+                  ? 'line-clamp-8 text-lg leading-relaxed sm:text-xl'
+                  : 'line-clamp-5 text-sm leading-relaxed'
+              )}>
+                «{testimonial.text}»
+              </blockquote>
+
+              {featured && (
+                <span className="mt-auto inline-flex items-center gap-1.5 pt-5 text-sm font-bold text-[var(--text-strong)]">
+                  {t('read_testimonial', 'Читать отзыв')}
+                  <ArrowUpRightIcon className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                </span>
+              )}
+            </Link>
+
+            <div className={classNames(
+              'relative z-20 mt-4 flex items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-white/10',
+              !featured && 'mt-3 pt-3'
+            )}>
+              {renderAuthor(testimonial, !featured)}
+              {renderRating(testimonial, !featured)}
             </div>
           </div>
-        ) : (
-          <>
-            <div className="relative mb-8">
-              <div
-                ref={scrollContainerRef}
-                className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth py-4"
-                style={{
-                  scrollbarWidth: 'none',
-                  msOverflowStyle: 'none',
-                }}
-              >
-                {testimonials.map((testimonial) => {
-                  const hasUser = testimonial.user_id != null && testimonial.user_username
-                  const reviewUrl = buildReviewDetailUrl(testimonial)
-                  const authorUrl = buildReviewAuthorUrl(testimonial)
-                  const subjectLabel = testimonial.review_type === 'service'
-                    ? t('review_about_service', 'Отзыв об услуге: {{name}}', { name: testimonial.product_name || '' })
-                    : testimonial.review_type === 'product'
-                      ? t('review_about_product', 'Отзыв о товаре: {{name}}', { name: testimonial.product_name || '' })
-                      : t('review_about_platform', 'Отзыв о платформе')
-                  if (hasUser) {
-                    console.log('Rendering testimonial with user:', {
-                      id: testimonial.uid,
-                      user_id: testimonial.user_id,
-                      user_username: testimonial.user_username
-                    })
-                  }
-                  return (
-                    <div
-                      key={testimonial.uid}
-                      className="flex-shrink-0 w-64 bg-white dark:bg-[var(--surface)] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
-                    >
-                      <Link
-                        href={reviewUrl}
-                        className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100 block"
-                        onClick={(e) => {
-                          // Не перехватываем клик, если кликнули на кнопку пользователя
-                          const target = e.target as HTMLElement
-                          if (target.closest('button[type="button"]')) {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }
-                        }}
+        </div>
+      </m.article>
+    )
+  }
+
+  return (
+    <section ref={sectionRef} className={`py-12 sm:py-16 ${className}`}>
+      <LazyMotion features={domAnimation}>
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div
+            className="relative isolate overflow-hidden rounded-[2rem] border border-gray-200/80 bg-gradient-to-br from-slate-50 via-white to-red-50/70 px-4 py-7 shadow-[0_30px_100px_-55px_rgba(15,23,42,0.5)] sm:px-7 sm:py-9 dark:border-white/10 dark:from-slate-950 dark:via-gray-950 dark:to-red-950/20"
+            onMouseEnter={() => setIsPointerOver(true)}
+            onMouseLeave={() => setIsPointerOver(false)}
+            onFocusCapture={() => setHasFocusWithin(true)}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setHasFocusWithin(false)
+              }
+            }}
+          >
+            <div className="testimonial-ambient testimonial-ambient-one" aria-hidden="true" />
+            <div className="testimonial-ambient testimonial-ambient-two" aria-hidden="true" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.88),transparent_42%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.06),transparent_42%)]" />
+
+            <div className="relative z-10">
+              <div className="mb-7 flex flex-col gap-5 sm:mb-9 sm:flex-row sm:items-end sm:justify-between">
+                <div className="max-w-2xl">
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-red-200/80 bg-white/70 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-red-600 shadow-sm backdrop-blur-md dark:border-red-500/20 dark:bg-white/5 dark:text-red-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.12)]" />
+                    {t('testimonials_eyebrow', 'Товары • услуги • платформа')}
+                  </div>
+                  <h2 className="text-balance text-3xl font-black tracking-tight text-main sm:text-4xl lg:text-5xl">
+                    {t('testimonials_title', 'Что говорят наши клиенты')}
+                  </h2>
+                  <p className="mt-3 max-w-xl text-sm leading-relaxed text-gray-600 sm:text-base dark:text-gray-400">
+                    {t('testimonials_spotlight_description', 'Истории покупателей о заказах, товарах и работе сервиса.')}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href="/testimonials"
+                    className="inline-flex h-11 items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-5 text-sm font-bold text-[var(--text-strong)] shadow-sm backdrop-blur-md transition hover:-translate-y-0.5 hover:border-red-200 hover:text-red-600 hover:shadow-md dark:border-white/10 dark:bg-white/5 dark:hover:border-red-500/30 dark:hover:text-red-300"
+                  >
+                    {t('show_all_testimonials', 'Все отзывы')}
+                    <ArrowUpRightIcon className="h-4 w-4" />
+                  </Link>
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white/80 p-1 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/5">
+                      <button
+                        type="button"
+                        onClick={() => goToPage(currentPage - 1)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 hover:text-red-600 active:scale-95 dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-red-300"
+                        aria-label={t('previous_testimonials', 'Предыдущие отзывы')}
                       >
-                        <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
-                          {renderMedia(testimonial)}
-                        </div>
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                        {testimonial.media && testimonial.media.some(
-                          m => (m.media_type === 'video_file' && m.video_file_url) ||
-                            (m.media_type === 'video' && m.video_url)
-                        ) && (
-                              <>
-                                {/* Кнопка play/pause - для ВСЕХ видео */}
-                                <button
-                                  onClick={(e) => handleTogglePlay(testimonial.uid, e)}
-                                  className="absolute top-2 left-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
-                                  aria-label={videoPlaying.get(testimonial.uid) ? 'Пауза' : 'Воспроизведение'}
-                                >
-                                  <div className="relative w-5 h-5">
-                                    <PauseIcon
-                                      className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoPlaying.get(testimonial.uid) ? 'opacity-100' : 'opacity-0'
-                                        }`}
-                                    />
-                                    <PlayIcon
-                                      className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoPlaying.get(testimonial.uid) ? 'opacity-0' : 'opacity-100'
-                                        }`}
-                                    />
-                                  </div>
-                                </button>
-
-                                {/* Кнопка звука - ТОЛЬКО для загруженных видео, НЕ для YouTube/Vimeo */}
-                                {testimonial.media.some(
-                                  m => (m.media_type === 'video_file' && m.video_file_url) ||
-                                    (m.media_type === 'video' && m.video_url &&
-                                      !m.video_url.includes('youtube.com') &&
-                                      !m.video_url.includes('youtu.be') &&
-                                      !m.video_url.includes('vimeo.com'))
-                                ) && (
-                                    <button
-                                      onClick={(e) => handleToggleMute(testimonial.uid, e)}
-                                      className="absolute top-2 right-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
-                                      aria-label={videoMuted.get(testimonial.uid) !== false ? 'Включить звук' : 'Выключить звук'}
-                                    >
-                                      <div className="relative w-5 h-5">
-                                        <SpeakerXMarkIcon
-                                          className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoMuted.get(testimonial.uid) !== false ? 'opacity-100' : 'opacity-0'
-                                            }`}
-                                        />
-                                        <SpeakerWaveIcon
-                                          className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoMuted.get(testimonial.uid) !== false ? 'opacity-0' : 'opacity-100'
-                                            }`}
-                                        />
-                                      </div>
-                                    </button>
-                                  )}
-                              </>
-                            )}
-                      </Link>
-
-                      {/* Текст отзыва - по центру */}
-                      <Link
-                        href={reviewUrl}
-                        className="flex-1 p-4 min-h-[100px] cursor-pointer"
-                        onClick={(e) => {
-                          // Не перехватываем клик, если кликнули на кнопку пользователя
-                          const target = e.target as HTMLElement
-                          if (target.closest('button[type="button"]')) {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }
-                        }}
+                        <ChevronLeftIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => goToPage(currentPage + 1)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 hover:text-red-600 active:scale-95 dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-red-300"
+                        aria-label={t('next_testimonials', 'Следующие отзывы')}
                       >
-                        <span className="mb-2 block line-clamp-2 text-xs font-semibold text-red-600 dark:text-red-400">
-                          {subjectLabel}
-                        </span>
-                        <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-4">
-                          &quot;{testimonial.text}&quot;
-                        </p>
-                      </Link>
-
-                      {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
-                      <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 dark:border-gray-700 mt-auto">
-                        {testimonial.user_id != null && testimonial.user_username && authorUrl ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              console.log('Clicking on user profile:', {
-                                username: testimonial.user_username,
-                                userId: testimonial.user_id,
-                                testimonialId: testimonial.uid
-                              })
-                              console.log('Navigating to:', authorUrl)
-                              router.push(authorUrl).catch(err => {
-                                console.error('Navigation error:', err)
-                              })
-                            }}
-                            onMouseDown={(e) => {
-                              e.stopPropagation()
-                            }}
-                            className="flex items-center flex-1 min-w-0 hover:opacity-80 transition-opacity cursor-pointer text-left bg-transparent border-none p-0 outline-none focus:outline-none"
-                            title={`Профиль ${testimonial.author_name}`}
-                            style={{ zIndex: 10 }}
-                          >
-                            {testimonial.author_avatar_url && (
-                              <img
-                                src={resolveMediaUrl(testimonial.author_avatar_url)}
-                                alt={testimonial.author_name}
-                                className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0 pointer-events-none"
-                                onError={(event) => applyImageFallback(event.currentTarget)}
-                              />
-                            )}
-                            <div className="text-xs font-semibold text-[var(--text-strong)] truncate pointer-events-none">
-                              {testimonial.author_name}
-                            </div>
-                          </button>
-                        ) : (
-                          <div className="flex items-center flex-1 min-w-0">
-                            {testimonial.author_avatar_url && (
-                              <img
-                                src={resolveMediaUrl(testimonial.author_avatar_url)}
-                                alt={testimonial.author_name}
-                                className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                                onError={(event) => applyImageFallback(event.currentTarget)}
-                              />
-                            )}
-                            <div className="text-xs font-semibold text-[var(--text-strong)] truncate">
-                              {testimonial.author_name}
-                            </div>
-                          </div>
-                        )}
-                        {testimonial.rating && (
-                          <div className="flex items-center ml-2 flex-shrink-0">
-                            {[0, 1, 2, 3, 4].map((rating) => (
-                              <StarIcon
-                                key={rating}
-                                className={`h-4 w-4 ${(testimonial.rating || 0) > rating
-                                  ? 'text-yellow-400'
-                                  : 'text-gray-300'
-                                  }`}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                        <ChevronRightIcon className="h-5 w-5" />
+                      </button>
                     </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {totalPages > 1 && (
-              <div className="w-full flex justify-center items-center py-4">
-                <div className="flex justify-center items-center gap-1.5 px-2 py-2">
-                  {Array.from({ length: totalPages }, (_, i) => i).map((pageIndex) => (
-                    <button
-                      key={pageIndex}
-                      onClick={() => goToPage(pageIndex)}
-                      className="flex items-center justify-center w-8 h-8 focus:outline-none"
-                      aria-label={`Перейти на страницу ${pageIndex + 1}`}
-                    >
-                      <div
-                        className="transition-all duration-300 rounded-full"
-                        style={{
-                          width: pageIndex === currentPage ? '14px' : '10px',
-                          height: pageIndex === currentPage ? '14px' : '10px',
-                          border: pageIndex === currentPage ? 'none' : '2px solid #9ca3af',
-                          backgroundColor: pageIndex === currentPage ? (document.documentElement?.classList.contains('dark') ? '#ffffff' : '#111827') : 'transparent',
-                        }}
-                      />
-                    </button>
-                  ))}
+                  )}
                 </div>
               </div>
-            )}
-          </>
-        )}
 
-        {testimonials.length > 0 && (
-          <div className="flex justify-center mt-2">
-            <Link
-              href="/testimonials?action=add"
-              className="inline-flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm hover:shadow"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span>{t('add_testimonial', 'Оставить отзыв')}</span>
-            </Link>
+              {testimonials.length === 0 ? (
+                <div className="rounded-[1.75rem] border border-white/80 bg-white/80 px-6 py-12 text-center shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+                  <svg className="mx-auto mb-4 h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <p className="mb-6 text-lg text-gray-500">
+                    {t('no_testimonials_yet', 'Пока нет отзывов. Станьте первым!')}
+                  </p>
+                  <Link
+                    href="/testimonials?action=add"
+                    className="inline-flex items-center gap-2 rounded-full bg-red-600 px-6 py-3 font-bold text-white shadow-lg shadow-red-600/20 transition hover:-translate-y-0.5 hover:bg-red-700 hover:shadow-xl"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>{t('add_testimonial', 'Оставить отзыв')}</span>
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <div
+                    ref={scrollContainerRef}
+                    className="scrollbar-hide relative flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-1 py-3 lg:gap-6"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
+                    {testimonialPages.map((page, pageIndex) => (
+                      <div
+                        key={page[0]?.uid || pageIndex}
+                        className="grid min-w-0 flex-[0_0_100%] snap-start gap-4 sm:grid-cols-2 lg:min-h-[520px] lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.85fr)] lg:grid-rows-2 lg:gap-5"
+                        data-testid="homepage-testimonial-page"
+                        aria-label={`${t('testimonials_page_title', 'Страница отзывов')} ${pageIndex + 1}`}
+                      >
+                        {page.map((testimonial, cardIndex) => (
+                          renderTestimonialCard(testimonial, cardIndex === 0, cardIndex, page.length)
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="min-w-[3.25rem] text-xs font-black tabular-nums tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                        {String(currentPage + 1).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}
+                      </span>
+                      <div className="h-1.5 w-28 overflow-hidden rounded-full bg-gray-200/80 sm:w-40 dark:bg-white/10">
+                        <span
+                          key={currentPage}
+                          className="testimonial-progress-fill block h-full origin-left rounded-full bg-gradient-to-r from-red-600 via-rose-500 to-amber-400"
+                          style={{ animationPlayState: isAutoplayPaused || isAnyVideoPlaying ? 'paused' : 'running' }}
+                        />
+                      </div>
+                      {totalPages > 1 && (
+                        <div className="hidden items-center gap-1 sm:flex">
+                          {testimonialPages.map((page, pageIndex) => (
+                            <button
+                              key={page[0]?.uid || pageIndex}
+                              type="button"
+                              onClick={() => goToPage(pageIndex)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                              aria-label={`${t('go_to_testimonials_page', 'Перейти к отзывам')} ${pageIndex + 1}`}
+                              aria-current={pageIndex === currentPage ? 'true' : undefined}
+                            >
+                              <span className={classNames(
+                                'block rounded-full transition-all duration-300',
+                                pageIndex === currentPage
+                                  ? 'h-2.5 w-6 bg-gray-900 dark:bg-white'
+                                  : 'h-2 w-2 bg-gray-300 hover:bg-red-400 dark:bg-gray-600'
+                              )} />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <Link
+                      href="/testimonials?action=add"
+                      className="inline-flex items-center justify-center gap-2 rounded-full bg-red-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:-translate-y-0.5 hover:bg-red-700 hover:shadow-xl active:translate-y-0"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>{t('add_testimonial', 'Оставить отзыв')}</span>
+                    </Link>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      </LazyMotion>
+
       <style jsx>{`
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
+        }
+
+        .testimonial-ambient {
+          position: absolute;
+          border-radius: 9999px;
+          filter: blur(70px);
+          pointer-events: none;
+          opacity: 0.42;
+          will-change: transform;
+        }
+
+        .testimonial-ambient-one {
+          width: 22rem;
+          height: 22rem;
+          top: -10rem;
+          right: -5rem;
+          background: rgba(244, 63, 94, 0.24);
+          animation: testimonial-float-one 14s ease-in-out infinite alternate;
+        }
+
+        .testimonial-ambient-two {
+          width: 20rem;
+          height: 20rem;
+          bottom: -12rem;
+          left: 8%;
+          background: rgba(251, 191, 36, 0.18);
+          animation: testimonial-float-two 17s ease-in-out infinite alternate;
+        }
+
+        .testimonial-progress-fill {
+          width: 100%;
+          animation: testimonial-progress 7s linear forwards;
+        }
+
+        @keyframes testimonial-progress {
+          from { transform: scaleX(0); }
+          to { transform: scaleX(1); }
+        }
+
+        @keyframes testimonial-float-one {
+          from { transform: translate3d(0, 0, 0) scale(0.95); }
+          to { transform: translate3d(-3rem, 2.5rem, 0) scale(1.08); }
+        }
+
+        @keyframes testimonial-float-two {
+          from { transform: translate3d(0, 0, 0) scale(1); }
+          to { transform: translate3d(4rem, -2rem, 0) scale(1.12); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .testimonial-ambient,
+          .testimonial-progress-fill {
+            animation: none;
+          }
         }
       `}</style>
     </section>
