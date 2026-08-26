@@ -284,7 +284,7 @@ class ProductReviewSerializer(serializers.ModelSerializer):
     def get_author_avatar_url(self, obj):
         return _resolve_file_url(getattr(obj.user, "avatar", None), self.context.get("request"))
 
-    def get_subject_image_url(self, obj):
+    def get_subject_image_url(self, obj) -> str | None:
         """Return catalog media annotated by the review-feed queryset."""
         request = self.context.get("request")
         candidates = (
