@@ -150,7 +150,7 @@ class IkeaParser(BaseScraper):
         )
         if not item_code:
             raise OfferNotFound(offer.canonical_url)
-        raw = self.ikea_service.fetch_item_details(item_code)
+        raw = self.ikea_service.fetch_item_details(item_code, strict_errors=True)
         if not raw:
             raise OfferNotFound(offer.canonical_url)
         scraped = self._to_scraped_product(raw)

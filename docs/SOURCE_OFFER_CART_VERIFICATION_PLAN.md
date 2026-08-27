@@ -2,10 +2,11 @@
 
 Статус: активный рабочий план; код, remote CI, backup, production-copy migration
 rehearsal, production deploy, historical backfill и recording завершены. IKEA live
-verification остановлен на canary до выпуска исправления exact-variant selection;
+verification остановлен на canary до выпуска исправлений exact-variant selection и
+классификации временной недоступности поставщика;
 background/cart/catalog rollout, Alertmanager и отдельный staging smoke остаются открыты
 Создан: 2026-08-27
-Последняя проверка по коду: 2026-08-27
+Последняя проверка по коду: 2026-08-28
 Ответственный контур: `scrapers` → `catalog` → `orders/cart` → `checkout/payments` → frontend
 
 Этот документ — рабочий источник правды по внедрению проверки supplier offer при
@@ -730,6 +731,18 @@ offer-строк; штатный rollback следующих фаз — откл
 - Исправление нормализует одиночный IKEA response по уже выбранному article code и имеет
   отдельный regression test. Parser contract — `20 passed`, связанный suite —
   `52 passed`, полный backend gate — `1186 passed`, `30 subtests passed`.
+- Predeploy canary нового image был намеренно запущен вне production service stack и
+  сначала получил DNS failure из-за подключения только к internal `data` network. Это
+  выявило отдельную ошибку контракта: best-effort `IkeaService.fetch_item_details`
+  возвращал `None` при transport/5xx, а live adapter ошибочно превращал это в
+  `not_found/out_of_stock`.
+- Для обычного bulk import сохранено прежнее best-effort поведение. Только live
+  `check_offer` включает strict error propagation: DNS/transport и 5xx проходят через
+  общий translator как retryable `source_unreachable`, а 404/410 остаются конечными
+  supplier outcomes. Добавлены regressions для DNS и HTTP 503.
+- После второго review связанный IKEA/access/verification suite — `63 passed`; финальный
+  полный backend gate — `1188 passed`, `30 subtests passed`. Background/cart/catalog
+  flags остаются выключены до успешного canary через production egress networks.
 
 ## Оценка
 

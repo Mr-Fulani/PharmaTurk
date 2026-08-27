@@ -260,7 +260,11 @@ def test_lcw_offer_check_fetches_only_saved_variant(monkeypatch):
 @pytest.mark.parametrize(("quantity", "precision"), [(5, "exact"), (None, "boolean")])
 def test_ikea_offer_check_preserves_only_real_quantity(monkeypatch, quantity, precision):
     parser = IkeaParser("https://www.ikea.com.tr")
-    monkeypatch.setattr(parser.ikea_service, "fetch_item_details", lambda code: {"sprCode": code})
+    monkeypatch.setattr(
+        parser.ikea_service,
+        "fetch_item_details",
+        lambda code, **_kwargs: {"sprCode": code},
+    )
     monkeypatch.setattr(
         parser,
         "_to_scraped_product",
@@ -302,7 +306,7 @@ def test_ikea_offer_check_treats_variant_key_as_exact_article(monkeypatch):
     monkeypatch.setattr(
         parser.ikea_service,
         "fetch_item_details",
-        lambda code: calls.append(code) or {"sprCode": code},
+        lambda code, **_kwargs: calls.append(code) or {"sprCode": code},
     )
     monkeypatch.setattr(
         parser,
@@ -337,6 +341,58 @@ def test_ikea_offer_check_treats_variant_key_as_exact_article(monkeypatch):
     assert result.stock_precision == OfferStockPrecision.EXACT
     assert result.stock_quantity == 29
     assert result.canonical_url.endswith("/00623862")
+
+
+def test_ikea_offer_check_does_not_turn_dns_failure_into_not_found(monkeypatch):
+    parser = IkeaParser("https://www.ikea.com.tr")
+    request = httpx.Request(
+        "GET",
+        "https://frontendapi.ikea.com.tr/api/product/00623862/detail?language=tr",
+    )
+
+    def fail(_url):
+        raise httpx.ConnectError("temporary DNS failure", request=request)
+
+    monkeypatch.setattr(parser.ikea_service.client, "get", fail)
+
+    with pytest.raises(OfferSourceUnavailable) as error:
+        parser.check_offer(
+            _context(
+                canonical_url="https://www.ikea.com.tr/urun/00581918",
+                external_product_id="00581918",
+                external_sku="",
+                variant_key="00623862",
+                size_key="",
+            )
+        )
+
+    assert error.value.error.code == OfferCheckErrorCode.TRANSPORT_ERROR
+    assert error.value.error.retryable is True
+
+
+def test_ikea_offer_check_does_not_turn_server_error_into_not_found(monkeypatch):
+    parser = IkeaParser("https://www.ikea.com.tr")
+    request = httpx.Request(
+        "GET",
+        "https://frontendapi.ikea.com.tr/api/product/00623862/detail?language=tr",
+    )
+    response = httpx.Response(503, request=request)
+    monkeypatch.setattr(parser.ikea_service.client, "get", lambda _url: response)
+
+    with pytest.raises(OfferSourceUnavailable) as error:
+        parser.check_offer(
+            _context(
+                canonical_url="https://www.ikea.com.tr/urun/00581918",
+                external_product_id="00581918",
+                external_sku="",
+                variant_key="00623862",
+                size_key="",
+            )
+        )
+
+    assert error.value.error.code == OfferCheckErrorCode.TRANSPORT_ERROR
+    assert error.value.error.retryable is True
+    assert error.value.error.http_status == 503
 
 
 def test_ummaland_check_is_boolean_and_read_only(monkeypatch):

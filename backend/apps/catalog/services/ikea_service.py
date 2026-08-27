@@ -183,8 +183,19 @@ class IkeaService:
             return parts[1], "tr"
         return parts[-1], "tr"
 
-    def fetch_item_details(self, item_code: str) -> Optional[Dict]:
-        """Получает детальную информацию об одном товаре."""
+    def fetch_item_details(
+        self,
+        item_code: str,
+        *,
+        strict_errors: bool = False,
+    ) -> Optional[Dict]:
+        """Получает детальную информацию об одном товаре.
+
+        Обычный импорт сохраняет историческое best-effort поведение и пропускает
+        временно недоступную карточку. Live offer verification включает
+        ``strict_errors``: transport/5xx должны дойти до общего error translator,
+        иначе временная ошибка поставщика превратится в ложный ``not_found``.
+        """
         clean_code = str(item_code).replace(".", "").strip()
         url = f"{self.BASE_URL}/product/{clean_code}/detail?language=tr"
         try:
@@ -198,10 +209,14 @@ class IkeaService:
                 return response.json()
             else:
                 logger.warning(f"IKEA API returned {response.status_code} for item {clean_code}")
+                if strict_errors:
+                    response.raise_for_status()
                 return None
         except ExternalAccessBlockedError:
             raise
         except Exception as e:
+            if strict_errors:
+                raise
             logger.error(f"Error fetching IKEA item {clean_code}: {str(e)}")
             return None
 
