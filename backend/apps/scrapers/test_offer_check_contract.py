@@ -296,6 +296,49 @@ def test_ikea_offer_check_preserves_only_real_quantity(monkeypatch, quantity, pr
     assert result.stock_quantity == quantity
 
 
+def test_ikea_offer_check_treats_variant_key_as_exact_article(monkeypatch):
+    parser = IkeaParser("https://www.ikea.com.tr")
+    calls = []
+    monkeypatch.setattr(
+        parser.ikea_service,
+        "fetch_item_details",
+        lambda code: calls.append(code) or {"sprCode": code},
+    )
+    monkeypatch.setattr(
+        parser,
+        "_to_scraped_product",
+        lambda raw: ScrapedProduct(
+            name="DYVLINGE",
+            price=Decimal("12999.00"),
+            currency="TRY",
+            url=f"https://www.ikea.com.tr/urun/{raw['sprCode']}",
+            external_id=raw["sprCode"],
+            sku=raw["sprCode"],
+            is_available=True,
+            stock_quantity=29,
+            source="ikea",
+        ),
+    )
+
+    result = parser.check_offer(
+        _context(
+            canonical_url="https://www.ikea.com.tr/urun/00581918",
+            external_product_id="00581918",
+            external_sku="",
+            variant_key="00623862",
+            size_key="",
+            selected_options={"color": "kelinge bej"},
+        )
+    )
+
+    assert calls == ["00623862"]
+    assert result.is_success is True
+    assert result.source_price == Decimal("12999.00")
+    assert result.stock_precision == OfferStockPrecision.EXACT
+    assert result.stock_quantity == 29
+    assert result.canonical_url.endswith("/00623862")
+
+
 def test_ummaland_check_is_boolean_and_read_only(monkeypatch):
     parser = UmmalandParser("https://umma-land.com")
     monkeypatch.setattr(

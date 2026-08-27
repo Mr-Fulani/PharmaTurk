@@ -1,9 +1,9 @@
 # Проверка цены и наличия первоисточника в корзине
 
-Статус: активный рабочий план; код и локальные автоматические проверки фаз 0–8
-завершены; rollout audit/docs, локальная migration rehearsal, production-like predeploy
-и runtime smoke фазы 9 завершены; immutable remote CI, production-copy migrations,
-Alertmanager, source rollout и staging smoke остаются открыты
+Статус: активный рабочий план; код, remote CI, backup, production-copy migration
+rehearsal, production deploy, historical backfill и recording завершены. IKEA live
+verification остановлен на canary до выпуска исправления exact-variant selection;
+background/cart/catalog rollout, Alertmanager и отдельный staging smoke остаются открыты
 Создан: 2026-08-27
 Последняя проверка по коду: 2026-08-27
 Ответственный контур: `scrapers` → `catalog` → `orders/cart` → `checkout/payments` → frontend
@@ -260,9 +260,10 @@ offer-строк; штатный rollback следующих фаз — откл
   локальной dev-БД, подтвердить пустой повторный plan и сохранность cart/order rows.
 - [x] Выполнить dry-run и идемпотентный historical backfill локальной dev-БД без
   supplier HTTP; подтвердить offer-key uniqueness и структурное coverage.
-- [ ] Включить recording offers без cart enforcement.
-- [ ] Провести dry-run и сохранить отчёт по покрытию source offers на копии production
-  data, затем в staging.
+- [x] Включить recording offers без cart enforcement.
+- [x] Провести dry-run и сохранить отчёт по покрытию source offers на восстановленной
+  копии production data.
+- [ ] Повторить тот же audit artifact и cart/checkout smoke в отдельном staging.
 - [ ] Включать live verification по одному источнику через feature flag.
 - [ ] Начать с Zara/Inditex, FLO, LCW и IKEA.
 - [ ] Проверить метрики и rollback после каждого источника.
@@ -277,7 +278,8 @@ offer-строк; штатный rollback следующих фаз — откл
 
 ## Общие release gates
 
-- [ ] Все миграции применяются на копии production schema/data без ручного исправления.
+- [x] Все миграции применяются на копии production schema/data без ручного исправления;
+  `CartItem=16` и `OrderItem=1` сохранены, повторный migration plan пуст.
 - [x] Все три миграции применены на изолированной копии текущей локальной schema/data;
   existing `CartItem`/`OrderItem` counts сохранены, повторный plan пуст.
 - [x] Нет N+1 запросов в cart serialization.
@@ -292,7 +294,8 @@ offer-строк; штатный rollback следующих фаз — откл
 - [x] Backend targeted suite, полный обязательный CI и frontend build зелёные.
 - [x] Production-like Docker images собраны локально; release-image backend/frontend
   проверки и clean-schema runtime smoke завершены успешно.
-- [ ] Immutable 40-character release SHA отправлен в GitHub и remote CI завершён успешно.
+- [x] Immutable 40-character release SHA отправлен в GitHub, remote CI завершён успешно,
+  backend/frontend manifests опубликованы в GHCR и проверены анонимным pull.
 - [ ] Staging smoke выполнен для cart, checkout, обычной оплаты и crypto.
 
 ## Журнал работ
@@ -701,6 +704,32 @@ offer-строк; штатный rollback следующих фаз — откл
 - Это локальный gate для текущего exact diff. Открыты: чистый immutable SHA, remote CI,
   production-copy migration rehearsal, backup manifests, staging smoke и поэтапное
   включение source flags.
+
+### 2026-08-27 — production deploy, backfill и IKEA canary
+
+- Remote CI attempt 2 для `369cc9d2b7067b47681eba97cd467ba7a57fabee` завершён
+  успешно: secret scan, frontend, backend, Compose и immutable image publication зелёные.
+- На production создан online PostgreSQL custom-format dump и Qdrant full snapshot;
+  оба artifact проверены, зафиксированы SHA-256 и release manifest для предыдущего
+  `78da4de4013130d17f4fd1e027dfede23f6b1c2f`.
+- Dump восстановлен во временный изолированный PostgreSQL. Миграции `catalog.0202`,
+  `orders.0010/0011` применились без ручного исправления; counts `16/1` не изменились,
+  повторный plan пуст, временные container/network/volume удалены.
+- Exact images прошли изолированный runtime smoke на production host, затем release
+  развёрнут controlled maintenance workflow. Все application containers работают на
+  одном SHA; public readiness, liveness и security-header smoke прошли.
+- Production backfill выполнен двумя bounded batch без supplier HTTP. Итоговый audit:
+  15 386/15 386 source-кандидатов покрыты, 27 509 active offers, flag blockers отсутствуют,
+  DB uniqueness `(product, parser, offer_key)` не нарушена.
+- `SOURCE_OFFER_RECORDING_ENABLED=true`; verification allowlist ограничен `ikea`,
+  background refresh, cart enforcement и catalog projection оставлены выключенными.
+- Контролируемый IKEA canary подтвердил успешный API response/price/availability для
+  базового артикула, но выявил ложный `option_not_found` для exact furniture variants:
+  adapter повторно применял generic variant selector после загрузки уже выбранного
+  артикула. Rollout остановлен до cart enforcement; пользовательский flow не затронут.
+- Исправление нормализует одиночный IKEA response по уже выбранному article code и имеет
+  отдельный regression test. Parser contract — `20 passed`, связанный suite —
+  `52 passed`, полный backend gate — `1186 passed`, `30 subtests passed`.
 
 ## Оценка
 

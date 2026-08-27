@@ -52,11 +52,11 @@ class IkeaParser(BaseScraper):
         """Парсит список товаров из категории."""
         self.has_more_pages = True
         self.logger.info(f"Начинаем парсинг каталога IKEA: {category_url}")
-        
+
         # Получаем category_id из URL (если это возможно) или просто ищем товары
         # Для IKEA TR URL обычно имеет вид /kategori/kallax-serisi или /urun-gruplari/...
         # Мы используем поиск по ключевым словам или извлекаем слаг категории.
-        
+
         category_slug, site_language = self.ikea_service.parse_category_list_url(category_url)
         if not category_slug:
             self.logger.warning(f"Не удалось извлечь категорию из URL: {category_url}")
@@ -89,11 +89,7 @@ class IkeaParser(BaseScraper):
             for item in brief_results:
                 code = item.get("sprCode") or item.get("id")
                 clean_code = self.ikea_service._clean_spr_code(code)
-                if (
-                    clean_code
-                    and clean_code not in seen_spr
-                    and clean_code not in page_codes
-                ):
+                if clean_code and clean_code not in seen_spr and clean_code not in page_codes:
                     item_codes.append(clean_code)
                     page_codes.add(clean_code)
 
@@ -105,9 +101,7 @@ class IkeaParser(BaseScraper):
             full_results = self.ikea_service.fetch_items(item_codes)
 
             for item in full_results:
-                row_code = self.ikea_service._clean_spr_code(
-                    item.get("sprCode") or item.get("id")
-                )
+                row_code = self.ikea_service._clean_spr_code(item.get("sprCode") or item.get("id"))
                 if not row_code or row_code in seen_spr:
                     continue
                 variant_details = self.ikea_service.collect_color_variant_details(item)
@@ -160,7 +154,19 @@ class IkeaParser(BaseScraper):
         if not raw:
             raise OfferNotFound(offer.canonical_url)
         scraped = self._to_scraped_product(raw)
-        return result_from_scraped_product(offer, scraped, exact_stock=True)
+        # ``item_code`` already selects one concrete IKEA article. Historical
+        # furniture offers store that article in ``variant_key``; reapplying
+        # the generic variant selector to the normalized single-item response
+        # would look for a nested variant list that is intentionally absent and
+        # incorrectly report ``option_not_found``. Keep only the trusted URL and
+        # exact article identity for result normalization.
+        exact_article = OfferCheckContext(
+            canonical_url=offer.canonical_url,
+            external_product_id=item_code,
+            external_sku=item_code,
+            parser_config=offer.parser_config,
+        )
+        return result_from_scraped_product(exact_article, scraped, exact_stock=True)
 
     def _scraped_product_from_variant_details(
         self,
@@ -225,12 +231,12 @@ class IkeaParser(BaseScraper):
         """Нормализует данные из API IKEA в формат ScrapedProduct."""
         # Используем маппинг из IkeaService
         normalized = self.ikea_service._normalize_item_data(item_data)
-        
+
         # Преобразуем в ScrapedProduct
         images = normalized.get("images", [])
         if not images and normalized.get("main_image"):
             images = [normalized["main_image"]]
-            
+
         raw = normalized.get("raw_item") or {}
         return ScrapedProduct(
             external_id=normalized["item_no"],
