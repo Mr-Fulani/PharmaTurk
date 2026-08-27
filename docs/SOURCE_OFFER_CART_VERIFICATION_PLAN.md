@@ -1,10 +1,10 @@
 # Проверка цены и наличия первоисточника в корзине
 
-Статус: активный рабочий план; код, remote CI, backup, production-copy migration
-rehearsal, production deploy, historical backfill и recording завершены. IKEA live
-verification остановлен на canary до выпуска исправлений exact-variant selection и
-классификации временной недоступности поставщика;
-background/cart/catalog rollout, Alertmanager и отдельный staging smoke остаются открыты
+Статус: production rollout для IKEA завершён: recording, live verification, bounded
+background refresh и cart/checkout enforcement включены и подтверждены canary.
+Catalog projection намеренно выключен до стабильного окна; Alertmanager, отдельный
+staging smoke, расширение allowlist на остальные источники и fake-stock cleanup остаются
+открыты.
 Создан: 2026-08-27
 Последняя проверка по коду: 2026-08-28
 Ответственный контур: `scrapers` → `catalog` → `orders/cart` → `checkout/payments` → frontend
@@ -265,7 +265,8 @@ offer-строк; штатный rollback следующих фаз — откл
 - [x] Провести dry-run и сохранить отчёт по покрытию source offers на восстановленной
   копии production data.
 - [ ] Повторить тот же audit artifact и cart/checkout smoke в отдельном staging.
-- [ ] Включать live verification по одному источнику через feature flag.
+- [x] Включить live verification первого источника через feature flag: production
+  allowlist ограничен `ikea`.
 - [ ] Начать с Zara/Inditex, FLO, LCW и IKEA.
 - [ ] Проверить метрики и rollback после каждого источника.
 - [ ] Подключить `ops/prometheus/source_offer_alerts.yml` к production Prometheus/
@@ -297,6 +298,9 @@ offer-строк; штатный rollback следующих фаз — откл
   проверки и clean-schema runtime smoke завершены успешно.
 - [x] Immutable 40-character release SHA отправлен в GitHub, remote CI завершён успешно,
   backend/frontend manifests опубликованы в GHCR и проверены анонимным pull.
+- [x] Production IKEA canary подтверждает exact variant, актуальную цену/остаток,
+  bounded background task и оба cart outcome: verified/payable `200` и
+  `source_out_of_stock` `409`; тестовые cart rows удалены.
 - [ ] Staging smoke выполнен для cart, checkout, обычной оплаты и crypto.
 
 ## Журнал работ
@@ -743,6 +747,45 @@ offer-строк; штатный rollback следующих фаз — откл
 - После второго review связанный IKEA/access/verification suite — `63 passed`; финальный
   полный backend gate — `1188 passed`, `30 subtests passed`. Background/cart/catalog
   flags остаются выключены до успешного canary через production egress networks.
+
+### 2026-08-28 — production IKEA verification, background и cart enforcement
+
+- Hotfix временной недоступности поставщика зафиксирован отдельным commit
+  `75bc4a44a06dfe2b91db6572740b9a8388dc6be4`. Повторный target gate — `38 passed`,
+  полный backend gate — `1188 passed`; GitHub CI `33117989983` завершил Compose,
+  secret scan, frontend, backend и exact-revision image jobs успешно.
+- Опубликованы и сверены immutable images: backend
+  `sha256:cded06ae300f0a10bc62b7bb40ff67dde59bbf499c598328128d74a0f986f1d3`, frontend
+  `sha256:5d3067be79994d2c3e37ffd5eafb3ed52f877c6467502319e205fbca277f22d9`;
+  OCI revision обоих образов совпадает с release SHA.
+- Predeploy exact-image canary подключался одновременно к production `data` и `edge`
+  networks. Offers `114/115/116` дали success: цены `29999/12999/12999 TRY`, варианты
+  `00581918/00623862` вернули exact stock `29/127`; ложных `option_not_found` и
+  `source_unreachable` нет. Отдельный isolated full-stack smoke применил все миграции с
+  нуля и проверил readiness, HSTS и canonical redirect, затем удалил свой project.
+- Controlled deploy `369cc9d2b7067b47681eba97cd467ba7a57fabee` → `75bc4a4...`
+  использовал валидированный backup manifest; migration plan был пуст. Stateful
+  PostgreSQL/Redis/Qdrant не пересоздавались, все application containers работают на
+  одном SHA, public postdeploy smoke прошёл.
+- Postdeploy canary через штатный backend повторил `3/3 success`. Bounded background
+  включён только для `ikea` с batch `5`: синхронный прогон, реальная задача через broker
+  и первый автоматический celerybeat-cycle дали суммарно `15/15 success`, retryable и
+  permanent errors — `0`. IKEA stale backlog уменьшился `4302 → 4287`, error rows — `0`.
+- Cart enforcement включён отдельным config step при выключенном catalog projection.
+  Public anonymous canary подтвердил: product `127` выбрал trusted offer `114`, вернул
+  `200`, `verified`, `in_stock`, payable; product `131` выбрал live-проверенный
+  out-of-stock offer `125` и вернул `409 source_out_of_stock`, не создавая корзину.
+  Созданная positive test cart и связанная строка удалены; обе test session identities
+  отсутствуют после cleanup.
+- Финальный read-only audit: blockers `0`, coverage `15386/15386` (`100%`), active offers
+  `27509`, IKEA errors `0`, required migrations применены. Флаги production:
+  recording/verification/background/cart — `true`, allowlist — `ikea`, batch — `5`,
+  catalog projection — `false`. Public health после rollout: DB/cache healthy.
+- Два ранних ручных config-stage запуска безопасно остановились до feature rollout:
+  сначала из-за неверного имени Compose override, затем из-за исторического `.env`
+  `IMAGE_TAG`. Rollback вернул флаги в `false`, работающий release и public health не
+  менялись. Финальные команды использовали `docker-compose.prod.yml`, явный immutable
+  `IMAGE_TAG` и закрытый stdin для `docker compose exec`; резервные `.env` сохранены.
 
 ## Оценка
 
