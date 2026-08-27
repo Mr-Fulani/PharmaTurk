@@ -404,13 +404,18 @@ class SourceOfferVerificationService:
             maximum=1.0,
         )
         origin = f"https://{urlparse(context.canonical_url).netloc}"
+        parser_kwargs: dict[str, Any] = {
+            "timeout": timeout,
+            "max_retries": 0,
+        }
+        if self._proxy_enabled_for(parser_key, context):
+            parser_kwargs["use_proxy"] = True
         last_error: OfferVerificationError | None = None
         for attempt in range(retries + 1):
             try:
                 with parser_class(
                     origin,
-                    timeout=timeout,
-                    max_retries=0,
+                    **parser_kwargs,
                 ) as parser:
                     result = parser.check_offer(context)
                 if result.error is not None:
@@ -438,6 +443,64 @@ class SourceOfferVerificationService:
         if last_error is not None:  # pragma: no cover - loop always raises/returns
             raise last_error
         raise MalformedOfferResponse()
+
+    @staticmethod
+    def _proxy_enabled_for(parser_key: str, context: OfferCheckContext) -> bool:
+        """Use only the proxy policy of a matching, active server-side config.
+
+        Historical backfill offers do not have ``scraper_config_id``. For those
+        rows the exact parser key is a safe fallback: the config and proxy URL
+        remain server-owned, while the client cannot submit either value.
+        """
+
+        if not str(getattr(settings, "SCRAPER_PROXY_URL", "") or "").strip():
+            return False
+
+        payload = context.parser_config if isinstance(context.parser_config, dict) else {}
+        saved_parser_key = str(payload.get("parser_class") or "").strip().casefold()
+        if saved_parser_key and saved_parser_key != parser_key:
+            return False
+
+        try:
+            from apps.scrapers.models import ScraperConfig
+
+            configs = ScraperConfig.objects.filter(
+                is_enabled=True,
+                status="active",
+            )
+            raw_config_id = payload.get("scraper_config_id")
+            if raw_config_id not in (None, ""):
+                try:
+                    config_id = int(raw_config_id)
+                except (TypeError, ValueError):
+                    return False
+                config = (
+                    configs.filter(pk=config_id)
+                    .only(
+                        "parser_class",
+                        "use_proxy",
+                    )
+                    .first()
+                )
+            else:
+                config = (
+                    configs.filter(parser_class__iexact=parser_key)
+                    .order_by("priority", "pk")
+                    .only("parser_class", "use_proxy")
+                    .first()
+                )
+        except Exception:
+            logger.exception(
+                "source_offer_proxy_config_failed",
+                extra={"source": parser_key},
+            )
+            return False
+
+        if config is None:
+            return False
+        if str(config.parser_class or "").strip().casefold() != parser_key:
+            return False
+        return bool(config.use_proxy)
 
     @staticmethod
     def _persist_success(offer: ProductSourceOffer, result: OfferCheckResult) -> None:

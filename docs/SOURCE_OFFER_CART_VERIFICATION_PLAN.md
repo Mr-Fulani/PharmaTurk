@@ -1,10 +1,10 @@
 # Проверка цены и наличия первоисточника в корзине
 
-Статус: production rollout для IKEA завершён: recording, live verification, bounded
-background refresh и cart/checkout enforcement включены и подтверждены canary.
-Catalog projection намеренно выключен до стабильного окна; Alertmanager, отдельный
-staging smoke, расширение allowlist на остальные источники и fake-stock cleanup остаются
-открыты.
+Статус: production rollout для IKEA, Ummaland и LCW завершён: recording, live
+verification, bounded background refresh и cart/checkout enforcement включены и
+подтверждены canary. Catalog projection намеренно выключен до стабильного окна;
+FLO/Zara ожидают надёжного anti-bot/proxy canary, а Alertmanager, отдельный staging
+smoke и fake-stock cleanup остаются открыты.
 Создан: 2026-08-27
 Последняя проверка по коду: 2026-08-28
 Ответственный контур: `scrapers` → `catalog` → `orders/cart` → `checkout/payments` → frontend
@@ -265,10 +265,13 @@ offer-строк; штатный rollback следующих фаз — откл
 - [x] Провести dry-run и сохранить отчёт по покрытию source offers на восстановленной
   копии production data.
 - [ ] Повторить тот же audit artifact и cart/checkout smoke в отдельном staging.
-- [x] Включить live verification первого источника через feature flag: production
-  allowlist ограничен `ikea`.
-- [ ] Начать с Zara/Inditex, FLO, LCW и IKEA.
-- [ ] Проверить метрики и rollback после каждого источника.
+- [x] Включить live verification первого источника через feature flag: rollout начат
+  с `ikea`.
+- [x] Поэтапно включить подтверждённые canary источники: `ikea`, `ummaland`, `lcw`.
+- [ ] Включить Zara/Inditex и FLO только после стабильного canary через доверенную
+  server-side proxy policy; direct-проверки блокируются anti-bot защитой поставщиков.
+- [x] Проверить health, cart outcomes, background task и rollback после каждого уже
+  включённого источника.
 - [ ] Подключить `ops/prometheus/source_offer_alerts.yml` к production Prometheus/
   Alertmanager, заменить runbook URL и выполнить `promtool check rules`.
 - [ ] Только после стабильного rollout удалить использование fake stock как реального лимита.
@@ -298,9 +301,9 @@ offer-строк; штатный rollback следующих фаз — откл
   проверки и clean-schema runtime smoke завершены успешно.
 - [x] Immutable 40-character release SHA отправлен в GitHub, remote CI завершён успешно,
   backend/frontend manifests опубликованы в GHCR и проверены анонимным pull.
-- [x] Production IKEA canary подтверждает exact variant, актуальную цену/остаток,
-  bounded background task и оба cart outcome: verified/payable `200` и
-  `source_out_of_stock` `409`; тестовые cart rows удалены.
+- [x] Production canary для IKEA, Ummaland и LCW подтверждает trusted offer selection,
+  актуальную цену/наличие, bounded background task и cart outcomes: verified/payable
+  `200` и `source_out_of_stock` `409`; тестовые cart rows удалены.
 - [ ] Staging smoke выполнен для cart, checkout, обычной оплаты и crypto.
 
 ## Журнал работ
@@ -786,6 +789,40 @@ offer-строк; штатный rollback следующих фаз — откл
   `IMAGE_TAG`. Rollback вернул флаги в `false`, работающий release и public health не
   менялись. Финальные команды использовали `docker-compose.prod.yml`, явный immutable
   `IMAGE_TAG` и закрытый stdin для `docker compose exec`; резервные `.env` сохранены.
+
+### 2026-08-28 — расширение production allowlist и trusted proxy release candidate
+
+- Production inventory содержит active offers из `flo`, `ikea`, `ilacfiyati`,
+  `instagram`, `lcw`, `ummaland` и `zara`. Instagram и медицинские источники оставлены
+  manual/unsupported: без надёжного supplier API они не должны давать ложный live
+  результат.
+- Ummaland canary `3/3` подтвердил актуальные RUB-цены. После отдельного config step
+  bounded worker дал `5/5 success`, public cart подтвердил trusted offer и обязательное
+  acknowledgement изменившейся цены; тестовая корзина удалена.
+- LCW canary подтвердил две доступные позиции с текущими TRY-ценами и корректный
+  конечный `option_not_found/out_of_stock` для исчезнувшего размера. После отдельного
+  config step bounded worker дал `5/5 success`; public cart вернул `200` для доступного
+  размера и `409 source_out_of_stock` для недоступного; тестовые корзины удалены.
+- Текущий production allowlist — `ikea,ummaland,lcw`; recording, verification,
+  background batch `5` и cart enforcement включены, catalog projection выключен.
+  Read-only сверка подтвердила checkout/runtime SHA
+  `75bc4a44a06dfe2b91db6572740b9a8388dc6be4` и отсутствие config drift.
+- FLO direct canary получил supplier challenge для всех трёх проверок. Zara дал
+  перемежающиеся `403/access_blocked`, хотя часть запросов вернула корректный terminal
+  out-of-stock результат. Оба источника оставлены вне allowlist.
+- Анализ связанного пути выявил, что full scrape передавал `ScraperConfig.use_proxy`,
+  а лёгкий `SourceOfferVerificationService` создавал parser без этой server-side policy.
+  Release candidate добавляет proxy только при непустом server-owned proxy URL и точном
+  совпадении active/enabled `ScraperConfig` с сохранённым parser key. Ни proxy URL, ни
+  config identity не принимаются из cart request; mismatch никогда не включает proxy
+  из чужой конфигурации и сохраняет штатный direct parser mode.
+- Локальные gates release candidate: связанный parser/proxy/verification suite —
+  `69 passed`; полный backend suite — `1191 passed`, `30 subtests passed`;
+  Django check — `0 issues`, migration drift — `No changes detected`, Black и
+  `git diff --check` — успешно.
+- Production code этим локальным шагом не менялся. Следующий gate: отдельный immutable
+  SHA, полный remote CI, exact-image proxy canary, свежий backup manifest от `75bc...`,
+  isolated runtime smoke и только затем controlled deploy.
 
 ## Оценка
 

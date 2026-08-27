@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from django.core.cache import cache
 
-from apps.catalog.models import Product, ProductSourceOffer
+from apps.catalog.models import Category, Product, ProductSourceOffer
 from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
 from apps.scrapers.base.offers import (
     OfferAvailability,
@@ -16,6 +16,7 @@ from apps.scrapers.base.offers import (
     OfferSourceUnavailable,
     OfferStockPrecision,
 )
+from apps.scrapers.models import ScraperConfig
 
 
 class DummyParser:
@@ -84,6 +85,7 @@ def verification_settings(settings):
     settings.SOURCE_OFFER_SOURCE_CONCURRENCY = {}
     settings.SOURCE_OFFER_DEFAULT_RATE_PER_MINUTE = 100
     settings.SOURCE_OFFER_SOURCE_RATE_PER_MINUTE = {}
+    settings.SCRAPER_PROXY_URL = ""
     cache.clear()
     DummyParser.calls = 0
     DummyParser.init_kwargs = []
@@ -130,6 +132,100 @@ def test_verification_uses_saved_offer_updates_db_and_caches(offer, monkeypatch)
     assert offer.availability_status == ProductSourceOffer.AvailabilityStatus.IN_STOCK
     assert offer.last_successful_check_at is not None
     assert offer.consecutive_failures == 0
+
+
+@pytest.mark.django_db
+def test_historical_offer_uses_matching_active_proxy_config(
+    offer,
+    settings,
+    monkeypatch,
+):
+    settings.SCRAPER_PROXY_URL = "http://proxy.example:8080"
+    category = Category.objects.create(
+        name="Proxy verification",
+        slug=f"proxy-verification-{uuid4().hex}",
+    )
+    ScraperConfig.objects.create(
+        name=f"zara-proxy-{uuid4().hex}",
+        parser_class="zara",
+        base_url="https://www.zara.com",
+        default_category=category,
+        use_proxy=True,
+    )
+    monkeypatch.setattr(
+        "apps.catalog.services.source_offer_verification.get_parser",
+        _fake_registry,
+    )
+
+    result = SourceOfferVerificationService().verify(offer, force=True)
+
+    assert result.is_success is True
+    assert DummyParser.init_kwargs == [{"timeout": 1.0, "max_retries": 0, "use_proxy": True}]
+
+
+@pytest.mark.django_db
+def test_offer_uses_proxy_from_matching_saved_config(
+    offer,
+    settings,
+    monkeypatch,
+):
+    settings.SCRAPER_PROXY_URL = "http://proxy.example:8080"
+    category = Category.objects.create(
+        name="Saved proxy verification",
+        slug=f"saved-proxy-verification-{uuid4().hex}",
+    )
+    config = ScraperConfig.objects.create(
+        name=f"saved-zara-proxy-{uuid4().hex}",
+        parser_class="zara",
+        base_url="https://www.zara.com",
+        default_category=category,
+        use_proxy=True,
+    )
+    offer.parser_config = {
+        "scraper_config_id": config.pk,
+        "parser_class": "zara",
+    }
+    offer.save(update_fields=["parser_config", "updated_at"])
+    monkeypatch.setattr(
+        "apps.catalog.services.source_offer_verification.get_parser",
+        _fake_registry,
+    )
+
+    result = SourceOfferVerificationService().verify(offer, force=True)
+
+    assert result.is_success is True
+    assert DummyParser.init_kwargs == [{"timeout": 1.0, "max_retries": 0, "use_proxy": True}]
+
+
+@pytest.mark.django_db
+def test_offer_does_not_use_proxy_from_mismatched_saved_config(
+    offer,
+    settings,
+    monkeypatch,
+):
+    settings.SCRAPER_PROXY_URL = "http://proxy.example:8080"
+    category = Category.objects.create(
+        name="Wrong proxy verification",
+        slug=f"wrong-proxy-verification-{uuid4().hex}",
+    )
+    config = ScraperConfig.objects.create(
+        name=f"flo-proxy-{uuid4().hex}",
+        parser_class="flo",
+        base_url="https://www.flo.com.tr",
+        default_category=category,
+        use_proxy=True,
+    )
+    offer.parser_config = {"scraper_config_id": config.pk}
+    offer.save(update_fields=["parser_config", "updated_at"])
+    monkeypatch.setattr(
+        "apps.catalog.services.source_offer_verification.get_parser",
+        _fake_registry,
+    )
+
+    result = SourceOfferVerificationService().verify(offer, force=True)
+
+    assert result.is_success is True
+    assert DummyParser.init_kwargs == [{"timeout": 1.0, "max_retries": 0}]
 
 
 @pytest.mark.django_db
