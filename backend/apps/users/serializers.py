@@ -535,9 +535,11 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         
         if obj.whatsapp_phone:
             links['whatsapp'] = f"https://wa.me/{obj.whatsapp_phone.lstrip('+')}"
-        
-        if obj.google_id:
-            links['google'] = f"https://plus.google.com/{obj.google_id}"
+
+        # google_id is an authentication identifier, not a public contact.
+        # Google+ has been discontinued, so it must not be exposed as a
+        # social link. Public email visibility is handled separately by
+        # to_representation() through the user's show_email setting.
         if obj.facebook_id:
             links['facebook'] = f"https://facebook.com/{obj.facebook_id}"
         if obj.vk_id:
