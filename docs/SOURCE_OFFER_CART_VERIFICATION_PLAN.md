@@ -3,8 +3,8 @@
 Статус: production rollout для IKEA, Ummaland и LCW завершён: recording, live
 verification, bounded background refresh и cart/checkout enforcement включены и
 подтверждены canary. Catalog projection намеренно выключен до стабильного окна;
-FLO/Zara ожидают надёжного anti-bot/proxy canary, а Alertmanager, отдельный staging
-smoke и fake-stock cleanup остаются открыты.
+FLO/Zara ожидают доверенного proxy CA/provider fix и повторного стабильного canary,
+а Alertmanager, отдельный staging smoke и fake-stock cleanup остаются открыты.
 Создан: 2026-08-27
 Последняя проверка по коду: 2026-08-28
 Ответственный контур: `scrapers` → `catalog` → `orders/cart` → `checkout/payments` → frontend
@@ -268,8 +268,9 @@ offer-строк; штатный rollback следующих фаз — откл
 - [x] Включить live verification первого источника через feature flag: rollout начат
   с `ikea`.
 - [x] Поэтапно включить подтверждённые canary источники: `ikea`, `ummaland`, `lcw`.
-- [ ] Включить Zara/Inditex и FLO только после стабильного canary через доверенную
-  server-side proxy policy; direct-проверки блокируются anti-bot защитой поставщиков.
+- [ ] Включить Zara/Inditex и FLO только после настройки доверенного proxy CA/provider
+  chain и стабильного повторного canary; direct-проверки блокируются anti-bot защитой,
+  а текущий proxy canary корректно остановлен на TLS chain validation.
 - [x] Проверить health, cart outcomes, background task и rollback после каждого уже
   включённого источника.
 - [ ] Подключить `ops/prometheus/source_offer_alerts.yml` к production Prometheus/
@@ -820,9 +821,44 @@ offer-строк; штатный rollback следующих фаз — откл
   `69 passed`; полный backend suite — `1191 passed`, `30 subtests passed`;
   Django check — `0 issues`, migration drift — `No changes detected`, Black и
   `git diff --check` — успешно.
-- Production code этим локальным шагом не менялся. Следующий gate: отдельный immutable
-  SHA, полный remote CI, exact-image proxy canary, свежий backup manifest от `75bc...`,
-  isolated runtime smoke и только затем controlled deploy.
+- Release commit `26b4fe9aa3bd5002fff4b6965e2ad4251b9d9eef` прошёл GitHub CI
+  `33125644807`: secret scan, Compose, frontend, backend и exact-revision images зелёные.
+  Опубликованные digest: backend
+  `sha256:d4e473cd3ca5ab65404b9082e0ce81dd71e924996d151114ca8e28cc5a87a75f`,
+  frontend
+  `sha256:b910788568d569c691d3e88bfa9aa52a54d7a9aaa1aa266b2eb498aec96ff031`.
+- Exact-image proxy canary подтвердил `proxy_policy=true` для всех выбранных FLO/Zara
+  offers, но внешний proxy не прошёл TLS chain validation: `CERTIFICATE_VERIFY_FAILED`,
+  итог — корректный retryable `source_unreachable`. URL использует `http`, доверенный
+  CA bundle не настроен. TLS verification не отключалась, извлечённый сертификат не
+  добавлялся в trust store; FLO/Zara остались вне production allowlist.
+- Первый запуск canary остановился до parser на `collectstatic` из-за заполненного
+  диска. После read-only inventory удалены только неиспользуемые старые image revisions
+  `78da/859/369/f40`; rollback `75bc...`, release `26b4...`, state volumes и running
+  containers сохранены. Финально доступно около `9.4 GB`.
+- Exact SHA прошёл isolated full-stack smoke на чистых PostgreSQL/Redis/Qdrant volumes:
+  все миграции, readiness, liveness, HSTS и canonical redirect зелёные; временный
+  Compose project удалён.
+- Создан свежий backup
+  `/home/deploy/backups/pharmaturk/20260827T233612Z_pre_75bc4a4_to_26b4fe9`:
+  PostgreSQL custom dump `123 MB`, Qdrant full snapshot `402 MB`; manifest повторно
+  проверен по checksum и previous release `75bc4a4...`.
+- Controlled deploy `75bc4a4... → 26b4fe9...` завершён с пустым migration plan.
+  PostgreSQL/Redis/Qdrant не пересоздавались; backend, frontend, все workers и beat
+  имеют exact revision `26b4fe9...`; public readiness/security smoke зелёный.
+- Postdeploy live canary включённых источников — `3/3 success`: IKEA offer `114`
+  `29999 TRY`, Ummaland offer `1` `1520 RUB`, LCW offer `424` `399.99 TRY`.
+  Ручной bounded background batch дал `5/5 success`; первый автоматический Beat cycle
+  также дал `5/5 success`, retryable/permanent errors — `0`.
+- Public cart подтвердил оба пользовательских исхода после deploy: product `127` —
+  `200`, trusted offer `114`, `verified/in_stock/payable`; product `131` —
+  `409 source_out_of_stock` с exact quantity `0`. Единственная созданная тестовая
+  корзина и строка удалены; обе test session identities отсутствуют.
+- Финальный read-only audit: blockers `0`, coverage `15386/15386` (`100%`), active
+  offers `27509`, все требуемые миграции применены. Production allowlist остаётся
+  `ikea,lcw,ummaland`, catalog projection — `false`. Открыты: доверенный CA/provider
+  fix для FLO/Zara, отдельный staging обычного/crypto checkout, Alertmanager,
+  catalog projection observation gate и последующее удаление влияния fake stock.
 
 ## Оценка
 
