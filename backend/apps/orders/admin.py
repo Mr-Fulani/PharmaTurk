@@ -6,10 +6,28 @@ from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
 class CartItemInline(admin.TabularInline):
     """Инлайн для позиций корзины."""
+
     model = CartItem
     extra = 0
-    readonly_fields = ('price', 'currency', 'created_at', 'updated_at')
-    fields = ('product', 'chosen_size', 'quantity', 'price', 'currency')
+    readonly_fields = (
+        "price",
+        "currency",
+        "source_offer",
+        "verification_status",
+        "source_checked_at",
+        "created_at",
+        "updated_at",
+    )
+    fields = (
+        "product",
+        "chosen_size",
+        "quantity",
+        "price",
+        "currency",
+        "source_offer",
+        "verification_status",
+        "source_checked_at",
+    )
 
 
 @admin.register(Cart)
@@ -33,19 +51,70 @@ class CartAdmin(admin.ModelAdmin):
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
     """Админка для позиций корзины."""
-    list_display = ('cart', 'product', 'chosen_size', 'quantity', 'price', 'currency', 'created_at')
-    list_filter = ('currency', 'created_at')
-    search_fields = ('cart__user__email', 'product__name')
-    ordering = ('-created_at',)
-    readonly_fields = ('price', 'currency', 'created_at', 'updated_at')
+
+    list_display = (
+        "cart",
+        "product",
+        "chosen_size",
+        "quantity",
+        "price",
+        "currency",
+        "verification_status",
+        "source_offer",
+        "source_checked_at",
+        "created_at",
+    )
+    list_filter = ("verification_status", "currency", "source_checked_at", "created_at")
+    search_fields = ("cart__user__email", "product__name")
+    ordering = ("-created_at",)
+    readonly_fields = (
+        "price",
+        "currency",
+        "source_offer",
+        "verification_status",
+        "source_checked_at",
+        "source_availability_status",
+        "observed_source_price",
+        "observed_source_currency",
+        "observed_public_price",
+        "observed_public_currency",
+        "observed_stock_precision",
+        "observed_stock_quantity",
+        "verified_quantity",
+        "verification_issues",
+        "price_change_state",
+        "price_acknowledged_at",
+        "price_acknowledged_value",
+        "price_acknowledged_currency",
+        "created_at",
+        "updated_at",
+    )
 
 
 class OrderItemInline(admin.TabularInline):
     """Инлайн для позиций заказа."""
     model = OrderItem
     extra = 0
-    readonly_fields = ('price', 'total')
-    fields = ('product', 'product_name', 'chosen_size', 'price', 'quantity', 'total')
+    readonly_fields = (
+        'price',
+        'total',
+        'source_parser',
+        'source_external_sku',
+        'source_checked_at',
+        'supplier_confirmation_required',
+    )
+    fields = (
+        'product',
+        'product_name',
+        'chosen_size',
+        'price',
+        'quantity',
+        'total',
+        'source_parser',
+        'source_external_sku',
+        'source_checked_at',
+        'supplier_confirmation_required',
+    )
 
 
 @admin.register(Order)
@@ -73,10 +142,44 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
     """Админка для позиций заказа."""
-    list_display = ('order', 'product', 'product_name', 'chosen_size', 'price', 'quantity', 'total')
-    search_fields = ('order__number', 'product__name', 'product_name')
+    list_display = (
+        'order',
+        'product',
+        'product_name',
+        'chosen_size',
+        'price',
+        'quantity',
+        'total',
+        'source_parser',
+        'supplier_confirmation_required',
+    )
+    search_fields = (
+        'order__number',
+        'product__name',
+        'product_name',
+        'source_external_sku',
+        'source_url',
+    )
     ordering = ('order',)
-    readonly_fields = ('price', 'total')
+    readonly_fields = (
+        'price',
+        'total',
+        'source_parser',
+        'source_domain',
+        'source_url',
+        'source_external_product_id',
+        'source_external_sku',
+        'source_variant_key',
+        'source_size_key',
+        'source_selected_options',
+        'source_price',
+        'source_currency',
+        'source_availability_status',
+        'source_stock_precision',
+        'source_stock_quantity',
+        'source_checked_at',
+        'supplier_confirmation_required',
+    )
 
 
 @admin.register(PromoCode)

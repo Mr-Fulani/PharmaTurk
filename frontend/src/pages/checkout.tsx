@@ -16,46 +16,15 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
 import { useTheme } from '../context/ThemeContext'
-import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import { getLocalizedProductName } from '../lib/i18n'
+import {
+  getCartIssueCopy,
+  getCartVerificationError,
+  isBlockingCartItem,
+} from '../lib/cartVerification'
 import { useReducedMotion } from 'framer-motion'
 import AnimatedOrderButton, { OrderButtonState } from '../components/AnimatedOrderButton'
-
-interface CartItem {
-  id: number
-  product: number
-  product_name?: string
-  product_translations?: ProductTranslation[]
-  product_slug?: string
-  product_image_url?: string
-  product_video_url?: string | null
-  quantity: number
-  price: string
-  currency: string
-}
-
-interface PromoCode {
-  id: number
-  code: string
-  discount_type?: string
-  discount_value: string
-  description?: string
-}
-
-interface Cart {
-  id: number
-  items: CartItem[]
-  items_count: number
-  total_amount: string
-  discount_amount?: string
-  final_amount?: string
-  currency?: string
-  promo_code?: PromoCode | null
-  shipping_options?: { air: number; sea: number; ground: number }
-  /** В корзине есть мебель — авторасчёт доставки не показываем, только по запросу */
-  shipping_requires_quote?: boolean
-  /** Порог бесплатной доставки в валюте корзины; null — правило выкл. */
-  free_shipping_threshold?: number | null
-}
+import type { Cart } from '../types/cart'
 
 interface Address {
   id: number
@@ -79,7 +48,7 @@ interface Address {
 export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
-  const { refresh: refreshCart, setItemsCount } = useCartStore()
+  const { refresh: refreshCart, setCartSummary, setItemsCount } = useCartStore()
   const { t, i18n } = useTranslation('common')
   const { theme } = useTheme()
   const isDark = theme === 'dark'
@@ -132,6 +101,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
           getSingleFlight('/users/addresses').catch(() => ({ data: [] }))
         ])
         setCart(cartRes.data)
+        setCartSummary(cartRes.data)
         setAddresses(addressesRes.data || [])
 
         // Автоматически выбираем адрес по умолчанию
@@ -152,7 +122,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       }
     }
     loadData()
-  }, [])
+  }, [setCartSummary])
 
   // Обновляем контактные данные при загрузке профиля пользователя
   useEffect(() => {
@@ -237,6 +207,15 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       router.push('/cart')
       return
     }
+    if (cart.has_blocking_issues || cart.items.some(isBlockingCartItem)) {
+      alert(
+        t(
+          'cart_checkout_blocked',
+          'Сначала подтвердите изменения или удалите недоступные позиции.',
+        ),
+      )
+      return
+    }
 
     const animationStartedAt = Date.now()
     let orderCreated = false
@@ -298,7 +277,21 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         router.push('/auth?next=/checkout')
         return
       }
-      const detail = err?.response?.data?.detail || err?.message || t('checkout_error_generic', 'Ошибка оформления заказа')
+      const responseCart = err?.response?.data
+      if (Array.isArray(responseCart?.items)) {
+        setCart(responseCart)
+        setCartSummary(responseCart)
+      }
+      const conflict = getCartVerificationError(err)
+      const copy = getCartIssueCopy(conflict?.code)
+      const detail = conflict?.code
+        ? responseCart?.has_blocking_issues
+          ? t(
+              'cart_checkout_blocked',
+              'Сначала подтвердите изменения или удалите недоступные позиции.',
+            )
+          : t(copy.key, copy.fallback)
+        : responseCart?.detail || err?.message || t('checkout_error_generic', 'Ошибка оформления заказа')
       alert(String(detail))
     } finally {
       if (!orderCreated) {
@@ -315,6 +308,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       router.push('/auth?next=/checkout')
     }
   }, [user, authLoading, router])
+
+  const hasBlockingIssues = Boolean(
+    cart?.has_blocking_issues || cart?.items.some(isBlockingCartItem),
+  )
 
   if (!cart || cart.items.length === 0) {
     return (
@@ -342,6 +339,29 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">{t('checkout_title', 'Оформление заказа')}</h1>
         </div>
+
+        {hasBlockingIssues && (
+          <div
+            className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
+            role="alert"
+          >
+            <p className="font-semibold">
+              {t('cart_verification_title', 'Некоторые товары требуют вашего внимания')}
+            </p>
+            <p className="mt-1 text-sm">
+              {t(
+                'cart_checkout_blocked',
+                'Сначала подтвердите изменения или удалите недоступные позиции.',
+              )}
+            </p>
+            <Link
+              href="/cart"
+              className="mt-3 inline-flex rounded-md border border-amber-500 px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100"
+            >
+              {t('cart_resolve_issues', 'Вернуться в корзину и исправить')}
+            </Link>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Форма оформления */}
@@ -1033,7 +1053,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 
               <AnimatedOrderButton
                 state={orderButtonState}
-                disabled={submitting}
+                disabled={submitting || hasBlockingIssues}
                 defaultLabel={t('checkout_submit', 'Оформить заказ')}
                 processingLabel={t('checkout_submitting', 'Отправка...')}
                 successLabel={t('checkout_order_placed', 'Заказ оформлен')}
@@ -1049,10 +1069,20 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
               {/* Товары */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
-                  {t('checkout_items', 'Товары')} ({cart.items_count})
+                  {t('checkout_items', 'Товары')} ({cart.payable_items_count ?? cart.items_count})
                 </h3>
+                {hasBlockingIssues && (
+                  <p className="mb-3 text-xs text-amber-800">
+                    {t('cart_items_saved_total', 'Всего сохранено в корзине: {{count}}', {
+                      count: cart.items_count,
+                    })}
+                  </p>
+                )}
                 <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
                   {cart.items.map((item) => {
+                    const blocked = isBlockingCartItem(item)
+                    const issueCode = item.issues?.[0]?.code || item.verification_issues?.[0]
+                    const issueCopy = getCartIssueCopy(issueCode)
                     const resolvedImage = item.product_image_url ? resolveMediaUrl(item.product_image_url) : null
                     const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url) ? resolveMediaUrl(item.product_video_url) : null
                     const showVideo = Boolean(resolvedVideoUrl)
@@ -1065,7 +1095,11 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     return (
                       <div
                         key={item.id}
-                        className="flex gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors border border-gray-200"
+                        className={`flex gap-3 rounded-lg border p-3 transition-colors ${
+                          blocked
+                            ? 'border-amber-300 bg-amber-50'
+                            : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                        }`}
                       >
                         {showVideo ? (
                           <video
@@ -1097,6 +1131,11 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                           <p className="font-medium text-gray-900 text-sm leading-tight mb-1 line-clamp-2">
                             {localizedName}
                           </p>
+                          {issueCode && (
+                            <p className={`mb-1 text-xs ${blocked ? 'text-amber-800' : 'text-blue-700'}`}>
+                              {t(issueCopy.key, issueCopy.fallback)}
+                            </p>
+                          )}
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
                               {t('checkout_qty', 'Кол-во')}: {item.quantity}
@@ -1107,9 +1146,15 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="font-bold text-gray-900 text-sm">
-                            {formatMoney(parseFloat(item.price) * item.quantity, item.currency, i18n.language)} {item.currency}
-                          </p>
+                          {blocked ? (
+                            <p className="text-xs font-semibold text-amber-800">
+                              {t('cart_not_included_in_total', 'Не включено в итог')}
+                            </p>
+                          ) : (
+                            <p className="font-bold text-gray-900 text-sm">
+                              {formatMoney(parseFloat(String(item.price)) * item.quantity, item.currency, i18n.language)} {item.currency}
+                            </p>
+                          )}
                         </div>
                       </div>
                     );
@@ -1159,7 +1204,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
                     <span className="text-2xl font-bold text-violet-600">
                       {formatMoney(
-                        parseFloat(cart.final_amount || cart.total_amount || '0') +
+                        parseFloat(String(cart.final_amount || cart.total_amount || '0')) +
                         (cart?.shipping_requires_quote ? 0 : cart.shipping_options?.[shippingMethod] || 0)
                       , cart.currency || 'USD', i18n.language)}{' '}
                       {cart.currency || 'USD'}

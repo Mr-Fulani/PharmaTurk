@@ -5,6 +5,12 @@ services:
       POSTGRES_USER: release_test
       POSTGRES_PASSWORD: release-test-postgres-password
 
+  # qdrant/qdrant:v1.18.3 currently publishes a broken arm64 image (zero-byte
+  # executables). Release tests pin the working amd64 variant; production
+  # Compose remains architecture-native and is not overridden here.
+  qdrant:
+    platform: ${QDRANT_TEST_PLATFORM:-linux/amd64}
+
   backend_tests:
     build:
       context: ./backend

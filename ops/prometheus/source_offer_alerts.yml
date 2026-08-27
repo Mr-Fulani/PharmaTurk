@@ -1,0 +1,74 @@
+groups:
+  - name: source-offer-commerce
+    interval: 1m
+    rules:
+      - alert: SourceOfferVerificationHighErrorRate
+        expr: |
+          sum(increase(source_offer_verification_total{outcome!~"success|cache_hit|singleflight_hit|disabled|unsupported"}[10m])) >= 5
+          and
+          (
+            sum(increase(source_offer_verification_total{outcome!~"success|cache_hit|singleflight_hit|disabled|unsupported"}[10m]))
+            /
+            clamp_min(sum(increase(source_offer_verification_total{outcome!="disabled"}[10m])), 1)
+          ) > 0.25
+        for: 15m
+        labels:
+          severity: warning
+          owner: catalog-commerce
+        annotations:
+          summary: Supplier offer verification error rate is above 25%
+          runbook_url: docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md
+
+      - alert: SourceOfferVerificationP95Slow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(source_offer_verification_seconds_bucket[10m]))
+          ) > 5
+        for: 15m
+        labels:
+          severity: warning
+          owner: catalog-commerce
+        annotations:
+          summary: Supplier offer verification p95 exceeds 5 seconds
+          runbook_url: docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md
+
+      - alert: SourceOfferCircuitOpen
+        expr: increase(source_offer_verification_total{outcome="circuit_open"}[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          owner: catalog-commerce
+        annotations:
+          summary: A supplier circuit breaker is rejecting live checks
+          runbook_url: docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md
+
+      - alert: SourceOfferStaleBacklogHigh
+        expr: source_offer_stale_backlog > 500
+        for: 30m
+        labels:
+          severity: warning
+          owner: catalog-commerce
+        annotations:
+          summary: More than 500 active supplier offers are stale
+          runbook_url: docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md
+
+      - alert: SourceOfferBackgroundRefreshErrors
+        expr: increase(source_offer_background_refresh_total{outcome="completed_with_errors"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          owner: catalog-commerce
+        annotations:
+          summary: Bounded supplier background refresh completed with item errors
+          runbook_url: docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md
+
+      - alert: SourceOfferPriceChangesBurst
+        expr: sum by (source) (increase(source_offer_verification_changes_total{field="price"}[15m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+          owner: catalog-commerce
+        annotations:
+          summary: Supplier {{ $labels.source }} changed more than 20 offer prices in 15 minutes
+          runbook_url: docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md

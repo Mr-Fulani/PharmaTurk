@@ -215,9 +215,16 @@ def _fallback_item_seo(
 class _LocalizedSeoMethodsMixin:
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        if getattr(self, "_normalizes_public_prices", False):
-            return data
-        return _apply_product_markup_to_payload(data, instance)
+        if not getattr(self, "_normalizes_public_prices", False):
+            data = _apply_product_markup_to_payload(data, instance)
+
+        # DB-only detail projection. List serializers never acquire an N+1 query,
+        # and no public read path performs supplier HTTP.
+        from apps.catalog.services.source_offer_catalog_projection import (
+            apply_source_offer_catalog_projection,
+        )
+
+        return apply_source_offer_catalog_projection(data, instance, self.context)
 
     def _resolve_localized_seo(self, obj, field_name: str):
         return resolve_book_seo_value(obj, field_name, lang=_request_lang(self.context.get('request')))

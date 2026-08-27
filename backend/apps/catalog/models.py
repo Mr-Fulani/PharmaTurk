@@ -1,5 +1,6 @@
 """Модели для каталога товаров."""
 
+import hashlib
 import logging
 import uuid
 from urllib.parse import urlparse, urlunparse
@@ -2039,6 +2040,233 @@ class Product(models.Model):
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error updating currency prices for product {self.id}: {str(e)}")
+
+
+class ProductSourceOffer(models.Model):
+    """Проверяемое предложение конкретного поставщика для покупаемой опции товара.
+
+    ``Product`` остаётся единой идентичностью каталога/корзины. Внешние варианты и
+    размеры намеренно хранятся как source keys: доменные модели используют разные
+    таблицы вариантов, и GenericForeignKey сделал бы критический checkout-контур
+    незащищённым внешним ключом.
+    """
+
+    class AvailabilityStatus(models.TextChoices):
+        IN_STOCK = "in_stock", _("В наличии")
+        OUT_OF_STOCK = "out_of_stock", _("Нет в наличии")
+        LIMITED = "limited", _("Ограниченный остаток")
+        DISCONTINUED = "discontinued", _("Снят с продажи")
+        UNKNOWN = "unknown", _("Неизвестно")
+        SOURCE_UNREACHABLE = "source_unreachable", _("Источник недоступен")
+        UNSUPPORTED = "unsupported", _("Проверка не поддерживается")
+
+    class StockPrecision(models.TextChoices):
+        EXACT = "exact", _("Точный остаток")
+        BOOLEAN = "boolean", _("Только наличие")
+        UNKNOWN = "unknown", _("Неизвестно")
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="source_offers",
+        verbose_name=_("Товар"),
+    )
+    parser_key = models.CharField(
+        _("Ключ парсера"),
+        max_length=100,
+        db_index=True,
+        help_text=_("Стабильный ключ parser registry, например zara или flo."),
+    )
+    parser_config = models.JSONField(_("Конфигурация парсера"), default=dict, blank=True)
+    source_domain = models.CharField(_("Домен источника"), max_length=255, db_index=True)
+    canonical_url = models.URLField(_("Канонический URL"), max_length=2000)
+
+    # Хэш стабильной source-идентичности защищает уникальность без широкого URL-индекса.
+    offer_key = models.CharField(_("Ключ предложения"), max_length=64, editable=False)
+    external_product_id = models.CharField(_("Внешний ID товара"), max_length=500, blank=True)
+    external_sku = models.CharField(_("Внешний SKU"), max_length=500, blank=True)
+    variant_key = models.CharField(_("Ключ варианта"), max_length=500, blank=True)
+    size_key = models.CharField(_("Ключ размера"), max_length=100, blank=True)
+    selected_options = models.JSONField(_("Выбранные опции"), default=dict, blank=True)
+
+    source_price = models.DecimalField(
+        _("Цена источника"),
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    source_currency = models.CharField(_("Валюта источника"), max_length=10, blank=True)
+    availability_status = models.CharField(
+        _("Статус источника"),
+        max_length=32,
+        choices=AvailabilityStatus.choices,
+        default=AvailabilityStatus.UNKNOWN,
+        db_index=True,
+    )
+    stock_precision = models.CharField(
+        _("Точность остатка"),
+        max_length=16,
+        choices=StockPrecision.choices,
+        default=StockPrecision.UNKNOWN,
+    )
+    stock_quantity = models.PositiveIntegerField(_("Остаток источника"), null=True, blank=True)
+
+    priority = models.PositiveSmallIntegerField(
+        _("Приоритет"),
+        default=100,
+        help_text=_("Меньшее значение выбирается первым."),
+    )
+    is_active = models.BooleanField(_("Активно"), default=True)
+    last_checked_at = models.DateTimeField(_("Последняя проверка"), null=True, blank=True)
+    last_successful_check_at = models.DateTimeField(
+        _("Последняя успешная проверка"), null=True, blank=True
+    )
+    last_error_code = models.CharField(_("Код последней ошибки"), max_length=64, blank=True)
+    last_error_message = models.TextField(_("Последняя ошибка"), blank=True)
+    consecutive_failures = models.PositiveIntegerField(_("Ошибок подряд"), default=0)
+    response_metadata = models.JSONField(_("Диагностика ответа"), default=dict, blank=True)
+    created_at = models.DateTimeField(_("Создано"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Обновлено"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Предложение источника")
+        verbose_name_plural = _("Предложения источников")
+        ordering = ["product_id", "priority", "id"]
+        indexes = [
+            models.Index(
+                fields=["product", "is_active", "priority"],
+                name="catalog_so_prod_active_pri",
+            ),
+            models.Index(
+                fields=["source_domain", "is_active"],
+                name="catalog_so_source_active_idx",
+            ),
+            models.Index(
+                fields=["availability_status", "last_checked_at"],
+                name="catalog_so_status_checked_idx",
+            ),
+            models.Index(
+                fields=["parser_key", "last_checked_at"],
+                name="catalog_so_parser_checked_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "parser_key", "offer_key"],
+                name="catalog_sourceoffer_identity_uniq",
+            ),
+            models.CheckConstraint(
+                condition=~Q(offer_key=""),
+                name="catalog_sourceoffer_key_nonempty",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(stock_precision="exact", stock_quantity__isnull=False)
+                    | Q(
+                        stock_precision__in=["boolean", "unknown"],
+                        stock_quantity__isnull=True,
+                    )
+                ),
+                name="catalog_sourceoffer_stock_precision",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(
+                        stock_precision="exact",
+                        availability_status="in_stock",
+                        stock_quantity=0,
+                    )
+                ),
+                name="catalog_sourceoffer_instock_nonzero",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(stock_precision="exact", availability_status="out_of_stock")
+                    | Q(stock_quantity=0)
+                ),
+                name="catalog_sourceoffer_outstock_zero",
+            ),
+        ]
+
+    @staticmethod
+    def build_offer_key(
+        *,
+        parser_key: str,
+        canonical_url: str,
+        external_product_id: str = "",
+        external_sku: str = "",
+        variant_key: str = "",
+        size_key: str = "",
+    ) -> str:
+        """Возвращает стабильный компактный ключ одного buyable source offer."""
+        primary_identity = (
+            str(external_sku or "").strip()
+            or str(external_product_id or "").strip()
+            or str(canonical_url or "").strip()
+        )
+        identity = "\x1f".join(
+            (
+                str(parser_key or "").strip().casefold(),
+                primary_identity,
+                str(variant_key or "").strip(),
+                str(size_key or "").strip(),
+            )
+        )
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+    def _normalize_identity(self) -> None:
+        self.parser_key = str(self.parser_key or "").strip().casefold()
+        self.source_currency = str(self.source_currency or "").strip().upper()
+        self.source_domain = str(self.source_domain or "").strip().casefold().rstrip(".")
+        if not self.source_domain and self.canonical_url:
+            self.source_domain = (urlparse(self.canonical_url).hostname or "").casefold().rstrip(".")
+        if not self.offer_key:
+            self.offer_key = self.build_offer_key(
+                parser_key=self.parser_key,
+                canonical_url=self.canonical_url,
+                external_product_id=self.external_product_id,
+                external_sku=self.external_sku,
+                variant_key=self.variant_key,
+                size_key=self.size_key,
+            )
+
+    def clean(self):
+        super().clean()
+        self._normalize_identity()
+        errors = {}
+        if not self.parser_key:
+            errors["parser_key"] = _("Ключ парсера обязателен.")
+        if not self.source_domain:
+            errors["source_domain"] = _("Не удалось определить домен источника.")
+        if self.stock_precision == self.StockPrecision.EXACT and self.stock_quantity is None:
+            errors["stock_quantity"] = _("Для точного остатка требуется количество.")
+        if self.stock_precision != self.StockPrecision.EXACT and self.stock_quantity is not None:
+            errors["stock_quantity"] = _("Количество допустимо только для точного остатка.")
+        if (
+            self.stock_precision == self.StockPrecision.EXACT
+            and self.availability_status == self.AvailabilityStatus.IN_STOCK
+            and self.stock_quantity == 0
+        ):
+            errors["stock_quantity"] = _("Товар в наличии не может иметь нулевой точный остаток.")
+        if (
+            self.stock_precision == self.StockPrecision.EXACT
+            and self.availability_status == self.AvailabilityStatus.OUT_OF_STOCK
+            and self.stock_quantity != 0
+        ):
+            errors["stock_quantity"] = _("Для отсутствующего товара точный остаток должен быть нулевым.")
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self._normalize_identity()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        option = " / ".join(value for value in (self.variant_key, self.size_key) if value)
+        suffix = f" ({option})" if option else ""
+        return f"{self.product} — {self.parser_key}{suffix}"
 
 
 class SeoTranslationMixin(models.Model):

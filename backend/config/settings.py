@@ -239,6 +239,12 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24,
         "kwargs": {"batch_size": 200},
     },
+    # Explicit maintenance task only; it is a cheap no-op until both source-offer
+    # verification and background refresh rollout flags are enabled.
+    "catalog-refresh-source-offers": {
+        "task": "catalog.refresh_source_offers",
+        "schedule": 60 * 5,
+    },
     # refresh-stock: заглушка — отключено, доработаем после парсеров
     # "refresh-stock": {"task": "apps.catalog.tasks.refresh_stock", "schedule": 60 * 60 * 2},
     # VAPI: отключено — не используется. Включить при работе с VAPI API.
@@ -501,6 +507,80 @@ SCRAPER_PROXY_URL = env("SCRAPER_PROXY_URL", default="")
 # PEM bundle of the proxy CA when the provider performs TLS inspection.
 # Certificate verification is never disabled automatically.
 SCRAPER_PROXY_CA_BUNDLE = env("SCRAPER_PROXY_CA_BUNDLE", default="")
+
+# Phase 2 source-offer recording. Disabled by default for a migration-first rollout:
+# enabling the writer must be a separate deploy/config action after migration 0202.
+SOURCE_OFFER_RECORDING_ENABLED = env.bool("SOURCE_OFFER_RECORDING_ENABLED", default=False)
+SOURCE_OFFER_DEFAULT_PRIORITY = env.int("SOURCE_OFFER_DEFAULT_PRIORITY", default=100)
+SOURCE_OFFER_SOURCE_PRIORITIES = env.json("SOURCE_OFFER_SOURCE_PRIORITIES", default={})
+
+# Live supplier checks remain off until source-by-source rollout. Full scraper recording
+# above is independent and can be enabled earlier.
+SOURCE_OFFER_VERIFICATION_ENABLED = env.bool(
+    "SOURCE_OFFER_VERIFICATION_ENABLED", default=False
+)
+SOURCE_OFFER_VERIFICATION_SOURCES = env.list(
+    "SOURCE_OFFER_VERIFICATION_SOURCES", default=[]
+)
+SOURCE_OFFER_REQUEST_TIMEOUT_SECONDS = env.float(
+    "SOURCE_OFFER_REQUEST_TIMEOUT_SECONDS", default=5.0
+)
+SOURCE_OFFER_MAX_RETRIES = env.int("SOURCE_OFFER_MAX_RETRIES", default=1)
+SOURCE_OFFER_RETRY_BACKOFF_SECONDS = env.float(
+    "SOURCE_OFFER_RETRY_BACKOFF_SECONDS", default=0.1
+)
+SOURCE_OFFER_SUCCESS_CACHE_TTL = env.int("SOURCE_OFFER_SUCCESS_CACHE_TTL", default=120)
+SOURCE_OFFER_ERROR_CACHE_TTL = env.int("SOURCE_OFFER_ERROR_CACHE_TTL", default=15)
+SOURCE_OFFER_SINGLEFLIGHT_WAIT_SECONDS = env.float(
+    "SOURCE_OFFER_SINGLEFLIGHT_WAIT_SECONDS", default=0.5
+)
+SOURCE_OFFER_CIRCUIT_FAILURE_THRESHOLD = env.int(
+    "SOURCE_OFFER_CIRCUIT_FAILURE_THRESHOLD", default=5
+)
+SOURCE_OFFER_CIRCUIT_RECOVERY_SECONDS = env.int(
+    "SOURCE_OFFER_CIRCUIT_RECOVERY_SECONDS", default=60
+)
+SOURCE_OFFER_DEFAULT_CONCURRENCY = env.int("SOURCE_OFFER_DEFAULT_CONCURRENCY", default=4)
+SOURCE_OFFER_SOURCE_CONCURRENCY = env.json("SOURCE_OFFER_SOURCE_CONCURRENCY", default={})
+SOURCE_OFFER_DEFAULT_RATE_PER_MINUTE = env.int(
+    "SOURCE_OFFER_DEFAULT_RATE_PER_MINUTE", default=60
+)
+SOURCE_OFFER_SOURCE_RATE_PER_MINUTE = env.json(
+    "SOURCE_OFFER_SOURCE_RATE_PER_MINUTE", default={}
+)
+# Proactive refresh is intentionally a separate rollout gate. Celery Beat may
+# enqueue the task while disabled; the task exits before selecting rows or doing I/O.
+SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED = env.bool(
+    "SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED", default=False
+)
+SOURCE_OFFER_BACKGROUND_REFRESH_BATCH_SIZE = env.int(
+    "SOURCE_OFFER_BACKGROUND_REFRESH_BATCH_SIZE", default=25
+)
+SOURCE_OFFER_BACKGROUND_STALE_SECONDS = env.int(
+    "SOURCE_OFFER_BACKGROUND_STALE_SECONDS", default=900
+)
+SOURCE_OFFER_BACKGROUND_POPULAR_CART_DAYS = env.int(
+    "SOURCE_OFFER_BACKGROUND_POPULAR_CART_DAYS", default=7
+)
+SOURCE_OFFER_BACKGROUND_LOCK_SECONDS = env.int(
+    "SOURCE_OFFER_BACKGROUND_LOCK_SECONDS", default=330
+)
+# Fresh successful offer rows may override availability in public detail/YML
+# output. Kept separate from cart enforcement and disabled for staged rollout.
+SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(
+    "SOURCE_OFFER_CATALOG_PROJECTION_ENABLED", default=False
+)
+# Cart enforcement is a separate rollout gate. Operators may exercise/observe the
+# verification service before any existing cart behaviour changes.
+SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = env.bool(
+    "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", default=False
+)
+SOURCE_OFFER_CART_REVALIDATE_MAX_ITEMS = env.int(
+    "SOURCE_OFFER_CART_REVALIDATE_MAX_ITEMS", default=20
+)
+SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES = env.list(
+    "SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES", default=[]
+)
 
 
 # Sentry (неактивен, если DSN пуст)

@@ -25,6 +25,7 @@
 15. [Важные ограничения и антипаттерны](#15-важные-ограничения-и-антипаттерны)
 16. [Устранение неполадок](#16-устранение-неполадок)
 17. [Эксплуатационный контракт парсеров для AI-агента](#17-эксплуатационный-контракт-парсеров-для-ai-агента)
+18. [Проверка supplier offer для корзины](#18-проверка-supplier-offer-для-корзины)
 
 ---
 
@@ -102,7 +103,7 @@ BookProductImage / ProductImage (изображения)
 | `price`, `currency` | Парсер | |
 | `isbn`, `publisher`, `pages`, `cover_type`, `language` | Парсер (attributes) | для книг |
 | `publication_date` | Парсер (attributes.publication_year) | AI тоже может заполнить |
-| `stock_quantity` | Парсер (default=3), AI | 3 по умолчанию если не указано |
+| `stock_quantity` | Парсер, legacy normalizer/AI | `3`/`1000` могут быть только compatibility-значениями и не доказывают точный остаток поставщика |
 | `is_new` | ScraperIntegrationService | `True` для только что спарсенных |
 | `meta_title`, `meta_description`, `meta_keywords` | AI (EN) | ПУСТЫЕ после парсинга |
 | `og_title`, `og_description`, `og_image_url` | AI (EN) | ПУСТЫЕ после парсинга |
@@ -158,7 +159,7 @@ class ScrapedProduct:
     
     # Наличие
     is_available: bool = True
-    stock_quantity: Optional[int] = None  # None → система подставит 3
+    stock_quantity: Optional[int] = None  # None → точный остаток источника неизвестен
     
     # Дополнительные атрибуты (зависят от типа товара)
     attributes: Dict[str, Any] = {}    # Смотри раздел 3.1
@@ -1821,6 +1822,62 @@ changed = True
 
 ---
 
+## 18. Проверка supplier offer для корзины
+
+Полный импорт и проверка одной покупаемой опции — разные контракты. HTTP-запрос
+корзины не должен запускать `parse_product_list`, media download, AI, дедупликацию или
+создание товара. Для live-проверки используется только read-only `check_offer`.
+
+### 18.1. Данные и ответственность
+
+`ProductSourceOffer` хранит server-owned идентичность конкретного предложения:
+parser key, trusted canonical URL/domain, supplier product/SKU, variant, size, цену,
+валюту, availability, точность остатка и диагностику. Клиент не передаёт source URL,
+parser key или supplier SKU — корзина выбирает сохранённый offer сама.
+
+Полный scrape может записать offer при
+`SOURCE_OFFER_RECORDING_ENABLED=true`, но не меняет поведение корзины. Live-проверка,
+background refresh, cart enforcement и catalog projection включаются отдельными
+флагами. Безопасный порядок приведён в
+`docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md`.
+
+### 18.2. Контракт `check_offer`
+
+Новый или изменённый parser adapter обязан:
+
+- принять `OfferCheckContext` только из сохранённого `ProductSourceOffer`;
+- проверить ровно один buyable SKU/variant/size без обхода каталога и соседних цветов;
+- вернуть `OfferCheckResult` с `Decimal` price, currency, availability,
+  `stock_precision`, nullable quantity, canonical URL и `checked_at`;
+- использовать `stock_precision=exact` только когда supplier действительно вернул
+  число; boolean availability всегда имеет `stock_quantity=None`;
+- различать `out_of_stock`/`discontinued`, `not_found`/`gone`, `access_blocked`,
+  timeout/transport failure и `UnsupportedOfferVerification`;
+- не превращать timeout, challenge/403 или malformed payload в «нет в наличии»;
+- проходить contract fixtures и regression tests полного импорта того же parser.
+
+Поддержанные live adapters: Zara и общая Inditex-база (включая Bershka,
+Pull&Bear, Massimo Dutti), FLO, LCW, IKEA и Ummaland в пределах данных источника.
+Instagram и медицинские источники без надёжного supplier API остаются
+manual/unsupported.
+
+### 18.3. Диагностика и rollout gate
+
+Перед включением source выполните read-only отчёт:
+
+```bash
+docker compose exec backend poetry run python manage.py \
+  audit_source_offer_rollout --format json --fail-on-blockers
+```
+
+Команда не пишет в БД и не вызывает parser. Она проверяет миграции, coverage,
+freshness/errors, fake stock, cart/order readiness и опасные сочетания feature flags.
+Сначала включается ровно один parser key в `SOURCE_OFFER_VERIFICATION_SOURCES`; пустой
+allowlist при включённой verification означает все adapters и не допускается для
+первого rollout.
+
+---
+
 ## Продакшен: после `git pull`
 
 Файл `docker-compose.yml` задаёт проект **`pharmaturk`** (`name: pharmaturk`). Сервисы бэкенда: **`backend`**, **`celeryworker`**, **`celery_ai`**, **`celerybeat`** — у всех подключается корневой **`.env`** (`env_file`).
@@ -1888,6 +1945,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 |--------|------|
 | Базовый класс парсера | `backend/apps/scrapers/base/scraper.py` |
 | ScrapedProduct dataclass | `backend/apps/scrapers/base/scraper.py` |
+| Typed offer-check contract | `backend/apps/scrapers/base/offers.py` |
+| Source offer writer | `backend/apps/scrapers/source_offers.py` |
+| Verification service | `backend/apps/catalog/services/source_offer_verification.py` |
+| Rollout audit | `backend/apps/catalog/management/commands/audit_source_offer_rollout.py` |
 | Утилиты (clean_text, normalize_price) | `backend/apps/scrapers/base/utils.py` |
 | Реестр парсеров | `backend/apps/scrapers/parsers/registry.py` |
 | Парсер Ummaland | `backend/apps/scrapers/parsers/ummaland.py` |

@@ -12,52 +12,17 @@ import {
   replaceFailedVideoWithFallback,
   resolveMediaUrl,
 } from '../lib/media'
-import { needsTypeInPath } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
-import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import { getLocalizedProductName } from '../lib/i18n'
+import {
+  getCartIssueCopy,
+  getCartVerificationError,
+  isBlockingCartItem,
+} from '../lib/cartVerification'
 import { SITE_NAME } from '../lib/siteMeta'
 import { formatMoney, parseMoneyNumber as parseNumber } from '../lib/price'
-
-interface CartItem {
-  id: number
-  product: number
-  product_name?: string
-  product_translations?: ProductTranslation[]
-  product_slug?: string
-  product_variant_slug?: string
-  product_parent_slug?: string
-  product_type?: string
-  product_image_url?: string
-  product_video_url?: string | null
-  chosen_size?: string
-  quantity: number
-  price: string
-  currency: string
-  old_price?: string | number | null
-  old_price_formatted?: string | null
-}
-
-interface PromoCode {
-  id: number
-  code: string
-  discount_type?: string
-  discount_value: string
-  description?: string
-}
-
-interface Cart {
-  id: number
-  items: CartItem[]
-  items_count: number
-  total_amount: string
-  discount_amount?: string | number
-  final_amount?: string
-  currency?: string
-  promo_code?: PromoCode | null
-  shipping_requires_quote?: boolean
-  free_shipping_threshold?: number | null
-}
+import type { Cart, CartItem } from '../types/cart'
 
 export default function CartPage({ initialCart }: { initialCart: Cart }) {
   const { t, i18n } = useTranslation('common')
@@ -70,19 +35,44 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   const [promoCode, setPromoCode] = useState('')
   const [promoLoading, setPromoLoading] = useState(false)
   const [promoError, setPromoError] = useState<string | null>(null)
-  const { setItemsCount } = useCartStore()
+  const [verificationLoading, setVerificationLoading] = useState(false)
+  const { setCartSummary } = useCartStore()
+
+  const applyCartData = useCallback((nextCart: Cart) => {
+    setCart((previousCart) => {
+      const previousOrder = new Map(
+        (previousCart.items || []).map((item, index) => [item.id, index]),
+      )
+      const sortedItems = [...(nextCart.items || [])].sort((left, right) => {
+        const leftIndex = previousOrder.get(left.id) ?? Infinity
+        const rightIndex = previousOrder.get(right.id) ?? Infinity
+        return leftIndex - rightIndex
+      })
+      return { ...nextCart, items: sortedItems }
+    })
+    setCartSummary(nextCart)
+  }, [setCartSummary])
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  // Обновляем счетчик товаров при изменении корзины
+  // Header сохраняет общее число строк, а checkout отдельно знает payable count.
   useEffect(() => {
     if (mounted) {
-      setItemsCount(cart.items_count)
+      setCartSummary({
+        items_count: cart.items_count,
+        payable_items_count: cart.payable_items_count,
+        has_blocking_issues: cart.has_blocking_issues,
+      })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart.items_count, mounted])
+  }, [
+    cart.has_blocking_issues,
+    cart.items_count,
+    cart.payable_items_count,
+    mounted,
+    setCartSummary,
+  ])
 
   // Клиентское обновление корзины после монтирования (только один раз)
   useEffect(() => {
@@ -93,27 +83,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       try {
         const r = await getSingleFlight('/orders/cart')
         if (!cancelled && r.data) {
-          // Обновляем только если данные действительно изменились
-          setCart(prevCart => {
-            // Сравниваем только ключевые поля для избежания лишних обновлений
-            const prevItems = prevCart.items || []
-            const newItems = r.data.items || []
-            const hasChanged = 
-              prevCart.items_count !== r.data.items_count ||
-              prevItems.length !== newItems.length ||
-              prevCart.total_amount !== r.data.total_amount ||
-              prevCart.discount_amount !== r.data.discount_amount ||
-              prevCart.final_amount !== r.data.final_amount ||
-              (prevCart.promo_code?.code || null) !== (r.data.promo_code?.code || null)
-            
-            if (hasChanged) {
-              return {
-                ...r.data,
-                items: r.data.items || []
-              }
-            }
-            return prevCart
-          })
+          applyCartData(r.data)
         }
       } catch (error) {
         // Тихий игнор ошибок при первичной загрузке
@@ -127,57 +97,18 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       cancelled = true
       clearTimeout(timeout)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted])
+  }, [applyCartData, mounted])
 
   const refreshCart = useCallback(async () => {
     try {
       const r = await getSingleFlight('/orders/cart')
       if (r.data) {
-        let shouldUpdateCount = false
-        setCart(prevCart => {
-          const prevItems = prevCart.items || []
-          const newItems = r.data.items || []
-          
-          // Сохраняем порядок товаров из предыдущего состояния
-          const prevItemOrder = new Map(prevItems.map((item, index) => [item.id, index]))
-          
-          // Сортируем новые товары по старому порядку
-          const sortedItems = [...newItems].sort((a, b) => {
-            const aIndex = prevItemOrder.get(a.id) ?? Infinity
-            const bIndex = prevItemOrder.get(b.id) ?? Infinity
-            return aIndex - bIndex
-          })
-          
-          // Обновляем только если данные изменились
-          const hasChanged = 
-            prevCart.items_count !== r.data.items_count ||
-            prevCart.total_amount !== r.data.total_amount ||
-            prevCart.discount_amount !== r.data.discount_amount ||
-            prevCart.final_amount !== r.data.final_amount ||
-            (prevCart.promo_code?.code || null) !== (r.data.promo_code?.code || null) ||
-            prevItems.length !== newItems.length ||
-            JSON.stringify(prevItems.map(i => ({ id: i.id, quantity: i.quantity }))) !== 
-            JSON.stringify(newItems.map((i: CartItem) => ({ id: i.id, quantity: i.quantity })))
-          
-          if (hasChanged && prevCart.items_count !== r.data.items_count) {
-            shouldUpdateCount = true
-          }
-          
-          if (hasChanged) {
-            return { ...r.data, items: sortedItems }
-          }
-          return prevCart
-        })
-        // Обновляем счетчик только если он изменился
-        if (shouldUpdateCount) {
-          setItemsCount(r.data.items_count)
-        }
+        applyCartData(r.data)
       }
     } catch (error) {
       console.error('Failed to refresh cart:', error)
     }
-  }, [setItemsCount])
+  }, [applyCartData])
 
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return
@@ -190,14 +121,64 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       )
     }))
     try {
-      await api.post(`/orders/cart/${itemId}/update`, { quantity: qty })
-      await refreshCart()
-    } catch (error) {
+      const response = await api.post(`/orders/cart/${itemId}/update`, { quantity: qty })
+      applyCartData(response.data)
+    } catch (error: any) {
       console.error('Failed to update quantity:', error)
-      // В случае ошибки обновляем корзину с сервера
-      await refreshCart()
+      const responseCart = error?.response?.data
+      if (Array.isArray(responseCart?.items)) {
+        applyCartData(responseCart)
+      } else {
+        await refreshCart()
+      }
+      const conflict = getCartVerificationError(error)
+      if (conflict?.code) {
+        const copy = getCartIssueCopy(conflict.code)
+        alert(t(copy.key, copy.fallback))
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const revalidateCart = async () => {
+    if (verificationLoading) return
+    setVerificationLoading(true)
+    try {
+      const response = await api.post('/orders/cart/revalidate')
+      applyCartData(response.data)
+    } catch (error: any) {
+      const responseCart = error?.response?.data
+      if (Array.isArray(responseCart?.items)) {
+        applyCartData(responseCart)
+      } else {
+        await refreshCart()
+      }
+      const conflict = getCartVerificationError(error)
+      const copy = getCartIssueCopy(conflict?.code)
+      alert(t(copy.key, copy.fallback))
+    } finally {
+      setVerificationLoading(false)
+    }
+  }
+
+  const acknowledgePrice = async (item: CartItem) => {
+    if (item.observed_public_price == null) return
+    const currency = item.observed_public_currency || item.currency
+    setVerificationLoading(true)
+    try {
+      const response = await api.post(`/orders/cart/${item.id}/acknowledge-price`, {
+        acknowledged_price: item.observed_public_price,
+        acknowledged_currency: currency,
+      })
+      applyCartData(response.data)
+    } catch (error: any) {
+      await refreshCart()
+      const conflict = getCartVerificationError(error)
+      const copy = getCartIssueCopy(conflict?.code)
+      alert(t(copy.key, copy.fallback))
+    } finally {
+      setVerificationLoading(false)
     }
   }
 
@@ -275,6 +256,10 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   const discountAmountNum = parseFloat(String(cart.discount_amount ?? '0'))
   const showCartDiscountBreakdown =
     Number.isFinite(discountAmountNum) && discountAmountNum > 0
+  const hasBlockingIssues = Boolean(
+    cart.has_blocking_issues || cart.items.some(isBlockingCartItem),
+  )
+  const payableItemsCount = cart.payable_items_count ?? cart.items_count
 
   return (
     <>
@@ -283,14 +268,47 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
         <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-main">{t('menu_cart', 'Корзина')}</h1>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-main">{t('menu_cart', 'Корзина')}</h1>
+            {cart.items_count > 0 && (
+              <p className="mt-2 text-sm text-main">
+                {t('cart_items_in_cart', 'Товаров в корзине: {{count}}', {
+                  count: cart.items_count,
+                })}
+              </p>
+            )}
+          </div>
           {cart.items_count > 0 && (
-            <p className="mt-2 text-sm text-main">
-              {cart.items_count} {cart.items_count === 1 ? 'товар' : cart.items_count < 5 ? 'товара' : 'товаров'}
-            </p>
+            <button
+              type="button"
+              onClick={revalidateCart}
+              disabled={verificationLoading}
+              className="inline-flex items-center justify-center rounded-md border border-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)] disabled:cursor-wait disabled:opacity-60"
+            >
+              {verificationLoading
+                ? t('cart_revalidating', 'Проверяем наличие и цены...')
+                : t('cart_revalidate', 'Проверить наличие и цены')}
+            </button>
           )}
         </div>
+
+        {hasBlockingIssues && (
+          <div
+            className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
+            role="alert"
+          >
+            <p className="font-semibold">
+              {t('cart_verification_title', 'Некоторые товары требуют вашего внимания')}
+            </p>
+            <p className="mt-1 text-sm">
+              {t(
+                'cart_verification_blocked_summary',
+                'Эти позиции сохранены в корзине, но не включены в итог и оформление заказа.',
+              )}
+            </p>
+          </div>
+        )}
 
         {(!cart.items || cart.items.length === 0) ? (
           <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12 text-center">
@@ -327,6 +345,23 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
             <div className="lg:col-span-2">
               <div className="space-y-4">
                 {(cart.items || []).map((item) => {
+                  const blocked = isBlockingCartItem(item)
+                  const itemIssues = item.issues?.length
+                    ? item.issues
+                    : (item.verification_issues || []).map((code) => ({
+                        code,
+                        blocking: blocked,
+                      }))
+                  const exactAvailable =
+                    item.observed_stock_precision === 'exact' &&
+                    item.observed_stock_quantity != null
+                      ? item.observed_stock_quantity
+                      : null
+                  const quantityUnknown = Boolean(
+                    item.source_offer &&
+                    item.observed_stock_precision !== 'exact' &&
+                    ['in_stock', 'limited'].includes(item.source_availability_status || ''),
+                  )
                   const oldPriceSource = item.old_price_formatted ?? item.old_price
                   const priceValue = parseNumber(item.price)
                   const oldPriceValue = parseNumber(oldPriceSource)
@@ -349,7 +384,11 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                   return (
                     <div
                       key={item.id}
-                      className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-200"
+                      className={`group flex flex-col gap-4 rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md sm:flex-row ${
+                        blocked
+                          ? 'border-amber-300 bg-amber-50/70'
+                          : 'border-gray-200 bg-white'
+                      }`}
                     >
                     {/* Главное медиа товара (видео или изображение) */}
                     <Link
@@ -417,6 +456,103 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                             )}
                           </div>
                         )}
+
+                        {(itemIssues.length > 0 || exactAvailable != null || quantityUnknown) && (
+                          <div
+                            className={`mt-3 rounded-lg border p-3 text-sm ${
+                              blocked
+                                ? 'border-amber-300 bg-white text-amber-950'
+                                : 'border-blue-200 bg-blue-50 text-blue-950'
+                            }`}
+                          >
+                            {itemIssues.map((issue) => {
+                              const copy = getCartIssueCopy(issue.code)
+                              let message = t(copy.key, copy.fallback)
+                              if (
+                                issue.code === 'source_price_changed' &&
+                                item.price_change_state === 'decreased'
+                              ) {
+                                message = t(
+                                  'cart_issue_price_decreased',
+                                  'Цена снизилась и уже обновлена.',
+                                )
+                              } else if (
+                                issue.code === 'source_price_changed' &&
+                                item.price_change_state === 'increased'
+                              ) {
+                                message = t(
+                                  'cart_issue_price_increased',
+                                  'Цена повысилась. Подтвердите новую цену, чтобы продолжить.',
+                                )
+                              }
+                              return <p key={issue.code}>{message}</p>
+                            })}
+                            {exactAvailable != null && (
+                              <p className="mt-1 font-medium">
+                                {t('cart_available_quantity', 'Доступно у поставщика: {{count}}', {
+                                  count: exactAvailable,
+                                })}
+                              </p>
+                            )}
+                            {quantityUnknown && (
+                              <p className="mt-1">
+                                {t(
+                                  'cart_quantity_unknown',
+                                  'Товар есть в наличии, точное количество поставщик не сообщает.',
+                                )}
+                              </p>
+                            )}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {blocked &&
+                                item.price_change_state === 'increased' &&
+                                item.observed_public_price != null && (
+                                  <button
+                                    type="button"
+                                    onClick={() => acknowledgePrice(item)}
+                                    disabled={verificationLoading}
+                                    className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-strong)] disabled:opacity-60"
+                                  >
+                                    {t('cart_acknowledge_price', 'Подтвердить новую цену')}
+                                  </button>
+                                )}
+                              {blocked &&
+                                exactAvailable != null &&
+                                exactAvailable > 0 &&
+                                exactAvailable < item.quantity && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateQty(item.id, exactAvailable)}
+                                    disabled={loading || verificationLoading}
+                                    className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-strong)] disabled:opacity-60"
+                                  >
+                                    {t(
+                                      'cart_reduce_to_available',
+                                      'Уменьшить до {{count}} шт.',
+                                      { count: exactAvailable },
+                                    )}
+                                  </button>
+                                )}
+                              {blocked && (
+                                <button
+                                  type="button"
+                                  onClick={revalidateCart}
+                                  disabled={verificationLoading}
+                                  className="rounded-md border border-amber-500 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                                >
+                                  {t('cart_retry_verification', 'Проверить ещё раз')}
+                                </button>
+                              )}
+                              {blocked && (
+                                <Link
+                                  href={getProductLink(item)}
+                                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                  {t('cart_view_alternatives', 'Посмотреть товар и аналоги')}
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Управление количеством и удалением */}
@@ -424,9 +560,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => updateQty(item.id, item.quantity - 1)}
-                            disabled={loading || item.quantity <= 1}
+                            disabled={loading || blocked || item.quantity <= 1}
                             className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            aria-label="Уменьшить количество"
+                            aria-label={t('cart_decrease_quantity', 'Уменьшить количество')}
                           >
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
@@ -437,9 +573,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           </span>
                           <button
                             onClick={() => updateQty(item.id, item.quantity + 1)}
-                            disabled={loading}
+                            disabled={loading || blocked}
                             className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            aria-label="Увеличить количество"
+                            aria-label={t('cart_increase_quantity', 'Увеличить количество')}
                           >
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -450,9 +586,15 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                         <div className="flex items-center gap-3">
                           <div className="text-right">
                             <div className="text-sm text-gray-500">{t('cart_item_total', 'Итого')}</div>
-                            <div className="text-lg font-bold text-gray-900">
-                              {formatMoney(parseFloat(item.price) * item.quantity, item.currency, i18n.language)} {item.currency}
-                            </div>
+                            {blocked ? (
+                              <div className="text-sm font-semibold text-amber-800">
+                                {t('cart_not_included_in_total', 'Не включено в итог')}
+                              </div>
+                            ) : (
+                              <div className="text-lg font-bold text-gray-900">
+                                {formatMoney(parseFloat(String(item.price)) * item.quantity, item.currency, i18n.language)} {item.currency}
+                              </div>
+                            )}
                           </div>
                           <button
                             onClick={() => removeItem(item.id)}
@@ -552,6 +694,12 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     <span>{t('cart_items_count', 'Товаров')}</span>
                     <span className="font-medium text-main dark:!text-gray-900">{cart.items_count}</span>
                   </div>
+                  {payableItemsCount !== cart.items_count && (
+                    <div className="flex justify-between text-sm text-amber-800">
+                      <span>{t('cart_payable_items_count', 'Доступно к заказу')}</span>
+                      <span className="font-medium">{payableItemsCount}</span>
+                    </div>
+                  )}
                   {showCartDiscountBreakdown ? (
                     <>
                       <div className="flex justify-between text-sm text-gray-600">
@@ -579,12 +727,30 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 </div>
 
                 <div className="mt-6 space-y-3">
-                  <Link
-                    href="/checkout"
-                    className="block w-full rounded-md bg-[var(--accent)] px-6 py-3 text-center text-sm font-medium text-white hover:bg-[var(--accent-strong)] transition-colors"
-                  >
-                    {t('cart_checkout', 'Перейти к оформлению заказа')}
-                  </Link>
+                  {hasBlockingIssues ? (
+                    <div>
+                      <button
+                        type="button"
+                        disabled
+                        className="block w-full cursor-not-allowed rounded-md bg-gray-300 px-6 py-3 text-center text-sm font-medium text-gray-600"
+                      >
+                        {t('cart_checkout', 'Перейти к оформлению заказа')}
+                      </button>
+                      <p className="mt-2 text-xs text-amber-800" role="status">
+                        {t(
+                          'cart_checkout_blocked',
+                          'Сначала подтвердите изменения или удалите недоступные позиции.',
+                        )}
+                      </p>
+                    </div>
+                  ) : (
+                    <Link
+                      href="/checkout"
+                      className="block w-full rounded-md bg-[var(--accent)] px-6 py-3 text-center text-sm font-medium text-white hover:bg-[var(--accent-strong)] transition-colors"
+                    >
+                      {t('cart_checkout', 'Перейти к оформлению заказа')}
+                    </Link>
+                  )}
                   <Link
                     href="/"
                     className="block w-full rounded-md border border-gray-300 px-6 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"

@@ -1,0 +1,711 @@
+# Проверка цены и наличия первоисточника в корзине
+
+Статус: активный рабочий план; код и локальные автоматические проверки фаз 0–8
+завершены; rollout audit/docs, локальная migration rehearsal, production-like predeploy
+и runtime smoke фазы 9 завершены; immutable remote CI, production-copy migrations,
+Alertmanager, source rollout и staging smoke остаются открыты
+Создан: 2026-08-27
+Последняя проверка по коду: 2026-08-27
+Ответственный контур: `scrapers` → `catalog` → `orders/cart` → `checkout/payments` → frontend
+
+Этот документ — рабочий источник правды по внедрению проверки supplier offer при
+добавлении товара в корзину и перед оформлением заказа. При расхождении плана с
+исполняемым кодом приоритет имеет код; расхождение сначала фиксируется здесь, затем
+план корректируется до следующей правки.
+
+## Правила ведения статуса
+
+- `[ ]` — не начато или не подтверждено проверками.
+- `[x]` — завершено, связанная логика проанализирована, критерии приёмки выполнены.
+- Пункт нельзя закрывать только на основании написанного кода.
+- Для каждого закрытого пункта в журнале работ указываются изменённые файлы,
+  связанные контуры, точные команды проверок и их результат.
+- Если проверка не запускалась из-за окружения, пункт остаётся открытым.
+- В один момент реализуется один небольшой логический шаг. Массовые смешанные
+  рефакторинги корзины, каталога и парсеров не допускаются.
+
+## Зафиксированные решения
+
+- Полный импорт-парсер не запускается из HTTP-контроллера корзины.
+- Для проверки одного предложения вводится лёгкий read-only контракт `check_offer`.
+- Проверяется конкретный buyable offer: источник + SKU/вариант + размер, а не только
+  общий `Product`.
+- Точный остаток хранится только когда источник действительно его сообщает.
+  Значения `1000` и `3` не считаются реальным количеством.
+- `source_unreachable` не приравнивается к `out_of_stock`.
+- GET корзины остаётся без внешних HTTP-вызовов и без новых side effects.
+- Перед checkout выполняется обязательная внешняя проверка вне DB-транзакции.
+- Повышение цены требует явного подтверждения пользователя; снижение можно применить
+  автоматически с уведомлением.
+- Недоступная строка не удаляется молча: она остаётся видимой с причиной и действиями.
+- Проверка парсером не считается резервированием товара у поставщика.
+- В заказе сохраняется неизменяемый snapshot источника, SKU, закупочной цены и проверки.
+
+## Обязательный протокол перед каждой правкой
+
+Перед изменением:
+
+- [ ] определить владельца бизнес-правила: parser, source-offer service, catalog,
+  cart, checkout, payment или frontend;
+- [ ] найти все вызовы и потребителей изменяемых функций/полей через `rg`;
+- [ ] проверить модели, миграции, admin, serializers, API schema, Celery tasks и сигналы;
+- [ ] проверить влияние на shadow `Product`, доменные товары, варианты и размеры;
+- [ ] проверить цену источника, конвертацию валют, маржу, промокод, доставку и итоги;
+- [ ] проверить anonymous/user cart identity, merge корзин, TTL и throttling;
+- [ ] для checkout проверить обычный заказ, crypto invoice, paid webhook, повторный
+  webhook, конкурентный checkout и списание/резерв;
+- [ ] определить обратную совместимость API и необходимость feature flag;
+- [ ] определить rollback до внесения миграции или изменения данных.
+
+После изменения:
+
+- [ ] просмотреть полный `git diff` и убедиться, что нет несвязанных правок;
+- [ ] выполнить `git diff --check`;
+- [ ] запустить минимальные unit/contract tests изменённого слоя;
+- [ ] запустить связанные integration tests соседних слоёв;
+- [ ] при изменении cart/checkout/payments проверить пересчёт суммы и card/crypto flow;
+- [ ] при изменении frontend выполнить lint, typecheck и затронутые тесты;
+- [ ] проверить OpenAPI/serializer response и RU/EN локализацию новых сообщений;
+- [ ] обновить чекбоксы и журнал работ только после фактических проверок.
+
+## Связанная логика, которую нельзя потерять
+
+| Контур | Что необходимо сохранить |
+| --- | --- |
+| Parser registry | безопасный выбор parser по сохранённому source URL/domain |
+| Scraper import | дедупликация, category/brand mapping, media pipeline, AI guards |
+| Catalog | generic `Product`, доменные модели, shadow products, variants/sizes |
+| Pricing | исходная цена и валюта, конвертация, глобальная/товарная маржа, `Decimal` |
+| Cart identity | anonymous session, user cart, merge, unique constraints, TTL cleanup |
+| Cart calculations | promo, shipping options, free-shipping threshold, totals |
+| Checkout | row locks, повторная отправка, cart fingerprint, отсутствие двойного заказа |
+| Payments | crypto invoice, paid webhook, идемпотентность, повторное списание |
+| API/frontend | обратная совместимость, локализация, состояния строки, GTM events |
+| SEO/feed | одинаковые цена/наличие в карточке, JSON-LD, checkout и feed |
+
+## Фаза 0. Анализ и фиксация плана
+
+- [x] Изучен единый контракт `ScrapedProduct` и `BaseScraper`.
+- [x] Проверен parser registry и выбор parser по URL/domain.
+- [x] Проанализированы Zara/Inditex, FLO, LCW, IKEA, Ummaland, IlacFiyati,
+  Ilacabak и Instagram.
+- [x] Подтверждены условные остатки `1000/3` и отсутствие точного stock у части источников.
+- [x] Проанализированы add/update cart, сериализация цены, checkout и crypto webhook.
+- [x] Зафиксирована целевая двухфазная архитектура проверки.
+- [x] Создан постоянный рабочий план и правила закрытия пунктов.
+
+Критерий завершения фазы: документ добавлен в индекс документации, исходный код не
+изменён. Фаза не означает начало реализации.
+
+## Фаза 1. Контракт данных источника
+
+- [x] Зафиксировать финальную схему `ProductSourceOffer` до миграции.
+- [x] Определить гранулярность: одна запись на buyable SKU/вариант/размер.
+- [x] Добавить статусы availability: `in_stock`, `out_of_stock`, `limited`,
+  `discontinued`, `unknown`, `source_unreachable`, `unsupported`.
+- [x] Добавить `stock_precision`: `exact`, `boolean`, `unknown`.
+- [x] Хранить исходную цену только как `Decimal` и отдельно от публичной цены магазина.
+- [x] Добавить parser/config, canonical URL, external SKU/ID, variant/size keys,
+  priority, timestamps и диагностическое состояние.
+- [x] Спроектировать уникальные ограничения и индексы без блокирующей data migration.
+- [x] Сделать schema migration отдельно от backfill.
+- [x] Добавить admin только для диагностики; критические source-поля не редактировать
+  случайно массовыми действиями.
+- [x] Добавить model tests и migration tests.
+
+Критерий завершения фазы: новая схема обратно совместима, старые cart/catalog paths
+работают без source verification, миграция проверена вперёд и rollback-план описан.
+
+Rollback фазы 1: пока dual-write не включён, обратная миграция `0202 → 0201` удаляет
+только пустую новую таблицу и не меняет `Product`, cart или order. После начала фазы 2
+откатывать таблицу разрешено только после выключения writer feature flag и экспорта
+offer-строк; штатный rollback следующих фаз — отключение readers/writers без удаления
+накопленной диагностической истории.
+
+## Фаза 2. Dual-write из обычного парсинга
+
+- [x] При обычном импорте upsert `ProductSourceOffer` без изменения текущего поведения витрины.
+- [x] Сохранять связь с generic `Product`, доменным товаром, вариантом и размером.
+- [x] Не терять parser name при создании shadow `Product`.
+- [x] Для merged product хранить несколько source offers, не выбирать поставщика неявно.
+- [x] Добавить явный supplier priority/selection policy.
+- [x] Реализовать dry-run аудит исторических `external_url` и `scraped_sources`.
+- [x] Реализовать bounded/idempotent backfill отдельной management command.
+- [x] Не удалять условные остатки до появления корректных readers новой схемы.
+- [x] Добавить тесты повторного scrape, variant sync, dedup и нескольких источников.
+
+Критерий завершения фазы: новые и повторно спарсенные товары получают стабильные offers;
+повторный запуск не создаёт дубли; старый каталог и корзина дают прежние ответы.
+
+## Фаза 3. Лёгкий parser contract `check_offer`
+
+- [x] Добавить `OfferCheckResult` с `Decimal`, status, nullable quantity,
+  stock precision, canonical URL, checked_at и typed error.
+- [x] Добавить явное `UnsupportedOfferVerification`, а не ложный успешный результат.
+- [x] Гарантировать read-only режим: без media download, AI, дедупликации и создания товара.
+- [x] Реализовать Zara и общую Inditex-базу.
+- [x] Реализовать Bershka, Pull&Bear и Massimo Dutti через общую базу.
+- [x] Реализовать FLO для выбранного color/size SKU.
+- [x] Реализовать LCW без обхода всех цветовых вариантов.
+- [x] Реализовать IKEA с различием exact stock и unknown availability.
+- [x] Реализовать Ummaland в пределах доступных данных.
+- [x] Пометить Instagram и недостоверные медицинские источники как manual/unsupported,
+  пока нет надёжного supplier API.
+- [x] Добавить contract fixtures: in stock, out of stock, price change, missing size,
+  404/410, 403/challenge, timeout, malformed payload.
+
+Критерий завершения фазы: каждый поддержанный parser проверяет один offer; неизвестное
+количество остаётся `None`; сетевой сбой не выдаётся за отсутствие товара.
+
+## Фаза 4. SourceOfferVerificationService и устойчивость
+
+- [x] Создать единый service layer для выбора parser и нормализации результата.
+- [x] Принимать только сохранённый trusted source offer, не URL из клиентского payload.
+- [x] Проверять supported domain и redirect target.
+- [x] Добавить короткие connect/read timeouts и bounded retry.
+- [x] Добавить Redis cache с отдельным TTL успешного и ошибочного результата.
+- [x] Добавить single-flight для одновременной проверки одного offer.
+- [x] Добавить circuit breaker и per-source concurrency/rate limits.
+- [x] Добавить feature flag глобально и per source.
+- [x] Добавить структурированные логи и метрики latency/success/error/change.
+- [x] Добавить unit и resilience integration tests.
+
+Критерий завершения фазы: деградация одного внешнего сайта не блокирует worker pool и
+не вызывает шторм одинаковых запросов; выключение flag возвращает старое поведение.
+
+## Фаза 5. Backend корзины
+
+- [x] Расширить `CartItem`: source offer, verification status/time, observed quantity,
+  price-change state и acknowledgement.
+- [x] Миграцию CartItem сделать nullable и обратно совместимой.
+- [x] Интегрировать проверку в add после serializer resolve, но до создания anonymous cart.
+- [x] Проверять источник при увеличении quantity, если cache устарел.
+- [x] Добавить явный `POST /cart/revalidate`; GET cart оставить side-effect free.
+- [x] Добавить issue codes: `source_out_of_stock`, `source_quantity_changed`,
+  `source_price_changed`, `source_unreachable`, `verification_unsupported`, `cart_changed`.
+- [x] Не удалять существующую недоступную строку; исключать её из payable total.
+- [x] При повышении цены требовать acknowledgement; снижение применять с уведомлением.
+- [x] Пересчитать promo, shipping и free-shipping threshold после изменения активных строк.
+- [x] Сохранить anonymous cart no-op/invalid mutation guarantees и throttles.
+- [x] Проверить user/anonymous cart merge и source-offer identity.
+- [x] Обновить OpenAPI и RU/EN тексты ошибок.
+- [x] Добавить unit/integration/concurrency tests корзины.
+
+Критерий завершения фазы: новая позиция не становится покупаемой без допустимой проверки;
+существующая позиция показывает точную причину блокировки; старые клиенты получают
+обратно совместимые базовые поля ответа.
+
+## Фаза 6. Frontend корзины и checkout
+
+- [x] Расширить cart types/store под verification fields и `issues`.
+- [x] Показать `Нет в наличии`, `Доступно N`, `Количество неизвестно`,
+  `Цена изменилась`, `Не удалось проверить`.
+- [x] Добавить действия: подтвердить цену, повторить, уменьшить quantity, удалить,
+  перейти к аналогам.
+- [x] Блокировать checkout при blocking issues и объяснять каждую причину.
+- [x] Не считать unavailable line в payable total; отдельно показать количество строк.
+- [x] Добавить все строки в RU/EN locale files.
+- [x] Сохранить add_to_cart/remove_from_cart analytics semantics.
+- [x] Проверить cart SSR, hydration и mobile layout.
+- [x] Выполнить lint, typecheck, tests и production build.
+
+Критерий завершения фазы: пользователь всегда понимает, что изменилось и какое действие
+нужно выполнить; UI не обещает точный остаток, если источник его не сообщает.
+
+## Фаза 7. Checkout, заказ и платежи
+
+- [x] Убрать внешнюю source-проверку из области DB row locks.
+- [x] Реализовать preflight вне транзакции и fingerprint корзины.
+- [x] В короткой транзакции повторно lock cart/items и сравнить fingerprint.
+- [x] При изменении цены/наличия вернуть `409` с обновлённой корзиной до создания заказа.
+- [x] Сохранить в `OrderItem` immutable source snapshot: supplier, URL, SKU, option,
+  source price/currency, status и checked_at.
+- [x] Разделить реальный source stock, локальную allocation и условную availability.
+- [x] Не считать parser verification резервированием у поставщика.
+- [x] Определить `supplier_confirmation_required` для источников без reservation API.
+- [x] Для обычного checkout проверить создание заказа и атомарность allocation.
+- [x] Для crypto проверить источник до invoice и политику при изменении до paid webhook.
+- [x] Сохранить идемпотентность повторных/concurrent paid webhooks.
+- [x] Добавить тесты concurrent checkout, invoice failure, duplicate webhook,
+  stock/price drift и cart change во время preflight.
+- [ ] Выполнить ручной staging smoke для обычного и crypto flow.
+
+Критерий завершения фазы: заказ и платёж не создаются по устаревшей корзине; блокировки
+не удерживаются во время supplier HTTP; source snapshot пригоден для fulfillment/audit.
+
+## Фаза 8. Фоновые проверки, admin и SEO/feed
+
+- [x] Добавить Celery refresh только для stale/popular offers с bounded batch.
+- [x] Не запускать внешнюю проверку как side effect чтения каталога или корзины.
+- [x] Добавить read-only admin dashboard состояния, freshness/errors и circuit breaker.
+- [x] Добавить метрики и репозиторные alert rules по latency, error rate, stale offers,
+  circuit и частым price changes; подключение внешнего Alertmanager остаётся rollout gate.
+- [x] Синхронизировать `availability_status`, `is_available` и публичный Offer JSON-LD.
+- [x] Проверить sitemap и product feed: единственный feed проекта YML использует тот же
+  availability resolver; отдельной Merchant Center интеграции в проекте сейчас нет.
+- [x] Для discontinued/out-of-stock сохранить страницу товара 200, убрать buy actions и
+  оставить существующий блок рекомендаций/аналогов.
+- [x] Документировать runbook диагностики и безопасного повторного запуска.
+
+Критерий завершения фазы: фоновые задачи ограничены, наблюдаемы и не создают нагрузочный
+шторм; storefront, checkout, JSON-LD и feed показывают согласованные данные.
+
+## Фаза 9. Rollout и удаление временной совместимости
+
+- [x] Добавить read-only rollout audit миграций, coverage, freshness, fake stock,
+  cart/order readiness и опасных сочетаний feature flags.
+- [x] Проверить `0202/0010/0011` на изолированной копии текущей локальной schema/data,
+  сохранить существующие cart/order rows и удалить временную БД после проверки.
+- [x] После успешной rehearsal и полного CI применить `orders.0010/0011` к рабочей
+  локальной dev-БД, подтвердить пустой повторный plan и сохранность cart/order rows.
+- [x] Выполнить dry-run и идемпотентный historical backfill локальной dev-БД без
+  supplier HTTP; подтвердить offer-key uniqueness и структурное coverage.
+- [ ] Включить recording offers без cart enforcement.
+- [ ] Провести dry-run и сохранить отчёт по покрытию source offers на копии production
+  data, затем в staging.
+- [ ] Включать live verification по одному источнику через feature flag.
+- [ ] Начать с Zara/Inditex, FLO, LCW и IKEA.
+- [ ] Проверить метрики и rollback после каждого источника.
+- [ ] Подключить `ops/prometheus/source_offer_alerts.yml` к production Prometheus/
+  Alertmanager, заменить runbook URL и выполнить `promtool check rules`.
+- [ ] Только после стабильного rollout удалить использование fake stock как реального лимита.
+- [ ] Удалить временные dual-read paths отдельным PR после полного покрытия.
+- [x] Обновить `SCRAPERS_GUIDE.md`, Cart API docs, runbook и этот документ.
+
+Критерий завершения фазы: feature работает на production для включённых источников,
+есть подтверждённый rollback, fake stock не влияет на покупаемое количество.
+
+## Общие release gates
+
+- [ ] Все миграции применяются на копии production schema/data без ручного исправления.
+- [x] Все три миграции применены на изолированной копии текущей локальной schema/data;
+  existing `CartItem`/`OrderItem` counts сохранены, повторный plan пуст.
+- [x] Нет N+1 запросов в cart serialization.
+- [x] Внешний URL невозможно подменить клиентским запросом.
+- [x] В коде расчёта денег нет новых `float`.
+- [x] Timeout/403/404 имеют разные бизнес-результаты.
+- [x] GET cart не создаёт внешних запросов, session или Cart для пустого anonymous client.
+- [x] Promo/shipping/totals используют только payable lines и подтверждённую цену.
+- [x] Concurrent checkout создаёт не более одного заказа.
+- [x] Crypto paid webhook не списывает allocation повторно.
+- [x] RU/EN UI и API ошибки согласованы.
+- [x] Backend targeted suite, полный обязательный CI и frontend build зелёные.
+- [x] Production-like Docker images собраны локально; release-image backend/frontend
+  проверки и clean-schema runtime smoke завершены успешно.
+- [ ] Immutable 40-character release SHA отправлен в GitHub и remote CI завершён успешно.
+- [ ] Staging smoke выполнен для cart, checkout, обычной оплаты и crypto.
+
+## Журнал работ
+
+### 2026-08-27 — анализ и фиксация
+
+- Статус: завершена только фаза 0.
+- Изменённые файлы: `docs/SOURCE_OFFER_CART_VERIFICATION_PLAN.md`,
+  `docs/README.md`.
+- Связанные контуры: только документация; исполняемые parser, catalog, cart,
+  checkout и payment paths не менялись.
+- Код приложения, модели и миграции не менялись.
+- Выполненные проверки: просмотр архитектуры parser/catalog/cart/checkout/payment и
+  статический анализ связанных тестов.
+- Команды проверки документа: `git status --short`,
+  `rg -n "SOURCE_OFFER_CART_VERIFICATION_PLAN" docs/README.md`,
+  `git diff --check`; все завершились успешно.
+- Не заявлялось: запуск backend test suite, Docker smoke или frontend build.
+- Причина отсутствия test suite: изменение состоит только из Markdown-документации;
+  закрытие следующих фаз без профильных тестов запрещено.
+- Следующий безопасный шаг: финализировать схему `ProductSourceOffer` и сначала добавить
+  только nullable schema migration без подключения к корзине.
+
+### 2026-08-27 — фаза 1, контракт и schema migration
+
+- Статус: фаза 1 завершена; фазы 2–9 не включены.
+- Изменённые файлы: `backend/apps/catalog/models.py`,
+  `backend/apps/catalog/admin.py`,
+  `backend/apps/catalog/migrations/0202_productsourceoffer.py`,
+  `backend/apps/catalog/tests/test_product_source_offer.py`,
+  `backend/apps/catalog/tests/test_product_source_offer_migration.py`.
+- Связанные контуры: единый `Product`, shadow/domain product resolver, cart identity,
+  read-side корзины и политика повторного scrape; readers/writers offer пока отсутствуют.
+- `ProductSourceOffer` привязан к единому `Product`; конкретный buyable offer задаётся
+  внешними SKU/ID, variant/size keys, options и стабильным SHA-256 `offer_key`.
+- DB constraints запрещают сохранять условное количество при boolean/unknown stock.
+- Admin сделан диагностическим read-only: создание и удаление отключены.
+- Команды и результаты:
+  - `.venv-local/bin/python manage.py check` — успешно;
+  - `docker compose exec backend poetry run python manage.py makemigrations --check --dry-run`
+    — `No changes detected`;
+  - `docker compose exec backend poetry run pytest apps/catalog/tests/test_product_source_offer.py apps/catalog/tests/test_product_source_offer_migration.py -q`
+    — `5 passed`;
+  - `docker compose exec backend poetry run pytest apps/catalog/tests/test_product_resolve.py apps/orders/tests/test_cart_identity_constraints.py apps/orders/tests/test_cart_mutation_security.py apps/orders/tests/test_cart_read_side_effects.py apps/scrapers/test_existing_product_update_policy.py -q`
+    — `69 passed`;
+  - `git diff --check` — успешно.
+- Известное ограничение локального runtime: Python 3.11 окружение не содержит
+  `curl_cffi`; полные проверки выполнены в штатном Python 3.12 Docker-контейнере.
+- Следующий безопасный шаг: отдельный idempotent writer, который создаёт offers при
+  обычном scrape, без изменения текущих цен/остатков каталога и без cart enforcement.
+
+### 2026-08-27 — фаза 2, dual-write и backfill
+
+- Статус: фаза 2 завершена за выключенным по умолчанию feature flag;
+  cart/checkout readers по-прежнему не используют source offers.
+- Изменённые файлы: `backend/apps/scrapers/source_offers.py`,
+  `backend/apps/scrapers/services.py`, `backend/config/settings.py`, `.env.example`,
+  `backend/apps/catalog/management/commands/backfill_source_offers.py`,
+  `backend/apps/scrapers/test_source_offer_writer.py`,
+  `backend/apps/catalog/tests/test_backfill_source_offers.py`,
+  `backend/apps/orders/serializers.py`,
+  `backend/apps/orders/tests/test_cart_variant_navigation.py`.
+- Связанные контуры: обычный parser import, repeat scrape, fashion/furniture variant
+  sync, shadow Product navigation, catalog stock compatibility и scraper audit log.
+- `SOURCE_OFFER_RECORDING_ENABLED=false` по умолчанию; writer вызывается после
+  успешного импорта и не превращает свою ошибку в ошибку существующего scrape.
+- Priority policy: меньшее число имеет приоритет; default и per-source значения
+  настраиваются через env. Writer ничего не выбирает для продажи неявно.
+- Zara/Inditex/FLO/LCW и остальные boolean-источники не записывают `1000/3` как
+  exact quantity. IKEA записывает exact только когда normalized supplier API вернул
+  число (включая явный zero для unsellable); отсутствие числа остаётся boolean
+  availability без количества.
+- Variant sync сохраняет `source_parser` и `source_offer_product_id`; эти ключи
+  переносятся в cart-facing shadow Product вместе с source variant identity.
+- Backfill по умолчанию работает в dry-run; `--apply`, `--limit`, `--batch-size`,
+  `--start-id` и `--source` делают запись явной, ограниченной и возобновляемой.
+- Команды и результаты:
+  - `docker compose exec backend poetry run pytest apps/scrapers/test_source_offer_writer.py apps/catalog/tests/test_backfill_source_offers.py apps/catalog/tests/test_product_source_offer.py -q`
+    — `11 passed`;
+  - `docker compose exec backend poetry run pytest apps/scrapers/test_existing_product_update_policy.py apps/scrapers/test_zara_parser.py apps/scrapers/test_inditex_parsers.py apps/scrapers/test_flo_parser.py apps/scrapers/test_lcw_parser.py apps/catalog/tests/test_ikea_service.py apps/scrapers/test_rescrape_skip_counter.py apps/scrapers/test_accessory_parsed_media_resave.py -q`
+    — `104 passed`;
+  - `docker compose exec backend poetry run pytest apps/orders/tests/test_cart_variant_navigation.py apps/scrapers/test_accessory_parsed_media_resave.py apps/scrapers/test_source_offer_writer.py -q`
+    — `16 passed`;
+  - `.venv-local/bin/python manage.py check`, Black check новых файлов и
+    `git diff --check` — успешно.
+- Rollback: оставить migration 0202, выключить `SOURCE_OFFER_RECORDING_ENABLED`;
+  существующий import/cart не читают новую таблицу. Созданные offers сохраняются для
+  диагностики и не требуют удаления.
+- Следующий безопасный шаг: добавить typed read-only `OfferCheckResult` и parser
+  adapters без подключения к корзине.
+
+### 2026-08-27 — фаза 3, typed `check_offer`
+
+- Статус: фаза 3 завершена; live-check ещё не вызывается cart/checkout.
+- Изменённые файлы: `backend/apps/scrapers/base/offers.py`,
+  `backend/apps/scrapers/base/scraper.py`, parser adapters Zara/FLO/LCW/IKEA/Ummaland
+  и `backend/apps/scrapers/test_offer_check_contract.py`.
+- Связанные контуры: parser registry, full detail parsing, Inditex inheritance,
+  HTTP error mapping и source stock precision; media/catalog writers не вызываются.
+- Typed contract содержит `OfferCheckContext`, `OfferCheckResult`, `Decimal`,
+  availability/stock enums, checked_at, typed error и проверку invariant quantity.
+- Base parser по умолчанию бросает `UnsupportedOfferVerification`; Instagram,
+  IlacFiyati и Ilacabak не выдают ложный live result.
+- Zara/Inditex проверяют один server payload. FLO/LCW запрашивают только сохранённый
+  variant URL. IKEA запрашивает один item code без обхода color siblings.
+- Отдельный `_make_offer_request` не меняет legacy full-scrape retry path и различает
+  404 `not_found`, 410 `gone`, 403 `access_blocked`, timeout и transport error.
+- Команды и результаты:
+  - `docker compose exec backend poetry run pytest apps/scrapers/test_offer_check_contract.py -q`
+    — `19 passed`;
+  - `docker compose exec backend poetry run pytest apps/scrapers/test_parser_registry.py apps/scrapers/test_zara_parser.py apps/scrapers/test_inditex_parsers.py apps/scrapers/test_flo_parser.py apps/scrapers/test_lcw_parser.py apps/catalog/tests/test_ikea_service.py apps/scrapers/test_ilacfiyati_parser.py apps/scrapers/test_instagram_parser.py -q`
+    — `116 passed`;
+  - `.venv-local/bin/python manage.py check`, py_compile, Black check новых файлов и
+    `git diff --check` — успешно.
+- Rollback: adapters не имеют readers; удаление/отключение будущего service flag
+  возвращает систему к full scrape. Схема и recorded offers остаются совместимыми.
+- Следующий безопасный шаг: единый `SourceOfferVerificationService`, принимающий только
+  сохранённый offer и отвечающий за domain guard, cache, single-flight и circuit breaker.
+
+### 2026-08-27 — фаза 4, resilient live verification service
+
+- Статус: фаза 4 завершена за выключенным по умолчанию feature flag; корзина и
+  checkout ещё не вызывают внешний источник.
+- Изменённые файлы: `backend/apps/catalog/services/source_offer_verification.py`,
+  `backend/apps/catalog/tests/test_source_offer_verification_service.py`,
+  `backend/apps/scrapers/base/offers.py`, `backend/config/settings.py`, `.env.example`.
+- Связанные контуры: parser registry/domain resolution, Redis cache, typed parser
+  errors, offer diagnostics и Prometheus/logging; cart/checkout/payment paths не менялись.
+- Service принимает только сохранённый активный `ProductSourceOffer`. HTTPS URL,
+  сохранённый домен, parser key и parser registry проверяются до сетевого запроса;
+  credentials в URL и редирект в неподдерживаемый домен отклоняются.
+- Внутренние retries полного парсера отключены. Service централизованно ограничивает
+  timeout, не более двух retry, backoff, source rate/concurrency, single-flight и
+  circuit breaker. Cache degradation работает fail-open и не маскирует parser result.
+- Успешные и ошибочные результаты имеют разные TTL. Production cache уже настроен на
+  Django `RedisCache`; тесты используют изолированный LocMem backend согласно общей
+  политике тестов, чтобы не очищать Redis работающего приложения.
+- При допустимом supplier redirect атомарно обновляются canonical URL и source domain;
+  отдельный тест доказывает, что следующая проверка не блокируется domain guard.
+- Метрики фиксируют latency, outcome и изменения price/availability/stock; логи содержат
+  source, outcome, duration и offer/change diagnostics без клиентского URL payload.
+- Команды и результаты:
+  - `docker compose exec backend poetry run pytest apps/catalog/tests/test_source_offer_verification_service.py apps/scrapers/test_offer_check_contract.py apps/scrapers/test_source_offer_writer.py apps/catalog/tests/test_product_source_offer.py apps/catalog/tests/test_product_source_offer_migration.py -q`
+    — `40 passed`;
+  - `docker compose exec backend poetry run pytest apps/scrapers/test_parser_registry.py apps/scrapers/test_zara_parser.py apps/scrapers/test_inditex_parsers.py apps/scrapers/test_flo_parser.py apps/scrapers/test_lcw_parser.py apps/catalog/tests/test_ikea_service.py apps/scrapers/test_ilacfiyati_parser.py apps/scrapers/test_instagram_parser.py -q`
+    — `116 passed`;
+  - `docker compose exec backend poetry run python manage.py check` — успешно;
+  - `docker compose exec backend poetry run python manage.py makemigrations --check --dry-run`
+    — `No changes detected`;
+  - Black check новых файлов, `py_compile` и `git diff --check` — успешно.
+- Rollback: оставить накопленные offer diagnostics, выключить
+  `SOURCE_OFFER_VERIFICATION_ENABLED`; ни parser import, ни действующая корзина service
+  не вызывают. Per-source rollout дополнительно ограничивается allowlist.
+- Следующий безопасный шаг: nullable поля `CartItem` отдельной schema migration и
+  backward-compatible serializer output до подключения live-check к add/update cart.
+
+### 2026-08-27 — фаза 5, backend корзины
+
+- Статус: фаза 5 завершена; cart enforcement остаётся выключенным по умолчанию,
+  frontend-фаза 6 и checkout preflight/snapshot фазы 7 ещё не включены.
+- Изменённые файлы: `backend/apps/orders/models.py`, `admin.py`, `serializers.py`,
+  `views.py`, `cart_source_verification.py`, migration `0010`, cart tests,
+  variant source-identity writer/serializer, settings/env и RU/EN API locale files.
+- Связанные контуры: add/update/revalidate cart, anonymous/user merge, optimistic
+  concurrency, totals, promo, shipping/free-shipping, checkout guard, throttles,
+  variant identity, currency conversion и product markup.
+- `CartSourceOfferPolicy` выбирает только сохранённый server-owned offer конкретного
+  варианта/размера и вызывает лёгкий verifier. Клиент не может передать source URL,
+  parser key или supplier SKU.
+- Add проверяет источник до создания anonymous Cart. Повторный add блокирует уже
+  сохранённую строку, если offer исчез. Update/revalidate сохраняют результат через
+  optimistic compare по quantity/updated_at без сетевого запроса под DB lock.
+- Повышенная публичная цена привязана к точной сумме и валюте acknowledgement;
+  снижение применяется автоматически. Exact stock может уменьшить quantity; boolean
+  stock не выдаёт пользователю выдуманное число.
+- Заблокированная строка остаётся видимой, но не участвует в payable total, скидке,
+  доставке или checkout. Удаление диагностического offer не разблокирует snapshot.
+- Добавлены `POST /api/orders/cart/{id}/acknowledge-price` и
+  `POST /api/orders/cart/revalidate`; явный revalidate обходит result TTL, сохраняя
+  circuit breaker, rate/concurrency limits и max-items bound. GET cart не вызывает сеть.
+- Команды и результаты:
+  - `docker compose exec backend poetry run pytest apps/orders/tests apps/payments/tests -q`
+    — `131 passed`, `17 subtests passed`;
+  - `docker compose exec backend poetry run pytest apps/catalog/tests apps/scrapers -q`
+    — `562 passed`, `4 subtests passed`;
+  - финальный cart policy/API/model набор — `27 passed`;
+  - `docker compose exec backend poetry run python manage.py check` — успешно;
+  - `docker compose exec backend poetry run python manage.py makemigrations --check --dry-run`
+    — `No changes detected`;
+  - `msgfmt --check` для RU/EN — успешно;
+  - `manage.py spectacular --validate` — `0 errors`; оставшиеся предупреждения относятся
+    к существующим неаннотированным serializer method fields проекта;
+  - Black check новых файлов и `git diff --check` — успешно.
+- Rollback: выключить `SOURCE_OFFER_CART_ENFORCEMENT_ENABLED`; legacy cart lines и
+  ответы сохраняются, nullable snapshots остаются диагностическими. Migration 0010
+  откатывать только после выключения reader и проверки отсутствия нужной истории.
+- Следующий безопасный шаг: фаза 6 — frontend types/store/UI для issue codes и действий,
+  затем отдельная фаза 7 с live preflight вне checkout transaction и immutable OrderItem
+  source snapshot.
+
+### 2026-08-27 — фаза 6, frontend корзины и checkout
+
+- Статус: фаза 6 завершена; supplier-conflict UI включается только при backend feature
+  flag, checkout preflight и immutable snapshot остаются открытой фазой 7.
+- Изменённые файлы: общие cart types и verification helpers, Zustand cart store,
+  `AddToCartButton`, `BuyNowButton`, страницы cart/checkout и RU/EN locale JSON.
+- Связанные контуры: exact offer identity с выбранным размером, add/buy-now conflict
+  retry, totals/payable count, promo/shipping read-side, SSR refresh и checkout submit.
+- Add/buy-now обрабатывают совместные quantity/price conflicts одним подтверждённым
+  повтором; 409 больше не повторяется автоматически из-за trailing-slash fallback.
+- Заблокированная строка остаётся видимой, исключена из отображаемого payable total и
+  имеет действия: подтвердить цену, уменьшить до точного остатка, перепроверить,
+  удалить или перейти к товару/аналогам. Boolean stock не показывается как точное число.
+- Cart и checkout используют один тип ответа и заменяют состояние ответом backend после
+  каждой мутации/конфликта; кнопка оформления блокируется и на странице cart, и при
+  submit checkout.
+- Команды и результаты:
+  - `npm exec tsc -- --noEmit --pretty false` — успешно;
+  - `npm test` — `53 passed`;
+  - `npm run lint` — `0 errors`, `43` существующих предупреждения `no-img-element`;
+  - `npm run build` — production build успешно, `/cart` и `/checkout` собраны;
+  - RU/EN locale JSON parse — успешно;
+  - локальный browser smoke `http://localhost:3001/cart` — desktop и viewport
+    `390x844`, SSR/hydration без падения, mobile empty-state визуально корректен.
+- Не заявлялось: staging smoke supplier-conflict fixture с живым source flag; он остаётся
+  в release/staging gates и не подменяется локальным empty-cart smoke.
+- Следующий безопасный шаг: фаза 7 — вынести live-check до checkout transaction,
+  сравнить fingerprint под коротким lock и сохранить immutable source snapshot заказа.
+
+### 2026-08-27 — фаза 7, checkout preflight и source snapshot
+
+- Статус: код, schema migration и автоматические проверки фазы 7 завершены; единственный
+  открытый пункт фазы — ручной staging smoke обычного и реального crypto flow.
+- Изменённые файлы: checkout в `backend/apps/orders/views.py`, `OrderItem` model/admin,
+  migration `0011`, source-preflight/migration tests, reservation allowlist setting/env и
+  явная webhook policy в `backend/apps/payments/views.py`.
+- `CreateOrderSerializer` валидируется до дорогой проверки. Supplier preflight выполняет
+  `force=True` вне `transaction.atomic`, сохраняет результат optimistic update и строит
+  SHA-256 fingerprint cart/promo/items/source identity.
+- Короткий checkout transaction повторно блокирует только cart/items, bulk-read загружает
+  nullable source offers без недопустимого PostgreSQL outer-join lock и сравнивает
+  fingerprint до promo, invoice, заказа или allocation.
+- Price/stock drift возвращает обновлённую корзину и `409`; transient supplier failure
+  остаётся `503`. Exact stock может зажать quantity, но checkout останавливается для
+  явного просмотра изменения пользователем. Crypto invoice при drift не создаётся.
+- `OrderItem` хранит plain immutable snapshot без FK к offer: parser/domain/URL,
+  external product/SKU, variant/size/options, source price/currency, availability,
+  stock precision/quantity и checked_at. Последующее изменение offer snapshot не меняет.
+- Live verification не считается reservation. Для всех source parsers вне пустого по
+  умолчанию `SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES` ставится
+  `supplier_confirmation_required=true`; local allocation остаётся отдельной логикой.
+- Paid webhook намеренно не запускает supplier parser: он авторитетно и идемпотентно
+  применяет provider payment один раз, списывает local allocation и оставляет supplier
+  confirmation fulfillment-контуру.
+- Команды и результаты:
+  - новые preflight/fingerprint/snapshot/migration tests — `6 passed`;
+  - связанный checkout/cart/webhook suite — `46 passed`, `17 subtests passed`;
+  - полный `apps/orders/tests apps/payments/tests` — `139 passed`,
+    `17 subtests passed`;
+  - `manage.py check` — успешно; `makemigrations --check --dry-run` —
+    `No changes detected`;
+  - `manage.py spectacular --validate` — `0 errors`; 577 существующих warnings;
+  - `manage.py spectacular --validate` — `0 errors`; 577 существующих schema warnings;
+  - Black check трёх новых файлов и `git diff --check` — успешно;
+  - frontend production build после финального cart action — успешно.
+- Rollback: выключить cart enforcement, оставить snapshot columns nullable/blank.
+  Migration `0011 → 0010` удаляет только новые audit columns, поэтому перед rollback
+  требуется экспорт source snapshot уже созданных заказов.
+- Следующий безопасный шаг: применить миграции на копии production data и выполнить
+  staging smoke с включёнными Zara/Inditex source flags, затем обычный и crypto checkout.
+
+### 2026-08-27 — фаза 8, background refresh, admin и storefront/feed consistency
+
+- Статус: код и автоматические проверки фазы 8 завершены. Все новые readers/tasks
+  выключены по умолчанию; production monitoring и source-by-source rollout не заявлялись.
+- Изменённые контуры: bounded Celery task/service, Beat/settings/env, read-only offer
+  admin, public detail serializer projection, YML availability, product JSON-LD/UX,
+  Prometheus rules, Celery docs и отдельный operations runbook.
+- Scheduled task каждые 5 минут является no-op до двух enable-флагов. Один проход берёт
+  не более 100 stale offers, ставит recently changed cart offers первыми, имеет общий
+  lock дольше hard timeout и не поглощает Celery soft timeout.
+- Проверка остаётся в `SourceOfferVerificationService`: trusted saved URL, source
+  allowlist, cache/single-flight, rate/concurrency и circuit breaker не дублируются.
+  Ни GET catalog/cart, ни serializer не запускают supplier HTTP.
+- Detail/YML projection имеет отдельный флаг. Один свежий sellable offer разрешает
+  supplier availability, но не отменяет ручной `is_available=false` магазина;
+  out-of-stock/discontinued выставляется только если все enabled active offers свежие
+  и окончательно недоступны. Stale/unknown/unreachable сохраняют прежнее состояние
+  каталога. Feed работает с prefetch и запрещает per-product fallback query.
+- Sitemap по-прежнему включает `is_active` товары независимо от наличия. Resolve test
+  подтверждает HTTP 200 для out-of-stock; frontend скрывает buy actions, сохраняет
+  карточку и существующий `SimilarProducts`, а Offer JSON-LD использует тот же status.
+- Admin не имеет add/delete действий и показывает freshness, consecutive failures,
+  last error и circuit state; ручного массового запуска парсера из списка нет.
+- Добавлены шесть alert rules. Compose проекта не содержит Prometheus/Alertmanager,
+  поэтому rules являются проверяемым deployment artifact, а подключение вынесено в фазу 9.
+- Команды и результаты:
+  - phase-8 source/admin/projection target — `18 passed`, затем после review
+    `13 passed`; два timeout/HTTP guard-теста отдельно — `2 passed`, merchandising
+    guard — `1 passed`;
+  - связанный source/product-resolve/serializer/SEO/YML/parser suite — `117 passed`;
+  - `manage.py check` — успешно; `makemigrations --check --dry-run` —
+    `No changes detected`;
+  - task зарегистрирована как `catalog.refresh_source_offers`, Beat schedule — 300 секунд;
+  - alert YAML прочитан Ruby YAML parser, найдено 6 rules; `git diff --check` — успешно;
+  - `npm exec tsc -- --noEmit --pretty false` — успешно;
+  - `npm test` — `57 passed`, включая 4 JSON-LD availability tests;
+  - `npm run lint` — `0 errors`, 43 существующих `no-img-element` warnings;
+  - `npm run build` — production build успешно, product/cart/checkout routes собраны.
+- Rollback: последовательно выключить catalog projection, cart enforcement, background
+  refresh и verification/allowlist. Offer diagnostics и order snapshots не удалять.
+- Следующий безопасный шаг: production-copy migration gate и staging smoke фазы 7,
+  затем source-by-source rollout фазы 9 по runbook.
+
+### 2026-08-27 — фаза 9, rollout audit и локальная migration rehearsal
+
+- Статус: закрыты rollout tooling/documentation, репетиция на копии текущей локальной
+  БД и доступные локальные release gates. Production/staging flags не менялись,
+  supplier HTTP не запускался.
+- Добавлена read-only management command `audit_source_offer_rollout` и service layer.
+  Отчёт агрегирует migration status, source-candidate coverage, fake stock, offer
+  freshness/errors/per-source, CartItem/OrderItem readiness и feature flags. При
+  частично применённой схеме команда не обращается к отсутствующим колонкам.
+- `--format json` даёт release artifact; `--fail-on-blockers` возвращает ненулевой
+  exit при missing migrations, unsafe allowlist/flag combination или наличии source
+  candidates без active offers. Команда не пишет в БД, не вызывает parser и Redis.
+- Тесты `apps/catalog/tests/test_source_offer_rollout_audit.py` проверяют aggregate
+  coverage, отсутствие mutations, partial-schema guard и machine-readable JSON:
+  `3 passed`.
+- Read-only аудит текущей локальной БД: 209 products, 195 source candidates, 0 offers,
+  coverage 0%; legacy stock `1000` у 168 кандидатов и `3` у 13. В рабочей dev-БД
+  применена `catalog.0202`, а `orders.0010/0011` остаются pending; все source flags false.
+- Для репетиции создан согласованный custom-format dump (размер исходной БД около
+  57.6 MB) и отдельная БД `pharmaturk_source_offer_rehearsal_20260827`. Исходно в ней
+  были 2 CartItem и 5 OrderItem, `0202` applied, `0010/0011` pending.
+- `migrate --plan` показал только `orders.0010` и `0011`; обе применились без ручного
+  исправления. Counts остались 2/5, Django check — `0 issues`, повторный migration plan
+  — `No planned migration operations`, audit увидел все три migration как applied.
+- Временная rehearsal-БД и dump после проверки удалены; read-only проверка имени БД
+  вернула `0`. На момент rehearsal рабочая `pharmaturk` ещё не мигрировалась.
+- Обновлены `SCRAPERS_GUIDE.md`, `docs/SOURCE_OFFER_CART_API.md`, operations runbook и
+  docs index: typed `check_offer`, stock precision, API issue/409/503 semantics,
+  audit command и stop conditions rollout теперь зафиксированы.
+- Закрыт cart serialization performance gate. `_get_cart_with_prefetch` теперь единым
+  prefetch-планом загружает `product`, `source_offer`, category/brand/price info, изображения,
+  доменные галереи и переводы. Serializer использует prefetch cache изображений вместо
+  `filter()/first()` на каждую позицию. Регрессионный тест подтверждает строго одинаковое
+  число SQL-запросов для корзин с 1 и 5 позициями: `1 passed`.
+- Финальные локальные проверки на итоговом diff: `git diff --check` — успешно;
+  `manage.py check` — `0 issues`; `makemigrations --check --dry-run` —
+  `No changes detected`; полный backend suite — `1185 passed`, `30 subtests passed`,
+  4 существующих warnings за 520.62 s. OpenAPI regression gate — `2 passed`;
+  frontend: `npm test` — `57 passed`, TypeScript — успешно, lint — `0 errors`
+  (43 существующих warnings), production build — успешно.
+- После успешных rehearsal и CI к рабочей локальной dev-БД точечно применены только
+  `orders.0010` и `orders.0011`: обе `OK`, повторный migration plan пуст, counts
+  сохранены (`CartItem=2`, `OrderItem=5`). Повторный read-only audit подтверждает все
+  три migration applied; migration blockers отсутствуют. До backfill единственным
+  blocker был `source_candidates_without_active_offers`: 195 source candidates,
+  0 offers, coverage 0%.
+- Historical backfill сначала выполнен в dry-run: 195 products/sources, 631 offers,
+  0 invalid sources и 0 products without source. Затем тот же bounded command запущен
+  с `--apply`: записано 631 active offers с 631 уникальными `offer_key` — IKEA 56 offers
+  для 27 products, LCW 465/58, ilacfiyati 110/110. Внешних HTTP-запросов не было;
+  ilacfiyati остаётся вне live-verification allowlist.
+- Итоговый локальный audit: schema applied, coverage 195/195 (100%), blockers отсутствуют,
+  `ready_for_source_rollout=true`; JSON gate с `--fail-on-blockers` завершился с exit 0.
+  Это структурная готовность, а не подтверждение текущих supplier price/stock: backfill
+  восстановлен из сохранённой истории. Все source feature flags оставлены `false`;
+  warning о legacy fake stock сохранён до controlled rollout.
+- Изменённые файлы этого шага:
+  `backend/apps/catalog/services/source_offer_rollout_audit.py`,
+  `backend/apps/catalog/management/commands/audit_source_offer_rollout.py`,
+  `backend/apps/catalog/tests/test_source_offer_rollout_audit.py`,
+  `backend/apps/orders/views.py`, `backend/apps/orders/serializers.py`,
+  `backend/apps/orders/tests/test_cart_read_side_effects.py`, документация выше.
+- Не заявлялось: проверка на копии production data, staging smoke, включение recording/
+  verification/cart/background/catalog flags или подключение Alertmanager.
+- Следующий безопасный шаг требует production dump/staging access: повторить
+  audit/migrations/smoke по runbook до включения первого source flag.
+
+### 2026-08-27 — локальный production-like release gate
+
+- В `.env.production.example` добавлен полный безопасный набор source-offer настроек:
+  recording, verification, cart enforcement, background refresh и catalog projection
+  по умолчанию выключены; первый allowlist ограничен IKEA. `DEPLOY.md` направляет rollout
+  к source-offer runbook и запрещает одновременное включение всех readers/writers.
+- Release predeploy собрал production backend/frontend images и выполнил проверки из
+  этих images. Итог: Django check и migration drift — успешно; backend —
+  `1185 passed`, `30 subtests passed`; frontend — `57 passed`, TypeScript и production
+  build успешны, lint — `0 errors` при 43 существующих warnings.
+- Выявлен upstream-дефект arm64-варианта `qdrant/qdrant:v1.18.3`
+  (`entrypoint.sh: exec format error`). Только локальные test/smoke overlays используют
+  рабочий `linux/amd64`; production Compose не изменён.
+- Первый повторный smoke пересёкся с ещё завершавшимся запуском: оба получили одинаковое
+  Compose project name из-за `$PPID`, и cleanup первого остановил PostgreSQL второго.
+  `local-smoke.sh` и `predeploy.sh` переведены на PID самого скрипта (`$$`), а smoke
+  теперь до cleanup собирает service diagnostics при ошибке.
+- Финальный независимый runtime smoke завершён успешно: чистая PostgreSQL schema получила
+  все миграции, включая `catalog.0202` и `orders.0010/0011`; backend readiness, frontend,
+  nginx, liveness, HSTS и canonical-host redirect прошли; изолированные containers,
+  networks и volumes удалены.
+- Два теста, ранее зависевшие от внешней currency network/устаревшей patch target,
+  сделаны детерминированными без изменения production-кода. Их target-прогон и полный
+  release suite зелёные.
+- Это локальный gate для текущего exact diff. Открыты: чистый immutable SHA, remote CI,
+  production-copy migration rehearsal, backup manifests, staging smoke и поэтапное
+  включение source flags.
+
+## Оценка
+
+- Фазы 1–4: 8–12 рабочих дней.
+- Фазы 5–7: 8–11 рабочих дней.
+- Фазы 8–9 и staging rollout: 4–7 рабочих дней.
+- Ориентир MVP: 3–4 недели для одного backend/full-stack разработчика при доступном
+  тестовом окружении и стабильных ответах внешних источников.

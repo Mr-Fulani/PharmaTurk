@@ -102,3 +102,35 @@ def test_cart_rejects_slug_when_declared_type_does_not_match_product():
     })
 
     assert not serializer.is_valid()
+
+
+@pytest.mark.django_db
+def test_variant_shadow_preserves_source_offer_identity():
+    suffix = uuid.uuid4().hex[:8]
+    source_product = Product.objects.create(
+        name="Parser source product",
+        slug=f"parser-source-product-{suffix}",
+        product_type="clothing",
+        price=100,
+        currency="TRY",
+    )
+    parent = source_product.domain_item
+    assert isinstance(parent, ClothingProduct)
+    variant = ClothingVariant.objects.create(
+        product=parent,
+        name="Black",
+        slug=f"parser-variant-black-{suffix}",
+        color="black",
+        price=100,
+        currency="TRY",
+        is_active=True,
+        external_data={
+            "source_parser": "lcw",
+            "source_offer_product_id": source_product.pk,
+        },
+    )
+
+    shadow = resolve_variant_product("clothing", variant.slug)
+
+    assert shadow.external_data["source_parser"] == "lcw"
+    assert shadow.external_data["source_offer_product_id"] == source_product.pk

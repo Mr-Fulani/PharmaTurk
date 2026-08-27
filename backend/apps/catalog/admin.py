@@ -1,11 +1,14 @@
 from django import forms
+from datetime import timedelta
 from decimal import Decimal
 import nested_admin
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.contenttypes.admin import GenericTabularInline
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db.models import Case, When, Value, IntegerField, Q, Count, Exists, OuterRef
+from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
@@ -27,7 +30,7 @@ from .models import (
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, CategoryIncense, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
-    Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, PriceHistory, Favorite,
+    Brand, BrandTranslation, MarketingBrand, Product, ProductSourceOffer, ProductTranslation, ProductImage, PriceHistory, Favorite,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
@@ -1392,6 +1395,104 @@ class BaseProductProxyAdmin(CategoryTypeFilterMixin, BaseProductAdmin):
 class ProductAdmin(BaseProductAdmin):
     """Базовые товары (Product). Все типы; здесь же можно удалить «осиротевшие» записи (например после удаления книги)."""
     pass
+
+
+def _source_offer_stale_cutoff():
+    try:
+        stale_seconds = int(
+            getattr(settings, "SOURCE_OFFER_BACKGROUND_STALE_SECONDS", 900)
+        )
+    except (TypeError, ValueError):
+        stale_seconds = 900
+    stale_seconds = max(60, min(stale_seconds, 86400))
+    return timezone.now() - timedelta(seconds=stale_seconds)
+
+
+class SourceOfferFreshnessFilter(SimpleListFilter):
+    title = _("Актуальность проверки")
+    parameter_name = "source_freshness"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("fresh", _("Актуальные")),
+            ("stale", _("Устаревшие")),
+            ("never", _("Не проверялись")),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "fresh":
+            return queryset.filter(last_checked_at__gt=_source_offer_stale_cutoff())
+        if self.value() == "stale":
+            return queryset.filter(last_checked_at__lte=_source_offer_stale_cutoff())
+        if self.value() == "never":
+            return queryset.filter(last_checked_at__isnull=True)
+        return queryset
+
+
+@admin.register(ProductSourceOffer)
+class ProductSourceOfferAdmin(admin.ModelAdmin):
+    """Read-only диагностика supplier offer; данные меняет только parser/service layer."""
+
+    list_display = (
+        "product",
+        "parser_key",
+        "source_domain",
+        "availability_status",
+        "stock_precision",
+        "stock_quantity",
+        "source_price",
+        "source_currency",
+        "priority",
+        "freshness_status",
+        "consecutive_failures",
+        "last_error_code",
+        "circuit_open",
+        "last_checked_at",
+        "is_active",
+    )
+    list_filter = (
+        "parser_key",
+        "source_domain",
+        "availability_status",
+        "stock_precision",
+        SourceOfferFreshnessFilter,
+        "is_active",
+    )
+    search_fields = (
+        "product__name",
+        "product__slug",
+        "external_product_id",
+        "external_sku",
+        "variant_key",
+        "size_key",
+        "canonical_url",
+    )
+    ordering = ("-updated_at",)
+    list_select_related = ("product",)
+    list_per_page = 50
+    readonly_fields = tuple(field.name for field in ProductSourceOffer._meta.fields)
+
+    @admin.display(description=_("Актуальность"), ordering="last_checked_at")
+    def freshness_status(self, obj):
+        if obj.last_checked_at is None:
+            return _("Не проверялось")
+        if obj.last_checked_at <= _source_offer_stale_cutoff():
+            return _("Устарело")
+        return _("Актуально")
+
+    @admin.display(boolean=True, description=_("Circuit открыт"))
+    def circuit_open(self, obj):
+        from apps.catalog.services.source_offer_verification import (
+            SourceOfferVerificationService,
+        )
+
+        return SourceOfferVerificationService().circuit_is_open(obj.parser_key)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
+import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerification'
 import { useCartStore } from '../store/cart'
 import styles from './AddToCartButton.module.css'
 
@@ -32,7 +33,7 @@ export default function AddToCartButton({
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { refresh, setItemsCount } = useCartStore()
+  const { refresh, setCartSummary } = useCartStore()
   const { t } = useTranslation('common')
 
   useEffect(() => {
@@ -56,6 +57,9 @@ export default function AddToCartButton({
       initCartSession()
       const body = new URLSearchParams()
       body.set('quantity', String(quantity))
+      if (size) {
+        body.set('size', size)
+      }
       if (productId !== undefined) {
         body.set('product_id', String(productId))
       } else {
@@ -65,16 +69,62 @@ export default function AddToCartButton({
         if (productSlug) {
           body.set('product_slug', productSlug)
         }
-        if (size) {
-          body.set('size', size)
-        }
       }
-      const response = await api.post('/orders/cart/add', body, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      })
+      const postAdd = () =>
+        api.post('/orders/cart/add', body, {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        })
+      let response
+      try {
+        response = await postAdd()
+      } catch (error: any) {
+        const conflict = getCartVerificationError(error)
+        const price = conflict?.verification?.public_price
+        const currency = conflict?.verification?.public_currency || ''
+        const available = Number(conflict?.verification?.available_quantity)
+        const issueCodes = new Set([
+          conflict?.code,
+          ...(conflict?.issues || []).map((issue) => issue.code),
+        ])
+        let retryResolvedConflict = false
+
+        if (
+          issueCodes.has('source_quantity_changed') &&
+          Number.isInteger(available) &&
+          available > 0
+        ) {
+          const accepted = window.confirm(
+            t(
+              'cart_confirm_quantity_change',
+              'У поставщика доступно {{quantity}} шт. Добавить доступное количество?',
+              { quantity: available },
+            ),
+          )
+          if (!accepted) return
+          body.set('quantity', String(available))
+          retryResolvedConflict = true
+        }
+        if (issueCodes.has('source_price_changed') && price != null && currency) {
+          const accepted = window.confirm(
+            t(
+              'cart_confirm_price_change',
+              'Цена изменилась на {{price}} {{currency}}. Добавить товар по новой цене?',
+              { price: String(price), currency },
+            ),
+          )
+          if (!accepted) return
+          body.set('acknowledged_price', String(price))
+          body.set('acknowledged_currency', currency)
+          retryResolvedConflict = true
+        }
+        if (!retryResolvedConflict) {
+          throw error
+        }
+        response = await postAdd()
+      }
       const itemsCount = Number(response.data?.items_count)
       if (Number.isFinite(itemsCount)) {
-        setItemsCount(itemsCount)
+        setCartSummary(response.data)
       } else {
         await refresh()
       }
@@ -85,7 +135,11 @@ export default function AddToCartButton({
         resetTimerRef.current = null
       }, 1450)
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || t('add_to_cart_error', 'Ошибка добавления в корзину')
+      const conflict = getCartVerificationError(err)
+      const copy = getCartIssueCopy(conflict?.code)
+      const detail = conflict?.code
+        ? t(copy.key, copy.fallback)
+        : err?.response?.data?.detail || err?.message || t('add_to_cart_error', 'Ошибка добавления в корзину')
       // Быстрый видимый фидбек пользователю
       alert(String(detail))
       // И лог для диагностики

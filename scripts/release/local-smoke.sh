@@ -24,7 +24,10 @@ release_require_env_file
 release_assert_image "mudaroba-backend:${RELEASE_ID}" "$RELEASE_ID"
 release_assert_image "mudaroba-frontend:${RELEASE_ID}" "$RELEASE_ID"
 
-SMOKE_SUFFIX="${RELEASE_ID:0:12}-$PPID"
+# Use this script's PID, not its parent's. CI/agent wrappers can reuse one
+# parent process for multiple invocations; PPID would then make independent
+# smoke runs share (and tear down) the same Compose project.
+SMOKE_SUFFIX="${RELEASE_ID:0:12}-$$"
 DEPLOY_PROJECT_NAME="mudaroba-smoke-${SMOKE_SUFFIX}"
 [[ "$DEPLOY_PROJECT_NAME" =~ ^mudaroba-smoke-[a-z0-9._-]+$ ]] || release_die "unsafe smoke project name"
 export IMAGE_TAG="$RELEASE_ID"
@@ -39,9 +42,20 @@ smoke_compose() {
     "$@"
 }
 
+headers_file=""
 cleanup() {
+  local status=$?
+  if [[ "$status" -ne 0 ]]; then
+    release_log "smoke failed; collecting isolated service diagnostics"
+    smoke_compose ps || true
+    smoke_compose logs --tail=120 postgres redis qdrant backend frontend nginx || true
+  fi
+  if [[ -n "$headers_file" ]]; then
+    rm -f "$headers_file"
+  fi
   release_log "removing only isolated project ${DEPLOY_PROJECT_NAME}"
   smoke_compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+  return "$status"
 }
 trap cleanup EXIT
 
@@ -78,7 +92,6 @@ curl --silent --show-error --fail --connect-timeout 5 --max-time 15 \
   "${CURL_HEADERS[@]}" "$HEALTH_URL" >/dev/null
 
 headers_file="$(mktemp)"
-trap 'rm -f "$headers_file"; cleanup' EXIT
 curl --silent --show-error --fail --connect-timeout 5 --max-time 15 \
   -D "$headers_file" -o /dev/null "${CURL_HEADERS[@]}" \
   "http://127.0.0.1:${SMOKE_PORT_VALUE}/"

@@ -6,6 +6,7 @@ import api, { getSingleFlight } from '../../lib/api'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
+import { resolveSchemaAvailability } from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
 import ServiceAttributes from '../../components/ServiceAttributes'
@@ -569,6 +570,9 @@ const resolveAvailableStock = (
   selectedVariant: Variant | null | undefined,
   selectedSize: string | undefined
 ): number | null => {
+  if (product.is_available === false) {
+    return 0
+  }
   const sizeCandidate = selectedSize
     ? (selectedVariant?.sizes || product.sizes || []).find((s) => {
       const sizeValue = `${s.size ?? s.size_display ?? (s.size_value !== undefined && s.size_value !== null ? String(s.size_value) : '')}`.trim()
@@ -1319,10 +1323,12 @@ export default function ProductPage({
   const ogImage = resolvedOgImage.startsWith('http://') || resolvedOgImage.startsWith('https://')
     ? resolvedOgImage
     : `${siteUrl}${resolvedOgImage.startsWith('/') ? resolvedOgImage : `/${resolvedOgImage}`}`
-  const availability =
-    selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
-      ? 'https://schema.org/OutOfStock'
-      : 'https://schema.org/InStock'
+  const availability = resolveSchemaAvailability({
+    availabilityStatus: product.availability_status,
+    isAvailable: product.is_available,
+    variantAvailable: selectedVariant?.is_available,
+    variantStockQuantity: selectedVariant?.stock_quantity,
+  })
   const priceForSchema = selectedVariant?.price || product.price || product.active_variant_price
   const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
   // aggregateRating только при наличии и рейтинга, и отзывов — без счётчика схема невалидна
@@ -2446,6 +2452,11 @@ export default function ProductPage({
                     </Link>
                   </>
                 ) : (
+                  maxAvailable === 0 ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                    {t('out_of_stock', 'Нет в наличии')}
+                  </div>
+                  ) : (
                   <>
                     <AddToCartButton
                       productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
@@ -2469,6 +2480,7 @@ export default function ProductPage({
                       className="w-full"
                     />
                   </>
+                  )
                 )
               )}
 

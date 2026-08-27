@@ -4,6 +4,13 @@ import logging
 from typing import Iterator, List, Optional
 from urllib.parse import urlparse
 from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.offers import (
+    OfferCheckContext,
+    OfferCheckResult,
+    OfferNotFound,
+    result_from_scraped_product,
+    translate_offer_check_errors,
+)
 from apps.catalog.services import IkeaService
 
 
@@ -137,6 +144,23 @@ class IkeaParser(BaseScraper):
 
         variant_details = self.ikea_service.collect_color_variant_details(main)
         return self._scraped_product_from_variant_details(variant_details, canonical_spr=item_code)
+
+    @translate_offer_check_errors
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """Fetch one saved IKEA item code without collecting color siblings."""
+        item_code = self.ikea_service._clean_spr_code(
+            offer.external_sku
+            or offer.variant_key
+            or offer.external_product_id
+            or self.ikea_service._extract_item_code(offer.canonical_url)
+        )
+        if not item_code:
+            raise OfferNotFound(offer.canonical_url)
+        raw = self.ikea_service.fetch_item_details(item_code)
+        if not raw:
+            raise OfferNotFound(offer.canonical_url)
+        scraped = self._to_scraped_product(raw)
+        return result_from_scraped_product(offer, scraped, exact_stock=True)
 
     def _scraped_product_from_variant_details(
         self,

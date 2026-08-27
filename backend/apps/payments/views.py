@@ -211,6 +211,11 @@ def _apply_authoritative_invoice(
                         order.save(update_fields=["payment_status"])
                 return "duplicate"
 
+            # Supplier availability was live-checked before the invoice was
+            # created. Never call supplier parsers from a paid webhook: provider
+            # reconciliation must remain bounded and idempotent. Source-backed
+            # OrderItems keep the accepted snapshot and explicitly require
+            # supplier confirmation when no reservation API exists.
             for item in order.items.select_related("product").all():
                 _decrement_stock_for_cart_item(item.product, item.chosen_size, item.quantity)
             order.status = Order.OrderStatus.PAID

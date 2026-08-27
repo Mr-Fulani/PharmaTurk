@@ -35,7 +35,9 @@ else
 fi
 
 export IMAGE_TAG="$RELEASE_ID"
-export DEPLOY_PROJECT_NAME="mudaroba-predeploy-${RELEASE_ID:0:12}-$PPID"
+# The script PID keeps concurrent invocations isolated even when a CI/agent
+# wrapper reuses the same parent process.
+export DEPLOY_PROJECT_NAME="mudaroba-predeploy-${RELEASE_ID:0:12}-$$"
 
 test_compose() {
   docker compose \

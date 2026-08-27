@@ -69,6 +69,8 @@ def test_every_cart_mutation_action_uses_the_explicit_throttle_set():
     for action_name in (
         "add",
         "update_item",
+        "acknowledge_price",
+        "revalidate",
         "remove_item",
         "clear",
         "apply_promo",

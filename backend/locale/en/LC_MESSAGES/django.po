@@ -39,4 +39,25 @@ msgstr "A user with this username already exists"
 msgid "Номер телефона должен быть в формате: '+999999999'. До 15 цифр."
 msgstr "Phone number must be in the format '+999999999'. Up to 15 digits."
 
+# orders source-offer cart verification
+msgid "Нет в наличии у поставщика"
+msgstr "Out of stock at the supplier"
+
+msgid "Доступное количество изменилось"
+msgstr "The available quantity has changed"
+
+msgid "Цена поставщика изменилась"
+msgstr "The supplier price has changed"
+
+msgid "Источник временно недоступен"
+msgstr "The supplier source is temporarily unavailable"
+
+msgid "Автоматическая проверка не поддерживается"
+msgstr "Automatic verification is not supported"
+
+msgid "Корзина изменилась во время проверки"
+msgstr "The cart changed during verification"
+
+msgid "Корзина содержит позиции, требующие проверки"
+msgstr "The cart contains items that require verification"
 

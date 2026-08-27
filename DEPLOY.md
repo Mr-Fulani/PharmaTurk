@@ -377,6 +377,12 @@ migration в production, пока её обратимость не провер�
 
 ## 11. Операционные команды
 
+Проверка supplier price/stock после обычного release разворачивается отдельными
+config-шагами: сначала recording/backfill, затем один parser key, background refresh,
+cart enforcement и только последним catalog projection. Не включайте все флаги одним
+restart. Команды audit, метрики и rollback описаны в
+[`docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md`](docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md).
+
 ```bash
 # Логи сервиса
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend

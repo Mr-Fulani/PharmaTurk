@@ -11,6 +11,7 @@ YML-экспорт товаров для ВК Маркета и Яндекс.М�
 import xml.etree.ElementTree as ET
 from decimal import Decimal
 
+from django.conf import settings
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.permissions import AllowAny
@@ -22,6 +23,9 @@ from .models import Category, Product
 from .models_vk import VKCategoryMapping
 from .views import _get_category_ids_with_descendants
 from .throttles import YMLExportThrottle
+from .services.source_offer_catalog_projection import (
+    resolve_source_offer_catalog_availability,
+)
 
 # Fallback-маппинг если в БД для product_type ещё нет записи.
 # Обновляйте этот словарь ТОЛЬКО если не хотите использовать Admin.
@@ -87,6 +91,11 @@ class YMLExportView(APIView):
     )
     def get(self, request, *args, **kwargs):
         category_slug = request.query_params.get("category")
+        product_prefetches = ["images"]
+        if bool(getattr(settings, "SOURCE_OFFER_CATALOG_PROJECTION_ENABLED", False)) and bool(
+            getattr(settings, "SOURCE_OFFER_VERIFICATION_ENABLED", False)
+        ):
+            product_prefetches.append("source_offers")
 
         # Загружаем маппинг категорий из БД (с fallback)
         vk_map = _load_vk_mapping()
@@ -134,7 +143,7 @@ class YMLExportView(APIView):
                 Product.objects
                 .filter(category_id__in=all_cat_ids, is_active=True)
                 .select_related("brand", "category")
-                .prefetch_related("images")
+                .prefetch_related(*product_prefetches)
                 .distinct()
             )
         else:
@@ -143,7 +152,7 @@ class YMLExportView(APIView):
                 Product.objects
                 .filter(is_active=True)
                 .select_related("brand", "category")
-                .prefetch_related("images")
+                .prefetch_related(*product_prefetches)
                 .distinct()
             )
 
@@ -216,8 +225,18 @@ class YMLExportView(APIView):
         """
         oid = offer_id or str(prod.id)
         is_available = prod.is_available
+        # Product rows from get() have source_offers prefetched when projection
+        # is enabled. Disallow fallback queries so a large feed cannot regress to N+1.
+        source_projection = resolve_source_offer_catalog_availability(
+            prod,
+            allow_queries=False,
+        )
+        if source_projection is not None:
+            is_available = is_available and source_projection.is_available
         if variant:
             is_available = variant.is_available and prod.is_available
+            if source_projection is not None:
+                is_available = is_available and source_projection.is_available
 
         offer = ET.SubElement(
             parent, "offer",

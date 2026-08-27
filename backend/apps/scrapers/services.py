@@ -1494,6 +1494,11 @@ class ScraperIntegrationService:
                 with scraping_in_progress_context():
                     action, product = self._process_single_product(session, scraped_product)
 
+                # Phase 2 dual-write is isolated from the established catalog import.
+                # A writer failure must be observable, but must not turn a successfully
+                # imported product into a scraper error or change the old storefront readers.
+                self._record_source_offers(session, scraped_product, product)
+
                 # Обновляем счетчики
                 if action == "created":
                     results["created"] += 1
@@ -1530,6 +1535,32 @@ class ScraperIntegrationService:
                 )
 
         return results
+
+    def _record_source_offers(
+        self,
+        session: ScrapingSession,
+        scraped_product: ScrapedProduct,
+        product: Optional[Product],
+    ) -> None:
+        from django.conf import settings
+
+        if product is None or not getattr(settings, "SOURCE_OFFER_RECORDING_ENABLED", False):
+            return
+
+        try:
+            from .source_offers import record_scraped_product_offers
+
+            record_scraped_product_offers(
+                product=product,
+                scraped_product=scraped_product,
+                scraper_config=getattr(session, "scraper_config", None),
+            )
+        except Exception:
+            self.logger.exception(
+                "Source-offer dual-write failed without rolling back product %s (source=%s)",
+                product.pk,
+                scraped_product.source,
+            )
 
     def _apply_gender_override(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
@@ -2489,14 +2520,22 @@ class ScraperIntegrationService:
                     changed = True
                 changed = changed or images_changed
 
+            existing_external = (
+                dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
+            )
+            next_external = dict(existing_external)
+            source_parser = str((product.external_data or {}).get("source") or "").strip()
+            if source_parser:
+                next_external["source_parser"] = source_parser
+            next_external["source_offer_product_id"] = product.pk
+            next_external["source_offer_variant_key"] = ext
             vinfo = spec.get("variant_info")
             if vinfo is not None:
-                ed = dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
-                if ed.get("ikea_variant_info") != vinfo:
-                    ed["ikea_variant_info"] = vinfo
-                    variant.external_data = ed
-                    variant.save(update_fields=["external_data"])
-                    changed = True
+                next_external["ikea_variant_info"] = vinfo
+            if next_external != existing_external:
+                variant.external_data = next_external
+                variant.save(update_fields=["external_data"])
+                changed = True
 
             changed = changed or created
 
@@ -2818,12 +2857,22 @@ class ScraperIntegrationService:
                 )
                 changed = True
 
-            variant_external = dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
-            next_external = {
-                "source": "scraper",
-                "source_variant_id": ext,
-                "sizes_payload": size_payload,
-            }
+            variant_external = (
+                dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
+            )
+            next_external = dict(variant_external)
+            next_external.update(
+                {
+                    "source": "scraper",
+                    "source_variant_id": ext,
+                    "source_offer_product_id": product.pk,
+                    "source_offer_variant_key": ext,
+                    "sizes_payload": size_payload,
+                }
+            )
+            source_parser = str((product.external_data or {}).get("source") or "").strip()
+            if source_parser:
+                next_external["source_parser"] = source_parser
             if color_value:
                 next_external["color"] = color_value
             if variant_external != next_external:

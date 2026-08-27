@@ -8,6 +8,13 @@ from urllib.parse import quote_plus, urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.offers import (
+    MalformedOfferResponse,
+    OfferCheckContext,
+    OfferCheckResult,
+    result_from_scraped_product,
+    translate_offer_check_errors,
+)
 from ..base.utils import clean_text, extract_currency, normalize_price
 
 
@@ -244,6 +251,28 @@ class LcwParser(BaseScraper):
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
         return self._parse_product_group(product_url, visited_urls=set())
+
+    @translate_offer_check_errors
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """Fetch only the saved variant URL; never walk the color-link group."""
+        html = self._make_offer_request(offer.canonical_url)
+        parsed = self._parse_single_variant(offer.canonical_url, html)
+        if not parsed:
+            raise MalformedOfferResponse()
+        variant = self._variant_payload_from_parsed(parsed, sort_order=0)
+        scraped = ScrapedProduct(
+            name=parsed["name"],
+            price=variant.get("price"),
+            currency=variant.get("currency") or "TRY",
+            url=offer.canonical_url,
+            external_id=offer.external_product_id,
+            sku=variant.get("sku") or "",
+            is_available=bool(variant.get("is_available")),
+            stock_quantity=variant.get("stock_quantity"),
+            attributes={"fashion_variants": [variant]},
+            source=self.get_name(),
+        )
+        return result_from_scraped_product(offer, scraped, exact_stock=False)
 
     def _parse_product_group(
         self,

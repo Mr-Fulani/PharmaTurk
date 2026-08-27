@@ -12,6 +12,13 @@ from typing import Any, Dict, Iterator, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
+from ..base.offers import (
+    MalformedOfferResponse,
+    OfferCheckContext,
+    OfferCheckResult,
+    result_from_scraped_product,
+    translate_offer_check_errors,
+)
 from ..base.utils import clean_text
 
 
@@ -306,6 +313,30 @@ class FloParser(BaseScraper):
             attributes=attributes,
             source=self.get_name(),
         )
+
+    @translate_offer_check_errors
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """Fetch only the saved color URL; do not traverse sibling color variants."""
+        html = self._make_offer_request(offer.canonical_url)
+        if self._looks_like_challenge(html):
+            raise ScraperAccessBlockedError(source="FLO", status_code=403, url=offer.canonical_url)
+        detail = self._extract_product_detail(html)
+        if not detail or not detail.get("name"):
+            raise MalformedOfferResponse()
+        variant = self._build_color_variant(detail, offer.canonical_url, 0)
+        scraped = ScrapedProduct(
+            name=clean_text(str(detail.get("name") or "")),
+            price=variant.get("price"),
+            currency=variant.get("currency") or "TRY",
+            url=variant.get("external_url") or offer.canonical_url,
+            external_id=offer.external_product_id,
+            sku=variant.get("sku") or "",
+            is_available=bool(variant.get("is_available")),
+            stock_quantity=variant.get("stock_quantity"),
+            attributes={"fashion_variants": [variant]},
+            source=self.get_name(),
+        )
+        return result_from_scraped_product(offer, scraped, exact_stock=False)
 
     def _build_sizes(self, options: Any) -> List[Dict[str, Any]]:
         sizes: List[Dict[str, Any]] = []

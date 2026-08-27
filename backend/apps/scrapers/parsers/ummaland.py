@@ -11,6 +11,12 @@ from bs4 import BeautifulSoup
 from apps.http_errors import raise_for_blocked_status
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
+from ..base.offers import (
+    OfferCheckContext,
+    OfferCheckResult,
+    result_from_scraped_product,
+    translate_offer_check_errors,
+)
 from ..base.utils import clean_text, normalize_price, extract_currency
 
 
@@ -651,3 +657,9 @@ class UmmalandParser(BaseScraper):
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге детальной страницы {product_url}: {e}")
             return None
+
+    @translate_offer_check_errors
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """Ummaland exposes boolean availability on a single product page."""
+        scraped = self.parse_product_detail(offer.canonical_url)
+        return result_from_scraped_product(offer, scraped, exact_stock=False)

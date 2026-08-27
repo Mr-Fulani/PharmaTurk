@@ -1,7 +1,9 @@
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import quote
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.utils.text import slugify
 
@@ -386,6 +388,17 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         'source_variant_slug': variant.slug,
         'base_product_slug': base_slug,
     }
+    # Parser/source-offer identity lives on the domain variant and must survive
+    # creation of the cart-facing shadow Product.
+    for source_key in (
+        "source_parser",
+        "source_offer_product_id",
+        "source_offer_variant_key",
+    ):
+        if external.get(source_key) not in (None, ""):
+            variant_external_payload[source_key] = external[source_key]
+            defaults["external_data"][source_key] = external[source_key]
+
     if product is None:
         product, created = Product.objects.get_or_create(slug=base_slug, defaults=defaults)
     else:
@@ -522,6 +535,16 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
     return ensure_product_from_variant(variant, effective_type, effective_type)
 
 
+class CartItemIssueSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    message = serializers.CharField(read_only=True)
+    blocking = serializers.BooleanField(read_only=True)
+
+
+class CartIssueSerializer(CartItemIssueSerializer):
+    item_id = serializers.IntegerField(read_only=True)
+
+
 class CartItemSerializer(serializers.ModelSerializer):
     """
     Сериализатор позиции корзины
@@ -549,6 +572,9 @@ class CartItemSerializer(serializers.ModelSerializer):
     prices_in_currencies = serializers.SerializerMethodField()  # Новое поле
     total = serializers.SerializerMethodField()
 
+    issues = serializers.SerializerMethodField()
+    is_payable = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = CartItem
         fields = [
@@ -556,12 +582,41 @@ class CartItemSerializer(serializers.ModelSerializer):
             'quantity', 'price', 'currency', 'old_price', 'old_price_formatted', 'chosen_size', 'created_at', 'updated_at',
             # Новые поля из системы ценообразования
             'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
-            'margin_percent_applied', 'prices_in_currencies', 'total'
+            'margin_percent_applied', 'prices_in_currencies', 'total',
+            'source_offer', 'verification_status', 'source_checked_at',
+            'source_availability_status', 'observed_source_price',
+            'observed_source_currency', 'observed_public_price',
+            'observed_public_currency', 'observed_stock_precision',
+            'observed_stock_quantity', 'verified_quantity', 'verification_issues',
+            'price_change_state', 'price_acknowledged_at',
+            'price_acknowledged_value', 'price_acknowledged_currency',
+            'issues', 'is_payable'
         ]
         read_only_fields = ['price', 'currency', 'created_at', 'updated_at', 
                            'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
-                           'margin_percent_applied', 'prices_in_currencies', 'total']
+                           'margin_percent_applied', 'prices_in_currencies', 'total',
+                           'source_offer', 'verification_status', 'source_checked_at',
+                           'source_availability_status', 'observed_source_price',
+                           'observed_source_currency', 'observed_public_price',
+                           'observed_public_currency', 'observed_stock_precision',
+                           'observed_stock_quantity', 'verified_quantity',
+                           'verification_issues', 'price_change_state',
+                           'price_acknowledged_at', 'price_acknowledged_value',
+                           'price_acknowledged_currency', 'issues', 'is_payable']
     
+    @extend_schema_field(CartItemIssueSerializer(many=True))
+    def get_issues(self, obj) -> list[dict[str, object]]:
+        labels = dict(CartItem.VerificationIssue.choices)
+        blocking = not obj.is_payable
+        return [
+            {
+                "code": code,
+                "message": str(labels.get(code, code)),
+                "blocking": blocking,
+            }
+            for code in (obj.verification_issues or [])
+        ]
+
     def get_product_image_url(self, obj):
         """Получение URL изображения товара (с запасным поиском по варианту)."""
         product = obj.product
@@ -576,15 +631,22 @@ class CartItemSerializer(serializers.ModelSerializer):
         if product.main_image:
             return _resolve_media_url(product.main_image, request)
 
-        # Затем ищем главное изображение в связанных изображениях продукта
-        main_img = product.images.filter(is_main=True).first()
+        # Затем ищем главное изображение в связанных изображениях продукта.
+        # CartViewSet заранее загружает images; filter()/first() поверх related
+        # manager игнорирует prefetch cache и создаёт по SQL-запросу на позицию.
+        prefetched_images = getattr(product, "_prefetched_objects_cache", {}).get("images")
+        if prefetched_images is None:
+            main_img = product.images.filter(is_main=True).first()
+            first_img = product.images.first()
+        else:
+            main_img = next((image for image in prefetched_images if image.is_main), None)
+            first_img = prefetched_images[0] if prefetched_images else None
         if main_img:
             file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
             if file_url:
                 return _resolve_media_url(file_url, request) or file_url
             return _resolve_media_url(main_img.image_url, request)
 
-        first_img = product.images.first()
         if first_img:
             file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
             if file_url:
@@ -1012,6 +1074,26 @@ class CartItemSerializer(serializers.ModelSerializer):
     def get_price(self, obj):
         from apps.catalog.utils.product_markup import apply_product_markup
 
+        if (
+            getattr(settings, "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", False)
+            and obj.source_offer_id
+            and obj.observed_public_price is not None
+        ):
+            request = self.context.get("request")
+            preferred_currency = self._get_preferred_currency(request)
+            observed_currency = (obj.observed_public_currency or obj.currency or "RUB").upper()
+            try:
+                if observed_currency == preferred_currency:
+                    return obj.observed_public_price
+                _, converted, _ = currency_converter.convert_price(
+                    Decimal(str(obj.observed_public_price)),
+                    observed_currency,
+                    preferred_currency,
+                    apply_margin=False,
+                )
+                return converted
+            except Exception:
+                return obj.observed_public_price
         return apply_product_markup(self._get_price_without_product_markup(obj), obj.product)
 
     def get_total(self, obj):
@@ -1195,6 +1277,9 @@ class CartSerializer(serializers.ModelSerializer):
     """
     items = CartItemSerializer(many=True, read_only=True)
     items_count = serializers.IntegerField(read_only=True)
+    payable_items_count = serializers.SerializerMethodField()
+    issues = serializers.SerializerMethodField()
+    has_blocking_issues = serializers.SerializerMethodField()
     total_amount = serializers.SerializerMethodField()
     discount_amount = serializers.SerializerMethodField()
     final_amount = serializers.SerializerMethodField()
@@ -1208,7 +1293,8 @@ class CartSerializer(serializers.ModelSerializer):
         model = Cart
         fields = [
             'id', 'user', 'session_key', 'currency',
-            'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount',
+            'items', 'items_count', 'payable_items_count', 'issues',
+            'has_blocking_issues', 'total_amount', 'discount_amount', 'final_amount',
             'shipping_options', 'shipping_requires_quote', 'free_shipping_threshold', 'promo_code',
             'created_at', 'updated_at'
         ]
@@ -1217,6 +1303,21 @@ class CartSerializer(serializers.ModelSerializer):
             'total_amount', 'discount_amount', 'final_amount', 'currency',
             'shipping_options', 'shipping_requires_quote', 'free_shipping_threshold',
         ]
+
+    def get_payable_items_count(self, obj) -> int:
+        return sum(item.quantity for item in obj.items.all() if getattr(item, "is_payable", True))
+
+    @extend_schema_field(CartIssueSerializer(many=True))
+    def get_issues(self, obj) -> list[dict[str, object]]:
+        serializer = CartItemSerializer(context=self.context)
+        issues = []
+        for item in obj.items.all():
+            for issue in serializer.get_issues(item):
+                issues.append({"item_id": item.pk, **issue})
+        return issues
+
+    def get_has_blocking_issues(self, obj) -> bool:
+        return any(not getattr(item, "is_payable", True) for item in obj.items.all())
 
     def _get_preferred_currency(self, request):
         """Определяет валюту по приоритетам: explicit -> user -> язык -> default."""
@@ -1254,6 +1355,8 @@ class CartSerializer(serializers.ModelSerializer):
         item_serializer = CartItemSerializer(context=self.context)
         total = Decimal('0')
         for item in obj.items.all():
+            if not getattr(item, "is_payable", True):
+                continue
             try:
                 price = item_serializer.get_price(item)
                 total += Decimal(str(price or 0)) * item.quantity
@@ -1296,6 +1399,8 @@ class CartSerializer(serializers.ModelSerializer):
         from apps.orders.shipping_pricing import product_shipping_requires_quote
 
         for item in obj.items.all():
+            if not getattr(item, "is_payable", True):
+                continue
             product = item.product
             if product and product_shipping_requires_quote(product):
                 return True
@@ -1381,6 +1486,8 @@ class CartSerializer(serializers.ModelSerializer):
                 return float(cost)
 
         for item in obj.items.all():
+            if not getattr(item, "is_payable", True):
+                continue
             if not item.product:
                 continue
 
@@ -1471,6 +1578,13 @@ class AddToCartSerializer(serializers.Serializer):
     product_slug = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     size = serializers.CharField(required=False, allow_blank=True)
     quantity = serializers.IntegerField(min_value=1, default=1)
+
+    acknowledged_price = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=0, required=False
+    )
+    acknowledged_currency = serializers.CharField(
+        max_length=10, required=False, allow_blank=True
+    )
 
     def validate(self, attrs):
         product_id = attrs.get('product_id')
@@ -1610,6 +1724,19 @@ class UpdateCartItemSerializer(serializers.Serializer):
     Запрос на изменение количества позиции в корзине
     """
     quantity = serializers.IntegerField(min_value=1)
+    acknowledged_price = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=0, required=False
+    )
+    acknowledged_currency = serializers.CharField(
+        max_length=10, required=False, allow_blank=True
+    )
+
+
+class AcknowledgeCartPriceSerializer(serializers.Serializer):
+    acknowledged_price = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=0
+    )
+    acknowledged_currency = serializers.CharField(max_length=10)
 
 
 class OrderItemSerializer(serializers.ModelSerializer):

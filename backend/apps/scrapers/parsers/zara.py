@@ -14,6 +14,12 @@ from celery.exceptions import SoftTimeLimitExceeded
 from apps.http_errors import raise_for_blocked_status
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
+from ..base.offers import (
+    OfferCheckContext,
+    OfferCheckResult,
+    result_from_scraped_product,
+    translate_offer_check_errors,
+)
 from ..base.utils import clean_text
 
 
@@ -523,6 +529,12 @@ class ZaraParser(BaseScraper):
             attributes=attrs,
             source=self.get_name(),
         )
+
+    @translate_offer_check_errors
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """One payload request; selection of color/size is in-memory and read-only."""
+        scraped = self.parse_product_detail(offer.canonical_url)
+        return result_from_scraped_product(offer, scraped, exact_stock=False)
 
     def _extract_category_components(
         self,

@@ -1,5 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator
@@ -168,6 +170,8 @@ class Cart(models.Model):
         # Суммируем цены в предпочитаемой валюте
         total = 0
         for item in self.items.all():
+            if not item.is_payable:
+                continue
             try:
                 needs_product_markup = True
                 prices = item.product.get_all_prices()
@@ -216,12 +220,151 @@ class Cart(models.Model):
 
 class CartItem(models.Model):
     """Позиция в корзине."""
-    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name="items", verbose_name=_("Корзина"))
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="cart_items", verbose_name=_("Товар"))
-    quantity = models.PositiveIntegerField(_("Количество"), default=1, validators=[MinValueValidator(1)])
+
+    class VerificationStatus(models.TextChoices):
+        NOT_CHECKED = "not_checked", _("Не проверено")
+        VERIFIED = "verified", _("Проверено")
+        BLOCKED = "blocked", _("Покупка заблокирована")
+        RETRYABLE_ERROR = "retryable_error", _("Источник временно недоступен")
+        UNSUPPORTED = "unsupported", _("Проверка не поддерживается")
+
+    class VerificationIssue(models.TextChoices):
+        SOURCE_OUT_OF_STOCK = "source_out_of_stock", _("Нет в наличии у поставщика")
+        SOURCE_QUANTITY_CHANGED = (
+            "source_quantity_changed",
+            _("Доступное количество изменилось"),
+        )
+        SOURCE_PRICE_CHANGED = "source_price_changed", _("Цена поставщика изменилась")
+        SOURCE_UNREACHABLE = "source_unreachable", _("Источник временно недоступен")
+        VERIFICATION_UNSUPPORTED = (
+            "verification_unsupported",
+            _("Автоматическая проверка не поддерживается"),
+        )
+        CART_CHANGED = "cart_changed", _("Корзина изменилась во время проверки")
+
+    class StockPrecision(models.TextChoices):
+        EXACT = "exact", _("Точный остаток")
+        BOOLEAN = "boolean", _("Только наличие")
+        UNKNOWN = "unknown", _("Неизвестно")
+
+    class PriceChangeState(models.TextChoices):
+        NONE = "none", _("Без изменения")
+        DECREASED = "decreased", _("Цена снизилась")
+        INCREASED = "increased", _("Цена повысилась")
+
+    cart = models.ForeignKey(
+        Cart, on_delete=models.CASCADE, related_name="items", verbose_name=_("Корзина")
+    )
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="cart_items", verbose_name=_("Товар")
+    )
+    quantity = models.PositiveIntegerField(
+        _("Количество"), default=1, validators=[MinValueValidator(1)]
+    )
     price = models.DecimalField(_("Цена на момент добавления"), max_digits=10, decimal_places=2)
     currency = models.CharField(_("Валюта"), max_length=10, default="USD")
     chosen_size = models.CharField(_("Выбранный размер"), max_length=50, blank=True, default="")
+    source_offer = models.ForeignKey(
+        "catalog.ProductSourceOffer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cart_items",
+        verbose_name=_("Предложение источника"),
+    )
+    verification_status = models.CharField(
+        _("Статус проверки источника"),
+        max_length=32,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.NOT_CHECKED,
+        db_index=True,
+    )
+    source_checked_at = models.DateTimeField(
+        _("Источник проверен"),
+        null=True,
+        blank=True,
+    )
+    source_availability_status = models.CharField(
+        _("Наличие по источнику"),
+        max_length=32,
+        blank=True,
+        default="",
+    )
+    observed_source_price = models.DecimalField(
+        _("Проверенная цена источника"),
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    observed_source_currency = models.CharField(
+        _("Валюта проверенной цены"),
+        max_length=10,
+        blank=True,
+        default="",
+    )
+    observed_public_price = models.DecimalField(
+        _("Проверенная цена для покупателя"),
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    observed_public_currency = models.CharField(
+        _("Валюта проверенной цены для покупателя"),
+        max_length=10,
+        blank=True,
+        default="",
+    )
+    observed_stock_precision = models.CharField(
+        _("Точность проверенного остатка"),
+        max_length=16,
+        choices=StockPrecision.choices,
+        default=StockPrecision.UNKNOWN,
+    )
+    observed_stock_quantity = models.PositiveIntegerField(
+        _("Проверенный остаток источника"),
+        null=True,
+        blank=True,
+    )
+    verified_quantity = models.PositiveIntegerField(
+        _("Количество позиции при проверке"),
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+    )
+    verification_issues = models.JSONField(
+        _("Проблемы проверки"),
+        default=list,
+        blank=True,
+    )
+    price_change_state = models.CharField(
+        _("Изменение цены"),
+        max_length=16,
+        choices=PriceChangeState.choices,
+        default=PriceChangeState.NONE,
+    )
+    price_acknowledged_at = models.DateTimeField(
+        _("Изменение цены подтверждено"),
+        null=True,
+        blank=True,
+    )
+    price_acknowledged_value = models.DecimalField(
+        _("Подтверждённая цена"),
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    price_acknowledged_currency = models.CharField(
+        _("Валюта подтверждённой цены"),
+        max_length=10,
+        blank=True,
+        default="",
+    )
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
@@ -229,9 +372,104 @@ class CartItem(models.Model):
         verbose_name = _("🛒 Позиция корзины")
         verbose_name_plural = _("🛒 Заказы — Позиции корзины")
         unique_together = ("cart", "product", "chosen_size")
+        indexes = [
+            models.Index(
+                fields=["verification_status", "source_checked_at"],
+                name="orders_ci_verify_checked_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        observed_stock_precision="exact",
+                        observed_stock_quantity__isnull=False,
+                    )
+                    | models.Q(
+                        observed_stock_precision__in=["boolean", "unknown"],
+                        observed_stock_quantity__isnull=True,
+                    )
+                ),
+                name="orders_cartitem_observed_stock",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        price_acknowledged_at__isnull=True,
+                        price_acknowledged_value__isnull=True,
+                        price_acknowledged_currency="",
+                    )
+                    | (
+                        models.Q(
+                            price_acknowledged_at__isnull=False,
+                            price_acknowledged_value__isnull=False,
+                        )
+                        & ~models.Q(price_acknowledged_currency="")
+                    )
+                ),
+                name="orders_cartitem_price_ack_complete",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        observed_public_price__isnull=True,
+                        observed_public_currency="",
+                    )
+                    | (
+                        models.Q(observed_public_price__isnull=False)
+                        & ~models.Q(observed_public_currency="")
+                    )
+                ),
+                name="orders_cartitem_public_observation",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        valid_issues = set(self.VerificationIssue.values)
+        if not isinstance(self.verification_issues, list) or any(
+            issue not in valid_issues for issue in self.verification_issues
+        ):
+            errors["verification_issues"] = _("Укажите список поддерживаемых кодов проблем.")
+        if (
+            self.observed_stock_precision == self.StockPrecision.EXACT
+            and self.observed_stock_quantity is None
+        ):
+            errors["observed_stock_quantity"] = _("Для точного остатка требуется количество.")
+        if (
+            self.observed_stock_precision != self.StockPrecision.EXACT
+            and self.observed_stock_quantity is not None
+        ):
+            errors["observed_stock_quantity"] = _(
+                "Количество допустимо только для точного остатка."
+            )
+        acknowledgement_parts = (
+            self.price_acknowledged_at is not None,
+            self.price_acknowledged_value is not None,
+            bool(self.price_acknowledged_currency),
+        )
+        if any(acknowledgement_parts) and not all(acknowledgement_parts):
+            errors["price_acknowledged_at"] = _(
+                "Подтверждение цены должно содержать время, сумму и валюту."
+            )
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self) -> str:
         return f"{self.product.name} x{self.quantity}"
+
+    @property
+    def is_payable(self) -> bool:
+        """Whether this line may participate in totals/checkout without network I/O."""
+        if not getattr(settings, "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", False):
+            return True
+        if (
+            self.source_offer_id is None
+            and self.verification_status == self.VerificationStatus.NOT_CHECKED
+        ):
+            return True
+        return self.verification_status == self.VerificationStatus.VERIFIED
 
     @property
     def total(self):
@@ -333,6 +571,54 @@ class OrderItem(models.Model):
     price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField(_("Количество"), default=1)
     total = models.DecimalField(_("Сумма"), max_digits=12, decimal_places=2)
+
+    # Immutable supplier snapshot for fulfillment and later audit. These fields
+    # deliberately do not reference ProductSourceOffer: deleting or refreshing an
+    # offer must never rewrite the commercial facts accepted for an existing order.
+    source_parser = models.CharField(_("Парсер источника"), max_length=100, blank=True)
+    source_domain = models.CharField(_("Домен источника"), max_length=255, blank=True)
+    source_url = models.URLField(_("URL источника"), max_length=2000, blank=True)
+    source_external_product_id = models.CharField(
+        _("Внешний ID товара"), max_length=500, blank=True
+    )
+    source_external_sku = models.CharField(
+        _("Внешний SKU"), max_length=500, blank=True
+    )
+    source_variant_key = models.CharField(
+        _("Ключ варианта источника"), max_length=500, blank=True
+    )
+    source_size_key = models.CharField(
+        _("Ключ размера источника"), max_length=100, blank=True
+    )
+    source_selected_options = models.JSONField(
+        _("Выбранные опции источника"), default=dict, blank=True
+    )
+    source_price = models.DecimalField(
+        _("Цена источника при оформлении"),
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    source_currency = models.CharField(
+        _("Валюта источника"), max_length=10, blank=True
+    )
+    source_availability_status = models.CharField(
+        _("Наличие у источника при оформлении"), max_length=32, blank=True
+    )
+    source_stock_precision = models.CharField(
+        _("Точность остатка источника"), max_length=16, blank=True
+    )
+    source_stock_quantity = models.PositiveIntegerField(
+        _("Остаток источника при оформлении"), null=True, blank=True
+    )
+    source_checked_at = models.DateTimeField(
+        _("Источник проверен при оформлении"), null=True, blank=True
+    )
+    supplier_confirmation_required = models.BooleanField(
+        _("Требуется подтверждение поставщика"), default=False
+    )
 
     class Meta:
         verbose_name = _("🛒 Позиция заказа")

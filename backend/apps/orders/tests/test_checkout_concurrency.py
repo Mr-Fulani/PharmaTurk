@@ -93,7 +93,7 @@ def test_failed_crypto_invoice_does_not_consume_promo(checkout_state):
     view = OrderViewSet.as_view({"post": "create_from_cart"})
 
     with patch(
-        "apps.orders.serializers.CartSerializer",
+        "apps.orders.views.CartSerializer",
         return_value=_cart_serializer(item.id),
     ), patch("apps.orders.views._create_crypto_invoice", return_value=(None, None)):
         response = view(request)
@@ -126,7 +126,7 @@ def test_concurrent_checkout_creates_only_one_order(checkout_state):
         return OrderViewSet.as_view({"post": "create_from_cart"})(request).status_code
 
     with patch(
-        "apps.orders.serializers.CartSerializer",
+        "apps.orders.views.CartSerializer",
         return_value=_cart_serializer(item.id),
     ), patch("apps.orders.views._create_crypto_invoice", side_effect=slow_invoice), patch(
         "apps.orders.views.OrderSerializer"

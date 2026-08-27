@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
+import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerification'
 import { useCartStore } from '../store/cart'
 import { isBaseProductType } from '../lib/product'
 
@@ -29,7 +30,7 @@ export default function BuyNowButton({
 }: BuyNowButtonProps) {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const { refresh } = useCartStore()
+  const { refresh, setCartSummary } = useCartStore()
   const { t } = useTranslation('common')
 
   const buyNow = async () => {
@@ -43,6 +44,9 @@ export default function BuyNowButton({
       initCartSession()
       const body = new URLSearchParams()
       body.set('quantity', String(quantity))
+      if (size) {
+        body.set('size', size)
+      }
       const isBase = isBaseProductType(productType)
       if (isBase && productId !== undefined) {
         body.set('product_id', String(productId))
@@ -53,21 +57,74 @@ export default function BuyNowButton({
         if (productSlug) {
           body.set('product_slug', productSlug)
         }
-        if (size) {
-          body.set('size', size)
-        }
       }
+      const postAdd = () =>
+        api.post('/orders/cart/add', body, {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        })
+      let response
       try {
-        await api.post('/orders/cart/add', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
-      } catch (e: any) {
-        await api.post('/orders/cart/add/', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+        response = await postAdd()
+      } catch (error: any) {
+        const conflict = getCartVerificationError(error)
+        const price = conflict?.verification?.public_price
+        const currency = conflict?.verification?.public_currency || ''
+        const available = Number(conflict?.verification?.available_quantity)
+        const issueCodes = new Set([
+          conflict?.code,
+          ...(conflict?.issues || []).map((issue) => issue.code),
+        ])
+        let retryResolvedConflict = false
+
+        if (
+          issueCodes.has('source_quantity_changed') &&
+          Number.isInteger(available) &&
+          available > 0
+        ) {
+          const accepted = window.confirm(
+            t(
+              'cart_confirm_quantity_change',
+              'У поставщика доступно {{quantity}} шт. Продолжить с доступным количеством?',
+              { quantity: available },
+            ),
+          )
+          if (!accepted) return
+          body.set('quantity', String(available))
+          retryResolvedConflict = true
+        }
+        if (issueCodes.has('source_price_changed') && price != null && currency) {
+          const accepted = window.confirm(
+            t(
+              'cart_confirm_price_change',
+              'Цена изменилась на {{price}} {{currency}}. Продолжить по новой цене?',
+              { price: String(price), currency },
+            ),
+          )
+          if (!accepted) return
+          body.set('acknowledged_price', String(price))
+          body.set('acknowledged_currency', currency)
+          retryResolvedConflict = true
+        }
+        if (!retryResolvedConflict) {
+          throw error
+        }
+        response = await postAdd()
       }
-      await refresh()
+      if (response?.data) {
+        setCartSummary(response.data)
+      } else {
+        await refresh()
+      }
       // Перенаправляем на страницу оформления заказа
       router.push('/checkout')
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || t('buy_now_error', 'Ошибка при оформлении заказа')
+      const conflict = getCartVerificationError(err)
+      const copy = getCartIssueCopy(conflict?.code)
+      const detail = conflict?.code
+        ? t(copy.key, copy.fallback)
+        : err?.response?.data?.detail || err?.message || t('buy_now_error', 'Ошибка при оформлении заказа')
       alert(String(detail))
+    } finally {
       setLoading(false)
     }
   }
@@ -88,4 +145,3 @@ export default function BuyNowButton({
     </button>
   )
 }
-

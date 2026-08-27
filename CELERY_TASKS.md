@@ -23,6 +23,7 @@ Beat только публикует задачи. Для исполнения �
 | `enrich-medicine-media-nightly` | `catalog.enrich_medicine_media` | ежедневно `03:00` | `celery` | Дополняет галерею `MedicineProduct` до 3 изображений. |
 | `currency-update-rates` | `currency.update_rates` | каждые 4 часа | `celery` | Обновляет курсы валют. |
 | `currency-update-prices` | `currency.update_product_prices` | каждые 24 часа | `celery` | Вызывает `update_product_prices`, batch size 200. |
+| `catalog-refresh-source-offers` | `catalog.refresh_source_offers` | каждые 5 минут | `celery` | No-op до включения двух флагов; обновляет не более 100 stale offers, приоритет корзинам. |
 | `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | каждые 7 дней | `celery` | Удаляет сессии и логи скрапинга старше 30 дней. |
 | `orders-cleanup-stale-anonymous-carts` | `orders.cleanup_stale_anonymous_carts` | ежедневно `04:10` | `celery` | Батчами удаляет неактивные анонимные корзины; user carts не затрагивает. |
 | `scrapers-weekly-duplicate-candidates` | `apps.scrapers.tasks.find_and_merge_duplicates` | понедельник `04:30` | `celery` | Ищет и сохраняет кандидатов на ручную дедупликацию. |
@@ -50,6 +51,18 @@ max_images_per_product=3
 `currency.update_rates` вызывает `CurrencyRateService.update_rates()`. `currency.update_product_prices` запускает management-команду пересчёта и не обновляет курс повторно внутри того же запуска.
 
 Обе задачи перехватывают исключения и возвращают `{"status": "error"}` вместо обязательного Celery failure. Поэтому мониторинг должен проверять не только state задачи, но и её result/log message.
+
+### Проверка supplier offers
+
+`catalog.refresh_source_offers` не запускает полный импорт. Задача выбирает только
+активные offers старше freshness threshold, ставит recently changed cart offers первыми
+и вызывает лёгкий `check_offer`. Общий Redis lock не допускает перекрывающиеся проходы;
+один запуск ограничен 100 строками и 300 секундами.
+
+Задача выполняет DB/network работу только если одновременно включены
+`SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED` и `SOURCE_OFFER_VERIFICATION_ENABLED`.
+Allowlist, timeouts, retries, single-flight, rate/concurrency limits и circuit breaker
+описаны в [source-offer runbook](docs/SOURCE_OFFER_OPERATIONS_RUNBOOK.md).
 
 ### Очистка скраперных данных
 

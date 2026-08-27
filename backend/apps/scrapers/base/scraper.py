@@ -17,6 +17,11 @@ from apps.http_errors import ExternalAccessBlockedError, raise_for_blocked_statu
 
 from .selectors import DataSelector, SelectorConfig
 from .utils import clean_text, normalize_price, extract_currency
+from .offers import (
+    OfferCheckContext,
+    OfferCheckResult,
+    UnsupportedOfferVerification,
+)
 
 
 def _json_safe_scraped_value(value: Any) -> Any:
@@ -329,6 +334,24 @@ class BaseScraper(ABC):
                 raise
         
         return None
+
+    def _make_offer_request(self, url: str, **kwargs) -> str:
+        """Single read-only request for live verification.
+
+        Retries, caching and circuit breaking belong to SourceOfferVerificationService.
+        Keeping this path separate preserves 404/410 semantics that the legacy full
+        scraper intentionally collapses to a missing detail result.
+        """
+        if not url.startswith(("http://", "https://")):
+            url = urljoin(self.base_url, url)
+        response = self.client.get(url, **kwargs)
+        raise_for_blocked_status(
+            status_code=response.status_code,
+            url=str(response.url or url),
+            source=self.get_name(),
+        )
+        response.raise_for_status()
+        return response.text
     
     def _parse_page(self, html: str, url: str) -> DataSelector:
         """Создает селектор для парсинга страницы.
@@ -378,6 +401,14 @@ class BaseScraper(ABC):
             Один спарсенный товар, список товаров (варианты) или None
         """
         pass
+
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """Read-only live check for one buyable source offer.
+
+        Parsers must override this explicitly. Falling back to a successful-looking
+        full import would hide unsupported sources and could run expensive side effects.
+        """
+        raise UnsupportedOfferVerification(self.get_name())
     
     def parse_categories(self) -> List[Dict[str, Any]]:
         """Парсит список категорий сайта.

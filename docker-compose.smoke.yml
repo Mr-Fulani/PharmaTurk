@@ -5,6 +5,12 @@ services:
       POSTGRES_USER: release_smoke
       POSTGRES_PASSWORD: release-smoke-postgres-password
 
+  # Keep local production smoke reproducible on Apple Silicon while the
+  # upstream v1.18.3 arm64 image is unusable. This override is never used by
+  # staging/production deploy.sh.
+  qdrant:
+    platform: ${QDRANT_TEST_PLATFORM:-linux/amd64}
+
   backend:
     environment:
       USE_RUNSERVER: 0

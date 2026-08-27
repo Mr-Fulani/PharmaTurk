@@ -1,13 +1,17 @@
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.models import Session
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from rest_framework.test import APIClient, APIRequestFactory
 
-from apps.orders.models import Cart
+from apps.catalog.models import Product
+from apps.orders.models import Cart, CartItem
 from apps.orders.serializers import CartSerializer
 from apps.orders.views import (
     CartViewSet,
@@ -138,6 +142,73 @@ def test_empty_cart_payload_keeps_the_cart_serializer_response_shape_without_dat
     assert payload["promo_code"] is None
     assert payload["created_at"] is None
     assert payload["updated_at"] is None
+
+
+@pytest.mark.django_db
+def test_cart_serialization_query_count_does_not_grow_with_item_count():
+    products = [
+        Product.objects.create(
+            name=f"Query product {index}",
+            slug=f"query-product-{index}",
+            price="100.00",
+            currency="RUB",
+            product_type="medicines",
+        )
+        for index in range(6)
+    ]
+    one_item_cart = Cart.objects.create(session_key="query-count-one", currency="RUB")
+    many_items_cart = Cart.objects.create(session_key="query-count-many", currency="RUB")
+    CartItem.objects.create(
+        cart=one_item_cart,
+        product=products[0],
+        quantity=1,
+        price="100.00",
+        currency="RUB",
+    )
+    CartItem.objects.bulk_create(
+        [
+            CartItem(
+                cart=many_items_cart,
+                product=product,
+                quantity=1,
+                price="100.00",
+                currency="RUB",
+            )
+            for product in products[1:]
+        ]
+    )
+
+    def serialize_cart(session_key):
+        request = APIRequestFactory().get(
+            reverse("cart-list"),
+            HTTP_X_CART_SESSION=session_key,
+        )
+        request.session = _ReadOnlySession()
+        return CartViewSet.as_view({"get": "list"})(request)
+
+    def convert_without_io(amount, _source, _target, *, apply_margin=True):
+        value = Decimal(str(amount))
+        return value, value, value
+
+    # Query growth is the subject of this test. Currency-provider/network behavior
+    # has separate coverage and must not turn an offline release run into SQL noise.
+    with patch(
+        "apps.orders.serializers.currency_converter.convert_price",
+        side_effect=convert_without_io,
+    ), patch(
+        "apps.orders.serializers.currency_converter.get_margin_rate",
+        return_value=Decimal("0"),
+    ):
+        # Warm process-level settings caches before comparing SQL growth.
+        assert serialize_cart("query-count-one").status_code == 200
+        with CaptureQueriesContext(connection) as single_queries:
+            assert serialize_cart("query-count-one").status_code == 200
+        with CaptureQueriesContext(connection) as many_queries:
+            response = serialize_cart("query-count-many")
+
+    assert response.status_code == 200
+    assert len(response.data["items"]) == 5
+    assert len(many_queries) == len(single_queries)
 
 
 @pytest.mark.django_db
