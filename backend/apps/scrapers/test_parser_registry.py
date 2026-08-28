@@ -5,6 +5,7 @@ from apps.scrapers.parsers import registry
 
 
 EXPECTED_PARSERS = {
+    "akakce",
     "ilacabak",
     "zara",
     "instagram",

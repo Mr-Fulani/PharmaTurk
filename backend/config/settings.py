@@ -591,6 +591,20 @@ SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = env.list(
 SUPPLEMENT_STOCK_ADAPTER_SOURCES = env.list(
     "SUPPLEMENT_STOCK_ADAPTER_SOURCES", default=[]
 )
+# Demand-driven seller discovery for supplements.  This remains separate from
+# the reference-price flag: only a strict match may create a payable source offer.
+SUPPLEMENT_STOCK_DISCOVERY_ENABLED = env.bool(
+    "SUPPLEMENT_STOCK_DISCOVERY_ENABLED", default=False
+)
+SUPPLEMENT_STOCK_DISCOVERY_REQUEST_TIMEOUT_SECONDS = env.int(
+    "SUPPLEMENT_STOCK_DISCOVERY_REQUEST_TIMEOUT_SECONDS", default=12
+)
+SUPPLEMENT_STOCK_DISCOVERY_NO_MATCH_TTL_SECONDS = env.int(
+    "SUPPLEMENT_STOCK_DISCOVERY_NO_MATCH_TTL_SECONDS", default=60 * 60 * 6
+)
+SUPPLEMENT_STOCK_DISCOVERY_ERROR_TTL_SECONDS = env.int(
+    "SUPPLEMENT_STOCK_DISCOVERY_ERROR_TTL_SECONDS", default=300
+)
 
 # Точечная справочная проверка цены медикамента по пользовательскому intent.
 # Она не участвует в корзине и никогда не обновляет наличие/остаток лекарства.

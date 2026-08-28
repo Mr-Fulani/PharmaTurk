@@ -449,6 +449,22 @@ def _order_item_source_snapshot(item: CartItem) -> dict:
     offer = item.source_offer if item.source_offer_id else None
     if offer is None:
         return {}
+    selected_options = dict(offer.selected_options or {})
+    if offer.parser_key == "akakce" and isinstance(offer.response_metadata, dict):
+        metadata = offer.response_metadata
+        seller_name = str(metadata.get("seller_name") or "").strip()
+        seller_url = str(metadata.get("seller_url") or "").strip()
+        if seller_name and seller_url:
+            # Reuse the existing immutable JSON snapshot to retain the exact
+            # procurement seller selected by the live checkout observation.
+            selected_options["procurement_offer"] = {
+                "seller_name": seller_name[:200],
+                "seller_url": seller_url[:2000],
+                "market_product_name": str(
+                    metadata.get("market_product_name") or ""
+                )[:500],
+                "market_product_id": str(metadata.get("market_product_id") or "")[:100],
+            }
     reservation_capable = {
         str(source).strip().casefold()
         for source in getattr(settings, 'SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES', [])
@@ -462,7 +478,7 @@ def _order_item_source_snapshot(item: CartItem) -> dict:
         'source_external_sku': offer.external_sku,
         'source_variant_key': offer.variant_key,
         'source_size_key': offer.size_key,
-        'source_selected_options': offer.selected_options,
+        'source_selected_options': selected_options,
         'source_price': (
             item.observed_source_price
             if item.observed_source_price is not None

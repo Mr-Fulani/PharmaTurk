@@ -297,6 +297,11 @@ class SupplementMarketCheckService:
 
     def request_check(self, supplement: SupplementProduct) -> SupplementMarketRequestResult:
         source = self.resolve_source(supplement)
+        from apps.catalog.services.supplement_stock_discovery import (
+            SupplementStockDiscoveryService,
+        )
+
+        stock_discovery_needed = SupplementStockDiscoveryService().needs_discovery(supplement)
         now = timezone.now()
         lock_ttl = _setting_int(
             "SUPPLEMENT_MARKET_CHECK_ENQUEUE_LOCK_SECONDS",
@@ -325,7 +330,7 @@ class SupplementMarketCheckService:
                 check.requested_at = now
                 check.source_url = source.url
 
-                if is_fresh:
+                if is_fresh and not stock_discovery_needed:
                     check.save(
                         update_fields=["request_count", "requested_at", "source_url", "updated_at"]
                     )
@@ -566,6 +571,28 @@ class SupplementMarketCheckService:
                 currency=currency,
                 source=source,
             )
+            # A reference-price success must not depend on the independent
+            # seller adapter.  Discovery failures are logged and the product
+            # safely remains consultation-only.
+            from apps.catalog.services.supplement_stock_discovery import (
+                SupplementStockDiscoveryError,
+                SupplementStockDiscoveryService,
+            )
+
+            try:
+                discovery = SupplementStockDiscoveryService().discover(supplement)
+                result["stock_discovery"] = discovery.status
+            except SupplementStockDiscoveryError as exc:
+                logger.warning(
+                    "supplement_stock_discovery_failed",
+                    extra={
+                        "check_id": check_id,
+                        "product_id": supplement.base_product_id,
+                        "error_code": exc.code,
+                        "retryable": exc.retryable,
+                    },
+                )
+                result["stock_discovery"] = exc.code
             self._observe(source.key, "success", started_monotonic)
             return result
         except SoftTimeLimitExceeded:

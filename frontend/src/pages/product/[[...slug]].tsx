@@ -2488,6 +2488,16 @@ export default function ProductPage({
                     productUrl={canonicalUrl}
                     whatsappUrl={footerSettings.whatsapp_url}
                     telegramUrl={footerSettings.telegram_url}
+                    onAvailabilityVerified={() => {
+                      setProduct((current) => current
+                        ? {
+                            ...current,
+                            purchase_mode: 'verified_sale',
+                            can_add_to_cart: true,
+                            availability_verification: 'live_on_cart',
+                          }
+                        : current)
+                    }}
                   />
                 ) : (
                   maxAvailable === 0 ? (

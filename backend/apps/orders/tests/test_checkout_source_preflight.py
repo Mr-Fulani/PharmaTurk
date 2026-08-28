@@ -294,6 +294,55 @@ def test_order_item_keeps_immutable_source_snapshot(settings):
 
 
 @pytest.mark.django_db
+def test_akakce_order_snapshot_keeps_selected_procurement_seller(settings):
+    settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
+    settings.SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES = []
+    user = User.objects.create_user(
+        username="akakce-source-snapshot-user",
+        email="akakce-source-snapshot@example.test",
+        password="not-used",
+    )
+    _product, offer, _cart, _item = _source_checkout_state(user=user)
+    ProductSourceOffer.objects.filter(pk=offer.pk).update(
+        parser_key="akakce",
+        source_domain="www.akakce.com",
+        canonical_url=(
+            "https://www.akakce.com/vitamin-mineral/"
+            "en-ucuz-supplement-fiyati,123.html"
+        ),
+        response_metadata={
+            "seller_name": "Verified Seller",
+            "seller_url": "https://seller.example/supplement",
+            "market_product_name": "Matched supplement",
+            "market_product_id": "123",
+        },
+    )
+    offer.refresh_from_db()
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    with patch(
+        "apps.orders.views.CartSourceOfferPolicy.evaluate",
+        return_value=_decision(offer),
+    ):
+        response = client.post(
+            reverse("orders-create-from-cart"),
+            _checkout_payload(),
+            format="json",
+            HTTP_X_CURRENCY="TRY",
+        )
+
+    assert response.status_code == 201
+    procurement = OrderItem.objects.get().source_selected_options["procurement_offer"]
+    assert procurement == {
+        "seller_name": "Verified Seller",
+        "seller_url": "https://seller.example/supplement",
+        "market_product_name": "Matched supplement",
+        "market_product_id": "123",
+    }
+
+
+@pytest.mark.django_db
 def test_checkout_blocks_legacy_supplement_without_stock_adapter(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]

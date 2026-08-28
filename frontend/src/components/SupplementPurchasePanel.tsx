@@ -37,6 +37,7 @@ type Props = {
   productUrl: string
   whatsappUrl?: string | null
   telegramUrl?: string | null
+  onAvailabilityVerified?: () => void
 }
 
 const ACTIVE_STATUSES = new Set(['pending', 'running'])
@@ -48,6 +49,7 @@ export default function SupplementPurchasePanel({
   productUrl,
   whatsappUrl,
   telegramUrl,
+  onAvailabilityVerified,
 }: Props) {
   const { t, i18n } = useTranslation('common')
   const [result, setResult] = useState<SupplementMarketCheck | null>(null)
@@ -80,6 +82,7 @@ export default function SupplementPurchasePanel({
         )
         if (generation !== requestGeneration.current) return
         setResult(response.data)
+        if (response.data.availability?.can_add_to_cart) onAvailabilityVerified?.()
         schedulePoll(response.data, generation, attempt + 1)
       } catch {
         if (generation === requestGeneration.current) {
@@ -102,6 +105,7 @@ export default function SupplementPurchasePanel({
       )
       if (generation !== requestGeneration.current) return
       setResult(response.data)
+      if (response.data.availability?.can_add_to_cart) onAvailabilityVerified?.()
       schedulePoll(response.data, generation, 0)
     } catch (error) {
       if (generation !== requestGeneration.current) return
@@ -153,10 +157,10 @@ export default function SupplementPurchasePanel({
   return (
     <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
       <p className="text-sm font-semibold">
-        {t('supplement_stock_unverified_title', 'Продажное наличие пока не подтверждено')}
+        {t('supplement_stock_unverified_title', 'Проверим цену и наличие на рынке')}
       </p>
       <p className="mt-1 text-xs leading-5">
-        {t('supplement_stock_unverified_text', 'Первоисточник сообщает справочную цену, но не складской остаток. Мы не добавляем товар в оплачиваемую корзину без проверки реального поставщика.')}
+        {t('supplement_stock_unverified_text', 'Проверим справочную цену и найдём совпадающее предложение реального продавца. В корзину попадёт только товар с актуальной live-проверкой.')}
       </p>
 
       <button
@@ -165,7 +169,7 @@ export default function SupplementPurchasePanel({
         disabled={starting || ACTIVE_STATUSES.has(result?.status || '')}
         className="mt-4 w-full rounded-md bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70"
       >
-        {statusMessage || t('supplement_market_check_button', 'Проверить актуальную справочную цену')}
+        {statusMessage || t('supplement_market_check_button', 'Проверить цену и наличие')}
       </button>
 
       {displayPrice && (
