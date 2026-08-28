@@ -1168,6 +1168,56 @@ offer-строк; штатный rollback следующих фаз — откл
   отдельно добавить `zara`. До завершения этих gates оба источника остаются вне
   production verification allowlist и не влияют на payable.
 
+### Medicine UX `65b29cf` — развёрнут в production 2026-08-28
+
+- [x] Release commit `65b29cf13553826ce661ed0fbe257e86b2ef52a4` собран на
+  production host без расходования GitHub Actions. Exact x86_64 images имеют
+  revision label полного Git SHA: backend
+  `sha256:a393126831f42070dfebc3c9b34c4392c2f4427c98f2f05d1d5f698eea9b4ab8`,
+  frontend
+  `sha256:36fdd3ef00d401f6807ccc66b9dab1610d5e3205a2438863b2cfd8e4fec96957`.
+- [x] Оба exact image прошли Django check, migration drift check, production Next
+  build и повторный isolated full-stack smoke на чистых state volumes: вся история
+  миграций применена, readiness/liveness, canonical host и security headers зелёные;
+  временный Compose project и volumes удалены.
+- [x] Перед переключением создан backup
+  `/home/deploy/backups/pharmaturk/20260828T161647Z_pre_289b978_to_65b29cf`:
+  PostgreSQL custom dump `128418700` bytes проходит `pg_restore --list`, Qdrant full
+  snapshot `420881408` bytes имеет SHA-256
+  `92f603aeed159683065201c10566dc0229b8b9ba4ad25322be514072254f072a`,
+  PostgreSQL SHA-256
+  `5a413939c855cbe3661369b9ed5c8deea5e39a393ead02cb1198a0e2de76dfb9`;
+  restore manifest и backup-файлы закрыты правами `600`.
+- [x] Controlled deploy `289b978b14fd60d2f62df1a0caa8e0941463216c` →
+  `65b29cf13553826ce661ed0fbe257e86b2ef52a4` не потребовал миграций и не
+  пересоздавал PostgreSQL/Redis/Qdrant. Backend, frontend и все Celery services
+  работают на exact release; встроенный public postdeploy smoke успешен.
+- [x] Browser canary на RAPAMUNE подтвердил production-сценарий
+  `Узнать актуальную цену → Проверка поставлена в очередь… → Цена проверена →
+  Обновить цену ещё раз`. Верхняя цена карточки обновилась с `36 067 RUB` до
+  `12 225 TRY`, рядом показана точная справочная цена `12225.03 TRY`; read-only API
+  вернул `succeeded`, `source=ilacfiyati`, `analog_count=3`, без stale/error.
+- [x] Medicine non-sale invariant сохранён: после проверки ORM-цена равна
+  `12225.03 TRY`, существующие medicine/shadow availability и stock остались без
+  изменений (`true/3` для контрольной legacy-карточки), но в production UI нет
+  `Добавить в корзину`/`Купить сейчас` и отображается «Наш сайт не продает
+  лекарства». Market-check не меняет эти поля и не создаёт payable flow.
+- [x] Старый URL `/how-to-order-medicines?medicine=...` совместим, но больше не
+  запускает проверку и не показывает отдельную панель. RU/EN FAQ содержит новые
+  ответы; RU/EN карточки показывают `Узнать актуальную цену` / `Check current price`,
+  текст консультации удалён, ссылка на инструкцию локализована.
+- [x] Runtime safety audit: source verification allowlist остаётся
+  `ikea,ummaland,lcw`; `SUPPLEMENT_STOCK_ADAPTER_SOURCES=[]`, catalog projection
+  выключен, поэтому БАДы остаются reference-only, а FLO/ZARA не влияют на payable.
+  В backend/worker/frontend журналах после canary нет traceback, `ERROR` или
+  `CRITICAL`; public health отвечает `status=ok`, DB/cache доступны.
+- [x] После повторной сверки внешнего Qdrant backup с manifest удалён только точный
+  внутренний snapshot-дубликат `full-snapshot-2026-08-28-16-17-37.snapshot`;
+  восстановление сохранено во внешнем backup. Текущий `65b29cf` и rollback images
+  `289b978`/`234315c` сохранены; на диске свободно `3.8 GB`.
+- [ ] Следующий отдельный rollout — FLO, затем ZARA: доверенный proxy CA, canary и
+  последовательное расширение allowlist. Текущий medicine UX от него не зависит.
+
 ## Оценка
 
 - Фазы 1–4: 8–12 рабочих дней.
