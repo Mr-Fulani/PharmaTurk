@@ -132,6 +132,53 @@ def test_fashion_sizes_are_idempotent_and_missing_size_is_deactivated(product):
 
 
 @pytest.mark.django_db
+def test_fashion_size_reuses_offer_when_supplier_sku_drifts(product):
+    scraped = ScrapedProduct(
+        name="Zara product",
+        price=Decimal("799.00"),
+        currency="TRY",
+        url="https://www.zara.com/tr/tr/product-p1.html",
+        external_id="zara-1",
+        source="zara",
+        attributes={
+            "fashion_variants": [
+                {
+                    "external_id": "black",
+                    "sku": "BLACK",
+                    "external_url": "https://www.zara.com/tr/tr/product-p1.html",
+                    "is_available": False,
+                    "sizes": [
+                        {
+                            "size": "M",
+                            "sku": "BLACK-M-OLD",
+                            "is_available": False,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    original = record_scraped_product_offers(
+        product=product,
+        scraped_product=scraped,
+    )[0]
+
+    scraped.attributes["fashion_variants"][0]["sizes"][0].update(
+        sku="BLACK-M-NEW",
+        is_available=True,
+    )
+    refreshed = record_scraped_product_offers(
+        product=product,
+        scraped_product=scraped,
+    )[0]
+
+    assert refreshed.pk == original.pk
+    assert refreshed.external_sku == "BLACK-M-NEW"
+    assert refreshed.availability_status == ProductSourceOffer.AvailabilityStatus.IN_STOCK
+    assert ProductSourceOffer.objects.filter(product=product).count() == 1
+
+
+@pytest.mark.django_db
 def test_ikea_records_exact_positive_stock_and_unknown_quantity_as_boolean(product):
     exact = ScrapedProduct(
         name="IKEA exact",

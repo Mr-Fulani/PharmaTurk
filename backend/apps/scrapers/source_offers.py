@@ -302,35 +302,64 @@ def record_scraped_product_offers(
             variant_key=snapshot.variant_key,
             size_key=snapshot.size_key,
         )
-        offer, _ = ProductSourceOffer.objects.update_or_create(
+        defaults = {
+            "parser_config": parser_config_payload,
+            "canonical_url": snapshot.canonical_url,
+            "external_product_id": snapshot.external_product_id,
+            "external_sku": snapshot.external_sku,
+            "variant_key": snapshot.variant_key,
+            "size_key": snapshot.size_key,
+            "selected_options": snapshot.selected_options,
+            "source_price": snapshot.source_price,
+            "source_currency": snapshot.source_currency,
+            "availability_status": snapshot.availability_status,
+            "stock_precision": snapshot.stock_precision,
+            "stock_quantity": snapshot.stock_quantity,
+            "priority": priority,
+            "is_active": True,
+            "last_checked_at": observed_at,
+            "last_successful_check_at": observed_at,
+            "last_error_code": "",
+            "last_error_message": "",
+            "consecutive_failures": 0,
+            "response_metadata": snapshot.response_metadata,
+        }
+        locked_offers = ProductSourceOffer.objects.select_for_update().filter(
             product=product,
             parser_key=parser_key,
-            offer_key=offer_key,
-            defaults={
-                "parser_config": parser_config_payload,
-                "canonical_url": snapshot.canonical_url,
-                "external_product_id": snapshot.external_product_id,
-                "external_sku": snapshot.external_sku,
-                "variant_key": snapshot.variant_key,
-                "size_key": snapshot.size_key,
-                "selected_options": snapshot.selected_options,
-                "source_price": snapshot.source_price,
-                "source_currency": snapshot.source_currency,
-                "availability_status": snapshot.availability_status,
-                "stock_precision": snapshot.stock_precision,
-                "stock_quantity": snapshot.stock_quantity,
-                "priority": priority,
-                "is_active": True,
-                "last_checked_at": observed_at,
-                "last_successful_check_at": observed_at,
-                "last_error_code": "",
-                "last_error_message": "",
-                "consecutive_failures": 0,
-                "response_metadata": snapshot.response_metadata,
-            },
         )
+        offer = locked_offers.filter(offer_key=offer_key).first()
+        if offer is None:
+            # Some product APIs omit a size SKU on later responses or replace it
+            # while keeping the same buyable option.  Reuse the one unambiguous
+            # semantic row so an old OOS offer cannot coexist with a new in-stock
+            # offer for the same colour/size.  Multiple matches are deliberately
+            # left separate because marketplace sellers may share option labels.
+            semantic_matches = list(
+                locked_offers.filter(
+                    canonical_url=snapshot.canonical_url,
+                    external_product_id=snapshot.external_product_id,
+                    variant_key=snapshot.variant_key,
+                    size_key=snapshot.size_key,
+                ).order_by("id")[:2]
+            )
+            if len(semantic_matches) == 1:
+                offer = semantic_matches[0]
+
+        if offer is None:
+            offer, _ = ProductSourceOffer.objects.update_or_create(
+                product=product,
+                parser_key=parser_key,
+                offer_key=offer_key,
+                defaults=defaults,
+            )
+        else:
+            for field, value in defaults.items():
+                setattr(offer, field, value)
+            # Keep the persisted key stable when only a supplier SKU drifted.
+            offer.save()
         saved.append(offer)
-        seen_offer_keys.add(offer_key)
+        seen_offer_keys.add(offer.offer_key)
 
     external_product_id = _clean(scraped_product.external_id, 500)
     if deactivate_missing and external_product_id:
