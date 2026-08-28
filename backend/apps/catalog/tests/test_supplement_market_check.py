@@ -2,11 +2,13 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from api.authentication import JWTSafeAuthentication
 from apps.catalog.models import (
     Category,
     PriceHistory,
@@ -21,6 +23,7 @@ from apps.catalog.services.supplement_market_check import (
     SupplementMarketCheckService,
     TrustedSupplementSource,
 )
+from apps.catalog.views import SupplementProductViewSet
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
@@ -201,6 +204,39 @@ def test_market_check_api_is_feature_flagged(supplement, settings):
     assert response.data["enabled"] is False
     assert response.data["error"]["code"] == "disabled"
     assert not ProductMarketCheck.objects.exists()
+
+
+@pytest.mark.django_db
+def test_public_market_check_does_not_require_csrf_for_unrelated_django_session(
+    supplement,
+    monkeypatch,
+):
+    user = get_user_model().objects.create_user(
+        email="supplement-session@example.test",
+        username="supplement-session",
+        password="not-used",
+    )
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_supplement_market_check_task.apply_async",
+        lambda *args, **kwargs: SimpleNamespace(id="supplement-session-csrf-task"),
+    )
+    client = APIClient(enforce_csrf_checks=True)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("supplement-product-market-check", kwargs={"slug": supplement.slug}),
+        {},
+        format="json",
+        REMOTE_ADDR="198.51.100.32",
+    )
+
+    assert response.status_code == 202
+    assert response.data["queued"] is True
+
+
+def test_market_check_endpoint_uses_jwt_only_authentication():
+    action = SupplementProductViewSet.market_check
+    assert action.kwargs["authentication_classes"] == [JWTSafeAuthentication]
 
 
 @pytest.mark.django_db

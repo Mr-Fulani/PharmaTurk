@@ -4521,6 +4521,11 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         methods=["get", "post"],
         url_path="market-check",
         permission_classes=[AllowAny],
+        # This is a public intent endpoint. SessionAuthentication would require a
+        # CSRF token whenever an otherwise unrelated Django/admin session cookie is
+        # present, even though AllowAny is explicit. Keep optional JWT identity but
+        # do not let a stale session turn an anonymous price check into HTTP 403.
+        authentication_classes=[JWTSafeAuthentication],
         throttle_classes=MEDICINE_MARKET_CHECK_THROTTLES,
     )
     @extend_schema(
@@ -4876,6 +4881,8 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
         methods=["get", "post"],
         url_path="market-check",
         permission_classes=[AllowAny],
+        # Same public/CSRF boundary as the medicine price check above.
+        authentication_classes=[JWTSafeAuthentication],
         throttle_classes=SUPPLEMENT_MARKET_CHECK_THROTTLES,
     )
     @extend_schema(

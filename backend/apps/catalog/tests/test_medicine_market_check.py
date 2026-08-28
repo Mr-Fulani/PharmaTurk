@@ -4,11 +4,13 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from api.authentication import JWTSafeAuthentication
 from api.throttles import TrustedProxyIPRateThrottle
 from apps.catalog.models import (
     Category,
@@ -449,10 +451,40 @@ def test_analog_api_returns_unresolved_source_reference(medicine):
 def test_market_check_endpoint_uses_trusted_ip_post_throttles():
     action = MedicineProductViewSet.market_check
     assert action.kwargs["throttle_classes"] == MEDICINE_MARKET_CHECK_THROTTLES
+    assert action.kwargs["authentication_classes"] == [JWTSafeAuthentication]
     assert all(
         issubclass(throttle, TrustedProxyIPRateThrottle)
         for throttle in MEDICINE_MARKET_CHECK_THROTTLES
     )
+
+
+@pytest.mark.django_db
+def test_public_market_check_does_not_require_csrf_for_unrelated_django_session(
+    medicine,
+    monkeypatch,
+):
+    """An admin/session cookie must not turn an AllowAny intent into HTTP 403."""
+    user = get_user_model().objects.create_user(
+        email="medicine-session@example.test",
+        username="medicine-session",
+        password="not-used",
+    )
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_medicine_market_check_task.apply_async",
+        lambda *args, **kwargs: SimpleNamespace(id="session-csrf-task"),
+    )
+    client = APIClient(enforce_csrf_checks=True)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("medicine-product-market-check", kwargs={"slug": medicine.slug}),
+        {},
+        format="json",
+        REMOTE_ADDR="198.51.100.17",
+    )
+
+    assert response.status_code == 202
+    assert response.data["queued"] is True
 
 
 def test_global_source_rate_limit_fails_closed(monkeypatch):
