@@ -33,6 +33,20 @@ def refresh_source_offers_task() -> dict:
     return refresh_stale_source_offers()
 
 
+@shared_task(
+    name="catalog.refresh_medicine_market_check",
+    soft_time_limit=100,
+    time_limit=120,
+    acks_late=True,
+)
+def refresh_medicine_market_check_task(check_id: int) -> dict:
+    """Refresh one user-requested medicine reference price and its equivalents."""
+
+    from apps.catalog.services.medicine_market_check import MedicineMarketCheckService
+
+    return MedicineMarketCheckService().run(check_id)
+
+
 @shared_task
 def refresh_stock() -> str:
     """Обновляет данные о наличии товаров (заглушка)."""

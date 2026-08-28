@@ -133,6 +133,7 @@ from .serializers import (
 )
 from .card_payload import compact_card_product_payload
 from .querysets import non_public_shadow_product_q
+from .throttles import MEDICINE_MARKET_CHECK_THROTTLES
 from apps.feedback.review_aggregates import attach_review_aggregates
 
 
@@ -4512,6 +4513,53 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="market-check",
+        permission_classes=[AllowAny],
+        throttle_classes=MEDICINE_MARKET_CHECK_THROTTLES,
+    )
+    @extend_schema(
+        summary="Точечная проверка справочной цены препарата",
+        description=(
+            "GET только читает последнее состояние. POST выражает пользовательский "
+            "интерес и идемпотентно возвращает свежий результат либо ставит одну "
+            "фоновую проверку в очередь. Наличие и остаток лекарства не изменяются."
+        ),
+        request=None,
+    )
+    def market_check(self, request, slug=None):
+        from apps.catalog.services.medicine_market_check import (
+            MedicineMarketCheckError,
+            MedicineMarketCheckService,
+        )
+
+        medicine = self.get_object()
+        service = MedicineMarketCheckService()
+        if request.method == "GET":
+            check = service.latest_for(medicine)
+            return Response(service.serialize(medicine, check))
+
+        try:
+            result = service.request_check(medicine)
+        except MedicineMarketCheckError as exc:
+            check = service.latest_for(medicine)
+            payload = service.serialize(medicine, check)
+            payload["error"] = {
+                "code": exc.code,
+                "message": exc.public_message,
+            }
+            return Response(payload, status=exc.http_status)
+
+        payload = service.serialize(medicine, result.check)
+        payload["queued"] = result.queued
+        payload["cached"] = result.cached
+        return Response(
+            payload,
+            status=status.HTTP_202_ACCEPTED if result.queued else status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=['get'])
     @extend_schema(
         summary="Аналоги (эквиваленты) препарата",
@@ -4635,7 +4683,24 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         )
 
         results = []
+        matched_reference_ids = set()
+
+        def _reference_for(analog):
+            for ref in explicit_refs:
+                if ref.analog_product_id == analog.pk:
+                    return ref
+                if ref.barcode and analog.barcode and ref.barcode == analog.barcode:
+                    return ref
+                if ref.external_id and analog.external_id and ref.external_id == analog.external_id:
+                    return ref
+                if ref.name and ref.name.casefold() == (analog.name or '').casefold():
+                    return ref
+            return None
+
         for analog in analogs_qs:
+            source_reference = _reference_for(analog)
+            if source_reference:
+                matched_reference_ids.add(source_reference.pk)
             # Основное изображение
             main_img = analog.main_image or ''
             if not main_img:
@@ -4682,6 +4747,75 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
                 'active_ingredient': analog.active_ingredient or None,
                 'saving_percent': saving_percent,
                 'saving_amount': saving_amount,
+                'is_catalog_product': True,
+                'reference_id': source_reference.pk if source_reference else None,
+                'source_reference_price': (
+                    float(source_reference.reference_price)
+                    if source_reference and source_reference.reference_price is not None
+                    else None
+                ),
+                'source_reference_currency': (
+                    source_reference.reference_currency or None
+                    if source_reference
+                    else None
+                ),
+                'source_last_observed_at': (
+                    source_reference.last_observed_at
+                    if source_reference
+                    else None
+                ),
+            })
+
+        # Эквивалент может быть найден в source-вкладке, но ещё не иметь полноценной
+        # публичной карточки. Не создаём ложный «доступный товар»: возвращаем только
+        # информационную reference-строку без slug и availability. Связанные stub-
+        # товары сохраняют прежний публичный контракт и не попадают в ответ.
+        unresolved_refs = sorted(
+            (
+                ref
+                for ref in explicit_refs
+                if ref.analog_product_id is None
+                and ref.pk not in matched_reference_ids
+            ),
+            key=lambda ref: (
+                ref.last_observed_at is None,
+                -(ref.last_observed_at.timestamp() if ref.last_observed_at else 0),
+                ref.name.casefold(),
+            ),
+        )
+        for ref in unresolved_refs:
+            if len(results) >= limit:
+                break
+            results.append({
+                'id': None,
+                'reference_id': ref.pk,
+                'slug': None,
+                'name': ref.name,
+                'brand': None,
+                'price': None,
+                'old_price': None,
+                'original_price': (
+                    float(ref.reference_price)
+                    if ref.reference_price is not None
+                    else None
+                ),
+                'original_currency': ref.reference_currency or 'TRY',
+                'display_currency': ref.reference_currency or 'TRY',
+                'is_available': None,
+                'main_image_url': None,
+                'images': [],
+                'dosage_form': None,
+                'active_ingredient': active_ingredient or None,
+                'saving_percent': None,
+                'saving_amount': None,
+                'is_catalog_product': False,
+                'source_reference_price': (
+                    float(ref.reference_price)
+                    if ref.reference_price is not None
+                    else None
+                ),
+                'source_reference_currency': ref.reference_currency or None,
+                'source_last_observed_at': ref.last_observed_at,
             })
 
         return Response({

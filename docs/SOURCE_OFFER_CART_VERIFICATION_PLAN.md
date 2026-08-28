@@ -888,59 +888,112 @@ offer-строк; штатный rollback следующих фаз — откл
 
 ### Контракт и защита источника
 
-- [ ] Добавить отдельную сущность проверки/наблюдения со статусами
+- [x] Добавить отдельную сущность проверки/наблюдения со статусами
   `pending/running/succeeded/source_unavailable/failed`, сохранённой ценой, валютой,
   source URL, безопасным кодом ошибки и timestamps. Не переиспользовать продажный
   `ProductSourceOffer`.
-- [ ] `POST /api/catalog/medicines/products/{slug}/market-check`: `202` для новой
+- [x] `POST /api/catalog/medicines/products/{slug}/market-check`: `202` для новой
   Celery-задачи, `200` для свежего результата или уже выполняющейся проверки. Вход
   содержит только slug из каталога; parser key, source URL и proxy policy разрешаются
   сервером из сохранённого товара и active/enabled `ScraperConfig`.
-- [ ] `GET /api/catalog/medicines/products/{slug}/market-check`: только чтение
+- [x] `GET /api/catalog/medicines/products/{slug}/market-check`: только чтение
   статуса/результата без внешнего HTTP-запроса. Клиент делает bounded polling и
   прекращает его на terminal status или по таймауту.
-- [ ] Дедупликация: одна выполняющаяся задача на препарат. Freshness TTL по умолчанию
+- [x] Дедупликация: одна выполняющаяся задача на препарат. Freshness TTL по умолчанию
   12 часов: повторный интерес возвращает уже проверенный результат; явный force
   публичному клиенту не предоставляется. TTL должен настраиваться server-side.
-- [ ] Rate limit по trusted client IP и глобальный лимит запуска задач; Redis-lock до
+- [x] Rate limit по trusted client IP и глобальный лимит запуска задач; Redis-lock до
   постановки в очередь и DB uniqueness/transaction как защита от гонки. Ошибка Redis
   не должна открывать неограниченный доступ к источнику.
-- [ ] В Celery использовать короткие hard/soft timeouts и отдельный task name/метрики.
+- [x] В Celery использовать короткие hard/soft timeouts и отдельный task name/метрики.
   `source_unavailable` не затирает последнюю успешную цену: UI показывает последнюю
   проверенную цену с датой и сообщение, что свежую проверку выполнить не удалось.
-- [ ] Price update выполнять атомарно с `PriceHistory(source="ilacfiyati_on_demand")`
+- [x] Price update выполнять атомарно с `PriceHistory(source="ilacfiyati_on_demand")`
   и shadow-sync. При отсутствующей/некорректной цене карточка не обновляется.
-- [ ] Обновление аналогов вынести в безопасный market-observation service: не
+- [x] Обновление аналогов вынести в безопасный market-observation service: не
   создавать продаваемый/доступный товар из parser defaults, не удалять старые связи
   при частичной ошибке вкладки и не показывать stub-карточки в публичной выдаче.
 
 ### Пользовательский сценарий
 
-- [ ] На карточке лекарства включить переход
+- [x] На карточке лекарства включить переход
   `/how-to-order-medicines?medicine=<url-encoded-slug>`; не передавать цену или source
   URL из браузера и отключить бессмысленный prefetch для этого intent-link.
-- [ ] На странице инструкции показать выбранный препарат, состояния «проверяем»,
+- [x] На странице инструкции показать выбранный препарат, состояния «проверяем»,
   «цена проверена <дата>», «источник временно недоступен» и последнюю успешную цену.
   Общая страница без `medicine` остаётся обычной инструкцией.
-- [ ] После успешной проверки загрузить существующий analog API и показать до 10
+- [x] После успешной проверки загрузить существующий analog API и показать до 10
   эквивалентов с названием, формой, действующим веществом и reference price. Не писать
   «можно заменить» или «есть в наличии», если источник этого не подтвердил.
-- [ ] Кнопки WhatsApp/Telegram формируют текст с названием, дозировкой/формой,
-  проверенной ценой, датой и ссылкой на карточку; окончательная цена и возможность
-  заказа подтверждаются консультантом.
+- [x] WhatsApp формирует текст с названием, дозировкой/формой, проверенной ценой,
+  датой и ссылкой на карточку; Telegram открывает настроенный контакт. Окончательная
+  цена и возможность заказа подтверждаются консультантом.
 
 ### Проверка и rollout
 
-- [ ] Unit: source resolution, price validation, отсутствие stock mutations,
+- [x] Unit: source resolution, price validation, отсутствие stock mutations,
   дедупликация/TTL/lock, terminal errors, частичная ошибка analog tabs.
-- [ ] API: anonymous rate limit, `POST` idempotency, read-only `GET`, неизвестный slug,
+- [x] API: anonymous rate limit, `POST` idempotency, read-only `GET`, неизвестный slug,
   отсутствие client-controlled URL/parser/proxy, polling contract.
-- [ ] Frontend: URL с slug, отсутствие запроса на общей FAQ, один `POST` при intent,
+- [x] Frontend: URL с slug, отсутствие запроса на общей FAQ, один `POST` при intent,
   terminal UI states и безопасное отображение аналогов.
 - [ ] Canary на нескольких реальных IlacFiyati-карточках; Ilacabak включать только
   после отдельной проверки селекторов и качества цены. Затем feature flag, небольшой
   global concurrency limit, мониторинг success/latency/source errors и rollback без
   изменения cart flow.
+
+### Граница для БАДов из того же источника
+
+- [x] `ProductMarketCheck` привязан к generic `Product`, поэтому справочную цену БАДов
+  можно наблюдать тем же типом записи без второй параллельной таблицы.
+- [x] `IlacFiyatiParser.parse_market_snapshot()` различает `/ilaclar/` и
+  `/takviye-edici-gida/`: для БАДов получает одну цену и не запрашивает медицинские
+  вкладки эквивалентов.
+- [x] Продажное наличие БАДов отделено от справочного наблюдения. Legacy
+  `is_available=True/stock_quantity=3` не считается подтверждением поставщика и не
+  может автоматически включить БАД в cart enforcement.
+- [ ] Перед включением продаж БАДов реализовать отдельный supplement adapter/API:
+  reference-price может переиспользовать `ProductMarketCheck`, но buyable availability
+  должен подтверждаться реальным `ProductSourceOffer.check_offer` (boolean/exact),
+  выбранным SKU/вариантом и checkout preflight. Если источник не сообщает stock,
+  заказ остаётся через консультанта, а не становится автоматически payable.
+
+### Журнал реализации 2026-08-28
+
+- Добавлена migration `catalog.0203`: generic `ProductMarketCheck` и справочные поля
+  `MedicineAnalog`; admin наблюдений read-only, схема не меняет cart/order таблицы.
+- `MedicineMarketCheckService` принимает только server-owned IlacFiyati URL активного
+  `ScraperConfig`, канонизирует HTTPS host/path, ограничивает client/global rate,
+  Redis enqueue lock и source concurrency, дедуплицирует DB/Celery и сохраняет
+  последнюю успешную цену при временной ошибке.
+- Celery task имеет soft/hard timeout `100/120s`. Успех атомарно обновляет только цену,
+  shadow product, `PriceHistory(source="ilacfiyati_on_demand")` и reference-аналоги;
+  parser defaults `is_available=True/stock_quantity=3` не проецируются.
+- `parse_market_snapshot` не загружает вкладки инструкции; частичный сбой optional
+  analog tab не мешает сохранить цену и не удаляет прошлые связи. Для БАДов medicine
+  analog tabs вообще не запрашиваются.
+- Добавлены read-only `GET` и intent `POST` market-check API. Клиентский URL/parser
+  игнорируются, неизвестный slug даёт `404`, anonymous burst фактически ограничен
+  `3/min`, polling не запускает источник.
+- Карточка препарата передаёт только encoded slug на страницу инструкции без Next
+  prefetch. Страница делает single-flight POST, bounded polling, показывает свежую или
+  последнюю успешную цену, справочные эквиваленты и локализованный WhatsApp intent.
+  Общая FAQ без `medicine` source-запрос не выполняет.
+- Проверки:
+  - финальный medicine/parser/legacy analog contract — `36 passed`; отдельно
+    medicine-файл с фактическим anonymous throttle case — `15 passed`;
+  - полный backend suite — `1208 passed`, `30 subtests passed`, 5 существующих warnings;
+  - `manage.py check` — 0 issues; migration drift — `No changes detected`;
+  - OpenAPI validation — exit `0`, ошибок `0`; `573` warnings (`570` unique)
+    относятся к существующим serializer type hints, а не к новому endpoint;
+  - frontend — `63 passed`, TypeScript без ошибок, lint `0 errors` и 43 существующих
+    `no-img-element` warnings;
+  - production `NODE_ENV` build — успешно, включая `/how-to-order-medicines` и
+    `/product/[[...slug]]`; `git diff --check` и Python compile — успешно.
+- Rollback до canary: `MEDICINE_MARKET_CHECK_ENABLED=false` (default) полностью
+  отключает новые POST-запуски; накопленные observation rows безопасно оставить.
+  Migration `0203 → 0202` допустима только до появления нужной истории наблюдений или
+  после её экспорта. Cart/checkout feature flags и allowlist не меняются.
 
 ## Оценка
 

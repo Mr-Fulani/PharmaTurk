@@ -30,7 +30,7 @@ from .models import (
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, CategoryIncense, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
-    Brand, BrandTranslation, MarketingBrand, Product, ProductSourceOffer, ProductTranslation, ProductImage, PriceHistory, Favorite,
+    Brand, BrandTranslation, MarketingBrand, Product, ProductSourceOffer, ProductMarketCheck, ProductTranslation, ProductImage, PriceHistory, Favorite,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
@@ -1487,6 +1487,36 @@ class ProductSourceOfferAdmin(admin.ModelAdmin):
         )
 
         return SourceOfferVerificationService().circuit_is_open(obj.parser_key)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ProductMarketCheck)
+class ProductMarketCheckAdmin(admin.ModelAdmin):
+    """Read-only operational view of user-demand market observations."""
+
+    list_display = (
+        "product",
+        "source",
+        "status",
+        "observed_price",
+        "observed_currency",
+        "analog_count",
+        "request_count",
+        "last_success_at",
+        "error_code",
+        "requested_at",
+    )
+    list_filter = ("source", "status", "observed_currency")
+    search_fields = ("product__name", "product__slug", "source_url", "task_id")
+    ordering = ("-requested_at",)
+    list_select_related = ("product",)
+    list_per_page = 50
+    readonly_fields = tuple(field.name for field in ProductMarketCheck._meta.fields)
 
     def has_add_permission(self, request):
         return False

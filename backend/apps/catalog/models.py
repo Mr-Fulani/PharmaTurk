@@ -2269,6 +2269,91 @@ class ProductSourceOffer(models.Model):
         return f"{self.product} — {self.parser_key}{suffix}"
 
 
+class ProductMarketCheck(models.Model):
+    """Последняя точечная проверка справочной цены по пользовательскому спросу.
+
+    Модель намеренно привязана к shadow ``Product``: лекарства используют её только
+    как информационное наблюдение, а БАДы в будущем смогут переиспользовать историю
+    цены. Торговое наличие и остаток сюда не записываются — для них существует
+    отдельный строгий ``ProductSourceOffer``.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", _("В очереди")
+        RUNNING = "running", _("Выполняется")
+        SUCCEEDED = "succeeded", _("Успешно")
+        SOURCE_UNAVAILABLE = "source_unavailable", _("Источник недоступен")
+        FAILED = "failed", _("Ошибка")
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="market_checks",
+        verbose_name=_("Товар"),
+    )
+    source = models.CharField(_("Источник"), max_length=100, db_index=True)
+    source_url = models.URLField(_("URL источника"), max_length=2000)
+    status = models.CharField(
+        _("Статус"),
+        max_length=32,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    observed_price = models.DecimalField(
+        _("Последняя подтверждённая цена"),
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    observed_currency = models.CharField(_("Валюта"), max_length=10, blank=True)
+    previous_price = models.DecimalField(
+        _("Цена до последнего изменения"),
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    analog_count = models.PositiveIntegerField(_("Найдено аналогов"), default=0)
+    request_count = models.PositiveIntegerField(_("Количество запросов"), default=0)
+    task_id = models.CharField(_("ID задачи Celery"), max_length=100, blank=True)
+    error_code = models.CharField(_("Код ошибки"), max_length=64, blank=True)
+    error_message = models.CharField(_("Безопасное сообщение об ошибке"), max_length=500, blank=True)
+    requested_at = models.DateTimeField(_("Последний запрос"), null=True, blank=True)
+    started_at = models.DateTimeField(_("Начало проверки"), null=True, blank=True)
+    finished_at = models.DateTimeField(_("Завершение проверки"), null=True, blank=True)
+    last_success_at = models.DateTimeField(_("Последняя успешная проверка"), null=True, blank=True)
+    created_at = models.DateTimeField(_("Создано"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Обновлено"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Проверка справочной цены")
+        verbose_name_plural = _("Проверки справочных цен")
+        ordering = ["-requested_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "source"],
+                name="catalog_marketcheck_product_source_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["status", "requested_at"],
+                name="catalog_mc_status_req_idx",
+            ),
+            models.Index(
+                fields=["source", "last_success_at"],
+                name="catalog_mc_source_ok_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.product} — {self.source}: {self.status}"
+
+
 class SeoTranslationMixin(models.Model):
     """Локализованные SEO-поля для переводов товарных моделей."""
 
@@ -5121,11 +5206,22 @@ class MedicineAnalog(models.Model):
     atc_code = models.CharField(_("Код АТХ"), max_length=20, blank=True)
     sgk_equivalent_code = models.CharField(_("SGK Eşdeğer Kodu"), max_length=100, blank=True)
     external_id = models.CharField(_("Внешний ID"), max_length=200, blank=True)
+    source_url = models.URLField(_("URL аналога в источнике"), max_length=2000, blank=True)
     source = models.CharField(
         _("Источник"), max_length=100, blank=True,
         help_text=_("ilacfiyati, ilacabak, и т.д.")
     )
     source_tab = models.CharField(_("Вкладка источника"), max_length=100, blank=True)
+    reference_price = models.DecimalField(
+        _("Справочная цена источника"),
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    reference_currency = models.CharField(_("Валюта справочной цены"), max_length=10, blank=True)
+    last_observed_at = models.DateTimeField(_("Последнее наблюдение"), null=True, blank=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:

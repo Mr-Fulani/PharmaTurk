@@ -4,6 +4,7 @@ import logging
 import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
+import httpx
 from bs4 import BeautifulSoup
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -423,7 +424,33 @@ class IlacFiyatiParser(BaseScraper):
             self.logger.exception("Ошибка при парсинге списка товаров IlacFiyati")
             raise
 
-    def parse_product_detail(self, product_url: str) -> ScrapedProduct:
+    def parse_market_snapshot(self, product_url: str) -> ScrapedProduct:
+        """Получает только справочную цену и эквиваленты одной карточки.
+
+        Пользовательская проверка не должна повторно скачивать все вкладки инструкции:
+        это увеличивало бы один intent-запрос примерно с трёх страниц до двенадцати.
+        Для БАДов эквиваленты лекарств неприменимы, поэтому их вкладки не запрашиваются.
+        """
+
+        canonical_url = self._canonical_product_url(product_url)
+        is_medicine = urlparse(canonical_url).path.strip("/").startswith("ilaclar/")
+        return self.parse_product_detail(
+            canonical_url,
+            include_detail_tabs=False,
+            include_analogs=is_medicine,
+            tolerate_analog_errors=True,
+            preserve_transport_errors=True,
+        )
+
+    def parse_product_detail(
+        self,
+        product_url: str,
+        *,
+        include_detail_tabs: bool = True,
+        include_analogs: bool = True,
+        tolerate_analog_errors: bool = False,
+        preserve_transport_errors: bool = False,
+    ) -> ScrapedProduct:
         """
         Парсит детальную страницу товара.
         Извлекает название, цену и характеристики.
@@ -562,7 +589,7 @@ class IlacFiyatiParser(BaseScraper):
             # 4. Вкладки инструкции препарата.
             # ilacfiyati держит важные разделы на отдельных URL вида /{slug}/nasil-kullanilir.
             # Сохраняем турецкий source структурированно, чтобы AI только переводил, а не додумывал.
-            detail_tabs = self._fetch_detail_tabs(product_url)
+            detail_tabs = self._fetch_detail_tabs(product_url) if include_detail_tabs else {}
             if detail_tabs:
                 attributes["source_tabs"] = detail_tabs
                 description_tab_order = (
@@ -624,7 +651,11 @@ class IlacFiyatiParser(BaseScraper):
             # На сайте ilacfiyati аналоги лежат на отдельных подстраницах /esdegeri и /sgk-esdegeri
             analogs = []
             analog_fetch_errors = 0
-            sub_paths = [('/esdegeri', 'Eşdeğeri'), ('/sgk-esdegeri', 'SGK Eşdeğeri')]
+            sub_paths = (
+                [('/esdegeri', 'Eşdeğeri'), ('/sgk-esdegeri', 'SGK Eşdeğeri')]
+                if include_analogs
+                else []
+            )
             canonical_product_url = self._canonical_product_url(product_url)
             
             for path, source_tab in sub_paths:
@@ -654,7 +685,12 @@ class IlacFiyatiParser(BaseScraper):
                 except SoftTimeLimitExceeded:
                     raise
                 except ScraperAccessBlockedError:
-                    raise
+                    if not tolerate_analog_errors:
+                        raise
+                    analog_fetch_errors += 1
+                    self.logger.warning(
+                        "IlacFiyati blocked an optional analog tab: %s", sub_url
+                    )
                 except Exception as e:
                     analog_fetch_errors += 1
                     self.logger.error(f"Error fetching analogs from {sub_url}: {e}")
@@ -713,6 +749,12 @@ class IlacFiyatiParser(BaseScraper):
             raise
         except ScraperAccessBlockedError:
             raise
+        except httpx.HTTPError as exc:
+            if preserve_transport_errors:
+                raise
+            raise IlacFiyatiSourceError(
+                f"Не удалось получить карточку IlacFiyati {product_url}"
+            ) from exc
         except IlacFiyatiSourceError:
             raise
         except Exception as e:

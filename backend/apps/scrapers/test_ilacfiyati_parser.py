@@ -4,8 +4,113 @@ from decimal import Decimal
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
-from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser, IlacFiyatiSourceError
+
+
+def test_ilacfiyati_market_snapshot_skips_instruction_tabs(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    captured = {}
+    expected = ScrapedProduct(name="LASIRIN", price=100, currency="TRY")
+
+    def fake_detail(
+        url,
+        *,
+        include_detail_tabs,
+        include_analogs,
+        tolerate_analog_errors,
+        preserve_transport_errors,
+    ):
+        captured.update(
+            url=url,
+            include_detail_tabs=include_detail_tabs,
+            include_analogs=include_analogs,
+            tolerate_analog_errors=tolerate_analog_errors,
+            preserve_transport_errors=preserve_transport_errors,
+        )
+        return expected
+
+    monkeypatch.setattr(parser, "parse_product_detail", fake_detail)
+
+    result = parser.parse_market_snapshot(
+        "https://ilacfiyati.com/ilaclar/lasirin-20-mg/ilac-bilgileri"
+    )
+
+    assert result is expected
+    assert captured == {
+        "url": "https://ilacfiyati.com/ilaclar/lasirin-20-mg",
+        "include_detail_tabs": False,
+        "include_analogs": True,
+        "tolerate_analog_errors": True,
+        "preserve_transport_errors": True,
+    }
+
+
+def test_ilacfiyati_supplement_market_snapshot_does_not_fetch_medicine_equivalents(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    captured = {}
+
+    def fake_detail(
+        url,
+        *,
+        include_detail_tabs,
+        include_analogs,
+        tolerate_analog_errors,
+        preserve_transport_errors,
+    ):
+        captured.update(
+            url=url,
+            include_detail_tabs=include_detail_tabs,
+            include_analogs=include_analogs,
+            tolerate_analog_errors=tolerate_analog_errors,
+            preserve_transport_errors=preserve_transport_errors,
+        )
+        return ScrapedProduct(name="VITAMIN C", price=50, currency="TRY")
+
+    monkeypatch.setattr(parser, "parse_product_detail", fake_detail)
+
+    parser.parse_market_snapshot(
+        "https://ilacfiyati.com/takviye-edici-gida/vitamin-c/ozet"
+    )
+
+    assert captured == {
+        "url": "https://ilacfiyati.com/takviye-edici-gida/vitamin-c",
+        "include_detail_tabs": False,
+        "include_analogs": False,
+        "tolerate_analog_errors": True,
+        "preserve_transport_errors": True,
+    }
+
+
+def test_ilacfiyati_market_snapshot_keeps_price_when_optional_analog_tab_fails(
+    monkeypatch,
+):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    product_url = "https://ilacfiyati.com/ilaclar/lasirin-20-mg"
+    responses = {
+        product_url: """
+            <html><body><h1>LASIRIN 20 MG</h1>
+            <table><tr><td>İLAÇ FİYATI</td><td>125,45 TL</td></tr></table>
+            </body></html>
+        """,
+        f"{product_url}/esdegeri": ScraperAccessBlockedError("HTTP 403"),
+        f"{product_url}/sgk-esdegeri": "<html><body></body></html>",
+    }
+
+    def fake_request(url):
+        response = responses[url]
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(parser, "_make_request", fake_request)
+
+    product = parser.parse_market_snapshot(product_url)
+
+    assert product.price == Decimal("125.45")
+    assert product.analogs == []
+    assert product.analog_fetch_errors == 1
 
 
 def test_ilacfiyati_parser_fetches_instruction_tabs(monkeypatch):

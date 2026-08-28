@@ -33,6 +33,7 @@ import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
+import { buildMedicineHowToOrderHref } from '../../lib/medicineMarketCheck'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
 
@@ -1272,6 +1273,7 @@ export default function ProductPage({
     product.description
   const isService = productType === 'uslugi'
   const isMedicine = productType === 'medicines' || product.product_type === 'medicines'
+  const medicineOrderHref = buildMedicineHowToOrderHref(product.slug)
   const seoCategoryName = product.category
     ? getLocalizedCategoryName(product.category.slug, product.category.name, t, undefined, router.locale)
     : ''
@@ -2437,16 +2439,17 @@ export default function ProductPage({
               ) : (
                 (productType === 'medicines' || product.product_type === 'medicines') ? (
                   <>
-                    <button
-                      type="button"
-                      disabled={true}
-                      className="w-full inline-flex items-center justify-center rounded-md border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 cursor-not-allowed"
+                    <Link
+                      href={medicineOrderHref}
+                      prefetch={false}
+                      className="w-full inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 transition-all duration-200"
                     >
                       {t('medicine_consult_button', 'Узнать актуальную цену - получить консультацию')}
-                    </button>
+                    </Link>
                     <Link
-                      href="/how-to-order-medicines"
-                      className="w-full inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-all duration-200"
+                      href={medicineOrderHref}
+                      prefetch={false}
+                      className="w-full inline-flex items-center justify-center rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition-all duration-200"
                     >
                       {t('medicine_how_to_order_button', 'Как заказать из Турции')}
                     </Link>
