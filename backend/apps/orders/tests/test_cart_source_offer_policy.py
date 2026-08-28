@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from apps.catalog.models import Product, ProductSourceOffer
+from apps.catalog.models import Product, ProductSourceOffer, ShoeProduct, ShoeVariant
 from apps.orders.cart_source_verification import CartSourceOfferPolicy
 from apps.orders.models import CartItem
 from apps.scrapers.base.offers import (
@@ -108,6 +108,82 @@ def test_policy_selects_exact_server_owned_variant_and_size(offer_product):
     )
 
     assert selected == matching
+
+
+@pytest.mark.django_db
+def test_policy_resolves_legacy_variant_shadow_through_parent_base_product():
+    source_product = Product.objects.create(
+        name="Legacy FLO source product",
+        slug=f"legacy-flo-source-{uuid4().hex}",
+        product_type="shoes",
+    )
+    domain_product = ShoeProduct.objects.get(base_product=source_product)
+    variant = ShoeVariant.objects.create(
+        product=domain_product,
+        name="Black",
+        slug=f"legacy-flo-variant-{uuid4().hex}",
+        external_id="flo-variant-10001",
+        price=Decimal("100.00"),
+        currency="TRY",
+    )
+    shadow = Product.objects.create(
+        name="Legacy FLO shadow",
+        slug=f"legacy-flo-shadow-{uuid4().hex}",
+        product_type="shoes",
+        external_data={"source_variant_id": variant.pk},
+    )
+    matching = ProductSourceOffer.objects.create(
+        product=source_product,
+        parser_key="flo",
+        canonical_url="https://www.flo.com.tr/urun/model-10001",
+        external_product_id="flo-10001",
+        external_sku="10001",
+        variant_key=variant.external_id,
+        size_key="40",
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+        stock_precision=ProductSourceOffer.StockPrecision.BOOLEAN,
+    )
+    ProductSourceOffer.objects.create(
+        product=source_product,
+        parser_key="flo",
+        canonical_url="https://www.flo.com.tr/urun/other-20002",
+        external_product_id="flo-20002",
+        external_sku="20002",
+        variant_key="flo-variant-20002",
+        size_key="40",
+        priority=1,
+    )
+
+    selected = CartSourceOfferPolicy(
+        FakeVerifier(_result(), enabled_sources=("flo",))
+    ).select_offer(product=shadow, chosen_size="40")
+
+    assert selected == matching
+
+
+@pytest.mark.django_db
+def test_policy_fails_closed_for_stale_legacy_variant_identity():
+    shadow = Product.objects.create(
+        name="Stale variant shadow",
+        slug=f"stale-variant-shadow-{uuid4().hex}",
+        product_type="shoes",
+        external_data={"source_variant_id": 999_999_999},
+    )
+    ProductSourceOffer.objects.create(
+        product=shadow,
+        parser_key="flo",
+        canonical_url="https://www.flo.com.tr/urun/wrong-fallback-10001",
+        external_product_id="flo-10001",
+        external_sku="10001",
+        variant_key="flo-variant-10001",
+        size_key="40",
+    )
+
+    selected = CartSourceOfferPolicy(
+        FakeVerifier(_result(), enabled_sources=("flo",))
+    ).select_offer(product=shadow, chosen_size="40")
+
+    assert selected is None
 
 
 @pytest.mark.django_db

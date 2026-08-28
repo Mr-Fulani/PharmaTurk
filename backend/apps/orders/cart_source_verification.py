@@ -144,6 +144,43 @@ class CartSourceOfferPolicy:
             variant_key = None
         return str(variant_key or "").strip(), True
 
+    @classmethod
+    def _source_product_id(cls, product: Product) -> int | None:
+        """Resolve the offer owner, including pre-linkage fashion shadows.
+
+        New imports persist ``source_offer_product_id`` on the cart-facing shadow.
+        Older shadows still have a trusted domain-variant FK, so resolve their
+        parent ``base_product`` rather than falling back to the shadow's unrelated
+        primary key. Invalid/stale variant identities fail closed.
+        """
+
+        external = product.external_data if isinstance(product.external_data, dict) else {}
+        explicit_product_id = external.get("source_offer_product_id")
+        if explicit_product_id not in (None, ""):
+            try:
+                return int(explicit_product_id)
+            except (TypeError, ValueError):
+                return None
+
+        raw_variant_id = external.get("source_variant_id")
+        if raw_variant_id in (None, ""):
+            return product.pk
+        model = cls.VARIANT_MODELS.get(str(product.product_type or "").casefold())
+        if model is None:
+            return None
+        try:
+            source_product_id = (
+                model.objects.filter(pk=raw_variant_id)
+                .values_list("product__base_product_id", flat=True)
+                .first()
+            )
+        except (TypeError, ValueError):
+            return None
+        try:
+            return int(source_product_id) if source_product_id is not None else None
+        except (TypeError, ValueError):
+            return None
+
     def select_offer(
         self,
         *,
@@ -155,10 +192,8 @@ class CartSourceOfferPolicy:
             return None
 
         external = product.external_data if isinstance(product.external_data, dict) else {}
-        raw_source_product_id = external.get("source_offer_product_id") or product.pk
-        try:
-            source_product_id = int(raw_source_product_id)
-        except (TypeError, ValueError):
+        source_product_id = self._source_product_id(product)
+        if source_product_id is None:
             return None
 
         candidates = ProductSourceOffer.objects.filter(
