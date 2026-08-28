@@ -132,6 +132,131 @@ def test_policy_flag_off_avoids_offer_query_and_verifier(
 
 
 @pytest.mark.django_db
+def test_supplement_without_dedicated_adapter_fails_closed(settings):
+    settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
+    product = Product.objects.create(
+        name="Reference-only supplement",
+        slug=f"reference-supplement-{uuid4().hex}",
+        product_type="supplements",
+        price=Decimal("49.70"),
+        currency="TRY",
+        is_available=True,
+        stock_quantity=3,
+    )
+    verifier = FakeVerifier(_result(), enabled_sources=("ilacfiyati",))
+
+    decision = CartSourceOfferPolicy(verifier).evaluate(
+        product=product,
+        chosen_size="",
+        quantity=1,
+        target_currency="TRY",
+        baseline_public_price=Decimal("49.70"),
+    )
+
+    assert decision is not None
+    assert decision.offer is None
+    assert decision.payable is False
+    assert decision.verification_status == CartItem.VerificationStatus.UNSUPPORTED
+    assert decision.issues == (CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED,)
+    assert decision.result.response_metadata["reason"] == "trusted_stock_adapter_missing"
+    assert verifier.calls == []
+
+
+@pytest.mark.django_db
+def test_reference_price_source_cannot_be_configured_as_supplement_stock_adapter(
+    settings,
+):
+    settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = ["ilacfiyati"]
+    product = Product.objects.create(
+        name="Misconfigured reference supplement",
+        slug=f"misconfigured-reference-supplement-{uuid4().hex}",
+        product_type="supplements",
+        price=Decimal("49.70"),
+        currency="TRY",
+    )
+    ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="ilacfiyati",
+        canonical_url=(
+            "https://ilacfiyati.com/takviye-edici-gida/" "misconfigured-reference-supplement"
+        ),
+        source_price=Decimal("49.70"),
+        source_currency="TRY",
+    )
+    verifier = FakeVerifier(_result(), enabled_sources=("ilacfiyati",))
+
+    decision = CartSourceOfferPolicy(verifier).evaluate(
+        product=product,
+        chosen_size="",
+        quantity=1,
+        target_currency="TRY",
+        baseline_public_price=Decimal("49.70"),
+    )
+
+    assert decision is not None
+    assert decision.offer is None
+    assert decision.payable is False
+    assert decision.issues == (CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED,)
+    assert verifier.calls == []
+
+
+@pytest.mark.django_db
+def test_supplement_uses_only_explicit_stock_adapter(settings, monkeypatch):
+    settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = ["supplier_api"]
+    product = Product.objects.create(
+        name="Supplier supplement",
+        slug=f"supplier-supplement-{uuid4().hex}",
+        product_type="supplements",
+        price=Decimal("100.00"),
+        currency="TRY",
+        external_data={"source_parser": "ilacfiyati"},
+    )
+    ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="ilacfiyati",
+        canonical_url="https://ilacfiyati.com/takviye-edici-gida/supplier-supplement",
+        source_price=Decimal("90.00"),
+        source_currency="TRY",
+    )
+    supplier_offer = ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="supplier_api",
+        canonical_url="https://supplier.example/products/supplier-supplement",
+        source_price=Decimal("90.00"),
+        source_currency="TRY",
+    )
+    result = OfferCheckResult(
+        availability_status=OfferAvailability.IN_STOCK,
+        stock_precision=OfferStockPrecision.BOOLEAN,
+        canonical_url=supplier_offer.canonical_url,
+        source_price=Decimal("100.00"),
+        source_currency="TRY",
+    )
+    verifier = FakeVerifier(result, enabled_sources=("ilacfiyati", "supplier_api"))
+    monkeypatch.setattr(
+        CartSourceOfferPolicy,
+        "_public_price_from_source",
+        lambda _self, **kwargs: Decimal("100.00"),
+    )
+
+    decision = CartSourceOfferPolicy(verifier).evaluate(
+        product=product,
+        chosen_size="",
+        quantity=1,
+        target_currency="TRY",
+        baseline_public_price=Decimal("100.00"),
+    )
+
+    assert decision is not None
+    assert decision.offer == supplier_offer
+    assert decision.payable is True
+    assert verifier.calls == [(supplier_offer.pk, False)]
+
+
+@pytest.mark.django_db
 def test_policy_blocks_exact_quantity_drift(offer_product, monkeypatch):
     shadow, matching = offer_product
     verifier = FakeVerifier(_result(precision=OfferStockPrecision.EXACT, quantity=2))

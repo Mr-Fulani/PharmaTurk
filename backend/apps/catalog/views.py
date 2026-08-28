@@ -133,7 +133,10 @@ from .serializers import (
 )
 from .card_payload import compact_card_product_payload
 from .querysets import non_public_shadow_product_q
-from .throttles import MEDICINE_MARKET_CHECK_THROTTLES
+from .throttles import (
+    MEDICINE_MARKET_CHECK_THROTTLES,
+    SUPPLEMENT_MARKET_CHECK_THROTTLES,
+)
 from apps.feedback.review_aggregates import attach_review_aggregates
 
 
@@ -4833,7 +4836,11 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
 
 class SupplementProductViewSet(_SimpleDomainViewSet):
     """API для работы с БАДами."""
-    queryset = SupplementProduct.objects.filter(is_active=True)
+    queryset = (
+        SupplementProduct.objects.filter(is_active=True)
+        .select_related("base_product")
+        .prefetch_related("base_product__source_offers")
+    )
     serializer_class = SupplementProductSerializer
 
     def _apply_domain_filters(self, queryset):
@@ -4863,6 +4870,54 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
     @extend_schema(summary="Получить БАД по slug")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="market-check",
+        permission_classes=[AllowAny],
+        throttle_classes=SUPPLEMENT_MARKET_CHECK_THROTTLES,
+    )
+    @extend_schema(
+        summary="Точечная проверка справочной цены БАДа",
+        description=(
+            "GET только читает последнее состояние. POST идемпотентно возвращает "
+            "свежий результат либо ставит одну фоновую проверку цены в очередь. "
+            "Продажное наличие проверяется отдельным supplier adapter только в "
+            "корзине и checkout; справочный источник stock не изменяет."
+        ),
+        request=None,
+    )
+    def market_check(self, request, slug=None):
+        from apps.catalog.services.supplement_market_check import (
+            SupplementMarketCheckError,
+            SupplementMarketCheckService,
+        )
+
+        supplement = self.get_object()
+        service = SupplementMarketCheckService()
+        if request.method == "GET":
+            check = service.latest_for(supplement)
+            return Response(service.serialize(supplement, check))
+
+        try:
+            result = service.request_check(supplement)
+        except SupplementMarketCheckError as exc:
+            check = service.latest_for(supplement)
+            payload = service.serialize(supplement, check)
+            payload["error"] = {
+                "code": exc.code,
+                "message": exc.public_message,
+            }
+            return Response(payload, status=exc.http_status)
+
+        payload = service.serialize(supplement, result.check)
+        payload["queued"] = result.queued
+        payload["cached"] = result.cached
+        return Response(
+            payload,
+            status=status.HTTP_202_ACCEPTED if result.queued else status.HTTP_200_OK,
+        )
 
 
 # ─── МЕДТЕХНИКА ───

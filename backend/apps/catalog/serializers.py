@@ -6440,6 +6440,29 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
     dosage_form = serializers.SerializerMethodField()
     active_ingredient = serializers.SerializerMethodField()
     serving_size = serializers.SerializerMethodField()
+    purchase_mode = serializers.SerializerMethodField()
+    can_add_to_cart = serializers.SerializerMethodField()
+    availability_verification = serializers.SerializerMethodField()
+
+    def _sale_capability(self, obj):
+        capability = getattr(obj, "_supplement_sale_capability", None)
+        if capability is None:
+            from apps.catalog.services.supplement_availability import (
+                SupplementAvailabilityService,
+            )
+
+            capability = SupplementAvailabilityService().capability(obj)
+            obj._supplement_sale_capability = capability
+        return capability
+
+    def get_purchase_mode(self, obj) -> str:
+        return self._sale_capability(obj).purchase_mode
+
+    def get_can_add_to_cart(self, obj) -> bool:
+        return self._sale_capability(obj).can_add_to_cart
+
+    def get_availability_verification(self, obj) -> str:
+        return self._sale_capability(obj).availability_verification
 
     def _get_translation_field(self, obj, field_name, fallback_value=None):
         request = self.context.get('request')
@@ -6476,6 +6499,7 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'dosage_form', 'active_ingredient', 'serving_size',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images', 'product_type',
+            'purchase_mode', 'can_add_to_cart', 'availability_verification',
             'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',

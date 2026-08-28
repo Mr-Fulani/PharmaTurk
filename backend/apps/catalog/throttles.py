@@ -8,7 +8,7 @@ class YMLExportThrottle(TrustedProxyIPRateThrottle):
     rate = "2/min"
 
 
-class _MedicineMarketCheckPostThrottle(TrustedProxyIPRateThrottle):
+class _MarketCheckPostThrottle(TrustedProxyIPRateThrottle):
     """Throttle only the mutating intent request; bounded polling stays readable."""
 
     def allow_request(self, request, view):
@@ -17,12 +17,12 @@ class _MedicineMarketCheckPostThrottle(TrustedProxyIPRateThrottle):
         return super().allow_request(request, view)
 
 
-class MedicineMarketCheckBurstThrottle(_MedicineMarketCheckPostThrottle):
+class MedicineMarketCheckBurstThrottle(_MarketCheckPostThrottle):
     scope = "medicine_market_check_burst"
     rate = "3/min"
 
 
-class MedicineMarketCheckSustainedThrottle(_MedicineMarketCheckPostThrottle):
+class MedicineMarketCheckSustainedThrottle(_MarketCheckPostThrottle):
     scope = "medicine_market_check_sustained"
     rate = "30/day"
 
@@ -30,4 +30,20 @@ class MedicineMarketCheckSustainedThrottle(_MedicineMarketCheckPostThrottle):
 MEDICINE_MARKET_CHECK_THROTTLES = [
     MedicineMarketCheckBurstThrottle,
     MedicineMarketCheckSustainedThrottle,
+]
+
+
+class SupplementMarketCheckBurstThrottle(_MarketCheckPostThrottle):
+    scope = "supplement_market_check_burst"
+    rate = "3/min"
+
+
+class SupplementMarketCheckSustainedThrottle(_MarketCheckPostThrottle):
+    scope = "supplement_market_check_sustained"
+    rate = "30/day"
+
+
+SUPPLEMENT_MARKET_CHECK_THROTTLES = [
+    SupplementMarketCheckBurstThrottle,
+    SupplementMarketCheckSustainedThrottle,
 ]

@@ -734,8 +734,11 @@ class IlacFiyatiParser(BaseScraper):
                 images=images,
                 external_id=external_id,
                 barcode=attributes.get('barcode', ''),
-                is_available=True,      
-                stock_quantity=3,       
+                # IlacFiyati is an informational price catalogue and explicitly does
+                # not sell products. "AKTIF" on the page is a catalogue/registration
+                # state, not supplier stock, so availability must stay fail-closed.
+                is_available=False,
+                stock_quantity=None,
                 source=self.get_name(),
                 attributes=attributes,
                 analogs=unique_analogs

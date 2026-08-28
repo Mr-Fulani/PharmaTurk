@@ -69,9 +69,7 @@ def test_ilacfiyati_supplement_market_snapshot_does_not_fetch_medicine_equivalen
 
     monkeypatch.setattr(parser, "parse_product_detail", fake_detail)
 
-    parser.parse_market_snapshot(
-        "https://ilacfiyati.com/takviye-edici-gida/vitamin-c/ozet"
-    )
+    parser.parse_market_snapshot("https://ilacfiyati.com/takviye-edici-gida/vitamin-c/ozet")
 
     assert captured == {
         "url": "https://ilacfiyati.com/takviye-edici-gida/vitamin-c",
@@ -109,6 +107,8 @@ def test_ilacfiyati_market_snapshot_keeps_price_when_optional_analog_tab_fails(
     product = parser.parse_market_snapshot(product_url)
 
     assert product.price == Decimal("125.45")
+    assert product.is_available is False
+    assert product.stock_quantity is None
     assert product.analogs == []
     assert product.analog_fetch_errors == 1
 

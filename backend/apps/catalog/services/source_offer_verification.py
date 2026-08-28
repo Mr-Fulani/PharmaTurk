@@ -28,6 +28,7 @@ from apps.scrapers.base.offers import (
     OfferStockPrecision,
     OfferVerificationError,
 )
+from apps.scrapers.base.scraper import BaseScraper
 from apps.scrapers.parsers.registry import get_parser
 
 try:
@@ -261,6 +262,18 @@ class SourceOfferVerificationService:
         if parser_class is None or url_parser_class is not parser_class:
             return None
         return parser_class
+
+    def supports_offer(self, offer: ProductSourceOffer) -> bool:
+        """Return whether an offer has an enabled, explicit live-check adapter."""
+
+        parser_key = str(getattr(offer, "parser_key", "") or "").strip().casefold()
+        if not self.is_enabled_for(parser_key):
+            return False
+        parser_class = self._trusted_parser_class(offer)
+        return bool(
+            parser_class is not None
+            and getattr(parser_class, "check_offer", None) is not BaseScraper.check_offer
+        )
 
     @staticmethod
     def _redirect_is_trusted(parser_class, canonical_url: str) -> bool:

@@ -47,6 +47,22 @@ def refresh_medicine_market_check_task(check_id: int) -> dict:
     return MedicineMarketCheckService().run(check_id)
 
 
+@shared_task(
+    name="catalog.refresh_supplement_market_check",
+    soft_time_limit=100,
+    time_limit=120,
+    acks_late=True,
+)
+def refresh_supplement_market_check_task(check_id: int) -> dict:
+    """Refresh one user-requested supplement reference price."""
+
+    from apps.catalog.services.supplement_market_check import (
+        SupplementMarketCheckService,
+    )
+
+    return SupplementMarketCheckService().run(check_id)
+
+
 @shared_task
 def refresh_stock() -> str:
     """Обновляет данные о наличии товаров (заглушка)."""

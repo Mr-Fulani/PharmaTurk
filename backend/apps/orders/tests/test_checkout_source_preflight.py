@@ -7,6 +7,7 @@ from django.db import connection
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient, APIRequestFactory
+from rest_framework.request import Request
 
 from apps.catalog.models import Product, ProductSourceOffer
 from apps.orders.cart_source_verification import CartOfferDecision
@@ -290,3 +291,38 @@ def test_order_item_keeps_immutable_source_snapshot(settings):
     order_item.refresh_from_db()
     assert order_item.source_url.endswith("checkout-product-p1.html")
     assert order_item.source_external_sku == "supplier-sku-1"
+
+
+@pytest.mark.django_db
+def test_checkout_blocks_legacy_supplement_without_stock_adapter(settings):
+    settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
+    settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
+    product = Product.objects.create(
+        name="Legacy supplement",
+        slug=f"legacy-supplement-{uuid4().hex}",
+        product_type="supplements",
+        price=Decimal("49.70"),
+        currency="TRY",
+        is_available=True,
+        stock_quantity=3,
+    )
+    cart = Cart.objects.create(session_key=f"legacy-supplement-{uuid4().hex}", currency="TRY")
+    item = CartItem.objects.create(
+        cart=cart,
+        product=product,
+        quantity=1,
+        price=Decimal("49.70"),
+        currency="TRY",
+    )
+    request = Request(APIRequestFactory().post("/api/orders/orders/create-from-cart/"))
+
+    fingerprint, response = _checkout_source_preflight(request, cart)
+
+    assert fingerprint is None
+    assert response is not None
+    assert response.status_code == 409
+    assert response.data["code"] == CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED
+    item.refresh_from_db()
+    assert item.verification_status == CartItem.VerificationStatus.UNSUPPORTED
+    assert item.is_payable is False

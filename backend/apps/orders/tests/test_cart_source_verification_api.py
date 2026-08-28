@@ -153,6 +153,33 @@ def test_unavailable_add_returns_issue_without_allocating_anonymous_cart(
 
 
 @pytest.mark.django_db
+def test_reference_only_supplement_cannot_bypass_cart_with_legacy_stock(settings):
+    settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
+    product = Product.objects.create(
+        name="Reference-only supplement",
+        slug=f"reference-only-supplement-{uuid4().hex}",
+        product_type="supplements",
+        price=Decimal("49.70"),
+        currency="TRY",
+        is_available=True,
+        stock_quantity=3,
+    )
+
+    response = _client("reference-supplement-cart").post(
+        reverse("cart-add"),
+        {"product_id": product.pk, "quantity": 1},
+        format="json",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED
+    assert response.json()["verification"]["availability_status"] == "unsupported"
+    assert not Cart.objects.filter(session_key="reference-supplement-cart").exists()
+    assert not CartItem.objects.filter(product=product).exists()
+
+
+@pytest.mark.django_db
 def test_unavailable_repeated_add_blocks_the_saved_line(source_cart_product):
     product, offer = source_cart_product
     cart = Cart.objects.create(session_key="existing-unavailable-cart", currency="TRY")

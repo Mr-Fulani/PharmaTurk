@@ -952,11 +952,15 @@ offer-строк; штатный rollback следующих фаз — откл
 - [x] Продажное наличие БАДов отделено от справочного наблюдения. Legacy
   `is_available=True/stock_quantity=3` не считается подтверждением поставщика и не
   может автоматически включить БАД в cart enforcement.
-- [ ] Перед включением продаж БАДов реализовать отдельный supplement adapter/API:
+- [x] Перед включением продаж БАДов реализован отдельный supplement capability gate:
   reference-price может переиспользовать `ProductMarketCheck`, но buyable availability
   должен подтверждаться реальным `ProductSourceOffer.check_offer` (boolean/exact),
   выбранным SKU/вариантом и checkout preflight. Если источник не сообщает stock,
   заказ остаётся через консультанта, а не становится автоматически payable.
+- [ ] Подключить конкретного поставщика БАДов: получить server-owned API/URL и SKU,
+  создать `ProductSourceOffer`, добавить parser с явным `check_offer` и только после
+  canary внести его key в `SUPPLEMENT_STOCK_ADAPTER_SOURCES`. До этого allowlist пуст,
+  а прямые продажи БАДов намеренно закрыты.
 
 ### Журнал реализации 2026-08-28
 
@@ -1025,6 +1029,54 @@ offer-строк; штатный rollback следующих фаз — откл
   `ikea,ummaland,lcw`, cart enforcement/background refresh включены по прежним
   правилам, catalog projection выключен; IlacFiyati используется только отдельным
   medicine intent flow и не становится автоматически payable.
+
+### Контур БАДов 2026-08-28 — готов к rollout
+
+- Live-аудит IlacFiyati подтвердил, что `/takviye-edici-gida/` публикует справочную
+  цену и каталожный статус, но не продаёт товар и не сообщает складской остаток.
+  Найденные в production значения `is_available=true/stock_quantity=3` и IlacFiyati
+  offer `in_stock/boolean` признаны legacy synthetic defaults, а не stock evidence.
+- `IlacFiyatiParser` и writer offer-наблюдений теперь всегда дают для этого источника
+  `is_available=false`, `stock_quantity=null`, `availability=unknown`,
+  `stock_precision=unknown`. Migration `catalog.0204` однократно карантинирует старые
+  БАДы/shadow products и IlacFiyati offers, сохраняя их цены и response metadata.
+- Добавлен отдельный `SupplementAvailabilityService`: карточка может включить прямую
+  продажу только при одновременно включённых cart enforcement/source verification,
+  активном offer из явного `SUPPLEMENT_STOCK_ADAPTER_SOURCES` и зарегистрированном
+  parser, который переопределяет `BaseScraper.check_offer`. `ilacfiyati` жёстко
+  исключён из stock allowlist даже при ошибочной конфигурации.
+- При пустом/неподдерживаемом supplier adapter любой старый БАД fail-closed блокируется
+  при add-to-cart и повторно при checkout (`409 verification_unsupported`), не создаёт
+  payable cart line и не использует legacy stock. Проверенный adapter по-прежнему
+  обязан подтвердить цену, boolean/exact availability и запрошенное количество.
+- Добавлены intent `POST` и read-only `GET`
+  `/catalog/supplements/products/{slug}/market-check`: trusted IlacFiyati URL берётся
+  только с сервера, запрос дедуплицируется DB/Redis, ограничен burst/global rate,
+  source concurrency и Celery timeout `100/120s`. Успех атомарно обновляет только
+  справочную цену и `PriceHistory(source="ilacfiyati_supplement_on_demand")`; stock и
+  availability проверяются на неизменность.
+- Карточка БАДов без supplier adapter показывает справочную цену с disclaimer,
+  запускает проверку только после явного клика, делает bounded polling и предлагает
+  консультацию через WhatsApp/Telegram. Количество, cart/buy-now и schema.org `Offer`
+  скрыты; SEO не обещает продажу или наличие.
+- Rollout-конфигурация для reference-only режима:
+  `SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES=supplements`,
+  `SUPPLEMENT_STOCK_ADAPTER_SOURCES=` (пусто),
+  `SUPPLEMENT_MARKET_CHECK_ENABLED=true`,
+  `SUPPLEMENT_MARKET_CHECK_SOURCES=ilacfiyati`. `ilacfiyati` нельзя добавлять в
+  `SOURCE_OFFER_VERIFICATION_SOURCES` как поставщика; текущие IKEA/LCW/Ummaland
+  правила не меняются.
+- Проверки release candidate: связанный backend suite — `70 passed`; data migration
+  — `1 passed`; финальный полный backend — `1224 passed`, `30 subtests passed`,
+  5 существующих warnings; OpenAPI — `2 passed`; Django check — 0 issues, migration
+  drift — `No changes detected`; frontend — TypeScript без ошибок, `63 passed`, lint
+  0 errors/43 существующих warnings и production build успешно; `git diff --check` и
+  Python compile успешно.
+- Rollback до canary: выключить `SUPPLEMENT_MARKET_CHECK_ENABLED`, оставить
+  `SUPPLEMENT_STOCK_ADAPTER_SOURCES` пустым и при code rollback остановить полный
+  IlacFiyati scrape, чтобы старый parser не вернул synthetic stock. Migration `0204`
+  намеренно не восстанавливает ложные значения при reverse; `false/null/unknown`
+  безопасно оставить в БД.
 
 ## Оценка
 

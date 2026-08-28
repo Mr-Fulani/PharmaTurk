@@ -581,6 +581,15 @@ SOURCE_OFFER_CART_REVALIDATE_MAX_ITEMS = env.int(
 SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES = env.list(
     "SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES", default=[]
 )
+# Product types listed here may never fall back to legacy catalog stock when live
+# supplier verification is enabled. Supplements are reference-catalog products until
+# a dedicated, explicitly allowed stock adapter is configured.
+SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = env.list(
+    "SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES", default=["supplements"]
+)
+SUPPLEMENT_STOCK_ADAPTER_SOURCES = env.list(
+    "SUPPLEMENT_STOCK_ADAPTER_SOURCES", default=[]
+)
 
 # Точечная справочная проверка цены медикамента по пользовательскому intent.
 # Она не участвует в корзине и никогда не обновляет наличие/остаток лекарства.
@@ -613,6 +622,37 @@ MEDICINE_MARKET_CHECK_REQUEST_TIMEOUT_SECONDS = env.int(
 )
 MEDICINE_MARKET_CHECK_MAX_ANALOGS = env.int(
     "MEDICINE_MARKET_CHECK_MAX_ANALOGS", default=50
+)
+
+# On-demand reference-price observation for supplements. This deliberately does not
+# imply buyable stock: sales require a separate source in
+# SUPPLEMENT_STOCK_ADAPTER_SOURCES and the regular source-offer checkout preflight.
+SUPPLEMENT_MARKET_CHECK_ENABLED = env.bool(
+    "SUPPLEMENT_MARKET_CHECK_ENABLED", default=False
+)
+SUPPLEMENT_MARKET_CHECK_SOURCES = env.list(
+    "SUPPLEMENT_MARKET_CHECK_SOURCES", default=["ilacfiyati"]
+)
+SUPPLEMENT_MARKET_CHECK_FRESH_SECONDS = env.int(
+    "SUPPLEMENT_MARKET_CHECK_FRESH_SECONDS", default=60 * 60 * 12
+)
+SUPPLEMENT_MARKET_CHECK_ERROR_FRESH_SECONDS = env.int(
+    "SUPPLEMENT_MARKET_CHECK_ERROR_FRESH_SECONDS", default=300
+)
+SUPPLEMENT_MARKET_CHECK_STALE_RUNNING_SECONDS = env.int(
+    "SUPPLEMENT_MARKET_CHECK_STALE_RUNNING_SECONDS", default=180
+)
+SUPPLEMENT_MARKET_CHECK_ENQUEUE_LOCK_SECONDS = env.int(
+    "SUPPLEMENT_MARKET_CHECK_ENQUEUE_LOCK_SECONDS", default=30
+)
+SUPPLEMENT_MARKET_CHECK_GLOBAL_RATE_PER_MINUTE = env.int(
+    "SUPPLEMENT_MARKET_CHECK_GLOBAL_RATE_PER_MINUTE", default=10
+)
+SUPPLEMENT_MARKET_CHECK_SOURCE_CONCURRENCY = env.int(
+    "SUPPLEMENT_MARKET_CHECK_SOURCE_CONCURRENCY", default=2
+)
+SUPPLEMENT_MARKET_CHECK_REQUEST_TIMEOUT_SECONDS = env.int(
+    "SUPPLEMENT_MARKET_CHECK_REQUEST_TIMEOUT_SECONDS", default=15
 )
 
 

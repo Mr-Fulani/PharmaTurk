@@ -6,6 +6,7 @@ import api, { getSingleFlight } from '../../lib/api'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
+import SupplementPurchasePanel from '../../components/SupplementPurchasePanel'
 import { resolveSchemaAvailability } from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
@@ -460,6 +461,9 @@ interface Product {
   reviews_count?: number | null
   availability_status?: string | null
   is_available?: boolean
+  purchase_mode?: 'verified_sale' | 'consultation'
+  can_add_to_cart?: boolean
+  availability_verification?: string
   min_order_quantity?: number | null
   pack_quantity?: number | null
   gtin?: string | null
@@ -828,7 +832,14 @@ export default function ProductPage({
     [localizedDescriptionHtml]
   )
 
-  const maxAvailable = product ? resolveAvailableStock(product, selectedVariant, selectedSize) : null
+  const supplementUsesLiveStockAdapter = Boolean(
+    product &&
+    (productType === 'supplements' || product.product_type === 'supplements') &&
+    product.can_add_to_cart === true
+  )
+  const maxAvailable = product && !supplementUsesLiveStockAdapter
+    ? resolveAvailableStock(product, selectedVariant, selectedSize)
+    : null
   const sizeHintMessage = t(
     'select_size_hint',
     i18n.language?.startsWith('ru')
@@ -1273,6 +1284,7 @@ export default function ProductPage({
     product.description
   const isService = productType === 'uslugi'
   const isMedicine = productType === 'medicines' || product.product_type === 'medicines'
+  const isSupplement = productType === 'supplements' || product.product_type === 'supplements'
   const medicineOrderHref = buildMedicineHowToOrderHref(product.slug)
   const seoCategoryName = product.category
     ? getLocalizedCategoryName(product.category.slug, product.category.name, t, undefined, router.locale)
@@ -1290,6 +1302,11 @@ export default function ProductPage({
     (
       isService
         ? t('service_page_seo_description', 'Закажите услугу {{name}} на {{site}}. Описание, стоимость и условия выполнения.', { name: displayProductName || product.name, site: SITE_NAME })
+        : isSupplement && product.can_add_to_cart !== true
+          ? t('supplement_page_seo_description', 'Справочная информация и цена {{name}} в Турции. Наличие и итоговую стоимость подтверждает консультант {{site}}.', {
+              name: displayProductName || product.name,
+              site: SITE_NAME,
+            })
         : t('product_page_seo_description', 'Купить {{name}}{{category}}{{brand}} на {{site}}. Актуальные цены, наличие и условия доставки.', {
             name: displayProductName || product.name,
             category: seoCategoryName ? ` в категории ${seoCategoryName}` : '',
@@ -1361,7 +1378,7 @@ export default function ProductPage({
         bestRating: '5',
       },
     }),
-    offers: priceForSchema
+    offers: priceForSchema && (!isSupplement || product.can_add_to_cart === true)
       ? {
         '@type': 'Offer',
         price: priceForSchema,
@@ -2104,7 +2121,12 @@ export default function ProductPage({
                 )}
               </div>
             )}
-            <div className="mt-3 text-xl font-semibold text-red-600">
+            {isSupplement && product.can_add_to_cart !== true && (
+              <div className="mt-3 text-xs font-medium text-amber-700 dark:text-amber-300">
+                {t('supplement_reference_price_label', 'Справочная цена, не публичная оферта')}
+              </div>
+            )}
+            <div className={`${isSupplement && product.can_add_to_cart !== true ? 'mt-1' : 'mt-3'} text-xl font-semibold text-red-600`}>
               {displayPrice || t('price_on_request')}
             </div>
             {displayOldPriceLabel && (
@@ -2351,7 +2373,7 @@ export default function ProductPage({
             )}
 
             {/* Селектор количества */}
-            {!isService && (
+            {!isService && (!isSupplement || product.can_add_to_cart === true) && (
               <div className="mt-4 flex flex-col gap-2">
                 <span
                   className="text-sm font-semibold"
@@ -2454,6 +2476,14 @@ export default function ProductPage({
                       {t('medicine_how_to_order_button', 'Как заказать из Турции')}
                     </Link>
                   </>
+                ) : isSupplement && product.can_add_to_cart !== true ? (
+                  <SupplementPurchasePanel
+                    slug={product.slug}
+                    name={displayProductName || product.name}
+                    productUrl={canonicalUrl}
+                    whatsappUrl={footerSettings.whatsapp_url}
+                    telegramUrl={footerSettings.telegram_url}
+                  />
                 ) : (
                   maxAvailable === 0 ? (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">

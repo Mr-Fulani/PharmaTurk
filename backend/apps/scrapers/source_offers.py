@@ -21,6 +21,9 @@ from apps.scrapers.base.scraper import ScrapedProduct
 # These parsers expose availability but currently synthesize a numeric stock value.
 # Only IKEA's normalized positive stock comes from an actual supplier quantity.
 EXACT_STOCK_SOURCES = frozenset({"ikea"})
+# These sources publish reference/catalog information, not supplier availability.
+# ScrapedProduct defaults from them must never become a buyable stock observation.
+REFERENCE_PRICE_ONLY_SOURCES = frozenset({"ilacfiyati"})
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,13 @@ def _stock_observation(
     is_available: Any,
     raw_quantity: Any,
 ) -> tuple[str, str, int | None]:
+    if parser_key in REFERENCE_PRICE_ONLY_SOURCES:
+        return (
+            ProductSourceOffer.AvailabilityStatus.UNKNOWN,
+            ProductSourceOffer.StockPrecision.UNKNOWN,
+            None,
+        )
+
     available = bool(is_available)
     if parser_key in EXACT_STOCK_SOURCES and raw_quantity is not None:
         try:
@@ -137,6 +147,13 @@ def _snapshot(
 
     raw_availability = size_row.get("availability") or row.get("availability") or ""
     metadata = {"recorded_from": "full_scrape"}
+    if parser_key in REFERENCE_PRICE_ONLY_SOURCES:
+        metadata.update(
+            {
+                "availability_evidence": "none",
+                "reference_price_only": True,
+            }
+        )
     if raw_availability:
         metadata["raw_availability"] = _clean(raw_availability, 100)
 

@@ -45,6 +45,32 @@ def test_boolean_source_does_not_record_synthetic_stock(product):
 
 
 @pytest.mark.django_db
+def test_reference_price_source_never_records_buyable_availability(product):
+    scraped = ScrapedProduct(
+        name="Reference supplement",
+        price=Decimal("49.70"),
+        currency="TRY",
+        url="https://ilacfiyati.com/takviye-edici-gida/reference-supplement",
+        external_id="reference-supplement",
+        is_available=True,
+        stock_quantity=3,
+        source="ilacfiyati",
+    )
+
+    offer = record_scraped_product_offers(
+        product=product,
+        scraped_product=scraped,
+    )[0]
+
+    assert offer.source_price == Decimal("49.70")
+    assert offer.availability_status == ProductSourceOffer.AvailabilityStatus.UNKNOWN
+    assert offer.stock_precision == ProductSourceOffer.StockPrecision.UNKNOWN
+    assert offer.stock_quantity is None
+    assert offer.response_metadata["reference_price_only"] is True
+    assert offer.response_metadata["availability_evidence"] == "none"
+
+
+@pytest.mark.django_db
 def test_fashion_sizes_are_idempotent_and_missing_size_is_deactivated(product):
     scraped = ScrapedProduct(
         name="FLO product",

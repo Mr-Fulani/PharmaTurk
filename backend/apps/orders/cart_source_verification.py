@@ -28,6 +28,7 @@ from apps.catalog.services.source_offer_verification import SourceOfferVerificat
 from apps.orders.models import CartItem
 from apps.scrapers.base.offers import (
     OfferAvailability,
+    OfferCheckError,
     OfferCheckErrorCode,
     OfferCheckResult,
     OfferStockPrecision,
@@ -35,11 +36,12 @@ from apps.scrapers.base.offers import (
 
 logger = logging.getLogger(__name__)
 MONEY_QUANTUM = Decimal("0.01")
+REFERENCE_PRICE_ONLY_SOURCES = frozenset({"ilacfiyati"})
 
 
 @dataclass(frozen=True)
 class CartOfferDecision:
-    offer: ProductSourceOffer
+    offer: ProductSourceOffer | None
     result: OfferCheckResult
     verification_status: str
     issues: tuple[str, ...]
@@ -56,7 +58,7 @@ class CartOfferDecision:
     def cart_item_values(self, *, verified_quantity: int) -> dict[str, Any]:
         """Return a persistence snapshot without mutating a CartItem."""
         return {
-            "source_offer_id": self.offer.pk,
+            "source_offer_id": self.offer.pk if self.offer is not None else None,
             "verification_status": self.verification_status,
             "source_checked_at": self.result.checked_at,
             "source_availability_status": self.result.availability_status.value,
@@ -91,6 +93,33 @@ class CartSourceOfferPolicy:
     @staticmethod
     def enforcement_enabled() -> bool:
         return bool(getattr(settings, "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", False))
+
+    @classmethod
+    def requires_verified_offer(cls, product: Product) -> bool:
+        if not cls.enforcement_enabled():
+            return False
+        required_types = {
+            str(value or "").strip().casefold().replace("-", "_")
+            for value in getattr(
+                settings,
+                "SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES",
+                ["supplements"],
+            )
+            if str(value or "").strip()
+        }
+        product_type = str(product.product_type or "").strip().casefold().replace("-", "_")
+        return product_type in required_types
+
+    @staticmethod
+    def _allowed_adapter_sources(product: Product) -> set[str] | None:
+        product_type = str(product.product_type or "").strip().casefold().replace("-", "_")
+        if product_type != "supplements":
+            return None
+        return {
+            str(value or "").strip().casefold()
+            for value in getattr(settings, "SUPPLEMENT_STOCK_ADAPTER_SOURCES", [])
+            if str(value or "").strip()
+        } - REFERENCE_PRICE_ONLY_SOURCES
 
     @classmethod
     def _variant_key(cls, product: Product) -> tuple[str, bool]:
@@ -136,8 +165,15 @@ class CartSourceOfferPolicy:
             product_id=source_product_id,
             is_active=True,
         )
+        allowed_adapter_sources = self._allowed_adapter_sources(product)
+        if allowed_adapter_sources is not None:
+            if not allowed_adapter_sources:
+                return None
+            candidates = candidates.filter(parser_key__in=allowed_adapter_sources)
         parser_hint = str(external.get("source_parser") or "").strip().casefold()
-        if parser_hint:
+        if parser_hint and (
+            allowed_adapter_sources is None or parser_hint in allowed_adapter_sources
+        ):
             candidates = candidates.filter(parser_key=parser_hint)
 
         size_key = str(chosen_size or "").strip()
@@ -158,6 +194,30 @@ class CartSourceOfferPolicy:
             if self.verifier.is_enabled_for(offer.parser_key):
                 return offer
         return None
+
+    @staticmethod
+    def _missing_required_offer_decision(*, target_currency: str) -> CartOfferDecision:
+        result = OfferCheckResult(
+            availability_status=OfferAvailability.UNSUPPORTED,
+            stock_precision=OfferStockPrecision.UNKNOWN,
+            canonical_url="",
+            error=OfferCheckError(
+                code=OfferCheckErrorCode.UNSUPPORTED,
+                message="No trusted live stock adapter is configured for this product",
+                retryable=False,
+            ),
+            response_metadata={"reason": "trusted_stock_adapter_missing"},
+        )
+        return CartOfferDecision(
+            offer=None,
+            result=result,
+            verification_status=CartItem.VerificationStatus.UNSUPPORTED,
+            issues=(CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED,),
+            payable=False,
+            public_price=None,
+            public_currency=str(target_currency or "RUB").strip().upper(),
+            price_change_state=CartItem.PriceChangeState.NONE,
+        )
 
     @staticmethod
     def _money(value: Any) -> Decimal | None:
@@ -251,6 +311,10 @@ class CartSourceOfferPolicy:
         """Check one exact offer and return a mutation decision without cart writes."""
         offer = self.select_offer(product=product, chosen_size=chosen_size)
         if offer is None:
+            if self.requires_verified_offer(product):
+                return self._missing_required_offer_decision(
+                    target_currency=target_currency,
+                )
             return None
 
         currency = str(target_currency or "RUB").strip().upper()
