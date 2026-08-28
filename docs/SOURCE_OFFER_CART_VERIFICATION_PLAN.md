@@ -1030,7 +1030,7 @@ offer-строк; штатный rollback следующих фаз — откл
   правилам, catalog projection выключен; IlacFiyati используется только отдельным
   medicine intent flow и не становится автоматически payable.
 
-### Контур БАДов 2026-08-28 — готов к rollout
+### Контур БАДов 2026-08-28 — развёрнут в production
 
 - Live-аудит IlacFiyati подтвердил, что `/takviye-edici-gida/` публикует справочную
   цену и каталожный статус, но не продаёт товар и не сообщает складской остаток.
@@ -1077,6 +1077,39 @@ offer-строк; штатный rollback следующих фаз — откл
   IlacFiyati scrape, чтобы старый parser не вернул synthetic stock. Migration `0204`
   намеренно не восстанавливает ложные значения при reverse; `false/null/unknown`
   безопасно оставить в БД.
+- Commit `289b978b14fd60d2f62df1a0caa8e0941463216c` прошёл GitHub Actions
+  `33178197990`: secret scan, backend, frontend, Compose и публикация exact-revision
+  images успешны. Проверены digest backend
+  `sha256:d963bf8fe0ed8b54dcf4dff34681b98bb15aa320fc61db54ead2fa4ea0c690bf`
+  и frontend
+  `sha256:a769c95b15298411ecc4690923c811275e58af565e28de58d0d117d5467e78cb`.
+- Перед deploy создан и проверен backup
+  `/home/deploy/backups/pharmaturk/20260828T141004Z_pre_234315c_to_289b978`:
+  PostgreSQL custom dump проходит `pg_restore --list`, Qdrant snapshot и оба SHA-256
+  совпадают с release manifest. Exact images прошли isolated full-stack smoke на
+  чистых state volumes; временный Compose project удалён.
+- Controlled deploy `234315cb0ff7407194a87ed0d98a7d445edc069c` → `289b978...`
+  применил только `catalog.0204`, не пересоздавая PostgreSQL/Redis/Qdrant. Backend,
+  frontend и все Celery services работают на одном exact revision; public readiness,
+  liveness и security-header smoke успешны.
+- Postdeploy data check: все `2946` IlacFiyati-БАДов имеют `is_available=false` и
+  `stock_quantity=null`; все `11262` IlacFiyati offers имеют
+  `availability=unknown`, `stock_precision=unknown`, `stock_quantity=null`. Цена
+  контрольного товара сохранилась.
+- Public canary подтвердил карточку `consultation/supplier_not_configured`, затем
+  `POST 202 pending → GET 200 succeeded` с ценой `49.70 TRY`. Stock/availability не
+  изменились. Add-to-cart вернул `409 verification_unsupported`; canary Cart/CartItem
+  не созданы. Повторный live canary прежних adapters — `3/3 success`: Ummaland
+  `1520 RUB`, IKEA `29999 TRY`, LCW `399.99 TRY`.
+- Финальный read-only audit: blockers `0`, schema применена, source-candidate coverage
+  `15386/15386` (`100%`). Allowlist остаётся `ikea,lcw,ummaland`; IlacFiyati не влияет
+  на payable, catalog projection выключен. В postdeploy backend/worker логах нет
+  `ERROR`, `CRITICAL` или traceback.
+- После observation checks диск был заполнен на `91%`. Удалены только внутренние
+  Qdrant-дубликаты, чьи внешние backup-копии повторно совпали с manifest SHA-256, и
+  два старых неиспользуемых image revision `26b4fe9...`/`75bc4a4...`. Текущий
+  `289b978...`, немедленный rollback `234315c...` и все внешние backups сохранены;
+  свободное место увеличилось до `9.5 GB` (`74%` занято), public health остался зелёным.
 
 ## Оценка
 
