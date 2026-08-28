@@ -937,7 +937,7 @@ offer-строк; штатный rollback следующих фаз — откл
   отсутствие client-controlled URL/parser/proxy, polling contract.
 - [x] Frontend: URL с slug, отсутствие запроса на общей FAQ, один `POST` при intent,
   terminal UI states и безопасное отображение аналогов.
-- [ ] Canary на нескольких реальных IlacFiyati-карточках; Ilacabak включать только
+- [x] Canary на нескольких реальных IlacFiyati-карточках; Ilacabak включать только
   после отдельной проверки селекторов и качества цены. Затем feature flag, небольшой
   global concurrency limit, мониторинг success/latency/source errors и rollback без
   изменения cart flow.
@@ -982,7 +982,7 @@ offer-строк; штатный rollback следующих фаз — откл
 - Проверки:
   - финальный medicine/parser/legacy analog contract — `36 passed`; отдельно
     medicine-файл с фактическим anonymous throttle case — `15 passed`;
-  - полный backend suite — `1208 passed`, `30 subtests passed`, 5 существующих warnings;
+  - полный backend suite — `1209 passed`, `30 subtests passed`, 5 существующих warnings;
   - `manage.py check` — 0 issues; migration drift — `No changes detected`;
   - OpenAPI validation — exit `0`, ошибок `0`; `573` warnings (`570` unique)
     относятся к существующим serializer type hints, а не к новому endpoint;
@@ -994,6 +994,37 @@ offer-строк; штатный rollback следующих фаз — откл
   отключает новые POST-запуски; накопленные observation rows безопасно оставить.
   Migration `0203 → 0202` допустима только до появления нужной истории наблюдений или
   после её экспорта. Cart/checkout feature flags и allowlist не меняются.
+
+### Production rollout 2026-08-28
+
+- Release commit `234315cb0ff7407194a87ed0d98a7d445edc069c` прошёл GitHub CI
+  `33160806225`, attempt 5: secret scan, Compose/release contracts, frontend,
+  backend и exact-revision image publication зелёные. Опубликованные digests:
+  backend `sha256:621f6db98af1cde86067af04ef2405e9ea9a9e587fc0fd7a8185c09ba44034ae`,
+  frontend `sha256:4cb2b24f018abf108d0a1d39d050f13b488f02d5f42141e105032c764b85d3ac`.
+- Exact x86_64 images прошли isolated full-stack smoke на production host: чистая
+  база получила все миграции, включая `catalog.0203`; readiness, canonical host и
+  security headers зелёные; временный Compose project удалён.
+- Перед deploy создан и проверен backup
+  `/home/deploy/backups/pharmaturk/20260828T122727Z_pre_26b4fe9_to_234315c`:
+  PostgreSQL custom dump `128509534` bytes, Qdrant full snapshot `420881408` bytes,
+  checksums совпали с источниками и сформирован restore manifest. Временная внутренняя
+  копия нового Qdrant snapshot удалена только после успешного внешнего копирования.
+- Controlled deploy `26b4fe9... → 234315c...` применил только `catalog.0203`.
+  PostgreSQL, Redis и Qdrant не пересоздавались; backend, frontend и workers работают
+  на одном exact revision; публичный postdeploy smoke зелёный.
+- До включения feature flag синхронный live canary завершился `3/3 success`:
+  LASIRIN `118.59 TRY` и 4 аналога, ASIVIRAL `218.89 TRY` и 13 аналогов,
+  GLIVANTA `864.55 TRY` и 9 аналогов. Во всех случаях medicine/shadow
+  `is_available` и `stock_quantity` остались без изменений.
+- После `MEDICINE_MARKET_CHECK_ENABLED=true` публичный anonymous flow подтвердил
+  `POST 202 queued → running → succeeded` через штатный Celery worker; RINVOQ получил
+  справочную цену `17719.34 TRY`. Страница инструкции и read-only GET отвечают `200`.
+  В runtime-логах backend/worker нет traceback/critical ошибок.
+- Продажный контур не расширялся: source verification allowlist остаётся
+  `ikea,ummaland,lcw`, cart enforcement/background refresh включены по прежним
+  правилам, catalog projection выключен; IlacFiyati используется только отдельным
+  medicine intent flow и не становится автоматически payable.
 
 ## Оценка
 
