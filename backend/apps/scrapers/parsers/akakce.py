@@ -108,6 +108,12 @@ def akakce_product_match_score(expected: Any, observed: Any) -> Decimal | None:
     sequence = Decimal(
         str(SequenceMatcher(None, expected_normalized, observed_normalized).ratio())
     )
+    if not expected_numbers:
+        observed_distinctive = {
+            token for token in observed_tokens if len(token) >= 4 and not token.isdigit()
+        }
+        if observed_distinctive - distinctive:
+            return None
     # Akakce sometimes repeats the brand ("IMUPLUS Imuplus ...").  Full token
     # coverage is therefore stronger evidence than raw sequence similarity.
     if coverage < Decimal("0.85"):
@@ -166,7 +172,8 @@ class AkakceParser(BaseScraper):
     )
 
     def __init__(self, base_url: str = "https://www.akakce.com", **kwargs):
-        super().__init__(base_url=base_url, delay_range=(1, 2), **kwargs)
+        kwargs.setdefault("delay_range", (1, 2))
+        super().__init__(base_url=base_url, **kwargs)
         self.configure_request_identity(
             user_agent=self.FIXED_USER_AGENT,
             headers={
