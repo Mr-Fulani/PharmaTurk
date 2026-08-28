@@ -1215,8 +1215,9 @@ offer-строк; штатный rollback следующих фаз — откл
   внутренний snapshot-дубликат `full-snapshot-2026-08-28-16-17-37.snapshot`;
   восстановление сохранено во внешнем backup. Текущий `65b29cf` и rollback images
   `289b978`/`234315c` сохранены; на диске свободно `3.8 GB`.
-- [ ] Следующий отдельный rollout — FLO, затем ZARA: доверенный proxy CA, canary и
-  последовательное расширение allowlist. Текущий medicine UX от него не зависит.
+- [x] Отдельный rollout FLO, затем ZARA выполнен поэтапно; production-результаты и
+  защита от OOM зафиксированы в разделе ниже. Medicine UX от source-offer контура
+  по-прежнему не зависит.
 
 ### Medicine market-check CSRF hotfix `f411d42` — production 2026-08-28
 
@@ -1310,12 +1311,82 @@ offer-строк; штатный rollback следующих фаз — откл
   временные user/session удалены, в логах нет новых error/traceback/forbidden.
 - [x] После сверки внешней Qdrant-копии с manifest удалён только внутренний
   snapshot-дубликат. Старые неиспользуемые local images `234315c...`/`289b978...`
-  удалены, но остаются восстановимыми из public GHCR/backups; текущий release и
+  удалены, но остаются восстановимыми повторной сборкой из public repository и
+  проверенных backups; текущий release и
   непосредственные rollback images `f411d42...`/`65b29cf...` сохранены. На диске
   свободно около `3.0 GB`.
-- [ ] Следующий отдельный rollout — FLO, затем ZARA: exact image/config с trusted
-  proxy CA, source canary и последовательное расширение allowlist. На текущую
-  валютную корректность medicine/supplement market-check этот этап не влияет.
+- [x] Отдельный rollout FLO, затем ZARA выполнен на exact image с trusted proxy CA,
+  source canary и последовательным расширением allowlist. Валютная корректность
+  medicine/supplement market-check не изменилась.
+
+### FLO/ZARA staged rollout и защита backend от OOM `7842755` — production 2026-08-28
+
+- [x] Перед включением источников повторён production audit: `15 419` товаров,
+  `15 386/15 386` кандидатов покрыты source-offer (`100%`), всего `27 509`
+  предложений. FLO: `7 725` offers для `666` товаров; ZARA: `256` offers для
+  `137` товаров. Миграции применены, blockers отсутствовали; catalog projection
+  оставлен выключенным.
+- [x] Создан и проверен pre-rollout backup
+  `/home/deploy/backups/pharmaturk/20260828T195006Z_pre_flo_rollout_6299680`.
+  PostgreSQL custom dump (`128425793` bytes) проходит `pg_restore --list`, его
+  SHA-256 — `2ffed54a25b99ac4e74d452430b8a5088e97a2a2e0f5bd6e7e8387f607078fe2`;
+  Qdrant snapshot (`420881408` bytes) имеет SHA-256
+  `899efa604bf595440f366cc52c6da24f1b211bd485b4b0f4bae074047c7dd383`.
+  Backup и manifest закрыты правами `600`; внутренний snapshot-дубликат удалён
+  только после повторной сверки с внешней копией.
+- [x] Первый process-only FLO canary проверил шесть сохранённых предложений:
+  `6/6` успешных ответов, корректные `in_stock/out_of_stock` и цена в TRY, без TLS,
+  transport, challenge и circuit-breaker ошибок. После временного включения FLO
+  реальная отрицательная корзина вернула `409 source_out_of_stock` и не создала
+  Cart.
+- [x] На первом rollout обнаружена инфраструктурная причина единичного `502`:
+  backend с четырьмя тяжёлыми Gunicorn workers достигал примерно `1.34 GiB` при
+  лимите `1.5 GiB`; cgroup зафиксировал `oom=3`, `oom_kill=3`. FLO немедленно
+  удалён из allowlist, backend/Celery возвращены к предыдущей конфигурации, public
+  smoke остался зелёным. Создание заказов/платежей в canary не запускалось, а
+  отрицательная корзина не была выделена в БД.
+- [x] В commit `7842755b783f0efbd7eac1ce670222127f44012e` default Gunicorn contract
+  ограничен двумя workers по восемь threads; добавлен recycle после `200` запросов
+  с jitter `40` и регрессионный runtime-contract test. Полный backend suite:
+  `1240 passed`, `30 subtests`; frontend: `62 passed`, TypeScript и production build
+  успешны, lint — `0 errors`/`43` существующих warnings. Django check, migration
+  drift и isolated full-stack smoke на чистых state volumes зелёные.
+- [x] Exact release images: backend
+  `sha256:ea2ac1a4175bb91bd17368ff100521c639ce8654a3e6515b1a38d22a30df7806`,
+  frontend
+  `sha256:07d7e5c9ee3d1ab909b242a728215f7d5c6591e5be466195e7da379fe474318f`;
+  оба имеют revision полного Git SHA. Controlled deploy не пересоздавал
+  PostgreSQL/Redis/Qdrant. После него backend использовал около `0.43 GiB` вместо
+  `1.34 GiB`; после всех FLO/ZARA canary — около `484 MiB`, `oom=0`, `oom_kill=0`,
+  restart count `0`.
+- [x] Постоянный FLO rollout прошёл положительный cart/checkout flow: источник
+  подтвердил `3599.00 TRY/in_stock`, корзина сохранила публичную цену
+  `4138.85 TRY` с коммерческой маржой, checkout повторно проверил FLO и вернул
+  64-символьный fingerprint без блокировки. Отрицательный flow вернул
+  `409 source_out_of_stock` без Cart. Плановый Celery batch выполнился; временная
+  положительная корзина и CartItem удалены точечно.
+- [x] Process-only ZARA canary проверил пять разных предложений: `5/5` успешных
+  source responses. В том числе прежний `CERTIFICATE_VERIFY_FAILED` очищен после
+  установки официального Bright Data CA; получены актуальные цены и корректная
+  переклассификация снятых вариантов в `out_of_stock`. TLS/transport/challenge
+  ошибок нет.
+- [x] ZARA добавлена в постоянный allowlist после FLO:
+  `ikea,ummaland,lcw,flo,zara`. Backend, Celery worker и beat пересозданы только на
+  exact image `7842755...`; public liveness/readiness/security smoke зелёный.
+  Обнаруженный stale `IMAGE_TAG=4013e...` в server-owned `.env` исправлен на
+  `7842755...`, поэтому обычный Compose больше не пытается собрать неверный SHA.
+  Pre-ZARA env сохранён как `.env.pre-zara-20260828T2029Z` с правами `600`.
+- [x] Положительный ZARA flow подтвердил source price `1290.00 TRY/in_stock` и
+  публичную цену `2917.76 RUB`: conversion, валютная маржа и effective product
+  markup применены тем же backend pricing pipeline. Checkout повторно обратился к
+  ZARA и выдал 64-символьный fingerprint без блокировки. Снятый вариант вернул
+  `409 source_out_of_stock`, при этом анонимная Cart не была создана.
+- [x] Bounded background refresh с ZARA выбрал пять offers и завершился
+  `5 checked / 5 successful / 0 errors`; отдельный автоматический batch корректно
+  пометил пять устаревших размеров LCW как terminal `option_not_found`, а не как
+  transport failure. После canary в backend/Celery logs нет OOM, traceback,
+  certificate, proxy challenge или `5xx`; обе временные корзины удалены, новых
+  shadow Product не создавалось.
 
 ## Оценка
 
