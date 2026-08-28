@@ -1390,6 +1390,75 @@ offer-строк; штатный rollback следующих фаз — откл
   certificate, proxy challenge или `5xx`; обе временные корзины удалены, новых
   shadow Product не создавалось.
 
+### БАДы: demand-driven Akakçe stock adapter `78c30ed` — production 2026-08-29
+
+- [x] Контур лекарств и БАДов разделён. `ilacfiyati` остаётся только источником
+  справочной цены и никогда не считается подтверждением наличия. Для продаваемых
+  БАДов добавлен отдельный trusted adapter `akakce`, который возвращает реальную
+  цену продавца и boolean availability; отсутствующее точное количество не
+  подменяется выдуманным остатком.
+- [x] Массовый ежедневный обход каталога из `2945` БАДов не добавлялся. Discovery
+  запускается только по пользовательскому intent «Проверить цену и наличие»,
+  сохраняет один server-owned offer после строгого title/dosage/count matching и
+  отрицательно кеширует неоднозначные совпадения. Уже найденные offers далее
+  проверяются обычными cart/checkout/background source-offer механизмами.
+- [x] Akakçe parser принимает только HTTPS URL официального домена и только
+  product pages `/vitamin-mineral/...fiyati,<id>.html`, работает через активный
+  proxy-enabled `ScraperConfig`, проверяет неизменность external product ID и
+  числовой сигнатуры. Из JSON-LD выбирается самый дешёвый валидный in-stock seller;
+  имя и URL выбранного продавца сохраняются в offer metadata и затем в immutable
+  snapshot позиции заказа.
+- [x] UI БАДов локализован для RU/EN: вместо консультационного текста показывается
+  «Проверить цену и наличие», процесс проверки и результат. После успешного
+  discovery карточка без перезагрузки переключается в `verified_sale`, а
+  добавление в корзину всегда выполняет новую live-проверку источника.
+- [x] Regression gates для exact commit
+  `78c30ed403f29fb169ca107cd782d93bef8d9fae` зелёные: полный backend pytest,
+  Django check, migration drift и isolated release gates завершились без ошибок;
+  frontend — `62/62` tests, TypeScript и production Next build успешны. Backend,
+  frontend и test images имеют OCI revision полного Git SHA.
+- [x] Перед deploy создан и проверен backup
+  `/home/deploy/backups/pharmaturk/20260828T213748Z_pre_7842755_to_78c30ed`:
+  PostgreSQL custom dump `128442930` bytes, SHA-256
+  `f58b1d5c2af2641da6efd1cff7e4d2366ee1697b0a0cca7bb92065a1108070f2`,
+  Qdrant snapshot `420881408` bytes, SHA-256
+  `fc778442ac8dc68f3028690dfd8d11c4a95226ea3abfd930501885e802d3670c`;
+  `pg_restore --list` и release manifest валидны, `.env` также сохранён, права
+  backup-файлов `600`. После повторной сверки удалён только внутренний Qdrant
+  snapshot-дубликат; внешняя копия для восстановления сохранена.
+- [x] Controlled deploy сначала переключил все application containers с
+  `7842755...` на `78c30ed...` при выключенных новых flags. Process-only canary
+  `VENATURA Çinko Pikolinat 15 mg 60 kapsül` нашёл `10` продавцов, confidence
+  `0.9298`, повторно подтвердил `206.00 TRY/in_stock`; выбран seller
+  `Evdekieczanem.com`. Cart pricing pipeline применил conversion, валютную маржу и
+  category markup и получил `486.19 RUB`.
+- [x] После canary постоянно включены только связанные gates:
+  `akakce` добавлен в `SOURCE_OFFER_VERIFICATION_SOURCES`,
+  `SUPPLEMENT_STOCK_ADAPTER_SOURCES=akakce` и
+  `SUPPLEMENT_STOCK_DISCOVERY_ENABLED=true`. `IMAGE_TAG` в server `.env`
+  зафиксирован на exact `78c30ed...`; общий catalog projection оставлен
+  выключенным.
+- [x] Публичный demand-driven flow проверен на ещё не подключённом
+  `VENATURA Biotin 5000 mcg 90 tablet`. POST перешёл `pending → succeeded`, обновил
+  справочную цену `429.00 → 600.00 TRY` и отдал display price `1416.11 RUB` с
+  pair margin `10%` и category markup `20%`. Строгий mapping с confidence `0.8237`
+  создал offer `27511`: `10` продавцов, seller `Pttavm/Dermoaktif`, live source
+  price `360.00 TRY`; cart сохранил коммерческую цену `849.66 RUB` и статус
+  `verified/payable`.
+- [x] Положительная корзина прошла принудительный `revalidate` и checkout-preflight:
+  live source price осталась `206.00 TRY`, issues пусты, fingerprint имеет `64`
+  символа; заказ и платёж не создавались. Отрицательный parser canary страницы
+  `Betamega Şurup 150 ml` подтвердил существующую identity при `0` продавцов и
+  `selected_offer=None`; typed `not_found` блокирует cart/checkout как
+  `source_out_of_stock`.
+- [x] Финальный read-only rollout audit: migrations применены, blockers `[]`,
+  `ready_for_source_rollout=true`; Akakçe `2 offers / 2 products / 0 stale /
+  0 errors`. Public liveness/readiness/security smoke зелёный. Все app containers
+  используют exact revision, restart count `0`, OOM `false`; backend около
+  `434 MiB` при лимите `1.5 GiB`. В новых backend/Celery logs нет traceback,
+  exception, OOM или source errors. Ровно одна canary Cart и две CartItem удалены,
+  временные negative-cache ключи очищены; оба валидных Akakçe offers сохранены.
+
 ## Оценка
 
 - Фазы 1–4: 8–12 рабочих дней.
