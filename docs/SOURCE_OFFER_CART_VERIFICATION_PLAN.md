@@ -1375,7 +1375,9 @@ offer-строк; штатный rollback следующих фаз — откл
   exact image `7842755...`; public liveness/readiness/security smoke зелёный.
   Обнаруженный stale `IMAGE_TAG=4013e...` в server-owned `.env` исправлен на
   `7842755...`, поэтому обычный Compose больше не пытается собрать неверный SHA.
-  Pre-ZARA env сохранён как `.env.pre-zara-20260828T2029Z` с правами `600`.
+  Pre-ZARA env сохранён как
+  `/home/deploy/backups/pharmaturk/20260828T2029Z_pre_zara_enable.env` с правами
+  `600`.
 - [x] Положительный ZARA flow подтвердил source price `1290.00 TRY/in_stock` и
   публичную цену `2917.76 RUB`: conversion, валютная маржа и effective product
   markup применены тем же backend pricing pipeline. Checkout повторно обратился к
