@@ -78,11 +78,21 @@ if [ "${USE_RUNSERVER:-0}" = "1" ]; then
     exec poetry run python manage.py runserver 0.0.0.0:8000
 else
     echo "Запускаем gunicorn..."
-    WORKERS="${GUNICORN_WORKERS:-4}"
+    # The production backend container is capped at 1.5 GiB. Django workers retain
+    # native/Pillow/http parser arenas after large media and supplier responses, so
+    # four long-lived processes can hit the cgroup limit even when the host still
+    # has free memory. Two gthread workers keep 16 concurrent request threads while
+    # leaving enough headroom for a large response in each process.
+    WORKERS="${GUNICORN_WORKERS:-2}"
     THREADS="${GUNICORN_THREADS:-8}"
+    # Periodic rolling recycle returns retained native allocator arenas to the OS.
+    # Jitter prevents both workers from restarting on the same request boundary.
+    MAX_REQUESTS="${GUNICORN_MAX_REQUESTS:-200}"
+    MAX_REQUESTS_JITTER="${GUNICORN_MAX_REQUESTS_JITTER:-40}"
     # gthread: длинные ответы (proxy_media: стриминг видео, ресайз) не занимают
-    # целый sync-воркер — иначе 4 зрителя видео блокировали весь API
-    GUNICORN_ARGS="--bind 0.0.0.0:8000 --workers $WORKERS --worker-class gthread --threads $THREADS --timeout 60"
+    # целый sync-воркер; concurrency обеспечивается потоками, а не числом тяжёлых
+    # Django-процессов.
+    GUNICORN_ARGS="--bind 0.0.0.0:8000 --workers $WORKERS --worker-class gthread --threads $THREADS --timeout 60 --max-requests $MAX_REQUESTS --max-requests-jitter $MAX_REQUESTS_JITTER"
     if [ "${DJANGO_DEBUG:-0}" = "1" ] || [ "${DJANGO_DEBUG:-0}" = "True" ]; then
         exec poetry run gunicorn config.wsgi:application $GUNICORN_ARGS --reload
     else
