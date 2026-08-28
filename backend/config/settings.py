@@ -506,6 +506,7 @@ BOOKS_SEO_SITE_NAME = env("BOOKS_SEO_SITE_NAME", default=COMPANY_NAME)
 SCRAPER_PROXY_URL = env("SCRAPER_PROXY_URL", default="")
 # PEM bundle of the proxy CA when the provider performs TLS inspection.
 # Certificate verification is never disabled automatically.
+# Bright Data native proxy must use its port-44445 root from /app/certs.
 SCRAPER_PROXY_CA_BUNDLE = env("SCRAPER_PROXY_CA_BUNDLE", default="")
 
 # Phase 2 source-offer recording. Disabled by default for a migration-first rollout:

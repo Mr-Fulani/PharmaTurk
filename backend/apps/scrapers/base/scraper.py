@@ -1,16 +1,19 @@
 """Базовый класс для всех парсеров."""
 
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin, urlparse
 
 import httpx
 import requests
 from celery.exceptions import SoftTimeLimitExceeded
+from django.core.exceptions import ImproperlyConfigured
 from fake_useragent import UserAgent
 
 from apps.http_errors import ExternalAccessBlockedError, raise_for_blocked_status
@@ -147,10 +150,12 @@ class BaseScraper(ABC):
         # Активен только при use_proxy=True и заданном SCRAPER_PROXY_URL.
         # Пусто = прямое соединение (поведение по умолчанию не меняется).
         self.proxy_url = self._resolve_proxy_url()
+        self.proxy_ca_bundle = self._resolve_proxy_ca_bundle()
+        self._validate_proxy_tls_configuration()
         # TLS verification stays enabled for proxy traffic.  A proxy that
         # performs TLS inspection must expose its CA bundle explicitly rather
         # than silently downgrading every scraper request to verify=False.
-        self.proxy_tls_verify = self._resolve_proxy_ca_bundle() or True
+        self.proxy_tls_verify = self.proxy_ca_bundle or True
         # requests-стиль для парсеров на requests.Session (Zara, Ummaland).
         self.proxies = (
             {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
@@ -198,6 +203,32 @@ class BaseScraper(ABC):
             return str(getattr(settings, "SCRAPER_PROXY_CA_BUNDLE", "") or "").strip()
         except Exception:
             return ""
+
+    def _validate_proxy_tls_configuration(self) -> None:
+        """Fail closed on missing CA files and obsolete Bright Data endpoints."""
+
+        if not self.proxy_url:
+            return
+
+        if self.proxy_ca_bundle:
+            ca_path = Path(self.proxy_ca_bundle)
+            if not ca_path.is_file() or not os.access(ca_path, os.R_OK):
+                raise ImproperlyConfigured(
+                    "SCRAPER_PROXY_CA_BUNDLE must point to a readable CA file"
+                )
+
+        parsed = urlparse(self.proxy_url)
+        hostname = (parsed.hostname or "").casefold().rstrip(".")
+        if hostname != "brd.superproxy.io":
+            return
+        if parsed.port != 44445:
+            raise ImproperlyConfigured(
+                "Bright Data native proxy must use port 44445"
+            )
+        if not self.proxy_ca_bundle:
+            raise ImproperlyConfigured(
+                "Bright Data native proxy requires SCRAPER_PROXY_CA_BUNDLE"
+            )
 
     def _setup_client(self):
         # Настройка HTTP клиента

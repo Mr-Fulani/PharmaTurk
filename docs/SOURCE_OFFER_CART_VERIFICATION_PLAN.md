@@ -1111,6 +1111,39 @@ offer-строк; штатный rollback следующих фаз — откл
   `289b978...`, немедленный rollback `234315c...` и все внешние backups сохранены;
   свободное место увеличилось до `9.5 GB` (`74%` занято), public health остался зелёным.
 
+### FLO/Zara 2026-08-28 — trusted proxy CA release candidate
+
+- Корневая причина прежнего `CERTIFICATE_VERIFY_FAILED` подтверждена: production
+  использовал Bright Data `brd.superproxy.io:33335`, но
+  `SCRAPER_PROXY_CA_BUNDLE` был пуст. TLS нельзя отключать или доверять сертификату,
+  извлечённому из отдельного соединения.
+- По актуальной официальной документации Bright Data новый native proxy использует
+  port `44445` и `brightdata_root_ca_44445.crt`; старые CA/ports `22225` и `33335`
+  прекращают работу 2026-09-25. Источники:
+  `https://docs.brightdata.com/general/account/ssl-certificate` и
+  `https://brightdata.com/static/brightdata_proxy_ca.zip`.
+- Официальный root CA добавлен в immutable backend image. Зафиксированы archive
+  SHA-256 `af8092570205eec5986f374f2e9b1ea9697f597e19ef6d1be11034f94cb903bc`
+  и certificate fingerprint
+  `DB:85:48:F8:A5:B1:16:65:36:92:0C:CD:04:73:84:0F:7F:DB:AF:16:5D:ED:F9:07:B7:B5:23:61:AB:C8:7B:60`;
+  certificate действует до 2046-07-18 UTC.
+- `BaseScraper` fail-closed отклоняет нечитаемый CA bundle, Bright Data без CA и
+  устаревший port. Один CA path одинаково передаётся в httpx warmup и requests AJAX
+  Zara; `verify=False` не добавлялся. Proxy URL/credentials остаются только в
+  server-owned env.
+- Изолированные gates: proxy/source suite — `21 passed`; расширенный
+  FLO/Zara/parser/source suite — `91 passed`; Django check — 0 issues, migration
+  drift — `No changes detected`, certificate fingerprint и `git diff --check`
+  подтверждены.
+- До изменения production env выполнен in-memory canary с теми же server-owned
+  credentials, port `44445` и официальным CA. Первый FLO/Zara проход — `2/2 success`;
+  повторный — `6/6 success`. FLO вернул `3699 TRY/in_stock`, Zara — корректный
+  terminal `420 TRY/out_of_stock`; `403`, challenge, TLS и transport errors — `0`.
+- Rollout остаётся staged: deploy exact image и config `44445+CA`, повторить canary,
+  затем отдельно добавить `flo`, проверить background/cart и только после этого
+  отдельно добавить `zara`. До завершения этих gates оба источника остаются вне
+  production verification allowlist и не влияют на payable.
+
 ## Оценка
 
 - Фазы 1–4: 8–12 рабочих дней.
