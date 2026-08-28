@@ -1218,6 +1218,45 @@ offer-строк; штатный rollback следующих фаз — откл
 - [ ] Следующий отдельный rollout — FLO, затем ZARA: доверенный proxy CA, canary и
   последовательное расширение allowlist. Текущий medicine UX от него не зависит.
 
+### Medicine market-check CSRF hotfix `f411d42` — production 2026-08-28
+
+- [x] По production nginx/backend logs подтверждён реальный отказ `403 Forbidden`
+  при нажатии из браузера с действующей Django-сессией. Причина: публичный DRF
+  action с `AllowAny` наследовал `SessionAuthentication`, которая требовала CSRF
+  для `POST`, хотя авторизация endpoint не нужна.
+- [x] Medicine и supplement market-check actions переведены на уже используемый в
+  проекте `JWTSafeAuthentication`: JWT identity сохраняется, конфликт
+  SessionAuthentication/CSRF для публичного intent-запроса исключён. Остальные
+  authentication defaults и CSRF-защищённые endpoints не менялись.
+- [x] Добавлены регрессионные integration-тесты для обоих actions: клиент с
+  `enforce_csrf_checks=True` и валидной Django-сессией без CSRF header получает
+  `202`, а не `403`. Связанные medicine/supplement suites: `26 passed`, только 2
+  существующих deprecation warnings.
+- [x] Commit `f411d4201dc4963ced2e08036401d391a3e3b746` прошёл Python compile,
+  `git diff --check`, Django check, migration drift (`No changes detected`) и
+  isolated full-stack smoke на чистых PostgreSQL/Redis/Qdrant volumes. Exact
+  production images: backend `sha256:61fd9aa86298f33f2848100e9daf30e61782fd3d1246ab70ae4b9a5c74776331`,
+  frontend `sha256:592bde27f3d75e0b5570adc9a4510d078a140278617c9fdadcf9736d62bbffb8`.
+- [x] Перед deploy создан проверенный backup
+  `/home/deploy/backups/pharmaturk/20260828T164705Z_pre_65b29cf_to_f411d42`:
+  PostgreSQL SHA-256
+  `1d0e1112a53f07f620e7e714e7538d17858815b06ce6818419cbb6334688e416`, Qdrant
+  SHA-256 `60dcb191b0fb49a09405d7b1ccf5b6d1d6e81bde2f8003f275ab4edede52e6f1`;
+  PostgreSQL dump проходит `pg_restore --list`.
+- [x] Controlled deploy `65b29cf13553826ce661ed0fbe257e86b2ef52a4` →
+  `f411d4201dc4963ced2e08036401d391a3e3b746` выполнен без миграций и без
+  пересоздания PostgreSQL/Redis/Qdrant. Backend, frontend и все Celery services
+  используют exact revision; readiness/liveness/security smoke зелёные.
+- [x] Точный postdeploy canary через публичный nginx с валидной Django-сессией и
+  без CSRF header вернул `200 succeeded` и актуальную цену RAPAMUNE; временный
+  пользователь и session удалены (`0` canary users). Анонимный запрос также вернул
+  `200 succeeded`; nginx подтвердил оба ответа, новых `Forbidden`, traceback или
+  `ERROR` нет.
+- [x] После повторной сверки внешнего Qdrant backup удалён только его внутренний
+  snapshot-дубликат `full-snapshot-2026-08-28-16-47-55.snapshot`. Внешняя копия для
+  восстановления сохранена; свободное место увеличилось с `2.1 GB` до `2.5 GB`,
+  Qdrant продолжает работать.
+
 ## Оценка
 
 - Фазы 1–4: 8–12 рабочих дней.
