@@ -6,6 +6,7 @@ import api, { getSingleFlight } from '../../lib/api'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
+import MedicinePriceCheck from '../../components/MedicinePriceCheck'
 import SupplementPurchasePanel from '../../components/SupplementPurchasePanel'
 import { resolveSchemaAvailability } from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
@@ -34,7 +35,6 @@ import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
-import { buildMedicineHowToOrderHref } from '../../lib/medicineMarketCheck'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
 
@@ -1285,7 +1285,6 @@ export default function ProductPage({
   const isService = productType === 'uslugi'
   const isMedicine = productType === 'medicines' || product.product_type === 'medicines'
   const isSupplement = productType === 'supplements' || product.product_type === 'supplements'
-  const medicineOrderHref = buildMedicineHowToOrderHref(product.slug)
   const seoCategoryName = product.category
     ? getLocalizedCategoryName(product.category.slug, product.category.name, t, undefined, router.locale)
     : ''
@@ -2461,15 +2460,21 @@ export default function ProductPage({
               ) : (
                 (productType === 'medicines' || product.product_type === 'medicines') ? (
                   <>
+                    <MedicinePriceCheck
+                      slug={product.slug}
+                      onPriceUpdated={({ amount, currency: checkedCurrency }) => {
+                        setProduct((current) => current
+                          ? {
+                              ...current,
+                              price: amount,
+                              price_formatted: `${amount} ${checkedCurrency}`,
+                              currency: checkedCurrency,
+                            }
+                          : current)
+                      }}
+                    />
                     <Link
-                      href={medicineOrderHref}
-                      prefetch={false}
-                      className="w-full inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 transition-all duration-200"
-                    >
-                      {t('medicine_consult_button', 'Узнать актуальную цену - получить консультацию')}
-                    </Link>
-                    <Link
-                      href={medicineOrderHref}
+                      href="/how-to-order-medicines"
                       prefetch={false}
                       className="w-full inline-flex items-center justify-center rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition-all duration-200"
                     >

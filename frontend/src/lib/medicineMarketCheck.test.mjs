@@ -3,19 +3,14 @@ import assert from 'node:assert/strict'
 
 import {
   appendWhatsappText,
-  buildMedicineConsultMessage,
-  buildMedicineHowToOrderHref,
   normalizeMedicineSlug,
   shouldPollMedicineMarketCheck,
   startMedicineMarketCheckSingleFlight,
 } from './medicineMarketCheck.js'
 
-test('medicine intent link carries only an encoded catalog slug', () => {
-  assert.equal(
-    buildMedicineHowToOrderHref('lasirin-20-mg-tablet'),
-    '/how-to-order-medicines?medicine=lasirin-20-mg-tablet',
-  )
-  assert.equal(buildMedicineHowToOrderHref('bad/path'), '/how-to-order-medicines')
+test('medicine check accepts only a catalog slug', () => {
+  assert.equal(normalizeMedicineSlug('lasirin-20-mg-tablet'), 'lasirin-20-mg-tablet')
+  assert.equal(normalizeMedicineSlug('bad/path'), '')
   assert.equal(normalizeMedicineSlug(['valid-slug', 'ignored']), 'valid-slug')
 })
 
@@ -24,29 +19,6 @@ test('only active market checks are polled', () => {
   assert.equal(shouldPollMedicineMarketCheck('running'), true)
   assert.equal(shouldPollMedicineMarketCheck('succeeded'), false)
   assert.equal(shouldPollMedicineMarketCheck('source_unavailable'), false)
-})
-
-test('consult message contains medicine identity and checked reference price', () => {
-  const message = buildMedicineConsultMessage(
-    { name: 'LASIRIN', dosage_form: 'tablet', volume: '20 шт.' },
-    { price: { amount: '125.45', currency: 'TRY' }, last_success_at: '2026-08-28T10:00:00Z' },
-    'https://mudaroba.com/product/lasirin',
-  )
-  assert.match(message, /LASIRIN, tablet, 20 шт\./)
-  assert.match(message, /125\.45 TRY/)
-  assert.match(message, /2026-08-28/)
-  assert.match(message, /https:\/\/mudaroba\.com\/product\/lasirin/)
-})
-
-test('consult message follows the current locale', () => {
-  const message = buildMedicineConsultMessage(
-    { name: 'LASIRIN' },
-    { price: { amount: '125.45', currency: 'TRY' } },
-    'https://mudaroba.com/en/product/lasirin',
-    'en',
-  )
-  assert.match(message, /^Hello! I need advice/)
-  assert.match(message, /Reference price: 125\.45 TRY/)
 })
 
 test('Strict Mode style concurrent starts share one POST promise', async () => {
