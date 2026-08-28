@@ -10,6 +10,18 @@ export function shouldPollMedicineMarketCheck(status) {
   return status === 'pending' || status === 'running'
 }
 
+export function selectMarketCheckDisplayPrice(payload) {
+  const displayPrice = payload?.display_price
+  if (displayPrice?.amount != null && String(displayPrice.currency || '').trim()) {
+    return displayPrice
+  }
+  const sourcePrice = payload?.price
+  if (sourcePrice?.amount != null && String(sourcePrice.currency || '').trim()) {
+    return sourcePrice
+  }
+  return null
+}
+
 const startRequests = new Map()
 
 export function startMedicineMarketCheckSingleFlight(slug, starter) {

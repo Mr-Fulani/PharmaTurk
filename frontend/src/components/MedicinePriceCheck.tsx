@@ -4,14 +4,17 @@ import { useTranslation } from 'next-i18next'
 
 import api from '../lib/api'
 import {
+  selectMarketCheckDisplayPrice,
   shouldPollMedicineMarketCheck,
   startMedicineMarketCheckSingleFlight,
 } from '../lib/medicineMarketCheck'
+import { formatPrice } from '../lib/price'
 
 type MedicineMarketCheck = {
   enabled: boolean
   status: 'not_requested' | 'pending' | 'running' | 'succeeded' | 'source_unavailable' | 'failed'
   price?: { amount: string; currency: string } | null
+  display_price?: { amount: string; currency: string } | null
   last_success_at?: string | null
   is_stale: boolean
   error?: { code: string; message: string } | null
@@ -48,8 +51,9 @@ export default function MedicinePriceCheck({ slug, onPriceUpdated }: Props) {
 
   const acceptResult = (payload: MedicineMarketCheck) => {
     setResult(payload)
-    if (payload.status === 'succeeded' && payload.price) {
-      onPriceUpdated?.(payload.price)
+    const displayPrice = selectMarketCheckDisplayPrice(payload)
+    if (payload.status === 'succeeded' && displayPrice) {
+      onPriceUpdated?.(displayPrice)
     }
   }
 
@@ -137,6 +141,10 @@ export default function MedicinePriceCheck({ slug, onPriceUpdated }: Props) {
   const checkedAt = result?.last_success_at
     ? new Intl.DateTimeFormat(i18n.language || 'ru', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(result.last_success_at))
     : ''
+  const displayPrice = selectMarketCheckDisplayPrice(result)
+  const formattedDisplayPrice = displayPrice
+    ? formatPrice(displayPrice.amount, displayPrice.currency, i18n.language) || displayPrice.amount
+    : ''
 
   return (
     <div aria-live="polite">
@@ -149,7 +157,7 @@ export default function MedicinePriceCheck({ slug, onPriceUpdated }: Props) {
         {buttonLabel}
       </button>
 
-      {result?.price && (
+      {displayPrice && (
         <div className={`mt-2 rounded-md border px-3 py-2 text-sm ${
           result.status === 'succeeded'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100'
@@ -160,7 +168,7 @@ export default function MedicinePriceCheck({ slug, onPriceUpdated }: Props) {
               ? t('medicine_market_check_succeeded', 'Цена проверена')
               : t('medicine_market_reference_price', 'Последняя подтверждённая цена')}:
           </span>{' '}
-          {result.price.amount} {result.price.currency}
+          {formattedDisplayPrice} {displayPrice.currency}
           {checkedAt && (
             <span className="block pt-0.5 text-xs opacity-80">
               {t('medicine_market_checked_at', 'Проверено: {{date}}', { date: checkedAt })}

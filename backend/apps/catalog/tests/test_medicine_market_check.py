@@ -314,12 +314,75 @@ def test_market_check_api_returns_fresh_success_without_requeue(medicine, monkey
     client = APIClient()
     url = reverse("medicine-product-market-check", kwargs={"slug": medicine.slug})
 
-    response = client.post(url, {}, format="json", REMOTE_ADDR="198.51.100.11")
+    response = client.post(
+        url,
+        {},
+        format="json",
+        HTTP_X_CURRENCY="TRY",
+        REMOTE_ADDR="198.51.100.11",
+    )
 
     assert response.status_code == 200
     assert response.data["cached"] is True
     assert response.data["price"] == {"amount": "101.00", "currency": "TRY"}
     assert apply_async is None
+
+
+@pytest.mark.django_db
+def test_market_check_api_adds_selected_currency_price_with_effective_margins(
+    medicine,
+    monkeypatch,
+):
+    medicine.category.margin_percent = Decimal("50.00")
+    medicine.category.save(update_fields=["margin_percent"])
+    ProductMarketCheck.objects.create(
+        product=medicine.base_product,
+        source="ilacfiyati",
+        source_url=medicine.external_url,
+        status=ProductMarketCheck.Status.SUCCEEDED,
+        observed_price=Decimal("100.00"),
+        observed_currency="TRY",
+        requested_at=timezone.now(),
+        finished_at=timezone.now(),
+        last_success_at=timezone.now(),
+    )
+
+    def convert_price(amount, source, target, apply_margin=True):
+        assert (amount, source, target, apply_margin) == (
+            Decimal("100.00"),
+            "TRY",
+            "RUB",
+            True,
+        )
+        return amount, Decimal("200.00"), Decimal("220.00")
+
+    monkeypatch.setattr(
+        "apps.catalog.services.market_check_pricing.currency_converter.convert_price",
+        convert_price,
+    )
+    monkeypatch.setattr(
+        "apps.catalog.services.market_check_pricing.currency_converter.get_margin_rate",
+        lambda source, target: Decimal("10.00"),
+    )
+
+    response = APIClient().get(
+        reverse("medicine-product-market-check", kwargs={"slug": medicine.slug}),
+        HTTP_X_CURRENCY="RUB",
+        REMOTE_ADDR="198.51.100.18",
+    )
+
+    assert response.status_code == 200
+    # Source truth stays untouched for API compatibility and price history.
+    assert response.data["price"] == {"amount": "100.00", "currency": "TRY"}
+    # Public display follows rate -> pair margin -> category/brand/global markup.
+    assert response.data["display_price"] == {"amount": "330.00", "currency": "RUB"}
+    assert response.data["price_calculation"] == {
+        "source_currency": "TRY",
+        "target_currency": "RUB",
+        "currency_pair_margin_percent": "10.00",
+        "product_markup_percent": "50.00",
+        "product_markup_source": "category",
+    }
 
 
 @pytest.mark.django_db

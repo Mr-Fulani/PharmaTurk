@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 
 import api from '../lib/api'
-import { appendWhatsappText } from '../lib/medicineMarketCheck'
+import { appendWhatsappText, selectMarketCheckDisplayPrice } from '../lib/medicineMarketCheck'
+import { formatPrice } from '../lib/price'
 
 type SupplementMarketCheck = {
   enabled: boolean
@@ -17,6 +18,7 @@ type SupplementMarketCheck = {
     serving_size?: string | null
   }
   price?: { amount: string; currency: string } | null
+  display_price?: { amount: string; currency: string } | null
   availability?: {
     status: string
     can_add_to_cart: boolean
@@ -127,10 +129,14 @@ export default function SupplementPurchasePanel({
   const checkedAt = result?.last_success_at
     ? new Intl.DateTimeFormat(i18n.language || 'ru', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(result.last_success_at))
     : ''
+  const displayPrice = selectMarketCheckDisplayPrice(result)
+  const formattedDisplayPrice = displayPrice
+    ? formatPrice(displayPrice.amount, displayPrice.currency, i18n.language) || displayPrice.amount
+    : ''
   const consultMessage = useMemo(() => {
     const english = String(i18n.language || '').toLowerCase().startsWith('en')
-    const referencePrice = result?.price
-      ? `${result.price.amount} ${result.price.currency}`
+    const referencePrice = displayPrice
+      ? `${displayPrice.amount} ${displayPrice.currency}`
       : ''
     return [
       english
@@ -141,7 +147,7 @@ export default function SupplementPurchasePanel({
         : '',
       productUrl ? `${english ? 'Product page' : 'Карточка'}: ${productUrl}` : '',
     ].filter(Boolean).join('\n')
-  }, [i18n.language, name, productUrl, result?.price])
+  }, [displayPrice, i18n.language, name, productUrl])
   const whatsappHref = appendWhatsappText(whatsappUrl, consultMessage)
 
   return (
@@ -162,12 +168,12 @@ export default function SupplementPurchasePanel({
         {statusMessage || t('supplement_market_check_button', 'Проверить актуальную справочную цену')}
       </button>
 
-      {result?.price && (
+      {displayPrice && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-white px-4 py-3 text-gray-950 dark:border-amber-800 dark:bg-gray-900 dark:text-gray-100">
           <p className="text-xs text-gray-600 dark:text-gray-400">
             {t('supplement_market_reference_price', 'Справочная цена первоисточника')}
           </p>
-          <p className="mt-1 text-2xl font-bold">{result.price.amount} {result.price.currency}</p>
+          <p className="mt-1 text-2xl font-bold">{formattedDisplayPrice} {displayPrice.currency}</p>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {checkedAt
               ? t('supplement_market_checked_at', 'Проверено: {{date}}', { date: checkedAt })

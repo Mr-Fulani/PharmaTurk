@@ -1322,7 +1322,7 @@
   "supplement_market_check_timeout": "The check is taking longer than usual. Try again later.",
   "supplement_market_check_read_error": "The check status could not be loaded. Try again later.",
   "supplement_market_check_start_error": "The price check could not be started.",
-  "supplement_market_reference_price": "Reference price at the original source",
+  "supplement_market_reference_price": "Reference price in your selected currency",
   "supplement_market_checked_at": "Checked: {{date}}",
   "supplement_market_price_disclaimer": "This is not a public offer.",
   "supplement_market_price_stale": "last confirmed price",

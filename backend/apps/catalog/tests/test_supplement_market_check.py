@@ -207,6 +207,50 @@ def test_market_check_api_is_feature_flagged(supplement, settings):
 
 
 @pytest.mark.django_db
+def test_supplement_market_check_adds_selected_currency_public_price(
+    supplement,
+    monkeypatch,
+):
+    supplement.category.margin_percent = Decimal("25.00")
+    supplement.category.save(update_fields=["margin_percent"])
+    ProductMarketCheck.objects.create(
+        product=supplement.base_product,
+        source="ilacfiyati",
+        source_url=supplement.external_url,
+        status=ProductMarketCheck.Status.SUCCEEDED,
+        observed_price=Decimal("49.70"),
+        observed_currency="TRY",
+        requested_at=timezone.now(),
+        finished_at=timezone.now(),
+        last_success_at=timezone.now(),
+    )
+    monkeypatch.setattr(
+        "apps.catalog.services.market_check_pricing.currency_converter.convert_price",
+        lambda amount, source, target, apply_margin=True: (
+            amount,
+            Decimal("10.00"),
+            Decimal("11.00"),
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.catalog.services.market_check_pricing.currency_converter.get_margin_rate",
+        lambda source, target: Decimal("10.00"),
+    )
+
+    response = APIClient().get(
+        reverse("supplement-product-market-check", kwargs={"slug": supplement.slug}),
+        HTTP_X_CURRENCY="USD",
+        REMOTE_ADDR="198.51.100.33",
+    )
+
+    assert response.status_code == 200
+    assert response.data["price"] == {"amount": "49.70", "currency": "TRY"}
+    assert response.data["display_price"] == {"amount": "13.75", "currency": "USD"}
+    assert response.data["price_calculation"]["product_markup_source"] == "category"
+    assert response.data["price_calculation"]["product_markup_percent"] == "25.00"
+
+
+@pytest.mark.django_db
 def test_public_market_check_does_not_require_csrf_for_unrelated_django_session(
     supplement,
     monkeypatch,

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   appendWhatsappText,
   normalizeMedicineSlug,
+  selectMarketCheckDisplayPrice,
   shouldPollMedicineMarketCheck,
   startMedicineMarketCheckSingleFlight,
 } from './medicineMarketCheck.js'
@@ -19,6 +20,19 @@ test('only active market checks are polled', () => {
   assert.equal(shouldPollMedicineMarketCheck('running'), true)
   assert.equal(shouldPollMedicineMarketCheck('succeeded'), false)
   assert.equal(shouldPollMedicineMarketCheck('source_unavailable'), false)
+})
+
+test('market check UI prefers the converted public display price', () => {
+  const payload = {
+    price: { amount: '12225.03', currency: 'TRY' },
+    display_price: { amount: '36066.50', currency: 'RUB' },
+  }
+  assert.deepEqual(selectMarketCheckDisplayPrice(payload), payload.display_price)
+  assert.deepEqual(
+    selectMarketCheckDisplayPrice({ price: payload.price }),
+    payload.price,
+  )
+  assert.equal(selectMarketCheckDisplayPrice(null), null)
 })
 
 test('Strict Mode style concurrent starts share one POST promise', async () => {

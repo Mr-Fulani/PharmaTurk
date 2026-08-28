@@ -4542,25 +4542,34 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
             MedicineMarketCheckError,
             MedicineMarketCheckService,
         )
+        from apps.catalog.services.market_check_pricing import attach_public_market_price
 
         medicine = self.get_object()
         service = MedicineMarketCheckService()
+
+        def serialize(check):
+            return attach_public_market_price(
+                service.serialize(medicine, check),
+                product=medicine,
+                request=request,
+            )
+
         if request.method == "GET":
             check = service.latest_for(medicine)
-            return Response(service.serialize(medicine, check))
+            return Response(serialize(check))
 
         try:
             result = service.request_check(medicine)
         except MedicineMarketCheckError as exc:
             check = service.latest_for(medicine)
-            payload = service.serialize(medicine, check)
+            payload = serialize(check)
             payload["error"] = {
                 "code": exc.code,
                 "message": exc.public_message,
             }
             return Response(payload, status=exc.http_status)
 
-        payload = service.serialize(medicine, result.check)
+        payload = serialize(result.check)
         payload["queued"] = result.queued
         payload["cached"] = result.cached
         return Response(
@@ -4896,6 +4905,7 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
         request=None,
     )
     def market_check(self, request, slug=None):
+        from apps.catalog.services.market_check_pricing import attach_public_market_price
         from apps.catalog.services.supplement_market_check import (
             SupplementMarketCheckError,
             SupplementMarketCheckService,
@@ -4903,22 +4913,30 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
 
         supplement = self.get_object()
         service = SupplementMarketCheckService()
+
+        def serialize(check):
+            return attach_public_market_price(
+                service.serialize(supplement, check),
+                product=supplement,
+                request=request,
+            )
+
         if request.method == "GET":
             check = service.latest_for(supplement)
-            return Response(service.serialize(supplement, check))
+            return Response(serialize(check))
 
         try:
             result = service.request_check(supplement)
         except SupplementMarketCheckError as exc:
             check = service.latest_for(supplement)
-            payload = service.serialize(supplement, check)
+            payload = serialize(check)
             payload["error"] = {
                 "code": exc.code,
                 "message": exc.public_message,
             }
             return Response(payload, status=exc.http_status)
 
-        payload = service.serialize(supplement, result.check)
+        payload = serialize(result.check)
         payload["queued"] = result.queued
         payload["cached"] = result.cached
         return Response(

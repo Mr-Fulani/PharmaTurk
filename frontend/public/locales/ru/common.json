@@ -1264,7 +1264,7 @@
   "supplement_market_check_timeout": "Проверка занимает больше обычного. Попробуйте позже.",
   "supplement_market_check_read_error": "Не удалось получить состояние проверки. Попробуйте позже.",
   "supplement_market_check_start_error": "Не удалось запустить проверку цены.",
-  "supplement_market_reference_price": "Справочная цена первоисточника",
+  "supplement_market_reference_price": "Справочная цена в выбранной валюте",
   "supplement_market_checked_at": "Проверено: {{date}}",
   "supplement_market_price_disclaimer": "Не является публичной офертой.",
   "supplement_market_price_stale": "последняя подтверждённая цена",
