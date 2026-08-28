@@ -204,7 +204,13 @@ def test_offer_check_distinguishes_not_found_and_gone(
 def test_flo_offer_check_fetches_only_saved_variant(monkeypatch):
     parser = FloParser()
     calls = []
-    monkeypatch.setattr(parser, "_make_offer_request", lambda url: calls.append(url) or "html")
+    monkeypatch.setattr(
+        parser,
+        "_make_offer_request",
+        lambda url, **kwargs: (
+            calls.append((url, kwargs)) or ("html", "https://www.flo.com.tr/urun/model-10001")
+        ),
+    )
     monkeypatch.setattr(parser, "_extract_product_detail", lambda html: {"name": "FLO"})
     monkeypatch.setattr(
         parser,
@@ -217,21 +223,79 @@ def test_flo_offer_check_fetches_only_saved_variant(monkeypatch):
         lambda url: pytest.fail("full color-group parse must not run"),
     )
 
-    result = parser.check_offer(_context(canonical_url="https://www.flo.com.tr/urun/1"))
+    result = parser.check_offer(_context(canonical_url="https://www.flo.com.tr/urun/model-10001"))
 
-    assert calls == ["https://www.flo.com.tr/urun/1"]
+    assert calls == [
+        (
+            "https://www.flo.com.tr/urun/model-10001",
+            {"include_final_url": True},
+        )
+    ]
     assert result.source_price == Decimal("109.90")
 
 
 def test_flo_offer_check_reports_malformed_payload(monkeypatch):
     parser = FloParser()
-    monkeypatch.setattr(parser, "_make_offer_request", lambda url: "html")
+    monkeypatch.setattr(
+        parser,
+        "_make_offer_request",
+        lambda url, **kwargs: ("html", url),
+    )
     monkeypatch.setattr(parser, "_extract_product_detail", lambda html: None)
 
     with pytest.raises(MalformedOfferResponse) as error:
-        parser.check_offer(_context(canonical_url="https://www.flo.com.tr/urun/1"))
+        parser.check_offer(_context(canonical_url="https://www.flo.com.tr/urun/model-10001"))
 
     assert error.value.error.code == OfferCheckErrorCode.MALFORMED_RESPONSE
+
+
+@pytest.mark.parametrize(
+    "final_url",
+    [
+        "https://www.flo.com.tr/yuruyus-ayakkabisi",
+        "https://www.flo.com.tr/urun/replacement-20002",
+    ],
+)
+def test_flo_offer_check_treats_redirect_away_from_saved_sku_as_not_found(
+    monkeypatch,
+    final_url,
+):
+    parser = FloParser()
+    monkeypatch.setattr(
+        parser,
+        "_make_offer_request",
+        lambda url, **kwargs: ("category html", final_url),
+    )
+
+    with pytest.raises(OfferNotFound) as error:
+        parser.check_offer(_context(canonical_url="https://www.flo.com.tr/urun/old-name-10001"))
+
+    assert error.value.error.code == OfferCheckErrorCode.NOT_FOUND
+    assert error.value.error.retryable is False
+
+
+def test_flo_offer_check_accepts_canonical_rename_with_same_sku(monkeypatch):
+    parser = FloParser()
+    final_url = "https://www.flo.com.tr/urun/new-name-10001"
+    monkeypatch.setattr(
+        parser,
+        "_make_offer_request",
+        lambda url, **kwargs: ("html", final_url),
+    )
+    monkeypatch.setattr(parser, "_extract_product_detail", lambda html: {"name": "FLO"})
+    variant = _fashion_product().attributes["fashion_variants"][0]
+    variant["external_url"] = final_url
+    monkeypatch.setattr(
+        parser,
+        "_build_color_variant",
+        lambda detail, url, sort_order: variant,
+    )
+
+    result = parser.check_offer(
+        _context(canonical_url="https://www.flo.com.tr/urun/old-name-10001")
+    )
+
+    assert result.canonical_url == final_url
 
 
 def test_lcw_offer_check_fetches_only_saved_variant(monkeypatch):

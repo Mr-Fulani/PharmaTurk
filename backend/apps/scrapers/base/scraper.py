@@ -366,12 +366,20 @@ class BaseScraper(ABC):
         
         return None
 
-    def _make_offer_request(self, url: str, **kwargs) -> str:
+    def _make_offer_request(
+        self,
+        url: str,
+        *,
+        include_final_url: bool = False,
+        **kwargs,
+    ) -> str | tuple[str, str]:
         """Single read-only request for live verification.
 
         Retries, caching and circuit breaking belong to SourceOfferVerificationService.
         Keeping this path separate preserves 404/410 semantics that the legacy full
-        scraper intentionally collapses to a missing detail result.
+        scraper intentionally collapses to a missing detail result. Parsers that need
+        to distinguish a canonical rename from a category redirect can request the
+        final URL without issuing a second supplier request.
         """
         if not url.startswith(("http://", "https://")):
             url = urljoin(self.base_url, url)
@@ -382,6 +390,8 @@ class BaseScraper(ABC):
             source=self.get_name(),
         )
         response.raise_for_status()
+        if include_final_url:
+            return response.text, str(response.url or url)
         return response.text
     
     def _parse_page(self, html: str, url: str) -> DataSelector:

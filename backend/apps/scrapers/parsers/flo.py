@@ -16,6 +16,7 @@ from ..base.offers import (
     MalformedOfferResponse,
     OfferCheckContext,
     OfferCheckResult,
+    OfferNotFound,
     result_from_scraped_product,
     translate_offer_check_errors,
 )
@@ -317,13 +318,25 @@ class FloParser(BaseScraper):
     @translate_offer_check_errors
     def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
         """Fetch only the saved color URL; do not traverse sibling color variants."""
-        html = self._make_offer_request(offer.canonical_url)
+        html, final_url = self._make_offer_request(
+            offer.canonical_url,
+            include_final_url=True,
+        )
         if self._looks_like_challenge(html):
             raise ScraperAccessBlockedError(source="FLO", status_code=403, url=offer.canonical_url)
+
+        # FLO redirects removed products to a generic category with HTTP 200. That is
+        # a terminal missing-offer signal, not a transient malformed response. Never
+        # substitute a different SKU; a canonical rename with the same SKU is valid.
+        requested_sku = self._sku_from_url(offer.canonical_url)
+        final_sku = self._sku_from_url(final_url)
+        if not requested_sku or not final_sku or final_sku != requested_sku:
+            raise OfferNotFound(offer.canonical_url)
+
         detail = self._extract_product_detail(html)
         if not detail or not detail.get("name"):
             raise MalformedOfferResponse()
-        variant = self._build_color_variant(detail, offer.canonical_url, 0)
+        variant = self._build_color_variant(detail, final_url, 0)
         scraped = ScrapedProduct(
             name=clean_text(str(detail.get("name") or "")),
             price=variant.get("price"),
