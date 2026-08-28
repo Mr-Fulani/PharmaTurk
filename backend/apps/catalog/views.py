@@ -135,6 +135,7 @@ from .card_payload import compact_card_product_payload
 from .querysets import non_public_shadow_product_q
 from .throttles import (
     MEDICINE_MARKET_CHECK_THROTTLES,
+    PRODUCT_CARD_SOURCE_REFRESH_THROTTLES,
     SUPPLEMENT_MARKET_CHECK_THROTTLES,
 )
 from apps.feedback.review_aggregates import attach_review_aggregates
@@ -1833,6 +1834,40 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         from apps.catalog.services.product_resolve import build_resolve_response
 
         return build_resolve_response(request, (product_slug or '').strip())
+
+    @extend_schema(
+        summary="Обновить цену и наличие спарсенной карточки",
+        description=(
+            "POST ставит безопасную проверку первоисточника в очередь; GET возвращает "
+            "её состояние. Ручные товары и справочные лекарства остаются без изменений."
+        ),
+    )
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="source-refresh",
+        authentication_classes=[JWTSafeAuthentication],
+        permission_classes=[AllowAny],
+        throttle_classes=PRODUCT_CARD_SOURCE_REFRESH_THROTTLES,
+    )
+    def source_refresh(self, request, *args, **kwargs):
+        from apps.catalog.services.product_card_source_refresh import (
+            ProductCardSourceRefreshService,
+        )
+
+        product = self.get_object()
+        service = ProductCardSourceRefreshService()
+        payload = (
+            service.request_refresh(product)
+            if request.method == "POST"
+            else service.status(product)
+        )
+        response_status = (
+            status.HTTP_202_ACCEPTED
+            if payload.get("status") in {"pending", "running"}
+            else status.HTTP_200_OK
+        )
+        return Response(payload, status=response_status)
 
     @action(detail=False, methods=['get'], url_path='book-filters')
     @extend_schema(

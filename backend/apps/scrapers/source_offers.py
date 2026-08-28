@@ -265,8 +265,15 @@ def record_scraped_product_offers(
     product: Product,
     scraped_product: ScrapedProduct,
     scraper_config: Any = None,
+    deactivate_missing: bool = True,
 ) -> list[ProductSourceOffer]:
-    """Upsert observations and deactivate missing options only in the same source group."""
+    """Upsert observations from one complete supplier-product response.
+
+    Catalogue crawls keep the historical ``deactivate_missing=True`` behaviour.
+    Demand-driven card refreshes pass ``False``: a single partial/defensive source
+    response may reactivate and update observed options, but may never make an
+    unobserved colour or size disappear from the public card.
+    """
     parser_key = _clean(
         scraped_product.source or getattr(scraper_config, "parser_class", ""),
         100,
@@ -326,7 +333,7 @@ def record_scraped_product_offers(
         seen_offer_keys.add(offer_key)
 
     external_product_id = _clean(scraped_product.external_id, 500)
-    if external_product_id:
+    if deactivate_missing and external_product_id:
         (
             ProductSourceOffer.objects.filter(
                 product=product,

@@ -47,3 +47,19 @@ SUPPLEMENT_MARKET_CHECK_THROTTLES = [
     SupplementMarketCheckBurstThrottle,
     SupplementMarketCheckSustainedThrottle,
 ]
+
+
+class ProductCardSourceRefreshBurstThrottle(_MarketCheckPostThrottle):
+    scope = "product_card_source_refresh_burst"
+    rate = "30/min"
+
+
+class ProductCardSourceRefreshSustainedThrottle(_MarketCheckPostThrottle):
+    scope = "product_card_source_refresh_sustained"
+    rate = "1000/day"
+
+
+PRODUCT_CARD_SOURCE_REFRESH_THROTTLES = [
+    ProductCardSourceRefreshBurstThrottle,
+    ProductCardSourceRefreshSustainedThrottle,
+]

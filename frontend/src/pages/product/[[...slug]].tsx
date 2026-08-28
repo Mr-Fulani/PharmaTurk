@@ -538,6 +538,14 @@ interface Product {
   gender?: string | null
 }
 
+type ProductSourceRefreshState = {
+  eligible: boolean
+  status: 'not_eligible' | 'idle' | 'pending' | 'running' | 'succeeded' | 'failed'
+  message?: string
+  error_code?: string
+  retryable?: boolean
+}
+
 interface FooterSettings {
   phone: string
   email: string
@@ -620,6 +628,7 @@ export default function ProductPage({
   const router = useRouter()
   const { theme } = useTheme()
   const [product, setProduct] = useState<Product | null>(initialProduct)
+  const [sourceRefresh, setSourceRefresh] = useState<ProductSourceRefreshState | null>(null)
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary>({ averageRating: 0, count: 0 })
   const [questionSummary, setQuestionSummary] = useState<QuestionSummary>({ count: 0 })
   const [feedbackTab, setFeedbackTab] = useState<ProductFeedbackTab>('reviews')
@@ -627,6 +636,76 @@ export default function ProductPage({
   useEffect(() => {
     setProduct(initialProduct)
   }, [initialProduct])
+
+  useEffect(() => {
+    const slug = initialProduct?.slug
+    if (!router.isReady || !slug || typeof window === 'undefined') return
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let pollCount = 0
+    const endpoint = `catalog/products/${encodeURIComponent(slug)}/source-refresh`
+
+    const reloadCard = async () => {
+      const response = await getSingleFlight<{ payload?: Product }>(
+        `catalog/products/resolve/${encodeURIComponent(slug)}`
+      )
+      const payload = response?.data?.payload
+      if (!cancelled && payload) setProduct(payload)
+    }
+
+    const consume = async (payload: ProductSourceRefreshState) => {
+      if (cancelled || !payload?.eligible) return
+      setSourceRefresh(payload)
+      if (payload.status === 'succeeded') {
+        await reloadCard()
+        return
+      }
+      if (!['pending', 'running'].includes(payload.status)) return
+      if (pollCount >= 20) {
+        setSourceRefresh({
+          eligible: true,
+          status: 'failed',
+          retryable: true,
+          message: t(
+            'product_source_refresh_timeout',
+            'Обновление занимает больше обычного. Показаны последние данные.'
+          ),
+        })
+        return
+      }
+      pollCount += 1
+      timer = setTimeout(async () => {
+        try {
+          const response = await api.get<ProductSourceRefreshState>(endpoint)
+          await consume(response.data)
+        } catch {
+          if (!cancelled) {
+            setSourceRefresh({
+              eligible: true,
+              status: 'failed',
+              retryable: true,
+              message: t(
+                'product_source_refresh_read_error',
+                'Не удалось получить результат обновления. Показаны последние данные.'
+              ),
+            })
+          }
+        }
+      }, 1200)
+    }
+
+    api.post<ProductSourceRefreshState>(endpoint)
+      .then((response) => consume(response.data))
+      // Во время rolling deploy старый backend может ещё не знать endpoint.
+      // Не показываем ошибку ручным товарам, eligibility которых клиент не знает.
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [initialProduct?.slug, router.isReady, t])
 
   useEffect(() => {
     if (!router.isReady || typeof window === 'undefined') return
@@ -2128,6 +2207,38 @@ export default function ProductPage({
             <div className={`${isSupplement && product.can_add_to_cart !== true ? 'mt-1' : 'mt-3'} text-xl font-semibold text-red-600`}>
               {displayPrice || t('price_on_request')}
             </div>
+            {sourceRefresh?.eligible && sourceRefresh.status !== 'idle' && (
+              <div
+                className={`mt-1 flex items-center gap-1.5 text-xs ${sourceRefresh.status === 'failed'
+                  ? 'text-amber-700 dark:text-amber-300'
+                  : sourceRefresh.status === 'succeeded'
+                    ? 'text-emerald-700 dark:text-emerald-300'
+                    : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                role="status"
+                aria-live="polite"
+              >
+                {['pending', 'running'].includes(sourceRefresh.status) && (
+                  <span
+                    className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
+                    aria-hidden="true"
+                  />
+                )}
+                <span>
+                  {['pending', 'running'].includes(sourceRefresh.status)
+                    ? t(
+                      'product_source_refresh_running',
+                      'Обновляем цену, цвета, размеры и наличие…'
+                    )
+                    : sourceRefresh.status === 'succeeded'
+                      ? t('product_source_refresh_succeeded', 'Цена и наличие обновлены')
+                      : t(
+                        'product_source_refresh_failed',
+                        'Не удалось обновить данные. Показаны последние сохранённые значения.'
+                      )}
+                </span>
+              </div>
+            )}
             {displayOldPriceLabel && (
               <div className="mt-1 flex items-baseline gap-2">
                 <div className="text-sm text-gray-400 line-through">
@@ -2178,6 +2289,7 @@ export default function ProductPage({
                         const isActive = c === selectedColor
                         const label = pickerLabel(c)
                         const variantForColor = resolveVariantByPickerValue(c) || null
+                        const isVariantAvailable = variantForColor?.is_available !== false
                         const rawThumb =
                           normalizeMediaValue(variantForColor?.main_image) ||
                           normalizeMediaValue(variantForColor?.images?.find((img) => img.is_main)?.image_url) ||
@@ -2204,13 +2316,17 @@ export default function ProductPage({
                             <button
                               type="button"
                               onClick={() => {
+                                if (!isVariantAvailable) return
                                 setSelectedColor(c)
                                 pickVariant(c)
                               }}
+                              disabled={!isVariantAvailable}
                               title={colorText}
                               aria-label={colorText}
                               aria-pressed={isActive}
-                              className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-white transition ${isActive
+                              className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-white transition ${!isVariantAvailable
+                                ? 'cursor-not-allowed border-gray-200 opacity-40 grayscale'
+                                : isActive
                                 ? 'border-violet-600 ring-2 ring-violet-200'
                                 : 'border-gray-300 hover:border-violet-400'
                                 }`}
@@ -2276,6 +2392,7 @@ export default function ProductPage({
                         const isActive = c === selectedColor
                         const label = pickerLabel(c)
                         const variantForColor = resolveVariantByPickerValue(c) || null
+                        const isVariantAvailable = variantForColor?.is_available !== false
                         const rawThumb =
                           normalizeMediaValue(variantForColor?.main_image) ||
                           normalizeMediaValue(variantForColor?.images?.find((img) => img.is_main)?.image_url) ||
@@ -2295,13 +2412,17 @@ export default function ProductPage({
                           <button
                             key={c}
                             onClick={() => {
+                              if (!isVariantAvailable) return
                               setSelectedColor(c)
                               pickVariant(c)
                             }}
+                            disabled={!isVariantAvailable}
                             type="button"
                             title={label}
                             aria-label={label}
-                            className={`h-16 w-16 overflow-hidden rounded-md border bg-white transition ${isActive
+                            className={`h-16 w-16 overflow-hidden rounded-md border bg-white transition ${!isVariantAvailable
+                              ? 'cursor-not-allowed border-gray-200 opacity-40 grayscale'
+                              : isActive
                               ? 'border-violet-600 ring-2 ring-violet-200'
                               : 'border-gray-300 hover:border-violet-400'
                               }`}

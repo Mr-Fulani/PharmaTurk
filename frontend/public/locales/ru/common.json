@@ -1271,6 +1271,11 @@
   "supplement_consult_button": "Уточнить наличие у консультанта",
   "supplement_page_seo_description": "Справочная информация и цена {{name}} в Турции. Наличие и итоговую стоимость подтверждает консультант {{site}}.",
   "supplement_reference_price_label": "Справочная цена, не публичная оферта",
+  "product_source_refresh_running": "Обновляем цену, цвета, размеры и наличие…",
+  "product_source_refresh_succeeded": "Цена и наличие обновлены",
+  "product_source_refresh_failed": "Не удалось обновить данные. Показаны последние сохранённые значения.",
+  "product_source_refresh_timeout": "Обновление занимает больше обычного. Показаны последние данные.",
+  "product_source_refresh_read_error": "Не удалось получить результат обновления. Показаны последние данные.",
 
   "cookie_banner_label": "Уведомление о cookie",
   "cookie_banner_title": "Мы используем cookie",

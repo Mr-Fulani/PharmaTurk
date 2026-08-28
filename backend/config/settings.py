@@ -549,6 +549,35 @@ SOURCE_OFFER_DEFAULT_RATE_PER_MINUTE = env.int(
 SOURCE_OFFER_SOURCE_RATE_PER_MINUTE = env.json(
     "SOURCE_OFFER_SOURCE_RATE_PER_MINUTE", default={}
 )
+# Demand-driven full-card refresh is isolated from checkout verification. It may
+# update only importer-owned price/inventory fields of a persisted source offer.
+PRODUCT_CARD_SOURCE_REFRESH_ENABLED = env.bool(
+    "PRODUCT_CARD_SOURCE_REFRESH_ENABLED", default=False
+)
+PRODUCT_CARD_SOURCE_REFRESH_SOURCES = env.list(
+    "PRODUCT_CARD_SOURCE_REFRESH_SOURCES", default=[]
+)
+PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS = env.float(
+    "PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS", default=12.0
+)
+PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES = env.int(
+    "PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES", default=1
+)
+PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS = env.int(
+    "PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS", default=300
+)
+PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS = env.int(
+    "PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS", default=30
+)
+PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS = env.int(
+    "PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS", default=150
+)
+PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO = env.float(
+    "PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO", default=0.05
+)
+PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO = env.float(
+    "PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO", default=20.0
+)
 # Proactive refresh is intentionally a separate rollout gate. Celery Beat may
 # enqueue the task while disabled; the task exits before selecting rows or doing I/O.
 SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED = env.bool(

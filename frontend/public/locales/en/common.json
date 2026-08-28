@@ -1329,6 +1329,11 @@
   "supplement_consult_button": "Confirm availability with a consultant",
   "supplement_page_seo_description": "Reference information and the Turkish price for {{name}}. A {{site}} consultant confirms availability and the final price.",
   "supplement_reference_price_label": "Reference price, not a public offer",
+  "product_source_refresh_running": "Updating price, colours, sizes and availability…",
+  "product_source_refresh_succeeded": "Price and availability updated",
+  "product_source_refresh_failed": "The update failed. The last saved values are shown.",
+  "product_source_refresh_timeout": "The update is taking longer than usual. The last saved values are shown.",
+  "product_source_refresh_read_error": "The update status could not be loaded. The last saved values are shown.",
 
   "cookie_banner_label": "Cookie notice",
   "cookie_banner_title": "We use cookies",

@@ -1,6 +1,6 @@
 # Source offer: эксплуатация и диагностика
 
-Последняя проверка по коду: 2026-08-27
+Последняя проверка по коду: 2026-08-29
 Владелец: catalog-commerce
 Контур: parser adapters → `ProductSourceOffer` → cart/checkout → background refresh → detail/YML
 
@@ -23,6 +23,9 @@
 5. включить bounded background refresh;
 6. включить cart enforcement, выполнить обычный и crypto staging smoke;
 7. только после стабильного окна включить catalog/YML projection.
+8. отдельно включить `PRODUCT_CARD_SOURCE_REFRESH_ENABLED=true` сначала для одного
+   parser key. Этот reader/writer не зависит от background refresh и не должен
+   включаться сразу для всего allowlist.
 
 Не включайте пустой allowlist как первый rollout: при включённой verification пустое
 значение означает все зарегистрированные adapters.
@@ -40,6 +43,11 @@
 | `SOURCE_OFFER_BACKGROUND_LOCK_SECONDS` | `330` | lock дольше 300-секундного hard timeout задачи |
 | `SOURCE_OFFER_CART_ENFORCEMENT_ENABLED` | `false` | применение проверки в cart/checkout |
 | `SOURCE_OFFER_CATALOG_PROJECTION_ENABLED` | `false` | DB-only projection свежего status в detail/YML |
+| `PRODUCT_CARD_SOURCE_REFRESH_ENABLED` | `false` | async обновление спарсенной карточки при открытии |
+| `PRODUCT_CARD_SOURCE_REFRESH_SOURCES` | один parser key | обязательный allowlist; пусто означает, что ни один товар не eligible |
+| `PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS` | `300` | freshness/success TTL и защита от повторных запросов |
+| `PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS` | `30` | короткий cooldown retryable source errors |
+| `PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS` | `150` | singleflight одной карточки, дольше hard timeout task |
 
 Task и verifier имеют независимые границы. Даже при ошибочной большой batch-настройке
 один запуск не возьмёт больше 100 offers; timeout/retry, per-source rate/concurrency,
@@ -91,6 +99,10 @@ Prometheus endpoint проекта — `/metrics`. Основные ряды:
 - `source_offer_verification_changes_total{source,field}` — price/availability/stock drift;
 - `source_offer_stale_backlog` — число stale active offers в allowlist;
 - `source_offer_background_refresh_total{outcome}` — состояние scheduled runs.
+- `product_card_source_refresh_total{source,outcome}` — результат полного card refresh;
+- `product_card_source_refresh_seconds{source}` — latency полного card refresh;
+- `product_card_source_refresh_changes_total{source,field}` — изменения raw price и
+  созданные/обновлённые variants/sizes.
 
 Репозиторные alert rules находятся в
 `ops/prometheus/source_offer_alerts.yml`. В Compose проекта Prometheus/Alertmanager не
@@ -169,10 +181,11 @@ Detail API проецирует `availability_status` и `is_available`; fronten
 Откатывайте readers, не данные:
 
 1. `SOURCE_OFFER_CATALOG_PROJECTION_ENABLED=false`;
-2. `SOURCE_OFFER_CART_ENFORCEMENT_ENABLED=false`;
-3. `SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED=false`;
-4. удалите проблемный parser key из allowlist или выключите verification полностью;
-5. оставьте offer history и immutable order snapshots для аудита.
+2. `PRODUCT_CARD_SOURCE_REFRESH_ENABLED=false`;
+3. `SOURCE_OFFER_CART_ENFORCEMENT_ENABLED=false`;
+4. `SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED=false`;
+5. удалите проблемный parser key из allowlist или выключите verification полностью;
+6. оставьте offer history и immutable order snapshots для аудита.
 
 Paid webhook не запускает parser и не должен меняться при этом rollback. Откат таблиц
 после production orders требует экспорта source snapshots и отдельного change plan.

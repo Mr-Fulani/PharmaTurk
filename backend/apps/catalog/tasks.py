@@ -63,6 +63,26 @@ def refresh_supplement_market_check_task(check_id: int) -> dict:
     return SupplementMarketCheckService().run(check_id)
 
 
+@shared_task(
+    name="catalog.refresh_product_card_source",
+    soft_time_limit=100,
+    time_limit=120,
+    acks_late=True,
+)
+def refresh_product_card_source_task(product_id: int, lock_token: str) -> dict:
+    """Refresh one parsed card without invoking the content-import pipeline."""
+
+    from apps.catalog.services.product_card_source_refresh import (
+        ProductCardSourceRefreshService,
+    )
+
+    service = ProductCardSourceRefreshService()
+    try:
+        return service.run(product_id)
+    finally:
+        service.release_lock(product_id, lock_token)
+
+
 @shared_task
 def refresh_stock() -> str:
     """Обновляет данные о наличии товаров (заглушка)."""
