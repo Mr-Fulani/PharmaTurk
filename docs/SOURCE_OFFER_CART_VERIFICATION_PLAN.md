@@ -1257,6 +1257,66 @@ offer-строк; штатный rollback следующих фаз — откл
   восстановления сохранена; свободное место увеличилось с `2.1 GB` до `2.5 GB`,
   Qdrant продолжает работать.
 
+### Market-check currency/margin consistency `6299680` — production 2026-08-28
+
+- [x] Установлена корневая причина переключения карточки в TRY: market-check API
+  возвращал только исходную цену источника, а frontend после проверки перезаписывал
+  ею уже рассчитанную публичную цену. Из-за этого выбранная пользователем валюта и
+  общий pricing pipeline обходились.
+- [x] Исходная цена сохранена в прежнем поле `price` как source truth для истории и
+  обратной совместимости. API дополнительно возвращает `display_price` в валюте
+  запроса `X-Currency` и `price_calculation` с применённой валютной и товарной
+  маржой. Один и тот же backend pricing service используется для medicine и
+  supplement market-check; при ошибке конвертации raw source price не искажается.
+- [x] Frontend medicine и supplement сначала использует `display_price`, форматирует
+  его общим formatter и только затем обновляет цену карточки. Для старого backend
+  оставлен fallback к raw `price`; RU/EN подпись БАДов уточняет, что это справочная
+  цена в выбранной валюте.
+- [x] Порядок расчёта подтверждён по production-настройкам: сначала conversion rate
+  и margin валютной пары, затем один effective product markup с приоритетом
+  `brand > category > global`. Brand/category/global не складываются между собой.
+  Для RAPAMUNE source price `12225.03 TRY`, TRY→RUB rate `1.788010`, pair margin
+  `10%`, brand margin `0%`, category «Медицина» `50%`, global `15%`; поэтому
+  применяется category, а не global: `12225.03 × 1.788010 × 1.10 × 1.50 =
+  36066.50 RUB` (в карточке `36 067 RUB`).
+- [x] Regression gates зелёные: связанные backend suites — `30 passed`; полный
+  backend suite — `1239 passed` и `30 subtests passed`; frontend — `62 passed`,
+  TypeScript без ошибок, lint `0 errors`/`43` существующих warnings, production
+  Next build успешен. Django check, migration drift и exact-image isolated
+  full-stack smoke на чистых state volumes также пройдены.
+- [x] Exact release images для commit
+  `6299680a58a726c68fa8256ed64246b66a5a3dca`: backend
+  `sha256:724ad3c72e8104498cafe7d9746a720ee45c1f54838c782eed1f091a641878a7`
+  под user `app`, frontend
+  `sha256:3537d9302e69c5eb00481928137cc7da165bd1c592f8a0ebacface174a10708f`
+  под user `node`; revision labels совпадают с полным Git SHA.
+- [x] Перед deploy создан проверенный backup
+  `/home/deploy/backups/pharmaturk/20260828T173952Z_pre_f411d42_to_6299680`:
+  PostgreSQL SHA-256
+  `6357cc981bd43ac332f702b8f583061b1de5b13948e9f6384be18479c8de4e46`,
+  Qdrant SHA-256
+  `3e304aa918cb96ac3ef2474be56e2213752c6a9750309cc832f92b1f4edfb9f6`;
+  PostgreSQL dump проходит `pg_restore --list`, backup-файлы закрыты правами `600`.
+- [x] Controlled deploy `f411d4201dc4963ced2e08036401d391a3e3b746` →
+  `6299680a58a726c68fa8256ed64246b66a5a3dca` выполнен без миграций и без
+  пересоздания PostgreSQL/Redis/Qdrant. Backend, frontend и все Celery services
+  healthy и используют exact revision; public liveness/readiness/security smoke
+  зелёные.
+- [x] Production canary проверил все поддерживаемые валюты. Raw source во всех
+  ответах остался `12225.03 TRY`, а `display_price` совпал до Decimal с обычной
+  публичной ценой товара: RUB `36066.50`, USD `381.47`, EUR `326.90`, KZT
+  `193827.86`, USDT `400.53`, TRY `18337.55`. Публичный POST с действующей
+  Django-сессией, без CSRF header и с `X-Currency: RUB` вернул `200 succeeded`;
+  временные user/session удалены, в логах нет новых error/traceback/forbidden.
+- [x] После сверки внешней Qdrant-копии с manifest удалён только внутренний
+  snapshot-дубликат. Старые неиспользуемые local images `234315c...`/`289b978...`
+  удалены, но остаются восстановимыми из public GHCR/backups; текущий release и
+  непосредственные rollback images `f411d42...`/`65b29cf...` сохранены. На диске
+  свободно около `3.0 GB`.
+- [ ] Следующий отдельный rollout — FLO, затем ZARA: exact image/config с trusted
+  proxy CA, source canary и последовательное расширение allowlist. На текущую
+  валютную корректность medicine/supplement market-check этот этап не влияет.
+
 ## Оценка
 
 - Фазы 1–4: 8–12 рабочих дней.
