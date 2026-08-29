@@ -1,8 +1,10 @@
 # Обновление спарсенной карточки при открытии
 
-Последняя проверка по коду: 2026-08-29  
-Ветка реализации: `codex/product-card-source-refresh`  
-Проверенный release SHA: `a10326dc21b414583bb8c882742089fcc0d2715f`
+Последняя проверка по коду и production: 2026-08-29
+
+Ветка реализации: `codex/product-card-source-refresh-lcw-hotfix`
+
+Развёрнутый release SHA: `60dfefa21fabcfa4b5bfbc7d612c34255f87d95d`
 Контур: product detail → async source refresh → inventory-only reconcile → detail refetch
 
 ## Цель и неизменяемые правила
@@ -47,7 +49,7 @@
 - [x] Добавлены regression-тесты для manual no-op, content preservation, новой и
   вернувшейся матрицы вариантов, raw price + markup, identity error, singleflight и
   смены/потери supplier SKU без дублирования source offer.
-- [x] Полный backend gate в изолированной серверной среде: `1262 passed`, `30 subtests
+- [x] Полный backend gate в изолированной серверной среде: `1265 passed`, `30 subtests
   passed`, Django system check без ошибок, migration drift отсутствует.
 - [x] Frontend gates: `npm audit` — 0 vulnerabilities, TypeScript, 62 unit tests,
   ESLint без ошибок и успешный Next.js production build.
@@ -71,10 +73,22 @@
   hash ранее существовавшего контента и `53` media rows совпал с verified backup.
 - [x] LCW negative canary: нестабильный supplier group id дал `identity_mismatch`;
   цена, `84` размера, offers и protected hash остались без изменений.
-- [ ] Узкий LCW group-id hotfix (только при точном совпадении variant key + URL),
-  regression gate, deploy и повторный positive canary.
-- [ ] Canary простых источников Ummaland и Akakçe; проверка fail-safe ошибок proxy.
-- [ ] Поочерёдное включение полного allowlist и окно наблюдения без массового запуска.
+- [x] Узкий LCW group-id hotfix допускает drift supplier group id только при точном
+  совпадении сохранённых variant key + canonical URL; negative regression не разрешает
+  похожий, но другой товар.
+- [x] Частичный LCW-ответ без размеров не создаёт summary-offers с пустым `size_key`,
+  если для цвета уже существуют сохранённые размерные offers; regression добавлен.
+- [x] Deploy `60dfefa`, очистка четырёх canary summary-offers и повторный LCW canary:
+  `12` цветов, `84` размера, `84` активных offer, `0` пустых размеров; protected hash
+  до/после совпал.
+- [x] Ummaland canary: raw/base цена `1216 → 1520 RUB`, публичная цена с действующей
+  наценкой — `1748 RUB`; protected hash совпал.
+- [x] Akakçe canary для БАДа: raw/base цена `360 TRY`, наличие восстановлено,
+  публичная цена в выбранной валюте — `849.66 RUB`; protected hash совпал.
+- [x] Полный allowlist включён поэтапно без массового запуска. Bershka, Pull&Bear и
+  Massimo Dutti пока не имеют активных production offers и не создают нагрузку.
+- [x] Финальный HTTPS liveness/readiness/security smoke пройден; все application
+  containers работают на `60dfefa`, критических refresh/traceback строк после canary — `0`.
 
 ## Ошибки и поведение карточки
 
