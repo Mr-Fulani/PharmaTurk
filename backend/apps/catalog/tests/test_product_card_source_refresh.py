@@ -39,16 +39,24 @@ class DummyAkakceParser:
         raise AssertionError("network adapter must be mocked in this test")
 
 
+class DummyLcwParser:
+    pass
+
+
 def _fake_registry(value):
     if value == "zara":
         return DummyZaraParser
     if value == "akakce":
         return DummyAkakceParser
+    if value == "lcw":
+        return DummyLcwParser
     host = (urlparse(str(value or "")).hostname or "").casefold()
     if host == "www.zara.com" or host.endswith(".zara.com"):
         return DummyZaraParser
     if host == "www.akakce.com" or host.endswith(".akakce.com"):
         return DummyAkakceParser
+    if host == "www.lcw.com" or host.endswith(".lcw.com"):
+        return DummyLcwParser
     return None
 
 
@@ -61,7 +69,7 @@ def refresh_settings(settings, monkeypatch):
         }
     }
     settings.PRODUCT_CARD_SOURCE_REFRESH_ENABLED = True
-    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = ["zara", "akakce"]
+    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = ["zara", "akakce", "lcw"]
     settings.PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS = 1
     settings.PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES = 0
     settings.PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS = 300
@@ -343,6 +351,121 @@ def test_identity_error_keeps_card_and_offers_unchanged(parsed_clothing, monkeyp
         )
     ) == original_offer_values
     assert PriceHistory.objects.filter(product=product).count() == 0
+
+
+@pytest.mark.django_db
+def test_lcw_group_id_drift_is_allowed_only_for_the_exact_saved_variant(
+    parsed_clothing,
+    monkeypatch,
+):
+    product, domain, black, _red = parsed_clothing
+    lcw_url = "https://www.lcw.com/test-product-lacivert-o-200"
+    black.external_id = "lcw-var-200"
+    black.save(update_fields=["external_id"])
+    offers = list(product.source_offers.order_by("id"))
+    selected_offer = offers[0]
+    selected_offer.parser_key = "lcw"
+    selected_offer.canonical_url = lcw_url
+    selected_offer.external_product_id = "lcw-100"
+    selected_offer.variant_key = "lcw-var-200"
+    selected_offer.source_domain = ""
+    selected_offer.offer_key = ""
+    selected_offer.save()
+    offers[1].parser_key = "lcw"
+    offers[1].canonical_url = "https://www.lcw.com/test-product-red-o-300"
+    offers[1].external_product_id = "lcw-100"
+    offers[1].source_domain = ""
+    offers[1].offer_key = ""
+    offers[1].save()
+
+    scraped = ScrapedProduct(
+        name="Supplier title",
+        price=120,
+        currency="TRY",
+        url=lcw_url,
+        external_id="lcw-200",
+        source="lcw",
+        is_available=True,
+        attributes={
+            "fashion_variants": [
+                {
+                    "external_id": "lcw-var-200",
+                    "external_url": lcw_url,
+                    "display_name": "Supplier blue title",
+                    "color": "Lacivert",
+                    "sku": "SKU-black-S",
+                    "price": 120,
+                    "currency": "TRY",
+                    "is_available": True,
+                    "sizes": [{"size": "S", "is_available": True}],
+                }
+            ]
+        },
+    )
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_fetch_product", lambda target: scraped)
+
+    result = service.run(product.pk)
+
+    assert result["status"] == "succeeded"
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    black.refresh_from_db()
+    selected_offer.refresh_from_db()
+    assert product.price == domain.price == black.price == Decimal("120.00")
+    assert selected_offer.external_product_id == "lcw-200"
+    assert selected_offer.variant_key == "lcw-var-200"
+    assert product.source_offers.filter(parser_key="lcw").count() == 2
+
+
+@pytest.mark.django_db
+def test_lcw_group_id_drift_rejects_a_different_variant(parsed_clothing, monkeypatch):
+    product, domain, black, _red = parsed_clothing
+    lcw_url = "https://www.lcw.com/test-product-lacivert-o-200"
+    offer = product.source_offers.order_by("id").first()
+    offer.parser_key = "lcw"
+    offer.canonical_url = lcw_url
+    offer.external_product_id = "lcw-100"
+    offer.variant_key = "lcw-var-200"
+    offer.source_domain = ""
+    offer.offer_key = ""
+    offer.save()
+    product.source_offers.exclude(pk=offer.pk).update(is_active=False)
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(
+        service,
+        "_fetch_product",
+        lambda target: ScrapedProduct(
+            name="Different supplier item",
+            price=120,
+            currency="TRY",
+            url=lcw_url,
+            external_id="lcw-999",
+            source="lcw",
+            is_available=True,
+            attributes={
+                "fashion_variants": [
+                    {
+                        "external_id": "lcw-var-999",
+                        "external_url": lcw_url,
+                        "price": 120,
+                        "currency": "TRY",
+                        "is_available": True,
+                        "sizes": [{"size": "S", "is_available": True}],
+                    }
+                ]
+            },
+        ),
+    )
+
+    result = service.run(product.pk)
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "identity_mismatch"
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    black.refresh_from_db()
+    assert product.price == domain.price == black.price == Decimal("100.00")
 
 
 @pytest.mark.django_db

@@ -58,9 +58,23 @@
 - [x] IKEA canary выявил скрытый `Product.post_save` side effect на shadow metadata;
   flag сразу выключен, запись переведена на атомарный `QuerySet.update`, добавлен
   regression-тест отсутствия content signals, полный hotfix predeploy пройден.
-- [ ] Свежий backup и deploy hotfix `a10326d` с выключенным флагом.
-- [ ] Повторный canary IKEA, затем по одному FLO/LCW и Zara с content-only hash.
-- [ ] Поочерёдное включение allowlist и окно наблюдения без массового включения.
+- [x] Свежий backup и deploy hotfix `a10326d` с выключенным флагом.
+- [x] Повторный IKEA canary: цена/наличие обновлены, content-only и media hash не
+  изменились, `post_save` content pipeline не запускался.
+- [x] FLO canary: исходная цена обновлена `3599 → 3699 TRY`, матрица сохранена
+  (`7` цветов, `59` размеров), явно недоступные опции выключены, контентный hash
+  не изменился.
+- [x] Публичный валютный canary после FLO: raw price остался в TRY; detail в RUB/USD
+  отдал цену с текущим курсом, валютной маржой и товарной наценкой без записи
+  наценки в базовую цену.
+- [x] Zara canary: `7 → 9` цветов, `35 → 45` размеров, `1490 → 1590 TRY`;
+  hash ранее существовавшего контента и `53` media rows совпал с verified backup.
+- [x] LCW negative canary: нестабильный supplier group id дал `identity_mismatch`;
+  цена, `84` размера, offers и protected hash остались без изменений.
+- [ ] Узкий LCW group-id hotfix (только при точном совпадении variant key + URL),
+  regression gate, deploy и повторный positive canary.
+- [ ] Canary простых источников Ummaland и Akakçe; проверка fail-safe ошибок proxy.
+- [ ] Поочерёдное включение полного allowlist и окно наблюдения без массового запуска.
 
 ## Ошибки и поведение карточки
 

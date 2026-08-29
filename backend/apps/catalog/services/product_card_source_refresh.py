@@ -454,6 +454,30 @@ class ProductCardSourceRefreshService:
         expected = str(target.offer.external_product_id or target.product.external_id or "").strip()
         observed = str(scraped.external_id or "").strip()
         if expected and observed and expected != observed:
+            # LCW does not expose a durable parent/group id.  Its parser builds
+            # one from the lowest currently linked colour id, so removing that
+            # colour legitimately changes ``scraped.external_id``.  Accept the
+            # drift only when the exact persisted supplier variant and its URL
+            # are still present in the fresh matrix.  Parser/domain validation
+            # above remains mandatory and other sources stay strict.
+            attributes = scraped.attributes if isinstance(scraped.attributes, dict) else {}
+            variants = attributes.get("fashion_variants")
+            expected_variant = str(target.offer.variant_key or "").strip()
+            expected_url = str(target.offer.canonical_url or "").strip().rstrip("/")
+            lcw_variant_still_matches = (
+                parser_key == "lcw"
+                and expected_variant
+                and expected_url
+                and isinstance(variants, list)
+                and any(
+                    isinstance(row, dict)
+                    and str(row.get("external_id") or "").strip() == expected_variant
+                    and str(row.get("external_url") or "").strip().rstrip("/") == expected_url
+                    for row in variants
+                )
+            )
+            if lcw_variant_still_matches:
+                return
             raise ProductCardRefreshError(
                 "identity_mismatch", "Supplier product identity changed", retryable=False
             )

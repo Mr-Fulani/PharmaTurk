@@ -346,6 +346,24 @@ def record_scraped_product_offers(
             if len(semantic_matches) == 1:
                 offer = semantic_matches[0]
 
+            # LCW derives its parent product id from the lowest colour id that
+            # is linked at the moment.  That id changes when a colour vanishes,
+            # while the concrete variant URL/key/size remain stable.  Reuse the
+            # one unambiguous option row so a legitimate group-id drift does
+            # not create a parallel set of offers.  Keep this exception narrow:
+            # marketplace sources may need external_product_id to distinguish
+            # sellers sharing the same option labels.
+            if offer is None and parser_key == "lcw":
+                lcw_matches = list(
+                    locked_offers.filter(
+                        canonical_url=snapshot.canonical_url,
+                        variant_key=snapshot.variant_key,
+                        size_key=snapshot.size_key,
+                    ).order_by("id")[:2]
+                )
+                if len(lcw_matches) == 1:
+                    offer = lcw_matches[0]
+
         if offer is None:
             offer, _ = ProductSourceOffer.objects.update_or_create(
                 product=product,
