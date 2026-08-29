@@ -1483,6 +1483,34 @@ offer-строк; штатный rollback следующих фаз — откл
 `source_out_of_stock` блокировал продажу БАДа. Для остальных категорий fail-closed
 поведение не меняется.
 
+### БАДы: независимые price/discovery tasks `e4469b0` — production 2026-08-29
+
+- [x] Устранена скрытая связанность: Akakçe discovery больше не выполняется
+  внутри успешной IlacFiyati price task. Обе задачи ставятся независимо, поэтому
+  ошибка справочного источника не блокирует поиск seller identity, а свежая цена
+  не перезапускается только ради discovery.
+- [x] Для Akakçe добавлены отдельная идемпотентная Celery task, enqueue lock,
+  retry только временных ошибок и общий source-offer rate/concurrency guard.
+  Production limits: `1` одновременный discovery и `10` запросов в минуту.
+- [x] Full CI run `33255735944` зелёный для exact commit
+  `e4469b0953c403aa7eb061a6862fd3b8b4a09ccd`; migrations отсутствуют.
+- [x] Перед deploy создан и дважды проверен backup
+  `/home/deploy/backups/pharmaturk/20260829T135402Z_pre_babfac5`. После review
+  retention сохранены семь последних валидных копий, удалены ровно пять старых;
+  Docker build cache очищен. Свободное место выросло с критических `0–2.5 GiB`
+  до `7.9 GiB` (`78%` использования).
+- [x] Public canary SOLGAR: price task завершилась `525.90 TRY`, display price
+  `1235.66 RUB`; отдельная Akakçe task завершилась безопасным строгим `no_match`.
+  Betamega подтвердила конвертацию `450.00 TRY → 11.23 USD`.
+- [x] Отказной canary без сохранения изменений в БД: IlacFiyati вернула
+  `invalid_source`, но Akakçe task уже была поставлена и успешно завершилась.
+  Medicine RAPAMUNE независимо перешёл `pending → succeeded` и отдал
+  `12225.03 TRY → 35905.32 RUB`.
+- [x] Media canary и bounded cleanup исправили `45` зависших `processing`
+  лекарств с уже тремя изображениями: `errors=0`, `skipped=45`, сетевого поиска
+  не было. Финальный audit: exact revisions, restarts `0`, OOM `false`, strict
+  errors `0`, nginx 5xx `0`, public health зелёный.
+
 ## Оценка
 
 - Фазы 1–4: 8–12 рабочих дней.
