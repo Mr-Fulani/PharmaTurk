@@ -469,6 +469,66 @@ def test_lcw_group_id_drift_rejects_a_different_variant(parsed_clothing, monkeyp
 
 
 @pytest.mark.django_db
+def test_lcw_partial_variant_without_sizes_does_not_duplicate_saved_size_offers(
+    parsed_clothing,
+    monkeypatch,
+):
+    product, domain, black, _red = parsed_clothing
+    lcw_url = "https://www.lcw.com/test-product-lacivert-o-200"
+    black.external_id = "lcw-var-200"
+    black.save(update_fields=["external_id"])
+    offers = list(product.source_offers.order_by("id"))
+    selected_offer = offers[0]
+    selected_offer.parser_key = "lcw"
+    selected_offer.canonical_url = lcw_url
+    selected_offer.external_product_id = "lcw-100"
+    selected_offer.variant_key = "lcw-var-200"
+    selected_offer.source_domain = ""
+    selected_offer.offer_key = ""
+    selected_offer.save()
+    offers[1].is_active = False
+    offers[1].save(update_fields=["is_active"])
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(
+        service,
+        "_fetch_product",
+        lambda target: ScrapedProduct(
+            name="Supplier title",
+            price=120,
+            currency="TRY",
+            url=lcw_url,
+            external_id="lcw-200",
+            source="lcw",
+            is_available=True,
+            attributes={
+                "fashion_variants": [
+                    {
+                        "external_id": "lcw-var-200",
+                        "external_url": lcw_url,
+                        "price": 120,
+                        "currency": "TRY",
+                        "is_available": False,
+                        "sizes": [],
+                    }
+                ]
+            },
+        ),
+    )
+
+    result = service.run(product.pk)
+
+    assert result["status"] == "succeeded"
+    assert result["changes"]["offers_observed"] == 1
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    black.refresh_from_db()
+    assert product.price == domain.price == black.price == Decimal("120.00")
+    assert black.is_available is False
+    assert product.source_offers.filter(parser_key="lcw", is_active=True).count() == 1
+    assert not product.source_offers.filter(parser_key="lcw", size_key="").exists()
+
+
+@pytest.mark.django_db
 def test_repeated_open_uses_one_pending_task(parsed_clothing, monkeypatch):
     product, *_ = parsed_clothing
     calls = []

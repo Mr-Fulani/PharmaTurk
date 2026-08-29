@@ -266,6 +266,7 @@ def record_scraped_product_offers(
     scraped_product: ScrapedProduct,
     scraper_config: Any = None,
     deactivate_missing: bool = True,
+    skip_variant_summaries_with_saved_sizes: bool = False,
 ) -> list[ProductSourceOffer]:
     """Upsert observations from one complete supplier-product response.
 
@@ -281,6 +282,33 @@ def record_scraped_product_offers(
     snapshots = build_source_offer_snapshots(scraped_product, parser_key=parser_key)
     if not parser_key or not snapshots:
         return []
+
+    if skip_variant_summaries_with_saved_sizes:
+        # A defensive/partial fashion response may expose a colour but omit its
+        # size selector.  When size-level offers already exist, persisting that
+        # response as a new ``size_key=''`` offer creates a second identity for
+        # the same variant and cannot safely update any particular size.  Keep
+        # the snapshot available to the card reconciler, but do not add a
+        # summary offer; cart verification will continue to check the selected
+        # saved size directly.
+        saved_sized_variant_keys = set(
+            ProductSourceOffer.objects.filter(
+                product=product,
+                parser_key=parser_key,
+                is_active=True,
+            )
+            .exclude(size_key="")
+            .values_list("variant_key", flat=True)
+        )
+        snapshots = [
+            snapshot
+            for snapshot in snapshots
+            if snapshot.size_key
+            or not snapshot.variant_key
+            or snapshot.variant_key not in saved_sized_variant_keys
+        ]
+        if not snapshots:
+            return []
 
     observed_at = timezone.now()
     parser_config_payload = {}

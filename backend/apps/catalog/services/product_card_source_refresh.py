@@ -919,6 +919,7 @@ class ProductCardSourceRefreshService:
                 scraped_product=scraped,
                 scraper_config=self._scraper_config(target.offer),
                 deactivate_missing=False,
+                skip_variant_summaries_with_saved_sizes=True,
             )
         self._update_domain_price_stock(
             product,
