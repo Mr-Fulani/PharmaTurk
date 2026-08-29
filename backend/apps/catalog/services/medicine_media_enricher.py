@@ -20,6 +20,11 @@ from apps.recommendations.services import safe_image_fetcher
 
 logger = logging.getLogger(__name__)
 
+MEDIA_ENRICHMENT_MAX_IMAGES = "Достигнуто максимальное количество изображений"
+MEDIA_ENRICHMENT_RECENT_NO_RESULT = "Недавний поиск уже завершился без результата"
+MEDIA_ENRICHMENT_NO_CANDIDATES = "Изображений не найдено"
+MEDIA_ENRICHMENT_NO_VALID_CANDIDATES = "Подходящие изображения не прошли проверку"
+
 
 def _candidate_host(url: str) -> str:
     """Return a query-free diagnostic label for an untrusted candidate URL."""
@@ -338,12 +343,28 @@ class MedicineMediaEnricher:
         current_count = product.gallery_images.count()
         if current_count >= max_images:
             logger.info("Product %s already has %d images (max %d). Skipping.", product.id, current_count, max_images)
+            product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
+            product.media_enrichment_last_at = timezone.now()
+            product.media_enrichment_error = MEDIA_ENRICHMENT_MAX_IMAGES
+            product.save(update_fields=[
+                'media_enrichment_status',
+                'media_enrichment_last_at',
+                'media_enrichment_error',
+            ])
             return 0
             
         # Check cache to avoid hitting APIs if we already tried and failed recently
         cache_key = f"medicine_media_enrich_failed_{product.id}"
         if not ignore_cache and cache.get(cache_key):
             logger.info("Product %s is in failed cache (no images found recently). Skipping to save API limits.", product.id)
+            product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
+            product.media_enrichment_last_at = timezone.now()
+            product.media_enrichment_error = MEDIA_ENRICHMENT_RECENT_NO_RESULT
+            product.save(update_fields=[
+                'media_enrichment_status',
+                'media_enrichment_last_at',
+                'media_enrichment_error',
+            ])
             return 0
             
         from django.db import transaction
@@ -363,7 +384,7 @@ class MedicineMediaEnricher:
                 
                 product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
                 product.media_enrichment_last_at = timezone.now()
-                product.media_enrichment_error = "Изображений не найдено"
+                product.media_enrichment_error = MEDIA_ENRICHMENT_NO_CANDIDATES
                 product.save(update_fields=['media_enrichment_status', 'media_enrichment_last_at', 'media_enrichment_error'])
                 return 0
                 
@@ -384,7 +405,7 @@ class MedicineMediaEnricher:
             if added_count == 0:
                 logger.info("Candidates were found but none were valid/saved. Caching failure for 7 days.")
                 cache.set(cache_key, True, timeout=604800)
-                product.media_enrichment_error = "Valid candidates not found"
+                product.media_enrichment_error = MEDIA_ENRICHMENT_NO_VALID_CANDIDATES
             else:
                 product.media_enrichment_error = None
                 

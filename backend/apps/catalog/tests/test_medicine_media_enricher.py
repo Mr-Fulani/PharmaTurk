@@ -1,10 +1,18 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from apps.catalog.models import MedicineProduct, MedicineProductImage
+from django.core.cache import cache
+from apps.catalog.models import (
+    MediaEnrichmentStatus,
+    MedicineProduct,
+    MedicineProductImage,
+)
 from apps.catalog.services.medicine_media_enricher import (
     FetchedMedicineImage,
+    MEDIA_ENRICHMENT_MAX_IMAGES,
+    MEDIA_ENRICHMENT_RECENT_NO_RESULT,
     MedicineMediaEnricher,
 )
+from apps.catalog.tasks import enrich_medicine_media
 
 @pytest.fixture
 def medicine_product(db):
@@ -126,3 +134,53 @@ class TestMedicineMediaEnricher:
             added = enricher.enrich(medicine_product, max_images=3)
             assert added == 0
             mock_fetch.assert_not_called()
+
+        medicine_product.refresh_from_db()
+        assert medicine_product.media_enrichment_status == MediaEnrichmentStatus.COMPLETED
+        assert medicine_product.media_enrichment_last_at is not None
+        assert medicine_product.media_enrichment_error == MEDIA_ENRICHMENT_MAX_IMAGES
+
+    def test_enrich_cached_no_result_finishes_processing_state(
+        self,
+        enricher,
+        medicine_product,
+    ):
+        cache.set(f"medicine_media_enrich_failed_{medicine_product.pk}", True, 60)
+        medicine_product.media_enrichment_status = MediaEnrichmentStatus.PROCESSING
+        medicine_product.save(update_fields=["media_enrichment_status"])
+
+        with patch.object(enricher, "fetch_candidates") as mock_fetch:
+            added = enricher.enrich(medicine_product, max_images=3)
+
+        assert added == 0
+        mock_fetch.assert_not_called()
+        medicine_product.refresh_from_db()
+        assert medicine_product.media_enrichment_status == MediaEnrichmentStatus.COMPLETED
+        assert medicine_product.media_enrichment_last_at is not None
+        assert medicine_product.media_enrichment_error == MEDIA_ENRICHMENT_RECENT_NO_RESULT
+
+    def test_task_reports_error_when_every_product_fails(
+        self,
+        medicine_product,
+        monkeypatch,
+    ):
+        def fail_enrichment(_enricher, product, *_args, **_kwargs):
+            product.media_enrichment_status = MediaEnrichmentStatus.FAILED
+            product.media_enrichment_error = "source timeout"
+            product.save(
+                update_fields=["media_enrichment_status", "media_enrichment_error"]
+            )
+            return 0
+
+        monkeypatch.setattr(MedicineMediaEnricher, "enrich", fail_enrichment)
+
+        result = enrich_medicine_media.run(product_ids=[medicine_product.pk])
+
+        assert result == {
+            "status": "error",
+            "products_processed": 1,
+            "images_added": 0,
+            "errors": 1,
+            "skipped": 0,
+            "no_results": 0,
+        }

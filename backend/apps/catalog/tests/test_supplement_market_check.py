@@ -118,6 +118,13 @@ def test_market_check_updates_price_without_projecting_fake_stock(supplement, mo
             stock_quantity=3,
         ),
     )
+    monkeypatch.setattr(
+        "apps.catalog.services.supplement_stock_discovery."
+        "SupplementStockDiscoveryService.discover",
+        lambda *_args, **_kwargs: pytest.fail(
+            "reference-price worker must not run stock discovery"
+        ),
+    )
 
     result = service.run(check.pk)
 
@@ -138,6 +145,44 @@ def test_market_check_updates_price_without_projecting_fake_stock(supplement, mo
         source="ilacfiyati_supplement_on_demand",
         price=Decimal("59.90"),
     ).exists()
+
+
+@pytest.mark.django_db
+def test_stock_discovery_is_queued_even_when_reference_source_fails(
+    supplement,
+    settings,
+    monkeypatch,
+):
+    settings.SUPPLEMENT_STOCK_DISCOVERY_ENABLED = True
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = ["akakce"]
+    settings.SOURCE_OFFER_VERIFICATION_SOURCES = ["ilacfiyati", "akakce"]
+    ScraperConfig.objects.create(
+        name="akakce-independent-discovery",
+        parser_class="akakce",
+        base_url="https://www.akakce.com",
+        default_category=supplement.category,
+        status="active",
+        is_enabled=True,
+        use_proxy=True,
+        sync_enabled=False,
+    )
+    calls = []
+    monkeypatch.setattr(
+        "apps.catalog.tasks.discover_supplement_stock_offer_task.apply_async",
+        lambda args=None, **kwargs: calls.append(args) or SimpleNamespace(id="stock-task"),
+    )
+    service = SupplementMarketCheckService()
+
+    def fail_source(_supplement):
+        raise SupplementMarketCheckError("invalid_source", "missing reference source")
+
+    monkeypatch.setattr(service, "resolve_source", fail_source)
+
+    with pytest.raises(SupplementMarketCheckError, match="missing reference source"):
+        service.request_check(supplement)
+
+    assert calls == [[supplement.pk]]
+    assert not ProductMarketCheck.objects.exists()
 
 
 @pytest.mark.django_db
@@ -184,6 +229,7 @@ def test_market_check_api_is_idempotent_and_client_cannot_choose_source(
     assert second.status_code == 200
     assert read.status_code == 200
     assert calls == [[ProductMarketCheck.objects.get().pk]]
+    assert first.data["stock_discovery_status"] == "disabled"
     assert read.data["status"] == "pending"
     assert read.data["availability"]["can_add_to_cart"] is True
     assert read.data["availability"]["status"] == "catalog"

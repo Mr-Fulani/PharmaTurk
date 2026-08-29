@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -52,6 +53,13 @@ class SupplementStockDiscoveryResult:
     confidence: Decimal | None = None
 
 
+@dataclass(frozen=True)
+class SupplementStockDiscoveryRequestResult:
+    status: str
+    queued: bool = False
+    task_id: str = ""
+
+
 class SupplementStockDiscoveryError(RuntimeError):
     def __init__(self, code: str, message: str, *, retryable: bool):
         super().__init__(message)
@@ -73,6 +81,10 @@ class SupplementStockDiscoveryService:
     @staticmethod
     def _negative_key(product_id: int) -> str:
         return f"supplement-stock-discovery:{CACHE_VERSION}:negative:{product_id}"
+
+    @staticmethod
+    def _enqueue_key(product_id: int) -> str:
+        return f"supplement-stock-discovery:{CACHE_VERSION}:enqueue:{product_id}"
 
     @staticmethod
     def _active_offer(supplement: SupplementProduct) -> ProductSourceOffer | None:
@@ -102,7 +114,7 @@ class SupplementStockDiscoveryService:
         )
 
     def needs_discovery(self, supplement: SupplementProduct) -> bool:
-        """Cheap guard used by the existing on-demand price-check enqueue path."""
+        """Return whether an independent on-demand discovery may be enqueued."""
 
         if not self.is_enabled() or not supplement.base_product_id:
             return False
@@ -115,9 +127,88 @@ class SupplementStockDiscoveryService:
                 "supplement_stock_discovery_cache_get_failed",
                 extra={"product_id": supplement.base_product_id},
             )
-            # Cache degradation must not turn every fresh reference-price click
-            # into an unbounded source crawl.
+            # Cache degradation must not turn every product-card request into
+            # an unbounded source crawl.
             return False
+
+    def request_discovery(
+        self,
+        supplement: SupplementProduct,
+    ) -> SupplementStockDiscoveryRequestResult:
+        """Idempotently enqueue seller discovery, independently of reference price."""
+
+        if not self.is_enabled():
+            return SupplementStockDiscoveryRequestResult(status="disabled")
+        if not supplement.base_product_id:
+            return SupplementStockDiscoveryRequestResult(status="missing_product_identity")
+        if self._active_offer(supplement) is not None:
+            return SupplementStockDiscoveryRequestResult(status="existing")
+        if self._config() is None:
+            return SupplementStockDiscoveryRequestResult(status="source_not_configured")
+
+        try:
+            if cache.get(self._negative_key(supplement.base_product_id)):
+                return SupplementStockDiscoveryRequestResult(status="cached_no_match")
+        except Exception:
+            logger.exception(
+                "supplement_stock_discovery_cache_get_failed",
+                extra={"product_id": supplement.base_product_id},
+            )
+            return SupplementStockDiscoveryRequestResult(status="guard_unavailable")
+
+        lock_key = self._enqueue_key(supplement.base_product_id)
+        lock_token = uuid.uuid4().hex
+        lock_ttl = _setting_int(
+            "SUPPLEMENT_STOCK_DISCOVERY_ENQUEUE_LOCK_SECONDS",
+            60,
+            minimum=10,
+            maximum=300,
+        )
+        try:
+            acquired = bool(cache.add(lock_key, lock_token, timeout=lock_ttl))
+        except Exception:
+            logger.exception(
+                "supplement_stock_discovery_enqueue_guard_failed",
+                extra={"product_id": supplement.base_product_id},
+            )
+            return SupplementStockDiscoveryRequestResult(status="guard_unavailable")
+        if not acquired:
+            return SupplementStockDiscoveryRequestResult(status="pending")
+
+        from apps.catalog.tasks import discover_supplement_stock_offer_task
+
+        try:
+            async_result = discover_supplement_stock_offer_task.apply_async(
+                args=[supplement.pk]
+            )
+        except Exception:
+            try:
+                if cache.get(lock_key) == lock_token:
+                    cache.delete(lock_key)
+            except Exception:
+                logger.exception(
+                    "supplement_stock_discovery_enqueue_unlock_failed",
+                    extra={"product_id": supplement.base_product_id},
+                )
+            logger.exception(
+                "supplement_stock_discovery_task_publish_failed",
+                extra={"product_id": supplement.base_product_id},
+            )
+            return SupplementStockDiscoveryRequestResult(status="queue_unavailable")
+
+        task_id = str(async_result.id or "")[:100]
+        logger.info(
+            "supplement_stock_discovery_queued",
+            extra={
+                "product_id": supplement.base_product_id,
+                "task_id": task_id,
+            },
+        )
+        return SupplementStockDiscoveryRequestResult(
+            status="queued",
+            queued=True,
+            task_id=task_id,
+        )
 
     @staticmethod
     def _parser(config: ScraperConfig) -> AkakceParser:
@@ -304,25 +395,55 @@ class SupplementStockDiscoveryService:
                 retryable=False,
             )
 
+        from apps.catalog.services.source_offer_verification import (
+            SourceOfferVerificationService,
+        )
+
+        source_guard = SourceOfferVerificationService()
+        if source_guard.circuit_is_open(SOURCE_KEY):
+            raise SupplementStockDiscoveryError(
+                "source_circuit_open",
+                "Akakce source circuit is temporarily open",
+                retryable=True,
+            )
+        if not source_guard.request_rate_allowed(SOURCE_KEY):
+            raise SupplementStockDiscoveryError(
+                "rate_limited",
+                "Akakce source request budget is exhausted",
+                retryable=True,
+            )
+        slot_ttl = _setting_int(
+            "SUPPLEMENT_STOCK_DISCOVERY_REQUEST_TIMEOUT_SECONDS",
+            12,
+            minimum=3,
+            maximum=20,
+        ) + 15
         try:
-            with self._parser(config) as parser:
-                candidates = parser.search_products(supplement.name, max_results=5)
-                ranked = self._rank_candidate(supplement, candidates)
-                if ranked is None:
-                    if persist:
-                        self._remember_negative(
-                            supplement,
-                            "no_confident_match",
-                            retryable=False,
-                        )
-                    return SupplementStockDiscoveryResult(status="no_match")
-                candidate, confidence = ranked
-                context = OfferCheckContext(
-                    canonical_url=candidate.url,
-                    external_product_id=candidate.external_id,
-                    parser_config={"expected_name": supplement.name},
-                )
-                snapshot = parser.inspect_offer(context)
+            with source_guard.request_slot(SOURCE_KEY, slot_ttl) as slot_acquired:
+                if not slot_acquired:
+                    raise SupplementStockDiscoveryError(
+                        "source_busy",
+                        "Akakce source is busy with other requests",
+                        retryable=True,
+                    )
+                with self._parser(config) as parser:
+                    candidates = parser.search_products(supplement.name, max_results=5)
+                    ranked = self._rank_candidate(supplement, candidates)
+                    if ranked is None:
+                        if persist:
+                            self._remember_negative(
+                                supplement,
+                                "no_confident_match",
+                                retryable=False,
+                            )
+                        return SupplementStockDiscoveryResult(status="no_match")
+                    candidate, confidence = ranked
+                    context = OfferCheckContext(
+                        canonical_url=candidate.url,
+                        external_product_id=candidate.external_id,
+                        parser_config={"expected_name": supplement.name},
+                    )
+                    snapshot = parser.inspect_offer(context)
         except OfferVerificationError as exc:
             if persist:
                 self._remember_negative(

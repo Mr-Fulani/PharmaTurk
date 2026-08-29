@@ -151,7 +151,9 @@ jobs:
       - name: Validate isolated test configuration
         run: docker compose -f docker-compose.yml -f docker-compose.test.yml config --quiet
       - name: Validate release scripts
-        run: bash -n scripts/release/*.sh
+        run: |
+          bash -n scripts/release/*.sh
+          ./scripts/release/test-release-helpers.sh
       - name: Validate Nginx trusted-ingress configuration
         run: >-
           docker run --rm --network none

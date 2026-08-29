@@ -308,6 +308,21 @@ class SourceOfferVerificationService:
 
         return self._circuit_is_open(str(parser_key or "").strip().casefold())
 
+    def request_rate_allowed(self, parser_key: str) -> bool:
+        """Share the per-source request budget with identity discovery jobs."""
+
+        return self._rate_allowed(str(parser_key or "").strip().casefold())
+
+    @contextmanager
+    def request_slot(self, parser_key: str, ttl: int) -> Iterator[bool]:
+        """Share source concurrency slots with bounded parser-side discovery."""
+
+        with self._source_slot(
+            str(parser_key or "").strip().casefold(),
+            max(1, int(ttl)),
+        ) as acquired:
+            yield acquired
+
     def _record_circuit_success(self, parser_key: str) -> None:
         try:
             cache.delete(self._failure_count_key(parser_key))

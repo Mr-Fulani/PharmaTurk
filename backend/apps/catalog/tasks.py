@@ -1,7 +1,4 @@
-"""Задачи Celery для каталога: обновление цен, остатков и курсов валют.
-
-В MVP-версии реализованы заглушки, которые позже будут интегрированы с парсером.
-"""
+"""Celery tasks for catalog refresh, source checks, pricing and media."""
 from __future__ import annotations
 
 from celery import shared_task
@@ -61,6 +58,60 @@ def refresh_supplement_market_check_task(check_id: int) -> dict:
     )
 
     return SupplementMarketCheckService().run(check_id)
+
+
+@shared_task(
+    bind=True,
+    name="catalog.discover_supplement_stock_offer",
+    soft_time_limit=55,
+    time_limit=60,
+    acks_late=True,
+    max_retries=2,
+    default_retry_delay=60,
+)
+def discover_supplement_stock_offer_task(self, supplement_id: int) -> dict:
+    """Discover one supplement seller identity independently of reference price."""
+
+    from apps.catalog.models import SupplementProduct
+    from apps.catalog.services.supplement_stock_discovery import (
+        SupplementStockDiscoveryError,
+        SupplementStockDiscoveryService,
+    )
+
+    supplement = (
+        SupplementProduct.objects.select_related("base_product")
+        .filter(pk=supplement_id, is_active=True)
+        .first()
+    )
+    if supplement is None:
+        return {"status": "missing", "supplement_id": supplement_id}
+
+    try:
+        result = SupplementStockDiscoveryService().discover(supplement)
+    except SupplementStockDiscoveryError as exc:
+        if exc.retryable and self.request.retries < self.max_retries:
+            raise self.retry(exc=exc)
+        logger.warning(
+            "supplement_stock_discovery_task_failed",
+            extra={
+                "supplement_id": supplement_id,
+                "product_id": supplement.base_product_id,
+                "error_code": exc.code,
+                "retryable": exc.retryable,
+            },
+        )
+        return {
+            "status": "error",
+            "supplement_id": supplement_id,
+            "error_code": exc.code,
+            "retryable": exc.retryable,
+        }
+
+    return {
+        "status": result.status,
+        "supplement_id": supplement_id,
+        "offer_id": result.offer.pk if result.offer is not None else None,
+    }
 
 
 @shared_task(
@@ -465,6 +516,8 @@ def enrich_medicine_media(
         products_processed = 0
         images_added = 0
         errors = 0
+        skipped = 0
+        no_results = 0
         
         # Используем .all() вместо .iterator() если queryset уже отфильтрован по ID, 
         # но для большого ночного прохода .iterator() лучше.
@@ -472,22 +525,48 @@ def enrich_medicine_media(
         items = queryset.iterator() if not product_ids else queryset.all()
 
         for product in items:
+            products_processed += 1
             try:
                 added = enricher.enrich(product, max_images_per_product, ignore_cache=ignore_cache)
-                products_processed += 1
                 images_added += added
+                if product.media_enrichment_status == MediaEnrichmentStatus.FAILED:
+                    errors += 1
+                elif added == 0:
+                    from apps.catalog.services.medicine_media_enricher import (
+                        MEDIA_ENRICHMENT_MAX_IMAGES,
+                        MEDIA_ENRICHMENT_RECENT_NO_RESULT,
+                    )
+
+                    if product.media_enrichment_error in {
+                        MEDIA_ENRICHMENT_MAX_IMAGES,
+                        MEDIA_ENRICHMENT_RECENT_NO_RESULT,
+                    }:
+                        skipped += 1
+                    else:
+                        no_results += 1
             except Exception as e:
                 logger.error("Failed to enrich media for product %s (%s): %s", product.id, model_name, e)
                 product.media_enrichment_status = MediaEnrichmentStatus.FAILED
                 product.media_enrichment_error = str(e)
                 product.save(update_fields=['media_enrichment_status', 'media_enrichment_error'])
                 errors += 1
-                
+
+        if errors == products_processed and products_processed:
+            result_status = "error"
+        elif errors:
+            result_status = "partial"
+        elif images_added == 0:
+            result_status = "no_changes"
+        else:
+            result_status = "success"
+
         return {
-            "status": "success",
+            "status": result_status,
             "products_processed": products_processed,
             "images_added": images_added,
             "errors": errors,
+            "skipped": skipped,
+            "no_results": no_results,
         }
     except Exception as e:
         logger.exception("enrich_medicine_media failed: %s", e)

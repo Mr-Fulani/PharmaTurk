@@ -297,19 +297,56 @@ class MediaEnrichmentMixin:
         product_ids = list(queryset.values_list("id", flat=True))
         model_name = queryset.model.__name__
         
-        # Запускаем задачу
-        enrich_medicine_media.delay(
+        # Админское сообщение подтверждает только постановку в очередь, а не
+        # фактическое добавление изображений. Task ID позволяет найти итог в
+        # Celery/Flower и отличить publish от выполнения.
+        async_result = enrich_medicine_media.delay(
             product_ids=product_ids,
             ignore_cache=True,  # При ручном запуске игнорируем кэш ошибок
             model_name=model_name
         )
-        
+        task_id = str(getattr(async_result, "id", "") or "").strip()
+        task_suffix = (
+            _(" ID задачи: %(task_id)s.") % {"task_id": task_id}
+            if task_id
+            else ""
+        )
         self.message_user(
-            request, 
-            _("Запущено обогащение медиа для %(count)s товаров.") % {"count": len(product_ids)},
+            request,
+            _("Поставлено в очередь обогащение медиа для %(count)s товаров.")
+            % {"count": len(product_ids)}
+            + task_suffix,
             level=messages.SUCCESS
         )
     run_media_enrichment.short_description = _("[Категория] Обогатить медиа (картинки)")
+
+    def get_media_enrichment_status(self, obj):
+        """Отображение статуса медиа с цветовой индикацией."""
+        from apps.catalog.models import MediaEnrichmentStatus
+
+        status = getattr(obj, 'media_enrichment_status', MediaEnrichmentStatus.PENDING)
+        color = "gray"
+        label = _("В очереди")
+
+        if status == MediaEnrichmentStatus.PROCESSING:
+            color = "orange"
+            label = _("Обработка")
+        elif status == MediaEnrichmentStatus.COMPLETED:
+            color = "green"
+            label = _("Завершено")
+        elif status == MediaEnrichmentStatus.FAILED:
+            color = "red"
+            label = _("Ошибка")
+
+        error = getattr(obj, 'media_enrichment_error', None)
+        title_attr = f' title="{error}"' if error else ""
+
+        return format_html(
+            '<span style="color: {}; font-weight: bold;"{}>{}</span>',
+            color, title_attr, label
+        )
+    get_media_enrichment_status.short_description = _("Статус медиа")
+    get_media_enrichment_status.admin_order_field = "media_enrichment_status"
 
 
 class ShadowProductCleanupAdminMixin:
@@ -331,31 +368,3 @@ class ShadowProductCleanupAdminMixin:
         super().delete_model(request, obj)
         if base_id:
             Product.objects.filter(pk=base_id).delete()
-
-    def get_media_enrichment_status(self, obj):
-        """Отображение статуса медиа с цветовой индикацией."""
-        from apps.catalog.models import MediaEnrichmentStatus
-        
-        status = getattr(obj, 'media_enrichment_status', MediaEnrichmentStatus.PENDING)
-        color = "gray"
-        label = _("В очереди")
-        
-        if status == MediaEnrichmentStatus.PROCESSING:
-            color = "orange"
-            label = _("Обработка")
-        elif status == MediaEnrichmentStatus.COMPLETED:
-            color = "green"
-            label = _("Завершено")
-        elif status == MediaEnrichmentStatus.FAILED:
-            color = "red"
-            label = _("Ошибка")
-            
-        error = getattr(obj, 'media_enrichment_error', None)
-        title_attr = f' title="{error}"' if error else ""
-        
-        return format_html(
-            '<span style="color: {}; font-weight: bold;"{}>{}</span>',
-            color, title_attr, label
-        )
-    get_media_enrichment_status.short_description = _("Статус медиа")
-    get_media_enrichment_status.admin_order_field = "media_enrichment_status"

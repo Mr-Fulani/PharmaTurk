@@ -1,4 +1,6 @@
 import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
 from django.contrib.admin.sites import AdminSite
 from django.test import RequestFactory
 
@@ -103,6 +105,36 @@ def test_media_enrichment_domains_keep_consistent_action_menu(model_admin_class,
         "run_media_enrichment",
     ]
     assert "delete_selected" in action_names
+
+
+@pytest.mark.django_db
+def test_media_enrichment_admin_reports_queue_task_id(admin_request):
+    product = MedicineProduct.objects.create(
+        name="Admin media task",
+        slug="admin-media-task",
+        price=100,
+        currency="TRY",
+    )
+    model_admin = MedicineProductAdmin(MedicineProduct, AdminSite())
+
+    with (
+        patch(
+            "apps.catalog.tasks.enrich_medicine_media.delay",
+            return_value=SimpleNamespace(id="media-task-123"),
+        ) as delay,
+        patch.object(model_admin, "message_user") as message_user,
+    ):
+        model_admin.run_media_enrichment(
+            admin_request,
+            MedicineProduct.objects.filter(pk=product.pk),
+        )
+
+    delay.assert_called_once_with(
+        product_ids=[product.pk],
+        ignore_cache=True,
+        model_name="MedicineProduct",
+    )
+    assert "media-task-123" in str(message_user.call_args.args[1])
 
 
 def test_medicine_analog_inline_uses_autocomplete_for_related_product(admin_request):

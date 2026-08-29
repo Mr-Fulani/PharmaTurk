@@ -113,6 +113,7 @@ class SupplementMarketRequestResult:
     check: ProductMarketCheck
     queued: bool
     cached: bool
+    stock_discovery_status: str = "disabled"
 
 
 class SupplementMarketCheckService:
@@ -296,12 +297,12 @@ class SupplementMarketCheckService:
             return False
 
     def request_check(self, supplement: SupplementProduct) -> SupplementMarketRequestResult:
-        source = self.resolve_source(supplement)
         from apps.catalog.services.supplement_stock_discovery import (
             SupplementStockDiscoveryService,
         )
 
-        stock_discovery_needed = SupplementStockDiscoveryService().needs_discovery(supplement)
+        stock_request = SupplementStockDiscoveryService().request_discovery(supplement)
+        source = self.resolve_source(supplement)
         now = timezone.now()
         lock_ttl = _setting_int(
             "SUPPLEMENT_MARKET_CHECK_ENQUEUE_LOCK_SECONDS",
@@ -330,7 +331,7 @@ class SupplementMarketCheckService:
                 check.requested_at = now
                 check.source_url = source.url
 
-                if is_fresh and not stock_discovery_needed:
+                if is_fresh:
                     check.save(
                         update_fields=["request_count", "requested_at", "source_url", "updated_at"]
                     )
@@ -338,6 +339,7 @@ class SupplementMarketCheckService:
                         check=check,
                         queued=False,
                         cached=True,
+                        stock_discovery_status=stock_request.status,
                     )
 
                 if is_active:
@@ -348,6 +350,7 @@ class SupplementMarketCheckService:
                         check=check,
                         queued=False,
                         cached=False,
+                        stock_discovery_status=stock_request.status,
                     )
 
                 acquired, cache_healthy = _safe_cache_add(lock_key, lock_token, lock_ttl)
@@ -364,6 +367,7 @@ class SupplementMarketCheckService:
                         check=check,
                         queued=False,
                         cached=False,
+                        stock_discovery_status=stock_request.status,
                     )
                 owns_lock = True
 
@@ -421,7 +425,12 @@ class SupplementMarketCheckService:
                 task_id="",
             ).update(task_id=str(async_result.id or "")[:100])
             check.refresh_from_db()
-            return SupplementMarketRequestResult(check=check, queued=True, cached=False)
+            return SupplementMarketRequestResult(
+                check=check,
+                queued=True,
+                cached=False,
+                stock_discovery_status=stock_request.status,
+            )
         finally:
             if owns_lock:
                 _cache_delete_if_owned(lock_key, lock_token)
@@ -571,28 +580,6 @@ class SupplementMarketCheckService:
                 currency=currency,
                 source=source,
             )
-            # A reference-price success must not depend on the independent
-            # seller adapter. Discovery failures are logged; they do not block
-            # checkout because supplement availability is informational.
-            from apps.catalog.services.supplement_stock_discovery import (
-                SupplementStockDiscoveryError,
-                SupplementStockDiscoveryService,
-            )
-
-            try:
-                discovery = SupplementStockDiscoveryService().discover(supplement)
-                result["stock_discovery"] = discovery.status
-            except SupplementStockDiscoveryError as exc:
-                logger.warning(
-                    "supplement_stock_discovery_failed",
-                    extra={
-                        "check_id": check_id,
-                        "product_id": supplement.base_product_id,
-                        "error_code": exc.code,
-                        "retryable": exc.retryable,
-                    },
-                )
-                result["stock_discovery"] = exc.code
             self._observe(source.key, "success", started_monotonic)
             return result
         except SoftTimeLimitExceeded:

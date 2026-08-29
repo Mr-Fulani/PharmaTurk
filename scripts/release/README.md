@@ -28,7 +28,19 @@ the exact 40-character `git rev-parse HEAD` value. Run predeploy again with
 `--environment staging` and no `--allow-dirty`.
 
 Before deployment, create and validate an external PostgreSQL dump and Qdrant
-snapshot:
+snapshot. On the Compose host, prefer the all-in-one command; it uses Qdrant's
+official full-storage snapshot (all live collections), removes only the temporary
+snapshot it created, copies the protected `.env`, and prints the new backup directory:
+
+```bash
+./scripts/release/create-backup.sh \
+  --project-name mudaroba \
+  --previous-release PREVIOUS_FULL_GIT_SHA \
+  --backup-root /secure/backups/pharmaturk
+```
+
+The lower-level manifest command remains available for backups created by an
+external platform:
 
 ```bash
 ./scripts/release/prepare-backup-manifest.sh \
@@ -36,6 +48,27 @@ snapshot:
   --qdrant-snapshot /secure/backups/qdrant.snapshot \
   --previous-release PREVIOUS_FULL_GIT_SHA \
   --output /secure/backups/release.manifest
+```
+
+Backup retention is always a separate operation and defaults to dry-run. Review
+the exact candidates before using the destructive mode. Keep the current
+pre-deploy backup protected until its observation and rollback window closes.
+The validator accepts both current backup names and the historical
+`manifest.env`/`env.production` layout, but never treats incomplete directories
+or loose files as deletion candidates:
+
+```bash
+./scripts/release/prune-backups.sh \
+  --backup-root /secure/backups/pharmaturk \
+  --keep 7 \
+  --protect /secure/backups/pharmaturk/CURRENT_PREDEPLOY_BACKUP
+
+./scripts/release/prune-backups.sh \
+  --backup-root /secure/backups/pharmaturk \
+  --keep 7 \
+  --protect /secure/backups/pharmaturk/CURRENT_PREDEPLOY_BACKUP \
+  --apply \
+  --confirm "PRUNE BACKUPS /secure/backups/pharmaturk"
 ```
 
 If the host has no PostgreSQL client installed, validate through the already

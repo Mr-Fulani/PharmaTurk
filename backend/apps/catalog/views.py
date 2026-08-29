@@ -4983,6 +4983,7 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
         payload = serialize(result.check)
         payload["queued"] = result.queued
         payload["cached"] = result.cached
+        payload["stock_discovery_status"] = result.stock_discovery_status
         return Response(
             payload,
             status=status.HTTP_202_ACCEPTED if result.queued else status.HTTP_200_OK,

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -175,3 +176,46 @@ def test_dry_run_does_not_write_offer_or_negative_cache(supplement, monkeypatch)
     assert result.status == "no_match"
     assert ProductSourceOffer.objects.filter(parser_key="akakce").count() == 0
     assert SupplementStockDiscoveryService().needs_discovery(supplement) is True
+
+
+@pytest.mark.django_db
+def test_request_discovery_enqueues_only_once_during_lock(supplement, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "apps.catalog.tasks.discover_supplement_stock_offer_task.apply_async",
+        lambda args=None, **kwargs: calls.append(args) or SimpleNamespace(id="stock-task"),
+    )
+    service = SupplementStockDiscoveryService()
+
+    first = service.request_discovery(supplement)
+    second = service.request_discovery(supplement)
+
+    assert first.status == "queued"
+    assert first.queued is True
+    assert first.task_id == "stock-task"
+    assert second.status == "pending"
+    assert second.queued is False
+    assert calls == [[supplement.pk]]
+
+
+@pytest.mark.django_db
+def test_request_discovery_releases_lock_when_publish_fails(supplement, monkeypatch):
+    def fail_publish(*_args, **_kwargs):
+        raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(
+        "apps.catalog.tasks.discover_supplement_stock_offer_task.apply_async",
+        fail_publish,
+    )
+    service = SupplementStockDiscoveryService()
+
+    failed = service.request_discovery(supplement)
+
+    assert failed.status == "queue_unavailable"
+    monkeypatch.setattr(
+        "apps.catalog.tasks.discover_supplement_stock_offer_task.apply_async",
+        lambda **_kwargs: SimpleNamespace(id="retry-task"),
+    )
+    retried = service.request_discovery(supplement)
+    assert retried.status == "queued"
+    assert retried.task_id == "retry-task"
