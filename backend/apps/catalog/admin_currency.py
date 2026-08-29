@@ -850,9 +850,3 @@ class CurrencyUpdateLogAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
-
-
-# Настройка заголовка админ-панели
-admin.site.site_header = 'Управление курсами валют'
-admin.site.site_title = 'Валютная система'
-admin.site.index_title = 'Панель управления курсами валют и маржой'

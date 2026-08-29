@@ -1,147 +1,193 @@
-"""Кастомная конфигурация админ-панели Django для логической группировки моделей."""
+"""Конфигурация Django Admin и группировка главного меню."""
 
-from django.contrib import admin
 from django.contrib.admin import AdminSite
 
 
 class MudarobaAdminSite(AdminSite):
-    """Кастомная админ-панель с улучшенной организацией."""
-    
-    site_header = 'Mudaroba - Панель управления'
-    site_title = 'Mudaroba Admin'
-    index_title = 'Добро пожаловать в панель управления'
-    
-    def get_app_list(self, request, app_label=None):
-        """
-        Переопределяем порядок и группировку приложений в админке.
-        """
-        app_list = super().get_app_list(request, app_label)
-        
-        # Определяем желаемый порядок разделов
-        ordering = {
-            'Каталог товаров': 1,
-            'Цены и валюты': 2,
-            'Заказы и корзины': 3,
-            'Маркетинг': 4,
-            'Пользователи': 5,
-            'Парсеры': 6,
-            'Отзывы': 7,
-            'Контент': 8,
-            'Избранное': 9,
-            'Аутентификация': 10,
+    """Логические группы без изменения model admin URL."""
+
+    site_header = "Mudaroba — Панель управления"
+    site_title = "Mudaroba Admin"
+    index_title = "Панель управления Mudaroba"
+
+    MEDIA_MODELS = frozenset(
+        {
+            "MediaEnrichmentCandidate",
+            "ProductImage",
+            "MarketingBannerMedia",
         }
-        
-        # Переименовываем и группируем приложения
-        app_dict = {}
-        
+    )
+
+    CATALOG_MODEL_GROUPS = {
+        "Категории и справочники": frozenset(
+            {
+                "Author",
+                "Brand",
+                "Category",
+                "CategoryAccessories",
+                "CategoryBooks",
+                "CategoryClothing",
+                "CategoryElectronics",
+                "CategoryFurniture",
+                "CategoryHeadwear",
+                "CategoryIncense",
+                "CategoryJewelry",
+                "CategoryMedicalEquipment",
+                "CategoryMedicines",
+                "CategoryPerfumery",
+                "CategoryServices",
+                "CategoryShoes",
+                "CategorySupplements",
+                "CategoryTableware",
+                "CategoryType",
+                "CategoryUnderwear",
+                "ProductAuthor",
+            }
+        ),
+        "Варианты товаров": frozenset(
+            {
+                "BookVariant",
+                "ClothingVariant",
+                "FurnitureVariant",
+                "HeadwearVariant",
+                "IslamicClothingVariant",
+                "JewelryVariant",
+                "PerfumeryVariant",
+                "ShoeVariant",
+                "UnderwearVariant",
+            }
+        ),
+        "Источники и проверки": frozenset(
+            {
+                "ProductMarketCheck",
+                "ProductSourceOffer",
+                "VKCategoryMapping",
+            }
+        ),
+        "Цены и валюты": frozenset(
+            {
+                "CurrencyRate",
+                "CurrencyUpdateLog",
+                "GlobalCurrencySettings",
+                "MarginSettings",
+                "PriceHistory",
+                "ProductPrice",
+                "ProductVariantPrice",
+                "ServicePrice",
+            }
+        ),
+        "Настройки каталога": frozenset(
+            {
+                "GlobalAttributeKey",
+                "GlobalShippingSettings",
+                "ProductAttributeValue",
+            }
+        ),
+        "Избранное": frozenset({"Favorite"}),
+    }
+
+    APP_GROUPS = {
+        "ai": "AI-модуль",
+        "auth": "Аутентификация",
+        "feedback": "Отзывы и вопросы",
+        "marketing": "Маркетинг",
+        "orders": "Заказы и корзины",
+        "pages": "Контент и настройки",
+        "scrapers": "Парсеры",
+        "settings": "Контент и настройки",
+        "token_blacklist": "Аутентификация",
+        "users": "Пользователи",
+    }
+
+    GROUP_LABELS = {
+        "Товары каталога": "catalog_products",
+        "Изображения и медиа": "catalog_media",
+        "Категории и справочники": "catalog_reference",
+        "Варианты товаров": "catalog_variants",
+        "Источники и проверки": "catalog_sources",
+        "Цены и валюты": "catalog_prices",
+        "Настройки каталога": "catalog_settings",
+        "Заказы и корзины": "orders_and_carts",
+        "Маркетинг": "marketing_group",
+        "Парсеры": "scrapers_group",
+        "AI-модуль": "ai_group",
+        "Отзывы и вопросы": "feedback_group",
+        "Контент и настройки": "content_group",
+        "Пользователи": "users_group",
+        "Избранное": "favorites_group",
+        "Аутентификация": "authentication_group",
+    }
+
+    GROUP_ORDER = dict(zip(GROUP_LABELS, range(1, len(GROUP_LABELS) + 1), strict=True))
+
+    MEDIA_MODEL_ORDER = {
+        "MediaEnrichmentCandidate": 1,
+        "ProductImage": 2,
+        "MarketingBannerMedia": 3,
+    }
+
+    def _group_name(self, app_label, app_name, object_name):
+        if object_name in self.MEDIA_MODELS:
+            return "Изображения и медиа"
+
+        if app_label == "catalog":
+            for group_name, model_names in self.CATALOG_MODEL_GROUPS.items():
+                if object_name in model_names:
+                    return group_name
+            return "Товары каталога"
+
+        return self.APP_GROUPS.get(app_label, app_name)
+
+    def get_app_list(self, request, app_label=None):
+        """Группировать главную страницу, сохраняя штатные app-index views."""
+        app_list = super().get_app_list(request, app_label)
+        if app_label is not None:
+            return app_list
+
+        grouped = {}
         for app in app_list:
-            app_label = app.get('app_label', '')
-            app_name = app.get('name', '')
-            
-            # Определяем новое имя группы
-            if app_label == 'catalog':
-                # Разделяем catalog на несколько логических групп
-                for model in app['models']:
-                    model_name = model.get('object_name', '')
-                    
-                    # Цены и валюты
-                    if model_name in ['ProductPrice', 'CurrencyRate', 'MarginSettings', 'CurrencyUpdateLog', 'PriceHistory']:
-                        group_name = 'Цены и валюты'
-                    # Избранное
-                    elif model_name == 'Favorite':
-                        group_name = 'Избранное'
-                    # Остальное - каталог
-                    else:
-                        group_name = 'Каталог товаров'
-                    
-                    if group_name not in app_dict:
-                        app_dict[group_name] = {
-                            'name': group_name,
-                            'app_label': group_name.lower().replace(' ', '_'),
-                            'models': []
-                        }
-                    app_dict[group_name]['models'].append(model)
-            
-            elif app_label == 'orders':
-                group_name = 'Заказы и корзины'
-                if group_name not in app_dict:
-                    app_dict[group_name] = {
-                        'name': group_name,
-                        'app_label': app_label,
-                        'models': []
-                    }
-                app_dict[group_name]['models'].extend(app['models'])
-            
-            elif app_label == 'marketing':
-                group_name = 'Маркетинг'
-                if group_name not in app_dict:
-                    app_dict[group_name] = {
-                        'name': group_name,
-                        'app_label': app_label,
-                        'models': []
-                    }
-                app_dict[group_name]['models'].extend(app['models'])
-            
-            elif app_label == 'users':
-                group_name = 'Пользователи'
-                if group_name not in app_dict:
-                    app_dict[group_name] = {
-                        'name': group_name,
-                        'app_label': app_label,
-                        'models': []
-                    }
-                app_dict[group_name]['models'].extend(app['models'])
-            
-            elif app_label == 'scrapers':
-                group_name = 'Парсеры'
-                if group_name not in app_dict:
-                    app_dict[group_name] = {
-                        'name': group_name,
-                        'app_label': app_label,
-                        'models': []
-                    }
-                app_dict[group_name]['models'].extend(app['models'])
-            
-            elif app_label == 'feedback':
-                group_name = 'Отзывы'
-                if group_name not in app_dict:
-                    app_dict[group_name] = {
-                        'name': group_name,
-                        'app_label': app_label,
-                        'models': []
-                    }
-                app_dict[group_name]['models'].extend(app['models'])
-            
-            elif app_label in ['pages', 'settings']:
-                group_name = 'Контент'
-                if group_name not in app_dict:
-                    app_dict[group_name] = {
-                        'name': group_name,
-                        'app_label': 'content',
-                        'models': []
-                    }
-                app_dict[group_name]['models'].extend(app['models'])
-            
-            elif app_label == 'auth':
-                group_name = 'Аутентификация'
-                if group_name not in app_dict:
-                    app_dict[group_name] = {
-                        'name': group_name,
-                        'app_label': app_label,
-                        'models': []
-                    }
-                app_dict[group_name]['models'].extend(app['models'])
-            
-            else:
-                # Остальные приложения оставляем как есть
-                app_dict[app_name] = app
-        
-        # Преобразуем обратно в список и сортируем
-        result = list(app_dict.values())
-        result.sort(key=lambda x: ordering.get(x['name'], 999))
-        
+            source_app_label = app.get("app_label", "")
+            source_app_name = app.get("name", "")
+            for model in app.get("models", ()):
+                group_name = self._group_name(
+                    source_app_label,
+                    source_app_name,
+                    model.get("object_name", ""),
+                )
+                group = grouped.setdefault(
+                    group_name,
+                    {
+                        "name": group_name,
+                        "app_label": self.GROUP_LABELS.get(
+                            group_name,
+                            source_app_label,
+                        ),
+                        "app_url": (
+                            app.get("app_url", "") if group_name == source_app_name else ""
+                        ),
+                        "has_module_perms": False,
+                        "models": [],
+                    },
+                )
+                group["has_module_perms"] = bool(
+                    group["has_module_perms"] or app.get("has_module_perms", True)
+                )
+                group["models"].append(model)
+
+        media_group = grouped.get("Изображения и медиа")
+        if media_group:
+            media_group["models"].sort(
+                key=lambda model: (
+                    self.MEDIA_MODEL_ORDER.get(model.get("object_name", ""), 999),
+                    str(model.get("name", "")),
+                )
+            )
+
+        result = list(grouped.values())
+        result.sort(
+            key=lambda app: (
+                self.GROUP_ORDER.get(app["name"], 999),
+                str(app["name"]),
+            )
+        )
         return result
-
-
-# Создаем экземпляр кастомной админки
-admin_site = MudarobaAdminSite(name='mudaroba_admin')

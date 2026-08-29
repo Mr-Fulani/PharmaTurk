@@ -2082,8 +2082,3 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             messages.error(request, "Задача не найдена")
 
         return HttpResponseRedirect(reverse("admin:scrapers_instagramscrapertask_changelist"))
-
-# Кастомизация админки
-admin.site.site_header = "Mudaroba - Управление парсерами"
-admin.site.site_title = "Mudaroba Admin"
-admin.site.index_title = "Панель управления парсерами"

@@ -51,7 +51,7 @@ INSTALLED_APPS = [
     "django_prometheus",
 
     # Django
-    "django.contrib.admin",
+    "config.apps.MudarobaAdminConfig",
     "nested_admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
