@@ -905,22 +905,19 @@ class ProductCardSourceRefreshService:
         )
 
         price_changed = product.price != price or product.currency != currency
-        product.price = price
-        product.currency = currency
-        product.is_available = available
-        product.stock_quantity = stock
-        product.availability_status = "in_stock" if available else "out_of_stock"
-        product.last_synced_at = timezone.now()
-        update_fields = [
-            "price",
-            "currency",
-            "is_available",
-            "stock_quantity",
-            "availability_status",
-            "last_synced_at",
-            "updated_at",
-        ]
-        product.save(update_fields=update_fields)
+        synced_at = timezone.now()
+        # Inventory refresh must not emit Product post_save signals.  Those
+        # signals belong to the catalog/content pipeline and may rewrite shadow
+        # metadata or media manifests even when save(update_fields=...) is used.
+        Product.objects.filter(pk=product.pk).update(
+            price=price,
+            currency=currency,
+            is_available=available,
+            stock_quantity=stock,
+            availability_status="in_stock" if available else "out_of_stock",
+            last_synced_at=synced_at,
+            updated_at=synced_at,
+        )
         if price_changed:
             PriceHistory.objects.create(
                 product=product,

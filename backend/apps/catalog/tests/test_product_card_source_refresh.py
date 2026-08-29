@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from django.core.cache import cache
+from django.db.models.signals import post_save
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -245,8 +246,27 @@ def test_success_updates_only_raw_price_inventory_and_observed_options(
     product, domain, black, red = parsed_clothing
     service = ProductCardSourceRefreshService()
     monkeypatch.setattr(service, "_fetch_product", lambda target: _scraped())
+    original_domain_external_data = dict(domain.external_data)
+    product_save_signals = []
 
-    result = service.run(product.pk)
+    def capture_product_save(sender, instance, **kwargs):
+        if instance.pk == product.pk:
+            product_save_signals.append(kwargs)
+
+    post_save.connect(
+        capture_product_save,
+        sender=Product,
+        weak=False,
+        dispatch_uid="test_product_card_refresh_does_not_emit_product_save",
+    )
+
+    try:
+        result = service.run(product.pk)
+    finally:
+        post_save.disconnect(
+            sender=Product,
+            dispatch_uid="test_product_card_refresh_does_not_emit_product_save",
+        )
 
     assert result["status"] == "succeeded"
     product.refresh_from_db()
@@ -260,6 +280,8 @@ def test_success_updates_only_raw_price_inventory_and_observed_options(
     assert product.description == "Manually curated description"
     assert domain.description == "Manually curated description"
     assert product.external_data["editor_note"] == "keep"
+    assert domain.external_data == original_domain_external_data
+    assert product_save_signals == []
     assert black.name == "Curated black title"
     assert black.main_image == "https://manual.example/black.jpg"
     assert black.price == Decimal("120.00")
