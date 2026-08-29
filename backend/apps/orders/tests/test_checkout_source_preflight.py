@@ -351,7 +351,7 @@ def test_checkout_accepts_legacy_supplement_without_stock_adapter(settings):
         name="Legacy supplement",
         slug=f"legacy-supplement-{uuid4().hex}",
         product_type="supplements",
-        price=Decimal("57.16"),
+        price=Decimal("49.70"),
         currency="TRY",
         is_available=True,
         stock_quantity=3,
@@ -361,7 +361,7 @@ def test_checkout_accepts_legacy_supplement_without_stock_adapter(settings):
         cart=cart,
         product=product,
         quantity=1,
-        price=Decimal("49.70"),
+        price=Decimal("57.16"),
         currency="TRY",
     )
     request = Request(APIRequestFactory().post("/api/orders/orders/create-from-cart/"))
