@@ -572,8 +572,8 @@ class SupplementMarketCheckService:
                 source=source,
             )
             # A reference-price success must not depend on the independent
-            # seller adapter.  Discovery failures are logged and the product
-            # safely remains consultation-only.
+            # seller adapter. Discovery failures are logged; they do not block
+            # checkout because supplement availability is informational.
             from apps.catalog.services.supplement_stock_discovery import (
                 SupplementStockDiscoveryError,
                 SupplementStockDiscoveryService,
@@ -823,9 +823,9 @@ class SupplementMarketCheckService:
                     "Наличие будет проверено у поставщика при добавлении в корзину."
                     if capability.availability_verification == "live_on_cart"
                     else (
-                        "Товар можно добавить в корзину; наличие и итоговая цена "
-                        "будут подтверждены до оплаты."
-                        if capability.availability_verification == "manual_before_payment"
+                        "Цена обновлена по доступному источнику. Наличие не "
+                        "ограничивает оформление заказа."
+                        if capability.availability_verification == "informational"
                         else "Используются данные каталога."
                     )
                 ),

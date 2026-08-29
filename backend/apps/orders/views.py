@@ -452,7 +452,14 @@ def _order_item_source_snapshot(item: CartItem) -> dict:
 
     offer = item.source_offer if item.source_offer_id else None
     if offer is None:
-        return {}
+        return {
+            # Supplements remain payable without a stock adapter by explicit
+            # business policy. Keep that fulfilment exception visible to admins
+            # even when no supplier offer could be attached to the cart line.
+            'supplier_confirmation_required': (
+                CartSourceOfferPolicy.availability_is_informational(item.product)
+            ),
+        }
     selected_options = dict(offer.selected_options or {})
     if offer.parser_key == "akakce" and isinstance(offer.response_metadata, dict):
         metadata = offer.response_metadata
@@ -495,7 +502,10 @@ def _order_item_source_snapshot(item: CartItem) -> dict:
         'source_stock_precision': item.observed_stock_precision or offer.stock_precision,
         'source_stock_quantity': item.observed_stock_quantity,
         'source_checked_at': item.source_checked_at,
-        'supplier_confirmation_required': offer.parser_key not in reservation_capable,
+        'supplier_confirmation_required': (
+            CartSourceOfferPolicy.availability_is_informational(item.product)
+            or offer.parser_key not in reservation_capable
+        ),
     }
 
 
@@ -683,6 +693,13 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
     Должно вызываться внутри transaction.atomic().
     """
     if quantity <= 0:
+        return
+
+    # Supplement catalogue stock is informational and often contains legacy
+    # zero/synthetic values. The order is intentionally accepted and fulfilled
+    # manually when a supplier cannot confirm availability, so no local stock
+    # row may reject or mutate this order here.
+    if CartSourceOfferPolicy.availability_is_informational(product):
         return
 
     external = getattr(product, "external_data", None) or {}

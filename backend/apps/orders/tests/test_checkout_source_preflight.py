@@ -343,7 +343,7 @@ def test_akakce_order_snapshot_keeps_selected_procurement_seller(settings):
 
 
 @pytest.mark.django_db
-def test_checkout_blocks_legacy_supplement_without_stock_adapter(settings):
+def test_checkout_accepts_legacy_supplement_without_stock_adapter(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
@@ -351,7 +351,7 @@ def test_checkout_blocks_legacy_supplement_without_stock_adapter(settings):
         name="Legacy supplement",
         slug=f"legacy-supplement-{uuid4().hex}",
         product_type="supplements",
-        price=Decimal("49.70"),
+        price=Decimal("57.16"),
         currency="TRY",
         is_available=True,
         stock_quantity=3,
@@ -368,12 +368,57 @@ def test_checkout_blocks_legacy_supplement_without_stock_adapter(settings):
 
     fingerprint, response = _checkout_source_preflight(request, cart)
 
-    assert fingerprint is None
-    assert response is not None
-    assert response.status_code == 409
-    assert response.data["code"] == (
-        CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED
-    )
+    assert response is None
+    assert fingerprint and len(fingerprint) == 64
     item.refresh_from_db()
-    assert item.verification_status == CartItem.VerificationStatus.PENDING_CONFIRMATION
-    assert item.is_payable is False
+    assert item.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert item.verification_issues == []
+    assert item.is_payable is True
+
+
+@pytest.mark.django_db
+def test_checkout_creates_manual_fulfilment_supplement_order_with_zero_stock(settings):
+    settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
+    settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
+    user = User.objects.create_user(
+        username="availability-optional-supplement-user",
+        email="availability-optional-supplement@example.test",
+        password="not-used",
+    )
+    product = Product.objects.create(
+        name="Zero-stock supplement",
+        slug=f"zero-stock-supplement-{uuid4().hex}",
+        product_type="supplements",
+        price=Decimal("49.70"),
+        currency="TRY",
+        is_available=False,
+        stock_quantity=0,
+    )
+    cart = Cart.objects.create(user=user, currency="TRY")
+    CartItem.objects.create(
+        cart=cart,
+        product=product,
+        quantity=2,
+        price=Decimal("57.16"),
+        currency="TRY",
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.post(
+        reverse("orders-create-from-cart"),
+        _checkout_payload(),
+        format="json",
+        HTTP_X_CURRENCY="TRY",
+    )
+
+    assert response.status_code == 201
+    order_item = OrderItem.objects.get()
+    assert order_item.product == product
+    assert order_item.quantity == 2
+    assert order_item.supplier_confirmation_required is True
+    product.refresh_from_db()
+    assert product.stock_quantity == 0
+    assert product.is_available is False
+    assert not CartItem.objects.filter(cart=cart).exists()

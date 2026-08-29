@@ -24,8 +24,8 @@ payload. Сервер выбирает сохранённый `ProductSourceOffe
 Новые поля являются read-only:
 
 - `source_offer` — внутренний ID выбранного сохранённого offer;
-- `verification_status` — `not_checked`, `verified`, `blocked`,
-  `retryable_error` или `unsupported`;
+- `verification_status` — `not_checked`, `pending_confirmation`, `verified`,
+  `blocked`, `retryable_error` или `unsupported`;
 - `source_checked_at`, `source_availability_status`;
 - `observed_source_price`, `observed_source_currency`;
 - `observed_public_price`, `observed_public_currency`;
@@ -64,6 +64,12 @@ total, promo, shipping и free-shipping threshold.
 Checkout повторяет source preflight до короткой DB-транзакции. При изменении корзины,
 цены или availability заказ/crypto invoice не создаются; клиент получает обновлённую
 корзину для review. Проверка поставщика не означает резервирование товара.
+
+Исключение бизнес-политики: для `supplements` availability является информационной.
+Отсутствующий adapter, `out_of_stock` или недоступность источника не исключают строку
+из payable total и не блокируют checkout. Используется последняя сохранённая цена с
+текущей конвертацией и наценками; повышение цены всё равно требует явного подтверждения.
+Заказ помечается `supplier_confirmation_required` для ручного исполнения администратором.
 
 ## Совместимость
 

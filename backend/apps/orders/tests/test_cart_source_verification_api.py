@@ -153,7 +153,7 @@ def test_unavailable_add_returns_issue_without_allocating_anonymous_cart(
 
 
 @pytest.mark.django_db
-def test_reference_only_supplement_is_saved_pending_confirmation(settings):
+def test_reference_only_supplement_is_saved_as_payable(settings):
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
     product = Product.objects.create(
@@ -174,23 +174,21 @@ def test_reference_only_supplement_is_saved_pending_confirmation(settings):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["has_blocking_issues"] is True
-    assert payload["payable_items_count"] == 0
+    assert payload["has_blocking_issues"] is False
+    assert payload["payable_items_count"] == 1
     cart = Cart.objects.get(session_key="reference-supplement-cart")
     item = CartItem.objects.get(cart=cart, product=product)
     assert item.quantity == 1
-    assert item.verification_status == CartItem.VerificationStatus.PENDING_CONFIRMATION
-    assert item.verification_issues == [
-        CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED,
-    ]
-    # Pending confirmation keeps the existing public-price calculation: the
+    assert item.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert item.verification_issues == []
+    # Availability-independent checkout keeps the existing public-price calculation: the
     # default 15% product markup is applied to the 49.70 TRY source/catalogue price.
     assert item.price == Decimal("57.16")
-    assert item.is_payable is False
+    assert item.is_payable is True
 
 
 @pytest.mark.django_db
-def test_pending_supplement_quantity_can_be_updated(settings):
+def test_availability_optional_supplement_quantity_can_be_updated(settings):
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
     product = Product.objects.create(
@@ -218,8 +216,8 @@ def test_pending_supplement_quantity_can_be_updated(settings):
     assert response.status_code == 200
     item = CartItem.objects.get(pk=item_id)
     assert item.quantity == 3
-    assert item.verification_status == CartItem.VerificationStatus.PENDING_CONFIRMATION
-    assert item.is_payable is False
+    assert item.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert item.is_payable is True
 
 
 @pytest.mark.django_db

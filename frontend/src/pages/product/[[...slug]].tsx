@@ -911,12 +911,11 @@ export default function ProductPage({
     [localizedDescriptionHtml]
   )
 
-  const supplementUsesLiveStockAdapter = Boolean(
+  const supplementAvailabilityDoesNotCapQuantity = Boolean(
     product &&
-    (productType === 'supplements' || product.product_type === 'supplements') &&
-    product.can_add_to_cart === true
+    (productType === 'supplements' || product.product_type === 'supplements')
   )
-  const maxAvailable = product && !supplementUsesLiveStockAdapter
+  const maxAvailable = product && !supplementAvailabilityDoesNotCapQuantity
     ? resolveAvailableStock(product, selectedVariant, selectedSize)
     : null
   const sizeHintMessage = t(
@@ -2202,7 +2201,7 @@ export default function ProductPage({
             <div className="mt-3 text-xl font-semibold text-red-600">
               {displayPrice || t('price_on_request')}
             </div>
-            {sourceRefresh?.eligible && sourceRefresh.status !== 'idle' && (
+            {!isSupplement && sourceRefresh?.eligible && sourceRefresh.status !== 'idle' && (
               <div
                 className={`mt-1 flex items-center gap-1.5 text-xs ${sourceRefresh.status === 'failed'
                   ? 'text-amber-700 dark:text-amber-300'
@@ -2634,6 +2633,7 @@ export default function ProductPage({
                 <SupplementPurchasePanel
                   slug={product.slug}
                   autoStart
+                  renderStatus={false}
                   onResult={(checked: SupplementMarketCheck) => {
                     const checkedPrice = checked.display_price
                     setProduct((current) => current

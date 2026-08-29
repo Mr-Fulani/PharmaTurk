@@ -303,8 +303,8 @@ def test_supplement_sale_capability_ignores_reference_price_source(supplement, s
     capability = SupplementAvailabilityService().capability(supplement)
 
     assert capability.can_add_to_cart is True
-    assert capability.purchase_mode == "pending_confirmation"
-    assert capability.availability_verification == "manual_before_payment"
+    assert capability.purchase_mode == "catalog_sale"
+    assert capability.availability_verification == "informational"
 
 
 @pytest.mark.django_db

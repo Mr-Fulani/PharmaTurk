@@ -34,6 +34,7 @@ export type SupplementMarketCheck = {
 type Props = {
   slug: string
   autoStart?: boolean
+  renderStatus?: boolean
   onResult?: (result: SupplementMarketCheck) => void
 }
 
@@ -43,6 +44,7 @@ const MAX_POLL_ATTEMPTS = 65
 export default function SupplementPurchasePanel({
   slug,
   autoStart = false,
+  renderStatus = true,
   onResult,
 }: Props) {
   const { t, i18n } = useTranslation('common')
@@ -147,6 +149,11 @@ export default function SupplementPurchasePanel({
     ? formatPrice(displayPrice.amount, displayPrice.currency, i18n.language) || displayPrice.amount
     : ''
   const liveOfferVerified = result?.availability?.status === 'live_on_cart'
+
+  // The product card uses this component as a headless price refresher. All
+  // hooks and polling remain active, but supplement-specific reference/status
+  // copy is intentionally omitted from the customer-facing details page.
+  if (!renderStatus) return null
 
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-blue-950 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100">

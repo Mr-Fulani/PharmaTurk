@@ -208,7 +208,7 @@ def test_policy_flag_off_avoids_offer_query_and_verifier(
 
 
 @pytest.mark.django_db
-def test_supplement_without_dedicated_adapter_waits_for_confirmation(settings):
+def test_supplement_without_dedicated_adapter_is_payable_on_catalog_price(settings):
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
     product = Product.objects.create(
@@ -227,16 +227,15 @@ def test_supplement_without_dedicated_adapter_waits_for_confirmation(settings):
         chosen_size="",
         quantity=1,
         target_currency="TRY",
-        baseline_public_price=Decimal("49.70"),
+        baseline_public_price=Decimal("57.16"),
     )
 
     assert decision is not None
     assert decision.offer is None
-    assert decision.payable is False
-    assert decision.verification_status == CartItem.VerificationStatus.PENDING_CONFIRMATION
-    assert decision.issues == (
-        CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED,
-    )
+    assert decision.payable is True
+    assert decision.public_price == Decimal("57.16")
+    assert decision.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert decision.issues == ()
     assert decision.allow_cart is True
     assert decision.result.response_metadata["reason"] == "trusted_stock_adapter_missing"
     assert verifier.calls == []
@@ -271,17 +270,61 @@ def test_reference_price_source_cannot_be_configured_as_supplement_stock_adapter
         chosen_size="",
         quantity=1,
         target_currency="TRY",
-        baseline_public_price=Decimal("49.70"),
+        baseline_public_price=Decimal("57.16"),
     )
 
     assert decision is not None
     assert decision.offer is None
-    assert decision.payable is False
-    assert decision.issues == (
-        CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED,
-    )
+    assert decision.payable is True
+    assert decision.public_price == Decimal("57.16")
+    assert decision.issues == ()
     assert decision.allow_cart is True
     assert verifier.calls == []
+
+
+@pytest.mark.django_db
+def test_supplement_stock_adapter_out_of_stock_remains_payable(settings, monkeypatch):
+    settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = ["akakce"]
+    product = Product.objects.create(
+        name="Availability-optional supplement",
+        slug=f"availability-optional-supplement-{uuid4().hex}",
+        product_type="supplements",
+        price=Decimal("100.00"),
+        currency="TRY",
+        stock_quantity=0,
+    )
+    offer = ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="akakce",
+        canonical_url="https://www.akakce.com/vitamin/urun,123.html",
+        source_price=Decimal("100.00"),
+        source_currency="TRY",
+    )
+    verifier = FakeVerifier(
+        _result(availability=OfferAvailability.OUT_OF_STOCK),
+        enabled_sources=("akakce",),
+    )
+    monkeypatch.setattr(
+        CartSourceOfferPolicy,
+        "_public_price_from_source",
+        lambda _self, **kwargs: Decimal("100.00"),
+    )
+
+    decision = CartSourceOfferPolicy(verifier).evaluate(
+        product=product,
+        chosen_size="",
+        quantity=5,
+        target_currency="TRY",
+        baseline_public_price=Decimal("100.00"),
+    )
+
+    assert decision.offer == offer
+    assert decision.result.availability_status == OfferAvailability.OUT_OF_STOCK
+    assert decision.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert decision.payable is True
+    assert decision.issues == ()
+    assert verifier.calls == [(offer.pk, False)]
 
 
 @pytest.mark.django_db

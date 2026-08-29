@@ -1,9 +1,10 @@
 """Sale capability boundary for supplement products.
 
-IlacFiyati supplies a reference retail price but no warehouse or shop inventory.
-This module never performs network I/O and never treats catalog defaults as stock.
-It only exposes whether a separate, explicitly enabled ProductSourceOffer adapter is
-available; the actual check still happens in cart and checkout preflight.
+IlacFiyati supplies the on-demand price while commercial adapters may additionally
+observe seller availability. Supplement availability is informational: checkout is
+allowed on the latest known public price and admins resolve fulfilment exceptions.
+This module performs no network I/O; live observations still happen in cart and
+checkout preflight when a trusted ProductSourceOffer exists.
 """
 
 from __future__ import annotations
@@ -69,7 +70,7 @@ class SupplementAvailabilityService:
                     )
 
         return SupplementSaleCapability(
-            purchase_mode="pending_confirmation",
+            purchase_mode="catalog_sale",
             can_add_to_cart=True,
-            availability_verification="manual_before_payment",
+            availability_verification="informational",
         )
