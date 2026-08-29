@@ -183,7 +183,9 @@ def test_reference_only_supplement_is_saved_pending_confirmation(settings):
     assert item.verification_issues == [
         CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED,
     ]
-    assert item.price == Decimal("49.70")
+    # Pending confirmation keeps the existing public-price calculation: the
+    # default 15% product markup is applied to the 49.70 TRY source/catalogue price.
+    assert item.price == Decimal("57.16")
     assert item.is_payable is False
 
 
