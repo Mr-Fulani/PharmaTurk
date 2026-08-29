@@ -156,6 +156,19 @@ def test_media_candidate_admin_is_moderation_only(admin_request):
     assert "reject_selected" in actions
 
 
+def test_media_status_distinguishes_no_results_from_success():
+    model_admin = MedicineProductAdmin(MedicineProduct, AdminSite())
+    product = MedicineProduct(
+        media_enrichment_status="completed",
+        media_enrichment_error="Изображений не найдено",
+    )
+
+    rendered = str(model_admin.get_media_enrichment_status(product))
+
+    assert "Нет новых изображений" in rendered
+    assert "#b45309" in rendered
+
+
 def test_medicine_analog_inline_uses_autocomplete_for_related_product(admin_request):
     model_admin = MedicineProductAdmin(MedicineProduct, AdminSite())
 

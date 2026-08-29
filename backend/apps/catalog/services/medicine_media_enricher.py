@@ -2,6 +2,7 @@ import io
 import hashlib
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import List, Optional
 from urllib.parse import urlsplit, urlunsplit
@@ -30,6 +31,7 @@ MEDIA_ENRICHMENT_RECENT_NO_RESULT = "Недавний поиск уже заве
 MEDIA_ENRICHMENT_NO_CANDIDATES = "Изображений не найдено"
 MEDIA_ENRICHMENT_NO_VALID_CANDIDATES = "Подходящие изображения не прошли проверку"
 MEDIA_ENRICHMENT_AWAITING_MODERATION = "Найденные изображения ожидают модерации"
+MEDIA_ENRICHMENT_PROVIDER_UNAVAILABLE = "Сервис поиска изображений недоступен"
 
 
 def _candidate_host(url: str) -> str:
@@ -63,6 +65,53 @@ class MedicineImageSearchCandidate:
     url: str
     source: str
     query: str = ""
+
+
+class MediaSearchProviderError(RuntimeError):
+    """An upstream search provider failed instead of returning an empty result."""
+
+    def __init__(self, provider: str, code: str, detail: str = ""):
+        self.provider = provider
+        self.code = code
+        self.detail = " ".join(str(detail or "").split())[:160]
+        super().__init__(self.user_message)
+
+    @property
+    def user_message(self) -> str:
+        message = f"{self.provider}: {self.code}"
+        return f"{message} ({self.detail})" if self.detail else message
+
+
+def _provider_error_detail(response: httpx.Response) -> str:
+    """Extract a short provider error without logging headers or credentials."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("message", "error", "detail"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
+
+
+def _valid_gtin(value: object) -> str:
+    candidate = str(value or "").strip()
+    return candidate if candidate.isdigit() and len(candidate) in {8, 12, 13, 14} else ""
+
+
+def _compact_search_name(value: object) -> str:
+    """Prefer the Latin commercial name over localized descriptive suffixes."""
+    name = " ".join(str(value or "").split())
+    without_parenthetical = re.sub(r"\s*\([^)]*\)\s*$", "", name).strip()
+    latin_prefix = re.match(r"^[A-Za-z0-9][A-Za-z0-9\s+%./-]*", without_parenthetical)
+    if latin_prefix:
+        compact = " ".join(latin_prefix.group(0).split())
+        if len(compact) >= 3:
+            return compact
+    return without_parenthetical
 
 
 class OpenFoodFactsClient:
@@ -142,15 +191,31 @@ class SerperImageSearchClient:
         try:
             with httpx.Client(timeout=10.0) as client:
                 response = client.post(self.BASE_URL, headers=headers, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                
-                # Serper returns a list of images under the "images" key
-                urls = [item.get("imageUrl") for item in data.get("images", []) if item.get("imageUrl")]
-                return urls
-        except Exception as e:
-            logger.error("Error fetching from Serper Image Search for query '%s': %s", query, e)
-            return []
+        except httpx.RequestError as error:
+            raise MediaSearchProviderError(
+                "Serper",
+                "ошибка сети",
+                type(error).__name__,
+            ) from error
+
+        if response.is_error:
+            raise MediaSearchProviderError(
+                "Serper",
+                f"HTTP {response.status_code}",
+                _provider_error_detail(response),
+            )
+        try:
+            data = response.json()
+        except ValueError as error:
+            raise MediaSearchProviderError("Serper", "некорректный ответ") from error
+
+        if not isinstance(data, dict):
+            raise MediaSearchProviderError("Serper", "некорректный ответ")
+        return [
+            item.get("imageUrl")
+            for item in data.get("images", [])
+            if isinstance(item, dict) and item.get("imageUrl")
+        ]
 
 
 class MedicineMediaEnricher:
@@ -161,30 +226,38 @@ class MedicineMediaEnricher:
         self.serper_client = SerperImageSearchClient()
         self.min_width = settings.MEDICINE_MEDIA_MIN_WIDTH
         self.min_height = settings.MEDICINE_MEDIA_MIN_HEIGHT
+        self.search_errors: list[MediaSearchProviderError] = []
         
     def build_search_queries(self, product: models.Model) -> List[str]:
         queries = []
         name = product.name or ""
+        search_name = _compact_search_name(name)
         active_ingredient = getattr(product, 'active_ingredient', "")
         
-        if name and active_ingredient:
-            queries.append(f"{name} {active_ingredient}")
+        if search_name and active_ingredient:
+            queries.append(f"{search_name} {active_ingredient}")
             
-        if name:
+        if search_name:
+            queries.append(search_name)
+
+        if name and name != search_name:
             queries.append(name)
             
         # Add ATC code context if available
         atc_code = getattr(product, 'atc_code', "")
-        if atc_code and name:
-            queries.append(f"{name} {atc_code}")
+        if atc_code and search_name:
+            queries.append(f"{search_name} {atc_code}")
             
         return list(dict.fromkeys(queries))  # Remove duplicates preserving order
 
     def fetch_candidates(self, product: models.Model) -> List[MedicineImageSearchCandidate]:
         candidates = []
+        self.search_errors = []
         
         # 1. Open Food Facts
-        barcode = getattr(product, 'barcode', getattr(product, 'gtin', ''))
+        barcode = _valid_gtin(
+            getattr(product, 'barcode', getattr(product, 'gtin', ''))
+        )
         if barcode:
             logger.info("Product %s has barcode %s. Searching in Open Food Facts...", product.id, barcode)
             off_urls = self.open_food_facts_client.fetch_images(barcode)
@@ -217,14 +290,35 @@ class MedicineMediaEnricher:
                         )
                         for url in serper_urls
                     )
-                except Exception as e:
-                    logger.error("Serper API error for query '%s': %s", query, e)
+                except MediaSearchProviderError as error:
+                    self.search_errors.append(error)
+                    logger.error(
+                        "Serper image search failed for product %s: %s",
+                        product.id,
+                        error.user_message,
+                    )
+                    break
+                except Exception as error:
+                    provider_error = MediaSearchProviderError(
+                        "Serper",
+                        "внутренняя ошибка клиента",
+                        type(error).__name__,
+                    )
+                    self.search_errors.append(provider_error)
+                    logger.exception(
+                        "Unexpected Serper client failure for product %s",
+                        product.id,
+                    )
+                    break
                 
                 if len(candidates) >= 10:  # Cap candidates to avoid excessive requests
                     logger.info("Reached maximum candidate limit (10). Stopping Serper search.")
                     break
         else:
             logger.warning("SERPER_API_KEY is not set or empty in settings. Serper search disabled.")
+            self.search_errors.append(
+                MediaSearchProviderError("Serper", "API-ключ не настроен")
+            )
                     
         unique_candidates = {}
         for candidate in candidates:
@@ -489,6 +583,30 @@ class MedicineMediaEnricher:
         try:
             candidates = self.fetch_candidates(product)
             if not candidates:
+                if self.search_errors:
+                    error_message = "; ".join(
+                        error.user_message for error in self.search_errors
+                    )[:1000]
+                    logger.warning(
+                        "Image search provider failed for product %s: %s",
+                        product.id,
+                        error_message,
+                    )
+                    cache.delete(cache_key)
+                    product.media_enrichment_status = MediaEnrichmentStatus.FAILED
+                    product.media_enrichment_last_at = timezone.now()
+                    product.media_enrichment_error = (
+                        f"{MEDIA_ENRICHMENT_PROVIDER_UNAVAILABLE}: {error_message}"
+                    )
+                    product.save(
+                        update_fields=[
+                            'media_enrichment_status',
+                            'media_enrichment_last_at',
+                            'media_enrichment_error',
+                        ]
+                    )
+                    return 0
+
                 logger.info("No candidates found for product %s. Caching failure for 7 days.", product.id)
                 cache.set(cache_key, True, timeout=604800)
                 
@@ -518,9 +636,19 @@ class MedicineMediaEnricher:
                 status=MediaEnrichmentCandidateStatus.PENDING
             ).exists()
             if staged_count == 0 and not pending_exists:
-                cache.set(cache_key, True, timeout=604800)
-                product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
-                product.media_enrichment_error = MEDIA_ENRICHMENT_NO_VALID_CANDIDATES
+                if self.search_errors:
+                    cache.delete(cache_key)
+                    product.media_enrichment_status = MediaEnrichmentStatus.FAILED
+                    product.media_enrichment_error = (
+                        f"{MEDIA_ENRICHMENT_PROVIDER_UNAVAILABLE}: "
+                        + "; ".join(
+                            error.user_message for error in self.search_errors
+                        )[:1000]
+                    )
+                else:
+                    cache.set(cache_key, True, timeout=604800)
+                    product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
+                    product.media_enrichment_error = MEDIA_ENRICHMENT_NO_VALID_CANDIDATES
             else:
                 cache.delete(cache_key)
                 product.media_enrichment_status = MediaEnrichmentStatus.MODERATION

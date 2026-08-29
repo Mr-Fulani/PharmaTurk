@@ -1,4 +1,5 @@
 import pytest
+import httpx
 from unittest.mock import patch, MagicMock
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -12,9 +13,12 @@ from apps.catalog.models import (
 from apps.catalog.services.medicine_media_enricher import (
     FetchedMedicineImage,
     MEDIA_ENRICHMENT_MAX_IMAGES,
+    MEDIA_ENRICHMENT_PROVIDER_UNAVAILABLE,
     MEDIA_ENRICHMENT_RECENT_NO_RESULT,
+    MediaSearchProviderError,
     MedicineImageSearchCandidate,
     MedicineMediaEnricher,
+    SerperImageSearchClient,
 )
 from apps.catalog.tasks import enrich_medicine_media
 
@@ -52,6 +56,19 @@ class TestMedicineMediaEnricher:
         assert len(queries) >= 2
         assert "ARYOSEVEN Eptacog alfa (aktive edilmiş) - Faktör VIIa" in queries
         assert "ARYOSEVEN" in queries
+
+    def test_build_queries_prefers_compact_commercial_name(self, enricher):
+        product = MedicineProduct(
+            name="RINVOQ 15 MG таблетки пролонгированного высвобождения (28 штук)",
+            active_ingredient="upadacitinib",
+            atc_code="L04AA44",
+        )
+
+        queries = enricher.build_search_queries(product)
+
+        assert queries[0] == "RINVOQ 15 MG upadacitinib"
+        assert queries[1] == "RINVOQ 15 MG"
+        assert "RINVOQ 15 MG L04AA44" in queries
         
     @patch('apps.catalog.services.medicine_media_enricher.httpx.Client.get')
     def test_open_food_facts_returns_urls(self, mock_get, enricher, medicine_product):
@@ -77,6 +94,39 @@ class TestMedicineMediaEnricher:
         with patch('apps.catalog.services.medicine_media_enricher.SerperImageSearchClient.fetch_images') as mock_fetch:
             enricher.fetch_candidates(medicine_product)
             mock_fetch.assert_not_called()
+
+    def test_placeholder_barcode_is_not_sent_to_open_food_facts(
+        self,
+        enricher,
+        settings,
+        medicine_product,
+    ):
+        medicine_product.barcode = "not specified"
+        settings.SERPER_API_KEY = ""
+        enricher.serper_client.api_key = ""
+
+        with patch.object(
+            enricher.open_food_facts_client,
+            "fetch_images",
+        ) as fetch_images:
+            enricher.fetch_candidates(medicine_product)
+
+        fetch_images.assert_not_called()
+
+    @patch('apps.catalog.services.medicine_media_enricher.httpx.Client.post')
+    def test_serper_http_error_is_not_treated_as_empty_results(self, post):
+        post.return_value = httpx.Response(
+            400,
+            json={"message": "Not enough credits"},
+            request=httpx.Request("POST", SerperImageSearchClient.BASE_URL),
+        )
+        client = SerperImageSearchClient()
+        client.api_key = "configured-test-key"
+
+        with pytest.raises(MediaSearchProviderError) as error:
+            client.fetch_images("RINVOQ 15 MG")
+
+        assert error.value.user_message == "Serper: HTTP 400 (Not enough credits)"
 
     @patch('apps.catalog.services.medicine_media_enricher.safe_image_fetcher.fetch_public_image_bytes')
     def test_validate_image_too_small(self, mock_fetch, enricher):
@@ -212,6 +262,42 @@ class TestMedicineMediaEnricher:
         assert medicine_product.media_enrichment_status == MediaEnrichmentStatus.COMPLETED
         assert medicine_product.media_enrichment_last_at is not None
         assert medicine_product.media_enrichment_error == MEDIA_ENRICHMENT_RECENT_NO_RESULT
+
+    def test_provider_failure_marks_product_failed_without_negative_cache(
+        self,
+        enricher,
+        medicine_product,
+        media_requester,
+    ):
+        provider_error = MediaSearchProviderError(
+            "Serper",
+            "HTTP 400",
+            "Not enough credits",
+        )
+
+        def fail_search(_product):
+            enricher.search_errors = [provider_error]
+            return []
+
+        with patch.object(enricher, "fetch_candidates", side_effect=fail_search):
+            staged = enricher.enrich(
+                medicine_product,
+                max_images=3,
+                ignore_cache=True,
+                requested_by=media_requester,
+            )
+
+        assert staged == 0
+        medicine_product.refresh_from_db()
+        assert medicine_product.media_enrichment_status == MediaEnrichmentStatus.FAILED
+        assert medicine_product.media_enrichment_error == (
+            f"{MEDIA_ENRICHMENT_PROVIDER_UNAVAILABLE}: "
+            "Serper: HTTP 400 (Not enough credits)"
+        )
+        assert not cache.get(
+            f"media_enrich_failed:{medicine_product._meta.label_lower}:"
+            f"{medicine_product.pk}"
+        )
 
     def test_task_reports_error_when_every_product_fails(
         self,

@@ -341,8 +341,18 @@ class MediaEnrichmentMixin:
             color = "#7c3aed"
             label = _("На модерации")
         elif status == MediaEnrichmentStatus.COMPLETED:
-            color = "green"
-            label = _("Завершено")
+            error = getattr(obj, 'media_enrichment_error', None)
+            no_result_messages = {
+                "Изображений не найдено",
+                "Подходящие изображения не прошли проверку",
+                "Недавний поиск уже завершился без результата",
+            }
+            if error in no_result_messages:
+                color = "#b45309"
+                label = _("Нет новых изображений")
+            else:
+                color = "green"
+                label = _("Завершено")
         elif status == MediaEnrichmentStatus.FAILED:
             color = "red"
             label = _("Ошибка")
