@@ -1,12 +1,12 @@
 import axios from 'axios'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 
 import api from '../lib/api'
-import { appendWhatsappText, selectMarketCheckDisplayPrice } from '../lib/medicineMarketCheck'
+import { selectMarketCheckDisplayPrice } from '../lib/medicineMarketCheck'
 import { formatPrice } from '../lib/price'
 
-type SupplementMarketCheck = {
+export type SupplementMarketCheck = {
   enabled: boolean
   status: 'not_requested' | 'pending' | 'running' | 'succeeded' | 'source_unavailable' | 'failed'
   product?: {
@@ -33,11 +33,8 @@ type SupplementMarketCheck = {
 
 type Props = {
   slug: string
-  name: string
-  productUrl: string
-  whatsappUrl?: string | null
-  telegramUrl?: string | null
-  onAvailabilityVerified?: () => void
+  autoStart?: boolean
+  onResult?: (result: SupplementMarketCheck) => void
 }
 
 const ACTIVE_STATUSES = new Set(['pending', 'running'])
@@ -45,11 +42,8 @@ const MAX_POLL_ATTEMPTS = 65
 
 export default function SupplementPurchasePanel({
   slug,
-  name,
-  productUrl,
-  whatsappUrl,
-  telegramUrl,
-  onAvailabilityVerified,
+  autoStart = false,
+  onResult,
 }: Props) {
   const { t, i18n } = useTranslation('common')
   const [result, setResult] = useState<SupplementMarketCheck | null>(null)
@@ -57,6 +51,12 @@ export default function SupplementPurchasePanel({
   const [starting, setStarting] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestGeneration = useRef(0)
+  const autoStartedSlug = useRef('')
+  const onResultRef = useRef(onResult)
+
+  useEffect(() => {
+    onResultRef.current = onResult
+  }, [onResult])
 
   useEffect(() => () => {
     requestGeneration.current += 1
@@ -82,7 +82,7 @@ export default function SupplementPurchasePanel({
         )
         if (generation !== requestGeneration.current) return
         setResult(response.data)
-        if (response.data.availability?.can_add_to_cart) onAvailabilityVerified?.()
+        onResultRef.current?.(response.data)
         schedulePoll(response.data, generation, attempt + 1)
       } catch {
         if (generation === requestGeneration.current) {
@@ -105,7 +105,7 @@ export default function SupplementPurchasePanel({
       )
       if (generation !== requestGeneration.current) return
       setResult(response.data)
-      if (response.data.availability?.can_add_to_cart) onAvailabilityVerified?.()
+      onResultRef.current?.(response.data)
       schedulePoll(response.data, generation, 0)
     } catch (error) {
       if (generation !== requestGeneration.current) return
@@ -120,6 +120,15 @@ export default function SupplementPurchasePanel({
       if (generation === requestGeneration.current) setStarting(false)
     }
   }
+
+  useEffect(() => {
+    if (!autoStart || autoStartedSlug.current === slug) return
+    autoStartedSlug.current = slug
+    void startCheck()
+    // startCheck intentionally uses the current slug/result snapshot; the ref
+    // prevents rerenders from starting duplicate checks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, slug])
 
   const statusMessage = (() => {
     if (starting || result?.status === 'pending') return t('supplement_market_check_pending', 'Проверка поставлена в очередь…')
@@ -137,43 +146,34 @@ export default function SupplementPurchasePanel({
   const formattedDisplayPrice = displayPrice
     ? formatPrice(displayPrice.amount, displayPrice.currency, i18n.language) || displayPrice.amount
     : ''
-  const consultMessage = useMemo(() => {
-    const english = String(i18n.language || '').toLowerCase().startsWith('en')
-    const referencePrice = displayPrice
-      ? `${displayPrice.amount} ${displayPrice.currency}`
-      : ''
-    return [
-      english
-        ? `Hello! Please confirm availability and the final price for this supplement: ${name}.`
-        : `Здравствуйте! Подтвердите, пожалуйста, наличие и итоговую цену БАДа: ${name}.`,
-      referencePrice
-        ? `${english ? 'Reference price' : 'Справочная цена'}: ${referencePrice}.`
-        : '',
-      productUrl ? `${english ? 'Product page' : 'Карточка'}: ${productUrl}` : '',
-    ].filter(Boolean).join('\n')
-  }, [displayPrice, i18n.language, name, productUrl])
-  const whatsappHref = appendWhatsappText(whatsappUrl, consultMessage)
+  const liveOfferVerified = result?.availability?.status === 'live_on_cart'
 
   return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
-      <p className="text-sm font-semibold">
-        {t('supplement_stock_unverified_title', 'Проверим цену и наличие на рынке')}
-      </p>
+    <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-blue-950 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
+      <div className="flex items-center gap-2">
+        {(starting || ACTIVE_STATUSES.has(result?.status || '')) && (
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+        )}
+        <p className="text-sm font-semibold">
+          {t('supplement_market_check_compact_title', 'Проверка цены и наличия')}
+        </p>
+      </div>
       <p className="mt-1 text-xs leading-5">
-        {t('supplement_stock_unverified_text', 'Проверим справочную цену и найдём совпадающее предложение реального продавца. В корзину попадёт только товар с актуальной live-проверкой.')}
+        {statusMessage || t('supplement_market_check_auto_start', 'Актуализируем данные по источникам…')}
       </p>
 
-      <button
-        type="button"
-        onClick={startCheck}
-        disabled={starting || ACTIVE_STATUSES.has(result?.status || '')}
-        className="mt-4 w-full rounded-md bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70"
-      >
-        {statusMessage || t('supplement_market_check_button', 'Проверить цену и наличие')}
-      </button>
+      {!starting && !ACTIVE_STATUSES.has(result?.status || '') && result?.status !== 'succeeded' && (
+        <button
+          type="button"
+          onClick={startCheck}
+          className="mt-3 rounded-md border border-blue-400 px-3 py-2 text-xs font-semibold text-blue-800 transition hover:bg-blue-100 dark:text-blue-100"
+        >
+          {t('supplement_market_check_retry', 'Проверить ещё раз')}
+        </button>
+      )}
 
       {displayPrice && (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-white px-4 py-3 text-gray-950 dark:border-amber-800 dark:bg-gray-900 dark:text-gray-100">
+        <div className="mt-3 rounded-lg border border-blue-200 bg-white px-4 py-3 text-gray-950 dark:border-blue-800 dark:bg-gray-900 dark:text-gray-100">
           <p className="text-xs text-gray-600 dark:text-gray-400">
             {t('supplement_market_reference_price', 'Справочная цена первоисточника')}
           </p>
@@ -188,34 +188,17 @@ export default function SupplementPurchasePanel({
       )}
 
       {(errorMessage || result?.error?.message) && (
-        <p className="mt-3 rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-xs dark:bg-gray-900/60">
+        <p className="mt-3 rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-xs text-amber-900 dark:bg-gray-900/60 dark:text-amber-100">
           {errorMessage || result?.error?.message}
         </p>
       )}
 
-      {(whatsappHref || telegramUrl) && (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          {whatsappHref && (
-            <a
-              href={whatsappHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex flex-1 items-center justify-center rounded-md bg-[#25D366] px-4 py-3 text-sm font-semibold text-white hover:bg-[#128C7E]"
-            >
-              {t('supplement_consult_button', 'Уточнить наличие у консультанта')}
-            </a>
-          )}
-          {telegramUrl && (
-            <a
-              href={telegramUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex flex-1 items-center justify-center rounded-md bg-[#0088cc] px-4 py-3 text-sm font-semibold text-white hover:bg-[#0077b5]"
-            >
-              {t('order_via_telegram', 'Заказать через Telegram')}
-            </a>
-          )}
-        </div>
+      {result?.status === 'succeeded' && (
+        <p className="mt-3 text-xs leading-5">
+          {liveOfferVerified
+            ? t('supplement_live_offer_ready', 'Предложение продавца найдено. Наличие повторно проверится при покупке.')
+            : t('supplement_confirmation_before_payment', 'Товар можно добавить в корзину. Наличие и итоговая цена будут подтверждены до оплаты.')}
+        </p>
       )}
     </div>
   )

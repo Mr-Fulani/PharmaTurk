@@ -6,6 +6,12 @@ import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
 import { ProductCardGalleryImage } from './ProductCardImageGallery'
 import { parsePriceWithCurrency } from '../lib/price'
+import {
+  buildSimilarFallbackParams,
+  getSimilarFallbackEndpoint,
+  normalizeSimilarProductType,
+  sameSimilarProductType,
+} from '../lib/similarProducts'
 
 interface Product {
   id: number
@@ -49,13 +55,11 @@ interface SimilarProductsProps {
   currentProductId?: number
   currentProductSlug?: string
   currentBaseProductId?: number | null
+  currentCategoryId?: number | null
   limit?: number
   /** Use RecSys API (vector similar) when slug is available */
   useRecsys?: boolean
 }
-
-const normalizeProductType = (value?: string | null) =>
-  (value || '').toString().trim().replace(/_/g, '-').toLowerCase()
 
 /**
  * Компонент для отображения похожих товаров
@@ -65,6 +69,7 @@ export default function SimilarProducts({
   currentProductId,
   currentProductSlug,
   currentBaseProductId,
+  currentCategoryId,
   limit = 8,
   useRecsys = false
 }: SimilarProductsProps) {
@@ -79,7 +84,7 @@ export default function SimilarProducts({
       try {
         setLoading(true)
         setShowingAnalogs(false)
-        const normalizedProductType = normalizeProductType(productType)
+        const normalizedProductType = normalizeSimilarProductType(productType)
 
         if (normalizedProductType === 'medicines' && currentProductSlug) {
           const analogResponse = await getSingleFlight(
@@ -129,7 +134,14 @@ export default function SimilarProducts({
         if (useRecsys && currentProductSlug && productType !== 'jewelry') {
           const response = await getSingleFlight(
             `/catalog/products/${encodeURIComponent(currentProductSlug)}/similar`,
-            { params: { limit: limit + 1, strategy: 'balanced', view: 'card' } } // Берем +1 на случай если API вернет текущий товар
+            {
+              params: {
+                limit: limit + 1,
+                strategy: 'balanced',
+                view: 'card',
+                ...(currentCategoryId ? { category_id: currentCategoryId } : {}),
+              },
+            } // Берем +1 на случай если API вернет текущий товар
           )
           const results: SimilarProductResult[] = response.data.results || []
           if (results.length > 0) {
@@ -142,6 +154,10 @@ export default function SimilarProducts({
               // Also filter if they share the same base_product_id
               if (currentBaseProductId && p.base_product_id === currentBaseProductId) return false
               if (p.base_product_id && p.id === currentProductId) return false
+              if (
+                p.product_type &&
+                !sameSimilarProductType(p.product_type, normalizedProductType)
+              ) return false
               return true
             })
             mappedProducts = mappedProducts.slice(0, limit)
@@ -157,27 +173,14 @@ export default function SimilarProducts({
           }
         }
 
-        let endpoint = ''
-        if (['medicines', 'supplements', 'medical-equipment', 'furniture', 'tableware', 'accessories', 'underwear', 'headwear'].includes(productType)) {
-          endpoint = '/catalog/products'
-        } else if (productType === 'jewelry') {
-          endpoint = '/catalog/jewelry/products'
-        } else if (productType === 'clothing') {
-          endpoint = '/catalog/clothing/products'
-        } else if (productType === 'shoes') {
-          endpoint = '/catalog/shoes/products'
-        } else if (productType === 'electronics') {
-          endpoint = '/catalog/electronics/products'
-        } else {
-          endpoint = '/catalog/products'
-        }
+        const endpoint = getSimilarFallbackEndpoint(normalizedProductType)
 
         const response = await getSingleFlight(endpoint, {
-          params: {
-            limit: limit + 1,
-            ordering: '-created_at',
-            view: 'card',
-          }
+          params: buildSimilarFallbackParams({
+            productType: normalizedProductType,
+            categoryId: currentCategoryId,
+            limit,
+          }),
         })
 
         let filteredProducts = response.data.results || response.data || []
@@ -185,6 +188,10 @@ export default function SimilarProducts({
           if (currentProductId && p.id === currentProductId) return false
           if (currentProductSlug && p.slug === currentProductSlug) return false
           if (currentBaseProductId && p.base_product_id === currentBaseProductId) return false
+          if (
+            p.product_type &&
+            !sameSimilarProductType(p.product_type, normalizedProductType)
+          ) return false
           return true
         })
         setProducts(filteredProducts.slice(0, limit))
@@ -206,6 +213,7 @@ export default function SimilarProducts({
     currentProductSlug,
     currentProductId,
     currentBaseProductId,
+    currentCategoryId,
     productType,
     limit,
   ])
@@ -214,7 +222,7 @@ export default function SimilarProducts({
     return (
       <div className="mt-8">
         <h2 className="text-2xl font-bold text-[var(--text-strong)] mb-6">
-          {normalizeProductType(productType) === 'medicines'
+          {normalizeSimilarProductType(productType) === 'medicines'
             ? t('analogs_title_short', 'Аналоги')
             : t('similar_products', 'Похожие товары')}
         </h2>

@@ -8,6 +8,10 @@ const ISSUE_COPY: Record<
   CartVerificationIssueCode,
   { key: string; fallback: string }
 > = {
+  supplier_confirmation_required: {
+    key: 'cart_issue_supplier_confirmation_required',
+    fallback: 'Ожидаем подтверждения наличия и итоговой цены поставщиком',
+  },
   source_out_of_stock: {
     key: 'cart_issue_source_out_of_stock',
     fallback: 'Нет в наличии у поставщика',
@@ -61,4 +65,12 @@ export function getCartVerificationError(error: any): CartVerificationErrorPaylo
 
 export function isBlockingCartItem(item: CartItem): boolean {
   return item.is_payable === false
+}
+
+export function isSupplierConfirmationPending(item: CartItem): boolean {
+  return (
+    item.verification_status === 'pending_confirmation' ||
+    item.verification_issues?.includes('supplier_confirmation_required') === true ||
+    item.issues?.some((issue) => issue.code === 'supplier_confirmation_required') === true
+  )
 }

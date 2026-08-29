@@ -371,7 +371,9 @@ def test_checkout_blocks_legacy_supplement_without_stock_adapter(settings):
     assert fingerprint is None
     assert response is not None
     assert response.status_code == 409
-    assert response.data["code"] == CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED
+    assert response.data["code"] == (
+        CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED
+    )
     item.refresh_from_db()
-    assert item.verification_status == CartItem.VerificationStatus.UNSUPPORTED
+    assert item.verification_status == CartItem.VerificationStatus.PENDING_CONFIRMATION
     assert item.is_payable is False

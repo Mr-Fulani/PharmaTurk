@@ -4,12 +4,14 @@ export type MoneyValue = string | number
 
 export type CartVerificationStatus =
   | 'not_checked'
+  | 'pending_confirmation'
   | 'verified'
   | 'blocked'
   | 'retryable_error'
   | 'unsupported'
 
 export type CartVerificationIssueCode =
+  | 'supplier_confirmation_required'
   | 'source_out_of_stock'
   | 'source_quantity_changed'
   | 'source_price_changed'

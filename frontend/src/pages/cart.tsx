@@ -19,6 +19,7 @@ import {
   getCartIssueCopy,
   getCartVerificationError,
   isBlockingCartItem,
+  isSupplierConfirmationPending,
 } from '../lib/cartVerification'
 import { SITE_NAME } from '../lib/siteMeta'
 import { formatMoney, parseMoneyNumber as parseNumber } from '../lib/price'
@@ -260,6 +261,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     cart.has_blocking_issues || cart.items.some(isBlockingCartItem),
   )
   const payableItemsCount = cart.payable_items_count ?? cart.items_count
+  const hasPendingConfirmation = cart.items.some(isSupplierConfirmationPending)
 
   return (
     <>
@@ -299,13 +301,20 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
             role="alert"
           >
             <p className="font-semibold">
-              {t('cart_verification_title', 'Некоторые товары требуют вашего внимания')}
+              {hasPendingConfirmation
+                ? t('cart_confirmation_pending_title', 'Некоторые товары ожидают подтверждения')
+                : t('cart_verification_title', 'Некоторые товары требуют вашего внимания')}
             </p>
             <p className="mt-1 text-sm">
-              {t(
-                'cart_verification_blocked_summary',
-                'Эти позиции сохранены в корзине, но не включены в итог и оформление заказа.',
-              )}
+              {hasPendingConfirmation
+                ? t(
+                    'cart_confirmation_pending_summary',
+                    'Позиции сохранены. Мы подтвердим наличие и итоговую цену до оплаты.',
+                  )
+                : t(
+                    'cart_verification_blocked_summary',
+                    'Эти позиции сохранены в корзине, но не включены в итог и оформление заказа.',
+                  )}
             </p>
           </div>
         )}
@@ -346,6 +355,8 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
               <div className="space-y-4">
                 {(cart.items || []).map((item) => {
                   const blocked = isBlockingCartItem(item)
+                  const pendingConfirmation = isSupplierConfirmationPending(item)
+                  const quantityLocked = blocked && !pendingConfirmation
                   const itemIssues = item.issues?.length
                     ? item.issues
                     : (item.verification_issues || []).map((code) => ({
@@ -560,7 +571,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => updateQty(item.id, item.quantity - 1)}
-                            disabled={loading || blocked || item.quantity <= 1}
+                            disabled={loading || quantityLocked || item.quantity <= 1}
                             className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                             aria-label={t('cart_decrease_quantity', 'Уменьшить количество')}
                           >
@@ -573,7 +584,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           </span>
                           <button
                             onClick={() => updateQty(item.id, item.quantity + 1)}
-                            disabled={loading || blocked}
+                            disabled={loading || quantityLocked}
                             className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                             aria-label={t('cart_increase_quantity', 'Увеличить количество')}
                           >

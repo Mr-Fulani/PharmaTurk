@@ -233,7 +233,11 @@ def _cart_item_update_values(
     requested_quantity: int,
 ) -> dict:
     """Build an optimistic CartItem update, clamping only a real exact quantity."""
-    final_quantity = requested_quantity if decision.payable else item.quantity
+    final_quantity = (
+        requested_quantity
+        if decision.payable or decision.allow_cart
+        else item.quantity
+    )
     values = _cart_item_verification_values(
         decision,
         quantity=final_quantity,
@@ -613,6 +617,13 @@ def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) ->
 
     normalized_type = (getattr(product, "product_type", None) or "").lower()
     size_value = (chosen_size or "").strip()
+
+    # Imported supplements can carry a legacy zero/unknown catalogue stock even
+    # though the commercial supplier has not been checked yet. For enforced
+    # source products the live adapter (or the pending-confirmation state) is the
+    # authority, so legacy catalogue stock must not reject the cart beforehand.
+    if CartSourceOfferPolicy.requires_verified_offer(product):
+        return None, "source_offer"
 
     if source_variant_id and normalized_type in {"clothing", "shoes"}:
         if normalized_type == "clothing":
@@ -1205,7 +1216,7 @@ class CartViewSet(viewsets.ViewSet):
             acknowledged_price=serializer.validated_data.get('acknowledged_price'),
             acknowledged_currency=serializer.validated_data.get('acknowledged_currency', ''),
         )
-        if decision is not None and not decision.payable:
+        if decision is not None and not decision.payable and not decision.allow_cart:
             if existing is not None:
                 original_quantity = existing.quantity
                 original_updated_at = existing.updated_at
@@ -1231,7 +1242,8 @@ class CartViewSet(viewsets.ViewSet):
                 quantity=new_total_qty,
                 existing_item=existing,
             )
-            item_price = decision.public_price
+            if decision.public_price is not None:
+                item_price = decision.public_price
 
         cart = _get_or_create_cart(request)
         _touch_cart(cart)

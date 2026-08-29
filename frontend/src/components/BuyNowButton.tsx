@@ -115,8 +115,9 @@ export default function BuyNowButton({
       } else {
         await refresh()
       }
-      // Перенаправляем на страницу оформления заказа
-      router.push('/checkout')
+      // A saved line may still require supplier confirmation. Keep it visible
+      // in cart instead of sending the customer to a checkout that must block.
+      router.push(response?.data?.has_blocking_issues ? '/cart' : '/checkout')
     } catch (err: any) {
       const conflict = getCartVerificationError(err)
       const copy = getCartIssueCopy(conflict?.code)

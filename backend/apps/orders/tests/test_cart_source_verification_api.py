@@ -153,7 +153,7 @@ def test_unavailable_add_returns_issue_without_allocating_anonymous_cart(
 
 
 @pytest.mark.django_db
-def test_reference_only_supplement_cannot_bypass_cart_with_legacy_stock(settings):
+def test_reference_only_supplement_is_saved_pending_confirmation(settings):
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
     product = Product.objects.create(
@@ -172,11 +172,52 @@ def test_reference_only_supplement_cannot_bypass_cart_with_legacy_stock(settings
         format="json",
     )
 
-    assert response.status_code == 409
-    assert response.json()["code"] == CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED
-    assert response.json()["verification"]["availability_status"] == "unsupported"
-    assert not Cart.objects.filter(session_key="reference-supplement-cart").exists()
-    assert not CartItem.objects.filter(product=product).exists()
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["has_blocking_issues"] is True
+    assert payload["payable_items_count"] == 0
+    cart = Cart.objects.get(session_key="reference-supplement-cart")
+    item = CartItem.objects.get(cart=cart, product=product)
+    assert item.quantity == 1
+    assert item.verification_status == CartItem.VerificationStatus.PENDING_CONFIRMATION
+    assert item.verification_issues == [
+        CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED,
+    ]
+    assert item.price == Decimal("49.70")
+    assert item.is_payable is False
+
+
+@pytest.mark.django_db
+def test_pending_supplement_quantity_can_be_updated(settings):
+    settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
+    settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
+    product = Product.objects.create(
+        name="Pending quantity supplement",
+        slug=f"pending-quantity-supplement-{uuid4().hex}",
+        product_type="supplements",
+        price=Decimal("49.70"),
+        currency="TRY",
+        stock_quantity=0,
+    )
+    client = _client("pending-quantity-supplement-cart")
+    added = client.post(
+        reverse("cart-add"),
+        {"product_id": product.pk, "quantity": 1},
+        format="json",
+    )
+    item_id = added.json()["items"][0]["id"]
+
+    response = client.post(
+        reverse("cart-update-item", kwargs={"pk": item_id}),
+        {"quantity": 3},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    item = CartItem.objects.get(pk=item_id)
+    assert item.quantity == 3
+    assert item.verification_status == CartItem.VerificationStatus.PENDING_CONFIRMATION
+    assert item.is_payable is False
 
 
 @pytest.mark.django_db

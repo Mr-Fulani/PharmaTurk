@@ -21,6 +21,7 @@ import {
   getCartIssueCopy,
   getCartVerificationError,
   isBlockingCartItem,
+  isSupplierConfirmationPending,
 } from '../lib/cartVerification'
 import { useReducedMotion } from 'framer-motion'
 import AnimatedOrderButton, { OrderButtonState } from '../components/AnimatedOrderButton'
@@ -312,6 +313,9 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const hasBlockingIssues = Boolean(
     cart?.has_blocking_issues || cart?.items.some(isBlockingCartItem),
   )
+  const hasPendingConfirmation = Boolean(
+    cart?.items.some(isSupplierConfirmationPending),
+  )
 
   if (!cart || cart.items.length === 0) {
     return (
@@ -346,13 +350,20 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
             role="alert"
           >
             <p className="font-semibold">
-              {t('cart_verification_title', 'Некоторые товары требуют вашего внимания')}
+              {hasPendingConfirmation
+                ? t('cart_confirmation_pending_title', 'Некоторые товары ожидают подтверждения')
+                : t('cart_verification_title', 'Некоторые товары требуют вашего внимания')}
             </p>
             <p className="mt-1 text-sm">
-              {t(
-                'cart_checkout_blocked',
-                'Сначала подтвердите изменения или удалите недоступные позиции.',
-              )}
+              {hasPendingConfirmation
+                ? t(
+                    'cart_confirmation_checkout_blocked',
+                    'Оформление станет доступно после подтверждения наличия и итоговой цены.',
+                  )
+                : t(
+                    'cart_checkout_blocked',
+                    'Сначала подтвердите изменения или удалите недоступные позиции.',
+                  )}
             </p>
             <Link
               href="/cart"

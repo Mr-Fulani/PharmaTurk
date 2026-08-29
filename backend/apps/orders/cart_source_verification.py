@@ -50,6 +50,9 @@ class CartOfferDecision:
     public_currency: str
     price_change_state: str
     price_acknowledged: bool = False
+    # A non-payable line may still be saved for later supplier confirmation.
+    # Hard failures (out of stock, unreachable source, rejected price) stay false.
+    allow_cart: bool = False
 
     @property
     def observed_stock_quantity(self) -> int | None:
@@ -246,12 +249,13 @@ class CartSourceOfferPolicy:
         return CartOfferDecision(
             offer=None,
             result=result,
-            verification_status=CartItem.VerificationStatus.UNSUPPORTED,
-            issues=(CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED,),
+            verification_status=CartItem.VerificationStatus.PENDING_CONFIRMATION,
+            issues=(CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED,),
             payable=False,
             public_price=None,
             public_currency=str(target_currency or "RUB").strip().upper(),
             price_change_state=CartItem.PriceChangeState.NONE,
+            allow_cart=True,
         )
 
     @staticmethod

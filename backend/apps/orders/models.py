@@ -223,12 +223,20 @@ class CartItem(models.Model):
 
     class VerificationStatus(models.TextChoices):
         NOT_CHECKED = "not_checked", _("Не проверено")
+        PENDING_CONFIRMATION = (
+            "pending_confirmation",
+            _("Ожидает подтверждения поставщика"),
+        )
         VERIFIED = "verified", _("Проверено")
         BLOCKED = "blocked", _("Покупка заблокирована")
         RETRYABLE_ERROR = "retryable_error", _("Источник временно недоступен")
         UNSUPPORTED = "unsupported", _("Проверка не поддерживается")
 
     class VerificationIssue(models.TextChoices):
+        SUPPLIER_CONFIRMATION_REQUIRED = (
+            "supplier_confirmation_required",
+            _("Наличие и итоговая цена ожидают подтверждения поставщика"),
+        )
         SOURCE_OUT_OF_STOCK = "source_out_of_stock", _("Нет в наличии у поставщика")
         SOURCE_QUANTITY_CHANGED = (
             "source_quantity_changed",

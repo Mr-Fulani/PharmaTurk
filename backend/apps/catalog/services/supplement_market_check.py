@@ -821,8 +821,13 @@ class SupplementMarketCheckService:
                 "purchase_mode": capability.purchase_mode,
                 "message": (
                     "Наличие будет проверено у поставщика при добавлении в корзину."
-                    if capability.can_add_to_cart
-                    else "Источник сообщает только справочную цену; наличие подтверждает консультант."
+                    if capability.availability_verification == "live_on_cart"
+                    else (
+                        "Товар можно добавить в корзину; наличие и итоговая цена "
+                        "будут подтверждены до оплаты."
+                        if capability.availability_verification == "manual_before_payment"
+                        else "Используются данные каталога."
+                    )
                 ),
             },
             "requested_at": (

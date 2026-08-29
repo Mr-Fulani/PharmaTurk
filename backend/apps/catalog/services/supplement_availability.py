@@ -52,9 +52,9 @@ class SupplementAvailabilityService:
     def capability(self, supplement: SupplementProduct) -> SupplementSaleCapability:
         if not bool(getattr(settings, "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", False)):
             return SupplementSaleCapability(
-                purchase_mode="consultation",
-                can_add_to_cart=False,
-                availability_verification="supplier_not_configured",
+                purchase_mode="catalog_sale",
+                can_add_to_cart=True,
+                availability_verification="catalog",
             )
 
         allowed_sources = self._configured_sources()
@@ -69,7 +69,7 @@ class SupplementAvailabilityService:
                     )
 
         return SupplementSaleCapability(
-            purchase_mode="consultation",
-            can_add_to_cart=False,
-            availability_verification="supplier_not_configured",
+            purchase_mode="pending_confirmation",
+            can_add_to_cart=True,
+            availability_verification="manual_before_payment",
         )

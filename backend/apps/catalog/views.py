@@ -2069,6 +2069,10 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
                 filters["category_id"] = int(request.query_params["category_id"])
             except (ValueError, TypeError):
                 pass
+        elif product.category_id:
+            # Similar means the same catalogue family by default. This also
+            # prevents a RecSys outage from surfacing unrelated product types.
+            filters["category_id"] = product.category_id
         if request.query_params.get("price_min"):
             try:
                 filters["price_min"] = float(request.query_params["price_min"])
@@ -2102,11 +2106,16 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             if rec_ids:
                 from apps.recommendations.selectors import public_recommendation_products
 
-                public_rec_ids = set(
-                    public_recommendation_products()
-                    .filter(id__in=rec_ids)
-                    .values_list('id', flat=True)
-                )
+                public_products = public_recommendation_products().filter(id__in=rec_ids)
+                if product.product_type:
+                    public_products = public_products.filter(
+                        product_type=product.product_type,
+                    )
+                if product.category_id:
+                    public_products = public_products.filter(
+                        category_id=product.category_id,
+                    )
+                public_rec_ids = set(public_products.values_list('id', flat=True))
                 reranked = [
                     row for row in reranked
                     if row["product"]["id"] in public_rec_ids

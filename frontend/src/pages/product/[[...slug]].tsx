@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import MedicinePriceCheck from '../../components/MedicinePriceCheck'
-import SupplementPurchasePanel from '../../components/SupplementPurchasePanel'
+import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components/SupplementPurchasePanel'
 import { resolveSchemaAvailability } from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
@@ -461,7 +461,7 @@ interface Product {
   reviews_count?: number | null
   availability_status?: string | null
   is_available?: boolean
-  purchase_mode?: 'verified_sale' | 'consultation'
+  purchase_mode?: 'verified_sale' | 'pending_confirmation' | 'catalog_sale' | 'consultation'
   can_add_to_cart?: boolean
   availability_verification?: string
   min_order_quantity?: number | null
@@ -2199,12 +2199,7 @@ export default function ProductPage({
                 )}
               </div>
             )}
-            {isSupplement && product.can_add_to_cart !== true && (
-              <div className="mt-3 text-xs font-medium text-amber-700 dark:text-amber-300">
-                {t('supplement_reference_price_label', 'Справочная цена, не публичная оферта')}
-              </div>
-            )}
-            <div className={`${isSupplement && product.can_add_to_cart !== true ? 'mt-1' : 'mt-3'} text-xl font-semibold text-red-600`}>
+            <div className="mt-3 text-xl font-semibold text-red-600">
               {displayPrice || t('price_on_request')}
             </div>
             {sourceRefresh?.eligible && sourceRefresh.status !== 'idle' && (
@@ -2493,7 +2488,7 @@ export default function ProductPage({
             )}
 
             {/* Селектор количества */}
-            {!isService && (!isSupplement || product.can_add_to_cart === true) && (
+            {!isService && (
               <div className="mt-4 flex flex-col gap-2">
                 <span
                   className="text-sm font-semibold"
@@ -2602,24 +2597,6 @@ export default function ProductPage({
                       {t('medicine_how_to_order_button', 'Как заказать из Турции')}
                     </Link>
                   </>
-                ) : isSupplement && product.can_add_to_cart !== true ? (
-                  <SupplementPurchasePanel
-                    slug={product.slug}
-                    name={displayProductName || product.name}
-                    productUrl={canonicalUrl}
-                    whatsappUrl={footerSettings.whatsapp_url}
-                    telegramUrl={footerSettings.telegram_url}
-                    onAvailabilityVerified={() => {
-                      setProduct((current) => current
-                        ? {
-                            ...current,
-                            purchase_mode: 'verified_sale',
-                            can_add_to_cart: true,
-                            availability_verification: 'live_on_cart',
-                          }
-                        : current)
-                    }}
-                  />
                 ) : (
                   maxAvailable === 0 ? (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
@@ -2651,6 +2628,31 @@ export default function ProductPage({
                   </>
                   )
                 )
+              )}
+
+              {isSupplement && (
+                <SupplementPurchasePanel
+                  slug={product.slug}
+                  autoStart
+                  onResult={(checked: SupplementMarketCheck) => {
+                    const checkedPrice = checked.display_price
+                    setProduct((current) => current
+                      ? {
+                          ...current,
+                          ...(checkedPrice
+                            ? {
+                                price: checkedPrice.amount,
+                                price_formatted: `${checkedPrice.amount} ${checkedPrice.currency}`,
+                                currency: checkedPrice.currency,
+                              }
+                            : {}),
+                          purchase_mode: (checked.availability?.purchase_mode || current.purchase_mode) as Product['purchase_mode'],
+                          can_add_to_cart: checked.availability?.can_add_to_cart ?? current.can_add_to_cart,
+                          availability_verification: checked.availability?.status || current.availability_verification,
+                        }
+                      : current)
+                  }}
+                />
               )}
 
             </div>
@@ -2899,6 +2901,7 @@ export default function ProductPage({
             currentProductId={product.id}
             currentBaseProductId={product.base_product_id}
             currentProductSlug={product.slug}
+            currentCategoryId={product.category?.id}
             limit={8}
             useRecsys={true}
           />

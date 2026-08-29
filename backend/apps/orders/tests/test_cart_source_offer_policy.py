@@ -208,7 +208,7 @@ def test_policy_flag_off_avoids_offer_query_and_verifier(
 
 
 @pytest.mark.django_db
-def test_supplement_without_dedicated_adapter_fails_closed(settings):
+def test_supplement_without_dedicated_adapter_waits_for_confirmation(settings):
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
     product = Product.objects.create(
@@ -233,8 +233,11 @@ def test_supplement_without_dedicated_adapter_fails_closed(settings):
     assert decision is not None
     assert decision.offer is None
     assert decision.payable is False
-    assert decision.verification_status == CartItem.VerificationStatus.UNSUPPORTED
-    assert decision.issues == (CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED,)
+    assert decision.verification_status == CartItem.VerificationStatus.PENDING_CONFIRMATION
+    assert decision.issues == (
+        CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED,
+    )
+    assert decision.allow_cart is True
     assert decision.result.response_metadata["reason"] == "trusted_stock_adapter_missing"
     assert verifier.calls == []
 
@@ -274,7 +277,10 @@ def test_reference_price_source_cannot_be_configured_as_supplement_stock_adapter
     assert decision is not None
     assert decision.offer is None
     assert decision.payable is False
-    assert decision.issues == (CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED,)
+    assert decision.issues == (
+        CartItem.VerificationIssue.SUPPLIER_CONFIRMATION_REQUIRED,
+    )
+    assert decision.allow_cart is True
     assert verifier.calls == []
 
 

@@ -185,8 +185,8 @@ def test_market_check_api_is_idempotent_and_client_cannot_choose_source(
     assert read.status_code == 200
     assert calls == [[ProductMarketCheck.objects.get().pk]]
     assert read.data["status"] == "pending"
-    assert read.data["availability"]["can_add_to_cart"] is False
-    assert read.data["availability"]["status"] == "supplier_not_configured"
+    assert read.data["availability"]["can_add_to_cart"] is True
+    assert read.data["availability"]["status"] == "catalog"
     assert "source_url" not in read.data
 
 
@@ -284,15 +284,15 @@ def test_market_check_endpoint_uses_jwt_only_authentication():
 
 
 @pytest.mark.django_db
-def test_supplement_detail_exposes_consultation_instead_of_legacy_stock(supplement):
+def test_supplement_detail_exposes_normal_catalog_sale_when_enforcement_is_off(supplement):
     response = APIClient().get(
         reverse("supplement-product-detail", kwargs={"slug": supplement.slug})
     )
 
     assert response.status_code == 200
-    assert response.data["purchase_mode"] == "consultation"
-    assert response.data["can_add_to_cart"] is False
-    assert response.data["availability_verification"] == "supplier_not_configured"
+    assert response.data["purchase_mode"] == "catalog_sale"
+    assert response.data["can_add_to_cart"] is True
+    assert response.data["availability_verification"] == "catalog"
 
 
 @pytest.mark.django_db
@@ -302,9 +302,9 @@ def test_supplement_sale_capability_ignores_reference_price_source(supplement, s
 
     capability = SupplementAvailabilityService().capability(supplement)
 
-    assert capability.can_add_to_cart is False
-    assert capability.purchase_mode == "consultation"
-    assert capability.availability_verification == "supplier_not_configured"
+    assert capability.can_add_to_cart is True
+    assert capability.purchase_mode == "pending_confirmation"
+    assert capability.availability_verification == "manual_before_payment"
 
 
 @pytest.mark.django_db
@@ -332,7 +332,8 @@ def test_supplement_sale_capability_requires_enabled_explicit_adapter(
 
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = False
     disabled = SupplementAvailabilityService().capability(supplement)
-    assert disabled.can_add_to_cart is False
+    assert disabled.can_add_to_cart is True
+    assert disabled.purchase_mode == "catalog_sale"
 
 
 def test_invalid_supplement_price_is_rejected():
