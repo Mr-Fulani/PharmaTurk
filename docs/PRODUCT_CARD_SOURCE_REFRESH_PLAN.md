@@ -2,7 +2,7 @@
 
 Последняя проверка по коду: 2026-08-29  
 Ветка реализации: `codex/product-card-source-refresh`  
-Проверенный release SHA: `4b4ecd2ba7c0d506e2794607e1a2ef8b23d8d734`
+Проверенный release SHA: `a10326dc21b414583bb8c882742089fcc0d2715f`
 Контур: product detail → async source refresh → inventory-only reconcile → detail refetch
 
 ## Цель и неизменяемые правила
@@ -53,8 +53,13 @@
   ESLint без ошибок и успешный Next.js production build.
 - [x] Immutable backend/frontend/test images собраны с точным revision label;
   параллельная Poetry-установка отключена для воспроизводимой сборки.
-- [ ] Production backup, deploy с выключенным флагом и smoke endpoint.
-- [ ] Canary одного товара IKEA, одного FLO/LCW и одного Zara; сравнение с источником.
+- [x] Initial production backup, deploy `4b4ecd2` с выключенным флагом и публичный
+  HTTPS smoke выполнены; rollback image и backup manifest сохранены.
+- [x] IKEA canary выявил скрытый `Product.post_save` side effect на shadow metadata;
+  flag сразу выключен, запись переведена на атомарный `QuerySet.update`, добавлен
+  regression-тест отсутствия content signals, полный hotfix predeploy пройден.
+- [ ] Свежий backup и deploy hotfix `a10326d` с выключенным флагом.
+- [ ] Повторный canary IKEA, затем по одному FLO/LCW и Zara с content-only hash.
 - [ ] Поочерёдное включение allowlist и окно наблюдения без массового включения.
 
 ## Ошибки и поведение карточки
