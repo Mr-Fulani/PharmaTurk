@@ -1,6 +1,9 @@
 """Админки для доменов Волны 2 (простые домены без вариантов)."""
 
+import logging
+
 from django.contrib import admin, messages
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 from django.db import models as django_models
@@ -11,12 +14,16 @@ from .models import (
     Category,
     MedicineProduct, MedicineProductTranslation, MedicineProductImage, MedicineAnalog,
     SupplementProduct, SupplementProductTranslation, SupplementProductImage,
+    MediaEnrichmentCandidate, MediaEnrichmentCandidateStatus,
     MedicalEquipmentProduct, MedicalEquipmentProductTranslation, MedicalEquipmentProductImage,
     TablewareProduct, TablewareProductTranslation, TablewareProductImage,
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
 )
 from .admin_base import AIStatusFilter, RunAIActionMixin, MediaEnrichmentStatusFilter, MediaEnrichmentMixin, ShadowProductCleanupAdminMixin
+
+
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -304,6 +311,184 @@ class SupplementProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
         )),
         _make_image_inline(SupplementProductImage),
     ]
+
+
+@admin.register(MediaEnrichmentCandidate)
+class MediaEnrichmentCandidateAdmin(admin.ModelAdmin):
+    """Единственная точка публикации изображений, найденных обогатителем."""
+
+    list_display = (
+        "image_preview",
+        "product_link",
+        "status_badge",
+        "source",
+        "source_host",
+        "requested_by",
+        "dimensions",
+        "created_at",
+        "reviewed_at",
+    )
+    list_filter = ("status", "source", "source_host", "created_at", "reviewed_at")
+    search_fields = (
+        "medicine_product__name",
+        "supplement_product__name",
+        "source_url",
+        "search_query",
+        "candidate_key",
+        "requested_by__email",
+        "requested_by__username",
+    )
+    ordering = ("-created_at", "-id")
+    list_select_related = (
+        "medicine_product",
+        "supplement_product",
+        "requested_by",
+        "reviewed_by",
+    )
+    actions = ("approve_selected", "reject_selected")
+    fields = (
+        "image_preview",
+        "product_link",
+        "status",
+        "source",
+        "source_host",
+        "source_url",
+        "search_query",
+        "requested_by",
+        "dimensions",
+        "content_hash",
+        "image_hash",
+        "moderation_note",
+        "reviewed_by",
+        "reviewed_at",
+        "created_at",
+        "updated_at",
+    )
+    readonly_fields = (
+        "image_preview",
+        "product_link",
+        "status",
+        "source",
+        "source_host",
+        "source_url",
+        "search_query",
+        "requested_by",
+        "dimensions",
+        "content_hash",
+        "image_hash",
+        "reviewed_by",
+        "reviewed_at",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            "medicine_product",
+            "supplement_product",
+            "requested_by",
+            "reviewed_by",
+        )
+
+    @admin.display(description=_("Изображение"))
+    def image_preview(self, obj):
+        if obj and obj.image_file:
+            try:
+                return render_media_preview(
+                    obj.image_file.url,
+                    max_width=180,
+                    max_height=180,
+                )
+            except Exception:
+                return _("Файл недоступен")
+        return "-"
+
+    @admin.display(description=_("Товар"))
+    def product_link(self, obj):
+        product = obj.product if obj else None
+        if product is None:
+            return "-"
+        url = reverse(
+            f"admin:catalog_{product._meta.model_name}_change",
+            args=(product.pk,),
+        )
+        return format_html('<a href="{}">{}</a>', url, product.name)
+
+    @admin.display(description=_("Статус"), ordering="status")
+    def status_badge(self, obj):
+        colors = {
+            MediaEnrichmentCandidateStatus.PENDING: ("#fff3cd", "#8a5a00"),
+            MediaEnrichmentCandidateStatus.APPROVED: ("#d1e7dd", "#0f5132"),
+            MediaEnrichmentCandidateStatus.REJECTED: ("#f8d7da", "#842029"),
+        }
+        background, foreground = colors.get(obj.status, ("#e9ecef", "#212529"))
+        return format_html(
+            '<span style="display:inline-block;padding:3px 7px;border-radius:6px;'
+            'background:{};color:{};font-weight:600;">{}</span>',
+            background,
+            foreground,
+            obj.get_status_display(),
+        )
+
+    @admin.display(description=_("Размер"))
+    def dimensions(self, obj):
+        return f"{obj.width}×{obj.height}" if obj else "-"
+
+    @admin.action(description=_("[Модерация] Одобрить и добавить в галерею"), permissions=["change"])
+    def approve_selected(self, request, queryset):
+        from apps.catalog.services.media_candidate_moderation import (
+            approve_media_candidate,
+        )
+
+        approved = 0
+        gallery_created = 0
+        errors = 0
+        for candidate_id in queryset.values_list("id", flat=True):
+            try:
+                result = approve_media_candidate(candidate_id, reviewer=request.user)
+                approved += int(result.changed)
+                gallery_created += int(result.gallery_created)
+            except Exception:
+                errors += 1
+                logger.exception("Media candidate approval failed", extra={"candidate_id": candidate_id})
+
+        level = messages.WARNING if errors else messages.SUCCESS
+        self.message_user(
+            request,
+            _(
+                "Одобрено кандидатов: %(approved)s; добавлено в галереи: %(created)s; "
+                "ошибок: %(errors)s."
+            )
+            % {"approved": approved, "created": gallery_created, "errors": errors},
+            level=level,
+        )
+
+    @admin.action(description=_("[Модерация] Отклонить"), permissions=["change"])
+    def reject_selected(self, request, queryset):
+        from apps.catalog.services.media_candidate_moderation import (
+            reject_media_candidate,
+        )
+
+        rejected = 0
+        errors = 0
+        for candidate_id in queryset.values_list("id", flat=True):
+            try:
+                result = reject_media_candidate(candidate_id, reviewer=request.user)
+                rejected += int(result.changed)
+            except Exception:
+                errors += 1
+                logger.exception("Media candidate rejection failed", extra={"candidate_id": candidate_id})
+
+        level = messages.WARNING if errors else messages.SUCCESS
+        self.message_user(
+            request,
+            _("Отклонено кандидатов: %(rejected)s; ошибок: %(errors)s.")
+            % {"rejected": rejected, "errors": errors},
+            level=level,
+        )
 
 
 # ─────────────────────────────────────────────────────────────

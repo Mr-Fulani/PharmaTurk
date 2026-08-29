@@ -128,6 +128,15 @@ def get_domain_gallery_upload_path(instance, filename):
     return f"{_product_dir(product)}/{_product_media_name(product, filename, role='gallery')}"
 
 
+def get_media_enrichment_candidate_upload_path(instance, filename):
+    """Кандидат обогащения → отдельная папка до решения модератора."""
+    product = getattr(instance, "product", None)
+    return (
+        f"{_product_dir(product)}/moderation/"
+        f"{_product_media_name(product, filename, role='candidate')}"
+    )
+
+
 def get_domain_variant_gallery_upload_path(instance, filename):
     """*VariantImage.image_file → одна папка товара (имя с цветом)."""
     variant = getattr(instance, "variant", None)

@@ -20,7 +20,6 @@ Beat только публикует задачи. Для исполнения �
 
 | Имя schedule | Задача | Расписание | Очередь | Основной эффект |
 |---|---|---|---|---|
-| `enrich-medicine-media-nightly` | `catalog.enrich_medicine_media` | ежедневно `03:00` | `celery` | Дополняет галерею `MedicineProduct` до 3 изображений. |
 | `currency-update-rates` | `currency.update_rates` | каждые 4 часа | `celery` | Обновляет курсы валют. |
 | `currency-update-prices` | `currency.update_product_prices` | каждые 24 часа | `celery` | Вызывает `update_product_prices`, batch size 200. |
 | `catalog-refresh-source-offers` | `catalog.refresh_source_offers` | каждые 5 минут | `celery` | No-op до включения двух флагов; обновляет не более 100 stale offers, приоритет корзинам. |
@@ -35,16 +34,14 @@ Beat только публикует задачи. Для исполнения �
 
 ### Обогащение медиа лекарств
 
-Периодический вызов использует значения по умолчанию:
+Автоматическое расписание отключено. `catalog.enrich_medicine_media` запускается только
+ручным действием администратора для явно выбранных `MedicineProduct` или
+`SupplementProduct`. Вызов без `product_ids` и ID активного сотрудника ничего
+не обрабатывает. Инициатор сохраняется у каждого найденного кандидата.
 
-```python
-model_name="MedicineProduct"
-max_images_per_product=3
-```
-
-Задача также умеет вручную обрабатывать `SupplementProduct` через `model_name`, но scheduled entry этого не делает. При ручной передаче `product_ids` задача обрабатывает выбранные записи независимо от текущего числа изображений.
-
-Эта задача и `cleanup-orphaned-media` запланированы одновременно на `03:00` и работают в одной очереди. При изменении concurrency или storage-политики следует проверить, допустимо ли их параллельное выполнение; проще развести cron-время.
+Найденные файлы сохраняются как `MediaEnrichmentCandidate` и не добавляются в
+товарную галерею. Перенос в `MedicineProductImage`/`SupplementProductImage`
+выполняется только после явного одобрения в разделе «Модерация изображений».
 
 ### Валюты
 

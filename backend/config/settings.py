@@ -222,12 +222,6 @@ CELERY_TASK_ROUTES = {
 }
 # Расписание Celery Beat. Подробности — см. CELERY_TASKS.md в корне проекта.
 CELERY_BEAT_SCHEDULE = {
-    # Обогащение медиа медикаментов каждую ночь
-    "enrich-medicine-media-nightly": {
-        "task": "catalog.enrich_medicine_media",
-        "schedule": crontab(hour=3, minute=0),
-        "kwargs": {"max_images_per_product": 3},
-    },
     # Валюта: обновление курсов каждые 4 часа
     "currency-update-rates": {
         "task": "currency.update_rates",

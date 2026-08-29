@@ -1,4 +1,5 @@
 import io
+import hashlib
 import logging
 import os
 from dataclasses import dataclass
@@ -15,15 +16,20 @@ from django.db import models
 from django.utils import timezone
 from django.utils.text import get_valid_filename
 
-from apps.catalog.models import MediaEnrichmentStatus
+from apps.catalog.models import (
+    MediaEnrichmentCandidate,
+    MediaEnrichmentCandidateStatus,
+    MediaEnrichmentStatus,
+)
 from apps.recommendations.services import safe_image_fetcher
 
 logger = logging.getLogger(__name__)
 
-MEDIA_ENRICHMENT_MAX_IMAGES = "Достигнуто максимальное количество изображений"
+MEDIA_ENRICHMENT_MAX_IMAGES = "Достигнуто максимальное количество изображений или кандидатов"
 MEDIA_ENRICHMENT_RECENT_NO_RESULT = "Недавний поиск уже завершился без результата"
 MEDIA_ENRICHMENT_NO_CANDIDATES = "Изображений не найдено"
 MEDIA_ENRICHMENT_NO_VALID_CANDIDATES = "Подходящие изображения не прошли проверку"
+MEDIA_ENRICHMENT_AWAITING_MODERATION = "Найденные изображения ожидают модерации"
 
 
 def _candidate_host(url: str) -> str:
@@ -48,6 +54,15 @@ class FetchedMedicineImage:
     extension: str
     width: int
     height: int
+
+
+@dataclass(frozen=True)
+class MedicineImageSearchCandidate:
+    """Search metadata retained until a moderator reviews the downloaded file."""
+
+    url: str
+    source: str
+    query: str = ""
 
 
 class OpenFoodFactsClient:
@@ -165,15 +180,22 @@ class MedicineMediaEnricher:
             
         return list(dict.fromkeys(queries))  # Remove duplicates preserving order
 
-    def fetch_candidates(self, product: models.Model) -> List[str]:
-        urls = []
+    def fetch_candidates(self, product: models.Model) -> List[MedicineImageSearchCandidate]:
+        candidates = []
         
         # 1. Open Food Facts
         barcode = getattr(product, 'barcode', getattr(product, 'gtin', ''))
         if barcode:
             logger.info("Product %s has barcode %s. Searching in Open Food Facts...", product.id, barcode)
             off_urls = self.open_food_facts_client.fetch_images(barcode)
-            urls.extend(off_urls)
+            candidates.extend(
+                MedicineImageSearchCandidate(
+                    url=url,
+                    source="open_food_facts",
+                    query=str(barcode),
+                )
+                for url in off_urls
+            )
             logger.info("Open Food Facts returned %d candidates for product %s.", len(off_urls), product.id)
         else:
             logger.info("Product %s has no barcode. Skipping Open Food Facts.", product.id)
@@ -187,17 +209,27 @@ class MedicineMediaEnricher:
                 try:
                     serper_urls = self.serper_client.fetch_images(query)
                     logger.info("Serper Image Search returned %d candidates for query '%s'.", len(serper_urls), query)
-                    urls.extend(serper_urls)
+                    candidates.extend(
+                        MedicineImageSearchCandidate(
+                            url=url,
+                            source="serper",
+                            query=query,
+                        )
+                        for url in serper_urls
+                    )
                 except Exception as e:
                     logger.error("Serper API error for query '%s': %s", query, e)
                 
-                if len(urls) >= 10:  # Cap candidates to avoid excessive requests
+                if len(candidates) >= 10:  # Cap candidates to avoid excessive requests
                     logger.info("Reached maximum candidate limit (10). Stopping Serper search.")
                     break
         else:
             logger.warning("SERPER_API_KEY is not set or empty in settings. Serper search disabled.")
                     
-        return list(dict.fromkeys(urls))
+        unique_candidates = {}
+        for candidate in candidates:
+            unique_candidates.setdefault(candidate.url, candidate)
+        return list(unique_candidates.values())
 
     def fetch_validated_image(self, url: str) -> Optional[FetchedMedicineImage]:
         """Fetch one candidate once, with SSRF, byte and decode limits enforced."""
@@ -257,95 +289,178 @@ class MedicineMediaEnricher:
             logger.warning("Failed to calculate image hash: %s", e)
             return None
 
-    def save_validated_image(
+    def _is_visual_duplicate(self, product: models.Model, current_hash: str) -> bool:
+        current = imagehash.hex_to_hash(current_hash)
+        for existing_image in product.gallery_images.all():
+            existing_hash = existing_image.image_hash
+            if not existing_hash and existing_image.image_file:
+                try:
+                    with existing_image.image_file.open("rb") as image_file:
+                        existing_hash = self.get_image_hash(image_file.read())
+                    if existing_hash:
+                        existing_image.image_hash = existing_hash
+                        existing_image.save(update_fields=["image_hash"])
+                except Exception as error:
+                    logger.warning(
+                        "Could not compute hash for existing image %s: %s",
+                        existing_image.id,
+                        error,
+                    )
+            try:
+                if existing_hash and current - imagehash.hex_to_hash(existing_hash) < 10:
+                    return True
+            except (TypeError, ValueError):
+                continue
+
+        for existing_candidate in product.media_enrichment_candidates.exclude(
+            image_hash__isnull=True
+        ).exclude(image_hash=""):
+            try:
+                if current - imagehash.hex_to_hash(existing_candidate.image_hash) < 10:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
+    def stage_validated_candidate(
         self,
         product: models.Model,
-        url: str,
+        candidate: MedicineImageSearchCandidate,
         fetched: FetchedMedicineImage,
-    ) -> Optional[models.Model]:
-        """Persist bytes already fetched and validated by ``fetch_validated_image``."""
+        *,
+        requested_by,
+    ) -> Optional[MediaEnrichmentCandidate]:
+        """Persist a quarantined candidate without modifying the product gallery."""
+
+        candidate_record = None
+        created = False
         try:
-            # Calculate perceptual hash to detect duplicates.
+            if not (
+                requested_by
+                and getattr(requested_by, "pk", None)
+                and getattr(requested_by, "is_active", False)
+                and getattr(requested_by, "is_staff", False)
+            ):
+                raise ValueError("Active staff initiator is required")
+
             current_hash = self.get_image_hash(fetched.content)
+            if current_hash and self._is_visual_duplicate(product, current_hash):
+                logger.info(
+                    "Candidate from host=%s duplicates an existing image/candidate for product %s.",
+                    _candidate_host(candidate.url),
+                    product.id,
+                )
+                return None
 
-            if current_hash:
-                # Check against existing images (compute their hash if missing).
-                existing_images = product.gallery_images.all()
-                for ext_img in existing_images:
-                    ext_hash = ext_img.image_hash
-                    if not ext_hash and ext_img.image_file:
-                        try:
-                            with ext_img.image_file.open('rb') as f:
-                                ext_hash = self.get_image_hash(f.read())
-                                if ext_hash:
-                                    ext_img.image_hash = ext_hash
-                                    ext_img.save(update_fields=['image_hash'])
-                        except Exception as e:
-                            logger.warning("Could not compute hash for existing image %s: %s", ext_img.id, e)
+            content_hash = hashlib.sha256(fetched.content).hexdigest()
+            candidate_key = hashlib.sha256(
+                f"{product._meta.label_lower}:{product.pk}:{content_hash}".encode("utf-8")
+            ).hexdigest()
+            product_field = {
+                "medicineproduct": "medicine_product",
+                "supplementproduct": "supplement_product",
+            }.get(product._meta.model_name)
+            if product_field is None:
+                raise ValueError("Unsupported media-enrichment product model")
 
-                    if ext_hash:
-                        # If difference between hashes is small (< 10), images are visually identical.
-                        if imagehash.hex_to_hash(current_hash) - imagehash.hex_to_hash(ext_hash) < 10:
-                            logger.info(
-                                "Image from host=%s is visually identical to existing image %s (hash match). Skipping.",
-                                _candidate_host(url),
-                                ext_img.id,
-                            )
-                            return None
+            candidate_record, created = MediaEnrichmentCandidate.objects.get_or_create(
+                candidate_key=candidate_key,
+                defaults={
+                    product_field: product,
+                    "source": candidate.source[:64],
+                    "source_host": _candidate_host(candidate.url),
+                    "source_url": _query_free_source_url(candidate.url),
+                    "search_query": candidate.query[:1000],
+                    "content_hash": content_hash,
+                    "image_hash": current_hash,
+                    "width": fetched.width,
+                    "height": fetched.height,
+                    "status": MediaEnrichmentCandidateStatus.PENDING,
+                    "requested_by": requested_by,
+                },
+            )
+            if not created:
+                return None
 
-            has_main = product.gallery_images.filter(is_main=True).exists()
-
-            parsed_path = urlsplit(url).path
+            parsed_path = urlsplit(candidate.url).path
             original_stem = os.path.splitext(os.path.basename(parsed_path))[0]
             safe_stem = get_valid_filename(original_stem)[:100].strip("._-")
             if not safe_stem:
-                safe_stem = f"product_{product.id}_image"
-            filename = f"{safe_stem}{fetched.extension}"
-            ImageModel = product.gallery_images.model
-
-            image_record = ImageModel(
-                product=product,
-                image_url=_query_free_source_url(url),
-                is_main=not has_main,
-                image_hash=current_hash,
-            )
-            image_record.image_file.save(
-                filename,
+                safe_stem = f"product_{product.id}_candidate"
+            candidate_record.image_file.save(
+                f"{safe_stem}{fetched.extension}",
                 ContentFile(fetched.content),
-                save=False,
+                save=True,
             )
-            image_record.save()
-
             logger.info(
-                "Successfully saved validated image from host=%s for product %s.",
-                _candidate_host(url),
+                "Staged image candidate %s from host=%s for product %s.",
+                candidate_record.pk,
+                _candidate_host(candidate.url),
                 product.id,
             )
-            return image_record
-        except Exception as e:
+            return candidate_record
+        except Exception as error:
+            if created and candidate_record is not None:
+                try:
+                    if candidate_record.image_file:
+                        candidate_record.image_file.delete(save=False)
+                    candidate_record.delete()
+                except Exception:
+                    logger.warning(
+                        "Could not roll back failed candidate %s.",
+                        candidate_record.pk,
+                    )
             logger.error(
-                "Failed to save validated image from host=%s for product %s (error=%s)",
-                _candidate_host(url),
+                "Failed to stage candidate from host=%s for product %s (error=%s)",
+                _candidate_host(candidate.url),
                 product.id,
-                type(e).__name__,
+                type(error).__name__,
             )
             return None
 
-    def process_candidate(self, product: models.Model, url: str) -> Optional[models.Model]:
-        """Fetch, validate and persist a candidate without a second network request."""
-        fetched = self.fetch_validated_image(url)
+    def process_candidate(
+        self,
+        product: models.Model,
+        candidate: MedicineImageSearchCandidate,
+        *,
+        requested_by,
+    ) -> Optional[MediaEnrichmentCandidate]:
+        """Fetch and quarantine a candidate without touching the product gallery."""
+        fetched = self.fetch_validated_image(candidate.url)
         if fetched is None:
             return None
-        return self.save_validated_image(product, url, fetched)
+        return self.stage_validated_candidate(
+            product,
+            candidate,
+            fetched,
+            requested_by=requested_by,
+        )
 
-    def enrich(self, product: models.Model, max_images: int, ignore_cache: bool = False) -> int:
-        logger.info("Starting enrichment for product ID: %s (Name: '%s')", product.id, product.name)
-        current_count = product.gallery_images.count()
+    def enrich(
+        self,
+        product: models.Model,
+        max_images: int,
+        ignore_cache: bool = False,
+        *,
+        requested_by,
+    ) -> int:
+        logger.info("Starting manual enrichment for product ID: %s", product.id)
+        pending_count = product.media_enrichment_candidates.filter(
+            status=MediaEnrichmentCandidateStatus.PENDING
+        ).count()
+        current_count = product.gallery_images.count() + pending_count
         if current_count >= max_images:
-            logger.info("Product %s already has %d images (max %d). Skipping.", product.id, current_count, max_images)
-            product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
+            product.media_enrichment_status = (
+                MediaEnrichmentStatus.MODERATION
+                if pending_count
+                else MediaEnrichmentStatus.COMPLETED
+            )
             product.media_enrichment_last_at = timezone.now()
-            product.media_enrichment_error = MEDIA_ENRICHMENT_MAX_IMAGES
+            product.media_enrichment_error = (
+                MEDIA_ENRICHMENT_AWAITING_MODERATION
+                if pending_count
+                else MEDIA_ENRICHMENT_MAX_IMAGES
+            )
             product.save(update_fields=[
                 'media_enrichment_status',
                 'media_enrichment_last_at',
@@ -354,7 +469,7 @@ class MedicineMediaEnricher:
             return 0
             
         # Check cache to avoid hitting APIs if we already tried and failed recently
-        cache_key = f"medicine_media_enrich_failed_{product.id}"
+        cache_key = f"media_enrich_failed:{product._meta.label_lower}:{product.id}"
         if not ignore_cache and cache.get(cache_key):
             logger.info("Product %s is in failed cache (no images found recently). Skipping to save API limits.", product.id)
             product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
@@ -367,14 +482,9 @@ class MedicineMediaEnricher:
             ])
             return 0
             
-        from django.db import transaction
-        
-        try:
-            with transaction.atomic():
-                product.media_enrichment_status = MediaEnrichmentStatus.PROCESSING
-                product.save(update_fields=['media_enrichment_status'])
-        except Exception as e:
-             logger.error("Failed to set early processing status for product %s: %s", product.id, e)
+        product.media_enrichment_status = MediaEnrichmentStatus.PROCESSING
+        product.media_enrichment_error = None
+        product.save(update_fields=['media_enrichment_status', 'media_enrichment_error'])
             
         try:
             candidates = self.fetch_candidates(product)
@@ -388,33 +498,43 @@ class MedicineMediaEnricher:
                 product.save(update_fields=['media_enrichment_status', 'media_enrichment_last_at', 'media_enrichment_error'])
                 return 0
                 
-            added_count = 0
-            for url in candidates:
-                if current_count + added_count >= max_images:
-                    logger.info("Reached target image count (%d) for product %s.", max_images, product.id)
+            staged_count = 0
+            for candidate in candidates:
+                if current_count + staged_count >= max_images:
                     break
-                    
-                if product.gallery_images.filter(image_url=url).exists():
-                    logger.info("URL %s is already attached to product %s. Skipping.", url, product.id)
+                source_url = _query_free_source_url(candidate.url)
+                if product.gallery_images.filter(image_url=source_url).exists():
                     continue
-                    
-                saved_image = self.process_candidate(product, url)
-                if saved_image:
-                    added_count += 1
-                        
-            if added_count == 0:
-                logger.info("Candidates were found but none were valid/saved. Caching failure for 7 days.")
+                if product.media_enrichment_candidates.filter(source_url=source_url).exists():
+                    continue
+                if self.process_candidate(
+                    product,
+                    candidate,
+                    requested_by=requested_by,
+                ):
+                    staged_count += 1
+
+            pending_exists = product.media_enrichment_candidates.filter(
+                status=MediaEnrichmentCandidateStatus.PENDING
+            ).exists()
+            if staged_count == 0 and not pending_exists:
                 cache.set(cache_key, True, timeout=604800)
+                product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
                 product.media_enrichment_error = MEDIA_ENRICHMENT_NO_VALID_CANDIDATES
             else:
+                cache.delete(cache_key)
+                product.media_enrichment_status = MediaEnrichmentStatus.MODERATION
                 product.media_enrichment_error = None
-                
-            product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
+
             product.media_enrichment_last_at = timezone.now()
             product.save(update_fields=['media_enrichment_status', 'media_enrichment_last_at', 'media_enrichment_error'])
-            
-            logger.info("Finished enrichment for product %s. Added %d new images.", product.id, added_count)
-            return added_count
+
+            logger.info(
+                "Finished manual enrichment for product %s. Staged %d candidates.",
+                product.id,
+                staged_count,
+            )
+            return staged_count
             
         except Exception as e:
             logger.error(

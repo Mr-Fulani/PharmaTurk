@@ -8,7 +8,11 @@ from apps.catalog.admin import AllCategoriesAdmin, ClothingProductAdmin, Service
 from apps.catalog.admin_books import BookProductAdmin
 from apps.catalog.admin_headwear import HeadwearProductAdmin, HeadwearVariantAdmin
 from apps.catalog.admin_perfumery import PerfumeryProductAdmin
-from apps.catalog.admin_wave2 import MedicineProductAdmin, SupplementProductAdmin
+from apps.catalog.admin_wave2 import (
+    MediaEnrichmentCandidateAdmin,
+    MedicineProductAdmin,
+    SupplementProductAdmin,
+)
 from apps.catalog.models import (
     BookProduct,
     Category,
@@ -16,6 +20,7 @@ from apps.catalog.models import (
     HeadwearProduct,
     HeadwearVariant,
     MedicineProduct,
+    MediaEnrichmentCandidate,
     PerfumeryProduct,
     Product,
     Service,
@@ -42,6 +47,7 @@ def test_category_admin_annotates_product_count_once_for_changelist(admin_reques
 @pytest.fixture
 def admin_request():
     class DummySuperUser:
+        pk = 42
         is_active = True
         is_staff = True
         is_superuser = True
@@ -133,8 +139,21 @@ def test_media_enrichment_admin_reports_queue_task_id(admin_request):
         product_ids=[product.pk],
         ignore_cache=True,
         model_name="MedicineProduct",
+        requested_by_user_id=admin_request.user.pk,
     )
     assert "media-task-123" in str(message_user.call_args.args[1])
+
+
+def test_media_candidate_admin_is_moderation_only(admin_request):
+    model_admin = MediaEnrichmentCandidateAdmin(
+        MediaEnrichmentCandidate,
+        AdminSite(),
+    )
+
+    assert model_admin.has_add_permission(admin_request) is False
+    actions = model_admin.get_actions(admin_request)
+    assert "approve_selected" in actions
+    assert "reject_selected" in actions
 
 
 def test_medicine_analog_inline_uses_autocomplete_for_related_product(admin_request):

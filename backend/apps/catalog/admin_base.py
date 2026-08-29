@@ -287,10 +287,10 @@ class RunAIActionMixin(GlobalActivationActionsMixin):
 
 
 class MediaEnrichmentMixin:
-    """Миксин для ручного запуска обогащения медиа из админки."""
+    """Ручной поиск изображений с обязательной последующей модерацией."""
 
     def run_media_enrichment(self, request, queryset):
-        """Запустить обогащение медиа для выбранных товаров."""
+        """Найти кандидатов для выбранных товаров, не меняя их галереи."""
         from apps.catalog.tasks import enrich_medicine_media
         
         # Берем только ID
@@ -303,7 +303,8 @@ class MediaEnrichmentMixin:
         async_result = enrich_medicine_media.delay(
             product_ids=product_ids,
             ignore_cache=True,  # При ручном запуске игнорируем кэш ошибок
-            model_name=model_name
+            model_name=model_name,
+            requested_by_user_id=request.user.pk,
         )
         task_id = str(getattr(async_result, "id", "") or "").strip()
         task_suffix = (
@@ -313,12 +314,17 @@ class MediaEnrichmentMixin:
         )
         self.message_user(
             request,
-            _("Поставлено в очередь обогащение медиа для %(count)s товаров.")
+            _(
+                "Поставлен в очередь ручной поиск изображений для %(count)s товаров. "
+                "Результаты появятся в разделе модерации и не будут опубликованы автоматически."
+            )
             % {"count": len(product_ids)}
             + task_suffix,
             level=messages.SUCCESS
         )
-    run_media_enrichment.short_description = _("[Категория] Обогатить медиа (картинки)")
+    run_media_enrichment.short_description = _(
+        "[Медиа] Найти изображения для ручной модерации"
+    )
 
     def get_media_enrichment_status(self, obj):
         """Отображение статуса медиа с цветовой индикацией."""
@@ -331,6 +337,9 @@ class MediaEnrichmentMixin:
         if status == MediaEnrichmentStatus.PROCESSING:
             color = "orange"
             label = _("Обработка")
+        elif status == MediaEnrichmentStatus.MODERATION:
+            color = "#7c3aed"
+            label = _("На модерации")
         elif status == MediaEnrichmentStatus.COMPLETED:
             color = "green"
             label = _("Завершено")

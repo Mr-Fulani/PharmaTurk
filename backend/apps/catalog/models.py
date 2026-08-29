@@ -27,6 +27,7 @@ from .utils.storage_paths import (
     get_domain_main_upload_path,
     get_domain_variant_main_upload_path,
     get_domain_gallery_upload_path,
+    get_media_enrichment_candidate_upload_path,
     get_domain_variant_gallery_upload_path,
     get_banner_image_upload_path,
     get_banner_video_upload_path,
@@ -4989,8 +4990,17 @@ class MediaEnrichmentStatus(models.TextChoices):
     """Статусы процесса обогащения медиа (картинками)."""
     PENDING = 'pending', _('В очереди')
     PROCESSING = 'processing', _('Обработка')
+    MODERATION = 'moderation', _('На модерации')
     COMPLETED = 'completed', _('Завершено')
     FAILED = 'failed', _('Ошибка')
+
+
+class MediaEnrichmentCandidateStatus(models.TextChoices):
+    """Решение модератора по найденному изображению."""
+
+    PENDING = "pending", _("Ожидает модерации")
+    APPROVED = "approved", _("Одобрено")
+    REJECTED = "rejected", _("Отклонено")
 
 
 class MedicineProduct(AbstractDomainProduct):
@@ -5358,6 +5368,116 @@ class SupplementProductImage(models.Model):
 
     def __str__(self):
         return f"Изображение {self.product.name}"
+
+
+class MediaEnrichmentCandidate(models.Model):
+    """Изображение, найденное вручную и ожидающее решения модератора.
+
+    Кандидат намеренно не связан с товарной галереей. Запись в
+    ``MedicineProductImage``/``SupplementProductImage`` создаётся только явным
+    действием модератора в Django admin.
+    """
+
+    medicine_product = models.ForeignKey(
+        MedicineProduct,
+        on_delete=models.CASCADE,
+        related_name="media_enrichment_candidates",
+        null=True,
+        blank=True,
+        verbose_name=_("Препарат"),
+    )
+    supplement_product = models.ForeignKey(
+        SupplementProduct,
+        on_delete=models.CASCADE,
+        related_name="media_enrichment_candidates",
+        null=True,
+        blank=True,
+        verbose_name=_("БАД"),
+    )
+    candidate_key = models.CharField(
+        _("Ключ кандидата"),
+        max_length=64,
+        unique=True,
+        editable=False,
+    )
+    source = models.CharField(_("Источник поиска"), max_length=64, db_index=True)
+    source_host = models.CharField(_("Домен изображения"), max_length=253, blank=True)
+    source_url = models.URLField(_("Исходный URL изображения"), max_length=2000)
+    search_query = models.CharField(_("Поисковый запрос"), max_length=1000, blank=True)
+    image_file = models.ImageField(
+        _("Файл-кандидат"),
+        upload_to=get_media_enrichment_candidate_upload_path,
+        max_length=500,
+    )
+    content_hash = models.CharField(_("SHA-256 файла"), max_length=64, db_index=True)
+    image_hash = models.CharField(
+        _("Перцептивный хэш"),
+        max_length=64,
+        blank=True,
+        null=True,
+        db_index=True,
+    )
+    width = models.PositiveIntegerField(_("Ширина"))
+    height = models.PositiveIntegerField(_("Высота"))
+    status = models.CharField(
+        _("Статус модерации"),
+        max_length=20,
+        choices=MediaEnrichmentCandidateStatus.choices,
+        default=MediaEnrichmentCandidateStatus.PENDING,
+        db_index=True,
+    )
+    moderation_note = models.TextField(_("Комментарий модератора"), blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="requested_media_enrichment_candidates",
+        null=True,
+        blank=True,
+        verbose_name=_("Инициатор поиска"),
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_media_enrichment_candidates",
+        null=True,
+        blank=True,
+        verbose_name=_("Модератор"),
+    )
+    reviewed_at = models.DateTimeField(_("Дата модерации"), null=True, blank=True)
+    created_at = models.DateTimeField(_("Создано"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Обновлено"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Кандидат изображения")
+        verbose_name_plural = _("Модерация изображений")
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="catalog_mec_status_created_idx"),
+            models.Index(fields=["medicine_product", "status"], name="catalog_mec_med_status_idx"),
+            models.Index(fields=["supplement_product", "status"], name="catalog_mec_sup_status_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(medicine_product__isnull=False, supplement_product__isnull=True)
+                    | Q(medicine_product__isnull=True, supplement_product__isnull=False)
+                ),
+                name="catalog_media_candidate_one_product",
+            ),
+        ]
+
+    @property
+    def product(self):
+        return self.medicine_product or self.supplement_product
+
+    def clean(self):
+        super().clean()
+        if (self.medicine_product_id is None) == (self.supplement_product_id is None):
+            raise ValidationError(_("Кандидат должен относиться ровно к одному товару."))
+
+    def __str__(self):
+        product = self.product
+        return f"{product or 'Удалённый товар'} — {self.get_status_display()}"
 
 
 # ============================================================================

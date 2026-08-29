@@ -3,10 +3,8 @@ from __future__ import annotations
 
 from celery import shared_task
 from django.core.management import call_command
-from django.db.models import Count
 import logging
 
-from apps.catalog.models import MedicineProduct
 from apps.catalog.services import MedicineMediaEnricher
 
 logger = logging.getLogger(__name__)
@@ -485,53 +483,96 @@ def enrich_medicine_media(
     max_images_per_product: int = 3,
     ignore_cache: bool = False,
     model_name: str = 'MedicineProduct',
+    requested_by_user_id: int | None = None,
 ) -> dict:
     """
-    Обогащение медиа для MedicineProduct и SupplementProduct.
-    - product_ids=None  → все товары с медиа меньше max_images_per_product
-    - product_ids=[...] → только указанные товары
+    Ручной поиск кандидатов медиа для MedicineProduct и SupplementProduct.
+
+    Без явно переданных ``product_ids`` задача является безопасным no-op. Найденные
+    файлы попадают только в очередь модерации и не изменяют товарную галерею.
     """
     try:
         from django.apps import apps
         from apps.catalog.models import MediaEnrichmentStatus
-        
-        ProductModel = apps.get_model('catalog', model_name)
-        
-        # Если product_ids переданы вручную (например из админки),
-        # мы хотим брать их все, независимо от текущего количества картинок
-        if product_ids:
-            queryset = ProductModel.objects.filter(id__in=product_ids)
-            # Отмечаем как "в обработке" сразу (для отображения в админке)
-            queryset.update(
-                media_enrichment_status=MediaEnrichmentStatus.PROCESSING,
-                media_enrichment_error=None
+
+        if not product_ids or not requested_by_user_id:
+            logger.warning(
+                "Rejected media enrichment without an explicit manual product selection "
+                "and staff initiator."
             )
-        else:
-            queryset = ProductModel.objects.annotate(
-                gallery_images_count=Count('gallery_images')
-            ).filter(gallery_images_count__lt=max_images_per_product)
-            
+            return {
+                "status": "manual_selection_required",
+                "products_processed": 0,
+                "candidates_staged": 0,
+                "images_added": 0,
+                "errors": 0,
+                "skipped": 0,
+                "no_results": 0,
+            }
+
+        from django.contrib.auth import get_user_model
+
+        requested_by = get_user_model().objects.filter(
+            pk=requested_by_user_id,
+            is_active=True,
+            is_staff=True,
+        ).first()
+        if requested_by is None:
+            logger.warning(
+                "Rejected media enrichment with invalid staff initiator id=%s.",
+                requested_by_user_id,
+            )
+            return {
+                "status": "manual_selection_required",
+                "products_processed": 0,
+                "candidates_staged": 0,
+                "images_added": 0,
+                "errors": 0,
+                "skipped": 0,
+                "no_results": 0,
+            }
+
+        allowed_models = {"MedicineProduct", "SupplementProduct"}
+        if model_name not in allowed_models:
+            return {
+                "status": "error",
+                "message": "unsupported_model",
+                "products_processed": 0,
+                "candidates_staged": 0,
+                "images_added": 0,
+                "errors": 0,
+                "skipped": 0,
+                "no_results": 0,
+            }
+
+        ProductModel = apps.get_model('catalog', model_name)
+        queryset = ProductModel.objects.filter(id__in=product_ids)
+        queryset.update(
+            media_enrichment_status=MediaEnrichmentStatus.PROCESSING,
+            media_enrichment_error=None,
+        )
+
         enricher = MedicineMediaEnricher()
-        
+
         products_processed = 0
-        images_added = 0
+        candidates_staged = 0
         errors = 0
         skipped = 0
         no_results = 0
-        
-        # Используем .all() вместо .iterator() если queryset уже отфильтрован по ID, 
-        # но для большого ночного прохода .iterator() лучше.
-        # Т.к. queryset может быть разным, используем .all() для простоты или .iterator() если нет product_ids.
-        items = queryset.iterator() if not product_ids else queryset.all()
 
-        for product in items:
+        for product in queryset:
             products_processed += 1
             try:
-                added = enricher.enrich(product, max_images_per_product, ignore_cache=ignore_cache)
-                images_added += added
+                staged = enricher.enrich(
+                    product,
+                    max_images_per_product,
+                    ignore_cache=ignore_cache,
+                    requested_by=requested_by,
+                )
+                candidates_staged += staged
                 if product.media_enrichment_status == MediaEnrichmentStatus.FAILED:
                     errors += 1
-                elif added == 0:
+                elif staged == 0:
                     from apps.catalog.services.medicine_media_enricher import (
                         MEDIA_ENRICHMENT_MAX_IMAGES,
                         MEDIA_ENRICHMENT_RECENT_NO_RESULT,
@@ -555,7 +596,7 @@ def enrich_medicine_media(
             result_status = "error"
         elif errors:
             result_status = "partial"
-        elif images_added == 0:
+        elif candidates_staged == 0:
             result_status = "no_changes"
         else:
             result_status = "success"
@@ -563,7 +604,8 @@ def enrich_medicine_media(
         return {
             "status": result_status,
             "products_processed": products_processed,
-            "images_added": images_added,
+            "candidates_staged": candidates_staged,
+            "images_added": 0,
             "errors": errors,
             "skipped": skipped,
             "no_results": no_results,
