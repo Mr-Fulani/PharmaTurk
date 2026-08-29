@@ -2,6 +2,7 @@
 
 Последняя проверка по коду: 2026-08-29  
 Ветка реализации: `codex/product-card-source-refresh`  
+Проверенный release SHA: `4b4ecd2ba7c0d506e2794607e1a2ef8b23d8d734`
 Контур: product detail → async source refresh → inventory-only reconcile → detail refetch
 
 ## Цель и неизменяемые правила
@@ -44,10 +45,14 @@
 - [x] Недоступные варианты отображаются неактивными; существующая выбранная опция не
   сбрасывается после обновления.
 - [x] Добавлены regression-тесты для manual no-op, content preservation, новой и
-  вернувшейся матрицы вариантов, raw price + markup, identity error и singleflight.
-- [x] Frontend gates: TypeScript, 62 unit tests и ESLint без ошибок.
-- [ ] Полный Django regression gate в контейнере (локальный Docker daemon 2026-08-29
-  не отвечал даже на `docker info`; тесты нельзя отмечать пройденными).
+  вернувшейся матрицы вариантов, raw price + markup, identity error, singleflight и
+  смены/потери supplier SKU без дублирования source offer.
+- [x] Полный backend gate в изолированной серверной среде: `1262 passed`, `30 subtests
+  passed`, Django system check без ошибок, migration drift отсутствует.
+- [x] Frontend gates: `npm audit` — 0 vulnerabilities, TypeScript, 62 unit tests,
+  ESLint без ошибок и успешный Next.js production build.
+- [x] Immutable backend/frontend/test images собраны с точным revision label;
+  параллельная Poetry-установка отключена для воспроизводимой сборки.
 - [ ] Production backup, deploy с выключенным флагом и smoke endpoint.
 - [ ] Canary одного товара IKEA, одного FLO/LCW и одного Zara; сравнение с источником.
 - [ ] Поочерёдное включение allowlist и окно наблюдения без массового включения.
