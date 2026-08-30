@@ -48,6 +48,12 @@ def _result(
     )
 
 
+def test_cart_policy_explicitly_allows_interactive_web_unlocker():
+    policy = CartSourceOfferPolicy()
+
+    assert policy.verifier.allow_web_unlocker is True
+
+
 @pytest.fixture(autouse=True)
 def cart_enforcement(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True

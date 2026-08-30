@@ -180,6 +180,43 @@ def _deserialize_result(payload: Any) -> OfferCheckResult | None:
 class SourceOfferVerificationService:
     """Verify a persisted offer with cache, isolation and source-level guards."""
 
+    def __init__(self, *, allow_web_unlocker: bool = False) -> None:
+        # Paid CAPTCHA solving is opt-in per request context. Background/admin
+        # callers use the default and cannot consume Unlocker requests.
+        self.allow_web_unlocker = bool(allow_web_unlocker)
+
+    def _web_unlocker_enabled_for(self, parser_key: str) -> bool:
+        return bool(
+            self.allow_web_unlocker
+            and parser_key == "flo"
+            and getattr(settings, "FLO_WEB_UNLOCKER_ENABLED", False)
+        )
+
+    def _request_timeout(
+        self,
+        parser_key: str,
+        *,
+        use_web_unlocker: bool | None = None,
+    ) -> float:
+        unlocker_enabled = (
+            self._web_unlocker_enabled_for(parser_key)
+            if use_web_unlocker is None
+            else bool(use_web_unlocker)
+        )
+        if unlocker_enabled:
+            return _setting_float(
+                "FLO_WEB_UNLOCKER_TIMEOUT_SECONDS",
+                30.0,
+                minimum=1.0,
+                maximum=60.0,
+            )
+        return _setting_float(
+            "SOURCE_OFFER_REQUEST_TIMEOUT_SECONDS",
+            5.0,
+            minimum=0.25,
+            maximum=15.0,
+        )
+
     def is_enabled_for(self, parser_key: str) -> bool:
         if not bool(getattr(settings, "SOURCE_OFFER_VERIFICATION_ENABLED", False)):
             return False
@@ -419,13 +456,19 @@ class SourceOfferVerificationService:
         parser_key: str,
         context: OfferCheckContext,
     ) -> OfferCheckResult:
-        timeout = _setting_float(
-            "SOURCE_OFFER_REQUEST_TIMEOUT_SECONDS",
-            5.0,
-            minimum=0.25,
-            maximum=15.0,
+        proxy_enabled = self._proxy_enabled_for(parser_key, context)
+        unlocker_enabled = bool(
+            proxy_enabled and self._web_unlocker_enabled_for(parser_key)
         )
-        retries = _setting_int("SOURCE_OFFER_MAX_RETRIES", 1, maximum=2)
+        timeout = self._request_timeout(
+            parser_key,
+            use_web_unlocker=unlocker_enabled,
+        )
+        # Web Unlocker already performs provider-side retries. One user event must
+        # produce at most one paid API call for a saved offer.
+        retries = 0 if unlocker_enabled else _setting_int(
+            "SOURCE_OFFER_MAX_RETRIES", 1, maximum=2
+        )
         backoff = _setting_float(
             "SOURCE_OFFER_RETRY_BACKOFF_SECONDS",
             0.1,
@@ -436,8 +479,10 @@ class SourceOfferVerificationService:
             "timeout": timeout,
             "max_retries": 0,
         }
-        if self._proxy_enabled_for(parser_key, context):
+        if proxy_enabled:
             parser_kwargs["use_proxy"] = True
+        if proxy_enabled and unlocker_enabled:
+            parser_kwargs["use_web_unlocker"] = True
         last_error: OfferVerificationError | None = None
         for attempt in range(retries + 1):
             try:
@@ -472,8 +517,11 @@ class SourceOfferVerificationService:
             raise last_error
         raise MalformedOfferResponse()
 
-    @staticmethod
-    def _proxy_enabled_for(parser_key: str, context: OfferCheckContext) -> bool:
+    def _proxy_enabled_for(
+        self,
+        parser_key: str,
+        context: OfferCheckContext,
+    ) -> bool:
         """Use only the proxy policy of a matching, active server-side config.
 
         Historical backfill offers do not have ``scraper_config_id``. For those
@@ -481,7 +529,10 @@ class SourceOfferVerificationService:
         remain server-owned, while the client cannot submit either value.
         """
 
-        if not str(getattr(settings, "SCRAPER_PROXY_URL", "") or "").strip():
+        if (
+            not str(getattr(settings, "SCRAPER_PROXY_URL", "") or "").strip()
+            and not self._web_unlocker_enabled_for(parser_key)
+        ):
             return False
 
         payload = context.parser_config if isinstance(context.parser_config, dict) else {}
@@ -697,8 +748,19 @@ class SourceOfferVerificationService:
             self._observe(parser_key, "rate_limited", started_at)
             return result
 
-        timeout = _setting_float("SOURCE_OFFER_REQUEST_TIMEOUT_SECONDS", 5.0, maximum=15.0)
-        retries = _setting_int("SOURCE_OFFER_MAX_RETRIES", 1, maximum=2)
+        unlocker_enabled = bool(
+            self._web_unlocker_enabled_for(parser_key)
+            and self._proxy_enabled_for(parser_key, context)
+        )
+        timeout = self._request_timeout(
+            parser_key,
+            use_web_unlocker=unlocker_enabled,
+        )
+        retries = (
+            0
+            if unlocker_enabled
+            else _setting_int("SOURCE_OFFER_MAX_RETRIES", 1, maximum=2)
+        )
         lock_ttl = max(5, math.ceil(timeout * (retries + 1) + 3))
         lock_key = self._lock_key(offer)
         lock_token = uuid.uuid4().hex

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from types import SimpleNamespace
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -223,6 +224,61 @@ def _scraped(*, external_id="zara-100"):
             ]
         },
     )
+
+
+def test_flo_card_fetch_explicitly_requests_web_unlocker(settings, monkeypatch):
+    settings.FLO_WEB_UNLOCKER_ENABLED = True
+    settings.FLO_WEB_UNLOCKER_TIMEOUT_SECONDS = 19
+    captured = {}
+
+    class FloCaptureParser:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def configure_request_identity(self, **_kwargs):
+            return None
+
+        def parse_product_detail(self, url):
+            return ScrapedProduct(
+                name="FLO product",
+                url=url,
+                source="flo",
+                external_id="flo-10001",
+            )
+
+    config = SimpleNamespace(
+        base_url="https://www.flo.com.tr",
+        use_proxy=True,
+        scraper_username="",
+        scraper_password="",
+        delay_min=0,
+        delay_max=0,
+        user_agent="",
+        headers={},
+        cookies={},
+    )
+    target = SimpleNamespace(
+        parser_key="flo",
+        parser_class=FloCaptureParser,
+        offer=SimpleNamespace(
+            canonical_url="https://www.flo.com.tr/urun/model-10001"
+        ),
+    )
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_scraper_config", lambda _offer: config)
+
+    result = service._fetch_product(target)
+
+    assert result.source == "flo"
+    assert captured["use_proxy"] is True
+    assert captured["use_web_unlocker"] is True
+    assert captured["timeout"] == 19.0
 
 
 @pytest.mark.django_db

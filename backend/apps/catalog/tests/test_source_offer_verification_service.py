@@ -63,6 +63,46 @@ def _fake_registry(value):
     return None
 
 
+def test_web_unlocker_is_scoped_to_explicit_interactive_verifier(settings, monkeypatch):
+    settings.FLO_WEB_UNLOCKER_ENABLED = True
+    settings.FLO_WEB_UNLOCKER_TIMEOUT_SECONDS = 17
+    context = OfferCheckContext(
+        canonical_url="https://www.flo.com.tr/urun/model-10001"
+    )
+
+    class FloCaptureParser(DummyParser):
+        init_kwargs = []
+
+    monkeypatch.setattr(
+        "apps.catalog.services.source_offer_verification.get_parser",
+        lambda _value: FloCaptureParser,
+    )
+
+    interactive = SourceOfferVerificationService(allow_web_unlocker=True)
+    monkeypatch.setattr(interactive, "_proxy_enabled_for", lambda *_args: True)
+    result = interactive._run_parser_check(FloCaptureParser, "flo", context)
+
+    assert result.is_success is True
+    assert FloCaptureParser.init_kwargs == [
+        {
+            "timeout": 17.0,
+            "max_retries": 0,
+            "use_proxy": True,
+            "use_web_unlocker": True,
+        }
+    ]
+
+    FloCaptureParser.init_kwargs = []
+    background = SourceOfferVerificationService()
+    monkeypatch.setattr(background, "_proxy_enabled_for", lambda *_args: True)
+    result = background._run_parser_check(FloCaptureParser, "flo", context)
+
+    assert result.is_success is True
+    assert FloCaptureParser.init_kwargs == [
+        {"timeout": 1.0, "max_retries": 0, "use_proxy": True}
+    ]
+
+
 @pytest.fixture(autouse=True)
 def verification_settings(settings):
     settings.CACHES = {

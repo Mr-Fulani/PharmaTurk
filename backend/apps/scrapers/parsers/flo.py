@@ -1,15 +1,17 @@
 """Парсер FLO (flo.com.tr) — турецкая обувь и аксессуары.
 
-Сайт отдаёт серверный HTML без анти-бота. Все данные карточки лежат в одном
-JS-объекте ``window.productDetail`` (бренд, цена, размеры с barcode/остатком,
-цвет, пол, обувные атрибуты, галерея). Парсер читает его, как Zara читает
-``viewPayload`` — без исполнения JavaScript.
+Данные карточки лежат в серверном HTML, в JS-объекте ``window.productDetail``
+(бренд, цена, размеры с barcode/остатком, цвет, пол, атрибуты и галерея).
+Защитный контур иногда подменяет этот HTML страницей CAPTCHA; транспорт и
+парсер отдельно проверяют такой ответ. JavaScript для чтения данных не нужен.
 """
 
 import json
 import re
 from typing import Any, Dict, Iterator, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+
+from django.conf import settings
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.offers import (
@@ -21,6 +23,7 @@ from ..base.offers import (
     translate_offer_check_errors,
 )
 from ..base.utils import clean_text
+from ..base.web_unlocker import BrightDataWebUnlockerClient
 
 
 FLO_SHOE_CATEGORY_MARKERS = (
@@ -57,14 +60,75 @@ class FloParser(BaseScraper):
     # данных подсовывает reCAPTCHA — это та же блокировка, что и 403.
     CHALLENGE_MARKERS = ("recaptcha", "challengepage", "captcha-delivery", "datadome")
 
-    def __init__(self, base_url: str = "https://www.flo.com.tr", **kwargs):
+    def __init__(
+        self,
+        base_url: str = "https://www.flo.com.tr",
+        *,
+        use_web_unlocker: bool = False,
+        **kwargs,
+    ):
+        # Unlocker is an explicit request-context capability. Merely enabling the
+        # environment flag must not route scheduled imports through a paid API.
+        self.web_unlocker = None
+        unlocker_active = bool(
+            use_web_unlocker
+            and getattr(settings, "FLO_WEB_UNLOCKER_ENABLED", False)
+        )
+        if unlocker_active:
+            # The REST API is a complete transport, not a native proxy. Avoid
+            # constructing the proxy-backed client or requiring its private CA.
+            kwargs["use_proxy"] = False
         super().__init__(base_url=base_url, delay_range=(1, 3), **kwargs)
+        if unlocker_active:
+            try:
+                self.web_unlocker = BrightDataWebUnlockerClient.from_settings(
+                    allowed_hosts=self.get_supported_domains(),
+                    timeout=self.timeout,
+                )
+            except Exception:
+                self.client.close()
+                raise
         self.client.headers.update(
             {
                 "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
                 "Referer": "https://www.flo.com.tr/",
             }
         )
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self.web_unlocker is not None:
+                self.web_unlocker.close()
+        finally:
+            super().__exit__(exc_type, exc_val, exc_tb)
+        return None
+
+    def _make_request(self, url: str, **kwargs) -> Optional[str]:
+        if self.web_unlocker is None:
+            return super()._make_request(url, **kwargs)
+        if not url.startswith(("http://", "https://")):
+            url = urljoin(self.base_url, url)
+        return self.web_unlocker.fetch(url).text
+
+    def _make_offer_request(
+        self,
+        url: str,
+        *,
+        include_final_url: bool = False,
+        **kwargs,
+    ) -> str | tuple[str, str]:
+        if self.web_unlocker is None:
+            return super()._make_offer_request(
+                url,
+                include_final_url=include_final_url,
+                **kwargs,
+            )
+        if not url.startswith(("http://", "https://")):
+            url = urljoin(self.base_url, url)
+        response = self.web_unlocker.fetch(url)
+        if include_final_url:
+            return response.text, response.final_url
+        return response.text
 
     def get_name(self) -> str:
         return "flo"
@@ -336,6 +400,11 @@ class FloParser(BaseScraper):
         detail = self._extract_product_detail(html)
         if not detail or not detail.get("name"):
             raise MalformedOfferResponse()
+        detail_sku = str(detail.get("sku") or "")
+        if not detail_sku:
+            raise MalformedOfferResponse("Source response does not contain a product SKU")
+        if detail_sku != requested_sku:
+            raise OfferNotFound(offer.canonical_url)
         variant = self._build_color_variant(detail, final_url, 0)
         scraped = ScrapedProduct(
             name=clean_text(str(detail.get("name") or "")),

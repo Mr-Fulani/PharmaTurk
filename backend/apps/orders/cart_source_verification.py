@@ -95,7 +95,11 @@ class CartSourceOfferPolicy:
     }
 
     def __init__(self, verifier: SourceOfferVerificationService | None = None):
-        self.verifier = verifier or SourceOfferVerificationService()
+        # This policy performs supplier I/O only from the explicit cart revalidate
+        # endpoint. Allow FLO's interactive CAPTCHA-solving transport in that context.
+        self.verifier = verifier or SourceOfferVerificationService(
+            allow_web_unlocker=True
+        )
 
     @staticmethod
     def enforcement_enabled() -> bool:

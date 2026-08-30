@@ -211,7 +211,11 @@ def test_flo_offer_check_fetches_only_saved_variant(monkeypatch):
             calls.append((url, kwargs)) or ("html", "https://www.flo.com.tr/urun/model-10001")
         ),
     )
-    monkeypatch.setattr(parser, "_extract_product_detail", lambda html: {"name": "FLO"})
+    monkeypatch.setattr(
+        parser,
+        "_extract_product_detail",
+        lambda html: {"name": "FLO", "sku": "10001"},
+    )
     monkeypatch.setattr(
         parser,
         "_build_color_variant",
@@ -249,6 +253,27 @@ def test_flo_offer_check_reports_malformed_payload(monkeypatch):
     assert error.value.error.code == OfferCheckErrorCode.MALFORMED_RESPONSE
 
 
+def test_flo_offer_check_rejects_payload_for_another_sku(monkeypatch):
+    parser = FloParser()
+    monkeypatch.setattr(
+        parser,
+        "_make_offer_request",
+        lambda url, **kwargs: ("html", url),
+    )
+    monkeypatch.setattr(
+        parser,
+        "_extract_product_detail",
+        lambda html: {"name": "Replacement", "sku": "20002"},
+    )
+
+    with pytest.raises(OfferNotFound) as error:
+        parser.check_offer(
+            _context(canonical_url="https://www.flo.com.tr/urun/model-10001")
+        )
+
+    assert error.value.error.code == OfferCheckErrorCode.NOT_FOUND
+
+
 @pytest.mark.parametrize(
     "final_url",
     [
@@ -282,7 +307,11 @@ def test_flo_offer_check_accepts_canonical_rename_with_same_sku(monkeypatch):
         "_make_offer_request",
         lambda url, **kwargs: ("html", final_url),
     )
-    monkeypatch.setattr(parser, "_extract_product_detail", lambda html: {"name": "FLO"})
+    monkeypatch.setattr(
+        parser,
+        "_extract_product_detail",
+        lambda html: {"name": "FLO", "sku": "10001"},
+    )
     variant = _fashion_product().attributes["fashion_variants"][0]
     variant["external_url"] = final_url
     monkeypatch.setattr(

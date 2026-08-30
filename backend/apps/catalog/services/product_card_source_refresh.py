@@ -190,6 +190,25 @@ class ProductCardSourceRefreshService:
     def enabled() -> bool:
         return bool(getattr(settings, "PRODUCT_CARD_SOURCE_REFRESH_ENABLED", False))
 
+    @staticmethod
+    def _request_timeout(parser_key: str) -> float:
+        if (
+            parser_key == "flo"
+            and getattr(settings, "FLO_WEB_UNLOCKER_ENABLED", False)
+        ):
+            return _setting_float(
+                "FLO_WEB_UNLOCKER_TIMEOUT_SECONDS",
+                30.0,
+                minimum=1.0,
+                maximum=60.0,
+            )
+        return _setting_float(
+            "PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS",
+            12.0,
+            minimum=1.0,
+            maximum=30.0,
+        )
+
     def _target(self, product: Product) -> RefreshTarget | None:
         if not self.enabled() or not product.pk or not product.is_active:
             return None
@@ -359,12 +378,7 @@ class ProductCardSourceRefreshService:
         config = self._scraper_config(target.offer)
         parsed_url = urlparse(target.offer.canonical_url)
         origin = f"https://{parsed_url.netloc}"
-        timeout = _setting_float(
-            "PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS",
-            12.0,
-            minimum=1.0,
-            maximum=30.0,
-        )
+        timeout = self._request_timeout(target.parser_key)
         retries = _setting_int(
             "PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES",
             1,
@@ -379,6 +393,9 @@ class ProductCardSourceRefreshService:
             "username": config.scraper_username if config else "",
             "password": config.scraper_password if config else "",
         }
+        if target.parser_key == "flo" and bool(config and config.use_proxy):
+            # Explicitly scopes the paid transport to this demand-driven card-open job.
+            kwargs["use_web_unlocker"] = True
         with target.parser_class(**kwargs) as parser:
             if config is not None:
                 parser.delay_range = (config.delay_min, config.delay_max)
@@ -998,12 +1015,7 @@ class ProductCardSourceRefreshService:
                         "rate_limited", "Supplier rate limit reached", retryable=True
                     )
 
-                timeout = _setting_float(
-                    "PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS",
-                    12.0,
-                    minimum=1.0,
-                    maximum=30.0,
-                )
+                timeout = self._request_timeout(target.parser_key)
                 retries = _setting_int(
                     "PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES",
                     1,

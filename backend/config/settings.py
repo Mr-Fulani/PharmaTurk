@@ -497,6 +497,23 @@ SCRAPER_PROXY_URL = env("SCRAPER_PROXY_URL", default="")
 # Bright Data native proxy must use its port-44445 root from /app/certs.
 SCRAPER_PROXY_CA_BUNDLE = env("SCRAPER_PROXY_CA_BUNDLE", default="")
 
+# FLO can opt into Bright Data's CAPTCHA-solving REST transport, but only when
+# an interactive caller explicitly requests it (product-card open or cart revalidate).
+# Background scraping never opts in merely because this environment flag is true.
+FLO_WEB_UNLOCKER_ENABLED = env.bool("FLO_WEB_UNLOCKER_ENABLED", default=False)
+BRIGHTDATA_WEB_UNLOCKER_API_KEY = env(
+    "BRIGHTDATA_WEB_UNLOCKER_API_KEY", default=""
+)
+BRIGHTDATA_WEB_UNLOCKER_ZONE = env("BRIGHTDATA_WEB_UNLOCKER_ZONE", default="")
+FLO_WEB_UNLOCKER_COUNTRY = env("FLO_WEB_UNLOCKER_COUNTRY", default="tr")
+FLO_WEB_UNLOCKER_RENDER = env.bool("FLO_WEB_UNLOCKER_RENDER", default=False)
+FLO_WEB_UNLOCKER_TIMEOUT_SECONDS = env.float(
+    "FLO_WEB_UNLOCKER_TIMEOUT_SECONDS", default=30.0
+)
+FLO_WEB_UNLOCKER_MAX_RESPONSE_BYTES = env.int(
+    "FLO_WEB_UNLOCKER_MAX_RESPONSE_BYTES", default=10 * 1024 * 1024
+)
+
 # Phase 2 source-offer recording. Disabled by default for a migration-first rollout:
 # enabling the writer must be a separate deploy/config action after migration 0202.
 SOURCE_OFFER_RECORDING_ENABLED = env.bool("SOURCE_OFFER_RECORDING_ENABLED", default=False)
