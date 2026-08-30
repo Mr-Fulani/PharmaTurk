@@ -27,6 +27,7 @@ from apps.users.models import User
 @pytest.fixture(autouse=True)
 def source_cart_settings(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
+    settings.SOURCE_OFFER_VERIFICATION_SOURCES = ["zara"]
 
 
 @pytest.fixture

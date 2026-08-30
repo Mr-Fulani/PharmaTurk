@@ -29,6 +29,7 @@ from apps.catalog.models import (
 from apps.catalog.utils.currency_converter import currency_converter
 from apps.catalog.currency_models import ProductVariantPrice
 from django.contrib.contenttypes.models import ContentType
+from .cart_source_verification import CartSourceOfferPolicy
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
 VARIANT_MODEL_MAP = {
@@ -1076,24 +1077,33 @@ class CartItemSerializer(serializers.ModelSerializer):
 
         if (
             getattr(settings, "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", False)
-            and obj.source_offer_id
-            and obj.observed_public_price is not None
+            and (
+                obj.source_offer_id
+                or CartSourceOfferPolicy.requires_verified_offer(obj.product)
+            )
         ):
             request = self.context.get("request")
             preferred_currency = self._get_preferred_currency(request)
-            observed_currency = (obj.observed_public_currency or obj.currency or "RUB").upper()
+            saved_price = (
+                obj.observed_public_price
+                if obj.observed_public_price is not None
+                else obj.price
+            )
+            saved_currency = (
+                obj.observed_public_currency or obj.currency or "RUB"
+            ).upper()
             try:
-                if observed_currency == preferred_currency:
-                    return obj.observed_public_price
+                if saved_currency == preferred_currency:
+                    return saved_price
                 _, converted, _ = currency_converter.convert_price(
-                    Decimal(str(obj.observed_public_price)),
-                    observed_currency,
+                    Decimal(str(saved_price)),
+                    saved_currency,
                     preferred_currency,
                     apply_margin=False,
                 )
                 return converted
             except Exception:
-                return obj.observed_public_price
+                return saved_price
         return apply_product_markup(self._get_price_without_product_markup(obj), obj.product)
 
     def get_total(self, obj):
