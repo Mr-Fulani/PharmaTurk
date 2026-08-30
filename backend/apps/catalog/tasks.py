@@ -11,24 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(
-    name="catalog.refresh_source_offers",
-    soft_time_limit=270,
-    time_limit=300,
-)
-def refresh_source_offers_task() -> dict:
-    """Refresh one bounded stale supplier-offer batch.
-
-    The implementation lives in a service module so catalogue reads never gain
-    an implicit network side effect and the selection policy remains testable.
-    """
-    from apps.catalog.services.source_offer_background_refresh import (
-        refresh_stale_source_offers,
-    )
-
-    return refresh_stale_source_offers()
-
-
-@shared_task(
     name="catalog.refresh_medicine_market_check",
     soft_time_limit=100,
     time_limit=120,

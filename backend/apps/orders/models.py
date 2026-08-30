@@ -476,8 +476,33 @@ class CartItem(models.Model):
             self.source_offer_id is None
             and self.verification_status == self.VerificationStatus.NOT_CHECKED
         ):
-            return True
-        return self.verification_status == self.VerificationStatus.VERIFIED
+            required_types = {
+                str(value or "").strip().casefold().replace("-", "_")
+                for value in getattr(
+                    settings,
+                    "SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES",
+                    ["supplements"],
+                )
+                if str(value or "").strip()
+            }
+            product_type = (
+                str(self.product.product_type or "")
+                .strip()
+                .casefold()
+                .replace("-", "_")
+            )
+            return product_type not in required_types
+        if self.verification_status != self.VerificationStatus.VERIFIED:
+            return False
+        if self.verified_quantity is not None and self.verified_quantity != self.quantity:
+            return False
+        if (
+            self.observed_stock_precision == self.StockPrecision.EXACT
+            and self.observed_stock_quantity is not None
+            and self.quantity > self.observed_stock_quantity
+        ):
+            return False
+        return True
 
     @property
     def total(self):

@@ -17,7 +17,8 @@ interface BuyNowButtonProps {
 }
 
 /**
- * Кнопка "Купить в один клик" - добавляет товар в корзину и перенаправляет на checkout
+ * Кнопка "Купить в один клик" добавляет товар и открывает корзину. Только открытие
+ * корзины запускает supplier-проверку перед переходом к checkout.
  */
 export default function BuyNowButton({
   productId,
@@ -58,66 +59,15 @@ export default function BuyNowButton({
           body.set('product_slug', productSlug)
         }
       }
-      const postAdd = () =>
-        api.post('/orders/cart/add', body, {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        })
-      let response
-      try {
-        response = await postAdd()
-      } catch (error: any) {
-        const conflict = getCartVerificationError(error)
-        const price = conflict?.verification?.public_price
-        const currency = conflict?.verification?.public_currency || ''
-        const available = Number(conflict?.verification?.available_quantity)
-        const issueCodes = new Set([
-          conflict?.code,
-          ...(conflict?.issues || []).map((issue) => issue.code),
-        ])
-        let retryResolvedConflict = false
-
-        if (
-          issueCodes.has('source_quantity_changed') &&
-          Number.isInteger(available) &&
-          available > 0
-        ) {
-          const accepted = window.confirm(
-            t(
-              'cart_confirm_quantity_change',
-              'У поставщика доступно {{quantity}} шт. Продолжить с доступным количеством?',
-              { quantity: available },
-            ),
-          )
-          if (!accepted) return
-          body.set('quantity', String(available))
-          retryResolvedConflict = true
-        }
-        if (issueCodes.has('source_price_changed') && price != null && currency) {
-          const accepted = window.confirm(
-            t(
-              'cart_confirm_price_change',
-              'Цена изменилась на {{price}} {{currency}}. Продолжить по новой цене?',
-              { price: String(price), currency },
-            ),
-          )
-          if (!accepted) return
-          body.set('acknowledged_price', String(price))
-          body.set('acknowledged_currency', currency)
-          retryResolvedConflict = true
-        }
-        if (!retryResolvedConflict) {
-          throw error
-        }
-        response = await postAdd()
-      }
+      const response = await api.post('/orders/cart/add', body, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      })
       if (response?.data) {
         setCartSummary(response.data)
       } else {
         await refresh()
       }
-      // A saved line may still require supplier confirmation. Keep it visible
-      // in cart instead of sending the customer to a checkout that must block.
-      router.push(response?.data?.has_blocking_issues ? '/cart' : '/checkout')
+      router.push('/cart')
     } catch (err: any) {
       const conflict = getCartVerificationError(err)
       const copy = getCartIssueCopy(conflict?.code)

@@ -546,6 +546,29 @@ def test_repeated_open_uses_one_pending_task(parsed_clothing, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_new_card_open_enqueues_after_previous_refresh_finished(
+    parsed_clothing,
+    monkeypatch,
+):
+    product, *_ = parsed_clothing
+    calls = []
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_product_card_source_task.apply_async",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    service = ProductCardSourceRefreshService()
+    service._set_state(
+        product.pk,
+        {"status": "succeeded", "source": "zara", "retryable": False},
+    )
+
+    result = service.request_refresh(product)
+
+    assert result["status"] == "pending"
+    assert len(calls) == 1
+
+
+@pytest.mark.django_db
 def test_supplement_single_offer_refresh_uses_commercial_adapter(monkeypatch):
     supplement = SupplementProduct.objects.create(
         name="Parsed supplement",

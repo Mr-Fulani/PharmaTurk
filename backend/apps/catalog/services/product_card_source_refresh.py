@@ -262,8 +262,6 @@ class ProductCardSourceRefreshService:
         if isinstance(existing, dict) and existing.get("status") in {
             "pending",
             "running",
-            "succeeded",
-            "failed",
         }:
             return {"eligible": True, **existing}
 

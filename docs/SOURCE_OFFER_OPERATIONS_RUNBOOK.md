@@ -1,8 +1,12 @@
 # Source offer: эксплуатация и диагностика
 
-Последняя проверка по коду: 2026-08-29
+Последняя проверка по коду: 2026-08-30
 Владелец: catalog-commerce
-Контур: parser adapters → `ProductSourceOffer` → cart/checkout → background refresh → detail/YML
+Контур: parser adapters → `ProductSourceOffer` → открытие карточки/корзины → snapshot checkout
+
+> Фоновый refresh удалён. Сетевые проверки допустимы только при открытии карточки
+> товара и один раз при открытии корзины. Add/update/acknowledge/checkout не обращаются
+> к поставщику и используют сохранённый snapshot.
 
 Этот runbook относится только к лёгкой проверке одного сохранённого supplier offer.
 Он не разрешает запуск полного импорта всех парсеров и не заменяет подтверждение
@@ -20,10 +24,9 @@
    `SOURCE_OFFER_VERIFICATION_SOURCES`; оставить cart/background/catalog projection
    выключенными;
 4. проверить latency, error outcomes, price/stock changes и circuit breaker;
-5. включить bounded background refresh;
-6. включить cart enforcement, выполнить обычный и crypto staging smoke;
-7. только после стабильного окна включить catalog/YML projection.
-8. отдельно включить `PRODUCT_CARD_SOURCE_REFRESH_ENABLED=true` сначала для одного
+5. включить cart enforcement, выполнить обычный и crypto staging smoke;
+6. только после стабильного окна включить catalog/YML projection.
+7. отдельно включить `PRODUCT_CARD_SOURCE_REFRESH_ENABLED=true` сначала для одного
    parser key. Этот reader/writer не зависит от background refresh и не должен
    включаться сразу для всего allowlist.
 
@@ -36,12 +39,7 @@
 | --- | --- | --- |
 | `SOURCE_OFFER_VERIFICATION_ENABLED` | `false` | главный выключатель сетевой проверки |
 | `SOURCE_OFFER_VERIFICATION_SOURCES` | один parser key | allowlist источников; пусто = все |
-| `SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED` | `false` | proactive refresh каждые 5 минут |
-| `SOURCE_OFFER_BACKGROUND_REFRESH_BATCH_SIZE` | `25` | размер прохода; код ограничивает `1..100` |
-| `SOURCE_OFFER_BACKGROUND_STALE_SECONDS` | `900` | единый freshness threshold admin/detail/YML/task |
-| `SOURCE_OFFER_BACKGROUND_POPULAR_CART_DAYS` | `7` | окно приоритета недавно изменённых корзин |
-| `SOURCE_OFFER_BACKGROUND_LOCK_SECONDS` | `330` | lock дольше 300-секундного hard timeout задачи |
-| `SOURCE_OFFER_CART_ENFORCEMENT_ENABLED` | `false` | применение проверки в cart/checkout |
+| `SOURCE_OFFER_CART_ENFORCEMENT_ENABLED` | `false` | применение snapshot-проверки в cart/checkout |
 | `SOURCE_OFFER_CATALOG_PROJECTION_ENABLED` | `false` | DB-only projection свежего status в detail/YML |
 | `PRODUCT_CARD_SOURCE_REFRESH_ENABLED` | `false` | async обновление спарсенной карточки при открытии |
 | `PRODUCT_CARD_SOURCE_REFRESH_SOURCES` | один parser key | обязательный allowlist; пусто означает, что ни один товар не eligible |
@@ -49,9 +47,8 @@
 | `PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS` | `30` | короткий cooldown retryable source errors |
 | `PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS` | `150` | singleflight одной карточки, дольше hard timeout task |
 
-Task и verifier имеют независимые границы. Даже при ошибочной большой batch-настройке
-один запуск не возьмёт больше 100 offers; timeout/retry, per-source rate/concurrency,
-single-flight и circuit breaker продолжают действовать.
+On-demand verifier сохраняет timeout/retry, per-source rate/concurrency, single-flight
+и circuit breaker. Планового batch-прохода больше нет.
 
 ## Read-only rollout audit
 
@@ -123,16 +120,6 @@ Prometheus endpoint проекта — `/metrics`. Основные ряды:
    исправление подтверждено и требуется срочная проверка, дождитесь recovery и
    поставьте один bounded task.
 
-### Высокий stale backlog
-
-1. Проверьте, что Redis, `celerybeat` и default `celeryworker` запущены.
-2. В startup/inspect убедитесь, что зарегистрирована задача
-   `catalog.refresh_source_offers`.
-3. Проверьте оба enable-флага и allowlist.
-4. Сравните backlog с per-source rate limit. Не увеличивайте batch и rate одновременно.
-5. Если worker стабилен, увеличивайте только один предел небольшим шагом и наблюдайте
-   минимум одно полное freshness-окно.
-
 ### Burst изменения цен
 
 1. Сверьте валюту supplier offer и курс; не сравнивайте TRY и публичный RUB напрямую.
@@ -183,9 +170,8 @@ Detail API проецирует `availability_status` и `is_available`; fronten
 1. `SOURCE_OFFER_CATALOG_PROJECTION_ENABLED=false`;
 2. `PRODUCT_CARD_SOURCE_REFRESH_ENABLED=false`;
 3. `SOURCE_OFFER_CART_ENFORCEMENT_ENABLED=false`;
-4. `SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED=false`;
-5. удалите проблемный parser key из allowlist или выключите verification полностью;
-6. оставьте offer history и immutable order snapshots для аудита.
+4. удалите проблемный parser key из allowlist или выключите verification полностью;
+5. оставьте offer history и immutable order snapshots для аудита.
 
 Paid webhook не запускает parser и не должен меняться при этом rollback. Откат таблиц
 после production orders требует экспорта source snapshots и отдельного change plan.

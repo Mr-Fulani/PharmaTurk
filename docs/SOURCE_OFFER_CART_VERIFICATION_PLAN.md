@@ -1,5 +1,10 @@
 # Проверка цены и наличия первоисточника в корзине
 
+> Решение от 2026-08-30 имеет приоритет над историческими этапами ниже: никаких
+> фоновых или checkout-проверок. Внешний source refresh разрешён только при открытии
+> карточки товара и один раз при открытии корзины; add/update/acknowledge/checkout
+> работают исключительно с сохранённым snapshot.
+
 Статус: production rollout для IKEA, Ummaland и LCW завершён: recording, live
 verification, bounded background refresh и cart/checkout enforcement включены и
 подтверждены canary. Catalog projection намеренно выключен до стабильного окна;

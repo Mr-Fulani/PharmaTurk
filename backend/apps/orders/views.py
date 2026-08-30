@@ -226,6 +226,28 @@ def _cart_item_verification_values(
     return values
 
 
+def _cart_item_unverified_values(source_offer_id: int | None) -> dict:
+    """Invalidate a supplier snapshot without performing supplier I/O."""
+    return {
+        'source_offer_id': source_offer_id,
+        'verification_status': CartItem.VerificationStatus.NOT_CHECKED,
+        'source_checked_at': None,
+        'source_availability_status': '',
+        'observed_source_price': None,
+        'observed_source_currency': '',
+        'observed_public_price': None,
+        'observed_public_currency': '',
+        'observed_stock_precision': CartItem.StockPrecision.UNKNOWN,
+        'observed_stock_quantity': None,
+        'verified_quantity': None,
+        'verification_issues': [],
+        'price_change_state': CartItem.PriceChangeState.NONE,
+        'price_acknowledged_at': None,
+        'price_acknowledged_value': None,
+        'price_acknowledged_currency': '',
+    }
+
+
 def _cart_item_update_values(
     decision: CartOfferDecision,
     *,
@@ -362,11 +384,16 @@ def _checkout_issue_response(
 
     cart = _get_cart_with_prefetch(cart)
     payload = CartSerializer(cart, context={'request': request}).data
-    issue_codes = (
-        list(decision.issues)
-        if decision is not None and decision.issues
-        else [CartItem.VerificationIssue.CART_CHANGED]
-    )
+    issue_codes = list(decision.issues) if decision is not None else []
+    if not issue_codes:
+        blocking_item = next(
+            (item for item in cart.items.all() if not item.is_payable),
+            None,
+        )
+        if blocking_item is not None:
+            issue_codes = list(blocking_item.verification_issues or [])
+    if not issue_codes:
+        issue_codes = [CartItem.VerificationIssue.CART_CHANGED]
     labels = dict(CartItem.VerificationIssue.choices)
     payload.update(
         {
@@ -392,7 +419,7 @@ def _checkout_issue_response(
 
 
 def _checkout_source_preflight(request, cart: Cart) -> tuple[str | None, Response | None]:
-    """Live-check supplier offers without a transaction or database row locks."""
+    """Validate the cart-open snapshot without supplier network I/O."""
 
     items = list(
         cart.items.select_related('product', 'source_offer').order_by('pk')
@@ -400,51 +427,9 @@ def _checkout_source_preflight(request, cart: Cart) -> tuple[str | None, Respons
     if not items:
         return None, Response({'detail': _('Корзина пуста')}, status=400)
 
-    policy = CartSourceOfferPolicy()
-    review_decision = None
-    changed = False
-    for item in items:
-        decision = policy.evaluate(
-            product=item.product,
-            chosen_size=item.chosen_size,
-            quantity=item.quantity,
-            target_currency=item.currency or cart.currency,
-            baseline_public_price=item.price,
-            acknowledged_price=item.price_acknowledged_value,
-            acknowledged_currency=item.price_acknowledged_currency,
-            force=True,
-        )
-        if decision is None:
-            continue
-        values = _cart_item_update_values(
-            decision,
-            item=item,
-            requested_quantity=item.quantity,
-        )
-        updated = CartItem.objects.filter(
-            pk=item.pk,
-            cart_id=cart.pk,
-            quantity=item.quantity,
-            updated_at=item.updated_at,
-        ).update(**values)
-        if not updated:
-            return None, _cart_changed_response(request, cart)
-        changed = True
-        if review_decision is None and (decision.issues or not decision.payable):
-            review_decision = decision
-
-    if changed:
-        _touch_cart(cart)
-
-    refreshed_cart = Cart.objects.select_related('promo_code').get(pk=cart.pk)
-    refreshed_items = list(
-        refreshed_cart.items.select_related('product', 'source_offer').order_by('pk')
-    )
-    if review_decision is not None:
-        return None, _checkout_issue_response(request, refreshed_cart, review_decision)
-    if any(not item.is_payable for item in refreshed_items):
-        return None, _checkout_issue_response(request, refreshed_cart)
-    return _checkout_cart_fingerprint(refreshed_cart, refreshed_items), None
+    if any(not item.is_payable for item in items):
+        return None, _checkout_issue_response(request, cart)
+    return _checkout_cart_fingerprint(cart, items), None
 
 
 def _order_item_source_snapshot(item: CartItem) -> dict:
@@ -1224,43 +1209,20 @@ class CartViewSet(viewsets.ViewSet):
                 "available": available_stock,
             })
 
-        decision = CartSourceOfferPolicy().evaluate(
-            product=product,
-            chosen_size=chosen_size,
-            quantity=new_total_qty,
-            target_currency=preferred_currency,
-            baseline_public_price=(existing.price if existing else item_price),
-            acknowledged_price=serializer.validated_data.get('acknowledged_price'),
-            acknowledged_currency=serializer.validated_data.get('acknowledged_currency', ''),
+        policy = CartSourceOfferPolicy()
+        selected_offer = policy.select_offer(product=product, chosen_size=chosen_size)
+        verification_required = bool(
+            selected_offer is not None
+            or policy.requires_verified_offer(product)
+            or (existing is not None and existing.source_offer_id is not None)
         )
-        if decision is not None and not decision.payable and not decision.allow_cart:
-            if existing is not None:
-                original_quantity = existing.quantity
-                original_updated_at = existing.updated_at
-                values = _cart_item_update_values(
-                    decision,
-                    item=existing,
-                    requested_quantity=new_total_qty,
-                )
-                updated = CartItem.objects.filter(
-                    pk=existing.pk,
-                    quantity=original_quantity,
-                    updated_at=original_updated_at,
-                ).update(**values)
-                if not updated:
-                    return _cart_changed_response(request, existing_cart)
-                _touch_cart(existing_cart)
-            return _cart_verification_error_response(decision)
-
-        verification_defaults = {}
-        if decision is not None:
-            verification_defaults = _cart_item_verification_values(
-                decision,
-                quantity=new_total_qty,
-                existing_item=existing,
+        verification_defaults = (
+            _cart_item_unverified_values(
+                selected_offer.pk if selected_offer is not None else None
             )
-            if decision.public_price is not None:
-                item_price = decision.public_price
+            if verification_required
+            else {}
+        )
 
         cart = _get_or_create_cart(request)
         _touch_cart(cart)
@@ -1286,7 +1248,7 @@ class CartViewSet(viewsets.ViewSet):
                 item.currency = preferred_currency
                 updated = True
             item.quantity += quantity
-            if decision is not None:
+            if verification_defaults:
                 for field_name, value in verification_defaults.items():
                     setattr(item, field_name, value)
                 item.save(
@@ -1364,45 +1326,41 @@ class CartViewSet(viewsets.ViewSet):
                 "available": available_stock,
             })
 
-        should_verify = (
-            desired_qty > item.quantity
-            or item.verification_status != CartItem.VerificationStatus.VERIFIED
-        )
-        decision = None
-        if should_verify:
-            decision = CartSourceOfferPolicy().evaluate(
-                product=item.product,
-                chosen_size=item.chosen_size,
-                quantity=desired_qty,
-                target_currency=item.currency or cart.currency,
-                baseline_public_price=item.price,
-                acknowledged_price=serializer.validated_data.get('acknowledged_price'),
-                acknowledged_currency=serializer.validated_data.get(
-                    'acknowledged_currency', ''
-                ),
-            )
+        final_qty = desired_qty
+        issues = list(item.verification_issues or [])
+        if (
+            item.observed_stock_precision == CartItem.StockPrecision.EXACT
+            and item.observed_stock_quantity is not None
+            and desired_qty > item.observed_stock_quantity
+        ):
+            final_qty = max(item.observed_stock_quantity, 1)
+            if CartItem.VerificationIssue.SOURCE_QUANTITY_CHANGED not in issues:
+                issues.append(CartItem.VerificationIssue.SOURCE_QUANTITY_CHANGED)
+        elif CartItem.VerificationIssue.SOURCE_QUANTITY_CHANGED in issues:
+            issues.remove(CartItem.VerificationIssue.SOURCE_QUANTITY_CHANGED)
 
-        if decision is not None:
-            original_quantity = item.quantity
-            original_updated_at = item.updated_at
-            values = _cart_item_update_values(
-                decision,
-                item=item,
-                requested_quantity=desired_qty,
+        item.quantity = final_qty
+        update_fields = ['quantity', 'updated_at']
+        if (
+            item.source_checked_at is not None
+            and (
+                item.source_offer_id is not None
+                or CartSourceOfferPolicy.requires_verified_offer(item.product)
             )
-            updated = CartItem.objects.filter(
-                pk=item.pk,
-                quantity=original_quantity,
-                updated_at=original_updated_at,
-            ).update(**values)
-            if not updated:
-                return _cart_changed_response(request, cart)
-            _touch_cart(cart)
-            cart = _get_cart_with_prefetch(cart)
-            return Response(CartSerializer(cart, context={'request': request}).data)
-
-        item.quantity = desired_qty
-        item.save()
+        ):
+            item.verified_quantity = final_qty
+            item.verification_issues = issues
+            update_fields.extend(['verified_quantity', 'verification_issues'])
+            nonblocking_issues = {
+                CartItem.VerificationIssue.SOURCE_QUANTITY_CHANGED,
+            }
+            if item.price_change_state == CartItem.PriceChangeState.DECREASED:
+                nonblocking_issues.add(CartItem.VerificationIssue.SOURCE_PRICE_CHANGED)
+            remaining_blockers = set(issues) - nonblocking_issues
+            if not remaining_blockers:
+                item.verification_status = CartItem.VerificationStatus.VERIFIED
+                update_fields.append('verification_status')
+        item.save(update_fields=update_fields)
         cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 
@@ -1428,16 +1386,23 @@ class CartViewSet(viewsets.ViewSet):
         except CartItem.DoesNotExist:
             return Response({"detail": _("Позиция не найдена")}, status=404)
 
-        decision = CartSourceOfferPolicy().evaluate(
-            product=item.product,
-            chosen_size=item.chosen_size,
-            quantity=item.quantity,
-            target_currency=item.currency or cart.currency,
-            baseline_public_price=item.price,
-            acknowledged_price=serializer.validated_data['acknowledged_price'],
-            acknowledged_currency=serializer.validated_data['acknowledged_currency'],
+        acknowledged_price = serializer.validated_data['acknowledged_price']
+        acknowledged_currency = serializer.validated_data['acknowledged_currency'].upper()
+        expected_currency = (item.observed_public_currency or '').upper()
+        acknowledgement_is_current = (
+            item.verification_status == CartItem.VerificationStatus.BLOCKED
+            and item.price_change_state == CartItem.PriceChangeState.INCREASED
+            and CartItem.VerificationIssue.SOURCE_PRICE_CHANGED
+            in (item.verification_issues or [])
+            and item.observed_public_price is not None
+            and acknowledged_price == item.observed_public_price
+            and acknowledged_currency == expected_currency
         )
-        if decision is None:
+        remaining_blockers = set(item.verification_issues or []) - {
+            CartItem.VerificationIssue.SOURCE_PRICE_CHANGED,
+            CartItem.VerificationIssue.SOURCE_QUANTITY_CHANGED,
+        }
+        if not acknowledgement_is_current or remaining_blockers:
             return Response(
                 {
                     "detail": str(CartItem.VerificationIssue.VERIFICATION_UNSUPPORTED.label),
@@ -1445,12 +1410,15 @@ class CartViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_409_CONFLICT,
             )
-
-        values = _cart_item_update_values(
-            decision,
-            item=item,
-            requested_quantity=item.quantity,
-        )
+        values = {
+            'price': item.observed_public_price,
+            'currency': expected_currency,
+            'verification_status': CartItem.VerificationStatus.VERIFIED,
+            'price_acknowledged_at': timezone.now(),
+            'price_acknowledged_value': item.observed_public_price,
+            'price_acknowledged_currency': expected_currency,
+            'updated_at': timezone.now(),
+        }
         updated = CartItem.objects.filter(
             pk=item.pk,
             quantity=item.quantity,
@@ -1459,15 +1427,13 @@ class CartViewSet(viewsets.ViewSet):
         if not updated:
             return _cart_changed_response(request, cart)
         _touch_cart(cart)
-        if not decision.payable:
-            return _cart_verification_error_response(decision)
         cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description=(
-            "Повторно проверить сохранённые source offers корзины. GET корзины "
-            "никогда не выполняет внешнюю проверку."
+            "Проверить все source offers один раз при открытии корзины. GET корзины "
+            "и остальные cart/checkout endpoints не выполняют внешнюю проверку."
         ),
         request=None,
         responses=CartSerializer,
@@ -1483,15 +1449,8 @@ class CartViewSet(viewsets.ViewSet):
         if cart is None:
             return Response(_empty_cart_payload(request))
 
-        max_items = max(
-            1,
-            min(
-                int(getattr(settings, 'SOURCE_OFFER_CART_REVALIDATE_MAX_ITEMS', 20)),
-                100,
-            ),
-        )
         items = list(
-            cart.items.select_related('product', 'source_offer').order_by('pk')[:max_items]
+            cart.items.select_related('product', 'source_offer').order_by('pk')
         )
         policy = CartSourceOfferPolicy()
         changed = False

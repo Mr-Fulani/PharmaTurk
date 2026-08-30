@@ -109,28 +109,24 @@ def _checkout_payload():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_supplier_preflight_runs_without_atomic_or_row_lock(settings):
+def test_checkout_preflight_uses_saved_snapshot_without_supplier_call(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
     _product, offer, cart, _item = _source_checkout_state()
     request = APIRequestFactory().post("/api/orders/orders/create-from-cart/")
 
-    def assert_outside_transaction(**kwargs):
-        assert connection.in_atomic_block is False
-        return _decision(offer)
-
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
-        side_effect=assert_outside_transaction,
     ) as evaluate:
         fingerprint, response = _checkout_source_preflight(request, cart)
 
     assert response is None
     assert fingerprint and len(fingerprint) == 64
-    assert evaluate.call_args.kwargs["force"] is True
+    assert connection.in_atomic_block is False
+    evaluate.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_checkout_returns_refreshed_cart_when_source_price_drifts(settings):
+def test_checkout_never_refreshes_a_saved_verified_price(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
     user = User.objects.create_user(
         username="source-price-drift-user",
@@ -150,7 +146,7 @@ def test_checkout_returns_refreshed_cart_when_source_price_drifts(settings):
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
         return_value=decision,
-    ):
+    ) as evaluate:
         response = client.post(
             reverse("orders-create-from-cart"),
             _checkout_payload(),
@@ -158,17 +154,14 @@ def test_checkout_returns_refreshed_cart_when_source_price_drifts(settings):
             HTTP_X_CURRENCY="TRY",
         )
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "source_price_changed"
-    assert Decimal(str(response.json()["items"][0]["price"])) == Decimal("90.00")
-    assert Order.objects.count() == 0
-    item.refresh_from_db()
-    assert item.price == Decimal("90.00")
-    assert CartItem.objects.filter(cart=cart).exists()
+    assert response.status_code == 201
+    assert Order.objects.count() == 1
+    assert not CartItem.objects.filter(cart=cart).exists()
+    evaluate.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_stock_drift_stops_crypto_before_invoice_and_clamps_exact_quantity(settings):
+def test_inconsistent_saved_stock_snapshot_stops_crypto_without_supplier_call(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
     user = User.objects.create_user(
         username="source-stock-drift-user",
@@ -190,7 +183,7 @@ def test_stock_drift_stops_crypto_before_invoice_and_clamps_exact_quantity(setti
         patch(
             "apps.orders.views.CartSourceOfferPolicy.evaluate",
             return_value=decision,
-        ),
+        ) as evaluate,
         patch("apps.orders.views._create_crypto_invoice") as create_invoice,
     ):
         response = client.post(
@@ -201,12 +194,12 @@ def test_stock_drift_stops_crypto_before_invoice_and_clamps_exact_quantity(setti
         )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "source_quantity_changed"
+    assert response.json()["code"] == "cart_changed"
     create_invoice.assert_not_called()
+    evaluate.assert_not_called()
     assert Order.objects.count() == 0
     item.refresh_from_db()
-    assert item.quantity == 4
-    assert item.verification_issues == ["source_quantity_changed"]
+    assert item.quantity == 5
 
 
 @pytest.mark.django_db
@@ -265,7 +258,7 @@ def test_order_item_keeps_immutable_source_snapshot(settings):
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
         return_value=_decision(offer),
-    ):
+    ) as evaluate:
         response = client.post(
             reverse("orders-create-from-cart"),
             _checkout_payload(),
@@ -283,6 +276,7 @@ def test_order_item_keeps_immutable_source_snapshot(settings):
     assert order_item.source_stock_precision == "exact"
     assert order_item.source_stock_quantity == 4
     assert order_item.supplier_confirmation_required is True
+    evaluate.assert_not_called()
 
     ProductSourceOffer.objects.filter(pk=offer.pk).update(
         canonical_url="https://www.zara.com/tr/tr/changed-after-order.html",
@@ -324,7 +318,7 @@ def test_akakce_order_snapshot_keeps_selected_procurement_seller(settings):
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
         return_value=_decision(offer),
-    ):
+    ) as evaluate:
         response = client.post(
             reverse("orders-create-from-cart"),
             _checkout_payload(),
@@ -340,10 +334,11 @@ def test_akakce_order_snapshot_keeps_selected_procurement_seller(settings):
         "market_product_name": "Matched supplement",
         "market_product_id": "123",
     }
+    evaluate.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_checkout_accepts_legacy_supplement_without_stock_adapter(settings):
+def test_checkout_rejects_supplement_that_never_opened_cart(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
@@ -368,12 +363,12 @@ def test_checkout_accepts_legacy_supplement_without_stock_adapter(settings):
 
     fingerprint, response = _checkout_source_preflight(request, cart)
 
-    assert response is None
-    assert fingerprint and len(fingerprint) == 64
+    assert fingerprint is None
+    assert response.status_code == 409
     item.refresh_from_db()
-    assert item.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert item.verification_status == CartItem.VerificationStatus.NOT_CHECKED
     assert item.verification_issues == []
-    assert item.is_payable is True
+    assert item.is_payable is False
 
 
 @pytest.mark.django_db
@@ -405,6 +400,14 @@ def test_checkout_creates_manual_fulfilment_supplement_order_with_zero_stock(set
     )
     client = APIClient()
     client.force_authenticate(user=user)
+
+    opened = client.post(
+        reverse("cart-revalidate"),
+        {},
+        format="json",
+        HTTP_X_CURRENCY="TRY",
+    )
+    assert opened.status_code == 200
 
     response = client.post(
         reverse("orders-create-from-cart"),

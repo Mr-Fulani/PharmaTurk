@@ -233,12 +233,6 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24,
         "kwargs": {"batch_size": 200},
     },
-    # Explicit maintenance task only; it is a cheap no-op until both source-offer
-    # verification and background refresh rollout flags are enabled.
-    "catalog-refresh-source-offers": {
-        "task": "catalog.refresh_source_offers",
-        "schedule": 60 * 5,
-    },
     # refresh-stock: заглушка — отключено, доработаем после парсеров
     # "refresh-stock": {"task": "apps.catalog.tasks.refresh_stock", "schedule": 60 * 60 * 2},
     # VAPI: отключено — не используется. Включить при работе с VAPI API.
@@ -572,23 +566,6 @@ PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO = env.float(
 PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO = env.float(
     "PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO", default=20.0
 )
-# Proactive refresh is intentionally a separate rollout gate. Celery Beat may
-# enqueue the task while disabled; the task exits before selecting rows or doing I/O.
-SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED = env.bool(
-    "SOURCE_OFFER_BACKGROUND_REFRESH_ENABLED", default=False
-)
-SOURCE_OFFER_BACKGROUND_REFRESH_BATCH_SIZE = env.int(
-    "SOURCE_OFFER_BACKGROUND_REFRESH_BATCH_SIZE", default=25
-)
-SOURCE_OFFER_BACKGROUND_STALE_SECONDS = env.int(
-    "SOURCE_OFFER_BACKGROUND_STALE_SECONDS", default=900
-)
-SOURCE_OFFER_BACKGROUND_POPULAR_CART_DAYS = env.int(
-    "SOURCE_OFFER_BACKGROUND_POPULAR_CART_DAYS", default=7
-)
-SOURCE_OFFER_BACKGROUND_LOCK_SECONDS = env.int(
-    "SOURCE_OFFER_BACKGROUND_LOCK_SECONDS", default=330
-)
 # Fresh successful offer rows may override availability in public detail/YML
 # output. Kept separate from cart enforcement and disabled for staged rollout.
 SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(
@@ -598,9 +575,6 @@ SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(
 # verification service before any existing cart behaviour changes.
 SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = env.bool(
     "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", default=False
-)
-SOURCE_OFFER_CART_REVALIDATE_MAX_ITEMS = env.int(
-    "SOURCE_OFFER_CART_REVALIDATE_MAX_ITEMS", default=20
 )
 SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES = env.list(
     "SOURCE_OFFER_RESERVATION_CAPABLE_SOURCES", default=[]

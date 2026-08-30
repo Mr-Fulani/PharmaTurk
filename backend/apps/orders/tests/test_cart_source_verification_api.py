@@ -27,7 +27,6 @@ from apps.users.models import User
 @pytest.fixture(autouse=True)
 def source_cart_settings(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
-    settings.SOURCE_OFFER_CART_REVALIDATE_MAX_ITEMS = 20
 
 
 @pytest.fixture
@@ -95,13 +94,11 @@ def _client(session_key="source-cart-api-session"):
 
 
 @pytest.mark.django_db
-def test_add_verifies_before_creating_payable_line(source_cart_product):
+def test_add_saves_unverified_line_without_supplier_request(source_cart_product):
     product, offer = source_cart_product
-    decision = _decision(offer)
 
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
-        return_value=decision,
     ) as evaluate:
         response = _client().post(
             reverse("cart-add"),
@@ -112,48 +109,40 @@ def test_add_verifies_before_creating_payable_line(source_cart_product):
     assert response.status_code == 200
     item = CartItem.objects.get()
     assert item.source_offer == offer
-    assert item.verification_status == CartItem.VerificationStatus.VERIFIED
-    assert item.observed_source_price == Decimal("100.00")
-    assert item.observed_public_price == Decimal("100.00")
-    assert item.verified_quantity == 1
-    assert response.json()["has_blocking_issues"] is False
-    assert response.json()["payable_items_count"] == 1
-    assert evaluate.call_args.kwargs["quantity"] == 1
+    assert item.verification_status == CartItem.VerificationStatus.NOT_CHECKED
+    assert item.source_checked_at is None
+    assert item.observed_source_price is None
+    assert item.verified_quantity is None
+    assert response.json()["has_blocking_issues"] is True
+    assert response.json()["payable_items_count"] == 0
+    evaluate.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_unavailable_add_returns_issue_without_allocating_anonymous_cart(
+def test_add_does_not_consume_stale_supplier_availability(
     source_cart_product,
 ):
     product, offer = source_cart_product
-    decision = _decision(
-        offer,
-        availability=OfferAvailability.OUT_OF_STOCK,
-        status=CartItem.VerificationStatus.BLOCKED,
-        issues=(CartItem.VerificationIssue.SOURCE_OUT_OF_STOCK,),
-        payable=False,
-        public_price=None,
-    )
+    offer.availability_status = ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK
+    offer.save(update_fields=["availability_status"])
 
-    with patch(
-        "apps.orders.views.CartSourceOfferPolicy.evaluate",
-        return_value=decision,
-    ):
+    with patch("apps.orders.views.CartSourceOfferPolicy.evaluate") as evaluate:
         response = _client("new-unavailable-cart").post(
             reverse("cart-add"),
             {"product_id": product.pk, "quantity": 1},
             format="json",
         )
 
-    assert response.status_code == 409
-    assert response.json()["code"] == CartItem.VerificationIssue.SOURCE_OUT_OF_STOCK
-    assert response.json()["verification"]["available_quantity"] is None
-    assert not Cart.objects.filter(session_key="new-unavailable-cart").exists()
-    assert CartItem.objects.count() == 0
+    assert response.status_code == 200
+    item = CartItem.objects.get()
+    assert item.source_offer == offer
+    assert item.verification_status == CartItem.VerificationStatus.NOT_CHECKED
+    assert item.verification_issues == []
+    evaluate.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_reference_only_supplement_is_saved_as_payable(settings):
+def test_reference_only_supplement_waits_for_cart_open(settings):
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
     product = Product.objects.create(
@@ -174,21 +163,18 @@ def test_reference_only_supplement_is_saved_as_payable(settings):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["has_blocking_issues"] is False
-    assert payload["payable_items_count"] == 1
+    assert payload["has_blocking_issues"] is True
+    assert payload["payable_items_count"] == 0
     cart = Cart.objects.get(session_key="reference-supplement-cart")
     item = CartItem.objects.get(cart=cart, product=product)
     assert item.quantity == 1
-    assert item.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert item.verification_status == CartItem.VerificationStatus.NOT_CHECKED
     assert item.verification_issues == []
-    # Availability-independent checkout keeps the existing public-price calculation: the
-    # default 15% product markup is applied to the 49.70 TRY source/catalogue price.
-    assert item.price == Decimal("57.16")
-    assert item.is_payable is True
+    assert item.is_payable is False
 
 
 @pytest.mark.django_db
-def test_availability_optional_supplement_quantity_can_be_updated(settings):
+def test_unchecked_supplement_quantity_update_stays_unchecked(settings):
     settings.SOURCE_OFFER_CART_REQUIRED_PRODUCT_TYPES = ["supplements"]
     settings.SUPPLEMENT_STOCK_ADAPTER_SOURCES = []
     product = Product.objects.create(
@@ -216,12 +202,14 @@ def test_availability_optional_supplement_quantity_can_be_updated(settings):
     assert response.status_code == 200
     item = CartItem.objects.get(pk=item_id)
     assert item.quantity == 3
-    assert item.verification_status == CartItem.VerificationStatus.VERIFIED
-    assert item.is_payable is True
+    assert item.verification_status == CartItem.VerificationStatus.NOT_CHECKED
+    assert item.is_payable is False
 
 
 @pytest.mark.django_db
-def test_unavailable_repeated_add_blocks_the_saved_line(source_cart_product):
+def test_repeated_add_invalidates_saved_snapshot_without_supplier_request(
+    source_cart_product,
+):
     product, offer = source_cart_product
     cart = Cart.objects.create(session_key="existing-unavailable-cart", currency="TRY")
     item = CartItem.objects.create(
@@ -233,31 +221,22 @@ def test_unavailable_repeated_add_blocks_the_saved_line(source_cart_product):
         source_offer=offer,
         verification_status=CartItem.VerificationStatus.VERIFIED,
     )
-    decision = _decision(
-        offer,
-        availability=OfferAvailability.OUT_OF_STOCK,
-        status=CartItem.VerificationStatus.BLOCKED,
-        issues=(CartItem.VerificationIssue.SOURCE_OUT_OF_STOCK,),
-        payable=False,
-        public_price=None,
-    )
-
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
-        return_value=decision,
-    ):
+    ) as evaluate:
         response = _client(cart.session_key).post(
             reverse("cart-add"),
             {"product_id": product.pk, "quantity": 1},
             format="json",
         )
 
-    assert response.status_code == 409
+    assert response.status_code == 200
     item.refresh_from_db()
-    assert item.quantity == 1
-    assert item.verification_status == CartItem.VerificationStatus.BLOCKED
-    assert item.verification_issues == [CartItem.VerificationIssue.SOURCE_OUT_OF_STOCK]
-    assert item.observed_source_price == Decimal("100.00")
+    assert item.quantity == 2
+    assert item.verification_status == CartItem.VerificationStatus.NOT_CHECKED
+    assert item.verification_issues == []
+    assert item.observed_source_price is None
+    evaluate.assert_not_called()
 
 
 def test_retryable_source_failure_returns_service_unavailable(source_cart_product):
@@ -291,37 +270,14 @@ def test_retryable_source_failure_returns_service_unavailable(source_cart_produc
 
 
 @pytest.mark.django_db
-def test_price_increase_requires_exact_ack_before_add(source_cart_product):
+def test_add_ignores_client_acknowledgement_without_supplier_request(source_cart_product):
     product, offer = source_cart_product
-    blocked = _decision(
-        offer,
-        source_price="120.00",
-        public_price="120.00",
-        status=CartItem.VerificationStatus.BLOCKED,
-        issues=(CartItem.VerificationIssue.SOURCE_PRICE_CHANGED,),
-        payable=False,
-        price_change=CartItem.PriceChangeState.INCREASED,
-    )
-    accepted = _decision(
-        offer,
-        source_price="120.00",
-        public_price="120.00",
-        issues=(CartItem.VerificationIssue.SOURCE_PRICE_CHANGED,),
-        price_change=CartItem.PriceChangeState.INCREASED,
-        price_acknowledged=True,
-    )
     client = _client("price-ack-add-cart")
 
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
-        side_effect=[blocked, accepted],
     ) as evaluate:
-        first = client.post(
-            reverse("cart-add"),
-            {"product_id": product.pk, "quantity": 1},
-            format="json",
-        )
-        second = client.post(
+        response = client.post(
             reverse("cart-add"),
             {
                 "product_id": product.pk,
@@ -332,15 +288,12 @@ def test_price_increase_requires_exact_ack_before_add(source_cart_product):
             format="json",
         )
 
-    assert first.status_code == 409
-    assert first.json()["verification"]["public_price"] == 120.0
-    assert second.status_code == 200
+    assert response.status_code == 200
     item = CartItem.objects.get()
-    assert item.price == Decimal("120.00")
-    assert item.price_acknowledged_value == Decimal("120.00")
-    assert item.price_acknowledged_currency == "TRY"
-    assert item.price_acknowledged_at is not None
-    assert evaluate.call_args_list[1].kwargs["acknowledged_price"] == Decimal("120.00")
+    assert item.source_offer == offer
+    assert item.verification_status == CartItem.VerificationStatus.NOT_CHECKED
+    assert item.price_acknowledged_value is None
+    evaluate.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -355,20 +308,16 @@ def test_update_clamps_to_real_exact_stock_and_keeps_notice(source_cart_product)
         currency="TRY",
         source_offer=offer,
         verification_status=CartItem.VerificationStatus.VERIFIED,
-    )
-    decision = _decision(
-        offer,
-        precision=OfferStockPrecision.EXACT,
-        stock_quantity=2,
-        status=CartItem.VerificationStatus.BLOCKED,
-        issues=(CartItem.VerificationIssue.SOURCE_QUANTITY_CHANGED,),
-        payable=False,
+        source_checked_at=timezone.now(),
+        source_availability_status=OfferAvailability.IN_STOCK.value,
+        observed_stock_precision=CartItem.StockPrecision.EXACT,
+        observed_stock_quantity=2,
+        verified_quantity=1,
     )
 
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
-        return_value=decision,
-    ):
+    ) as evaluate:
         response = _client(cart.session_key).post(
             reverse("cart-update-item", kwargs={"pk": item.pk}),
             {"quantity": 3},
@@ -382,6 +331,7 @@ def test_update_clamps_to_real_exact_stock_and_keeps_notice(source_cart_product)
     assert item.verification_status == CartItem.VerificationStatus.VERIFIED
     assert item.verification_issues == [CartItem.VerificationIssue.SOURCE_QUANTITY_CHANGED]
     assert response.json()["total_amount"] == 200.0
+    evaluate.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -504,19 +454,9 @@ def test_acknowledge_price_updates_blocked_line_atomically(source_cart_product):
         observed_public_currency="TRY",
         price_change_state=CartItem.PriceChangeState.INCREASED,
     )
-    accepted = _decision(
-        offer,
-        source_price="120.00",
-        public_price="120.00",
-        issues=(CartItem.VerificationIssue.SOURCE_PRICE_CHANGED,),
-        price_change=CartItem.PriceChangeState.INCREASED,
-        price_acknowledged=True,
-    )
-
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
-        return_value=accepted,
-    ):
+    ) as evaluate:
         response = _client(cart.session_key).post(
             reverse("cart-acknowledge-price", kwargs={"pk": item.pk}),
             {"acknowledged_price": "120.00", "acknowledged_currency": "TRY"},
@@ -528,41 +468,42 @@ def test_acknowledge_price_updates_blocked_line_atomically(source_cart_product):
     assert item.price == Decimal("120.00")
     assert item.verification_status == CartItem.VerificationStatus.VERIFIED
     assert item.price_acknowledged_value == Decimal("120.00")
+    evaluate.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_concurrent_item_change_returns_cart_changed_conflict(source_cart_product):
+def test_revalidate_checks_every_cart_line_even_if_legacy_limit_is_one(
+    source_cart_product,
+    settings,
+):
     product, offer = source_cart_product
-    cart = Cart.objects.create(session_key="optimistic-source-cart", currency="TRY")
-    item = CartItem.objects.create(
-        cart=cart,
-        product=product,
-        quantity=1,
-        price=Decimal("100.00"),
-        currency="TRY",
-        source_offer=offer,
-        verification_status=CartItem.VerificationStatus.VERIFIED,
-    )
+    settings.SOURCE_OFFER_CART_REVALIDATE_MAX_ITEMS = 1
+    cart = Cart.objects.create(session_key="all-lines-revalidate-cart", currency="TRY")
+    for chosen_size in ("S", "M"):
+        CartItem.objects.create(
+            cart=cart,
+            product=product,
+            chosen_size=chosen_size,
+            quantity=1,
+            price=Decimal("100.00"),
+            currency="TRY",
+            source_offer=offer,
+            verification_status=CartItem.VerificationStatus.NOT_CHECKED,
+        )
     decision = _decision(offer)
-
-    def concurrent_change(**kwargs):
-        CartItem.objects.filter(pk=item.pk).update(quantity=2, updated_at=timezone.now())
-        return decision
 
     with patch(
         "apps.orders.views.CartSourceOfferPolicy.evaluate",
-        side_effect=concurrent_change,
-    ):
-        response = _client(cart.session_key).post(
-            reverse("cart-update-item", kwargs={"pk": item.pk}),
-            {"quantity": 3},
-            format="json",
-        )
+        return_value=decision,
+    ) as evaluate:
+        response = _client(cart.session_key).post(reverse("cart-revalidate"), {})
 
-    assert response.status_code == 409
-    assert response.json()["operation_issues"][0]["code"] == "cart_changed"
-    item.refresh_from_db()
-    assert item.quantity == 2
+    assert response.status_code == 200
+    assert evaluate.call_count == 2
+    assert CartItem.objects.filter(
+        cart=cart,
+        verification_status=CartItem.VerificationStatus.VERIFIED,
+    ).count() == 2
 
 
 @pytest.mark.django_db
@@ -594,7 +535,7 @@ def test_checkout_rejects_saved_blocking_source_issue(source_cart_product):
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "cart_changed"
+    assert response.json()["code"] == "source_out_of_stock"
     assert Order.objects.count() == 0
     assert CartItem.objects.filter(cart=cart).exists()
 

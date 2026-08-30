@@ -3,7 +3,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
 import api, { getSingleFlight } from '../lib/api'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useCartStore } from '../store/cart'
 import {
   applyImageFallback,
@@ -37,6 +37,8 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   const [promoLoading, setPromoLoading] = useState(false)
   const [promoError, setPromoError] = useState<string | null>(null)
   const [verificationLoading, setVerificationLoading] = useState(false)
+  const [cartOpenRefreshComplete, setCartOpenRefreshComplete] = useState(false)
+  const cartOpenRefreshPromise = useRef<Promise<{ data: Cart }> | null>(null)
   const { setCartSummary } = useCartStore()
 
   const applyCartData = useCallback((nextCart: Cart) => {
@@ -75,31 +77,6 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     setCartSummary,
   ])
 
-  // Клиентское обновление корзины после монтирования (только один раз)
-  useEffect(() => {
-    if (!mounted) return
-    let cancelled = false
-    
-    const updateCart = async () => {
-      try {
-        const r = await getSingleFlight('/orders/cart')
-        if (!cancelled && r.data) {
-          applyCartData(r.data)
-        }
-      } catch (error) {
-        // Тихий игнор ошибок при первичной загрузке
-      }
-    }
-    
-    // Задержка для избежания мерцания при первой загрузке
-    const timeout = setTimeout(updateCart, 200)
-    
-    return () => {
-      cancelled = true
-      clearTimeout(timeout)
-    }
-  }, [applyCartData, mounted])
-
   const refreshCart = useCallback(async () => {
     try {
       const r = await getSingleFlight('/orders/cart')
@@ -110,6 +87,41 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       console.error('Failed to refresh cart:', error)
     }
   }, [applyCartData])
+
+  // Единственная внешняя проверка корзины: один POST на одно открытие страницы.
+  // Promise хранится в ref, чтобы React Strict Mode не создавал второй запрос.
+  useEffect(() => {
+    if (!mounted) return
+    let cancelled = false
+    setVerificationLoading(true)
+    if (!cartOpenRefreshPromise.current) {
+      cartOpenRefreshPromise.current = api.post<Cart>('/orders/cart/revalidate')
+    }
+    cartOpenRefreshPromise.current
+      .then((response) => {
+        if (cancelled) return
+        applyCartData(response.data)
+        setCartOpenRefreshComplete(true)
+      })
+      .catch(async (error: any) => {
+        if (cancelled) return
+        const responseCart = error?.response?.data
+        if (Array.isArray(responseCart?.items)) {
+          applyCartData(responseCart)
+        } else {
+          await refreshCart()
+        }
+        const conflict = getCartVerificationError(error)
+        const copy = getCartIssueCopy(conflict?.code)
+        alert(t(copy.key, copy.fallback))
+      })
+      .finally(() => {
+        if (!cancelled) setVerificationLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [applyCartData, mounted, refreshCart, t])
 
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return
@@ -139,27 +151,6 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       }
     } finally {
       setLoading(false)
-    }
-  }
-
-  const revalidateCart = async () => {
-    if (verificationLoading) return
-    setVerificationLoading(true)
-    try {
-      const response = await api.post('/orders/cart/revalidate')
-      applyCartData(response.data)
-    } catch (error: any) {
-      const responseCart = error?.response?.data
-      if (Array.isArray(responseCart?.items)) {
-        applyCartData(responseCart)
-      } else {
-        await refreshCart()
-      }
-      const conflict = getCartVerificationError(error)
-      const copy = getCartIssueCopy(conflict?.code)
-      alert(t(copy.key, copy.fallback))
-    } finally {
-      setVerificationLoading(false)
     }
   }
 
@@ -281,17 +272,10 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
               </p>
             )}
           </div>
-          {cart.items_count > 0 && (
-            <button
-              type="button"
-              onClick={revalidateCart}
-              disabled={verificationLoading}
-              className="inline-flex items-center justify-center rounded-md border border-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)] disabled:cursor-wait disabled:opacity-60"
-            >
-              {verificationLoading
-                ? t('cart_revalidating', 'Проверяем наличие и цены...')
-                : t('cart_revalidate', 'Проверить наличие и цены')}
-            </button>
+          {cart.items_count > 0 && verificationLoading && (
+            <p className="text-sm font-medium text-[var(--accent)]" role="status">
+              {t('cart_revalidating', 'Проверяем наличие и цены...')}
+            </p>
           )}
         </div>
 
@@ -544,16 +528,6 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                                   </button>
                                 )}
                               {blocked && (
-                                <button
-                                  type="button"
-                                  onClick={revalidateCart}
-                                  disabled={verificationLoading}
-                                  className="rounded-md border border-amber-500 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-                                >
-                                  {t('cart_retry_verification', 'Проверить ещё раз')}
-                                </button>
-                              )}
-                              {blocked && (
                                 <Link
                                   href={getProductLink(item)}
                                   className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
@@ -738,7 +712,22 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 </div>
 
                 <div className="mt-6 space-y-3">
-                  {hasBlockingIssues ? (
+                  {!cartOpenRefreshComplete || verificationLoading ? (
+                    <div>
+                      <button
+                        type="button"
+                        disabled
+                        className="block w-full cursor-wait rounded-md bg-gray-300 px-6 py-3 text-center text-sm font-medium text-gray-600"
+                      >
+                        {verificationLoading
+                          ? t('cart_revalidating', 'Проверяем наличие и цены...')
+                          : t(
+                              'cart_revalidation_failed_reopen',
+                              'Не удалось проверить. Откройте корзину заново.',
+                            )}
+                      </button>
+                    </div>
+                  ) : hasBlockingIssues ? (
                     <div>
                       <button
                         type="button"

@@ -1,7 +1,7 @@
 # Source offer: контракт Cart API
 
-Последняя проверка по коду: 2026-08-27
-Контур: `/api/orders/cart/` → source-offer policy → checkout preflight
+Последняя проверка по коду: 2026-08-30
+Контур: открытие корзины → source-offer policy → сохранённый checkout snapshot
 
 Документ описывает добавленные поля и конфликтные ответы. Исполняемый OpenAPI schema,
 serializers и views имеют приоритет при расхождении.
@@ -11,10 +11,11 @@ serializers и views имеют приоритет при расхождении
 | Метод и путь | Назначение | Внешняя проверка |
 | --- | --- | --- |
 | `GET /api/orders/cart/` | получить корзину | никогда |
-| `POST /api/orders/cart/add/` | добавить товар/вариант | при включённом enforcement |
-| `POST /api/orders/cart/{item_id}/update/` | изменить quantity | при увеличении или stale/unverified строке |
-| `POST /api/orders/cart/{item_id}/acknowledge-price/` | подтвердить конкретную повышенную цену | да |
-| `POST /api/orders/cart/revalidate/` | принудительно перепроверить bounded набор строк | да |
+| `POST /api/orders/cart/add/` | добавить товар/вариант и сбросить его snapshot | никогда |
+| `POST /api/orders/cart/{item_id}/update/` | изменить quantity по последнему snapshot | никогда |
+| `POST /api/orders/cart/{item_id}/acknowledge-price/` | подтвердить сохранённую повышенную цену | никогда |
+| `POST /api/orders/cart/revalidate/` | проверить все строки при открытии страницы корзины | да, один раз на открытие |
+| `POST /api/orders/orders/create-from-cart/` | оформить по сохранённому snapshot | никогда |
 
 Supplier URL, parser key, external SKU и source price не принимаются из клиентского
 payload. Сервер выбирает сохранённый `ProductSourceOffer` по product/variant/size.
@@ -49,7 +50,17 @@ total, promo, shipping и free-shipping threshold.
 - `verification_unsupported`;
 - `cart_changed`.
 
-## Конфликты и повтор запроса
+## Событийная модель
+
+Карточка товара обновляет только свой источник при открытии. Страница корзины
+автоматически вызывает `revalidate` один раз и не даёт перейти к оформлению до
+ответа. Endpoint обрабатывает все строки без лимита. Ручной кнопки повторной
+проверки нет: следующий запрос возможен только при новом открытии корзины.
+
+Добавление товара, изменение количества, подтверждение цены и checkout не вызывают
+поставщика. Checkout отклоняет непроверенный или заблокированный snapshot.
+
+## Конфликты
 
 Окончательный supplier conflict возвращает `409`. В ответе add/acknowledge есть
 `detail`, `code`, `issues[]` и `verification`; при конкурентном изменении корзины
@@ -61,9 +72,9 @@ total, promo, shipping и free-shipping threshold.
 должен показать причину и получить явное действие пользователя. Снижение цены можно
 применить автоматически с уведомлением.
 
-Checkout повторяет source preflight до короткой DB-транзакции. При изменении корзины,
-цены или availability заказ/crypto invoice не создаются; клиент получает обновлённую
-корзину для review. Проверка поставщика не означает резервирование товара.
+Checkout сверяет сохранённый snapshot до короткой DB-транзакции. При блокирующем
+состоянии или конкурентном изменении заказ/crypto invoice не создаются. Проверка
+поставщика не означает резервирование товара.
 
 Исключение бизнес-политики: для `supplements` availability является информационной.
 Отсутствующий adapter, `out_of_stock` или недоступность источника не исключают строку

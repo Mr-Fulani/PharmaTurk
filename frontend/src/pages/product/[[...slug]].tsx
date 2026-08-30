@@ -3,7 +3,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import axios from 'axios'
 import api, { getSingleFlight } from '../../lib/api'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import MedicinePriceCheck from '../../components/MedicinePriceCheck'
@@ -629,6 +629,10 @@ export default function ProductPage({
   const { theme } = useTheme()
   const [product, setProduct] = useState<Product | null>(initialProduct)
   const [sourceRefresh, setSourceRefresh] = useState<ProductSourceRefreshState | null>(null)
+  const sourceRefreshRequest = useRef<{
+    slug: string
+    promise: Promise<{ data: ProductSourceRefreshState }>
+  } | null>(null)
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary>({ averageRating: 0, count: 0 })
   const [questionSummary, setQuestionSummary] = useState<QuestionSummary>({ count: 0 })
   const [feedbackTab, setFeedbackTab] = useState<ProductFeedbackTab>('reviews')
@@ -695,7 +699,13 @@ export default function ProductPage({
       }, 1200)
     }
 
-    api.post<ProductSourceRefreshState>(endpoint)
+    if (!sourceRefreshRequest.current || sourceRefreshRequest.current.slug !== slug) {
+      sourceRefreshRequest.current = {
+        slug,
+        promise: api.post<ProductSourceRefreshState>(endpoint),
+      }
+    }
+    sourceRefreshRequest.current.promise
       .then((response) => consume(response.data))
       // Во время rolling deploy старый backend может ещё не знать endpoint.
       // Не показываем ошибку ручным товарам, eligibility которых клиент не знает.
