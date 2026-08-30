@@ -41,6 +41,7 @@ def test_unlocker_posts_only_to_fixed_endpoint_with_server_credentials():
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["authorization"] = request.headers.get("authorization")
+        captured["expect"] = request.headers.get("x-unblock-expect")
         captured["payload"] = json.loads(request.content)
         return httpx.Response(
             200,
@@ -57,6 +58,7 @@ def test_unlocker_posts_only_to_fixed_endpoint_with_server_credentials():
     assert captured == {
         "url": BrightDataWebUnlockerClient.ENDPOINT,
         "authorization": "Bearer test-token",
+        "expect": '{"text":"window.productDetail"}',
         "payload": {
             "zone": "flo_unlocker",
             "url": TARGET,
@@ -175,6 +177,14 @@ def test_unlocker_configuration_fails_closed(api_key, zone, message):
             zone=zone,
             allowed_hosts={"www.flo.com.tr"},
             timeout=5,
+        )
+
+
+def test_unlocker_rejects_header_injection_in_expect_text():
+    with pytest.raises(ImproperlyConfigured, match="EXPECT_TEXT"):
+        _client(
+            lambda _request: httpx.Response(200, text="ok"),
+            expect_text="ok\r\nX: y",
         )
 
 

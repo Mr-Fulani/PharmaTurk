@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -56,6 +57,7 @@ class BrightDataWebUnlockerClient:
         timeout: float,
         country: str = "tr",
         render: bool = False,
+        expect_text: str = "window.productDetail",
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
@@ -68,6 +70,7 @@ class BrightDataWebUnlockerClient:
         }
         self.country = str(country or "").strip().casefold()
         self.render = bool(render)
+        self.expect_text = str(expect_text or "").strip()
         self.max_response_bytes = max(1024, int(max_response_bytes))
         self._validate_configuration()
         self.client = httpx.Client(
@@ -91,6 +94,11 @@ class BrightDataWebUnlockerClient:
             timeout=timeout,
             country=getattr(settings, "FLO_WEB_UNLOCKER_COUNTRY", "tr"),
             render=getattr(settings, "FLO_WEB_UNLOCKER_RENDER", False),
+            expect_text=getattr(
+                settings,
+                "FLO_WEB_UNLOCKER_EXPECT_TEXT",
+                "window.productDetail",
+            ),
             max_response_bytes=getattr(
                 settings,
                 "FLO_WEB_UNLOCKER_MAX_RESPONSE_BYTES",
@@ -109,6 +117,10 @@ class BrightDataWebUnlockerClient:
             raise ImproperlyConfigured("Web Unlocker target allowlist must not be empty")
         if not self._COUNTRY_RE.fullmatch(self.country):
             raise ImproperlyConfigured("FLO_WEB_UNLOCKER_COUNTRY must be a two-letter code")
+        if len(self.expect_text) > 256 or any(char in self.expect_text for char in "\r\n"):
+            raise ImproperlyConfigured(
+                "FLO_WEB_UNLOCKER_EXPECT_TEXT must be a single line up to 256 characters"
+            )
 
     def _validate_target_url(self, target_url: str) -> str:
         url = str(target_url or "").strip()
@@ -183,13 +195,23 @@ class BrightDataWebUnlockerClient:
         if self.render:
             payload["render"] = "true"
 
+        request_headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if self.expect_text:
+            # Bright Data renders/retries until the real FLO product payload is
+            # present instead of treating an HTTP-200 CAPTCHA interstitial as a
+            # successful response.
+            request_headers["x-unblock-expect"] = json.dumps(
+                {"text": self.expect_text},
+                separators=(",", ":"),
+            )
+
         try:
             response = self.client.post(
                 self.ENDPOINT,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
+                headers=request_headers,
                 json=payload,
             )
         except httpx.RequestError:
