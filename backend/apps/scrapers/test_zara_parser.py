@@ -3,6 +3,7 @@ import json
 import pytest
 import requests
 
+from apps.scrapers.base.offers import OfferCheckErrorCode, OfferGone, OfferNotFound
 from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
 from apps.scrapers.parsers.zara import ZaraParser
 from apps.scrapers.services import ScraperIntegrationService
@@ -240,6 +241,35 @@ def test_zara_403_raises_access_blocked_without_retries(monkeypatch):
         parser._make_ajax_request("https://www.zara.com/test")
 
     assert request_count == 1
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_exception", "expected_code"),
+    [
+        (404, OfferNotFound, OfferCheckErrorCode.NOT_FOUND),
+        (410, OfferGone, OfferCheckErrorCode.GONE),
+    ],
+)
+def test_zara_terminal_ajax_status_is_not_hidden_by_html_fallback(
+    monkeypatch,
+    status_code,
+    expected_exception,
+    expected_code,
+):
+    parser = ZaraParser(max_retries=3)
+    response = requests.Response()
+    response.status_code = status_code
+    response._content = b"Gone"
+    response.url = "https://www.zara.com/tr/tr/removed-p1.html?ajax=true"
+    parser._session_warmed = True
+    monkeypatch.setattr(parser, "_wait_before_ajax_request", lambda: None)
+    monkeypatch.setattr(parser.ajax_session, "get", lambda *args, **kwargs: response)
+
+    with pytest.raises(expected_exception) as error:
+        parser._make_ajax_request("https://www.zara.com/tr/tr/removed-p1.html")
+
+    assert error.value.error.code == expected_code
+    assert error.value.error.retryable is False
 
 
 def test_zara_warms_session_once_before_ajax(monkeypatch):

@@ -28,6 +28,7 @@ from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.base.offers import (
     OfferAvailability,
     OfferCheckResult,
+    OfferGone,
     OfferStockPrecision,
 )
 
@@ -364,6 +365,38 @@ def test_flo_card_fetch_maps_clean_page_without_product_to_not_found(
     )
     service = ProductCardSourceRefreshService()
     monkeypatch.setattr(service, "_scraper_config", lambda _offer: config)
+
+    with pytest.raises(ProductCardRefreshError) as error:
+        service._fetch_product(target)
+
+    assert error.value.code == "source_not_found"
+    assert error.value.retryable is False
+
+
+def test_card_fetch_maps_typed_gone_response_to_not_found(monkeypatch):
+    class GoneZaraParser:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def parse_product_detail(self, url):
+            raise OfferGone(url)
+
+    target = SimpleNamespace(
+        parser_key="zara",
+        parser_class=GoneZaraParser,
+        offer=SimpleNamespace(
+            canonical_url="https://www.zara.com/tr/tr/removed-p1.html",
+            parser_config={},
+        ),
+    )
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_scraper_config", lambda _offer: None)
 
     with pytest.raises(ProductCardRefreshError) as error:
         service._fetch_product(target)

@@ -16,6 +16,8 @@ from apps.http_errors import raise_for_blocked_status
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.offers import (
     OfferCheckContext,
+    OfferGone,
+    OfferNotFound,
     OfferCheckResult,
     result_from_scraped_product,
     translate_offer_check_errors,
@@ -239,6 +241,14 @@ class ZaraParser(BaseScraper):
                         url=str(getattr(exc.response, "url", None) or ajax_url),
                         source=self.SOURCE_LABEL,
                     )
+                if status_code == 404:
+                    raise OfferNotFound(
+                        str(getattr(exc.response, "url", None) or ajax_url)
+                    ) from exc
+                if status_code == 410:
+                    raise OfferGone(
+                        str(getattr(exc.response, "url", None) or ajax_url)
+                    ) from exc
                 if attempt >= self.max_retries:
                     break
                 if status_code and status_code not in self.RETRYABLE_STATUS_CODES:

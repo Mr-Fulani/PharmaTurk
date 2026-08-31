@@ -30,6 +30,7 @@ from apps.catalog.services.source_offer_verification import (
     manual_only_source_keys,
 )
 from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.base.offers import OfferGone, OfferNotFound
 from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.registry import get_parser
 from apps.scrapers.services import ScraperIntegrationService
@@ -430,25 +431,32 @@ class ProductCardSourceRefreshService:
         if target.parser_key == "flo" and bool(config and config.use_proxy):
             # Explicitly scopes the paid transport to this demand-driven card-open job.
             kwargs["use_web_unlocker"] = True
-        with target.parser_class(**kwargs) as parser:
-            if config is not None:
-                parser.delay_range = (config.delay_min, config.delay_max)
-                parser.configure_request_identity(
-                    user_agent=config.user_agent,
-                    headers=config.headers,
-                    cookies=config.cookies,
-                )
-            if target.parser_key == "flo":
-                # A FLO product group can link many sibling colours. Each sibling
-                # would be another paid browser-rendering request, even though the
-                # user opened only this saved colour. Refresh exactly that colour;
-                # the cart follows the same one-offer rule.
-                result = parser.parse_product_detail(
-                    target.offer.canonical_url,
-                    include_sibling_variants=False,
-                )
-            else:
-                result = parser.parse_product_detail(target.offer.canonical_url)
+        try:
+            with target.parser_class(**kwargs) as parser:
+                if config is not None:
+                    parser.delay_range = (config.delay_min, config.delay_max)
+                    parser.configure_request_identity(
+                        user_agent=config.user_agent,
+                        headers=config.headers,
+                        cookies=config.cookies,
+                    )
+                if target.parser_key == "flo":
+                    # A FLO product group can link many sibling colours. Each sibling
+                    # would be another paid browser-rendering request, even though the
+                    # user opened only this saved colour. Refresh exactly that colour;
+                    # the cart follows the same one-offer rule.
+                    result = parser.parse_product_detail(
+                        target.offer.canonical_url,
+                        include_sibling_variants=False,
+                    )
+                else:
+                    result = parser.parse_product_detail(target.offer.canonical_url)
+        except (OfferNotFound, OfferGone) as exc:
+            raise ProductCardRefreshError(
+                "source_not_found",
+                "Supplier product was not found",
+                retryable=False,
+            ) from exc
 
         if isinstance(result, list):
             if len(result) != 1:
