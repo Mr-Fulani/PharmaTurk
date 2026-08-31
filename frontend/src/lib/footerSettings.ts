@@ -4,6 +4,7 @@
  */
 import axios from 'axios'
 import { getInternalApiUrl } from './urls'
+import { publicServerCache } from './serverPublicCache'
 
 export interface FooterSettingsData {
   phone?: string
@@ -29,18 +30,22 @@ const DEFAULT_FOOTER: FooterSettingsData = {
 
 export async function fetchFooterSettings(): Promise<FooterSettingsData> {
   try {
-    const res = await axios.get(getInternalApiUrl('settings/footer-settings'))
-    const data = res.data || {}
-    return {
-      phone: data.phone ?? DEFAULT_FOOTER.phone,
-      email: data.email ?? DEFAULT_FOOTER.email,
-      location: data.location ?? DEFAULT_FOOTER.location,
-      telegram_url: data.telegram_url ?? DEFAULT_FOOTER.telegram_url,
-      whatsapp_url: data.whatsapp_url ?? DEFAULT_FOOTER.whatsapp_url,
-      vk_url: data.vk_url ?? DEFAULT_FOOTER.vk_url,
-      instagram_url: data.instagram_url ?? DEFAULT_FOOTER.instagram_url,
-      crypto_payment_text: data.crypto_payment_text ?? DEFAULT_FOOTER.crypto_payment_text,
-    }
+    return await publicServerCache.get('footer-settings', async () => {
+      const res = await axios.get(getInternalApiUrl('settings/footer-settings'), {
+        timeout: 3000,
+      })
+      const data = res.data || {}
+      return {
+        phone: data.phone ?? DEFAULT_FOOTER.phone,
+        email: data.email ?? DEFAULT_FOOTER.email,
+        location: data.location ?? DEFAULT_FOOTER.location,
+        telegram_url: data.telegram_url ?? DEFAULT_FOOTER.telegram_url,
+        whatsapp_url: data.whatsapp_url ?? DEFAULT_FOOTER.whatsapp_url,
+        vk_url: data.vk_url ?? DEFAULT_FOOTER.vk_url,
+        instagram_url: data.instagram_url ?? DEFAULT_FOOTER.instagram_url,
+        crypto_payment_text: data.crypto_payment_text ?? DEFAULT_FOOTER.crypto_payment_text,
+      }
+    }, 300_000)
   } catch {
     return { ...DEFAULT_FOOTER }
   }

@@ -81,13 +81,23 @@ async function buildStaticUrls(today: string): Promise<SitemapUrl[]> {
 
 async function buildCategoryUrls(): Promise<SitemapUrl[]> {
   const urls: SitemapUrl[] = []
+  const seenSlugs = new Set<string>()
   const HIGH_PRIORITY_CATEGORIES = new Set(['medicines', 'supplements', 'uslugi'])
   try {
-    const categories = await fetchAllPages('catalog/categories', { lang: 'en', page_size: 1000 })
+    // Dedicated endpoint returns every active category (including descendants)
+    // without computing product counters, SEO fallbacks and portfolio payloads.
+    const categories = await fetchAllPages('catalog/sitemap-entries', {
+      kind: 'categories', page_size: 500,
+    })
     for (const cat of categories) {
-      if (cat.slug) {
+      if (cat.slug && !seenSlugs.has(cat.slug)) {
+        seenSlugs.add(cat.slug)
         const priority = HIGH_PRIORITY_CATEGORIES.has(cat.slug) ? 0.95 : 0.8
-        urls.push(buildUrl(`/categories/${cat.slug}`, `/categories/${cat.slug}`, 'daily', priority))
+        const url = buildUrl(`/categories/${cat.slug}`, `/categories/${cat.slug}`, 'daily', priority)
+        if (cat.updated_at) {
+          url.lastmod = new Date(cat.updated_at).toISOString().split('T')[0]
+        }
+        urls.push(url)
       }
     }
   } catch {
@@ -98,10 +108,14 @@ async function buildCategoryUrls(): Promise<SitemapUrl[]> {
 
 async function buildBrandUrls(today: string): Promise<SitemapUrl[]> {
   const urls: SitemapUrl[] = []
+  const seenSlugs = new Set<string>()
   try {
-    const brands = await fetchAllPages('catalog/brands', { page_size: 1000, is_active: true })
+    const brands = await fetchAllPages('catalog/sitemap-entries', {
+      kind: 'brands', page_size: 500,
+    })
     for (const brand of brands) {
-      if (!brand.slug) continue
+      if (!brand.slug || seenSlugs.has(brand.slug)) continue
+      seenSlugs.add(brand.slug)
       const lastmod = brand.updated_at
         ? new Date(brand.updated_at).toISOString().split('T')[0]
         : today
@@ -117,12 +131,14 @@ async function buildBrandUrls(today: string): Promise<SitemapUrl[]> {
 
 async function buildServiceUrls(today: string): Promise<SitemapUrl[]> {
   const urls: SitemapUrl[] = []
+  const seenSlugs = new Set<string>()
   try {
-    const services = await fetchAllPages('catalog/services', {
-      lang: 'en', page_size: 1000, is_active: true,
+    const services = await fetchAllPages('catalog/sitemap-entries', {
+      kind: 'services', page_size: 500,
     })
     for (const service of services) {
-      if (!service.slug) continue
+      if (!service.slug || seenSlugs.has(service.slug)) continue
+      seenSlugs.add(service.slug)
       const lastmod = service.updated_at
         ? new Date(service.updated_at).toISOString().split('T')[0]
         : today

@@ -26,6 +26,7 @@ import {
 } from '../../lib/catalogQuery'
 import { shouldShowGenderFilter } from '../../lib/brandCatalog'
 import {
+  buildCatalogSeoState,
   isCatalogPageOutOfRange,
   isCategoryInProductTree,
   selectExactCategory,
@@ -1548,9 +1549,22 @@ export default function CategoryPage({
   const siteUrl = useMemo(() => getSiteOrigin(), [])
   const categoryPath = useMemo(() => `/categories/${routeSlug || categoryType}`, [routeSlug, categoryType])
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
-  const canonicalUrl = useMemo(() => `${siteUrl}${localePrefix}${categoryPath}`, [siteUrl, localePrefix, categoryPath])
-  const ruUrl = useMemo(() => `${siteUrl}${categoryPath}`, [siteUrl, categoryPath])
-  const enUrl = useMemo(() => `${siteUrl}/en${categoryPath}`, [siteUrl, categoryPath])
+  const catalogSeo = useMemo(
+    () => buildCatalogSeoState(categoryPath, router.query, currentPage, totalPages),
+    [categoryPath, router.query, currentPage, totalPages]
+  )
+  const canonicalUrl = useMemo(
+    () => `${siteUrl}${localePrefix}${catalogSeo.canonicalPath}`,
+    [siteUrl, localePrefix, catalogSeo.canonicalPath]
+  )
+  const ruUrl = useMemo(() => `${siteUrl}${catalogSeo.canonicalPath}`, [siteUrl, catalogSeo.canonicalPath])
+  const enUrl = useMemo(() => `${siteUrl}/en${catalogSeo.canonicalPath}`, [siteUrl, catalogSeo.canonicalPath])
+  const previousUrl = catalogSeo.previousPath
+    ? `${siteUrl}${localePrefix}${catalogSeo.previousPath}`
+    : null
+  const nextUrl = catalogSeo.nextPath
+    ? `${siteUrl}${localePrefix}${catalogSeo.nextPath}`
+    : null
   const isDefaultLocale = router.locale === router.defaultLocale
   // title принимает только текст
   const titleText = useMemo(() => {
@@ -1565,9 +1579,13 @@ export default function CategoryPage({
   }, [currentCategory, titleText, isDefaultLocale])
 
   const metaTitle = useMemo(() => {
-    if (!isDefaultLocale) return `${titleText} — ${SITE_NAME}`.trim()
-    return (currentCategory?.meta_title || currentCategory?.og_title || `${titleText} — ${SITE_NAME}`).trim()
-  }, [currentCategory, titleText, isDefaultLocale])
+    const baseTitle = !isDefaultLocale
+      ? `${titleText} — ${SITE_NAME}`.trim()
+      : (currentCategory?.meta_title || currentCategory?.og_title || `${titleText} — ${SITE_NAME}`).trim()
+    if (currentPage <= 1 || catalogSeo.hasFilters) return baseTitle
+    const pageLabel = router.locale === 'en' ? `Page ${currentPage}` : `Страница ${currentPage}`
+    return `${baseTitle} — ${pageLabel}`
+  }, [currentCategory, titleText, isDefaultLocale, currentPage, catalogSeo.hasFilters, router.locale])
 
   const ogDescription = useMemo(() => {
     if (!isDefaultLocale) return stripHtml(localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() }))
@@ -1651,11 +1669,17 @@ export default function CategoryPage({
         <title>{metaTitle}</title>
         <meta name="description" content={metaDescription} />
         {currentCategory?.meta_keywords && <meta name="keywords" content={currentCategory.meta_keywords} />}
-        {currentPage > 1 && <meta name="robots" content="noindex, follow" />}
+        {catalogSeo.noindex && <meta name="robots" content="noindex, follow" />}
         <link rel="canonical" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="ru" href={ruUrl} />
-        <link rel="alternate" hrefLang="en" href={enUrl} />
-        <link rel="alternate" hrefLang="x-default" href={ruUrl} />
+        {!catalogSeo.noindex && (
+          <>
+            <link rel="alternate" hrefLang="ru" href={ruUrl} />
+            <link rel="alternate" hrefLang="en" href={enUrl} />
+            <link rel="alternate" hrefLang="x-default" href={ruUrl} />
+          </>
+        )}
+        {previousUrl && <link rel="prev" href={previousUrl} />}
+        {nextUrl && <link rel="next" href={nextUrl} />}
         <meta property="og:title" content={ogTitle} />
         <meta property="og:description" content={ogDescription} />
         <meta property="og:url" content={canonicalUrl} />
@@ -2051,6 +2075,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const { getInternalApiUrl } = await import('../../lib/urls')
     const { fetchFooterSettings } = await import('../../lib/footerSettings')
+    const { publicServerCache, stablePublicCacheKey } = await import('../../lib/serverPublicCache')
     const languageHeaders = {
       'Accept-Language': requestLocale,
       'X-Language': requestLocale,
@@ -2066,15 +2091,29 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
           ...languageHeaders,
         },
       })
+    const cachedCategoryApiData = <T = any,>(
+      namespace: string,
+      path: string,
+      config: AxiosRequestConfig = {},
+      ttlMs = 300_000
+    ): Promise<T> => publicServerCache.get(
+      stablePublicCacheKey(namespace, {
+        locale: requestLocale,
+        path,
+        params: config.params || null,
+      }),
+      () => categoryApiGet<T>(path, config).then((response) => response.data),
+      ttlMs
+    )
 
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null
     let catData: any = null
     if (routeSlug) {
-      const catApiRes = await categoryApiGet('catalog/categories', {
-        params: { slug: routeSlug, include_children: false, page_size: 1 }
+      const catApiData = await cachedCategoryApiData<any>('category-exact', 'catalog/categories', {
+        params: { slug: routeSlug, include_children: false, include_counts: false, page_size: 1 }
       })
-      const exactCategories = extractResults(catApiRes.data)
+      const exactCategories = extractResults(catApiData)
       catData = selectExactCategory(exactCategories, routeSlug)
       if (!catData) {
         return { notFound: true }
@@ -2154,8 +2193,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         routeSlug,
       })
 
-      brandsPromise = categoryApiGet('catalog/brands', { params: brandParams })
-        .then((brandRes) => ensureOtherBrand(brandRes.data.results || []))
+      brandsPromise = cachedCategoryApiData<any>(
+        'category-brands',
+        'catalog/brands',
+        { params: brandParams },
+        60_000
+      )
+        .then((brandData) => ensureOtherBrand(brandData.results || []))
         .catch(() => [])
     }
 
@@ -2168,10 +2212,19 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         catParams.top_level = true
       }
       catParams.page_size = routeSlug ? 500 : 200
-      return categoryApiGet('catalog/categories', { params: catParams })
-        .then((catRes) => extractResults(catRes.data))
+      return cachedCategoryApiData<any>('category-tree', 'catalog/categories', { params: catParams })
+        .then((categoryData) => extractResults(categoryData))
         .catch(() => [])
     })()
+
+    const bookFiltersPromise: Promise<any | null> = categoryType === 'books'
+      ? cachedCategoryApiData<any>(
+          'book-filters',
+          'catalog/products/book-filters',
+          { params: routeSlug ? { category_slug: routeSlug } : {} },
+          300_000
+        ).catch(() => null)
+      : Promise.resolve(null)
 
     // Legacy brand=slug требует справочник до товарного запроса. Обычный путь
     // и brand_id не блокируются на нём.
@@ -2236,24 +2289,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let bookPublishers: string[] = []
     let bookLanguages: string[] = []
     if (categoryType === 'books') {
-      try {
-        const bookParams: any = {}
-        if (routeSlug) {
-          bookParams.category_slug = routeSlug
-        }
-        const bookRes = await categoryApiGet('catalog/products/book-filters', {
-          params: bookParams,
-        })
-        bookAuthors = bookRes.data?.authors || []
-        bookGenres = bookRes.data?.genres || []
-        bookPublishers = bookRes.data?.publishers || []
-        bookLanguages = bookRes.data?.languages || []
-      } catch {
-        bookAuthors = []
-        bookGenres = []
-        bookPublishers = []
-        bookLanguages = []
-      }
+      const bookData = await bookFiltersPromise
+      bookAuthors = bookData?.authors || []
+      bookGenres = bookData?.genres || []
+      bookPublishers = bookData?.publishers || []
+      bookLanguages = bookData?.languages || []
     }
 
     // --- Категории: фильтрованные на бэке ---
@@ -2265,10 +2305,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const hasChildren = categories.some((c: any) => c.parent !== null && typeof c.parent !== 'undefined')
       if (!hasChildren) {
         try {
-          const childRes = await categoryApiGet('catalog/categories', {
+          const childData = await cachedCategoryApiData<any>('category-children', 'catalog/categories', {
             params: { parent_slug: routeSlug, page_size: 500 }
           })
-          const childList = extractResults(childRes.data)
+          const childList = extractResults(childData)
           if (childList.length) {
             categories = [...categories, ...childList]
           }
@@ -2310,8 +2350,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const isRootCategoryPage = Boolean(routeSlug && normalizeSlug(routeSlug) === normalizeSlug(categoryType))
     if (isRootCategoryPage && subcategories.length === 0) {
       try {
-        const allRes = await categoryApiGet('catalog/categories', { params: { all: true, page_size: 1000 } })
-        const allList = extractResults(allRes.data)
+        const allData = await cachedCategoryApiData<any>(
+          'category-all',
+          'catalog/categories',
+          { params: { all: true, page_size: 1000 } },
+          300_000
+        )
+        const allList = extractResults(allData)
         const normalizedType = normalizeSlug(categoryType)
         const rootFromAll = allList.find((c: any) => normalizeSlug(c.slug) === routeNorm)
         let candidates = rootFromAll

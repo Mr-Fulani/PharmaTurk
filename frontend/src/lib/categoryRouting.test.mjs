@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildCatalogSeoState,
   isCatalogPageOutOfRange,
   isCategoryInProductTree,
   selectExactCategory,
@@ -87,4 +88,47 @@ test('catalog pagination rejects malformed, fractional and non-positive pages', 
   assert.equal(isCatalogPageOutOfRange('1.5', 50, 12), true)
   assert.equal(isCatalogPageOutOfRange('0', 50, 12), true)
   assert.equal(isCatalogPageOutOfRange('-1', 50, 12), true)
+})
+
+test('plain catalog pagination is self-canonical and links adjacent pages', () => {
+  assert.deepEqual(
+    buildCatalogSeoState('/categories/medicines', { slug: 'medicines', page: '2' }, 2, 4),
+    {
+      canonicalPath: '/categories/medicines?page=2',
+      hasFilters: false,
+      noindex: false,
+      previousPath: '/categories/medicines',
+      nextPath: '/categories/medicines?page=3',
+    }
+  )
+})
+
+test('catalog filters are noindex and canonicalize to the clean category', () => {
+  assert.deepEqual(
+    buildCatalogSeoState(
+      '/categories/medicines',
+      { slug: 'medicines', page: '3', brand_id: ['12'], ordering: 'price_asc' },
+      3,
+      9
+    ),
+    {
+      canonicalPath: '/categories/medicines',
+      hasFilters: true,
+      noindex: true,
+      previousPath: null,
+      nextPath: null,
+    }
+  )
+})
+
+test('empty optional catalog filters do not create a noindex page', () => {
+  const state = buildCatalogSeoState(
+    '/categories/books',
+    { slug: 'books', brand_id: '', search: undefined },
+    1,
+    1
+  )
+
+  assert.equal(state.noindex, false)
+  assert.equal(state.canonicalPath, '/categories/books')
 })
