@@ -680,17 +680,23 @@ residential/mobile прокси. Включается без правок код
 HTML. Но «грязному» IP (дата-центр, как прод) FLO вместо данных подсовывает
 **Google reCAPTCHA** (`recaptcha/challengepage`). Парсер это распознаёт
 (`CHALLENGE_MARKERS`) и поднимает `ExternalAccessBlockedError` — админ видит
-«FLO запретил доступ», а не пустую категорию. Лечение — тот же турецкий
-residential-прокси, что и для Zara: `SCRAPER_PROXY_URL` + флаг `use_proxy`
-(FLO ходит через базовый httpx-клиент, поэтому прокси работает из коробки).
+«FLO запретил доступ», а не пустую категорию. Native residential transport доступен
+через `SCRAPER_PROXY_URL` + `use_proxy`, но на production FLO продолжал отдавать
+CAPTCHA. Для интерактивной проверки подключён Bright Data Web Unlocker API: он ждёт
+`window.productDetail`, управляет CAPTCHA/retry/IP rotation на стороне провайдера и
+используется только при открытии карточки или корзины. Полный/scheduled scrape этот
+платный transport не включает. Тарифы, лимиты и правила повторного использования —
+в [`docs/PAID_WEB_ACCESS_SERVICES.md`](docs/PAID_WEB_ACCESS_SERVICES.md).
 
 Поддерживаемые URL:
 - товар: `https://www.flo.com.tr/urun/<slug>-<id>` (например `...-101792825`);
 - категория/листинг: `https://www.flo.com.tr/ayakkabi?cinsiyet=erkek`
   (фильтры — query-параметры: `cinsiyet`, `kategori`, `beden` и т.д.).
 
-Пагинация листинга — `?page=N`; авточепочка включена (`SUPPORTS_PAGE_CHUNKING`),
-обход останавливается, когда в HTML нет `rel="next"` или страница без новых товаров.
+Пагинация листинга — `?page=N`; авточепочка разрешена только для category URL и
+останавливается, когда в HTML нет `rel="next"` или страница без новых товаров.
+Product URL никогда не считается следующим chunk: иначе одна карточка повторно
+открывалась бы до лимита страниц и создавала десятки одинаковых обновлений.
 
 Что берётся из `window.productDetail`:
 - `manufacturer` → бренд, `sku` → артикул, `external_id = flo-<sku>`;

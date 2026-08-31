@@ -1,6 +1,6 @@
 # Source offer: эксплуатация и диагностика
 
-Последняя проверка по коду: 2026-08-30
+Последняя проверка по коду: 2026-08-31
 Владелец: catalog-commerce
 Контур: parser adapters → `ProductSourceOffer` → открытие карточки/корзины → snapshot checkout
 
@@ -49,6 +49,19 @@
 
 On-demand verifier сохраняет timeout/retry, per-source rate/concurrency, single-flight
 и circuit breaker. Планового batch-прохода больше нет.
+
+## Платный transport и бюджет
+
+`SCRAPER_PROXY_URL` и Bright Data Web Unlocker являются тарифицируемыми внешними
+transport. Их возможности, актуальная модель оплаты, лимит зоны, правила выбора и
+чек-лист повторного использования описаны в
+[`PAID_WEB_ACCESS_SERVICES.md`](PAID_WEB_ACCESS_SERVICES.md).
+
+Для FLO Web Unlocker допустим только из product-card-open и cart-revalidate. Один
+business event не должен превращаться в batch crawl или app-level retry. Manual
+`expect` считает также неуспешные provider requests, поэтому provider limit
+`Suspend zone and Alert` обязателен, а auto recharge не включается без отдельного
+подтверждения владельца.
 
 ## Read-only rollout audit
 
