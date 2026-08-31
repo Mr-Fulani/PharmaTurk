@@ -206,7 +206,7 @@ class SourceOfferVerificationService:
         if unlocker_enabled:
             return _setting_float(
                 "FLO_WEB_UNLOCKER_TIMEOUT_SECONDS",
-                30.0,
+                60.0,
                 minimum=1.0,
                 maximum=60.0,
             )

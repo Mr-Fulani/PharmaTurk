@@ -667,7 +667,7 @@ export default function ProductPage({
         return
       }
       if (!['pending', 'running'].includes(payload.status)) return
-      if (pollCount >= 45) {
+      if (pollCount >= 65) {
         setSourceRefresh({
           eligible: true,
           status: 'failed',

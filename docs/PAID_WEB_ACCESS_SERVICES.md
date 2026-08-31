@@ -97,7 +97,8 @@ residential IP достаточно. CAPTCHA solver он сам по себе н
 - API key и zone name читаются из secrets, не из request пользователя;
 - manual `x-unblock-expect` не отправляется;
 - `country=tr`, `format=raw`, browser rendering включён;
-- timeout 30 секунд, тело не больше 10 MiB;
+- timeout 60 секунд, тело не больше 10 MiB; UI карточки ждёт terminal status
+  примерно 78 секунд, чтобы provider response и Celery reconciliation успели завершиться;
 - проверяются target status, непустое тело, CAPTCHA markers, product marker и SKU;
 - чистая rendered-страница категории без `window.productDetail` означает снятый URL;
 - карточка получает только открытый цвет и не обходит sibling colour URLs, поэтому
