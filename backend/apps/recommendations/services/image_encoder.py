@@ -12,6 +12,47 @@ logger = logging.getLogger(__name__)
 IMAGE_VECTOR_SIZE = 512
 
 
+def _normalize_clip_image_features(image_features):
+    """Return a normalized CLIP tensor across Transformers API versions.
+
+    Transformers 4 returned the projected image tensor directly, while
+    Transformers 5 returns ``BaseModelOutputWithPooling`` and stores that same
+    projected tensor in ``pooler_output``.  Keeping the compatibility handling
+    here avoids coupling the search flow to one library response container.
+    """
+    if hasattr(image_features, "pooler_output"):
+        image_features = image_features.pooler_output
+    elif not hasattr(image_features, "norm") and isinstance(
+        image_features, (tuple, list)
+    ):
+        image_features = next(
+            (
+                candidate
+                for candidate in reversed(image_features)
+                if hasattr(candidate, "norm")
+                and getattr(candidate, "ndim", 0) == 2
+                and candidate.shape[-1] == IMAGE_VECTOR_SIZE
+            ),
+            None,
+        )
+
+    if not hasattr(image_features, "norm"):
+        raise TypeError("CLIP image features are not a tensor")
+    if (
+        getattr(image_features, "ndim", 0) != 2
+        or image_features.shape[0] != 1
+        or image_features.shape[-1] != IMAGE_VECTOR_SIZE
+    ):
+        raise ValueError(
+            f"Unexpected CLIP image feature shape: {tuple(image_features.shape)}"
+        )
+
+    feature_norm = image_features.norm(dim=-1, keepdim=True)
+    if not bool((feature_norm > 0).all().item()):
+        raise ValueError("CLIP returned a zero-length image feature")
+    return image_features / feature_norm
+
+
 class CLIPEncoder:
     """Encode images to vectors with CLIP."""
     _instance = None
@@ -89,7 +130,7 @@ class CLIPEncoder:
             inputs = {k: v.cuda() for k, v in inputs.items()}
         with torch.no_grad():
             image_features = self.model.get_image_features(**inputs)
-        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        image_features = _normalize_clip_image_features(image_features)
         return image_features.cpu().numpy().flatten().astype(np.float32)
 
     def encode_image(
