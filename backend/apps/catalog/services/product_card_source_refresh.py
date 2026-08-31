@@ -27,6 +27,7 @@ from django.utils import timezone
 from apps.catalog.models import PriceHistory, Product, ProductSourceOffer
 from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
 from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.base.web_unlocker import WebUnlockerExpectationError
 from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.registry import get_parser
 from apps.scrapers.services import ScraperIntegrationService
@@ -160,6 +161,7 @@ class ProductCardSourceRefreshService:
 
     SAFE_STATUS_MESSAGES = {
         "source_unavailable": "Источник временно недоступен. Показаны последние сохранённые данные.",
+        "source_not_found": "Товар больше недоступен у поставщика. Показаны последние сохранённые данные.",
         "rate_limited": "Источник временно ограничил запросы. Показаны последние сохранённые данные.",
         "invalid_source": "Источник товара не прошёл проверку безопасности.",
         "identity_mismatch": "Ответ источника относится к другому товару.",
@@ -396,15 +398,26 @@ class ProductCardSourceRefreshService:
         if target.parser_key == "flo" and bool(config and config.use_proxy):
             # Explicitly scopes the paid transport to this demand-driven card-open job.
             kwargs["use_web_unlocker"] = True
-        with target.parser_class(**kwargs) as parser:
-            if config is not None:
-                parser.delay_range = (config.delay_min, config.delay_max)
-                parser.configure_request_identity(
-                    user_agent=config.user_agent,
-                    headers=config.headers,
-                    cookies=config.cookies,
-                )
-            result = parser.parse_product_detail(target.offer.canonical_url)
+        try:
+            with target.parser_class(**kwargs) as parser:
+                if config is not None:
+                    parser.delay_range = (config.delay_min, config.delay_max)
+                    parser.configure_request_identity(
+                        user_agent=config.user_agent,
+                        headers=config.headers,
+                        cookies=config.cookies,
+                    )
+                result = parser.parse_product_detail(target.offer.canonical_url)
+        except WebUnlockerExpectationError as exc:
+            # FLO redirects removed product URLs to category pages. The paid
+            # transport exhausts its attempts looking for the product payload,
+            # so this is the same conclusive absence used by cart verification,
+            # not a transient supplier outage.
+            raise ProductCardRefreshError(
+                "source_not_found",
+                "Supplier product was not found",
+                retryable=False,
+            ) from exc
 
         if isinstance(result, list):
             if len(result) != 1:

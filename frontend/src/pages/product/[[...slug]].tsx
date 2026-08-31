@@ -645,6 +645,7 @@ export default function ProductPage({
     const slug = initialProduct?.slug
     if (!router.isReady || !slug || typeof window === 'undefined') return
 
+    setSourceRefresh(null)
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | null = null
     let pollCount = 0
@@ -925,9 +926,15 @@ export default function ProductPage({
     product &&
     (productType === 'supplements' || product.product_type === 'supplements')
   )
-  const maxAvailable = product && !supplementAvailabilityDoesNotCapQuantity
-    ? resolveAvailableStock(product, selectedVariant, selectedSize)
-    : null
+  const sourceProductNotFound = Boolean(
+    sourceRefresh?.status === 'failed' &&
+    sourceRefresh.error_code === 'source_not_found'
+  )
+  const maxAvailable = sourceProductNotFound
+    ? 0
+    : product && !supplementAvailabilityDoesNotCapQuantity
+      ? resolveAvailableStock(product, selectedVariant, selectedSize)
+      : null
   const sizeHintMessage = t(
     'select_size_hint',
     i18n.language?.startsWith('ru')
@@ -2236,10 +2243,15 @@ export default function ProductPage({
                     )
                     : sourceRefresh.status === 'succeeded'
                       ? t('product_source_refresh_succeeded', 'Цена и наличие обновлены')
-                      : t(
-                        'product_source_refresh_failed',
-                        'Не удалось обновить данные. Показаны последние сохранённые значения.'
-                      )}
+                      : sourceRefresh.error_code === 'source_not_found'
+                        ? t(
+                          'product_source_refresh_not_found',
+                          'Товар больше недоступен у поставщика. Показана последняя сохранённая цена.'
+                        )
+                        : t(
+                          'product_source_refresh_failed',
+                          'Не удалось обновить данные. Показаны последние сохранённые значения.'
+                        )}
                 </span>
               </div>
             )}

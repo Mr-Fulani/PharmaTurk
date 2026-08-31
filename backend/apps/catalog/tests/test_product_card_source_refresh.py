@@ -20,10 +20,12 @@ from apps.catalog.models import (
     SupplementProduct,
 )
 from apps.catalog.services.product_card_source_refresh import (
+    ProductCardRefreshError,
     ProductCardSourceRefreshService,
 )
 from apps.catalog.utils.product_markup import apply_product_markup
 from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.base.web_unlocker import WebUnlockerExpectationError
 from apps.scrapers.base.offers import (
     OfferAvailability,
     OfferCheckResult,
@@ -279,6 +281,56 @@ def test_flo_card_fetch_explicitly_requests_web_unlocker(settings, monkeypatch):
     assert captured["use_proxy"] is True
     assert captured["use_web_unlocker"] is True
     assert captured["timeout"] == 19.0
+
+
+def test_flo_card_fetch_maps_failed_product_expectation_to_not_found(
+    settings,
+    monkeypatch,
+):
+    settings.FLO_WEB_UNLOCKER_ENABLED = True
+
+    class RemovedFloParser:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def configure_request_identity(self, **_kwargs):
+            return None
+
+        def parse_product_detail(self, url):
+            raise WebUnlockerExpectationError(target_url=url)
+
+    config = SimpleNamespace(
+        base_url="https://www.flo.com.tr",
+        use_proxy=True,
+        scraper_username="",
+        scraper_password="",
+        delay_min=0,
+        delay_max=0,
+        user_agent="",
+        headers={},
+        cookies={},
+    )
+    target = SimpleNamespace(
+        parser_key="flo",
+        parser_class=RemovedFloParser,
+        offer=SimpleNamespace(
+            canonical_url="https://www.flo.com.tr/urun/removed-model-10001"
+        ),
+    )
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_scraper_config", lambda _offer: config)
+
+    with pytest.raises(ProductCardRefreshError) as error:
+        service._fetch_product(target)
+
+    assert error.value.code == "source_not_found"
+    assert error.value.retryable is False
 
 
 @pytest.mark.django_db

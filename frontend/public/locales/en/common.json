@@ -1341,6 +1341,7 @@
   "product_source_refresh_running": "Updating price, colours, sizes and availability…",
   "product_source_refresh_succeeded": "Price and availability updated",
   "product_source_refresh_failed": "The update failed. The last saved values are shown.",
+  "product_source_refresh_not_found": "This product is no longer available from the supplier. The last saved price is shown.",
   "product_source_refresh_timeout": "The update is taking longer than usual. The last saved values are shown.",
   "product_source_refresh_read_error": "The update status could not be loaded. The last saved values are shown.",
 
