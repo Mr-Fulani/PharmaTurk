@@ -1337,7 +1337,13 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             previous_url = f"{path}?{query.urlencode()}"
         else:
             previous_url = None
-        results = [serialize_product_for_card(product, request) for product in page_items]
+        # The brand inventory endpoint historically exposes the nested brand
+        # with its exact inventory count.  Keep that API contract here while
+        # search/recommendation cards continue to suppress expensive counters.
+        results = [
+            serialize_product_for_card(product, request, hide_counts=False)
+            for product in page_items
+        ]
         attach_review_aggregates(results)
         return Response({
             'count': total_count,

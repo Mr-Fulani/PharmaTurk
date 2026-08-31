@@ -428,7 +428,7 @@ def _resolve_video_file_url(file_field, request):
     return _resolve_file_url(file_field, request)
 
 
-def serialize_product_for_card(product, request):
+def serialize_product_for_card(product, request, *, hide_counts=True):
     """
     Сериализует товар для карточки с учётом типа (shoes, clothing и т.д.).
     Используется в recommendations API, чтобы возвращать active_variant_price,
@@ -438,7 +438,7 @@ def serialize_product_for_card(product, request):
     # Card payloads never expose brand counters. Passing this through every
     # domain serializer avoids an expensive per-brand products_count query
     # while preserving the existing price/currency/markup implementation.
-    ctx = {'request': request, 'hide_counts': True}
+    ctx = {'request': request, 'hide_counts': hide_counts}
     # Простые домены имеют теневой Product, который используется общей
     # категорийной выдачей. Сериализуем его и на странице бренда: иначе один
     # товар получает разные id/main_image_url в зависимости от маршрута, а
@@ -2032,7 +2032,7 @@ class ProductCardSerializer(ProductSerializer):
             'main_image_url', 'images', 'video_url', 'main_video_url',
             'main_gif_url', 'has_manual_main_image',
             'is_featured', 'is_new', 'created_at', 'publication_date',
-            'translations', 'rating', 'reviews_count', 'brand_id',
+            'translations', 'rating', 'reviews_count', 'brand', 'brand_id',
             'isbn', 'publisher', 'pages', 'language', 'book_authors',
             'is_bestseller',
         ]
