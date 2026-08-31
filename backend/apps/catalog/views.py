@@ -754,6 +754,23 @@ class FacetedModelViewSetMixin:
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
+
+        prepare_page = getattr(self, '_prepare_list_page', None)
+        if page is not None and callable(prepare_page):
+            prepare_page(page)
+
+        include_facets = str(request.query_params.get('include_facets', 'true')).strip().lower()
+        include_facets = include_facets not in {'0', 'false', 'no', 'off'}
+
+        # Search/autocomplete cards do not render catalog filters. Returning as
+        # soon as the page is serialized saves three full-catalog facet scans;
+        # the default remains enabled for category pages and existing clients.
+        if not include_facets:
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({'results': serializer.data})
         
         # Получаем базовый queryset для фасетов, чтобы они не пропадали при выборе
         facet_queryset = self._get_facet_queryset()
@@ -1739,6 +1756,11 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         queryset = queryset.order_by(ordering)
 
         queryset = self._apply_facet_filters(queryset)
+        if self.request.query_params.get('view') == 'card':
+            # Pagination evaluates only the requested slice; type-specific
+            # galleries/translations are prefetched by _prepare_list_page.
+            return queryset.select_related('category', 'brand', 'price_info')
+
         # Prefetch для main_image_url и images (medicine, supplement, books, clothing и др.)
         queryset = queryset.select_related('category', 'brand', 'book_item').prefetch_related(
             'translations',
@@ -1761,6 +1783,10 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             'auto_part_item__images',
         )
         return queryset
+
+    def _prepare_list_page(self, products):
+        if self.request.query_params.get('view') == 'card':
+            self._prefetch_card_relations(products)
     
     def get_serializer_class(self):
         """Выбираем сериализатор в зависимости от действия."""
@@ -2055,7 +2081,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             models.Q(product_type='medicines') &
             models.Q(external_data__has_key='is_stub') &
             models.Q(external_data__is_stub=True)
-        ).select_related('category', 'brand').order_by('-created_at')
+        ).select_related('category', 'brand', 'price_info').order_by('-created_at')
 
         featured_products = list(queryset[:limit])
         self._prefetch_card_relations(featured_products)

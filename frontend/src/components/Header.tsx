@@ -190,7 +190,19 @@ export default function Header() {
     const q = query.trim()
     if (!q) return
     setIsMobileSearchOpen(false)
-    router.push({ pathname: '/search', query: { query: q } })
+    setShowSuggestions(false)
+
+    const routeQuery = String(router.query.query || router.query.q || '').trim()
+    if (router.pathname === '/search' && routeQuery === q) {
+      // Next.js intentionally ignores navigation to the exact same URL. Make
+      // the action visible by moving the existing results into view.
+      document.getElementById('search-results')?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      })
+      return
+    }
+    void router.push({ pathname: '/search', query: { query: q } })
   }
 
   const handleLogoClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
@@ -234,14 +246,16 @@ export default function Header() {
       return
     }
     setShowSuggestions(true)
+    let cancelled = false
     const id = setTimeout(async () => {
       setLoadingSuggest(true)
       try {
         // Параллельно запрашиваем товары и услуги для подсказок
         const [productsRes, servicesRes] = await Promise.all([
-          getSingleFlight('/catalog/products', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] })),
+          getSingleFlight('/catalog/products', { params: { search: q, page_size: 6, view: 'card', include_facets: false } }).catch(() => ({ data: [] })),
           getSingleFlight('/catalog/services', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] }))
         ])
+        if (cancelled) return
 
         const products = Array.isArray(productsRes.data) ? productsRes.data : (productsRes.data.results || [])
         const services = (Array.isArray(servicesRes.data) ? servicesRes.data : (servicesRes.data.results || []))
@@ -249,12 +263,15 @@ export default function Header() {
 
         setSuggestions([...products, ...services].slice(0, 10))
       } catch {
-        setSuggestions([])
+        if (!cancelled) setSuggestions([])
       } finally {
-        setLoadingSuggest(false)
+        if (!cancelled) setLoadingSuggest(false)
       }
     }, 250)
-    return () => clearTimeout(id)
+    return () => {
+      cancelled = true
+      clearTimeout(id)
+    }
   }, [query])
 
   return (

@@ -6,6 +6,7 @@ from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.catalog.models import Category, Favorite, Product
 from apps.catalog.serializers import (
+    ProductCardSerializer,
     FavoriteSerializer,
     ProductSerializer,
     serialize_product_for_card,
@@ -65,6 +66,7 @@ def test_cards_favorites_recommendations_and_featured_share_public_price(public_
     expected = Decimal("253.00")  # 100 × rate 2 × pair margin 10% × category 15%
 
     assert ProductSerializer(public_product, context={"request": request}).data["price"] == expected
+    assert ProductCardSerializer(public_product, context={"request": request}).data["price"] == expected
     assert serialize_product_for_card(public_product, request)["price"] == expected
 
     favorite = Favorite.objects.create(

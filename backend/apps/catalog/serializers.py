@@ -435,7 +435,10 @@ def serialize_product_for_card(product, request):
     main_image_url и другие поля, которые ProductSerializer не предоставляет
     для товаров с вариантами.
     """
-    ctx = {'request': request}
+    # Card payloads never expose brand counters. Passing this through every
+    # domain serializer avoids an expensive per-brand products_count query
+    # while preserving the existing price/currency/markup implementation.
+    ctx = {'request': request, 'hide_counts': True}
     # Простые домены имеют теневой Product, который используется общей
     # категорийной выдачей. Сериализуем его и на странице бренда: иначе один
     # товар получает разные id/main_image_url в зависимости от маршрута, а
@@ -444,7 +447,7 @@ def serialize_product_for_card(product, request):
     if isinstance(product, AccessoryProduct):
         base_product = getattr(product, 'base_product', None)
         if base_product is not None:
-            return ProductSerializer(base_product, context=ctx).data
+            return ProductCardSerializer(base_product, context=ctx).data
     if isinstance(product, ClothingProduct):
         return ClothingProductSerializer(product, context=ctx).data
     if isinstance(product, ShoeProduct):
@@ -489,7 +492,7 @@ def serialize_product_for_card(product, request):
         book = getattr(product, 'book_item', None)
         if book:
             return BookProductSerializer(book, context=ctx).data
-    return ProductSerializer(product, context=ctx).data
+    return ProductCardSerializer(product, context=ctx).data
 
 
 class CategoryTranslationSerializer(serializers.ModelSerializer):
@@ -1466,24 +1469,16 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         lang = getattr(request, 'LANGUAGE_CODE', 'en') if request else 'en'
         if lang == 'ru':
             return obj.name
-        
+
         # Сначала ищем в собственных переводах Product
-        if hasattr(obj, 'translations'):
-            # Если это QuerySet, проверяем его через filter
-            if hasattr(obj.translations, 'filter'):
-                trans = obj.translations.filter(locale=lang).first()
-                if trans and trans.name:
-                    return trans.name
-            # Если это уже список (prefetch)
-            elif isinstance(obj.translations, list):
-                trans = next((t for t in obj.translations if t.locale == lang), None)
-                if trans and trans.name:
-                    return trans.name
+        trans = self._get_translation(obj, lang)
+        if trans and trans.name:
+            return trans.name
 
         # Fallback к доменным моделям
         try:
             if hasattr(obj, 'domain_item') and obj.domain_item != obj:
-                dt = obj.domain_item.translations.filter(locale=lang).first()
+                dt = self._get_translation(obj.domain_item, lang)
                 if dt and dt.name:
                     return dt.name
         except Exception:
@@ -1498,25 +1493,34 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         if lang == 'ru':
             return obj.description
             
-        if hasattr(obj, 'translations'):
-            if hasattr(obj.translations, 'filter'):
-                trans = obj.translations.filter(locale=lang).first()
-                if trans and trans.description:
-                    return trans.description
-            elif isinstance(obj.translations, list):
-                trans = next((t for t in obj.translations if t.locale == lang), None)
-                if trans and trans.description:
-                    return trans.description
+        trans = self._get_translation(obj, lang)
+        if trans and trans.description:
+            return trans.description
 
         try:
             if hasattr(obj, 'domain_item') and obj.domain_item != obj:
-                dt = obj.domain_item.translations.filter(locale=lang).first()
+                dt = self._get_translation(obj.domain_item, lang)
                 if dt and dt.description:
                     return dt.description
         except Exception:
             pass
 
         return obj.description
+
+    @staticmethod
+    def _get_translation(obj, lang):
+        """Use the prefetch cache when available instead of issuing N+1 filters."""
+        translations = getattr(obj, 'translations', None)
+        if translations is None:
+            return None
+        prefetched = getattr(obj, '_prefetched_objects_cache', {}).get('translations')
+        if prefetched is not None:
+            return next((item for item in prefetched if item.locale == lang), None)
+        if isinstance(translations, list):
+            return next((item for item in translations if item.locale == lang), None)
+        if hasattr(translations, 'filter'):
+            return translations.filter(locale=lang).first()
+        return None
 
     def _fallback_seo_defaults(self, obj):
         lang = _request_lang(self.context.get('request'))
@@ -2011,7 +2015,12 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
 
 
 class ProductCardSerializer(ProductSerializer):
-    """Compact generic Product serializer used by ``view=card`` list requests."""
+    """Small ProductSerializer projection for list cards.
+
+    This deliberately inherits ProductSerializer instead of reimplementing
+    prices: currency selection, pair margin and category/product markup stay on
+    the exact same code path as detail, cart and checkout responses.
+    """
 
     brand_id = serializers.IntegerField(read_only=True)
     book_authors = serializers.SerializerMethodField()
@@ -2022,7 +2031,8 @@ class ProductCardSerializer(ProductSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'main_image', 'main_image_url', 'images', 'video_url',
             'main_video_url', 'main_gif_url', 'has_manual_main_image',
-            'is_available', 'is_featured', 'is_new', 'created_at', 'translations',
+            'availability_status', 'is_available', 'is_featured', 'is_new',
+            'created_at', 'translations',
             'rating', 'reviews_count', 'brand_id',
             'isbn', 'publisher', 'publication_date', 'pages', 'language',
             'book_authors', 'is_bestseller',

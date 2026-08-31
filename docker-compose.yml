@@ -62,6 +62,7 @@ services:
       REGISTER_TELEGRAM_WEBHOOK_ON_START: ${REGISTER_TELEGRAM_WEBHOOK_ON_START:-0}
     volumes:
       - staticfiles:/app/staticfiles
+      - huggingface_cache:/home/app/.cache/huggingface
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
     mem_limit: 1.5g
     networks: [edge, data]
@@ -149,6 +150,8 @@ services:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
     command: bash -c "poetry run celery -A config worker -Q recsys -n recsys_worker@%h --loglevel=info --concurrency=1"
+    volumes:
+      - huggingface_cache:/home/app/.cache/huggingface
     mem_limit: 3g
     networks: [data, egress]
 
@@ -195,6 +198,7 @@ volumes:
   redis_data:
   qdrant_data:
   staticfiles:
+  huggingface_cache:
 
 networks:
   edge:

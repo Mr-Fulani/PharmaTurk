@@ -15,7 +15,8 @@ ENV POETRY_VERSION=2.4.1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DEFAULT_TIMEOUT=120 \
     POETRY_HTTP_TIMEOUT=120 \
-    POETRY_HTTP_RETRY=5
+    POETRY_HTTP_RETRY=5 \
+    HF_HOME=/home/app/.cache/huggingface
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -46,7 +47,8 @@ ENV PATH="/usr/local/bin:$PATH"
 
 RUN groupadd --gid 10001 app && \
     useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app && \
-    mkdir -p /app && chown app:app /app
+    mkdir -p /app /home/app/.cache/huggingface && \
+    chown -R app:app /app /home/app/.cache
 
 WORKDIR /app
 
