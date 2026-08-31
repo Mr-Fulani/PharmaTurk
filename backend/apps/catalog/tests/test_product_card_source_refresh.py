@@ -404,6 +404,20 @@ def test_source_not_found_disables_only_variants_on_opened_url(
         )
     ) == {(ProductSourceOffer.AvailabilityStatus.IN_STOCK, "")}
 
+    cache.delete(service._state_key(product.pk))
+
+    def unexpected_enqueue(*_args, **_kwargs):
+        raise AssertionError("terminal supplier absence must not enqueue another request")
+
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_product_card_source_task.apply_async",
+        unexpected_enqueue,
+    )
+    repeated = service.request_refresh(product)
+    assert repeated["status"] == "failed"
+    assert repeated["error_code"] == "source_not_found"
+    assert repeated["retryable"] is False
+
 
 @pytest.mark.django_db
 def test_manual_product_is_never_enqueued(monkeypatch):

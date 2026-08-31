@@ -239,6 +239,26 @@ class ProductCardSourceRefreshService:
                 return RefreshTarget(product=product, offer=offer, parser_class=parser_class)
         return None
 
+    @classmethod
+    def _terminal_failure(cls, target: RefreshTarget) -> dict[str, Any] | None:
+        error_code = str(target.offer.last_error_code or "").strip().casefold()
+        availability = str(target.offer.availability_status or "").strip().casefold()
+        if error_code not in {"not_found", "gone"} or availability not in {
+            ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+            ProductSourceOffer.AvailabilityStatus.DISCONTINUED,
+        }:
+            return None
+        state: dict[str, Any] = {
+            "status": "failed",
+            "source": target.parser_key,
+            "error_code": "source_not_found",
+            "message": cls.SAFE_STATUS_MESSAGES["source_not_found"],
+            "retryable": False,
+        }
+        if target.offer.last_checked_at is not None:
+            state["checked_at"] = target.offer.last_checked_at.isoformat()
+        return state
+
     def status(self, product: Product) -> dict[str, Any]:
         target = self._target(product)
         if target is None:
@@ -247,6 +267,10 @@ class ProductCardSourceRefreshService:
                 "status": "not_eligible",
                 "retryable": False,
             }
+
+        terminal = self._terminal_failure(target)
+        if terminal is not None:
+            return {"eligible": True, **terminal}
 
         state = _cache_get(self._state_key(product.pk))
         if isinstance(state, dict):
@@ -277,6 +301,10 @@ class ProductCardSourceRefreshService:
         target = self._target(product)
         if target is None:
             return self.status(product)
+
+        terminal = self._terminal_failure(target)
+        if terminal is not None:
+            return {"eligible": True, **self._set_state(product.pk, terminal)}
 
         existing = _cache_get(self._state_key(product.pk))
         if isinstance(existing, dict) and existing.get("status") in {
@@ -1113,6 +1141,12 @@ class ProductCardSourceRefreshService:
                 {"status": "not_eligible", "retryable": False},
             )
             self._observe("unknown", "not_eligible", started_at)
+            return failed
+
+        terminal = self._terminal_failure(target)
+        if terminal is not None:
+            failed = self._set_state(product_id, terminal)
+            self._observe(target.parser_key, "source_not_found", started_at)
             return failed
 
         self._set_state(

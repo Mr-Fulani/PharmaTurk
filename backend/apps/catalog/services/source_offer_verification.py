@@ -718,6 +718,28 @@ class SourceOfferVerificationService:
             self._observe(parser_key, "invalid_source", started_at)
             return result
 
+        persisted_error_code = str(offer.last_error_code or "").strip().casefold()
+        persisted_availability = str(offer.availability_status or "").strip().casefold()
+        if persisted_error_code in {"not_found", "gone"} and persisted_availability in {
+            ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+            ProductSourceOffer.AvailabilityStatus.DISCONTINUED,
+        }:
+            error_code = (
+                OfferCheckErrorCode.GONE
+                if persisted_error_code == "gone"
+                else OfferCheckErrorCode.NOT_FOUND
+            )
+            result = self._failure_result(
+                context,
+                self._error(
+                    error_code,
+                    "Supplier product was previously confirmed unavailable",
+                    retryable=False,
+                ),
+            )
+            self._observe(parser_key, "terminal_absence", started_at)
+            return result
+
         cache_key = self._cache_key(offer)
         if not force:
             cached = _deserialize_result(_cache_get(cache_key))

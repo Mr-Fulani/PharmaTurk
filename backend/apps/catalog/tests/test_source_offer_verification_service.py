@@ -442,3 +442,8 @@ def test_not_found_blocks_offer_without_counting_transport_failure(offer, monkey
     assert offer.availability_status == ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK
     assert offer.last_error_code == OfferCheckErrorCode.NOT_FOUND
     assert offer.consecutive_failures == 0
+
+    repeated = SourceOfferVerificationService().verify(offer, force=True)
+    assert repeated.availability_status == OfferAvailability.OUT_OF_STOCK
+    assert repeated.error.code == OfferCheckErrorCode.NOT_FOUND
+    assert DummyParser.calls == 1
