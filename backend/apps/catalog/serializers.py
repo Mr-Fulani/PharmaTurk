@@ -6115,7 +6115,10 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
             return _resolve_media_url(obj.main_image, request)
         # Не у всех доменных моделей есть gallery_images (Sports, AutoPart, Headwear...)
         gallery = getattr(obj, "gallery_images", None)
-        img = (gallery.filter(is_main=True).first() or gallery.first()) if gallery is not None else None
+        gallery_images = list(gallery.all()) if gallery is not None else []
+        img = next((item for item in gallery_images if item.is_main), None)
+        if img is None and gallery_images:
+            img = gallery_images[0]
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:
@@ -6130,7 +6133,10 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
                 return file_url
             if base.main_image:
                 return _resolve_media_url(base.main_image, request)
-            b_img = base.images.filter(is_main=True).first() or base.images.first()
+            base_images = list(base.images.all())
+            b_img = next((item for item in base_images if item.is_main), None)
+            if b_img is None and base_images:
+                b_img = base_images[0]
             if b_img:
                 file_url = _resolve_file_url(getattr(b_img, "image_file", None), request)
                 if file_url:

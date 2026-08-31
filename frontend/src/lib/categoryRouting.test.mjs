@@ -1,7 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { isCategoryInProductTree, selectExactCategory } from './categoryRouting.js'
+import {
+  isCatalogPageOutOfRange,
+  isCategoryInProductTree,
+  selectExactCategory,
+} from './categoryRouting.js'
 
 test('eyewear remains in accessories and is not treated as shoes', () => {
   const category = {
@@ -69,4 +73,18 @@ test('gendered categories from other product trees are never classified as shoes
     }
     assert.equal(isCategoryInProductTree(context, 'shoes'), false, routeSlug)
   }
+})
+
+test('catalog pagination keeps the first empty page but rejects pages after the end', () => {
+  assert.equal(isCatalogPageOutOfRange('1', 0, 12), false)
+  assert.equal(isCatalogPageOutOfRange('2', 0, 12), true)
+  assert.equal(isCatalogPageOutOfRange('345', 4135, 12), false)
+  assert.equal(isCatalogPageOutOfRange('346', 4135, 12), true)
+})
+
+test('catalog pagination rejects malformed, fractional and non-positive pages', () => {
+  assert.equal(isCatalogPageOutOfRange('not-a-number', 50, 12), true)
+  assert.equal(isCatalogPageOutOfRange('1.5', 50, 12), true)
+  assert.equal(isCatalogPageOutOfRange('0', 50, 12), true)
+  assert.equal(isCatalogPageOutOfRange('-1', 50, 12), true)
 })

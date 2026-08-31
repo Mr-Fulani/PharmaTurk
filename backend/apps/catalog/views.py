@@ -1627,29 +1627,42 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
             if slugs:
                 all_ids = _get_category_ids_with_descendants(slugs)
-                cats = Category.objects.filter(slug__in=slugs, is_active=True).select_related('category_type')
-                type_values = set()
-                for c in cats:
-                    if c.category_type_id:
-                        ts = (c.category_type.slug or '').lower().replace('-', '_')
-                        if ts:
-                            type_values.add(ts)
-                for s in slugs:
-                    type_values.add(s.lower().replace('-', '_'))
-                if all_ids or type_values:
-                    from django.db.models import Q
-                    q = Q()
-                    if all_ids:
-                        q |= Q(category_id__in=all_ids)
-                    
-                    # Если категория не найдена по слагам, но слаг совпадает с типом товара (напр. 'headwear')
-                    # ищем товары этого типа без жесткой привязки к дереву категорий
-                    for s in slugs:
-                        pt = s.lower().replace('-', '_')
-                        q |= Q(product_type=pt)
-                        
-                    if q:
-                        queryset = queryset.filter(q)
+                matched_categories = list(
+                    Category.objects.filter(slug__in=slugs, is_active=True)
+                    .select_related('category_type')
+                    .only('id', 'slug', 'parent_id', 'category_type__slug')
+                )
+
+                if all_ids:
+                    # Для корня сохраняем legacy-товары, ещё не привязанные к
+                    # категории. Для подкатегории такой fallback неверен: он размывал
+                    # фильтр до всего product_type и удорожал COUNT.
+                    root_type_values = set()
+                    for category in matched_categories:
+                        if category.parent_id is not None:
+                            continue
+                        category_type_slug = (
+                            category.category_type.slug if category.category_type_id else category.slug
+                        )
+                        normalized_type = (category_type_slug or '').lower().replace('-', '_')
+                        if normalized_type:
+                            root_type_values.add(normalized_type)
+
+                    category_scope = Q(category_id__in=all_ids)
+                    if root_type_values:
+                        category_scope |= Q(
+                            category_id__isnull=True,
+                            product_type__in=root_type_values,
+                        )
+                    queryset = queryset.filter(category_scope)
+                else:
+                    # Legacy API clients may address a product type directly even when
+                    # no Category row exists. Keep that fallback, but only for this case.
+                    type_values = {
+                        slug.lower().replace('-', '_')
+                        for slug in slugs
+                    }
+                    queryset = queryset.filter(product_type__in=type_values)
         
         # Фильтр по бренду (поддержка массивов)
         queryset = _apply_brand_filter(queryset, self.request)
@@ -4437,11 +4450,19 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             if slugs:
                 cat_ids = _get_category_ids_with_descendants(slugs)
                 if cat_ids:
-                    # Включаем товары с category_id в потомках И товары без категории
-                    # (они принадлежат домену, но ещё не привязаны к подкатегории)
-                    queryset = queryset.filter(
-                        models.Q(category_id__in=cat_ids) | models.Q(category_id__isnull=True)
+                    matched_categories = list(
+                        Category.objects.filter(slug__in=slugs, is_active=True)
+                        .only('id', 'parent_id')
                     )
+                    category_scope = models.Q(category_id__in=cat_ids)
+                    # Непривязанные legacy-товары видны только в корне домена.
+                    # На подкатегории они не имеют однозначной принадлежности.
+                    if any(category.parent_id is None for category in matched_categories):
+                        category_scope |= models.Q(category_id__isnull=True)
+                    queryset = queryset.filter(category_scope)
+                else:
+                    # Явный неизвестный slug не должен возвращать весь доменный каталог.
+                    queryset = queryset.none()
 
         # Фильтр по бренду
         queryset = _apply_brand_filter(queryset, self.request)
@@ -4483,7 +4504,8 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
             .select_related('category', 'brand', 'base_product')
             .prefetch_related(
                 'translations', 'gallery_images', 'dynamic_attributes__attribute_key',
-                'category__translations', 'brand__translations', 'base_product__translations',
+                'category__translations', 'brand__translations',
+                'base_product__translations', 'base_product__images',
             )
             .defer('external_data')
             .exclude(

@@ -16,3 +16,19 @@ export function selectExactCategory(items, routeSlug) {
   if (!target || !Array.isArray(items)) return null
   return items.find((item) => normalizeCategorySlug(item?.slug) === target) || null
 }
+
+export function isCatalogPageOutOfRange(pageValue, totalCount, pageSize) {
+  const rawPage = Array.isArray(pageValue) ? pageValue[0] : pageValue
+  const requestedPage = Number(rawPage ?? 1)
+  const normalizedPageSize = Number(pageSize)
+  const normalizedCount = Number(totalCount)
+
+  if (!Number.isInteger(requestedPage) || requestedPage < 1) return true
+  if (!Number.isFinite(normalizedPageSize) || normalizedPageSize < 1) return true
+
+  const safeCount = Number.isFinite(normalizedCount) && normalizedCount > 0
+    ? normalizedCount
+    : 0
+  const lastPage = Math.max(1, Math.ceil(safeCount / normalizedPageSize))
+  return requestedPage > lastPage
+}

@@ -25,7 +25,11 @@ import {
   parseCatalogFiltersQuery,
 } from '../../lib/catalogQuery'
 import { shouldShowGenderFilter } from '../../lib/brandCatalog'
-import { isCategoryInProductTree, selectExactCategory } from '../../lib/categoryRouting'
+import {
+  isCatalogPageOutOfRange,
+  isCategoryInProductTree,
+  selectExactCategory,
+} from '../../lib/categoryRouting'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios, { type AxiosRequestConfig } from 'axios'
@@ -2043,6 +2047,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
   try {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
+    const requestedPage = Array.isArray(page) ? page[0] : page
 
     const { getInternalApiUrl } = await import('../../lib/urls')
     const { fetchFooterSettings } = await import('../../lib/footerSettings')
@@ -2066,18 +2071,19 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let categoryTypeFromApi: string | null = null
     let catData: any = null
     if (routeSlug) {
-      try {
-        const catApiRes = await categoryApiGet('catalog/categories', {
-          params: { slug: routeSlug, include_children: false, page_size: 1 }
-        })
-        const exactCategories = extractResults(catApiRes.data)
-        catData = selectExactCategory(exactCategories, routeSlug)
-        if (catData?.category_type_slug) {
-          categoryTypeFromApi = catData.category_type_slug.replace(/_/g, '-')
-        }
-      } catch {
-        // ignore
+      const catApiRes = await categoryApiGet('catalog/categories', {
+        params: { slug: routeSlug, include_children: false, page_size: 1 }
+      })
+      const exactCategories = extractResults(catApiRes.data)
+      catData = selectExactCategory(exactCategories, routeSlug)
+      if (!catData) {
+        return { notFound: true }
       }
+      if (catData.category_type_slug) {
+        categoryTypeFromApi = catData.category_type_slug.replace(/_/g, '-')
+      }
+    } else {
+      return { notFound: true }
     }
 
     // Используем тип из API, если есть, иначе угадываем из слага
@@ -2133,29 +2139,46 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const brandSlug = Array.isArray(brand) ? brand[0] : brand
     const brandId = Array.isArray(brand_id) ? brand_id[0] : brand_id
+    const footerSettingsPromise = fetchFooterSettings()
 
     // Используем реальный тип из API для запросов, иначе fallback
     const brandProductType = categoryTypeFromApi || resolveBrandProductType(categoryType)
 
-    // --- Бренды ---
-    let brands: any[] = []
+    // Бренды, дерево категорий и footer независимы от товарного листинга.
+    // Запускаем их одновременно, чтобы SSR не складывал задержки API.
+    let brandsPromise: Promise<any[]> = Promise.resolve([])
     if (categoryType !== 'books') {
-      try {
-        const brandParams = buildCategoryBrandParams({
-          productType: brandProductType,
-          categoryType: categoryTypeFromApi || categoryType,
-          routeSlug,
-        })
+      const brandParams = buildCategoryBrandParams({
+        productType: brandProductType,
+        categoryType: categoryTypeFromApi || categoryType,
+        routeSlug,
+      })
 
-        const brandRes = await categoryApiGet('catalog/brands', { params: brandParams })
-        brands = ensureOtherBrand(brandRes.data.results || [])
-      } catch {
-        brands = []
-      }
+      brandsPromise = categoryApiGet('catalog/brands', { params: brandParams })
+        .then((brandRes) => ensureOtherBrand(brandRes.data.results || []))
+        .catch(() => [])
     }
 
-    // --- Товары: всегда общий эндпоинт, чтобы не получать 404 для кастомных категорий ---
-    const productParams: any = { page, page_size: pageSize, view: 'card' }
+    const categoriesPromise: Promise<any[]> = (() => {
+      const catParams: any = {}
+      if (routeSlug) {
+        catParams.slug = routeSlug
+        catParams.include_children = true
+      } else {
+        catParams.top_level = true
+      }
+      catParams.page_size = routeSlug ? 500 : 200
+      return categoryApiGet('catalog/categories', { params: catParams })
+        .then((catRes) => extractResults(catRes.data))
+        .catch(() => [])
+    })()
+
+    // Legacy brand=slug требует справочник до товарного запроса. Обычный путь
+    // и brand_id не блокируются на нём.
+    let brands: any[] = brandSlug && !brandId ? await brandsPromise : []
+
+    // --- Товары: доменный endpoint для известных типов, общий — для остальных ---
+    const productParams: any = { page: requestedPage, page_size: pageSize, view: 'card' }
     if (routeSlug) {
       // Для книг используем product_type чтобы показать все книги из всех жанров
       if (categoryType === 'books') {
@@ -2179,25 +2202,24 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
     const currency = currencyMatch ? currencyMatch[1] : 'RUB'
 
-    let productsData: any = { results: [], count: 0 }
-    try {
-      const productsEndpoint = resolveProductsEndpoint(categoryType)
-      const prodRes = await categoryApiGet(productsEndpoint.replace(/^\/api\//, ''), {
-        params: productParams,
-        headers: {
-          'X-Currency': currency,
-        }
-      })
-      productsData = prodRes.data || {}
-    } catch {
-      productsData = { results: [], count: 0 }
-    }
+    const productsEndpoint = resolveProductsEndpoint(categoryType)
+    const prodRes = await categoryApiGet(productsEndpoint.replace(/^\/api\//, ''), {
+      params: productParams,
+      headers: {
+        'X-Currency': currency,
+      }
+    })
+    const productsData: any = prodRes.data || {}
 
     const rawProducts = Array.isArray(productsData) ? productsData : (productsData.results || [])
     const products = rawProducts.map((product: Product) =>
       compactProductForCard(product as Product & Record<string, any>)
     )
     const totalCount = productsData.count || rawProducts.length
+    if (isCatalogPageOutOfRange(requestedPage, totalCount, pageSize)) {
+      return { notFound: true }
+    }
+    brands = await brandsPromise
     const availableAttributes: AvailableAttribute[] = Array.isArray(productsData?.available_attributes)
       ? productsData.available_attributes
       : []
@@ -2235,22 +2257,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
 
     // --- Категории: фильтрованные на бэке ---
-    let categories: any[] = []
+    let categories: any[] = await categoriesPromise
     let subcategories: any[] = []
-    try {
-      const catParams: any = {}
-      if (routeSlug) {
-        catParams.slug = routeSlug
-        catParams.include_children = true
-      } else {
-        catParams.top_level = true
-      }
-      catParams.page_size = routeSlug ? 500 : 200
-      const catRes = await categoryApiGet('catalog/categories', { params: catParams })
-      categories = extractResults(catRes.data)
-    } catch {
-      categories = []
-    }
 
     // Если детей не вернулось, пытаемся догрузить по parent_slug
     if (routeSlug) {
@@ -2420,7 +2428,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       compactBrandForFilter(brand as Brand & Record<string, any>)
     )
 
-    const footerSettings = await fetchFooterSettings()
+    const footerSettings = await footerSettingsPromise
     return {
       props: {
         products,
@@ -2438,7 +2446,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         categoryName: categoryInfo.name,
         categoryDescription: categoryInfo.description,
         totalCount,
-        currentPage: Number(page),
+        currentPage: Number(requestedPage),
         totalPages: Math.ceil(totalCount / pageSize),
         categoryType,
         categoryTypeSlug: categoryTypeFromApi || null,
