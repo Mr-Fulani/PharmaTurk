@@ -531,6 +531,12 @@ SOURCE_OFFER_VERIFICATION_ENABLED = env.bool(
 SOURCE_OFFER_VERIFICATION_SOURCES = env.list(
     "SOURCE_OFFER_VERIFICATION_SOURCES", default=[]
 )
+# Sources in this list are catalogue/manual sources, not reliable live suppliers.
+# They must never change cart/card price or availability, even if accidentally
+# added to a live verification allowlist.
+SOURCE_OFFER_MANUAL_ONLY_SOURCES = env.list(
+    "SOURCE_OFFER_MANUAL_ONLY_SOURCES", default=["instagram"]
+)
 SOURCE_OFFER_REQUEST_TIMEOUT_SECONDS = env.float(
     "SOURCE_OFFER_REQUEST_TIMEOUT_SECONDS", default=5.0
 )
@@ -585,6 +591,11 @@ PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO = env.float(
 )
 PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO = env.float(
     "PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO", default=20.0
+)
+# Repeat full scrapes may still enrich Instagram content/media, but existing
+# storefront prices remain manager-owned until a reliable price API is available.
+SCRAPER_PRICE_REFRESH_DISABLED_SOURCES = env.list(
+    "SCRAPER_PRICE_REFRESH_DISABLED_SOURCES", default=["instagram"]
 )
 # Fresh successful offer rows may override availability in public detail/YML
 # output. Kept separate from cart enforcement and disabled for staged rollout.

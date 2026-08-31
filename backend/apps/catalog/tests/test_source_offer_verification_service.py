@@ -113,6 +113,7 @@ def verification_settings(settings):
     }
     settings.SOURCE_OFFER_VERIFICATION_ENABLED = True
     settings.SOURCE_OFFER_VERIFICATION_SOURCES = []
+    settings.SOURCE_OFFER_MANUAL_ONLY_SOURCES = ["instagram"]
     settings.SOURCE_OFFER_REQUEST_TIMEOUT_SECONDS = 1
     settings.SOURCE_OFFER_MAX_RETRIES = 0
     settings.SOURCE_OFFER_RETRY_BACKOFF_SECONDS = 0
@@ -150,6 +151,12 @@ def offer(db):
         availability_status=ProductSourceOffer.AvailabilityStatus.UNKNOWN,
         stock_precision=ProductSourceOffer.StockPrecision.UNKNOWN,
     )
+
+
+def test_instagram_live_verification_stays_disabled_even_if_allowlisted(settings):
+    settings.SOURCE_OFFER_VERIFICATION_SOURCES = ["instagram"]
+
+    assert SourceOfferVerificationService().is_enabled_for(" INSTAGRAM ") is False
 
 
 @pytest.mark.django_db

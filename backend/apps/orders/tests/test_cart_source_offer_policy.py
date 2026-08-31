@@ -117,6 +117,37 @@ def test_policy_selects_exact_server_owned_variant_and_size(offer_product):
 
 
 @pytest.mark.django_db
+def test_policy_never_selects_manual_instagram_offer(settings):
+    settings.SOURCE_OFFER_MANUAL_ONLY_SOURCES = ["instagram"]
+    product = Product.objects.create(
+        name="Manual Instagram product",
+        slug=f"manual-instagram-{uuid4().hex}",
+        product_type="islamic_clothing",
+        is_available=True,
+    )
+    ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="instagram",
+        canonical_url="https://www.instagram.com/p/POST1/",
+        external_product_id="POST1",
+        availability_status=ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+    )
+    verifier = FakeVerifier(_result(), enabled_sources=("instagram",))
+
+    decision = CartSourceOfferPolicy(verifier).evaluate(
+        product=product,
+        chosen_size="",
+        quantity=1,
+        target_currency="TRY",
+        baseline_public_price=Decimal("100.00"),
+        force=True,
+    )
+
+    assert decision is None
+    assert verifier.calls == []
+
+
+@pytest.mark.django_db
 def test_policy_resolves_legacy_variant_shadow_through_parent_base_product():
     source_product = Product.objects.create(
         name="Legacy FLO source product",

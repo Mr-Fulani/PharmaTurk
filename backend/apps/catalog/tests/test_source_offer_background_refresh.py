@@ -152,6 +152,29 @@ def test_refresh_honours_source_allowlist(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_refresh_never_selects_manual_instagram_source(settings, monkeypatch):
+    settings.SOURCE_OFFER_MANUAL_ONLY_SOURCES = ["instagram"]
+    _, zara = _offer(name="Live source", parser_key="zara")
+    _offer(name="Manual source", parser_key="instagram")
+    checked = []
+
+    def fake_verify(self, offer, *, force=False):
+        checked.append(offer.pk)
+        return SimpleNamespace(is_success=True, error=None)
+
+    monkeypatch.setattr(
+        "apps.catalog.services.source_offer_background_refresh."
+        "SourceOfferVerificationService.verify",
+        fake_verify,
+    )
+
+    result = refresh_stale_source_offers()
+
+    assert result["stale_total"] == 1
+    assert checked == [zara.pk]
+
+
+@pytest.mark.django_db
 def test_overlapping_refresh_exits_without_database_work(django_assert_num_queries):
     cache.set(BACKGROUND_REFRESH_LOCK_KEY, "another-worker", timeout=60)
 

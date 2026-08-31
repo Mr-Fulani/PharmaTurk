@@ -678,11 +678,12 @@ class InstagramParser(BaseScraper):
             hashtags = self._extract_hashtags(raw_caption)
 
             # --- Цена и доступность ---
-            # Если цена найдена в caption — товар считается доступным.
-            # Если нет — AI или менеджер установят цену вручную позже.
+            # Instagram is a manual catalogue source, not a live stock API.
+            # Missing price text must not be interpreted as "out of stock";
+            # a manager may set/freeze the storefront price separately.
             price = extracted.get("price")
             currency = extracted.get("currency", "RUB")
-            is_available = price is not None
+            is_available = True
 
             # --- Атрибуты: метаданные поста + извлечённые данные ---
             # raw_caption обязательно сохраняем: ContentGenerator его читает

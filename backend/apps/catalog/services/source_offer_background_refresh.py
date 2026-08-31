@@ -19,7 +19,10 @@ from django.utils import timezone
 from billiard.exceptions import SoftTimeLimitExceeded
 
 from apps.catalog.models import ProductSourceOffer
-from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
+from apps.catalog.services.source_offer_verification import (
+    SourceOfferVerificationService,
+    manual_only_source_keys,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +81,7 @@ def _stale_offers(*, now, batch_size: int):
 
     queryset = ProductSourceOffer.objects.filter(is_active=True).filter(
         Q(last_checked_at__isnull=True) | Q(last_checked_at__lte=stale_cutoff)
-    )
+    ).exclude(parser_key__in=manual_only_source_keys())
     enabled_sources = _enabled_sources()
     if enabled_sources:
         queryset = queryset.filter(parser_key__in=enabled_sources)

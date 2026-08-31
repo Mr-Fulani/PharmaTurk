@@ -24,7 +24,10 @@ from apps.catalog.models import (
 )
 from apps.catalog.utils.currency_converter import currency_converter
 from apps.catalog.utils.product_markup import apply_product_markup
-from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
+from apps.catalog.services.source_offer_verification import (
+    SourceOfferVerificationService,
+    manual_only_source_keys,
+)
 from apps.orders.models import CartItem
 from apps.scrapers.base.offers import (
     OfferAvailability,
@@ -215,7 +218,7 @@ class CartSourceOfferPolicy:
         candidates = ProductSourceOffer.objects.filter(
             product_id=source_product_id,
             is_active=True,
-        )
+        ).exclude(parser_key__in=manual_only_source_keys())
         allowed_adapter_sources = self._allowed_adapter_sources(product)
         if allowed_adapter_sources is not None:
             if not allowed_adapter_sources:

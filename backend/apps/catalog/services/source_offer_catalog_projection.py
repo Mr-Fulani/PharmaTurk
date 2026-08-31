@@ -9,6 +9,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from apps.catalog.models import Product, ProductSourceOffer
+from apps.catalog.services.source_offer_verification import manual_only_source_keys
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,8 @@ def _active_offers(
         offers = list(product.source_offers.filter(is_active=True))
     else:
         offers = [offer for offer in prefetched if offer.is_active]
+    manual_only = manual_only_source_keys()
+    offers = [offer for offer in offers if offer.parser_key.casefold() not in manual_only]
     allowed = _enabled_sources()
     if allowed:
         offers = [offer for offer in offers if offer.parser_key.casefold() in allowed]

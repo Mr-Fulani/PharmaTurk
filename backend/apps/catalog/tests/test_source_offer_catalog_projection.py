@@ -158,6 +158,21 @@ def test_projection_source_allowlist_ignores_disabled_parser(settings):
 
 
 @pytest.mark.django_db
+def test_projection_ignores_manual_instagram_source(settings):
+    settings.SOURCE_OFFER_MANUAL_ONLY_SOURCES = ["instagram"]
+    now = timezone.now()
+    product = _product()
+    _offer(
+        product,
+        status=ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+        checked_at=now,
+        parser_key="instagram",
+    )
+
+    assert resolve_source_offer_catalog_availability(product, now=now) is None
+
+
+@pytest.mark.django_db
 def test_feed_mode_never_falls_back_to_per_product_query(django_assert_num_queries):
     product = _product()
 

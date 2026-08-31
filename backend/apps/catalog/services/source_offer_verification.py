@@ -59,6 +59,19 @@ logger = logging.getLogger(__name__)
 CACHE_VERSION = "v1"
 
 
+def manual_only_source_keys() -> set[str]:
+    """Sources that may populate the catalogue but must never drive live state."""
+
+    return {
+        str(value or "").strip().casefold()
+        for value in (
+            getattr(settings, "SOURCE_OFFER_MANUAL_ONLY_SOURCES", ["instagram"])
+            or []
+        )
+        if str(value or "").strip()
+    }
+
+
 def _setting_int(name: str, default: int, *, minimum: int = 0, maximum: int = 10000) -> int:
     try:
         value = int(getattr(settings, name, default))
@@ -220,12 +233,15 @@ class SourceOfferVerificationService:
     def is_enabled_for(self, parser_key: str) -> bool:
         if not bool(getattr(settings, "SOURCE_OFFER_VERIFICATION_ENABLED", False)):
             return False
+        normalized_key = str(parser_key or "").strip().casefold()
+        if not normalized_key or normalized_key in manual_only_source_keys():
+            return False
         allowed = {
             str(value or "").strip().casefold()
             for value in (getattr(settings, "SOURCE_OFFER_VERIFICATION_SOURCES", []) or [])
             if str(value or "").strip()
         }
-        return not allowed or parser_key.casefold() in allowed
+        return not allowed or normalized_key in allowed
 
     @staticmethod
     def _context(offer: ProductSourceOffer) -> OfferCheckContext:

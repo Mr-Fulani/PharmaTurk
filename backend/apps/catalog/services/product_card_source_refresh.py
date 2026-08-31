@@ -25,7 +25,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.catalog.models import PriceHistory, Product, ProductSourceOffer
-from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
+from apps.catalog.services.source_offer_verification import (
+    SourceOfferVerificationService,
+    manual_only_source_keys,
+)
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.registry import get_parser
@@ -227,7 +230,9 @@ class ProductCardSourceRefreshService:
                 is_active=True,
                 parser_key__in=allowed,
             )
-            .exclude(parser_key__in=REFERENCE_ONLY_SOURCES)
+            .exclude(
+                parser_key__in=REFERENCE_ONLY_SOURCES | manual_only_source_keys()
+            )
             .order_by("priority", "id")
         )
         for offer in offers:

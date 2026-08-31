@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.conf import settings
 
 # Флаг потока — True во время активного парсинга.
 # Используется ai/signals.py чтобы не запускать AI во время сохранения спарсенных товаров.
@@ -78,6 +79,17 @@ import datetime
 BRAND_CLEAR_PRODUCT_TYPES = {"books"}
 DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
 SCRAPER_TASK_SEEN_TTL = 7 * 24 * 60 * 60
+
+
+def _price_refresh_disabled_source_keys() -> set[str]:
+    return {
+        str(value or "").strip().casefold()
+        for value in (
+            getattr(settings, "SCRAPER_PRICE_REFRESH_DISABLED_SOURCES", ["instagram"])
+            or []
+        )
+        if str(value or "").strip()
+    }
 
 
 def _scraper_task_product_cache_key(site_task_id: int, identity: str) -> str:
@@ -3243,6 +3255,8 @@ class ScraperIntegrationService:
             and external_id_for_variant_check
             and str(scraped_product.external_id) != str(external_id_for_variant_check)
         )
+        source_key = str(scraped_product.source or "").strip().casefold()
+        price_refresh_disabled = source_key in _price_refresh_disabled_source_keys()
 
         if should_repair_ilacfiyati_external_id:
             existing_product.external_id = scraped_product.external_id
@@ -3252,20 +3266,23 @@ class ScraperIntegrationService:
             # Парсер хранит только исходную цену источника. Сумма и валюта — одна
             # пара: одинаковое число в другой валюте является изменением. Маржа и
             # конвертация выполняются отдельно CurrencyConverter и здесь не участвуют.
-            source_currency = str(scraped_product.currency or "").strip().upper()
-            current_currency = str(existing_product.currency or "").strip().upper()
-            price_changed = (
-                scraped_product.price is not None
-                and scraped_product.price != existing_product.price
-            )
-            currency_changed = bool(source_currency and source_currency != current_currency)
-            if price_changed or currency_changed:
-                existing_product.old_price = existing_product.price
-                if scraped_product.price is not None:
-                    existing_product.price = scraped_product.price
-                if source_currency:
-                    existing_product.currency = source_currency
-                updated = True
+            # Manual-only sources (Instagram by default) may enrich content on a
+            # repeat scrape, but their existing storefront price stays frozen.
+            if not price_refresh_disabled:
+                source_currency = str(scraped_product.currency or "").strip().upper()
+                current_currency = str(existing_product.currency or "").strip().upper()
+                price_changed = (
+                    scraped_product.price is not None
+                    and scraped_product.price != existing_product.price
+                )
+                currency_changed = bool(source_currency and source_currency != current_currency)
+                if price_changed or currency_changed:
+                    existing_product.old_price = existing_product.price
+                    if scraped_product.price is not None:
+                        existing_product.price = scraped_product.price
+                    if source_currency:
+                        existing_product.currency = source_currency
+                    updated = True
 
             # Обновляем наличие
             if scraped_product.is_available != existing_product.is_available:

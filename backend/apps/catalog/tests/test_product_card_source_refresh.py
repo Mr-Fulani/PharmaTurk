@@ -45,6 +45,10 @@ class DummyLcwParser:
     pass
 
 
+class DummyInstagramParser:
+    pass
+
+
 def _fake_registry(value):
     if value == "zara":
         return DummyZaraParser
@@ -52,6 +56,8 @@ def _fake_registry(value):
         return DummyAkakceParser
     if value == "lcw":
         return DummyLcwParser
+    if value == "instagram":
+        return DummyInstagramParser
     host = (urlparse(str(value or "")).hostname or "").casefold()
     if host == "www.zara.com" or host.endswith(".zara.com"):
         return DummyZaraParser
@@ -59,6 +65,8 @@ def _fake_registry(value):
         return DummyAkakceParser
     if host == "www.lcw.com" or host.endswith(".lcw.com"):
         return DummyLcwParser
+    if host == "www.instagram.com" or host.endswith(".instagram.com"):
+        return DummyInstagramParser
     return None
 
 
@@ -87,6 +95,7 @@ def refresh_settings(settings, monkeypatch):
     settings.SOURCE_OFFER_CIRCUIT_RECOVERY_SECONDS = 60
     settings.SOURCE_OFFER_VERIFICATION_ENABLED = True
     settings.SOURCE_OFFER_VERIFICATION_SOURCES = ["akakce"]
+    settings.SOURCE_OFFER_MANUAL_ONLY_SOURCES = ["instagram"]
     monkeypatch.setattr(
         "apps.catalog.services.source_offer_verification.get_parser",
         _fake_registry,
@@ -98,6 +107,34 @@ def refresh_settings(settings, monkeypatch):
     cache.clear()
     yield
     cache.clear()
+
+
+@pytest.mark.django_db
+def test_instagram_product_is_never_eligible_for_card_refresh(settings):
+    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = ["instagram"]
+    settings.SOURCE_OFFER_VERIFICATION_SOURCES = ["instagram"]
+    product = Product.objects.create(
+        name="Manual Instagram product",
+        slug=f"manual-instagram-{uuid4().hex}",
+        product_type="islamic_clothing",
+        external_url="https://www.instagram.com/p/POST1/",
+        is_available=True,
+    )
+    ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="instagram",
+        canonical_url=product.external_url,
+        external_product_id="POST1",
+        availability_status=ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+    )
+
+    result = ProductCardSourceRefreshService().request_refresh(product)
+
+    assert result == {
+        "eligible": False,
+        "status": "not_eligible",
+        "retryable": False,
+    }
 
 
 def _offer(product, *, variant="black", size="S", price="100.00"):

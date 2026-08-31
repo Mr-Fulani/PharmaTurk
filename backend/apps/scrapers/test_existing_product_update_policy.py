@@ -88,6 +88,42 @@ def test_repeat_scrape_preserves_semantic_fields_but_updates_price_and_stock():
 
 
 @pytest.mark.django_db
+def test_repeat_instagram_scrape_keeps_existing_price_but_restores_availability(settings):
+    settings.SCRAPER_PRICE_REFRESH_DISABLED_SOURCES = ["instagram"]
+    service = ScraperIntegrationService()
+    product = Product.objects.create(
+        name="Instagram product",
+        slug="instagram-price-frozen",
+        product_type="islamic_clothing",
+        price=100,
+        currency="RUB",
+        old_price=120,
+        is_available=False,
+        external_id="POST1",
+        external_url="https://www.instagram.com/p/POST1/",
+        external_data={"source": "instagram"},
+    )
+    scraped = ScrapedProduct(
+        name=product.name,
+        price=999,
+        currency="TRY",
+        url=product.external_url,
+        external_id=product.external_id,
+        source="instagram",
+        is_available=True,
+    )
+
+    status, updated = service._update_existing_product(None, scraped, product)
+    updated.refresh_from_db()
+
+    assert status == "updated"
+    assert updated.price == 100
+    assert updated.currency == "RUB"
+    assert updated.old_price == 120
+    assert updated.is_available is True
+
+
+@pytest.mark.django_db
 def test_repeat_scrape_preserves_ai_seo_meta_and_external_data():
     """Повторный парс не перезатирает AI-обработку: SEO/мета, RU-перевод, external_data.
     Даже если парсер приносит meta_* в attrs, заполняются только пустые поля."""

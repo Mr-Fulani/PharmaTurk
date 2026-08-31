@@ -45,6 +45,30 @@ def _patch_product_conversion(monkeypatch, parser):
     monkeypatch.setattr(parser, "_parse_post", lambda post: _product(post.shortcode))
 
 
+def test_post_without_caption_price_remains_available(monkeypatch):
+    parser = InstagramParser()
+    monkeypatch.setattr(
+        parser,
+        "_extract_all_media",
+        lambda _post: (["https://cdn.example/POST1.jpg"], []),
+    )
+    post = SimpleNamespace(
+        caption="Новая модель буркини. За подробностями пишите менеджеру.",
+        shortcode="POST1",
+        date_utc=None,
+        owner_username="manual.shop",
+        is_video=False,
+        likes=10,
+        comments=2,
+    )
+
+    product = parser._parse_post(post)
+
+    assert product.price is None
+    assert product.is_available is True
+    assert product.stock_quantity is None
+
+
 def test_business_profile_uses_mobile_feed_fallback(monkeypatch):
     parser = InstagramParser(max_retries=1)
     _patch_product_conversion(monkeypatch, parser)

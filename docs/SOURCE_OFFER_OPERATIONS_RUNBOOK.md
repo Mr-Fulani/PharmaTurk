@@ -39,6 +39,7 @@
 | --- | --- | --- |
 | `SOURCE_OFFER_VERIFICATION_ENABLED` | `false` | главный выключатель сетевой проверки |
 | `SOURCE_OFFER_VERIFICATION_SOURCES` | один parser key | allowlist источников; пусто = все |
+| `SOURCE_OFFER_MANUAL_ONLY_SOURCES` | `instagram` | жёсткий denylist live-проверки/проекции; источник не меняет цену и наличие карточки/корзины |
 | `SOURCE_OFFER_CART_ENFORCEMENT_ENABLED` | `false` | применение snapshot-проверки в cart/checkout |
 | `SOURCE_OFFER_CATALOG_PROJECTION_ENABLED` | `false` | DB-only projection свежего status в detail/YML |
 | `PRODUCT_CARD_SOURCE_REFRESH_ENABLED` | `false` | async обновление спарсенной карточки при открытии |
@@ -46,10 +47,17 @@
 | `PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS` | `300` | freshness/success TTL и защита от повторных запросов |
 | `PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS` | `30` | короткий cooldown retryable source errors |
 | `PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS` | `150` | singleflight одной карточки, дольше hard timeout task |
+| `SCRAPER_PRICE_REFRESH_DISABLED_SOURCES` | `instagram` | повторный полный импорт может обновить контент/медиа, но не сохранённую цену |
 | `FLO_WEB_UNLOCKER_TIMEOUT_SECONDS` | `60` | окно одного provider request; у FLO render-canary занимал около 24 секунд |
 
 On-demand verifier сохраняет timeout/retry, per-source rate/concurrency, single-flight
 и circuit breaker. Планового batch-прохода больше нет.
+
+Instagram является manual-only источником: отсутствие цены в подписи поста не означает
+отсутствие товара. Такие карточки считаются доступными по сохранённым данным, не
+выбираются для live-проверки карточки/корзины и не получают автоматическое обновление
+цены при повторном Instagram-импорте. Чтобы включить цену в будущем, источник нужно
+одновременно удалить из обоих denylist только после появления надёжного price/stock API.
 
 ## Платный transport и бюджет
 
