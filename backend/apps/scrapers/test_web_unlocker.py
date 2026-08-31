@@ -58,13 +58,16 @@ def test_unlocker_posts_only_to_fixed_endpoint_with_server_credentials():
     assert captured == {
         "url": BrightDataWebUnlockerClient.ENDPOINT,
         "authorization": "Bearer test-token",
-        "expect": '{"text":"window.productDetail"}',
+        "expect": None,
         "payload": {
             "zone": "flo_unlocker",
             "url": TARGET,
             "format": "raw",
             "country": "tr",
             "render": "true",
+            "headers": {
+                "x-unblock-expect": '{"text":"window.productDetail"}',
+            },
         },
     }
     assert result.text.startswith("<html>")

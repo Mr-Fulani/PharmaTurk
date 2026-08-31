@@ -195,18 +195,22 @@ class BrightDataWebUnlockerClient:
         if self.render:
             payload["render"] = "true"
 
+        if self.expect_text:
+            # With the REST endpoint, target headers belong in the JSON
+            # envelope. Sending this as a header on api.brightdata.com makes
+            # Bright Data ignore the expectation and an HTTP-200 CAPTCHA page
+            # can be returned as if it were a valid product response.
+            payload["headers"] = {
+                "x-unblock-expect": json.dumps(
+                    {"text": self.expect_text},
+                    separators=(",", ":"),
+                )
+            }
+
         request_headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        if self.expect_text:
-            # Bright Data renders/retries until the real FLO product payload is
-            # present instead of treating an HTTP-200 CAPTCHA interstitial as a
-            # successful response.
-            request_headers["x-unblock-expect"] = json.dumps(
-                {"text": self.expect_text},
-                separators=(",", ":"),
-            )
 
         try:
             response = self.client.post(
