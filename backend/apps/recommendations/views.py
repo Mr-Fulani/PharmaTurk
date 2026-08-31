@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from drf_spectacular.utils import extend_schema
 
+from api.authentication import JWTSafeAuthentication
 from apps.catalog.card_payload import compact_card_product_payload
 from apps.feedback.review_aggregates import attach_review_aggregates
 from .selectors import public_recommendation_products
@@ -114,7 +115,11 @@ class RecommendationViewSet(viewsets.ViewSet):
             503: RecommendationErrorSerializer,
         },
     )
-    @action(detail=False, methods=["post"])
+    @action(
+        detail=False,
+        methods=["post"],
+        authentication_classes=[JWTSafeAuthentication],
+    )
     def search_by_image(self, request):
         """POST /api/recommendations/search_by_image/ — visual search by image URL."""
         if not request.data.get("image_url"):

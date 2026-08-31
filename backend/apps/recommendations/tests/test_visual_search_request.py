@@ -3,10 +3,12 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from PIL import Image
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
+from api.authentication import JWTSafeAuthentication
 from apps.recommendations.serializers import VisualSearchRequestSerializer
 from apps.recommendations.services.image_encoder import CLIPEncoder
 from apps.recommendations.services.safe_image_fetcher import UnsafeImageURLError
@@ -71,6 +73,37 @@ def test_view_selects_visual_search_throttles_by_action():
         VisualSearchAnonThrottle,
         VisualSearchUserThrottle,
     ]
+
+
+def test_visual_search_action_uses_csrf_independent_jwt_authentication():
+    assert RecommendationViewSet.search_by_image.kwargs["authentication_classes"] == [
+        JWTSafeAuthentication,
+    ]
+
+
+@pytest.mark.django_db
+def test_public_visual_search_ignores_unrelated_django_session_csrf():
+    """An admin/session cookie must not turn this AllowAny action into HTTP 403."""
+    user = get_user_model().objects.create_user(
+        email="visual-session@example.test",
+        username="visual-session",
+        password="not-used",
+    )
+    client = APIClient(enforce_csrf_checks=True)
+    client.force_login(user)
+
+    with patch(
+        "apps.recommendations.views.fetch_search_image",
+        side_effect=UnsafeImageURLError(),
+    ), patch.object(RecommendationViewSet, "get_throttles", return_value=[]):
+        response = client.post(
+            "/api/recommendations/search_by_image/",
+            {"image_url": "http://127.0.0.1/private", "limit": 3},
+            format="json",
+        )
+
+    assert response.status_code == 400
+    assert response.data["error"] == "invalid_image_url"
 
 
 def _post_visual_search(payload):
