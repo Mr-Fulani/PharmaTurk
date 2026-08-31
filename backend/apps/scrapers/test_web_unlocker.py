@@ -50,7 +50,7 @@ def test_unlocker_posts_only_to_fixed_endpoint_with_server_credentials():
             text="<html>window.productDetail = {}</html>",
         )
 
-    client = _client(handler, render=True)
+    client = _client(handler, render=True, expect_text="window.productDetail")
     try:
         result = client.fetch(TARGET)
     finally:
@@ -167,28 +167,29 @@ def test_unlocker_rejects_empty_and_oversized_content():
         oversized.close()
 
 
-def test_unlocker_exposes_failed_product_expectation_from_provider_headers():
+def test_unlocker_exposes_failed_site_expectation_from_provider_headers():
     client = _client(
         lambda _request: httpx.Response(
             200,
             headers={
                 "x-brd-error": (
-                    "response body doesn't include required text: window.productDetail"
+                    "response body doesn't include required text: site-shell"
                 ),
                 "x-brd-error-code": "expect_text",
                 "x-brd-status-code": "502",
             },
             content=b"",
-        )
+        ),
+        expect_text="site-shell",
     )
     try:
-        with pytest.raises(WebUnlockerExpectationError, match="product marker") as error:
+        with pytest.raises(WebUnlockerExpectationError, match="page marker") as error:
             client.fetch(TARGET)
     finally:
         client.close()
 
     assert str(error.value.request.url) == TARGET
-    assert "window.productDetail" not in str(error.value)
+    assert "site-shell" not in str(error.value)
 
 
 @pytest.mark.parametrize(

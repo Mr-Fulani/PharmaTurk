@@ -23,10 +23,7 @@ from ..base.offers import (
     translate_offer_check_errors,
 )
 from ..base.utils import clean_text
-from ..base.web_unlocker import (
-    BrightDataWebUnlockerClient,
-    WebUnlockerExpectationError,
-)
+from ..base.web_unlocker import BrightDataWebUnlockerClient
 
 
 FLO_SHOE_CATEGORY_MARKERS = (
@@ -317,7 +314,12 @@ class FloParser(BaseScraper):
             "sku": sku,
         }
 
-    def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
+    def parse_product_detail(
+        self,
+        product_url: str,
+        *,
+        include_sibling_variants: bool = True,
+    ) -> Optional[ScrapedProduct]:
         html = self._fetch(product_url)
         if not html:
             return None
@@ -327,6 +329,11 @@ class FloParser(BaseScraper):
 
         self_sku = str(detail.get("sku") or "")
         color_rows = self._color_skus_and_urls(detail, product_url)
+        # Keep the stable group id even when the on-demand card refresh fetches
+        # only the opened colour and skips paid requests to sibling URLs.
+        group_sku = color_rows[0][0] if color_rows else self_sku
+        if not include_sibling_variants:
+            color_rows = [(self_sku, self._canonical_url(product_url))]
 
         variants: List[Dict[str, Any]] = []
         for sort_order, (sku, url) in enumerate(color_rows):
@@ -343,7 +350,6 @@ class FloParser(BaseScraper):
             return None
 
         # Стабильный id группы — минимальный sku среди цветов.
-        group_sku = color_rows[0][0] if color_rows else self_sku
         external_id = f"flo-{group_sku}"
         primary = next((v for v in variants if v["sku"] == self_sku), variants[0])
 
@@ -385,18 +391,10 @@ class FloParser(BaseScraper):
     @translate_offer_check_errors
     def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
         """Fetch only the saved color URL; do not traverse sibling color variants."""
-        try:
-            html, final_url = self._make_offer_request(
-                offer.canonical_url,
-                include_final_url=True,
-            )
-        except WebUnlockerExpectationError as exc:
-            # The Unlocker retries until window.productDetail is present. FLO
-            # redirects deleted product URLs to a category page, so exhausting
-            # that product-specific expectation is a missing-offer result rather
-            # than a supplier transport outage. The next cart open still performs
-            # a fresh forced check, allowing a temporarily restored URL to recover.
-            raise OfferNotFound(offer.canonical_url) from exc
+        html, final_url = self._make_offer_request(
+            offer.canonical_url,
+            include_final_url=True,
+        )
         if self._looks_like_challenge(html):
             raise ScraperAccessBlockedError(source="FLO", status_code=403, url=offer.canonical_url)
 
@@ -410,7 +408,10 @@ class FloParser(BaseScraper):
 
         detail = self._extract_product_detail(html)
         if not detail or not detail.get("name"):
-            raise MalformedOfferResponse()
+            # Browser rendering rejects FLO's CAPTCHA above. The remaining clean
+            # 200 response without productDetail is the category page to which
+            # FLO redirects a removed product URL.
+            raise OfferNotFound(offer.canonical_url)
         detail_sku = str(detail.get("sku") or "")
         if not detail_sku:
             raise MalformedOfferResponse("Source response does not contain a product SKU")

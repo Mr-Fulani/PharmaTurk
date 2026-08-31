@@ -36,10 +36,12 @@
 **$7.35 за месяц**. Free Tier может покрыть этот объём, но код не должен предполагать,
 как провайдер применит credits: источником правды остаются Billing и Cost Explorer.
 
-В зоне включён Manual `expect`. Это важно для бюджета: при использовании custom
-features Bright Data считает **все запросы, включая неуспешные**, хотя обычный Web
-Unlocker PAYG заявлен как pay-only-for-success. Поэтому приложение не делает свой
-повтор платного запроса; внутренними retry/IP rotation управляет сам провайдер.
+В зоне доступен Manual `expect`. Это важно для бюджета: при включённых custom
+features Bright Data может считать **все запросы, включая неуспешные**, хотя обычный
+Web Unlocker PAYG заявлен как pay-only-for-success. Текущий FLO adapter не отправляет
+manual `expect`: product-only marker превращал штатный redirect снятого товара в
+дорогой timeout. Приложение также не делает свой повтор платного запроса;
+внутренними retry/IP rotation управляет сам провайдер.
 
 Официальные источники:
 
@@ -93,10 +95,13 @@ residential IP достаточно. CAPTCHA solver он сам по себе н
 - только HTTPS targets из server-owned host allowlist;
 - сейчас разрешены только `flo.com.tr` и `www.flo.com.tr`;
 - API key и zone name читаются из secrets, не из request пользователя;
-- `x-unblock-expect={"text":"window.productDetail"}` передаётся в JSON `headers`;
-- `country=tr`, `format=raw`, принудительный render выключен;
+- manual `x-unblock-expect` не отправляется;
+- `country=tr`, `format=raw`, browser rendering включён;
 - timeout 30 секунд, тело не больше 10 MiB;
 - проверяются target status, непустое тело, CAPTCHA markers, product marker и SKU;
+- чистая rendered-страница категории без `window.productDetail` означает снятый URL;
+- карточка получает только открытый цвет и не обходит sibling colour URLs, поэтому
+  одно открытие карточки означает не более одного платного supplier request;
 - секреты, response body и provider credentials не пишутся в логи.
 
 Зона провайдера дополнительно ограничена production egress IP и FLO target hosts.
@@ -130,7 +135,9 @@ acknowledge и checkout используют сохранённый snapshot и 
 3. Добавить отдельный feature flag и точный parser/source allowlist.
 4. Разрешить только точные HTTPS hostnames. URL, zone, country, proxy и credentials
    не должны приходить от клиента.
-5. Выбрать source-specific `expect` marker, который невозможен на CAPTCHA-странице.
+5. Если нужен manual `expect`, выбрать marker, общий для успешного и штатного
+   not-found ответа, но невозможный на CAPTCHA. Product-only marker использовать
+   нельзя: он делает корректный not-found неотличимым от provider failure.
 6. Проверять identity: supplier SKU/external id должен совпадать с сохранённым offer.
 7. Ограничить timeout, response bytes, concurrency, rate и число запросов на событие.
 8. Не добавлять app-level retry поверх Web Unlocker. Любое изменение retry требует

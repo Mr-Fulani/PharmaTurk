@@ -234,6 +234,32 @@ def test_flo_groups_color_variants_into_one_card(monkeypatch):
     assert {v["sku"] for v in variants} == {"111", "222"}
 
 
+def test_flo_card_refresh_skips_paid_sibling_color_requests(monkeypatch):
+    parser = FloParser()
+    blue = _detail(sku="222", name="REVOLUTION 8 Mavi")
+    blue["renk"] = "Mavi"
+    blue["color_options"] = [
+        {"sku": "222", "url": "/urun/x-mavi-222", "is_in_stock": True},
+        {"sku": "111", "url": "/urun/x-siyah-111", "is_in_stock": True},
+    ]
+    calls = []
+
+    def fake_request(url):
+        calls.append(url)
+        return _product_html(blue)
+
+    monkeypatch.setattr(parser, "_make_request", fake_request)
+
+    product = parser.parse_product_detail(
+        "https://www.flo.com.tr/urun/x-mavi-222",
+        include_sibling_variants=False,
+    )
+
+    assert calls == ["https://www.flo.com.tr/urun/x-mavi-222"]
+    assert product.external_id == "flo-111"
+    assert [row["sku"] for row in product.attributes["fashion_variants"]] == ["222"]
+
+
 def test_flo_parse_product_detail_returns_none_without_payload(monkeypatch):
     parser = FloParser()
     monkeypatch.setattr(parser, "_make_request", lambda url: "<html>no payload here</html>")

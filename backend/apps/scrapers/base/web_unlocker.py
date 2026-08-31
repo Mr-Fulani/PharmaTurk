@@ -40,7 +40,7 @@ class WebUnlockerExpectationError(WebUnlockerResponseError):
 
     def __init__(self, *, target_url: str) -> None:
         super().__init__(
-            "Web Unlocker could not find the required supplier product marker",
+            "Web Unlocker could not find the required supplier page marker",
             target_url=target_url,
         )
 
@@ -67,7 +67,7 @@ class BrightDataWebUnlockerClient:
         timeout: float,
         country: str = "tr",
         render: bool = False,
-        expect_text: str = "window.productDetail",
+        expect_text: str = "",
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
@@ -107,7 +107,7 @@ class BrightDataWebUnlockerClient:
             expect_text=getattr(
                 settings,
                 "FLO_WEB_UNLOCKER_EXPECT_TEXT",
-                "window.productDetail",
+                "",
             ),
             max_response_bytes=getattr(
                 settings,
@@ -273,9 +273,8 @@ class BrightDataWebUnlockerClient:
         )
         response.raise_for_status()
         # The REST endpoint can return outer HTTP 200 with an empty body while
-        # reporting the actual failure in x-brd-* headers.  With FLO's product-
-        # specific expectation this means the provider could not obtain a page
-        # containing product data (removed product URLs redirect to categories).
+        # reporting the actual expectation failure in x-brd-* headers. This is
+        # a transport failure: callers must not infer that the target is absent.
         if provider_error_code == "expect_text":
             raise WebUnlockerExpectationError(target_url=url)
         if len(response.content) > self.max_response_bytes:

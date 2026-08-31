@@ -27,7 +27,6 @@ from django.utils import timezone
 from apps.catalog.models import PriceHistory, Product, ProductSourceOffer
 from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
 from apps.scrapers.base.scraper import ScrapedProduct
-from apps.scrapers.base.web_unlocker import WebUnlockerExpectationError
 from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.registry import get_parser
 from apps.scrapers.services import ScraperIntegrationService
@@ -398,26 +397,25 @@ class ProductCardSourceRefreshService:
         if target.parser_key == "flo" and bool(config and config.use_proxy):
             # Explicitly scopes the paid transport to this demand-driven card-open job.
             kwargs["use_web_unlocker"] = True
-        try:
-            with target.parser_class(**kwargs) as parser:
-                if config is not None:
-                    parser.delay_range = (config.delay_min, config.delay_max)
-                    parser.configure_request_identity(
-                        user_agent=config.user_agent,
-                        headers=config.headers,
-                        cookies=config.cookies,
-                    )
+        with target.parser_class(**kwargs) as parser:
+            if config is not None:
+                parser.delay_range = (config.delay_min, config.delay_max)
+                parser.configure_request_identity(
+                    user_agent=config.user_agent,
+                    headers=config.headers,
+                    cookies=config.cookies,
+                )
+            if target.parser_key == "flo":
+                # A FLO product group can link many sibling colours. Each sibling
+                # would be another paid browser-rendering request, even though the
+                # user opened only this saved colour. Refresh exactly that colour;
+                # the cart follows the same one-offer rule.
+                result = parser.parse_product_detail(
+                    target.offer.canonical_url,
+                    include_sibling_variants=False,
+                )
+            else:
                 result = parser.parse_product_detail(target.offer.canonical_url)
-        except WebUnlockerExpectationError as exc:
-            # FLO redirects removed product URLs to category pages. The paid
-            # transport exhausts its attempts looking for the product payload,
-            # so this is the same conclusive absence used by cart verification,
-            # not a transient supplier outage.
-            raise ProductCardRefreshError(
-                "source_not_found",
-                "Supplier product was not found",
-                retryable=False,
-            ) from exc
 
         if isinstance(result, list):
             if len(result) != 1:
@@ -428,6 +426,15 @@ class ProductCardSourceRefreshService:
                 )
             result = result[0]
         if not isinstance(result, ScrapedProduct):
+            if target.parser_key == "flo":
+                # Browser rendering already rejects FLO's CAPTCHA page. A clean
+                # site response without productDetail is the category redirect
+                # FLO uses for a removed product URL.
+                raise ProductCardRefreshError(
+                    "source_not_found",
+                    "Supplier product was not found",
+                    retryable=False,
+                )
             raise ProductCardRefreshError(
                 "source_unavailable",
                 "Supplier returned no product detail",

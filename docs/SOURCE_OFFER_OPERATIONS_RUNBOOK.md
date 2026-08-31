@@ -58,10 +58,11 @@ transport. Их возможности, актуальная модель опл
 [`PAID_WEB_ACCESS_SERVICES.md`](PAID_WEB_ACCESS_SERVICES.md).
 
 Для FLO Web Unlocker допустим только из product-card-open и cart-revalidate. Один
-business event не должен превращаться в batch crawl или app-level retry. Manual
-`expect` считает также неуспешные provider requests, поэтому provider limit
-`Suspend zone and Alert` обязателен, а auto recharge не включается без отдельного
-подтверждения владельца.
+business event не должен превращаться в batch crawl или app-level retry. FLO
+использует browser rendering без manual `expect`: product-only expectation делал
+redirect снятого товара дорогим timeout. Карточка проверяет только один сохранённый
+цвет; provider limit `Suspend zone and Alert` обязателен, а auto recharge не
+включается без отдельного подтверждения владельца.
 
 ## Read-only rollout audit
 

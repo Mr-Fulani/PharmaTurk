@@ -667,7 +667,7 @@ export default function ProductPage({
         return
       }
       if (!['pending', 'running'].includes(payload.status)) return
-      if (pollCount >= 20) {
+      if (pollCount >= 45) {
         setSourceRefresh({
           eligible: true,
           status: 'failed',
@@ -926,11 +926,12 @@ export default function ProductPage({
     product &&
     (productType === 'supplements' || product.product_type === 'supplements')
   )
+  const sourceRefreshFailed = sourceRefresh?.status === 'failed'
   const sourceProductNotFound = Boolean(
     sourceRefresh?.status === 'failed' &&
     sourceRefresh.error_code === 'source_not_found'
   )
-  const maxAvailable = sourceProductNotFound
+  const maxAvailable = sourceRefreshFailed
     ? 0
     : product && !supplementAvailabilityDoesNotCapQuantity
       ? resolveAvailableStock(product, selectedVariant, selectedSize)
@@ -2249,8 +2250,8 @@ export default function ProductPage({
                           'Товар больше недоступен у поставщика. Показана последняя сохранённая цена.'
                         )
                         : t(
-                          'product_source_refresh_failed',
-                          'Не удалось обновить данные. Показаны последние сохранённые значения.'
+                          'product_source_refresh_unavailable',
+                          'Не удалось подтвердить наличие у поставщика. Покупка временно недоступна. Показана последняя сохранённая цена.'
                         )}
                 </span>
               </div>

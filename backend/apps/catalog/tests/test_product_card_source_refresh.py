@@ -25,7 +25,6 @@ from apps.catalog.services.product_card_source_refresh import (
 )
 from apps.catalog.utils.product_markup import apply_product_markup
 from apps.scrapers.base.scraper import ScrapedProduct
-from apps.scrapers.base.web_unlocker import WebUnlockerExpectationError
 from apps.scrapers.base.offers import (
     OfferAvailability,
     OfferCheckResult,
@@ -246,7 +245,8 @@ def test_flo_card_fetch_explicitly_requests_web_unlocker(settings, monkeypatch):
         def configure_request_identity(self, **_kwargs):
             return None
 
-        def parse_product_detail(self, url):
+        def parse_product_detail(self, url, **kwargs):
+            captured["detail_kwargs"] = kwargs
             return ScrapedProduct(
                 name="FLO product",
                 url=url,
@@ -281,9 +281,10 @@ def test_flo_card_fetch_explicitly_requests_web_unlocker(settings, monkeypatch):
     assert captured["use_proxy"] is True
     assert captured["use_web_unlocker"] is True
     assert captured["timeout"] == 19.0
+    assert captured["detail_kwargs"] == {"include_sibling_variants": False}
 
 
-def test_flo_card_fetch_maps_failed_product_expectation_to_not_found(
+def test_flo_card_fetch_maps_clean_page_without_product_to_not_found(
     settings,
     monkeypatch,
 ):
@@ -302,8 +303,9 @@ def test_flo_card_fetch_maps_failed_product_expectation_to_not_found(
         def configure_request_identity(self, **_kwargs):
             return None
 
-        def parse_product_detail(self, url):
-            raise WebUnlockerExpectationError(target_url=url)
+        def parse_product_detail(self, _url, **kwargs):
+            assert kwargs == {"include_sibling_variants": False}
+            return None
 
     config = SimpleNamespace(
         base_url="https://www.flo.com.tr",

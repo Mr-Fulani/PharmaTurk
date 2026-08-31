@@ -10,7 +10,6 @@ from apps.scrapers.base.offers import (
     OfferCheckErrorCode,
     OfferGone,
     OfferNotFound,
-    MalformedOfferResponse,
     OfferOptionNotFound,
     OfferSourceUnavailable,
     OfferStockPrecision,
@@ -239,7 +238,7 @@ def test_flo_offer_check_fetches_only_saved_variant(monkeypatch):
     assert result.source_price == Decimal("109.90")
 
 
-def test_flo_offer_check_reports_malformed_payload(monkeypatch):
+def test_flo_offer_check_treats_clean_page_without_product_as_not_found(monkeypatch):
     parser = FloParser()
     monkeypatch.setattr(
         parser,
@@ -248,13 +247,13 @@ def test_flo_offer_check_reports_malformed_payload(monkeypatch):
     )
     monkeypatch.setattr(parser, "_extract_product_detail", lambda html: None)
 
-    with pytest.raises(MalformedOfferResponse) as error:
+    with pytest.raises(OfferNotFound) as error:
         parser.check_offer(_context(canonical_url="https://www.flo.com.tr/urun/model-10001"))
 
-    assert error.value.error.code == OfferCheckErrorCode.MALFORMED_RESPONSE
+    assert error.value.error.code == OfferCheckErrorCode.NOT_FOUND
 
 
-def test_flo_offer_check_treats_failed_product_expectation_as_not_found(monkeypatch):
+def test_flo_offer_check_treats_failed_site_expectation_as_transport_error(monkeypatch):
     parser = FloParser()
     url = "https://www.flo.com.tr/urun/removed-model-10001"
 
@@ -263,11 +262,11 @@ def test_flo_offer_check_treats_failed_product_expectation_as_not_found(monkeypa
 
     monkeypatch.setattr(parser, "_make_offer_request", fail)
 
-    with pytest.raises(OfferNotFound) as error:
+    with pytest.raises(OfferSourceUnavailable) as error:
         parser.check_offer(_context(canonical_url=url))
 
-    assert error.value.error.code == OfferCheckErrorCode.NOT_FOUND
-    assert error.value.error.retryable is False
+    assert error.value.error.code == OfferCheckErrorCode.TRANSPORT_ERROR
+    assert error.value.error.retryable is True
 
 
 def test_flo_offer_check_rejects_payload_for_another_sku(monkeypatch):
