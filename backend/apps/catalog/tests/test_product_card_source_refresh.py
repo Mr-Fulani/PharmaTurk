@@ -336,6 +336,76 @@ def test_flo_card_fetch_maps_clean_page_without_product_to_not_found(
 
 
 @pytest.mark.django_db
+def test_source_not_found_disables_only_variants_on_opened_url(
+    parsed_clothing,
+    monkeypatch,
+):
+    product, domain, black, red = parsed_clothing
+    black_url = "https://www.zara.com/tr/tr/black-product-p100.html"
+    red_url = "https://www.zara.com/tr/tr/red-product-p101.html"
+    product.source_offers.filter(variant_key="black").update(
+        canonical_url=black_url,
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+        stock_precision=ProductSourceOffer.StockPrecision.BOOLEAN,
+        last_error_code="",
+    )
+    product.source_offers.filter(variant_key="red").update(
+        canonical_url=red_url,
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+        stock_precision=ProductSourceOffer.StockPrecision.BOOLEAN,
+        last_error_code="",
+    )
+    ClothingVariant.objects.filter(pk=black.pk).update(
+        is_available=True,
+        stock_quantity=None,
+    )
+    ClothingVariantSize.objects.filter(variant=black).update(
+        is_available=True,
+        stock_quantity=None,
+    )
+
+    service = ProductCardSourceRefreshService()
+
+    def removed(_target):
+        raise ProductCardRefreshError(
+            "source_not_found",
+            "Supplier product was not found",
+            retryable=False,
+        )
+
+    monkeypatch.setattr(service, "_fetch_product", removed)
+
+    result = service.run(product.pk)
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "source_not_found"
+    assert result["retryable"] is False
+    assert result["changes"] == {
+        "offers_updated": 1,
+        "variants_updated": 1,
+        "sizes_updated": 1,
+        "product_updated": 0,
+    }
+    black.refresh_from_db()
+    red.refresh_from_db()
+    domain.refresh_from_db()
+    assert black.is_available is False
+    assert black.stock_quantity == 0
+    assert red.is_available is True
+    assert domain.is_available is True
+    assert set(
+        product.source_offers.filter(variant_key="black").values_list(
+            "availability_status", "last_error_code"
+        )
+    ) == {(ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK, "not_found")}
+    assert set(
+        product.source_offers.filter(variant_key="red").values_list(
+            "availability_status", "last_error_code"
+        )
+    ) == {(ProductSourceOffer.AvailabilityStatus.IN_STOCK, "")}
+
+
+@pytest.mark.django_db
 def test_manual_product_is_never_enqueued(monkeypatch):
     product = Product.objects.create(
         name="Manual product",

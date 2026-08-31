@@ -872,6 +872,105 @@ class ProductCardSourceRefreshService:
                 counts["variants_updated"] += 1
         return counts
 
+    @transaction.atomic
+    def _mark_source_url_unavailable(self, target: RefreshTarget) -> dict[str, int]:
+        """Persist conclusive removal for only the opened supplier URL.
+
+        FLO groups sibling colours under one catalogue product.  A removed URL is
+        conclusive for every saved size on that colour, but says nothing about a
+        sibling colour with another URL.
+        """
+
+        product = Product.objects.select_for_update().get(pk=target.product.pk)
+        now = timezone.now()
+        affected_offers = product.source_offers.filter(
+            is_active=True,
+            parser_key=target.parser_key,
+            canonical_url=target.offer.canonical_url,
+        )
+        variant_keys = list(
+            affected_offers.exclude(variant_key="").values_list("variant_key", flat=True).distinct()
+        )
+        offers_updated = affected_offers.update(
+            availability_status=ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+            stock_precision=ProductSourceOffer.StockPrecision.UNKNOWN,
+            stock_quantity=None,
+            last_checked_at=now,
+            last_error_code="not_found",
+            last_error_message="Supplier product URL was not found",
+            consecutive_failures=0,
+            updated_at=now,
+        )
+
+        variants_updated = 0
+        sizes_updated = 0
+        domain_product = None
+        if product.product_type in FASHION_PRODUCT_TYPES and variant_keys:
+            integration = ScraperIntegrationService()
+            config = integration._fashion_model_config(product.product_type)
+            if config:
+                domain_product = self._existing_domain_item(product)
+                VariantModel = config["variant_model"]
+                VariantSizeModel = config["variant_size_model"]
+                ProductSizeModel = config["product_size_model"]
+                variants = VariantModel.objects.filter(
+                    product=domain_product,
+                    external_id__in=variant_keys,
+                    is_active=True,
+                )
+                variant_ids = list(variants.values_list("pk", flat=True))
+                variants_updated = variants.update(
+                    is_available=False,
+                    stock_quantity=0,
+                )
+                if variant_ids:
+                    sizes_updated = VariantSizeModel.objects.filter(
+                        variant_id__in=variant_ids
+                    ).update(
+                        is_available=False,
+                        stock_quantity=0,
+                    )
+                active_variants = list(
+                    domain_product.variants.filter(is_active=True).order_by("sort_order", "id")
+                )
+                integration._sync_product_size_rows(
+                    domain_product,
+                    ProductSizeModel,
+                    variants=active_variants,
+                )
+
+        other_active_offer_exists = (
+            product.source_offers.filter(is_active=True)
+            .exclude(
+                parser_key=target.parser_key,
+                canonical_url=target.offer.canonical_url,
+            )
+            .exists()
+        )
+        product_updated = 0
+        if offers_updated and not other_active_offer_exists:
+            product_updated = Product.objects.filter(pk=product.pk).update(
+                is_available=False,
+                stock_quantity=0,
+                availability_status="out_of_stock",
+                last_synced_at=now,
+                updated_at=now,
+            )
+            domain_product = domain_product or product.domain_item
+            if domain_product is not product:
+                fields = {field.name for field in domain_product._meta.concrete_fields}
+                values: dict[str, Any] = {"is_available": False}
+                if "stock_quantity" in fields:
+                    values["stock_quantity"] = 0
+                domain_product.__class__.objects.filter(pk=domain_product.pk).update(**values)
+
+        return {
+            "offers_updated": offers_updated,
+            "variants_updated": variants_updated,
+            "sizes_updated": sizes_updated,
+            "product_updated": product_updated,
+        }
+
     @staticmethod
     def _aggregate_stock(snapshots: list[SourceOfferSnapshot]) -> tuple[bool, int | None]:
         in_stock = [
@@ -1099,6 +1198,18 @@ class ProductCardSourceRefreshService:
             self._observe(target.parser_key, "succeeded", started_at)
             return succeeded
         except ProductCardRefreshError as exc:
+            unavailable_changes: dict[str, int] | None = None
+            if exc.code == "source_not_found":
+                try:
+                    unavailable_changes = self._mark_source_url_unavailable(target)
+                except Exception:
+                    logger.exception(
+                        "product_card_source_unavailable_persist_failed",
+                        extra={
+                            "product_id": product_id,
+                            "source": target.parser_key,
+                        },
+                    )
             if exc.retryable and target.parser_key not in SINGLE_OFFER_REFRESH_SOURCES:
                 verifier._record_circuit_failure(target.parser_key)
             failed = self._set_state(
@@ -1111,6 +1222,7 @@ class ProductCardSourceRefreshService:
                         exc.code, self.SAFE_STATUS_MESSAGES["internal_error"]
                     ),
                     "retryable": exc.retryable,
+                    **({"changes": unavailable_changes} if unavailable_changes is not None else {}),
                 },
                 timeout=(
                     _setting_int(
