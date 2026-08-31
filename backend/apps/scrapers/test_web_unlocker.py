@@ -13,6 +13,7 @@ from apps.http_errors import ExternalAccessBlockedError
 from apps.scrapers.base.web_unlocker import (
     BrightDataWebUnlockerClient,
     UnlockedResponse,
+    WebUnlockerExpectationError,
     WebUnlockerResponseError,
 )
 from apps.scrapers.parsers import flo as flo_module
@@ -164,6 +165,30 @@ def test_unlocker_rejects_empty_and_oversized_content():
             oversized.fetch(TARGET)
     finally:
         oversized.close()
+
+
+def test_unlocker_exposes_failed_product_expectation_from_provider_headers():
+    client = _client(
+        lambda _request: httpx.Response(
+            200,
+            headers={
+                "x-brd-error": (
+                    "response body doesn't include required text: window.productDetail"
+                ),
+                "x-brd-error-code": "expect_text",
+                "x-brd-status-code": "502",
+            },
+            content=b"",
+        )
+    )
+    try:
+        with pytest.raises(WebUnlockerExpectationError, match="product marker") as error:
+            client.fetch(TARGET)
+    finally:
+        client.close()
+
+    assert str(error.value.request.url) == TARGET
+    assert "window.productDetail" not in str(error.value)
 
 
 @pytest.mark.parametrize(

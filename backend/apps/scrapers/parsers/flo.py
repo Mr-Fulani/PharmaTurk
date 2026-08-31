@@ -23,7 +23,10 @@ from ..base.offers import (
     translate_offer_check_errors,
 )
 from ..base.utils import clean_text
-from ..base.web_unlocker import BrightDataWebUnlockerClient
+from ..base.web_unlocker import (
+    BrightDataWebUnlockerClient,
+    WebUnlockerExpectationError,
+)
 
 
 FLO_SHOE_CATEGORY_MARKERS = (
@@ -382,10 +385,18 @@ class FloParser(BaseScraper):
     @translate_offer_check_errors
     def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
         """Fetch only the saved color URL; do not traverse sibling color variants."""
-        html, final_url = self._make_offer_request(
-            offer.canonical_url,
-            include_final_url=True,
-        )
+        try:
+            html, final_url = self._make_offer_request(
+                offer.canonical_url,
+                include_final_url=True,
+            )
+        except WebUnlockerExpectationError as exc:
+            # The Unlocker retries until window.productDetail is present. FLO
+            # redirects deleted product URLs to a category page, so exhausting
+            # that product-specific expectation is a missing-offer result rather
+            # than a supplier transport outage. The next cart open still performs
+            # a fresh forced check, allowing a temporarily restored URL to recover.
+            raise OfferNotFound(offer.canonical_url) from exc
         if self._looks_like_challenge(html):
             raise ScraperAccessBlockedError(source="FLO", status_code=403, url=offer.canonical_url)
 

@@ -17,6 +17,7 @@ from apps.scrapers.base.offers import (
     UnsupportedOfferVerification,
 )
 from apps.scrapers.base.scraper import BaseScraper, ScrapedProduct
+from apps.scrapers.base.web_unlocker import WebUnlockerExpectationError
 from apps.scrapers.parsers.flo import FloParser
 from apps.scrapers.parsers.bershka import BershkaParser
 from apps.scrapers.parsers.ikea import IkeaParser
@@ -251,6 +252,22 @@ def test_flo_offer_check_reports_malformed_payload(monkeypatch):
         parser.check_offer(_context(canonical_url="https://www.flo.com.tr/urun/model-10001"))
 
     assert error.value.error.code == OfferCheckErrorCode.MALFORMED_RESPONSE
+
+
+def test_flo_offer_check_treats_failed_product_expectation_as_not_found(monkeypatch):
+    parser = FloParser()
+    url = "https://www.flo.com.tr/urun/removed-model-10001"
+
+    def fail(_url, **_kwargs):
+        raise WebUnlockerExpectationError(target_url=url)
+
+    monkeypatch.setattr(parser, "_make_offer_request", fail)
+
+    with pytest.raises(OfferNotFound) as error:
+        parser.check_offer(_context(canonical_url=url))
+
+    assert error.value.error.code == OfferCheckErrorCode.NOT_FOUND
+    assert error.value.error.retryable is False
 
 
 def test_flo_offer_check_rejects_payload_for_another_sku(monkeypatch):

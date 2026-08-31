@@ -35,6 +35,16 @@ class WebUnlockerResponseError(httpx.RequestError):
         super().__init__(message, request=httpx.Request("GET", target_url))
 
 
+class WebUnlockerExpectationError(WebUnlockerResponseError):
+    """Bright Data exhausted its attempts without the required target marker."""
+
+    def __init__(self, *, target_url: str) -> None:
+        super().__init__(
+            "Web Unlocker could not find the required supplier product marker",
+            target_url=target_url,
+        )
+
+
 class BrightDataWebUnlockerClient:
     """Small synchronous client with a fixed endpoint and strict target allowlist.
 
@@ -228,6 +238,22 @@ class BrightDataWebUnlockerClient:
                 },
             )
             raise
+        raw_provider_error_code = str(
+            response.headers.get("x-brd-error-code") or ""
+        ).strip().casefold()
+        provider_error_code = (
+            raw_provider_error_code
+            if re.fullmatch(r"[a-z0-9_-]{1,64}", raw_provider_error_code)
+            else ("unknown" if raw_provider_error_code else "")
+        )
+        raw_provider_status = str(
+            response.headers.get("x-brd-status-code") or ""
+        ).strip()
+        provider_status = (
+            raw_provider_status
+            if re.fullmatch(r"\d{3}", raw_provider_status)
+            else ""
+        )
         logger.info(
             "flo_web_unlocker_request",
             extra={
@@ -236,6 +262,8 @@ class BrightDataWebUnlockerClient:
                 "status_code": response.status_code,
                 "response_bytes": len(response.content),
                 "render": self.render,
+                "provider_error_code": provider_error_code,
+                "provider_status": provider_status,
             },
         )
         raise_for_blocked_status(
@@ -244,6 +272,12 @@ class BrightDataWebUnlockerClient:
             source="Bright Data Web Unlocker",
         )
         response.raise_for_status()
+        # The REST endpoint can return outer HTTP 200 with an empty body while
+        # reporting the actual failure in x-brd-* headers.  With FLO's product-
+        # specific expectation this means the provider could not obtain a page
+        # containing product data (removed product URLs redirect to categories).
+        if provider_error_code == "expect_text":
+            raise WebUnlockerExpectationError(target_url=url)
         if len(response.content) > self.max_response_bytes:
             raise WebUnlockerResponseError(
                 "Web Unlocker response exceeds the configured size limit",
