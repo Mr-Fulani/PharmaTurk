@@ -32,25 +32,6 @@ from .throttles import (
 logger = logging.getLogger(__name__)
 
 
-_CARD_PREFETCH_RELATED = (
-    "images",
-    "book_item",
-    "book_item__images",
-    "book_item__book_variants",
-    "clothing_item__images",
-    "clothing_item__variants",
-    "clothing_item__variants__images",
-    "shoe_item__images",
-    "shoe_item__variants",
-    "shoe_item__variants__images",
-    "jewelry_item__images",
-    "electronics_item__images",
-    "furniture_item__images",
-    "medicine_item__gallery_images",
-    "supplement_item__gallery_images",
-)
-
-
 def _public_card_products(product_ids=None):
     """Canonical public candidates, with legacy variant-shadow rows removed."""
     queryset = public_recommendation_products()
@@ -64,9 +45,19 @@ def _public_card_products(product_ids=None):
                 | Q(external_data__has_key="source_variant_slug")
             )
         )
-        .select_related("category", "brand")
-        .prefetch_related(*_CARD_PREFETCH_RELATED)
+        .select_related("category", "brand", "price_info")
     )
+
+
+def _prepare_card_products(queryset):
+    """Materialize a small card page and prefetch only its actual domains."""
+    products = list(queryset)
+    # Runtime import avoids coupling recommendations URL initialization to the
+    # catalog view module while keeping one canonical prefetch contract.
+    from apps.catalog.views import ProductViewSet
+
+    ProductViewSet._prefetch_card_relations(products)
+    return products
 
 
 class RecommendationViewSet(viewsets.ViewSet):
@@ -95,7 +86,7 @@ class RecommendationViewSet(viewsets.ViewSet):
         from apps.catalog.serializers import serialize_product_for_card
 
         ids = [match.get("product_id") for match in matches if match.get("product_id")]
-        products = _public_card_products(ids)
+        products = _prepare_card_products(_public_card_products(ids))
         product_map = {product.id: product for product in products}
         result = []
         for match in matches:
@@ -171,7 +162,7 @@ class RecommendationViewSet(viewsets.ViewSet):
         from apps.catalog.serializers import serialize_product_for_card
         
         product_ids = [r["product_id"] for r in results]
-        products = _public_card_products(product_ids)
+        products = _prepare_card_products(_public_card_products(product_ids))
         product_map = {p.id: p for p in products}
         enriched = []
         for r in results:
@@ -222,7 +213,7 @@ class RecommendationViewSet(viewsets.ViewSet):
         from apps.catalog.serializers import serialize_product_for_card
         
         product_ids = [r["product_id"] for r in recs]
-        products = _public_card_products(product_ids)
+        products = _prepare_card_products(_public_card_products(product_ids))
         product_map = {p.id: p for p in products}
         results = []
         for r in recs:
@@ -314,11 +305,11 @@ class RecommendationViewSet(viewsets.ViewSet):
         """Fallback: recent/trending products."""
         from apps.catalog.serializers import serialize_product_for_card
         
-        trending = (
+        trending = _prepare_card_products(
             _public_card_products()
             .exclude(product_type="jewelry")
-            .order_by("-created_at")
-        )[:12]
+            .order_by("-created_at")[:12]
+        )
         results = [
             compact_card_product_payload(serialize_product_for_card(p, request))
             for p in trending

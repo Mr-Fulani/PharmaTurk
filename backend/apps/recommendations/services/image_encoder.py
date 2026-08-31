@@ -1,5 +1,6 @@
 """Image encoder for recommendations (CLIP, 512-dim)."""
 import logging
+import threading
 from typing import Optional, Union
 import numpy as np
 from PIL import Image
@@ -16,6 +17,7 @@ class CLIPEncoder:
     _instance = None
     _model = None
     _processor = None
+    _load_lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
@@ -28,30 +30,41 @@ class CLIPEncoder:
         pass
 
     def _load_model(self):
-        try:
-            import torch
-            from transformers import CLIPProcessor, CLIPModel
-        except ImportError as e:
-            logger.warning("CLIP dependencies not available: %s", e)
-            CLIPEncoder._model = "unavailable"
+        if CLIPEncoder._model is not None:
             return
-        logger.info("Loading CLIP model...")
-        model_name = "openai/clip-vit-base-patch32"
-        CLIPEncoder._model = CLIPModel.from_pretrained(
-            model_name,
-            trust_remote_code=False,
-            use_safetensors=True,
-        )
-        CLIPEncoder._processor = CLIPProcessor.from_pretrained(
-            model_name,
-            trust_remote_code=False,
-        )
-        CLIPEncoder._model.eval()
-        if torch.cuda.is_available():
-            CLIPEncoder._model = CLIPEncoder._model.cuda()
-            logger.info("CLIP loaded on GPU")
-        else:
-            logger.info("CLIP loaded on CPU")
+        # Gunicorn uses threaded workers. Only one request in a process may
+        # initialize the large model; concurrent first requests reuse it.
+        with CLIPEncoder._load_lock:
+            if CLIPEncoder._model is not None:
+                return
+            try:
+                import torch
+                from transformers import CLIPProcessor, CLIPModel
+            except ImportError as e:
+                logger.warning("CLIP dependencies not available: %s", e)
+                CLIPEncoder._model = "unavailable"
+                return
+            logger.info("Loading CLIP model...")
+            model_name = "openai/clip-vit-base-patch32"
+            model = CLIPModel.from_pretrained(
+                model_name,
+                trust_remote_code=False,
+                use_safetensors=True,
+            )
+            processor = CLIPProcessor.from_pretrained(
+                model_name,
+                trust_remote_code=False,
+            )
+            model.eval()
+            if torch.cuda.is_available():
+                model = model.cuda()
+                logger.info("CLIP loaded on GPU")
+            else:
+                logger.info("CLIP loaded on CPU")
+            # Publish the pair only after both objects are ready, so a failed
+            # processor download remains retryable on the next request.
+            CLIPEncoder._processor = processor
+            CLIPEncoder._model = model
 
     @property
     def model(self):
