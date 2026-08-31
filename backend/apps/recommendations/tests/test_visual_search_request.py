@@ -10,13 +10,43 @@ from rest_framework.test import APIClient, APIRequestFactory
 
 from api.authentication import JWTSafeAuthentication
 from apps.recommendations.serializers import VisualSearchRequestSerializer
-from apps.recommendations.services.image_encoder import CLIPEncoder
+from apps.recommendations.services.image_encoder import (
+    CLIPEncoder,
+    _normalize_clip_image_features,
+)
 from apps.recommendations.services.safe_image_fetcher import UnsafeImageURLError
 from apps.recommendations.throttles import (
     VisualSearchAnonThrottle,
     VisualSearchUserThrottle,
 )
 from apps.recommendations.views import RecommendationViewSet
+
+
+def test_clip_image_features_support_legacy_tensor_response():
+    import torch
+
+    features = _normalize_clip_image_features(torch.ones((1, 512)))
+
+    assert tuple(features.shape) == (1, 512)
+    assert features.norm(dim=-1).item() == pytest.approx(1.0)
+
+
+def test_clip_image_features_support_transformers_five_response():
+    import torch
+
+    response = SimpleNamespace(pooler_output=torch.full((1, 512), 2.0))
+    features = _normalize_clip_image_features(response)
+
+    assert tuple(features.shape) == (1, 512)
+    assert features.norm(dim=-1).item() == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("shape", [(1, 768), (2, 512), (512,)])
+def test_clip_image_features_reject_unexpected_shape(shape):
+    import torch
+
+    with pytest.raises(ValueError, match="Unexpected CLIP image feature shape"):
+        _normalize_clip_image_features(torch.ones(shape))
 
 
 @pytest.mark.parametrize("limit", [0, -1, 25, "not-a-number"])
