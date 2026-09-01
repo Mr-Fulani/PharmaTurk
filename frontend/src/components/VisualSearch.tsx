@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
@@ -13,6 +13,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 type ApiError = {
+  code?: string
   message?: string
   response?: {
     status?: number
@@ -58,83 +59,111 @@ export default function VisualSearch() {
   const [results, setResults] = useState<SearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
+  const activeRequest = useRef<AbortController | null>(null)
+
+  useEffect(() => () => activeRequest.current?.abort(), [])
+
+  const beginSearch = () => {
+    activeRequest.current?.abort()
+    const controller = new AbortController()
+    activeRequest.current = controller
+    setError(null)
+    setSearching(true)
+    setResults([])
+    return controller
+  }
+
+  const finishSearch = (controller: AbortController) => {
+    if (activeRequest.current === controller) {
+      activeRequest.current = null
+      setSearching(false)
+    }
+  }
+
+  const requestVisualResults = async (url: string, controller: AbortController) => {
+    const searchRes = await api.post('/recommendations/search_by_image/', {
+      image_url: url.trim(),
+      limit: 12,
+    }, { signal: controller.signal })
+    if (controller.signal.aborted) return
+    const foundResults = searchRes.data.results || []
+    setResults(foundResults)
+    if (foundResults.length === 0) {
+      setError(t('products_not_found', 'Товары не найдены'))
+    }
+  }
+
+  const showRequestError = (err: unknown) => {
+    const apiError = err as ApiError
+    if (apiError.code === 'ERR_CANCELED') return
+    const errorData = apiError.response?.data
+    if (apiError.response?.status === 429) {
+      setError(t('visual_search_rate_limited', 'Слишком много запросов. Подождите минуту и попробуйте снова.'))
+    } else if (errorData?.error === 'invalid_image_url') {
+      setError(t('invalid_image_url', 'Не удалось обработать URL. Ссылка должна вести прямо на JPEG, PNG или WebP.'))
+    } else {
+      const msg = errorData?.error || apiError.message || t('search_error', 'Ошибка поиска')
+      setError(String(msg))
+    }
+    setResults([])
+  }
+
+  const cancelActiveSearch = () => {
+    activeRequest.current?.abort()
+    activeRequest.current = null
+    setSearching(false)
+  }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) {
+      cancelActiveSearch()
       setError(t('select_image', 'Выберите изображение'))
       return
     }
     if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      cancelActiveSearch()
       setError(t('unsupported_image_format', 'Поддерживаются только JPEG, PNG и WebP'))
       return
     }
     if (file.size > MAX_IMAGE_BYTES) {
+      cancelActiveSearch()
       setError(t('image_too_large', 'Размер изображения не должен превышать 5 МБ'))
       return
     }
-    setError(null)
-    setSearching(true)
-    setResults([])
+    const controller = beginSearch()
     try {
       if (UPLOAD_TEMP_ENABLED) {
         const formData = new FormData()
         formData.append('file', file)
-        const uploadRes = await api.post('/upload/temp/', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
+        // Let Axios/browser set the multipart boundary; a manual Content-Type
+        // can produce an unreadable upload on some browsers.
+        const uploadRes = await api.post('/upload/temp/', formData, { signal: controller.signal })
         const imageUrl = uploadRes.data?.url || uploadRes.data?.image_url
         if (!imageUrl) {
           setError(t('upload_failed', 'Не удалось загрузить изображение. Используйте URL.'))
           return
         }
-        await handleUrlSearch(imageUrl)
+        await requestVisualResults(imageUrl, controller)
       } else {
         setError(t('upload_unavailable', 'Загрузка файла недоступна. Вставьте URL изображения ниже.'))
       }
     } catch (err: unknown) {
-      const apiError = err as ApiError
-      const msg = apiError.response?.status === 429
-        ? t('visual_search_rate_limited', 'Слишком много запросов. Подождите минуту и попробуйте снова.')
-        : apiError.response?.data?.error
-          || apiError.message
-          || t('search_error', 'Ошибка поиска')
-      setError(String(msg))
-      setResults([])
+      showRequestError(err)
     } finally {
-      setSearching(false)
+      finishSearch(controller)
     }
   }
 
   const handleUrlSearch = async (url: string) => {
     if (!url.trim()) return
-    setError(null)
-    setSearching(true)
-    setResults([])
+    const controller = beginSearch()
     try {
-      const searchRes = await api.post('/recommendations/search_by_image/', {
-        image_url: url.trim(),
-        limit: 12,
-      })
-      const foundResults = searchRes.data.results || []
-      setResults(foundResults)
-      if (foundResults.length === 0) {
-        setError(t('products_not_found', 'Товары не найдены'))
-      }
+      await requestVisualResults(url, controller)
     } catch (err: unknown) {
-      const apiError = err as ApiError
-      const errorData = apiError.response?.data
-      if (apiError.response?.status === 429) {
-        setError(t('visual_search_rate_limited', 'Слишком много запросов. Подождите минуту и попробуйте снова.'))
-      } else if (errorData?.error === "invalid_image_url") {
-        setError(t('invalid_image_url', 'Не удалось обработать URL. Ссылка должна вести прямо на JPEG, PNG или WebP.'))
-      } else {
-        const msg = errorData?.error || apiError.message || t('search_error', 'Ошибка поиска')
-        setError(String(msg))
-      }
-      setResults([])
+      showRequestError(err)
     } finally {
-      setSearching(false)
+      finishSearch(controller)
     }
   }
 
