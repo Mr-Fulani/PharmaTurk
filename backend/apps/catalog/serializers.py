@@ -2112,7 +2112,10 @@ class ProductCardSerializer(ProductSerializer):
         if file_url:
             return file_url
         if obj.main_image:
-            return _resolve_media_url(obj.main_image, request)
+            resolved = _resolve_media_url(obj.main_image, request)
+            if resolved and request and resolved.startswith('/'):
+                return request.build_absolute_uri(resolved)
+            return resolved
 
         images = self.get_images(obj)
         main = next((image for image in images if image.get('is_main')), None)

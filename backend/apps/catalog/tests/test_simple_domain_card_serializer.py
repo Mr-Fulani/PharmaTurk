@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
@@ -147,6 +148,11 @@ def test_generic_product_queryset_prefetches_authors_through_book_domain():
     view.action = "list"
 
     queryset = view.get_queryset()
+    assert queryset._prefetch_related_lookups == ()
 
-    assert "book_item__book_authors__author" in queryset._prefetch_related_lookups
-    assert "book_authors__author" not in queryset._prefetch_related_lookups
+    with patch("apps.catalog.views.prefetch_related_objects") as prefetch:
+        view._prefetch_card_relations([SimpleNamespace(product_type="books")])
+
+    paths = set(prefetch.call_args.args[1:])
+    assert "book_item__book_authors__author" in paths
+    assert "book_authors__author" not in paths
