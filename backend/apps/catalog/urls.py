@@ -25,6 +25,7 @@ from .views import (
     HeadwearProductViewSet, UnderwearProductViewSet, IslamicClothingProductViewSet,
     proxy_image,
     proxy_media,
+    SitemapEntriesView,
     SitemapProductsView,
 )
 from .views_yml import YMLExportView
@@ -189,4 +190,6 @@ urlpatterns = [
     # Лёгкий эндпоинт для генерации sitemap.xml (slug + updated_at, без тяжёлой сериализации)
     path('sitemap-products', SitemapProductsView.as_view(), name='sitemap-products'),
     path('sitemap-products/', SitemapProductsView.as_view(), name='sitemap-products-slash'),
+    path('sitemap-entries', SitemapEntriesView.as_view(), name='sitemap-entries'),
+    path('sitemap-entries/', SitemapEntriesView.as_view(), name='sitemap-entries-slash'),
 ]

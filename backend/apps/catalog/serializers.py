@@ -2010,6 +2010,115 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         return None
 
 
+class ProductCardSerializer(ProductSerializer):
+    """Compact generic Product serializer used by ``view=card`` list requests."""
+
+    brand_id = serializers.IntegerField(read_only=True)
+    book_authors = serializers.SerializerMethodField()
+
+    class Meta(ProductSerializer.Meta):
+        fields = [
+            'id', 'name', 'slug', 'description', 'product_type',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
+            'main_image', 'main_image_url', 'images', 'video_url',
+            'main_video_url', 'main_gif_url', 'has_manual_main_image',
+            'is_available', 'is_featured', 'is_new', 'created_at', 'translations',
+            'rating', 'reviews_count', 'brand_id',
+            'isbn', 'publisher', 'publication_date', 'pages', 'language',
+            'book_authors', 'is_bestseller',
+        ]
+
+    def _card_price(self, obj, *, old=False):
+        request = self.context.get('request')
+        preferred = self._get_preferred_currency(request)
+        cache = self.context.setdefault('_product_card_prices', {})
+        cache_key = (obj.pk, preferred, old)
+        if cache_key not in cache:
+            amount = obj.old_price if old else obj.price
+            cache[cache_key] = _public_price(amount, obj.currency or 'RUB', request)
+        return cache[cache_key]
+
+    def get_price(self, obj):
+        return self._card_price(obj)[0]
+
+    def get_price_formatted(self, obj):
+        price, currency = self._card_price(obj)
+        return f"{price} {currency}" if price is not None else None
+
+    def get_currency(self, obj):
+        return self._card_price(obj)[1]
+
+    def get_old_price_formatted(self, obj):
+        price, currency = self._card_price(obj, old=True)
+        return f"{price} {currency}" if price is not None else None
+
+    def get_book_authors(self, obj):
+        book = getattr(obj, 'book_item', None)
+        if book is None:
+            return []
+        return ProductAuthorSerializer(
+            book.book_authors.all(),
+            many=True,
+            context=self.context,
+        ).data
+
+    def _localized_card_field(self, obj, field_name):
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', 'en') if request else 'en'
+        fallback = getattr(obj, field_name, '') or ''
+        if lang == 'ru':
+            return fallback
+
+        translations = list(obj.translations.all()) if hasattr(obj, 'translations') else []
+        for translation in translations:
+            if translation.locale == lang and getattr(translation, field_name, None):
+                return getattr(translation, field_name)
+
+        try:
+            domain = obj.domain_item
+        except Exception:
+            domain = None
+        if domain is not None and domain != obj and hasattr(domain, 'translations'):
+            for translation in domain.translations.all():
+                if translation.locale == lang and getattr(translation, field_name, None):
+                    return getattr(translation, field_name)
+        return fallback
+
+    def get_name(self, obj):
+        return self._localized_card_field(obj, 'name')
+
+    def get_description(self, obj):
+        return self._localized_card_field(obj, 'description')
+
+    def get_images(self, obj):
+        cache = self.context.setdefault('_product_card_images', {})
+        if obj.pk not in cache:
+            cache[obj.pk] = super().get_images(obj)
+        return cache[obj.pk]
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, 'main_image_file', None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+
+        images = self.get_images(obj)
+        main = next((image for image in images if image.get('is_main')), None)
+        selected = main or (images[0] if images else None)
+        return selected.get('image_url') if selected else None
+
+    def get_video_url(self, obj):
+        cache = self.context.setdefault('_product_card_videos', {})
+        if obj.pk not in cache:
+            cache[obj.pk] = super().get_video_url(obj)
+        return cache[obj.pk]
+
+    def get_main_video_url(self, obj):
+        return self.get_video_url(obj)
+
+
 class ProductDetailSerializer(ProductSerializer):
     """Сериализатор для товаров (детальная информация)."""
     
@@ -6115,7 +6224,10 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
             return _resolve_media_url(obj.main_image, request)
         # Не у всех доменных моделей есть gallery_images (Sports, AutoPart, Headwear...)
         gallery = getattr(obj, "gallery_images", None)
-        img = (gallery.filter(is_main=True).first() or gallery.first()) if gallery is not None else None
+        gallery_images = list(gallery.all()) if gallery is not None else []
+        img = next((item for item in gallery_images if item.is_main), None)
+        if img is None and gallery_images:
+            img = gallery_images[0]
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:
@@ -6130,7 +6242,10 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
                 return file_url
             if base.main_image:
                 return _resolve_media_url(base.main_image, request)
-            b_img = base.images.filter(is_main=True).first() or base.images.first()
+            base_images = list(base.images.all())
+            b_img = next((item for item in base_images if item.is_main), None)
+            if b_img is None and base_images:
+                b_img = base_images[0]
             if b_img:
                 file_url = _resolve_file_url(getattr(b_img, "image_file", None), request)
                 if file_url:
@@ -6247,6 +6362,107 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
 
     def get_og_image_url(self, obj):
         return self._resolve_localized_seo(obj, "og_image_url") or self.get_main_image_url(obj)
+
+
+class SimpleDomainCardSerializer(serializers.Serializer):
+    """Lean list serializer for simple domain product cards.
+
+    The regular domain serializers intentionally expose detail data: SEO fields,
+    medical instructions, dynamic attributes and nested category/brand payloads.
+    Category pages discard all of that after serialization when ``view=card`` is
+    requested.  Building the compact representation directly avoids that CPU work
+    and the relation queries behind it while keeping the public card contract.
+    """
+
+    @staticmethod
+    def _manager_rows(instance, relation_name):
+        manager = getattr(instance, relation_name, None)
+        if manager is None or not hasattr(manager, "all"):
+            return []
+        return list(manager.all())
+
+    def _serialize_images(self, instance):
+        request = self.context.get("request")
+        images = self._manager_rows(instance, "gallery_images")
+        if not images:
+            images = self._manager_rows(instance, "images")
+        if not images:
+            base_product = getattr(instance, "base_product", None)
+            if base_product is not None:
+                images = self._manager_rows(base_product, "images")
+
+        result = []
+        for image in images:
+            # A ProductImage row can represent a video. Card image payloads must
+            # not turn its URL into a broken <img> source.
+            if getattr(image, "video_url", None) or getattr(image, "video_file", None):
+                continue
+            image_url = _resolve_file_url(getattr(image, "image_file", None), request)
+            if not image_url:
+                image_url = _resolve_media_url(getattr(image, "image_url", None), request)
+            if not image_url:
+                continue
+            result.append({
+                "id": getattr(image, "pk", None),
+                "image_url": image_url,
+                "alt_text": getattr(image, "alt_text", "") or "",
+                "sort_order": getattr(image, "sort_order", 0) or 0,
+                "is_main": bool(getattr(image, "is_main", False)),
+            })
+        return result
+
+    @staticmethod
+    def _serialize_translations(instance):
+        translations = getattr(instance, "translations", None)
+        if translations is None or not hasattr(translations, "all"):
+            return []
+        return [
+            {
+                "locale": translation.locale,
+                "name": translation.name,
+                "description": getattr(translation, "description", "") or "",
+            }
+            for translation in translations.all()
+        ]
+
+    def to_representation(self, instance):
+        request = self.context.get("request")
+        source_currency = (getattr(instance, "currency", None) or "RUB").upper()
+        price, currency = _public_price(getattr(instance, "price", None), source_currency, request)
+        old_price, old_currency = _public_price(
+            getattr(instance, "old_price", None), source_currency, request
+        )
+
+        main_image = getattr(instance, "main_image", None)
+        data = {
+            "id": instance.pk,
+            "base_product_id": getattr(instance, "base_product_id", None),
+            "name": getattr(instance, "name", "") or "",
+            "slug": getattr(instance, "slug", "") or "",
+            "description": getattr(instance, "description", "") or "",
+            "product_type": _SimpleDomainMixin.get_product_type(self, instance),
+            "price": price,
+            "price_formatted": f"{price} {currency}" if price is not None else None,
+            # Preserve the existing list contract: old_price itself is the source
+            # amount, while old_price_formatted is converted to the public currency.
+            "old_price": getattr(instance, "old_price", None),
+            "old_price_formatted": (
+                f"{old_price} {old_currency}" if old_price is not None else None
+            ),
+            "currency": currency,
+            "main_image": str(main_image) if main_image else None,
+            "main_image_url": _SimpleDomainMixin.get_main_image_url(self, instance),
+            "images": self._serialize_images(instance),
+            "is_available": bool(getattr(instance, "is_available", False)),
+            "is_featured": bool(getattr(instance, "is_featured", False)),
+            "is_new": bool(getattr(instance, "is_new", False)),
+            "created_at": serializers.DateTimeField().to_representation(
+                getattr(instance, "created_at", None)
+            ),
+            "translations": self._serialize_translations(instance),
+            "brand_id": getattr(instance, "brand_id", None),
+        }
+        return _apply_product_markup_to_payload(data, instance)
 
 # ─── МЕДИКАМЕНТЫ ───
 

@@ -16,6 +16,15 @@ export interface SitemapUrl {
   alternates?: { lang: string; href: string }[]
 }
 
+function escapeXml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
 // Типы, для которых URL = /product/{slug} (без типа в пути).
 // Синхронизировать с backend TYPES_NEEDING_PATH и frontend needsTypeInPath.
 export const BASE_PRODUCT_TYPES = new Set([
@@ -108,13 +117,13 @@ export function generateSitemapXml(urls: SitemapUrl[]): string {
       const alternatesXml = (url.alternates || [])
         .map(
           (alt) =>
-            `    <xhtml:link rel="alternate" hreflang="${alt.lang}" href="${alt.href}"/>`
+            `    <xhtml:link rel="alternate" hreflang="${escapeXml(alt.lang)}" href="${escapeXml(alt.href)}"/>`
         )
         .join('\n')
 
       return `  <url>
-    <loc>${url.loc}</loc>
-    ${url.lastmod ? `<lastmod>${url.lastmod}</lastmod>` : ''}
+    <loc>${escapeXml(url.loc)}</loc>
+    ${url.lastmod ? `<lastmod>${escapeXml(url.lastmod)}</lastmod>` : ''}
     <changefreq>${url.changefreq || 'weekly'}</changefreq>
     <priority>${url.priority ?? 0.8}</priority>
 ${alternatesXml}
@@ -135,8 +144,8 @@ export function generateSitemapIndexXml(sections: string[], lastmod: string): st
   const items = sections
     .map(
       (name) => `  <sitemap>
-    <loc>${SITE_URL}/sitemaps/${name}.xml</loc>
-    <lastmod>${lastmod}</lastmod>
+    <loc>${escapeXml(`${SITE_URL}/sitemaps/${name}.xml`)}</loc>
+    <lastmod>${escapeXml(lastmod)}</lastmod>
   </sitemap>`
     )
     .join('\n')
@@ -150,7 +159,9 @@ ${items}
 export async function fetchAllPages(
   apiPath: string,
   params: Record<string, unknown>,
-  maxPages = 50
+  // One sitemap may contain up to 50,000 URLs. The compact endpoints cap a
+  // page at 500 rows, so 100 pages covers the complete standards-compliant file.
+  maxPages = 100
 ): Promise<any[]> {
   const results: any[] = []
   let page = 1

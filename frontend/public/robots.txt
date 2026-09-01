@@ -8,8 +8,8 @@ Disallow: /profile
 Disallow: /cart
 Disallow: /checkout
 Disallow: /auth
-Disallow: /_next/
+
+# CSS/JS в /_next/ должны быть доступны поисковым роботам для рендеринга страниц.
 
 # Sitemap
 Sitemap: https://mudaroba.com/sitemap.xml
-# last updated 2026-04-02 17:11

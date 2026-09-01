@@ -100,6 +100,7 @@ from .serializers import (
     CategorySerializer,
     BrandSerializer,
     ProductSerializer,
+    ProductCardSerializer,
     ProductDetailSerializer,
     BookGenreSerializer,
     PriceHistorySerializer,
@@ -129,6 +130,7 @@ from .serializers import (
     AutoPartProductDetailSerializer,
     ServiceSerializer,
     BannerSerializer,
+    SimpleDomainCardSerializer,
     serialize_product_for_card,
 )
 from .card_payload import compact_card_product_payload
@@ -902,6 +904,7 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="slug", type=str, required=False, description="Slug категории (или несколько через запятую)"),
             OpenApiParameter(name="category_slug", type=str, required=False, description="Алиас slug категории"),
             OpenApiParameter(name="include_children", type=bool, required=False, description="Добавлять ли дочерние при фильтре по slug (по умолчанию true)"),
+            OpenApiParameter(name="include_counts", type=bool, required=False, description="Считать товары и дочерние категории (по умолчанию true)"),
             OpenApiParameter(name="parent_slug", type=str, required=False, description="Вернуть только детей категории с указанным slug"),
             OpenApiParameter(name="parent_id", type=int, required=False, description="Вернуть только детей категории с указанным ID"),
         ],
@@ -921,6 +924,8 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         # Скрываем описание и счетчики ТОЛЬКО для главной страницы
         if self.request.query_params.get('main_page') == 'true':
             context['hide_description'] = True
+            context['hide_counts'] = True
+        if self._parse_bool(self.request.query_params.get('include_counts')) is False:
             context['hide_counts'] = True
         return context
 
@@ -1627,29 +1632,42 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
             if slugs:
                 all_ids = _get_category_ids_with_descendants(slugs)
-                cats = Category.objects.filter(slug__in=slugs, is_active=True).select_related('category_type')
-                type_values = set()
-                for c in cats:
-                    if c.category_type_id:
-                        ts = (c.category_type.slug or '').lower().replace('-', '_')
-                        if ts:
-                            type_values.add(ts)
-                for s in slugs:
-                    type_values.add(s.lower().replace('-', '_'))
-                if all_ids or type_values:
-                    from django.db.models import Q
-                    q = Q()
-                    if all_ids:
-                        q |= Q(category_id__in=all_ids)
-                    
-                    # Если категория не найдена по слагам, но слаг совпадает с типом товара (напр. 'headwear')
-                    # ищем товары этого типа без жесткой привязки к дереву категорий
-                    for s in slugs:
-                        pt = s.lower().replace('-', '_')
-                        q |= Q(product_type=pt)
-                        
-                    if q:
-                        queryset = queryset.filter(q)
+                matched_categories = list(
+                    Category.objects.filter(slug__in=slugs, is_active=True)
+                    .select_related('category_type')
+                    .only('id', 'slug', 'parent_id', 'category_type__slug')
+                )
+
+                if all_ids:
+                    # Для корня сохраняем legacy-товары, ещё не привязанные к
+                    # категории. Для подкатегории такой fallback неверен: он размывал
+                    # фильтр до всего product_type и удорожал COUNT.
+                    root_type_values = set()
+                    for category in matched_categories:
+                        if category.parent_id is not None:
+                            continue
+                        category_type_slug = (
+                            category.category_type.slug if category.category_type_id else category.slug
+                        )
+                        normalized_type = (category_type_slug or '').lower().replace('-', '_')
+                        if normalized_type:
+                            root_type_values.add(normalized_type)
+
+                    category_scope = Q(category_id__in=all_ids)
+                    if root_type_values:
+                        category_scope |= Q(
+                            category_id__isnull=True,
+                            product_type__in=root_type_values,
+                        )
+                    queryset = queryset.filter(category_scope)
+                else:
+                    # Legacy API clients may address a product type directly even when
+                    # no Category row exists. Keep that fallback, but only for this case.
+                    type_values = {
+                        slug.lower().replace('-', '_')
+                        for slug in slugs
+                    }
+                    queryset = queryset.filter(product_type__in=type_values)
         
         # Фильтр по бренду (поддержка массивов)
         queryset = _apply_brand_filter(queryset, self.request)
@@ -1722,8 +1740,10 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
 
         queryset = self._apply_facet_filters(queryset)
         # Prefetch для main_image_url и images (medicine, supplement, books, clothing и др.)
-        queryset = queryset.prefetch_related(
+        queryset = queryset.select_related('category', 'brand', 'book_item').prefetch_related(
+            'translations',
             'images',
+            'book_item__book_authors__author',
             'medicine_item__gallery_images',
             'supplement_item__gallery_images',
             'medical_equipment_item__gallery_images',
@@ -1746,6 +1766,9 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         """Выбираем сериализатор в зависимости от действия."""
         if self.action == 'retrieve':
             return ProductDetailSerializer
+        request = getattr(self, 'request', None)
+        if request is not None and request.query_params.get('view') == 'card':
+            return ProductCardSerializer
         return ProductSerializer
     
     @extend_schema(
@@ -4396,6 +4419,7 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
     pagination_class = StandardPagination
     lookup_field = 'slug'
+    card_serializer_class = None
 
     _ORDERING_MAP = {
         'name_asc': 'name',
@@ -4410,8 +4434,65 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         return self._ORDERING_MAP.get(ordering, ordering)
 
 
+    def _card_requested(self):
+        request = getattr(self, 'request', None)
+        return bool(
+            self.card_serializer_class is not None
+            and request is not None
+            and request.query_params.get('view') == 'card'
+            and getattr(self, 'action', 'list') == 'list'
+        )
+
+    @staticmethod
+    def _has_relation_path(model, path):
+        current_model = model
+        for segment in path.split('__'):
+            try:
+                field = current_model._meta.get_field(segment)
+            except FieldDoesNotExist:
+                return False
+            if not field.is_relation or field.related_model is None:
+                return False
+            current_model = field.related_model
+        return True
+
     def _base_queryset(self):
-        return self.queryset.all()
+        queryset = self.queryset.all()
+        if not self._card_requested():
+            return queryset
+
+        # Class-level querysets for detail endpoints can carry broad prefetches.
+        # Reset them for card lists, then hydrate only relations consumed by the
+        # compact serializer. This also prevents one query per translation/image.
+        queryset = queryset.prefetch_related(None)
+        relation_names = {field.name for field in queryset.model._meta.get_fields()}
+        select_related = [
+            relation for relation in ('category', 'brand', 'base_product')
+            if relation in relation_names
+        ]
+        if select_related:
+            queryset = queryset.select_related(*select_related)
+
+        prefetch_candidates = (
+            'translations',
+            'gallery_images',
+            'images',
+            'base_product__images',
+        )
+        prefetches = [
+            path for path in prefetch_candidates
+            if self._has_relation_path(queryset.model, path)
+        ]
+        if prefetches:
+            queryset = queryset.prefetch_related(*prefetches)
+        if 'external_data' in relation_names:
+            queryset = queryset.defer('external_data')
+        return queryset
+
+    def get_serializer_class(self):
+        if self._card_requested():
+            return self.card_serializer_class
+        return super().get_serializer_class()
 
     def _apply_domain_filters(self, queryset):
         """Переопределить в подклассе для доменных фильтров."""
@@ -4437,11 +4518,19 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             if slugs:
                 cat_ids = _get_category_ids_with_descendants(slugs)
                 if cat_ids:
-                    # Включаем товары с category_id в потомках И товары без категории
-                    # (они принадлежат домену, но ещё не привязаны к подкатегории)
-                    queryset = queryset.filter(
-                        models.Q(category_id__in=cat_ids) | models.Q(category_id__isnull=True)
+                    matched_categories = list(
+                        Category.objects.filter(slug__in=slugs, is_active=True)
+                        .only('id', 'parent_id')
                     )
+                    category_scope = models.Q(category_id__in=cat_ids)
+                    # Непривязанные legacy-товары видны только в корне домена.
+                    # На подкатегории они не имеют однозначной принадлежности.
+                    if any(category.parent_id is None for category in matched_categories):
+                        category_scope |= models.Q(category_id__isnull=True)
+                    queryset = queryset.filter(category_scope)
+                else:
+                    # Явный неизвестный slug не должен возвращать весь доменный каталог.
+                    queryset = queryset.none()
 
         # Фильтр по бренду
         queryset = _apply_brand_filter(queryset, self.request)
@@ -4473,17 +4562,24 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
     """API для работы с медикаментами."""
     queryset = MedicineProduct.objects.filter(is_active=True)
     serializer_class = MedicineProductSerializer
+    card_serializer_class = SimpleDomainCardSerializer
 
     def _base_queryset(self):
         # defer('external_data'): дампы парсеров в jsonb весят мегабайты на строку,
         # сериализатор поле не использует — без defer выборка 12 строк шла ~0.8с.
+        queryset = super()._base_queryset()
+        if self._card_requested():
+            return queryset.exclude(
+                models.Q(external_data__has_key='is_stub') &
+                models.Q(external_data__is_stub=True)
+            )
         return (
-            super()
-            ._base_queryset()
+            queryset
             .select_related('category', 'brand', 'base_product')
             .prefetch_related(
                 'translations', 'gallery_images', 'dynamic_attributes__attribute_key',
-                'category__translations', 'brand__translations', 'base_product__translations',
+                'category__translations', 'brand__translations',
+                'base_product__translations', 'base_product__images',
             )
             .defer('external_data')
             .exclude(
@@ -4900,6 +4996,7 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
         .prefetch_related("base_product__source_offers")
     )
     serializer_class = SupplementProductSerializer
+    card_serializer_class = SimpleDomainCardSerializer
 
     def _apply_domain_filters(self, queryset):
         dosage_form = self.request.query_params.get('dosage_form')
@@ -4996,6 +5093,7 @@ class MedicalEquipmentProductViewSet(_SimpleDomainViewSet):
     """API для работы с медтехникой."""
     queryset = MedicalEquipmentProduct.objects.filter(is_active=True)
     serializer_class = MedicalEquipmentProductSerializer
+    card_serializer_class = SimpleDomainCardSerializer
 
     def _apply_domain_filters(self, queryset):
         equipment_type = self.request.query_params.get('equipment_type')
@@ -5028,6 +5126,7 @@ class TablewareProductViewSet(_SimpleDomainViewSet):
     """API для работы с посудой."""
     queryset = TablewareProduct.objects.filter(is_active=True)
     serializer_class = TablewareProductSerializer
+    card_serializer_class = SimpleDomainCardSerializer
 
     def _apply_domain_filters(self, queryset):
         material = self.request.query_params.get('material')
@@ -5060,6 +5159,7 @@ class AccessoryProductViewSet(_SimpleDomainViewSet):
     """API для работы с аксессуарами."""
     queryset = AccessoryProduct.objects.filter(is_active=True)
     serializer_class = AccessoryProductSerializer
+    card_serializer_class = SimpleDomainCardSerializer
 
     def _apply_domain_filters(self, queryset):
         accessory_type = self.request.query_params.get('accessory_type')
@@ -5096,6 +5196,7 @@ class IncenseProductViewSet(_SimpleDomainViewSet):
     """API для работы с благовониями."""
     queryset = IncenseProduct.objects.filter(is_active=True)
     serializer_class = IncenseProductSerializer
+    card_serializer_class = SimpleDomainCardSerializer
 
     def _apply_domain_filters(self, queryset):
         scent_type = self.request.query_params.get('scent_type')
@@ -5380,7 +5481,20 @@ class SitemapProductsView(_APIView):
             product_type = 'uslugi'
         elif domain in _SITEMAP_DOMAIN_MAP:
             model_cls, product_type = _SITEMAP_DOMAIN_MAP[domain]
-            qs = model_cls.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            qs = model_cls.objects.filter(is_active=True)
+            field_names = {field.name for field in model_cls._meta.get_fields()}
+            if 'external_data' in field_names:
+                qs = qs.exclude(
+                    models.Q(external_data__has_key='source_variant_id') |
+                    models.Q(external_data__has_key='source_variant_slug') |
+                    (
+                        models.Q(external_data__has_key='is_stub') &
+                        models.Q(external_data__is_stub=True)
+                    )
+                )
+            if 'base_product' in field_names:
+                qs = qs.exclude(non_public_shadow_product_q('base_product__'))
+            qs = qs.values('slug', 'updated_at').order_by('id')
         elif domain == 'headwear':
             from .models import HeadwearProduct
             qs = HeadwearProduct.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
@@ -5396,6 +5510,8 @@ class SitemapProductsView(_APIView):
         else:
             return Response({'error': f'Unknown domain: {domain}'}, status=400)
 
+        qs = qs.exclude(slug__isnull=True).exclude(slug='')
+
         total = qs.count()
         offset = (page - 1) * page_size
         items = list(qs[offset:offset + page_size])
@@ -5406,5 +5522,103 @@ class SitemapProductsView(_APIView):
                 'updated_at': item['updated_at'].isoformat() if item['updated_at'] else None,
             }
             for item in items
+        ]
+        return Response({'count': total, 'results': results})
+
+
+class SitemapEntrySerializer(serializers.Serializer):
+    slug = serializers.CharField()
+    updated_at = serializers.DateTimeField(allow_null=True)
+
+
+class SitemapEntriesResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    results = SitemapEntrySerializer(many=True)
+
+
+class SitemapEntriesView(_APIView):
+    """Compact category/brand/service rows used only by sectional sitemaps."""
+
+    permission_classes = [_AllowAny]
+    _MODEL_MAP = {
+        'categories': Category,
+        'brands': Brand,
+        'services': Service,
+    }
+
+    @staticmethod
+    def _redirecting_category_ids():
+        """Category routes that redirect into a root catalogue filter.
+
+        Shoe and furniture descendants are represented by query filters on their
+        root pages. Putting their redirecting aliases into sitemap.xml wastes crawl
+        budget and conflicts with the clean canonical URL.
+        """
+        rows = list(
+            Category.objects.filter(is_active=True).values(
+                'id', 'parent_id', 'slug', 'category_type__slug'
+            )
+        )
+        by_id = {row['id']: row for row in rows}
+        redirected = set()
+        for row in rows:
+            route_slug = str(row['slug'] or '').replace('_', '-').lower()
+            if route_slug in {'shoes', 'furniture'}:
+                continue
+            current = row
+            seen = set()
+            while current and current['id'] not in seen:
+                seen.add(current['id'])
+                current_slug = str(current['slug'] or '').replace('_', '-').lower()
+                type_slug = str(current['category_type__slug'] or '').replace('_', '-').lower()
+                if current_slug in {'shoes', 'furniture'} or type_slug in {'shoes', 'furniture'}:
+                    redirected.add(row['id'])
+                    break
+                current = by_id.get(current['parent_id'])
+        return redirected
+
+    @extend_schema(
+        summary="Получить справочные записи для sitemap.xml",
+        parameters=[
+            OpenApiParameter(name="kind", type=str, required=True),
+            OpenApiParameter(name="page", type=int, required=False, default=1),
+            OpenApiParameter(name="page_size", type=int, required=False, default=500),
+        ],
+        responses={
+            200: SitemapEntriesResponseSerializer,
+            400: SitemapErrorSerializer,
+        },
+    )
+    def get(self, request):
+        kind = request.query_params.get('kind', '').strip()
+        model_cls = self._MODEL_MAP.get(kind)
+        if model_cls is None:
+            return Response({'error': f'Unknown sitemap entry kind: {kind}'}, status=400)
+
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+            page_size = min(500, max(1, int(request.query_params.get('page_size', 500))))
+        except (ValueError, TypeError):
+            page = 1
+            page_size = 500
+
+        qs = model_cls.objects.filter(is_active=True)
+        if kind == 'categories':
+            qs = qs.exclude(id__in=self._redirecting_category_ids())
+        qs = (
+            qs
+            .exclude(slug__isnull=True)
+            .exclude(slug='')
+            .values('slug', 'updated_at')
+            .order_by('id')
+        )
+        total = qs.count()
+        offset = (page - 1) * page_size
+        results = [
+            {
+                'slug': item['slug'],
+                'updated_at': item['updated_at'].isoformat() if item['updated_at'] else None,
+            }
+            for item in qs[offset:offset + page_size]
         ]
         return Response({'count': total, 'results': results})
