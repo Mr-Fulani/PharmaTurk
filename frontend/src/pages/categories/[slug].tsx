@@ -2231,7 +2231,15 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let brands: any[] = brandSlug && !brandId ? await brandsPromise : []
 
     // --- Товары: доменный endpoint для известных типов, общий — для остальных ---
-    const productParams: any = { page: requestedPage, page_size: pageSize, view: 'card' }
+    // Match the filter UI's default order during SSR. Otherwise hydration
+    // immediately refetches name_asc and visibly replaces the newest-first
+    // server list with a different page of products.
+    const productParams: any = {
+      page: requestedPage,
+      page_size: pageSize,
+      view: 'card',
+      ordering: 'name_asc',
+    }
     if (routeSlug) {
       // Для книг используем product_type чтобы показать все книги из всех жанров
       if (categoryType === 'books') {
