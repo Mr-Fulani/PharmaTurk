@@ -28,6 +28,7 @@ import {
   pickPreferredVideoUrl,
   replaceFailedVideoWithFallback,
   resolveMediaUrl,
+  withListingImageMaxWidth,
 } from '../../lib/media'
 import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { buildFavoriteProductHref } from '../../lib/favoriteLinks'
@@ -1618,7 +1619,7 @@ export default function ProductPage({
             <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-22rem)]">
               {/* --- МOБИЛЬНАЯ КАРУСЕЛЬ (Скрыта на десктопе) --- */}
               <div className="flex md:hidden overflow-x-auto snap-x snap-mandatory gap-4 pb-2 -mx-6 px-6 hide-scrollbar flex-shrink-0">
-                {gallerySource.length > 0 ? gallerySource.map((img) => {
+                {gallerySource.length > 0 ? gallerySource.map((img, imageIndex) => {
                   const isVideoItem = (img as GalleryItem).isVideo === true
                   const resolvedUrl = resolveMediaUrl(img.image_url)
                   const thumbKey = `mobile-${String(img.id)}`
@@ -1653,7 +1654,7 @@ export default function ProductPage({
                               controls
                               playsInline
                               muted
-                              preload="metadata"
+                              preload={imageIndex === 0 ? 'metadata' : 'none'}
                               className="w-full h-full object-contain"
                               onError={(event) => replaceFailedVideoWithFallback(
                                 event.currentTarget,
@@ -1667,6 +1668,9 @@ export default function ProductPage({
                         <img
                           src={resolvedUrl || getPlaceholderImageUrl({ type: 'product', id: product.id })}
                           alt={img.alt_text || displayProductName || product.name}
+                          loading={imageIndex === 0 ? 'eager' : 'lazy'}
+                          fetchPriority={imageIndex === 0 ? 'high' : 'low'}
+                          decoding="async"
                           className="w-full h-full object-contain"
                           onError={(event) => applyImageFallback(event.currentTarget)}
                         />
@@ -1725,6 +1729,9 @@ export default function ProductPage({
                     const placeholderSmall = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 200, height: 200 })
                     const placeholderLarge = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 800, height: 800 })
                     const effectiveThumbUrl = thumbPlaceholderByKey[thumbKey] || resolvedThumbnail || placeholderLarge
+                    const thumbnailSrc = thumbPlaceholderByKey[thumbKey]
+                      || withListingImageMaxWidth(resolvedThumbnail, 224)
+                      || placeholderSmall
                     const isVideoItem = (img as GalleryItem).isVideo === true
                     const isActive =
                       isVideoItem
@@ -1768,7 +1775,7 @@ export default function ProductPage({
                                 src={resolveMediaUrl(img.video_url)}
                                 muted
                                 playsInline
-                                preload="metadata"
+                                preload="none"
                                 className="w-full h-full object-cover object-[center_60%] pointer-events-none"
                                 aria-label={img.alt_text || displayProductName || product.name}
                                 onError={(event) => replaceFailedVideoWithFallback(
@@ -1781,8 +1788,12 @@ export default function ProductPage({
                         ) : (
                           /* eslint-disable-next-line @next/next/no-img-element */
                           <img
-                            src={resolvedThumbnail || placeholderSmall}
+                            src={thumbnailSrc}
                             alt={img.alt_text || displayProductName || product.name}
+                            loading="lazy"
+                            decoding="async"
+                            width={112}
+                            height={112}
                             className="w-full h-full object-cover object-[center_60%] pointer-events-none"
                             onError={(e) => {
                               setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
@@ -1846,6 +1857,8 @@ export default function ProductPage({
                     <img
                       src={activeImage}
                       alt={displayProductName || product.name}
+                      loading="eager"
+                      fetchPriority="high"
                       className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
                       decoding="async"
                       onLoad={() => setMainImageLoading(false)}
