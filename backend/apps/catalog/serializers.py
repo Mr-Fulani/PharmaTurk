@@ -2014,6 +2014,7 @@ class ProductCardSerializer(ProductSerializer):
     """Compact generic Product serializer used by ``view=card`` list requests."""
 
     brand_id = serializers.IntegerField(read_only=True)
+    book_authors = serializers.SerializerMethodField()
 
     class Meta(ProductSerializer.Meta):
         fields = [
@@ -2050,6 +2051,16 @@ class ProductCardSerializer(ProductSerializer):
     def get_old_price_formatted(self, obj):
         price, currency = self._card_price(obj, old=True)
         return f"{price} {currency}" if price is not None else None
+
+    def get_book_authors(self, obj):
+        book = getattr(obj, 'book_item', None)
+        if book is None:
+            return []
+        return ProductAuthorSerializer(
+            book.book_authors.all(),
+            many=True,
+            context=self.context,
+        ).data
 
     def _localized_card_field(self, obj, field_name):
         request = self.context.get('request')

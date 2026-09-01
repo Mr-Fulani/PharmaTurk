@@ -1740,10 +1740,10 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
 
         queryset = self._apply_facet_filters(queryset)
         # Prefetch для main_image_url и images (medicine, supplement, books, clothing и др.)
-        queryset = queryset.select_related('category', 'brand').prefetch_related(
+        queryset = queryset.select_related('category', 'brand', 'book_item').prefetch_related(
             'translations',
             'images',
-            'book_authors__author',
+            'book_item__book_authors__author',
             'medicine_item__gallery_images',
             'supplement_item__gallery_images',
             'medical_equipment_item__gallery_images',

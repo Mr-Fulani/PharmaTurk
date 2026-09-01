@@ -139,3 +139,14 @@ def test_generic_product_view_uses_card_serializer_only_when_requested():
 
     view.request = Request(APIRequestFactory().get("/"))
     assert view.get_serializer_class() is ProductSerializer
+
+
+def test_generic_product_queryset_prefetches_authors_through_book_domain():
+    view = ProductViewSet()
+    view.request = Request(APIRequestFactory().get("/", {"view": "card"}))
+    view.action = "list"
+
+    queryset = view.get_queryset()
+
+    assert "book_item__book_authors__author" in queryset._prefetch_related_lookups
+    assert "book_authors__author" not in queryset._prefetch_related_lookups

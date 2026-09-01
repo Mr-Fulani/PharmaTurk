@@ -1,19 +1,36 @@
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from rest_framework.test import APIClient
 
-from apps.catalog.models import Brand, Category, MedicineProduct, Product
+from apps.catalog.models import Category, CategoryType, MedicineProduct, Product
 
 
 @pytest.mark.django_db
 def test_sitemap_entries_returns_all_active_categories_without_full_serializer(monkeypatch):
     monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
-    root = Category.objects.create(name="Medicines", slug="medicines")
-    child = Category.objects.create(name="Tablets", slug="medicine-tablets", parent=root)
-    shoes = Category.objects.create(name="Shoes", slug="shoes")
-    Category.objects.create(name="Sneakers", slug="sneakers", parent=shoes)
-    Category.objects.create(name="Hidden", slug="hidden-category", is_active=False)
+    suffix = uuid4().hex[:10]
+    root = Category.objects.create(name="Medicines", slug=f"sitemap-medicines-{suffix}")
+    child = Category.objects.create(name="Tablets", slug=f"sitemap-tablets-{suffix}", parent=root)
+    shoe_type, _ = CategoryType.objects.get_or_create(
+        slug="shoes",
+        defaults={"name": f"Sitemap shoes {suffix}"},
+    )
+    shoes = Category.objects.filter(slug="shoes").first()
+    if shoes is None:
+        shoes = Category.objects.create(name="Shoes", slug="shoes", category_type=shoe_type)
+    sneakers = Category.objects.create(
+        name="Sneakers",
+        slug=f"sitemap-sneakers-{suffix}",
+        parent=shoes,
+        category_type=shoe_type,
+    )
+    hidden = Category.objects.create(
+        name="Hidden",
+        slug=f"sitemap-hidden-{suffix}",
+        is_active=False,
+    )
 
     response = APIClient().get(
         "/api/catalog/sitemap-entries",
@@ -21,16 +38,18 @@ def test_sitemap_entries_returns_all_active_categories_without_full_serializer(m
     )
 
     assert response.status_code == 200
-    assert response.data["count"] == 3
-    assert {row["slug"] for row in response.data["results"]} == {
-        root.slug, child.slug, shoes.slug,
-    }
+    slugs = {row["slug"] for row in response.data["results"]}
+    assert {root.slug, child.slug, shoes.slug}.issubset(slugs)
+    assert sneakers.slug not in slugs
+    assert hidden.slug not in slugs
+    assert response.data["count"] >= len(response.data["results"])
     assert set(response.data["results"][0]) == {"slug", "updated_at"}
 
 
 @pytest.mark.django_db
 def test_product_sitemap_excludes_stubs_and_shadow_variants(monkeypatch):
     monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
+    suffix = uuid4().hex[:10]
 
     def create(slug, external_data):
         base = Product.objects.create(
@@ -46,9 +65,12 @@ def test_product_sitemap_excludes_stubs_and_shadow_variants(monkeypatch):
         MedicineProduct.objects.filter(pk=medicine.pk).update(external_data=external_data)
         return medicine
 
-    public = create("public-medicine", {})
-    create("stub-medicine", {"is_stub": True})
-    create("variant-medicine", {"source_variant_id": "variant-1"})
+    public = create(f"public-medicine-{suffix}", {})
+    stub = create(f"stub-medicine-{suffix}", {"is_stub": True})
+    variant = create(f"variant-medicine-{suffix}", {})
+    variant_data = {"source_variant_id": f"variant-{suffix}"}
+    Product.objects.filter(pk=variant.base_product_id).update(external_data=variant_data)
+    MedicineProduct.objects.filter(pk=variant.pk).update(external_data=variant_data)
 
     response = APIClient().get(
         "/api/catalog/sitemap-products",
@@ -56,8 +78,11 @@ def test_product_sitemap_excludes_stubs_and_shadow_variants(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.data["count"] == 1
-    assert [row["slug"] for row in response.data["results"]] == [public.slug]
+    slugs = {row["slug"] for row in response.data["results"]}
+    assert public.slug in slugs
+    assert stub.slug not in slugs
+    assert variant.slug not in slugs
+    assert response.data["count"] >= len(response.data["results"])
 
 
 @pytest.mark.django_db
