@@ -68,12 +68,15 @@ smoke_compose up -d --no-build backend frontend nginx
 
 LIVE_URL="http://127.0.0.1:${SMOKE_PORT_VALUE}/api/live/"
 HEALTH_URL="http://127.0.0.1:${SMOKE_PORT_VALUE}/api/health/"
+ROOT_URL="http://127.0.0.1:${SMOKE_PORT_VALUE}/"
 CURL_HEADERS=(-H "Host: mudaroba.com" -H "X-Forwarded-Proto: https")
 
 ready=0
 for _ in $(seq 1 60); do
   if curl --silent --fail --connect-timeout 2 --max-time 5 \
-      "${CURL_HEADERS[@]}" "$HEALTH_URL" >/dev/null; then
+      "${CURL_HEADERS[@]}" "$HEALTH_URL" >/dev/null && \
+    curl --silent --fail --connect-timeout 2 --max-time 5 \
+      "${CURL_HEADERS[@]}" "$ROOT_URL" >/dev/null; then
     ready=1
     break
   fi
@@ -94,7 +97,7 @@ curl --silent --show-error --fail --connect-timeout 5 --max-time 15 \
 headers_file="$(mktemp)"
 curl --silent --show-error --fail --connect-timeout 5 --max-time 15 \
   -D "$headers_file" -o /dev/null "${CURL_HEADERS[@]}" \
-  "http://127.0.0.1:${SMOKE_PORT_VALUE}/"
+  "$ROOT_URL"
 grep -qi '^Strict-Transport-Security: max-age=31536000; includeSubDomains' "$headers_file" || \
   release_die "HSTS header is missing on simulated HTTPS ingress"
 if grep -qi '^X-Powered-By:' "$headers_file"; then
