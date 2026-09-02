@@ -256,6 +256,52 @@ def test_invalid_market_price_is_not_persisted(medicine, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_unpublished_zero_market_price_is_reported_without_persistence(medicine, monkeypatch):
+    check = ProductMarketCheck.objects.create(
+        product=medicine.base_product,
+        source="ilacfiyati",
+        source_url=medicine.external_url,
+        status=ProductMarketCheck.Status.PENDING,
+        requested_at=timezone.now(),
+    )
+    scraped = ScrapedProduct(
+        name=medicine.name,
+        price=None,
+        currency="TRY",
+        url=medicine.external_url,
+        source="ilacfiyati",
+    )
+    scraped.price_unpublished = True
+    service = MedicineMarketCheckService()
+    monkeypatch.setattr(service, "resolve_source", lambda item: _trusted_source(item))
+    monkeypatch.setattr(service, "_parse_snapshot", lambda source: scraped)
+
+    service.run(check.pk)
+
+    medicine.refresh_from_db()
+    check.refresh_from_db()
+    assert medicine.price == Decimal("100.00")
+    assert PriceHistory.objects.filter(product=medicine.base_product).count() == 0
+    assert check.status == ProductMarketCheck.Status.FAILED
+    assert check.error_code == "price_unpublished"
+    assert check.error_message == (
+        "Первоисточник указывает цену 0,00 — актуальная цена для этого препарата не опубликована."
+    )
+    payload = service.serialize(medicine, check)
+    assert payload["error"] == {
+        "code": "price_unpublished",
+        "message": check.error_message,
+    }
+
+
+def test_decimal_zero_price_is_classified_as_unpublished():
+    with pytest.raises(MedicineMarketCheckError) as error:
+        MedicineMarketCheckService._decimal_price(Decimal("0.00"))
+
+    assert error.value.code == "price_unpublished"
+
+
+@pytest.mark.django_db
 def test_source_resolution_rejects_non_medical_or_untrusted_urls(medicine):
     medicine.external_url = "https://evil.example/ilaclar/lasirin"
     medicine.base_product.external_url = "https://ilacfiyati.com/takviye-edici-gida/vitamin-c"

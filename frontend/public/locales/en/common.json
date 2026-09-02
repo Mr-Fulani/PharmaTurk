@@ -1303,6 +1303,7 @@
   "medicine_market_check_succeeded": "Price checked",
   "medicine_market_check_unavailable": "The source is temporarily unavailable",
   "medicine_market_check_failed": "The current price could not be confirmed",
+  "medicine_market_price_unpublished": "The original source shows a price of 0.00, so no current price has been published for this medicine.",
   "medicine_market_check_timeout": "The check is taking longer than usual. Try again later.",
   "medicine_market_check_read_error": "The check result could not be loaded. Try again later.",
   "medicine_market_check_start_error": "The price check could not be started. Try again later.",

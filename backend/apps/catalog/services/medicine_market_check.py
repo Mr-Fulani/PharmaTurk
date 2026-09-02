@@ -45,6 +45,9 @@ ACTIVE_STATUSES = {
     ProductMarketCheck.Status.PENDING,
     ProductMarketCheck.Status.RUNNING,
 }
+PRICE_UNPUBLISHED_MESSAGE = (
+    "Первоисточник указывает цену 0,00 — актуальная цена для этого препарата не опубликована."
+)
 
 try:
     from prometheus_client import Counter, Histogram
@@ -458,10 +461,16 @@ class MedicineMarketCheckService:
                 "Источник не вернул корректную актуальную цену.",
                 http_status=422,
             )
-        if not price.is_finite() or price <= 0 or price > Decimal("999999999999.99"):
+        if not price.is_finite() or price < 0 or price > Decimal("999999999999.99"):
             raise MedicineMarketCheckError(
                 "price_invalid",
                 "Источник вернул некорректную актуальную цену.",
+                http_status=422,
+            )
+        if price == 0:
+            raise MedicineMarketCheckError(
+                "price_unpublished",
+                PRICE_UNPUBLISHED_MESSAGE,
                 http_status=422,
             )
         return price
@@ -549,6 +558,12 @@ class MedicineMarketCheckService:
                     )
                 scraped = self._parse_snapshot(source)
 
+            if getattr(scraped, "price_unpublished", False):
+                raise MedicineMarketCheckError(
+                    "price_unpublished",
+                    PRICE_UNPUBLISHED_MESSAGE,
+                    http_status=422,
+                )
             price = self._decimal_price(getattr(scraped, "price", None))
             currency = str(getattr(scraped, "currency", "") or "").strip().upper()
             if currency not in ILACFIYATI_PRICE_CURRENCIES:

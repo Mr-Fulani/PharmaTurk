@@ -496,17 +496,27 @@ class IlacFiyatiParser(BaseScraper):
             # 2. Цена
             price = None
             price_currency = "TRY"
+            price_unpublished = False
             for row in soup.find_all('tr'):
                 cols = row.find_all(['th', 'td'])
                 if len(cols) == 2:
                     key_raw = self._normalize_tr_key(clean_text(cols[0].text))
                     if 'FIYAT' in key_raw and 'KAMU' not in key_raw:
                         price_text = clean_text(cols[1].text)
-                        price = normalize_price(price_text)
-                        if price:
+                        parsed_price = normalize_price(price_text)
+                        if parsed_price is not None:
                             price_currency = self._extract_price_currency(price_text)
+                        if parsed_price == 0:
+                            # IlacFiyati uses 0,00 when a current public price has
+                            # not been published. Preserve that distinction for
+                            # on-demand checks without projecting zero into the
+                            # product catalogue as a real price.
+                            price_unpublished = True
                             break
-            if not price:
+                        if parsed_price is not None and parsed_price > 0:
+                            price = parsed_price
+                            break
+            if price is None and not price_unpublished:
                 currency_markers = ('\u20BA', ' TL', ' TRY', '\u20AC', ' EUR', '$', ' USD')
                 price_tags = soup.find_all(
                     string=lambda x: x
@@ -515,8 +525,9 @@ class IlacFiyatiParser(BaseScraper):
                 for text_node in price_tags:
                     text_clean = text_node.strip()
                     if any(char.isdigit() for char in text_clean):
-                        price = normalize_price(text_clean)
-                        if price:
+                        parsed_price = normalize_price(text_clean)
+                        if parsed_price is not None and parsed_price > 0:
+                            price = parsed_price
                             price_currency = self._extract_price_currency(text_clean)
                             break
             
@@ -766,6 +777,7 @@ class IlacFiyatiParser(BaseScraper):
             # Диагностика нужна интеграционному сервису для счётчиков запуска,
             # но не должна попадать в атрибуты/БД самого препарата.
             product.analog_fetch_errors = analog_fetch_errors
+            product.price_unpublished = price_unpublished
             return product
 
         except SoftTimeLimitExceeded:

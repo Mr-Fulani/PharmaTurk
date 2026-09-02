@@ -186,7 +186,12 @@ export default function MedicinePriceCheck({ slug, onPriceUpdated }: Props) {
 
       {!errorMessage && result?.status === 'failed' && (
         <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
-          {t('medicine_market_check_failed', 'Не удалось подтвердить актуальную цену. Попробуйте позже.')}
+          {result.error?.code === 'price_unpublished'
+            ? t(
+                'medicine_market_price_unpublished',
+                'Первоисточник указывает цену 0,00 — актуальная цена для этого препарата не опубликована.',
+              )
+            : t('medicine_market_check_failed', 'Не удалось подтвердить актуальную цену. Попробуйте позже.')}
         </p>
       )}
 
