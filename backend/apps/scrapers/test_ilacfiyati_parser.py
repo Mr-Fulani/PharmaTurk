@@ -134,6 +134,27 @@ def test_ilacfiyati_parser_preserves_eur_price_from_turkish_dotted_label(monkeyp
     assert product.currency == "EUR"
 
 
+def test_ilacfiyati_parser_marks_zero_source_price_as_unpublished(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    product_url = "https://ilacfiyati.com/ilaclar/ponatinix-15-tablet"
+    html = """
+        <html><body><h1>PONATINIX 15 TABLET</h1>
+        <table><tr><td>İLAÇ FİYATI</td><td>0,00 TL</td></tr></table>
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+
+    product = parser.parse_product_detail(
+        product_url,
+        include_detail_tabs=False,
+        include_analogs=False,
+    )
+
+    assert product.price is None
+    assert product.currency == "TRY"
+    assert product.price_unpublished is True
+
+
 def test_ilacfiyati_parser_fetches_instruction_tabs(monkeypatch):
     base_url = "https://ilacfiyati.com"
     product_url = f"{base_url}/ilaclar/zovirax-5-krem-2-gr"
