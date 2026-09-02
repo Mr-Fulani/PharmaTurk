@@ -155,6 +155,58 @@ def test_ilacfiyati_parser_marks_zero_source_price_as_unpublished(monkeypatch):
     assert product.price_unpublished is True
 
 
+def test_ilacfiyati_parser_reads_zero_price_from_current_card_layout(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    product_url = "https://ilacfiyati.com/ilaclar/ponatinix-15-tablet"
+    html = """
+        <html><body>
+        <h1 class="fs-2x">37 Binden Fazla İlaç ve Ürün Bilgisi</h1>
+        <h1 class="page-title text-primary">PONATINIX 15 TABLET</h1>
+        <div class="info-card">
+          <p class="info-card__label">İlaç Fiyatı</p>
+          <p class="info-card__value text-truncate" title="0,00 TL">0,00 TL</p>
+        </div>
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+
+    product = parser.parse_product_detail(
+        product_url,
+        include_detail_tabs=False,
+        include_analogs=False,
+    )
+
+    assert product.name == "PONATINIX 15 TABLET"
+    assert product.price is None
+    assert product.currency == "TRY"
+    assert product.price_unpublished is True
+
+
+def test_ilacfiyati_parser_reads_eur_price_from_current_card_layout(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    product_url = "https://ilacfiyati.com/ilaclar/iclusig-45-mg-30-tablet"
+    html = """
+        <html><body>
+        <h1 class="page-title">ICLUSIG 45 MG 30 TABLET</h1>
+        <div class="price-card price-card--main-price">
+          <div class="price-card-label">İlaç Fiyatı</div>
+          <div class="price-card-value">4.200,00 €</div>
+        </div>
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+
+    product = parser.parse_product_detail(
+        product_url,
+        include_detail_tabs=False,
+        include_analogs=False,
+    )
+
+    assert product.price == Decimal("4200.00")
+    assert product.currency == "EUR"
+    assert product.price_unpublished is False
+
+
 def test_ilacfiyati_parser_fetches_instruction_tabs(monkeypatch):
     base_url = "https://ilacfiyati.com"
     product_url = f"{base_url}/ilaclar/zovirax-5-krem-2-gr"

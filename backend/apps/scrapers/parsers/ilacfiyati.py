@@ -134,6 +134,28 @@ class IlacFiyatiParser(BaseScraper):
             return "USD"
         return "TRY"
 
+    def _extract_labeled_price_text(self, soup: BeautifulSoup) -> str:
+        """Read the medicine price from the source's current card layout."""
+        label_value_selectors = (
+            (".info-card__label", ".info-card__value"),
+            (".price-card-label", ".price-card-value"),
+        )
+        for label_selector, value_selector in label_value_selectors:
+            for label in soup.select(label_selector):
+                label_text = self._normalize_tr_key(
+                    clean_text(label.get_text(" ", strip=True))
+                )
+                if label_text != "ILAC FIYATI":
+                    continue
+                container = label.parent
+                value = container.select_one(value_selector) if container else None
+                if value is None:
+                    continue
+                # The visible value and tooltip currently match. Prefer the
+                # tooltip when present because it is not visually truncated.
+                return clean_text(value.get("title") or value.get_text(" ", strip=True))
+        return ""
+
     def _canonical_product_url(self, product_url: str) -> str:
         parsed = urlparse(product_url)
         parts = [p for p in parsed.path.strip("/").split("/") if p]
@@ -478,8 +500,22 @@ class IlacFiyatiParser(BaseScraper):
             soup = BeautifulSoup(html, 'html.parser')
             
             # 1. Название товара
-            title_elem = soup.select_one('.product-name, h1, h2, .font-size-22.text-primary.fw-bold, .title')
             name = ""
+            # Selector priority matters: the current source page has a generic
+            # marketing H1 before the medicine-specific H1.page-title.
+            title_elem = None
+            for selector in (
+                '.product-name',
+                'h1.page-title',
+                'h2.page-title',
+                '.font-size-22.text-primary.fw-bold',
+                '.title',
+                'h1',
+                'h2',
+            ):
+                title_elem = soup.select_one(selector)
+                if title_elem:
+                    break
             if title_elem:
                 for content in title_elem.contents:
                     if isinstance(content, str) and content.strip():
@@ -497,25 +533,36 @@ class IlacFiyatiParser(BaseScraper):
             price = None
             price_currency = "TRY"
             price_unpublished = False
-            for row in soup.find_all('tr'):
-                cols = row.find_all(['th', 'td'])
-                if len(cols) == 2:
-                    key_raw = self._normalize_tr_key(clean_text(cols[0].text))
-                    if 'FIYAT' in key_raw and 'KAMU' not in key_raw:
-                        price_text = clean_text(cols[1].text)
-                        parsed_price = normalize_price(price_text)
-                        if parsed_price is not None:
-                            price_currency = self._extract_price_currency(price_text)
-                        if parsed_price == 0:
-                            # IlacFiyati uses 0,00 when a current public price has
-                            # not been published. Preserve that distinction for
-                            # on-demand checks without projecting zero into the
-                            # product catalogue as a real price.
-                            price_unpublished = True
-                            break
-                        if parsed_price is not None and parsed_price > 0:
-                            price = parsed_price
-                            break
+            price_text = self._extract_labeled_price_text(soup)
+            if price_text:
+                parsed_price = normalize_price(price_text)
+                if parsed_price is not None:
+                    price_currency = self._extract_price_currency(price_text)
+                if parsed_price == 0:
+                    price_unpublished = True
+                elif parsed_price is not None and parsed_price > 0:
+                    price = parsed_price
+
+            if price is None and not price_unpublished:
+                for row in soup.find_all('tr'):
+                    cols = row.find_all(['th', 'td'])
+                    if len(cols) == 2:
+                        key_raw = self._normalize_tr_key(clean_text(cols[0].text))
+                        if 'FIYAT' in key_raw and 'KAMU' not in key_raw:
+                            price_text = clean_text(cols[1].text)
+                            parsed_price = normalize_price(price_text)
+                            if parsed_price is not None:
+                                price_currency = self._extract_price_currency(price_text)
+                            if parsed_price == 0:
+                                # IlacFiyati uses 0,00 when a current public price has
+                                # not been published. Preserve that distinction for
+                                # on-demand checks without projecting zero into the
+                                # product catalogue as a real price.
+                                price_unpublished = True
+                                break
+                            if parsed_price is not None and parsed_price > 0:
+                                price = parsed_price
+                                break
             if price is None and not price_unpublished:
                 currency_markers = ('\u20BA', ' TL', ' TRY', '\u20AC', ' EUR', '$', ' USD')
                 price_tags = soup.find_all(
