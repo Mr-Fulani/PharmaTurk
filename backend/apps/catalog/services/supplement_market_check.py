@@ -31,7 +31,10 @@ from apps.catalog.models import (
 )
 from apps.scrapers.base.scraper import ScraperAccessBlockedError
 from apps.scrapers.models import ScraperConfig
-from apps.scrapers.parsers.ilacfiyati import IlacFiyatiSourceError
+from apps.scrapers.parsers.ilacfiyati import (
+    ILACFIYATI_PRICE_CURRENCIES,
+    IlacFiyatiSourceError,
+)
 from apps.scrapers.parsers.registry import get_parser
 
 logger = logging.getLogger(__name__)
@@ -568,7 +571,7 @@ class SupplementMarketCheckService:
 
             price = self._decimal_price(getattr(scraped, "price", None))
             currency = str(getattr(scraped, "currency", "") or "").strip().upper()
-            if currency != "TRY":
+            if currency not in ILACFIYATI_PRICE_CURRENCIES:
                 raise SupplementMarketCheckError(
                     "currency_invalid",
                     "Источник вернул цену в неожиданной валюте.",
