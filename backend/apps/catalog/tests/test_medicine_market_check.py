@@ -153,6 +153,44 @@ def test_market_check_updates_only_price_and_equivalents(medicine, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_market_check_accepts_supported_eur_source_price(medicine, monkeypatch):
+    check = ProductMarketCheck.objects.create(
+        product=medicine.base_product,
+        source="ilacfiyati",
+        source_url=medicine.external_url,
+        status=ProductMarketCheck.Status.PENDING,
+        requested_at=timezone.now(),
+    )
+    scraped = ScrapedProduct(
+        name=medicine.name,
+        price=Decimal("4200.00"),
+        currency="EUR",
+        url=medicine.external_url,
+        source="ilacfiyati",
+        is_available=True,
+        stock_quantity=3,
+    )
+    service = MedicineMarketCheckService()
+    monkeypatch.setattr(service, "resolve_source", lambda item: _trusted_source(item))
+    monkeypatch.setattr(service, "_parse_snapshot", lambda source: scraped)
+
+    result = service.run(check.pk)
+
+    assert result["status"] == ProductMarketCheck.Status.SUCCEEDED
+    medicine.refresh_from_db()
+    medicine.base_product.refresh_from_db()
+    check.refresh_from_db()
+    assert medicine.price == Decimal("4200.00")
+    assert medicine.currency == "EUR"
+    assert medicine.base_product.price == Decimal("4200.00")
+    assert medicine.base_product.currency == "EUR"
+    assert medicine.is_available is False
+    assert medicine.stock_quantity == 0
+    assert check.observed_price == Decimal("4200.00")
+    assert check.observed_currency == "EUR"
+
+
+@pytest.mark.django_db
 def test_source_failure_keeps_last_successful_price_and_stock(medicine, monkeypatch):
     check = ProductMarketCheck.objects.create(
         product=medicine.base_product,

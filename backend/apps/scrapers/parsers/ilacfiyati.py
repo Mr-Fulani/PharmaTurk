@@ -9,7 +9,9 @@ from bs4 import BeautifulSoup
 from celery.exceptions import SoftTimeLimitExceeded
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
-from ..base.utils import clean_text, normalize_price, extract_currency
+from ..base.utils import clean_text, normalize_price
+
+ILACFIYATI_PRICE_CURRENCIES = frozenset({"TRY", "USD", "EUR"})
 
 
 class IlacFiyatiSourceError(RuntimeError):
@@ -121,6 +123,16 @@ class IlacFiyatiParser(BaseScraper):
         for old, new in replacements.items():
             normalized = normalized.replace(old, new)
         return re.sub(r"\s+", " ", normalized)
+
+    @staticmethod
+    def _extract_price_currency(value: str) -> str:
+        """Return an explicit source currency, defaulting bare prices to TRY."""
+        normalized = str(value or "").upper()
+        if "€" in normalized or re.search(r"\bEUR\b", normalized):
+            return "EUR"
+        if "$" in normalized or re.search(r"\bUSD\b", normalized):
+            return "USD"
+        return "TRY"
 
     def _canonical_product_url(self, product_url: str) -> str:
         parsed = urlparse(product_url)
@@ -483,21 +495,29 @@ class IlacFiyatiParser(BaseScraper):
 
             # 2. Цена
             price = None
+            price_currency = "TRY"
             for row in soup.find_all('tr'):
                 cols = row.find_all(['th', 'td'])
                 if len(cols) == 2:
-                    key_raw = cols[0].text.strip().lower()
-                    if 'fiyat' in key_raw and 'kamu' not in key_raw:
-                        price = normalize_price(cols[1].text)
+                    key_raw = self._normalize_tr_key(clean_text(cols[0].text))
+                    if 'FIYAT' in key_raw and 'KAMU' not in key_raw:
+                        price_text = clean_text(cols[1].text)
+                        price = normalize_price(price_text)
                         if price:
+                            price_currency = self._extract_price_currency(price_text)
                             break
             if not price:
-                price_tags = soup.find_all(text=lambda x: x and ('\u20BA' in x or ' TL' in x))
+                currency_markers = ('\u20BA', ' TL', ' TRY', '\u20AC', ' EUR', '$', ' USD')
+                price_tags = soup.find_all(
+                    string=lambda x: x
+                    and any(marker in str(x).upper() for marker in currency_markers)
+                )
                 for text_node in price_tags:
                     text_clean = text_node.strip()
                     if any(char.isdigit() for char in text_clean):
                         price = normalize_price(text_clean)
                         if price:
+                            price_currency = self._extract_price_currency(text_clean)
                             break
             
 
@@ -729,7 +749,7 @@ class IlacFiyatiParser(BaseScraper):
                 name=name,
                 description=description,
                 price=price,
-                currency="TRY",         
+                currency=price_currency,
                 url=product_url,
                 images=images,
                 external_id=external_id,

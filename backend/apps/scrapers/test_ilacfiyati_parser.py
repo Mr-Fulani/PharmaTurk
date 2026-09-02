@@ -107,10 +107,31 @@ def test_ilacfiyati_market_snapshot_keeps_price_when_optional_analog_tab_fails(
     product = parser.parse_market_snapshot(product_url)
 
     assert product.price == Decimal("125.45")
+    assert product.currency == "TRY"
     assert product.is_available is False
     assert product.stock_quantity is None
     assert product.analogs == []
     assert product.analog_fetch_errors == 1
+
+
+def test_ilacfiyati_parser_preserves_eur_price_from_turkish_dotted_label(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    product_url = "https://ilacfiyati.com/ilaclar/iclusig-45-mg-30-tablet"
+    html = """
+        <html><body><h1>ICLUSIG 45 MG 30 TABLET</h1>
+        <table><tr><td>İLAÇ FİYATI</td><td>4.200,00 €</td></tr></table>
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+
+    product = parser.parse_product_detail(
+        product_url,
+        include_detail_tabs=False,
+        include_analogs=False,
+    )
+
+    assert product.price == Decimal("4200.00")
+    assert product.currency == "EUR"
 
 
 def test_ilacfiyati_parser_fetches_instruction_tabs(monkeypatch):
