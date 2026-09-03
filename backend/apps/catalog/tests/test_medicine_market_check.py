@@ -285,7 +285,7 @@ def test_unpublished_zero_market_price_is_reported_without_persistence(medicine,
     assert check.status == ProductMarketCheck.Status.FAILED
     assert check.error_code == "price_unpublished"
     assert check.error_message == (
-        "Первоисточник указывает цену 0,00 — актуальная цена для этого препарата не опубликована."
+        "Первоисточник указывает цену 0,00 — актуальную цену для этого препарата уточните у менеджера"
     )
     payload = service.serialize(medicine, check)
     assert payload["error"] == {

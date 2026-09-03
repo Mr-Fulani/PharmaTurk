@@ -1244,7 +1244,7 @@
   "medicine_market_check_succeeded": "Цена проверена",
   "medicine_market_check_unavailable": "Источник временно недоступен",
   "medicine_market_check_failed": "Не удалось подтвердить актуальную цену",
-  "medicine_market_price_unpublished": "Первоисточник указывает цену 0,00 — актуальная цена для этого препарата не опубликована.",
+  "medicine_market_price_unpublished": "Первоисточник указывает цену 0,00 — актуальную цену для этого препарата уточните у менеджера",
   "medicine_market_check_timeout": "Проверка занимает больше обычного. Попробуйте позже.",
   "medicine_market_check_read_error": "Не удалось получить результат проверки. Попробуйте позже.",
   "medicine_market_check_start_error": "Не удалось запустить проверку цены. Попробуйте позже.",
