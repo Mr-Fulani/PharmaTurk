@@ -189,7 +189,7 @@ export default function MedicinePriceCheck({ slug, onPriceUpdated }: Props) {
           {result.error?.code === 'price_unpublished'
             ? t(
                 'medicine_market_price_unpublished',
-                'Первоисточник указывает цену 0,00 — актуальная цена для этого препарата не опубликована.',
+                'Первоисточник указывает цену 0,00 — актуальную цену для этого препарата уточните у менеджера',
               )
             : t('medicine_market_check_failed', 'Не удалось подтвердить актуальную цену. Попробуйте позже.')}
         </p>

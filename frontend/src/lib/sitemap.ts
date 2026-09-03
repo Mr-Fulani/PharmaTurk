@@ -166,20 +166,37 @@ export async function fetchAllPages(
   const results: any[] = []
   let page = 1
   let totalPages = 1
+  let cursor = params.cursor
+  const cursorMode = cursor !== undefined && cursor !== null
 
-  while (page <= totalPages && page <= maxPages) {
+  while (page <= maxPages) {
     const res = await axios.get(getInternalApiUrl(apiPath), {
-      params: { ...params, page },
+      params: cursorMode ? { ...params, cursor } : { ...params, page },
       timeout: 30000,
     })
     const data = res.data
     const items = data?.results || data || []
+    results.push(...items)
+
+    if (cursorMode) {
+      const nextCursor = data?.next_cursor
+      if (
+        nextCursor === null ||
+        nextCursor === undefined ||
+        nextCursor === cursor ||
+        items.length === 0
+      ) break
+      cursor = nextCursor
+      page++
+      continue
+    }
+
     // Use actual items returned on page 1 to calculate real page count.
     // Backend max_page_size may be lower than the requested page_size.
     if (data?.count && page === 1 && items.length > 0) {
       totalPages = Math.ceil(data.count / items.length)
     }
-    results.push(...items)
+    if (page >= totalPages) break
     page++
   }
 

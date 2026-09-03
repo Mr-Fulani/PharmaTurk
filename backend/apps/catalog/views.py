@@ -1185,23 +1185,21 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Фильтрует бренды по типу товара/категории."""
-        # Считаем по каноническим shadow Product правилами публичной витрины:
-        # активные и доступные товары, без вариантов и заглушек.
-        queryset = (
-            Brand.objects.filter(is_active=True)
-            .prefetch_related('translations')
-            .annotate(
+        queryset = Brand.objects.filter(is_active=True).prefetch_related('translations')
+        if getattr(self, 'action', None) != 'list':
+            # Detail/actions сохраняют прежний точный счётчик. Для list он
+            # добавляется только объектам итоговой страницы в list(), иначе
+            # paginator дважды выполняет тяжёлый GROUP BY по всей Product.
+            queryset = queryset.annotate(
                 _products_count=models.Count(
                     'products',
                     filter=(
                         models.Q(products__is_active=True, products__is_available=True)
                         & ~non_public_shadow_product_q('products__')
                     ),
-                    distinct=True,
                 )
             )
-            .order_by('name')
-        )
+        queryset = queryset.order_by('name')
 
         # Прямой фильтр по primary_category_slug
         primary_slugs = self._parse_slug_list('primary_category_slug')
@@ -1258,6 +1256,46 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         if self.request.query_params.get('main_page') == 'true':
             context['hide_counts'] = True
         return context
+
+    def _attach_product_counts(self, brands):
+        """Добавляет точные счётчики только брендам выбранной страницы."""
+        brand_ids = [brand.id for brand in brands]
+        products = Product.objects.filter(
+            brand_id__in=brand_ids,
+            is_active=True,
+            is_available=True,
+        ).exclude(non_public_shadow_product_q())
+        if self.request.query_params.get('count_scope') == 'filtered':
+            product_type = self._normalize_product_type(
+                self.request.query_params.get('product_type')
+            )
+            if product_type:
+                products = products.filter(product_type=product_type)
+
+            category_ids = self._parse_id_list('category_id')
+            category_slugs = self._parse_slug_list('category_slug')
+            if category_slugs:
+                category_ids = list(_get_category_ids_with_descendants(category_slugs))
+            if category_ids:
+                products = products.filter(category_id__in=category_ids)
+
+        counts = {
+            row['brand_id']: row['total']
+            for row in (
+                products
+                .order_by()
+                .values('brand_id')
+                .annotate(total=models.Count('id'))
+            )
+        } if brand_ids else {}
+        for brand in brands:
+            brand._products_count = counts.get(brand.id, 0)
+
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None:
+            self._attach_product_counts(page)
+        return page
 
     @extend_schema(
         summary="Получить все товары бренда",
@@ -1434,6 +1472,12 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="category_id", type=int, required=False, description="ID категории для фильтрации по товарам"),
             OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории для фильтрации по товарам"),
             OpenApiParameter(name="in_stock", type=bool, required=False, description="Только бренды с товарами в наличии"),
+            OpenApiParameter(
+                name="count_scope",
+                type=str,
+                required=False,
+                description="filtered — считать товары только в запрошенном типе/категории",
+            ),
         ],
     )
     def list(self, request, *args, **kwargs):
@@ -1472,6 +1516,7 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         context = self.get_serializer_context()
         other_brand_obj = Brand.objects.filter(slug='other', is_active=True).prefetch_related('translations').first()
         if other_brand_obj:
+            other_brand_obj._products_count = other_count
             other_brand = BrandSerializer(other_brand_obj, context=context).data
             other_brand['products_count'] = other_count if not context.get('hide_counts') else None
             other_brand['primary_category_slug'] = primary_slug_value
@@ -5479,7 +5524,8 @@ class SitemapProductSerializer(serializers.Serializer):
 
 
 class SitemapProductsResponseSerializer(serializers.Serializer):
-    count = serializers.IntegerField()
+    count = serializers.IntegerField(required=False)
+    next_cursor = serializers.IntegerField(required=False, allow_null=True)
     results = SitemapProductSerializer(many=True)
 
 
@@ -5500,6 +5546,12 @@ class SitemapProductsView(_APIView):
             OpenApiParameter(name="domain", type=str, required=True),
             OpenApiParameter(name="page", type=int, required=False, default=1),
             OpenApiParameter(name="page_size", type=int, required=False, default=500),
+            OpenApiParameter(
+                name="cursor",
+                type=int,
+                required=False,
+                description="ID последней записи предыдущей страницы; включает быстрый режим без COUNT",
+            ),
         ],
         responses={
             200: SitemapProductsResponseSerializer,
@@ -5508,16 +5560,19 @@ class SitemapProductsView(_APIView):
     )
     def get(self, request):
         domain = request.query_params.get('domain', '').strip()
+        cursor_raw = request.query_params.get('cursor')
         try:
             page = max(1, int(request.query_params.get('page', 1)))
             page_size = min(500, max(1, int(request.query_params.get('page_size', 500))))
+            cursor = max(0, int(cursor_raw or 0))
         except (ValueError, TypeError):
             page = 1
             page_size = 500
+            cursor = 0
 
         if domain == 'services':
             from .models import Service
-            qs = Service.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            qs = Service.objects.filter(is_active=True)
             product_type = 'uslugi'
         elif domain in _SITEMAP_DOMAIN_MAP:
             model_cls, product_type = _SITEMAP_DOMAIN_MAP[domain]
@@ -5534,27 +5589,38 @@ class SitemapProductsView(_APIView):
                 )
             if 'base_product' in field_names:
                 qs = qs.exclude(non_public_shadow_product_q('base_product__'))
-            qs = qs.values('slug', 'updated_at').order_by('id')
         elif domain == 'headwear':
             from .models import HeadwearProduct
-            qs = HeadwearProduct.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            qs = HeadwearProduct.objects.filter(is_active=True)
             product_type = 'headwear'
         elif domain == 'underwear':
             from .models import UnderwearProduct
-            qs = UnderwearProduct.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            qs = UnderwearProduct.objects.filter(is_active=True)
             product_type = 'underwear'
         elif domain == 'islamic-clothing':
             from .models import IslamicClothingProduct
-            qs = IslamicClothingProduct.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            qs = IslamicClothingProduct.objects.filter(is_active=True)
             product_type = 'islamic-clothing'
         else:
             return Response({'error': f'Unknown domain: {domain}'}, status=400)
 
-        qs = qs.exclude(slug__isnull=True).exclude(slug='')
+        qs = (
+            qs.exclude(slug__isnull=True)
+            .exclude(slug='')
+            .values('id', 'slug', 'updated_at')
+            .order_by('id')
+        )
 
-        total = qs.count()
-        offset = (page - 1) * page_size
-        items = list(qs[offset:offset + page_size])
+        response_data = {}
+        if cursor_raw is not None:
+            cursor_items = list(qs.filter(id__gt=cursor)[:page_size + 1])
+            has_more = len(cursor_items) > page_size
+            items = cursor_items[:page_size]
+            response_data['next_cursor'] = items[-1]['id'] if has_more and items else None
+        else:
+            response_data['count'] = qs.count()
+            offset = (page - 1) * page_size
+            items = list(qs[offset:offset + page_size])
         results = [
             {
                 'slug': item['slug'],
@@ -5563,7 +5629,8 @@ class SitemapProductsView(_APIView):
             }
             for item in items
         ]
-        return Response({'count': total, 'results': results})
+        response_data['results'] = results
+        return Response(response_data)
 
 
 class SitemapEntrySerializer(serializers.Serializer):

@@ -26,6 +26,7 @@ export function buildCategoryBrandParams({
 
   const params = {
     product_type: productType,
+    count_scope: 'filtered',
     page_size: pageSize,
   }
   if (primaryCategorySlug) {
