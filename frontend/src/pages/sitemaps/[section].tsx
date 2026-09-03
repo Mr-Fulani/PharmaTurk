@@ -158,7 +158,11 @@ async function buildDomainProductUrls(domain: string, today: string): Promise<Si
   const urls: SitemapUrl[] = []
   const seenSlugs = new Set<string>()
   try {
-    const items = await fetchAllPages('catalog/sitemap-products', { domain, page_size: 500 })
+    const items = await fetchAllPages('catalog/sitemap-products', {
+      domain,
+      page_size: 500,
+      cursor: 0,
+    })
     for (const item of items) {
       if (!item.slug || seenSlugs.has(item.slug)) continue
       seenSlugs.add(item.slug)

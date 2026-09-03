@@ -78,6 +78,7 @@ test('furniture brands use the category directory regardless of products and fil
     inStock: true,
   }), {
     product_type: 'furniture',
+    count_scope: 'filtered',
     page_size: 500,
     primary_category_slug: 'furniture',
   })
@@ -92,6 +93,7 @@ test('other category brand lists can still follow active product filters', () =>
     inStock: true,
   }), {
     product_type: 'clothing',
+    count_scope: 'filtered',
     page_size: 500,
     primary_category_slug: 'clothing',
     category_slug: 'women-clothing',
