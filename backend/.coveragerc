@@ -1,0 +1,15 @@
+[run]
+source =
+    api
+    apps
+    config
+omit =
+    */migrations/*
+    */tests/*
+    */test_*.py
+
+[report]
+precision = 2
+show_missing = False
+skip_covered = True
+skip_empty = True
