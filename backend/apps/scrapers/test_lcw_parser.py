@@ -392,6 +392,16 @@ def test_navigation_dump_lines_are_filtered_from_soup_size_block():
     ]
 
 
+def test_sold_out_color_does_not_absorb_product_page_text():
+    parser = LcwParser()
+
+    color = parser._extract_color(
+        "Renk: Koyu Kahverengi / S58264Z8 TÜKENDİ Ürün Açıklaması Kargo ve İade"
+    )
+
+    assert color == "Koyu Kahverengi"
+
+
 def test_extract_sizes_prefers_text_block_when_soup_wanders_into_page_noise():
     parser = LcwParser()
     html = """

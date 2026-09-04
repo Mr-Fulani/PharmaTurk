@@ -2,6 +2,7 @@
 
 import copy
 import re
+from dataclasses import replace
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote_plus, urljoin, urlparse
 
@@ -272,7 +273,29 @@ class LcwParser(BaseScraper):
             attributes={"fashion_variants": [variant]},
             source=self.get_name(),
         )
-        return result_from_scraped_product(offer, scraped, exact_stock=False)
+        resolved_offer = offer
+        if offer.size_key and not variant.get("sizes") and variant.get("is_available") is False:
+            # A fully sold-out LCW colour page removes its size selector instead
+            # of returning the old sizes as disabled.  The concrete colour URL
+            # and variant id still match, so every historical size is safely
+            # out of stock; treating the absent selector as a parser error only
+            # accumulates false ``option_not_found`` diagnostics.
+            resolved_offer = replace(
+                offer,
+                size_key="",
+                selected_options={
+                    key: value
+                    for key, value in offer.selected_options.items()
+                    if key != "size"
+                },
+            )
+        result = result_from_scraped_product(resolved_offer, scraped, exact_stock=False)
+        if resolved_offer is not offer:
+            result = replace(
+                result,
+                response_metadata={"option_resolution": "parent_variant_out_of_stock"},
+            )
+        return result
 
     def _parse_product_group(
         self,
@@ -882,8 +905,15 @@ class LcwParser(BaseScraper):
         return int(match.group(1)) * int(match.group(2))
 
     def _extract_color(self, page_text: str) -> str:
-        match = re.search(r"Renk\s*:\s*(.+?)(?:Renk seçenekleri|Beden:|Sepete Ekle|$)", page_text, re.IGNORECASE | re.DOTALL)
-        return clean_text(match.group(1)) if match else ""
+        match = re.search(
+            r"Renk\s*:\s*(.+?)(?:Renk seçenekleri|Beden:|TÜKENDİ|TUKENDI|Ürün Açıklaması|Sepete Ekle|$)",
+            page_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not match:
+            return ""
+        color = clean_text(match.group(1))
+        return re.sub(r"\s*/\s*[A-Z0-9.-]+\s*$", "", color).strip()
 
     def _extract_sizes(self, soup: BeautifulSoup, page_text: str) -> List[Dict[str, Any]]:
         soup_sizes = self._extract_sizes_from_soup(soup)
