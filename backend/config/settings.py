@@ -210,6 +210,10 @@ CELERY_TASK_ANNOTATIONS = {
         "time_limit": 60 * 60 * 2,
         "soft_time_limit": 60 * 60,
     },
+    "apps.scrapers.tasks.run_stub_refresh_task": {
+        "time_limit": 60 * 60 * 2,
+        "soft_time_limit": 60 * 60,
+    },
 }
 from celery.schedules import crontab
 

@@ -710,6 +710,15 @@ class SiteScraperTask(models.Model):
             "постраничной пагинацией). Обновляется автоматически по ходу обхода."
         ),
     )
+    stub_cursor_id = models.PositiveBigIntegerField(
+        _("ID заглушки для продолжения"),
+        default=0,
+        editable=False,
+        help_text=_(
+            "Последний полностью обработанный MedicineProduct в режиме обновления "
+            "заглушек. Используется только для безопасного продолжения фоновой задачи."
+        ),
+    )
 
     log_output = models.TextField(_("Лог выполнения"), blank=True)
     error_message = models.TextField(_("Сообщение об ошибке"), blank=True)
