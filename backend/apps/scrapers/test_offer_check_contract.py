@@ -366,6 +366,83 @@ def test_lcw_offer_check_fetches_only_saved_variant(monkeypatch):
     assert result.stock_quantity is None
 
 
+def test_lcw_offer_check_maps_removed_size_selector_on_sold_out_variant(monkeypatch):
+    parser = LcwParser()
+    variant = _fashion_product(available=False).attributes["fashion_variants"][0]
+    variant["sizes"] = []
+    monkeypatch.setattr(parser, "_make_offer_request", lambda url: "html")
+    monkeypatch.setattr(parser, "_parse_single_variant", lambda url, html: {"name": "LCW"})
+    monkeypatch.setattr(
+        parser,
+        "_variant_payload_from_parsed",
+        lambda row, sort_order: variant,
+    )
+
+    result = parser.check_offer(
+        _context(canonical_url="https://www.lcw.com/sold-out-o-4375414")
+    )
+
+    assert result.is_success is True
+    assert result.availability_status == OfferAvailability.OUT_OF_STOCK
+    assert result.stock_precision == OfferStockPrecision.BOOLEAN
+    assert result.response_metadata == {
+        "option_resolution": "parent_variant_out_of_stock"
+    }
+
+
+def test_lcw_offer_check_keeps_missing_selector_fail_safe_when_variant_looks_available(
+    monkeypatch,
+):
+    parser = LcwParser()
+    variant = _fashion_product(available=True).attributes["fashion_variants"][0]
+    variant["sizes"] = []
+    monkeypatch.setattr(parser, "_make_offer_request", lambda url: "html")
+    monkeypatch.setattr(parser, "_parse_single_variant", lambda url, html: {"name": "LCW"})
+    monkeypatch.setattr(
+        parser,
+        "_variant_payload_from_parsed",
+        lambda row, sort_order: variant,
+    )
+
+    with pytest.raises(OfferOptionNotFound):
+        parser.check_offer(
+            _context(canonical_url="https://www.lcw.com/ambiguous-o-4375414")
+        )
+
+
+def test_zara_offer_check_rebinds_changed_variant_id_by_unique_saved_color(monkeypatch):
+    parser = ZaraParser()
+    scraped = _fashion_product()
+    scraped.attributes["fashion_variants"][0]["external_id"] = "variant-new"
+    monkeypatch.setattr(parser, "parse_product_detail", lambda url: scraped)
+
+    result = parser.check_offer(_context(variant_key="variant-old"))
+
+    assert result.is_success is True
+    assert result.availability_status == OfferAvailability.IN_STOCK
+    assert result.response_metadata["option_resolution"] == "variant_rebound_by_color"
+
+
+def test_zara_offer_check_marks_removed_color_variant_discontinued(monkeypatch):
+    parser = ZaraParser()
+    monkeypatch.setattr(parser, "parse_product_detail", lambda url: _fashion_product())
+
+    result = parser.check_offer(
+        _context(
+            variant_key="variant-removed",
+            selected_options={"color": "Gece mavisi", "size": "M"},
+        )
+    )
+
+    assert result.is_success is True
+    assert result.availability_status == OfferAvailability.DISCONTINUED
+    assert result.stock_precision == OfferStockPrecision.BOOLEAN
+    assert result.source_price is None
+    assert result.response_metadata == {
+        "option_resolution": "variant_no_longer_listed"
+    }
+
+
 @pytest.mark.parametrize(("quantity", "precision"), [(5, "exact"), (None, "boolean")])
 def test_ikea_offer_check_preserves_only_real_quantity(monkeypatch, quantity, precision):
     parser = IkeaParser("https://www.ikea.com.tr")

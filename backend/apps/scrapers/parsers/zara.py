@@ -4,6 +4,7 @@ import json
 import random
 import re
 import time
+from dataclasses import replace
 from typing import Any, Dict, Iterator, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
@@ -15,10 +16,13 @@ from apps.http_errors import raise_for_blocked_status
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.offers import (
+    MalformedOfferResponse,
+    OfferAvailability,
     OfferCheckContext,
     OfferGone,
     OfferNotFound,
     OfferCheckResult,
+    OfferStockPrecision,
     result_from_scraped_product,
     translate_offer_check_errors,
 )
@@ -544,7 +548,74 @@ class ZaraParser(BaseScraper):
     def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
         """One payload request; selection of color/size is in-memory and read-only."""
         scraped = self.parse_product_detail(offer.canonical_url)
-        return result_from_scraped_product(offer, scraped, exact_stock=False)
+        if scraped is None:
+            raise OfferNotFound(offer.canonical_url)
+        if (
+            offer.external_product_id
+            and scraped.external_id
+            and not self._same_offer_option(scraped.external_id, offer.external_product_id)
+        ):
+            raise OfferNotFound(offer.canonical_url)
+
+        attributes = scraped.attributes if isinstance(scraped.attributes, dict) else {}
+        variants = [
+            row
+            for row in (attributes.get("fashion_variants") or [])
+            if isinstance(row, dict)
+        ]
+        if not variants:
+            raise MalformedOfferResponse("Source response does not contain product variants")
+
+        resolved_offer = offer
+        selected_variant = None
+        if offer.variant_key:
+            selected_variant = next(
+                (
+                    row
+                    for row in variants
+                    if self._same_offer_option(row.get("external_id"), offer.variant_key)
+                ),
+                None,
+            )
+            if selected_variant is None:
+                selected_color = offer.selected_options.get("color")
+                color_matches = [
+                    row
+                    for row in variants
+                    if selected_color
+                    and self._same_offer_option(row.get("color"), selected_color)
+                ]
+                if len(color_matches) == 1:
+                    selected_variant = color_matches[0]
+                    resolved_offer = replace(
+                        offer,
+                        variant_key=str(selected_variant.get("external_id") or ""),
+                    )
+                else:
+                    return OfferCheckResult(
+                        availability_status=OfferAvailability.DISCONTINUED,
+                        stock_precision=OfferStockPrecision.BOOLEAN,
+                        canonical_url=scraped.url or offer.canonical_url,
+                        source_currency=str(scraped.currency or "").strip().upper(),
+                        response_metadata={
+                            "option_resolution": "variant_no_longer_listed",
+                        },
+                    )
+
+        result = result_from_scraped_product(resolved_offer, scraped, exact_stock=False)
+        if resolved_offer is not offer:
+            result = replace(
+                result,
+                response_metadata={
+                    **result.response_metadata,
+                    "option_resolution": "variant_rebound_by_color",
+                },
+            )
+        return result
+
+    @staticmethod
+    def _same_offer_option(left: Any, right: Any) -> bool:
+        return str(left or "").strip().casefold() == str(right or "").strip().casefold()
 
     def _extract_category_components(
         self,
