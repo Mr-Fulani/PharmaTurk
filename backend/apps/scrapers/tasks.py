@@ -7,6 +7,7 @@ import requests
 from celery import shared_task, current_app
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
+from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
@@ -1332,13 +1333,82 @@ def update_scraper_status(self, scraper_config_id: int, status: str) -> Dict:
         }
 
 
-_STUB_REFRESH_BATCH_SIZE = 50
+_STUB_REFRESH_BATCH_SIZE = 10
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offset: int = 0) -> Dict:
-    """Обходит товары-заглушки и парсит каждую по URL через основной парсер."""
+def _checkpoint_stub_refresh_product(
+    *,
+    site_task_id: int,
+    processed_total: int,
+    product_id: int,
+    updated: int = 0,
+    skipped: int = 0,
+    errors: int = 0,
+) -> None:
+    """Persist one completed stub so a worker restart can resume after it."""
+    SiteScraperTask.objects.filter(id=site_task_id).update(
+        products_found=processed_total,
+        products_updated=F("products_updated") + updated,
+        products_skipped=F("products_skipped") + skipped,
+        errors_count=F("errors_count") + errors,
+        stub_cursor_id=product_id,
+    )
+
+
+def _finish_stub_refresh_session(
+    session: ScrapingSession | None,
+    *,
+    status: str,
+    found: int,
+    updated: int,
+    skipped: int,
+    errors: int,
+    message: str = "",
+) -> None:
+    if session is None:
+        return
+    session.status = status
+    session.products_found = found
+    session.products_updated = updated
+    session.products_skipped = skipped
+    session.errors_count = errors
+    session.finished_at = timezone.now()
+    session.error_message = message
+    session.save(
+        update_fields=[
+            "status",
+            "products_found",
+            "products_updated",
+            "products_skipped",
+            "errors_count",
+            "analog_stubs_upgraded",
+            "analog_errors",
+            "finished_at",
+            "error_message",
+        ]
+    )
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def run_stub_refresh_task(
+    self,
+    site_task_id: int,
+    scraper_config_id: int,
+    offset: int = 0,
+    after_id: int = 0,
+) -> Dict:
+    """Обходит заглушки короткими чанками с устойчивым ID-курсором."""
     site_task = SiteScraperTask.objects.filter(id=site_task_id).first()
+    session = None
+    chunk_found = chunk_updated = chunk_skipped = chunk_errors = 0
+    processed_total = max(int(offset or 0), 0)
+    last_processed_id = max(int(after_id or 0), 0)
 
     try:
         from apps.catalog.models import MedicineProduct
@@ -1355,18 +1425,49 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
         if site_task:
             site_task.refresh_from_db()
 
+            # A late-ack redelivery may carry the original arguments after a
+            # worker loss. Continue from the durable per-product checkpoint.
+            if site_task.products_found > processed_total:
+                processed_total = site_task.products_found
+                last_processed_id = max(last_processed_id, site_task.stub_cursor_id or 0)
+
+        effective_max = site_task.max_products if site_task else _STUB_REFRESH_BATCH_SIZE
+        remaining = max(effective_max - processed_total, 0)
+        if remaining == 0:
+            SiteScraperTask.objects.filter(id=site_task_id).update(
+                status="completed",
+                finished_at=timezone.now(),
+                error_message="",
+            )
+            return {
+                "status": "completed",
+                "message": "Достигнут лимит товаров",
+                "offset": processed_total,
+            }
+
+        batch_size = min(_STUB_REFRESH_BATCH_SIZE, remaining)
+
         batch = list(
             MedicineProduct.objects
-            .filter(external_data__is_stub=True, external_url__gt='')
+            .filter(
+                external_data__is_stub=True,
+                external_url__gt="",
+                id__gt=last_processed_id,
+            )
             .select_related('base_product')
-            .order_by('id')[offset:offset + _STUB_REFRESH_BATCH_SIZE]
+            .order_by("id")[:batch_size]
         )
 
         if not batch:
             SiteScraperTask.objects.filter(id=site_task_id).update(
                 status='completed',
                 finished_at=timezone.now(),
-                log_output='Нет заглушек с external_url для обновления.',
+                error_message="",
+                log_output=(
+                    "Нет заглушек с external_url для обновления."
+                    if processed_total == 0
+                    else f"Обновление заглушек завершено: обработано {processed_total}."
+                ),
             )
             return {'status': 'completed', 'message': 'Нет заглушек'}
 
@@ -1384,8 +1485,6 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
         )
 
         integration_service = ScraperIntegrationService()
-        chunk_updated = chunk_skipped = chunk_errors = 0
-
         with parser_class(
             base_url=scraper_config.base_url,
             timeout=scraper_config.timeout,
@@ -1401,74 +1500,191 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
                 cookies=scraper_config.cookies,
             )
 
-            for i, stub in enumerate(batch):
+            for stub in batch:
                 if _is_site_task_cancelled(site_task_id):
                     raise ScraperTaskCancelled("Задача остановлена пользователем.")
                 try:
                     scraped = parser.parse_product_detail(stub.external_url)
                     if not scraped:
+                        next_processed_total = processed_total + 1
+                        with transaction.atomic():
+                            _checkpoint_stub_refresh_product(
+                                site_task_id=site_task_id,
+                                processed_total=next_processed_total,
+                                product_id=stub.id,
+                                skipped=1,
+                            )
+                        processed_total = next_processed_total
+                        chunk_found += 1
                         chunk_skipped += 1
+                        last_processed_id = stub.id
                     else:
-                        integration_service._update_existing_product(session, scraped, stub.base_product)
+                        # Product update and durable cursor move are atomic: a
+                        # killed worker can neither skip the product nor count it twice.
+                        next_processed_total = processed_total + 1
+                        with transaction.atomic():
+                            integration_service._update_existing_product(
+                                session,
+                                scraped,
+                                stub.base_product,
+                            )
+                            _checkpoint_stub_refresh_product(
+                                site_task_id=site_task_id,
+                                processed_total=next_processed_total,
+                                product_id=stub.id,
+                                updated=1,
+                            )
+                        processed_total = next_processed_total
+                        chunk_found += 1
                         chunk_updated += 1
+                        last_processed_id = stub.id
+                except SoftTimeLimitExceeded:
+                    raise
                 except Exception as exc:
                     chunk_errors += 1
                     logger.error(f"Ошибка обновления заглушки {stub.external_url}: {exc}")
+                    next_processed_total = processed_total + 1
+                    with transaction.atomic():
+                        _checkpoint_stub_refresh_product(
+                            site_task_id=site_task_id,
+                            processed_total=next_processed_total,
+                            product_id=stub.id,
+                            errors=1,
+                        )
+                    processed_total = next_processed_total
+                    chunk_found += 1
+                    last_processed_id = stub.id
 
-                if (i + 1) % 10 == 0:
-                    SiteScraperTask.objects.filter(id=site_task_id).update(
-                        products_found=offset + i + 1,
-                        products_updated=F('products_updated') + chunk_updated,
-                        products_skipped=F('products_skipped') + chunk_skipped,
-                        errors_count=F('errors_count') + chunk_errors,
-                    )
-                    chunk_updated = chunk_skipped = chunk_errors = 0
-
-        new_offset = offset + len(batch)
-        SiteScraperTask.objects.filter(id=site_task_id).update(
-            products_found=new_offset,
-            products_updated=F('products_updated') + chunk_updated,
-            products_skipped=F('products_skipped') + chunk_skipped,
-            errors_count=F('errors_count') + chunk_errors,
+        _finish_stub_refresh_session(
+            session,
+            status="completed",
+            found=chunk_found,
+            updated=chunk_updated,
+            skipped=chunk_skipped,
+            errors=chunk_errors,
         )
 
-        session.status = 'completed'
-        session.finished_at = timezone.now()
-        session.save(update_fields=['status', 'finished_at'])
-
-        effective_max = site_task.max_products if site_task else new_offset
         if site_task:
             site_task.refresh_from_db()
+        has_more_stubs = MedicineProduct.objects.filter(
+            external_data__is_stub=True,
+            external_url__gt="",
+            id__gt=last_processed_id,
+        ).exists()
         should_chain = (
             (not site_task or site_task.status != "cancelled")
-            and len(batch) == _STUB_REFRESH_BATCH_SIZE
-            and new_offset < effective_max
+            and processed_total < effective_max
+            and has_more_stubs
         )
 
         if should_chain:
             next_task = run_stub_refresh_task.apply_async(kwargs=dict(
                 site_task_id=site_task_id,
                 scraper_config_id=scraper_config_id,
-                offset=new_offset,
+                offset=processed_total,
+                after_id=last_processed_id,
             ))
             SiteScraperTask.objects.filter(id=site_task_id).update(task_id=next_task.id)
-            logger.info(f"stub_refresh: обработано {new_offset} заглушек, продолжаем со смещения {new_offset}")
+            logger.info(
+                "stub_refresh: обработано %s заглушек, продолжаем после product id=%s",
+                processed_total,
+                last_processed_id,
+            )
         else:
             SiteScraperTask.objects.filter(id=site_task_id).update(
                 status='completed',
                 finished_at=timezone.now(),
                 session=session,
+                error_message="",
             )
-            logger.info(f"stub_refresh: завершено, обработано {new_offset} заглушек")
+            logger.info(f"stub_refresh: завершено, обработано {processed_total} заглушек")
 
-        return {'status': 'success', 'offset': offset, 'batch_size': len(batch)}
+        return {
+            'status': 'success',
+            'offset': processed_total,
+            'batch_size': len(batch),
+            'after_id': last_processed_id,
+        }
 
     except ScraperTaskCancelled as e:
         error_msg = str(e)
         logger.info("Задача обновления заглушек %s отменена: %s", site_task_id, error_msg)
+        _finish_stub_refresh_session(
+            session,
+            status="cancelled",
+            found=chunk_found,
+            updated=chunk_updated,
+            skipped=chunk_skipped,
+            errors=chunk_errors,
+            message=error_msg,
+        )
         if site_task:
             _cancel_site_task(site_task_id, error_msg)
         return {'status': 'cancelled', 'error': error_msg, 'timestamp': timezone.now().isoformat()}
+
+    except SoftTimeLimitExceeded:
+        error_msg = (
+            "Чанк обновления заглушек достиг мягкого лимита времени; "
+            "продолжение поставлено в очередь с последней сохранённой позиции."
+        )
+        _finish_stub_refresh_session(
+            session,
+            status="failed",
+            found=chunk_found,
+            updated=chunk_updated,
+            skipped=chunk_skipped,
+            errors=chunk_errors,
+            message=error_msg,
+        )
+        current_task = SiteScraperTask.objects.filter(id=site_task_id).first()
+        if current_task and current_task.status == "cancelled":
+            return {
+                "status": "cancelled",
+                "message": "Задача остановлена пользователем во время чанка.",
+            }
+
+        if current_task:
+            processed_total = current_task.products_found
+            last_processed_id = current_task.stub_cursor_id or last_processed_id
+            if processed_total >= current_task.max_products:
+                SiteScraperTask.objects.filter(id=site_task_id).update(
+                    status="completed",
+                    finished_at=timezone.now(),
+                    error_message="",
+                )
+                return {"status": "completed", "offset": processed_total}
+
+        try:
+            next_task = run_stub_refresh_task.apply_async(
+                kwargs={
+                    "site_task_id": site_task_id,
+                    "scraper_config_id": scraper_config_id,
+                    "offset": processed_total,
+                    "after_id": last_processed_id,
+                }
+            )
+        except Exception as enqueue_error:
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=enqueue_error)
+            raise
+
+        SiteScraperTask.objects.filter(id=site_task_id).update(
+            status="running",
+            task_id=next_task.id,
+            error_message="",
+            log_output=error_msg,
+        )
+        logger.warning(
+            "stub_refresh: soft limit after %s products; continuation queued after id=%s",
+            processed_total,
+            last_processed_id,
+        )
+        return {
+            "status": "continued",
+            "offset": processed_total,
+            "after_id": last_processed_id,
+            "message": error_msg,
+        }
 
     except ScraperConfig.DoesNotExist:
         error_msg = f"Конфигурация парсера с ID {scraper_config_id} не найдена"
@@ -1482,6 +1698,15 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
     except Exception as e:
         error_msg = f"Ошибка обновления заглушек: {e}"
         logger.error(error_msg)
+        _finish_stub_refresh_session(
+            session,
+            status="failed",
+            found=chunk_found,
+            updated=chunk_updated,
+            skipped=chunk_skipped,
+            errors=chunk_errors,
+            message=error_msg,
+        )
         if site_task:
             SiteScraperTask.objects.filter(id=site_task_id).update(
                 status='failed', error_message=error_msg, finished_at=timezone.now()

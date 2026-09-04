@@ -719,6 +719,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             task.pages_processed = 0
             task.errors_count = 0
             task.resume_page = 1
+            task.stub_cursor_id = 0
 
         task.status = "running"
         task.started_at = timezone.now()
