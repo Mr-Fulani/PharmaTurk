@@ -231,6 +231,7 @@
 
 ### TD-006 — Монолитные модули
 
+- **Статус:** `[ ]` выполняется небольшими вертикальными срезами.
 - `backend/apps/catalog/serializers.py` — около 8 тыс. строк;
 - `backend/apps/catalog/models.py` — около 7 тыс. строк;
 - `backend/apps/catalog/views.py` — около 5.4 тыс. строк;
@@ -241,6 +242,13 @@
 product resolution, pricing, availability/source refresh, cart/checkout,
 medicine reference flow и supplement flow. Механическое разбиение одним большим
 PR слишком рискованно.
+
+- **Срез 1 — favorites identity:** `FavoriteSerializer`,
+  `AddToFavoriteSerializer` и canonical product resolver вынесены в
+  `backend/apps/catalog/favorite_serializers.py`. Прежний публичный import-path
+  сохранён явным реэкспортом; отдельный contract test и существующий набор
+  favorites regression tests защищают поведение API. Монолит уменьшен на 300
+  строк без изменений моделей, миграций и parser flow.
 
 ### TD-007 — Неполные quality gates
 
