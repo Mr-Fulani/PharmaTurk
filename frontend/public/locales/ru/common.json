@@ -190,6 +190,8 @@
   "checkout_crypto_expired": "Время истекло",
   "checkout_crypto_open_invoice": "Открыть страницу оплаты",
   "checkout_crypto_no_payment_data": "Данные для оплаты недоступны. Обратитесь в поддержку.",
+  "checkout_crypto_preparing_payment": "Готовим защищённую платёжную ссылку…",
+  "checkout_crypto_payment_uncertain": "Результат создания ссылки требует проверки. Не создавайте повторный заказ и обратитесь в поддержку.",
   "checkout_submitting": "Отправка...",
   "checkout_submit": "Оформить заказ",
   "checkout_order_placed": "Заказ оформлен",

@@ -22,6 +22,8 @@ Beat только публикует задачи. Для исполнения �
 | Имя schedule | Задача | Расписание | Очередь | Основной эффект |
 |---|---|---|---|---|
 | `monitoring-production-watchdog` | `apps.monitoring.tasks.run_production_watchdog` | каждые 5 минут | `celery` | Проверяет homepage/liveness/readiness и доставляет дедуплицированные Telegram alert/recovery. |
+| `coinremitter-outbox-dispatch` | `apps.payments.tasks.dispatch_pending_crypto_invoice_requests` | каждую минуту | `celery` | Подбирает durable pending invoice requests, пропущенные immediate publish. |
+| `coinremitter-reconciliation` | `apps.payments.tasks.reconcile_coinremitter_state` | каждые 5 минут | `celery` | Карантинирует stale provider claims и пишет read-only drift summary. |
 | `currency-update-rates` | `currency.update_rates` | каждые 4 часа | `celery` | Обновляет курсы валют. |
 | `currency-update-prices` | `currency.update_product_prices` | каждые 24 часа | `celery` | Вызывает `update_product_prices`, batch size 200. |
 | `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | каждые 7 дней | `celery` | Удаляет сессии и логи скрапинга старше 30 дней. |
@@ -59,6 +61,17 @@ liveness/readiness. Состояние инцидента хранится в ca
 восстановление закрывает инцидент отдельным сообщением. При недоступном cache
 readiness-alert не подавляется. Полная процедура описана в
 `docs/PRODUCTION_MONITORING_RUNBOOK.md`.
+
+### CoinRemitter outbox
+
+`create_coinremitter_invoice_request` выполняет внешний `invoice/create` только
+после DB commit. Локальная идемпотентность обеспечивается единственной durable
+строкой `CryptoInvoiceRequest` и atomic claim. Так как CoinRemitter не принимает
+provider idempotency key, любой неоднозначный результат получает статус
+`uncertain` и не ставится на автоматический retry. Подробности и процедура
+ручной сверки описаны в `CRYPTO_PAYMENTS.md`. Dispatcher соблюдает интервал
+`COINREMITTER_OUTBOX_REPUBLISH_SECONDS`, чтобы не накапливать копии сообщений
+каждую минуту во время остановки worker.
 
 ### Проверка supplier offers
 

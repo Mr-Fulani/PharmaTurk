@@ -191,6 +191,8 @@
   "checkout_crypto_expired": "Time expired",
   "checkout_crypto_open_invoice": "Open payment page",
   "checkout_crypto_no_payment_data": "Payment details unavailable. Please contact support.",
+  "checkout_crypto_preparing_payment": "Preparing a secure payment link…",
+  "checkout_crypto_payment_uncertain": "The payment-link result needs review. Do not create another order; contact support.",
   "checkout_submitting": "Submitting...",
   "checkout_submit": "Place order",
   "checkout_order_placed": "Order placed",

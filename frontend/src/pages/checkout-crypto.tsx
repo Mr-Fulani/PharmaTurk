@@ -24,6 +24,7 @@ interface Order {
   status: string
   payment_method?: string
   payment_status?: string
+  payment_setup_status?: string
   total_amount: string
   currency: string
   items: OrderItem[]
@@ -96,10 +97,17 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
   const paymentStatus = order?.payment_status
   const orderStatus = order?.status
   useEffect(() => {
-    if (!number || !hasOrder || paymentStatus === 'paid' || orderStatus === 'paid') return
+    if (
+      !number ||
+      !hasOrder ||
+      paymentStatus === 'paid' ||
+      orderStatus === 'paid' ||
+      order?.payment_setup_status === 'failed' ||
+      order?.payment_setup_status === 'uncertain'
+    ) return
     const id = setInterval(fetchOrder, POLL_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [number, hasOrder, paymentStatus, orderStatus, fetchOrder])
+  }, [number, hasOrder, paymentStatus, orderStatus, order?.payment_setup_status, fetchOrder])
 
   // После отображения успеха — ждём 2.5 сек и редирект на страницу заказа
   const PAID_REDIRECT_DELAY_MS = 2500
@@ -312,7 +320,13 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
         )}
 
         {order && !paymentData && (
-          <p className="text-gray-500">{t('checkout_crypto_no_payment_data', 'Данные для оплаты недоступны. Обратитесь в поддержку.')}</p>
+          <p className="text-gray-500">
+            {order.payment_setup_status === 'pending' || order.payment_setup_status === 'processing'
+              ? t('checkout_crypto_preparing_payment', 'Готовим защищённую платёжную ссылку…')
+              : order.payment_setup_status === 'uncertain'
+                ? t('checkout_crypto_payment_uncertain', 'Результат создания ссылки требует проверки. Не создавайте повторный заказ и обратитесь в поддержку.')
+                : t('checkout_crypto_no_payment_data', 'Данные для оплаты недоступны. Обратитесь в поддержку.')}
+          </p>
         )}
 
         <div className="mt-8">

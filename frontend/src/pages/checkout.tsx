@@ -1,6 +1,6 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { SITE_NAME } from '../lib/siteMeta'
@@ -71,6 +71,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     holder: '',
   })
   const [submitting, setSubmitting] = useState(false)
+  const cryptoIdempotencyKeyRef = useRef<string | null>(null)
   const [orderButtonState, setOrderButtonState] = useState<OrderButtonState>('idle')
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [showAddressForm, setShowAddressForm] = useState(false)
@@ -239,10 +240,20 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       }
       // Язык для редиректа после оплаты (crypto) — чтобы не сбрасывался при возврате
       body.set('locale', (router.locale as string) || 'en')
-      const res = await api.post('/orders/orders/create-from-cart', body, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      })
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      }
+      if (paymentMethod === 'crypto') {
+        if (!cryptoIdempotencyKeyRef.current) {
+          cryptoIdempotencyKeyRef.current =
+            globalThis.crypto?.randomUUID?.() ||
+            `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+        }
+        headers['Idempotency-Key'] = cryptoIdempotencyKeyRef.current
+      }
+      const res = await api.post('/orders/orders/create-from-cart', body, { headers })
       const orderNumber = res.data?.number
+      if (paymentMethod === 'crypto') cryptoIdempotencyKeyRef.current = null
       setItemsCount(0)
       await refreshCart()
 
@@ -261,8 +272,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
 
-      if (paymentMethod === 'crypto' && res.data?.payment_data && orderNumber) {
-        const invoiceUrl = res.data.payment_data.invoice_url
+      if (paymentMethod === 'crypto' && orderNumber) {
+        const invoiceUrl = res.data?.payment_data?.invoice_url
         if (invoiceUrl) {
           window.location.href = invoiceUrl
         } else {
@@ -273,6 +284,9 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       }
     } catch (err: any) {
       const status = err?.response?.status
+      if (paymentMethod === 'crypto' && status && status < 500) {
+        cryptoIdempotencyKeyRef.current = null
+      }
       if (status === 401) {
         alert(t('login_required_to_checkout', 'Для оформления заказа необходимо войти'))
         router.push('/auth?next=/checkout')
