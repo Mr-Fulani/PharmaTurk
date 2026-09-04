@@ -178,13 +178,15 @@
 
 ### TD-004 — Доставка production-алертов
 
-- **Статус:** `[ ]` открыто; требуется внешняя конфигурация.
-- `/metrics`, JSON logging, Sentry integration и правила
-  `ops/prometheus/source_offer_alerts.yml` есть в коде, но production Compose не
-  поднимает Prometheus/Alertmanager, а `SENTRY_DSN` не задан.
-- Нужен один согласованный receiver: Sentry DSN либо Alertmanager webhook с
-  Telegram/email/PagerDuty. Секреты и адрес получателя нельзя придумывать или
-  коммитить в репозиторий.
+- **Статус:** `[x]` базовая доставка закрыта 2026-09-04 через существующий
+  административный Telegram receiver.
+- Периодический production watchdog проверяет homepage, liveness и readiness,
+  требует два последовательных сбоя, дедуплицирует инцидент, напоминает не чаще
+  раза в час и отправляет recovery. Конфигурация валидируется Django system check;
+  токен не попадает в логи. Runbook: `docs/PRODUCTION_MONITORING_RUNBOOK.md`.
+- `/metrics`, JSON logging и source-offer rules остаются в коде. Внешний монитор
+  полного отказа Docker host/Internet/Redis broker и Prometheus/Grafana dashboards
+  остаются расширением P1.5, а не частью базовой доставки.
 
 ### TD-005 — Качество source identity и накопленные ошибки offers
 

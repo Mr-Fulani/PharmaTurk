@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     "apps.pages",
     "apps.ai",
     "apps.recommendations",
+    "apps.monitoring.apps.MonitoringConfig",
 ]
 
 # Кастомная модель пользователя
@@ -182,6 +183,10 @@ CACHES = {
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = CELERY_RESULT_BACKEND_URL
 CELERY_TASK_ALWAYS_EAGER = False
+PRODUCTION_WATCHDOG_INTERVAL_SECONDS = env.int(
+    "PRODUCTION_WATCHDOG_INTERVAL_SECONDS",
+    default=300,
+)
 # Глобальный дефолт — 30 минут. Для скрейперов переопределяем ниже через CELERY_TASK_ANNOTATIONS.
 CELERY_TASK_TIME_LIMIT = 60 * 30
 ANONYMOUS_CART_TTL_DAYS = env.int("ANONYMOUS_CART_TTL_DAYS", default=30)
@@ -214,6 +219,10 @@ CELERY_TASK_ANNOTATIONS = {
         "time_limit": 60 * 60 * 2,
         "soft_time_limit": 60 * 60,
     },
+    "apps.monitoring.tasks.run_production_watchdog": {
+        "time_limit": 60,
+        "soft_time_limit": 45,
+    },
 }
 from celery.schedules import crontab
 
@@ -222,10 +231,15 @@ CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
     "apps.recommendations.tasks.*": {"queue": "recsys"},
     "apps.payments.tasks.*": {"queue": "celery"},
+    "apps.monitoring.tasks.*": {"queue": "celery"},
     "currency.*": {"queue": "celery"},
 }
 # Расписание Celery Beat. Подробности — см. CELERY_TASKS.md в корне проекта.
 CELERY_BEAT_SCHEDULE = {
+    "monitoring-production-watchdog": {
+        "task": "apps.monitoring.tasks.run_production_watchdog",
+        "schedule": PRODUCTION_WATCHDOG_INTERVAL_SECONDS,
+    },
     # Валюта: обновление курсов каждые 4 часа
     "currency-update-rates": {
         "task": "currency.update_rates",
@@ -827,6 +841,23 @@ TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="") or env("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME", default="")
 TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")
 TELEGRAM_WEBHOOK_SECRET = env("TELEGRAM_WEBHOOK_SECRET", default="")
+PRODUCTION_WATCHDOG_ENABLED = env.bool("PRODUCTION_WATCHDOG_ENABLED", default=False)
+PRODUCTION_WATCHDOG_BASE_URL = env(
+    "PRODUCTION_WATCHDOG_BASE_URL",
+    default="https://mudaroba.com",
+).rstrip("/")
+PRODUCTION_WATCHDOG_FAILURE_THRESHOLD = env.int(
+    "PRODUCTION_WATCHDOG_FAILURE_THRESHOLD",
+    default=2,
+)
+PRODUCTION_WATCHDOG_REPEAT_SECONDS = env.int(
+    "PRODUCTION_WATCHDOG_REPEAT_SECONDS",
+    default=3600,
+)
+PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS = env.int(
+    "PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS",
+    default=10,
+)
 validate_telegram_webhook_settings(
     debug=DEBUG,
     bot_token=TELEGRAM_BOT_TOKEN,

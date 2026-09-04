@@ -188,6 +188,11 @@ path parameters, неявного поля `product_type` и конфликту�
 
 В репозитории подтверждены Prometheus endpoint, JSON logging и опциональный Sentry. Grafana, ELK и готовые dashboards в состав проекта не входят.
 
+Базовая доставка production-инцидентов закрыта 2026-09-04: watchdog в
+обслуживаемой Celery queue проверяет homepage/liveness/readiness, отправляет
+дедуплицированные Telegram alert/recovery и имеет operations runbook. Полный отказ
+самого хоста требует отдельного off-host synthetic monitor.
+
 Нужно добавить:
 
 - dashboard/alerts для 5xx, p95/p99, DB pool, очередей Celery и payment failures;
