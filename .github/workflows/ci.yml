@@ -86,6 +86,8 @@ jobs:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -121,11 +123,18 @@ jobs:
         run: poetry run python manage.py check --deploy --tag security --fail-level ERROR
       - name: Check migration drift
         run: poetry run python manage.py makemigrations --check --dry-run
-      # На 2026-06 кодовая база не проходит flake8 (~73k замечаний) — линт пока
-      # информационный. Ужесточить после чистки (отдельная задача из роадмапа).
-      - name: flake8 (informational)
-        run: poetry run flake8 --count
-        continue-on-error: true
+      # Existing debt is bounded globally. Changed files cannot add violations,
+      # and newly added/copied Python files must start clean.
+      - name: flake8 incremental quality gate
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "${BASE_REF}" || "${BASE_REF}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_REF}^{commit}"; then
+            BASE_REF="$(git rev-parse HEAD^)"
+          fi
+          poetry run python scripts/flake8_quality_gate.py \
+            --base-ref "${BASE_REF}" \
+            --max-total 3030
       # ci-known-failures.txt — реестр известных падений, исключаемых из гейта.
       # Бейзлайн 2026-06-13: пуст (все 24 протухших теста починены).
       # Использовать только как временный карантин с задачей на починку.
