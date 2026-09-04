@@ -141,7 +141,13 @@ jobs:
       - name: pytest
         run: |
           DESELECT=$(sed 's/^/--deselect /' ci-known-failures.txt | tr '\n' ' ')
-          poetry run pytest -q $DESELECT
+          poetry run pytest -q $DESELECT \
+            --cov=api \
+            --cov=apps \
+            --cov=config \
+            --cov-config=.coveragerc \
+            --cov-report=term \
+            --cov-fail-under=1
 
   compose:
     name: Compose configuration
