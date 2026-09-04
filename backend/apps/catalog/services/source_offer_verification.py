@@ -514,7 +514,14 @@ class SourceOfferVerificationService:
                         retryable=result.error.retryable,
                         http_status=result.error.http_status,
                     )
-                if result.source_price is None:
+                price_optional_statuses = {
+                    OfferAvailability.OUT_OF_STOCK,
+                    OfferAvailability.DISCONTINUED,
+                }
+                if (
+                    result.source_price is None
+                    and result.availability_status not in price_optional_statuses
+                ):
                     raise MalformedOfferResponse("Source response does not contain current price")
                 if not self._redirect_is_trusted(parser_class, result.canonical_url):
                     raise OfferVerificationError(
@@ -603,11 +610,19 @@ class SourceOfferVerificationService:
         source_domain = (
             (urlparse(result.canonical_url).hostname or offer.source_domain).casefold().rstrip(".")
         )
+        source_price = result.source_price
+        source_currency = result.source_currency
+        if source_price is None:
+            # A disappeared or sold-out option may no longer expose a price.
+            # Preserve its last known value instead of replacing it with data
+            # from a different live variant.
+            source_price = offer.source_price
+            source_currency = source_currency or offer.source_currency
         values = {
             "canonical_url": result.canonical_url,
             "source_domain": source_domain,
-            "source_price": result.source_price,
-            "source_currency": result.source_currency,
+            "source_price": source_price,
+            "source_currency": source_currency,
             "availability_status": result.availability_status.value,
             "stock_precision": result.stock_precision.value,
             "stock_quantity": result.stock_quantity,
@@ -626,7 +641,7 @@ class SourceOfferVerificationService:
     @staticmethod
     def _observe_changes(offer: ProductSourceOffer, result: OfferCheckResult) -> None:
         changed_fields = []
-        if offer.source_price != result.source_price:
+        if result.source_price is not None and offer.source_price != result.source_price:
             changed_fields.append("price")
         if offer.availability_status != result.availability_status.value:
             changed_fields.append("availability")

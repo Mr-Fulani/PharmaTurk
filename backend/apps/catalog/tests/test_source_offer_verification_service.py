@@ -182,6 +182,72 @@ def test_verification_uses_saved_offer_updates_db_and_caches(offer, monkeypatch)
 
 
 @pytest.mark.django_db
+def test_terminal_result_without_price_preserves_last_known_price(offer, monkeypatch):
+    offer.source_price = Decimal("99.90")
+    offer.source_currency = "TRY"
+    offer.last_error_code = OfferCheckErrorCode.OPTION_NOT_FOUND
+    offer.last_error_message = "Source option was not found"
+    offer.save(
+        update_fields=[
+            "source_price",
+            "source_currency",
+            "last_error_code",
+            "last_error_message",
+        ]
+    )
+    DummyParser.outcomes = [
+        OfferCheckResult(
+            availability_status=OfferAvailability.DISCONTINUED,
+            stock_precision=OfferStockPrecision.BOOLEAN,
+            canonical_url=offer.canonical_url,
+            response_metadata={"option_resolution": "variant_no_longer_listed"},
+        )
+    ]
+    monkeypatch.setattr(
+        "apps.catalog.services.source_offer_verification.get_parser",
+        _fake_registry,
+    )
+
+    result = SourceOfferVerificationService().verify(offer, force=True)
+
+    assert result.is_success is True
+    assert result.source_price is None
+    offer.refresh_from_db()
+    assert offer.availability_status == ProductSourceOffer.AvailabilityStatus.DISCONTINUED
+    assert offer.stock_precision == ProductSourceOffer.StockPrecision.BOOLEAN
+    assert offer.source_price == Decimal("99.90")
+    assert offer.source_currency == "TRY"
+    assert offer.last_error_code == ""
+    assert offer.last_error_message == ""
+    assert offer.response_metadata == {
+        "option_resolution": "variant_no_longer_listed"
+    }
+
+
+@pytest.mark.django_db
+def test_available_result_without_price_remains_malformed(offer, monkeypatch):
+    DummyParser.outcomes = [
+        OfferCheckResult(
+            availability_status=OfferAvailability.IN_STOCK,
+            stock_precision=OfferStockPrecision.BOOLEAN,
+            canonical_url=offer.canonical_url,
+        )
+    ]
+    monkeypatch.setattr(
+        "apps.catalog.services.source_offer_verification.get_parser",
+        _fake_registry,
+    )
+
+    result = SourceOfferVerificationService().verify(offer, force=True)
+
+    assert result.is_success is False
+    assert result.error.code == OfferCheckErrorCode.MALFORMED_RESPONSE
+    offer.refresh_from_db()
+    assert offer.availability_status == ProductSourceOffer.AvailabilityStatus.SOURCE_UNREACHABLE
+    assert offer.last_error_code == OfferCheckErrorCode.MALFORMED_RESPONSE
+
+
+@pytest.mark.django_db
 def test_historical_offer_uses_matching_active_proxy_config(
     offer,
     settings,
