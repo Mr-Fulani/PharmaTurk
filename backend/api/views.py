@@ -25,6 +25,7 @@ from apps.recommendations.services.safe_image_fetcher import (
     InvalidImageError,
     validate_image_bytes,
 )
+from .authentication import JWTSafeAuthentication
 from .throttles import LOGIN_THROTTLES, TOKEN_THROTTLES
 
 
@@ -177,6 +178,9 @@ class TempImageUploadView(APIView):
     Эндпоинт для временной загрузки картинок (для поиска по фото).
     Файлы сохраняются локально (или в R2) с уникальным именем и через время удаляются Celery.
     """
+    # This is a public SPA endpoint. An unrelated Django admin/session cookie
+    # must not opt the request into SessionAuthentication's CSRF enforcement.
+    authentication_classes = [JWTSafeAuthentication]
     parser_classes = [MultiPartParser]
     throttle_classes = [TempImageUploadThrottle, TempImageUploadUserThrottle]
     permission_classes = [AllowAny]
