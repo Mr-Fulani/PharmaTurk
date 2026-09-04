@@ -1220,6 +1220,7 @@
   "search": "Search",
   "select_image": "Select an image",
   "upload_failed": "Failed to upload image. Use URL instead.",
+  "visual_search_forbidden": "Could not send the image. Refresh the page and try again.",
   "upload_unavailable": "File upload unavailable. Paste image URL below.",
   "invalid_image_url": "Failed to process the URL. Ensure the link points directly to an image file (.jpg, .png) and not a webpage.",
   "search_error": "Search error",

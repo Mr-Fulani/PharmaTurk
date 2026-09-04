@@ -3,11 +3,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
+from api.authentication import JWTSafeAuthentication
 from api.views import (
     TempImageUploadThrottle,
     TempImageUploadUserThrottle,
@@ -76,6 +78,40 @@ def _post_upload(upload):
     view = TempImageUploadView.as_view()
     with patch.object(TempImageUploadView, "get_throttles", return_value=[]):
         return view(request)
+
+
+def test_upload_uses_csrf_independent_jwt_authentication():
+    assert TempImageUploadView.authentication_classes == [JWTSafeAuthentication]
+
+
+@pytest.mark.django_db
+def test_public_upload_ignores_unrelated_django_session_csrf():
+    """An admin/session cookie must not turn this AllowAny endpoint into 403."""
+    user = get_user_model().objects.create_user(
+        email="upload-session@example.test",
+        username="upload-session",
+        password="not-used",
+    )
+    client = APIClient(enforce_csrf_checks=True)
+    client.force_login(user)
+    upload = SimpleUploadedFile(
+        "photo.png",
+        _image_bytes("PNG"),
+        content_type="image/png",
+    )
+    storage = Mock()
+    storage.save.side_effect = lambda name, content: name
+    storage.url.side_effect = lambda name: f"/media/{name}"
+
+    with patch("api.views.default_storage", storage), patch.object(
+        TempImageUploadView,
+        "get_throttles",
+        return_value=[],
+    ):
+        response = client.post("/api/upload/temp/", {"file": upload}, format="multipart")
+
+    assert response.status_code == 201
+    assert response.data["url"].startswith("http://testserver/media/temp/")
 
 
 def test_endpoint_saves_rewound_content_with_canonical_extension():
