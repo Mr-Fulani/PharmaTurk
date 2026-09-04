@@ -2245,8 +2245,6 @@ class OrderViewSet(viewsets.ViewSet):
                 )
             CartItem.objects.filter(pk__in=[item.pk for item in locked_items]).delete()
 
-            from django.db import transaction
-
             # Отправляем задачи только после успешного коммита транзакции,
             # чтобы избежать race condition, когда Celery ищет еще не созданный заказ.
             # Берём email покупателя и не отправляем на админские адреса
