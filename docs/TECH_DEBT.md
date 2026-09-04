@@ -28,6 +28,8 @@
   карантином кандидатов и обязательной модерацией перед публикацией.
 - [x] TD-005: исправить source-specific разрешение вариантов LCW/Zara и
   безопасно переклассифицировать накопленные терминальные ошибки offers.
+- [x] TD-007: сделать flake8 и backend coverage измеренными блокирующими
+  quality gates без остановки релизов из-за старого baseline.
 - [x] Исправить диагностику ручного поиска: ошибки Serper не маскируются под
   корректный пустой результат, placeholder-штрихкоды не отправляются во внешние
   API, а поисковое имя очищается от локализованного описательного хвоста.
@@ -242,7 +244,7 @@ PR слишком рискованно.
 
 ### TD-007 — Неполные quality gates
 
-- **Статус:** `[ ]` rollout pending.
+- **Статус:** `[x]` закрыто 5 сентября 2026 года.
 - В PR #24 flake8 переведён из informational в incremental blocking gate:
   измеренный общий baseline ограничен 3030 замечаниями, в каждом изменённом
   Python-файле число замечаний не может расти, а новые и скопированные файлы
@@ -252,9 +254,37 @@ PR слишком рискованно.
   `1407 passed`, `30 subtests passed`, coverage `64.73%` по 47 846 строкам.
   Блокирующий coverage floor установлен на 64%, чтобы небольшой запас на
   различия окружения не создавал ложных падений.
-- До закрытия остаются зелёный повторный CI с финальными порогами, merge/main CI,
-  backup, exact-SHA deploy и production smoke. После rollout общий flake8 budget
-  следует только снижать; повышение 3030 запрещено без отдельного обоснования.
+- Финальный PR CI `33924569064` и main CI `33925629643` для merge
+  `bcdb8dec371d450a0125067f93b60e763a1ef20b` полностью зелёные. Main подтвердил
+  flake8 `3030/3030`, coverage `64.73%`, обязательный floor 64%, `1407 passed` и
+  `30 subtests passed`; exact-revision production images собраны и опубликованы.
+- Перед rollout создан и проверен backup
+  `/home/deploy/backups/pharmaturk/20260904T224222Z_pre_841c107`: PostgreSQL
+  `146083464` байта, Qdrant `402036736` байт, `.env` `8879` байт, все файлы mode
+  `600`; SHA-256 manifest
+  `9ab1bd0ecd21a3eeecbf7b3c4c4480881046ccb71443beb621918af181080ab3`.
+  PostgreSQL/Qdrant SHA-256:
+  `72d5431acc60c1cad01b5e278fc5a9b8cfcba5de12a1209209d8d67fdcf3e156` /
+  `d330e389cb5e4b084c4217f266617c92a77f6378cf6a22ae14c7083d8d1df86e`.
+- Merge SHA развёрнут в production с rollback
+  `841c107a82f9282906a0f9c037995df18ed3ce4b`; migration plan пуст. Public
+  liveness/readiness вернули `status=ok`, DB/cache healthy, Django check чистый,
+  watchdog имеет `active=false, failures=0`, а строгий поиск свежих
+  `ERROR/CRITICAL/Traceback` дал 0. OCI revision labels совпадают с merge SHA,
+  runtime users — `app` и `node`.
+- Stub-refresh задача `#97` восстановлена не новым запуском, а атомарным Kombu
+  `restore_by_tag` той же unacked delivery: Celery ID
+  `4011070d-06b8-4be0-a696-a2c5c7a70fa3`, kwargs `offset=757, after_id=2861`,
+  `redelivered=true`. После deploy прогресс вырос `759 → 761`, cursor
+  `2863 → 2867`, ошибок 0.
+- **Оставшийся риск:** baseline 3030 и floor 64% защищают от регрессии, но не
+  заменяют постепенную выплату старого долга. Budget следует только снижать,
+  coverage повышать, а 44 существующих frontend `no-img-element` warning
+  устранять отдельными небольшими PR. После загрузки нового релиза и отдельно
+  подтверждённого удаления четырёх локальных image tags старого релиза
+  `a2e0f9e8` на production доступно 3.9 GiB (90% использования); Docker volumes,
+  данные, backup, текущий и rollback-релизы не затрагивались. Любая дальнейшая
+  очистка требует отдельного списка точных targets и подтверждения.
 
 ### TD-008 — Мёртвые/дублирующие Celery декларации
 
