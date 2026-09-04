@@ -11,6 +11,7 @@
 | `apps.ai.tasks.*` | `ai` | `celery_ai` |
 | `apps.recommendations.tasks.*` | `recsys` | `celery_recsys` |
 | `apps.payments.tasks.*` | `celery` | `celeryworker` |
+| `apps.monitoring.tasks.*` | `celery` | `celeryworker` |
 | `currency.*` | `celery` | `celeryworker` |
 | Остальные задачи без route | очередь Celery по умолчанию | `celeryworker` |
 
@@ -20,6 +21,7 @@ Beat только публикует задачи. Для исполнения �
 
 | Имя schedule | Задача | Расписание | Очередь | Основной эффект |
 |---|---|---|---|---|
+| `monitoring-production-watchdog` | `apps.monitoring.tasks.run_production_watchdog` | каждые 5 минут | `celery` | Проверяет homepage/liveness/readiness и доставляет дедуплицированные Telegram alert/recovery. |
 | `currency-update-rates` | `currency.update_rates` | каждые 4 часа | `celery` | Обновляет курсы валют. |
 | `currency-update-prices` | `currency.update_product_prices` | каждые 24 часа | `celery` | Вызывает `update_product_prices`, batch size 200. |
 | `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | каждые 7 дней | `celery` | Удаляет сессии и логи скрапинга старше 30 дней. |
@@ -47,6 +49,16 @@ Beat только публикует задачи. Для исполнения �
 `currency.update_rates` вызывает `CurrencyRateService.update_rates()`. `currency.update_product_prices` запускает management-команду пересчёта и не обновляет курс повторно внутри того же запуска.
 
 Обе задачи перехватывают исключения и возвращают `{"status": "error"}` вместо обязательного Celery failure. Поэтому мониторинг должен проверять не только state задачи, но и её result/log message.
+
+### Production watchdog
+
+Watchdog включается только явным `PRODUCTION_WATCHDOG_ENABLED=true`. Он делает
+три публичных HTTPS-запроса, не следует redirect и проверяет точные JSON-контракты
+liveness/readiness. Состояние инцидента хранится в cache: два последовательных
+сбоя открывают alert, повторное сообщение возможно не чаще раза в час, успешное
+восстановление закрывает инцидент отдельным сообщением. При недоступном cache
+readiness-alert не подавляется. Полная процедура описана в
+`docs/PRODUCTION_MONITORING_RUNBOOK.md`.
 
 ### Проверка supplier offers
 
