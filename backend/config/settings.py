@@ -187,6 +187,34 @@ PRODUCTION_WATCHDOG_INTERVAL_SECONDS = env.int(
     "PRODUCTION_WATCHDOG_INTERVAL_SECONDS",
     default=300,
 )
+COINREMITTER_OUTBOX_DISPATCH_INTERVAL_SECONDS = env.int(
+    "COINREMITTER_OUTBOX_DISPATCH_INTERVAL_SECONDS",
+    default=60,
+)
+COINREMITTER_OUTBOX_DISPATCH_BATCH_SIZE = env.int(
+    "COINREMITTER_OUTBOX_DISPATCH_BATCH_SIZE",
+    default=100,
+)
+COINREMITTER_OUTBOX_REPUBLISH_SECONDS = env.int(
+    "COINREMITTER_OUTBOX_REPUBLISH_SECONDS",
+    default=300,
+)
+COINREMITTER_OUTBOX_STALE_SECONDS = env.int(
+    "COINREMITTER_OUTBOX_STALE_SECONDS",
+    default=180,
+)
+COINREMITTER_RECONCILIATION_INTERVAL_SECONDS = env.int(
+    "COINREMITTER_RECONCILIATION_INTERVAL_SECONDS",
+    default=300,
+)
+COINREMITTER_RECONCILIATION_BATCH_SIZE = env.int(
+    "COINREMITTER_RECONCILIATION_BATCH_SIZE",
+    default=10,
+)
+COINREMITTER_RECONCILIATION_MIN_AGE_MINUTES = env.int(
+    "COINREMITTER_RECONCILIATION_MIN_AGE_MINUTES",
+    default=10,
+)
 # Глобальный дефолт — 30 минут. Для скрейперов переопределяем ниже через CELERY_TASK_ANNOTATIONS.
 CELERY_TASK_TIME_LIMIT = 60 * 30
 ANONYMOUS_CART_TTL_DAYS = env.int("ANONYMOUS_CART_TTL_DAYS", default=30)
@@ -223,6 +251,14 @@ CELERY_TASK_ANNOTATIONS = {
         "time_limit": 60,
         "soft_time_limit": 45,
     },
+    "apps.payments.tasks.create_coinremitter_invoice_request": {
+        "time_limit": 90,
+        "soft_time_limit": 75,
+    },
+    "apps.payments.tasks.reconcile_coinremitter_state": {
+        "time_limit": 180,
+        "soft_time_limit": 165,
+    },
 }
 from celery.schedules import crontab
 
@@ -239,6 +275,14 @@ CELERY_BEAT_SCHEDULE = {
     "monitoring-production-watchdog": {
         "task": "apps.monitoring.tasks.run_production_watchdog",
         "schedule": PRODUCTION_WATCHDOG_INTERVAL_SECONDS,
+    },
+    "coinremitter-outbox-dispatch": {
+        "task": "apps.payments.tasks.dispatch_pending_crypto_invoice_requests",
+        "schedule": COINREMITTER_OUTBOX_DISPATCH_INTERVAL_SECONDS,
+    },
+    "coinremitter-reconciliation": {
+        "task": "apps.payments.tasks.reconcile_coinremitter_state",
+        "schedule": COINREMITTER_RECONCILIATION_INTERVAL_SECONDS,
     },
     # Валюта: обновление курсов каждые 4 часа
     "currency-update-rates": {

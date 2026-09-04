@@ -80,6 +80,13 @@ SITE_URL=https://mudaroba.com
 
 # URL фронтенда (success_url, fail_url — редирект после оплаты)
 FRONTEND_SITE_URL=https://mudaroba.com
+COINREMITTER_OUTBOX_DISPATCH_INTERVAL_SECONDS=60
+COINREMITTER_OUTBOX_DISPATCH_BATCH_SIZE=100
+COINREMITTER_OUTBOX_REPUBLISH_SECONDS=300
+COINREMITTER_OUTBOX_STALE_SECONDS=180
+COINREMITTER_RECONCILIATION_INTERVAL_SECONDS=300
+COINREMITTER_RECONCILIATION_BATCH_SIZE=10
+COINREMITTER_RECONCILIATION_MIN_AGE_MINUTES=10
 ```
 
 ### 3.4. Схема URL
@@ -124,7 +131,39 @@ CoinRemitter возвращает два идентификатора: длин�
 строк без `invoice_code` поле безопасно дозаполняется после успешной
 аутентифицированной проверки webhook.
 
-### 3.6. Read-only reconciliation
+### 3.6. Durable invoice outbox
+
+Crypto checkout сначала атомарно сохраняет pending order, его позиции,
+потребление промокода и `CryptoInvoiceRequest`, а затем отвечает `202 Accepted`.
+Вызов `invoice/create` выполняет Celery уже после commit, без открытой DB
+транзакции и без удержания блокировки корзины. Frontend передаёт стабильный
+`Idempotency-Key`, переходит на `/checkout-crypto?number=...` и опрашивает заказ,
+пока outbox не создаст `CryptoPayment`.
+
+Немедленная публикация в Redis является только wake-up: периодический
+`coinremitter-outbox-dispatch` повторно публикует durable строки со статусом
+`pending`, если web-процесс завершился между DB commit и broker publish.
+Успешная публикация записывает `last_enqueued_at`; пока не истечёт
+`COINREMITTER_OUTBOX_REPUBLISH_SECONDS`, dispatcher не создаёт ещё одну копию
+сообщения. Это ограничивает рост Redis-очереди при длительно выключенном worker.
+Конкурентные и повторные сообщения безопасны: только один worker переводит
+строку `pending -> processing`, а завершённый запрос не вызывает провайдера
+повторно.
+
+В официальном `invoice/create` CoinRemitter нет документированного параметра
+идемпотентности. Поэтому после начала provider call timeout, потеря worker или
+неполный ответ считаются неоднозначными: запрос переходит в `uncertain` и **не
+повторяется автоматически**. Сначала найдите invoice в кабинете провайдера по
+`custom_data1` (номер заказа), затем свяжите его утверждённой операционной
+процедурой либо подтвердите отсутствие invoice. Создание второго invoice вслепую
+запрещено.
+
+`coinremitter-reconciliation` переводит зависший `processing` в `uncertain` и
+пишет структурированную метрику `coinremitter_reconciliation_summary`:
+количество outbox по статусам, проверенные pending payments, drift, critical и
+provider-unavailable. Provider payment state при этом не меняется.
+
+### 3.7. Read-only reconciliation
 
 До и после релиза сверяйте локальные платежи с авторизованным `invoice/get`:
 
@@ -147,7 +186,7 @@ poetry run python manage.py reconcile_coinremitter \
 логику списания остатков и уведомлений. `provider_unavailable` означает, что
 сверку нужно повторить после восстановления исходящего HTTPS/API credentials.
 
-### 3.7. Nginx и маршрутизация
+### 3.8. Nginx и маршрутизация
 
 Webhook должен доходить до backend. Пример конфигурации:
 
@@ -195,7 +234,7 @@ server {
 ```
 В этом случае `SITE_URL=https://mudaroba.com` — запросы на `/api/payments/crypto/webhook/` пойдут на backend.
 
-### 3.8. Проверка доступности webhook
+### 3.9. Проверка доступности webhook
 
 ```bash
 curl -X POST https://ваш-домен/api/payments/crypto/webhook \

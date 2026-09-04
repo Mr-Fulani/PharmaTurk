@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import re
 import uuid
 from decimal import Decimal
 from types import SimpleNamespace
@@ -41,9 +42,10 @@ from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
 # Crypto payment (lazy to avoid circular import / optional dependency)
 def _create_crypto_invoice(number: str, total, cart_currency: str, locale: str = "") -> tuple[dict | None, dict | None]:
-    """Создаёт инвойс. Возвращает (invoice_data, payment_data) или (None, None) при ошибке.
-    Инвойс создаётся ДО создания заказа, чтобы не терять корзину при ошибке провайдера.
-    locale: язык пользователя (ru/en) — для сохранения при редиректе после оплаты.
+    """Создаёт инвойс после фиксации durable checkout intent.
+
+    Возвращает ``(invoice_data, payment_data)`` или ``(None, None)`` при ошибке.
+    ``locale`` сохраняет язык пользователя (ru/en) в provider redirect URL.
     """
     from apps.payments.providers.coinremitter import create_invoice
     from apps.payments.providers.dummy import create_invoice_dummy
@@ -96,7 +98,7 @@ def _create_crypto_invoice(number: str, total, cart_currency: str, locale: str =
     elif not invoice_data:
         logger.error(
             "CoinRemitter create_invoice failed and CRYPTO_DUMMY_MODE is off. "
-            "API key set: %s. Returning 503 to client.",
+            "API key set: %s. Marking the outbox result uncertain.",
             bool(getattr(settings, "COINREMITTER_API_KEY", "")),
         )
     if not invoice_data:
@@ -140,6 +142,61 @@ def _save_crypto_payment(order, invoice_data: dict, cart_currency: str):
         invoice_url=invoice_data.get("invoice_url") or "",
         expires_at=expires_at,
     )
+
+
+_IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+
+
+def _crypto_idempotency_hash(request, raw_key: str) -> str:
+    """Return a user-scoped hash; never persist/log the client-supplied key."""
+
+    normalized = (raw_key or "").strip()
+    if normalized and not _IDEMPOTENCY_KEY_RE.fullmatch(normalized):
+        raise serializers.ValidationError(
+            {
+                "idempotency_key": _(
+                    "Idempotency-Key должен содержать 8–128 безопасных символов."
+                )
+            }
+        )
+    if not normalized:
+        normalized = uuid.uuid4().hex
+    user_id = getattr(request.user, "pk", None) or 0
+    return hashlib.sha256(f"{user_id}:{normalized}".encode("utf-8")).hexdigest()
+
+
+def _crypto_payment_payload(order) -> dict | None:
+    from apps.payments.models import CryptoPayment, CryptoPaymentStatus
+
+    try:
+        payment = CryptoPayment.objects.get(order=order)
+    except CryptoPayment.DoesNotExist:
+        return None
+    if payment.status != CryptoPaymentStatus.PENDING:
+        return None
+    return {
+        "address": payment.address,
+        "qr_code": payment.qr_code_url,
+        "amount": str(payment.amount_crypto),
+        "amount_usd": str(payment.amount_fiat),
+        "currency": payment.currency,
+        "expires_at": payment.expires_at.isoformat() if payment.expires_at else "",
+        "invoice_url": payment.invoice_url or "",
+    }
+
+
+def _crypto_checkout_response(order, request, *, status_code: int) -> "Response":
+    from apps.payments.models import CryptoInvoiceRequest
+
+    data = OrderSerializer(order, context={"request": request}).data
+    payment_data = _crypto_payment_payload(order)
+    if payment_data is not None:
+        data["payment_data"] = payment_data
+    try:
+        data["payment_setup_status"] = order.crypto_invoice_request.status
+    except CryptoInvoiceRequest.DoesNotExist:  # Historical rows predate outbox.
+        data["payment_setup_status"] = "succeeded" if payment_data else "unknown"
+    return Response(data, status=status_code)
 from .serializers import (
     AcknowledgeCartPriceSerializer,
     AddToCartSerializer,
@@ -1759,21 +1816,17 @@ class OrderViewSet(viewsets.ViewSet):
         order = self._get_order_for_user(request.user, number)
         data = OrderSerializer(order, context={'request': request}).data
         if order.payment_method == 'crypto' and order.status == Order.OrderStatus.PENDING_PAYMENT:
+            from apps.payments.models import CryptoInvoiceRequest
+
+            payment_data = _crypto_payment_payload(order)
+            if payment_data is not None:
+                data['payment_data'] = payment_data
             try:
-                from apps.payments.models import CryptoPayment
-                cp = CryptoPayment.objects.get(order=order)
-                if cp.status == 'pending':
-                    data['payment_data'] = {
-                        'address': cp.address,
-                        'qr_code': cp.qr_code_url,
-                        'amount': str(cp.amount_crypto),
-                        'amount_usd': str(cp.amount_fiat),
-                        'currency': cp.currency,
-                        'expires_at': cp.expires_at.isoformat() if cp.expires_at else '',
-                        'invoice_url': cp.invoice_url or '',
-                    }
-            except Exception:
-                pass
+                data['payment_setup_status'] = order.crypto_invoice_request.status
+            except CryptoInvoiceRequest.DoesNotExist:
+                data['payment_setup_status'] = (
+                    'succeeded' if payment_data is not None else 'unknown'
+                )
         return Response(data)
 
     @extend_schema(description="Получить подготовленный чек по заказу", responses=OrderReceiptSerializer)
@@ -1862,6 +1915,38 @@ class OrderViewSet(viewsets.ViewSet):
         """
         serializer = CreateOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        payment_method = (
+            serializer.validated_data.get("payment_method") or ""
+        ).strip().lower()
+        is_crypto = payment_method == "crypto"
+        idempotency_key = ""
+        if is_crypto:
+            idempotency_key = _crypto_idempotency_hash(
+                request,
+                request.headers.get("Idempotency-Key", ""),
+            )
+            if request.headers.get("Idempotency-Key", ""):
+                from apps.payments.models import CryptoInvoiceRequest
+
+                existing_request = (
+                    CryptoInvoiceRequest.objects.select_related("order")
+                    .filter(
+                        idempotency_key=idempotency_key,
+                        order__user=request.user,
+                    )
+                    .first()
+                )
+                if existing_request is not None:
+                    response_status = (
+                        status.HTTP_202_ACCEPTED
+                        if existing_request.status in {"pending", "processing"}
+                        else status.HTTP_200_OK
+                    )
+                    return _crypto_checkout_response(
+                        existing_request.order,
+                        request,
+                        status_code=response_status,
+                    )
         cart = _get_existing_cart_for_mutation(request)
         if cart is None:
             return Response({"detail": _("Корзина пуста")}, status=400)
@@ -1876,6 +1961,7 @@ class OrderViewSet(viewsets.ViewSet):
             cart_id=cart.pk,
             expected_fingerprint=expected_fingerprint,
             checkout_data=serializer.validated_data,
+            crypto_idempotency_key=idempotency_key,
         )
 
     @transaction.atomic
@@ -1886,8 +1972,12 @@ class OrderViewSet(viewsets.ViewSet):
         cart_id: int,
         expected_fingerprint: str,
         checkout_data: dict,
+        crypto_idempotency_key: str = "",
     ):
         """Create one order after re-checking the preflight snapshot under row locks."""
+
+        payment_method = (checkout_data.get("payment_method") or "").strip().lower()
+        is_crypto = payment_method == "crypto"
 
         # Serialize checkout attempts for one cart. A concurrent retry waits for
         # this transaction and then observes the emptied cart instead of
@@ -1896,6 +1986,30 @@ class OrderViewSet(viewsets.ViewSet):
             cart = Cart.objects.select_for_update().get(pk=cart_id)
         except Cart.DoesNotExist:
             return Response({"detail": _("Корзина пуста")}, status=400)
+        if is_crypto and crypto_idempotency_key:
+            from apps.payments.models import CryptoInvoiceRequest
+
+            # Re-check after the cart lock. A concurrent request may have
+            # committed the same key while this request was waiting here.
+            existing_request = (
+                CryptoInvoiceRequest.objects.select_related("order")
+                .filter(
+                    idempotency_key=crypto_idempotency_key,
+                    order__user=request.user,
+                )
+                .first()
+            )
+            if existing_request is not None:
+                response_status = (
+                    status.HTTP_202_ACCEPTED
+                    if existing_request.status in {"pending", "processing"}
+                    else status.HTTP_200_OK
+                )
+                return _crypto_checkout_response(
+                    existing_request.order,
+                    request,
+                    status_code=response_status,
+                )
         locked_items = list(
             cart.items.select_for_update()
             .select_related('product')
@@ -2002,24 +2116,14 @@ class OrderViewSet(viewsets.ViewSet):
 
         # Генерация номера заказа
         number = uuid.uuid4().hex[:12].upper()
-        payment_method = (serializer.validated_data.get('payment_method') or '').strip().lower()
-        is_crypto = payment_method == 'crypto'
-
-        # Крипто: создаём инвойс ДО заказа, чтобы не терять корзину при ошибке провайдера
+        # Crypto uses a durable outbox. The provider call happens only after this
+        # transaction commits and never while cart/promo rows are locked.
         locale = (serializer.validated_data.get("locale") or "").strip() or request.META.get("HTTP_ACCEPT_LANGUAGE", "").split(",")[0].split("-")[0] or "ru"
         if locale not in ("ru", "en"):
             locale = "ru"
 
-        if is_crypto:
-            invoice_data, payment_data = _create_crypto_invoice(number, total, order_currency, locale=locale)
-            if not invoice_data:
-                return Response(
-                    {"detail": _("Не удалось создать платёжную ссылку. Попробуйте позже или выберите другой способ оплаты.")},
-                    status=503,
-                )
-
-        # Consume the locked promo only after the external invoice (if any)
-        # succeeded. Any later DB error rolls this update back with the order.
+        # The order intent is durable before any external call. Promo accounting,
+        # order rows and cart consumption commit together.
         if promo_code is not None and consume_promo:
             promo_code.used_count += 1
             promo_code.save(update_fields=['used_count'])
@@ -2090,8 +2194,17 @@ class OrderViewSet(viewsets.ViewSet):
             order.save(update_fields=['shipping_address_text'])
 
         if is_crypto:
-            # Крипто: сохраняем CryptoPayment, позиции заказа без списания остатка
-            _save_crypto_payment(order, invoice_data, order_currency)
+            from apps.payments.models import CryptoInvoiceRequest
+            from apps.payments.tasks import enqueue_crypto_invoice_request
+
+            invoice_request = CryptoInvoiceRequest.objects.create(
+                order=order,
+                idempotency_key=crypto_idempotency_key,
+                amount_fiat=total,
+                fiat_currency=order_currency.upper()[:3],
+                locale=locale,
+            )
+            # Crypto: keep the stock untouched until authoritative paid webhook.
             for item in locked_items:
                 item_price = converted_prices.get(item.id, item.price)
                 OrderItem.objects.create(
@@ -2105,9 +2218,16 @@ class OrderViewSet(viewsets.ViewSet):
                     **_order_item_source_snapshot(item),
                 )
             CartItem.objects.filter(pk__in=[item.pk for item in locked_items]).delete()
-            response_data = OrderSerializer(order).data
-            response_data["payment_data"] = payment_data
-            return Response(response_data, status=201)
+            transaction.on_commit(
+                lambda request_id=invoice_request.pk: enqueue_crypto_invoice_request(
+                    request_id
+                )
+            )
+            return _crypto_checkout_response(
+                order,
+                request,
+                status_code=status.HTTP_202_ACCEPTED,
+            )
         else:
             # Позиции заказа + атомарное списание остатка
             for item in locked_items:

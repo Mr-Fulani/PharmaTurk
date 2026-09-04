@@ -216,11 +216,20 @@ tests. Flake8 остаётся информационным из-за больш
 
 ### P1.7 Надёжность checkout/payment orchestration
 
-Создание CoinRemitter invoice сейчас выполняется во время открытой DB
-транзакции. Если провайдер создаст invoice, а локальная транзакция затем
-откатится, останется orphan invoice. Перевести поток на pending order +
-идемпотентный provider request/outbox, добавить reconciliation job и метрику
-расхождений.
+Кодовая часть закрыта 4 сентября 2026 года. Crypto checkout атомарно создаёт
+pending order и durable `CryptoInvoiceRequest`, а `invoice/create` выполняется
+Celery после DB commit. Повторные HTTP/Celery-запросы не создают второй локальный
+платёж; пропущенный broker publish подбирает периодический dispatcher. Поскольку
+официальный CoinRemitter API не предоставляет provider idempotency key,
+неоднозначный результат безопасно карантинируется как `uncertain` без
+автоматического повтора. Повторная публикация pending intent ограничена
+cooldown, чтобы при остановке worker не раздувать очередь. Scheduled
+reconciliation отмечает stale claims и пишет структурированный drift/outbox
+summary с warning для `uncertain`/`failed`.
+
+Реальный USDT TRC20 E2E остаётся отдельным внешним критерием P1.0: production
+credentials 4 сентября по read-only `wallet/balance` всё ещё указывают на
+`TCN / TestNet`, несмотря на строковое `COINREMITTER_COIN=USDT`.
 
 ### P1.8 Browser security policy
 
