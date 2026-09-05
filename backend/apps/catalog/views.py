@@ -118,7 +118,6 @@ from .serializers import (
     BookProductSerializer,
     PerfumeryProductSerializer,
     MedicineProductSerializer,
-    MedicineProductImageSerializer,
     SupplementProductSerializer,
     MedicalEquipmentProductSerializer,
     TablewareProductSerializer,
@@ -134,6 +133,9 @@ from .serializers import (
     serialize_product_for_card,
 )
 from .card_payload import compact_card_product_payload
+from .medicine_reference import (
+    build_medicine_reference_payload as _build_medicine_reference_payload,
+)
 from .querysets import non_public_shadow_product_q
 from .throttles import (
     MEDICINE_MARKET_CHECK_THROTTLES,
@@ -4816,258 +4818,12 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         ],
     )
     def analogs(self, request, slug=None):
-        """GET /api/catalog/medicines/{slug}/analogs/ — препараты-аналоги по active_ingredient / atc_code."""
+        """Return catalog products and unresolved source analog references."""
         product = self.get_object()
-        limit = _bounded_query_int(request, 'limit', 10, maximum=50)
-
-        # Предпочитаемая валюта (как в ProductSerializer.get_prices_in_currencies)
-        preferred_currency = (
-            request.headers.get('X-Currency') or
-            request.query_params.get('currency') or
-            'TRY'
-        ).upper()
-
-        # Получаем действующее вещество и/или ATC-код
-        active_ingredient = (product.active_ingredient or '').strip()
-        atc_code = (product.atc_code or '').strip()
-        sgk_equivalent_code = (product.sgk_equivalent_code or '').strip()
-
-        # Строим queryset аналогов (исключаем сам товар). Старый путь остается:
-        # active_ingredient / ATC. Новый путь добавляет явные строки MedicineAnalog
-        # из вкладок Eşdeğeri и SGK Eşdeğeri.
-        from django.db.models import Q as _Q
-        q = _Q()
-        has_filters = False
-        if active_ingredient:
-            q |= _Q(active_ingredient__iexact=active_ingredient)
-            has_filters = True
-        if atc_code:
-            q |= _Q(atc_code__iexact=atc_code)
-            has_filters = True
-        if sgk_equivalent_code:
-            q |= _Q(sgk_equivalent_code__iexact=sgk_equivalent_code)
-            has_filters = True
-
-        explicit_refs = list(product.analogs.all())
-        for ref in explicit_refs:
-            ref_q = _Q()
-            if ref.analog_product_id:
-                ref_q |= _Q(pk=ref.analog_product_id)
-            if ref.barcode:
-                ref_q |= _Q(barcode=ref.barcode)
-            if ref.external_id:
-                ref_q |= _Q(external_id=ref.external_id)
-            if ref.sgk_equivalent_code:
-                ref_q |= _Q(sgk_equivalent_code=ref.sgk_equivalent_code)
-            if ref.name:
-                ref_q |= _Q(name__iexact=ref.name)
-            if ref_q.children:
-                q |= ref_q
-                has_filters = True
-
-        if not has_filters:
-            return Response({'count': 0, 'active_ingredient': None, 'atc_code': None, 'results': []})
-
-        analogs_qs = (
-            MedicineProduct.objects
-            .filter(q, is_active=True)
-            .exclude(
-                models.Q(external_data__has_key='is_stub') &
-                models.Q(external_data__is_stub=True)
-            )
-            .exclude(pk=product.pk)
-            .select_related('brand', 'category')
-            .prefetch_related('gallery_images')
-            .order_by('-is_available', 'price')[:limit]
+        limit = _bounded_query_int(request, "limit", 10, maximum=50)
+        return Response(
+            _build_medicine_reference_payload(product, request, limit)
         )
-
-        # Конвертируем текущую цену в preferred_currency для сравнения
-        def _convert(price, currency, priced_product):
-            """Конвертирует цену и накладывает товарную маржу конкретного товара."""
-            if price is None:
-                return None
-            try:
-                _original, _converted, price_with_margin = currency_converter.convert_price(
-                    price, currency or 'TRY', preferred_currency, apply_margin=True
-                )
-                from .utils.product_markup import apply_product_markup
-
-                return float(apply_product_markup(price_with_margin, priced_product))
-            except Exception:
-                logger.exception(
-                    "Failed to calculate public analog price for product_id=%s",
-                    getattr(priced_product, 'pk', None),
-                )
-                try:
-                    from .utils.product_markup import apply_product_markup
-
-                    return float(apply_product_markup(price, priced_product))
-                except Exception:
-                    return float(price)
-
-        try:
-            from .utils.currency_converter import currency_converter as _cc
-            currency_converter = _cc
-        except Exception:
-            currency_converter = None
-
-        def _safe_convert(price, from_currency, priced_product):
-            if currency_converter is None or price is None:
-                if price is None:
-                    return None
-                from .utils.product_markup import apply_product_markup
-
-                return float(apply_product_markup(price, priced_product))
-            return _convert(price, from_currency, priced_product)
-
-        current_price_converted = _safe_convert(
-            product.price, product.currency or 'TRY', product
-        )
-
-        results = []
-        matched_reference_ids = set()
-
-        def _reference_for(analog):
-            for ref in explicit_refs:
-                if ref.analog_product_id == analog.pk:
-                    return ref
-                if ref.barcode and analog.barcode and ref.barcode == analog.barcode:
-                    return ref
-                if ref.external_id and analog.external_id and ref.external_id == analog.external_id:
-                    return ref
-                if ref.name and ref.name.casefold() == (analog.name or '').casefold():
-                    return ref
-            return None
-
-        for analog in analogs_qs:
-            source_reference = _reference_for(analog)
-            if source_reference:
-                matched_reference_ids.add(source_reference.pk)
-            # Основное изображение
-            main_img = analog.main_image or ''
-            if not main_img:
-                first_gallery = analog.gallery_images.first()
-                if first_gallery:
-                    main_img = first_gallery.image_url or ''
-            if main_img and request and not main_img.startswith('http'):
-                main_img = request.build_absolute_uri(main_img)
-            # Конвертируем цену аналога в preferred_currency
-            analog_price_converted = _safe_convert(
-                analog.price, analog.currency or 'TRY', analog
-            )
-            analog_old_price_converted = _safe_convert(
-                analog.old_price, analog.currency or 'TRY', analog
-            )
-
-            # Расчёт экономии vs текущий товар (в той же preferred_currency)
-            saving_percent = None
-            saving_amount = None
-            if (current_price_converted and analog_price_converted and
-                    analog_price_converted < current_price_converted):
-                saving_amount = round(current_price_converted - analog_price_converted, 2)
-                saving_percent = round(saving_amount / current_price_converted * 100)
-
-            results.append({
-                'id': analog.pk,
-                'slug': analog.slug,
-                'name': analog.name,
-                'brand': analog.brand.name if analog.brand else None,
-                # Публичная цена: маржа валютной пары, затем товарная маржа
-                'price': round(analog_price_converted, 2) if analog_price_converted else None,
-                'old_price': round(analog_old_price_converted, 2) if analog_old_price_converted else None,
-                'original_price': float(analog.price) if analog.price else None,
-                'original_currency': analog.currency or 'TRY',
-                'display_currency': preferred_currency,
-                'is_available': analog.is_available,
-                'main_image_url': main_img or None,
-                'images': MedicineProductImageSerializer(
-                    analog.gallery_images.all(),
-                    many=True,
-                    context={'request': request},
-                ).data,
-                'dosage_form': analog.dosage_form or None,
-                'active_ingredient': analog.active_ingredient or None,
-                'saving_percent': saving_percent,
-                'saving_amount': saving_amount,
-                'is_catalog_product': True,
-                'reference_id': source_reference.pk if source_reference else None,
-                'source_reference_price': (
-                    float(source_reference.reference_price)
-                    if source_reference and source_reference.reference_price is not None
-                    else None
-                ),
-                'source_reference_currency': (
-                    source_reference.reference_currency or None
-                    if source_reference
-                    else None
-                ),
-                'source_last_observed_at': (
-                    source_reference.last_observed_at
-                    if source_reference
-                    else None
-                ),
-            })
-
-        # Эквивалент может быть найден в source-вкладке, но ещё не иметь полноценной
-        # публичной карточки. Не создаём ложный «доступный товар»: возвращаем только
-        # информационную reference-строку без slug и availability. Связанные stub-
-        # товары сохраняют прежний публичный контракт и не попадают в ответ.
-        unresolved_refs = sorted(
-            (
-                ref
-                for ref in explicit_refs
-                if ref.analog_product_id is None
-                and ref.pk not in matched_reference_ids
-            ),
-            key=lambda ref: (
-                ref.last_observed_at is None,
-                -(ref.last_observed_at.timestamp() if ref.last_observed_at else 0),
-                ref.name.casefold(),
-            ),
-        )
-        for ref in unresolved_refs:
-            if len(results) >= limit:
-                break
-            results.append({
-                'id': None,
-                'reference_id': ref.pk,
-                'slug': None,
-                'name': ref.name,
-                'brand': None,
-                'price': None,
-                'old_price': None,
-                'original_price': (
-                    float(ref.reference_price)
-                    if ref.reference_price is not None
-                    else None
-                ),
-                'original_currency': ref.reference_currency or 'TRY',
-                'display_currency': ref.reference_currency or 'TRY',
-                'is_available': None,
-                'main_image_url': None,
-                'images': [],
-                'dosage_form': None,
-                'active_ingredient': active_ingredient or None,
-                'saving_percent': None,
-                'saving_amount': None,
-                'is_catalog_product': False,
-                'source_reference_price': (
-                    float(ref.reference_price)
-                    if ref.reference_price is not None
-                    else None
-                ),
-                'source_reference_currency': ref.reference_currency or None,
-                'source_last_observed_at': ref.last_observed_at,
-            })
-
-        return Response({
-            'count': len(results),
-            'active_ingredient': active_ingredient or None,
-            'atc_code': atc_code or None,
-            'sgk_equivalent_code': sgk_equivalent_code or None,
-            'display_currency': preferred_currency,
-            'results': results,
-        })
 
 
 

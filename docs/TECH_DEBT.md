@@ -268,6 +268,13 @@ PR слишком рискованно.
   tests продолжают защищать конкурентное изменение корзины, отсутствие supplier
   I/O и копирование Akakçe seller identity. Модели, миграции, parser flow и
   формат API не меняются.
+- **Срез 5 — medicine reference projection:** read-only построение ответа
+  аналогов медикамента вынесено в
+  `backend/apps/catalog/medicine_reference.py`. Тонкий action сохраняет прежние
+  URL и ограничение `limit`; отдельный contract test и существующие regression
+  tests защищают explicit/unresolved references, исключение stub-товаров,
+  сортировку, валютную маржу и расчёт экономии. Модели, миграции, parser flow и
+  формат API не меняются.
 
 ### TD-007 — Неполные quality gates
 
