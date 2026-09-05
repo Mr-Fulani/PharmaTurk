@@ -275,6 +275,14 @@ PR слишком рискованно.
   tests защищают explicit/unresolved references, исключение stub-товаров,
   сортировку, валютную маржу и расчёт экономии. Модели, миграции, parser flow и
   формат API не меняются.
+- **Срез 6 — supplement market-check API:** HTTP-оркестрация точечной проверки
+  справочной цены БАДа вынесена в
+  `backend/apps/catalog/supplement_market_check_api.py`. Тонкий action сохраняет
+  прежние URL, JWT-only authentication, throttling, коды ответа и payload;
+  отдельный contract test и существующие supplement regression tests защищают
+  idempotency, CSRF boundary, публичную валюту и независимость справочной цены
+  от продажного наличия. Модели, миграции, parser flow и supplier I/O не
+  меняются.
 
 ### TD-007 — Неполные quality gates
 
