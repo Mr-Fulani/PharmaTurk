@@ -155,40 +155,9 @@ def _fallback_item_seo(
     )
 
 
-class _LocalizedSeoMethodsMixin:
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        if not getattr(self, "_normalizes_public_prices", False):
-            data = _apply_product_markup_to_payload(data, instance)
-
-        # DB-only detail projection. List serializers never acquire an N+1 query,
-        # and no public read path performs supplier HTTP.
-        from apps.catalog.services.source_offer_catalog_projection import (
-            apply_source_offer_catalog_projection,
-        )
-
-        return apply_source_offer_catalog_projection(data, instance, self.context)
-
-    def _resolve_localized_seo(self, obj, field_name: str):
-        return resolve_book_seo_value(obj, field_name, lang=_request_lang(self.context.get('request')))
-
-    def get_meta_title(self, obj):
-        return self._resolve_localized_seo(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return self._resolve_localized_seo(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return self._resolve_localized_seo(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return self._resolve_localized_seo(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return self._resolve_localized_seo(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return self._resolve_localized_seo(obj, "og_image_url")
+from .catalog_representation import (
+    LocalizedSeoMethodsMixin as _LocalizedSeoMethodsMixin,
+)
 
 
 def _r2_proxy_url(absolute_url, request):
