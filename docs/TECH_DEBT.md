@@ -261,6 +261,13 @@ PR слишком рискованно.
   сохранён точным alias, а отдельный contract test и существующие source-offer
   regression tests защищают detail/list, no-N+1 и manual-unavailable правила;
   модели, миграции, parser flow и формат API не меняются.
+- **Срез 4 — cart/checkout snapshots:** детерминированный fingerprint корзины
+  для повторной проверки под row lock и immutable supplier snapshot позиции
+  заказа вынесены в `backend/apps/orders/checkout_contract.py`. Старые приватные
+  импорты `views.py` сохранены точными alias; существующие checkout regression
+  tests продолжают защищать конкурентное изменение корзины, отсутствие supplier
+  I/O и копирование Akakçe seller identity. Модели, миграции, parser flow и
+  формат API не меняются.
 
 ### TD-007 — Неполные quality gates
 
