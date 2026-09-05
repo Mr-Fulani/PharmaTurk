@@ -136,6 +136,10 @@ from .card_payload import compact_card_product_payload
 from .medicine_reference import (
     build_medicine_reference_payload as _build_medicine_reference_payload,
 )
+from .supplement_market_check_api import (
+    build_supplement_market_check_response
+    as _build_supplement_market_check_response,
+)
 from .querysets import non_public_shadow_product_q
 from .throttles import (
     MEDICINE_MARKET_CHECK_THROTTLES,
@@ -4887,44 +4891,9 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
         request=None,
     )
     def market_check(self, request, slug=None):
-        from apps.catalog.services.market_check_pricing import attach_public_market_price
-        from apps.catalog.services.supplement_market_check import (
-            SupplementMarketCheckError,
-            SupplementMarketCheckService,
-        )
-
-        supplement = self.get_object()
-        service = SupplementMarketCheckService()
-
-        def serialize(check):
-            return attach_public_market_price(
-                service.serialize(supplement, check),
-                product=supplement,
-                request=request,
-            )
-
-        if request.method == "GET":
-            check = service.latest_for(supplement)
-            return Response(serialize(check))
-
-        try:
-            result = service.request_check(supplement)
-        except SupplementMarketCheckError as exc:
-            check = service.latest_for(supplement)
-            payload = serialize(check)
-            payload["error"] = {
-                "code": exc.code,
-                "message": exc.public_message,
-            }
-            return Response(payload, status=exc.http_status)
-
-        payload = serialize(result.check)
-        payload["queued"] = result.queued
-        payload["cached"] = result.cached
-        payload["stock_discovery_status"] = result.stock_discovery_status
-        return Response(
-            payload,
-            status=status.HTTP_202_ACCEPTED if result.queued else status.HTTP_200_OK,
+        return _build_supplement_market_check_response(
+            supplement=self.get_object(),
+            request=request,
         )
 
 
