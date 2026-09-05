@@ -254,6 +254,13 @@ PR слишком рискованно.
   `backend/apps/catalog/pricing_serializers.py`. Совместимые функции прежнего
   модуля оставлены как тонкие адаптеры, включая monkeypatch-точки существующих
   regression tests; модели, миграции, parser flow и формат API не меняются.
+- **Срез 3 — availability/source projection:** общий representation-mixin,
+  соединяющий локализованный SEO, публичную цену и read-only проекцию свежей
+  доступности источников, вынесен в
+  `backend/apps/catalog/catalog_representation.py`. Прежний приватный import-path
+  сохранён точным alias, а отдельный contract test и существующие source-offer
+  regression tests защищают detail/list, no-N+1 и manual-unavailable правила;
+  модели, миграции, parser flow и формат API не меняются.
 
 ### TD-007 — Неполные quality gates
 
