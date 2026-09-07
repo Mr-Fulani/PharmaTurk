@@ -369,13 +369,47 @@ def test_ilacfiyati_listing_page_url_preserves_filters():
     )
 
 
+def test_ilacfiyati_catalog_ignores_category_navigation_links(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    category_url = "https://ilacfiyati.com/ilaclar"
+    page_html = """
+      <nav>
+        <a href="/ilaclar/kabizlik-ilaclari" class="dropdown-item">
+          Kabızlık İlaçları
+        </a>
+      </nav>
+      <div class="row g-3 mt-4">
+        <div><h2>Arama Sonuçları</h2></div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card h-100 border shadow-sm">
+            <a href="/ilaclar/real-drug-20-mg">Real drug</a>
+          </div>
+        </div>
+      </div>
+    """
+    requested_details = []
+
+    monkeypatch.setattr(parser, "_make_request", lambda _url: page_html)
+
+    def parse_detail(url):
+        requested_details.append(url)
+        return ScrapedProduct(name="REAL DRUG", url=url, source="ilacfiyati")
+
+    monkeypatch.setattr(parser, "parse_product_detail", parse_detail)
+
+    products = list(parser.parse_product_list(category_url, max_pages=1))
+
+    assert len(products) == 1
+    assert requested_details == ["https://ilacfiyati.com/ilaclar/real-drug-20-mg"]
+
+
 def test_ilacfiyati_filtered_catalog_reports_exact_page_progress(monkeypatch):
     parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
     category_url = "https://ilacfiyati.com/ilaclar?brand=Rinvoq"
     requested = []
     pages = {
-        category_url: '<a href="/ilaclar/rinvoq-15-mg-28-tablet">Rinvoq 15</a>',
-        f"{category_url}&pg=2": '<a href="/ilaclar/rinvoq-30-mg-28-tablet">Rinvoq 30</a>',
+        category_url: '<div class="row"><h2>Arama Sonuçları</h2><div class="card h-100"><a href="/ilaclar/rinvoq-15-mg-28-tablet">Rinvoq 15</a></div></div>',
+        f"{category_url}&pg=2": '<div class="row"><h2>Arama Sonuçları</h2><div class="card h-100"><a href="/ilaclar/rinvoq-30-mg-28-tablet">Rinvoq 30</a></div></div>',
     }
 
     def fake_request(url):
@@ -402,8 +436,8 @@ def test_ilacfiyati_empty_filtered_page_explains_zero_result(monkeypatch):
     parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
     category_url = "https://ilacfiyati.com/ilaclar?brand=Rinvoq"
     pages = {
-        category_url: '<a href="/ilaclar/rinvoq-15-mg-28-tablet">Rinvoq</a>',
-        f"{category_url}&pg=2": "<html><body>no products</body></html>",
+        category_url: '<div class="row"><h2>Arama Sonuçları</h2><div class="card h-100"><a href="/ilaclar/rinvoq-15-mg-28-tablet">Rinvoq</a></div></div>',
+        f"{category_url}&pg=2": '<div class="row"><h2>Arama Sonuçları</h2></div>',
     }
     monkeypatch.setattr(parser, "_make_request", lambda url: pages[url])
 
@@ -418,8 +452,10 @@ def test_ilacfiyati_soft_timeout_keeps_current_page_as_resume_cursor(monkeypatch
     parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
     category_url = "https://ilacfiyati.com/ilaclar"
     page_html = """
-      <a href="/ilaclar/first-drug">First</a>
-      <a href="/ilaclar/second-drug">Second</a>
+      <div class="row"><h2>Arama Sonuçları</h2>
+        <div class="card h-100"><a href="/ilaclar/first-drug">First</a></div>
+        <div class="card h-100"><a href="/ilaclar/second-drug">Second</a></div>
+      </div>
     """
     monkeypatch.setattr(parser, "_make_request", lambda _url: page_html)
 
