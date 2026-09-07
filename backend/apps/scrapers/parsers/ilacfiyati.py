@@ -367,7 +367,36 @@ class IlacFiyatiParser(BaseScraper):
         def extract_product_urls(html):
             soup = BeautifulSoup(html, 'html.parser')
             urls = []
-            for link in soup.select('a[href*="/ilaclar/"], a[href*="/takviye-edici-gida/"]'):
+
+            # Categories and real product cards use the same /ilaclar/<slug>
+            # shape. Scope extraction to the search-result cards so navigation
+            # and filter links cannot be persisted as products.
+            result_heading = next(
+                (
+                    heading
+                    for heading in soup.find_all(["h1", "h2", "h3"])
+                    if self._normalize_tr_key(heading.get_text(" ", strip=True))
+                    == "ARAMA SONUCLARI"
+                ),
+                None,
+            )
+            results_root = (
+                result_heading.find_parent("div", class_="row")
+                if result_heading is not None
+                else None
+            )
+            if results_root is None:
+                self.logger.warning(
+                    "IlacFiyati: catalog results container was not found"
+                )
+                return urls
+
+            for card in results_root.select("div.card.h-100"):
+                link = card.select_one(
+                    'a[href^="/ilaclar/"], a[href^="/takviye-edici-gida/"]'
+                )
+                if link is None:
+                    continue
                 href = link.get('href')
                 if not href or 'pg=' in href:
                     continue
