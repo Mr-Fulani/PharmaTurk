@@ -745,7 +745,8 @@ class CatalogNormalizer:
             if stock is not None:
                 product.stock_quantity = stock
                 product.save(update_fields=['stock_quantity'])
-            elif product.is_available and not product.stock_quantity:
+            elif (product.is_available and not product.stock_quantity
+                  and product_data.metadata.get('source') != 'ilacfiyati'):
                 product.stock_quantity = DEFAULT_PARSER_STOCK_QUANTITY
                 product.save(update_fields=['stock_quantity'])
 
@@ -775,7 +776,8 @@ class CatalogNormalizer:
                 product.description = product_data.description
             
             product.is_available = product_data.availability
-            if product.is_available and not product.stock_quantity:
+            if (product.is_available and not product.stock_quantity
+                    and safe_external_meta.get('source') != 'ilacfiyati'):
                 product.stock_quantity = DEFAULT_PARSER_STOCK_QUANTITY
             
             # Мержим external_data вместо полной перезаписи, чтобы сохранить данные ИИ-агента

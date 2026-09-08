@@ -3409,6 +3409,17 @@ class ScraperIntegrationService:
                     updated = True
             else:
                 new_attrs = _json_safe_scraped_value(prepared_attrs)
+                if scraped_product.source == "ilacfiyati":
+                    # An omitted source field is not a deletion instruction.
+                    # Keep known clinical data if a page/optional section is incomplete.
+                    old_attrs = existing_product.external_data.get("attributes") or {}
+                    new_attrs = {
+                        **(old_attrs if isinstance(old_attrs, dict) else {}),
+                        **{key: value for key, value in new_attrs.items()
+                           if value is not None and value != ""},
+                    }
+                    if not prepared_attrs.get("is_stub"):
+                        new_attrs.pop("is_stub", None)
                 if existing_product.external_data.get("attributes") != new_attrs:
                     content_changed = True
                 existing_product.external_data["attributes"] = new_attrs
@@ -4335,7 +4346,8 @@ class ScraperIntegrationService:
             product.save(update_fields=["is_new"])
 
         # Дефолтный остаток для parser-driven товаров: 1000, если парсер не передал точный stock.
-        if product.is_available and not product.stock_quantity:
+        if (product.is_available and not product.stock_quantity
+                and scraped_product.source != "ilacfiyati"):
             product.stock_quantity = DEFAULT_ASSUMED_STOCK_QUANTITY
             product.save(update_fields=["stock_quantity"])
 

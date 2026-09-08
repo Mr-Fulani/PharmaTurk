@@ -108,7 +108,7 @@ def test_ilacfiyati_market_snapshot_keeps_price_when_optional_analog_tab_fails(
 
     assert product.price == Decimal("125.45")
     assert product.currency == "TRY"
-    assert product.is_available is False
+    assert product.is_available is True
     assert product.stock_quantity is None
     assert product.analogs == []
     assert product.analog_fetch_errors == 1

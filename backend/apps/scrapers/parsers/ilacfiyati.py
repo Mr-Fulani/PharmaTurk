@@ -74,6 +74,18 @@ class IlacFiyatiParser(BaseScraper):
         },
     }
 
+    INLINE_TAB_IDS = {
+        "ilac_bilgileri": "ilac-bilgileri",
+        "equivalents": "active-ingredient-equivalent",
+        "sgk_equivalents": "sgk-equivalent",
+        "summary": "content-ozet",
+        "indications": "content-ne-icin-kullanilir",
+        "before_use_warnings": "content-kullanmadan-dikkat-edilecekler",
+        "usage_instructions": "content-nasil-kullanilir",
+        "side_effects": "content-yan-etkileri",
+        "storage_conditions": "content-saklanmasi",
+    }
+
     NOISE_MARKERS = (
         "İlaç Hasta Payı Hesapla",
         "Reçeteye Ekle",
@@ -192,6 +204,17 @@ class IlacFiyatiParser(BaseScraper):
         return text[:12000]
 
     def _extract_tab_text(self, soup: BeautifulSoup, tab_key: str) -> str:
+        # Current pages contain all sections inline. Never fall back to the
+        # entire page: that mixes instructions, other medicines and navigation.
+        if soup.select_one("#medicineAccordion") is not None:
+            root = soup.find(id=self.INLINE_TAB_IDS.get(tab_key))
+            if root is None:
+                return ""
+            fragment = BeautifulSoup(str(root), "html.parser")
+            for node in fragment.select("script, style, ins, button, .adsbygoogle"):
+                node.decompose()
+            return self._clean_tab_text(fragment.get_text("\n", strip=True))
+
         tab = self.DETAIL_TABS.get(tab_key) or {}
         keywords = tuple(self._normalize_tr_key(k) for k in tab.get("keywords", ()))
 
@@ -241,16 +264,21 @@ class IlacFiyatiParser(BaseScraper):
                 break
         return self._clean_tab_text("\n".join(lines))
 
-    def _fetch_detail_tabs(self, product_url: str) -> Dict[str, Dict[str, str]]:
+    def _fetch_detail_tabs(
+        self, product_url: str, main_soup: Optional[BeautifulSoup] = None
+    ) -> Dict[str, Dict[str, str]]:
         base_url = self._canonical_product_url(product_url)
         tabs: Dict[str, Dict[str, str]] = {}
         for key, tab in self.DETAIL_TABS.items():
             tab_url = f"{base_url}/{tab['path']}"
             try:
-                html = self._make_request(tab_url)
-                if not html:
-                    continue
-                soup = BeautifulSoup(html, "html.parser")
+                if main_soup is not None and main_soup.select_one("#medicineAccordion"):
+                    soup = main_soup
+                else:
+                    html = self._make_request(tab_url)
+                    if not html:
+                        continue
+                    soup = BeautifulSoup(html, "html.parser")
                 text = self._extract_tab_text(soup, key)
                 if text:
                     tabs[key] = {
@@ -327,7 +355,7 @@ class IlacFiyatiParser(BaseScraper):
         if len(norm_name) < 3 or norm_name in ignore_names:
             return None
 
-        row = link.find_parent("tr")
+        row = link.find_parent("tr") or link.find_parent(class_="medicine-item")
         context = row.get_text(" ", strip=True) if row else link.parent.get_text(" ", strip=True)
         # Цену берём только из числа непосредственно перед TL/₺ — normalize_price
         # по всему тексту строки склеивала дозировку из названия с ценой
@@ -505,6 +533,65 @@ class IlacFiyatiParser(BaseScraper):
             preserve_transport_errors=True,
         )
 
+    def _extract_attribute_pairs(self, soup: BeautifulSoup):
+        """Read current cards plus legacy tables, excluding equivalent medicines."""
+        pairs = []
+        seen = set()
+
+        def add(label, value):
+            key = clean_text(label.get_text(" ", strip=True))
+            val = clean_text(value.get_text(" ", strip=True))
+            normalized = self._normalize_tr_key(key)
+            if not val or val in {"-", "—"} or normalized in seen:
+                return
+            seen.add(normalized)
+            pairs.append((key, val))
+
+        for label in soup.select(".info-card__label"):
+            if label.find_parent(class_="medicine-item"):
+                continue
+            value = label.parent.select_one(".info-card__value")
+            if value is not None:
+                add(label, value)
+
+        table_root = soup.select_one("#ilac-bilgileri")
+        if table_root is None and soup.select_one("#medicineAccordion") is None:
+            table_root = soup
+        if table_root is not None:
+            for row in table_root.select("table tr"):
+                if row.find_parent(class_="medicine-item"):
+                    continue
+                cells = row.find_all(["th", "td"], recursive=False)
+                if len(cells) == 2:
+                    add(cells[0], cells[1])
+        return pairs
+
+    def _extract_product_images(self, soup: BeautifulSoup) -> List[str]:
+        images = []
+
+        def add(src):
+            if not src:
+                return
+            url = urljoin(self.base_url, src)
+            parsed = urlparse(url)
+            if parsed.scheme not in {"http", "https"}:
+                return
+            if parsed.path.lower().endswith(".svg") or "/dosyalar/site/" in parsed.path.lower():
+                return
+            if url not in images:
+                images.append(url)
+
+        og_img = soup.find("meta", property="og:image")
+        if og_img:
+            add(og_img.get("content"))
+        for img in soup.select(".medicine-detail-swiper img[src], img.product-image[src]"):
+            if img.find_parent(class_="medicine-item"):
+                continue
+            if img.find_parent(id="active-ingredient-equivalent") or img.find_parent(id="sgk-equivalent"):
+                continue
+            add(img.get("src"))
+        return images
+
     def parse_product_detail(
         self,
         product_url: str,
@@ -612,91 +699,85 @@ class IlacFiyatiParser(BaseScraper):
             attributes = {}
             description_lines = []
             
-            tables = soup.find_all('table')
-            for table in tables:
-                rows = table.find_all('tr')
-                for row in rows:
-                    cols = row.find_all(['th', 'td'])
-                    if len(cols) == 2:
-                        key = clean_text(cols[0].text).lower()
-                        val = clean_text(cols[1].text)
-                        
-                        # Сопоставление ключей (игнорируем точки над i и специфику турецкого lower())
-                        key_norm = key.replace('i̇', 'i').replace('\u0131', 'i').replace('i', 'i')
-                        
-                        if 'barkod' in key_norm or 'barcode' in key_norm:
-                            attributes['barcode'] = val
-                        elif ('fi' in key_norm and 'rma' in key_norm) or 'manufacturer' in key_norm:
-                            if not attributes.get('manufacturer'):
-                                attributes['manufacturer'] = val
-                        elif 'atc' in key_norm:
-                            attributes['atc_code'] = val
-                        elif 'etki' in key_norm and 'madde' in key_norm and 'kodu' in key_norm:
-                            attributes['sgk_active_ingredient_code'] = val
-                        elif 'etki' in key_norm and 'madde' in key_norm:
-                            if 'kodu' not in key_norm:
-                                # Действующее вещество
-                                if 'active_ingredient' not in attributes:
-                                    attributes['active_ingredient'] = val
-                        elif 're\u00e7ete' in key_norm or 'recete' in key_norm:
-                            attributes['prescription_type'] = val
-                            if 're\u00e7etesiz' not in val.lower() and val.lower().strip() != '-':
-                                attributes['prescription_required'] = True
-                        elif 'ambalaj' in key_norm or 'miktar' in key_norm:
-                            attributes['volume'] = val
-                        elif 'formu' in key_norm:
-                            val_lower = val.lower()
-                            if 'tablet' in val_lower or 'film' in val_lower:
-                                attributes['dosage_form'] = 'tablet'
-                            elif 'kaps\u00fcl' in val_lower or 'kapsul' in val_lower:
-                                attributes['dosage_form'] = 'capsule'
-                            elif '\u015furup' in val_lower or 'surup' in val_lower:
-                                attributes['dosage_form'] = 'syrup'
-                            elif 'damla' in val_lower:
-                                attributes['dosage_form'] = 'drops'
-                            elif 'merhem' in val_lower or 'pomad' in val_lower:
-                                attributes['dosage_form'] = 'ointment'
-                            elif 'krem' in val_lower or 'cream' in val_lower:
-                                attributes['dosage_form'] = 'cream'
-                            elif 'jel' in val_lower or 'gel' in val_lower:
-                                attributes['dosage_form'] = 'gel'
-                            elif 'ampul' in val_lower or 'enjeksiyon' in val_lower or 'flakon' in val_lower:
-                                attributes['dosage_form'] = 'injection'
-                            elif 'toz' in val_lower or 'gran\u00fcl' in val_lower:
-                                attributes['dosage_form'] = 'powder'
-                            elif 'sprey' in val_lower or 'spray' in val_lower or 'inhaler' in val_lower:
-                                attributes['dosage_form'] = 'spray'
-                            elif 'supozit' in val_lower:
-                                attributes['dosage_form'] = 'suppository'
-                            else:
-                                attributes['dosage_form'] = 'other'
-                            attributes['dosage_form_raw'] = val
-                        elif 'men\u015fei' in key_norm or 'mensei' in key_norm:
-                            attributes['origin_country'] = val
-                        elif 'sgk' in key_norm and ('\u00f6deme' in key_norm or 'odeme' in key_norm or 'fiyat' in key_norm):
-                            if 'sgk_status' not in attributes:
-                                attributes['sgk_status'] = val
-                        elif 'e\u015fde\u011fer kodu' in key_norm or 'esdeger kodu' in key_norm:
-                            attributes['sgk_equivalent_code'] = val
-                        elif 'kamu no' in key_norm:
-                            attributes['sgk_public_no'] = val
-                        elif 'uygulama' in key_norm:
-                            attributes['administration_route'] = val
-                        elif 'raf \u00f6mr\u00fc' in key_norm or 'raf omru' in key_norm:
-                            attributes['shelf_life'] = val
-                        elif 'saklama' in key_norm:
-                            attributes['storage_conditions'] = val
-                        elif 'nfc' in key_norm:
-                            attributes['nfc_code'] = val
-                        elif '\u00f6zel' in key_norm or 'ozel' in key_norm:
-                            attributes['special_notes'] = val
+            for key, val in self._extract_attribute_pairs(soup):
+                # Сопоставление ключей (игнорируем точки над i и специфику турецкого lower())
+                key_norm = self._normalize_tr_key(key).lower()
 
-                        description_lines.append(f"{cols[0].text.strip()}: {val}")
-            
+                if 'barkod' in key_norm or 'barcode' in key_norm:
+                    attributes['barcode'] = val
+                elif ('fi' in key_norm and 'rma' in key_norm) or 'manufacturer' in key_norm:
+                    if not attributes.get('manufacturer'):
+                        attributes['manufacturer'] = val
+                elif 'atc' in key_norm:
+                    attributes['atc_code'] = val
+                elif 'etki' in key_norm and 'madde' in key_norm and 'kodu' in key_norm:
+                    attributes['sgk_active_ingredient_code'] = val
+                elif 'etki' in key_norm and 'madde' in key_norm:
+                    if 'kodu' not in key_norm:
+                        # Действующее вещество
+                        if 'active_ingredient' not in attributes:
+                            attributes['active_ingredient'] = val
+                elif 're\u00e7ete' in key_norm or 'recete' in key_norm:
+                    attributes['prescription_type'] = val
+                    attributes['prescription_required'] = (
+                        'RECETESIZ' not in self._normalize_tr_key(val)
+                        and val.strip() != '-'
+                    )
+                elif 'ambalaj' in key_norm or 'miktar' in key_norm:
+                    attributes['volume'] = val
+                elif 'formu' in key_norm:
+                    val_lower = val.lower()
+                    if 'tablet' in val_lower or 'film' in val_lower:
+                        attributes['dosage_form'] = 'tablet'
+                    elif 'kaps\u00fcl' in val_lower or 'kapsul' in val_lower:
+                        attributes['dosage_form'] = 'capsule'
+                    elif '\u015furup' in val_lower or 'surup' in val_lower:
+                        attributes['dosage_form'] = 'syrup'
+                    elif 'damla' in val_lower:
+                        attributes['dosage_form'] = 'drops'
+                    elif 'merhem' in val_lower or 'pomad' in val_lower:
+                        attributes['dosage_form'] = 'ointment'
+                    elif 'krem' in val_lower or 'cream' in val_lower:
+                        attributes['dosage_form'] = 'cream'
+                    elif 'jel' in val_lower or 'gel' in val_lower:
+                        attributes['dosage_form'] = 'gel'
+                    elif 'ampul' in val_lower or 'enjeksiyon' in val_lower or 'flakon' in val_lower:
+                        attributes['dosage_form'] = 'injection'
+                    elif 'toz' in val_lower or 'gran\u00fcl' in val_lower:
+                        attributes['dosage_form'] = 'powder'
+                    elif 'sprey' in val_lower or 'spray' in val_lower or 'inhaler' in val_lower:
+                        attributes['dosage_form'] = 'spray'
+                    elif 'supozit' in val_lower:
+                        attributes['dosage_form'] = 'suppository'
+                    else:
+                        attributes['dosage_form'] = 'other'
+                    attributes['dosage_form_raw'] = val
+                elif 'men\u015fei' in key_norm or 'mensei' in key_norm:
+                    attributes['origin_country'] = val
+                elif 'sgk' in key_norm and any(word in key_norm for word in ('odeme', 'fiyat', 'durumu')):
+                    if 'sgk_status' not in attributes:
+                        attributes['sgk_status'] = val
+                elif 'e\u015fde\u011fer kodu' in key_norm or 'esdeger kodu' in key_norm:
+                    attributes['sgk_equivalent_code'] = val
+                elif 'kamu no' in key_norm:
+                    attributes['sgk_public_no'] = val
+                elif 'uygulama' in key_norm:
+                    attributes['administration_route'] = val
+                elif 'raf \u00f6mr\u00fc' in key_norm or 'raf omru' in key_norm:
+                    attributes['shelf_life'] = val
+                elif 'saklama' in key_norm:
+                    attributes['storage_conditions'] = val
+                elif 'nfc' in key_norm:
+                    attributes['nfc_code'] = val
+                elif '\u00f6zel' in key_norm or 'ozel' in key_norm:
+                    attributes['special_notes'] = val
+
+                description_lines.append(f"{key}: {val}")
+
             # 4. Вкладки инструкции препарата.
             # ilacfiyati держит важные разделы на отдельных URL вида /{slug}/nasil-kullanilir.
             # Сохраняем турецкий source структурированно, чтобы AI только переводил, а не додумывал.
-            detail_tabs = self._fetch_detail_tabs(product_url) if include_detail_tabs else {}
+            detail_tabs = self._fetch_detail_tabs(product_url, soup) if include_detail_tabs else {}
             if detail_tabs:
                 attributes["source_tabs"] = detail_tabs
                 description_tab_order = (
@@ -726,29 +807,8 @@ class IlacFiyatiParser(BaseScraper):
             
             description = "\n\n".join(description_lines)
             
-            # 4. Изображения
-            images = []
-            og_img = soup.find("meta", property="og:image")
-            if og_img and og_img.get("content"):
-                images.append(urljoin(self.base_url, og_img["content"]))
-                
-            img_tags = soup.select(".swiper-slide img[src], img[src]")
-            for img in img_tags:
-                src = img.get("src")
-                if not src:
-                    continue
-                src_lower = src.lower()
-                is_product_img = (
-                    ("dosyalar" in src_lower and "site" not in src_lower) or 
-                    ("urun" in src_lower) or 
-                    ("resim" in src_lower and "assets" not in src_lower)
-                )
-                is_valid_extension = not src_lower.endswith(".svg") and "shadow" not in src_lower and "app-store" not in src_lower and "google-play" not in src_lower
-
-                if is_product_img and is_valid_extension:
-                    full_img_url = urljoin(self.base_url, src)
-                    if full_img_url not in images:
-                        images.append(full_img_url)
+            # Only the medicine's own gallery, never equivalent-product cards.
+            images = self._extract_product_images(soup)
 
             external_id = self._extract_external_id_from_url(product_url)
             if not external_id:
@@ -768,19 +828,23 @@ class IlacFiyatiParser(BaseScraper):
             for path, source_tab in sub_paths:
                 sub_url = canonical_product_url + path
                 try:
-                    # Добавляем небольшую паузу, чтобы не злить сервер
-                    import time
-                    time.sleep(1.5)
-                    
-                    sub_html = self._make_request(sub_url)
-                    if not sub_html:
-                        raise IlacFiyatiSourceError(
-                            f"IlacFiyati вернул пустую вкладку аналогов: {sub_url}"
-                        )
-                    sub_soup = BeautifulSoup(sub_html, 'html.parser')
-                    # Ищем все ссылки на лекарства на этой странице
-                    # Обычно они в таблицах или списках в центральной колонке
-                    links = sub_soup.find_all('a', href=True)
+                    tab_key = "equivalents" if path == "/esdegeri" else "sgk_equivalents"
+                    if soup.select_one("#medicineAccordion") is not None:
+                        sub_soup = soup
+                    else:
+                        import time
+                        time.sleep(1.5)
+                        sub_html = self._make_request(sub_url)
+                        if not sub_html:
+                            raise IlacFiyatiSourceError(
+                                f"IlacFiyati вернул пустую вкладку аналогов: {sub_url}"
+                            )
+                        sub_soup = BeautifulSoup(sub_html, "html.parser")
+                    if sub_soup.select_one("#medicineAccordion") is not None:
+                        analog_root = sub_soup.find(id=self.INLINE_TAB_IDS[tab_key])
+                        links = analog_root.select(".medicine-item a[href]") if analog_root else []
+                    else:
+                        links = sub_soup.select("table a[href], .medicine-item a[href]")
                     for a in links:
                         analog = self._extract_analog_from_link(
                             a,
@@ -841,10 +905,10 @@ class IlacFiyatiParser(BaseScraper):
                 images=images,
                 external_id=external_id,
                 barcode=attributes.get('barcode', ''),
-                # IlacFiyati is an informational price catalogue and explicitly does
-                # not sell products. "AKTIF" on the page is a catalogue/registration
-                # state, not supplier stock, so availability must stay fail-closed.
-                is_available=False,
+                # Storefront policy: unknown quantity does not disable a card.
+                # Do not invent units. SourceOffer independently keeps reference
+                # catalogue observations UNKNOWN, not verified supplier stock.
+                is_available=True,
                 stock_quantity=None,
                 source=self.get_name(),
                 attributes=attributes,
