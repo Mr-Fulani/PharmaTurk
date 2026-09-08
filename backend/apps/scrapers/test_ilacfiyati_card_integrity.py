@@ -50,6 +50,7 @@ CURRENT_HTML = """
 def test_current_layout_reads_own_attributes_gallery_and_inline_tabs(monkeypatch):
     parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
     calls = []
+
     def request(url):
         calls.append(url)
         assert url == URL, "Inline sections must not trigger legacy redirect requests"
@@ -119,6 +120,7 @@ def test_non_prescription_label_is_not_treated_as_prescription(monkeypatch, labe
     monkeypatch.setattr(parser, "_make_request", lambda url: CURRENT_HTML.replace("Beyaz Reçete", label))
     assert parser.parse_product_detail(URL).attributes["prescription_required"] is False
 
+
 @pytest.mark.django_db
 def test_ilacfiyati_missing_fields_preserve_known_metadata_without_stock_churn(monkeypatch):
     from apps.scrapers.services import ScraperIntegrationService, scraping_in_progress_context
@@ -153,7 +155,6 @@ def test_ilacfiyati_missing_fields_preserve_known_metadata_without_stock_churn(m
 
 @pytest.mark.django_db
 def test_ilacfiyati_new_card_has_availability_without_invented_quantity(monkeypatch):
-    from apps.catalog.models import Category
     from apps.scrapers.services import ScraperIntegrationService, scraping_in_progress_context
     from apps.scrapers.base.scraper import ScrapedProduct
 
