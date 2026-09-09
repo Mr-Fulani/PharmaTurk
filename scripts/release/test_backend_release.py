@@ -66,6 +66,52 @@ def state(version=A):
 
 
 class ReleaseTests(unittest.TestCase):
+    def runtime_commands(self, *, backend_ids=None, backend_running=True):
+        def command(argv, **kwargs):
+            if argv[:2] == ["docker", "ps"]:
+                self.assertIn("--all", argv)
+                self.assertIn("label=com.docker.compose.project=test", argv)
+                self.assertIn("label=com.docker.compose.oneoff=False", argv)
+                service = next(arg.split("=", 2)[-1] for arg in argv
+                               if arg.startswith("label=com.docker.compose.service="))
+                ids = backend_ids if service == "backend" and backend_ids is not None else [service]
+                return "\n".join(ids).encode()
+            self.assertEqual(argv[:2], ["docker", "inspect"])
+            service = argv[2]
+            return json.dumps([{
+                "Id": service, "Image": "immutable-image", "Config": {"Labels": {
+                    "org.opencontainers.image.revision": A if service in WRITERS else C,
+                }}, "State": {"Running": backend_running if service == "backend" else True},
+            }]).encode()
+        return command
+
+    def test_runtime_ignores_retained_oneoff_containers(self):
+        r = release()
+        # Compose ps --all includes retained run/canary containers. Service
+        # discovery must select the main containers by exact Docker labels.
+        r.dc = Mock(return_value=b"backend\nold-canary\nold-audit\n")
+        with patch("backend_release.run", side_effect=self.runtime_commands()):
+            observed = r.runtime()
+        self.assertEqual(set(observed), set(WRITERS + PRESERVED))
+        self.assertEqual(observed["backend"]["id"], "backend")
+        r.dc.assert_not_called()
+
+    def test_runtime_keeps_duplicate_and_missing_main_container_guards(self):
+        for ids in ([], ["backend", "unexpected-second-main"]):
+            r = release()
+            r.dc = Mock(return_value=b"backend\nold-canary\n")
+            with patch("backend_release.run", side_effect=self.runtime_commands(backend_ids=ids)):
+                with self.assertRaisesRegex(ValueError, "exactly one existing backend"):
+                    r.runtime()
+
+    def test_rollback_discovers_stopped_main_and_allows_missing_writer(self):
+        r = release("rollback")
+        r.dc = Mock(return_value=b"backend\nold-canary\n")
+        with patch("backend_release.run", side_effect=self.runtime_commands(backend_running=False)):
+            self.assertFalse(r.runtime()["backend"]["running"])
+        with patch("backend_release.run", side_effect=self.runtime_commands(backend_ids=[])):
+            self.assertIsNone(r.runtime()["backend"]["id"])
+
     def test_migration_gate_cannot_expand_backup_scope(self):
         validate_plan({"migrations": [], "tables": []})
         with self.assertRaises(ValueError):

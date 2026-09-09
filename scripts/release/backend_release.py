@@ -60,7 +60,15 @@ class Release:
     def runtime(self):
         result = {}
         for service in WRITERS + PRESERVED:
-            ids = self.dc("ps", "-a", "-q", service).decode().split()
+            # Compose ps --all also returns retained one-shot runs. Keep
+            # stopped main services discoverable for rollback, but never
+            # mistake a diagnostic/canary container for a deployed service.
+            ids = run([
+                "docker", "ps", "--all", "--quiet",
+                "--filter", f"label=com.docker.compose.project={self.args.project_name}",
+                "--filter", f"label=com.docker.compose.service={service}",
+                "--filter", "label=com.docker.compose.oneoff=False",
+            ]).decode().split()
             if not ids and self.args.mode == "rollback" and service in WRITERS:
                 result[service] = {"id": None, "revision": None, "running": False}
                 continue
