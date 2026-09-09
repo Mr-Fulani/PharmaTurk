@@ -106,6 +106,20 @@ export function getLocalizedCategoryName(
   return fallbackName
 }
 
+/** Compact navigation labels only; full API names remain authoritative elsewhere. */
+export function getSidebarCategoryName(
+  categoryType: string,
+  slug: string,
+  fallbackName: string,
+  t: TFunction,
+  translations?: CategoryTranslation[],
+  currentLocale?: string
+): string {
+  const fullName = getLocalizedCategoryName(slug, fallbackName, t, translations, currentLocale)
+  if (categoryType !== 'medicines') return fullName
+  return t(`sidebar_medicine_${normalizeCategorySlug(slug)}`, fullName)
+}
+
 /**
  * Получает локализованное описание категории
  */
