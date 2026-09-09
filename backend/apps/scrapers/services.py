@@ -92,8 +92,14 @@ def _price_refresh_disabled_source_keys() -> set[str]:
     }
 
 
-def _scraper_task_product_cache_key(site_task_id: int, identity: str) -> str:
+def _scraper_task_product_cache_key(
+    site_task_id: int, identity: str, run_token: Optional[str] = None,
+) -> str:
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    if run_token:
+        return f"scraper:site-run:v2:{site_task_id}:{run_token}:product:{digest}"
+    # Existing paused runs can finish in their original namespace. New starts
+    # receive a token in the admin; legacy keys expire without a cache flush.
     return f"scraper:site-task:{site_task_id}:product:{digest}"
 
 
@@ -830,6 +836,7 @@ class ScraperIntegrationService:
         instagram_run_token: str = "",
         total_posts_processed: int = 0,
         total_errors_count: int = 0,
+        site_run_token: Optional[str] = None,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -859,7 +866,10 @@ class ScraperIntegrationService:
         # Привязываем сессию к задаче сразу, а не только после завершения чанка:
         # админка должна показывать живой запуск и его логи с первого товара.
         if site_task_id:
-            SiteScraperTask.objects.filter(id=site_task_id).update(session=session)
+            task_query = SiteScraperTask.objects.filter(id=site_task_id)
+            if site_run_token is not None:
+                task_query = task_query.filter(run_token=site_run_token or None)
+            task_query.update(session=session)
         if instagram_task_id:
             InstagramScraperTask.objects.filter(id=instagram_task_id).update(session=session)
         # Пол из настроек задачи (men/women/unisex или пусто). Транзиентно: применяется
@@ -919,6 +929,7 @@ class ScraperIntegrationService:
                     instagram_run_token=instagram_run_token,
                     total_posts_processed=total_posts_processed,
                     total_errors_count=total_errors_count,
+                    site_run_token=site_run_token,
                 )
 
                 # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
@@ -1002,6 +1013,7 @@ class ScraperIntegrationService:
         instagram_run_token: str = "",
         total_posts_processed: int = 0,
         total_errors_count: int = 0,
+        site_run_token: Optional[str] = None,
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -1013,7 +1025,12 @@ class ScraperIntegrationService:
         incremental_results = None
 
         try:
-            self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
+            if site_task_id and site_run_token is None:
+                token = SiteScraperTask.objects.filter(pk=site_task_id).values_list(
+                    "run_token", flat=True,
+                ).first()
+                site_run_token = str(token or "")
+            self._ensure_site_task_not_cancelled(site_task_id, celery_task_id, site_run_token)
             self._ensure_instagram_task_active(instagram_task_id, celery_task_id)
             # Анализируем URL
             parsed_url = urlparse(start_url)
@@ -1078,25 +1095,30 @@ class ScraperIntegrationService:
                         parser_limit = getattr(parser, "max_products", None)
                         if parser_limit is not None and incremental_results["found"] >= parser_limit:
                             break
-                        self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
+                        self._ensure_site_task_not_cancelled(
+                            site_task_id, celery_task_id, site_run_token,
+                        )
                         product_identity = _scraped_product_identity(product)
                         product_cache_key = (
-                            _scraper_task_product_cache_key(site_task_id, product_identity)
+                            _scraper_task_product_cache_key(
+                                site_task_id, product_identity, site_run_token,
+                            )
                             if site_task_id and product_identity
                             else None
                         )
                         if product_cache_key and cache.get(product_cache_key):
                             incremental_results["skipped"] += 1
                             self.logger.warning(
-                                "Повторная карточка между чанками пропущена: %s (task=%s)",
+                                "Повторная карточка внутри прохода пропущена: %s (task=%s run=%s)",
                                 product_identity,
                                 site_task_id,
+                                site_run_token or "legacy",
                             )
                             continue
                         r = self._process_scraped_products(session, [product])
                         for k in incremental_results:
                             incremental_results[k] += r.get(k, 0)
-                        if product_cache_key:
+                        if product_cache_key and r.get("errors", 0) == 0:
                             cache.set(
                                 product_cache_key,
                                 True,
@@ -1135,7 +1157,9 @@ class ScraperIntegrationService:
                                 errors_count=session.errors_count,
                             )
                         if site_task_id:
-                            SiteScraperTask.objects.filter(id=site_task_id).update(
+                            SiteScraperTask.objects.filter(
+                                id=site_task_id, run_token=site_run_token or None,
+                            ).update(
                                 session_id=session_id,
                                 products_found=total_scraped + incremental_results["found"],
                                 products_created=total_created + incremental_results["created"],
@@ -1410,12 +1434,19 @@ class ScraperIntegrationService:
 
     @staticmethod
     def _ensure_site_task_not_cancelled(
-        site_task_id: Optional[int], expected_task_id: Optional[str] = None
+        site_task_id: Optional[int], expected_task_id: Optional[str] = None,
+        expected_run_token: Optional[str] = None,
     ) -> None:
         """Периодически проверяет, не остановили/не поставили ли задачу на паузу."""
         if not site_task_id:
             return
-        row = SiteScraperTask.objects.filter(id=site_task_id).values("status", "task_id").first()
+        row = SiteScraperTask.objects.filter(id=site_task_id).values(
+            "status", "task_id", "run_token",
+        ).first()
+        if expected_run_token is not None and (
+            not row or str(row["run_token"] or "") != str(expected_run_token)
+        ):
+            raise ScraperTaskSuperseded("Проход каталога заменён новым проходом.")
         status = row.get("status") if row else None
         current_task_id = row.get("task_id") if row else ""
         if expected_task_id and current_task_id and current_task_id != expected_task_id:

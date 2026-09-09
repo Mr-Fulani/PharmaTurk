@@ -720,6 +720,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             task.errors_count = 0
             task.resume_page = 1
             task.stub_cursor_id = 0
+            task.run_token = uuid.uuid4()
 
         task.status = "running"
         task.started_at = timezone.now()
@@ -743,6 +744,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                 max_products=task.max_products,
                 max_images_per_product=task.max_images_per_product,
                 site_task_id=task.id,
+                site_run_token=str(task.run_token or ""),
             )
             if resume:
                 # Продолжаем с сохранённой страницы, накопленные счётчики

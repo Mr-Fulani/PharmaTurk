@@ -681,6 +681,12 @@ class SiteScraperTask(models.Model):
 
     status = models.CharField(_("Статус"), max_length=20, choices=STATUS_CHOICES, default="pending")
     task_id = models.CharField(_("ID задачи Celery"), max_length=100, blank=True)
+    # NULL keeps the cache namespace of runs started before this field existed.
+    # The admin assigns a UUID on each fresh run, but not on pause/resume.
+    run_token = models.UUIDField(
+        _("ID прохода"), null=True, blank=True, editable=False,
+        help_text=_("Меняется при новом проходе каталога; сохраняется между чанками и после паузы."),
+    )
     session = models.ForeignKey(
         ScrapingSession,
         on_delete=models.SET_NULL,

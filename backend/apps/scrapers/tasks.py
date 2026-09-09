@@ -523,23 +523,26 @@ def run_instagram_scraper_task(
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def run_scraper_task(self,
-                    scraper_config_id: int,
-                    start_url: Optional[str] = None,
-                    max_pages: Optional[int] = None,
-                    max_products: Optional[int] = None,
-                    max_images_per_product: Optional[int] = None,
-                    site_task_id: Optional[int] = None,
-                    start_page: int = 1,
-                    total_scraped: int = 0,
-                    total_created: int = 0,
-                    total_updated: int = 0,
-                    total_skipped: int = 0,
-                    total_analogs_found: int = 0,
-                    total_analog_links_saved: int = 0,
-                    total_analog_stubs_created: int = 0,
-                    total_analog_stubs_upgraded: int = 0,
-                    total_analog_errors: int = 0) -> Dict:
+def run_scraper_task(
+    self,
+    scraper_config_id: int,
+    start_url: Optional[str] = None,
+    max_pages: Optional[int] = None,
+    max_products: Optional[int] = None,
+    max_images_per_product: Optional[int] = None,
+    site_task_id: Optional[int] = None,
+    start_page: int = 1,
+    total_scraped: int = 0,
+    total_created: int = 0,
+    total_updated: int = 0,
+    total_skipped: int = 0,
+    total_analogs_found: int = 0,
+    total_analog_links_saved: int = 0,
+    total_analog_stubs_created: int = 0,
+    total_analog_stubs_upgraded: int = 0,
+    total_analog_errors: int = 0,
+    site_run_token: Optional[str] = None,
+) -> Dict:
     """Задача: запуск парсера.
 
     start_page / total_scraped используются для авточепочки при парсинге больших каталогов.
@@ -549,6 +552,17 @@ def run_scraper_task(self,
     site_task = None
     if site_task_id:
         site_task = SiteScraperTask.objects.filter(id=site_task_id).first()
+        if site_task:
+            current_token = str(site_task.run_token or "")
+            if current_token and site_run_token is None and self.request.id:
+                # Pre-release queued messages have no token. They may continue
+                # a legacy run, but cannot join a newly started UUID-based run.
+                return {"status": "superseded", "message": "Устаревший чанк без ID прохода."}
+            if site_run_token is not None and str(site_run_token) != current_token:
+                # An old queued chunk must not claim the new run's task_id or
+                # adopt its cache namespace before the service can reject it.
+                return {"status": "superseded", "message": "Проход каталога заменён новым проходом."}
+            site_run_token = current_token
 
     try:
         # Получаем конфигурацию
@@ -598,6 +612,7 @@ def run_scraper_task(self,
             f"Парсер: {scraper_config.name}",
             f"URL: {start_url or scraper_config.base_url}",
             f"Страница старт: {start_page}",
+            f"ID прохода: {site_run_token or 'legacy'}",
             f"Страниц в чанке: {runtime_max_pages}",
             f"Макс. товаров всего: {max_products or scraper_config.max_products_per_run}",
             f"Макс. медиа: {max_images_per_product or scraper_config.max_images_per_product}",
@@ -666,6 +681,7 @@ def run_scraper_task(self,
             total_analog_stubs_upgraded=total_analog_stubs_upgraded,
             total_analog_errors=total_analog_errors,
             celery_task_id=self.request.id,
+            site_run_token=site_run_token,
         )
         session_analogs_found = int(getattr(session, "analogs_found", 0) or 0)
         session_analog_links_saved = int(getattr(session, "analog_links_saved", 0) or 0)
@@ -730,6 +746,8 @@ def run_scraper_task(self,
 
         if site_task:
             site_task.refresh_from_db()
+            if str(site_task.run_token or "") != site_run_token:
+                raise ScraperTaskSuperseded("Проход каталога заменён до завершения чанка.")
             products_this_chunk = session.products_found
             new_total = total_scraped + products_this_chunk
             new_created = total_created + session.products_created
@@ -850,6 +868,7 @@ def run_scraper_task(self,
                     total_analog_stubs_created=new_analog_stubs_created,
                     total_analog_stubs_upgraded=new_analog_stubs_upgraded,
                     total_analog_errors=new_analog_errors,
+                    site_run_token=site_run_token,
                 ))
                 SiteScraperTask.objects.filter(id=site_task.id).update(
                     **common_updates,
