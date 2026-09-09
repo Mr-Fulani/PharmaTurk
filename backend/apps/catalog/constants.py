@@ -3,7 +3,7 @@
 Используется seed_catalog_data и get_or_create_root_category.
 """
 
-from apps.catalog.medicine_taxonomy import MEDICINES_SUBCATEGORIES as MEDICINES_SUBCATEGORIES
+from apps.catalog import medicine_taxonomy
 
 # Корневые категории: (slug, name_ru, name_en, description_ru, description_en, category_type_slug)
 ROOT_CATEGORIES = [
@@ -1354,6 +1354,7 @@ SUPPLEMENTS_SUBCATEGORIES = [
 ]
 
 # Медикаменты определены в medicine_taxonomy.py: один список для seed и парсера.
+MEDICINES_SUBCATEGORIES = medicine_taxonomy.MEDICINES_SUBCATEGORIES
 
 # Мебель: корень ``furniture`` остаётся неизменным; ниже — устойчивое дерево,
 # приближенное к навигации IKEA Turkey. Slug — внутренние идентификаторы проекта,
