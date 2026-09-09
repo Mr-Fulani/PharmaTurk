@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
-import { getLocalizedCategoryName, getLocalizedBrandName, CategoryTranslation, BrandTranslation } from '../lib/i18n'
+import { getLocalizedCategoryName, getSidebarCategoryName, getLocalizedBrandName, CategoryTranslation, BrandTranslation } from '../lib/i18n'
 
 export interface SidebarTreeItem {
   id: string
@@ -315,7 +315,7 @@ export default function CategorySidebar({
   }
 
   const getSubcategoryLabel = useCallback((subcategory: Category) => {
-    const localized = getLocalizedCategoryName(subcategory.slug, subcategory.name, t, subcategory.translations, router.locale)
+    const localized = getSidebarCategoryName(categoryType, subcategory.slug, subcategory.name, t, subcategory.translations, router.locale)
     if (categoryType === 'shoes') {
       return localized.replace(/\s*\([^)]*\)\s*$/, '')
     }
@@ -441,11 +441,16 @@ export default function CategorySidebar({
         : false
 
       const labelContent = (
-        <span className="flex-1 truncate">
+        <span
+          className="min-w-0 flex-1 whitespace-normal break-words leading-5"
+          title={item.slug && (item.type === 'category' || item.type === 'subcategory')
+            ? getLocalizedCategoryName(item.slug, item.name, t, item.translations as CategoryTranslation[], router.locale)
+            : undefined}
+        >
           {item.nameKey
             ? t(item.nameKey, item.name)
             : item.slug && (item.type === 'category' || item.type === 'subcategory')
-              ? getLocalizedCategoryName(item.slug, item.name, t, item.translations as CategoryTranslation[], router.locale)
+              ? getSidebarCategoryName(categoryType, item.slug, item.name, t, item.translations as CategoryTranslation[], router.locale)
               : item.type === 'brand' && item.slug
                 ? getLocalizedBrandName(item.slug, item.name, t, item.translations as BrandTranslation[], router.locale)
                 : item.name
@@ -455,7 +460,7 @@ export default function CategorySidebar({
 
       return (
         <div key={item.id} className="space-y-2">
-          <div className="flex items-center group w-full">
+          <div className="flex min-w-0 items-start group w-full">
             {item.dataId && (
               <input
                 type="checkbox"
@@ -470,13 +475,13 @@ export default function CategorySidebar({
                     toggleCategoryFilter(item.dataId!, item.slug || undefined)
                   }
                 }}
-                className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] mr-2 cursor-pointer transition-colors"
+                className="w-4 h-4 shrink-0 mt-1.5 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] mr-2 cursor-pointer transition-colors"
                 id={`filter-item-${item.id}`}
               />
             )}
             <label
               htmlFor={`filter-item-${item.id}`}
-              className={`flex-1 flex items-center justify-between rounded-md px-1 py-1 text-left text-sm font-medium transition-all ${
+              className={`min-w-0 flex-1 flex items-start justify-between gap-2 rounded-md px-1 py-1 text-left text-sm font-medium transition-all ${
                 item.dataId 
                   ? 'text-main hover:text-[var(--accent)] cursor-pointer' 
                   : 'text-gray-400 cursor-not-allowed'
@@ -489,7 +494,7 @@ export default function CategorySidebar({
               }}
             >
               {labelContent}
-              <div className="flex items-center space-x-2">
+              <div className="flex shrink-0 items-center space-x-2 whitespace-nowrap leading-5">
                 {item.count !== undefined && <span className="text-xs text-main/50 font-normal">({item.count})</span>}
                 {hasChildren && (
                   <svg
@@ -531,7 +536,7 @@ export default function CategorySidebar({
       <aside
         suppressHydrationWarning
         className={`
-          z-[50] w-80 bg-[var(--bg)]/95 backdrop-blur-2xl text-main border-[var(--border)]
+          z-[50] w-80 max-w-full min-w-0 shrink-0 bg-[var(--bg)]/95 backdrop-blur-2xl text-main border-[var(--border)]
           shadow-[0_0_40px_rgba(0,0,0,0.2)] lg:shadow-md
           transition-all duration-300 ease-in-out
           overflow-y-auto custom-scrollbar
@@ -728,19 +733,22 @@ export default function CategorySidebar({
               {expandedSections.categories && (
                 <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {categories.map((category) => (
-                    <label key={category.id} className="flex items-center space-x-3 cursor-pointer group">
+                    <label key={category.id} className="flex min-w-0 w-full items-start gap-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.categories.includes(category.id)}
                         onChange={() => toggleCategoryFilter(category.id, ensureSlug(category.slug))}
-                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
+                        className="w-4 h-4 shrink-0 mt-0.5 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                         id={`direct-cat-${category.id}`}
                       />
-                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">
-                        {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
+                      <span
+                        className="text-sm text-main group-hover:text-[var(--accent)] transition-colors min-w-0 flex-1 whitespace-normal break-words leading-5"
+                        title={getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
+                      >
+                        {getSidebarCategoryName(categoryType, category.slug, category.name, t, category.translations, router.locale)}
                       </span>
                       {category.product_count !== undefined && (
-                        <span className="text-xs text-main/50 font-normal">({category.product_count})</span>
+                        <span className="shrink-0 whitespace-nowrap text-xs leading-5 text-main/50 font-normal">({category.product_count})</span>
                       )}
                     </label>
                   ))}
@@ -768,7 +776,7 @@ export default function CategorySidebar({
               {expandedSections.subcategories && (
                 <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {uniqueSubcategories.map((subcategory) => (
-                    <label key={subcategory.id} className="flex items-center space-x-3 cursor-pointer group">
+                    <label key={subcategory.id} className="flex min-w-0 w-full items-start gap-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.subcategories.includes(subcategory.id)}
@@ -778,14 +786,17 @@ export default function CategorySidebar({
                             categoryType === 'jewelry' ? getJewelrySubcategoryKey(subcategory) : subcategory.slug
                           )
                         }
-                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
+                        className="w-4 h-4 shrink-0 mt-0.5 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                         id={`direct-sub-${subcategory.id}`}
                       />
-                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">
+                      <span
+                        className="text-sm text-main group-hover:text-[var(--accent)] transition-colors min-w-0 flex-1 whitespace-normal break-words leading-5"
+                        title={getLocalizedCategoryName(subcategory.slug, subcategory.name, t, subcategory.translations, router.locale)}
+                      >
                         {getSubcategoryLabel(subcategory)}
                       </span>
                       {subcategory.product_count !== undefined && (
-                        <span className="text-xs text-main/50 font-normal">({subcategory.product_count})</span>
+                        <span className="shrink-0 whitespace-nowrap text-xs leading-5 text-main/50 font-normal">({subcategory.product_count})</span>
                       )}
                     </label>
                   ))}
