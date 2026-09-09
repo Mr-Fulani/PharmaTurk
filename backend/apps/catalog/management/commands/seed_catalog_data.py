@@ -9,6 +9,7 @@
     python manage.py seed_catalog_data --brands-only
     python manage.py seed_catalog_data --fix-hierarchy
     python manage.py seed_catalog_data --category-seo-only
+    python manage.py seed_catalog_data --medicines-only
 """
 
 import re
@@ -18,6 +19,12 @@ from django.core.management.base import BaseCommand
 from django.utils.text import slugify
 from django.db import transaction
 from django.db.utils import IntegrityError
+from django.apps import apps
+
+from apps.catalog.medicine_taxonomy import (
+    MEDICINE_CATEGORY_SLUGS,
+    RETIRED_MEDICINE_CATEGORY_SLUGS,
+)
 
 from apps.catalog.constants import (
     ROOT_CATEGORIES,
@@ -51,21 +58,13 @@ from apps.catalog.models import (
     BrandTranslation,
     GlobalAttributeKey,
     GlobalAttributeKeyTranslation,
+    AbstractDomainProduct,
+    Product,
 )
 
 
 # Маппинг slug подкатегории из миграции 0024 -> slug корневой категории
 SUBCAT_TO_ROOT = {
-    "antibiotics": "medicines",
-    "painkillers": "medicines",
-    "cardio": "medicines",
-    "dermatology": "medicines",
-    "cold-flu": "medicines",
-    "gastro": "medicines",
-    "endocrinology-diabetes": "medicines",
-    "ophthalmology": "medicines",
-    "ent": "medicines",
-    "orthopedics": "medicines",
     "vitamins": "supplements",
     "minerals": "supplements",
     "omega-fish-oil": "supplements",
@@ -194,20 +193,6 @@ SUBCAT_TO_ROOT = {
     "omega-fatty-acids": "supplements",
     "herbal-supplements": "supplements",
     "kids-supplements": "supplements",
-    # Медикаменты L2 (под medicines)
-    "antibiotics": "medicines",
-    "painkillers": "medicines",
-    "cold-flu": "medicines",
-    "allergy": "medicines",
-    "heart-cardiovascular": "medicines",
-    "sleep-stress": "medicines",
-    "cardio": "medicines",
-    "dermatology": "medicines",
-    "gastro": "medicines",
-    "endocrinology-diabetes": "medicines",
-    "ophthalmology": "medicines",
-    "ent": "medicines",
-    "orthopedics": "medicines",
     # Исламская одежда L2 (под islamic-clothing)
     "hijabs": "islamic-clothing",
     "abayas": "islamic-clothing",
@@ -273,10 +258,17 @@ SUBCAT_TO_ROOT = {
 # и сломал бы иерархию (L2 под uslugi, L3 под L2 и т.д.).
 
 
+SUBCAT_TO_ROOT.update({slug: "medicines" for slug in MEDICINE_CATEGORY_SLUGS})
+
+
 class Command(BaseCommand):
     help = "Создаёт категории, подкатегории и бренды с иерархией и переводами ru/en"
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            "--medicines-only", action="store_true",
+            help="Обновить только дерево медикаментов; не менять товары и другие разделы",
+        )
         parser.add_argument(
             "--categories-only",
             action="store_true",
@@ -309,6 +301,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        if options["medicines_only"]:
+            with transaction.atomic():
+                self._seed_medicines_subcategories()
+            self.stdout.write(self.style.SUCCESS("Готово. Привязки товаров не менялись."))
+            return
+
         if options["furniture_only"]:
             with transaction.atomic():
                 self._seed_furniture_subcategories()
@@ -1050,7 +1048,7 @@ class Command(BaseCommand):
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
     def _seed_medicines_subcategories(self):
-        """Создание подкатегорий медикаментов (L2 и L3) по MEDICINES_SUBCATEGORIES."""
+        """Согласовать плоское дерево, не удаляя категории и не меняя товары."""
         self.stdout.write("Создание подкатегорий медикаментов...")
         root = Category.objects.filter(slug="medicines", parent__isnull=True).first()
         if not root:
@@ -1089,6 +1087,50 @@ class Command(BaseCommand):
                 elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+
+        self._retire_empty_medicine_categories(root)
+
+    def _retire_empty_medicine_categories(self, root):
+        """Hide only unused, seed-owned legacy nodes in the medicines subtree.
+
+        Preserve IDs/URLs, bound products in every domain, and custom descendants.
+        A populated legacy category requires a separately approved migration.
+        """
+        rows = list(Category.objects.values("id", "parent_id", "slug"))
+        children = {}
+        for row in rows:
+            children.setdefault(row["parent_id"], set()).add(row["id"])
+
+        def descendants(pk):
+            found, pending = set(), [pk]
+            while pending:
+                item = pending.pop()
+                if item in found:
+                    continue
+                found.add(item)
+                pending.extend(children.get(item, ()))
+            return found
+
+        scope = descendants(root.pk) - {root.pk}
+        candidates = {
+            row["id"]: row["slug"] for row in rows
+            if row["id"] in scope and row["slug"] in RETIRED_MEDICINE_CATEGORY_SLUGS
+        }
+        if not candidates:
+            return
+        used = set()
+        for model in apps.get_app_config("catalog").get_models():
+            if model is Product or issubclass(model, AbstractDomainProduct):
+                used.update(model.objects.filter(category_id__in=scope).values_list("category_id", flat=True))
+        for pk, slug in candidates.items():
+            subtree = descendants(pk)
+            if subtree & used or subtree - candidates.keys():
+                self.stdout.write(self.style.WARNING(
+                    f"  Сохранена {slug}: есть товары или пользовательские подкатегории"
+                ))
+                continue
+            if Category.objects.filter(pk=pk, is_active=True).update(is_active=False):
+                self.stdout.write(f"  Скрыта пустая устаревшая категория: {slug}")
 
     def _seed_furniture_subcategories(self):
         """Безопасно дополняет дерево мебели, не меняя существующие категории."""

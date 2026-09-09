@@ -772,6 +772,10 @@ class ScraperIntegrationService:
         product_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         attrs = dict(scraped_product.attributes or {})
+        if str(scraped_product.source or "").strip().lower() == "ilacfiyati":
+            from .medicine_categories import merge_medicine_attributes
+
+            attrs = merge_medicine_attributes({}, attrs)
         effective_type = product_type
         if not effective_type and scraped_product.category:
             _, effective_type = resolve_category_and_product_type(scraped_product.category)
@@ -1501,7 +1505,11 @@ class ScraperIntegrationService:
                 self._apply_category_mapping(session, scraped_product)
                 self._apply_brand_mapping(session, scraped_product)
                 self._apply_gender_override(session, scraped_product)
-                self._normalize_scraped_media(session, scraped_product)
+                if str(scraped_product.source or "").strip().lower() == "ilacfiyati":
+                    # Validate identity before downloading anything for a skipped card.
+                    scraped_product._medicine_media_deferred = True
+                else:
+                    self._normalize_scraped_media(session, scraped_product)
                 # Блокируем авто-запуск AI во время сохранения — используем потоковый контекст
                 with scraping_in_progress_context():
                     action, product = self._process_single_product(session, scraped_product)
@@ -1527,7 +1535,11 @@ class ScraperIntegrationService:
                     external_url=scraped_product.url,
                     product_name=scraped_product.name,
                     action=action,
-                    message=f"Товар {action}",
+                    message=(
+                        f"Пропущен без изменений: {scraped_product._medicine_import_skip_reason}"
+                        if getattr(scraped_product, "_medicine_import_skip_reason", None)
+                        else f"Товар {action}"
+                    ),
                     scraped_data=scraped_product.to_dict(),
                 )
 
@@ -1556,7 +1568,8 @@ class ScraperIntegrationService:
     ) -> None:
         from django.conf import settings
 
-        if product is None or not getattr(settings, "SOURCE_OFFER_RECORDING_ENABLED", False):
+        if (product is None or getattr(scraped_product, "_medicine_import_skip_reason", None)
+                or not getattr(settings, "SOURCE_OFFER_RECORDING_ENABLED", False)):
             return
 
         try:
@@ -1598,11 +1611,16 @@ class ScraperIntegrationService:
         Приоритет:
         1. session.target_category — категория из конкретной задачи
         2. scraper_config.default_category — категория по умолчанию из конфигурации парсера
-        Авто-определение категории по атрибутам товара отключено.
+        Для медикаментов доступно отдельное opt-in уточнение общего корня.
         """
         # Явно выбранная конечная подкатегория всегда имеет высший приоритет.
         category = session.target_category
         source = (scraped_product.source or "").strip().lower()
+
+        from .medicine_categories import prepare_medicine_category_mapping
+
+        if prepare_medicine_category_mapping(session, scraped_product):
+            return
 
         # Корень «Обувь» в задаче FLO задаёт тип товара, но не должен стирать
         # более точный тип из breadcrumb/названия карточки.
@@ -3219,6 +3237,28 @@ class ScraperIntegrationService:
         return self._update_fashion_attributes_common(product, attrs)
 
     def _update_existing_product(
+        self, session, scraped_product, existing_product, *, source_identity_match=False,
+    ):
+        # Only IlacFiyati acquires locks. Re-read both rows before
+        # deciding, so an already committed manual category choice is preserved.
+        if (str(scraped_product.source or "").strip().lower() == "ilacfiyati"
+                and (existing_product.product_type == "medicines"
+                     or getattr(scraped_product, "_medicine_category_root", None) is not None)):
+            with transaction.atomic():
+                current = Product.objects.select_for_update().get(pk=existing_product.pk)
+                list(MedicineProduct.objects.select_for_update().filter(
+                    base_product_id=current.pk,
+                ).values_list("pk", flat=True))
+                return self._update_existing_product_impl(
+                    session, scraped_product, current,
+                    source_identity_match=source_identity_match,
+                )
+        return self._update_existing_product_impl(
+            session, scraped_product, existing_product,
+            source_identity_match=source_identity_match,
+        )
+
+    def _update_existing_product_impl(
         self,
         session: ScrapingSession,
         scraped_product: ScrapedProduct,
@@ -3257,6 +3297,40 @@ class ScraperIntegrationService:
         )
         source_key = str(scraped_product.source or "").strip().casefold()
         price_refresh_disabled = source_key in _price_refresh_disabled_source_keys()
+
+        medicine_root = getattr(scraped_product, "_medicine_category_root", None)
+        medicine_category = None
+        if source_key == "ilacfiyati" and (
+            existing_product.product_type == "medicines" or medicine_root is not None
+        ):
+            from .medicine_categories import (
+                MedicineCategoryConflict, resolve_medicine_category, validate_existing_medicine,
+            )
+
+            try:
+                if medicine_root is not None:
+                    medicine_category = resolve_medicine_category(
+                        scraped_product, existing=existing_product,
+                        is_variant_update=is_variant_update,
+                    )
+                else:
+                    validate_existing_medicine(
+                        scraped_product, existing_product, is_variant_update=is_variant_update,
+                    )
+            except MedicineCategoryConflict as exc:
+                # Saving Product would otherwise overwrite the domain assignment.
+                self.logger.warning(
+                    "Medicine import skipped: product=%s reason=%s", existing_product.pk, exc
+                )
+                scraped_product._medicine_import_skip_reason = str(exc)
+                return "skipped", existing_product
+
+        if getattr(scraped_product, "_medicine_media_deferred", False):
+            self._normalize_scraped_media(session, scraped_product)
+            scraped_product._medicine_media_deferred = False
+            prepared_attrs = self._prepare_scraped_attributes(
+                scraped_product, existing_product.product_type,
+            )
 
         if should_repair_ilacfiyati_external_id:
             existing_product.external_id = scraped_product.external_id
@@ -3365,7 +3439,15 @@ class ScraperIntegrationService:
                 updated = True
 
         category_override = getattr(scraped_product, "_category_override", None)
-        if category_override and existing_product.category_id != category_override.pk:
+        if medicine_root is not None:
+            if medicine_category and existing_product.category_id != medicine_category.pk:
+                self.logger.info(
+                    "Medicine category refined: product=%s from=%s to=%s",
+                    existing_product.pk, existing_product.category_id, medicine_category.pk,
+                )
+                existing_product.category = medicine_category
+                updated = True
+        elif category_override and existing_product.category_id != category_override.pk:
             existing_product.category = category_override
             updated = True
         elif scraped_product.category:
@@ -3413,11 +3495,9 @@ class ScraperIntegrationService:
                     # An omitted source field is not a deletion instruction.
                     # Keep known clinical data if a page/optional section is incomplete.
                     old_attrs = existing_product.external_data.get("attributes") or {}
-                    new_attrs = {
-                        **(old_attrs if isinstance(old_attrs, dict) else {}),
-                        **{key: value for key, value in new_attrs.items()
-                           if value is not None and value != ""},
-                    }
+                    from .medicine_categories import merge_medicine_attributes
+
+                    new_attrs = merge_medicine_attributes(old_attrs, new_attrs)
                     if not prepared_attrs.get("is_stub"):
                         new_attrs.pop("is_stub", None)
                 if existing_product.external_data.get("attributes") != new_attrs:
@@ -4304,6 +4384,29 @@ class ScraperIntegrationService:
         """Создает новый товар."""
         # Преобразуем в формат ProductData для CatalogNormalizer
         from apps.vapi.client import ProductData
+
+        if str(scraped_product.source or "").strip().lower() == "ilacfiyati":
+            from .medicine_categories import MedicineCategoryConflict, validate_new_medicine
+
+            try:
+                validate_new_medicine(scraped_product)
+            except MedicineCategoryConflict as exc:
+                scraped_product._medicine_import_skip_reason = str(exc)
+                self.logger.warning("New medicine import skipped: reason=%s", exc)
+                return "skipped", None
+
+        medicine_category = None
+        if getattr(scraped_product, "_medicine_category_root", None) is not None:
+            from .medicine_categories import resolve_medicine_category
+
+            medicine_category = resolve_medicine_category(scraped_product)
+
+        if getattr(scraped_product, "_medicine_media_deferred", False):
+            self._normalize_scraped_media(session, scraped_product)
+            scraped_product._medicine_media_deferred = False
+
+        if medicine_category is not None:
+            scraped_product.category = medicine_category.slug
 
         resolved_product_type = None
         if scraped_product.category:

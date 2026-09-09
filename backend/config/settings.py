@@ -699,6 +699,13 @@ SUPPLEMENT_STOCK_DISCOVERY_ERROR_TTL_SECONDS = env.int(
     "SUPPLEMENT_STOCK_DISCOVERY_ERROR_TTL_SECONDS", default=300
 )
 
+# Roll out only after the taxonomy seed and isolated category tests are approved.
+# False disables new assignments, not preservation of existing subcategories.
+# Does not affect explicit task subcategories or other parsers.
+MEDICINE_CATEGORY_AUTOMATION_ENABLED = env.bool(
+    "MEDICINE_CATEGORY_AUTOMATION_ENABLED", default=False
+)
+
 # Точечная справочная проверка цены медикамента по пользовательскому intent.
 # Она не участвует в корзине и никогда не обновляет наличие/остаток лекарства.
 MEDICINE_MARKET_CHECK_ENABLED = env.bool(
