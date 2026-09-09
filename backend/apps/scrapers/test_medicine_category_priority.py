@@ -458,9 +458,13 @@ def test_real_html_to_catalog_keeps_own_data_and_reuses_images(catalog, monkeypa
     from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
     from apps.scrapers.test_ilacfiyati_card_integrity import CURRENT_HTML, URL
 
-    Category.objects.create(
-        slug="dermatology", name="Skin", parent=catalog["root"],
-        category_type=catalog["root"].category_type,
+    # Full CI runs data migrations, which already seed this category.
+    Category.objects.update_or_create(
+        slug="dermatology",
+        defaults={
+            "name": "Skin", "parent": catalog["root"],
+            "category_type": catalog["root"].category_type, "is_active": True,
+        },
     )
     settings.R2_CONFIG = {**getattr(settings, "R2_CONFIG", {}), "public_url": "https://cdn.mudaroba.com"}
     settings.MEDIA_URL = "https://cdn.mudaroba.com/"
