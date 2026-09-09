@@ -216,6 +216,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=200 
 
 ## 6. Liveness и readiness
 
+Для совместимых backend-only исправлений доступен сокращённый режим:
+`python3 scripts/release/backend_release.py --mode check ...`, затем `--mode deploy`.
+Он сохраняет текущий frontend (`IMAGE_TAG`), отдельно фиксирует SHA backend и
+воркеров (`BACKEND_IMAGE_TAG`), не пересоздаёт Nginx/state-сервисы и требует только
+точечного бэкапа для разрешённой аддитивной миграции. Сложные миграции этим режимом
+запрещены. Команды, ограничения и откат: [release README](scripts/release/README.md#5-backend-only-releases).
+
 Эндпоинты имеют разную семантику:
 
 - `GET /api/live/` — liveness процесса; не обращается к внешним зависимостям и

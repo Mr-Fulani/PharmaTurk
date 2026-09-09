@@ -31,6 +31,7 @@ SMOKE_SUFFIX="${RELEASE_ID:0:12}-$$"
 DEPLOY_PROJECT_NAME="mudaroba-smoke-${SMOKE_SUFFIX}"
 [[ "$DEPLOY_PROJECT_NAME" =~ ^mudaroba-smoke-[a-z0-9._-]+$ ]] || release_die "unsafe smoke project name"
 export IMAGE_TAG="$RELEASE_ID"
+export BACKEND_IMAGE_TAG="$RELEASE_ID"
 export RUN_MIGRATIONS=0
 export SMOKE_PORT="$SMOKE_PORT_VALUE"
 

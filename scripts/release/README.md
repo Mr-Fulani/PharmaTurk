@@ -25,7 +25,8 @@ loopback high port and removes only its own containers and volumes on exit.
 Review the complete diff, rotate exposed credentials, commit, and obtain a
 green CI run. Staging/production tooling accepts only a clean working tree and
 the exact 40-character `git rev-parse HEAD` value. Run predeploy again with
-`--environment staging` and no `--allow-dirty`.
+`--environment staging` and no `--allow-dirty` when environment-specific validation
+is needed. Do not repeat already-valid exact-revision CI checks by default.
 
 Before deployment, create and validate an external PostgreSQL dump and Qdrant
 snapshot. On the Compose host, prefer the all-in-one command; it uses Qdrant's
@@ -118,3 +119,68 @@ worker/web revisions cannot run together. If a migration or background task
 changed data incompatibly, keep writers stopped and restore the matching
 PostgreSQL dump and Qdrant snapshot instead of attempting an untested production
 reverse migration.
+
+## 5. Backend-only releases
+
+CI still runs backend/security/Compose gates. Only a backend/docs-only Git diff
+omits frontend functional checks/build; the frontend dependency audit remains.
+Shared/workflow/release changes fail closed to full checks. The frontend job
+always reports its scope decision; there is no manual skip-gates flag. The image
+job publishes only the backend image for a scoped diff.
+
+`IMAGE_TAG` remains the frontend version and legacy default. Optional
+`BACKEND_IMAGE_TAG` selects backend, all workers and the migration one-shot.
+Existing single-version environments work unchanged. Full deploy/rollback scripts
+also pin both versions and accept explicit frontend versions when starting from
+a mixed-version pair.
+
+First review API compatibility, pause parsers and wait for active workers to
+finish. Pull only the new backend; retain the old backend image for rollback:
+
+```bash
+./scripts/release/pull-images.sh --release-id NEW_BACKEND_SHA --scope backend
+python3 scripts/release/backend_release.py --mode check \
+  --release-id NEW_BACKEND_SHA --previous-release OLD_BACKEND_SHA \
+  --frontend-release CURRENT_FRONTEND_SHA --project-name mudaroba \
+  --base-url https://mudaroba.com
+```
+
+The check is read-only, including PostgreSQL-enforced read-only migration planning.
+It rejects changed frontend/Nginx source or protected Compose service definitions,
+unexpected runtime SHAs, busy/unresponsive workers, and unsupported migrations.
+Initially the only schema allowlist is nullable UUID additions without defaults,
+indexes or constraints on `scrapers_sitescrapertask`. Other schema changes use
+the full workflow; adding an allowlist entry requires review.
+
+Run the same arguments with `--mode deploy`, adding:
+
+```text
+--backup-root /home/deploy/backups/pharmaturk
+--confirm "DEPLOY BACKEND NEW_BACKEND_SHA"
+```
+
+A private `backend-release-*` directory contains `.env` backup, exact component
+versions and migration plan. Only when the allowlisted schema changes does it
+also contain a validated custom dump of `scrapers_sitescrapertask` and
+`django_migrations`; never the catalogue, media, or Qdrant. Incomplete records
+are retained for diagnosis, not pruned. The additive migration runs with 3-second
+lock and 30-second statement timeouts while old code remains online. Then only
+backend/workers are replaced. Frontend/Nginx/data container identities are checked
+unchanged; public health/security smoke must pass before environment version pins
+are updated. API/SSR requests may briefly fail during the single-backend switch;
+this is not a zero-downtime promise. Nginx already resolves Docker DNS dynamically.
+
+On failure, do not resume the parser. Use the printed receipt directory for a
+code rollback (old image must still exist):
+
+```bash
+python3 scripts/release/backend_release.py --mode rollback \
+  --release-id OLD_BACKEND_SHA --previous-release NEW_BACKEND_SHA \
+  --frontend-release CURRENT_FRONTEND_SHA --project-name mudaroba \
+  --base-url https://mudaroba.com --receipt /absolute/backend-release-RECEIPT \
+  --confirm "ROLLBACK BACKEND OLD_BACKEND_SHA"
+```
+
+Rollback accepts stopped/partially replaced writers, preserves frontend/data
+services and does not reverse the additive migration or restore a database over
+new user writes. No backup/image/container cleanup is part of these operations.

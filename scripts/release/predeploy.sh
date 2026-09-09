@@ -69,6 +69,7 @@ else
 fi
 export DEPENDENCY_LOCK_HASH
 
+export BACKEND_IMAGE_TAG="$IMAGE_TAG"
 release_log "building immutable application and test images"
 release_compose_prod build backend frontend
 test_compose --profile test build backend_tests

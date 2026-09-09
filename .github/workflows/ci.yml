@@ -13,6 +13,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: Affected components
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.scope.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 scripts/ci/components.py --base "$BASE_REF" >> "$GITHUB_OUTPUT"
+
   secrets:
     name: Secret scan (full history)
     runs-on: ubuntu-latest
@@ -28,6 +42,7 @@ jobs:
 
   frontend:
     name: Frontend (lint, types, tests, build)
+    needs: [scope]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -41,12 +56,21 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+        if: needs.scope.outputs.frontend != 'false'
       - name: npm production dependency audit
-        run: npm audit --omit=dev --audit-level=high
+        # Audit the lock even when unchanged frontend build/tests are omitted.
+        run: npm audit --package-lock-only --omit=dev --audit-level=high
       - run: npm run lint
+        if: needs.scope.outputs.frontend != 'false'
       - run: npx tsc --noEmit
+        if: needs.scope.outputs.frontend != 'false'
       - run: npm test
+        if: needs.scope.outputs.frontend != 'false'
       - run: npm run build
+        if: needs.scope.outputs.frontend != 'false'
+      - name: Frontend unchanged
+        if: needs.scope.outputs.frontend == 'false'
+        run: echo 'Backend/docs-only diff; frontend source and build inputs unchanged.'
 
   backend:
     name: Backend (checks, migrations, pytest)
@@ -169,6 +193,8 @@ jobs:
         run: |
           bash -n scripts/release/*.sh
           ./scripts/release/test-release-helpers.sh
+          python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+          python3 -m unittest discover -s scripts/release -p 'test_*.py'
       - name: Validate Nginx trusted-ingress configuration
         run: >-
           docker run --rm --network none
@@ -187,7 +213,7 @@ jobs:
     name: Production images (exact revision)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: [secrets, frontend, backend, compose]
+    needs: [scope, secrets, frontend, backend, compose]
     permissions:
       contents: read
       packages: write
@@ -205,6 +231,7 @@ jobs:
       - name: Prepare non-secret build configuration
         run: cp .env.example .env
       - name: Validate public production build configuration
+        if: needs.scope.outputs.frontend != 'false'
         run: |
           test -n "${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}"
           test -n "${NEXT_PUBLIC_GOOGLE_CLIENT_ID}"
@@ -213,13 +240,18 @@ jobs:
       - name: Build exact production images
         env:
           DEPENDENCY_LOCK_HASH: ${{ hashFiles('backend/pyproject.toml', 'backend/poetry.lock') }}
-        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml build backend frontend
+        run: |
+          services=(backend)
+          if [[ "${{ needs.scope.outputs.frontend }}" != "false" ]]; then services+=(frontend); fi
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml build "${services[@]}"
       - name: Verify immutable revision labels and runtime users
         run: |
           test "$(docker image inspect "mudaroba-backend:${GITHUB_SHA}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "${GITHUB_SHA}"
-          test "$(docker image inspect "mudaroba-frontend:${GITHUB_SHA}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "${GITHUB_SHA}"
           test "$(docker image inspect "mudaroba-backend:${GITHUB_SHA}" --format '{{ .Config.User }}')" = "app"
-          test "$(docker image inspect "mudaroba-frontend:${GITHUB_SHA}" --format '{{ .Config.User }}')" = "node"
+          if [[ "${{ needs.scope.outputs.frontend }}" != "false" ]]; then
+            test "$(docker image inspect "mudaroba-frontend:${GITHUB_SHA}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "${GITHUB_SHA}"
+            test "$(docker image inspect "mudaroba-frontend:${GITHUB_SHA}" --format '{{ .Config.User }}')" = "node"
+          fi
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v4
@@ -234,6 +266,8 @@ jobs:
           backend_ref="ghcr.io/${registry_owner}/pharmaturk-backend:${GITHUB_SHA}"
           frontend_ref="ghcr.io/${registry_owner}/pharmaturk-frontend:${GITHUB_SHA}"
           docker tag "mudaroba-backend:${GITHUB_SHA}" "${backend_ref}"
-          docker tag "mudaroba-frontend:${GITHUB_SHA}" "${frontend_ref}"
           docker push "${backend_ref}"
-          docker push "${frontend_ref}"
+          if [[ "${{ needs.scope.outputs.frontend }}" != "false" ]]; then
+            docker tag "mudaroba-frontend:${GITHUB_SHA}" "${frontend_ref}"
+            docker push "${frontend_ref}"
+          fi

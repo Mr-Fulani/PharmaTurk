@@ -37,8 +37,8 @@ services:
       dockerfile: Dockerfile
       args:
         DEPENDENCY_LOCK_HASH: ${DEPENDENCY_LOCK_HASH:-unknown}
-        VCS_REF: ${IMAGE_TAG:-local}
-    image: mudaroba-backend:${IMAGE_TAG:-local}
+        VCS_REF: ${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-local}}
+    image: mudaroba-backend:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-local}}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/ || exit 1"]
       interval: 5s
@@ -100,7 +100,7 @@ services:
     networks: [edge]
 
   celeryworker:
-    image: mudaroba-backend:${IMAGE_TAG:-local}
+    image: mudaroba-backend:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-local}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,7 +118,7 @@ services:
     networks: [data, egress]
 
   celery_ai:
-    image: mudaroba-backend:${IMAGE_TAG:-local}
+    image: mudaroba-backend:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-local}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,7 +136,7 @@ services:
     networks: [data, egress]
 
   celery_recsys:
-    image: mudaroba-backend:${IMAGE_TAG:-local}
+    image: mudaroba-backend:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-local}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,7 +156,7 @@ services:
     networks: [data, egress]
 
   celerybeat:
-    image: mudaroba-backend:${IMAGE_TAG:-local}
+    image: mudaroba-backend:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-local}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -170,7 +170,7 @@ services:
   # One-shot schema operation used by release tooling. It never starts during a
   # regular compose up because it is behind the explicit ops profile.
   migrate:
-    image: mudaroba-backend:${IMAGE_TAG:-local}
+    image: mudaroba-backend:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-local}}
     profiles: [ops]
     depends_on:
       postgres:
