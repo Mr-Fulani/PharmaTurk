@@ -1,4 +1,4 @@
-"""Fail-closed CI scope: only a backend/docs-only diff can omit frontend work."""
+"""Fail-closed CI scope: independent application checks; shared/unknown changes run both."""
 import argparse
 import subprocess
 
@@ -8,6 +8,15 @@ def frontend_required(paths):
     # the full frontend gate. No labels, commit messages or user skip flags.
     return not paths or any(
         not (path.startswith(("backend/", "docs/")) or path in {"README.md", "DEPLOY.md"})
+        for path in paths
+    )
+
+
+def backend_required(paths):
+    # Only a diff containing frontend changes and optional documentation can
+    # omit backend functional tests/build. Docs-only retains the existing gate.
+    return not any(path.startswith("frontend/") for path in paths) or any(
+        not (path.startswith(("frontend/", "docs/")) or path in {"README.md", "DEPLOY.md"})
         for path in paths
     )
 
@@ -23,10 +32,12 @@ def main():
             "git", "diff", "--name-only", "--no-renames", "-z", args.base, "HEAD",
         ])
         paths = raw.decode().strip("\0").split("\0") if raw else []
-        required = frontend_required(paths)
+        frontend = frontend_required(paths)
+        backend = backend_required(paths)
     except (subprocess.CalledProcessError, UnicodeError):
-        required = True
-    print(f"frontend={str(required).lower()}")
+        frontend = backend = True
+    print(f"frontend={str(frontend).lower()}")
+    print(f"backend={str(backend).lower()}")
 
 
 if __name__ == "__main__":
