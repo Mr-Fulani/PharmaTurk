@@ -65,6 +65,47 @@ def state(version=A):
                 "running": True, "healthy": True} for s in WRITERS + PRESERVED}
 
 
+def container(key, oneoff=False, running=True):
+    return {'Id':key, 'Image':'image', 'Config':{'Labels':{'com.docker.compose.oneoff':str(oneoff), 'org.opencontainers.image.revision':'a'*40}}, 'State':{'Running':running}}
+
+class RuntimeOneOffTests(unittest.TestCase):
+    def snapshot(self, extra=None, missing=False, mode='deploy'):
+        release = Release.__new__(Release)
+        release.args = argparse.Namespace(mode=mode)
+        records = {s:container(s) for s in WRITERS + PRESERVED}
+        records.update(extra or {})
+        def dc(*args):
+            service = args[-1]
+            ids = [] if service == 'backend' and missing else [service]
+            if service == 'backend':
+                ids.extend(extra or {})
+            return ' '.join(ids).encode()
+        release.dc = dc
+        with patch("backend_release.run", side_effect=lambda argv: json.dumps([records[argv[-1]]]).encode()):
+            return release.runtime()
+
+    def test_stopped_oneoffs_preserved_and_ignored(self):
+        result = self.snapshot({'canary':container('canary', True, False)})
+        self.assertEqual(result['backend']['id'], 'backend')
+        self.assertEqual(len(result), len(WRITERS + PRESERVED))
+
+    def test_active_oneoff_blocks(self):
+        with self.assertRaisesRegex(ValueError, 'Active one-off'):
+            self.snapshot({'canary':container('canary', True, True)})
+
+    def test_duplicate_regular_still_blocks(self):
+        with self.assertRaisesRegex(ValueError, 'exactly one'):
+            self.snapshot({'duplicate':container('duplicate', False, False)})
+
+    def test_missing_regular_blocks_even_with_old_canary(self):
+        with self.assertRaisesRegex(ValueError, 'exactly one'):
+            self.snapshot({'canary':container('canary', True, False)}, missing=True)
+
+    def test_rollback_missing_regular_retains_recovery_path(self):
+        result = self.snapshot({'canary':container('canary', True, False)}, missing=True, mode='rollback')
+        self.assertIsNone(result['backend']['id'])
+
+
 class ReleaseTests(unittest.TestCase):
     def test_migration_gate_cannot_expand_backup_scope(self):
         validate_plan({"migrations": [], "tables": []})
