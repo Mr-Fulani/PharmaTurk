@@ -2,7 +2,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import dynamic from 'next/dynamic'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   getPlaceholderImageUrl,
   resolveMediaUrl,
@@ -20,6 +20,8 @@ import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
 import { safeJsonLd } from '../lib/sanitizeHtml'
+import { getSingleFlight } from '../lib/api'
+import { selectHomepageBrands } from '../lib/homepageBrands'
 
 // Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle, добавляем fallback (Skeleton) для предотвращения CLS
 const PopularProductsCarousel = dynamic(() => import('../components/PopularProductsCarousel'), { 
@@ -87,9 +89,29 @@ interface HomePageProps {
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, showTestimonialsSection }: HomePageProps) {
+export default function Home({ brands: initialBrands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, showTestimonialsSection }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
+  const [brands, setBrands] = useState<Brand[]>(initialBrands)
+
+  useEffect(() => {
+    setBrands(initialBrands)
+    if (initialBrands.length > 0) return
+
+    // После таймаута SSR восстанавливаем карточки, не задерживая всю страницу.
+    let active = true
+    getSingleFlight('catalog/brands', {
+      params: { page_size: 1000 },
+      headers: { 'Accept-Language': router.locale ?? 'ru' },
+      timeout: 20000,
+    }).then(({ data }) => {
+      if (active) setBrands(selectHomepageBrands(data))
+    }).catch((error) => {
+      console.error('Error recovering homepage brands:', error)
+    })
+    return () => { active = false }
+  }, [initialBrands, router.locale])
+
   const mobileBrandsRef = useRef<HTMLDivElement | null>(null)
   const tileHeights = [280, 320, 360]
   const brandTileHeights = [280, 320, 360]
@@ -602,30 +624,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const data = brandsRes.data
       allBrands = Array.isArray(data) ? data : (data.results || [])
     } catch (err) {
+      context.res?.setHeader('Cache-Control', 'private, no-store')
       console.error('Error loading brands:', err)
     }
 
-    // Сортировка: сначала вручную закрепленные бренды, затем прежний авто-рейтинг.
-    const sortedBrands = [...allBrands].sort((a: Brand, b: Brand) => {
-      const manualA = Boolean(a.show_on_homepage)
-      const manualB = Boolean(b.show_on_homepage)
-      if (manualA !== manualB) return manualA ? -1 : 1
-      if (manualA && manualB) {
-        const priorityA = a.homepage_priority ?? 100
-        const priorityB = b.homepage_priority ?? 100
-        if (priorityA !== priorityB) return priorityA - priorityB
-      }
-      const countA = a.products_count || 0
-      const countB = b.products_count || 0
-      if (countB !== countA) return countB - countA
-      const hasMediaA = !!(a.card_media_url && a.card_media_url.trim())
-      const hasMediaB = !!(b.card_media_url && b.card_media_url.trim())
-      if (hasMediaB !== hasMediaA) return hasMediaB ? 1 : -1
-      return (a.name || '').localeCompare(b.name || '', 'ru')
-    })
-
-    // Показываем 11 брендов (с приоритетом у тех, у кого есть товары)
-    const brands = sortedBrands.slice(0, 11)
+    const brands = selectHomepageBrands(allBrands)
 
     console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count ?? 0} товаров, медиа: ${!!b.card_media_url})`))
 
@@ -694,6 +697,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       },
     }
   } catch (error) {
+    context.res?.setHeader('Cache-Control', 'private, no-store')
     console.error('Error loading brands for homepage:', error)
     const { fetchFooterSettings } = await import('../lib/footerSettings')
     const footerSettings = await fetchFooterSettings()
