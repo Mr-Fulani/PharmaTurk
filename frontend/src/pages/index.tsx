@@ -12,6 +12,7 @@ import {
   withListingImageMaxWidth,
 } from '../lib/media'
 import FallbackMediaImage from '../components/FallbackMediaImage'
+import DeferredSection from '../components/DeferredSection'
 import { getSiteOrigin } from '../lib/urls'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
@@ -538,17 +539,17 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
           </div>
 
           {/* Популярные товары */}
-          <PopularProductsCarousel />
+          <DeferredSection><PopularProductsCarousel /></DeferredSection>
 
           {/* Вам может понравиться (RecSys) */}
-          <PersonalizedRecommendations />
+          <DeferredSection><PersonalizedRecommendations /></DeferredSection>
 
           {/* Баннер после популярных товаров — SSR-данные исключают клиентский fetch и CLS */}
           <div className="mb-12">
             <BannerCarousel position="after_popular_products" initialBanners={afterPopularBanners} />
           </div>
 
-          {showTestimonialsSection && <TestimonialsCarousel />}
+          {showTestimonialsSection && <DeferredSection><TestimonialsCarousel /></DeferredSection>}
         </div>
       </main>
     </>
