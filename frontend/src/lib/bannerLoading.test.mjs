@@ -42,7 +42,7 @@ test('only the main hero is eager and high priority in the initial render', asyn
     assert.equal(images.filter(i => i.props.priority).length, position === 'main' ? 1 : 0)
     assert.equal(images[0].props.loading, position === 'main' ? 'eager' : 'lazy')
     assert.equal(images[0].props.fetchPriority, position === 'main' ? 'high' : 'auto')
-    assert.ok(images[0].props.sizes.includes('100vw - 24px'))
+    assert.ok(images[0].props.sizes.includes('(max-width: 480px) 740px'))
   }
 })
 test('rotation preserves the original hero source size and priority', async () => {

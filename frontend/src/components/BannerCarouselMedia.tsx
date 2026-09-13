@@ -293,8 +293,10 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 priority={isHero}
                 fetchPriority={isHero ? 'high' : 'auto'}
                 loading={isHero ? 'eager' : 'lazy'}
+                // Wide artwork is cropped with object-cover. Account for its
+                // hidden width so the visible crop stays sharp on narrow screens.
                 sizes={fullSize
-                  ? '(max-width: 639px) calc(100vw - 24px), (max-width: 767px) calc(100vw - 32px), (max-width: 1151px) calc(100vw - 48px), 1104px'
+                  ? '(max-width: 480px) 740px, (max-width: 768px) 970px, 1380px'
                   : '(max-width: 768px) 25vw, 220px'
                 }
                 className={`${styles.itemImage} object-cover`}
