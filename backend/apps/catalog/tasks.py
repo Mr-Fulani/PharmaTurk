@@ -628,3 +628,24 @@ def sync_ikea_product_task(self, item_codes: list[str]) -> dict:
         "errors": errors,
         "total": len(item_codes)
     }
+
+
+@shared_task(
+    name="catalog.refresh_brand_product_counts",
+    soft_time_limit=30,
+    time_limit=45,
+    expires=60,
+)
+def refresh_brand_product_counts_task():
+    """Refresh display counts separately from requests; coalesce beat overlap."""
+    from django.core.cache import cache
+    from apps.catalog.brand_counts import refresh_brand_product_counts
+
+    lock_key = "catalog:brand-product-counts:v1:refresh-lock"
+    if not cache.add(lock_key, True, timeout=60):
+        return {"status": "already_running"}
+    try:
+        counts = refresh_brand_product_counts()
+        return {"status": "refreshed", "brands": len(counts)}
+    finally:
+        cache.delete(lock_key)

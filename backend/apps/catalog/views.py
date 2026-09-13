@@ -1266,7 +1266,15 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         return context
 
     def _attach_product_counts(self, brands):
-        """Добавляет точные счётчики только брендам выбранной страницы."""
+        """Общие счётчики из снимка; фильтрованные считаются по запросу."""
+        if self.request.query_params.get('count_scope') != 'filtered':
+            from .brand_counts import get_brand_product_counts
+
+            counts = get_brand_product_counts()
+            for brand in brands:
+                brand._products_count = counts.get(brand.id, 0)
+            return
+
         brand_ids = [brand.id for brand in brands]
         products = Product.objects.filter(
             brand_id__in=brand_ids,
