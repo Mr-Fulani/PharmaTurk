@@ -58,6 +58,11 @@ export default function BannerCarousel({ position, className = '', initialBanner
     })
     return allMedia.slice(0, Math.min(10, allMedia.length))
   })
+  const firstMediaId = banners.find(banner => banner.media_files?.length)?.media_files[0].id
+  const [expandedMediaIds, setExpandedMediaIds] = useState<Record<number, boolean>>({})
+  const [firstMediaReady, setFirstMediaReady] = useState(false)
+  const [inViewport, setInViewport] = useState(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
   const [fallbackMediaIds, setFallbackMediaIds] = useState<Record<number, boolean>>({})
@@ -107,14 +112,29 @@ export default function BannerCarousel({ position, className = '', initialBanner
       setDisplayMedia([])
     }
   }, [banners])
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    if (typeof IntersectionObserver === 'undefined') {
+      setInViewport(true)
+      return
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      setInViewport(entry.isIntersecting)
+    }, { threshold: 0.1 })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [loading, banners.length])
+
   // Функция для сброса и перезапуска автоматического переключения
   const resetAutoPlay = useCallback(() => {
     if (autoPlayIntervalRef.current) {
       clearInterval(autoPlayIntervalRef.current)
     }
     
-    if (banners.length > 0 && displayMedia.length > 1) {
+    if (inViewport && firstMediaReady && displayMedia.length > 1) {
       autoPlayIntervalRef.current = setInterval(() => {
+        if (document.visibilityState === 'hidden') return
         const timeSinceLastManual = Date.now() - lastManualActionRef.current
         if (timeSinceLastManual > 6000) {
           setDisplayMedia((prev) => {
@@ -128,9 +148,9 @@ export default function BannerCarousel({ position, className = '', initialBanner
         }
       }, 8000)
     }
-  }, [banners.length, displayMedia.length])
+  }, [inViewport, firstMediaReady, displayMedia.length])
 
-  // Автоматическая смена медиа каждые 5 секунд
+  // Даём первому слайду загрузиться и быть видимым до запуска автопрокрутки.
   useEffect(() => {
     resetAutoPlay()
     
@@ -147,6 +167,8 @@ export default function BannerCarousel({ position, className = '', initialBanner
       const activeMedia = displayMedia[0]
       if (activeMedia) {
         setActiveMediaId(activeMedia.id)
+        setExpandedMediaIds(previous => previous[activeMedia.id]
+          ? previous : { ...previous, [activeMedia.id]: true })
       }
     }
   }, [displayMedia])
@@ -254,7 +276,11 @@ export default function BannerCarousel({ position, className = '', initialBanner
             ? getPlaceholderImageUrl({ type: 'product', id: media.id.toString() })
             : fullUrl
 
-          const optimizedUrl = index === 0
+          // Keep a visited slide's full-size source when it becomes a thumbnail.
+          // Otherwise rotation downloads a second image and demotes the LCP resource.
+          const fullSize = index === 0 || media.id === firstMediaId || expandedMediaIds[media.id]
+          const isHero = position === 'main' && media.id === firstMediaId
+          const optimizedUrl = fullSize
             ? finalUrl
             : withListingImageMaxWidth(finalUrl, 440)
 
@@ -264,14 +290,16 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 src={optimizedUrl}
                 alt={title || t('banner_image_alt', 'Banner')}
                 fill
-                priority={index === 0}
-                loading={index === 0 ? 'eager' : 'lazy'}
-                sizes={index === 0
-                  ? '(max-width: 480px) 480px, (max-width: 768px) 768px, 1200px'
+                priority={isHero}
+                fetchPriority={isHero ? 'high' : 'auto'}
+                loading={isHero ? 'eager' : 'lazy'}
+                sizes={fullSize
+                  ? '(max-width: 639px) calc(100vw - 24px), (max-width: 767px) calc(100vw - 32px), (max-width: 1151px) calc(100vw - 48px), 1104px'
                   : '(max-width: 768px) 25vw, 220px'
                 }
                 className={`${styles.itemImage} object-cover`}
                 onLoadingComplete={() => {
+                  if (media.id === firstMediaId) setFirstMediaReady(true)
                   if (isActive) setLoading(false)
                 }}
                 onError={() => {
@@ -289,6 +317,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
             className={styles.itemIframe}
             allow="autoplay; encrypted-media"
             allowFullScreen
+            onLoad={() => { if (media.id === firstMediaId) setFirstMediaReady(true) }}
           />
         )}
         {media.content_type === 'video' && !embedUrl && fullUrl && (
@@ -297,6 +326,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
             loop
             muted
             playsInline
+            onLoadedData={() => { if (media.id === firstMediaId) setFirstMediaReady(true) }}
             className={styles.itemVideo}
             onError={(event) => replaceFailedVideoWithFallback(event.currentTarget, title || 'MUDAROBA')}
           >
@@ -368,7 +398,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const hasMultipleMedia = displayMedia.length > 1
 
   return (
-    <div className={`${styles.container} ${className}`}>
+    <div ref={containerRef} className={`${styles.container} ${className}`}>
       <div className={styles.slide}>
         {displayMedia.map((media, index) => renderMediaItem(media, index))}
       </div>
