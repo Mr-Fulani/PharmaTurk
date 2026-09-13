@@ -95,8 +95,10 @@ export default function Home({ brands: initialBrands, categories, firstBannerIma
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
 
   useEffect(() => {
-    setBrands(initialBrands)
-    if (initialBrands.length > 0) return
+    if (initialBrands.length > 0) {
+      setBrands(initialBrands)
+      return
+    }
 
     // После таймаута SSR восстанавливаем карточки, не задерживая всю страницу.
     let active = true
@@ -577,6 +579,16 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const { getInternalApiUrl } = await import('../lib/urls')
     const { fetchFooterSettings } = await import('../lib/footerSettings')
 
+    // Запускаем бренды вместе с остальными данными страницы. API может отвечать
+    // дольше 5 секунд: не отдаём заведомо пустой блок при нормальном медленном ответе.
+    const brandsPromise = axios.get(getInternalApiUrl('catalog/brands?page_size=1000'), {
+      timeout: 15000,
+    }).then(({ data }) => selectHomepageBrands(data)).catch((error) => {
+      context.res?.setHeader('Cache-Control', 'private, no-store')
+      console.error('Error loading brands:', error)
+      return [] as Brand[]
+    })
+
     let firstBannerImageUrl: string | null = null
     let firstBannerTitle: string | null = null
     let mainBanners: any[] = []
@@ -617,18 +629,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       // Оставляем выключенным по умолчанию
     }
 
-    // Все бренды одним запросом (max_page_size=1000) вместо серийного обхода страниц
-    let allBrands: Brand[] = []
-    try {
-      const brandsRes = await axios.get(getInternalApiUrl('catalog/brands?page_size=1000'), { timeout: 5000 })
-      const data = brandsRes.data
-      allBrands = Array.isArray(data) ? data : (data.results || [])
-    } catch (err) {
-      context.res?.setHeader('Cache-Control', 'private, no-store')
-      console.error('Error loading brands:', err)
-    }
-
-    const brands = selectHomepageBrands(allBrands)
+    const brands = await brandsPromise
 
     console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count ?? 0} товаров, медиа: ${!!b.card_media_url})`))
 

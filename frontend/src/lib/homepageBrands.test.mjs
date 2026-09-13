@@ -16,10 +16,11 @@ const inventory = [
   { id: 2, name: 'Pinned', show_on_homepage: true, homepage_priority: 1, products_count: 1 },
 ]
 
-function loadHome({ ssrFails = false, clientGet } = {}) {
+function loadHome({ ssrFails = false, clientGet, ssrBrandDelay = 0 } = {}) {
   const effects = []
   const updates = []
   const requests = []
+  const ssrRequests = []
   const modules = {
     react: {
       useRef: () => ({ current: null }),
@@ -43,9 +44,10 @@ function loadHome({ ssrFails = false, clientGet } = {}) {
       requests.push(args)
       return clientGet ? clientGet(...args) : { data: { results: inventory } }
     } },
-    axios: { get: async (url) => {
+    axios: { get: async (url, config) => {
+      ssrRequests.push(url)
       if (url.includes('catalog/brands')) {
-        if (ssrFails) throw new Error('timeout of 5000ms exceeded')
+        if (ssrFails || config.timeout < ssrBrandDelay) throw new Error('SSR brand timeout')
         return { data: { results: inventory } }
       }
       return { data: [] }
@@ -57,7 +59,7 @@ function loadHome({ ssrFails = false, clientGet } = {}) {
     require: (name) => modules[name] ?? (name === '../lib/homepageBrands' ? require('./homepageBrands.js') : () => null),
     console: { log() {}, error() {} },
   })
-  return { ...exports, effects, updates, requests }
+  return { ...exports, effects, updates, requests, ssrRequests }
 }
 
 test('после таймаута SSR неполная главная не кэшируется', async () => {
@@ -97,4 +99,33 @@ test('ответ после ухода со страницы не меняет �
   resolveRequest({ data: inventory })
   await new Promise(setImmediate)
   assert.equal(home.updates.length, updatesBefore)
+})
+
+
+test('ответ брендов за 7.2 секунды попадает в HTML без второго запроса из браузера', async () => {
+  const home = loadHome({ ssrBrandDelay: 7200 })
+  const result = await home.getServerSideProps({ locale: 'ru', res: { setHeader() {} } })
+  assert.equal(result.props.brands.length, 2)
+  assert.ok(home.ssrRequests[0].includes('catalog/brands'))
+  home.default({ brands: result.props.brands, categories: [] })
+  home.effects.forEach((effect) => effect())
+  assert.equal(home.requests.length, 0)
+})
+
+test('повторный пустой SSR-ответ не убирает восстановленные карточки во время запроса', async () => {
+  let resolveRequest
+  const home = loadHome({ clientGet: () => new Promise((resolve) => { resolveRequest = resolve }) })
+  home.default({ brands: [], categories: [] })
+  const firstCleanups = home.effects.map((effect) => effect())
+  resolveRequest({ data: inventory })
+  await new Promise(setImmediate)
+  assert.equal(home.updates.at(-1).length, 2)
+  firstCleanups.forEach((cleanup) => cleanup?.())
+  const updatesBefore = home.updates.length
+  home.effects.length = 0
+  home.default({ brands: [], categories: [] })
+  home.effects.forEach((effect) => effect())
+  assert.equal(home.updates.length, updatesBefore)
+  resolveRequest({ data: inventory })
+  await new Promise(setImmediate)
 })
