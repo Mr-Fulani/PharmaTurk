@@ -184,3 +184,26 @@ python3 scripts/release/backend_release.py --mode rollback \
 Rollback accepts stopped/partially replaced writers, preserves frontend/data
 services and does not reverse the additive migration or restore a database over
 new user writes. No backup/image/container cleanup is part of these operations.
+
+
+## Frontend-only CI
+
+A diff limited to `frontend/` plus optional documentation runs the full frontend
+checks and publishes only the frontend image. Backend dependency lock validation,
+installation consistency, vulnerability audit and Django deployment security
+checks still run. Backend functional checks, migration drift, incremental Python
+lint and pytest are omitted because their inputs are unchanged. Their existing
+job name still reports the decision and completes successfully only after the
+remaining checks pass.
+
+Any backend, shared, workflow, CI/release-tooling, Compose, Nginx or unknown change
+runs both component gates and builds both images. A missing/invalid base or empty
+diff also runs both; documentation-only changes retain the existing backend gate.
+There is no label or user-controlled skip flag. Workflow changes themselves must
+pass the full cycle before frontend-only pull requests can use the scoped path.
+
+Deploy the exact published frontend SHA while keeping `BACKEND_IMAGE_TAG` pinned
+to the running backend. A frontend-only rollout must select only the `frontend`
+Compose service with `--no-deps --no-build`, retain the previous frontend image,
+and verify the public site and unchanged backend/worker container identities.
+Do not run the full application deploy/migration path for this scope.

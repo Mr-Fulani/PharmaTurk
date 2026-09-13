@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.scope.outputs.frontend }}
+      backend: ${{ steps.scope.outputs.backend }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -74,6 +75,7 @@ jobs:
 
   backend:
     name: Backend (checks, migrations, pytest)
+    needs: [scope]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -137,6 +139,7 @@ jobs:
           --path "$(poetry env info --path)/lib/python3.12/site-packages"
           --ignore-vuln PYSEC-2026-3412
       - name: Django checks
+        if: needs.scope.outputs.backend != 'false'
         run: poetry run python manage.py check
       - name: Django deployment security checks
         env:
@@ -146,10 +149,12 @@ jobs:
           SECURE_HSTS_PRELOAD: '1'
         run: poetry run python manage.py check --deploy --tag security --fail-level ERROR
       - name: Check migration drift
+        if: needs.scope.outputs.backend != 'false'
         run: poetry run python manage.py makemigrations --check --dry-run
       # Existing debt is bounded globally. Changed files cannot add violations,
       # and newly added/copied Python files must start clean.
       - name: flake8 incremental quality gate
+        if: needs.scope.outputs.backend != 'false'
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -163,6 +168,7 @@ jobs:
       # Бейзлайн 2026-06-13: пуст (все 24 протухших теста починены).
       # Использовать только как временный карантин с задачей на починку.
       - name: pytest
+        if: needs.scope.outputs.backend != 'false'
         run: |
           DESELECT=$(sed 's/^/--deselect /' ci-known-failures.txt | tr '\n' ' ')
           poetry run pytest -q $DESELECT \
@@ -172,6 +178,10 @@ jobs:
             --cov-config=.coveragerc \
             --cov-report=term \
             --cov-fail-under=64
+
+      - name: Backend unchanged
+        if: needs.scope.outputs.backend == 'false'
+        run: echo 'Frontend-only diff; backend dependency audit and deployment security checks passed, functional tests omitted.'
 
   compose:
     name: Compose configuration
@@ -241,13 +251,16 @@ jobs:
         env:
           DEPENDENCY_LOCK_HASH: ${{ hashFiles('backend/pyproject.toml', 'backend/poetry.lock') }}
         run: |
-          services=(backend)
+          services=()
+          if [[ "${{ needs.scope.outputs.backend }}" != "false" ]]; then services+=(backend); fi
           if [[ "${{ needs.scope.outputs.frontend }}" != "false" ]]; then services+=(frontend); fi
           docker compose -f docker-compose.yml -f docker-compose.prod.yml build "${services[@]}"
       - name: Verify immutable revision labels and runtime users
         run: |
-          test "$(docker image inspect "mudaroba-backend:${GITHUB_SHA}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "${GITHUB_SHA}"
-          test "$(docker image inspect "mudaroba-backend:${GITHUB_SHA}" --format '{{ .Config.User }}')" = "app"
+          if [[ "${{ needs.scope.outputs.backend }}" != "false" ]]; then
+            test "$(docker image inspect "mudaroba-backend:${GITHUB_SHA}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "${GITHUB_SHA}"
+            test "$(docker image inspect "mudaroba-backend:${GITHUB_SHA}" --format '{{ .Config.User }}')" = "app"
+          fi
           if [[ "${{ needs.scope.outputs.frontend }}" != "false" ]]; then
             test "$(docker image inspect "mudaroba-frontend:${GITHUB_SHA}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "${GITHUB_SHA}"
             test "$(docker image inspect "mudaroba-frontend:${GITHUB_SHA}" --format '{{ .Config.User }}')" = "node"
@@ -265,8 +278,10 @@ jobs:
           registry_owner="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           backend_ref="ghcr.io/${registry_owner}/pharmaturk-backend:${GITHUB_SHA}"
           frontend_ref="ghcr.io/${registry_owner}/pharmaturk-frontend:${GITHUB_SHA}"
-          docker tag "mudaroba-backend:${GITHUB_SHA}" "${backend_ref}"
-          docker push "${backend_ref}"
+          if [[ "${{ needs.scope.outputs.backend }}" != "false" ]]; then
+            docker tag "mudaroba-backend:${GITHUB_SHA}" "${backend_ref}"
+            docker push "${backend_ref}"
+          fi
           if [[ "${{ needs.scope.outputs.frontend }}" != "false" ]]; then
             docker tag "mudaroba-frontend:${GITHUB_SHA}" "${frontend_ref}"
             docker push "${frontend_ref}"
