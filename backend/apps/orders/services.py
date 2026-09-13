@@ -377,9 +377,17 @@ def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | N
             return None, None
         html_string = render_receipt_html(order, locale=locale)
         from weasyprint import HTML  # lazy import — требует системных библиотек Pango/Cairo
+        from weasyprint.urls import URLFetcher
+
+        class ReceiptURLFetcher(URLFetcher):
+            """Сохраняет запрет ресурсов через актуальный интерфейс WeasyPrint."""
+
+            def fetch(self, url, headers=None):
+                return _deny_receipt_external_resource(url)
+
         pdf_file = HTML(
             string=html_string,
-            url_fetcher=_deny_receipt_external_resource,
+            url_fetcher=ReceiptURLFetcher(),
         ).write_pdf(presentational_hints=False)
 
         # Настраиваем boto3 клиент для работы с R2
