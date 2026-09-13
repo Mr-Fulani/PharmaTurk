@@ -272,6 +272,11 @@ CELERY_TASK_ROUTES = {
 }
 # Расписание Celery Beat. Подробности — см. CELERY_TASKS.md в корне проекта.
 CELERY_BEAT_SCHEDULE = {
+    "catalog-brand-product-counts": {
+        "task": "catalog.refresh_brand_product_counts",
+        "schedule": 60,
+        "options": {"expires": 60},
+    },
     "monitoring-production-watchdog": {
         "task": "apps.monitoring.tasks.run_production_watchdog",
         "schedule": PRODUCTION_WATCHDOG_INTERVAL_SECONDS,
