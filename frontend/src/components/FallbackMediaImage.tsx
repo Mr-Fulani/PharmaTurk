@@ -10,6 +10,8 @@ export type FallbackMediaImageProps = {
   fallbackSrc?: string
   /** Под masonry 3/2/1 колонки на страницах брендов и категорий */
   sizes?: string
+  /** Responsive sizes for homepage images served by the existing media proxy. */
+  responsiveProxy?: boolean
 }
 
 /**
@@ -20,6 +22,7 @@ export default function FallbackMediaImage({
   alt,
   fallbackSrc = DEFAULT_MEDIA_FALLBACK,
   sizes = DEFAULT_SIZES,
+  responsiveProxy = false,
 }: FallbackMediaImageProps) {
   const [imgSrc, setImgSrc] = useState(src)
 
@@ -51,6 +54,14 @@ export default function FallbackMediaImage({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={imgSrc}
+        srcSet={responsiveProxy && imgSrc.includes('proxy-media') ? [192, 320, 480, 600, 800].map(width => {
+          const url = new URL(imgSrc, 'https://mudaroba.com')
+          url.searchParams.delete('w')
+          url.searchParams.set('max_width', String(width))
+          const source = imgSrc.startsWith('/') ? `${url.pathname}${url.search}` : url.href
+          return `${source} ${width}w`
+        }).join(', ') : undefined}
+        sizes={responsiveProxy ? sizes : undefined}
         alt={alt}
         loading="lazy"
         decoding="async"

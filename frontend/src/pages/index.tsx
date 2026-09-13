@@ -89,7 +89,7 @@ interface HomePageProps {
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands: initialBrands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, showTestimonialsSection }: HomePageProps) {
+export default function Home({ brands: initialBrands, categories, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, showTestimonialsSection }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
@@ -155,7 +155,7 @@ export default function Home({ brands: initialBrands, categories, firstBannerIma
     return normalized || 'medicines'
   }
 
-  const renderMedia = (mediaUrl?: string | null, alt?: string, fallbackSrc?: string) => {
+  const renderMedia = (mediaUrl?: string | null, alt?: string, fallbackSrc?: string, sizes?: string) => {
     if (!mediaUrl && !fallbackSrc) return null
 
     const youtubeId = extractYouTubeId(mediaUrl || '')
@@ -198,7 +198,7 @@ export default function Home({ brands: initialBrands, categories, firstBannerIma
       )
     }
 
-    return <FallbackMediaImage src={src} fallbackSrc={fallbackSrc || ''} alt={alt || ''} />
+    return <FallbackMediaImage src={src} fallbackSrc={fallbackSrc || ''} alt={alt || ''} sizes={sizes} responsiveProxy />
   }
 
   const preparedCategories = categories
@@ -317,15 +317,6 @@ export default function Home({ brands: initialBrands, categories, firstBannerIma
   return (
     <>
       <Head>
-        {firstBannerImageUrl && (
-          <link
-            rel="preload"
-            as="image"
-            href={`/_next/image?url=${encodeURIComponent(firstBannerImageUrl)}&w=828&q=75`}
-            // @ts-ignore: fetchpriority is valid in standard browsers but may be missing in react types
-            fetchPriority="high"
-          />
-        )}
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
         <link rel="canonical" href={canonicalUrl} />
@@ -359,12 +350,6 @@ export default function Home({ brands: initialBrands, categories, firstBannerIma
         <div className="mx-auto max-w-6xl px-3 sm:px-4 md:px-6 py-4 sm:py-8">
           {/* Главный баннер */}
           <div className="mb-12 relative">
-            {/*
-              Мобайл: статичный SSR-img виден ДО загрузки JS (устраняет render delay ~5 сек).
-              На десктопе скрыт — там показывается полная карусель с анимацией.
-              После гидрации JS карусель подменяет статику через CSS-hidden.
-            */}
-            {/* Карусель: теперь с поддержкой SSR для мгновенного LCP */}
             <BannerCarousel
               position="main"
               initialBanners={mainBanners}
@@ -391,7 +376,7 @@ export default function Home({ brands: initialBrands, categories, firstBannerIma
                     onClick={() => handleBrandClick(brand)}
                     className="relative shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-gray-900 group"
                   >
-                    {renderMedia(withListingImageMaxWidth(mediaUrl || '', 300) || placeholderUrl, brand.name, placeholderUrl)}
+                    {renderMedia(withListingImageMaxWidth(mediaUrl || '', 300) || placeholderUrl, brand.name, placeholderUrl, '96px')}
                     <div className="absolute inset-0 bg-black/40 hidden" />
                     <div className="absolute inset-0 hidden items-center justify-center p-2 z-10">
                       <div className="text-center text-white drop-shadow w-full">
@@ -450,7 +435,7 @@ export default function Home({ brands: initialBrands, categories, firstBannerIma
                     className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
                   >
                     <div className="absolute inset-0 z-0 overflow-hidden">
-                      {renderMedia(withListingImageMaxWidth(mediaUrl || '', 450) || placeholderUrl, brand.name, placeholderUrl)}
+                      {renderMedia(withListingImageMaxWidth(mediaUrl || '', 450) || placeholderUrl, brand.name, placeholderUrl, '(max-width: 1151px) calc((100vw - 96px) / 3), 352px')}
                     </div>
                     <div className="absolute inset-0 z-[1] bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
                     <div className="absolute inset-0 z-10 flex items-center justify-center p-4 md:p-6 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
@@ -516,7 +501,8 @@ export default function Home({ brands: initialBrands, categories, firstBannerIma
                       {renderMedia(
                         withListingImageMaxWidth(mediaUrl || '', 600) || placeholderUrl,
                         getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
-                        placeholderUrl
+                        placeholderUrl,
+                        '(max-width: 640px) calc((100vw - 40px) / 2), (max-width: 767px) calc((100vw - 64px) / 3), (max-width: 1151px) calc((100vw - 96px) / 3), 352px'
                       )}
                     </div>
                     <div className="absolute inset-0 z-[1] bg-black/35" />
