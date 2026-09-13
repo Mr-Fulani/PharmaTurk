@@ -61,12 +61,21 @@ class Release:
         result = {}
         for service in WRITERS + PRESERVED:
             ids = self.dc("ps", "-a", "-q", service).decode().split()
-            if not ids and self.args.mode == "rollback" and service in WRITERS:
+            regular = []
+            for container_id in ids:
+                info = json.loads(run(["docker", "inspect", container_id]))[0]
+                oneoff = info["Config"]["Labels"].get("com.docker.compose.oneoff", "").lower()
+                if oneoff == "true":
+                    if info["State"]["Running"]:
+                        raise ValueError(f"Active one-off {service} container must finish before release")
+                    continue
+                regular.append(info)
+            if not regular and self.args.mode == "rollback" and service in WRITERS:
                 result[service] = {"id": None, "revision": None, "running": False}
                 continue
-            if len(ids) != 1:
+            if len(regular) != 1:
                 raise ValueError(f"Expected exactly one existing {service} container")
-            info = json.loads(run(["docker", "inspect", ids[0]]))[0]
+            info = regular[0]
             result[service] = {
                 "id": info["Id"], "image": info["Image"],
                 "revision": info["Config"]["Labels"].get("org.opencontainers.image.revision"),
