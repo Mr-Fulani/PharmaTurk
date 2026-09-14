@@ -1598,11 +1598,16 @@ class ScraperIntegrationService:
         Приоритет:
         1. session.target_category — категория из конкретной задачи
         2. scraper_config.default_category — категория по умолчанию из конфигурации парсера
-        Авто-определение категории по атрибутам товара отключено.
+        Для медикаментов доступно отдельное opt-in уточнение общего корня.
         """
         # Явно выбранная конечная подкатегория всегда имеет высший приоритет.
         category = session.target_category
         source = (scraped_product.source or "").strip().lower()
+
+        from .medicine_categories import prepare_medicine_category_mapping
+
+        if prepare_medicine_category_mapping(session, scraped_product):
+            return
 
         # Корень «Обувь» в задаче FLO задаёт тип товара, но не должен стирать
         # более точный тип из breadcrumb/названия карточки.
@@ -3219,6 +3224,26 @@ class ScraperIntegrationService:
         return self._update_fashion_attributes_common(product, attrs)
 
     def _update_existing_product(
+        self, session, scraped_product, existing_product, *, source_identity_match=False,
+    ):
+        # Only the opt-in medicine path acquires locks. Re-read both rows before
+        # deciding, so an already committed manual category choice is preserved.
+        if getattr(scraped_product, "_medicine_category_root", None) is not None:
+            with transaction.atomic():
+                current = Product.objects.select_for_update().get(pk=existing_product.pk)
+                list(MedicineProduct.objects.select_for_update().filter(
+                    base_product_id=current.pk,
+                ).values_list("pk", flat=True))
+                return self._update_existing_product_impl(
+                    session, scraped_product, current,
+                    source_identity_match=source_identity_match,
+                )
+        return self._update_existing_product_impl(
+            session, scraped_product, existing_product,
+            source_identity_match=source_identity_match,
+        )
+
+    def _update_existing_product_impl(
         self,
         session: ScrapingSession,
         scraped_product: ScrapedProduct,
@@ -3257,6 +3282,23 @@ class ScraperIntegrationService:
         )
         source_key = str(scraped_product.source or "").strip().casefold()
         price_refresh_disabled = source_key in _price_refresh_disabled_source_keys()
+
+        medicine_root = getattr(scraped_product, "_medicine_category_root", None)
+        medicine_category = None
+        if medicine_root is not None:
+            from .medicine_categories import MedicineCategoryConflict, resolve_medicine_category
+
+            try:
+                medicine_category = resolve_medicine_category(
+                    scraped_product, existing=existing_product,
+                    is_variant_update=is_variant_update,
+                )
+            except MedicineCategoryConflict:
+                # Saving Product would otherwise overwrite the domain assignment.
+                self.logger.warning(
+                    "Medicine category conflict; product %s left unchanged", existing_product.pk
+                )
+                return "skipped", existing_product
 
         if should_repair_ilacfiyati_external_id:
             existing_product.external_id = scraped_product.external_id
@@ -3365,7 +3407,15 @@ class ScraperIntegrationService:
                 updated = True
 
         category_override = getattr(scraped_product, "_category_override", None)
-        if category_override and existing_product.category_id != category_override.pk:
+        if medicine_root is not None:
+            if medicine_category and existing_product.category_id != medicine_category.pk:
+                self.logger.info(
+                    "Medicine category refined: product=%s from=%s to=%s",
+                    existing_product.pk, existing_product.category_id, medicine_category.pk,
+                )
+                existing_product.category = medicine_category
+                updated = True
+        elif category_override and existing_product.category_id != category_override.pk:
             existing_product.category = category_override
             updated = True
         elif scraped_product.category:
@@ -4293,6 +4343,12 @@ class ScraperIntegrationService:
         """Создает новый товар."""
         # Преобразуем в формат ProductData для CatalogNormalizer
         from apps.vapi.client import ProductData
+
+        if getattr(scraped_product, "_medicine_category_root", None) is not None:
+            from .medicine_categories import resolve_medicine_category
+
+            category = resolve_medicine_category(scraped_product)
+            scraped_product.category = category.slug
 
         resolved_product_type = None
         if scraped_product.category:

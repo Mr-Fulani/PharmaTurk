@@ -17,8 +17,8 @@ from apps.orders.serializers import CartSerializer
 from apps.orders.services import build_order_receipt_payload
 
 
-@pytest.fixture
-def public_product(monkeypatch):
+@pytest.fixture(params=[False, True], ids=["direct-category", "inherited-category"])
+def public_product(monkeypatch, request):
     # Product.save() normally builds snapshots. Keeping them absent here proves
     # that every public surface calculates from the same current base price.
     monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
@@ -28,6 +28,11 @@ def public_product(monkeypatch):
         slug="public-price",
         margin_percent=Decimal("15"),
     )
+    if request.param:
+        category = Category.objects.create(
+            name="Inherited public price", slug="inherited-public-price", parent=category,
+            margin_percent=Decimal("0"),
+        )
     product = Product.objects.create(
         name="Consistent product",
         slug="consistent-product",

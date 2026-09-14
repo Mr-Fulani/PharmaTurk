@@ -3,6 +3,8 @@
 Используется seed_catalog_data и get_or_create_root_category.
 """
 
+from apps.catalog.medicine_taxonomy import MEDICINES_SUBCATEGORIES
+
 # Корневые категории: (slug, name_ru, name_en, description_ru, description_en, category_type_slug)
 ROOT_CATEGORIES = [
     ("medicines", "Медицина", "Medicine",
@@ -1351,135 +1353,7 @@ SUPPLEMENTS_SUBCATEGORIES = [
     ),
 ]
 
-# Медикаменты: L2 с L3 подкатегориями
-MEDICINES_SUBCATEGORIES = [
-    (
-        "Антибиотики",
-        "Antibiotics",
-        "antibiotics",
-        "Антибактериальные препараты",
-        "Antibacterial drugs",
-        [],
-    ),
-    (
-        "Обезболивающие",
-        "Pain Relief",
-        "painkillers",
-        "Препараты для снятия боли",
-        "Pain relief",
-        [
-            ("Таблетки от боли", "Pain Relief Tablets", "pain-tablets", "Таблетки от боли", "Pain relief tablets"),
-            ("Гели и мази", "Pain Relief Gels", "pain-gels", "Гели и мази от боли", "Pain relief gels"),
-            ("Пластыри", "Pain Relief Patches", "pain-patches", "Пластыри от боли", "Pain relief patches"),
-        ],
-    ),
-    (
-        "Простуда и грипп",
-        "Cold & Flu",
-        "cold-flu",
-        "Препараты от простуды и гриппа",
-        "Cold & flu medications",
-        [
-            ("Таблетки от простуды", "Cold Tablets", "cold-tablets", "Таблетки от простуды", "Cold tablets"),
-            ("Сиропы от кашля", "Cough Syrups", "cough-syrups", "Сиропы от кашля", "Cough syrups"),
-            ("Леденцы для горла", "Throat Lozenges", "throat-lozenges", "Леденцы для горла", "Throat lozenges"),
-            ("Назальные спреи", "Nasal Sprays", "nasal-sprays", "Назальные спреи", "Nasal sprays"),
-        ],
-    ),
-    (
-        "Аллергия",
-        "Allergy",
-        "allergy",
-        "Препараты от аллергии",
-        "Allergy medications",
-        [
-            ("Антигистаминные", "Antihistamines", "antihistamines", "Антигистаминные препараты", "Antihistamines"),
-            ("Назальные препараты", "Allergy Nasal Sprays", "allergy-nasal", "Назальные препараты от аллергии", "Allergy nasal sprays"),
-            ("Глазные капли", "Allergy Eye Drops", "allergy-eye-drops", "Глазные капли от аллергии", "Allergy eye drops"),
-        ],
-    ),
-    (
-        "Сердце и сосуды",
-        "Heart & Cardiovascular",
-        "heart-cardiovascular",
-        "Препараты для сердца и сосудов",
-        "Heart & cardiovascular",
-        [
-            ("Омега-3 комплексы", "Omega-3 Complexes", "omega-3-heart", "Омега-3 для сердца", "Omega-3 complexes"),
-            ("Коэнзим Q10", "CoQ10 Supplements", "coq10-heart", "Коэнзим Q10 для сердца", "CoQ10 supplements"),
-            ("Холестерин контроль", "Cholesterol Support", "cholesterol-support", "Поддержка холестерина", "Cholesterol support"),
-        ],
-    ),
-    (
-        "Сон и стресс",
-        "Sleep & Stress",
-        "sleep-stress",
-        "Средства для сна и снятия стресса",
-        "Sleep & stress relief",
-        [
-            ("Мелатонин", "Melatonin", "melatonin", "Мелатонин", "Melatonin"),
-            ("Успокаивающие добавки", "Calming Supplements", "calming-supplements", "Успокаивающие добавки", "Calming supplements"),
-            ("Магний для сна", "Magnesium for Sleep", "magnesium-sleep", "Магний для сна", "Magnesium for sleep"),
-            ("Антистресс комплексы", "Stress Relief Supplements", "stress-relief", "Антистресс комплексы", "Stress relief supplements"),
-        ],
-    ),
-    (
-        "Кардио",
-        "Cardio",
-        "cardio",
-        "Препараты для сердечно-сосудистой системы",
-        "Cardiovascular medications",
-        [],
-    ),
-    (
-        "Дерматология",
-        "Dermatology",
-        "dermatology",
-        "Препараты для кожи",
-        "Skin medications",
-        [],
-    ),
-    (
-        "ЖКТ",
-        "Gastro",
-        "gastro",
-        "Препараты для желудочно-кишечного тракта",
-        "Gastrointestinal medications",
-        [],
-    ),
-    (
-        "Эндокринология/Диабет",
-        "Endocrinology/Diabetes",
-        "endocrinology-diabetes",
-        "Препараты при диабете",
-        "Diabetes medications",
-        [],
-    ),
-    (
-        "Офтальмология",
-        "Ophthalmology",
-        "ophthalmology",
-        "Препараты для глаз",
-        "Eye medications",
-        [],
-    ),
-    (
-        "ЛОР",
-        "ENT",
-        "ent",
-        "Препараты для уха, горла, носа",
-        "ENT medications",
-        [],
-    ),
-    (
-        "Ортопедия/Травмы",
-        "Orthopedics/Injuries",
-        "orthopedics",
-        "Препараты при травмах",
-        "Orthopedic medications",
-        [],
-    ),
-]
+# Медикаменты определены в medicine_taxonomy.py: один список для seed и preview.
 
 # Мебель: корень ``furniture`` остаётся неизменным; ниже — устойчивое дерево,
 # приближенное к навигации IKEA Turkey. Slug — внутренние идентификаторы проекта,

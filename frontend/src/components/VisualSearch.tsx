@@ -17,7 +17,7 @@ type ApiError = {
   message?: string
   response?: {
     status?: number
-    data?: { error?: string }
+    data?: { error?: string; detail?: string }
   }
 }
 
@@ -99,10 +99,12 @@ export default function VisualSearch() {
     const errorData = apiError.response?.data
     if (apiError.response?.status === 429) {
       setError(t('visual_search_rate_limited', 'Слишком много запросов. Подождите минуту и попробуйте снова.'))
+    } else if (apiError.response?.status === 403) {
+      setError(t('visual_search_forbidden', 'Не удалось отправить изображение. Обновите страницу и попробуйте снова.'))
     } else if (errorData?.error === 'invalid_image_url') {
       setError(t('invalid_image_url', 'Не удалось обработать URL. Ссылка должна вести прямо на JPEG, PNG или WebP.'))
     } else {
-      const msg = errorData?.error || apiError.message || t('search_error', 'Ошибка поиска')
+      const msg = errorData?.error || errorData?.detail || apiError.message || t('search_error', 'Ошибка поиска')
       setError(String(msg))
     }
     setResults([])

@@ -1144,6 +1144,8 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         field_names = {field.name for field in model._meta.get_fields()}
         queryset = model.objects.filter(id__in=ids)
         select_related = [name for name in self.BRAND_CARD_SELECT_RELATED if name in field_names]
+        if 'category' in field_names:
+            select_related.append('category__parent__parent')
         if select_related:
             queryset = queryset.select_related(*select_related)
         prefetch_related = [
@@ -1552,6 +1554,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             'translations',
             'images',
             'category__translations',
+            'category__parent__parent',
             'brand__translations',
         }
         product_types = {
@@ -1764,7 +1767,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             return queryset.select_related('category', 'brand', 'price_info')
 
         # Prefetch для main_image_url и images (medicine, supplement, books, clothing и др.)
-        queryset = queryset.prefetch_related(
+        queryset = queryset.select_related('category__parent__parent').prefetch_related(
             'images',
             'medicine_item__gallery_images',
             'supplement_item__gallery_images',
@@ -4459,7 +4462,7 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
 
     def _base_queryset(self):
-        return self.queryset.all()
+        return self.queryset.all().select_related('category__parent__parent')
 
     def _apply_domain_filters(self, queryset):
         """Переопределить в подклассе для доменных фильтров."""
