@@ -151,10 +151,14 @@ def test_non_paginating_parser_does_not_chain(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_paginating_parser_chains_next_chunk(monkeypatch):
+@pytest.mark.parametrize("start_url", [
+    "https://ilacfiyati.com/ilaclar",
+    "https://ilacfiyati.com/takviye-edici-gida/bagisiklik-destek-urunleri?brand=Solgar",
+])
+def test_paginating_parser_chains_next_chunk(monkeypatch, start_url):
     """ilacfiyati: нашли товары, лимит не достигнут — следующий чанк ставится."""
     task = _build_task("ilacfiyati")
-    task.start_url = "https://ilacfiyati.com/ilaclar"
+    task.start_url = start_url
     task.save(update_fields=["start_url"])
     session = _session_with_products(task)
 
@@ -180,6 +184,7 @@ def test_paginating_parser_chains_next_chunk(monkeypatch):
 
     # Следующий чанк стартует со страницы start_page + chunk_pages.
     assert queued.get("start_page") == 1 + task.max_pages
+    assert queued["start_url"] == start_url
     task.refresh_from_db()
     assert task.status == "running"
 
@@ -384,6 +389,85 @@ def test_duplicate_product_is_skipped_across_separate_celery_chunks(monkeypatch)
 
     assert first == {"found": 1, "created": 0, "updated": 1, "skipped": 0, "errors": 0}
     assert second == {"found": 0, "created": 0, "updated": 0, "skipped": 1, "errors": 0}
+
+
+@pytest.mark.django_db
+def test_flo_catalog_skips_loaded_colours_and_fills_remaining_limit(monkeypatch):
+    task = _build_task("flo")
+    task.start_url = "https://www.flo.com.tr/basic-t-shirt?cinsiyet=erkek"
+    task.save(update_fields=["start_url"])
+    service = ScraperIntegrationService()
+    loaded = []
+
+    def process(session, products):
+        return {"found": 1, "created": 1, "updated": 0, "skipped": 0, "errors": 0}
+
+    monkeypatch.setattr(service, "_process_scraped_products", process)
+
+    def detail(url):
+        sku = url.rsplit("-", 1)[-1]
+        loaded.append(sku)
+        variants = [sku, "222222"] if sku == "111111" else [sku]
+        return ScrapedProduct(
+            name=f"Product {sku}", url=url, source="flo", external_id=f"flo-{sku}",
+            attributes={"fashion_variants": [{"sku": value} for value in variants]},
+        )
+
+    for page, skus in ((1, ["111111"]), (2, ["111111", "222222", "333333", "444444", "555555"])):
+        parser = FloParser()
+        parser.max_products = 2
+        html = "".join(f'<a href="/urun/product-{sku}">Product</a>' for sku in skus)
+        html += '<a rel="next" href="?page=3">Next</a>'
+        monkeypatch.setattr(parser, "_fetch", lambda url: html)
+        monkeypatch.setattr(parser, "parse_product_detail", detail)
+        session = _session_with_products(task)
+        session.pages_processed = 0
+        _, results = service._run_parser_scraping(
+            parser, session, task.start_url, site_task_id=task.id,
+            start_page=page, total_scraped=998 if page == 2 else 0,
+        )
+
+    assert loaded == ["111111", "333333", "444444"]
+    assert results == {"found": 2, "created": 2, "updated": 0, "skipped": 2, "errors": 0}
+    assert session._has_more_pages is False
+
+
+@pytest.mark.django_db
+def test_flo_failed_save_can_be_retried_and_fresh_run_imports_again(monkeypatch):
+    from datetime import timedelta
+    from django.utils import timezone
+
+    task = _build_task("flo")
+    task.start_url = "https://www.flo.com.tr/ayakkabi"
+    task.started_at = timezone.now()
+    task.save(update_fields=["start_url", "started_at"])
+    service = ScraperIntegrationService()
+    loaded = []
+
+    for attempt in range(4):
+        if attempt == 3:
+            task.started_at += timedelta(seconds=1)
+            task.save(update_fields=["started_at"])
+        parser = FloParser()
+        monkeypatch.setattr(parser, "_fetch", lambda url: '<a href="/urun/product-111111">P</a>')
+
+        def detail(url):
+            loaded.append(url)
+            return ScrapedProduct(name="Product", source="flo", url=url, external_id="flo-111111")
+
+        monkeypatch.setattr(parser, "parse_product_detail", detail)
+        monkeypatch.setattr(service, "_process_scraped_products", lambda *args: {
+            "found": 1, "created": 0 if attempt == 0 else 1,
+            "updated": 0, "skipped": 0, "errors": 1 if attempt == 0 else 0,
+        })
+        session = _session_with_products(task)
+        session.pages_processed = 0
+        _, results = service._run_parser_scraping(
+            parser, session, task.start_url, site_task_id=task.id,
+        )
+        assert results["found"] == (0 if attempt == 2 else 1)
+
+    assert len(loaded) == 3
 
 
 @pytest.mark.django_db

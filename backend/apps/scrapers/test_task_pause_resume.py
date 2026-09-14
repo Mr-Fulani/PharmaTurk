@@ -145,6 +145,9 @@ def test_admin_resume_passes_start_page_and_accumulated_totals(monkeypatch):
     from apps.scrapers.admin import SiteScraperTaskAdmin
 
     task = _build_task(status="paused", resume_page=5)
+    from django.utils import timezone
+    task.started_at = timezone.now()
+    original_started_at = task.started_at
     task.products_found = 40
     task.products_created = 10
     task.products_updated = 2
@@ -168,6 +171,8 @@ def test_admin_resume_passes_start_page_and_accumulated_totals(monkeypatch):
 
     assert captured["config_id"] == task.scraper_config_id
     assert captured["start_page"] == 5
+    task.refresh_from_db()
+    assert task.started_at == original_started_at
     assert captured["total_scraped"] == 40
     assert captured["total_created"] == 10
     assert captured["total_updated"] == 2

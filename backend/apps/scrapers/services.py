@@ -47,6 +47,7 @@ from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .parsers.zara import ZaraParser
 from .parsers.flo import FloParser
+from .base.catalog_state import CatalogTraversalState
 from .base.scraper import (
     ScrapedProduct,
     ScraperAccessBlockedError,
@@ -1069,6 +1070,16 @@ class ScraperIntegrationService:
                     supports_chunking = bool(getattr(parser, "SUPPORTS_PAGE_CHUNKING", False))
                 if supports_chunking:
                     list_kwargs["start_page"] = start_page
+                catalog_managed = bool(getattr(parser, "SUPPORTS_CATALOG_STATE", False))
+                product_cache_scope = site_task_id
+                if catalog_managed:
+                    if site_task_id:
+                        started_at = SiteScraperTask.objects.filter(id=site_task_id).values_list(
+                            "started_at", flat=True
+                        ).first()
+                        product_cache_scope = f"{site_task_id}:{started_at.isoformat() if started_at else 'pending'}"
+                    parser.catalog_state = CatalogTraversalState(product_cache_scope)
+                    parser.catalog_result_count = lambda: incremental_results["found"]
                 try:
                     for product in parser.parse_product_list(start_url, **list_kwargs):
                         parser_limit = getattr(parser, "max_products", None)
@@ -1077,12 +1088,14 @@ class ScraperIntegrationService:
                         self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                         product_identity = _scraped_product_identity(product)
                         product_cache_key = (
-                            _scraper_task_product_cache_key(site_task_id, product_identity)
+                            _scraper_task_product_cache_key(product_cache_scope, product_identity)
                             if site_task_id and product_identity
                             else None
                         )
                         if product_cache_key and cache.get(product_cache_key):
                             incremental_results["skipped"] += 1
+                            if catalog_managed:
+                                parser.mark_catalog_product(product)
                             self.logger.warning(
                                 "Повторная карточка между чанками пропущена: %s (task=%s)",
                                 product_identity,
@@ -1092,12 +1105,14 @@ class ScraperIntegrationService:
                         r = self._process_scraped_products(session, [product])
                         for k in incremental_results:
                             incremental_results[k] += r.get(k, 0)
-                        if product_cache_key:
+                        if product_cache_key and (not catalog_managed or not r.get("errors")):
                             cache.set(
                                 product_cache_key,
                                 True,
                                 timeout=SCRAPER_TASK_SEEN_TTL,
                             )
+                        if catalog_managed and not r.get("errors"):
+                            parser.mark_catalog_product(product)
                         checkpoint += 1
                         session.products_found = incremental_results["found"]
                         session.products_created = incremental_results["created"]
@@ -1167,6 +1182,8 @@ class ScraperIntegrationService:
                     session._chunk_interrupted = True
                 parser_item_errors = max(0, int(getattr(parser, "item_errors", 0) or 0))
                 incremental_results["errors"] += parser_item_errors
+                if catalog_managed:
+                    incremental_results["skipped"] += int(getattr(parser, "catalog_skipped", 0))
                 if getattr(parser, "REPORTS_PAGES_PROCESSED", False):
                     session.pages_processed += parser.pages_processed
                 elif incremental_results["found"]:

@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from celery.exceptions import SoftTimeLimitExceeded
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
+from ..base.catalog_state import CatalogTraversalState
 from ..base.utils import clean_text, normalize_price, extract_currency
 
 
@@ -23,6 +24,27 @@ class IlacFiyatiParser(BaseScraper):
     SUPPORTS_PAGE_CHUNKING = True
     REPORTS_PAGES_PROCESSED = True
     REPORTS_NEXT_START_PAGE = True
+    SUPPORTS_CATALOG_STATE = True
+
+    # These category slugs share the same two-segment URL shape as products.
+    # Verified against the source's supplement category navigation, 2026-09-14.
+    SUPPLEMENT_CATEGORY_SLUGS = frozenset({
+        "bagisiklik-destek-urunleri", "bagisiklik-guclendiriciler", "mevsim-gecisi",
+        "sindirim-ve-bagisiklik", "antioksidanlar", "sinir-sistemi-destek-urunleri",
+        "enerji-ve-performans-urunleri", "enerji-destegi", "kas-gucu-ve-kondisyon",
+        "metabolik-aktivite-destegi", "mental-odak-destegi", "sindirim-sistemi-urunleri",
+        "probiyotikler", "sindirim-enzimleri", "gaz-ve-siskinlik", "mide-ve-bagirsak",
+        "karaciger-destegi", "kemik-ve-eklem-sagligi", "kemik-destegi",
+        "kikirdak-ve-eklem-destegi", "agiz-ve-dis-sagligi", "enflamasyon-destekleyiciler",
+        "cilt-sac-ve-tirnak-sagligi", "cilt-sagligi", "sac-koku-ve-sac-sagligi",
+        "cilt-bariyeri-ve-yenileme", "hafiza-sagligi", "hafiza-urunleri",
+        "odaklanma-destekleyiciler", "stres-destegi", "hormon-ve-metabolizma-sagligi",
+        "tiroid-sagligi", "kadin-sagligi", "erkek-sagligi", "glukoz-dengesi",
+        "form-destegi", "yaslanma-karsiti", "kardiyovaskuler-saglik", "lipid-destegi",
+        "damar-sagligi", "kan-basinc-destegi", "kan-hucresi-destekleyici",
+        "stres-ve-uyku-sagligi", "uyku-destekleyiciler", "mental-rahatlama",
+        "solunum-yolu-sagligi", "goz-sagligi", "uriner-sistem-sagligi", "beslenme-urunleri",
+    })
 
     DETAIL_TABS = {
         "ilac_bilgileri": {
@@ -97,13 +119,80 @@ class IlacFiyatiParser(BaseScraper):
     @classmethod
     def is_ilacfiyati_listing_url(cls, url: str) -> bool:
         parsed = urlparse(url or "")
-        path_parts = [p for p in (parsed.path or url or "").strip("/").split("/") if p]
-        return len(path_parts) == 1 and path_parts[0] in ("ilaclar", "takviye-edici-gida")
+        if parsed.netloc and parsed.hostname not in ("ilacfiyati.com", "www.ilacfiyati.com"):
+            return False
+        path_parts = [p for p in parsed.path.strip("/").split("/") if p]
+        return (
+            len(path_parts) == 1 and path_parts[0] in ("ilaclar", "takviye-edici-gida")
+        ) or (
+            len(path_parts) == 2
+            and path_parts[0] == "takviye-edici-gida"
+            and path_parts[1] in cls.SUPPLEMENT_CATEGORY_SLUGS
+        )
+
+    @classmethod
+    def is_category_url(cls, url: str) -> bool:
+        return cls.is_ilacfiyati_listing_url(url)
+
+    @classmethod
+    def is_product_url(cls, url: str) -> bool:
+        parsed = urlparse(url or "")
+        if parsed.netloc and parsed.hostname not in ("ilacfiyati.com", "www.ilacfiyati.com"):
+            return False
+        parts = [p for p in parsed.path.strip("/").split("/") if p]
+        return (
+            len(parts) >= 2
+            and parts[0] in ("ilaclar", "takviye-edici-gida")
+            and not (parts[0] == "takviye-edici-gida" and parts[1] in cls.SUPPLEMENT_CATEGORY_SLUGS)
+        )
 
     @classmethod
     def supports_page_chunking_for_url(cls, url: str) -> bool:
-        """Авточепочка по ?pg= безопасна только для листинга, не для карточки."""
+        """Авточепочка по ?pg= — для корневых каталогов и разделов БАДов."""
         return cls.is_ilacfiyati_listing_url(url)
+
+    def _extract_listing_product_urls(self, html: str) -> List[str]:
+        soup = BeautifulSoup(html, "html.parser")
+        listing = soup.select_one(".row.g-3.mt-4")
+        if listing is not None:
+            # Current listings repeat each card's URL for image, title and button.
+            # Category menus and recommendations must never become product jobs.
+            links = listing.select(".card.h-100 a[href]")
+        else:
+            # Keep older medicine/table listings working, excluding navigation.
+            for node in soup.select("nav, header, footer, form, #filterContent, .dropdown-menu"):
+                node.decompose()
+            links = soup.select('a[href*="/ilaclar/"], a[href*="/takviye-edici-gida/"]')
+        urls = []
+        seen = set()
+        for link in links:
+            full_url = urljoin(self.base_url, link.get("href", ""))
+            if not self.is_product_url(full_url):
+                continue
+            if "pg" in dict(parse_qsl(urlparse(full_url).query)):
+                continue
+            full_url = self._canonical_product_url(full_url)
+            if full_url not in seen:
+                seen.add(full_url)
+                urls.append(full_url)
+        return urls
+
+    def mark_catalog_product(self, product):
+        self.catalog_state.mark_product(self._canonical_product_url(product.url))
+
+    @staticmethod
+    def _listing_has_next_page(html: str, category_url: str, page: int) -> Optional[bool]:
+        pagination = BeautifulSoup(html, "html.parser").select_one(".pagination")
+        if pagination is None:
+            return None  # Older pages are terminated by an empty/repeated listing.
+        for link in pagination.select("a[href]"):
+            parsed = urlparse(urljoin(category_url, link["href"]))
+            if parsed.path.rstrip("/") != urlparse(category_url).path.rstrip("/"):
+                continue
+            next_page = dict(parse_qsl(parsed.query)).get("pg", "")
+            if next_page.isdigit() and int(next_page) > page:
+                return True
+        return False
 
     @staticmethod
     def _normalize_tr_key(value: str) -> str:
@@ -325,30 +414,25 @@ class IlacFiyatiParser(BaseScraper):
         self.next_start_page = start_page
         self.item_errors = 0
         self.stop_reason = ""
+        self.catalog_skipped = 0
+        state = getattr(self, "catalog_state", None) or CatalogTraversalState()
+        self.catalog_state = state
+        result_count = getattr(self, "catalog_result_count", None)
         count = 0
         page = start_page
         pages_parsed = 0
         previous_page_urls = None
 
-        def extract_product_urls(html):
-            soup = BeautifulSoup(html, 'html.parser')
-            urls = []
-            for link in soup.select('a[href*="/ilaclar/"], a[href*="/takviye-edici-gida/"]'):
-                href = link.get('href')
-                if not href or 'pg=' in href:
-                    continue
-                path_parts = urlparse(href).path.strip('/').split('/')
-                if len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'):
-                    full_url = urljoin(self.base_url, href)
-                    if full_url not in urls:
-                        urls.append(full_url)
-            return urls
+        if self.max_products is not None and self.max_products <= 0:
+            self.has_more_pages = False
+            self.stop_reason = "Достигнут лимит товаров."
+            return
 
         if page > 1:
             previous_url = self._listing_page_url(category_url, page - 1)
             previous_html = self._make_request(previous_url)
             if previous_html:
-                previous_page_urls = extract_product_urls(previous_html)
+                previous_page_urls = self._extract_listing_product_urls(previous_html)
 
         try:
             self.logger.info(f"Начинаем парсинг товаров: {category_url} (страницы {start_page}+{max_pages})")
@@ -366,7 +450,7 @@ class IlacFiyatiParser(BaseScraper):
                         f"IlacFiyati вернул пустую страницу каталога: {url}"
                     )
 
-                product_urls = extract_product_urls(html)
+                product_urls = self._extract_listing_product_urls(html)
 
                 if not product_urls:
                     self.stop_reason = (
@@ -377,20 +461,24 @@ class IlacFiyatiParser(BaseScraper):
                     self.has_more_pages = False
                     break
 
-                if previous_page_urls and product_urls == previous_page_urls:
+                if (
+                    previous_page_urls and set(product_urls) == set(previous_page_urls)
+                ) or state.page_seen(product_urls, page):
                     self.logger.info(
                         "IlacFiyati: страница %s повторяет предыдущую, каталог исчерпан.",
                         page,
                     )
                     self.stop_reason = (
-                        f"Страница {page} повторяет предыдущую; каталог закончился."
+                        f"Страница {page} повторяет уже обработанную выдачу; каталог закончился."
                     )
                     self.has_more_pages = False
                     break
 
+                before = result_count() if result_count else count
                 for product_url in product_urls:
-                    if self.max_products is not None and count >= self.max_products:
-                        return
+                    if state.product_seen(product_url):
+                        self.catalog_skipped += 1
+                        continue
 
                     try:
                         detail = self.parse_product_detail(product_url)
@@ -409,12 +497,29 @@ class IlacFiyatiParser(BaseScraper):
                     if detail and self.validate_product(detail):
                         count += 1
                         yield detail
+                        if result_count is None:
+                            self.mark_catalog_product(detail)
+                        processed = result_count() if result_count else count
+                        if self.max_products is not None and processed >= self.max_products:
+                            self.has_more_pages = False
+                            self.stop_reason = "Достигнут лимит товаров."
+                            return
 
                 pages_parsed += 1
                 self.pages_processed = pages_parsed
                 previous_page_urls = product_urls
+                after = result_count() if result_count else count
+                stalled = state.finish_page(product_urls, page, after > before)
+                has_next = self._listing_has_next_page(html, category_url, page)
                 page += 1
                 self.next_start_page = page
+                if stalled or has_next is False:
+                    self.has_more_pages = False
+                    self.stop_reason = (
+                        "Обход остановлен: три страницы подряд без новых товаров."
+                        if stalled else "Достигнута последняя страница каталога."
+                    )
+                    break
 
         except SoftTimeLimitExceeded:
             raise

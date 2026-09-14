@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
+from apps.scrapers.base.catalog_state import CatalogTraversalState
 from apps.scrapers.parsers.flo import FloParser, resolve_flo_shoe_category_slug
 from apps.scrapers.services import ScraperIntegrationService, _scraped_product_identity
 from apps.catalog.models import Category
@@ -305,6 +306,153 @@ def test_flo_parse_list_paginates_and_dedupes(monkeypatch):
     assert parser.has_more_pages is False
     # третьей страницы нет — остановились по отсутствию rel="next"
     assert f"{category_url}&page=3" not in requested
+
+
+def _mock_flo_catalog(monkeypatch, parser, pages, requested):
+    def fetch(url):
+        requested.append(url)
+        if "/urun/" in url:
+            sku = url.rsplit("-", 1)[-1]
+            return _product_html(_detail(sku=sku, name=f"Shoe {sku}"))
+        return pages[url]
+
+    monkeypatch.setattr(parser, "_make_request", fetch)
+
+
+def test_flo_remaining_limit_skips_saved_cards_before_loading(monkeypatch):
+    parser = FloParser()
+    parser.max_products = 2
+    parser.catalog_state = CatalogTraversalState()
+    for sku in ("111111", "222222"):
+        parser.catalog_state.mark_product(sku)
+    url = "https://www.flo.com.tr/basic-t-shirt?cinsiyet=erkek"
+    requested = []
+    _mock_flo_catalog(monkeypatch, parser, {
+        url: _listing_html(["111111", "222222", "333333", "444444", "555555"]),
+    }, requested)
+
+    products = list(parser.parse_product_list(url, max_pages=1))
+
+    assert [p.sku for p in products] == ["333333", "444444"]
+    assert len([u for u in requested if "/urun/" in u]) == 2
+    assert parser.catalog_skipped == 2
+    assert parser.has_more_pages is False
+
+
+def test_flo_stops_below_limit_on_last_page_with_single_quoted_next(monkeypatch):
+    parser = FloParser()
+    parser.max_products = 1000
+    url = "https://www.flo.com.tr/ayakkabi"
+    requested = []
+    _mock_flo_catalog(monkeypatch, parser, {
+        url: _listing_html(["111111"]).replace('rel="next"', "rel='next'"),
+        f"{url}?page=2": _listing_html(["222222"], has_next=False),
+    }, requested)
+
+    assert len(list(parser.parse_product_list(url, max_pages=10))) == 2
+    assert parser.pages_processed == 2
+    assert parser.has_more_pages is False
+
+
+def test_flo_repeated_page_stops_across_new_parser_instances(monkeypatch):
+    url = "https://www.flo.com.tr/ayakkabi"
+    requested = []
+    pages = {
+        url: _listing_html(["111111", "222222"]),
+        f"{url}?page=2": _listing_html(["222222", "111111"]),
+    }
+    for page in (1, 2):
+        parser = FloParser()
+        parser.catalog_state = CatalogTraversalState("repeat-test")
+        _mock_flo_catalog(monkeypatch, parser, pages, requested)
+        products = list(parser.parse_product_list(url, max_pages=1, start_page=page))
+        assert len(products) == (2 if page == 1 else 0)
+
+    assert parser.has_more_pages is False
+    assert len([u for u in requested if "/urun/" in u]) == 2
+
+
+def test_flo_duplicate_only_page_can_be_followed_by_new_products(monkeypatch):
+    url = "https://www.flo.com.tr/ayakkabi"
+    requested = []
+    pages = {
+        url: _listing_html(["111111", "222222"]),
+        f"{url}?page=2": _listing_html(["222222"]),
+        f"{url}?page=3": _listing_html(["333333"], has_next=False),
+    }
+    found = []
+    for page in (1, 2, 3):
+        parser = FloParser()
+        parser.catalog_state = CatalogTraversalState("overlap-test")
+        _mock_flo_catalog(monkeypatch, parser, pages, requested)
+        found.extend(parser.parse_product_list(url, max_pages=1, start_page=page))
+        if page == 2:
+            assert parser.has_more_pages is True
+
+    assert [p.sku for p in found] == ["111111", "222222", "333333"]
+    assert len([u for u in requested if "/urun/" in u]) == 3
+
+
+def test_flo_three_distinct_pages_without_progress_stop_across_chunks(monkeypatch):
+    url = "https://www.flo.com.tr/ayakkabi"
+    requested = []
+    initial = CatalogTraversalState("no-progress-test")
+    for sku in ("111111", "222222", "333333"):
+        initial.mark_product(sku)
+    pages = {
+        url: _listing_html(["111111"]),
+        f"{url}?page=2": _listing_html(["222222"]),
+        f"{url}?page=3": _listing_html(["333333"]),
+    }
+    for page in (1, 2, 3):
+        parser = FloParser()
+        parser.max_products = 2
+        parser.catalog_state = CatalogTraversalState("no-progress-test")
+        _mock_flo_catalog(monkeypatch, parser, pages, requested)
+        assert list(parser.parse_product_list(url, max_pages=1, start_page=page)) == []
+        assert parser.has_more_pages is (page < 3)
+
+    assert len(requested) == 3
+    assert "три страницы" in parser.stop_reason
+
+
+def test_flo_soft_timeout_resume_only_loads_unfinished_cards(monkeypatch):
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    url = "https://www.flo.com.tr/ayakkabi"
+    html = _listing_html(["111111", "222222"], has_next=False)
+    parser = FloParser()
+    parser.catalog_state = CatalogTraversalState("resume-test")
+    original_detail = parser.parse_product_detail
+    monkeypatch.setattr(parser, "_make_request", lambda u: html if u == url else _product_html(_detail("111111")))
+
+    def detail(u):
+        if u.endswith("222222"):
+            raise SoftTimeLimitExceeded()
+        return original_detail(u)
+
+    monkeypatch.setattr(parser, "parse_product_detail", detail)
+    iterator = parser.parse_product_list(url, max_pages=1)
+    assert next(iterator).sku == "111111"
+    with pytest.raises(SoftTimeLimitExceeded):
+        next(iterator)
+    assert parser.next_start_page == 1
+    assert parser.pages_processed == 0
+
+    resumed = FloParser()
+    resumed.catalog_state = CatalogTraversalState("resume-test")
+    requested = []
+    _mock_flo_catalog(monkeypatch, resumed, {url: html}, requested)
+    assert [p.sku for p in resumed.parse_product_list(url, max_pages=1)] == ["222222"]
+    assert len([u for u in requested if "/urun/" in u]) == 1
+
+
+def test_flo_zero_remaining_limit_makes_no_requests(monkeypatch):
+    parser = FloParser()
+    parser.max_products = 0
+    monkeypatch.setattr(parser, "_fetch", lambda url: pytest.fail("limit reached"))
+    assert list(parser.parse_product_list("https://www.flo.com.tr/ayakkabi")) == []
+    assert parser.has_more_pages is False
 
 
 class _Session:

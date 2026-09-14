@@ -5,7 +5,191 @@ import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
 from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
+from apps.scrapers.base.catalog_state import CatalogTraversalState
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser, IlacFiyatiSourceError
+
+
+IMMUNITY_URL = "https://ilacfiyati.com/takviye-edici-gida/bagisiklik-destek-urunleri"
+SUPPLEMENT_URL = "https://ilacfiyati.com/takviye-edici-gida/supradyn-multivitamin-mineral-ve-koenzim-q10-iceren-takviye-edici-gida-30-tablet"
+
+
+def _supplement_listing_html(product_urls, next_page=2):
+    # Structure verified in the live immunity category on 2026-09-14.
+    cards = "".join(
+        f'<div class="card h-100"><a href="{url}">Image</a>'
+        f'<div class="card-body"><a href="{url}">Product</a></div></div>'
+        for url in product_urls
+    )
+    return f'''<html><body>
+      <div class="dropdown-menu"><a href="{IMMUNITY_URL}">Immunity</a></div>
+      <div id="filterContent">
+        <a href="/takviye-edici-gida/antioksidanlar">Antioxidants</a>
+        <a href="/takviye-edici-gida/new-category">New category</a>
+      </div>
+      <div class="row g-3 mt-4"><h2>Arama Sonuçları</h2>{cards}
+        <ul class="pagination"><li><a href="{IMMUNITY_URL}?pg={next_page}">{next_page}</a></li></ul>
+      </div>
+      <footer><a href="/ilaclar/unrelated-drug">Unrelated</a></footer>
+    </body></html>'''
+
+
+@pytest.mark.parametrize("url", [
+    IMMUNITY_URL,
+    IMMUNITY_URL + "/?brand=Solgar&pg=2",
+    "https://www.ilacfiyati.com/takviye-edici-gida/antioksidanlar",
+    "https://ilacfiyati.com/takviye-edici-gida/probiyotikler",
+    "https://ilacfiyati.com/takviye-edici-gida/kadin-sagligi",
+    "https://ilacfiyati.com/takviye-edici-gida",
+    "https://ilacfiyati.com/ilaclar?brand=Rinvoq",
+])
+def test_ilacfiyati_catalog_routes_and_chunking(url):
+    assert IlacFiyatiParser.is_category_url(url)
+    assert IlacFiyatiParser.supports_page_chunking_for_url(url)
+    assert not IlacFiyatiParser.is_product_url(url)
+
+
+@pytest.mark.parametrize("url", [
+    SUPPLEMENT_URL,
+    SUPPLEMENT_URL + "/ozet?utm_source=catalog",
+    "https://ilacfiyati.com/takviye-edici-gida/solgar-vitamin-c",
+    "https://ilacfiyati.com/ilaclar/lasirin-20-mg/ilac-bilgileri",
+])
+def test_ilacfiyati_direct_product_routes_remain_unchanged(url):
+    assert IlacFiyatiParser.is_product_url(url)
+    assert not IlacFiyatiParser.is_category_url(url)
+    assert not IlacFiyatiParser.supports_page_chunking_for_url(url)
+
+
+@pytest.mark.parametrize("url", [
+    "https://example.com/takviye-edici-gida/bagisiklik-destek-urunleri",
+    "https://ilacfiyati.com.evil.example/ilaclar/medicine",
+])
+def test_ilacfiyati_url_detection_rejects_other_hosts(url):
+    assert not IlacFiyatiParser.is_product_url(url)
+    assert not IlacFiyatiParser.is_category_url(url)
+
+
+def test_ilacfiyati_listing_excludes_category_menu_and_duplicate_links():
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    html = _supplement_listing_html([SUPPLEMENT_URL, SUPPLEMENT_URL + "?utm_source=card"])
+    assert parser._extract_listing_product_urls(html) == [SUPPLEMENT_URL]
+    # An empty modern listing must not fall back to navigation links.
+    assert parser._extract_listing_product_urls(_supplement_listing_html([])) == []
+
+
+def test_ilacfiyati_legacy_listing_keeps_products_and_excludes_categories():
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    html = f'''
+      <a href="{IMMUNITY_URL}">Immunity</a>
+      <a href="/ilaclar/first-drug">First</a>
+      <a href="/ilaclar/first-drug/ilac-bilgileri">Details</a>
+      <a href="{SUPPLEMENT_URL}">Supplement</a>
+      <a href="https://example.com/ilaclar/wrong-host">Other</a>
+    '''
+    assert parser._extract_listing_product_urls(html) == [
+        "https://ilacfiyati.com/ilaclar/first-drug", SUPPLEMENT_URL,
+    ]
+
+
+def test_ilacfiyati_immunity_subcatalog_keeps_filters_and_stops_on_empty_page(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    url = IMMUNITY_URL + "?brand=Solgar"
+    second_product = "https://ilacfiyati.com/takviye-edici-gida/solgar-vitamin-c"
+    pages = {
+        url: _supplement_listing_html([SUPPLEMENT_URL]),
+        url + "&pg=2": _supplement_listing_html([second_product], next_page=3),
+        url + "&pg=3": _supplement_listing_html([]),
+    }
+    requests, details = [], []
+
+    def fetch(page_url):
+        requests.append(page_url)
+        return pages[page_url]
+
+    def detail(product_url):
+        details.append(product_url)
+        return ScrapedProduct(name="Supplement", url=product_url, source="ilacfiyati")
+
+    monkeypatch.setattr(parser, "_make_request", fetch)
+    monkeypatch.setattr(parser, "parse_product_detail", detail)
+    assert len(list(parser.parse_product_list(url, max_pages=10))) == 2
+    assert details == [SUPPLEMENT_URL, second_product]
+    assert requests == list(pages)
+    assert parser.pages_processed == 2
+    assert parser.has_more_pages is False
+
+
+def test_ilacfiyati_supplement_remaining_limit_does_not_reload_duplicates(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    parser.max_products = 2
+    parser.catalog_state = CatalogTraversalState()
+    parser.catalog_state.mark_product(SUPPLEMENT_URL)
+    second = "https://ilacfiyati.com/takviye-edici-gida/solgar-vitamin-c"
+    third = "https://ilacfiyati.com/takviye-edici-gida/solgar-vitamin-d"
+    fourth = "https://ilacfiyati.com/takviye-edici-gida/solgar-vitamin-e"
+    html = _supplement_listing_html([SUPPLEMENT_URL, second, third, fourth])
+    loaded = []
+    monkeypatch.setattr(parser, "_make_request", lambda url: html)
+
+    def detail(url):
+        loaded.append(url)
+        return ScrapedProduct(name="Supplement", url=url, source="ilacfiyati")
+
+    monkeypatch.setattr(parser, "parse_product_detail", detail)
+    assert len(list(parser.parse_product_list(IMMUNITY_URL))) == 2
+    assert loaded == [second, third]
+    assert parser.catalog_skipped == 1
+    assert parser.has_more_pages is False
+
+
+def test_ilacfiyati_explicit_last_page_does_not_fetch_another_page(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    loaded = []
+
+    def fetch(url):
+        loaded.append(url)
+        assert url == IMMUNITY_URL
+        return _supplement_listing_html([SUPPLEMENT_URL], next_page=1)
+
+    monkeypatch.setattr(parser, "_make_request", fetch)
+    monkeypatch.setattr(parser, "parse_product_detail", lambda url: ScrapedProduct(
+        name="Supplement", url=url, source="ilacfiyati",
+    ))
+    assert len(list(parser.parse_product_list(IMMUNITY_URL, max_pages=10))) == 1
+    assert loaded == [IMMUNITY_URL]
+    assert parser.has_more_pages is False
+
+
+@pytest.mark.parametrize("url,is_listing", [(IMMUNITY_URL, True), (SUPPLEMENT_URL, False)])
+def test_ilacfiyati_service_distinguishes_subcatalog_from_direct_product(monkeypatch, url, is_listing):
+    from types import SimpleNamespace
+    from apps.scrapers.services import ScraperIntegrationService
+
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    product = ScrapedProduct(name="Supplement", url=SUPPLEMENT_URL, source="ilacfiyati")
+    calls = []
+
+    def listing(page_url, **kwargs):
+        calls.append(("listing", page_url, kwargs))
+        return iter([product])
+
+    monkeypatch.setattr(parser, "parse_product_list", listing)
+    monkeypatch.setattr(parser, "parse_product_detail", lambda u: calls.append(("detail", u)) or product)
+    session = SimpleNamespace(max_pages=1, max_products=10, pages_processed=0, errors_count=0, save=lambda: None)
+    service = ScraperIntegrationService()
+    monkeypatch.setattr(service, "_process_scraped_products", lambda *args: {
+        "found": 1, "created": 1, "updated": 0, "skipped": 0, "errors": 0,
+    })
+
+    products, results = service._run_parser_scraping(parser, session, url, start_page=2)
+    if is_listing:
+        assert calls == [("listing", url, {"max_pages": 1, "start_page": 2})]
+        assert products == []
+        assert results["found"] == 1
+    else:
+        assert calls == [("detail", url)]
+        assert products == [product]
+        assert results is None
 
 
 def test_ilacfiyati_market_snapshot_skips_instruction_tabs(monkeypatch):

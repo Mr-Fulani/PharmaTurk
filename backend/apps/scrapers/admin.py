@@ -721,7 +721,10 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             task.resume_page = 1
 
         task.status = "running"
-        task.started_at = timezone.now()
+        # A resume continues the same traversal/cache namespace; a fresh run
+        # must be able to import these products again.
+        if reset_stats or not task.started_at:
+            task.started_at = timezone.now()
         task.finished_at = None
         task.error_message = ""
         task.log_output = ""
