@@ -95,6 +95,7 @@ class OrderItemInline(admin.TabularInline):
     """Инлайн для позиций заказа."""
     model = OrderItem
     extra = 0
+    autocomplete_fields = ('product',)
     readonly_fields = (
         'price',
         'total',
