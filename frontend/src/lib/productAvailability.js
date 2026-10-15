@@ -22,3 +22,12 @@ export function resolveSchemaAvailability({
   }
   return 'https://schema.org/InStock'
 }
+
+// Offer (цена + наличие) в JSON-LD только там, где товар реально можно купить.
+// Медикаменты сайт не продаёт (дисклеймер на карточке, кнопки корзины нет) —
+// Offer противоречил бы контенту страницы (YMYL).
+export function canPublishSchemaOffer({ price, isMedicine, isSupplement, canAddToCart }) {
+  if (!price || isMedicine) return false
+  if (isSupplement && canAddToCart !== true) return false
+  return true
+}

@@ -8,7 +8,7 @@ import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import MedicinePriceCheck from '../../components/MedicinePriceCheck'
 import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components/SupplementPurchasePanel'
-import { resolveSchemaAvailability } from '../../lib/productAvailability'
+import { canPublishSchemaOffer, resolveSchemaAvailability } from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
 import ServiceAttributes from '../../components/ServiceAttributes'
@@ -1455,7 +1455,7 @@ export default function ProductPage({
   const priceValidUntil = new Date(Date.now() + 30 * 86400 * 1000).toISOString().split('T')[0]
   const productSchema = {
     '@context': 'https://schema.org',
-    '@type': productType === 'books' ? 'Book' : productType === 'uslugi' ? 'Service' : 'Product',
+    '@type': productType === 'books' ? 'Book' : productType === 'uslugi' ? 'Service' : isMedicine ? 'Drug' : 'Product',
     name: displayProductName || product.name,
     description: metaDescription,
     image: ogImage,
@@ -1465,6 +1465,8 @@ export default function ProductPage({
       : {}),
     ...(productType === 'books' && product.publisher && { publisher: { '@type': 'Organization', name: product.publisher } }),
     ...(productType === 'books' && product.pages != null && { numberOfPages: product.pages }),
+    ...(isMedicine && product.active_ingredient && { activeIngredient: product.active_ingredient }),
+    ...(isMedicine && product.manufacturer && { manufacturer: { '@type': 'Organization', name: product.manufacturer } }),
     sku: product.slug,
     ...(hasRatingForSchema && {
       aggregateRating: {
@@ -1474,7 +1476,12 @@ export default function ProductPage({
         bestRating: '5',
       },
     }),
-    offers: priceForSchema && (!isSupplement || product.can_add_to_cart === true)
+    offers: canPublishSchemaOffer({
+      price: priceForSchema,
+      isMedicine,
+      isSupplement,
+      canAddToCart: product.can_add_to_cart,
+    })
       ? {
         '@type': 'Offer',
         price: priceForSchema,
