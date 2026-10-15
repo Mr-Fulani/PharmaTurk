@@ -24,7 +24,7 @@ docker-compose за nginx и Cloudflare.
 6. **noindex** — на cart, checkout, profile, auth, favorites, search, страницах пагинации `page>1`. На noindex-страницах canonical/hreflang не нужны.
 7. **Sitemap:** единственный источник — `frontend/src/pages/sitemap.xml.tsx`. Новая сущность с публичной страницей → сразу добавить в sitemap (с hreflang-альтернативами) и проверить canonical.
 8. **Метаданные двуязычны.** Title/description берутся из переводов API (`translations[locale]`), фолбэк — шаблонные строки через `t(...)`. Не хардкодить русский текст в мету.
-9. **JSON-LD:** карточка товара — `Product` (+ `Offer`, `aggregateRating` при наличии отзывов); категории — `BreadcrumbList`; главная — `Organization` + `WebSite`. Валидировать через Rich Results Test после изменения.
+9. **JSON-LD:** карточка товара — `Product` (+ `Offer`, `aggregateRating` при наличии отзывов); медикаменты — `Drug` БЕЗ `Offer` (сайт их не продаёт, см. `canPublishSchemaOffer` в `lib/productAvailability.js`); категории — `BreadcrumbList`; главная — `Organization` + `WebSite`. Валидировать через Rich Results Test после изменения.
 10. **Перед мержем любой правки страниц** прогнать чек: `curl -s https://site/<page> | grep -E 'canonical|hreflang|robots'` для обеих локалей.
 
 ## 2. Производительность
