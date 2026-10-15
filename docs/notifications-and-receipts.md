@@ -55,7 +55,7 @@ Email берётся сначала из `order.contact_email`, затем из 
 Режим заявок (`ORDER_ONLINE_PAYMENTS_ENABLED=false`, по умолчанию): у заказа
 `payment_method=manager`, администратор получает «📝 Новая заявка!» с именем,
 телефоном, email, выбранным каналом связи (`contact_channel`: telegram /
-whatsapp / phone / email) и комментарием; пользовательский ввод экранируется
+whatsapp / phone / email), юзернеймом Telegram или WhatsApp (`contact_username`, если указан) и комментарием; при канале email адрес обязателен; пользовательский ввод экранируется
 для Markdown. Покупателю — «Ваша заявка принята», менеджер свяжется для
 подтверждения и согласования оплаты. Задача не загружает
 `order.receipt_url` по HTTP: она читает детерминированный HMAC-namespaced объект

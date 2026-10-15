@@ -130,7 +130,7 @@ class OrderAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('number', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
-        (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel')}),
+        (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
         (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method')}),
         (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
         (_('Additional'), {'fields': ('comment',)}),

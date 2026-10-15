@@ -566,6 +566,8 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
             f"Email: {_md(order.contact_email)}\n"
             f"Связаться через: {channel_info}"
         )
+        if order.contact_username:
+            admin_text += f"\n{channel_info}: @{_md(order.contact_username)}"
         if order.comment:
             admin_text += f"\nКомментарий: {_md(order.comment)}"
         _send_tg(admin_chat_id, admin_text, document=pdf_bytes, filename=filename)

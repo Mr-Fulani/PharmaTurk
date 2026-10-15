@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import quote
 
@@ -2035,6 +2036,7 @@ class CreateOrderSerializer(serializers.Serializer):
     contact_phone = serializers.CharField(max_length=32)
     contact_email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     contact_channel = serializers.ChoiceField(choices=CONTACT_CHANNEL_CHOICES, required=False, allow_blank=True)
+    contact_username = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=64)
     shipping_address = serializers.IntegerField(required=False, allow_null=True)
     shipping_address_text = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     shipping_method = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -2047,8 +2049,28 @@ class CreateOrderSerializer(serializers.Serializer):
         # Валидация адреса доставки будет реализована при наличии пользователя
         return value
 
+    # Юзернейм для связи: Telegram — 5–32 символа (латиница, цифры, _);
+    # WhatsApp — мягкая проверка 3–35 символов (латиница, цифры, . и _).
+    USERNAME_PATTERNS = {
+        "telegram": (r"[A-Za-z0-9_]{5,32}", _("Укажите ник Telegram: 5–32 символа, латиница, цифры и _.")),
+        "whatsapp": (r"[A-Za-z0-9._]{3,35}", _("Укажите юзернейм WhatsApp: 3–35 символов, латиница, цифры, . и _.")),
+    }
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        channel = attrs.get("contact_channel") or ""
+        username = (attrs.get("contact_username") or "").strip()
+        username = username.removeprefix("https://t.me/").removeprefix("t.me/").lstrip("@")
+        pattern = self.USERNAME_PATTERNS.get(channel)
+        if not pattern:
+            username = ""
+        elif username and not re.fullmatch(pattern[0], username):
+            raise serializers.ValidationError({"contact_username": pattern[1]})
+        attrs["contact_username"] = username
+        if attrs.get("contact_channel") == "email" and not attrs.get("contact_email"):
+            raise serializers.ValidationError(
+                {"contact_email": _("Укажите email: вы выбрали связь по email.")}
+            )
         if not settings.ORDER_ONLINE_PAYMENTS_ENABLED:
             # Онлайн-оплата выключена: любой заказ — заявка менеджеру,
             # способ оплаты согласуется с клиентом по каналу связи.

@@ -79,6 +79,9 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [shippingMethod, setShippingMethod] = useState<'ground' | 'air' | 'sea'>('ground')
   const [paymentMethod, setPaymentMethod] = useState(ONLINE_PAYMENTS_ENABLED ? 'cod' : 'manager')
   const [contactChannel, setContactChannel] = useState('')
+  const [contactUsername, setContactUsername] = useState('')
+  const usernameChannel = contactChannel === 'telegram' || contactChannel === 'whatsapp'
+  const emailRequired = contactChannel === 'email'
   const [submitting, setSubmitting] = useState(false)
   const cryptoIdempotencyKeyRef = useRef<string | null>(null)
   const [orderButtonState, setOrderButtonState] = useState<OrderButtonState>('idle')
@@ -241,6 +244,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       alert(t('checkout_contact_channel_required', 'Выберите, как с вами связаться'))
       return
     }
+    if (emailRequired && !contactEmail.trim()) {
+      alert(t('checkout_email_required_for_channel', 'Укажите email: вы выбрали связь по email'))
+      return
+    }
 
     const animationStartedAt = Date.now()
     let orderCreated = false
@@ -252,6 +259,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       body.set('contact_phone', contactPhone)
       if (contactEmail) body.set('contact_email', contactEmail)
       body.set('contact_channel', contactChannel)
+      if (usernameChannel && contactUsername.trim()) body.set('contact_username', contactUsername.trim())
       if (shippingAddressText) body.set('shipping_address_text', shippingAddressText)
       if (shippingMethod) body.set('shipping_method', shippingMethod)
       if (paymentMethod) body.set('payment_method', paymentMethod)
@@ -499,9 +507,12 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     />
                   </label>
                   <label className="block">
-                    <span className="text-sm font-medium text-gray-700">{t('checkout_email_optional', 'Email (необязательно)')}</span>
+                    <span className="text-sm font-medium text-gray-700">
+                      {emailRequired ? `${t('checkout_email', 'Email')} *` : t('checkout_email_optional', 'Email (необязательно)')}
+                    </span>
                     <input
                       type="email"
+                      required={emailRequired}
                       value={contactEmail}
                       onChange={(e) => setContactEmail(e.target.value)}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
@@ -531,6 +542,24 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       ))}
                     </div>
                   </fieldset>
+                  {usernameChannel && (
+                    <label className="block">
+                      <span className="text-sm font-medium text-gray-700">
+                        {t(`checkout_username_${contactChannel}`, contactChannel === 'telegram' ? 'Ник в Telegram (необязательно)' : 'Юзернейм в WhatsApp (необязательно)')}
+                      </span>
+                      <input
+                        type="text"
+                        value={contactUsername}
+                        onChange={(e) => setContactUsername(e.target.value)}
+                        placeholder="@username"
+                        autoComplete="off"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                      <span className="mt-1 block text-xs text-gray-500">
+                        {t('checkout_username_hint', 'Если не указать, менеджер свяжется с вами по номеру телефона.')}
+                      </span>
+                    </label>
+                  )}
                 </div>
               </div>
 
