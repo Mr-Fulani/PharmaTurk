@@ -99,8 +99,13 @@ creation, and startup waits for the backend health check before public smoke.
 
 Use the same release SHA in staging and production. Never rebuild between them.
 After all CI gates pass on `main`, the image job publishes only immutable SHA
-tags to GHCR. It never publishes or moves a `latest` tag. Pull and verify those
-exact images on the target host before deployment:
+tags to GHCR. It never publishes or moves a `latest` tag. Every push to `main`
+runs the full scope and publishes both `pharmaturk-backend:<SHA>` and
+`pharmaturk-frontend:<SHA>` for that SHA, even when the merge touched only one
+component. Diff-based scoping applies to pull requests only: concurrency cancels
+superseded `main` runs, so the previous push is not a reliable base. Retagging an
+older image is not an option because the OCI revision label would not match.
+Pull and verify those exact images on the target host before deployment:
 
 ```bash
 ./scripts/release/pull-images.sh --release-id FULL_GIT_SHA
@@ -125,8 +130,9 @@ reverse migration.
 CI still runs backend/security/Compose gates. Only a backend/docs-only Git diff
 omits frontend functional checks/build; the frontend dependency audit remains.
 Shared/workflow/release changes fail closed to full checks. The frontend job
-always reports its scope decision; there is no manual skip-gates flag. The image
-job publishes only the backend image for a scoped diff.
+always reports its scope decision; there is no manual skip-gates flag. Scoping
+applies to pull requests only; `main` always publishes both images, so any green
+`main` SHA can serve as `NEW_BACKEND_SHA`.
 
 `IMAGE_TAG` remains the frontend version and legacy default. Optional
 `BACKEND_IMAGE_TAG` selects backend, all workers and the migration one-shot.
@@ -188,8 +194,9 @@ new user writes. No backup/image/container cleanup is part of these operations.
 
 ## Frontend-only CI
 
-A diff limited to `frontend/` plus optional documentation runs the full frontend
-checks and publishes only the frontend image. Backend dependency lock validation,
+A pull request diff limited to `frontend/` plus optional documentation runs the
+full frontend checks and builds only the frontend image (`main` still runs and
+publishes both). Backend dependency lock validation,
 installation consistency, vulnerability audit and Django deployment security
 checks still run. Backend functional checks, migration drift, incremental Python
 lint and pytest are omitted because their inputs are unchanged. Their existing
