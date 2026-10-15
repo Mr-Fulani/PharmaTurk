@@ -50,6 +50,13 @@ interface Address {
 }
 
 const CONTACT_CHANNELS = ['telegram', 'whatsapp', 'phone', 'email'] as const
+// Фирменные цвета иконок — те же, что в ContactWidget
+const CONTACT_CHANNEL_COLORS: Record<(typeof CONTACT_CHANNELS)[number], string> = {
+  telegram: '#0088cc',
+  whatsapp: '#25d366',
+  phone: '#f59e0b',
+  email: '#7c3aed',
+}
 
 function toGtmItems(cart: Cart): GtmEcommerceItem[] {
   return cart.items.map((item) => ({
@@ -524,9 +531,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       {CONTACT_CHANNELS.map((channel) => (
                         <label
                           key={channel}
-                          className={`cursor-pointer rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all ${contactChannel === channel
-                            ? 'border-[var(--accent)] bg-[var(--surface)] text-gray-900'
-                            : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                          style={{
+                            '--chip-clr': CONTACT_CHANNEL_COLORS[channel],
+                            '--chip-bg': `${CONTACT_CHANNEL_COLORS[channel]}1f`,
+                          } as React.CSSProperties}
+                          className={`cursor-pointer rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all hover:border-[var(--chip-clr)] hover:bg-[var(--chip-bg)] hover:text-[var(--chip-clr)] ${contactChannel === channel
+                            ? 'border-[var(--chip-clr)] bg-[var(--chip-bg)] text-[var(--chip-clr)]'
+                            : 'border-gray-200 text-gray-700'
                             }`}
                         >
                           <input
