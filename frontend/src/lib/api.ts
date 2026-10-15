@@ -5,6 +5,7 @@ import axios, {
 } from 'axios'
 import Cookies from 'js-cookie'
 import { getClientApiBase } from './urls'
+import { resolveRequestCurrency } from './requestCurrency'
 
 // Создаем axios instance с базовым URL
 // На клиенте URL определяется динамически через interceptor (getClientApiBase)
@@ -171,8 +172,12 @@ api.interceptors.request.use((config) => {
     ; (config.headers as AxiosRequestHeaders)['X-Language'] = locale
 
   const storedCurrency = Cookies.get('currency')
-  // для авторизованных пользователей: берём из cookie, иначе из preferredCurrency, иначе fallback RUB
-  const resolvedCurrency = storedCurrency || preferredCurrency || 'RUB'
+  // явный X-Currency запроса -> cookie -> preferredCurrency -> RUB
+  const resolvedCurrency = resolveRequestCurrency({
+    explicit: (config.headers as AxiosRequestHeaders)['X-Currency'],
+    stored: storedCurrency,
+    preferred: preferredCurrency,
+  })
   if (process.env.NODE_ENV === 'development') {
     console.log('[API Currency]', { storedCurrency, preferredCurrency, resolvedCurrency, url: config.url })
   }

@@ -72,6 +72,10 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     [orderNumber, router.query]
   )
 
+  // Валюта, в которой клиент оформлял заявку (передаёт checkout) — показываем суммы в ней
+  const queryCurrency = ((router.query?.currency as string) || '').toUpperCase()
+  const orderCurrency = /^[A-Z]{3,5}$/.test(queryCurrency) ? queryCurrency : ''
+
   const [order, setOrder] = useState<Order | null>(null)
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null)
   const [loading, setLoading] = useState(Boolean(number))
@@ -107,7 +111,8 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
       setError(null)
       setIsAuthError(false)
       try {
-        const orderRes = await getSingleFlight(`/orders/orders/by-number/${number}`)
+        const currencyConfig = orderCurrency ? { headers: { 'X-Currency': orderCurrency } } : undefined
+        const orderRes = await getSingleFlight(`/orders/orders/by-number/${number}`, currencyConfig)
         if (!active) return
         setOrder(orderRes.data)
         setSendEmail(orderRes.data?.contact_email || orderRes.data?.user?.email || '')
@@ -119,7 +124,10 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
         setError(status === 401 ? t('order_success_login_required', 'Войдите в аккаунт, чтобы увидеть заказ') : detail)
       }
       try {
-        const receiptRes = await getSingleFlight(`/orders/orders/receipt/${number}`)
+        const receiptRes = await getSingleFlight(
+          `/orders/orders/receipt/${number}`,
+          orderCurrency ? { headers: { 'X-Currency': orderCurrency } } : undefined,
+        )
         if (!active) return
         setReceipt(receiptRes.data)
       } catch {
@@ -132,7 +140,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     return () => {
       active = false
     }
-  }, [number, t])
+  }, [number, orderCurrency, t])
 
   const totals = useMemo(() => {
     if (!receipt) return null
