@@ -122,7 +122,6 @@ function App({ Component, pageProps }: AppProps) {
 })(window,document,'script','https://mc.yandex.ru/metrika/tag.js','ym');
 
 ym(${YM_ID},'init',{
-  defer: true,
   clickmap: true,
   trackLinks: true,
   accurateTrackBounce: true,

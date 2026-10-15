@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import { getSingleFlight } from '../lib/api'
 import type { FooterSettingsData } from '../lib/footerSettings'
+import { gtmEvent } from '../lib/gtm'
+import { ymReachGoal } from '../lib/ym'
 
 type ContactItem = {
   key: string
@@ -426,6 +428,10 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
                 aria-label={item.label}
                 title={item.label}
                 href={item.href}
+                onClick={() => {
+                  ymReachGoal(`click_${item.key}`)
+                  gtmEvent({ event: 'contact_click', contact_channel: item.key })
+                }}
                 target={item.href?.startsWith('http') ? '_blank' : undefined}
                 rel={item.href?.startsWith('http') ? 'noopener noreferrer' : undefined}
               >

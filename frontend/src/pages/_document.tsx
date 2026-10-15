@@ -51,6 +51,24 @@ class MyDocument extends Document<MyDocumentProps> {
             <meta name="yandex-verification" content={process.env.NEXT_PUBLIC_YANDEX_VERIFICATION} />
           )}
 
+          {/* ─── Consent Mode: до ответа на cookie-баннер аналитика и реклама запрещены.
+               Должно стоять ДО GTM; при сохранённом согласии сразу granted ──── */}
+          {GTM_ID && (
+            <script
+              id="gtm-consent-default"
+              dangerouslySetInnerHTML={{
+                __html: `
+(function(w,d){
+  w.dataLayer=w.dataLayer||[];
+  function gtag(){w.dataLayer.push(arguments);}
+  var s=/(?:^|; )pharma_cookie_consent=accepted(?:;|$)/.test(d.cookie)?'granted':'denied';
+  gtag('consent','default',{analytics_storage:s,ad_storage:s,ad_user_data:s,ad_personalization:s});
+})(window,document);
+`.trim(),
+              }}
+            />
+          )}
+
           {/* ─── Google Tag Manager (загружается только при наличии ID) ──── */}
           {GTM_ID && (
             <script

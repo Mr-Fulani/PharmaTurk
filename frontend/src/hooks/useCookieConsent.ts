@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { GTM_ID, initDataLayer } from '../lib/gtm'
+import { useSyncExternalStore, useCallback } from 'react'
+import { initDataLayer, gtmConsentGranted } from '../lib/gtm'
 import { YM_ID } from '../lib/ym'
 
 /**
@@ -39,13 +39,46 @@ function activateAnalytics(): void {
   // Инициализируем GTM dataLayer
   initDataLayer()
 
-  // Пушим согласие в dataLayer (для GTM Consent Mode)
-  if (typeof window !== 'undefined' && window.dataLayer && GTM_ID) {
-    window.dataLayer.push({
-      event: 'cookie_consent_granted',
-      analytics_storage: 'granted',
-      ad_storage: 'granted',
-    })
+  // Обновляем Consent Mode и пушим событие согласия для триггеров GTM
+  gtmConsentGranted()
+}
+
+/**
+ * Общее для всех компонентов состояние согласия: _app (загрузка счётчиков)
+ * и CookieBanner должны видеть один и тот же статус, иначе после «Принять»
+ * аналитика не стартует до перезагрузки страницы.
+ */
+type ConsentSnapshot = { consent: ConsentStatus; isLoaded: boolean }
+
+const SERVER_SNAPSHOT: ConsentSnapshot = { consent: null, isLoaded: false }
+let snapshot: ConsentSnapshot | null = null
+const listeners = new Set<() => void>()
+
+function getSnapshot(): ConsentSnapshot {
+  if (snapshot === null) {
+    const saved = getCookie(COOKIE_NAME)
+    const consent: ConsentStatus = saved === 'accepted' || saved === 'rejected' ? saved : null
+    snapshot = { consent, isLoaded: true }
+    if (consent === 'accepted') {
+      activateAnalytics()
+    }
+  }
+  return snapshot
+}
+
+function getServerSnapshot(): ConsentSnapshot {
+  return SERVER_SNAPSHOT
+}
+
+function setConsent(consent: ConsentStatus): void {
+  snapshot = { consent, isLoaded: true }
+  listeners.forEach((listener) => listener())
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
   }
 }
 
@@ -59,20 +92,7 @@ function activateAnalytics(): void {
  * - reset(): сбросить выбор (для страницы настроек)
  */
 export function useCookieConsent() {
-  const [consent, setConsent] = useState<ConsentStatus>(null)
-  const [isLoaded, setIsLoaded] = useState(false)
-
-  // Читаем сохранённое согласие при монтировании
-  useEffect(() => {
-    const saved = getCookie(COOKIE_NAME) as ConsentStatus | null
-    if (saved === 'accepted' || saved === 'rejected') {
-      setConsent(saved)
-      if (saved === 'accepted') {
-        activateAnalytics()
-      }
-    }
-    setIsLoaded(true)
-  }, [])
+  const { consent, isLoaded } = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
   const accept = useCallback(() => {
     setCookie(COOKIE_NAME, 'accepted', ACCEPT_EXPIRES_DAYS)
