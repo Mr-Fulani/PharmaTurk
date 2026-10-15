@@ -5,6 +5,8 @@ import api, { initCartSession } from '../lib/api'
 import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerification'
 import { useCartStore } from '../store/cart'
 import { isBaseProductType } from '../lib/product'
+import { gtmAddToCart } from '../lib/gtm'
+import { ymReachGoal } from '../lib/ym'
 
 interface BuyNowButtonProps {
   productId?: number
@@ -67,6 +69,8 @@ export default function BuyNowButton({
       } else {
         await refresh()
       }
+      gtmAddToCart({ item_id: productId ?? productSlug ?? '', item_name: productSlug || String(productId ?? '') }, quantity)
+      ymReachGoal('buy_now')
       router.push('/cart')
     } catch (err: any) {
       const conflict = getCartVerificationError(err)

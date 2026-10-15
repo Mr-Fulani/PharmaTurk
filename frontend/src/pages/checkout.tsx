@@ -26,6 +26,8 @@ import {
 import { useReducedMotion } from 'framer-motion'
 import AnimatedOrderButton, { OrderButtonState } from '../components/AnimatedOrderButton'
 import type { Cart } from '../types/cart'
+import { gtmBeginCheckout, gtmPurchase, type GtmEcommerceItem } from '../lib/gtm'
+import { ymReachGoal } from '../lib/ym'
 
 interface Address {
   id: number
@@ -44,6 +46,15 @@ interface Address {
   intercom?: string
   comment?: string
   is_default: boolean
+}
+
+function toGtmItems(cart: Cart): GtmEcommerceItem[] {
+  return cart.items.map((item) => ({
+    item_id: item.product,
+    item_name: item.product_name || item.product_slug || String(item.product),
+    price: Number(item.price) || undefined,
+    quantity: item.quantity,
+  }))
 }
 
 export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
@@ -98,6 +109,15 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         ])
         setCart(cartRes.data)
         setCartSummary(cartRes.data)
+        if (cartRes.data?.items?.length) {
+          const loadedCart = cartRes.data as Cart
+          gtmBeginCheckout(
+            toGtmItems(loadedCart),
+            Number(loadedCart.final_amount ?? loadedCart.total_amount) || 0,
+            loadedCart.currency,
+          )
+          ymReachGoal('begin_checkout')
+        }
         setAddresses(addressesRes.data || [])
 
         // Автоматически выбираем адрес по умолчанию
@@ -248,6 +268,12 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       const res = await api.post('/orders/orders/create-from-cart', body, { headers })
       const orderNumber = res.data?.number
       if (paymentMethod === 'crypto') cryptoIdempotencyKeyRef.current = null
+      if (orderNumber && cart) {
+        const orderValue = Number(res.data?.total_amount) || 0
+        const orderCurrency = res.data?.currency || cart.currency
+        gtmPurchase(String(orderNumber), toGtmItems(cart), orderValue, orderCurrency)
+        ymReachGoal('purchase', { order_price: orderValue, currency: orderCurrency, payment_method: paymentMethod })
+      }
       setItemsCount(0)
       await refreshCart()
 

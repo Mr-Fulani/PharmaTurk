@@ -39,8 +39,7 @@ export function ymParams(params: Record<string, unknown>): void {
 export function ymInit(): void {
   if (typeof window === 'undefined' || !window.ym || !YM_ID) return
   window.ym(YM_ID, 'init', {
-    defer: true,
-    clickmap: true,
+      clickmap: true,
     trackLinks: true,
     accurateTrackBounce: true,
     webvisor: false,
