@@ -2624,6 +2624,15 @@ export default function ProductPage({
                           : current)
                       }}
                     />
+                    {/* Сайт не продаёт лекарства: товар попадает в заявку, итоговую цену и оплату согласует менеджер */}
+                    <AddToCartButton
+                      productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
+                      productType={productType}
+                      productSlug={cartProductSlug}
+                      quantity={quantity}
+                      className="w-full"
+                      label={t('add_to_cart', 'В заявку')}
+                    />
                     <Link
                       href="/how-to-order-medicines"
                       prefetch={false}
