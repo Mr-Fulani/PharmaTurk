@@ -267,6 +267,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       const headers: Record<string, string> = {
         'Content-Type': 'application/x-www-form-urlencoded',
       }
+      // Заявка сохраняется в валюте, в которой клиент видел суммы на этой странице
+      if (cart?.currency) headers['X-Currency'] = cart.currency
       if (paymentMethod === 'crypto') {
         if (!cryptoIdempotencyKeyRef.current) {
           cryptoIdempotencyKeyRef.current =
@@ -310,7 +312,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
           router.push(`/checkout-crypto?number=${encodeURIComponent(orderNumber)}`)
         }
       } else {
-        router.push(orderNumber ? `/checkout-success?number=${encodeURIComponent(orderNumber)}` : '/checkout-success')
+        const currencyQuery = cart?.currency ? `&currency=${encodeURIComponent(cart.currency)}` : ''
+        router.push(orderNumber ? `/checkout-success?number=${encodeURIComponent(orderNumber)}${currencyQuery}` : '/checkout-success')
       }
     } catch (err: any) {
       const status = err?.response?.status
