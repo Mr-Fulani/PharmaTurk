@@ -3,6 +3,8 @@ import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
 import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerification'
 import { useCartStore } from '../store/cart'
+import { gtmAddToCart } from '../lib/gtm'
+import { ymReachGoal } from '../lib/ym'
 import styles from './AddToCartButton.module.css'
 
 interface AddToCartButtonProps {
@@ -128,6 +130,9 @@ export default function AddToCartButton({
       } else {
         await refresh()
       }
+
+      gtmAddToCart({ item_id: productId ?? productSlug ?? '', item_name: productSlug || String(productId ?? '') }, quantity)
+      ymReachGoal('add_to_cart')
 
       setDone(true)
       resetTimerRef.current = setTimeout(() => {

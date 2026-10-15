@@ -53,6 +53,31 @@ export function initDataLayer(): void {
 }
 
 /**
+ * Consent Mode: снимает запрет, выставленный по умолчанию в _document,
+ * и пушит событие согласия для триггеров GTM.
+ */
+export function gtmConsentGranted(): void {
+  if (typeof window === 'undefined') return
+  window.dataLayer = window.dataLayer || []
+  // Команды Consent Mode GTM принимает только в формате gtag — как объект arguments
+  function gtag(..._args: unknown[]): void {
+    // eslint-disable-next-line prefer-rest-params
+    window.dataLayer.push(arguments as unknown as Record<string, unknown>)
+  }
+  gtag('consent', 'update', {
+    analytics_storage: 'granted',
+    ad_storage: 'granted',
+    ad_user_data: 'granted',
+    ad_personalization: 'granted',
+  })
+  window.dataLayer.push({
+    event: 'cookie_consent_granted',
+    analytics_storage: 'granted',
+    ad_storage: 'granted',
+  })
+}
+
+/**
  * Отправляет событие просмотра страницы.
  * Вызывается при каждом routeChangeComplete в _app.tsx.
  */
@@ -97,7 +122,7 @@ export function gtmAddToCart(item: GtmEcommerceItem, quantity = 1, currency = 'U
     event: 'add_to_cart',
     ecommerce: {
       currency,
-      value: (item.price ?? 0) * quantity,
+      value: item.price !== undefined ? item.price * quantity : undefined,
       items: [{ ...item, quantity }],
     },
   })
