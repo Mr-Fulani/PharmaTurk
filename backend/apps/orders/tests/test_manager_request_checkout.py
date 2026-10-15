@@ -163,3 +163,13 @@ def test_username_is_dropped_for_phone_channel(request_state):
 
     assert response.status_code == 201, response.data
     assert Order.objects.get().contact_username == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_whatsapp_phone_number_is_accepted_as_contact(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_channel="whatsapp", contact_username="+79990001122"))
+
+    assert response.status_code == 201, response.data
+    assert Order.objects.get().contact_username == "+79990001122"

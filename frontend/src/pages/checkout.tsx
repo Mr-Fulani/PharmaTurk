@@ -88,6 +88,9 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [contactChannel, setContactChannel] = useState('')
   const [contactUsername, setContactUsername] = useState('')
   const usernameChannel = contactChannel === 'telegram' || contactChannel === 'whatsapp'
+  // Telegram / WhatsApp из профиля — подставляются при выборе канала, если клиент не ввёл своё
+  const [profileMessengers, setProfileMessengers] = useState<{ telegram: string; whatsapp: string }>({ telegram: '', whatsapp: '' })
+  const autoUsernameRef = useRef('')
   const emailRequired = contactChannel === 'email'
   const [submitting, setSubmitting] = useState(false)
   const cryptoIdempotencyKeyRef = useRef<string | null>(null)
@@ -153,6 +156,29 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     }
     loadData()
   }, [setCartSummary])
+
+  useEffect(() => {
+    if (!user) return
+    getSingleFlight('/users/profile')
+      .then((r) => {
+        const profile = r.data?.[0]
+        setProfileMessengers({
+          telegram: profile?.telegram_username || '',
+          whatsapp: profile?.whatsapp_phone || '',
+        })
+      })
+      .catch(() => undefined)
+  }, [user])
+
+  useEffect(() => {
+    if (contactChannel !== 'telegram' && contactChannel !== 'whatsapp') return
+    // Не перетираем то, что клиент ввёл сам
+    if (contactUsername && contactUsername !== autoUsernameRef.current) return
+    const value = profileMessengers[contactChannel]
+    autoUsernameRef.current = value
+    setContactUsername(value)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactChannel, profileMessengers])
 
   // Обновляем контактные данные при загрузке профиля пользователя
   useEffect(() => {
@@ -556,13 +582,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   {usernameChannel && (
                     <label className="block">
                       <span className="text-sm font-medium text-gray-700">
-                        {t(`checkout_username_${contactChannel}`, contactChannel === 'telegram' ? 'Ник в Telegram (необязательно)' : 'Юзернейм в WhatsApp (необязательно)')}
+                        {t(`checkout_username_${contactChannel}`, contactChannel === 'telegram' ? 'Ник в Telegram (необязательно)' : 'Юзернейм или номер в WhatsApp (необязательно)')}
                       </span>
                       <input
                         type="text"
                         value={contactUsername}
                         onChange={(e) => setContactUsername(e.target.value)}
-                        placeholder="@username"
+                        placeholder={contactChannel === 'whatsapp' ? '@username / +79990000000' : '@username'}
                         autoComplete="off"
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                       />

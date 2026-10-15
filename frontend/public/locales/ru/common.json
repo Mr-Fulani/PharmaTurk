@@ -189,7 +189,7 @@
   "checkout_contact_channel": "Как с вами связаться",
   "checkout_contact_channel_required": "Выберите, как с вами связаться",
   "checkout_username_telegram": "Ник в Telegram (необязательно)",
-  "checkout_username_whatsapp": "Юзернейм в WhatsApp (необязательно)",
+  "checkout_username_whatsapp": "Юзернейм или номер в WhatsApp (необязательно)",
   "checkout_username_hint": "Если не указать, менеджер свяжется с вами по номеру телефона.",
   "checkout_email": "Email",
   "checkout_email_required_for_channel": "Укажите email: вы выбрали связь по email",

@@ -1,3 +1,4 @@
+import re
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
@@ -249,9 +250,22 @@ class UserSerializer(serializers.ModelSerializer):
         return value
 
     def validate_whatsapp_phone(self, value):
-        """Проверка формата и уникальности WhatsApp (в т.ч. среди phone_number)"""
+        """WhatsApp: номер (уникален среди phone_number/whatsapp_phone) или юзернейм (@name)"""
         if not value:
             return value
+        value = value.strip()
+        if value.startswith('@') or any(c.isalpha() for c in value):
+            username = value.lstrip('@')
+            if not re.fullmatch(r'[A-Za-z0-9._]{3,35}', username):
+                raise serializers.ValidationError(
+                    _("Юзернейм WhatsApp: 3–35 символов, латиница, цифры, . и _.")
+                )
+            taken = User.objects.filter(whatsapp_phone__iexact=f'@{username}')
+            if self.instance:
+                taken = taken.exclude(pk=self.instance.pk)
+            if taken.exists():
+                raise serializers.ValidationError(_("Этот WhatsApp уже используется другим аккаунтом"))
+            return f'@{username}'
         from django.core.validators import RegexValidator
         from django.core.exceptions import ValidationError
         phone_regex = RegexValidator(

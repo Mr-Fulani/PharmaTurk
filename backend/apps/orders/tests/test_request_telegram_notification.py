@@ -68,3 +68,10 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         )
 
         self.assertIn("Telegram: @Ivan\\_Petrov", texts["admin-chat"])
+
+    def test_whatsapp_phone_is_shown_without_at(self, select_related, telegram_post, *_):
+        texts = self._texts(
+            select_related, telegram_post, _order(contact_channel="whatsapp", contact_username="+79990001122")
+        )
+
+        self.assertIn("WhatsApp: +79990001122", texts["admin-chat"])
