@@ -532,7 +532,21 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
         except requests.RequestException:
             logger.warning("Telegram send error for order %s", order.number)
 
-    from .services import translate_method, PAYMENT_METHOD_TRANSLATIONS, SHIPPING_METHOD_TRANSLATIONS
+    from .services import (
+        CONTACT_CHANNEL_TRANSLATIONS,
+        PAYMENT_METHOD_TRANSLATIONS,
+        SHIPPING_METHOD_TRANSLATIONS,
+        translate_method,
+    )
+
+    def _md(value) -> str:
+        # Пользовательский ввод не должен ломать parse_mode=Markdown
+        text = str(value or "-")
+        for ch in ("\\", "_", "*", "`", "["):
+            text = text.replace(ch, "\\" + ch)
+        return text
+
+    is_request = order.payment_method == "manager"
 
     filename = get_receipt_filename(order)
 
@@ -540,13 +554,20 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
     if admin_chat_id:
         payment_info = translate_method(order.payment_method, PAYMENT_METHOD_TRANSLATIONS, "ru")
         delivery_info = translate_method(order.shipping_method, SHIPPING_METHOD_TRANSLATIONS, "ru")
+        channel_info = translate_method(order.contact_channel, CONTACT_CHANNEL_TRANSLATIONS, "ru")
         admin_text = (
-            f"📦 *Новый заказ!*\n"
+            f"{'📝 *Новая заявка!*' if is_request else '📦 *Новый заказ!*'}\n"
             f"Заказ: `{order.number}`\n"
             f"Сумма: {order.total_amount} {order.currency}\n"
             f"Оплата: {payment_info}\n"
-            f"Доставка: {delivery_info}"
+            f"Доставка: {delivery_info}\n"
+            f"Клиент: {_md(order.contact_name)}\n"
+            f"Телефон: {_md(order.contact_phone)}\n"
+            f"Email: {_md(order.contact_email)}\n"
+            f"Связаться через: {channel_info}"
         )
+        if order.comment:
+            admin_text += f"\nКомментарий: {_md(order.comment)}"
         _send_tg(admin_chat_id, admin_text, document=pdf_bytes, filename=filename)
 
     # Уведомление покупателю
@@ -555,18 +576,26 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
 
         if is_ru:
             user_text = (
-                f"✅ *Ваш заказ успешно оформлен!*\n"
+                f"{'✅ *Ваша заявка принята!*' if is_request else '✅ *Ваш заказ успешно оформлен!*'}\n"
                 f"Заказ: `{order.number}`\n"
                 f"Сумма: {order.total_amount} {order.currency}\n"
                 f"Способ доставки: {delivery_info_user}\n\n"
-                f"Мы уже занимаемся его сборкой!"
+                + (
+                    "Менеджер свяжется с вами, чтобы подтвердить заказ и согласовать способ оплаты."
+                    if is_request
+                    else "Мы уже занимаемся его сборкой!"
+                )
             )
         else:
             user_text = (
-                f"✅ *Your order has been placed successfully!*\n"
+                f"{'✅ *Your request has been received!*' if is_request else '✅ *Your order has been placed successfully!*'}\n"
                 f"Order: `{order.number}`\n"
                 f"Amount: {order.total_amount} {order.currency}\n"
                 f"Shipping method: {delivery_info_user}\n\n"
-                f"We are already assembling it!"
+                + (
+                    "A manager will contact you to confirm the order and agree on payment."
+                    if is_request
+                    else "We are already assembling it!"
+                )
             )
         _send_tg(user_chat_id, user_text, document=pdf_bytes, filename=filename)

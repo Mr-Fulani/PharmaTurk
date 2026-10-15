@@ -671,6 +671,10 @@ SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(
 )
 # Cart enforcement is a separate rollout gate. Operators may exercise/observe the
 # verification service before any existing cart behaviour changes.
+# Онлайн-оплата (крипта/карта) на checkout. Пока false: каждый заказ — заявка
+# менеджеру, способ оплаты согласуется с клиентом по выбранному каналу связи.
+ORDER_ONLINE_PAYMENTS_ENABLED = env.bool("ORDER_ONLINE_PAYMENTS_ENABLED", default=False)
+
 SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = env.bool(
     "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", default=False
 )

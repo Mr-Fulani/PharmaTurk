@@ -50,7 +50,14 @@ Email берётся сначала из `order.contact_email`, затем из 
 ## Telegram
 
 `notify_new_order_telegram` уведомляет администратора и, если пользователь
-включил `telegram_notifications`, покупателя. Задача не загружает
+включил `telegram_notifications`, покупателя.
+
+Режим заявок (`ORDER_ONLINE_PAYMENTS_ENABLED=false`, по умолчанию): у заказа
+`payment_method=manager`, администратор получает «📝 Новая заявка!» с именем,
+телефоном, email, выбранным каналом связи (`contact_channel`: telegram /
+whatsapp / phone / email) и комментарием; пользовательский ввод экранируется
+для Markdown. Покупателю — «Ваша заявка принята», менеджер свяжется для
+подтверждения и согласования оплаты. Задача не загружает
 `order.receipt_url` по HTTP: она читает детерминированный HMAC-namespaced объект
 `receipts/{digest}/{order.number}.pdf` напрямую из доверенного R2, ограничивает
 его 5 МБ и проверяет сигнатуру PDF. Legacy-путь без digest больше не читается;

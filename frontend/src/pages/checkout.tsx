@@ -28,6 +28,7 @@ import AnimatedOrderButton, { OrderButtonState } from '../components/AnimatedOrd
 import type { Cart } from '../types/cart'
 import { gtmBeginCheckout, gtmPurchase, type GtmEcommerceItem } from '../lib/gtm'
 import { ymReachGoal } from '../lib/ym'
+import { ONLINE_PAYMENTS_ENABLED } from '../lib/payments'
 
 interface Address {
   id: number
@@ -47,6 +48,8 @@ interface Address {
   comment?: string
   is_default: boolean
 }
+
+const CONTACT_CHANNELS = ['telegram', 'whatsapp', 'phone', 'email'] as const
 
 function toGtmItems(cart: Cart): GtmEcommerceItem[] {
   return cart.items.map((item) => ({
@@ -74,7 +77,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [contactEmail, setContactEmail] = useState('')
   const [shippingAddressText, setShippingAddressText] = useState('')
   const [shippingMethod, setShippingMethod] = useState<'ground' | 'air' | 'sea'>('ground')
-  const [paymentMethod, setPaymentMethod] = useState('cod')
+  const [paymentMethod, setPaymentMethod] = useState(ONLINE_PAYMENTS_ENABLED ? 'cod' : 'manager')
+  const [contactChannel, setContactChannel] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const cryptoIdempotencyKeyRef = useRef<string | null>(null)
   const [orderButtonState, setOrderButtonState] = useState<OrderButtonState>('idle')
@@ -233,6 +237,11 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       return
     }
 
+    if (!contactChannel) {
+      alert(t('checkout_contact_channel_required', 'Выберите, как с вами связаться'))
+      return
+    }
+
     const animationStartedAt = Date.now()
     let orderCreated = false
     setSubmitting(true)
@@ -242,6 +251,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       body.set('contact_name', contactName)
       body.set('contact_phone', contactPhone)
       if (contactEmail) body.set('contact_email', contactEmail)
+      body.set('contact_channel', contactChannel)
       if (shippingAddressText) body.set('shipping_address_text', shippingAddressText)
       if (shippingMethod) body.set('shipping_method', shippingMethod)
       if (paymentMethod) body.set('payment_method', paymentMethod)
@@ -494,6 +504,30 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
                   </label>
+                  <fieldset>
+                    <legend className="text-sm font-medium text-gray-700">{t('checkout_contact_channel', 'Как с вами связаться')} *</legend>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {CONTACT_CHANNELS.map((channel) => (
+                        <label
+                          key={channel}
+                          className={`cursor-pointer rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all ${contactChannel === channel
+                            ? 'border-[var(--accent)] bg-[var(--surface)] text-gray-900'
+                            : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name="contact_channel"
+                            value={channel}
+                            checked={contactChannel === channel}
+                            onChange={(e) => setContactChannel(e.target.value)}
+                            className="sr-only"
+                          />
+                          {t(`contact_channel_${channel}`)}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                 </div>
               </div>
 
@@ -904,7 +938,17 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 </div>
               </div>
 
-              {/* Способ оплаты */}
+              {!ONLINE_PAYMENTS_ENABLED && (
+                <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-2">{t('checkout_payment_method', 'Способ оплаты')}</h2>
+                  <p className="text-sm text-gray-600">
+                    {t('checkout_manager_payment_info', 'Оплата на сайте не требуется. После отправки заявки менеджер свяжется с вами выбранным способом, подтвердит наличие и итоговую сумму и согласует удобный способ оплаты.')}
+                  </p>
+                </div>
+              )}
+
+              {/* Способ оплаты (онлайн) — выключен, пока каждый заказ ведёт менеджер */}
+              {ONLINE_PAYMENTS_ENABLED && (
               <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('checkout_payment_method', 'Способ оплаты')}</h2>
                 <div className="space-y-3">
@@ -976,13 +1020,14 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </div>
                 )}
               </div>
+              )}
 
               <AnimatedOrderButton
                 state={orderButtonState}
                 disabled={submitting || hasBlockingIssues}
-                defaultLabel={t('checkout_submit', 'Оформить заказ')}
+                defaultLabel={ONLINE_PAYMENTS_ENABLED ? t('checkout_submit', 'Оформить заказ') : t('checkout_submit_request', 'Отправить заявку')}
                 processingLabel={t('checkout_submitting', 'Отправка...')}
-                successLabel={t('checkout_order_placed', 'Заказ оформлен')}
+                successLabel={ONLINE_PAYMENTS_ENABLED ? t('checkout_order_placed', 'Заказ оформлен') : t('checkout_request_sent', 'Заявка отправлена')}
               />
             </form>
           </div>

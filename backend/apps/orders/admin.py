@@ -121,7 +121,7 @@ class OrderItemInline(admin.TabularInline):
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Админка для заказов."""
-    list_display = ('number', 'user', 'status', 'total_amount', 'currency', 'promo_code', 'payment_method', 'created_at')
+    list_display = ('number', 'user', 'status', 'total_amount', 'currency', 'contact_phone', 'contact_channel', 'payment_method', 'created_at')
     list_filter = ('status', 'currency', 'payment_method', 'payment_status', 'promo_code', 'created_at')
     search_fields = ('number', 'user__email', 'contact_name', 'contact_phone', 'promo_code__code')
     ordering = ('-created_at',)
@@ -130,7 +130,7 @@ class OrderAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('number', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
-        (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email')}),
+        (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel')}),
         (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method')}),
         (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
         (_('Additional'), {'fields': ('comment',)}),

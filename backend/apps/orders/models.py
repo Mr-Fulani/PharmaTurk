@@ -538,6 +538,14 @@ class CartItem(models.Model):
             return round(self.price * self.quantity, 2)
 
 
+CONTACT_CHANNEL_CHOICES = (
+    ("telegram", "Telegram"),
+    ("whatsapp", "WhatsApp"),
+    ("phone", _("Звонок")),
+    ("email", "Email"),
+)
+
+
 class Order(models.Model):
     """Заказ пользователя."""
     class OrderStatus(models.TextChoices):
@@ -564,6 +572,12 @@ class Order(models.Model):
     contact_name = models.CharField(_("Имя получателя"), max_length=150)
     contact_phone = models.CharField(_("Телефон"), max_length=32)
     contact_email = models.EmailField(_("Email"), blank=True)
+    contact_channel = models.CharField(
+        _("Предпочтительный канал связи"),
+        max_length=16,
+        choices=CONTACT_CHANNEL_CHOICES,
+        blank=True,
+    )
 
     shipping_address = models.ForeignKey(UserAddress, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Адрес доставки"))
     shipping_address_text = models.TextField(_("Адрес доставки (текст)"), blank=True)

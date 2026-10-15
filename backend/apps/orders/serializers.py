@@ -30,7 +30,7 @@ from apps.catalog.utils.currency_converter import currency_converter
 from apps.catalog.currency_models import ProductVariantPrice
 from django.contrib.contenttypes.models import ContentType
 from .cart_source_verification import CartSourceOfferPolicy
-from .models import Cart, CartItem, Order, OrderItem, PromoCode
+from .models import CONTACT_CHANNEL_CHOICES, Cart, CartItem, Order, OrderItem, PromoCode
 
 VARIANT_MODEL_MAP = {
     'clothing': ClothingVariant,
@@ -2034,6 +2034,7 @@ class CreateOrderSerializer(serializers.Serializer):
     contact_name = serializers.CharField(max_length=150)
     contact_phone = serializers.CharField(max_length=32)
     contact_email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    contact_channel = serializers.ChoiceField(choices=CONTACT_CHANNEL_CHOICES, required=False, allow_blank=True)
     shipping_address = serializers.IntegerField(required=False, allow_null=True)
     shipping_address_text = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     shipping_method = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -2045,3 +2046,16 @@ class CreateOrderSerializer(serializers.Serializer):
     def validate_shipping_address(self, value):
         # Валидация адреса доставки будет реализована при наличии пользователя
         return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if not settings.ORDER_ONLINE_PAYMENTS_ENABLED:
+            # Онлайн-оплата выключена: любой заказ — заявка менеджеру,
+            # способ оплаты согласуется с клиентом по каналу связи.
+            method = (attrs.get("payment_method") or "").strip().lower()
+            if method in {"crypto", "card"}:
+                raise serializers.ValidationError(
+                    {"payment_method": _("Онлайн-оплата временно недоступна. Оплата согласуется с менеджером.")}
+                )
+            attrs["payment_method"] = "manager"
+        return attrs

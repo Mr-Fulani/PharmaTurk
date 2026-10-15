@@ -4,6 +4,12 @@
 
 ---
 
+> **Сейчас выключено.** Онлайн-оплата отключена флагами
+> `ORDER_ONLINE_PAYMENTS_ENABLED=false` (бэкенд: `crypto`/`card` → 400, любой заказ
+> получает `payment_method=manager`) и `NEXT_PUBLIC_ONLINE_PAYMENTS_ENABLED=false`
+> (фронтенд: способы оплаты скрыты, checkout = «Отправить заявку»). Каждый заказ ведёт
+> менеджер. Чтобы вернуть крипту, включить оба флага и пересобрать фронтенд.
+
 ## 1. Обзор
 
 - **Провайдер:** [CoinRemitter](https://coinremitter.com/)
