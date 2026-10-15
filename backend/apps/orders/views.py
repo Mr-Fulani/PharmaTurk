@@ -1734,7 +1734,7 @@ class OrderViewSet(viewsets.ViewSet):
                     "contact_phone": "+79990000000",
                     "contact_email": "ivan@example.com",
                     "shipping_address_text": "Москва, ул. Пушкина д.1",
-                    "payment_method": "card",
+                    "payment_method": "cod",
                     "comment": "Позвонить курьеру"
                 },
                 request_only=True
