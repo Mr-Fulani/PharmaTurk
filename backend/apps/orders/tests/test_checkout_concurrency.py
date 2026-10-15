@@ -36,6 +36,12 @@ def _cart_serializer(item_id):
     return serializer
 
 
+@pytest.fixture(autouse=True)
+def _online_payments_enabled(settings):
+    # Тесты крипто-оформления: онлайн-оплата по умолчанию выключена (заявки менеджеру)
+    settings.ORDER_ONLINE_PAYMENTS_ENABLED = True
+
+
 @pytest.fixture
 def checkout_state():
     user = User.objects.create_user(

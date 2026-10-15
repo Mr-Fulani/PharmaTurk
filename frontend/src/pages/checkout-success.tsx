@@ -9,6 +9,7 @@ import type { TFunction } from 'i18next'
 import api, { getSingleFlight } from '../lib/api'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { escapeHtml } from '../lib/sanitizeHtml'
+import { ONLINE_PAYMENTS_ENABLED } from '../lib/payments'
 
 interface OrderItem {
   id: number
@@ -170,10 +171,13 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     }
   }
 
+  // Онлайн-оплата выключена — каждый заказ является заявкой менеджеру
+  const isRequest = !ONLINE_PAYMENTS_ENABLED
+
   return (
     <>
       <Head>
-        <title>{t('order_success_page_title')} — Mudaroba</title>
+        <title>{`${t(isRequest ? 'order_request_page_title' : 'order_success_page_title')} — Mudaroba`}</title>
       </Head>
       <main className="min-h-screen bg-gradient-to-b from-violet-50/60 via-white to-white py-12 transition-colors duration-200 dark:from-[#0f1624] dark:via-[#0f1624] dark:to-[#0b1420]">
         <div className="mx-auto w-full max-w-6xl px-4">
@@ -245,10 +249,10 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                       {t('order_success_subheading')}
                     </p>
                     <h1 className="mt-2 text-3xl font-black text-gray-900 sm:text-4xl">
-                      {t('order_success_heading')}
+                      {t(isRequest ? 'order_request_heading' : 'order_success_heading')}
                     </h1>
                     <p className="mt-3 max-w-2xl text-base text-gray-500">
-                      {t('order_success_lead', { number })}
+                      {t(isRequest ? 'order_request_lead' : 'order_success_lead', { number })}
                     </p>
                   </div>
                 </div>
@@ -271,7 +275,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                       accent="from-blue-500/10 to-blue-100/40"
                     />
                     <StatisticCard
-                      label={t('order_success_total')}
+                      label={t(isRequest ? 'order_request_total' : 'order_success_total')}
                       value={`${order.total_amount} ${order.currency}`}
                       accent="from-amber-500/10 to-amber-100/40"
                     />
@@ -381,7 +385,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                         </div>
                       ))}
                       <div className="flex items-center justify-between border-t border-gray-100 pt-4 text-base font-semibold text-gray-900">
-                        <span>{t('order_success_total')}</span>
+                        <span>{t(isRequest ? 'order_request_total' : 'order_success_total')}</span>
                         <span>{receipt?.totals.total} {receipt?.totals.currency}</span>
                       </div>
                     </div>

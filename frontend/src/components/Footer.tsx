@@ -3,6 +3,7 @@ import { useTranslation } from 'next-i18next'
 import { useTheme } from '../context/ThemeContext'
 import { getSingleFlight } from '../lib/api'
 import { buildFooterPagesParams, normalizeFooterLocale, type FooterLocale } from '../lib/footerLocale'
+import { ONLINE_PAYMENTS_ENABLED } from '../lib/payments'
 import Link from 'next/link'
 
 interface StaticPageLink {
@@ -151,6 +152,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
     <footer suppressHydrationWarning className="mt-10 border-t border-main shadow-xl transition-colors duration-200 dark:bg-[#0c1628] dark:border-[#1f2a3d] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.55)]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
       <div className="mx-auto max-w-6xl px-3 sm:px-6 py-10 text-sm text-main">
         <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+          {/* Иллюстрация способов оплаты — скрыта, пока онлайн-оплата выключена (lib/payments.ts) */}
+          {ONLINE_PAYMENTS_ENABLED && (
           <div className="flex items-start justify-center sm:justify-start">
             {/* Логотип/изображение оплат — увеличенный размер и правильное выравнивание */}
             <div className="group relative">
@@ -171,6 +174,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
               </div>
             </div>
           </div>
+          )}
           <div className="text-center sm:text-left">
             <div className="mb-2 text-sm font-medium text-main">{t('footer_contacts')}</div>
             <div className="space-y-2 text-sm text-main/80">

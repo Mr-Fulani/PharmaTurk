@@ -43,15 +43,22 @@ SHIPPING_METHOD_TRANSLATIONS = {
 
 PAYMENT_METHOD_TRANSLATIONS = {
     "ru": {
+        "manager": "Согласуется с менеджером",
         "cod": "Наложенный платеж (при получении)",
         "card": "Банковской картой",
         "crypto": "Криптовалюта",
     },
     "en": {
+        "manager": "Agreed with manager",
         "cod": "Cash on Delivery",
         "card": "Bank Card",
         "crypto": "Cryptocurrency",
     }
+}
+
+CONTACT_CHANNEL_TRANSLATIONS = {
+    "ru": {"telegram": "Telegram", "whatsapp": "WhatsApp", "phone": "Звонок", "email": "Email"},
+    "en": {"telegram": "Telegram", "whatsapp": "WhatsApp", "phone": "Phone call", "email": "Email"},
 }
 
 PAYMENT_STATUS_TRANSLATIONS = {

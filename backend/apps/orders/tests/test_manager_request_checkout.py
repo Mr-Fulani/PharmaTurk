@@ -1,0 +1,113 @@
+"""Оформление в режиме «заявка менеджеру»: онлайн-оплата выключена."""
+
+from decimal import Decimal
+from unittest.mock import MagicMock, patch
+
+import pytest
+from rest_framework.test import APIRequestFactory, force_authenticate
+
+from apps.catalog.models import Product
+from apps.orders.models import Cart, CartItem, Order
+from apps.orders.views import OrderViewSet
+from apps.users.models import User
+
+
+def _payload(**overrides):
+    payload = {
+        "contact_name": "Request Test",
+        "contact_phone": "+905550000001",
+        "contact_email": "request@example.com",
+        "contact_channel": "telegram",
+        "shipping_method": "ground",
+        "locale": "ru",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _cart_serializer(item_id):
+    serializer = MagicMock()
+    serializer.get_currency.return_value = "RUB"
+    serializer.get_total_amount.return_value = Decimal("100.00")
+    serializer.get_shipping_options.return_value = {"air": 0, "sea": 0, "ground": 0}
+    serializer.data = {"items": [{"id": item_id, "price": "100.00"}]}
+    return serializer
+
+
+@pytest.fixture
+def request_state(settings):
+    settings.ORDER_ONLINE_PAYMENTS_ENABLED = False
+    user = User.objects.create_user(
+        username="request-user",
+        email="request@example.com",
+        password="not-used-in-test",
+    )
+    product = Product.objects.create(
+        name="Request Product",
+        slug="request-product",
+        price=Decimal("100.00"),
+        currency="RUB",
+        stock_quantity=10,
+    )
+    cart = Cart.objects.create(user=user, currency="RUB")
+    item = CartItem.objects.create(
+        cart=cart,
+        product=product,
+        quantity=1,
+        price=Decimal("100.00"),
+        currency="RUB",
+    )
+    return user, item
+
+
+def _post(user, item, payload):
+    request = APIRequestFactory().post(
+        "/api/orders/orders/create-from-cart/",
+        payload,
+        format="json",
+    )
+    force_authenticate(request, user=user)
+    view = OrderViewSet.as_view({"post": "create_from_cart"})
+    with patch(
+        "apps.orders.views.CartSerializer",
+        return_value=_cart_serializer(item.id),
+    ), patch("apps.orders.views._create_crypto_invoice") as create_invoice:
+        response = view(request)
+    create_invoice.assert_not_called()
+    return response
+
+
+@pytest.mark.django_db(transaction=True)
+def test_request_checkout_creates_manager_order_with_contact_channel(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(payment_method="cod"))
+
+    assert response.status_code == 201, response.data
+    order = Order.objects.get()
+    assert order.payment_method == "manager"
+    assert order.status == Order.OrderStatus.NEW
+    assert order.contact_channel == "telegram"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("method", ["crypto", "card"])
+def test_online_payment_is_rejected_while_disabled(request_state, method):
+    user, item = request_state
+
+    response = _post(user, item, _payload(payment_method=method))
+
+    assert response.status_code == 400
+    assert "payment_method" in response.data
+    assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_unknown_contact_channel_is_rejected(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_channel="pigeon"))
+
+    assert response.status_code == 400
+    assert "contact_channel" in response.data
+    assert Order.objects.count() == 0

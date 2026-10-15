@@ -1734,7 +1734,7 @@ class OrderViewSet(viewsets.ViewSet):
                     "contact_phone": "+79990000000",
                     "contact_email": "ivan@example.com",
                     "shipping_address_text": "Москва, ул. Пушкина д.1",
-                    "payment_method": "cod",
+                    "contact_channel": "telegram",
                     "comment": "Позвонить курьеру"
                 },
                 request_only=True
@@ -1995,6 +1995,7 @@ class OrderViewSet(viewsets.ViewSet):
             contact_name=serializer.validated_data.get('contact_name'),
             contact_phone=serializer.validated_data.get('contact_phone'),
             contact_email=serializer.validated_data.get('contact_email') or '',
+            contact_channel=serializer.validated_data.get('contact_channel') or '',
             shipping_method=serializer.validated_data.get('shipping_method') or '',
             payment_method=serializer.validated_data.get('payment_method') or '',
             comment=serializer.validated_data.get('comment') or '',

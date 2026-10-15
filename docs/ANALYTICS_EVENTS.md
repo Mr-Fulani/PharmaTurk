@@ -18,7 +18,7 @@
 |---|---|---|
 | `add_to_cart` | `AddToCartButton`, `BuyNowButton` | item_id, slug, quantity (без цены) |
 | `begin_checkout` | `checkout.tsx`, после загрузки непустой корзины | позиции, сумма, валюта корзины |
-| `purchase` | `checkout.tsx`, после создания заказа (любой способ оплаты) | transaction_id = номер заказа, сумма и валюта заказа |
+| `purchase` | `checkout.tsx`, после создания заказа (любой способ оплаты; при выключенной онлайн-оплате = отправленная заявка, `payment_method=manager`) | transaction_id = номер заказа, сумма и валюта заказа |
 | `search` | `search.tsx` | search_term |
 | `contact_click` | `ContactWidget` | contact_channel: telegram/whatsapp/vk/email/phone |
 

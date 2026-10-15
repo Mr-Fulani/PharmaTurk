@@ -163,6 +163,7 @@ def test_checkout_never_refreshes_a_saved_verified_price(settings):
 @pytest.mark.django_db
 def test_inconsistent_saved_stock_snapshot_stops_crypto_without_supplier_call(settings):
     settings.SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = True
+    settings.ORDER_ONLINE_PAYMENTS_ENABLED = True
     user = User.objects.create_user(
         username="source-stock-drift-user",
         email="source-stock-drift@example.test",
