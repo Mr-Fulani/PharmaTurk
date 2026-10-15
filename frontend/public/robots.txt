@@ -4,6 +4,9 @@ User-agent: *
 Allow: /
 
 Disallow: /api/
+# Картинки товаров (og:image, JSON-LD image) отдаются через proxy-media — открыть для ботов
+Allow: /api/catalog/proxy-media
+Allow: /api/catalog/proxy-image
 Disallow: /profile
 Disallow: /cart
 Disallow: /checkout
