@@ -93,6 +93,27 @@ def test_inditex_category_url_supports_chunking(parser_class):
 
 
 @pytest.mark.parametrize("parser_class", [BershkaParser, PullAndBearParser, MassimoDuttiParser])
+def test_inditex_category_links_extract_external_id(parser_class):
+    parser = parser_class()
+    try:
+        base_url = f"https://www.{parser.get_name()}.com/tr/"
+        html = (
+            '<a href="/tr/erkek-tshirt-n6323">Tişört</a>'
+            '<a href="/tr/kadin-elbise-n1234.html">Elbise</a>'
+            '<a href="/tr/erkek-tshirt-c0p123456789.html">Ürün</a>'
+        )
+
+        categories = parser._extract_category_links(html, base_url)
+
+        assert [(item["url"], item["external_id"]) for item in categories] == [
+            (f"{base_url}erkek-tshirt-n6323", "6323"),
+            (f"{base_url}kadin-elbise-n1234.html", "1234"),
+        ]
+    finally:
+        parser.__exit__(None, None, None)
+
+
+@pytest.mark.parametrize("parser_class", [BershkaParser, PullAndBearParser, MassimoDuttiParser])
 def test_inditex_siblings_use_browser_fingerprint_transport(parser_class):
     parser = parser_class()
     try:
