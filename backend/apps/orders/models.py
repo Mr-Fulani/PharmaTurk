@@ -578,6 +578,7 @@ class Order(models.Model):
         choices=CONTACT_CHANNEL_CHOICES,
         blank=True,
     )
+    contact_username = models.CharField(_("Юзернейм в Telegram/WhatsApp"), max_length=35, blank=True)
 
     shipping_address = models.ForeignKey(UserAddress, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Адрес доставки"))
     shipping_address_text = models.TextField(_("Адрес доставки (текст)"), blank=True)

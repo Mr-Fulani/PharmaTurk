@@ -589,6 +589,8 @@ export default function ProfilePage() {
 
   const getWhatsAppLink = (phone: string) => {
     if (!phone) return null
+    // Юзернейм WhatsApp (@name): публичной ссылки wa.me по юзернейму нет
+    if (phone.startsWith('@')) return null
     // Убираем все символы кроме цифр
     const cleanPhone = phone.replace(/\D/g, '')
     if (!cleanPhone) return null
@@ -731,7 +733,7 @@ export default function ProfilePage() {
                             type={field === 'email' ? 'email' : field.includes('phone') ? 'tel' : 'text'}
                             value={values[field]}
                             onChange={(e) => { setVal(e.target.value); if (hasError) setFieldErrors((prev) => { const n = new Set(prev); n.delete(field); return n }) }}
-                            placeholder={field === 'whatsapp_phone' ? '+1234567890' : undefined}
+                            placeholder={field === 'whatsapp_phone' ? '+1234567890 / @username' : undefined}
                             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${hasError ? 'border-red-500 bg-red-50 focus:ring-red-400' : 'border-gray-300'}`}
                           />
                         </div>

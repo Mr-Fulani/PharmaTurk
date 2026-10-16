@@ -111,3 +111,65 @@ def test_unknown_contact_channel_is_rejected(request_state):
     assert response.status_code == 400
     assert "contact_channel" in response.data
     assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_email_channel_requires_email(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_channel="email", contact_email=""))
+
+    assert response.status_code == 400
+    assert "contact_email" in response.data
+    assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_telegram_username_is_normalized_and_saved(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_channel="telegram", contact_username=" @Ivan_Petrov "))
+
+    assert response.status_code == 201, response.data
+    assert Order.objects.get().contact_username == "Ivan_Petrov"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_invalid_telegram_username_is_rejected(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_username="no spaces!"))
+
+    assert response.status_code == 400
+    assert "contact_username" in response.data
+    assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_whatsapp_username_is_saved(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_channel="whatsapp", contact_username="@ivan.p"))
+
+    assert response.status_code == 201, response.data
+    assert Order.objects.get().contact_username == "ivan.p"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_username_is_dropped_for_phone_channel(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_channel="phone", contact_username="ivan_petrov"))
+
+    assert response.status_code == 201, response.data
+    assert Order.objects.get().contact_username == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_whatsapp_phone_number_is_accepted_as_contact(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_channel="whatsapp", contact_username="+79990001122"))
+
+    assert response.status_code == 201, response.data
+    assert Order.objects.get().contact_username == "+79990001122"

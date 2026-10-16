@@ -1996,6 +1996,7 @@ class OrderViewSet(viewsets.ViewSet):
             contact_phone=serializer.validated_data.get('contact_phone'),
             contact_email=serializer.validated_data.get('contact_email') or '',
             contact_channel=serializer.validated_data.get('contact_channel') or '',
+            contact_username=serializer.validated_data.get('contact_username') or '',
             shipping_method=serializer.validated_data.get('shipping_method') or '',
             payment_method=serializer.validated_data.get('payment_method') or '',
             comment=serializer.validated_data.get('comment') or '',

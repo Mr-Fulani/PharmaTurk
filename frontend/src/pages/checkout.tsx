@@ -50,6 +50,13 @@ interface Address {
 }
 
 const CONTACT_CHANNELS = ['telegram', 'whatsapp', 'phone', 'email'] as const
+// Фирменные цвета иконок — те же, что в ContactWidget
+const CONTACT_CHANNEL_COLORS: Record<(typeof CONTACT_CHANNELS)[number], string> = {
+  telegram: '#0088cc',
+  whatsapp: '#25d366',
+  phone: '#f59e0b',
+  email: '#7c3aed',
+}
 
 function toGtmItems(cart: Cart): GtmEcommerceItem[] {
   return cart.items.map((item) => ({
@@ -79,6 +86,12 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [shippingMethod, setShippingMethod] = useState<'ground' | 'air' | 'sea'>('ground')
   const [paymentMethod, setPaymentMethod] = useState(ONLINE_PAYMENTS_ENABLED ? 'cod' : 'manager')
   const [contactChannel, setContactChannel] = useState('')
+  const [contactUsername, setContactUsername] = useState('')
+  const usernameChannel = contactChannel === 'telegram' || contactChannel === 'whatsapp'
+  // Telegram / WhatsApp из профиля — подставляются при выборе канала, если клиент не ввёл своё
+  const [profileMessengers, setProfileMessengers] = useState<{ telegram: string; whatsapp: string }>({ telegram: '', whatsapp: '' })
+  const autoUsernameRef = useRef('')
+  const emailRequired = contactChannel === 'email'
   const [submitting, setSubmitting] = useState(false)
   const cryptoIdempotencyKeyRef = useRef<string | null>(null)
   const [orderButtonState, setOrderButtonState] = useState<OrderButtonState>('idle')
@@ -143,6 +156,29 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     }
     loadData()
   }, [setCartSummary])
+
+  useEffect(() => {
+    if (!user) return
+    getSingleFlight('/users/profile')
+      .then((r) => {
+        const profile = r.data?.[0]
+        setProfileMessengers({
+          telegram: profile?.telegram_username || '',
+          whatsapp: profile?.whatsapp_phone || '',
+        })
+      })
+      .catch(() => undefined)
+  }, [user])
+
+  useEffect(() => {
+    if (contactChannel !== 'telegram' && contactChannel !== 'whatsapp') return
+    // Не перетираем то, что клиент ввёл сам
+    if (contactUsername && contactUsername !== autoUsernameRef.current) return
+    const value = profileMessengers[contactChannel]
+    autoUsernameRef.current = value
+    setContactUsername(value)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactChannel, profileMessengers])
 
   // Обновляем контактные данные при загрузке профиля пользователя
   useEffect(() => {
@@ -241,6 +277,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       alert(t('checkout_contact_channel_required', 'Выберите, как с вами связаться'))
       return
     }
+    if (emailRequired && !contactEmail.trim()) {
+      alert(t('checkout_email_required_for_channel', 'Укажите email: вы выбрали связь по email'))
+      return
+    }
 
     const animationStartedAt = Date.now()
     let orderCreated = false
@@ -252,6 +292,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       body.set('contact_phone', contactPhone)
       if (contactEmail) body.set('contact_email', contactEmail)
       body.set('contact_channel', contactChannel)
+      if (usernameChannel && contactUsername.trim()) body.set('contact_username', contactUsername.trim())
       if (shippingAddressText) body.set('shipping_address_text', shippingAddressText)
       if (shippingMethod) body.set('shipping_method', shippingMethod)
       if (paymentMethod) body.set('payment_method', paymentMethod)
@@ -499,9 +540,12 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     />
                   </label>
                   <label className="block">
-                    <span className="text-sm font-medium text-gray-700">{t('checkout_email_optional', 'Email (необязательно)')}</span>
+                    <span className="text-sm font-medium text-gray-700">
+                      {emailRequired ? `${t('checkout_email', 'Email')} *` : t('checkout_email_optional', 'Email (необязательно)')}
+                    </span>
                     <input
                       type="email"
+                      required={emailRequired}
                       value={contactEmail}
                       onChange={(e) => setContactEmail(e.target.value)}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
@@ -513,9 +557,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       {CONTACT_CHANNELS.map((channel) => (
                         <label
                           key={channel}
-                          className={`cursor-pointer rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all ${contactChannel === channel
-                            ? 'border-[var(--accent)] bg-[var(--surface)] text-gray-900'
-                            : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                          style={{
+                            '--chip-clr': CONTACT_CHANNEL_COLORS[channel],
+                            '--chip-bg': `${CONTACT_CHANNEL_COLORS[channel]}1f`,
+                          } as React.CSSProperties}
+                          className={`cursor-pointer rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all hover:border-[var(--chip-clr)] hover:bg-[var(--chip-bg)] hover:text-[var(--chip-clr)] ${contactChannel === channel
+                            ? 'border-[var(--chip-clr)] bg-[var(--chip-bg)] text-[var(--chip-clr)]'
+                            : 'border-gray-200 text-gray-700'
                             }`}
                         >
                           <input
@@ -531,6 +579,24 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       ))}
                     </div>
                   </fieldset>
+                  {usernameChannel && (
+                    <label className="block">
+                      <span className="text-sm font-medium text-gray-700">
+                        {t(`checkout_username_${contactChannel}`, contactChannel === 'telegram' ? 'Ник в Telegram (необязательно)' : 'Юзернейм или номер в WhatsApp (необязательно)')}
+                      </span>
+                      <input
+                        type="text"
+                        value={contactUsername}
+                        onChange={(e) => setContactUsername(e.target.value)}
+                        placeholder={contactChannel === 'whatsapp' ? '@username / +79990000000' : '@username'}
+                        autoComplete="off"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                      <span className="mt-1 block text-xs text-gray-500">
+                        {t('checkout_username_hint', 'Если не указать, менеджер свяжется с вами по номеру телефона.')}
+                      </span>
+                    </label>
+                  )}
                 </div>
               </div>
 

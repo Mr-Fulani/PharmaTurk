@@ -28,7 +28,8 @@ class User(AbstractUser):
     address = models.TextField(_('адрес'), blank=True)
     avatar = models.ImageField(_('аватар'), upload_to='avatars/', null=True, blank=True)
     bio = models.TextField(_('о себе'), blank=True)
-    whatsapp_phone = models.CharField(_('WhatsApp'), max_length=17, blank=True)
+    # Номер (+999…) или юзернейм WhatsApp — юзернейм хранится с префиксом @
+    whatsapp_phone = models.CharField(_('WhatsApp'), max_length=36, blank=True)
     
     # Настройки уведомлений
     email_notifications = models.BooleanField(_('email уведомления'), default=True)

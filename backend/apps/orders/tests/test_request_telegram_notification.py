@@ -22,6 +22,7 @@ def _order(**overrides):
         contact_phone="+79990000000",
         contact_email="ivan@example.com",
         contact_channel="whatsapp",
+        contact_username="",
         comment="",
         created_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
     )
@@ -60,3 +61,17 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         texts = self._texts(select_related, telegram_post, _order())
 
         self.assertIn("менеджер", texts["555"].lower())
+
+    def test_admin_message_contains_telegram_username(self, select_related, telegram_post, *_):
+        texts = self._texts(
+            select_related, telegram_post, _order(contact_channel="telegram", contact_username="Ivan_Petrov")
+        )
+
+        self.assertIn("Telegram: @Ivan\\_Petrov", texts["admin-chat"])
+
+    def test_whatsapp_phone_is_shown_without_at(self, select_related, telegram_post, *_):
+        texts = self._texts(
+            select_related, telegram_post, _order(contact_channel="whatsapp", contact_username="+79990001122")
+        )
+
+        self.assertIn("WhatsApp: +79990001122", texts["admin-chat"])
