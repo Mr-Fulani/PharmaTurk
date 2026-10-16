@@ -159,6 +159,7 @@ def _product_review_queryset(ids):
             "id", "user_id", "user__id", "user__username", "user__avatar",
             "product_type", "product_slug", "product_name", "author_name", "rating",
             "text", "status", "created_at", "updated_at", "homepage_priority",
+            "admin_reply", "admin_replied_at",
         )
     )
 

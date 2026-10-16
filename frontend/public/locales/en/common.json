@@ -1475,6 +1475,7 @@
   "product_reviews_count_one": "{{formattedCount}} review",
   "product_reviews_count_other": "{{formattedCount}} reviews",
   "product_reviews_empty": "No reviews yet. Be the first!",
+  "product_review_store_reply": "Reply from Mudaroba",
   "product_reviews_login_hint": "to leave a review",
   "product_reviews_rating": "Your rating",
   "product_reviews_text": "Your review",

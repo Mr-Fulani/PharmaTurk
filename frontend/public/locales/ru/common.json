@@ -1418,6 +1418,7 @@
   "product_reviews_count_many": "{{formattedCount}} отзывов",
   "product_reviews_count_other": "{{formattedCount}} отзывов",
   "product_reviews_empty": "Пока нет отзывов. Будьте первым!",
+  "product_review_store_reply": "Ответ Mudaroba",
   "product_reviews_login_hint": "чтобы оставить отзыв",
   "product_reviews_rating": "Ваша оценка",
   "product_reviews_text": "Ваш отзыв",

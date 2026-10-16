@@ -279,6 +279,7 @@ class ProductReviewSerializer(serializers.ModelSerializer):
             "id", "product_type", "product_slug", "product_name", "author_name",
             "rating", "text", "status", "media", "user_id", "user_username",
             "author_avatar_url", "subject_image_url", "created_at", "updated_at",
+            "admin_reply", "admin_replied_at",
         )
 
     def get_author_avatar_url(self, obj):

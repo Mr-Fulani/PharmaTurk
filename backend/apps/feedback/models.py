@@ -215,6 +215,16 @@ class ProductReview(models.Model):
         default=100,
         help_text="Чем меньше число, тем раньше отзыв показывается в блоке на главной.",
     )
+    admin_reply = models.TextField("Ответ магазина", blank=True, max_length=3000)
+    admin_replied_at = models.DateTimeField("Ответ дан", null=True, blank=True)
+    admin_replied_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Кто ответил",
+    )
 
     class Meta:
         verbose_name = "⭐ Отзыв о товаре/услуге"
