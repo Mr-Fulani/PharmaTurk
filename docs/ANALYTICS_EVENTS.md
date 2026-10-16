@@ -23,6 +23,16 @@
 | `contact_click` | `ContactWidget` | contact_channel: telegram/whatsapp/vk/email/phone |
 | `sourcing_request` | `SourcingRequestForm` (главная, пустая категория, поиск) | placement: home/category/search |
 
+## Google Analytics 4
+
+- Ресурс **turk-export** (поток «Mudaroba», `G-C333XNVW4X`) в аккаунте Google Mr.Fulani;
+  контейнер GTM `GTM-MR4C4W83` на 16.10.2026 пустой (тегов нет, не опубликован).
+- GA4 подключён напрямую (`gtag`), а объектные `dataLayer.push` gtag не обрабатывает, поэтому
+  `gtmEvent` (`lib/gtm.ts`) дублирует каждое событие в `gtag('event', …)` с ecommerce-полями на
+  верхнем уровне (`ga4EventParams`). Если когда-нибудь настроить GA4-теги в GTM — убрать это
+  дублирование, иначе события задвоятся.
+- Ключевые события в GA4: `purchase` (по умолчанию), `sourcing_request`.
+
 ## Цели Яндекс.Метрики (`ymReachGoal`)
 
 Создать в Метрике цели типа «JavaScript-событие» с идентификаторами:
