@@ -27,6 +27,7 @@ import {
 import { shouldShowGenderFilter } from '../../lib/brandCatalog'
 import {
   buildCatalogSeoState,
+  enrichShortDescription,
   isCatalogPageOutOfRange,
   isCategoryInProductTree,
   selectExactCategory,
@@ -1553,8 +1554,8 @@ export default function CategoryPage({
   const categoryPath = useMemo(() => `/categories/${routeSlug || categoryType}`, [routeSlug, categoryType])
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
   const catalogSeo = useMemo(
-    () => buildCatalogSeoState(categoryPath, router.query, currentPage, totalPages),
-    [categoryPath, router.query, currentPage, totalPages]
+    () => buildCatalogSeoState(categoryPath, router.query, currentPage, totalPages, totalCount),
+    [categoryPath, router.query, currentPage, totalPages, totalCount]
   )
   const canonicalUrl = useMemo(
     () => `${siteUrl}${localePrefix}${catalogSeo.canonicalPath}`,
@@ -1597,9 +1598,10 @@ export default function CategoryPage({
   }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale])
 
   const metaDescription = useMemo(() => {
-    if (!isDefaultLocale) return stripHtml(localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() }))
+    const suffix = t('category_meta_description_suffix', '{{category}} из Турции с доставкой: актуальные цены, оригинальные товары, заказ через менеджера Mudaroba.', { category: titleText || '' })
+    if (!isDefaultLocale) return enrichShortDescription(stripHtml(localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })), suffix)
     const raw = currentCategory?.meta_description || currentCategory?.og_description || localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
-    return stripHtml(raw)
+    return enrichShortDescription(stripHtml(raw), suffix)
   }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale])
 
   const ogImageUrl = useMemo(() => {

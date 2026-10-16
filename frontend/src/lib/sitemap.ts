@@ -98,7 +98,8 @@ export function buildUrl(
   priority = 0.8
 ): SitemapUrl {
   const ruHref = `${SITE_URL}${ruPath}`
-  const enHref = `${SITE_URL}/en${enPath}`
+  // Главная EN — /en без слэша (/en/ отвечает 308)
+  const enHref = enPath === '/' ? `${SITE_URL}/en` : `${SITE_URL}/en${enPath}`
   return {
     loc: ruHref,
     changefreq,

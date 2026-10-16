@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   buildCatalogSeoState,
+  enrichShortDescription,
   isCatalogPageOutOfRange,
   isCategoryInProductTree,
   selectExactCategory,
@@ -131,4 +132,33 @@ test('empty optional catalog filters do not create a noindex page', () => {
 
   assert.equal(state.noindex, false)
   assert.equal(state.canonicalPath, '/categories/books')
+})
+
+test('short category description is enriched with a suffix', () => {
+  assert.equal(
+    enrichShortDescription('Витаминные комплексы', 'купить из Турции с доставкой.'),
+    'Витаминные комплексы — купить из Турции с доставкой.'
+  )
+})
+
+test('long enough category description is kept as is', () => {
+  const desc = 'Витамины и минералы из Турции: комплексы для взрослых и детей, оригинальные упаковки от производителей.'
+  assert.equal(enrichShortDescription(desc, 'suffix'), desc)
+})
+
+test('empty category (no products) is noindex but stays canonical to itself', () => {
+  assert.deepEqual(
+    buildCatalogSeoState('/categories/flashlights', { slug: 'flashlights' }, 1, 1, 0),
+    {
+      canonicalPath: '/categories/flashlights',
+      hasFilters: false,
+      noindex: true,
+      previousPath: null,
+      nextPath: null,
+    }
+  )
+})
+
+test('category with products stays indexable when count is passed', () => {
+  assert.equal(buildCatalogSeoState('/categories/medicines', { slug: 'medicines' }, 1, 3, 30).noindex, false)
 })

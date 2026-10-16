@@ -1403,10 +1403,10 @@ export default function ProductPage({
               name: displayProductName || product.name,
               site: SITE_NAME,
             })
-        : t('product_page_seo_description', 'Купить {{name}}{{category}}{{brand}} на {{site}}. Актуальные цены, наличие и условия доставки.', {
+        : t('product_page_seo_description', 'Заказать {{name}} из Турции{{category}}{{brand}} на {{site}}. Актуальные цены, доставка, оформление через менеджера.', {
             name: displayProductName || product.name,
-            category: seoCategoryName ? ` в категории ${seoCategoryName}` : '',
-            brand: seoBrandName ? ` бренда ${seoBrandName}` : '',
+            category: seoCategoryName ? t('product_seo_in_category', ' в категории {{category}}', { category: seoCategoryName }) : '',
+            brand: seoBrandName ? t('product_seo_brand', ', бренд {{brand}}', { brand: seoBrandName }) : '',
             site: SITE_NAME,
           })
     )
