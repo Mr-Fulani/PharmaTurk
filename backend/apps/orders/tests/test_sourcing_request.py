@@ -135,3 +135,16 @@ def test_telegram_notification_contains_contacts(settings):
     assert "WhatsApp: @anna.wa" in text
     assert "Анна\\_\\*" in text
     assert post.call_args.args[0].endswith("sendMessage")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_admin_session_cookie_does_not_require_csrf():
+    # Сотрудник, залогиненный в /admin/, отправляет форму с сайта: сессионная cookie
+    # не должна включать проверку CSRF (форма без входа, сессия ей не нужна)
+    User.objects.create_user(username="staff-sourcing", email="st@example.test", password="x", is_staff=True)
+    client = APIClient(enforce_csrf_checks=True)
+    assert client.login(username="staff-sourcing", password="x")
+
+    response = client.post(URL, _payload(), format="multipart")
+
+    assert response.status_code == 201, response.data
