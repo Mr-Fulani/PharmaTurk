@@ -94,7 +94,12 @@ def test_testimonial_is_translated(author):
 
 
 @pytest.mark.django_db
-def test_admin_change_pages_show_translation_inlines(review, author, client):
+def test_admin_change_pages_show_translation_inlines(review, author, client, settings):
+    # В CI нет collectstatic — шаблонам админки нужна статика без манифеста
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
     question = ProductQuestion.objects.create(
         user=author, product_name="Tr Product", author_name="Автор", question="Вопрос", **TARGET,
     )
