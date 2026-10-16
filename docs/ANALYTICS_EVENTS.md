@@ -21,6 +21,7 @@
 | `purchase` | `checkout.tsx`, после создания заказа (любой способ оплаты; при выключенной онлайн-оплате = отправленная заявка, `payment_method=manager`) | transaction_id = номер заказа, сумма и валюта заказа |
 | `search` | `search.tsx` | search_term |
 | `contact_click` | `ContactWidget` | contact_channel: telegram/whatsapp/vk/email/phone |
+| `sourcing_request` | `SourcingRequestForm` (главная, пустая категория, поиск) | placement: home/category/search |
 
 ## Цели Яндекс.Метрики (`ymReachGoal`)
 
@@ -28,7 +29,7 @@
 
 `add_to_cart`, `buy_now`, `begin_checkout`, `purchase` (параметры
 `order_price`, `currency`, `payment_method`), `search`, `click_telegram`,
-`click_whatsapp`, `click_vk`, `click_email`, `click_phone`.
+`click_whatsapp`, `click_vk`, `click_email`, `click_phone`, `sourcing_request` (параметр `placement`).
 
 Изменения событий проверять в Preview-режиме GTM и в отладке Метрики
 (`?_ym_debug=1`), см. `DEVELOPMENT_RULES.md`.
