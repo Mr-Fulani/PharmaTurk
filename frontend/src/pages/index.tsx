@@ -33,6 +33,7 @@ const PersonalizedRecommendations = dynamic(() => import('../components/Personal
   ssr: false,
   loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
 })
+const SourcingRequestForm = dynamic(() => import('../components/SourcingRequestForm'), { ssr: false })
 const TestimonialsCarousel = dynamic(() => import('../components/TestimonialsCarousel'), {
   ssr: false,
   loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
@@ -553,6 +554,13 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
           <div className="mb-12">
             <BannerCarousel position="after_popular_products" initialBanners={afterPopularBanners} />
           </div>
+
+          {/* «Найдём любой товар из Турции по ссылке или фото» — заявка менеджеру */}
+          <DeferredSection>
+            <div className="mb-12">
+              <SourcingRequestForm placement="home" />
+            </div>
+          </DeferredSection>
 
           {showTestimonialsSection && <DeferredSection><TestimonialsCarousel /></DeferredSection>}
         </div>

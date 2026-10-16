@@ -1,7 +1,10 @@
 from django.contrib import admin
+from django.db import transaction
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
-from .models import Cart, CartItem, Order, OrderItem, PromoCode
+from .models import Cart, CartItem, Order, OrderItem, PromoCode, SourcingRequest
+from .tasks import notify_order_status_changed
 
 
 class CartItemInline(admin.TabularInline):
@@ -131,13 +134,20 @@ class OrderAdmin(admin.ModelAdmin):
         (None, {'fields': ('number', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
-        (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method')}),
+        (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method', 'tracking_number', 'tracking_url')}),
         (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
         (_('Additional'), {'fields': ('comment',)}),
         (_('Timestamps'), {'fields': ('created_at', 'updated_at')}),
     )
     
     inlines = [OrderItemInline]
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Менеджер сменил статус — уведомляем клиента (Telegram/email) после коммита
+        if change and 'status' in getattr(form, 'changed_data', []):
+            order_id = obj.pk
+            transaction.on_commit(lambda: notify_order_status_changed.delay(order_id))
 
 
 @admin.register(OrderItem)
@@ -228,3 +238,32 @@ class PromoCodeAdmin(admin.ModelAdmin):
         if obj:
             return self.readonly_fields
         return ('used_count', 'created_at', 'updated_at', 'money_overview')
+
+
+@admin.register(SourcingRequest)
+class SourcingRequestAdmin(admin.ModelAdmin):
+    """Заявки «Найдём товар по ссылке или фото»."""
+
+    list_display = ('id', 'status', 'contact_name', 'contact_phone', 'contact_channel', 'short_url', 'quantity', 'created_at')
+    list_filter = ('status', 'contact_channel', 'created_at')
+    list_editable = ('status',)
+    search_fields = ('contact_name', 'contact_phone', 'contact_email', 'contact_username', 'source_url', 'comment')
+    readonly_fields = ('user', 'image_preview', 'locale', 'created_at', 'updated_at')
+    fieldsets = (
+        (None, {'fields': ('status', 'manager_comment')}),
+        (_('Request'), {'fields': ('source_url', 'image', 'image_preview', 'comment', 'quantity')}),
+        (_('Contact'), {'fields': ('user', 'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
+        (_('Timestamps'), {'fields': ('locale', 'created_at', 'updated_at')}),
+    )
+
+    @admin.display(description=_('Ссылка'))
+    def short_url(self, obj):
+        if not obj.source_url:
+            return '—'
+        return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', obj.source_url, obj.source_url[:50])
+
+    @admin.display(description=_('Превью'))
+    def image_preview(self, obj):
+        if not obj.image:
+            return '—'
+        return format_html('<img src="{}" style="max-height:240px;max-width:320px" />', obj.image.url)

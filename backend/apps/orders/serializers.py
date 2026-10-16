@@ -1,4 +1,3 @@
-import re
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import quote
 
@@ -31,7 +30,8 @@ from apps.catalog.utils.currency_converter import currency_converter
 from apps.catalog.currency_models import ProductVariantPrice
 from django.contrib.contenttypes.models import ContentType
 from .cart_source_verification import CartSourceOfferPolicy
-from .models import CONTACT_CHANNEL_CHOICES, Cart, CartItem, Order, OrderItem, PromoCode
+from .contacts import validate_contact_fields
+from .models import CONTACT_CHANNEL_CHOICES, Cart, CartItem, Order, OrderItem, PromoCode, SourcingRequest
 
 VARIANT_MODEL_MAP = {
     'clothing': ClothingVariant,
@@ -1946,7 +1946,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency',
             'contact_name', 'contact_phone', 'contact_email',
             'shipping_address', 'shipping_address_text', 'shipping_method',
-            'payment_method', 'payment_status', 'comment',
+            'payment_method', 'payment_status', 'comment', 'tracking_number', 'tracking_url',
             'promo_code',
             'items',
             'created_at', 'updated_at'
@@ -2049,31 +2049,8 @@ class CreateOrderSerializer(serializers.Serializer):
         # Валидация адреса доставки будет реализована при наличии пользователя
         return value
 
-    # Юзернейм для связи: Telegram — 5–32 символа (латиница, цифры, _);
-    # WhatsApp — юзернейм 3–35 символов (латиница, цифры, . и _) или номер телефона.
-    USERNAME_PATTERNS = {
-        "telegram": (r"[A-Za-z0-9_]{5,32}", _("Укажите ник Telegram: 5–32 символа, латиница, цифры и _.")),
-        "whatsapp": (
-            r"[A-Za-z0-9._]{3,35}|\+?\d{9,15}",
-            _("Укажите юзернейм WhatsApp (3–35 символов: латиница, цифры, . и _) или номер."),
-        ),
-    }
-
     def validate(self, attrs):
-        attrs = super().validate(attrs)
-        channel = attrs.get("contact_channel") or ""
-        username = (attrs.get("contact_username") or "").strip()
-        username = username.removeprefix("https://t.me/").removeprefix("t.me/").lstrip("@")
-        pattern = self.USERNAME_PATTERNS.get(channel)
-        if not pattern:
-            username = ""
-        elif username and not re.fullmatch(pattern[0], username):
-            raise serializers.ValidationError({"contact_username": pattern[1]})
-        attrs["contact_username"] = username
-        if attrs.get("contact_channel") == "email" and not attrs.get("contact_email"):
-            raise serializers.ValidationError(
-                {"contact_email": _("Укажите email: вы выбрали связь по email.")}
-            )
+        attrs = validate_contact_fields(super().validate(attrs))
         if not settings.ORDER_ONLINE_PAYMENTS_ENABLED:
             # Онлайн-оплата выключена: любой заказ — заявка менеджеру,
             # способ оплаты согласуется с клиентом по каналу связи.
@@ -2084,3 +2061,61 @@ class CreateOrderSerializer(serializers.Serializer):
                 )
             attrs["payment_method"] = "manager"
         return attrs
+
+
+class SourcingRequestCreateSerializer(serializers.ModelSerializer):
+    """Публичная заявка «Найдём товар по ссылке или фото»."""
+
+    # Поле-ловушка для ботов: людям не показывается, заполненное — заявка молча игнорируется
+    website = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    contact_username = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=64)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=999, default=1)
+
+    class Meta:
+        model = SourcingRequest
+        fields = [
+            'id', 'source_url', 'image', 'comment', 'quantity',
+            'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username',
+            'locale', 'website',
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {'contact_channel': {'required': True, 'allow_blank': False}}
+
+    def validate_source_url(self, value):
+        if value and not value.lower().startswith(('http://', 'https://')):
+            raise serializers.ValidationError(_("Укажите ссылку, начинающуюся с http:// или https://"))
+        return value
+
+    def validate_image(self, value):
+        if not value:
+            return value
+        from io import BytesIO
+
+        from django.core.files.base import ContentFile
+
+        from apps.recommendations.services.safe_image_fetcher import MAX_IMAGE_BYTES, validate_image_bytes
+
+        try:
+            validated = validate_image_bytes(
+                value.read(MAX_IMAGE_BYTES + 1),
+                expected_content_type=getattr(value, 'content_type', None),
+            )
+        except Exception:
+            raise serializers.ValidationError(_("Не удалось прочитать изображение. Загрузите JPG, PNG или WebP."))
+        image = validated.image.convert('RGB')
+        image.thumbnail((1600, 1600))
+        output = BytesIO()
+        image.save(output, format='JPEG', quality=85, optimize=True)
+        return ContentFile(output.getvalue(), name='sourcing.jpg')
+
+    def validate(self, attrs):
+        attrs = validate_contact_fields(super().validate(attrs))
+        if not attrs.get('source_url') and not attrs.get('image'):
+            raise serializers.ValidationError(
+                {'source_url': _("Добавьте ссылку на товар или фото.")}
+            )
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop('website', None)
+        return super().create(validated_data)
