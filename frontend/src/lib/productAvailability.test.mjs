@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { canPublishSchemaOffer, resolveSchemaAvailability } from './productAvailability.js'
+import { canPublishSchemaOffer, resolveSchemaAvailability, resolveSchemaSku } from './productAvailability.js'
 
 test('supplier-projected out of stock wins over stale variant availability', () => {
   assert.equal(
@@ -59,4 +59,11 @@ test('supplement publishes Offer only when it can be added to cart', () => {
 test('regular product publishes Offer only with a price', () => {
   assert.equal(canPublishSchemaOffer({ price: '10', isMedicine: false, isSupplement: false }), true)
   assert.equal(canPublishSchemaOffer({ price: null, isMedicine: false, isSupplement: false }), false)
+})
+
+test('schema sku keeps short slugs and replaces ones Google rejects', () => {
+  assert.equal(resolveSchemaSku({ slug: 'beret-s-kozyrkom', productType: 'headwear', id: 7 }), 'beret-s-kozyrkom')
+  const longSlug = 'cleocin-150-mg-16-kapsul-cleocin-150-mg-16-kapsul-2'
+  assert.ok(longSlug.length > 50)
+  assert.equal(resolveSchemaSku({ slug: longSlug, productType: 'medicines', id: 42 }), 'medicines-42')
 })

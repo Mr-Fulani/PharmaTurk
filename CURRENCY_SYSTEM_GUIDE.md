@@ -174,6 +174,11 @@ X-Currency: KZT
 ?currency=USD
 ```
 
+Фронтенд отправляет `X-Currency` из cookie `currency` (выбор посетителя). Пока посетитель
+валюту не выбрал, она зависит от языка страницы: `/en` — USD, русская версия — RUB
+(`defaultCurrencyForLocale` в `frontend/src/lib/requestCurrency.js`, используется и в SSR,
+и в `api.ts`). USD на `/en` совпадает с правилами доставки Merchant Center.
+
 ## ⚙️ Настройки
 
 ### Источники курсов валют
