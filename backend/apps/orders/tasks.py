@@ -608,7 +608,6 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
         _send_tg(user_chat_id, user_text, document=pdf_bytes, filename=filename)
 
 
-
 @app.task(bind=True, autoretry_for=(requests.RequestException,), retry_backoff=30, max_retries=3)
 def notify_sourcing_request_telegram(self, request_id: int) -> None:
     """Уведомляет менеджера (TELEGRAM_CHAT_ID) о заявке «Найдём товар по ссылке или фото»."""

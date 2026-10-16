@@ -2122,7 +2122,6 @@ class OrderViewSet(viewsets.ViewSet):
             return Response(OrderSerializer(order).data, status=201)
 
 
-
 class SourcingRequestCreateView(APIView):
     """Заявка «Найдём товар по ссылке или фото» — доступна без входа."""
 
