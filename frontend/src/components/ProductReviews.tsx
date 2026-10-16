@@ -38,6 +38,8 @@ interface Review {
   status: 'pending' | 'approved' | 'rejected'
   media: ReviewMedia[]
   created_at: string
+  admin_reply?: string
+  admin_replied_at?: string | null
 }
 
 interface ReviewResponse {
@@ -482,6 +484,24 @@ export default function ProductReviews({
                         </div>
                         <p className="mt-4 whitespace-pre-wrap leading-relaxed text-gray-800 dark:text-gray-100">{review.text}</p>
                         {review.media.length > 0 && <ReviewMediaGrid media={review.media} />}
+                        {review.admin_reply && (
+                          <div className="mt-5 border-l-2 border-green-500 pl-5">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-2 font-semibold text-gray-950 dark:text-white">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={DEFAULT_MEDIA_FALLBACK}
+                                  alt="Mudaroba"
+                                  className="h-8 w-8 rounded-full bg-gray-100 object-cover dark:bg-gray-800"
+                                  onError={(event) => applyImageFallback(event.currentTarget)}
+                                />
+                                {t('product_review_store_reply', 'Ответ Mudaroba')}
+                              </span>
+                              {review.admin_replied_at && <time className="text-xs text-gray-500">{dateFormatter.format(new Date(review.admin_replied_at))}</time>}
+                            </div>
+                            <p className="mt-3 whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-200">{review.admin_reply}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </article>

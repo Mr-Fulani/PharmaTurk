@@ -1,9 +1,11 @@
 from django.contrib import admin
+from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils import timezone
 from .models import ProductQuestion, ProductReview, ProductReviewMedia, Testimonial, TestimonialMedia, TestimonialSectionSettings
+from .tasks import notify_review_author_reply
 
 
 class TestimonialMediaInline(admin.TabularInline):
@@ -101,13 +103,16 @@ class ProductReviewMediaInline(admin.TabularInline):
 @admin.register(ProductReview)
 class ProductReviewAdmin(admin.ModelAdmin):
     list_display = (
-        "product_name", "author_name", "rating", "status", "show_on_homepage",
+        "product_name", "author_name", "rating", "status", "has_reply", "show_on_homepage",
         "homepage_priority", "media_count", "created_at",
     )
-    list_filter = ("status", "show_on_homepage", "rating", "product_type", "created_at")
+    list_filter = ("status", "show_on_homepage", "rating", "product_type", "created_at", "admin_replied_at")
     list_editable = ("show_on_homepage", "homepage_priority")
     search_fields = ("product_name", "product_slug", "author_name", "text", "user__username", "user__email")
-    readonly_fields = ("user", "product_type", "product_slug", "product_name", "author_name", "created_at", "updated_at", "published_at")
+    readonly_fields = (
+        "user", "product_type", "product_slug", "product_name", "author_name", "created_at", "updated_at",
+        "published_at", "admin_replied_by", "admin_replied_at",
+    )
     raw_id_fields = ()
     date_hierarchy = "created_at"
     inlines = (ProductReviewMediaInline,)
@@ -116,6 +121,10 @@ class ProductReviewAdmin(admin.ModelAdmin):
         ("Товар или услуга", {"fields": ("product_name", "product_type", "product_slug")}),
         ("Автор", {"fields": ("user", "author_name")}),
         ("Отзыв", {"fields": ("rating", "text", "status")}),
+        ("Ответ магазина", {
+            "fields": ("admin_reply", "admin_replied_by", "admin_replied_at"),
+            "description": "Публичный ответ под отзывом на странице товара. Автор получит уведомление.",
+        }),
         ("Главная страница", {"fields": ("show_on_homepage", "homepage_priority")}),
         ("Даты", {"fields": ("created_at", "updated_at", "published_at")}),
     )
@@ -130,7 +139,23 @@ class ProductReviewAdmin(admin.ModelAdmin):
         elif obj.status != ProductReview.Status.APPROVED:
             obj.published_at = None
             obj.show_on_homepage = False
+        reply_changed = "admin_reply" in getattr(form, "changed_data", [])
+        if reply_changed:
+            obj.admin_reply = (obj.admin_reply or "").strip()
+            if obj.admin_reply:
+                obj.admin_replied_by = request.user
+                obj.admin_replied_at = timezone.now()
+            else:
+                obj.admin_replied_by = None
+                obj.admin_replied_at = None
         super().save_model(request, obj, form, change)
+        if reply_changed and obj.admin_reply:
+            review_id = obj.pk
+            transaction.on_commit(lambda: notify_review_author_reply.delay(review_id))
+
+    @admin.display(description="Ответ", boolean=True)
+    def has_reply(self, obj):
+        return bool(obj.admin_reply)
 
     @admin.action(description="Одобрить выбранные отзывы")
     def approve_reviews(self, request, queryset):

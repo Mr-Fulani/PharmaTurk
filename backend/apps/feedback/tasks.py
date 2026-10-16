@@ -79,3 +79,38 @@ def notify_admin_product_question(question_id: int):
             )
     except requests.RequestException:
         raise requests.RequestException("Telegram API request failed") from None
+
+
+@shared_task(ignore_result=True, autoretry_for=(requests.RequestException,), retry_backoff=True, max_retries=3)
+def notify_review_author_reply(review_id: int):
+    """Сообщает автору отзыва, что магазин ответил: Telegram (если включён) и email."""
+    from django.core.mail import send_mail
+
+    from .models import ProductReview
+
+    review = ProductReview.objects.select_related("user").filter(pk=review_id).first()
+    if not review or not review.admin_reply or not review.user:
+        return
+    user = review.user
+    is_en = (getattr(user, "language", "") or "").lower().startswith("en")
+    if is_en:
+        text = f"Mudaroba replied to your review of \"{review.product_name}\":\n\n{review.admin_reply}"
+        subject = "Reply to your review"
+    else:
+        text = f"Mudaroba ответил на ваш отзыв о «{review.product_name}»:\n\n{review.admin_reply}"
+        subject = "Ответ на ваш отзыв"
+
+    bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+    if bot_token and getattr(user, "telegram_notifications", False) and getattr(user, "telegram_id", ""):
+        response = requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": str(user.telegram_id).strip(), "text": text, "disable_web_page_preview": True},
+            timeout=10,
+        )
+        if not response.ok:
+            logger.warning("Review reply Telegram failed for review %s: HTTP %s", review.pk, response.status_code)
+    if user.email and getattr(user, "email_notifications", True):
+        try:
+            send_mail(subject, text, getattr(settings, "DEFAULT_FROM_EMAIL", None), [user.email])
+        except Exception:
+            logger.warning("Review reply email failed for review %s", review.pk)
