@@ -104,10 +104,25 @@ export function gtmEvent(eventData: GtmEvent): void {
   window.dataLayer.push(eventData)
 
   // GA4 подключён напрямую (gtag), а объектные push в dataLayer gtag не обрабатывает —
-  // дублируем событие в GA4. window.gtag есть только после согласия на аналитику.
+  // дублируем событие в GA4.
+  sendToGa4(eventData)
+}
+
+const GTAG_WAIT_MS = 5000
+const GTAG_POLL_MS = 200
+
+/**
+ * window.gtag появляется только после согласия на аналитику и после гидратации
+ * (next/script afterInteractive), а view_item при первом заходе на карточку срабатывает
+ * раньше — ждём gtag до 5 секунд. Без согласия gtag не появится и событие не уйдёт.
+ */
+function sendToGa4(eventData: GtmEvent, waitedMs = 0): void {
   if (typeof window.gtag === 'function') {
     window.gtag('event', eventData.event, ga4EventParams(eventData))
+    return
   }
+  if (waitedMs >= GTAG_WAIT_MS) return
+  window.setTimeout(() => sendToGa4(eventData, waitedMs + GTAG_POLL_MS), GTAG_POLL_MS)
 }
 
 /** Параметры события для gtag: ecommerce-поля на верхний уровень, без имени события. */
