@@ -84,3 +84,5 @@ backend/scratch/
 backend/check_book.py
 backend/products_db_dump.txt
 exemple/
+# Локальные отчёты аудита (не коммитим)
+docs/AUDIT_2026-10-15_SEO_GROWTH.md
