@@ -44,6 +44,9 @@ import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/
 import { ProductCardGalleryImage } from '../../components/ProductCardImageGallery'
 import { useViewMode } from '../../hooks/useViewMode'
 import { safeJsonLd } from '../../lib/sanitizeHtml'
+import dynamic from 'next/dynamic'
+
+const SourcingRequestForm = dynamic(() => import('../../components/SourcingRequestForm'), { ssr: false })
 
 interface Product {
   id: number
@@ -1955,6 +1958,9 @@ export default function CategoryPage({
                 >
                   {t('reset_filters', 'Сбросить фильтры')}
                 </button>
+                <div className="mx-auto mt-10 max-w-4xl text-left">
+                  <SourcingRequestForm placement="category" initialComment={titleText || ''} />
+                </div>
               </div>
             )}
 

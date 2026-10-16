@@ -5,6 +5,9 @@ import { getSingleFlight } from '../lib/api'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from '../components/ProductCard'
 import VisualSearch from '../components/VisualSearch'
+import dynamic from 'next/dynamic'
+
+const SourcingRequestForm = dynamic(() => import('../components/SourcingRequestForm'), { ssr: false })
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { gtmSearch } from '../lib/gtm'
@@ -83,7 +86,14 @@ export default function SearchPage() {
         <section id="search-results" className="scroll-mt-24">
           {error ? <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">{error}</div> : null}
           {loading ? <div className="mt-6">{t('search_loading', 'Загрузка…')}</div> : items.length === 0 ? (
-            <div className="mt-6 text-gray-600 dark:text-gray-400">{t('products_not_found', 'Товары не найдены')}</div>
+            <div className="mt-6">
+              <div className="text-gray-600 dark:text-gray-400">{t('products_not_found', 'Товары не найдены')}</div>
+              {q ? (
+                <div className="mt-6">
+                  <SourcingRequestForm placement="search" initialComment={q} />
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               {items.map((p) => {

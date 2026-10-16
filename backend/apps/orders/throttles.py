@@ -52,3 +52,13 @@ CART_MUTATION_THROTTLES = [
 ]
 CHECKOUT_THROTTLES = [CheckoutBurstThrottle, CheckoutSustainedThrottle]
 RECEIPT_EMAIL_THROTTLES = [ReceiptEmailBurstThrottle, ReceiptEmailSustainedThrottle]
+
+
+class SourcingRequestBurstThrottle(TrustedUserOrProxyIPRateThrottle):
+    scope = "sourcing_request_burst"
+    rate = "3/min"
+
+
+class SourcingRequestSustainedThrottle(TrustedUserOrProxyIPRateThrottle):
+    scope = "sourcing_request_sustained"
+    rate = "20/day"
