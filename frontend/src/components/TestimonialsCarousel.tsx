@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'next-i18next'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { LazyMotion, domAnimation, m, useReducedMotion } from 'framer-motion'
 import { getSingleFlight } from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
@@ -70,6 +71,7 @@ function classNames(...classes: (string | boolean)[]) {
 
 export default function TestimonialsCarousel({ className = '' }: TestimonialsCarouselProps) {
   const { t } = useTranslation('common')
+  const { locale } = useRouter()
   const shouldReduceMotion = useReducedMotion()
   const [testimonials, setTestimonials] = useState<ReviewFeedItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -481,7 +483,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       }
     }
     fetchTestimonials()
-  }, [])
+    // Тексты и названия товаров отдаются на языке запроса — при смене языка загружаем заново
+  }, [locale])
 
   useEffect(() => {
     testimonials.forEach((testimonial) => {
@@ -889,8 +892,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         <img
           src={subjectImage ? resolveMediaUrl(subjectImage) : placeholder}
           alt={subjectImage
-            ? testimonial.product_name || t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)
-            : t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
+            ? testimonial.product_name || t('testimonial_image_alt', 'Изображение к отзыву от {{author_name}}', { author_name: testimonial.author_name })
+            : t('testimonial_image_alt', 'Изображение к отзыву от {{author_name}}', { author_name: testimonial.author_name })}
           className="w-full h-full object-cover"
           onError={(event) => applyImageFallback(event.currentTarget)}
         />
@@ -904,7 +907,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       return (
         <img
           src={resolveMediaUrl(firstMedia.image_url)}
-          alt={t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
+          alt={t('testimonial_image_alt', 'Изображение к отзыву от {{author_name}}', { author_name: testimonial.author_name })}
           className="w-full h-full object-cover"
           onError={(event) => applyImageFallback(event.currentTarget)}
         />
@@ -1020,7 +1023,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             {thumbnail && (
               <img
                 src={thumbnail}
-                alt={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
+                alt={t('testimonial_video_alt', 'Видео к отзыву от {{author_name}}', { author_name: testimonial.author_name })}
                 className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${showEmbed && playerReadyMapRef.current.get(testimonial.uid) ? 'opacity-0' : 'opacity-100'}`}
                 onError={(event) => applyImageFallback(event.currentTarget)}
               />
@@ -1036,7 +1039,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                   }
                 }}
                 src={finalUrl}
-                title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
+                title={t('testimonial_video_alt', 'Видео к отзыву от {{author_name}}', { author_name: testimonial.author_name })}
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen

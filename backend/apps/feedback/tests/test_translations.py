@@ -117,3 +117,26 @@ def test_admin_change_pages_show_translation_inlines(review, author, client, set
         response = client.get(url)
         assert response.status_code == 200, url
         assert "Переводы" in response.content.decode(), url
+
+
+@pytest.mark.django_db
+def test_feed_shows_catalog_product_name_in_request_language(author):
+    from apps.catalog.models import MedicineProduct, MedicineProductTranslation, Service, ServiceTranslation
+
+    medicine = MedicineProduct.objects.create(name="Таблетки RINVOQ", slug="rinvoq-15", price=100, currency="TRY")
+    MedicineProductTranslation.objects.create(product=medicine, locale="en", name="RINVOQ tablets")
+    service = Service.objects.create(name="Уборка", slug="cleaning", is_active=True)
+    ServiceTranslation.objects.create(service=service, locale="en", name="Cleaning")
+    for product_type, slug, name in (("medicines", "rinvoq-15", "Таблетки RINVOQ"), ("uslugi", "cleaning", "Уборка")):
+        ProductReview.objects.create(
+            user=User.objects.create_user(email=f"{slug}@example.com", username=f"u-{slug}", password="x"),
+            product_type=product_type, product_slug=slug, product_name=name, author_name="Автор",
+            rating=5, text="Отзыв", status=ProductReview.Status.APPROVED, show_on_homepage=True,
+        )
+    params = {"placement": "homepage", "page_size": 10}
+
+    en = APIClient().get("/api/feedback/reviews-feed/", params, HTTP_ACCEPT_LANGUAGE="en")
+    ru = APIClient().get("/api/feedback/reviews-feed/", params, HTTP_ACCEPT_LANGUAGE="ru")
+
+    assert sorted(item["product_name"] for item in en.data["results"]) == ["Cleaning", "RINVOQ tablets"]
+    assert sorted(item["product_name"] for item in ru.data["results"]) == ["Таблетки RINVOQ", "Уборка"]
