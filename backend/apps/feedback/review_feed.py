@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from django.db.models import (
     Case,
     CharField,
@@ -164,6 +166,49 @@ def _product_review_queryset(ids):
     )
 
 
+def _catalog_subject_names(items, lang):
+    """
+    Название товара/услуги из каталога на языке запроса: product_name в отзыве — снимок
+    на языке, на котором его оставили. Один запрос на тип товара, без N+1; для ru — снимок.
+    """
+    if not lang or lang == "ru":
+        return {}
+    from django.core.exceptions import FieldDoesNotExist
+
+    from apps.catalog.models import Product, ProductTranslation, ServiceTranslation
+
+    slugs_by_type = defaultdict(set)
+    for item in items:
+        if item.get("product_type") and item.get("product_slug"):
+            slugs_by_type[item["product_type"]].add(item["product_slug"])
+    domain_by_type = {
+        str(getattr(rel.related_model, "_domain_product_type", "") or "").replace("-", "_"): rel.related_model
+        for rel in Product._meta.related_objects
+        if rel.one_to_one
+    }
+    names = {}
+    for product_type, slugs in slugs_by_type.items():
+        if product_type == "uslugi":
+            rows = ServiceTranslation.objects.filter(locale=lang, service__slug__in=slugs).values_list("service__slug", "name")
+        else:
+            domain = domain_by_type.get(str(product_type).replace("-", "_"))
+            try:
+                translations_rel = domain._meta.get_field("translations") if domain is not None else None
+            except FieldDoesNotExist:
+                translations_rel = None
+            if translations_rel is not None:
+                fk = translations_rel.field.name
+                rows = translations_rel.related_model.objects.filter(
+                    locale=lang, **{f"{fk}__slug__in": slugs},
+                ).values_list(f"{fk}__slug", "name")
+            else:
+                rows = ProductTranslation.objects.filter(locale=lang, product__slug__in=slugs).values_list("product__slug", "name")
+        for slug, name in rows:
+            if (name or "").strip():
+                names[(product_type, slug)] = name.strip()
+    return names
+
+
 def serialize_review_feed_page(rows, *, request):
     """Load the two model types in bulk and normalize them into one API contract."""
 
@@ -186,6 +231,9 @@ def serialize_review_feed_page(rows, *, request):
             context={"request": request},
         ).data
     }
+
+    lang = (getattr(request, "LANGUAGE_CODE", None) or "ru").split("-")[0]
+    subject_names = _catalog_subject_names(product_review_data.values(), lang)
 
     result = []
     for source, review_type, object_id, sort_at, priority in rows:
@@ -254,7 +302,7 @@ def serialize_review_feed_page(rows, *, request):
             "user_username": item["user_username"],
             "product_type": item["product_type"],
             "product_slug": item["product_slug"],
-            "product_name": item["product_name"],
+            "product_name": subject_names.get((item["product_type"], item["product_slug"]), item["product_name"]),
             "subject_image_url": item["subject_image_url"] if not media else None,
             "homepage_priority": priority,
         })

@@ -249,7 +249,8 @@ export default function ProductReviews({
     setQuestionError('')
     loadReviews().catch(() => setReviewError(t('product_reviews_load_error', 'Не удалось загрузить отзывы')))
     loadQuestions().catch(() => setQuestionError(t('product_questions_load_error', 'Не удалось загрузить вопросы')))
-  }, [loadQuestions, loadReviews, t])
+    // router.locale: тексты отзывов отдаются на языке запроса — при смене языка загружаем заново
+  }, [loadQuestions, loadReviews, t, router.locale])
 
   const beginEdit = () => {
     if (!reviews?.own_review) return
