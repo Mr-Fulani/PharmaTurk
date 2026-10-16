@@ -109,3 +109,39 @@ def test_gender_facet_queryset_falls_back_when_requested_category_slug_is_missin
 
     assert list(queryset) == [product]
     assert view._calculate_available_genders(queryset) == ["women"]
+
+
+@pytest.mark.django_db
+def test_gender_facet_queryset_does_not_scan_catalog_for_existing_empty_category():
+    """Существующая пустая категория не должна откатываться на весь каталог (было ~24с на проде)."""
+    from apps.catalog.views import FacetedModelViewSetMixin
+
+    Category.objects.create(name="Фонари", slug="flashlights")
+    other = Category.objects.create(name="Женские часы", slug="womens-watches-2")
+    product = Product.objects.create(
+        name="Часы женские",
+        slug="watch-women-empty-test",
+        category=other,
+        product_type="accessories",
+        price=2999,
+        currency="TRY",
+    )
+
+    class _EmptyCategoryView(FacetedModelViewSetMixin):
+        def __init__(self, queryset):
+            self._queryset = queryset
+
+        def get_queryset(self):
+            return self._queryset
+
+        def filter_queryset(self, queryset):
+            if self.request._request.GET.get("category_slug") == "flashlights":
+                return queryset.none()
+            return queryset
+
+    view = _EmptyCategoryView(Product.objects.filter(pk=product.pk))
+    view.request = _build_facet_request("category_slug=flashlights")
+
+    queryset = view._get_gender_facet_queryset()
+
+    assert list(queryset) == []

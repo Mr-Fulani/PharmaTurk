@@ -145,3 +145,20 @@ test('long enough category description is kept as is', () => {
   const desc = 'Витамины и минералы из Турции: комплексы для взрослых и детей, оригинальные упаковки от производителей.'
   assert.equal(enrichShortDescription(desc, 'suffix'), desc)
 })
+
+test('empty category (no products) is noindex but stays canonical to itself', () => {
+  assert.deepEqual(
+    buildCatalogSeoState('/categories/flashlights', { slug: 'flashlights' }, 1, 1, 0),
+    {
+      canonicalPath: '/categories/flashlights',
+      hasFilters: false,
+      noindex: true,
+      previousPath: null,
+      nextPath: null,
+    }
+  )
+})
+
+test('category with products stays indexable when count is passed', () => {
+  assert.equal(buildCatalogSeoState('/categories/medicines', { slug: 'medicines' }, 1, 3, 30).noindex, false)
+})

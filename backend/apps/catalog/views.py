@@ -751,11 +751,32 @@ class FacetedModelViewSetMixin:
 
         try:
             qs = build_queryset()
-            if qs.exists():
+            if qs.exists() or self._requested_category_exists(original_get):
+                # Существующая, но пустая категория: фасеты пустые, без полного
+                # прохода по каталогу (3 скана external_data давали ~24с TTFB).
                 return qs
             return build_queryset(drop_category_filters=True)
         finally:
             self.request._request.GET = original_get
+
+    @staticmethod
+    def _requested_category_exists(query) -> bool:
+        """Есть ли в БД категория из category_slug/subcategory_slug/category_id запроса."""
+        slugs = []
+        for key in ('category_slug', 'subcategory_slug'):
+            for value in query.getlist(key):
+                slugs.extend(part.strip() for part in str(value).split(',') if part.strip())
+        variants = {variant for slug in slugs for variant in (slug, slug.replace('-', '_'), slug.replace('_', '-'))}
+        if variants and Category.objects.filter(slug__in=variants, is_active=True).exists():
+            return True
+        ids = [
+            part.strip()
+            for key in ('category_id', 'category_id[]')
+            for value in query.getlist(key)
+            for part in str(value).split(',')
+            if part.strip().isdigit()
+        ]
+        return bool(ids) and Category.objects.filter(id__in=ids, is_active=True).exists()
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -5422,6 +5443,32 @@ class SitemapEntriesView(_APIView):
                 current = by_id.get(current['parent_id'])
         return redirected
 
+    @staticmethod
+    def _nonempty_category_ids():
+        """Категории, где есть публичный товар или услуга (в самой категории или потомках).
+
+        Пустые категории отдают «Найдено товаров: 0» (soft-404) и не должны попадать
+        в sitemap. Товары берутся из того же публичного набора, что и каталог
+        (ProductViewSet.queryset: без теневых вариантов и заглушек лекарств).
+        """
+        parents = dict(Category.objects.filter(is_active=True).values_list('id', 'parent_id'))
+        direct = set(
+            ProductViewSet.queryset.exclude(category_id__isnull=True)
+            .values_list('category_id', flat=True).distinct()
+        )
+        direct |= set(
+            Service.objects.filter(is_active=True).exclude(category_id__isnull=True)
+            .values_list('category_id', flat=True).distinct()
+        )
+        nonempty = set()
+        for cid in direct:
+            seen = set()
+            while cid in parents and cid not in seen and cid not in nonempty:
+                seen.add(cid)
+                nonempty.add(cid)
+                cid = parents[cid]
+        return nonempty
+
     @extend_schema(
         summary="Получить справочные записи для sitemap.xml",
         parameters=[
@@ -5450,6 +5497,7 @@ class SitemapEntriesView(_APIView):
         qs = model_cls.objects.filter(is_active=True)
         if kind == 'categories':
             qs = qs.exclude(id__in=self._redirecting_category_ids())
+            qs = qs.filter(id__in=self._nonempty_category_ids())
         qs = (
             qs
             .exclude(slug__isnull=True)
