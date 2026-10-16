@@ -39,6 +39,7 @@ import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
+import { gtmViewItem } from '../../lib/gtm'
 
 type CategoryType = string
 
@@ -1285,6 +1286,14 @@ export default function ProductPage({
     }
   }, [buildGallerySource, product, selectedVariant, router.asPath])
 
+  // GA4: просмотр карточки — первый шаг воронки view_item → add_to_cart → begin_checkout → purchase.
+  // Хук стоит до раннего return; данные события заполняются ниже, при рендере карточки.
+  // Одно событие на товар: смена варианта или валюты — не новый просмотр.
+  const viewItemRef = useRef<Parameters<typeof gtmViewItem> | null>(null)
+  useEffect(() => {
+    if (viewItemRef.current) gtmViewItem(...viewItemRef.current)
+  }, [product?.slug])
+
   if (!product) {
     return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
   }
@@ -1447,6 +1456,17 @@ export default function ProductPage({
   })
   const priceForSchema = selectedVariant?.price || product.price || product.active_variant_price
   const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
+  // item_id совпадает с тем, что AddToCartButton передаёт в add_to_cart
+  viewItemRef.current = [
+    {
+      item_id: (cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : cartProductSlug) || product.slug,
+      item_name: displayProductName || product.name,
+      item_category: productType,
+      ...(seoBrandName && { item_brand: seoBrandName }),
+      ...(Number(priceForSchema) > 0 && { price: Number(priceForSchema) }),
+    },
+    currencyForSchema || undefined,
+  ]
   // aggregateRating только при наличии и рейтинга, и отзывов — без счётчика схема невалидна
   const ratingForSchema = Number(product.rating)
   const hasRatingForSchema =
