@@ -102,6 +102,18 @@ export function gtmEvent(eventData: GtmEvent): void {
   }
 
   window.dataLayer.push(eventData)
+
+  // GA4 подключён напрямую (gtag), а объектные push в dataLayer gtag не обрабатывает —
+  // дублируем событие в GA4. window.gtag есть только после согласия на аналитику.
+  if (typeof window.gtag === 'function') {
+    window.gtag('event', eventData.event, ga4EventParams(eventData))
+  }
+}
+
+/** Параметры события для gtag: ecommerce-поля на верхний уровень, без имени события. */
+export function ga4EventParams(eventData: GtmEvent): Record<string, unknown> {
+  const { event, ecommerce, ...rest } = eventData
+  return { ...rest, ...(ecommerce || {}) }
 }
 
 // ─── Хелперы для e-commerce событий ─────────────────────────────────────────
