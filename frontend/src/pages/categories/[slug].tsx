@@ -1602,7 +1602,7 @@ export default function CategoryPage({
   }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale])
 
   const ogImageUrl = useMemo(() => {
-    const raw = currentCategory?.og_image_url || currentCategory?.card_media_url || '/og-default.png'
+    const raw = currentCategory?.og_image_url || currentCategory?.card_media_url || '/og-default.jpg'
     return toAbsoluteUrl(siteUrl, raw)
   }, [currentCategory, siteUrl])
   const breadcrumbSchema = useMemo(() => {

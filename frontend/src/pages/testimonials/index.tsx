@@ -83,7 +83,7 @@ export default function TestimonialsPage({
     'reviews',
     'customer reviews',
   ].filter(Boolean).join(', ')
-  const testimonialsOgImage = `${SITE_URL}/footer-testimonials-promo.png`
+  const testimonialsOgImage = `${SITE_URL}/footer-testimonials-promo.jpg`
   const authRedirectQuery = buildAuthRedirectQuery(router.asPath || '/testimonials?action=add')
 
   useEffect(() => {

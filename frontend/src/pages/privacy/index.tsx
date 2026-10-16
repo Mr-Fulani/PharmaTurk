@@ -28,7 +28,7 @@ export default function PrivacyPage({ pageData }: { pageData: any }) {
                 <meta property="og:description" content={pageData?.meta_description || t('privacy_subtitle', 'Политика конфиденциальности и защиты данных')} />
                 <meta property="og:type" content="website" />
                 <meta property="og:url" content={canonicalUrl} />
-                <meta property="og:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.png'}`} />
+                <meta property="og:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.jpg'}`} />
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">

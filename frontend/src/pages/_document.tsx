@@ -27,17 +27,6 @@ class MyDocument extends Document<MyDocumentProps> {
           <link rel="dns-prefetch" href="https://cdn.mudaroba.com" />
           <link rel="dns-prefetch" href="https://i.pinimg.com" />
           <link rel="dns-prefetch" href="https://www.youtube-nocookie.com" />
-          {/* Monoton шрифт: загрузка без блокировки рендера */}
-          <link
-            rel="preload"
-            as="style"
-            href="https://fonts.googleapis.com/css2?family=Monoton&display=swap"
-            // @ts-ignore
-            onLoad="this.onload=null;this.rel='stylesheet'"
-          />
-          <noscript>
-            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&display=swap" />
-          </noscript>
 
           {/* Базовые мета-теги. og:url/og:type/canonical/hreflang задаются постранично — здесь не дублировать */}
           <meta httpEquiv="Content-Language" content={locale} />

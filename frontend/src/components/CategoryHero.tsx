@@ -35,7 +35,7 @@ export default function CategoryHero({
   return (
     <div className="category-hero relative isolate overflow-hidden text-white py-12 md:py-16 transition-colors duration-200">
       <img
-        src="/category-hero-istanbul.png"
+        src="/category-hero-istanbul.webp"
         alt=""
         aria-hidden="true"
         className="hero-image absolute inset-0 -z-20 h-full w-full object-cover"

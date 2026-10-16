@@ -314,6 +314,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24 * 7,  # неделя
         "args": (30,),  # хранить 30 дней
     },
+    # «Новинка» живёт NEW_BADGE_DAYS дней с момента добавления товара.
+    "catalog-expire-new-badges": {
+        "task": "catalog.expire_new_badges",
+        "schedule": crontab(hour=3, minute=40),
+    },
     # Ограничиваем storage amplification от брошенных гостевых корзин.
     "orders-cleanup-stale-anonymous-carts": {
         "task": "orders.cleanup_stale_anonymous_carts",
@@ -673,6 +678,9 @@ SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(
 # verification service before any existing cart behaviour changes.
 # Онлайн-оплата (крипта/карта) на checkout. Пока false: каждый заказ — заявка
 # менеджеру, способ оплаты согласуется с клиентом по выбранному каналу связи.
+# Сколько дней товар считается «Новинкой» с момента добавления.
+NEW_BADGE_DAYS = env.int("NEW_BADGE_DAYS", default=30)
+
 ORDER_ONLINE_PAYMENTS_ENABLED = env.bool("ORDER_ONLINE_PAYMENTS_ENABLED", default=False)
 
 SOURCE_OFFER_CART_ENFORCEMENT_ENABLED = env.bool(

@@ -6,6 +6,9 @@ export default function Custom404() {
   return (
     <>
       <Head>
+        {/* Monoton нужен только этой странице (раньше грузился на каждой) */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font -- шрифт намеренно только для 404 */}
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&display=swap" />
         <title>404 — Страница не найдена</title>
         <meta name="robots" content="noindex, nofollow" />
       </Head>
