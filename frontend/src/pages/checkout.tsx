@@ -51,6 +51,15 @@ interface Address {
 }
 
 
+type CheckoutField = 'contact_name' | 'contact_phone' | 'contact_email' | 'contact_channel' | 'contact_username'
+const CHECKOUT_FIELDS: CheckoutField[] = ['contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username']
+const PHONE_DIGITS_RE = /^\+?\d{9,15}$/
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const fieldInputClass = (hasError: boolean) =>
+  `mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${hasError
+    ? 'border-[var(--danger)] bg-[var(--danger-soft)] focus:border-[var(--danger)] focus:ring-[var(--danger)]'
+    : 'border-gray-300 focus:border-violet-500 focus:ring-violet-500'}`
+
 function toGtmItems(cart: Cart): GtmEcommerceItem[] {
   return cart.items.map((item) => ({
     item_id: item.product,
@@ -82,6 +91,23 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [contactUsername, setContactUsername] = useState('')
   const usernameChannel = isUsernameChannel(contactChannel)
   const emailRequired = contactChannel === 'email'
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<CheckoutField, string>>>({})
+  const [formError, setFormError] = useState('')
+  const formRef = useRef<HTMLFormElement>(null)
+  const clearFieldError = (...fields: CheckoutField[]) =>
+    setFieldErrors((prev) => {
+      if (!fields.some((f) => prev[f])) return prev
+      const next = { ...prev }
+      fields.forEach((f) => delete next[f])
+      return next
+    })
+  const scrollToFirstError = () => {
+    requestAnimationFrame(() => {
+      const el = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"], [data-form-error]')
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      if (el instanceof HTMLInputElement) el.focus({ preventScroll: true })
+    })
+  }
   const [submitting, setSubmitting] = useState(false)
   const cryptoIdempotencyKeyRef = useRef<string | null>(null)
   const [orderButtonState, setOrderButtonState] = useState<OrderButtonState>('idle')
@@ -225,27 +251,32 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (submitting) return
+    setFormError('')
     if (!cart || cart.items.length === 0) {
-      alert(t('cart_empty', 'Корзина пуста'))
       router.push('/cart')
       return
     }
     if (cart.has_blocking_issues || cart.items.some(isBlockingCartItem)) {
-      alert(
-        t(
-          'cart_checkout_blocked',
-          'Сначала подтвердите изменения или удалите недоступные позиции.',
-        ),
-      )
+      setFormError(t('cart_checkout_blocked', 'Сначала подтвердите изменения или удалите недоступные позиции.'))
+      scrollToFirstError()
       return
     }
 
-    if (!contactChannel) {
-      alert(t('checkout_contact_channel_required', 'Выберите, как с вами связаться'))
-      return
-    }
+    // Ошибки показываем у полей, а не всплывающими окнами
+    const errors: Partial<Record<CheckoutField, string>> = {}
+    if (!contactName.trim()) errors.contact_name = t('field_required', 'Заполните это поле')
+    const phoneDigits = contactPhone.replace(/[\s()-]/g, '')
+    if (!phoneDigits) errors.contact_phone = t('field_required', 'Заполните это поле')
+    else if (!PHONE_DIGITS_RE.test(phoneDigits)) errors.contact_phone = t('phone_invalid', 'Укажите номер в формате +79991234567')
+    if (!contactChannel) errors.contact_channel = t('checkout_contact_channel_required', 'Выберите, как с вами связаться')
     if (emailRequired && !contactEmail.trim()) {
-      alert(t('checkout_email_required_for_channel', 'Укажите email: вы выбрали связь по email'))
+      errors.contact_email = t('checkout_email_required_for_channel', 'Укажите email: вы выбрали связь по email')
+    } else if (contactEmail.trim() && !EMAIL_RE.test(contactEmail.trim())) {
+      errors.contact_email = t('email_invalid', 'Проверьте адрес email')
+    }
+    setFieldErrors(errors)
+    if (Object.keys(errors).length) {
+      scrollToFirstError()
       return
     }
 
@@ -329,7 +360,6 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         cryptoIdempotencyKeyRef.current = null
       }
       if (status === 401) {
-        alert(t('login_required_to_checkout', 'Для оформления заказа необходимо войти'))
         router.push('/auth?next=/checkout')
         return
       }
@@ -348,7 +378,20 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
             )
           : t(copy.key, copy.fallback)
         : responseCart?.detail || err?.message || t('checkout_error_generic', 'Ошибка оформления заказа')
-      alert(String(detail))
+      // Ошибки сервера по полям контактов — к своим полям, остальное — плашкой над кнопкой
+      const serverFieldErrors: Partial<Record<CheckoutField, string>> = {}
+      if (!conflict?.code && responseCart && typeof responseCart === 'object') {
+        CHECKOUT_FIELDS.forEach((field) => {
+          const value = responseCart[field]
+          if (value) serverFieldErrors[field] = Array.isArray(value) ? String(value[0]) : String(value)
+        })
+      }
+      if (Object.keys(serverFieldErrors).length) {
+        setFieldErrors(serverFieldErrors)
+      } else {
+        setFormError(String(detail))
+      }
+      scrollToFirstError()
     } finally {
       if (!orderCreated) {
         setOrderButtonState('idle')
@@ -432,7 +475,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Форма оформления */}
           <div className="lg:col-span-2">
-            <form onSubmit={submit} className="space-y-6 checkout-form">
+            <form ref={formRef} onSubmit={submit} noValidate className="space-y-6 checkout-form">
               {/* Выбор адреса доставки */}
               {addresses.length > 0 && (
                 <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -491,20 +534,25 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     <input
                       type="text"
                       value={contactName}
-                      onChange={(e) => setContactName(e.target.value)}
-                      required
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      onChange={(e) => { setContactName(e.target.value); clearFieldError('contact_name') }}
+                      autoComplete="name"
+                      aria-invalid={fieldErrors.contact_name ? true : undefined}
+                      className={fieldInputClass(Boolean(fieldErrors.contact_name))}
                     />
+                    {fieldErrors.contact_name && <span className="mt-1 block text-xs font-medium text-[var(--danger)]">{fieldErrors.contact_name}</span>}
                   </label>
                   <label className="block">
                     <span className="text-sm font-medium text-gray-700">{t('checkout_phone', 'Телефон')} *</span>
                     <input
                       type="tel"
                       value={contactPhone}
-                      onChange={(e) => setContactPhone(e.target.value)}
-                      required
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      onChange={(e) => { setContactPhone(e.target.value); clearFieldError('contact_phone') }}
+                      autoComplete="tel"
+                      placeholder="+79991234567"
+                      aria-invalid={fieldErrors.contact_phone ? true : undefined}
+                      className={fieldInputClass(Boolean(fieldErrors.contact_phone))}
                     />
+                    {fieldErrors.contact_phone && <span className="mt-1 block text-xs font-medium text-[var(--danger)]">{fieldErrors.contact_phone}</span>}
                   </label>
                   <label className="block">
                     <span className="text-sm font-medium text-gray-700">
@@ -512,17 +560,21 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     </span>
                     <input
                       type="email"
-                      required={emailRequired}
                       value={contactEmail}
-                      onChange={(e) => setContactEmail(e.target.value)}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      onChange={(e) => { setContactEmail(e.target.value); clearFieldError('contact_email') }}
+                      autoComplete="email"
+                      aria-invalid={fieldErrors.contact_email ? true : undefined}
+                      className={fieldInputClass(Boolean(fieldErrors.contact_email))}
                     />
+                    {fieldErrors.contact_email && <span className="mt-1 block text-xs font-medium text-[var(--danger)]">{fieldErrors.contact_email}</span>}
                   </label>
                   <ContactChannelPicker
                     channel={contactChannel}
-                    onChannelChange={setContactChannel}
+                    onChannelChange={(value) => { setContactChannel(value); clearFieldError('contact_channel', 'contact_email') }}
                     username={contactUsername}
-                    onUsernameChange={setContactUsername}
+                    onUsernameChange={(value) => { setContactUsername(value); clearFieldError('contact_username') }}
+                    error={fieldErrors.contact_channel || fieldErrors.contact_username}
+                    inputClassName={fieldInputClass(Boolean(fieldErrors.contact_username))}
                   />
                 </div>
               </div>
@@ -1016,6 +1068,16 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </div>
                 )}
               </div>
+              )}
+
+              {formError && (
+                <p
+                  data-form-error
+                  role="alert"
+                  className="rounded-lg border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]"
+                >
+                  {formError}
+                </p>
               )}
 
               <AnimatedOrderButton
