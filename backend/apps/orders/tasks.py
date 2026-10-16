@@ -461,6 +461,14 @@ def send_order_receipt_task(
     return True
 
 
+def _tg_markdown_escape(value) -> str:
+    """Пользовательский ввод не должен ломать parse_mode=Markdown."""
+    text = str(value or "-")
+    for ch in ("\\", "_", "*", "`", "["):
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=3)
 def notify_new_order_telegram(self, _email_result=None, order_id: int = None, locale: str = 'ru') -> None:
     """Уведомляет (Telegram) о создании нового заказа.
@@ -539,12 +547,7 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
         translate_method,
     )
 
-    def _md(value) -> str:
-        # Пользовательский ввод не должен ломать parse_mode=Markdown
-        text = str(value or "-")
-        for ch in ("\\", "_", "*", "`", "["):
-            text = text.replace(ch, "\\" + ch)
-        return text
+    _md = _tg_markdown_escape
 
     is_request = order.payment_method == "manager"
 
@@ -603,3 +606,65 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
                 )
             )
         _send_tg(user_chat_id, user_text, document=pdf_bytes, filename=filename)
+
+
+
+@app.task(bind=True, autoretry_for=(requests.RequestException,), retry_backoff=30, max_retries=3)
+def notify_sourcing_request_telegram(self, request_id: int) -> None:
+    """Уведомляет менеджера (TELEGRAM_CHAT_ID) о заявке «Найдём товар по ссылке или фото»."""
+    from .models import SourcingRequest
+    from .services import CONTACT_CHANNEL_TRANSLATIONS, translate_method
+
+    bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+    if not bot_token or not chat_id:
+        return
+    try:
+        req = SourcingRequest.objects.get(pk=request_id)
+    except SourcingRequest.DoesNotExist:
+        return
+
+    md = _tg_markdown_escape
+    lines = [
+        "🔎 *Новая заявка на поиск товара*",
+        f"Заявка: `{req.pk}`",
+    ]
+    if req.source_url:
+        lines.append(f"Ссылка: {md(req.source_url)}")
+    if req.comment:
+        lines.append(f"Комментарий: {md(req.comment)}")
+    lines.append(f"Количество: {req.quantity}")
+    lines.append(f"Клиент: {md(req.contact_name)}")
+    lines.append(f"Телефон: {md(req.contact_phone)}")
+    if req.contact_email:
+        lines.append(f"Email: {md(req.contact_email)}")
+    channel_info = translate_method(req.contact_channel, CONTACT_CHANNEL_TRANSLATIONS, "ru")
+    lines.append(f"Связаться через: {channel_info}")
+    if req.contact_username:
+        is_phone = req.contact_username.lstrip("+").isdigit()
+        lines.append(f"{channel_info}: {md(req.contact_username if is_phone else '@' + req.contact_username)}")
+    text = "\n".join(lines)
+
+    base_url = f"https://api.telegram.org/bot{bot_token}/"
+    photo = b""
+    if req.image:
+        try:
+            with req.image.open("rb") as fh:
+                photo = fh.read(10 * 1024 * 1024)
+        except Exception:
+            logger.warning("Sourcing request %s: cannot read photo for Telegram", req.pk)
+    if photo:
+        resp = requests.post(
+            base_url + "sendPhoto",
+            data={"chat_id": chat_id, "caption": text[:1024], "parse_mode": "Markdown"},
+            files={"photo": ("photo.jpg", photo, "image/jpeg")},
+            timeout=20,
+        )
+    else:
+        resp = requests.post(
+            base_url + "sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=15,
+        )
+    if not resp.ok:
+        logger.warning("Telegram sourcing notification failed for %s: HTTP %s", req.pk, resp.status_code)

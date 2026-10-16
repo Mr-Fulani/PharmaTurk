@@ -1,7 +1,8 @@
 from django.contrib import admin
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
-from .models import Cart, CartItem, Order, OrderItem, PromoCode
+from .models import Cart, CartItem, Order, OrderItem, PromoCode, SourcingRequest
 
 
 class CartItemInline(admin.TabularInline):
@@ -228,3 +229,32 @@ class PromoCodeAdmin(admin.ModelAdmin):
         if obj:
             return self.readonly_fields
         return ('used_count', 'created_at', 'updated_at', 'money_overview')
+
+
+@admin.register(SourcingRequest)
+class SourcingRequestAdmin(admin.ModelAdmin):
+    """Заявки «Найдём товар по ссылке или фото»."""
+
+    list_display = ('id', 'status', 'contact_name', 'contact_phone', 'contact_channel', 'short_url', 'quantity', 'created_at')
+    list_filter = ('status', 'contact_channel', 'created_at')
+    list_editable = ('status',)
+    search_fields = ('contact_name', 'contact_phone', 'contact_email', 'contact_username', 'source_url', 'comment')
+    readonly_fields = ('user', 'image_preview', 'locale', 'created_at', 'updated_at')
+    fieldsets = (
+        (None, {'fields': ('status', 'manager_comment')}),
+        (_('Request'), {'fields': ('source_url', 'image', 'image_preview', 'comment', 'quantity')}),
+        (_('Contact'), {'fields': ('user', 'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
+        (_('Timestamps'), {'fields': ('locale', 'created_at', 'updated_at')}),
+    )
+
+    @admin.display(description=_('Ссылка'))
+    def short_url(self, obj):
+        if not obj.source_url:
+            return '—'
+        return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', obj.source_url, obj.source_url[:50])
+
+    @admin.display(description=_('Превью'))
+    def image_preview(self, obj):
+        if not obj.image:
+            return '—'
+        return format_html('<img src="{}" style="max-height:240px;max-width:320px" />', obj.image.url)

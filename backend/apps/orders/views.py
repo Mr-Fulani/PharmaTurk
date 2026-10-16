@@ -16,6 +16,7 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from api.authentication import JWTSafeAuthentication
 
@@ -206,6 +207,7 @@ from .serializers import (
     OrderReceiptSerializer,
     OrderSerializer,
     PromoCodeSerializer,
+    SourcingRequestCreateSerializer,
     UpdateCartItemSerializer,
 )
 from .cart_source_verification import CartOfferDecision, CartSourceOfferPolicy
@@ -214,8 +216,10 @@ from .checkout_contract import (
     order_item_source_snapshot as _order_item_source_snapshot,
 )
 from .services import build_order_receipt_payload, render_receipt_html, get_order_customer_email
-from .tasks import send_order_receipt_task, notify_new_order_telegram
+from .tasks import send_order_receipt_task, notify_new_order_telegram, notify_sourcing_request_telegram
 from .throttles import (
+    SourcingRequestBurstThrottle,
+    SourcingRequestSustainedThrottle,
     CART_MUTATION_THROTTLES,
     CHECKOUT_THROTTLES,
     RECEIPT_EMAIL_THROTTLES,
@@ -2116,3 +2120,23 @@ class OrderViewSet(viewsets.ViewSet):
             )
 
             return Response(OrderSerializer(order).data, status=201)
+
+
+
+class SourcingRequestCreateView(APIView):
+    """Заявка «Найдём товар по ссылке или фото» — доступна без входа."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [SourcingRequestBurstThrottle, SourcingRequestSustainedThrottle]
+
+    @extend_schema(request=SourcingRequestCreateSerializer, responses={201: SourcingRequestCreateSerializer})
+    def post(self, request):
+        if str(request.data.get('website') or '').strip():
+            # Бот заполнил поле-ловушку: отвечаем как обычно, ничего не сохраняем
+            return Response({'detail': 'ok'}, status=status.HTTP_201_CREATED)
+        serializer = SourcingRequestCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user if getattr(request.user, 'is_authenticated', False) else None
+        sourcing_request = serializer.save(user=user)
+        transaction.on_commit(lambda: notify_sourcing_request_telegram.delay(sourcing_request.pk))
+        return Response({'id': sourcing_request.pk}, status=status.HTTP_201_CREATED)

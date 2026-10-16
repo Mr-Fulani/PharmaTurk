@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
@@ -674,3 +675,49 @@ class OrderItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.product_name} x{self.quantity}"
+
+
+def sourcing_request_image_path(instance, filename):
+    # Непредсказуемое имя: фото клиента не должно угадываться по номеру заявки
+    return f"sourcing_requests/{uuid.uuid4().hex}.jpg"
+
+
+class SourcingRequest(models.Model):
+    """Заявка «Найдём товар по ссылке или фото» — ведёт менеджер."""
+
+    class Status(models.TextChoices):
+        NEW = "new", _("Новая")
+        IN_PROGRESS = "in_progress", _("В работе")
+        DONE = "done", _("Найден / оформлен")
+        REJECTED = "rejected", _("Не удалось найти")
+
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sourcing_requests", verbose_name=_("Пользователь"),
+    )
+    source_url = models.URLField(_("Ссылка на товар"), max_length=1000, blank=True)
+    image = models.ImageField(_("Фото"), upload_to=sourcing_request_image_path, blank=True)
+    comment = models.TextField(_("Комментарий клиента"), max_length=2000, blank=True)
+    quantity = models.PositiveIntegerField(_("Количество"), default=1)
+
+    contact_name = models.CharField(_("Имя"), max_length=150)
+    contact_phone = models.CharField(_("Телефон"), max_length=32)
+    contact_email = models.EmailField(_("Email"), blank=True)
+    contact_channel = models.CharField(
+        _("Предпочтительный канал связи"), max_length=16, choices=CONTACT_CHANNEL_CHOICES, blank=True,
+    )
+    contact_username = models.CharField(_("Юзернейм в Telegram/WhatsApp"), max_length=35, blank=True)
+
+    status = models.CharField(_("Статус"), max_length=16, choices=Status.choices, default=Status.NEW)
+    manager_comment = models.TextField(_("Комментарий менеджера"), blank=True)
+    locale = models.CharField(_("Язык"), max_length=10, blank=True)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("🔎 Заявка на поиск товара")
+        verbose_name_plural = _("🔎 Заявки на поиск товара")
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Поиск #{self.pk} — {self.contact_name}"
