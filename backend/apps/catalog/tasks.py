@@ -649,3 +649,20 @@ def refresh_brand_product_counts_task():
         return {"status": "refreshed", "brands": len(counts)}
     finally:
         cache.delete(lock_key)
+
+
+@shared_task(name="catalog.expire_new_badges")
+def expire_new_badges() -> int:
+    """Снимает «Новинку» с товаров старше NEW_BADGE_DAYS (парсер ставил её всем подряд)."""
+    from datetime import timedelta
+
+    from django.conf import settings
+    from django.utils import timezone
+
+    from apps.catalog.models import Product
+
+    days = int(getattr(settings, "NEW_BADGE_DAYS", 30))
+    cutoff = timezone.now() - timedelta(days=days)
+    cleared = Product.objects.filter(is_new=True, created_at__lt=cutoff).update(is_new=False)
+    logger.info("expire_new_badges: cleared %s products older than %s days", cleared, days)
+    return cleared

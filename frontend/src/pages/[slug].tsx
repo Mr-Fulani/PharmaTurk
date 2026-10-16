@@ -126,7 +126,7 @@ export default function GenericStaticPage({ pageData, pageLocale }: GenericStati
   const canonicalUrl = `${SITE_URL}${localePrefix}/${pageData.slug}`
   const ruUrl = `${SITE_URL}/${pageData.slug}`
   const enUrl = `${SITE_URL}/en/${pageData.slug}`
-  const ogImage = localizedAboutImage || pageData.og_image || `${SITE_URL}/og-default.png`
+  const ogImage = localizedAboutImage || pageData.og_image || `${SITE_URL}/og-default.jpg`
   const aboutHeroAlt =
     normalizedLocale === 'en'
       ? 'Mudaroba about us banner'
@@ -240,7 +240,7 @@ export default function GenericStaticPage({ pageData, pageLocale }: GenericStati
             <div className="mb-8 overflow-hidden rounded-[28px] border border-[var(--border)] bg-[linear-gradient(135deg,rgba(255,255,255,0.65),rgba(231,236,255,0.35))] p-2 shadow-[0_24px_60px_-28px_rgba(15,86,96,0.38)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`/about-us-hero-${normalizedLocale}.png`}
+                src={`/about-us-hero-${normalizedLocale}.webp`}
                 alt={aboutHeroAlt}
                 className="block w-full rounded-[22px] object-cover"
               />
@@ -320,7 +320,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   // Строим абсолютный URL для OG-картинки (мессенджеры требуют полный URL)
   // og_image из API уже может быть полным CDN URL (https://cdn.mudaroba.com/...)
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
-  let ogImageAbsoluteUrl = `${siteUrl}/og-default.png` // глобальный fallback
+  let ogImageAbsoluteUrl = `${siteUrl}/og-default.jpg` // глобальный fallback
 
   if (pageData.og_image) {
     const img = String(pageData.og_image)

@@ -62,7 +62,7 @@ export default function SEO({
   const enUrl = `${SITE_URL}/en${pathPart}`
 
   const fullTitle = `${title} — ${SITE_NAME}`
-  const ogImageUrl = ogImage || `${SITE_URL}/og-default.png`
+  const ogImageUrl = ogImage || `${SITE_URL}/og-default.jpg`
 
   // Нормализуем structuredData в массив
   const schemas = structuredData

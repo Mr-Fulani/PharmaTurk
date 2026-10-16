@@ -344,7 +344,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
               >
               <div className="relative aspect-[16/10] overflow-hidden">
                 <img
-                  src="/footer-testimonials-promo.png"
+                  src="/footer-testimonials-promo.webp"
                   alt={t('testimonials_page_title', 'Отзывы клиентов')}
                   loading="lazy"
                   decoding="async"

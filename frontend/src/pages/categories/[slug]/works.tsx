@@ -26,7 +26,7 @@ export default function CategoryWorksPage({
   const description = (categoryDescription || t('service_portfolio_page_description', 'Подборка реальных кейсов, примеров услуг и реализованных проектов по этой категории.')).trim()
   // Используется в JSON-LD схемах; canonical в <head> строит SEO-компонент с учётом локали
   const canonicalUrl = `${siteUrl}/categories/${slug}/works`
-  const ogImage = portfolioItems.find((item) => item.image_url)?.image_url || `${siteUrl}/og-default.png`
+  const ogImage = portfolioItems.find((item) => item.image_url)?.image_url || `${siteUrl}/og-default.jpg`
   const breadcrumbs = [
     { label: t('breadcrumb_home', 'Главная'), href: '/' },
     { label: t('breadcrumb_categories', 'Категории'), href: '/categories' },

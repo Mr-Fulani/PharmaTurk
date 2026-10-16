@@ -4474,8 +4474,10 @@ class ScraperIntegrationService:
                 product.external_data["is_stub"] = True
                 product.save(update_fields=["external_data"])
 
-        # Свежеспарсенный товар — отмечаем как новинку
-        if not product.is_new:
+        # «Новинка» — только для недавно добавленного товара: повторный парсинг
+        # старого товара не должен снова вешать бейдж (было ~20 тыс. «новинок»).
+        new_badge_cutoff = timezone.now() - datetime.timedelta(days=int(getattr(settings, "NEW_BADGE_DAYS", 30)))
+        if not product.is_new and product.created_at and product.created_at >= new_badge_cutoff:
             product.is_new = True
             product.save(update_fields=["is_new"])
 

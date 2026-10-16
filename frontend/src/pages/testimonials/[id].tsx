@@ -38,7 +38,7 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
     'отзывы клиентов',
     'customer reviews',
   ].filter(Boolean).join(', ')
-  const ogImage = `${SITE_URL}/footer-testimonials-promo.png`
+  const ogImage = `${SITE_URL}/footer-testimonials-promo.jpg`
 
   const nextMedia = () => {
     if (testimonial.media.length > 1) {
