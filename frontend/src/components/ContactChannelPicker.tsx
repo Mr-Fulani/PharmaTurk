@@ -23,6 +23,10 @@ interface ContactChannelPickerProps {
   onUsernameChange: (username: string) => void
   /** Имя группы радиокнопок — уникальное на странице */
   name?: string
+  /** Текст ошибки под плашками (канал не выбран) */
+  error?: string
+  /** Классы поля юзернейма — чтобы совпадало со стилем полей формы */
+  inputClassName?: string
 }
 
 /**
@@ -35,6 +39,8 @@ export default function ContactChannelPicker({
   username,
   onUsernameChange,
   name = 'contact_channel',
+  error,
+  inputClassName = 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500',
 }: ContactChannelPickerProps) {
   const { t } = useTranslation('common')
   const { user } = useAuth()
@@ -66,8 +72,8 @@ export default function ContactChannelPicker({
 
   return (
     <>
-      <fieldset>
-        <legend className="text-sm font-medium text-gray-700">{t('checkout_contact_channel', 'Как с вами связаться')} *</legend>
+      <fieldset aria-invalid={error ? true : undefined}>
+        <legend className={`text-sm font-medium ${error ? 'text-[var(--danger)]' : 'text-gray-700'}`}>{t('checkout_contact_channel', 'Как с вами связаться')} *</legend>
         <div className="mt-2 flex flex-wrap gap-2">
           {CONTACT_CHANNELS.map((option) => (
             <label
@@ -78,7 +84,7 @@ export default function ContactChannelPicker({
               } as React.CSSProperties}
               className={`cursor-pointer rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all hover:border-[var(--chip-clr)] hover:bg-[var(--chip-bg)] hover:text-[var(--chip-clr)] ${channel === option
                 ? 'border-[var(--chip-clr)] bg-[var(--chip-bg)] text-[var(--chip-clr)]'
-                : 'border-gray-200 text-gray-700'
+                : error ? 'border-[var(--danger)] text-gray-700' : 'border-gray-200 text-gray-700'
                 }`}
             >
               <input
@@ -93,6 +99,7 @@ export default function ContactChannelPicker({
             </label>
           ))}
         </div>
+        {error && <p className="mt-1 text-xs font-medium text-[var(--danger)]">{error}</p>}
       </fieldset>
       {isUsernameChannel(channel) && (
         <label className="block">
@@ -105,7 +112,7 @@ export default function ContactChannelPicker({
             onChange={(e) => onUsernameChange(e.target.value)}
             placeholder={channel === 'whatsapp' ? '@username / +79990000000' : '@username'}
             autoComplete="off"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            className={inputClassName}
           />
           <span className="mt-1 block text-xs text-gray-500">
             {t('checkout_username_hint', 'Если не указать, менеджер свяжется с вами по номеру телефона.')}

@@ -17,6 +17,22 @@ export type FallbackMediaImageProps = {
 /**
  * next/image для разрешённых CDN; иначе обычный img (proxy /api с query ломает оптимизатор).
  */
+// srcSet для proxy-media. Невалидная ссылка из данных не должна ронять всю страницу
+// (исключение в рендере = «Application error»), поэтому при ошибке просто без srcSet.
+function buildProxySrcSet(imgSrc: string): string | undefined {
+  try {
+    return [192, 320, 480, 600, 800].map((width) => {
+      const url = new URL(imgSrc, 'https://mudaroba.com')
+      url.searchParams.delete('w')
+      url.searchParams.set('max_width', String(width))
+      const source = imgSrc.startsWith('/') ? `${url.pathname}${url.search}` : url.href
+      return `${source} ${width}w`
+    }).join(', ')
+  } catch {
+    return undefined
+  }
+}
+
 export default function FallbackMediaImage({
   src,
   alt,
@@ -54,13 +70,7 @@ export default function FallbackMediaImage({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={imgSrc}
-        srcSet={responsiveProxy && imgSrc.includes('proxy-media') ? [192, 320, 480, 600, 800].map(width => {
-          const url = new URL(imgSrc, 'https://mudaroba.com')
-          url.searchParams.delete('w')
-          url.searchParams.set('max_width', String(width))
-          const source = imgSrc.startsWith('/') ? `${url.pathname}${url.search}` : url.href
-          return `${source} ${width}w`
-        }).join(', ') : undefined}
+        srcSet={responsiveProxy && imgSrc.includes('proxy-media') ? buildProxySrcSet(imgSrc) : undefined}
         sizes={responsiveProxy ? sizes : undefined}
         alt={alt}
         loading="lazy"
