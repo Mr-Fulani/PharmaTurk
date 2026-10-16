@@ -12,8 +12,10 @@ from typing import Any, Dict, Iterator, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from django.conf import settings
+from bs4 import BeautifulSoup
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
+from ..base.catalog_state import CatalogTraversalState
 from ..base.offers import (
     MalformedOfferResponse,
     OfferCheckContext,
@@ -49,6 +51,8 @@ class FloParser(BaseScraper):
 
     SUPPORTS_PAGE_CHUNKING = True
     REPORTS_PAGES_PROCESSED = True
+    REPORTS_NEXT_START_PAGE = True
+    SUPPORTS_CATALOG_STATE = True
 
     PRODUCT_PATH_RE = re.compile(r"/urun/[^/?#]*?-(\d{4,})(?:[/?#]|$)", re.IGNORECASE)
     PRODUCT_DETAIL_MARKER = "window.productDetail = "
@@ -206,48 +210,81 @@ class FloParser(BaseScraper):
         start_page: int = 1,
     ) -> Iterator[ScrapedProduct]:
         self.has_more_pages = True
-        # Дедуп по sku цвета: карточка группирует все цвета модели, поэтому
-        # ссылки на другие цвета той же модели в листинге пропускаем.
-        seen_skus: Set[str] = set()
+        self.pages_processed = 0
+        self.next_start_page = max(1, start_page)
+        self.stop_reason = ""
+        self.catalog_skipped = 0
+        state = getattr(self, "catalog_state", None) or CatalogTraversalState()
+        self.catalog_state = state
+        result_count = getattr(self, "catalog_result_count", None)
         yielded = 0
         page = max(1, start_page)
         pages_done = 0
 
         while pages_done < max(1, max_pages):
+            self.next_start_page = page
+            if self.max_products is not None and (result_count() if result_count else yielded) >= self.max_products:
+                self.has_more_pages = False
+                self.stop_reason = "Достигнут лимит товаров."
+                return
             page_url = self._page_url(category_url, page)
             html = self._fetch(page_url)
             if not html:
                 self.has_more_pages = False
+                self.stop_reason = f"FLO вернул пустую страницу каталога: {page_url}"
                 break
-            self.pages_processed += 1
 
             product_urls = self._extract_product_links(html)
-            new_on_page = 0
+            identities = [self._sku_from_url(url) or url for url in product_urls]
+            # Read pagination before yielding: a product limit can end iteration.
+            has_next = BeautifulSoup(html, "html.parser").find(
+                ["a", "link"], rel=lambda value: value and "next" in value.split()
+            ) is not None
+            if not product_urls or state.page_seen(identities, page):
+                self.has_more_pages = False
+                self.stop_reason = f"Страница {page} пуста или повторяет уже обработанную выдачу; каталог закончился."
+                break
+            before = result_count() if result_count else yielded
+            attempted = set()
             for product_url in product_urls:
                 sku = self._sku_from_url(product_url)
-                if sku and sku in seen_skus:
+                identity = sku or product_url
+                if identity in attempted or state.product_seen(identity):
+                    self.catalog_skipped += 1
                     continue
-                new_on_page += 1
+                attempted.add(identity)
 
                 product = self.parse_product_detail(product_url)
-                if product:
-                    # отмечаем все цвета модели как обработанные
-                    for variant in product.attributes.get("fashion_variants") or []:
-                        if variant.get("sku"):
-                            seen_skus.add(str(variant["sku"]))
-                    if self.validate_product(product):
-                        yield product
-                        yielded += 1
-                        if self.max_products and yielded >= self.max_products:
-                            return
-                elif sku:
-                    seen_skus.add(sku)
+                if product and self.validate_product(product):
+                    yield product
+                    yielded += 1
+                    if result_count is None:
+                        self.mark_catalog_product(product)
+                    if self.max_products is not None and (result_count() if result_count else yielded) >= self.max_products:
+                        self.has_more_pages = False
+                        self.stop_reason = "Достигнут лимит товаров."
+                        return
 
             pages_done += 1
-            if new_on_page == 0 or 'rel="next"' not in html:
+            self.pages_processed = pages_done
+            self.next_start_page = page + 1
+            after = result_count() if result_count else yielded
+            stalled = state.finish_page(identities, page, after > before)
+            if not has_next or stalled:
                 self.has_more_pages = False
+                self.stop_reason = (
+                    "Обход остановлен: три страницы подряд без новых товаров."
+                    if stalled else "Достигнута последняя страница каталога."
+                )
                 break
             page += 1
+
+    def mark_catalog_product(self, product):
+        """Remember only persisted cards, including their already loaded colours."""
+        state = self.catalog_state
+        state.mark_product(self._sku_from_url(product.url) or product.url)
+        for variant in product.attributes.get("fashion_variants") or []:
+            state.mark_product(str(variant.get("sku") or ""))
 
     def _extract_product_links(self, html: str) -> List[str]:
         links: List[str] = []

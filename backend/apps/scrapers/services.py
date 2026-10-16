@@ -47,6 +47,7 @@ from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .parsers.zara import ZaraParser
 from .parsers.flo import FloParser
+from .base.catalog_state import CatalogTraversalState
 from .base.scraper import (
     ScrapedProduct,
     ScraperAccessBlockedError,
@@ -1090,6 +1091,15 @@ class ScraperIntegrationService:
                     supports_chunking = bool(getattr(parser, "SUPPORTS_PAGE_CHUNKING", False))
                 if supports_chunking:
                     list_kwargs["start_page"] = start_page
+                catalog_managed = bool(getattr(parser, "SUPPORTS_CATALOG_STATE", False))
+                if catalog_managed:
+                    # Состояние обхода живёт в пространстве прохода: resume
+                    # продолжает его, новый запуск (новый run_token) — с нуля.
+                    catalog_scope = (
+                        f"{site_task_id}:{site_run_token or 'legacy'}" if site_task_id else None
+                    )
+                    parser.catalog_state = CatalogTraversalState(catalog_scope)
+                    parser.catalog_result_count = lambda: incremental_results["found"]
                 try:
                     for product in parser.parse_product_list(start_url, **list_kwargs):
                         parser_limit = getattr(parser, "max_products", None)
@@ -1108,6 +1118,8 @@ class ScraperIntegrationService:
                         )
                         if product_cache_key and cache.get(product_cache_key):
                             incremental_results["skipped"] += 1
+                            if catalog_managed:
+                                parser.mark_catalog_product(product)
                             self.logger.warning(
                                 "Повторная карточка внутри прохода пропущена: %s (task=%s run=%s)",
                                 product_identity,
@@ -1124,6 +1136,8 @@ class ScraperIntegrationService:
                                 True,
                                 timeout=SCRAPER_TASK_SEEN_TTL,
                             )
+                        if catalog_managed and not r.get("errors"):
+                            parser.mark_catalog_product(product)
                         checkpoint += 1
                         session.products_found = incremental_results["found"]
                         session.products_created = incremental_results["created"]
@@ -1195,6 +1209,8 @@ class ScraperIntegrationService:
                     session._chunk_interrupted = True
                 parser_item_errors = max(0, int(getattr(parser, "item_errors", 0) or 0))
                 incremental_results["errors"] += parser_item_errors
+                if catalog_managed:
+                    incremental_results["skipped"] += int(getattr(parser, "catalog_skipped", 0))
                 if getattr(parser, "REPORTS_PAGES_PROCESSED", False):
                     session.pages_processed += parser.pages_processed
                 elif incremental_results["found"]:
