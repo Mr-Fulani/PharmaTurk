@@ -25,6 +25,9 @@
   --accent-strong: #365bd4;
   --accent-soft: #e7ecff;
   --accent-muted: #d5ddff;
+  /* Состояние ошибки в формах — не переопределяется «сведением красного к акценту» ниже */
+  --danger: #c2410c;
+  --danger-soft: #fff1ea;
   /* Тёплый ховер для текста */
   --text-hover: #b06a3c;
 }
@@ -35,6 +38,8 @@
   --text-strong: #ffffff;
   --surface: #0b1420;
   --border: #1b2536;
+  --danger: #fb923c;
+  --danger-soft: rgba(251, 146, 60, 0.12);
   --text-hover: #e9d8c7;
 }
 

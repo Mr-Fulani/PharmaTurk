@@ -547,6 +547,13 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
           {/* Популярные товары */}
           <DeferredSection><PopularProductsCarousel /></DeferredSection>
 
+          {/* «Найдём любой товар из Турции по ссылке или фото» — после хитов, выше последнего баннера */}
+          <DeferredSection>
+            <div className="mb-12">
+              <SourcingRequestForm placement="home" />
+            </div>
+          </DeferredSection>
+
           {/* Вам может понравиться (RecSys) */}
           <DeferredSection><PersonalizedRecommendations /></DeferredSection>
 
@@ -554,13 +561,6 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
           <div className="mb-12">
             <BannerCarousel position="after_popular_products" initialBanners={afterPopularBanners} />
           </div>
-
-          {/* «Найдём любой товар из Турции по ссылке или фото» — заявка менеджеру */}
-          <DeferredSection>
-            <div className="mb-12">
-              <SourcingRequestForm placement="home" />
-            </div>
-          </DeferredSection>
 
           {showTestimonialsSection && <DeferredSection><TestimonialsCarousel /></DeferredSection>}
         </div>
