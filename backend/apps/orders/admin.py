@@ -1,8 +1,10 @@
 from django.contrib import admin
+from django.db import transaction
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from .models import Cart, CartItem, Order, OrderItem, PromoCode, SourcingRequest
+from .tasks import notify_order_status_changed
 
 
 class CartItemInline(admin.TabularInline):
@@ -132,13 +134,20 @@ class OrderAdmin(admin.ModelAdmin):
         (None, {'fields': ('number', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
-        (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method')}),
+        (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method', 'tracking_number', 'tracking_url')}),
         (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
         (_('Additional'), {'fields': ('comment',)}),
         (_('Timestamps'), {'fields': ('created_at', 'updated_at')}),
     )
     
     inlines = [OrderItemInline]
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Менеджер сменил статус — уведомляем клиента (Telegram/email) после коммита
+        if change and 'status' in getattr(form, 'changed_data', []):
+            order_id = obj.pk
+            transaction.on_commit(lambda: notify_order_status_changed.delay(order_id))
 
 
 @admin.register(OrderItem)

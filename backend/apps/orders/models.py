@@ -129,6 +129,8 @@ class Cart(models.Model):
     session_key = models.CharField(_("Ключ сессии"), max_length=64, blank=True, db_index=True)
     currency = models.CharField(_("Валюта"), max_length=10, default="USD")
     promo_code = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True, blank=True, related_name="carts", verbose_name=_("Промокод"))
+    # Когда отправлено напоминание о брошенной заявке (один раз на «простой» корзины)
+    reminder_sent_at = models.DateTimeField(_("Напоминание отправлено"), null=True, blank=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
@@ -584,6 +586,8 @@ class Order(models.Model):
     shipping_address = models.ForeignKey(UserAddress, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Адрес доставки"))
     shipping_address_text = models.TextField(_("Адрес доставки (текст)"), blank=True)
     shipping_method = models.CharField(_("Способ доставки"), max_length=50, blank=True)
+    tracking_number = models.CharField(_("Трек-номер"), max_length=64, blank=True)
+    tracking_url = models.URLField(_("Ссылка на отслеживание"), max_length=500, blank=True)
 
     payment_method = models.CharField(_("Способ оплаты"), max_length=50, blank=True)
     payment_status = models.CharField(_("Статус оплаты"), max_length=32, default="unpaid")

@@ -31,6 +31,7 @@ interface OrderItem {
   quantity: number
   total: string
   product_type?: string
+  chosen_size?: string
 }
 
 interface Order {
@@ -44,6 +45,8 @@ interface Order {
   contact_name: string
   contact_phone: string
   shipping_address_text?: string
+  tracking_number?: string
+  tracking_url?: string
 }
 
 interface UserProfile {
@@ -97,6 +100,37 @@ const ORDER_STATUS_MAP: Record<string, string> = {
 
 export default function ProfilePage() {
   const router = useRouter()
+  const [repeatingOrderId, setRepeatingOrderId] = useState<number | null>(null)
+
+  // «Повторить заказ»: кладём позиции в заявку через обычный cart/add (с проверками цены/наличия)
+  const repeatOrder = async (order: Order) => {
+    setRepeatingOrderId(order.id)
+    let failed = 0
+    for (const item of order.items) {
+      if (!item.product) {
+        failed += 1
+        continue
+      }
+      const body = new URLSearchParams()
+      body.set('product_id', String(item.product))
+      body.set('quantity', String(item.quantity))
+      if (item.chosen_size) body.set('size', item.chosen_size)
+      try {
+        await api.post('/orders/cart/add', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+      } catch {
+        failed += 1
+      }
+    }
+    setRepeatingOrderId(null)
+    if (failed === order.items.length) {
+      alert(t('profile_repeat_order_failed', 'Не удалось добавить товары: возможно, их уже нет в наличии.'))
+      return
+    }
+    if (failed > 0) {
+      alert(t('profile_repeat_order_partial', 'Часть товаров недоступна и не добавлена в заявку.'))
+    }
+    router.push('/cart')
+  }
   const { user, loading: authLoading, updateUser } = useAuth()
   const { t, i18n } = useTranslation('common')
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -987,6 +1021,26 @@ export default function ProfilePage() {
                             <div className="text-sm text-gray-600 dark:text-gray-300">
                               {order.items.length} {order.items.length === 1 ? 'товар' : order.items.length < 5 ? 'товара' : 'товаров'}
                             </div>
+                            {order.tracking_number && (
+                              <div className="mt-1 text-sm text-gray-700 dark:text-gray-200">
+                                {t('profile_tracking_number', 'Трек-номер')}:{' '}
+                                {order.tracking_url ? (
+                                  <a href={order.tracking_url} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] underline">
+                                    {order.tracking_number}
+                                  </a>
+                                ) : (
+                                  <span className="font-mono">{order.tracking_number}</span>
+                                )}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => repeatOrder(order)}
+                              disabled={repeatingOrderId === order.id}
+                              className="mt-2 rounded-md border border-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent)] hover:text-white disabled:opacity-60"
+                            >
+                              {repeatingOrderId === order.id ? t('checkout_submitting', 'Отправка...') : t('profile_repeat_order', 'Повторить заказ')}
+                            </button>
                           </div>
                         </div>
                       </div>

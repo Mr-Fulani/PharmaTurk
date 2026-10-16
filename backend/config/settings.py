@@ -314,6 +314,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24 * 7,  # неделя
         "args": (30,),  # хранить 30 дней
     },
+    # Одно напоминание о брошенной заявке (корзина вошедшего клиента, сутки без изменений).
+    "orders-remind-abandoned-carts": {
+        "task": "orders.remind_abandoned_carts",
+        "schedule": crontab(minute=20),
+    },
     # Ограничиваем storage amplification от брошенных гостевых корзин.
     "orders-cleanup-stale-anonymous-carts": {
         "task": "orders.cleanup_stale_anonymous_carts",
