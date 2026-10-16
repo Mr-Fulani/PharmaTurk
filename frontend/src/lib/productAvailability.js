@@ -40,12 +40,13 @@ export function resolveSchemaSku({ slug, productType, id }) {
   return `${productType}-${id}`
 }
 
-// Условия страницы /returns: 14 дней с момента получения, возврат почтой.
-// Стоимость обратной доставки не указываем — её согласует менеджер.
+// Условия страницы /returns: 14 дней с момента получения, возврат почтой, обратную
+// доставку оплачивает покупатель (магазин берёт её на себя только при браке).
 export const SCHEMA_RETURN_POLICY = {
   '@type': 'MerchantReturnPolicy',
   applicableCountry: ['RU', 'BY', 'GE', 'TR', 'GB', 'US'],
   returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
   merchantReturnDays: 14,
   returnMethod: 'https://schema.org/ReturnByMail',
+  returnFees: 'https://schema.org/ReturnFeesCustomerResponsibility',
 }

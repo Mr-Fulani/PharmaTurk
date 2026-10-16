@@ -2125,6 +2125,8 @@ class OrderViewSet(viewsets.ViewSet):
 class SourcingRequestCreateView(APIView):
     """Заявка «Найдём товар по ссылке или фото» — доступна без входа."""
 
+    # Без SessionAuthentication: сессия /admin/ в том же браузере иначе требует CSRF-токен
+    authentication_classes = [JWTSafeAuthentication]
     permission_classes = [AllowAny]
     throttle_classes = [SourcingRequestBurstThrottle, SourcingRequestSustainedThrottle]
 
