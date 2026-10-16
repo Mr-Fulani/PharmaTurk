@@ -33,6 +33,9 @@ def test_sitemap_entries_returns_all_active_categories_without_full_serializer(m
         slug=f"sitemap-hidden-{suffix}",
         is_active=False,
     )
+    # Товары только в дочерней категории и в shoes: родитель непустой через потомка
+    Product.objects.create(name="Tab", slug=f"sitemap-tab-{suffix}", category=child, price=Decimal("1"))
+    Product.objects.create(name="Shoe", slug=f"sitemap-shoe-{suffix}", category=shoes, price=Decimal("1"))
 
     response = APIClient().get(
         "/api/catalog/sitemap-entries",
@@ -141,3 +144,37 @@ def test_sitemap_entries_rejects_unknown_kind():
 
     assert response.status_code == 400
     assert "Unknown sitemap entry kind" in response.data["error"]
+
+
+@pytest.mark.django_db
+def test_sitemap_entries_skip_categories_without_public_products(monkeypatch):
+    """Пустые категории (soft-404) не попадают в sitemap; заглушки лекарств не считаются товаром."""
+    monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
+    suffix = uuid4().hex[:10]
+    empty = Category.objects.create(name="Empty", slug=f"sitemap-empty-{suffix}")
+    stub_only = Category.objects.create(name="Stub only", slug=f"sitemap-stub-{suffix}")
+    filled = Category.objects.create(name="Filled", slug=f"sitemap-filled-{suffix}")
+    Product.objects.create(
+        name="Stub",
+        slug=f"sitemap-stub-product-{suffix}",
+        category=stub_only,
+        product_type="medicines",
+        price=Decimal("1"),
+        external_data={"is_stub": True},
+    )
+    Product.objects.create(
+        name="Inactive",
+        slug=f"sitemap-inactive-{suffix}",
+        category=empty,
+        price=Decimal("1"),
+        is_active=False,
+    )
+    Product.objects.create(name="Real", slug=f"sitemap-real-{suffix}", category=filled, price=Decimal("1"))
+
+    response = APIClient().get("/api/catalog/sitemap-entries", {"kind": "categories", "page_size": 500})
+
+    assert response.status_code == 200
+    slugs = {row["slug"] for row in response.data["results"]}
+    assert filled.slug in slugs
+    assert empty.slug not in slugs
+    assert stub_only.slug not in slugs
