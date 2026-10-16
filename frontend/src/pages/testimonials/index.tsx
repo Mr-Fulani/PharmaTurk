@@ -1119,7 +1119,9 @@ export const getServerSideProps: GetServerSideProps = async ({ locale, query, re
 
   try {
     const response = await fetch(
-      `${getInternalApiUrl('feedback/reviews-feed/')}?placement=all&page_size=1000${username ? `&username=${encodeURIComponent(username)}` : ''}`
+      `${getInternalApiUrl('feedback/reviews-feed/')}?placement=all&page_size=1000${username ? `&username=${encodeURIComponent(username)}` : ''}`,
+      // Переводы отзывов отдаются на языке запроса
+      { headers: { 'Accept-Language': locale || 'ru' } }
     )
     if (response.ok) {
       const data = await response.json()

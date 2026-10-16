@@ -195,7 +195,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Возвращает queryset с prefetch для медиа и select_related для пользователя."""
-        return super().get_queryset().select_related('user').prefetch_related('media')
+        return super().get_queryset().select_related('user').prefetch_related('media', 'translations')
 
     def create(self, request, *args, **kwargs):
         """Создание нового отзыва с медиа."""
@@ -324,7 +324,7 @@ class ReviewFeedView(APIView):
 
 class ProductReviewViewSet(viewsets.ModelViewSet):
     authentication_classes = [JWTSafeAuthentication]
-    queryset = ProductReview.objects.select_related("user").prefetch_related("media")
+    queryset = ProductReview.objects.select_related("user").prefetch_related("media", "translations")
 
     def get_serializer_class(self):
         return ProductReviewWriteSerializer if self.action in {"create", "partial_update", "update"} else ProductReviewSerializer
@@ -367,7 +367,11 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
                 for rating in range(1, 6)
             },
             "reviews": ProductReviewSerializer(approved, many=True, context={"request": request}).data,
-            "own_review": ProductReviewSerializer(own_review, context={"request": request}).data if own_review else None,
+            # Автор редактирует свой отзыв в форме — отдаём оригинал, а не перевод
+            "own_review": (
+                ProductReviewSerializer(own_review, context={"request": request, "original_text": True}).data
+                if own_review else None
+            ),
             "can_review": can_user_review(request.user, product_type, product_slug),
         })
 
@@ -466,11 +470,14 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
                 published_at=None,
                 show_on_homepage=False,
             )
+            if "text" in serializer.validated_data:
+                # Перевод старого текста больше не соответствует отзыву — админ переведёт заново
+                review.translations.update(text="")
             start = review.media.count()
             for offset, (media_type, uploaded) in enumerate(media):
                 ProductReviewMedia.objects.create(review=review, media_type=media_type, file=uploaded, order=start + offset)
         self._notify_admin(review.pk, "updated")
-        return Response(ProductReviewSerializer(review, context={"request": request}).data)
+        return Response(ProductReviewSerializer(review, context={"request": request, "original_text": True}).data)
 
     update = partial_update
 
@@ -484,7 +491,7 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
 
 class ProductQuestionViewSet(viewsets.GenericViewSet):
     authentication_classes = [JWTSafeAuthentication]
-    queryset = ProductQuestion.objects.select_related("user", "answered_by")
+    queryset = ProductQuestion.objects.select_related("user", "answered_by").prefetch_related("translations")
 
     def get_serializer_class(self):
         return ProductQuestionWriteSerializer if self.action == "create" else ProductQuestionSerializer

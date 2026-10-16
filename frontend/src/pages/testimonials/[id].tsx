@@ -239,7 +239,10 @@ export const getServerSideProps: GetServerSideProps = async ({ locale, params, r
   const id = Array.isArray(params?.id) ? params?.id[0] : params?.id
   if (!id) return { notFound: true }
 
-  const response = await fetch(getInternalApiUrl(`feedback/testimonials/${encodeURIComponent(String(id))}/`))
+  const response = await fetch(getInternalApiUrl(`feedback/testimonials/${encodeURIComponent(String(id))}/`), {
+    // Переводы отзывов отдаются на языке запроса
+    headers: { 'Accept-Language': locale || 'ru' },
+  })
   if (response.status === 404) {
     return { notFound: true }
   }

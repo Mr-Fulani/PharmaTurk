@@ -4,8 +4,41 @@ from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils import timezone
-from .models import ProductQuestion, ProductReview, ProductReviewMedia, Testimonial, TestimonialMedia, TestimonialSectionSettings
+from .models import (
+    ProductQuestion,
+    ProductQuestionTranslation,
+    ProductReview,
+    ProductReviewMedia,
+    ProductReviewTranslation,
+    Testimonial,
+    TestimonialMedia,
+    TestimonialSectionSettings,
+    TestimonialTranslation,
+)
 from .tasks import notify_review_author_reply
+
+
+class TranslationInline(admin.StackedInline):
+    """Переводы текста на другой язык сайта; пустое поле — на сайте показывается оригинал."""
+    extra = 1
+    max_num = 2
+    verbose_name = "Перевод"
+    verbose_name_plural = "Переводы (пустое поле — на сайте показывается оригинал)"
+
+
+class TestimonialTranslationInline(TranslationInline):
+    model = TestimonialTranslation
+    fields = ("locale", "text")
+
+
+class ProductReviewTranslationInline(TranslationInline):
+    model = ProductReviewTranslation
+    fields = ("locale", "text", "admin_reply")
+
+
+class ProductQuestionTranslationInline(TranslationInline):
+    model = ProductQuestionTranslation
+    fields = ("locale", "question", "answer")
 
 
 class TestimonialMediaInline(admin.TabularInline):
@@ -23,7 +56,7 @@ class TestimonialAdmin(admin.ModelAdmin):
     search_fields = ('author_name', 'text', 'user__username', 'user__email')
     list_editable = ('is_active',)
     date_hierarchy = 'created_at'
-    inlines = [TestimonialMediaInline]
+    inlines = [TestimonialTranslationInline, TestimonialMediaInline]
     raw_id_fields = ('user',)  # Для удобного выбора пользователя
     
     fieldsets = (
@@ -115,7 +148,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
     )
     raw_id_fields = ()
     date_hierarchy = "created_at"
-    inlines = (ProductReviewMediaInline,)
+    inlines = (ProductReviewTranslationInline, ProductReviewMediaInline)
     actions = ("approve_reviews", "reject_reviews", "show_reviews_on_homepage", "hide_reviews_from_homepage")
     fieldsets = (
         ("Товар или услуга", {"fields": ("product_name", "product_type", "product_slug")}),
@@ -201,6 +234,7 @@ class ProductQuestionAdmin(admin.ModelAdmin):
     )
     date_hierarchy = "created_at"
     actions = ("publish_answered", "reject_questions")
+    inlines = (ProductQuestionTranslationInline,)
     fieldsets = (
         ("Товар или услуга", {"fields": ("product_name", "product_type", "product_slug")}),
         ("Автор", {"fields": ("user", "author_name", "is_anonymous")}),
