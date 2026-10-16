@@ -6,7 +6,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { RefreshCcw, PackageCheck, HeadphonesIcon } from 'lucide-react'
-import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
+import { SITE_NAME, withSiteName, SITE_URL } from '../../lib/siteMeta'
 import { sanitizeRichHtml } from '../../lib/sanitizeHtml'
 
 export default function ReturnsPage({ pageData, footerSettings }: { pageData: any; footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
@@ -20,7 +20,7 @@ export default function ReturnsPage({ pageData, footerSettings }: { pageData: an
     return (
         <>
             <Head>
-                <title>{`${pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} — ${SITE_NAME}`}</title>
+                <title>{withSiteName(pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен'))}</title>
                 <meta name="description" content={pageData?.meta_description || t('returns_subtitle', 'Условия возврата и обмена товаров')} />
                 
                 <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} />

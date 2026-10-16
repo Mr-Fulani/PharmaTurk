@@ -6,7 +6,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { Lock, FileText, Database, Shield, Cookie } from 'lucide-react'
-import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
+import { SITE_NAME, withSiteName, SITE_URL } from '../../lib/siteMeta'
 import { sanitizeRichHtml } from '../../lib/sanitizeHtml'
 
 export default function PrivacyPage({ pageData }: { pageData: any }) {
@@ -18,7 +18,7 @@ export default function PrivacyPage({ pageData }: { pageData: any }) {
     return (
         <>
             <Head>
-                <title>{`${pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности')} — ${SITE_NAME}`}</title>
+                <title>{withSiteName(pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности'))}</title>
                 <meta name="description" content={pageData?.meta_description || t('privacy_subtitle', 'Политика конфиденциальности и защиты данных')} />
                 <link rel="canonical" href={canonicalUrl} />
                 <link rel="alternate" hrefLang="ru" href={`${SITE_URL}/privacy`} />

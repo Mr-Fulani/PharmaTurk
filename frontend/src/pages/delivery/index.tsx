@@ -6,7 +6,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { Plane, Truck, Ship, CreditCard, ShieldCheck } from 'lucide-react'
-import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
+import { SITE_NAME, withSiteName, SITE_URL } from '../../lib/siteMeta'
 import { sanitizeRichHtml } from '../../lib/sanitizeHtml'
 
 export default function DeliveryPage({ pageData, footerSettings }: { pageData: any; footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
@@ -20,7 +20,7 @@ export default function DeliveryPage({ pageData, footerSettings }: { pageData: a
     return (
         <>
             <Head>
-                <title>{`${pageData?.meta_title || pageData?.title || t('delivery_title', 'Доставка и оплата')} — ${SITE_NAME}`}</title>
+                <title>{withSiteName(pageData?.meta_title || pageData?.title || t('delivery_title', 'Доставка и оплата'))}</title>
                 <meta name="description" content={pageData?.meta_description || t('delivery_subtitle', 'Информация о способах доставки и оплаты')} />
                 
                 <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('delivery_title', 'Доставка и оплата')} />

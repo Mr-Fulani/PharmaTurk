@@ -231,9 +231,13 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
   const canonicalUrl = `${siteUrl}${localePrefix || '/'}`
   const ruUrl = `${siteUrl}/`
-  const enUrl = `${siteUrl}/en/`
-  const pageTitle = 'Mudaroba — Главная'
-  const pageDescription = 'Mudaroba: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
+  // Главная EN живёт на /en (без слэша): /en/ отвечает 308 и не годится для hreflang
+  const enUrl = `${siteUrl}/en`
+  const pageTitle = t('home_meta_title', 'Товары из Турции с доставкой: лекарства, БАДы, одежда, обувь | Mudaroba')
+  const pageDescription = t(
+    'home_meta_description',
+    'Mudaroba — товары из Турции с доставкой: лекарства, БАДы, косметика, одежда, обувь и мебель. Актуальные цены, заказ через менеджера.'
+  )
 
   const sameAs = [
     footerSettings?.telegram_url,
@@ -348,6 +352,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
       </Head>
 
       <main className="bg-page text-main min-h-screen transition-colors duration-200">
+        <h1 className="sr-only">{t('home_h1', 'Товары из Турции с доставкой — Mudaroba')}</h1>
         <div className="mx-auto max-w-6xl px-3 sm:px-4 md:px-6 py-4 sm:py-8">
           {/* Главный баннер */}
           <div className="mb-12 relative">
