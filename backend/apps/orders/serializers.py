@@ -1946,7 +1946,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency',
             'contact_name', 'contact_phone', 'contact_email',
             'shipping_address', 'shipping_address_text', 'shipping_method',
-            'payment_method', 'payment_status', 'comment',
+            'payment_method', 'payment_status', 'comment', 'tracking_number', 'tracking_url',
             'promo_code',
             'items',
             'created_at', 'updated_at'

@@ -159,3 +159,17 @@ SMTP/API-провайдером и Telegram:
 | `backend/apps/payments/views.py` | Безопасная сверка CoinRemitter webhook |
 | `backend/apps/payments/tasks.py` | События подтверждения/истечения оплаты |
 | `backend/templates/emails/order_receipt.html` | HTML-шаблон письма |
+
+
+## Сопровождение заявки
+
+- **Смена статуса менеджером в админке** (`OrderAdmin.save_model` → `notify_order_status_changed`):
+  клиенту уходит сообщение в Telegram (если включены `telegram_notifications` и есть
+  `telegram_id`) и на email (если `email_notifications`). Тексты — `build_order_status_message`
+  (ru/en по `user.language`): «Ожидает оплаты» (сумма подтверждена), «В обработке»,
+  «Отправлен» (+ `tracking_number`/`tracking_url`), «Доставлен» (+ просьба об отзыве со
+  ссылкой на `/testimonials?action=add`), «Отменён». Для «Новый»/«Оплачен» сообщения нет.
+- **Брошенная заявка** (`orders.remind_abandoned_carts`, ежечасно): одно напоминание на
+  «простой» корзины; повтор — только если клиент снова изменил корзину.
+- **Заявка «Найдём товар»** (`notify_sourcing_request_telegram`): менеджеру в
+  `TELEGRAM_CHAT_ID`, с фото, если оно приложено.
