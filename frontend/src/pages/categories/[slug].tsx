@@ -1550,8 +1550,8 @@ export default function CategoryPage({
   const categoryPath = useMemo(() => `/categories/${routeSlug || categoryType}`, [routeSlug, categoryType])
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
   const catalogSeo = useMemo(
-    () => buildCatalogSeoState(categoryPath, router.query, currentPage, totalPages),
-    [categoryPath, router.query, currentPage, totalPages]
+    () => buildCatalogSeoState(categoryPath, router.query, currentPage, totalPages, totalCount),
+    [categoryPath, router.query, currentPage, totalPages, totalCount]
   )
   const canonicalUrl = useMemo(
     () => `${siteUrl}${localePrefix}${catalogSeo.canonicalPath}`,

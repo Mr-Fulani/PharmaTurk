@@ -50,7 +50,7 @@ const withCatalogPage = (basePath, page) =>
  * self-canonical URL plus prev/next links. Filter/sort/search combinations are
  * crawlable for discovery but noindex and canonicalize to the clean category.
  */
-export function buildCatalogSeoState(basePath, query, currentPage, totalPages) {
+export function buildCatalogSeoState(basePath, query, currentPage, totalPages, totalCount) {
   const page = Number(currentPage)
   const safePage = Number.isInteger(page) && page > 0 ? page : 1
   const pages = Number(totalPages)
@@ -63,6 +63,18 @@ export function buildCatalogSeoState(basePath, query, currentPage, totalPages) {
     return {
       canonicalPath: basePath,
       hasFilters: true,
+      noindex: true,
+      previousPath: null,
+      nextPath: null,
+    }
+  }
+
+  // Пустая категория (0 товаров) — soft-404 для поисковиков: noindex, follow.
+  // Из меню и sitemap-навигации по сайту она не пропадает.
+  if (totalCount === 0) {
+    return {
+      canonicalPath: basePath,
+      hasFilters: false,
       noindex: true,
       previousPath: null,
       nextPath: null,

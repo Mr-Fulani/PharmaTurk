@@ -132,3 +132,20 @@ test('empty optional catalog filters do not create a noindex page', () => {
   assert.equal(state.noindex, false)
   assert.equal(state.canonicalPath, '/categories/books')
 })
+
+test('empty category (no products) is noindex but stays canonical to itself', () => {
+  assert.deepEqual(
+    buildCatalogSeoState('/categories/flashlights', { slug: 'flashlights' }, 1, 1, 0),
+    {
+      canonicalPath: '/categories/flashlights',
+      hasFilters: false,
+      noindex: true,
+      previousPath: null,
+      nextPath: null,
+    }
+  )
+})
+
+test('category with products stays indexable when count is passed', () => {
+  assert.equal(buildCatalogSeoState('/categories/medicines', { slug: 'medicines' }, 1, 3, 30).noindex, false)
+})
