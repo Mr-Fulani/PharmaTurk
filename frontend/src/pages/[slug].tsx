@@ -4,7 +4,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../lib/urls'
-import { SITE_NAME, SITE_URL } from '../lib/siteMeta'
+import { SITE_NAME, withSiteName, SITE_URL } from '../lib/siteMeta'
 import { sanitizeRichHtml } from '../lib/sanitizeHtml'
 import ShareButton from '../components/ShareButton'
 
@@ -120,7 +120,7 @@ export default function GenericStaticPage({ pageData, pageLocale }: GenericStati
   const normalizedLocale = pageLocale === 'en' ? 'en' : 'ru'
   const localePrefix = normalizedLocale === 'en' ? '/en' : ''
   const seoTitle = pageData.meta_title || pageData.title
-  const fullTitle = `${seoTitle} — ${SITE_NAME}`
+  const fullTitle = withSiteName(seoTitle)
   const isAboutPage = pageData.slug === 'about-us'
   const localizedAboutImage = isAboutPage ? `${SITE_URL}/og-about-us-${normalizedLocale}.jpg` : ''
   const canonicalUrl = `${SITE_URL}${localePrefix}/${pageData.slug}`
