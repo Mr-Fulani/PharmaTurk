@@ -322,3 +322,62 @@ class ProductReviewMedia(models.Model):
 
     def __str__(self):
         return f"{self.review_id}: {self.media_type} #{self.order + 1}"
+
+
+TRANSLATION_LOCALE_CHOICES = [
+    ("en", "Английский"),
+    ("ru", "Русский"),
+]
+
+
+class TranslationBase(models.Model):
+    """Перевод пользовательского текста; пустые поля на сайте заменяются оригиналом."""
+
+    locale = models.CharField("Язык", max_length=10, choices=TRANSLATION_LOCALE_CHOICES, default="en")
+
+    class Meta:
+        abstract = True
+
+
+class TestimonialTranslation(TranslationBase):
+    testimonial = models.ForeignKey(
+        Testimonial, on_delete=models.CASCADE, related_name="translations", verbose_name="Отзыв",
+    )
+    text = models.TextField("Текст отзыва", blank=True)
+
+    class Meta:
+        verbose_name = "Перевод отзыва о сервисе"
+        verbose_name_plural = "Переводы"
+        constraints = [
+            models.UniqueConstraint(fields=("testimonial", "locale"), name="unique_testimonial_translation"),
+        ]
+
+
+class ProductReviewTranslation(TranslationBase):
+    review = models.ForeignKey(
+        ProductReview, on_delete=models.CASCADE, related_name="translations", verbose_name="Отзыв",
+    )
+    text = models.TextField("Текст отзыва", blank=True)
+    admin_reply = models.TextField("Ответ магазина", blank=True, max_length=3000)
+
+    class Meta:
+        verbose_name = "Перевод отзыва о товаре"
+        verbose_name_plural = "Переводы"
+        constraints = [
+            models.UniqueConstraint(fields=("review", "locale"), name="unique_product_review_translation"),
+        ]
+
+
+class ProductQuestionTranslation(TranslationBase):
+    product_question = models.ForeignKey(
+        ProductQuestion, on_delete=models.CASCADE, related_name="translations", verbose_name="Вопрос",
+    )
+    question = models.TextField("Вопрос", blank=True)
+    answer = models.TextField("Ответ", blank=True)
+
+    class Meta:
+        verbose_name = "Перевод вопроса о товаре"
+        verbose_name_plural = "Переводы"
+        constraints = [
+            models.UniqueConstraint(fields=("product_question", "locale"), name="unique_product_question_translation"),
+        ]

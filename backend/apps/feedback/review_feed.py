@@ -82,7 +82,7 @@ def _testimonial_queryset(ids):
     return (
         Testimonial.objects.filter(pk__in=ids)
         .select_related("user")
-        .prefetch_related(Prefetch("media", queryset=media_queryset))
+        .prefetch_related(Prefetch("media", queryset=media_queryset), "translations")
         .only(
             "id", "user_id", "user__id", "user__username", "user__avatar",
             "author_name", "author_avatar", "text", "rating", "created_at",
@@ -131,7 +131,7 @@ def _product_review_queryset(ids):
     return (
         ProductReview.objects.filter(pk__in=ids)
         .select_related("user")
-        .prefetch_related(Prefetch("media", queryset=media_queryset))
+        .prefetch_related(Prefetch("media", queryset=media_queryset), "translations")
         .annotate(
             has_feed_media=Exists(
                 ProductReviewMedia.objects.filter(review_id=OuterRef("pk"))

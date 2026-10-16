@@ -205,7 +205,8 @@ def test_service_review_without_own_media_uses_service_image(feed_user):
 
 @pytest.mark.django_db
 def test_review_feed_is_paginated_public_and_has_bounded_queries(mixed_reviews, django_assert_max_num_queries):
-    with django_assert_max_num_queries(6):
+    # +2 запроса на переводы (по одному на тип отзыва), от размера страницы не зависят
+    with django_assert_max_num_queries(8):
         response = APIClient().get(
             "/api/feedback/reviews-feed/",
             {"placement": "all", "page_size": 2},

@@ -1,5 +1,6 @@
 from urllib.parse import quote, urlparse
 from django.conf import settings
+from django.utils import translation
 from rest_framework import serializers
 from .models import (
     ProductQuestion,
@@ -32,6 +33,30 @@ def _build_proxy_media_url(file_field, request):
 
 def _resolve_file_url(file_field, request):
     return _build_proxy_media_url(file_field, request)
+
+
+class TranslatedFieldsMixin:
+    """Подменяет translated_fields заполненным переводом на языке запроса (X-Language / Accept-Language).
+
+    context["original_text"] — отдать оригинал: например, автору для редактирования своего отзыва.
+    """
+
+    translated_fields = ()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if self.context.get("original_text"):
+            return data
+        request = self.context.get("request")
+        lang = (getattr(request, "LANGUAGE_CODE", None) or translation.get_language() or "ru").split("-")[0]
+        for item in instance.translations.all():
+            if item.locale == lang:
+                for field in self.translated_fields:
+                    value = (getattr(item, field) or "").strip()
+                    if value and field in data:
+                        data[field] = value
+                break
+        return data
 
 
 class TestimonialMediaSerializer(serializers.ModelSerializer):
@@ -78,10 +103,11 @@ class TestimonialMediaSerializer(serializers.ModelSerializer):
         return _resolve_file_url(getattr(obj, 'video_file', None), request)
 
 
-class TestimonialSerializer(serializers.ModelSerializer):
+class TestimonialSerializer(TranslatedFieldsMixin, serializers.ModelSerializer):
     """
     Сериализатор для модели отзыва.
     """
+    translated_fields = ("text",)
     author_avatar_url = serializers.SerializerMethodField()
     media = TestimonialMediaSerializer(many=True, read_only=True)
     user_id = serializers.SerializerMethodField()
@@ -266,7 +292,8 @@ class ProductReviewMediaSerializer(serializers.ModelSerializer):
         return _resolve_file_url(obj.file, self.context.get("request"))
 
 
-class ProductReviewSerializer(serializers.ModelSerializer):
+class ProductReviewSerializer(TranslatedFieldsMixin, serializers.ModelSerializer):
+    translated_fields = ("text", "admin_reply")
     media = ProductReviewMediaSerializer(many=True, read_only=True)
     user_id = serializers.IntegerField(read_only=True)
     user_username = serializers.CharField(source="user.username", read_only=True)
@@ -366,7 +393,8 @@ class ProductReviewWriteSerializer(serializers.ModelSerializer):
         )
 
 
-class ProductQuestionSerializer(serializers.ModelSerializer):
+class ProductQuestionSerializer(TranslatedFieldsMixin, serializers.ModelSerializer):
+    translated_fields = ("question", "answer")
     author_name = serializers.SerializerMethodField()
     user_username = serializers.SerializerMethodField()
     author_avatar_url = serializers.SerializerMethodField()
