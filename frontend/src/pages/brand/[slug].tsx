@@ -17,6 +17,7 @@ import { ProductTranslation, BrandTranslation, getLocalizedBrandDescription, get
 import { getSingleFlight } from '../../lib/api'
 import { useViewMode } from '../../hooks/useViewMode'
 import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
+import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
 
 interface Product {
   id: number
@@ -495,7 +496,7 @@ export async function getServerSideProps(ctx: any) {
     const productParams = buildBrandProductsParams(filters, page, pageSize)
     const cookieHeader: string = ctx.req.headers.cookie || ''
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
-    const currency = currencyMatch ? decodeURIComponent(currencyMatch[1]).toUpperCase() : 'RUB'
+    const currency = currencyMatch ? decodeURIComponent(currencyMatch[1]).toUpperCase() : defaultCurrencyForLocale(ctx.locale)
 
     const [productsRes, categoriesRes] = await Promise.all([
       axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/products`), {

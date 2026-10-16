@@ -5,7 +5,7 @@ import axios, {
 } from 'axios'
 import Cookies from 'js-cookie'
 import { getClientApiBase } from './urls'
-import { resolveRequestCurrency } from './requestCurrency'
+import { defaultCurrencyForLocale, resolveRequestCurrency } from './requestCurrency'
 
 // Создаем axios instance с базовым URL
 // На клиенте URL определяется динамически через interceptor (getClientApiBase)
@@ -63,7 +63,7 @@ export function getSingleFlight<T = any>(
     headers: requestScopeFingerprint(stableRequestKey(config?.headers || null)),
     responseType: config?.responseType || 'json',
     language: Cookies.get('NEXT_LOCALE') || document.documentElement.lang || 'ru',
-    currency: Cookies.get('currency') || preferredCurrency || 'RUB',
+    currency: Cookies.get('currency') || preferredCurrency || defaultCurrencyForLocale(document.documentElement.lang),
     // Интерцептор в любом случае создаёт cookie для анонимного запроса.
     // Делаем это до построения ключа, чтобы два самых первых GET тоже совпали.
     cartSession: requestScopeFingerprint(Cookies.get('cart_session') || ensureCartSession()),
@@ -172,11 +172,12 @@ api.interceptors.request.use((config) => {
     ; (config.headers as AxiosRequestHeaders)['X-Language'] = locale
 
   const storedCurrency = Cookies.get('currency')
-  // явный X-Currency запроса -> cookie -> preferredCurrency -> RUB
+  // явный X-Currency запроса -> cookie -> preferredCurrency -> валюта языка страницы (lang = локаль из URL)
   const resolvedCurrency = resolveRequestCurrency({
     explicit: (config.headers as AxiosRequestHeaders)['X-Currency'],
     stored: storedCurrency,
     preferred: preferredCurrency,
+    locale: htmlLang,
   })
   if (process.env.NODE_ENV === 'development') {
     console.log('[API Currency]', { storedCurrency, preferredCurrency, resolvedCurrency, url: config.url })

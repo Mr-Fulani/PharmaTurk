@@ -45,6 +45,7 @@ import { ProductCardGalleryImage } from '../../components/ProductCardImageGaller
 import { useViewMode } from '../../hooks/useViewMode'
 import { safeJsonLd } from '../../lib/sanitizeHtml'
 import dynamic from 'next/dynamic'
+import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
 
 const SourcingRequestForm = dynamic(() => import('../../components/SourcingRequestForm'), { ssr: false })
 
@@ -2269,7 +2270,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const cookieHeader: string = context.req.headers.cookie || ''
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
-    const currency = currencyMatch ? currencyMatch[1] : 'RUB'
+    const currency = currencyMatch ? currencyMatch[1] : defaultCurrencyForLocale(requestLocale)
 
     const productsEndpoint = resolveProductsEndpoint(categoryType)
     const prodRes = await categoryApiGet(productsEndpoint.replace(/^\/api\//, ''), {

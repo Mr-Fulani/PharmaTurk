@@ -8,7 +8,7 @@ import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import MedicinePriceCheck from '../../components/MedicinePriceCheck'
 import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components/SupplementPurchasePanel'
-import { canPublishSchemaOffer, resolveSchemaAvailability } from '../../lib/productAvailability'
+import { SCHEMA_RETURN_POLICY, canPublishSchemaOffer, resolveSchemaAvailability, resolveSchemaSku } from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
 import ServiceAttributes from '../../components/ServiceAttributes'
@@ -38,6 +38,7 @@ import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } 
 import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
+import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
 
 type CategoryType = string
 
@@ -1467,7 +1468,8 @@ export default function ProductPage({
     ...(productType === 'books' && product.pages != null && { numberOfPages: product.pages }),
     ...(isMedicine && product.active_ingredient && { activeIngredient: product.active_ingredient }),
     ...(isMedicine && product.manufacturer && { manufacturer: { '@type': 'Organization', name: product.manufacturer } }),
-    sku: product.slug,
+    sku: resolveSchemaSku({ slug: product.slug, productType, id: product.id }),
+    ...(seoBrandName && productType !== 'books' && productType !== 'uslugi' && { brand: { '@type': 'Brand', name: seoBrandName } }),
     ...(hasRatingForSchema && {
       aggregateRating: {
         '@type': 'AggregateRating',
@@ -1489,7 +1491,10 @@ export default function ProductPage({
         availability,
         url: canonicalUrl,
         priceValidUntil,
-        ...(productType !== 'uslugi' && { itemCondition: 'https://schema.org/NewCondition' }),
+        ...(productType !== 'uslugi' && {
+          itemCondition: 'https://schema.org/NewCondition',
+          hasMerchantReturnPolicy: SCHEMA_RETURN_POLICY,
+        }),
       }
       : undefined,
   }
@@ -2982,7 +2987,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const { getInternalApiUrl, buildProductUrl } = await import('../../lib/urls')
   const cookieHeader: string = ctx.req.headers.cookie || ''
   const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
-  const currency = currencyMatch ? currencyMatch[1] : 'RUB'
+  const currency = currencyMatch ? currencyMatch[1] : defaultCurrencyForLocale(ctx.locale)
 
   // HTML зависит от валюты из cookie — кэшируем в CDN только дефолтный вариант
   ctx.res.setHeader(

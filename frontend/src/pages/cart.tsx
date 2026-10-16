@@ -24,6 +24,7 @@ import {
 import { SITE_NAME } from '../lib/siteMeta'
 import { formatMoney, parseMoneyNumber as parseNumber } from '../lib/price'
 import type { Cart, CartItem } from '../types/cart'
+import { defaultCurrencyForLocale } from '../lib/requestCurrency'
 
 export default function CartPage({ initialCart }: { initialCart: Cart }) {
   const { t, i18n } = useTranslation('common')
@@ -807,7 +808,7 @@ export async function getServerSideProps(ctx: any) {
     }
 
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
-    const currency = currencyMatch ? currencyMatch[1] : 'RUB'
+    const currency = currencyMatch ? currencyMatch[1] : defaultCurrencyForLocale(locale)
 
     const apiRes = await fetch(getInternalApiUrl('orders/cart'), {
       headers: {

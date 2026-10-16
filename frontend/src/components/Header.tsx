@@ -16,6 +16,7 @@ import ThemeToggle from './ThemeToggle'
 import { buildProductIdentityKey } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { resolveMediaUrl } from '../lib/media'
+import { defaultCurrencyForLocale } from '../lib/requestCurrency'
 
 export default function Header() {
   const router = useRouter()
@@ -31,7 +32,7 @@ export default function Header() {
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [currency, setCurrency] = useState('RUB')
+  const [currency, setCurrency] = useState(() => defaultCurrencyForLocale(router.locale))
   const [scrolled, setScrolled] = useState(false)
   const [isLogoExpanded, setIsLogoExpanded] = useState(false)
   const [isLogoHovered, setIsLogoHovered] = useState(false)
@@ -135,9 +136,9 @@ export default function Header() {
     if (user?.currency) {
       setCurrency(user.currency)
     } else {
-      setCurrency('RUB')
+      setCurrency(defaultCurrencyForLocale(router.locale))
     }
-  }, [user])
+  }, [user, router.locale])
 
   // Эффект изменения состояния хедера при скролле
   useEffect(() => {

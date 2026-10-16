@@ -31,3 +31,21 @@ export function canPublishSchemaOffer({ price, isMedicine, isSupplement, canAddT
   if (isSupplement && canAddToCart !== true) return false
   return true
 }
+
+// Google: sku не длиннее 50 символов и без пробелов. Короткий slug не трогаем, чтобы не
+// менять идентификатор уже проиндексированных товаров; длинный заменяем на тип + id.
+export function resolveSchemaSku({ slug, productType, id }) {
+  const value = String(slug || '')
+  if (value && value.length <= 50 && !/\s/.test(value)) return value
+  return `${productType}-${id}`
+}
+
+// Условия страницы /returns: 14 дней с момента получения, возврат почтой.
+// Стоимость обратной доставки не указываем — её согласует менеджер.
+export const SCHEMA_RETURN_POLICY = {
+  '@type': 'MerchantReturnPolicy',
+  applicableCountry: ['RU', 'BY', 'GE', 'TR', 'GB', 'US'],
+  returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+  merchantReturnDays: 14,
+  returnMethod: 'https://schema.org/ReturnByMail',
+}

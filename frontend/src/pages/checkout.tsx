@@ -30,6 +30,7 @@ import { gtmBeginCheckout, gtmPurchase, type GtmEcommerceItem } from '../lib/gtm
 import { ymReachGoal } from '../lib/ym'
 import { ONLINE_PAYMENTS_ENABLED } from '../lib/payments'
 import ContactChannelPicker, { isUsernameChannel } from '../components/ContactChannelPicker'
+import { defaultCurrencyForLocale } from '../lib/requestCurrency'
 
 interface Address {
   id: number
@@ -1296,7 +1297,7 @@ export async function getServerSideProps(ctx: any) {
     }
 
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
-    const currency = currencyMatch ? currencyMatch[1] : 'RUB'
+    const currency = currencyMatch ? currencyMatch[1] : defaultCurrencyForLocale(locale)
 
     const apiRes = await fetch(getInternalApiUrl('orders/cart'), {
       headers: {
