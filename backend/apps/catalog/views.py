@@ -1287,11 +1287,27 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         return context
 
     def _attach_product_counts(self, brands):
-        """Общие счётчики из снимка; фильтрованные считаются по запросу."""
+        """Общие и пофильтрованные по типу счётчики — из снимков; по категориям — запросом."""
         if self.request.query_params.get('count_scope') != 'filtered':
             from .brand_counts import get_brand_product_counts
 
             counts = get_brand_product_counts()
+            for brand in brands:
+                brand._products_count = counts.get(brand.id, 0)
+            return
+
+        product_type = self._normalize_product_type(
+            self.request.query_params.get('product_type')
+        )
+        category_ids = self._parse_id_list('category_id')
+        category_slugs = self._parse_slug_list('category_slug')
+        if category_slugs:
+            category_ids = list(_get_category_ids_with_descendants(category_slugs))
+        if product_type and not category_ids:
+            # Корневая страница типа: счётчики из ежеминутного снимка по типам.
+            from .brand_counts import get_brand_type_product_counts
+
+            counts = get_brand_type_product_counts(product_type)
             for brand in brands:
                 brand._products_count = counts.get(brand.id, 0)
             return
@@ -1302,19 +1318,10 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             is_active=True,
             is_available=True,
         ).exclude(non_public_shadow_product_q())
-        if self.request.query_params.get('count_scope') == 'filtered':
-            product_type = self._normalize_product_type(
-                self.request.query_params.get('product_type')
-            )
-            if product_type:
-                products = products.filter(product_type=product_type)
-
-            category_ids = self._parse_id_list('category_id')
-            category_slugs = self._parse_slug_list('category_slug')
-            if category_slugs:
-                category_ids = list(_get_category_ids_with_descendants(category_slugs))
-            if category_ids:
-                products = products.filter(category_id__in=category_ids)
+        if product_type:
+            products = products.filter(product_type=product_type)
+        if category_ids:
+            products = products.filter(category_id__in=category_ids)
 
         counts = {
             row['brand_id']: row['total']

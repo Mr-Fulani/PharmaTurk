@@ -44,7 +44,7 @@ def test_refresh_updates_snapshot_and_failed_refresh_preserves_it(inventory):
     Product.objects.filter(slug="cache-product-0").update(is_available=False)
     assert brand_counts.get_brand_product_counts() == {inventory.id: 2}
     assert brand_counts.refresh_brand_product_counts() == {inventory.id: 1}
-    with patch.object(brand_counts, "calculate_brand_product_counts", side_effect=RuntimeError):
+    with patch.object(brand_counts, "calculate_brand_type_product_counts", side_effect=RuntimeError):
         with pytest.raises(RuntimeError):
             brand_counts.refresh_brand_product_counts()
     assert brand_counts.get_brand_product_counts() == {inventory.id: 1}
@@ -97,3 +97,37 @@ def test_periodic_refresh_coalesces_overlap_and_releases_lock():
     assert cache.get(lock) is None
     with patch.object(brand_counts, "refresh_brand_product_counts", return_value={1: 2}):
         assert refresh_brand_product_counts_task.run() == {"status": "refreshed", "brands": 1}
+
+
+def test_type_snapshot_matches_exact_counts_and_serves_without_sql(inventory, django_assert_num_queries):
+    brand_counts.refresh_brand_product_counts()
+    with django_assert_num_queries(0):
+        assert brand_counts.get_brand_type_product_counts("medicines") == {inventory.id: 1}
+        assert brand_counts.get_brand_type_product_counts("uslugi") == {inventory.id: 1}
+        assert brand_counts.get_brand_type_product_counts("clothing") == {}
+
+
+def test_type_snapshot_cold_cache_computes_once(inventory, django_assert_num_queries):
+    with django_assert_num_queries(1):
+        assert brand_counts.get_brand_type_product_counts("medicines") == {inventory.id: 1}
+    with django_assert_num_queries(0):
+        assert brand_counts.get_brand_type_product_counts("uslugi") == {inventory.id: 1}
+
+
+def test_filtered_list_by_category_keeps_exact_counts(inventory):
+    from apps.catalog.models import Category
+
+    category = Category.objects.create(name="Cold", slug="cold-medicines")
+    Product.objects.filter(slug="cache-product-0").update(category=category)
+    brand_counts.refresh_brand_product_counts()
+    Product.objects.create(
+        brand=inventory, name="Fresh", slug="cache-product-fresh", product_type="medicines",
+        price=10, currency="TRY", is_active=True, is_available=True, category=category,
+    )
+    with patch.object(brand_counts, "get_brand_type_product_counts", side_effect=AssertionError):
+        response = APIClient().get("/api/catalog/brands", {
+            "count_scope": "filtered", "product_type": "medicines", "category_slug": category.slug,
+        })
+    assert response.status_code == 200
+    row = next(row for row in response.data["results"] if row["slug"] == inventory.slug)
+    assert row["products_count"] == 2
