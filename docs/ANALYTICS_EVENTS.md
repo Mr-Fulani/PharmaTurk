@@ -26,7 +26,7 @@
 
 ## Google Analytics 4
 
-- Ресурс **turk-export** (поток «Mudaroba», `G-C333XNVW4X`) в аккаунте Google Mr.Fulani;
+- Ресурс **Mudaroba** (до 17.10.2026 — turk-export; поток «Mudaroba», `G-C333XNVW4X`) в аккаунте Google Mr.Fulani;
   контейнер GTM `GTM-MR4C4W83` на 16.10.2026 пустой (тегов нет, не опубликован).
 - GA4 подключён напрямую (`gtag`), а объектные `dataLayer.push` gtag не обрабатывает, поэтому
   `gtmEvent` (`lib/gtm.ts`) дублирует каждое событие в `gtag('event', …)` с ecommerce-полями на
