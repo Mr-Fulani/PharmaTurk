@@ -21,15 +21,16 @@ docker-compose за nginx и Cloudflare.
 3. **hreflang:** на каждой индексируемой странице ровно три тега: `ru` (без префикса), `en` (`/en/...`), `x-default` (= ru). Один источник — страница; в `_document.tsx` hreflang не дублировать.
 4. **Редиректы в getServerSideProps:** `destination` строить через `ctx.locale !== ctx.defaultLocale ? '/'+ctx.locale : ''`. Постоянный редирект (`permanent: true`) — только когда URL действительно навсегда сменился.
 5. **Ошибки бэкенда ≠ 404.** `notFound: true` возвращать только если API явно ответил 404. Сетевые ошибки и 5xx — пробрасывать (бот получит 500 и вернётся, страница останется в индексе).
-6. **noindex** — на cart, checkout, profile, auth, favorites, search, страницах пагинации `page>1`. На noindex-страницах canonical/hreflang не нужны.
+6. **noindex** — на cart, checkout (включая `checkout-success`, `checkout-crypto`), profile, auth, favorites, search и на каталожных страницах с фильтрами/сортировкой (категории и бренды, `buildCatalogSeoState`). Чистая пагинация `?page=N` — self-canonical, индексируется. На noindex-страницах canonical/hreflang не нужны. Закрытые разделы в `robots.txt` перечислять для обеих локалей (`/cart` и `/en/cart`).
 7. **Sitemap:** единственный источник — `frontend/src/pages/sitemap.xml.tsx`. Новая сущность с публичной страницей → сразу добавить в sitemap (с hreflang-альтернативами) и проверить canonical.
 8. **Метаданные двуязычны.** Title/description берутся из переводов API (`translations[locale]`), фолбэк — шаблонные строки через `t(...)`. Не хардкодить русский текст в мету.
-9. **JSON-LD:** карточка товара — `Product` (+ `Offer`, `aggregateRating` при наличии отзывов); медикаменты — `Drug` БЕЗ `Offer` (сайт их не продаёт, см. `canPublishSchemaOffer` в `lib/productAvailability.js`); в `Offer` — `hasMerchantReturnPolicy` (условия `/returns`: 14 дней, почтой, обратная доставка за счёт покупателя, кроме брака), `brand`, `sku` ≤ 50 символов (`resolveSchemaSku`); категории — `BreadcrumbList`; главная — `Organization` + `WebSite`. Валидировать через Rich Results Test после изменения.
-10. **Перед мержем любой правки страниц** прогнать чек: `curl -s https://site/<page> | grep -E 'canonical|hreflang|robots'` для обеих локалей.
+9. **JSON-LD:** карточка товара — `Product` (+ `Offer`, `aggregateRating` при наличии отзывов); медикаменты — `Drug` БЕЗ `Offer` (сайт их не продаёт, см. `canPublishSchemaOffer` в `lib/productAvailability.js`); в `Offer` — `hasMerchantReturnPolicy` (условия `/returns`: 14 дней, почтой, обратная доставка за счёт покупателя, кроме брака), `brand`, `sku` ≤ 50 символов (`resolveSchemaSku`); категории и бренды — `BreadcrumbList`; главная — `Organization` + `WebSite`. Валидировать через Rich Results Test после изменения.
+10. **Длина мета:** title ≤ 80, description ≤ 200 символов, резать только по границе слова (`lib/seoText.js`: `limitTitle`, `truncateAtWord`), не `.slice(0, N)`.
+11. **Перед мержем любой правки страниц** прогнать чек: `curl -s https://site/<page> | grep -E 'canonical|hreflang|robots'` для обеих локалей.
 
 ## 2. Производительность
 
-1. **SSR — только то, что нужно для первого экрана и меты.** Остальное (рекомендации, отзывы, похожие товары) — клиентская подгрузка.
+1. **SSR — только то, что нужно для первого экрана и меты.** Остальное (рекомендации, отзывы, похожие товары) — клиентская подгрузка. Исключение — перелинковка карточки: до 8 текстовых ссылок на товары той же категории приходят в ответе resolve (`related_links`, 2 запроса по частичному индексу, без отдельного HTTP-запроса из gSSP).
 2. **Кэшируй HTML только при безопасном общем ответе:** публичная gSSP-страница
    может ставить `Cache-Control: public, s-maxage=..., stale-while-revalidate=...`
    только если её HTML не зависит от cookie, авторизации, валюты или другой
