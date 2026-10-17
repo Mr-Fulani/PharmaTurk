@@ -6,9 +6,12 @@
 - `hooks/useCookieConsent.ts` — общее состояние для всех компонентов
   (`useSyncExternalStore`): после «Принять» `_app.tsx` сразу грузит Метрику и GA4,
   без перезагрузки.
-- GTM грузится всегда, но в `_document.tsx` до него выставлен Consent Mode
-  `default`: `denied` до ответа, `granted` при сохранённом согласии. При принятии —
-  `consent update granted` + событие `cookie_consent_granted` (`lib/gtm.ts`).
+- gtm.js не загружается (с 17.10.2026): контейнер пуст, а 116 КБ скрипта на
+  каждой странице отнимали полосу у LCP. В `_document.tsx` при заданном GA4 остаётся
+  Consent Mode `default`: `denied` до ответа, `granted` при сохранённом согласии;
+  gtag.js подхватывает его из `dataLayer`. При принятии — `consent update granted` +
+  событие `cookie_consent_granted` (`lib/gtm.ts`). Если в GTM появятся теги — вернуть
+  загрузку контейнера в `_document.tsx` и убрать дублирование событий в gtag (ниже).
 - Метрика инициализируется без `defer`, поэтому первый просмотр учитывается при
   init; дальше — `ymPageHit` на `routeChangeComplete`.
 
@@ -27,7 +30,8 @@
 ## Google Analytics 4
 
 - Ресурс **Mudaroba** (до 17.10.2026 — turk-export; поток «Mudaroba», `G-C333XNVW4X`) в аккаунте Google Mr.Fulani;
-  контейнер GTM `GTM-MR4C4W83` на 16.10.2026 пустой (тегов нет, не опубликован).
+  контейнер GTM `GTM-MR4C4W83` на 16.10.2026 пустой (тегов нет, не опубликован) — на сайте не грузится,
+  `NEXT_PUBLIC_GTM_ID` сейчас не используется.
 - GA4 подключён напрямую (`gtag`), а объектные `dataLayer.push` gtag не обрабатывает, поэтому
   `gtmEvent` (`lib/gtm.ts`) дублирует каждое событие в `gtag('event', …)` с ecommerce-полями на
   верхнем уровне (`ga4EventParams`). Если когда-нибудь настроить GA4-теги в GTM — убрать это
@@ -42,5 +46,5 @@
 `order_price`, `currency`, `payment_method`), `search`, `click_telegram`,
 `click_whatsapp`, `click_vk`, `click_email`, `click_phone`, `sourcing_request` (параметр `placement`).
 
-Изменения событий проверять в Preview-режиме GTM и в отладке Метрики
+Изменения событий проверять в DebugView GA4 (пока GTM не подключён) и в отладке Метрики
 (`?_ym_debug=1`), см. `DEVELOPMENT_RULES.md`.
