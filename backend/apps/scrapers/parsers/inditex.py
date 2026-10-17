@@ -22,7 +22,7 @@ class InditexSiblingParser(ZaraParser):
         r"(?:-c\d+p\d+(?:\.html)?|-l\d+)(?:$|[?#])",
         re.IGNORECASE,
     )
-    CATEGORY_PATH_RE = re.compile(r"-n\d+(?:\.html)?(?:$|[?#])", re.IGNORECASE)
+    CATEGORY_PATH_RE = re.compile(r"-n(\d+)(?:\.html)?(?:$|[?#])", re.IGNORECASE)
     MARKETING_PATH_RE = re.compile(r"(?!x)x")
     VIEW_PAYLOAD_MARKER = (
         "window.bershka.viewPayload = ",
