@@ -97,10 +97,12 @@ const FILTER_QUERY_KEYS = [
   'ordering',
 ]
 
-// Медикаменты по умолчанию — «Популярные» (заранее посчитанный ранг на
-// бэкенде, MedicineProduct.sort_rank), остальные каталоги — по названию.
+// Медикаменты и БАДы по умолчанию — «Популярные» (заранее посчитанный ранг
+// на бэкенде, поле sort_rank), остальные каталоги — по названию.
+const RANKED_CATALOG_TYPES = new Set(['medicines', 'supplements'])
+
 export function getDefaultCatalogSort(categoryType) {
-  return categoryType === 'medicines' ? 'popular' : 'name_asc'
+  return RANKED_CATALOG_TYPES.has(categoryType) ? 'popular' : 'name_asc'
 }
 
 export function parseCatalogFiltersQuery(query, defaults) {

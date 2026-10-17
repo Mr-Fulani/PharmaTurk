@@ -33,7 +33,7 @@ test('filter change updates brands and resets pagination', () => {
   )
 })
 
-test('default sort stays out of the URL and an explicit name sort is kept for medicines', () => {
+test('default sort stays out of the URL and an explicit name sort is kept for ranked catalogs', () => {
   const filters = {
     categories: [], categorySlugs: [], brands: [], subcategories: [],
     subcategorySlugs: [], genders: [], fragranceTypes: [], authorIds: [], genreIds: [],
@@ -41,6 +41,7 @@ test('default sort stays out of the URL and an explicit name sort is kept for me
   }
   const defaultSortBy = getDefaultCatalogSort('medicines')
   assert.equal(defaultSortBy, 'popular')
+  assert.equal(getDefaultCatalogSort('supplements'), 'popular')
   assert.equal(getDefaultCatalogSort('shoes'), 'name_asc')
   assert.deepEqual(
     buildCatalogPageQuery({ slug: 'medicines' }, 1, { filters, defaultSortBy }),
