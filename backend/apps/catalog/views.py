@@ -4700,7 +4700,7 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
 
     # «Популярные» — порядок по умолчанию на странице медикаментов: заранее
     # посчитанный ранг (цена, наличие, спрос, качество карточки), см.
-    # services/medicine_sort_rank.py. Читается по частичному индексу из 0212.
+    # services/catalog_sort_rank.py. Читается по частичному индексу из 0212.
     _ORDERING_MAP = {
         **_SimpleDomainViewSet._ORDERING_MAP,
         'popular': ('-sort_rank', '-id'),
@@ -4893,6 +4893,13 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
     )
     serializer_class = SupplementProductSerializer
     card_serializer_class = SimpleDomainCardSerializer
+
+    # «Популярные» — порядок по умолчанию на странице БАДов, как у медикаментов
+    # (services/catalog_sort_rank.py, частичный индекс из 0214).
+    _ORDERING_MAP = {
+        **_SimpleDomainViewSet._ORDERING_MAP,
+        'popular': ('-sort_rank', '-id'),
+    }
 
     def _apply_domain_filters(self, queryset):
         dosage_form = self.request.query_params.get('dosage_form')

@@ -3,7 +3,7 @@ from django.db import connection
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
-from apps.catalog.views import MedicineProductViewSet
+from apps.catalog.views import MedicineProductViewSet, SupplementProductViewSet
 
 
 @pytest.mark.django_db
@@ -35,3 +35,22 @@ def test_medicine_card_order_can_use_partial_index(ordering, index_name):
         plan = "\n".join(row[0] for row in cursor.fetchall())
 
     assert index_name in plan
+
+
+@pytest.mark.django_db
+def test_supplement_card_popular_order_can_use_partial_index():
+    """Предикат 0214 обязан доказываться из SQL карточек БАДов."""
+    request = Request(APIRequestFactory().get(
+        "/api/catalog/supplements/products",
+        {"view": "card", "ordering": "popular", "page_size": 12},
+    ))
+    view = SupplementProductViewSet(request=request, action="list", format_kwarg=None)
+    sql, params = view.get_queryset()[:12].query.sql_with_params()
+
+    with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL enable_seqscan = off")
+        cursor.execute("SET LOCAL enable_sort = off")
+        cursor.execute(f"EXPLAIN {sql}", params)
+        plan = "\n".join(row[0] for row in cursor.fetchall())
+
+    assert "catalog_supplement_active_rank_idx" in plan

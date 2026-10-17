@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
             field=models.PositiveIntegerField(
                 default=0,
                 editable=False,
-                help_text="Порядок «Популярные». Пересчитывается ночной задачей catalog.recompute_medicine_sort_ranks.",
+                help_text="Порядок «Популярные». Пересчитывается ночной задачей catalog.recompute_sort_ranks.",
                 verbose_name="Ранг в каталоге",
             ),
         ),

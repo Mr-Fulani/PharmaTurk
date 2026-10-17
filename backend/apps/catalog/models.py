@@ -5096,7 +5096,7 @@ class MedicineProduct(AbstractDomainProduct):
         _("Ранг в каталоге"),
         default=0,
         editable=False,
-        help_text=_("Порядок «Популярные». Пересчитывается ночной задачей catalog.recompute_medicine_sort_ranks."),
+        help_text=_("Порядок «Популярные». Пересчитывается ночной задачей catalog.recompute_sort_ranks."),
     )
 
     class Meta:
@@ -5297,6 +5297,13 @@ class SupplementProduct(AbstractDomainProduct):
         _("Дата последнего обогащения"),
         blank=True,
         null=True,
+    )
+
+    sort_rank = models.PositiveIntegerField(
+        _("Ранг в каталоге"),
+        default=0,
+        editable=False,
+        help_text=_("Порядок «Популярные». Пересчитывается ночной задачей catalog.recompute_sort_ranks."),
     )
 
     class Meta:

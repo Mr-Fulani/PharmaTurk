@@ -668,11 +668,11 @@ def expire_new_badges() -> int:
     return cleared
 
 
-@shared_task(name="catalog.recompute_medicine_sort_ranks")
-def recompute_medicine_sort_ranks() -> int:
-    """Пересчитывает ранг медикаментов для сортировки «Популярные»."""
-    from apps.catalog.services.medicine_sort_rank import recompute_medicine_sort_ranks as recompute
+@shared_task(name="catalog.recompute_sort_ranks")
+def recompute_sort_ranks() -> dict:
+    """Пересчитывает ранг медикаментов и БАДов для сортировки «Популярные»."""
+    from apps.catalog.services.catalog_sort_rank import ranked_models, recompute_sort_ranks as recompute
 
-    updated = recompute()
-    logger.info("recompute_medicine_sort_ranks: updated %s medicines", updated)
+    updated = {model._domain_product_type: recompute(model) for model in ranked_models()}
+    logger.info("recompute_sort_ranks: updated %s", updated)
     return updated

@@ -1,4 +1,4 @@
-"""Порядок списка медикаментов: ранг «Популярные» и устойчивые сортировки."""
+"""Порядок списков медикаментов и БАДов: ранг «Популярные» и устойчивые сортировки."""
 
 import uuid
 
@@ -6,13 +6,17 @@ import pytest
 from django.contrib.contenttypes.models import ContentType
 from rest_framework.test import APIClient
 
-from apps.catalog.models import Category, Favorite, MedicineProduct, ProductMarketCheck
-from apps.catalog.services.medicine_sort_rank import (
-    compute_sort_rank,
-    recompute_medicine_sort_ranks,
+from apps.catalog.models import (
+    Category,
+    Favorite,
+    MedicineProduct,
+    ProductMarketCheck,
+    SupplementProduct,
 )
+from apps.catalog.services.catalog_sort_rank import compute_sort_rank, recompute_sort_ranks
 
 URL = "/api/catalog/medicines/products"
+SUPPLEMENTS_URL = "/api/catalog/supplements/products"
 
 
 def _rank(**overrides):
@@ -45,9 +49,9 @@ def medicines(db):
     return category, make
 
 
-def _names(category, ordering):
+def _names(category, ordering, url=URL):
     response = APIClient().get(
-        URL, {"category_slug": category.slug, "ordering": ordering, "view": "card"}
+        url, {"category_slug": category.slug, "ordering": ordering, "view": "card"}
     )
     assert response.status_code == 200
     return [item["name"] for item in response.data["results"]]
@@ -72,12 +76,12 @@ def test_popular_order_follows_recomputed_rank(medicines):
     plain.refresh_from_db()  # save() пишет shadow-sync повторно
     updated_at = plain.updated_at
 
-    assert recompute_medicine_sort_ranks() == 4
+    assert recompute_sort_ranks(MedicineProduct) == 4
     assert _names(category, "popular") == ["Wanted", "Favorite", "Plain", "Unpriced"]
 
     plain.refresh_from_db()
     assert plain.updated_at == updated_at
-    assert recompute_medicine_sort_ranks() == 0
+    assert recompute_sort_ranks(MedicineProduct) == 0
 
 
 def test_price_desc_keeps_unpriced_last_and_ties_are_stable(medicines):
@@ -95,3 +99,25 @@ def test_price_desc_keeps_unpriced_last_and_ties_are_stable(medicines):
     )
     same_ids = [item["id"] for item in response.data["results"] if item["name"] == "Same"]
     assert same_ids == [first.pk, second.pk]
+
+
+def test_supplements_popular_order_follows_recomputed_rank(db):
+    category = Category.objects.create(name="БАДы", slug=f"supplements-{uuid.uuid4().hex[:8]}")
+
+    def make(name, price):
+        return SupplementProduct.objects.create(
+            name=name, slug=f"{name.lower()}-{uuid.uuid4().hex[:6]}",
+            category=category, currency="TRY", is_active=True, price=price,
+        )
+
+    make("Unpriced", None)
+    make("Plain", 10)
+    wanted = make("Wanted", 10)
+    Favorite.objects.create(
+        session_key="rank-test",
+        content_type=ContentType.objects.get_for_model(SupplementProduct),
+        object_id=wanted.pk,
+    )
+
+    assert recompute_sort_ranks(SupplementProduct) == 3
+    assert _names(category, "popular", SUPPLEMENTS_URL) == ["Wanted", "Plain", "Unpriced"]
