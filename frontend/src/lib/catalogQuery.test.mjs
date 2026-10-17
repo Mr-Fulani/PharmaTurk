@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   buildCategoryBrandParams,
   buildCatalogPageQuery,
+  getDefaultCatalogSort,
   normalizeCatalogFacets,
   parseBrandIds,
   parseCatalogFiltersQuery,
@@ -29,6 +30,25 @@ test('filter change updates brands and resets pagination', () => {
       { filters }
     ),
     { slug: 'medicines', brand_id: ['42', '77'] }
+  )
+})
+
+test('default sort stays out of the URL and an explicit name sort is kept for medicines', () => {
+  const filters = {
+    categories: [], categorySlugs: [], brands: [], subcategories: [],
+    subcategorySlugs: [], genders: [], fragranceTypes: [], authorIds: [], genreIds: [],
+    publishers: [], languages: [], inStock: false, isNew: false, sortBy: 'popular', attributes: {}
+  }
+  const defaultSortBy = getDefaultCatalogSort('medicines')
+  assert.equal(defaultSortBy, 'popular')
+  assert.equal(getDefaultCatalogSort('shoes'), 'name_asc')
+  assert.deepEqual(
+    buildCatalogPageQuery({ slug: 'medicines' }, 1, { filters, defaultSortBy }),
+    { slug: 'medicines' }
+  )
+  assert.deepEqual(
+    buildCatalogPageQuery({ slug: 'medicines' }, 1, { filters: { ...filters, sortBy: 'name_asc' }, defaultSortBy }),
+    { slug: 'medicines', ordering: 'name_asc' }
   )
 })
 

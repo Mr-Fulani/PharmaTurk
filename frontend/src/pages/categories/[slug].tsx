@@ -20,6 +20,7 @@ import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } 
 import {
   buildCategoryBrandParams,
   buildCatalogPageQuery,
+  getDefaultCatalogSort,
   normalizeCatalogFacets,
   parseBrandIds,
   parseCatalogFiltersQuery,
@@ -1026,9 +1027,9 @@ export default function CategoryPage({
     priceMax: undefined,
     inStock: false,
     isNew: false,
-    sortBy: 'name_asc',
+    sortBy: getDefaultCatalogSort(categoryType),
     attributes: {}
-  }), [])
+  }), [categoryType])
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const categoryGroups = useMemo(() => {
     const sections = getCategorySections(categoryType, categories)
@@ -1053,7 +1054,10 @@ export default function CategoryPage({
     options: { replace?: boolean; filters?: FilterState } = {}
   ) => {
     if (!router.isReady) return
-    const nextQuery = buildCatalogPageQuery(router.query, page, options)
+    const nextQuery = buildCatalogPageQuery(router.query, page, {
+      ...options,
+      defaultSortBy: defaultFilters.sortBy,
+    })
     const navigate = options.replace ? router.replace : router.push
     navigate(
       {
@@ -1065,7 +1069,7 @@ export default function CategoryPage({
     ).catch((error) => {
       console.error('Не удалось обновить параметр страницы в URL:', error)
     })
-  }, [router])
+  }, [router, defaultFilters.sortBy])
 
   const resetFilters = useCallback(() => {
     setFilters(defaultFilters)
@@ -1271,7 +1275,7 @@ export default function CategoryPage({
         if (filters.sortBy) {
           params.ordering = filters.sortBy
         }
-        if (filters.isNew && (!filters.sortBy || filters.sortBy === 'name_asc')) {
+        if (filters.isNew && (!filters.sortBy || filters.sortBy === defaultFilters.sortBy)) {
           params.ordering = '-created_at'
         }
         if (categoryType === 'books') {
@@ -1372,6 +1376,7 @@ export default function CategoryPage({
     filters.inStock,
     filters.isNew,
     filters.sortBy,
+    defaultFilters.sortBy,
     attributesFilterKey,
     currentPage,
     categoryType,
@@ -2257,13 +2262,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     // --- Товары: доменный endpoint для известных типов, общий — для остальных ---
     // Match the filter UI's default order during SSR. Otherwise hydration
-    // immediately refetches name_asc and visibly replaces the newest-first
-    // server list with a different page of products.
+    // immediately refetches the default order and visibly replaces the server
+    // list with a different page of products.
     const productParams: any = {
       page: requestedPage,
       page_size: pageSize,
       view: 'card',
-      ordering: 'name_asc',
+      ordering: getDefaultCatalogSort(categoryType),
     }
     if (routeSlug) {
       // Для книг используем product_type чтобы показать все книги из всех жанров

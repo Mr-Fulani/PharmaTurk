@@ -97,6 +97,12 @@ const FILTER_QUERY_KEYS = [
   'ordering',
 ]
 
+// Медикаменты по умолчанию — «Популярные» (заранее посчитанный ранг на
+// бэкенде, MedicineProduct.sort_rank), остальные каталоги — по названию.
+export function getDefaultCatalogSort(categoryType) {
+  return categoryType === 'medicines' ? 'popular' : 'name_asc'
+}
+
 export function parseCatalogFiltersQuery(query, defaults) {
   const attributes = {}
   for (const [key, value] of Object.entries(query)) {
@@ -165,7 +171,8 @@ export function buildCatalogPageQuery(currentQuery, page, options = {}) {
     if (Number.isFinite(filters.priceMax)) nextQuery.price_max = String(filters.priceMax)
     if (filters.inStock) nextQuery.in_stock = '1'
     if (filters.isNew) nextQuery.is_new = '1'
-    if (filters.sortBy && filters.sortBy !== 'name_asc') nextQuery.ordering = filters.sortBy
+    const defaultSortBy = options.defaultSortBy || 'name_asc'
+    if (filters.sortBy && filters.sortBy !== defaultSortBy) nextQuery.ordering = filters.sortBy
 
     for (const [key, values] of Object.entries(filters.attributes || {})) {
       setList(nextQuery, `attr_${key}`, values)

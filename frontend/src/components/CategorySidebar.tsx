@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getSidebarCategoryName, getLocalizedBrandName, CategoryTranslation, BrandTranslation } from '../lib/i18n'
+import { getDefaultCatalogSort } from '../lib/catalogQuery'
 
 export interface SidebarTreeItem {
   id: string
@@ -181,7 +182,7 @@ export default function CategorySidebar({
     priceMax: undefined,
     inStock: false,
     isNew: false,
-    sortBy: 'name_asc',
+    sortBy: getDefaultCatalogSort(categoryType),
     attributes: {},
   }
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters)
@@ -414,7 +415,7 @@ export default function CategorySidebar({
       priceMax: undefined,
       inStock: false,
       isNew: false,
-      sortBy: 'name_asc',
+      sortBy: getDefaultCatalogSort(categoryType),
       attributes: {}
     })
     setPriceRange({ min: '', max: '' })
