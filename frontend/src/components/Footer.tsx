@@ -155,7 +155,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
             {/* Логотип/изображение оплат — увеличенный размер и правильное выравнивание */}
             <div className="group relative">
               <img
-                src="/footer-payments.png"
+                src="/footer-payments.webp"
                 alt={t('footer_payments', 'Способы оплаты')}
                 width={160}
                 height={112}
