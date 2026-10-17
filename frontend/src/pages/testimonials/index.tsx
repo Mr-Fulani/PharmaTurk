@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import SEO from '../../components/SEO'
-import FallbackMediaImage from '../../components/FallbackMediaImage'
+import FallbackMediaImage, { buildProxySrcSet } from '../../components/FallbackMediaImage'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 import Link from 'next/link'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -532,9 +532,13 @@ export default function TestimonialsPage({
     if (!cardMedia) return fallback
 
     if (cardMedia.media_type === 'image' && cardMedia.image_url) {
+      const imageSrc = resolveMediaUrl(cardMedia.image_url)
+      // Оригиналы фото отзывов — до 180 КБ; карточке хватает уменьшенной копии proxy-media.
       return (
         <img
-          src={resolveMediaUrl(cardMedia.image_url)}
+          src={imageSrc}
+          srcSet={imageSrc.includes('proxy-media') ? buildProxySrcSet(imageSrc) : undefined}
+          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
           alt={testimonial.author_name}
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
           onError={(event) => applyImageFallback(event.currentTarget)}

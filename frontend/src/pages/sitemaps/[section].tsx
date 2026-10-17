@@ -9,6 +9,7 @@ import {
   fetchAllPages,
   generateSitemapXml,
 } from '../../lib/sitemap'
+import { createStaleWhileRevalidateCache } from '../../lib/serverPublicCache'
 
 /**
  * Секционные sitemap'ы: /sitemaps/<section>.xml (rewrite в next.config.js
@@ -184,34 +185,46 @@ export default function SitemapSection() {
   return null
 }
 
+// Холодная сборка products-medicines — ~25 последовательных запросов к API
+// (~20 с). Готовый XML живёт в памяти процесса: после первой сборки ответ не
+// ждёт API, устаревшая секция пересобирается в фоне. Пустые не кэшируем —
+// это сбой API, а не пустой каталог.
+const SECTION_FRESH_MS = 6 * 60 * 60 * 1000
+const sectionXmlCache = createStaleWhileRevalidateCache({
+  freshMs: SECTION_FRESH_MS,
+  shouldStore: (xml: string) => xml.includes('<url>'),
+})
+
+function isKnownSection(section: string): boolean {
+  if (['static', 'categories', 'brands', 'services'].includes(section)) return true
+  return section.startsWith('products-') && SITEMAP_DOMAINS.includes(section.slice('products-'.length))
+}
+
+async function buildSectionUrls(section: string): Promise<SitemapUrl[]> {
+  const today = new Date().toISOString().split('T')[0]
+  if (section === 'static') return buildStaticUrls(today)
+  if (section === 'categories') return buildCategoryUrls()
+  if (section === 'brands') return buildBrandUrls(today)
+  if (section === 'services') return buildServiceUrls(today)
+  return buildDomainProductUrls(section.slice('products-'.length), today)
+}
+
+async function buildSectionXml(section: string): Promise<string> {
+  return generateSitemapXml(await buildSectionUrls(section))
+}
+
 export const getServerSideProps: GetServerSideProps = async ({ params, res }) => {
   const raw = typeof params?.section === 'string' ? params.section : ''
   const section = raw.replace(/\.xml$/, '')
-  const today = new Date().toISOString().split('T')[0]
 
-  let urls: SitemapUrl[] | null = null
-  if (section === 'static') {
-    urls = await buildStaticUrls(today)
-  } else if (section === 'categories') {
-    urls = await buildCategoryUrls()
-  } else if (section === 'brands') {
-    urls = await buildBrandUrls(today)
-  } else if (section === 'services') {
-    urls = await buildServiceUrls(today)
-  } else if (section.startsWith('products-')) {
-    const domain = section.slice('products-'.length)
-    if (SITEMAP_DOMAINS.includes(domain)) {
-      urls = await buildDomainProductUrls(domain, today)
-    }
-  }
-
-  if (urls === null) {
+  if (!isKnownSection(section)) {
     return { notFound: true }
   }
+  const xml: string = await sectionXmlCache.get(section, () => buildSectionXml(section))
 
   res.setHeader('Content-Type', 'application/xml; charset=utf-8')
   res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
-  res.write(generateSitemapXml(urls))
+  res.write(xml)
   res.end()
 
   return { props: {} }

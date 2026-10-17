@@ -34,10 +34,15 @@ export default function CategoryHero({
 
   return (
     <div className="category-hero relative isolate overflow-hidden text-white py-12 md:py-16 transition-colors duration-200">
+      {/* LCP категорий на мобильных: 828w (49 КБ) вместо 1600w (145 КБ).
+          Фон декоративный и под градиентом — плотности 1x на телефоне достаточно. */}
       <img
         src="/category-hero-istanbul.webp"
+        srcSet="/category-hero-istanbul-828.webp 828w, /category-hero-istanbul.webp 1600w"
+        sizes="100vw"
         alt=""
         aria-hidden="true"
+        fetchPriority="high"
         className="hero-image absolute inset-0 -z-20 h-full w-full object-cover"
       />
       <div aria-hidden="true" className="hero-light absolute inset-0 -z-10">

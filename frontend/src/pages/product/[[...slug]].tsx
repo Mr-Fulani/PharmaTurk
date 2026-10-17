@@ -2360,10 +2360,12 @@ export default function ProductPage({
                         const label = pickerLabel(c)
                         const variantForColor = resolveVariantByPickerValue(c) || null
                         const isVariantAvailable = variantForColor?.is_available !== false
+                        // Сначала копии из R2 (proxy-media умеет max_width): внешний main_image
+                        // у вариантов — оригинал 1020×1360 (~150 КБ) на свотч 64×64.
                         const rawThumb =
-                          normalizeMediaValue(variantForColor?.main_image) ||
                           normalizeMediaValue(variantForColor?.images?.find((img) => img.is_main)?.image_url) ||
                           normalizeMediaValue(variantForColor?.images?.[0]?.image_url) ||
+                          normalizeMediaValue(variantForColor?.main_image) ||
                           normalizeMediaValue(product?.active_variant_main_image_url) ||
                           normalizeMediaValue(product?.main_image_url) ||
                           normalizeMediaValue(product?.main_image) ||
@@ -2374,7 +2376,7 @@ export default function ProductPage({
                           width: 200,
                           height: 200,
                         })
-                        const thumbSrc = rawThumb ? resolveMediaUrl(rawThumb) : placeholder
+                        const thumbSrc = rawThumb ? withListingImageMaxWidth(resolveMediaUrl(rawThumb), 160) : placeholder
                         const rawCd = String(
                           variantForColor?.color_display || variantForColor?.color || ''
                         ).trim()
@@ -2463,10 +2465,12 @@ export default function ProductPage({
                         const label = pickerLabel(c)
                         const variantForColor = resolveVariantByPickerValue(c) || null
                         const isVariantAvailable = variantForColor?.is_available !== false
+                        // Сначала копии из R2 (proxy-media умеет max_width): внешний main_image
+                        // у вариантов — оригинал 1020×1360 (~150 КБ) на свотч 64×64.
                         const rawThumb =
-                          normalizeMediaValue(variantForColor?.main_image) ||
                           normalizeMediaValue(variantForColor?.images?.find((img) => img.is_main)?.image_url) ||
                           normalizeMediaValue(variantForColor?.images?.[0]?.image_url) ||
+                          normalizeMediaValue(variantForColor?.main_image) ||
                           normalizeMediaValue(product?.active_variant_main_image_url) ||
                           normalizeMediaValue(product?.main_image_url) ||
                           normalizeMediaValue(product?.main_image) ||
@@ -2477,7 +2481,7 @@ export default function ProductPage({
                           width: 200,
                           height: 200,
                         })
-                        const thumbSrc = rawThumb ? resolveMediaUrl(rawThumb) : placeholder
+                        const thumbSrc = rawThumb ? withListingImageMaxWidth(resolveMediaUrl(rawThumb), 160) : placeholder
                         return (
                           <button
                             key={c}
