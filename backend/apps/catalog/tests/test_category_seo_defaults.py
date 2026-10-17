@@ -50,17 +50,33 @@ def test_category_serializer_returns_generated_seo_fields_when_db_fields_are_bla
 
 
 @pytest.mark.django_db
-def test_category_save_persists_og_image_url_from_category_preview_when_blank():
+def test_category_og_image_follows_current_card_instead_of_saved_copy():
+    # Раньше save() копировал адрес карточки в og_image_url; после перезаливки карточки
+    # под новым именем превью вело на удалённый файл (404).
     category = Category.objects.create(
         name="Украшения",
         slug="jewelry",
-        card_media_external_url="https://cdn.example.com/categories/jewelry.webp",
+        card_media_external_url="https://cdn.example.com/categories/jewelry-old.jpg",
         og_image_url="",
     )
-
+    category.card_media_external_url = "https://cdn.example.com/categories/jewelry-new.webp"
+    category.save()
     category.refresh_from_db()
 
-    assert category.og_image_url == "https://cdn.example.com/categories/jewelry.webp"
+    assert category.og_image_url == ""
+    assert category.get_effective_og_image_url() == "https://cdn.example.com/categories/jewelry-new.webp"
+
+
+@pytest.mark.django_db
+def test_explicit_category_og_image_is_kept():
+    category = Category.objects.create(
+        name="Обувь",
+        slug="shoes-og",
+        card_media_external_url="https://cdn.example.com/categories/shoes.jpg",
+        og_image_url="https://cdn.example.com/og/shoes-sale.jpg",
+    )
+
+    assert category.get_effective_og_image_url() == "https://cdn.example.com/og/shoes-sale.jpg"
 
 
 @pytest.mark.django_db

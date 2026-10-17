@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { appendSentenceIfShort, limitTitle, truncateAtWord } from './seoText.js'
+import { appendSentenceIfShort, buildCategoryDescription, limitTitle, truncateAtWord } from './seoText.js'
 
 test('short text is returned as is with collapsed whitespace', () => {
   assert.equal(truncateAtWord('  Аспирин   500  ', 200), 'Аспирин 500')
@@ -47,3 +47,34 @@ test('short brand description gets the template as a separate sentence', () => {
   const long = 'x '.repeat(40).trim()
   assert.equal(appendSentenceIfShort(long, suffix), long)
 })
+
+test('category description adds count, subcategories and tail to a short base', () => {
+  const text = buildCategoryDescription({
+    base: 'Обувь всех видов',
+    lead: 'Обувь из Турции с доставкой',
+    countText: '674 товара',
+    subcategories: ['Кроссовки', 'Сандалии', 'Туфли', 'Ботинки'],
+    tail: 'Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba',
+  })
+  assert.equal(
+    text,
+    'Обувь из Турции с доставкой — 674 товара: Кроссовки, Сандалии, Туфли. Обувь всех видов. ' +
+      'Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba.'
+  )
+  assert.ok(text.length <= 160)
+})
+
+test('category description drops a base that does not fit and keeps long manual text', () => {
+  const parts = {
+    lead: 'Медицина из Турции с доставкой',
+    countText: '12 142 товара',
+    subcategories: ['Антибиотики', 'Обезболивающие', 'Витамины'],
+    tail: 'Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba',
+  }
+  const withoutRoom = buildCategoryDescription({ ...parts, base: 'Лекарственные препараты и медикаменты для взрослых и детей' })
+  assert.ok(!withoutRoom.includes('Лекарственные'))
+  assert.ok(withoutRoom.length <= 160)
+  const manual = 'Развёрнутое описание раздела, написанное вручную администратором, '.repeat(2).trim()
+  assert.equal(buildCategoryDescription({ ...parts, base: manual }), truncateAtWord(`${manual}.`, 160))
+})
+

@@ -89,11 +89,3 @@ export function buildCatalogSeoState(basePath, query, currentPage, totalPages, t
     nextPath: safePage < safeTotalPages ? withCatalogPage(basePath, safePage + 1) : null,
   }
 }
-
-// Слишком короткое описание категории (например «Витаминные комплексы») —
-// плохой сниппет; дополняем его шаблонной фразой.
-export function enrichShortDescription(description, suffix, minLength = 70) {
-  const clean = String(description || '').trim()
-  if (!suffix || clean.length >= minLength) return clean
-  return clean ? `${clean} — ${suffix}` : suffix
-}
