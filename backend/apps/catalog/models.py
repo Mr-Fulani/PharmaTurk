@@ -468,16 +468,6 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
-    def save(self, *args, **kwargs):
-        should_autofill_og_image = not _plain_text(self.og_image_url)
-        super().save(*args, **kwargs)
-
-        if should_autofill_og_image:
-            effective_og_image = self.get_effective_og_image_url()
-            if effective_og_image and effective_og_image != self.og_image_url:
-                type(self).objects.filter(pk=self.pk).update(og_image_url=effective_og_image)
-                self.og_image_url = effective_og_image
-
     def get_breadcrumb_path(self, separator: str = ' › ') -> str:
         """Возвращает путь категории по иерархии: L1 › L2 › L3."""
         parts = []

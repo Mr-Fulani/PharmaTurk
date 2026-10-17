@@ -36,3 +36,25 @@ export function appendSentenceIfShort(text, sentence, minLength = 70) {
   if (!clean) return sentence
   return `${clean.replace(/[\s.!?…]+$/, '')}. ${sentence}`
 }
+
+const stripSentence = (value) => String(value || '').replace(/\s+/g, ' ').trim().replace(/[\s.!?…]+$/, '')
+
+/**
+ * Описание категории для поиска и превью: «{lead} — {count}: {подкатегории}. {base}. {tail}.»
+ * Исходные описания категорий короткие («Кроссовки») и ничего не говорят — добавляем конкретику.
+ * Развёрнутое ручное описание (от 120 символов) оставляем как есть; base, из-за которого
+ * текст не влезает в maxLength, опускаем; итог обрезаем по слову.
+ */
+export function buildCategoryDescription({ base, lead, countText, subcategories = [], tail, maxLength = 160 }) {
+  const cleanBase = stripSentence(base)
+  if (cleanBase.length >= 120) return truncateAtWord(`${cleanBase}.`, maxLength)
+  const subs = subcategories.map(stripSentence).filter(Boolean).slice(0, 3)
+  const details = countText ? `${countText}${subs.length ? `: ${subs.join(', ')}` : ''}` : subs.join(', ')
+  const head = [stripSentence(lead), details].filter(Boolean).join(' — ')
+  const compose = (withBase) => [head, withBase ? cleanBase : '', stripSentence(tail)]
+    .filter(Boolean)
+    .map((sentence) => `${sentence}.`)
+    .join(' ')
+  const full = compose(true)
+  return truncateAtWord(full.length <= maxLength ? full : compose(false), maxLength)
+}

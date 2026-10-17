@@ -27,11 +27,11 @@ import {
 import { shouldShowGenderFilter } from '../../lib/brandCatalog'
 import {
   buildCatalogSeoState,
-  enrichShortDescription,
   isCatalogPageOutOfRange,
   isCategoryInProductTree,
   selectExactCategory,
 } from '../../lib/categoryRouting'
+import { buildCategoryDescription } from '../../lib/seoText'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios, { type AxiosRequestConfig } from 'axios'
@@ -1592,18 +1592,32 @@ export default function CategoryPage({
     return `${baseTitle} — ${pageLabel}`
   }, [currentCategory, titleText, isDefaultLocale, currentPage, catalogSeo.hasFilters, router.locale])
 
-  const ogDescription = useMemo(() => {
-    if (!isDefaultLocale) return stripHtml(localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() }))
-    const raw = currentCategory?.og_description || currentCategory?.meta_description || localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
-    return stripHtml(raw)
-  }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale])
-
+  // Описание для поиска и превью: короткие описания категорий («Кроссовки») дополняем
+  // числом товаров и главными подкатегориями (buildCategoryDescription).
   const metaDescription = useMemo(() => {
-    const suffix = t('category_meta_description_suffix', '{{category}} из Турции с доставкой: актуальные цены, оригинальные товары, заказ через менеджера Mudaroba.', { category: titleText || '' })
-    if (!isDefaultLocale) return enrichShortDescription(stripHtml(localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })), suffix)
-    const raw = currentCategory?.meta_description || currentCategory?.og_description || localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
-    return enrichShortDescription(stripHtml(raw), suffix)
-  }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale])
+    const base = stripHtml(isDefaultLocale
+      ? (currentCategory?.meta_description || currentCategory?.og_description || localizedCategoryDescription || '')
+      : (localizedCategoryDescription || ''))
+    const subcategoryNames = displaySubcategories.map((sub) =>
+      getLocalizedCategoryName(sub.slug, sub.name, t, sub.translations, router.locale)
+    )
+    return buildCategoryDescription({
+      base,
+      lead: t('category_meta_lead', '{{category}} из Турции с доставкой', { category: titleText || '' }),
+      countText: totalCount > 0
+        ? t('category_meta_count', {
+          count: totalCount,
+          formattedCount: totalCount.toLocaleString(router.locale === 'en' ? 'en-US' : 'ru-RU'),
+          defaultValue: '{{formattedCount}} товаров',
+        })
+        : '',
+      subcategories: subcategoryNames,
+      tail: t('category_meta_tail', 'Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba'),
+    })
+  }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale, displaySubcategories, router.locale, totalCount])
+
+  // Превью в соцсетях и мессенджерах — то же развёрнутое описание, а не одно слово
+  const ogDescription = metaDescription
 
   const ogImageUrl = useMemo(() => {
     const raw = currentCategory?.og_image_url || currentCategory?.card_media_url || '/og-default.jpg'
