@@ -31,6 +31,7 @@ Beat только публикует задачи. Для исполнения �
 | `orders-remind-abandoned-carts` | `orders.remind_abandoned_carts` | ежечасно `:20` | `celery` | Одно напоминание (Telegram при `telegram_notifications`, email при `email_notifications`) о заявке вошедшего клиента, не менявшейся ≥24 ч (не старше 7 дней); `Cart.reminder_sent_at`. |
 | `scrapers-weekly-duplicate-candidates` | `apps.scrapers.tasks.find_and_merge_duplicates` | понедельник `04:30` | `celery` | Ищет и сохраняет кандидатов на ручную дедупликацию. |
 | `cleanup-orphaned-media` | `catalog.cleanup_orphaned_media` | ежедневно `03:00` | `celery` | Удаляет безопасно определённые orphaned media. |
+| `catalog-recompute-medicine-sort-ranks` | `catalog.recompute_medicine_sort_ranks` | ежедневно `04:50` | `celery` | Пересчитывает `MedicineProduct.sort_rank` — порядок «Популярные» (по умолчанию) на странице медикаментов. |
 | `payments-expire-crypto-invoices` | `apps.payments.tasks.expire_pending_crypto_payments` | каждые 10 минут | `celery` | Помечает просроченные pending crypto invoices как `expired`. |
 | `ai-cleanup-old-logs` | `apps.ai.tasks.cleanup_old_ai_logs` | каждые 7 дней | `ai` | Удаляет `completed`/`approved` AI-логи старше 30 дней. |
 | `recsys-sync-stale-nightly` | `apps.recommendations.tasks.sync_stale_products_to_qdrant` | ежедневно `02:15` | `recsys` | Ставит на индексацию до 200 новых/изменённых товаров батчами по 25. |
@@ -125,6 +126,16 @@ docker compose exec backend poetry run python manage.py shell -c \
 - возвращает `skipped`/`aborted`/`error` как результат, поэтому эти состояния нужно мониторить отдельно.
 
 Это защитные ограничения, а не гарантия резервного копирования. Перед сменой `R2_PREFIX`, storage backend или структуры media paths необходим отдельный dry audit.
+
+### Ранг медикаментов
+
+`catalog.recompute_medicine_sort_ranks` (`services/medicine_sort_rank.py`) пишет в
+`sort_rank` число из разрядов: цена и наличие → ручной `is_featured` → спрос
+(заявки, корзины, избранное, запросы проверки цены; с потолком) → качество
+карточки (фото, русское описание). Товары без цены всегда ниже товаров с ценой.
+Список читает готовое поле по частичному индексу 0212, без агрегатов в запросе.
+`bulk_update` не трогает `updated_at` и shadow-sync. После первого деплоя запустить
+один раз вручную, иначе до 04:50 у всех ранг 0 и порядок — по `id`.
 
 ### Истечение крипто-инвойсов
 
