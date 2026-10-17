@@ -15,6 +15,7 @@ import ServiceAttributes from '../../components/ServiceAttributes'
 import FavoriteButton from '../../components/FavoriteButton'
 import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
+import RelatedProductLinks, { RelatedProductLink } from '../../components/RelatedProductLinks'
 import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
 import ServicePortfolioStaticList from '../../components/ServicePortfolioStaticList'
 import { useTranslation } from 'next-i18next'
@@ -36,6 +37,7 @@ import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
+import { limitTitle, truncateAtWord } from '../../lib/seoText'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
@@ -195,6 +197,9 @@ function dedupeGalleryItemsPreservingOrder(items: GalleryItemDedupe[]): GalleryI
 }
 
 /** Краткая строка под названием мебели (тип, цвет, размер) — без HTML из админки */
+const META_TITLE_MAX_LENGTH = 80
+const META_DESCRIPTION_MAX_LENGTH = 200
+
 const stripHtmlToPlainText = (html: string) => {
   if (!html) return ''
   return String(html)
@@ -620,12 +625,14 @@ export default function ProductPage({
   isBaseProduct,
   preferredCurrency,
   favoriteSize,
+  relatedLinks = [],
 }: {
   product: Product | null
   productType: CategoryType
   isBaseProduct: boolean
   preferredCurrency: string
   favoriteSize: string | null
+  relatedLinks?: RelatedProductLink[]
 }) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
@@ -1403,7 +1410,7 @@ export default function ProductPage({
       : '',
     SITE_NAME,
   ].filter(Boolean).join(' | ')
-  const defaultMetaDescription = stripHtmlToPlainText(
+  const defaultMetaDescription = truncateAtWord(stripHtmlToPlainText(
     localizedDescription ||
     (
       isService
@@ -1420,24 +1427,25 @@ export default function ProductPage({
             site: SITE_NAME,
           })
     )
-  ).slice(0, 200).trim()
+  ), META_DESCRIPTION_MAX_LENGTH)
 
-  const metaTitle = (
+  // Названия из постов Instagram доходят до 200+ символов — режем title по слову
+  const metaTitle = limitTitle((
     apiTranslation?.meta_title || 
     apiTranslation?.og_title || 
     (product.translations && product.translations.length > 0 ? '' : product.meta_title) || 
     (product.translations && product.translations.length > 0 ? '' : product.og_title) || 
     ''
-  ).trim() || defaultMetaTitle
+  ).trim() || defaultMetaTitle, META_TITLE_MAX_LENGTH)
 
-  const metaDescription = stripHtmlToPlainText(
+  const metaDescription = truncateAtWord(stripHtmlToPlainText(
     apiTranslation?.meta_description ||
     apiTranslation?.og_description ||
     (product.translations && product.translations.length > 0 ? '' : product.meta_description) ||
     (product.translations && product.translations.length > 0 ? '' : product.og_description) ||
     defaultMetaDescription ||
     ''
-  ).slice(0, 200).trim() || defaultMetaDescription
+  ), META_DESCRIPTION_MAX_LENGTH) || defaultMetaDescription
   const metaKeywords = (
     apiTranslation?.meta_keywords ||
     (product.translations && product.translations.length > 0 ? '' : product.meta_keywords) ||
@@ -1611,10 +1619,10 @@ export default function ProductPage({
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="product" />
         <meta property="og:image" content={ogImage} />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:title" content={metaTitle} />
-        <meta property="twitter:description" content={metaDescription} />
-        <meta property="twitter:image" content={ogImage} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={metaTitle} />
+        <meta name="twitter:description" content={metaDescription} />
+        <meta name="twitter:image" content={ogImage} />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
@@ -2983,6 +2991,8 @@ export default function ProductPage({
             useRecsys={true}
           />
         )}
+
+        <RelatedProductLinks links={relatedLinks} />
       </main >
     </>
   )
@@ -3114,6 +3124,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         isBaseProduct: isBaseProductType(actualType),
         preferredCurrency: currency,
         favoriteSize: favoriteSizeFromQuery || null,
+        relatedLinks: Array.isArray(body.related_links) ? body.related_links : [],
       },
     }
   } catch (err) {

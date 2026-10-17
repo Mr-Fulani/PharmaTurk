@@ -33,7 +33,7 @@ class MyDocument extends Document<MyDocumentProps> {
           <meta name="theme-color" content="#4c1d95" />
           <meta name="application-name" content={siteName} />
           <meta property="og:site_name" content={siteName} />
-          <meta property="twitter:card" content="summary_large_image" />
+          <meta name="twitter:card" content="summary_large_image" />
 
           {/* ─── Yandex Webmaster (подтверждение прав) ────────────────────────── */}
           {process.env.NEXT_PUBLIC_YANDEX_VERIFICATION && (

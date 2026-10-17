@@ -18,6 +18,9 @@ import { getSingleFlight } from '../../lib/api'
 import { useViewMode } from '../../hooks/useViewMode'
 import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
+import { buildCatalogSeoState } from '../../lib/categoryRouting'
+import { appendSentenceIfShort, truncateAtWord } from '../../lib/seoText'
+import { safeJsonLd } from '../../lib/sanitizeHtml'
 
 interface Product {
   id: number
@@ -262,31 +265,70 @@ function BrandPageContent({
   const siteUrl = getSiteOrigin()
   const brandPath = `/brand/${brandData.slug}`
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
-  const canonicalUrl = `${siteUrl}${localePrefix}${brandPath}`
-  const metaTitle = `${localizedBrandName} — Mudaroba`
-  const metaDescription = localizedBrandDescription?.slice(0, 200) || `Товары бренда ${localizedBrandName} на Mudaroba`
+  // Как у категорий: ?page=N — self-canonical, фильтры/сортировка — noindex с canonical на чистый URL
+  const catalogSeo = buildCatalogSeoState(brandPath, router.query, currentPage, totalPages, totalCount)
+  const canonicalUrl = `${siteUrl}${localePrefix}${catalogSeo.canonicalPath}`
+  const pageLabel = currentPage > 1 && !catalogSeo.hasFilters
+    ? ` — ${t('pagination_page_label', 'Страница {{page}}', { page: currentPage })}`
+    : ''
+  const metaTitle = `${localizedBrandName}${pageLabel} — Mudaroba`
+  // Описания брендов короткие («Немецкий спортивный бренд.») — дополняем категориями и доставкой
+  const brandCategoryNames = [...categories]
+    .sort((a, b) => (b.product_count || 0) - (a.product_count || 0))
+    .slice(0, 3)
+    .map((category) => category.translations?.find((tr) => tr.locale === router.locale)?.name || category.name)
+    .filter(Boolean)
+    .join(', ')
+  const brandMetaSuffix = t('brand_meta_description_suffix', '{{brand}} из Турции с доставкой{{categories}}. Актуальные цены, оригинальные товары, заказ через менеджера Mudaroba.', {
+    brand: localizedBrandName,
+    categories: brandCategoryNames ? `: ${brandCategoryNames.toLowerCase()}` : '',
+  })
+  const metaDescription = truncateAtWord(
+    appendSentenceIfShort(localizedBrandDescription.replace(/<[^>]*>/g, ' '), brandMetaSuffix),
+    200
+  )
   const breadcrumbs = [
     { href: '/', label: t('breadcrumb_home', 'Главная') },
     { href: '/brands', label: t('brands', 'Бренды') },
     { href: brandPath, label: localizedBrandName },
   ]
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbs.map((item, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      name: item.label,
+      item: `${siteUrl}${localePrefix}${item.href === '/' ? '' : item.href}`,
+    })),
+  }
 
   return (
     <>
       <Head>
         <title>{metaTitle}</title>
         <meta name="description" content={metaDescription} />
+        {catalogSeo.noindex && <meta name="robots" content="noindex, follow" />}
         <link rel="canonical" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="ru" href={`${siteUrl}${brandPath}`} />
-        <link rel="alternate" hrefLang="en" href={`${siteUrl}/en${brandPath}`} />
-        <link rel="alternate" hrefLang="x-default" href={`${siteUrl}${brandPath}`} />
+        {!catalogSeo.noindex && (
+          <>
+            <link rel="alternate" hrefLang="ru" href={`${siteUrl}${catalogSeo.canonicalPath}`} />
+            <link rel="alternate" hrefLang="en" href={`${siteUrl}/en${catalogSeo.canonicalPath}`} />
+            <link rel="alternate" hrefLang="x-default" href={`${siteUrl}${catalogSeo.canonicalPath}`} />
+          </>
+        )}
         <meta property="og:title" content={metaTitle} />
         <meta property="og:description" content={metaDescription} />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="website" />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:title" content={metaTitle} />
-        <meta property="twitter:description" content={metaDescription} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={metaTitle} />
+        <meta name="twitter:description" content={metaDescription} />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbSchema) }}
+        />
       </Head>
 
       <CategoryHero

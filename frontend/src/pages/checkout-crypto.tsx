@@ -168,7 +168,7 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
   if (!number) {
     return (
       <>
-        <Head><title>{t('checkout_crypto_pay_title', 'Оплата криптовалютой')}</title></Head>
+        <Head><title>{t('checkout_crypto_pay_title', 'Оплата криптовалютой')}</title><meta name="robots" content="noindex, nofollow" /></Head>
         <main className="mx-auto max-w-2xl px-4 py-12 text-center">
           <p className="text-gray-600">{t('checkout_crypto_no_order', 'Укажите номер заказа')}</p>
           <Link href="/cart" className="mt-4 inline-block text-[var(--accent)] hover:underline">
@@ -182,7 +182,7 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
   if (loading && !order) {
     return (
       <>
-        <Head><title>{t('checkout_crypto_pay_title', 'Оплата криптовалютой')}</title></Head>
+        <Head><title>{t('checkout_crypto_pay_title', 'Оплата криптовалютой')}</title><meta name="robots" content="noindex, nofollow" /></Head>
         <main className="mx-auto max-w-2xl px-4 py-12 text-center">
           <p className="text-gray-600">{t('loading', 'Загрузка...')}</p>
         </main>
@@ -193,7 +193,7 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
   if (error) {
     return (
       <>
-        <Head><title>{t('checkout_crypto_pay_title', 'Оплата криптовалютой')}</title></Head>
+        <Head><title>{t('checkout_crypto_pay_title', 'Оплата криптовалютой')}</title><meta name="robots" content="noindex, nofollow" /></Head>
         <main className="mx-auto max-w-2xl px-4 py-12 text-center">
           <p className="text-red-600">{error}</p>
           <Link href="/checkout-success" className="mt-4 inline-block text-[var(--accent)] hover:underline">
@@ -207,7 +207,7 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
   if (order?.payment_status === 'paid' || order?.status === 'paid') {
     return (
       <>
-        <Head><title>{t('checkout_crypto_paid', 'Оплачено')}</title></Head>
+        <Head><title>{t('checkout_crypto_paid', 'Оплачено')}</title><meta name="robots" content="noindex, nofollow" /></Head>
         <main className="mx-auto max-w-2xl px-4 py-12 text-center">
           <div className="rounded-xl border-2 border-green-200 bg-green-50 p-8">
             <p className="text-xl font-semibold text-green-700">{t('checkout_crypto_paid', 'Оплачено')}</p>
@@ -225,7 +225,7 @@ export default function CheckoutCryptoPage({ orderNumber }: { orderNumber?: stri
 
   return (
     <>
-      <Head><title>{t('checkout_crypto_pay_title', 'Оплата криптовалютой')}</title></Head>
+      <Head><title>{t('checkout_crypto_pay_title', 'Оплата криптовалютой')}</title><meta name="robots" content="noindex, nofollow" /></Head>
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">
           {t('checkout_crypto_pay_title', 'Оплата криптовалютой')}

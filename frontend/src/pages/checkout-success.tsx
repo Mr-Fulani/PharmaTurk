@@ -186,6 +186,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     <>
       <Head>
         <title>{`${t(isRequest ? 'order_request_page_title' : 'order_success_page_title')} — Mudaroba`}</title>
+        <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="min-h-screen bg-gradient-to-b from-violet-50/60 via-white to-white py-12 transition-colors duration-200 dark:from-[#0f1624] dark:via-[#0f1624] dark:to-[#0b1420]">
         <div className="mx-auto w-full max-w-6xl px-4">

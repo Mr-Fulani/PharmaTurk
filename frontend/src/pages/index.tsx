@@ -336,10 +336,10 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
         <meta property="og:image" content={`${siteUrl}/og-default.jpg`} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
-        <meta property="twitter:title" content={pageTitle} />
-        <meta property="twitter:description" content={pageDescription} />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:image" content={`${siteUrl}/og-default.jpg`} />
+        <meta name="twitter:title" content={pageTitle} />
+        <meta name="twitter:description" content={pageDescription} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content={`${siteUrl}/og-default.jpg`} />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger

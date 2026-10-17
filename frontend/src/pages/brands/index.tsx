@@ -49,10 +49,10 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="website" />
         <meta property="og:image" content={`${siteUrl}/og-default.jpg`} />
-        <meta property="twitter:title" content={pageTitle} />
-        <meta property="twitter:description" content={pageDescription} />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:image" content={`${siteUrl}/og-default.jpg`} />
+        <meta name="twitter:title" content={pageTitle} />
+        <meta name="twitter:description" content={pageDescription} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content={`${siteUrl}/og-default.jpg`} />
       </Head>
 
       <main className="min-h-screen bg-page text-main transition-colors duration-200">

@@ -6,6 +6,8 @@
   - canonical_path: str — путь без префикса локали, с ведущим /product/...
   - payload: dict — тело того же detail, что и у соответствующего ViewSet.retrieve.
   - source: str — откуда взят объект (отладка): generic_product, domain_clothing, ...
+  - related_links: list[{name, path}] — до 8 товаров той же категории для SSR-перелинковки
+    (см. build_related_links); у услуг пустой.
 
 Порядок поиска (зафиксирован; при смене — обновить тесты и комментарий):
   1) Доменные ViewSet в порядке, согласованном с urls.py. Важно: раньше generic Product
@@ -275,6 +277,65 @@ def _resolve_uncached(request: HttpRequest | DrfRequest, slug: str) -> tuple[dic
     return None
 
 
+RELATED_LINKS_LIMIT = 8
+
+
+def build_related_links(slug: str, lang: str, limit: int = RELATED_LINKS_LIMIT) -> list[dict]:
+    """
+    Ссылки на соседние товары той же категории для SSR-перелинковки карточки.
+
+    Берём товары, добавленные раньше текущего, и добираем самыми новыми — цепочка
+    по created_at даёт каждой карточке входящую ссылку из HTML. Фильтр видимости —
+    ProductViewSet.queryset, чтобы скан шёл по частичному индексу
+    catalog_product_public_created_idx (миграция 0208), без детоаста external_data.
+    """
+    from django.db.models import OuterRef, Subquery
+
+    from apps.catalog.models import Product, ProductTranslation
+    from apps.catalog.views import ProductViewSet
+
+    current = (
+        Product.objects.filter(slug=slug, is_active=True)
+        .values("id", "category_id", "product_type", "created_at")
+        .first()
+    )
+    if not current or not current["category_id"]:
+        return []
+
+    siblings = ProductViewSet.queryset.filter(
+        category_id=current["category_id"],
+        product_type=current["product_type"],
+    ).exclude(id=current["id"])
+    fields = ["slug", "name", "product_type"]
+    if lang != "ru":
+        siblings = siblings.annotate(
+            translated_name=Subquery(
+                ProductTranslation.objects.filter(product=OuterRef("pk"), locale=lang)
+                .exclude(name="")
+                .values("name")[:1]
+            )
+        )
+        fields.append("translated_name")
+
+    rows = list(
+        siblings.filter(created_at__lt=current["created_at"]).order_by("-created_at").values(*fields)[:limit]
+    )
+    if len(rows) < limit:
+        rows += list(
+            siblings.filter(created_at__gte=current["created_at"])
+            .order_by("-created_at")
+            .values(*fields)[: limit - len(rows)]
+        )
+
+    return [
+        {
+            "name": (row.get("translated_name") or row["name"] or "").strip(),
+            "path": build_canonical_path(_normalize_pt(row["product_type"]), row["slug"]),
+        }
+        for row in rows
+    ]
+
+
 def build_resolve_response(request: HttpRequest | DrfRequest, slug: str) -> Response:
     resolved = resolve_product_payload(request, slug)
     if resolved is None:
@@ -289,5 +350,11 @@ def build_resolve_response(request: HttpRequest | DrfRequest, slug: str) -> Resp
         "canonical_path": canonical,
         "payload": payload,
         "source": source,
+        # Услуги на карточке не показывают похожие — перелинковка только для товаров
+        "related_links": (
+            []
+            if product_type == "uslugi"
+            else build_related_links(str(slug_for_url), getattr(request, "LANGUAGE_CODE", "ru") or "ru")
+        ),
     }
     return Response(body, status=status.HTTP_200_OK)
