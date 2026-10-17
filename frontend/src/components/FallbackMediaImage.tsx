@@ -19,7 +19,7 @@ export type FallbackMediaImageProps = {
  */
 // srcSet для proxy-media. Невалидная ссылка из данных не должна ронять всю страницу
 // (исключение в рендере = «Application error»), поэтому при ошибке просто без srcSet.
-function buildProxySrcSet(imgSrc: string): string | undefined {
+export function buildProxySrcSet(imgSrc: string): string | undefined {
   try {
     return [192, 320, 480, 600, 800].map((width) => {
       const url = new URL(imgSrc, 'https://mudaroba.com')
