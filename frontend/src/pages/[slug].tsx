@@ -193,13 +193,13 @@ export default function GenericStaticPage({ pageData, pageLocale }: GenericStati
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta property="og:image:alt" content={ogImageAlt} />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:title" content={seoTitle} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={seoTitle} />
         {pageData.meta_description && (
-          <meta property="twitter:description" content={pageData.meta_description} />
+          <meta name="twitter:description" content={pageData.meta_description} />
         )}
-        <meta property="twitter:image" content={ogImage} />
-        <meta property="twitter:image:alt" content={ogImageAlt} />
+        <meta name="twitter:image" content={ogImage} />
+        <meta name="twitter:image:alt" content={ogImageAlt} />
       </Head>
       <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
         {isAboutPage && (

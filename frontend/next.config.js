@@ -58,6 +58,16 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      // Старая страница-сирота без <Head>; locale-вариант /en/bookhaven Next обрабатывает сам
+      {
+        source: '/bookhaven',
+        destination: '/categories/books',
+        statusCode: 301,
+      },
+    ];
+  },
   async rewrites() {
     // Docker: INTERNAL_API_BASE=http://backend:8000. Локально с ngrok: INTERNAL_API_BASE=http://localhost:8000
     const apiDest = process.env.INTERNAL_API_BASE || 'http://backend:8000';

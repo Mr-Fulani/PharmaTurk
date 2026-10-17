@@ -1691,10 +1691,10 @@ export default function CategoryPage({
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="website" />
         <meta property="og:image" content={ogImageUrl} />
-        <meta property="twitter:title" content={ogTitle} />
-        <meta property="twitter:description" content={ogDescription} />
-        <meta property="twitter:image" content={ogImageUrl} />
-        <meta property="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={ogTitle} />
+        <meta name="twitter:description" content={ogDescription} />
+        <meta name="twitter:image" content={ogImageUrl} />
+        <meta name="twitter:card" content="summary_large_image" />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger

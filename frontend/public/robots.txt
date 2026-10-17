@@ -11,6 +11,10 @@ Disallow: /profile
 Disallow: /cart
 Disallow: /checkout
 Disallow: /auth
+Disallow: /en/profile
+Disallow: /en/cart
+Disallow: /en/checkout
+Disallow: /en/auth
 
 # CSS/JS в /_next/ должны быть доступны поисковым роботам для рендеринга страниц.
 
