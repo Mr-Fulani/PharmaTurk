@@ -319,6 +319,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.expire_new_badges",
         "schedule": crontab(hour=3, minute=40),
     },
+    # Ранг медикаментов для порядка «Популярные» (цена, наличие, спрос, карточка).
+    "catalog-recompute-medicine-sort-ranks": {
+        "task": "catalog.recompute_medicine_sort_ranks",
+        "schedule": crontab(hour=4, minute=50),
+    },
     # Одно напоминание о брошенной заявке (корзина вошедшего клиента, сутки без изменений).
     "orders-remind-abandoned-carts": {
         "task": "orders.remind_abandoned_carts",

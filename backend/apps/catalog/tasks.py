@@ -666,3 +666,13 @@ def expire_new_badges() -> int:
     cleared = Product.objects.filter(is_new=True, created_at__lt=cutoff).update(is_new=False)
     logger.info("expire_new_badges: cleared %s products older than %s days", cleared, days)
     return cleared
+
+
+@shared_task(name="catalog.recompute_medicine_sort_ranks")
+def recompute_medicine_sort_ranks() -> int:
+    """Пересчитывает ранг медикаментов для сортировки «Популярные»."""
+    from apps.catalog.services.medicine_sort_rank import recompute_medicine_sort_ranks as recompute
+
+    updated = recompute()
+    logger.info("recompute_medicine_sort_ranks: updated %s medicines", updated)
+    return updated

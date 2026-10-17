@@ -5092,6 +5092,13 @@ class MedicineProduct(AbstractDomainProduct):
         null=True,
     )
 
+    sort_rank = models.PositiveIntegerField(
+        _("Ранг в каталоге"),
+        default=0,
+        editable=False,
+        help_text=_("Порядок «Популярные». Пересчитывается ночной задачей catalog.recompute_medicine_sort_ranks."),
+    )
+
     class Meta:
         verbose_name = _("Товар — Медикамент")
         verbose_name_plural = _("Товары — Медикаменты")
