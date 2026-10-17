@@ -401,6 +401,69 @@ def test_ilacfiyati_parser_reads_eur_price_from_current_card_layout(monkeypatch)
     assert product.price_unpublished is False
 
 
+def test_ilacfiyati_parser_reads_supplement_retail_price_card(monkeypatch):
+    """БАДы: цена в карточке «Perakende Satış Fiyatı», а название с EUROTABS
+    стоит раньше в JSON-LD — его цифры не должны склеиться в цену (было 1010030)."""
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    product_url = "https://ilacfiyati.com/takviye-edici-gida/pharma-nord-q10-eurotabs-gold-kapsul-100-mg-30-kapsul"
+    html = """
+        <html><body>
+        <script type="application/ld+json">
+          {"@type": "Drug", "name": "PHARMA NORD Q10 EUROTABS GOLD KAPSUL 100 mg 30 kapsül"}
+        </script>
+        <h1 class="page-title">PHARMA NORD Q10 EUROTABS GOLD KAPSUL 100 mg 30 kapsül</h1>
+        <div class="info-card">
+          <p class="info-card__label">Perakende Satış Fiyatı</p>
+          <p class="info-card__value text-truncate" title="336,00 TL">336,00 TL</p>
+        </div>
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+
+    product = parser.parse_product_detail(
+        product_url,
+        include_detail_tabs=False,
+        include_analogs=False,
+    )
+
+    assert product.price == Decimal("336.00")
+    assert product.currency == "TRY"
+
+
+@pytest.mark.parametrize(
+    ("price_html", "expected_price", "expected_currency"),
+    [
+        ("<span>336,00 TL</span>", Decimal("336.00"), "TRY"),
+        ("<span>Fiyat: 1.250,50 ₺</span>", Decimal("1250.50"), "TRY"),
+        ("<span>€ 42,10</span>", Decimal("42.10"), "EUR"),
+        ("<span>Bilgi yok</span>", None, "TRY"),
+    ],
+)
+def test_ilacfiyati_price_fallback_requires_amount_next_to_currency(
+    monkeypatch, price_html, expected_price, expected_currency
+):
+    """Фолбэк без метки цены не берёт цифры из текста, где «EUR»/«TL» — часть слова."""
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    product_url = "https://ilacfiyati.com/takviye-edici-gida/pharma-nord-omega-3-plus-eurotabs-kapsul-60-kapsul"
+    html = f"""
+        <html><body>
+        <h1 class="page-title">PHARMA NORD OMEGA-3 PLUS EUROTABS KAPSUL 60 kapsül</h1>
+        <p>TLC ürün kodu 77</p>
+        {price_html}
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+
+    product = parser.parse_product_detail(
+        product_url,
+        include_detail_tabs=False,
+        include_analogs=False,
+    )
+
+    assert product.price == expected_price
+    assert product.currency == expected_currency
+
+
 def test_ilacfiyati_parser_fetches_instruction_tabs(monkeypatch):
     base_url = "https://ilacfiyati.com"
     product_url = f"{base_url}/ilaclar/zovirax-5-krem-2-gr"
