@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useEffect, useState, useRef } from 'react'
 import api, { getSingleFlight, setPreferredCurrency } from '../lib/api'
 import { useTranslation } from 'next-i18next'
-import { motion, useReducedMotion } from 'framer-motion'
+import { LazyMotion, m, useReducedMotion } from 'framer-motion'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
 import AnimatedLogoutButton from './AnimatedLogoutButton'
@@ -17,6 +17,8 @@ import { buildProductIdentityKey } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { resolveMediaUrl } from '../lib/media'
 import { defaultCurrencyForLocale } from '../lib/requestCurrency'
+
+const loadMotionFeatures = () => import('../lib/motionFeatures').then((mod) => mod.default)
 
 export default function Header() {
   const router = useRouter()
@@ -276,6 +278,7 @@ export default function Header() {
   }, [query])
 
   return (
+    <LazyMotion features={loadMotionFeatures}>
     <header
       suppressHydrationWarning
       className={`fixed top-0 left-0 w-full z-50 border-b transition-all duration-300 ${
@@ -295,7 +298,7 @@ export default function Header() {
             aria-label="MUDAROBA"
             title="MUDAROBA"
           >
-            <motion.div
+            <m.div
               animate={prefersReducedMotion ? undefined : { scale: isLogoLabelVisible ? 1.04 : 1 }}
               transition={{ duration: 0.28, ease: 'easeOut' }}
               className="relative z-10 flex-shrink-0"
@@ -311,8 +314,8 @@ export default function Header() {
                 <path d="M7 23H10.5L14.5 13L20 28L25.5 13L29.5 23H33" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
                 <circle cx="33" cy="23" r="1.5" fill="white" />
               </svg>
-            </motion.div>
-            <motion.div
+            </m.div>
+            <m.div
               initial={false}
               animate={prefersReducedMotion
                 ? { width: isLogoLabelVisible ? 'auto' : 0, opacity: isLogoLabelVisible ? 1 : 0 }
@@ -322,7 +325,7 @@ export default function Header() {
                 : { duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               className="pointer-events-none flex items-center overflow-hidden"
             >
-              <motion.div
+              <m.div
                 initial={false}
                 animate={prefersReducedMotion
                   ? undefined
@@ -332,7 +335,7 @@ export default function Header() {
               >
                 <span className="flex items-center text-xl font-black tracking-[0.08em] leading-none">
                   {logoLetters.map((letter, index) => (
-                    <motion.span
+                    <m.span
                       key={`${letter}-${index}`}
                       initial={false}
                       animate={prefersReducedMotion
@@ -348,10 +351,10 @@ export default function Header() {
                       className="inline-block"
                     >
                       {letter}
-                    </motion.span>
+                    </m.span>
                   ))}
                 </span>
-                <motion.sup
+                <m.sup
                   initial={false}
                   animate={prefersReducedMotion
                     ? { opacity: isLogoLabelVisible ? 0.7 : 0 }
@@ -360,9 +363,9 @@ export default function Header() {
                   className="mb-3 ml-0.5 text-[0.55em] font-bold"
                 >
                   TM
-                </motion.sup>
-              </motion.div>
-            </motion.div>
+                </m.sup>
+              </m.div>
+            </m.div>
           </Link>
           <div className="hidden flex-1 items-center gap-3 md:flex">
             <div ref={searchRef} className="relative flex w-full max-w-xl items-center">
@@ -402,7 +405,7 @@ export default function Header() {
             </div>
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:hidden">
-            <motion.div
+            <m.div
               ref={mobileSearchRef}
               initial={false}
               animate={{
@@ -499,16 +502,16 @@ export default function Header() {
                   )}
                 </div>
               ) : null}
-            </motion.div>
+            </m.div>
 
-            <motion.div
+            <m.div
               initial={false}
               animate={{ width: isMobileSearchOpen ? 0 : 'auto', opacity: isMobileSearchOpen ? 0 : 1, x: isMobileSearchOpen ? 8 : 0 }}
               transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: 'easeOut' }}
               aria-hidden={isMobileSearchOpen}
               className={`flex flex-shrink-0 items-center gap-2 whitespace-nowrap ${isMobileSearchOpen ? 'invisible pointer-events-none' : 'visible pointer-events-auto'}`}
             >
-              <motion.div
+              <m.div
                 initial={false}
                 animate={{ width: isMobileMenuOpen ? 0 : 'auto', opacity: isMobileMenuOpen ? 0 : 1 }}
                 transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2, ease: 'easeOut' }}
@@ -530,7 +533,7 @@ export default function Header() {
                     {t('login', 'Войти')}
                   </Link>
                 )}
-              </motion.div>
+              </m.div>
               <DotMenu
                 user={user}
                 currency={currency}
@@ -545,7 +548,7 @@ export default function Header() {
                   setIsMobileSearchOpen(true)
                 }}
               />
-            </motion.div>
+            </m.div>
           </div>
           <nav className="relative z-50 hidden items-center gap-3 text-sm md:flex">
             <div ref={currencyRef} className="relative">
@@ -723,5 +726,6 @@ export default function Header() {
 
       </div>
     </header>
+    </LazyMotion>
   )
 }

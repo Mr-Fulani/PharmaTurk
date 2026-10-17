@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { useTheme } from '../context/ThemeContext'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
@@ -223,7 +223,7 @@ export default function DotMenu({
           {active && menuItems.map((item, index) => {
             const offset = getItemOffset(index)
             return (
-              <motion.div
+              <m.div
                 key={item.key}
                 initial={{ x: 0, y: 0, scale: 0.25, opacity: 0 }}
                 animate={{ x: offset.x, y: offset.y, scale: 1, opacity: 1 }}
@@ -262,14 +262,14 @@ export default function DotMenu({
                     <span className={styles.badge}>{item.badge > 99 ? '99+' : item.badge}</span>
                   )}
                 </button>
-              </motion.div>
+              </m.div>
             )
           })}
         </AnimatePresence>
 
         <AnimatePresence>
           {active && showCurrencyChoice && (
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: -8, scale: 0.92 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.92 }}
@@ -298,7 +298,7 @@ export default function DotMenu({
                   <span>{code}</span>
                 </button>
               ))}
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </div>,
@@ -309,7 +309,7 @@ export default function DotMenu({
   return (
     <>
       <div ref={containerRef} className={styles.root}>
-        <motion.button
+        <m.button
           ref={triggerRef}
           type="button"
           onClick={(event) => {
@@ -333,7 +333,7 @@ export default function DotMenu({
             <span />
             <span />
           </span>
-        </motion.button>
+        </m.button>
       </div>
       {portalContent}
     </>
