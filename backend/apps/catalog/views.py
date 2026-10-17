@@ -4551,17 +4551,20 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     lookup_field = 'slug'
     card_serializer_class = None
 
+    # id — последний ключ: при равных названиях/ценах порядок иначе не
+    # определён, и между страницами товары дублируются или пропадают.
+    # Товары без цены — всегда в конце (в Postgres DESC по умолчанию NULLS FIRST).
     _ORDERING_MAP = {
-        'name_asc': 'name',
-        'name_desc': '-name',
-        'price_asc': 'price',
-        'price_desc': '-price',
-        'newest': '-created_at',
-        'popular': '-is_featured',
+        'name_asc': ('name', 'id'),
+        'name_desc': ('-name', '-id'),
+        'price_asc': (F('price').asc(nulls_last=True), 'id'),
+        'price_desc': (F('price').desc(nulls_last=True), '-id'),
+        'newest': ('-created_at',),
+        'popular': ('-is_featured', '-id'),
     }
 
-    def _normalize_ordering(self, ordering: str) -> str:
-        return self._ORDERING_MAP.get(ordering, ordering)
+    def _normalize_ordering(self, ordering: str) -> tuple:
+        return self._ORDERING_MAP.get(ordering, (ordering,))
 
 
     def _card_requested(self):
@@ -4682,8 +4685,7 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
-        ordering = self._normalize_ordering(ordering)
-        queryset = queryset.order_by(ordering)
+        queryset = queryset.order_by(*self._normalize_ordering(ordering))
 
         return queryset
 
@@ -4695,6 +4697,14 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
     queryset = MedicineProduct.objects.filter(is_active=True)
     serializer_class = MedicineProductSerializer
     card_serializer_class = SimpleDomainCardSerializer
+
+    # «Популярные» — порядок по умолчанию на странице медикаментов: заранее
+    # посчитанный ранг (цена, наличие, спрос, качество карточки), см.
+    # services/catalog_sort_rank.py. Читается по частичному индексу из 0212.
+    _ORDERING_MAP = {
+        **_SimpleDomainViewSet._ORDERING_MAP,
+        'popular': ('-sort_rank', '-id'),
+    }
 
     def _base_queryset(self):
         # defer('external_data'): дампы парсеров в jsonb весят мегабайты на строку,
@@ -4883,6 +4893,13 @@ class SupplementProductViewSet(_SimpleDomainViewSet):
     )
     serializer_class = SupplementProductSerializer
     card_serializer_class = SimpleDomainCardSerializer
+
+    # «Популярные» — порядок по умолчанию на странице БАДов, как у медикаментов
+    # (services/catalog_sort_rank.py, частичный индекс из 0214).
+    _ORDERING_MAP = {
+        **_SimpleDomainViewSet._ORDERING_MAP,
+        'popular': ('-sort_rank', '-id'),
+    }
 
     def _apply_domain_filters(self, queryset):
         dosage_form = self.request.query_params.get('dosage_form')

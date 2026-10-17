@@ -14,6 +14,19 @@ from ..base.utils import clean_text, normalize_price
 
 ILACFIYATI_PRICE_CURRENCIES = frozenset({"TRY", "USD", "EUR"})
 
+# Метка цены: у лекарств «İlaç Fiyatı», у БАДов «Perakende Satış Fiyatı».
+ILACFIYATI_PRICE_LABELS = frozenset({"ILAC FIYATI", "PERAKENDE SATIS FIYATI"})
+
+# Фолбэк без метки: сумма вплотную к отдельному знаку/коду валюты. Подстрока
+# валюты внутри слова («EUROTABS», «TLC») ценой не считается — иначе цифры из
+# названия склеивались в цену (Q10 EUROTABS 100 mg 30 → 1010030 TL).
+_PRICE_AMOUNT = r"\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?"
+STANDALONE_PRICE_RE = re.compile(
+    rf"(?<![\w.,])(?P<amount>{_PRICE_AMOUNT})\s*(?:TL|TRY|EUR|USD|₺|€|\$)(?!\w)"
+    rf"|(?:₺|€|\$)\s*(?P<amount_after>{_PRICE_AMOUNT})(?![\w.,])",
+    re.IGNORECASE,
+)
+
 
 class IlacFiyatiSourceError(RuntimeError):
     """Источник вернул пустую или неожиданную страницу вместо данных лекарства."""
@@ -250,7 +263,7 @@ class IlacFiyatiParser(BaseScraper):
         return "TRY"
 
     def _extract_labeled_price_text(self, soup: BeautifulSoup) -> str:
-        """Read the medicine price from the source's current card layout."""
+        """Read the medicine or supplement price from the source's current card layout."""
         label_value_selectors = (
             (".info-card__label", ".info-card__value"),
             (".price-card-label", ".price-card-value"),
@@ -260,7 +273,7 @@ class IlacFiyatiParser(BaseScraper):
                 label_text = self._normalize_tr_key(
                     clean_text(label.get_text(" ", strip=True))
                 )
-                if label_text != "ILAC FIYATI":
+                if label_text not in ILACFIYATI_PRICE_LABELS:
                     continue
                 container = label.parent
                 value = container.select_one(value_selector) if container else None
@@ -770,19 +783,13 @@ class IlacFiyatiParser(BaseScraper):
                                 price = parsed_price
                                 break
             if price is None and not price_unpublished:
-                currency_markers = ('\u20BA', ' TL', ' TRY', '\u20AC', ' EUR', '$', ' USD')
-                price_tags = soup.find_all(
-                    string=lambda x: x
-                    and any(marker in str(x).upper() for marker in currency_markers)
-                )
-                for text_node in price_tags:
-                    text_clean = text_node.strip()
-                    if any(char.isdigit() for char in text_clean):
-                        parsed_price = normalize_price(text_clean)
-                        if parsed_price is not None and parsed_price > 0:
-                            price = parsed_price
-                            price_currency = self._extract_price_currency(text_clean)
-                            break
+                for text_node in soup.find_all(string=STANDALONE_PRICE_RE):
+                    match = STANDALONE_PRICE_RE.search(str(text_node))
+                    parsed_price = normalize_price(match["amount"] or match["amount_after"])
+                    if parsed_price is not None and parsed_price > 0:
+                        price = parsed_price
+                        price_currency = self._extract_price_currency(match.group(0))
+                        break
             
 
             # 3. Дополнительные атрибуты (таблицы, характеристики)
