@@ -2065,6 +2065,8 @@ function MedicineAlphabetSection({
 }
 
 // Сохраняем оригинальную getServerSideProps для совместимости
+const SSR_BRANDS_EXTRA_WAIT_MS = 300
+
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { slug, page = 1, brand, brand_id } = context.query
   const pageSize = 12
@@ -2084,7 +2086,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const { getInternalApiUrl } = await import('../../lib/urls')
     const { fetchFooterSettings } = await import('../../lib/footerSettings')
-    const { publicServerCache, stablePublicCacheKey } = await import('../../lib/serverPublicCache')
+    const { publicServerCache, settleWithin, stablePublicCacheKey } = await import('../../lib/serverPublicCache')
     const languageHeaders = {
       'Accept-Language': requestLocale,
       'X-Language': requestLocale,
@@ -2289,7 +2291,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     if (isCatalogPageOutOfRange(requestedPage, totalCount, pageSize)) {
       return { notFound: true }
     }
-    brands = await brandsPromise
+    // Бренды нужны только сайдбару, и клиент всё равно перезапрашивает их после
+    // монтирования. Холодный запрос брендов медикаментов идёт ~7 с — не держим
+    // на нём HTML: даём немного времени после товаров, иначе SSR без брендов.
+    brands = await settleWithin(brandsPromise, SSR_BRANDS_EXTRA_WAIT_MS, [])
     const availableAttributes: AvailableAttribute[] = Array.isArray(productsData?.available_attributes)
       ? productsData.available_attributes
       : []

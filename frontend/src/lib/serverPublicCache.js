@@ -55,6 +55,48 @@ export function createPromiseTtlCache({ maxEntries = 300, now = () => Date.now()
   }
 }
 
+// Ждёт promise не дольше timeoutMs, затем отдаёт fallback. Сам promise не
+// отменяется: если он лежит в publicServerCache, результат достанется следующему SSR.
+export function settleWithin(promise, timeoutMs, fallback) {
+  let timer
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(fallback), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+// Кэш «отдай старое, обнови в фоне»: после первой сборки запрос никогда не ждёт
+// загрузчик. Значения, отклонённые shouldStore (например, пустые), не сохраняются.
+/** @param {{ freshMs: number, now?: () => number, shouldStore?: (value: any) => boolean }} options */
+export function createStaleWhileRevalidateCache({ freshMs, now = () => Date.now(), shouldStore = (_value) => true }) {
+  const entries = new Map()
+  const inflight = new Map()
+
+  const refresh = (key, loader) => {
+    if (inflight.has(key)) return inflight.get(key)
+    const promise = Promise.resolve()
+      .then(loader)
+      .then((value) => {
+        if (shouldStore(value)) entries.set(key, { value, builtAt: now() })
+        return value
+      })
+      .finally(() => inflight.delete(key))
+    inflight.set(key, promise)
+    return promise
+  }
+
+  return {
+    async get(key, loader) {
+      const entry = entries.get(key)
+      if (!entry) return refresh(key, loader)
+      if (now() - entry.builtAt >= freshMs) {
+        refresh(key, loader).catch((error) => console.error(`Background refresh failed: ${key}`, error))
+      }
+      return entry.value
+    },
+  }
+}
+
 // Server-only consumers import this module from getServerSideProps. Stable public
 // dictionaries are shared between warm SSR requests; product prices and stock are
 // intentionally never stored here.
