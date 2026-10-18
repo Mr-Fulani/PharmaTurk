@@ -74,4 +74,9 @@ release_compose_prod ps
 python3 "${RELEASE_SCRIPT_DIR}/pin_versions.py" --env "${RELEASE_REPO_ROOT}/.env" \
   --backend "$RELEASE_ID" --frontend "$FRONTEND_RELEASE"
 release_log "deploy completed: ${ENVIRONMENT}:${RELEASE_ID}"
+release_log "removing release images older than the previous release"
+"${RELEASE_SCRIPT_DIR}/prune-images.sh" --apply \
+  --keep "$RELEASE_ID" --keep "$FRONTEND_RELEASE" \
+  --keep "$PREVIOUS_RELEASE" --keep "$PREVIOUS_FRONTEND_RELEASE" || \
+  release_log "WARNING: image pruning failed; the deploy itself succeeded, review with prune-images.sh"
 release_log "keep previous images and backups until the observation window closes"

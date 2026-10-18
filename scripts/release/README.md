@@ -111,6 +111,18 @@ Pull and verify those exact images on the target host before deployment:
 ./scripts/release/pull-images.sh --release-id FULL_GIT_SHA
 ```
 
+Before pulling, the script requires at least 4 GiB free in the Docker data root
+(`MUDAROBA_MIN_FREE_GIB` overrides it) and fails before downloading anything.
+After a successful deploy and smoke check, `deploy.sh` runs `prune-images.sh
+--apply` and removes SHA-tagged `mudaroba-*` and `pharmaturk-*` images of every
+release except the new and previous backend/frontend SHAs. Images used by any
+container, including stopped ones, are kept. A pruning failure is reported but
+does not fail the completed deploy. Preview candidates without removing them:
+
+```bash
+./scripts/release/prune-images.sh --keep CURRENT_SHA --keep PREVIOUS_SHA
+```
+
 The GHCR packages must be public for an unauthenticated production pull, or the
 operator must run `docker login ghcr.io` with a read-only package token first.
 The pull script verifies the OCI revision labels and the non-root runtime users

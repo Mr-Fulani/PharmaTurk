@@ -27,6 +27,10 @@ frontend_source="${REGISTRY_NAMESPACE}/pharmaturk-frontend:${RELEASE_ID}"
 backend_target="mudaroba-backend:${RELEASE_ID}"
 frontend_target="mudaroba-frontend:${RELEASE_ID}"
 
+docker_root="$(docker info --format '{{ .DockerRootDir }}')" || \
+  release_die "cannot determine Docker data root"
+release_require_free_space "$docker_root" "${MUDAROBA_MIN_FREE_GIB:-4}"
+
 release_log "pulling immutable release images"
 docker pull "$backend_source"
 if [[ "$SCOPE" = "full" ]]; then docker pull "$frontend_source"; fi

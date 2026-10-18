@@ -1,6 +1,15 @@
+# Docker's default json-file driver keeps container logs forever; cap each
+# service at 3 x 50 MB. Applies when a container is (re)created.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   backend:
     restart: always
+    logging: *default-logging
     environment:
       USE_RUNSERVER: 0
     volumes:
@@ -14,6 +23,7 @@ services:
       target: production
     command: npm run start
     restart: always
+    logging: *default-logging
     # Remove direct port 80 mapping, let Nginx handle it
     environment:
       - NODE_ENV=production
@@ -26,6 +36,7 @@ services:
 
   nginx:
     restart: always
+    logging: *default-logging
     ports:
       - "80:80"
     volumes:
@@ -35,33 +46,40 @@ services:
 
   postgres:
     restart: always
+    logging: *default-logging
 
   redis:
     restart: always
+    logging: *default-logging
 
   qdrant:
     restart: always
+    logging: *default-logging
 
   celeryworker:
     restart: always
+    logging: *default-logging
     dns:
       - 8.8.8.8
       - 1.1.1.1
 
   celery_ai:
     restart: always
+    logging: *default-logging
     dns:
       - 8.8.8.8
       - 1.1.1.1
 
   celery_recsys:
     restart: always
+    logging: *default-logging
     dns:
       - 8.8.8.8
       - 1.1.1.1
 
   celerybeat:
     restart: always
+    logging: *default-logging
     dns:
       - 8.8.8.8
       - 1.1.1.1

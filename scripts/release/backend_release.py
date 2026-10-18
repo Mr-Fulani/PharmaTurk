@@ -115,7 +115,7 @@ class Release:
                 raise ValueError(f"Protected Compose service {service} changed; use full release")
 
     def plan(self):
-        output = self.dc("--profile", "ops", "run", "--no-deps", "-T", "-e",
+        output = self.dc("--profile", "ops", "run", "--rm", "--no-deps", "-T", "-e",
                          "PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=15000",
                          "migrate", "backend_release_plan")
         plan = json.loads(output)
@@ -209,7 +209,7 @@ class Release:
             if plan["migrations"]:
                 if self.plan() != plan:
                     raise ValueError("Migration plan changed after backup")
-                self.dc("--profile", "ops", "run", "--no-deps", "-T", "-e",
+                self.dc("--profile", "ops", "run", "--rm", "--no-deps", "-T", "-e",
                         "PGOPTIONS=-c lock_timeout=3000 -c statement_timeout=30000",
                         "migrate", "migrate", "--noinput")
             self.switch(state)

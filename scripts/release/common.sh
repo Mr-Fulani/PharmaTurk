@@ -74,6 +74,24 @@ release_assert_image() {
     release_die "image revision mismatch for $image_name"
 }
 
+release_free_kib() {
+  local available
+  available="$(df -Pk "$1" | awk 'NR == 2 { print $4 }')"
+  [[ "$available" =~ ^[0-9]+$ ]] || release_die "cannot determine free space for $1"
+  printf '%s\n' "$available"
+}
+
+release_require_free_space() {
+  local path="$1"
+  local min_gib="$2"
+  local available_kib
+  available_kib="$(release_free_kib "$path")"
+  if (( available_kib < min_gib * 1024 * 1024 )); then
+    release_die "only $(( available_kib / 1024 / 1024 )) GiB free on ${path}, at least ${min_gib} GiB required; review old release images with prune-images.sh and 'docker system df' before retrying"
+  fi
+  release_log "free space on ${path}: $(( available_kib / 1024 / 1024 )) GiB (required ${min_gib} GiB)"
+}
+
 release_sha256() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
