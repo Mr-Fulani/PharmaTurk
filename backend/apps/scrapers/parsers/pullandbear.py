@@ -10,6 +10,8 @@ class PullAndBearParser(InditexSiblingParser):
     SOURCE_LABEL = "Pull&Bear"
     BRAND_NAME = "Pull&Bear"
     WARMUP_URL = "https://www.pullandbear.com/tr/"
+    STORE_ID = 25009521
+    PRODUCT_URL_STYLE = "l"
 
     def __init__(self, base_url: str = "https://www.pullandbear.com/tr/", **kwargs):
         super().__init__(base_url=base_url, **kwargs)

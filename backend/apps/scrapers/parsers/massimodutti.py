@@ -10,6 +10,7 @@ class MassimoDuttiParser(InditexSiblingParser):
     SOURCE_LABEL = "Massimo Dutti"
     BRAND_NAME = "Massimo Dutti"
     WARMUP_URL = "https://www.massimodutti.com/tr/"
+    STORE_ID = 34009471
     PRODUCT_URL_STYLE = "l"
 
     def __init__(self, base_url: str = "https://www.massimodutti.com/tr/", **kwargs):
