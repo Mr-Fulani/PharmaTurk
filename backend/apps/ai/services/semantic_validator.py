@@ -509,8 +509,10 @@ class SemanticValidator:
                     and slug not in policy.allowed_dynamic_attributes
                 )
             ):
+                # Запрещённый для домена атрибут просто не применяется (applier
+                # его тоже отбрасывает); в rejected_fields — для прозрачности
+                # отчёта, но поводом для модерации он не является.
                 report.rejected_fields.add(f"dynamic_attributes:{slug or 'unknown'}")
-                report.reasons.append("forbidden_attribute")
             if looks_untranslated_turkish(row.get("value_ru")) or looks_untranslated_turkish(
                 row.get("value_en")
             ):
