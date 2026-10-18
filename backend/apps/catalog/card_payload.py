@@ -12,6 +12,8 @@ CARD_PRODUCT_FIELDS = (
     'brand_id',
     'isbn', 'publisher', 'pages', 'language', 'book_authors',
     'is_bestseller',
+    # Медикаменты: строка под названием и производитель вместо бренда «Другое»
+    'active_ingredient', 'manufacturer',
 )
 
 CARD_IMAGE_FIELDS = (

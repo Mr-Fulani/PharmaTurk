@@ -78,3 +78,19 @@ def test_card_payload_keeps_variant_media_and_drops_detail_fields():
     assert "variants" not in compact
     assert "dynamic_attributes" not in compact
     assert "meta_title" not in compact
+
+
+def test_card_payload_keeps_medicine_ingredient_and_manufacturer():
+    from apps.catalog.card_payload import compact_card_product_payload
+
+    compact = compact_card_product_payload({
+        "id": 1,
+        "name": "Majezik 100 mg",
+        "active_ingredient": "Flurbiprofen",
+        "manufacturer": "Sanovel",
+        "usage_instructions": "detail only",
+    })
+
+    assert compact["active_ingredient"] == "Flurbiprofen"
+    assert compact["manufacturer"] == "Sanovel"
+    assert "usage_instructions" not in compact
