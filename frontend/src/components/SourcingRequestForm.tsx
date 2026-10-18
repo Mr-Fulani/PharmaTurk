@@ -53,6 +53,14 @@ export default function SourcingRequestForm({ placement, initialComment = '' }: 
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [errors, setErrors] = useState<FieldErrors>({})
 
+  // Ссылка /#sourcing (например, с баннера): форма подгружается на клиенте, браузер не успевает
+  // прокрутить к ней сам — прокручиваем после монтирования
+  useEffect(() => {
+    if (window.location.hash === '#sourcing') {
+      document.getElementById('sourcing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [])
+
   useEffect(() => {
     if (!user) return
     const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim()
@@ -191,7 +199,7 @@ export default function SourcingRequestForm({ placement, initialComment = '' }: 
 
   if (state === 'sent') {
     return (
-      <section>
+      <section id="sourcing" className="scroll-mt-24">
         {heading}
         <div className="mx-auto max-w-2xl rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center shadow-sm">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-2xl">✓</div>
@@ -209,7 +217,7 @@ export default function SourcingRequestForm({ placement, initialComment = '' }: 
     errors[field] ? <p className="mt-1 text-xs font-medium text-[var(--danger)]">{errors[field]}</p> : null
 
   return (
-    <section>
+    <section id="sourcing" className="scroll-mt-24">
       {heading}
       <div className="grid gap-6 rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm md:p-8 lg:grid-cols-5">
         {/* Как это работает */}
