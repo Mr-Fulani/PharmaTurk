@@ -62,6 +62,22 @@ _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES = {
 # Дозировочные формы законны и в названиях БАДов («Melatonin Tablets»).
 _DOSAGE_FORM_PRODUCT_TYPES = frozenset({"medicines", "supplements"})
 
+# Категории-аудитории и материалы («Мужские», «Men's», «Leather») — не тип
+# товара: «Мужские джинсы» не противоречат категории «Джинсы».
+_NON_KIND_CATEGORY_ALIASES = {
+    "ru": frozenset(
+        {
+            "мужские", "мужская", "мужской", "мужское", "для мужчин",
+            "женские", "женская", "женский", "женское", "для женщин",
+            "детские", "детская", "детский", "детское", "для детей",
+            "унисекс", "кожа", "натуральная кожа", "кожаные",
+        }
+    ),
+    "en": frozenset(
+        {"men", "men s", "mens", "man", "women", "women s", "womens", "woman", "kids", "unisex", "leather"}
+    ),
+}
+
 # Категории услуг описывают работы, а не товары: их алиасы («Gas» у газовых
 # варочных панелей) не должны конфликтовать с названиями товаров.
 _SERVICE_ROOT_SLUGS = frozenset({"uslugi"})
@@ -145,6 +161,10 @@ def _identity_tokens(value: Any) -> set[str]:
     ):
         upper = token.upper()
         if re.fullmatch(r"(?:[2-9]XL|X{1,4}[SML]|ONE[-_]?SIZE)", upper):
+            continue
+        # Код «J5SM-TST7325» санитайзер вырезает из любого названия
+        # (strip_price_and_codes_from_title) — требовать его нельзя.
+        if re.fullmatch(r"[A-Z0-9]{2,}-[A-Z0-9]+", upper):
             continue
         is_alphanumeric_model = any(char.isdigit() for char in token) and any(
             char.isalpha() for char in token
@@ -361,6 +381,8 @@ class CategorySemanticIndex:
                     continue
                 for alias in policy.aliases.get(locale, ()):
                     normalized_alias = _normalized(alias)
+                    if normalized_alias in _NON_KIND_CATEGORY_ALIASES.get(locale, ()):
+                        continue
                     if normalized_alias:
                         rows.append((category_id, alias, normalized_alias))
             self._alias_cache[locale] = tuple(rows)
