@@ -2406,6 +2406,34 @@ class ProductTranslation(SeoTranslationMixin, models.Model):
         return f"{self.product.name} ({self.get_locale_display()})"
 
 
+class ProductSlugHistory(models.Model):
+    """Старый slug товара → товар, для 301 со старого URL (DEVELOPMENT_RULES §5.4).
+
+    Пишется сигналами при смене slug у Product и доменных моделей (signals.py);
+    resolve ищет здесь, только если живого товара с таким slug нет. Slug
+    глобально уникален среди товаров, поэтому old_slug уникален: если тот же
+    slug освобождается повторно, строка переходит к последнему владельцу.
+    """
+
+    old_slug = models.CharField(_("Старый slug"), max_length=600, unique=True)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="slug_history",
+        verbose_name=_("Товар"),
+    )
+    product_type = models.CharField(_("Тип товара"), max_length=32)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Старый slug товара")
+        verbose_name_plural = _("Старые slug товаров")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.old_slug} → {self.product_id}"
+
+
 
 
 
