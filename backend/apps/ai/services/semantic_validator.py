@@ -35,6 +35,7 @@ _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES = {
             "порошок",
             "инъекция",
             "суппозиторий",
+            "суспензия",
         }
     ),
     "en": frozenset(
@@ -53,9 +54,17 @@ _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES = {
             "injection",
             "suppository",
             "suppositories",
+            "suspension",
+            "suspensions",
         }
     ),
 }
+# Дозировочные формы законны и в названиях БАДов («Melatonin Tablets»).
+_DOSAGE_FORM_PRODUCT_TYPES = frozenset({"medicines", "supplements"})
+
+# Категории услуг описывают работы, а не товары: их алиасы («Gas» у газовых
+# варочных панелей) не должны конфликтовать с названиями товаров.
+_SERVICE_ROOT_SLUGS = frozenset({"uslugi"})
 
 
 @dataclass
@@ -83,12 +92,18 @@ def _ancestor_ids(category: Any) -> set[int]:
 _TURKISH_TITLE_WORDS = re.compile(
     r"\b(erkek|kadın|kadin|çocuk|cocuk|takviye|edici|gıda|gida|ayakkabı|ayakkabi|"
     r"tişört|tisort|gömlek|gomlek|pantolon|elbise|çanta|canta|kemer|sandalet|terlik|"
-    r"kapsül|kapsul|şurup|surup|merhem|damla)\b",
+    # Фарма и БАДы: формы, фасовка и служебные слова источника.
+    r"kapsül|kapsul|şurup|surup|merhem|damla|damlası|damlasi|suspansiyon|süspansiyon|"
+    r"giderici|saşe|sase|şişe|sise|efervesan|çiğneme|cigneme|tableti|kapsülü|ağız|agiz|"
+    r"spreyi|losyon|içeren|iceren|ekstresi|yağı|yagi|balık|balik)\b",
     re.IGNORECASE,
 )
 _TURKISH_TITLE_TRANSLITERATIONS = re.compile(
     r"(эркек|кадын|кадин|чоджук|чочук|айаккаб|аяккаб|тишорт|гёмлек|гомлек|пантолон|"
-    r"элбисе|такви|эдиджи|гыда|ортофед)",
+    r"элбисе|такви|эдиджи|гыда|ортофед|"
+    # «саше» и «балык» — нормальные русские слова, их не включаем.
+    r"дамла|гидерич|гидериджи|суспансийон|суспансиён|шурубу|шуруп|шише|"
+    r"эфервесан|чигнеме|ичерен|экстреси)",
     re.IGNORECASE,
 )
 
@@ -324,11 +339,19 @@ class CategorySemanticIndex:
         self._ancestor_cache[category_id] = frozen
         return frozen
 
+    def _is_service_category(self, category_id: int) -> bool:
+        return any(
+            getattr(self._categories.get(ancestor_id), "slug", "") in _SERVICE_ROOT_SLUGS
+            for ancestor_id in self._ancestor_ids(category_id)
+        )
+
     def _aliases(self, locale: str) -> tuple[tuple[int, str, str], ...]:
         if locale not in self._alias_cache:
             rows: list[tuple[int, str, str]] = []
             for category_id in self._active_ids:
                 category = self._categories[category_id]
+                if self._is_service_category(category_id):
+                    continue
                 policy = self.policy_for(category)
                 if policy is None:
                     continue
@@ -479,7 +502,7 @@ class SemanticValidator:
                 own_match_words,
             )
             if (
-                product_type == "medicines"
+                product_type in _DOSAGE_FORM_PRODUCT_TYPES
                 and conflicting_match
                 in _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES.get(locale, frozenset())
             ):
@@ -622,6 +645,12 @@ class SemanticValidator:
                     break
                 ancestor = ancestor.parent
             if is_descendant:
+                continue
+            node, is_service = candidate, False
+            while node is not None:
+                is_service = is_service or node.slug in _SERVICE_ROOT_SLUGS
+                node = node.parent
+            if is_service:
                 continue
             candidate_policy = build_category_policy(candidate)
             if candidate_policy is None:
