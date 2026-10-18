@@ -3468,14 +3468,16 @@ class ScraperIntegrationService:
             ):
                 existing_product.description = next_description
                 updated = True
-            if not is_variant_update and remember_source_description(
-                existing_product.external_data,
-                next_description,
-                current_description=existing_product.description or "",
-                ai_owned=ai_owned,
-                now_iso=timezone.now().isoformat(),
-            ):
-                updated = True
+            if not is_variant_update:
+                # Служебная запись (сохранится вместе с last_synced_at ниже):
+                # идентичный повторный парсинг по-прежнему считается «пропущен».
+                remember_source_description(
+                    existing_product.external_data,
+                    next_description,
+                    current_description=existing_product.description or "",
+                    ai_owned=ai_owned,
+                    now_iso=timezone.now().isoformat(),
+                )
 
         if not is_variant_update:
             # Обновляем изображения, если их нет
