@@ -2,11 +2,14 @@
 
 import os
 import re
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from django.core.management import call_command
 
+from apps.ai.models import AIModerationQueue, AIProcessingLog, AIProcessingStatus
 from apps.ai.services.content_generator import SUPPLEMENT_TITLE_RULES, ContentGenerator
 from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.result_applier import AIResultApplier
@@ -221,3 +224,71 @@ def test_valid_title_is_not_retried(category):
     )
 
     assert llm_call.call_count == 1
+
+
+def _moderated_log(category, source_name, ru_title, en_title, slug):
+    supplement = SupplementProduct.objects.create(name=source_name, slug=slug, category=category)
+    supplement.refresh_from_db()
+    log = AIProcessingLog.objects.create(
+        product=supplement.base_product,
+        processing_type="full",
+        status=AIProcessingStatus.MODERATION,
+        input_data={},
+        generated_title=ru_title,
+        generated_description=DESCRIPTION,
+        generated_seo_title="SEO",
+        generated_seo_description="SEO описание",
+        category_confidence=0.9,
+        cost_usd=0.001,
+        raw_llm_response={"content": {}},
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_title": ru_title, "generated_description": DESCRIPTION},
+                "en": {"generated_title": en_title, "generated_description": EN_DESCRIPTION},
+            }
+        },
+    )
+    AIModerationQueue.objects.create(log_entry=log, reason="title_identity_lost", priority=3)
+    return log
+
+
+def test_retry_titles_command_fixes_rejected_titles_then_close_applies(category, monkeypatch):
+    rejected = _moderated_log(
+        category, "MAGNIMORE PLUS TAKVIYE EDICI GIDA 30 tablet", "MAGNIMORE PLUS", "MAGNIMORE PLUS", "cmd-magnimore"
+    )
+    fine = _moderated_log(category, "SISTIONE SASE 14 saşe", "SISTIONE, 14 саше", "SISTIONE, 14 sachets", "cmd-sistione")
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator.result_applier = AIResultApplier()
+    generator.llm = SimpleNamespace(
+        model="test-model",
+        generate_content=Mock(return_value=_llm_result(
+            {"ru": "MAGNIMORE PLUS, пищевая добавка, 30 таблеток", "en": "MAGNIMORE PLUS Food Supplement, 30 tablets"},
+            cost=0.0002,
+        )),
+    )
+    for module in ("retry_ai_titles", "close_resolved_ai_moderation"):
+        monkeypatch.setattr(f"apps.ai.management.commands.{module}.ContentGenerator", lambda: generator)
+
+    out = StringIO()
+    call_command("retry_ai_titles", "--limit", "10", "--dry-run", stdout=out)
+    assert f"лог {rejected.id}" in out.getvalue() and f"лог {fine.id}" not in out.getvalue()
+    generator.llm.generate_content.assert_not_called()
+
+    call_command("retry_ai_titles", "--limit", "10", stdout=StringIO())
+
+    assert generator.llm.generate_content.call_count == 1
+    rejected.refresh_from_db()
+    assert rejected.generated_title == "MAGNIMORE PLUS, пищевая добавка, 30 таблеток"
+    assert rejected.extracted_attributes["seo_translations"]["en"]["generated_title"] == (
+        "MAGNIMORE PLUS Food Supplement, 30 tablets"
+    )
+    assert float(rejected.cost_usd) == pytest.approx(0.0012)
+    assert rejected.raw_llm_response["title_retry"]["repaired_fields"] == ["generated_title"]
+    assert rejected.status == AIProcessingStatus.MODERATION
+
+    assert get_moderation_reasons(rejected) == []
+    call_command("close_resolved_ai_moderation", "--product-type", "supplements", stdout=StringIO())
+
+    rejected.refresh_from_db()
+    assert rejected.status == AIProcessingStatus.APPROVED
+    assert rejected.product.name == "MAGNIMORE PLUS, пищевая добавка, 30 таблеток"

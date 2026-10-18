@@ -214,6 +214,17 @@ docker compose exec backend poetry run python manage.py close_resolved_ai_modera
 docker compose exec backend poetry run python manage.py close_resolved_ai_moderation --product-type supplements --limit 50
 ```
 
+### Повтор отклонённых названий БАДов: `retry_ai_titles`
+
+Для логов, обработанных до появления автоповтора названия (или если повтор не помог): берёт открытые записи модерации БАДов с причиной `title_identity_lost` / `title_untranslated` и для каждого лога делает один короткий запрос только за RU/EN-названием (≈$0.0002). Новое название пишется в лог, только если проходит проверки; товар команда не меняет. Применить названия и закрыть модерацию — `close_resolved_ai_moderation`.
+
+```bash
+docker compose exec backend poetry run python manage.py retry_ai_titles --limit 50 --dry-run
+docker compose exec backend poetry run python manage.py retry_ai_titles --limit 50
+docker compose exec backend poetry run python manage.py close_resolved_ai_moderation --product-type supplements --dry-run
+docker compose exec backend poetry run python manage.py close_resolved_ai_moderation --product-type supplements
+```
+
 ### Диагностика
 
 Подготовка RAG создаёт коллекции Qdrant, синхронизирует категории и импортирует шаблоны:
