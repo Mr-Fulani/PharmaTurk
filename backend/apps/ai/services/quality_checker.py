@@ -44,7 +44,12 @@ def get_moderation_reasons(
     # категорий сохраняем прежний порог.
     product_type = getattr(getattr(log, "product", None), "product_type", None)
     minimum_description_words = 12 if product_type == "medicines" else 20
-    if (
+    # Описание-из-фактов (источник без текста) короткое намеренно: в нём
+    # только подтверждённые атрибуты, «воду» дописывать нечем.
+    raw_response = getattr(log, "raw_llm_response", None)
+    rule_content = raw_response.get("rule_content") if isinstance(raw_response, dict) else None
+    from_facts = isinstance(rule_content, dict) and rule_content.get("description_source") == "template"
+    if not from_facts and (
         len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE))
         < minimum_description_words
     ):

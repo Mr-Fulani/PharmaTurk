@@ -10,6 +10,7 @@ class BershkaParser(InditexSiblingParser):
     SOURCE_LABEL = "Bershka"
     BRAND_NAME = "Bershka"
     WARMUP_URL = "https://www.bershka.com/tr/"
+    STORE_ID = 44109521
 
     def __init__(self, base_url: str = "https://www.bershka.com/tr/", **kwargs):
         super().__init__(base_url=base_url, **kwargs)

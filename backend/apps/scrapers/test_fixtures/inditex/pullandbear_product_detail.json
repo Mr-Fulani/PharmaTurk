@@ -1,0 +1,737 @@
+{
+ "id": 752040619,
+ "type": "BundleBean",
+ "name": "STWD logolu boxy tişört",
+ "nameEn": "Boxy STWD logo T-shirt",
+ "sectionNameEN": "MEN",
+ "familyName": "T-SHIRT",
+ "subFamilyName": "KISA KOLLU BASIC",
+ "productUrl": "stwd-logolu-boxy-tisort-l03233901",
+ "productUrlParam": "752040619",
+ "bundleProductSummaries": [
+  {
+   "id": 752039412,
+   "type": "ProductBean",
+   "name": "STWD logolu boxy tişört",
+   "sectionNameEN": "MEN",
+   "familyName": "T-SHIRT",
+   "subFamilyName": "KISA KOLLU BASIC",
+   "productUrl": "stwd-logolu-boxy-tisort-l03233901",
+   "detail": {
+    "description": "",
+    "longDescription": "STWD logolu, bisiklet yaka, kısa kollu, %100 pamuklu, boxy kesim tişört.",
+    "reference": "03233901-I2026",
+    "displayReference": "3233/901",
+    "xmediaDefaultSet": null,
+    "subfamilyInfo": {
+     "subFamilyId": 3467,
+     "subFamilyCode": 556,
+     "subFamilyName": "KISA KOLLU BASIC"
+    },
+    "colors": [
+     {
+      "id": "809",
+      "name": "Orta gri",
+      "reference": "C03233901809-I2026",
+      "longDescription": "STWD logolu, bisiklet yaka, kısa kollu, %100 pamuklu, boxy kesim tişört.",
+      "sizes": [
+       {
+        "sku": 752039440,
+        "name": "XXS",
+        "partnumber": "0323390180908-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039432,
+        "name": "XS",
+        "partnumber": "0323390180901-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039433,
+        "name": "S",
+        "partnumber": "0323390180902-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039430,
+        "name": "M",
+        "partnumber": "0323390180903-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039431,
+        "name": "L",
+        "partnumber": "0323390180904-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039428,
+        "name": "XL",
+        "partnumber": "0323390180905-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039429,
+        "name": "XXL",
+        "partnumber": "0323390180906-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       }
+      ]
+     },
+     {
+      "id": "600",
+      "name": "Kırmızı",
+      "reference": "C03233901600-I2026",
+      "longDescription": "%100 pamuklu, bisiklet yaka, kısa kollu ve STWD logolu boxy tişört.",
+      "sizes": [
+       {
+        "sku": 752039434,
+        "name": "XXS",
+        "partnumber": "0323390160008-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039425,
+        "name": "XS",
+        "partnumber": "0323390160001-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039426,
+        "name": "S",
+        "partnumber": "0323390160002-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039422,
+        "name": "M",
+        "partnumber": "0323390160003-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039423,
+        "name": "L",
+        "partnumber": "0323390160004-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039420,
+        "name": "XL",
+        "partnumber": "0323390160005-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       },
+       {
+        "sku": 752039421,
+        "name": "XXL",
+        "partnumber": "0323390160006-I2026",
+        "isBuyable": true,
+        "price": "109000",
+        "oldPrice": null,
+        "visibilityValue": "SHOW"
+       }
+      ]
+     }
+    ],
+    "xmedia": [
+     {
+      "colorCode": "809",
+      "xmediaItems": [
+       {
+        "set": 0,
+        "medias": [
+         {
+          "idMedia": "9b935def89ed405bb31de2e917ae8526",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/9b93/5def/89ed405bb31d/e2e917ae8526/03233901809-C/03233901809-C.jpg?ts=1783077579054",
+          "extraInfo": {
+           "assetId": "9b935def89ed405bb31de2e917ae8526",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/9b93/5def/89ed405bb31d/e2e917ae8526/03233901809-C/03233901809-C.jpg?ts=1783077579054",
+           "originalName": "c1"
+          }
+         },
+         {
+          "idMedia": "f3bba3ba9c144db2815717bd2253e6b6",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/f3bb/a3ba/9c144db28157/17bd2253e6b6/03233901809-A8M/03233901809-A8M.jpg?ts=1783077578803",
+          "extraInfo": {
+           "assetId": "f3bba3ba9c144db2815717bd2253e6b6",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/f3bb/a3ba/9c144db28157/17bd2253e6b6/03233901809-A8M/03233901809-A8M.jpg?ts=1783077578803",
+           "originalName": "a8m"
+          }
+         },
+         {
+          "idMedia": "0fa4cec263244e32ac75a0e1ab9392a7",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/0fa4/cec2/63244e32ac75/a0e1ab9392a7/03233901809-Z/03233901809-Z.jpg?ts=1783077578768",
+          "extraInfo": {
+           "assetId": "0fa4cec263244e32ac75a0e1ab9392a7",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/0fa4/cec2/63244e32ac75/a0e1ab9392a7/03233901809-Z/03233901809-Z.jpg?ts=1783077578768",
+           "originalName": "z1"
+          }
+         },
+         {
+          "idMedia": "d4d9f2ab314b4ffeb7deb1bb6074e434",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/d4d9/f2ab/314b4ffeb7de/b1bb6074e434/03233901809-A6M/03233901809-A6M.jpg?ts=1783077578703",
+          "extraInfo": {
+           "assetId": "d4d9f2ab314b4ffeb7deb1bb6074e434",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/d4d9/f2ab/314b4ffeb7de/b1bb6074e434/03233901809-A6M/03233901809-A6M.jpg?ts=1783077578703",
+           "originalName": "a6m"
+          }
+         },
+         {
+          "idMedia": "4b423ddb5a6b4bba8686d9d7c1d82c28",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/4b42/3ddb/5a6b4bba8686/d9d7c1d82c28/03233901809-A20M/03233901809-A20M.jpg?ts=1783077578504",
+          "extraInfo": {
+           "assetId": "4b423ddb5a6b4bba8686d9d7c1d82c28",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/4b42/3ddb/5a6b4bba8686/d9d7c1d82c28/03233901809-A20M/03233901809-A20M.jpg?ts=1783077578504",
+           "originalName": "a20m"
+          }
+         },
+         {
+          "idMedia": "7d05c9b6653044bea90fb576b5c02861",
+          "clazz": 2,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/7d05/c9b6/653044bea90f/b576b5c02861/COLOR_809/COLOR_809.jpg?ts=1741606858094",
+          "extraInfo": {
+           "assetId": "7d05c9b6653044bea90fb576b5c02861",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/7d05/c9b6/653044bea90f/b576b5c02861/COLOR_809/COLOR_809.jpg?ts=1741606858094",
+           "originalName": "r1"
+          }
+         },
+         {
+          "idMedia": "d4f9b9029a794db097da7b98aecd4274",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/d4f9/b902/9a794db097da/7b98aecd4274/03233901809-K4/03233901809-K4.jpg?ts=1783604994783",
+          "extraInfo": {
+           "assetId": "d4f9b9029a794db097da7b98aecd4274",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/d4f9/b902/9a794db097da/7b98aecd4274/03233901809-K4/03233901809-K4.jpg?ts=1783604994783",
+           "originalName": "k4"
+          }
+         },
+         {
+          "idMedia": "04a029c633f64c9c9c4730106fc5938e",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/04a0/29c6/33f64c9c9c47/30106fc5938e/03233901809-K1/03233901809-K1.jpg?ts=1783604995525",
+          "extraInfo": {
+           "assetId": "04a029c633f64c9c9c4730106fc5938e",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/04a0/29c6/33f64c9c9c47/30106fc5938e/03233901809-K1/03233901809-K1.jpg?ts=1783604995525",
+           "originalName": "k1"
+          }
+         },
+         {
+          "idMedia": "e69004b0d29247bfad09c8a07075fa49",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/e690/04b0/d29247bfad09/c8a07075fa49/03233901809-M/03233901809-M.jpg?ts=1783604995751",
+          "extraInfo": {
+           "assetId": "e69004b0d29247bfad09c8a07075fa49",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/e690/04b0/d29247bfad09/c8a07075fa49/03233901809-M/03233901809-M.jpg?ts=1783604995751",
+           "originalName": "m1"
+          }
+         },
+         {
+          "idMedia": "bd8d9af7db4e4affa477682d5946b26b",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/bd8d/9af7/db4e4affa477/682d5946b26b/03233901809-K2/03233901809-K2.jpg?ts=1783604994792",
+          "extraInfo": {
+           "assetId": "bd8d9af7db4e4affa477682d5946b26b",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/bd8d/9af7/db4e4affa477/682d5946b26b/03233901809-K2/03233901809-K2.jpg?ts=1783604994792",
+           "originalName": "k2"
+          }
+         },
+         {
+          "idMedia": "40858ff476fd489faea8756b9f65da5c",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/4085/8ff4/76fd489faea8/756b9f65da5c/03233901809-A2M/03233901809-A2M.jpg?ts=1783604999949",
+          "extraInfo": {
+           "assetId": "40858ff476fd489faea8756b9f65da5c",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/4085/8ff4/76fd489faea8/756b9f65da5c/03233901809-A2M/03233901809-A2M.jpg?ts=1783604999949",
+           "originalName": "a2m"
+          }
+         },
+         {
+          "idMedia": "4153a3c8746d4dad82e0d5ec852b5f5d",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/4153/a3c8/746d4dad82e0/d5ec852b5f5d/03233901809-A5M/03233901809-A5M.jpg?ts=1783604997139",
+          "extraInfo": {
+           "assetId": "4153a3c8746d4dad82e0d5ec852b5f5d",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/4153/a3c8/746d4dad82e0/d5ec852b5f5d/03233901809-A5M/03233901809-A5M.jpg?ts=1783604997139",
+           "originalName": "a5m"
+          }
+         },
+         {
+          "idMedia": "943ec10620b049c79de889d1dad087ca",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/943e/c106/20b049c79de8/89d1dad087ca/03233901809-A4M/03233901809-A4M.jpg?ts=1783605000143",
+          "extraInfo": {
+           "assetId": "943ec10620b049c79de889d1dad087ca",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/943e/c106/20b049c79de8/89d1dad087ca/03233901809-A4M/03233901809-A4M.jpg?ts=1783605000143",
+           "originalName": "a4m"
+          }
+         },
+         {
+          "idMedia": "771b0379ad844f8d8257ec9615e6b537",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/771b/0379/ad844f8d8257/ec9615e6b537/03233901809-A3M/03233901809-A3M.jpg?ts=1783604999427",
+          "extraInfo": {
+           "assetId": "771b0379ad844f8d8257ec9615e6b537",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/771b/0379/ad844f8d8257/ec9615e6b537/03233901809-A3M/03233901809-A3M.jpg?ts=1783604999427",
+           "originalName": "a3m"
+          }
+         },
+         {
+          "idMedia": "89bf8ae6b2ab43afb8c806e6873893e3",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/89bf/8ae6/b2ab43afb8c8/06e6873893e3/03233901809-K3/03233901809-K3.jpg?ts=1783604995555",
+          "extraInfo": {
+           "assetId": "89bf8ae6b2ab43afb8c806e6873893e3",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/89bf/8ae6/b2ab43afb8c8/06e6873893e3/03233901809-K3/03233901809-K3.jpg?ts=1783604995555",
+           "originalName": "k3"
+          }
+         }
+        ]
+       }
+      ],
+      "xmediaLocations": [
+       {
+        "locations": [
+         {
+          "mediaLocations": [
+           "9b935def89ed405bb31de2e917ae8526"
+          ],
+          "location": 4
+         },
+         {
+          "mediaLocations": [
+           "e69004b0d29247bfad09c8a07075fa49",
+           "40858ff476fd489faea8756b9f65da5c",
+           "771b0379ad844f8d8257ec9615e6b537",
+           "943ec10620b049c79de889d1dad087ca",
+           "4153a3c8746d4dad82e0d5ec852b5f5d",
+           "d4d9f2ab314b4ffeb7deb1bb6074e434",
+           "4b423ddb5a6b4bba8686d9d7c1d82c28",
+           "f3bba3ba9c144db2815717bd2253e6b6"
+          ],
+          "location": 0
+         },
+         {
+          "mediaLocations": [
+           "e69004b0d29247bfad09c8a07075fa49",
+           "40858ff476fd489faea8756b9f65da5c",
+           "771b0379ad844f8d8257ec9615e6b537",
+           "943ec10620b049c79de889d1dad087ca",
+           "4153a3c8746d4dad82e0d5ec852b5f5d",
+           "d4d9f2ab314b4ffeb7deb1bb6074e434",
+           "4b423ddb5a6b4bba8686d9d7c1d82c28",
+           "f3bba3ba9c144db2815717bd2253e6b6"
+          ],
+          "location": 1
+         },
+         {
+          "mediaLocations": [
+           "d4d9f2ab314b4ffeb7deb1bb6074e434"
+          ],
+          "location": 5
+         },
+         {
+          "mediaLocations": [
+           "d4d9f2ab314b4ffeb7deb1bb6074e434"
+          ],
+          "location": 11
+         },
+         {
+          "mediaLocations": [
+           "d4d9f2ab314b4ffeb7deb1bb6074e434"
+          ],
+          "location": 17
+         },
+         {
+          "mediaLocations": [
+           "7d05c9b6653044bea90fb576b5c02861"
+          ],
+          "location": 3
+         },
+         {
+          "mediaLocations": [
+           "e69004b0d29247bfad09c8a07075fa49"
+          ],
+          "location": 2
+         },
+         {
+          "mediaLocations": [
+           "e69004b0d29247bfad09c8a07075fa49"
+          ],
+          "location": 13
+         },
+         {
+          "mediaLocations": [
+           "e69004b0d29247bfad09c8a07075fa49"
+          ],
+          "location": 16
+         }
+        ],
+        "set": 0
+       }
+      ]
+     },
+     {
+      "colorCode": "600",
+      "xmediaItems": [
+       {
+        "set": 0,
+        "medias": [
+         {
+          "idMedia": "1768715029c84c629bbcf85c41f7f765",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/1768/7150/29c84c629bbc/f85c41f7f765/03233901600-C/03233901600-C.jpg?ts=1783077576450",
+          "extraInfo": {
+           "assetId": "1768715029c84c629bbcf85c41f7f765",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/1768/7150/29c84c629bbc/f85c41f7f765/03233901600-C/03233901600-C.jpg?ts=1783077576450",
+           "originalName": "c1"
+          }
+         },
+         {
+          "idMedia": "0b74ff20ea7741ffac536a6c18b02bef",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/0b74/ff20/ea7741ffac53/6a6c18b02bef/03233901600-A6M/03233901600-A6M.jpg?ts=1783077578237",
+          "extraInfo": {
+           "assetId": "0b74ff20ea7741ffac536a6c18b02bef",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/0b74/ff20/ea7741ffac53/6a6c18b02bef/03233901600-A6M/03233901600-A6M.jpg?ts=1783077578237",
+           "originalName": "a6m"
+          }
+         },
+         {
+          "idMedia": "8fbac4a16b344204b2735baff95ddef2",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/8fba/c4a1/6b344204b273/5baff95ddef2/03233901600-Z/03233901600-Z.jpg?ts=1783077576352",
+          "extraInfo": {
+           "assetId": "8fbac4a16b344204b2735baff95ddef2",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/8fba/c4a1/6b344204b273/5baff95ddef2/03233901600-Z/03233901600-Z.jpg?ts=1783077576352",
+           "originalName": "z1"
+          }
+         },
+         {
+          "idMedia": "c8b1e10e71334951b0165a9601ba56af",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/c8b1/e10e/71334951b016/5a9601ba56af/03233901600-A20M/03233901600-A20M.jpg?ts=1783077576091",
+          "extraInfo": {
+           "assetId": "c8b1e10e71334951b0165a9601ba56af",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/c8b1/e10e/71334951b016/5a9601ba56af/03233901600-A20M/03233901600-A20M.jpg?ts=1783077576091",
+           "originalName": "a20m"
+          }
+         },
+         {
+          "idMedia": "1b227e485c2a4d559898898ec04528ff",
+          "clazz": 2,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/1b22/7e48/5c2a4d559898/898ec04528ff/COLOR_600/COLOR_600.jpg?ts=1741606792963",
+          "extraInfo": {
+           "assetId": "1b227e485c2a4d559898898ec04528ff",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/1b22/7e48/5c2a4d559898/898ec04528ff/COLOR_600/COLOR_600.jpg?ts=1741606792963",
+           "originalName": "r1"
+          }
+         },
+         {
+          "idMedia": "f7e460ff252f4a729996758ee23a91cb",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/f7e4/60ff/252f4a729996/758ee23a91cb/03233901600-A8M/03233901600-A8M.jpg?ts=1783077578928",
+          "extraInfo": {
+           "assetId": "f7e460ff252f4a729996758ee23a91cb",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/f7e4/60ff/252f4a729996/758ee23a91cb/03233901600-A8M/03233901600-A8M.jpg?ts=1783077578928",
+           "originalName": "a8m"
+          }
+         },
+         {
+          "idMedia": "8a86118bf4a94e52a68c7449024228e0",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/8a86/118b/f4a94e52a68c/7449024228e0/03233901600-K4/03233901600-K4.jpg?ts=1783604975630",
+          "extraInfo": {
+           "assetId": "8a86118bf4a94e52a68c7449024228e0",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/8a86/118b/f4a94e52a68c/7449024228e0/03233901600-K4/03233901600-K4.jpg?ts=1783604975630",
+           "originalName": "k4"
+          }
+         },
+         {
+          "idMedia": "cde8c3e68fbd4cdba8eb42f09d7ba68f",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/cde8/c3e6/8fbd4cdba8eb/42f09d7ba68f/03233901600-K3/03233901600-K3.jpg?ts=1783604977502",
+          "extraInfo": {
+           "assetId": "cde8c3e68fbd4cdba8eb42f09d7ba68f",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/cde8/c3e6/8fbd4cdba8eb/42f09d7ba68f/03233901600-K3/03233901600-K3.jpg?ts=1783604977502",
+           "originalName": "k3"
+          }
+         },
+         {
+          "idMedia": "cd52a1685cf84981b9191c3e001d5128",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/cd52/a168/5cf84981b919/1c3e001d5128/03233901600-A3M/03233901600-A3M.jpg?ts=1783604982444",
+          "extraInfo": {
+           "assetId": "cd52a1685cf84981b9191c3e001d5128",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/cd52/a168/5cf84981b919/1c3e001d5128/03233901600-A3M/03233901600-A3M.jpg?ts=1783604982444",
+           "originalName": "a3m"
+          }
+         },
+         {
+          "idMedia": "4ae90285514c467d920398708e5ffc7c",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/4ae9/0285/514c467d9203/98708e5ffc7c/03233901600-A5M/03233901600-A5M.jpg?ts=1783604979535",
+          "extraInfo": {
+           "assetId": "4ae90285514c467d920398708e5ffc7c",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/4ae9/0285/514c467d9203/98708e5ffc7c/03233901600-A5M/03233901600-A5M.jpg?ts=1783604979535",
+           "originalName": "a5m"
+          }
+         },
+         {
+          "idMedia": "3bc1d510120d484c8f36f9323bdaf8b5",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/3bc1/d510/120d484c8f36/f9323bdaf8b5/03233901600-K2/03233901600-K2.jpg?ts=1783604977050",
+          "extraInfo": {
+           "assetId": "3bc1d510120d484c8f36f9323bdaf8b5",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/3bc1/d510/120d484c8f36/f9323bdaf8b5/03233901600-K2/03233901600-K2.jpg?ts=1783604977050",
+           "originalName": "k2"
+          }
+         },
+         {
+          "idMedia": "a94f5619a2a4483986505587aee562b5",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/a94f/5619/a2a448398650/5587aee562b5/03233901600-A4M/03233901600-A4M.jpg?ts=1783604980642",
+          "extraInfo": {
+           "assetId": "a94f5619a2a4483986505587aee562b5",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/a94f/5619/a2a448398650/5587aee562b5/03233901600-A4M/03233901600-A4M.jpg?ts=1783604980642",
+           "originalName": "a4m"
+          }
+         },
+         {
+          "idMedia": "02f2f22c6f6446af96706b15662422be",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/02f2/f22c/6f6446af9670/6b15662422be/03233901600-A2M/03233901600-A2M.jpg?ts=1783604983227",
+          "extraInfo": {
+           "assetId": "02f2f22c6f6446af96706b15662422be",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/02f2/f22c/6f6446af9670/6b15662422be/03233901600-A2M/03233901600-A2M.jpg?ts=1783604983227",
+           "originalName": "a2m"
+          }
+         },
+         {
+          "idMedia": "a90795dc09d84030bbb74e923a06adfd",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/a907/95dc/09d84030bbb7/4e923a06adfd/03233901600-K1/03233901600-K1.jpg?ts=1783604977990",
+          "extraInfo": {
+           "assetId": "a90795dc09d84030bbb74e923a06adfd",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/a907/95dc/09d84030bbb7/4e923a06adfd/03233901600-K1/03233901600-K1.jpg?ts=1783604977990",
+           "originalName": "k1"
+          }
+         },
+         {
+          "idMedia": "9d98f4b4d08a4d1891908d5f7410677c",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/9d98/f4b4/d08a4d189190/8d5f7410677c/03233901600-M/03233901600-M.jpg?ts=1783604977675",
+          "extraInfo": {
+           "assetId": "9d98f4b4d08a4d1891908d5f7410677c",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/9d98/f4b4/d08a4d189190/8d5f7410677c/03233901600-M/03233901600-M.jpg?ts=1783604977675",
+           "originalName": "m1"
+          }
+         },
+         {
+          "idMedia": "4491ad96bf854f2aa7664b6e29180730",
+          "clazz": 1,
+          "format": 1,
+          "url": "https://static.pullandbear.net/assets/public/4491/ad96/bf854f2aa766/4b6e29180730/03233901600001-A7M/03233901600001-A7M.jpg?ts=1783680106893",
+          "extraInfo": {
+           "assetId": "4491ad96bf854f2aa7664b6e29180730",
+           "deliveryUrl": "https://static.pullandbear.net/assets/public/4491/ad96/bf854f2aa766/4b6e29180730/03233901600001-A7M/03233901600001-A7M.jpg?ts=1783680106893",
+           "originalName": "a7m"
+          }
+         }
+        ]
+       }
+      ],
+      "xmediaLocations": [
+       {
+        "locations": [
+         {
+          "mediaLocations": [
+           "1768715029c84c629bbcf85c41f7f765"
+          ],
+          "location": 4
+         },
+         {
+          "mediaLocations": [
+           "9d98f4b4d08a4d1891908d5f7410677c",
+           "4491ad96bf854f2aa7664b6e29180730",
+           "02f2f22c6f6446af96706b15662422be",
+           "cd52a1685cf84981b9191c3e001d5128",
+           "a94f5619a2a4483986505587aee562b5",
+           "4ae90285514c467d920398708e5ffc7c",
+           "0b74ff20ea7741ffac536a6c18b02bef",
+           "c8b1e10e71334951b0165a9601ba56af",
+           "f7e460ff252f4a729996758ee23a91cb"
+          ],
+          "location": 0
+         },
+         {
+          "mediaLocations": [
+           "4491ad96bf854f2aa7664b6e29180730",
+           "9d98f4b4d08a4d1891908d5f7410677c",
+           "02f2f22c6f6446af96706b15662422be",
+           "cd52a1685cf84981b9191c3e001d5128",
+           "a94f5619a2a4483986505587aee562b5",
+           "4ae90285514c467d920398708e5ffc7c",
+           "0b74ff20ea7741ffac536a6c18b02bef",
+           "c8b1e10e71334951b0165a9601ba56af",
+           "f7e460ff252f4a729996758ee23a91cb"
+          ],
+          "location": 1
+         },
+         {
+          "mediaLocations": [
+           "0b74ff20ea7741ffac536a6c18b02bef"
+          ],
+          "location": 5
+         },
+         {
+          "mediaLocations": [
+           "0b74ff20ea7741ffac536a6c18b02bef"
+          ],
+          "location": 11
+         },
+         {
+          "mediaLocations": [
+           "0b74ff20ea7741ffac536a6c18b02bef"
+          ],
+          "location": 17
+         },
+         {
+          "mediaLocations": [
+           "1b227e485c2a4d559898898ec04528ff"
+          ],
+          "location": 3
+         },
+         {
+          "mediaLocations": [
+           "9d98f4b4d08a4d1891908d5f7410677c"
+          ],
+          "location": 2
+         },
+         {
+          "mediaLocations": [
+           "9d98f4b4d08a4d1891908d5f7410677c"
+          ],
+          "location": 13
+         },
+         {
+          "mediaLocations": [
+           "9d98f4b4d08a4d1891908d5f7410677c"
+          ],
+          "location": 16
+         },
+         {
+          "mediaLocations": [
+           "4491ad96bf854f2aa7664b6e29180730"
+          ],
+          "location": 10
+         }
+        ],
+        "set": 0
+       }
+      ]
+     }
+    ],
+    "compositionDetail": {
+     "parts": [
+      {
+       "id": "1",
+       "description": "DIŞ",
+       "areas": [],
+       "components": [
+        {
+         "id": 2440,
+         "material": "pamuk",
+         "percentage": "100%"
+        }
+       ],
+       "microcontents": [],
+       "reinforcements": []
+      }
+     ],
+     "exceptions": [
+      "DEKORATİF İPLER HARİÇ"
+     ]
+    }
+   }
+  }
+ ],
+ "detail": {
+  "description": "",
+  "longDescription": "STWD logolu, bisiklet yaka, kısa kollu, %100 pamuklu, boxy kesim tişört.",
+  "reference": "C03233901809-I2026"
+ }
+}

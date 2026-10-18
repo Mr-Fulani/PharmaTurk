@@ -54,6 +54,7 @@ from apps.ai.services.medicine_reference import CODE_FIELDS, build_reference_tra
 from apps.ai.services.medicine_title import build_medicine_title
 from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
 from apps.ai.services.result_applier import build_content_snapshot
+from apps.ai.services.rules.pipeline import plan_rule_content, run_rule_content
 from apps.ai.services.semantic_validator import SemanticValidator, _title_has_turkish_words
 from apps.ai.services.size_inventory import (
     extract_sizes_from_input,
@@ -353,37 +354,49 @@ class ContentGenerator:
                     if is_medicine
                     else None
                 )
-                system_prompt = (
-                    self._get_medicine_system_prompt()
+                # Не медицинские домены: название/SEO/атрибуты — правилами,
+                # LLM только переводит описание (см. apps/ai/services/rules).
+                rule_plan = (
+                    None
                     if is_medicine
-                    else self._get_system_prompt()
+                    else plan_rule_content(product, collected_input, processing_type)
                 )
-                user_prompt = (
-                    self._construct_medicine_user_prompt(
-                        product,
-                        image_analysis=log_entry.image_analysis,
-                        processing_type=processing_type,
-                        input_data=collected_input,
-                        code_fields=code_fields,
+                if rule_plan is not None:
+                    generation_result = run_rule_content(
+                        product, rule_plan, collected_input, self.llm, log_entry
                     )
-                    if is_medicine
-                    else self._construct_user_prompt(
-                        product,
-                        image_analysis=log_entry.image_analysis,
-                        processing_type=processing_type,
-                        input_data=collected_input,
+                else:
+                    system_prompt = (
+                        self._get_medicine_system_prompt()
+                        if is_medicine
+                        else self._get_system_prompt()
                     )
-                )
+                    user_prompt = (
+                        self._construct_medicine_user_prompt(
+                            product,
+                            image_analysis=log_entry.image_analysis,
+                            processing_type=processing_type,
+                            input_data=collected_input,
+                            code_fields=code_fields,
+                        )
+                        if is_medicine
+                        else self._construct_user_prompt(
+                            product,
+                            image_analysis=log_entry.image_analysis,
+                            processing_type=processing_type,
+                            input_data=collected_input,
+                        )
+                    )
 
-                # Вызов LLM (max_tokens=3000 — описание + SEO + en + attributes могут быть длинными)
-                generation_result = self.llm.generate_content(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    max_tokens=5000 if is_medicine else 3000,
-                    # Карточка — пересказ фактов источника, а не креатив: низкая
-                    # температура меньше выдумывает свойства и стабильнее по формату.
-                    temperature=0.2 if is_medicine else 0.3,
-                )
+                    # Вызов LLM (max_tokens=3000 — описание + SEO + en + attributes могут быть длинными)
+                    generation_result = self.llm.generate_content(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        max_tokens=5000 if is_medicine else 3000,
+                        # Карточка — пересказ фактов источника, а не креатив: низкая
+                        # температура меньше выдумывает свойства и стабильнее по формату.
+                        temperature=0.2 if is_medicine else 0.3,
+                    )
                 # Обрезанный или невалидный ответ — ошибка, а не молчаливый {}:
                 # стоимость вызова фиксируем, дальнейшие платные шаги не запускаем.
                 if code_fields and code_fields.get("usage"):

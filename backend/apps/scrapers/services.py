@@ -48,6 +48,7 @@ from .parsers.lcw import LcwParser
 from .parsers.zara import ZaraParser
 from .parsers.flo import FloParser
 from .base.catalog_state import CatalogTraversalState
+from .base.offers import OfferGone, OfferNotFound
 from .base.scraper import (
     ScrapedProduct,
     ScraperAccessBlockedError,
@@ -974,6 +975,19 @@ class ScraperIntegrationService:
             session.finished_at = timezone.now()
             session.error_message = str(e)
             session.save(update_fields=["status", "finished_at", "error_message"])
+            raise
+
+        except (OfferNotFound, OfferGone) as e:
+            # Карточку убрали у источника (404/410) — сайт и парсер исправны,
+            # поэтому статус конфигурации не переводим в «Ошибка».
+            self.logger.info("Парсер %s: страница снята у источника: %s", scraper_config.name, e)
+            session.status = "failed"
+            session.finished_at = timezone.now()
+            session.error_message = f"Страница снята у источника (HTTP 404/410), парсер исправен: {e}"
+            session.save()
+            self._update_scraper_stats(
+                scraper_config, session, success=False, source_item_gone=True,
+            )
             raise
 
         except Exception as e:
@@ -4624,7 +4638,13 @@ class ScraperIntegrationService:
 
         return "created", product
 
-    def _update_scraper_stats(self, config: ScraperConfig, session: ScrapingSession, success: bool):
+    def _update_scraper_stats(
+        self,
+        config: ScraperConfig,
+        session: ScrapingSession,
+        success: bool,
+        source_item_gone: bool = False,
+    ):
         """Обновляет статистику парсера."""
         config.total_runs += 1
         config.last_run_at = timezone.now()
@@ -4634,7 +4654,7 @@ class ScraperIntegrationService:
             config.last_success_at = timezone.now()
             config.total_products_scraped += session.products_found
             config.status = "active"
-        else:
+        elif not source_item_gone:
             config.last_error_at = timezone.now()
             config.last_error_message = session.error_message
             config.status = "error"
