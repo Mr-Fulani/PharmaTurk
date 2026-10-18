@@ -412,3 +412,21 @@ def test_coverage_report_and_inn_dry_run_do_not_call_model():
     assert "'Gizli Reçete'" in report
     assert "Название по шаблону: 1 из 1" in report
     assert "к переводу: 1" in report
+
+
+def test_manager_edits_inn_in_admin_and_it_reaches_products(client, django_user_model):
+    client.force_login(django_user_model.objects.create_superuser(
+        username="inn-admin", email="inn-admin@example.com", password="test-password",
+    ))
+    remember(INN_NAMESPACE, {"parasetamol": {"ru": "Парацетомол", "en": "Paracetamol"}})
+    medicine = MedicineProduct.objects.create(name="ADMIN INN", slug="admin-inn-edit", active_ingredient="Parasetamol")
+    medicine.translations.create(locale="ru", active_ingredient="Парацетомол")
+    entry = AITranslationMemory.objects.get(namespace=INN_NAMESPACE)
+
+    response = client.post(
+        f"/admin/ai/aitranslationmemory/{entry.pk}/change/",
+        {"ru_text": "Парацетамол", "en_text": "Paracetamol"},
+    )
+
+    assert response.status_code == 302
+    assert medicine.translations.get(locale="ru").active_ingredient == "Парацетамол"
