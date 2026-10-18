@@ -22,6 +22,7 @@ from apps.ai.services.size_inventory import (
     strip_size_inventory_sentences,
     supports_size_inventory,
 )
+from apps.ai.services.medicine_fact_check import strip_proper_name_lines
 from apps.catalog.product_semantics import looks_untranslated_turkish
 
 
@@ -448,7 +449,7 @@ def _medicine_rows(
             if (
                 locale == "ru"
                 and not preserved_reason
-                and looks_untranslated_turkish(proposed)
+                and looks_untranslated_turkish(strip_proper_name_lines(proposed))
             ):
                 blocked_reason = "Поле содержит непереведённый турецкий текст"
             _row(

@@ -622,7 +622,7 @@ def test_partial_apply_blocks_incomplete_medicine_section_in_both_locales():
         processing_type="full",
         status=AIProcessingStatus.COMPLETED,
         input_data={},
-        generated_title="TESTMED 10 MG TABLET (20 ADET)",
+        generated_title="TESTMED 10 мг, таблетки, 20 шт.",
         generated_description=(
             "Подробное описание препарата содержит форму выпуска действующее вещество "
             "количество единиц способ приема и сведения об упаковке для карточки товара."

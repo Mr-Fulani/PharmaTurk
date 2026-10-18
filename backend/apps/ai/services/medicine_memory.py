@@ -17,7 +17,7 @@ import logging
 import re
 from typing import Any, Callable, Optional
 
-from apps.ai.services.medicine_fact_check import doses_match, inn_matches
+from apps.ai.services.medicine_fact_check import doses_match, inn_matches, is_proper_name_line
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.translation_memory import lookup, normalize_source_text, remember, source_hash
@@ -287,6 +287,28 @@ def _looks_russian(source: str, ru: str) -> bool:
     return cyrillic >= 10 and not looks_untranslated_turkish(ru)
 
 
+# Подписи реквизитов в конце инструкции; имена фирм и адреса не переводятся.
+_REQUISITE_LABELS = (
+    (r"ruhsat\s+sahibi", "Владелец регистрационного удостоверения", "Marketing authorisation holder"),
+    (r"[üu]retim\s+yeri", "Место производства", "Manufacturing site"),
+    (r"[üu]retici", "Производитель", "Manufacturer"),
+    (r"[iİı]mal\s+eden", "Производитель", "Manufacturer"),
+    (r"[iİı]thalat[çc][ıi]", "Импортёр", "Importer"),
+    (r"faks", "Факс", "Fax"),
+    (r"e-?posta", "Эл. почта", "E-mail"),
+    (r"tel", "Тел.", "Tel."),
+)
+
+
+def translate_requisites(line: str) -> tuple[str, str]:
+    """Строка реквизитов кодом: подписи — словарём, фирма и адрес — как в источнике."""
+    ru = en = normalize_source_text(line)
+    for pattern, ru_label, en_label in _REQUISITE_LABELS:
+        label = re.compile(rf"(?<![\w]){pattern}(?=\s*:)", re.IGNORECASE)
+        ru, en = label.sub(ru_label, ru), label.sub(en_label, en)
+    return ru, en
+
+
 def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
     """Пустой список — перевод абзаца годится в память и в карточку."""
     problems = []
@@ -294,7 +316,8 @@ def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
         return ["missing"]
     if not doses_match(source, ru) or not doses_match(source, en):
         problems.append("fact_mismatch")
-    if not _looks_russian(source, ru):
+    # Фирма/адрес («Ruhsat sahibi: … A.Ş.») остаётся латиницей — это не брак.
+    if not is_proper_name_line(source) and not _looks_russian(source, ru):
         problems.append("ru_not_russian")
     if re.search(r"[А-Яа-яЁё]", en):
         problems.append("en_has_cyrillic")
@@ -388,7 +411,7 @@ def translate_sections_by_paragraph(
         normalize_paragraph(part)
         for parts in structure.values()
         for part in parts[::2]
-        if needs_translation(part)
+        if needs_translation(part) and not is_proper_name_line(part)
     ))
     found = lookup(PARAGRAPH_NAMESPACE, unique) if unique else {}
     cached = len(found)
@@ -416,6 +439,10 @@ def translate_sections_by_paragraph(
             if not needs_translation(part):
                 texts["ru"].append(key)
                 texts["en"].append(key)
+            elif is_proper_name_line(part):
+                ru, en = translate_requisites(part)
+                texts["ru"].append(ru)
+                texts["en"].append(en)
             elif key in found:
                 texts["ru"].append(found[key]["ru"])
                 texts["en"].append(found[key]["en"])
