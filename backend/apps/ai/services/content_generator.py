@@ -633,9 +633,12 @@ class ContentGenerator:
                 "sgk_equivalent_code", "sgk_active_ingredient_code",
                 "sgk_public_no", "special_notes", "origin_country", "volume"
             )
-            for k in medicine_keys:
-                if k in raw_attrs and k not in data:
-                    data[k] = raw_attrs[k]
+            # Лекарственные поля — только лекарствам: у БАДов из ilacfiyati они тоже
+            # есть, и модель возвращала их как запрещённые для БАДов атрибуты.
+            if product.product_type == "medicines":
+                for k in medicine_keys:
+                    if k in raw_attrs and k not in data:
+                        data[k] = raw_attrs[k]
 
         dynamic_attribute_catalog = self._collect_dynamic_attribute_catalog(product)
         if dynamic_attribute_catalog:
@@ -2296,6 +2299,7 @@ class ContentGenerator:
           • Если variant_context.needs_separate_variant_copy=true, особенно избегай добавлять variant-specific факты в общее описание.
         - В итоге ВСЕГДА заполняй оба: ru.generated_description (RU) и en.generated_description (EN).
         - Технические поля заполняй только если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Не придумывай.
+        - Если available_dynamic_attributes нет или он пуст — верни attributes.dynamic_attributes пустым списком.
         - Если есть available_dynamic_attributes:
           • Используй их как список допустимых динамических атрибутов для этой категории.
           • Если в source-тексте есть подтверждённый факт и ему подходит один из этих slug, добавь его в attributes.dynamic_attributes.
