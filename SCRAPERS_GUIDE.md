@@ -512,8 +512,8 @@ class MySiteParser(BaseScraper):
   (реестр создаёт временный экземпляр `Parser("http://example.com")`);
 - **общий (родительский) парсер для нескольких сайтов делайте абстрактным** —
   не реализуйте в нём `get_name`/`get_supported_domains`, тогда регистрируются
-  только конкретные наследники. Так будет, например, у будущего
-  `InditexParser` (общая база для Zara и Massimo Dutti).
+  только конкретные наследники. Так сделан `InditexSiblingParser` (общая база
+  Bershka, Pull&Bear и Massimo Dutti).
 
 ### Шаг 3: Создать ScraperConfig в Admin
 
@@ -571,9 +571,9 @@ run_scraper_task.delay(task_id=1)
    и `default_brand`, иначе непомеченные товары утекают в «никуда». Узкие
    соответствия — через `CategoryMapping`/`BrandMapping`, а не хардкодом в парсере.
 4. **Общая логика похожих сайтов — в абстрактный базовый класс**, а не
-   копипастой. Пример: `ZaraParser` и будущий `MassimoDuttiParser` — обе на
-   движке Inditex (`?ajax=true` JSON + Akamai), поэтому общее выносится в
-   абстрактный `InditexParser`, а наследники задают только домен и нюансы.
+   копипастой. Пример: Bershka, Pull&Bear и Massimo Dutti работают на одном
+   API Inditex (`/itxrest` + Akamai), поэтому общее вынесено в абстрактный
+   `InditexSiblingParser`, а наследники задают только магазин, домен и формат URL.
 5. **Прокси:** сейчас один глобальный `SCRAPER_PROXY_URL` + флаг `use_proxy` в
    конфиге (см. 6.5). Когда разным источникам понадобятся разные прокси/страны —
    выносим `proxy_url` в `ScraperConfig` (поле на уровне источника).
@@ -622,6 +622,9 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `ikea` | `IkeaParser` | ikea.com.tr, www.ikea.com.tr |
 | `lcw` | `LcwParser` | lcw.com, www.lcw.com |
 | `flo` | `FloParser` | flo.com.tr, www.flo.com.tr |
+| `bershka` | `BershkaParser` | bershka.com, www.bershka.com |
+| `pullandbear` | `PullAndBearParser` | pullandbear.com, www.pullandbear.com |
+| `massimodutti` | `MassimoDuttiParser` | massimodutti.com, www.massimodutti.com |
 
 ### 6.4. IKEA Turkey (`ikea.com.tr`)
 
@@ -699,6 +702,52 @@ residential/mobile прокси. Включается без правок код
 парсеров — то есть доступен всем парсерам, не только Zara.
 
 Тесты контракта: `backend/apps/scrapers/test_zara_parser.py`.
+
+### 6.5.0. Bershka, Pull&Bear, Massimo Dutti (`/itxrest` API Inditex)
+
+`BershkaParser`, `PullAndBearParser`, `MassimoDuttiParser` наследуют
+`InditexSiblingParser` (`parsers/inditex.py`). В отличие от Zara, эти витрины не
+встраивают `viewPayload` в HTML: данные берутся из JSON API витрины `/itxrest`,
+которым пользуется их собственный фронтенд. До октября 2026 парсеры ждали
+`viewPayload`, поэтому ни разу не сохранили товар, а с июля получали 403.
+
+**Akamai `bm-verify`.** Первый запрос сессии получает промежуточную страницу
+(HTTP 200, `<meta http-equiv="refresh" content="5; URL='...?bm-verify=...'">`).
+Парсер ждёт указанную паузу (не более 10 с) и открывает ссылку из refresh —
+после этого cookies сессии (`_abck`, `bm_sz`, `ak_bmsc`) действуют и для API.
+Транспорт — `curl_cffi` с отпечатком Chrome через тот же прокси
+(`use_proxy` + `SCRAPER_PROXY_URL`). Если проверка не пройдена дважды подряд,
+сессия падает с ошибкой «Akamai не пропустил проверку bm-verify»; 401/402/403 —
+«… запретил доступ (HTTP …)».
+
+**Идентификаторы.** У каждого бренда зашит турецкий магазин (`STORE_ID`:
+Bershka 44109521, Pull&Bear 25009521, Massimo Dutti 34009471), каталог
+магазина берётся из `GET /itxrest/2/catalog/store/{store}`.
+
+| Что | Откуда |
+|-----|--------|
+| id товара | `pelement` в query (Pull&Bear, Massimo Dutti) или `-c0p<id>.html` (Bershka); иначе `iProductId` из HTML карточки |
+| id категории | `celement` в query (Bershka); иначе `iCategoryId` из HTML категории или `celement` из canonical |
+
+Поддерживаемые URL: категории `…-n<номер>` (Bershka — `…-n3294.html?celement=…`),
+карточки `…-c0p<id>.html` (Bershka) и `…-l<ref>?pelement=<id>`.
+
+**Запросы.** Карточка — `…/category/0/product/{id}/detail`. Категория —
+`…/category/{id}/product?showProducts=false` (список id), затем карточки пачками
+по 12 через `…/productsArray?productIds=…`; одна пачка = одна «страница» чанка,
+`has_more_pages` гаснет на последней пачке.
+
+**Разбор.** Цвета — `bundleProductSummaries[0].detail.colors`, варианты
+`<prefix>-variant-<id товара>-<id цвета>`, `external_id = <prefix>-<id товара>`.
+Цена в минимальных единицах (`95000` = `950.00 TRY`). Размер доступен, только
+если `visibilityValue == "SHOW"`; `SOLD_OUT`, `COMING_SOON`, `BACK_SOON` — нулевой
+остаток. Галерея цвета — медиа из `xmediaLocations` с `location == 1` (основная
+галерея карточки, порядок как на сайте); ховер-кадры и миниатюры листинга не
+берутся, дубли отсекаются по `assetId`. URL картинок сохраняются как в API
+(с `ts`), поэтому повторный парсинг узнаёт уже скачанные файлы.
+
+Тесты и фикстуры реальных ответов: `test_inditex_parsers.py`,
+`test_fixtures/inditex/`.
 
 ### 6.5.1. FLO (`flo.com.tr`) — обувь
 
@@ -1699,6 +1748,20 @@ attributes = {
 2. Проверить что имя конфига совпадает с `get_name()` парсера
 3. Проверить что парсер зарегистрирован в `registry.py`
 4. Посмотреть логи в `/admin/scrapers/scrapingsession/` и `ScrapedProductLog`
+
+### Парсер в статусе «Ошибка»
+
+Причина видна в списке `/admin/scrapers/scraperconfig/` (колонка «Последняя
+ошибка», полный текст — в подсказке и в группе «Статистика» карточки парсера).
+Статус переключается на «Активен» первым успешным запуском.
+
+- «… запретил доступ (HTTP 403/402)» или «Akamai не пропустил проверку
+  bm-verify» — антибот; проверить флаг `use_proxy` и `SCRAPER_PROXY_URL`,
+  повторить позже.
+- Страница снята у источника (HTTP 404/410) статус **не** меняет: сессия
+  получает «Страница снята у источника (HTTP 404/410), парсер исправен», а
+  конфигурация остаётся «Активен». Так бывает при перескрейпе старых ссылок
+  (`repair_broken_media --rescrape`, обновление карточки).
 
 ### Товары попадают не в ту категорию
 

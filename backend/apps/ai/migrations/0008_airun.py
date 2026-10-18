@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('ai', '0006_alter_aiprocessinglog_category_alternatives'),
+        ('ai', '0007_aitranslationmemory'),
         ('catalog', '0215_product_slug_history'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]

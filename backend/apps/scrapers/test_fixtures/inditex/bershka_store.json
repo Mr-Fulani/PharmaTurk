@@ -1,0 +1,34 @@
+{
+ "catalogs": [
+  {
+   "id": 40259537,
+   "identifier": "BSK_TR",
+   "seocode": "",
+   "type": 1
+  },
+  {
+   "id": 40259537,
+   "identifier": "BSK_TR",
+   "seocode": "",
+   "type": 2
+  },
+  {
+   "id": 40259537,
+   "identifier": "BSK_TR",
+   "seocode": "",
+   "type": 5
+  },
+  {
+   "id": 40259537,
+   "identifier": "BSK_TR",
+   "seocode": "",
+   "type": 7
+  },
+  {
+   "id": 40259584,
+   "identifier": "CATALOGO_BSK_IOP",
+   "seocode": "",
+   "type": 100
+  }
+ ]
+}
