@@ -120,6 +120,27 @@ def normalize_size_value(value: Any, product_type: str | None = None) -> str:
     return raw.replace(".", ",") if "." in raw else raw
 
 
+# Ключи парсера, в JSON которых числа из URL картинок и остатков («…-99-76…»,
+# stock 1000) регулярка размеров принимала за размеры.
+_NON_TEXT_ATTRIBUTE_KEYS = frozenset(
+    {"fashion_variants", "furniture_variants", "images", "video_posters", "sizes"}
+)
+
+
+def _structured_sizes(value: Any) -> list[str]:
+    """attributes.sizes парсера: список строк/словарей или его repr-строка."""
+    if isinstance(value, str):
+        quoted = [first or second for first, second in re.findall(r"'([^']+)'|\"([^\"]+)\"", value)]
+        return quoted or [part.strip() for part in value.split(",") if part.strip()]
+    if isinstance(value, list):
+        return [
+            str(row.get("size") if isinstance(row, dict) else row).strip()
+            for row in value
+            if (row.get("size") if isinstance(row, dict) else row)
+        ]
+    return []
+
+
 def _source_texts(input_data: dict[str, Any]) -> Iterable[str]:
     for key in ("name", "description", "raw_description"):
         value = input_data.get(key)
@@ -127,8 +148,18 @@ def _source_texts(input_data: dict[str, Any]) -> Iterable[str]:
             yield str(value)
     for key in ("attributes", "source_attributes"):
         value = input_data.get(key)
-        if value:
-            yield json.dumps(value, ensure_ascii=False)
+        if not value:
+            continue
+        if isinstance(value, dict):
+            sizes = _structured_sizes(value.get("sizes"))
+            if sizes:
+                yield "Sizes: " + ", ".join(sizes)
+            value = {
+                attr_key: attr_value
+                for attr_key, attr_value in value.items()
+                if attr_key not in _NON_TEXT_ATTRIBUTE_KEYS and not str(attr_key).endswith("_url")
+            }
+        yield json.dumps(value, ensure_ascii=False)
 
 
 def _context_segments(text: str) -> Iterable[tuple[str, bool]]:
@@ -306,8 +337,24 @@ def size_inventory_block_reason(
     if not supports_size_inventory(product_type) or not hasattr(target, "sizes"):
         return "unsupported_sizes"
     if target_has_variants(target):
+        # Размеры вариантов приходят от парсера. Совпадающие с ними строки
+        # ничего не добавляют — это не повод для модерации.
+        known = variant_size_identities(target)
+        if {size_identity(row["size"]) for row in normalized} <= known:
+            return ""
         return "ambiguous_variant_sizes"
     return ""
+
+
+def variant_size_identities(target: Any) -> set[str]:
+    try:
+        return {
+            size_identity(value)
+            for value in target.variants.values_list("sizes__size", flat=True)
+            if value
+        }
+    except Exception:
+        return set()
 
 
 def current_product_sizes(target: Any) -> list[str]:
@@ -330,7 +377,11 @@ def apply_size_inventory(
     product_type: str | None,
 ) -> bool:
     normalized_rows = normalize_size_rows(rows, product_type)
-    if not normalized_rows or size_inventory_block_reason(target, product_type, normalized_rows):
+    if (
+        not normalized_rows
+        or target_has_variants(target)  # размеры живут в вариантах
+        or size_inventory_block_reason(target, product_type, normalized_rows)
+    ):
         return False
 
     # Serialize AI applications for the same domain product. The schema has no
