@@ -108,7 +108,10 @@ class LLMClient:
                 'tokens': {'prompt': int, 'completion': int, 'total': int},
                 'cost_usd': float,
                 'processing_time_ms': int,
-                'raw_response': dict
+                'raw_response': dict,
+                'finish_reason': str,
+                'truncated': bool,   # ответ обрезан по max_tokens
+                'json_error': bool,  # json_mode, но ответ не разобрался как JSON
             }
         """
         start_time = time.time()
@@ -122,6 +125,7 @@ class LLMClient:
         backoff = initial_backoff_ms / 1000.0
         response = None
         content = None
+        json_error = False
         while attempt <= max_retries:
             try:
                 if json_mode:
@@ -134,6 +138,7 @@ class LLMClient:
                     )
                     raw_text = response.choices[0].message.content or ""
                     content = self._parse_json_response(raw_text)
+                    json_error = not content and bool(raw_text.strip())
                 else:
                     response = self.client.chat.completions.create(
                         model=self.model,
@@ -179,12 +184,18 @@ class LLMClient:
         cost = (tokens['prompt'] * model_pricing['input'] + 
                tokens['completion'] * model_pricing['output']) / 1000
         
+        finish_reason = getattr(response.choices[0], "finish_reason", None) or ""
+        if finish_reason == "length":
+            logger.warning("LLM response truncated by max_tokens=%s", max_tokens)
         return {
             'content': content,
             'tokens': tokens,
             'cost_usd': round(cost, 6),
             'processing_time_ms': processing_time,
-            'raw_response': response.model_dump()
+            'raw_response': response.model_dump(),
+            'finish_reason': finish_reason,
+            'truncated': finish_reason == "length",
+            'json_error': json_error,
         }
         
 

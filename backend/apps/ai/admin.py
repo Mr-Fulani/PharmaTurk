@@ -620,7 +620,9 @@ class AIProcessingLogForm(forms.ModelForm):
                         translations_en[medicine_field] = en_value
                     else:
                         translations_en.pop(medicine_field, None)
-                    if medicine_field in MEDICINE_CLINICAL_FIELDS:
+                    # Короткие поля попадают в quality только при расхождении
+                    # фактов с исходником — правка модератора снимает блок.
+                    if medicine_field in MEDICINE_CLINICAL_FIELDS or medicine_field in quality:
                         details = dict(quality.get(medicine_field) or {})
                         ru_complete = bool(ru_value) and not looks_untranslated_turkish(ru_value)
                         en_complete = bool(en_value)

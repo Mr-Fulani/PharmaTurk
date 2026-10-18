@@ -45,6 +45,7 @@ from apps.ai.services.quality_checker import (
     create_moderation_task,
     get_moderation_reasons,
 )
+from apps.ai.services.medicine_fact_check import check_medicine_short_fields, doses_match
 from apps.ai.services.result_applier import build_content_snapshot
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.size_inventory import (
@@ -209,10 +210,12 @@ class ContentGenerator:
                     logger.info(f"Product {product_id} already processed (log {existing_log.id}), skipping.")
                     return existing_log
 
+        # Собираем входные данные один раз: они нужны логу, промпту и шагам лекарств.
+        collected_input = self._collect_input_data(product)
         if queued_log is not None:
             log_entry = queued_log
             queue_data = dict(log_entry.input_data or {})
-            queue_data.update(self._collect_input_data(product))
+            queue_data.update(collected_input)
             queue_data["content_snapshot"] = build_content_snapshot(getattr(product, "domain_item", None))
             queue_data["started_at"] = timezone.now().isoformat()
             log_entry.input_data = queue_data
@@ -234,7 +237,7 @@ class ContentGenerator:
                 processing_type=processing_type,
                 status=AIProcessingStatus.PROCESSING,
                 input_data={
-                    **self._collect_input_data(product),
+                    **collected_input,
                     "content_snapshot": build_content_snapshot(getattr(product, "domain_item", None)),
                 },
                 llm_model=self.llm.model,
@@ -284,8 +287,7 @@ class ContentGenerator:
             # 3. Генерация текстового контента
             if processing_type in ["full", "description_only", "categorization_only"]:
                 # Формируем промпт (описание берётся из product или из перевода ru)
-                input_for_prompt = self._collect_input_data(product)
-                desc_len = len((input_for_prompt.get("description") or "").strip())
+                desc_len = len((collected_input.get("description") or "").strip())
                 logger.info(
                     "Product %s: description length for prompt=%s, image_analysis empty=%s",
                     product_id,
@@ -303,12 +305,14 @@ class ContentGenerator:
                         product,
                         image_analysis=log_entry.image_analysis,
                         processing_type=processing_type,
+                        input_data=collected_input,
                     )
                     if is_medicine
                     else self._construct_user_prompt(
                         product,
                         image_analysis=log_entry.image_analysis,
                         processing_type=processing_type,
+                        input_data=collected_input,
                     )
                 )
 
@@ -319,13 +323,22 @@ class ContentGenerator:
                     max_tokens=5000 if is_medicine else 3000,
                     temperature=0.2 if is_medicine else 0.7,
                 )
+                # Обрезанный или невалидный ответ — ошибка, а не молчаливый {}:
+                # стоимость вызова фиксируем, дальнейшие платные шаги не запускаем.
+                if generation_result.get("truncated") or generation_result.get("json_error"):
+                    self._save_generation_usage(log_entry, generation_result)
+                    if generation_result.get("truncated"):
+                        raise ValueError(
+                            "Ответ модели обрезан по лимиту токенов (finish_reason=length)"
+                        )
+                    raise ValueError("AI вернул невалидный JSON")
 
                 # Обработка ответа
                 content = generation_result["content"]
                 if isinstance(content, str):
                     content = self._extract_json_from_response(content)
                 if is_medicine:
-                    input_data = self._collect_input_data(product)
+                    input_data = collected_input
                     source_sections = self._build_medicine_source_sections(input_data)
                     if not isinstance(content, dict) or not content:
                         content = self._build_medicine_fallback_content(input_data)
@@ -350,14 +363,9 @@ class ContentGenerator:
                             repair_result,
                             "translation_repair",
                         )
+                    self._apply_medicine_fact_checks(content, input_data, source_sections)
                     generation_result["content"] = content
-                log_entry.raw_llm_response = generation_result
-                log_entry.tokens_used = generation_result["tokens"]
-                log_entry.cost_usd = generation_result["cost_usd"]
-                log_entry.processing_time_ms = generation_result["processing_time_ms"]
-                log_entry.save(update_fields=[
-                    "raw_llm_response", "tokens_used", "cost_usd", "processing_time_ms"
-                ])
+                self._save_generation_usage(log_entry, generation_result)
 
                 # Парсинг результатов
                 self._validate_generated_content(content, processing_type)
@@ -415,6 +423,16 @@ class ContentGenerator:
                 log_entry.stack_trace = traceback.format_exc()
                 log_entry.save()
             raise
+
+    @staticmethod
+    def _save_generation_usage(log_entry: AIProcessingLog, generation_result: Dict[str, Any]) -> None:
+        log_entry.raw_llm_response = generation_result
+        log_entry.tokens_used = generation_result["tokens"]
+        log_entry.cost_usd = generation_result["cost_usd"]
+        log_entry.processing_time_ms = generation_result["processing_time_ms"]
+        log_entry.save(update_fields=[
+            "raw_llm_response", "tokens_used", "cost_usd", "processing_time_ms"
+        ])
 
     # Расширения URL, которые не отправляем в Vision (видео; GIF оставляем — это изображение)
     _VIDEO_EXTENSIONS = (".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v")
@@ -1304,9 +1322,14 @@ class ContentGenerator:
         return sections
 
     def _construct_medicine_user_prompt(
-        self, product: Product, image_analysis: Dict, processing_type: str
+        self,
+        product: Product,
+        image_analysis: Dict,
+        processing_type: str,
+        input_data: Optional[Dict] = None,
     ) -> str:
-        input_data = self._collect_input_data(product)
+        if input_data is None:
+            input_data = self._collect_input_data(product)
         source_sections = self._build_medicine_source_sections(input_data)
         source_summary = source_sections.get("summary") or ""
 
@@ -1698,6 +1721,48 @@ class ContentGenerator:
             return False
         return len(re.findall(r"[А-Яа-яЁё]", value)) >= 10 and not self._looks_untranslated_turkish(value)
 
+    @staticmethod
+    def _apply_medicine_fact_checks(
+        content: Dict[str, Any],
+        input_data: Dict[str, Any],
+        source_sections: Dict[str, str],
+    ) -> None:
+        """Помечает поля перевода, где дозировки/МНН/рецепт расходятся с исходником."""
+        if not isinstance(content, dict):
+            return
+        translations = {
+            locale: content.get(locale) if isinstance(content.get(locale), dict) else {}
+            for locale in ("ru", "en")
+        }
+        attrs = content.setdefault("attributes", {})
+        if not isinstance(attrs, dict):
+            return
+        quality = attrs.setdefault("medicine_translation_quality", {})
+        for field, source_text in (source_sections or {}).items():
+            mismatched = [
+                locale
+                for locale in ("ru", "en")
+                if translations[locale].get(field)
+                and not doses_match(source_text, translations[locale][field])
+            ]
+            if mismatched and isinstance(quality.get(field), dict):
+                quality[field].update({"complete": False, "fact_mismatch": mismatched})
+        for field, problem in check_medicine_short_fields(input_data, translations).items():
+            quality.setdefault(field, {}).update(problem)
+
+    @staticmethod
+    def _drop_russian_values(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Убирает из EN-перевода значения, написанные кириллицей."""
+        cleaned = {}
+        for key, value in payload.items():
+            text = ", ".join(map(str, value)) if isinstance(value, list) else str(value or "")
+            letters = re.findall(r"[^\W\d_]", text)
+            cyrillic = re.findall(r"[А-Яа-яЁё]", text)
+            if letters and len(cyrillic) > len(letters) * 0.3:
+                continue
+            cleaned[key] = value
+        return cleaned
+
     def _repair_medicine_ru_translation_content(
         self,
         content: Dict[str, Any],
@@ -2067,12 +2132,26 @@ class ContentGenerator:
                 exc,
             )
             return None
+        if result.get("truncated") or result.get("json_error"):
+            # Обрезанный перевод не используем: поля останутся неполными и
+            # уйдут в модерацию, стоимость вызова учитывается как обычно.
+            logger.warning(
+                "Medicine section batch %s for product %s truncated or invalid JSON",
+                sorted(sections),
+                product_id,
+            )
+            result = {**result, "content": {}}
         return result
 
     def _construct_user_prompt(
-        self, product: Product, image_analysis: Dict, processing_type: str
+        self,
+        product: Product,
+        image_analysis: Dict,
+        processing_type: str,
+        input_data: Optional[Dict] = None,
     ) -> str:
-        input_data = self._collect_input_data(product)
+        if input_data is None:
+            input_data = self._collect_input_data(product)
 
         # RAG: контекст категорий и шаблонов из векторной БД
         categories_context = ""
@@ -2875,10 +2954,10 @@ class ContentGenerator:
             if supports_size_inventory(product_type)
             else lambda value: value
         )
-        en_description = clean_size_prose(
-            seo_en.get('generated_description') or log.generated_description or ""
-        )
-        en_name = seo_en.get('generated_title') or log.generated_title or original_name
+        # EN берём только из EN-ответа: log.generated_* — русские тексты, и
+        # подставлять их в EN-перевод нельзя.
+        en_description = clean_size_prose(seo_en.get('generated_description') or "")
+        en_name = seo_en.get('generated_title') or ""
         ru_description = clean_size_prose(
             seo_ru.get('generated_description') or log.generated_description or ""
         )
@@ -2933,22 +3012,18 @@ class ContentGenerator:
                         for k, v in attrs.get('translations_data', {}).get('ru', {}).items()
                     }
                 },
-                'en': {
+                'en': self._drop_russian_values({
                     'name': en_name,
                     'description': en_description,
-                    'meta_title': seo_en.get('meta_title') or log.generated_seo_title,
-                    'meta_description': clean_size_prose(
-                        seo_en.get('meta_description') or log.generated_seo_description
-                    ),
-                    'meta_keywords': seo_en.get('meta_keywords') or log.generated_keywords,
-                    'og_title': seo_en.get('og_title') or seo_en.get('meta_title') or log.generated_seo_title,
+                    'meta_title': seo_en.get('meta_title'),
+                    'meta_description': clean_size_prose(seo_en.get('meta_description')),
+                    'meta_keywords': seo_en.get('meta_keywords'),
+                    'og_title': seo_en.get('og_title') or seo_en.get('meta_title'),
                     'og_description': clean_size_prose(
-                        seo_en.get('og_description')
-                        or seo_en.get('meta_description')
-                        or log.generated_seo_description
+                        seo_en.get('og_description') or seo_en.get('meta_description')
                     ),
                     **attrs.get('translations_data', {}).get('en', {})
-                }
+                }),
             }
         }
 

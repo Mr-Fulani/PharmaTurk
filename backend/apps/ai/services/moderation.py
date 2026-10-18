@@ -40,6 +40,9 @@ MODERATION_REASON_LABELS = {
     "incomplete_medicine_translation": (
         "Медицинский раздел переведён не полностью и не будет применён"
     ),
+    "medicine_fact_mismatch": (
+        "Дозировка, МНН или тип рецепта в переводе не совпадают с исходником"
+    ),
     "untranslated_medicine_field": (
         "Русское поле лекарства содержит непереведённый турецкий текст"
     ),

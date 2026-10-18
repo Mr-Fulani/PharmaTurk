@@ -57,11 +57,14 @@ def enqueue_product_ai_task(
     auto_apply: bool = False,
     options: dict | None = None,
     force: bool = False,
+    index_vectors: bool = True,
 ):
     """Создать видимый pending-лог и после commit поставить задачу в очередь.
 
     Возвращает ``(log, task_id, submitted)``. Повторное нажатие не плодит
     pending-задачи и не запускает уже успешно обработанный товар без ``force``.
+    ``index_vectors=False`` отключает переиндексацию рекомендаций после
+    обработки (на время массового прогона).
     """
     import uuid
 
@@ -120,6 +123,7 @@ def enqueue_product_ai_task(
                     "options": options,
                     "force": force,
                     "log_entry_id": log_entry.id,
+                    "index_vectors": index_vectors,
                 },
                 task_id=task_id,
                 priority=9,
@@ -147,6 +151,7 @@ def process_product_ai_task(
     options: dict = None,
     force: bool = False,
     log_entry_id: int | None = None,
+    index_vectors: bool = True,
 ):
     """Обработка одного товара AI (описание, категория, анализ изображений)."""
     if log_entry_id is not None and not AIProcessingLog.objects.filter(
@@ -196,8 +201,9 @@ def process_product_ai_task(
             )
         if processing_type in ("full", "description_only"):
             prepare_variant_ai_candidates_task.delay(product_id=product_id, force=force)
-        from apps.recommendations.tasks import index_product_vectors
-        index_product_vectors.apply_async(args=[[product_id]], countdown=60)
+        if index_vectors:
+            from apps.recommendations.tasks import index_product_vectors
+            index_product_vectors.apply_async(args=[[product_id]], countdown=60)
         return {
             "status": "success",
             "log_id": log_entry.id,
