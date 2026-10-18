@@ -9,6 +9,7 @@ from django.db.models.signals import post_delete, post_save, pre_delete, pre_sav
 from django.dispatch import receiver
 
 from .models import (
+    AbstractDomainProduct,
     BannerMedia,
     AccessoryProduct,
     AccessoryProductImage,
@@ -54,6 +55,7 @@ from .models import (
     PerfumeryVariantImage,
     Product,
     ProductImage,
+    ProductSlugHistory,
     Service,
     ServiceImage,
     ServicePortfolioMedia,
@@ -1497,3 +1499,60 @@ def _connect_main_image_auto_download():
 
 
 _connect_main_image_auto_download()
+
+
+# ── История slug товаров: 301 со старого URL (DEVELOPMENT_RULES §5.4) ──
+# Пишется при save() Product и доменных моделей. QuerySet.update()/bulk_update
+# сигналы обходят — slug ими не менять (или дописывать историю вручную).
+
+def _remember_slug_before_save(sender, instance, update_fields=None, **kwargs):
+    """pre_save: slug из БД, если save() может его сменить."""
+    instance._slug_before_save = None
+    if not instance.pk or (update_fields is not None and "slug" not in update_fields):
+        return
+    instance._slug_before_save = (
+        sender._base_manager.filter(pk=instance.pk).values_list("slug", flat=True).first()
+    )
+
+
+def _record_slug_history(sender, instance, created=False, raw=False, **kwargs):
+    """post_save: старый slug → товар; slug, ставший живым, из истории убрать."""
+    if raw:
+        return
+    old_slug = getattr(instance, "_slug_before_save", None)
+    instance._slug_before_save = None
+    changed = bool(old_slug) and old_slug != instance.slug
+    if not (created or changed):
+        return
+    # Живой slug важнее истории: товар вернул прежний slug или его занял другой товар
+    ProductSlugHistory.objects.filter(old_slug=instance.slug).delete()
+    if not changed:
+        return
+    if sender is Product:
+        product_id, product_type = instance.pk, instance.product_type
+    else:
+        # Доменный slug может отличаться от теневого Product (суффикс -2) — пишем оба
+        product_id, product_type = instance.base_product_id, sender._domain_product_type
+    if not product_id:
+        return
+    ProductSlugHistory.objects.update_or_create(
+        old_slug=old_slug,
+        defaults={"product_id": product_id, "product_type": product_type},
+    )
+
+
+def _connect_slug_history():
+    from django.apps import apps as django_apps
+
+    models = [Product] + [
+        model
+        for model in django_apps.get_app_config("catalog").get_models()
+        if issubclass(model, AbstractDomainProduct) and model._domain_product_type
+    ]
+    for model in models:
+        uid = model._meta.label_lower
+        pre_save.connect(_remember_slug_before_save, sender=model, dispatch_uid=f"slug_before_{uid}")
+        post_save.connect(_record_slug_history, sender=model, dispatch_uid=f"slug_history_{uid}")
+
+
+_connect_slug_history()

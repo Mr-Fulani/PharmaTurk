@@ -94,6 +94,8 @@
 
 **Порядок в `resolve_product_payload`** (`backend/apps/catalog/services/product_resolve.py`): сначала перебираются **доменные** ViewSet (в т.ч. `ShoeProductViewSet`), затем generic **`ProductViewSet`**. Если делать наоборот, shadow `Product` с тем же `slug`, что и родительская пара обуви, отдавался бы **`ProductSerializer`** без поля **`variants`** — на фронте пропадали цвета, размерные ряды и часть медиа. Доменная строка `ShoeProduct` должна выигрывать при совпадении slug.
 
+**Старый slug:** если живого товара нет, resolve ищет slug в `ProductSlugHistory` и отдаёт товар по текущему slug; `canonical_path` отличается от запрошенного пути, поэтому gSSP отвечает 301 (DEVELOPMENT_RULES §5.4).
+
 ---
 
 ## 8. Файлы кода (ориентир)

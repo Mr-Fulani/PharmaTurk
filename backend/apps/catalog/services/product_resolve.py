@@ -16,6 +16,8 @@
   2) Product (generic каталог): активные, без теневых вариантов в external_data,
      с тем же queryset, что у ProductViewSet.
   3) Service (uslugi).
+  4) ProductSlugHistory: старый slug → товар по текущему slug (canonical_path
+     отличается от запрошенного → фронт отдаёт 301).
 
 Query-параметры пробрасываются через исходный request (в т.ч. active_variant_slug
 для electronics и др., где serializer читает context из view).
@@ -215,7 +217,32 @@ def resolve_product_payload(request: HttpRequest | DrfRequest, slug: str) -> tup
         return None
 
     slug = str(slug).strip()
+    resolved = _resolve_live(request, slug)
+    if resolved is not None:
+        return resolved
+    return _resolve_by_slug_history(request, slug)
 
+
+def _resolve_by_slug_history(request: HttpRequest | DrfRequest, slug: str) -> tuple[dict, str, str] | None:
+    """
+    Старый slug (ProductSlugHistory) → товар по его текущему slug, один переход.
+
+    payload.slug отличается от запрошенного, поэтому canonical_path ведёт на новый
+    URL и getServerSideProps карточки отдаёт 301 (DEVELOPMENT_RULES §5.4).
+    """
+    from apps.catalog.models import ProductSlugHistory
+
+    current_slug = (
+        ProductSlugHistory.objects.filter(old_slug=slug)
+        .values_list("product__slug", flat=True)
+        .first()
+    )
+    if not current_slug or current_slug == slug:
+        return None
+    return _resolve_live(request, current_slug)
+
+
+def _resolve_live(request: HttpRequest | DrfRequest, slug: str) -> tuple[dict, str, str] | None:
     cache_key = RESOLVE_CACHE_PREFIX + slug
     cached_source = cache.get(cache_key)
     if cached_source:
