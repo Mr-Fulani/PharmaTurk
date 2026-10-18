@@ -20,7 +20,7 @@ from typing import Any, Callable, Optional
 from apps.ai.services.medicine_fact_check import doses_match, inn_matches
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_reference import fold_tr
-from apps.ai.services.translation_memory import lookup, remember
+from apps.ai.services.translation_memory import lookup, normalize_source_text, remember, source_hash
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,23 @@ PARAGRAPH_SYSTEM_PROMPT = (
     "пролонгированного высвобождения, kısıtlanmış beyaz reçete = ограниченный белый рецепт, "
     "ek izlemeye tabi ilaç = препарат под дополнительным наблюдением. Ответ — строго JSON."
 )
+
+
+def peek(namespace: str, texts) -> dict[str, dict[str, str]]:
+    """Как lookup, но без счётчика использований — для отчётов и разноса правок."""
+    from apps.ai.models import AITranslationMemory
+
+    by_hash = {source_hash(t): normalize_source_text(t) for t in texts if normalize_source_text(t)}
+    found = {}
+    hashes = list(by_hash)
+    for start in range(0, len(hashes), 5000):
+        rows = AITranslationMemory.objects.filter(
+            namespace=namespace, source_hash__in=hashes[start:start + 5000]
+        ).exclude(ru_text="").exclude(en_text="").values_list("source_hash", "ru_text", "en_text")
+        for key, ru, en in rows:
+            found[by_hash[key]] = {"ru": ru, "en": en}
+    return found
+
 
 _EMPTY_USAGE = {"tokens": {"prompt": 0, "completion": 0, "total": 0}, "cost_usd": 0.0, "processing_time_ms": 0}
 
@@ -215,7 +232,7 @@ def propagate_inn_translations(keys: set[str]) -> int:
     rows = MedicineProduct.objects.exclude(active_ingredient="").values_list("pk", "active_ingredient")
     products = [(pk, split_inn(value)) for pk, value in rows.iterator(chunk_size=5000)]
     products = [(pk, parts) for pk, parts in products if keys.intersection(parts)]
-    found = lookup(INN_NAMESPACE, sorted({p for _, parts in products for p in parts}), count_hits=False)
+    found = peek(INN_NAMESPACE, {p for _, parts in products for p in parts})
     for pk, parts in products:
         if all(part in found for part in parts):
             value = (
@@ -238,7 +255,8 @@ def propagate_inn_translations(keys: set[str]) -> int:
 
 
 def normalize_paragraph(text: str) -> str:
-    return re.sub(r"[ \t ]+", " ", text).strip()
+    """Ключ абзаца в памяти — та же нормализация, что у translation_memory."""
+    return normalize_source_text(text)
 
 
 def source_tab_texts(external_data: Any) -> list[str]:

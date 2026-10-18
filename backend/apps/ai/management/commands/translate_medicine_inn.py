@@ -17,11 +17,12 @@ from apps.ai.services.llm_client import LLMClient
 from apps.ai.services.medicine_memory import (
     INN_NAMESPACE,
     estimate_translation_cost,
+    peek,
     propagate_inn_translations,
     split_inn,
     translate_inn_values,
 )
-from apps.ai.services.translation_memory import lookup, remember
+from apps.ai.services.translation_memory import remember
 from apps.catalog.models import MedicineProduct
 
 
@@ -38,7 +39,7 @@ class Command(BaseCommand):
         values = MedicineProduct.objects.exclude(active_ingredient="").values_list("active_ingredient", flat=True)
         for value in values.distinct().iterator(chunk_size=2000):
             parts.update(split_inn(value))
-        in_memory = lookup(INN_NAMESPACE, sorted(parts), count_hits=False)
+        in_memory = peek(INN_NAMESPACE, parts)
         missing = sorted(part for part in parts if part not in in_memory)
         if options["limit"]:
             missing = missing[: options["limit"]]

@@ -18,13 +18,14 @@ from apps.ai.services.medicine_memory import (
     PARAGRAPH_NAMESPACE,
     needs_translation,
     normalize_paragraph,
+    peek,
     source_tab_texts,
     split_inn,
     split_paragraphs,
 )
 from apps.ai.services.medicine_reference import CODE_FIELDS, translate_reference_field
 from apps.ai.services.medicine_title import build_medicine_title
-from apps.ai.services.translation_memory import lookup, source_hash
+from apps.ai.services.translation_memory import source_hash
 from apps.ai.models import AITranslationMemory
 from apps.catalog.models import MedicineProduct
 
@@ -70,7 +71,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"    {count:>6}  {value!r}")
         self.stdout.write(f"\nНазвание по шаблону: {titles} из {total} ({titles / max(total, 1):.0%}); остальные — моделью")
 
-        in_memory = lookup(INN_NAMESPACE, list(inn_parts), count_hits=False)
+        in_memory = peek(INN_NAMESPACE, inn_parts)
         missing_inn = [part for part in inn_parts if part not in in_memory]
         estimate = estimate_translation_cost(missing_inn, items_per_request=100)
         self.stdout.write(
