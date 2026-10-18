@@ -1,0 +1,531 @@
+"""Словари для детерминированной локализации карточек (без LLM).
+
+Ключи — турецкие (и встречающиеся в источниках английские) слова после
+``fold()``: нижний регистр без турецких диакритик. Значения — RU/EN-формы.
+Новые слова добавляются сюда, код правил не меняется.
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from dataclasses import dataclass
+
+_FOLD = str.maketrans({"ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u", "â": "a", "î": "i", "û": "u"})
+
+
+def tr_lower(value: str | None) -> str:
+    """Нижний регистр по-турецки: «İ» → «i», без комбинирующей точки («Si̇yah»)."""
+    text = str(value or "").replace("İ", "i").replace("I", "ı").lower()
+    return text.replace("̇", "")
+
+
+def fold(value: str | None) -> str:
+    """Ключ словаря: турецкий нижний регистр без диакритик, одиночные пробелы."""
+    text = unicodedata.normalize("NFC", tr_lower(value)).translate(_FOLD)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+# --- Русская грамматика: род существительного и согласование прилагательных ---
+
+M, F, N, PL = "m", "f", "n", "pl"
+
+
+def ru_adjective(masculine: str, gender: str) -> str:
+    """Форма прилагательного по роду: «белый» → «белая/белое/белые»."""
+    if masculine.startswith("="):  # несклоняемое («цвета хаки»)
+        return masculine[1:]
+    stem, ending = masculine[:-2], masculine[-2:]
+    if gender == M or ending not in ("ый", "ий", "ой"):
+        return masculine
+    last = stem[-1:]
+    if last in "кгх":
+        forms = {F: "ая", N: "ое", PL: "ие"}
+    elif last in "жшщч":
+        forms = {F: "ая", N: "ое" if ending == "ой" else "ее", PL: "ие"}
+    elif ending == "ий":
+        forms = {F: "яя", N: "ее", PL: "ие"}
+    else:
+        forms = {F: "ая", N: "ое", PL: "ые"}
+    return stem + forms[gender]
+
+
+def ru_masculine(masculine: str) -> str:
+    return masculine[1:] if masculine.startswith("=") else masculine
+
+
+# --- Цвета ---
+# fold-ключ → (RU прилагательное м. р. или «=несклоняемое», EN)
+COLORS: dict[str, tuple[str, str]] = {
+    "beyaz": ("белый", "White"),
+    "kirik beyaz": ("молочный", "Off-white"),
+    "kirli beyaz": ("молочный", "Off-white"),
+    "kirli-beyaz": ("молочный", "Off-white"),
+    "ekru": ("молочный", "Ecru"),
+    "krem": ("кремовый", "Cream"),
+    "siyah": ("черный", "Black"),
+    "lacivert": ("темно-синий", "Navy"),
+    "laci": ("темно-синий", "Navy"),
+    "mavi": ("синий", "Blue"),
+    "gri": ("серый", "Gray"),
+    "antrasit": ("антрацитовый", "Anthracite"),
+    "komur": ("темно-серый", "Charcoal"),
+    "kahverengi": ("коричневый", "Brown"),
+    "kahve": ("коричневый", "Brown"),
+    "aci kahve": ("темно-коричневый", "Dark brown"),
+    "taba": ("рыжий", "Tan"),
+    "karamel": ("карамельный", "Caramel"),
+    "bej": ("бежевый", "Beige"),
+    "kum": ("песочный", "Sand"),
+    "vizon": ("серо-бежевый", "Taupe"),
+    "kirmizi": ("красный", "Red"),
+    "bordo": ("бордовый", "Burgundy"),
+    "pembe": ("розовый", "Pink"),
+    "fusya": ("=цвета фуксии", "Fuchsia"),
+    "mor": ("фиолетовый", "Purple"),
+    "turuncu": ("оранжевый", "Orange"),
+    "sari": ("желтый", "Yellow"),
+    "yesil": ("зеленый", "Green"),
+    "yag yesili": ("оливковый", "Olive"),
+    "haki": ("=цвета хаки", "Khaki"),
+    "indigo": ("=цвета индиго", "Indigo"),
+    "altin": ("золотистый", "Gold"),
+    "gumus": ("серебристый", "Silver"),
+    "mat gumus": ("серебристый", "Matte silver"),
+    "bronz": ("бронзовый", "Bronze"),
+    "cok renkli": ("разноцветный", "Multicolor"),
+    "kaplumbaga kabugu": ("черепаховый", "Tortoiseshell"),
+    "kamuflaj": ("камуфляжный", "Camouflage"),
+    "pudra": ("пудровый", "Powder pink"),
+}
+# Модификаторы оттенка: RU-префикс прилагательного, EN-слово. «yeni», «mat»,
+# «orta» оттенок не меняют и пропускаются.
+COLOR_MODIFIERS: dict[str, tuple[str, str]] = {
+    "acik": ("светло-", "Light"),
+    "koyu": ("темно-", "Dark"),
+}
+COLOR_NOISE = frozenset({"yeni", "mat", "orta", "rodeo"})
+# «çeşitli» / «karışık asorti» — набор разных цветов: цвет в название не пишем.
+
+
+@dataclass(frozen=True)
+class Color:
+    ru: str  # прилагательное м. р. (или «=несклоняемое»)
+    en: str
+
+    def ru_for(self, gender: str) -> str:
+        return ru_adjective(self.ru, gender)
+
+
+def clean_color_value(raw: str | None) -> str:
+    """«Açık İndigo / S61986Z8 + 13 Renk Beden Seç…» → «Açık İndigo»."""
+    text = str(raw or "").split("/")[0]
+    text = re.split(r"\s\+\s|\bbeden\b|\brenk\b", text, flags=re.IGNORECASE)[0]
+    return text.strip(" -,")
+
+
+def translate_color(raw: str | None) -> Color | None:
+    """Простой цвет с модификатором; составные («Siyah-Kahverengi») → None."""
+    key = fold(clean_color_value(raw))
+    if not key or key in ("none", "null"):
+        return None
+    if key in COLORS:
+        return Color(*COLORS[key])
+    words = [word for word in key.split() if word not in COLOR_NOISE]
+    if not words:
+        return None
+    modifier = None
+    if words[0] in COLOR_MODIFIERS and len(words) > 1:
+        modifier = COLOR_MODIFIERS[words[0]]
+        words = words[1:]
+    base = COLORS.get(" ".join(words))
+    if base is None:
+        return None
+    ru, en = base
+    if modifier:
+        if ru.startswith("="):
+            return None
+        ru = modifier[0] + ru
+        en = f"{modifier[1]} {en.lower()}"
+    return Color(ru, en)
+
+
+# --- Пол / аудитория ---
+# значение атрибута gender или слово названия → (RU прилагательное м. р., EN)
+AUDIENCE: dict[str, tuple[str, str]] = {
+    "men": ("мужской", "Men's"),
+    "erkek": ("мужской", "Men's"),
+    "women": ("женский", "Women's"),
+    "kadin": ("женский", "Women's"),
+    "kids": ("детский", "Kids'"),
+    "cocuk": ("детский", "Kids'"),
+    "erkek cocuk": ("детский", "Boys'"),
+    "kiz cocuk": ("детский", "Girls'"),
+    "unisex": ("=унисекс", "Unisex"),
+}
+
+
+# --- Типы товаров ---
+
+
+@dataclass(frozen=True)
+class Kind:
+    ru: str  # существительное, нижний регистр
+    gender: str  # род для согласования: m/f/n/pl
+    en: str
+    generic: bool = False  # «ayakkabı» уступает более точному типу в названии
+
+
+def _k(ru: str, gender: str, en: str, generic: bool = False) -> Kind:
+    return Kind(ru, gender, en, generic)
+
+
+# Фразы (fold) → тип. Сопоставление ищет самую длинную фразу.
+KINDS: dict[str, Kind] = {
+    # одежда
+    "tisort": _k("футболка", F, "T-Shirt"),
+    "t-shirt": _k("футболка", F, "T-Shirt"),
+    "t shirt": _k("футболка", F, "T-Shirt"),
+    "tshirt": _k("футболка", F, "T-Shirt"),
+    "tee": _k("футболка", F, "T-Shirt"),
+    "spor tisort": _k("спортивная футболка", F, "Sports T-Shirt"),
+    "polo": _k("поло", N, "Polo Shirt"),
+    "polo tisort": _k("поло", N, "Polo Shirt"),
+    "polo yaka tisort": _k("поло", N, "Polo Shirt"),
+    "gomlek": _k("рубашка", F, "Shirt"),
+    "pantolon": _k("брюки", PL, "Trousers"),
+    "jean": _k("джинсы", PL, "Jeans"),
+    "jeans": _k("джинсы", PL, "Jeans"),
+    "kot pantolon": _k("джинсы", PL, "Jeans"),
+    "sort": _k("шорты", PL, "Shorts"),
+    "sweatshirt": _k("свитшот", M, "Sweatshirt"),
+    "hoodie": _k("худи", N, "Hoodie"),
+    "kapusonlu sweatshirt": _k("худи", N, "Hoodie"),
+    "elbise": _k("платье", N, "Dress"),
+    "etek": _k("юбка", F, "Skirt"),
+    "ceket": _k("пиджак", M, "Jacket"),
+    "mont": _k("куртка", F, "Jacket"),
+    "kaban": _k("пальто", N, "Coat"),
+    "yelek": _k("жилет", M, "Vest"),
+    "hirka": _k("кардиган", M, "Cardigan"),
+    "kazak": _k("свитер", M, "Sweater"),
+    "atlet": _k("майка", F, "Tank Top"),
+    "esofman alti": _k("спортивные брюки", PL, "Sweatpants"),
+    "esofman takimi": _k("спортивный костюм", M, "Tracksuit"),
+    "pijama takimi": _k("пижама", F, "Pajama Set"),
+    "pijama": _k("пижама", F, "Pajamas"),
+    "bluz": _k("блузка", F, "Blouse"),
+    "tunik": _k("туника", F, "Tunic"),
+    "tayt": _k("леггинсы", PL, "Leggings"),
+    # нижнее бельё
+    "boxer": _k("трусы-боксеры", PL, "Boxers"),
+    "slip": _k("трусы-слипы", PL, "Briefs"),
+    "kulot": _k("трусы", PL, "Briefs"),
+    "corap": _k("носки", PL, "Socks"),
+    # обувь
+    "sneaker": _k("кроссовки", PL, "Sneakers"),
+    "spor ayakkabi": _k("кроссовки", PL, "Sneakers"),
+    "kosu ayakkabisi": _k("беговые кроссовки", PL, "Running Shoes"),
+    "sandalet": _k("сандалии", PL, "Sandals"),
+    "sandal": _k("сандалии", PL, "Sandals"),
+    "terlik": _k("шлепанцы", PL, "Slippers"),
+    "terligi": _k("шлепанцы", PL, "Slippers"),
+    "clog": _k("сабо", PL, "Clogs"),
+    "deniz ayakkabisi": _k("аквашузы", PL, "Water Shoes"),
+    "bot": _k("ботинки", PL, "Boots"),
+    "cizme": _k("сапоги", PL, "Boots"),
+    "loafer": _k("лоферы", PL, "Loafers"),
+    "babet": _k("балетки", PL, "Ballet Flats"),
+    "ayakkabi": _k("обувь", F, "Shoes", generic=True),
+    "ayakkabisi": _k("обувь", F, "Shoes", generic=True),
+    # аксессуары
+    "kemer": _k("ремень", M, "Belt"),
+    "gunes gozlugu": _k("солнцезащитные очки", PL, "Sunglasses"),
+    "pantolon askisi": _k("подтяжки", PL, "Suspenders"),
+    "cuzdan": _k("кошелек", M, "Wallet"),
+    "kartlik": _k("картхолдер", M, "Card Holder"),
+    "canta": _k("сумка", F, "Bag"),
+    "sirt cantasi": _k("рюкзак", M, "Backpack"),
+    "atki": _k("шарф", M, "Scarf"),
+    "eldiven": _k("перчатки", PL, "Gloves"),
+    "kravat": _k("галстук", M, "Tie"),
+    "papyon": _k("галстук-бабочка", F, "Bow Tie"),
+    "saat": _k("часы", PL, "Watch"),
+    # головные уборы
+    "sapka": _k("головной убор", M, "Hat", generic=True),
+    "kep": _k("кепка", F, "Cap"),
+    "kep sapka": _k("кепка", F, "Cap"),
+    "bere": _k("шапка", F, "Beanie"),
+    "fotr sapka": _k("шляпа", F, "Fedora"),
+    "bandana": _k("бандана", F, "Bandana"),
+    # парфюмерия
+    "edp": _k("парфюмерная вода", F, "Eau de Parfum"),
+    "eau de parfum": _k("парфюмерная вода", F, "Eau de Parfum"),
+    "edt": _k("туалетная вода", F, "Eau de Toilette"),
+    "eau de toilette": _k("туалетная вода", F, "Eau de Toilette"),
+    "edc": _k("одеколон", M, "Eau de Cologne"),
+    "parfum": _k("парфюм", M, "Perfume", generic=True),
+    "parfum seti": _k("парфюмерный набор", M, "Perfume Set"),
+    "deodorant": _k("дезодорант", M, "Deodorant"),
+    "roll-on": _k("шариковый дезодорант", M, "Roll-On Deodorant"),
+    "roll on": _k("шариковый дезодорант", M, "Roll-On Deodorant"),
+    "stick": _k("дезодорант-стик", M, "Deodorant Stick"),
+    "roll-on ve stick": _k("дезодорант", M, "Deodorant"),
+    "vucut spreyi": _k("спрей для тела", M, "Body Spray"),
+}
+
+# Тип по slug категории — когда в названии типа нет или он слишком общий.
+CATEGORY_KINDS: dict[str, Kind] = {
+    "t-shirts": KINDS["tisort"],
+    "basic-tshirts": KINDS["tisort"],
+    "polo-shirts": KINDS["polo"],
+    "jeans": KINDS["jean"],
+    "baggy-fit": KINDS["jean"],
+    "sneakers": KINDS["sneaker"],
+    "sandals": KINDS["sandalet"],
+    "belts": KINDS["kemer"],
+    "mens-classic-belts": KINDS["kemer"],
+    "sunglasses": KINDS["gunes gozlugu"],
+    "hw-caps": KINDS["kep"],
+    "uw-mens-underwear": KINDS["boxer"],
+    "burkini": _k("буркини", N, "Burkini"),
+}
+
+# Мебель IKEA: значение furniture_type (без названия серии) → тип.
+FURNITURE_KINDS: dict[str, Kind] = {
+    "gardirop": _k("гардероб", M, "Wardrobe"),
+    "surgu kapakli gardirop": _k("гардероб с раздвижными дверцами", M, "Wardrobe with Sliding Doors"),
+    "kose gardirop": _k("угловой гардероб", M, "Corner Wardrobe"),
+    "acik gardirop": _k("открытый гардероб", M, "Open Wardrobe"),
+    "cocuk gardirobu": _k("детский гардероб", M, "Children's Wardrobe"),
+    "gardirop kapagi": _k("дверца для гардероба", F, "Wardrobe Door"),
+    "gardirop iskeleti": _k("каркас гардероба", M, "Wardrobe Frame"),
+    "surgu kapak": _k("раздвижная дверца", F, "Sliding Door"),
+    "surgulu kapakli gomme dolap": _k("встроенный шкаф с раздвижными дверцами", M, "Built-in Wardrobe with Sliding Doors"),
+    "dolap sistemi": _k("система хранения", F, "Storage System"),
+    "dolap kombinasyonu": _k("комбинация для хранения", F, "Storage Combination"),
+    "cift kisilik karyola": _k("двуспальная кровать", F, "Double Bed"),
+    "cift kisilik karyola seti": _k("двуспальная кровать", F, "Double Bed Set"),
+    "tek kisilik karyola": _k("односпальная кровать", F, "Single Bed"),
+    "ranza": _k("двухъярусная кровать", F, "Bunk Bed"),
+    "karyola latasi": _k("реечное дно кровати", N, "Slatted Bed Base"),
+    "divan": _k("кушетка", F, "Day-Bed"),
+    "3'lu kanepe": _k("трехместный диван", M, "3-Seat Sofa"),
+    "2'li kanepe": _k("двухместный диван", M, "2-Seat Sofa"),
+    "uzanma koltuklu 3'lu kanepe": _k("трехместный диван-реклайнер", M, "3-Seat Recliner Sofa"),
+    "uzanma koltuklu 4'lu kanepe": _k("четырехместный диван-реклайнер", M, "4-Seat Recliner Sofa"),
+    "2'li yatakli kanepe": _k("двухместный диван-кровать", M, "2-Seat Sofa-Bed"),
+    "tekli koltuk": _k("кресло", N, "Armchair"),
+    "uzanma koltugu": _k("кресло-реклайнер", N, "Recliner"),
+    "rattan koltuk": _k("кресло из ротанга", N, "Rattan Armchair"),
+    "raf": _k("полка", F, "Shelf"),
+    "cekmece": _k("ящик", M, "Drawer"),
+    "rayli cekmece": _k("выдвижной ящик", M, "Pull-out Drawer"),
+    "tel sepet": _k("проволочная корзина", F, "Wire Basket"),
+    "rayli tel sepet": _k("проволочная корзина с направляющими", F, "Wire Basket with Pull-out Rail"),
+    "aski borusu": _k("штанга для одежды", F, "Clothes Rail"),
+    "ayarlanabilir aski borusu": _k("регулируемая штанга для одежды", F, "Adjustable Clothes Rail"),
+}
+# «3 çekmeceli şifonyer» → «комод с 3 ящиками»
+FURNITURE_DRAWER_CHEST_RE = re.compile(r"^(\d+) cekmeceli sifonyer$")
+
+# Цвета/отделки мебели (части через «-»): RU м. р. без согласования, как у IKEA.
+FURNITURE_FINISHES: dict[str, tuple[str, str]] = {
+    "meşe": ("дуб", "oak"),
+    "meşe görünümlü": ("под дуб", "oak effect"),
+    "meşe kaplama": ("дубовый шпон", "oak veneer"),
+    "ağartılmış meşe görünümlü": ("под беленый дуб", "white stained oak effect"),
+    "ağartılmış meşe kaplama": ("беленый дубовый шпон", "white stained oak veneer"),
+    "çam": ("сосна", "pine"),
+    "huş": ("береза", "birch"),
+    "venge": ("венге", "wenge"),
+    "ceviz": ("орех", "walnut"),
+    "ayna": ("зеркало", "mirror"),
+    "aynalı cam": ("зеркальное стекло", "mirror glass"),
+    "cam": ("стекло", "glass"),
+}
+
+
+# --- Описательные слова названий ---
+# fold-фраза → (RU постпозитивная фраза, EN-префикс). Пустые значения — слово
+# допустимо, но в название не выносится.
+DESCRIPTORS: dict[str, tuple[str, str]] = {
+    "bisiklet yaka": ("с круглым вырезом", "Crew Neck"),
+    "crew neck": ("с круглым вырезом", "Crew Neck"),
+    "cneck": ("с круглым вырезом", "Crew Neck"),
+    "yuvarlak yaka": ("с круглым вырезом", "Crew Neck"),
+    "v yaka": ("с V-образным вырезом", "V-Neck"),
+    "polo yaka": ("с воротником поло", "Polo Collar"),
+    "kisa kollu": ("с коротким рукавом", "Short Sleeve"),
+    "uzun kollu": ("с длинным рукавом", "Long Sleeve"),
+    "kolsuz": ("без рукавов", "Sleeveless"),
+    "baskili": ("с принтом", "Printed"),
+    "logo baskili": ("с логотипом", "Logo"),
+    "logolu": ("с логотипом", "Logo"),
+    "desenli": ("с узором", "Patterned"),
+    "cizgili": ("в полоску", "Striped"),
+    "kapusonlu": ("с капюшоном", "Hooded"),
+    "nakisli": ("с вышивкой", "Embroidered"),
+    "poplin": ("из поплина", "Poplin"),
+    "kombin": ("", ""),
+    "cesitli": ("", ""),
+    "regular fit": ("прямого кроя", "Regular Fit"),
+    "standart fit": ("прямого кроя", "Regular Fit"),
+    "relaxed fit": ("свободного кроя", "Relaxed Fit"),
+    "rahat kesim": ("свободного кроя", "Relaxed Fit"),
+    "oversize": ("оверсайз", "Oversize"),
+    "slim fit": ("приталенного кроя", "Slim Fit"),
+    "dar kesim": ("приталенного кроя", "Slim Fit"),
+    "pamuk": ("из хлопка", "Cotton"),
+    "pamuklu": ("из хлопка", "Cotton"),
+    "hakiki deri": ("из натуральной кожи", "Genuine Leather"),
+    "gercek deri": ("из натуральной кожи", "Genuine Leather"),
+    "deri": ("из кожи", "Leather"),
+    "suni deri": ("из искусственной кожи", "Faux Leather"),
+    "nubuk": ("из нубука", "Nubuck"),
+    "suet": ("из замши", "Suede"),
+    "ortopedik": ("с ортопедической стелькой", "Orthopedic"),
+    "ortopedik tabanli": ("с ортопедической стелькой", "Orthopedic"),
+    "anatomik": ("с анатомической стелькой", "Anatomic"),
+    "cirtli": ("на липучке", "Velcro"),
+    "bagcikli": ("на шнурках", "Lace-Up"),
+    "tokali": ("с пряжкой", "Buckle"),
+    # допустимые, но не выносимые в название
+    "gunluk": ("", ""),
+    "hafif": ("", ""),
+    "yazlik": ("", ""),
+    "klasik": ("", ""),
+    "basic": ("", ""),
+    "duz": ("", ""),
+    "standart": ("", ""),
+    "normal": ("", ""),
+    "rahat": ("", ""),
+    "spor": ("", ""),
+    "ve": ("", ""),
+    "ile": ("", ""),
+    "model": ("", ""),
+    "yeni": ("", ""),
+}
+
+# Канонический материал аксессуара (RU из attribute_specs) → фраза названия.
+MATERIAL_PHRASES: dict[str, tuple[str, str]] = {
+    "натуральная кожа": ("из натуральной кожи", "Genuine Leather"),
+    "искусственная кожа": ("из искусственной кожи", "Faux Leather"),
+    "металл": ("из металла", "Metal"),
+    "хлопок": ("из хлопка", "Cotton"),
+    "текстиль": ("из текстиля", "Textile"),
+}
+
+# Служебные куски названий магазинов: «Kemer - Markalar - 799,00 TL».
+TITLE_NOISE_RE = re.compile(
+    r"\s+-\s+(?:markalar|lc\s*waikiki)\b|\bmarkalar\b|\(\s*\d+(?:[.,]\d+)?\s*fl\.?\s*oz\.?\s*\)",
+    re.IGNORECASE,
+)
+
+# Состав / материал: fold-слово → (RU сущ. в им. п., EN)
+FIBERS: dict[str, tuple[str, str]] = {
+    "pamuk": ("хлопок", "cotton"),
+    "organik pamuk": ("органический хлопок", "organic cotton"),
+    "polyester": ("полиэстер", "polyester"),
+    "poliester": ("полиэстер", "polyester"),
+    "elastan": ("эластан", "elastane"),
+    "likra": ("лайкра", "lycra"),
+    "viskon": ("вискоза", "viscose"),
+    "modal": ("модал", "modal"),
+    "keten": ("лен", "linen"),
+    "yun": ("шерсть", "wool"),
+    "naylon": ("нейлон", "nylon"),
+    "poliamid": ("полиамид", "polyamide"),
+    "akrilik": ("акрил", "acrylic"),
+    "deri": ("кожа", "leather"),
+    "hakiki deri": ("натуральная кожа", "genuine leather"),
+    "suni deri": ("искусственная кожа", "faux leather"),
+    "poliuretan": ("полиуретан", "polyurethane"),
+}
+# Материалы обуви (верх, подкладка, подошва) — коды FLO через «/».
+SHOE_MATERIALS: dict[str, tuple[str, str]] = {
+    "tekstil": ("текстиль", "textile"),
+    "pu": ("полиуретан", "polyurethane"),
+    "pvc": ("ПВХ", "PVC"),
+    "mesh": ("сетка", "mesh"),
+    "kanvas": ("канвас", "canvas"),
+    "suni deri": ("искусственная кожа", "faux leather"),
+    "deri": ("натуральная кожа", "genuine leather"),
+    "hakiki deri": ("натуральная кожа", "genuine leather"),
+    "deri (sigir)": ("натуральная кожа (говяжья)", "genuine leather (cowhide)"),
+    "deri (dana)": ("натуральная кожа (телячья)", "genuine leather (calfskin)"),
+    "deri (inek)": ("натуральная кожа (коровья)", "genuine leather (cowhide)"),
+    "deri (keci)": ("натуральная кожа (козья)", "genuine leather (goatskin)"),
+    "suet (inek)": ("замша", "suede"),
+    "nubuk": ("нубук", "nubuck"),
+    "kaucuk": ("резина", "rubber"),
+    "phylon": ("филон", "Phylon"),
+    "termo": ("термопластик", "thermoplastic"),
+    "eva": ("ЭВА", "EVA"),
+    "tpr": ("термопластичная резина", "TPR"),
+    "tpu": ("термополиуретан", "TPU"),
+    "poli": ("полимер", "polymer"),
+}
+
+
+def translate_composition(raw: str | None) -> tuple[str, str] | None:
+    """«%100 PAMUK» / «%95 Pamuk %5 Elastan» → («100% хлопок», «100% cotton»)."""
+    text = fold(raw)
+    parts = re.findall(r"%\s*(\d{1,3})\s+([a-z ]+?)(?=\s*%|,|$)", text)
+    if not parts:
+        return None
+    ru_parts, en_parts = [], []
+    for percent, fiber in parts:
+        name = FIBERS.get(fiber.strip())
+        if name is None:
+            return None
+        ru_parts.append(f"{percent}% {name[0]}")
+        en_parts.append(f"{percent}% {name[1]}")
+    return ", ".join(ru_parts), ", ".join(en_parts)
+
+
+def translate_shoe_material(raw: str | None) -> tuple[str, str] | None:
+    """«TEKSTIL/PU» → («текстиль, полиуретан», «textile, polyurethane»)."""
+    text = fold(raw)
+    if not text or text in ("diger", "none"):
+        return None
+    ru_parts, en_parts = [], []
+    for part in (piece.strip() for piece in text.split("/")):
+        part = part.replace("pu kaplamali ", "")
+        name = SHOE_MATERIALS.get(part)
+        if name is None:
+            return None
+        if name[0] not in ru_parts:
+            ru_parts.append(name[0])
+            en_parts.append(name[1])
+    return ", ".join(ru_parts), ", ".join(en_parts)
+
+
+def translate_furniture_finish(raw: str | None) -> tuple[str, str] | None:
+    """«beyaz-aynalı cam» → («белый/зеркальное стекло», «white/mirror glass»).
+
+    Части без перевода (название ткани «Axvall» и т.п. латиницей с заглавной)
+    сохраняются как есть; неизвестное турецкое слово → None.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    ru_parts, en_parts = [], []
+    for part in (piece.strip() for piece in text.split("-")):
+        lowered = tr_lower(part)
+        finish = FURNITURE_FINISHES.get(lowered)
+        if finish:
+            ru_parts.append(finish[0])
+            en_parts.append(finish[1])
+            continue
+        words = part.split()
+        fabric = []
+        while words and words[0][:1].isupper() and words[0].isascii() and len(words) > 1:
+            fabric.append(words.pop(0))
+        color = translate_color(" ".join(words))
+        if color is None:
+            return None
+        prefix = " ".join(fabric)
+        ru_parts.append(f"{prefix} {ru_masculine(color.ru)}".strip())
+        en_parts.append(f"{prefix} {color.en.lower()}".strip())
+    return "/".join(ru_parts), "/".join(en_parts)
