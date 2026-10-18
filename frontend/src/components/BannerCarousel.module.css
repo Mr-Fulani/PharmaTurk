@@ -94,6 +94,22 @@
   pointer-events: auto;
 }
 
+/* Затемнение под текстом: светлые видео/фото иначе съедают светлый текст.
+   Гаснет к 55% — миниатюры (left: 52%) лежат выше по z-index и не темнеют */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.32) 35%, rgba(0, 0, 0, 0) 55%);
+  animation: scrimIn 0.5s ease-in-out;
+}
+
+@keyframes scrimIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Скрываем контент на миниатюрах (nth-child(2) и далее) */
 .slide .item:nth-child(n + 2) .content {
   display: none !important;
@@ -129,7 +145,7 @@
   margin-bottom: 20px;
   opacity: 0;
   animation: animate 1s ease-in-out 0.3s 1 forwards;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6), 0 0 8px rgba(0, 0, 0, 0.45);
   line-height: 1.5;
   font-size: inherit;
   font-weight: normal;
@@ -308,6 +324,11 @@
   .slide .item:nth-child(n + 2) {
     visibility: hidden;
     pointer-events: none;
+  }
+
+  /* Миниатюр нет, а текст тянется почти на всю ширину — затемняем до правого края */
+  .scrim {
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.3) 60%, rgba(0, 0, 0, 0.1) 100%);
   }
 }
 
