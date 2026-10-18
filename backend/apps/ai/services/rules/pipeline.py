@@ -64,7 +64,7 @@ class RulePlan:
     descriptions: dict[str, str]
     description_source: str  # template | memory | llm
     source_text: str
-    source_key: str
+    memory_namespace: str
     title_sources: dict[str, str] = field(default_factory=dict)
     memory_hit: dict[str, Any] | None = None
 
@@ -104,7 +104,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     title_sources = {locale: "rules" for locale, title in titles.items() if title}
     source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"))
     source_text = source_text[:SOURCE_TEXT_LIMIT]
-    key = memory.source_key(product.product_type, product.category_id, source_text)
+    namespace = memory.namespace_for(product.category_id)
 
     descriptions: dict[str, str] = {}
     description_source = "llm"
@@ -114,7 +114,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
         if descriptions:
             description_source = "template"
     if not descriptions and source_text:
-        memory_hit = memory.lookup(key)
+        memory_hit = memory.lookup(namespace, source_text)
         if memory_hit:
             descriptions = {"ru": memory_hit["ru"], "en": memory_hit["en"]}
             description_source = "memory"
@@ -124,7 +124,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
         descriptions=descriptions,
         description_source=description_source,
         source_text=source_text,
-        source_key=key,
+        memory_namespace=namespace,
         title_sources=title_sources,
         memory_hit=memory_hit,
     )
@@ -199,7 +199,13 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
             if plan.description_source == "llm":
                 descriptions[locale] = str(bucket.get("generated_description") or "").strip()
         if plan.description_source == "llm" and plan.source_text:
-            memory.remember(plan.source_key, descriptions.get("ru", ""), descriptions.get("en", ""), log_entry)
+            memory.remember(
+                plan.memory_namespace,
+                plan.source_text,
+                descriptions.get("ru", ""),
+                descriptions.get("en", ""),
+                log_entry,
+            )
 
     seo = build_seo(plan.facts, titles, descriptions)
     content: dict[str, Any] = {}
