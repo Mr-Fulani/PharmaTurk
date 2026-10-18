@@ -45,6 +45,7 @@ from apps.ai.services.quality_checker import (
     create_moderation_task,
     get_moderation_reasons,
 )
+from apps.ai.services.result_applier import build_content_snapshot
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.size_inventory import (
     extract_sizes_from_input,
@@ -212,6 +213,7 @@ class ContentGenerator:
             log_entry = queued_log
             queue_data = dict(log_entry.input_data or {})
             queue_data.update(self._collect_input_data(product))
+            queue_data["content_snapshot"] = build_content_snapshot(getattr(product, "domain_item", None))
             queue_data["started_at"] = timezone.now().isoformat()
             log_entry.input_data = queue_data
             log_entry.processed_by = user
@@ -231,7 +233,10 @@ class ContentGenerator:
                 processed_by=user,
                 processing_type=processing_type,
                 status=AIProcessingStatus.PROCESSING,
-                input_data=self._collect_input_data(product),
+                input_data={
+                    **self._collect_input_data(product),
+                    "content_snapshot": build_content_snapshot(getattr(product, "domain_item", None)),
+                },
                 llm_model=self.llm.model,
             )
 
@@ -1424,9 +1429,6 @@ class ContentGenerator:
                 "special_notes": "Special notes (EN), only if in source",
                 "origin_country": "Origin/manufacturing status (EN), if present"
             }},
-            "suggested_category_name": "Медицина",
-            "suggested_category_slug": "medicines",
-            "category_confidence": 0.95,
             "attributes": {{
                 "active_ingredient": "As in source, normalized only if obvious",
                 "dosage_form": "As in source, normalized only if obvious",
@@ -1592,9 +1594,6 @@ class ContentGenerator:
                 "prescription_type": self._translate_medicine_term(input_data.get("prescription_type"), "en"),
                 "origin_country": self._translate_medicine_term(input_data.get("origin_country"), "en"),
             },
-            "suggested_category_name": "Медицина",
-            "suggested_category_slug": "medicines",
-            "category_confidence": 0.95,
             "attributes": attrs,
         }
 
@@ -2963,4 +2962,5 @@ class ContentGenerator:
             product,
             ai_data,
             rejected_fields=rejected_fields,
+            content_snapshot=(log.input_data or {}).get("content_snapshot"),
         )
