@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { gtmEvent } from '../lib/gtm'
 import { ymReachGoal } from '../lib/ym'
 import ContactChannelPicker, { isUsernameChannel } from './ContactChannelPicker'
+import { CameraIcon, DocumentMagnifyingGlassIcon, LinkIcon, TruckIcon } from '@heroicons/react/24/outline'
 
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024
 const PHONE_DIGITS_RE = /^\+?\d{9,15}$/
@@ -172,9 +173,9 @@ export default function SourcingRequestForm({ placement, initialComment = '' }: 
   }
 
   const steps = [
-    { icon: '🔗', title: t('sourcing_step1_title', 'Ссылка или фото'), text: t('sourcing_step1_text', 'С Trendyol, Hepsiburada, сайта бренда или просто снимок товара.') },
-    { icon: '🧾', title: t('sourcing_step2_title', 'Найдём и посчитаем'), text: t('sourcing_step2_text', 'Менеджер проверит наличие и назовёт цену с доставкой.') },
-    { icon: '📦', title: t('sourcing_step3_title', 'Доставим'), text: t('sourcing_step3_text', 'Согласуем оплату удобным способом и отправим заказ.') },
+    { Icon: LinkIcon, title: t('sourcing_step1_title', 'Ссылка или фото'), text: t('sourcing_step1_text', 'С Trendyol, Hepsiburada, сайта бренда или просто снимок товара.') },
+    { Icon: DocumentMagnifyingGlassIcon, title: t('sourcing_step2_title', 'Найдём и посчитаем'), text: t('sourcing_step2_text', 'Менеджер проверит наличие и назовёт цену с доставкой.') },
+    { Icon: TruckIcon, title: t('sourcing_step3_title', 'Доставим'), text: t('sourcing_step3_text', 'Согласуем оплату удобным способом и отправим заказ.') },
   ]
 
   const heading = (
@@ -216,17 +217,22 @@ export default function SourcingRequestForm({ placement, initialComment = '' }: 
           <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-main/60">
             {t('sourcing_how_it_works', 'Как это работает')}
           </p>
-          <ol className="space-y-4">
-            {steps.map((step, index) => (
-              <li key={step.title} className="flex gap-3 rounded-2xl bg-[var(--bg)] p-4">
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-lg" aria-hidden>
-                  {step.icon}
+          <ol className="space-y-3">
+            {steps.map(({ Icon, title, text }, index) => (
+              <li key={title} className="relative flex gap-4 rounded-2xl bg-[var(--bg)] p-4">
+                {/* Пунктир между шагами — визуальная связка «1 → 2 → 3» */}
+                {index < steps.length - 1 && (
+                  <span aria-hidden className="absolute left-[2.35rem] top-[3.9rem] h-[calc(100%-2.6rem)] border-l-2 border-dashed border-[var(--accent)]/25" />
+                )}
+                <span aria-hidden className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent-soft)] to-[var(--surface)] text-[var(--accent)] ring-1 ring-[var(--accent)]/15">
+                  <Icon className="h-5 w-5" strokeWidth={1.8} />
+                  <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] font-bold text-white shadow-sm">
+                    {index + 1}
+                  </span>
                 </span>
-                <div>
-                  <p className="font-semibold text-main">
-                    {index + 1}. {step.title}
-                  </p>
-                  <p className="mt-0.5 text-sm text-main/70">{step.text}</p>
+                <div className="min-w-0">
+                  <p className="font-semibold text-main">{title}</p>
+                  <p className="mt-0.5 text-sm text-main/70">{text}</p>
                 </div>
               </li>
             ))}
@@ -265,7 +271,7 @@ export default function SourcingRequestForm({ placement, initialComment = '' }: 
                 <label
                   className={`mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-4 text-sm transition hover:border-[var(--accent)] hover:text-[var(--accent)] ${errors.image || errors.source_url ? 'border-[var(--danger)] text-[var(--danger)]' : 'border-[var(--border)] text-main/70'}`}
                 >
-                  <span aria-hidden>📷</span>
+                  <CameraIcon aria-hidden className="h-5 w-5 flex-shrink-0" strokeWidth={1.8} />
                   {t('sourcing_photo_pick', 'Выбрать фото (JPG, PNG, WebP, до 10 МБ)')}
                   <input
                     ref={fileInputRef}

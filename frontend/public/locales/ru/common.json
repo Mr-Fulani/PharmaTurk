@@ -740,6 +740,7 @@
   "category_meta_count_many": "{{formattedCount}} товаров",
   "category_meta_count_other": "{{formattedCount}} товаров",
   "category_meta_tail": "Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba",
+  "medicine_card_delivery_note": "Из Турции · 7–21 дн.",
   "brand_meta_description_suffix": "{{brand}} из Турции с доставкой{{categories}}. Актуальные цены, оригинальные товары, заказ через менеджера Mudaroba.",
   "pagination_page_label": "Страница {{page}}",
   "products_count": "товаров",

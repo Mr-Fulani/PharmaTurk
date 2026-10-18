@@ -6091,6 +6091,12 @@ class SimpleDomainCardSerializer(serializers.Serializer):
             "translations": self._serialize_translations(instance),
             "brand_id": getattr(instance, "brand_id", None),
         }
+        # Медикаменты: действующее вещество и производитель — строка под названием
+        # и подпись вместо бренда «Другое» на карточке (обычные колонки, без запросов)
+        for field in ("active_ingredient", "manufacturer"):
+            value = (getattr(instance, field, "") or "").strip()
+            if value:
+                data[field] = value
         return _apply_product_markup_to_payload(data, instance)
 
 # ─── МЕДИКАМЕНТЫ ───

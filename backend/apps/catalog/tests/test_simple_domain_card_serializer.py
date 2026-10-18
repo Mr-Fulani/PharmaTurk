@@ -79,6 +79,8 @@ def test_simple_domain_card_serializer_builds_only_the_card_contract(monkeypatch
         is_featured=False,
         is_new=True,
         created_at=datetime(2026, 1, 2, 3, 4, tzinfo=timezone.utc),
+        active_ingredient=" Flurbiprofen ",
+        manufacturer="",
     )
     data = SimpleDomainCardSerializer(product).data
 
@@ -88,6 +90,9 @@ def test_simple_domain_card_serializer_builds_only_the_card_contract(monkeypatch
     assert data["old_price_formatted"] == "260 RUB"
     assert data["brand_id"] == 9
     assert data["product_type"] == "medicines"
+    # Действующее вещество на карточке; пустой производитель не попадает в ответ
+    assert data["active_ingredient"] == "Flurbiprofen"
+    assert "manufacturer" not in data
     assert data["main_image_url"] == "https://cdn.example/card.webp"
     assert data["images"] == [{
         "id": 11,
