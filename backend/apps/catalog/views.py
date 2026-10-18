@@ -4064,11 +4064,9 @@ def proxy_media(request):
     if not r2_public:
         return JsonResponse({'error': 'R2 proxy not configured'}, status=503)
 
-    import hashlib
-    from django.core.cache import cache
-
-    # Ресайз-кэш проверяем ДО resolve_existing_media_storage_key (она ходит в R2
-    # за existence-проверками) — ключ от запрошенного пути, а не от resolved.
+    # Готовые байты картинок в Django-кэш (Redis) не кладём: их кэширует nginx
+    # (proxy_cache proxy_media, nginx/default.conf). Раньше ключи r2mw_q_*/r2webp_*
+    # раздували Redis до ~1,8 ГБ и ломали BGSAVE при полном диске (2026-10-18).
     max_w_raw = request.GET.get('max_width') or request.GET.get('w')
     max_w_int = None
     if max_w_raw:
@@ -4077,15 +4075,6 @@ def proxy_media(request):
         except (TypeError, ValueError):
             max_w_int = None
 
-    cache_key_mw = f"r2mw_q_{hashlib.md5(path.encode()).hexdigest()}_{max_w_int}" if max_w_int else None
-    if cache_key_mw:
-        webp_cached = cache.get(cache_key_mw)
-        if webp_cached is not None:
-            resp = HttpResponse(webp_cached, content_type='image/webp')
-            resp['Content-Length'] = str(len(webp_cached))
-            resp['Cache-Control'] = 'public, max-age=2592000, immutable'
-            resp['Vary'] = 'Accept'
-            return resp
 
     from apps.catalog.utils.media_path import iter_storage_path_candidates, resolve_existing_media_storage_key
 
@@ -4119,7 +4108,6 @@ def proxy_media(request):
             content_type = 'video/mp4'
 
         # Уменьшение изображений для карточек в каталоге (?max_width= / ?w=, только jpeg/png/webp).
-        # Кэш проверен выше, до обращения к R2; здесь только генерация при промахе.
         if max_w_int and content_type in ('image/jpeg', 'image/png', 'image/webp'):
             webp_resized = None
             try:
@@ -4139,8 +4127,6 @@ def proxy_media(request):
                     out = io.BytesIO()
                     img.save(out, format='WEBP', quality=80, method=2)
                     webp_resized = out.getvalue()
-                if len(webp_resized) < 5 * 1024 * 1024:
-                    cache.set(cache_key_mw, webp_resized, 30 * 86400)
             except Exception as resize_err:
                 logger.warning('proxy_media max_width для %s: %s', resolved_path, resize_err)
                 webp_resized = None
@@ -4158,52 +4144,44 @@ def proxy_media(request):
         if content_type in ('image/jpeg', 'image/png'):
             accept_header = request.META.get('HTTP_ACCEPT', '')
             if 'image/webp' in accept_header or request.GET.get('format') == 'webp':
-                # Ключ кэша на основе пути и даты изменения (опционально)
-                cache_key = f"r2webp_{hashlib.md5(resolved_path.encode()).hexdigest()}"
-                webp_data = cache.get(cache_key)
-                
-                if webp_data is None:
-                    # Пропускаем преобразование на лету для файлов > 8MB чтобы избежать OOM
-                    if file_obj.size > _PROXY_MEDIA_MAX_SOURCE_BYTES:
-                        webp_data = None
-                    else:
-                        # Читаем файл в память
-                        try:
-                            img = Image.open(file_obj)
-                            limit_reason = _proxy_media_image_limit_reason(file_obj, img)
-                            if limit_reason:
-                                logger.warning(
-                                    'WebP conversion skipped for %s: %s',
-                                    resolved_path,
-                                    limit_reason,
-                                )
-                                file_obj.seek(0)
-                                webp_data = None
-                            else:
-                                img = ImageOps.exif_transpose(img) # Сохраняем ориентацию
-
-                                # Конвертируем прозрачность/палитру в RGB для Jpeg/WebP
-                                if img.mode in ('RGBA', 'P', 'LA'):
-                                    # Для PNG сохраняем прозрачность в WebP
-                                    if img.mode == 'P':
-                                        img = img.convert('RGBA')
-                                else:
-                                    if img.mode != 'RGB':
-                                        img = img.convert('RGB')
-
-                                output = io.BytesIO()
-                                # Снижаем method до 1 или 2 чтобы значительно сократить потребление памяти и CPU
-                                img.save(output, format='WEBP', quality=80, method=1)
-                                webp_data = output.getvalue()
-
-                                # Кэшируем до 5 МБ в Memcached/Redis на 30 дней
-                                if len(webp_data) < 5 * 1024 * 1024:
-                                    cache.set(cache_key, webp_data, 30 * 86400)
-                        except Exception as img_err:
-                            # В случае ошибки конвертации падаем в фолбэк к оригиналу
-                            logger.warning(f"WebP conversion failed for {resolved_path}: {img_err}")
+                webp_data = None
+                # Пропускаем преобразование на лету для файлов > 8MB чтобы избежать OOM
+                if file_obj.size > _PROXY_MEDIA_MAX_SOURCE_BYTES:
+                    webp_data = None
+                else:
+                    # Читаем файл в память
+                    try:
+                        img = Image.open(file_obj)
+                        limit_reason = _proxy_media_image_limit_reason(file_obj, img)
+                        if limit_reason:
+                            logger.warning(
+                                'WebP conversion skipped for %s: %s',
+                                resolved_path,
+                                limit_reason,
+                            )
                             file_obj.seek(0)
                             webp_data = None
+                        else:
+                            img = ImageOps.exif_transpose(img) # Сохраняем ориентацию
+
+                            # Конвертируем прозрачность/палитру в RGB для Jpeg/WebP
+                            if img.mode in ('RGBA', 'P', 'LA'):
+                                # Для PNG сохраняем прозрачность в WebP
+                                if img.mode == 'P':
+                                    img = img.convert('RGBA')
+                            else:
+                                if img.mode != 'RGB':
+                                    img = img.convert('RGB')
+
+                            output = io.BytesIO()
+                            # Снижаем method до 1 или 2 чтобы значительно сократить потребление памяти и CPU
+                            img.save(output, format='WEBP', quality=80, method=1)
+                            webp_data = output.getvalue()
+                    except Exception as img_err:
+                        # В случае ошибки конвертации падаем в фолбэк к оригиналу
+                        logger.warning(f"WebP conversion failed for {resolved_path}: {img_err}")
+                        file_obj.seek(0)
+                        webp_data = None
                 
                 if webp_data is not None:
                     response = HttpResponse(webp_data, content_type='image/webp')
