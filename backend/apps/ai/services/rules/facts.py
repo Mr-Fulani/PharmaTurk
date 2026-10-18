@@ -58,7 +58,7 @@ class ProductFacts:
     finish: tuple[str, str] | None = None
     russian_name: str = ""
     untranslated: list[str] = field(default_factory=list)
-    has_color_variants: bool = False
+    has_variants: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Снимок для input_data лога (для разбора в админке)."""
@@ -266,7 +266,7 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
     brand = str(input_data.get("brand") or "").strip()
     if brand.casefold() not in PLACEHOLDER_BRANDS and "markalar" not in vocab.fold(input_data.get("name")):
         facts.brand = brand
-    facts.has_color_variants = _variant_colors(product) > 1
+    facts.has_variants = _variant_colors(product) > 0  # цвет вариант допишет сам
     # FLO дописывает к турецкому названию русский цвет: «… Sneaker - Серый».
     name = _CYRILLIC_SUFFIX_RE.sub("", str(input_data.get("name") or ""))
     source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"))
@@ -284,7 +284,7 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
     category_kind = vocab.CATEGORY_KINDS.get(getattr(category, "slug", "") or "")
     if product_type == "furniture":
         facts.kind = _furniture_kind(attrs.get("furniture_type"))
-        if not facts.has_color_variants and not attrs.get("furniture_variants"):
+        if not facts.has_variants and not attrs.get("furniture_variants"):
             facts.finish = vocab.translate_furniture_finish(attrs.get("color"))
     elif facts.kind is None or (facts.kind.generic and category_kind):
         facts.kind = category_kind or facts.kind
@@ -294,7 +294,7 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
 
     if facts.audience is None:
         facts.audience = vocab.AUDIENCE.get(vocab.fold(attrs.get("gender")))
-    if facts.has_color_variants:
+    if facts.has_variants:
         facts.color = None
     elif facts.color is None and product_type != "furniture":
         facts.color = vocab.translate_color(attrs.get("color"))

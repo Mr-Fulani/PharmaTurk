@@ -450,3 +450,14 @@ def test_identity_ignores_generic_uppercase_words_and_case():
     tee = SimpleNamespace(name="Siyah Erkek T-Shirt JORX90 TEE SS CREW", product_type="clothing", category=category, domain_item=None)
     report = SemanticValidator().validate(tee, generated_titles={"ru": "Мужская футболка, черная"}, dynamic_attributes=[])
     assert "title_identity_lost" in report.reasons  # модель JORX90/CREW потеряна
+
+
+@pytest.mark.django_db
+def test_color_is_left_to_variant_titles_when_product_has_variants():
+    product = _shoe("rule-variant-color", "Torex BUCKY 6FX Beyaz Erkek Sneaker")
+    ShoeVariant.objects.create(product=product.domain_item, name="Белые", slug="rule-variant-color-w", color="Beyaz")
+
+    facts = collect_facts(product, {"name": product.name, "brand": "Другое", "attributes": {"color": "Beyaz"}})
+
+    assert facts.color is None
+    assert build_titles(facts)["ru"] == "Мужские кроссовки BUCKY 6FX"
