@@ -3437,10 +3437,23 @@ class ScraperIntegrationService:
                 updated = True
 
         if scraped_product.description is not None:
+            from apps.ai.services.ownership import (
+                SOURCE_DESCRIPTION_KEY,
+                has_applied_ai_content,
+                remember_source_description,
+            )
+
             next_description = str(scraped_product.description).strip()
             current_description = (existing_product.description or "").strip()
+            if not isinstance(existing_product.external_data, dict):
+                existing_product.external_data = {}
+            # Тексты товара с применённым AI-результатом принадлежат AI/менеджеру:
+            # повторный парсинг их не трогает, а только запоминает исходник.
+            ai_owned = has_applied_ai_content(existing_product)
+            previous_source = existing_product.external_data.get(SOURCE_DESCRIPTION_KEY)
             if (
                 next_description
+                and not ai_owned
                 and (
                     not current_description
                     or self._should_replace_existing_description(
@@ -3448,11 +3461,20 @@ class ScraperIntegrationService:
                         scraped_product,
                         current_description,
                         next_description,
+                        previous_source=previous_source,
                     )
                 )
                 and (not is_variant_update or not current_description)
             ):
                 existing_product.description = next_description
+                updated = True
+            if not is_variant_update and remember_source_description(
+                existing_product.external_data,
+                next_description,
+                current_description=existing_product.description or "",
+                ai_owned=ai_owned,
+                now_iso=timezone.now().isoformat(),
+            ):
                 updated = True
 
         if not is_variant_update:
@@ -3690,8 +3712,14 @@ class ScraperIntegrationService:
         scraped_product: ScrapedProduct,
         current_description: str,
         next_description: str,
+        previous_source: str | None = None,
     ) -> bool:
-        """Разрешает безопасно обновить source-описание для расширенных medicine tabs."""
+        """Разрешает безопасно обновить source-описание для расширенных medicine tabs.
+
+        Заменяется только «сырой» текст источника: с маркерами ilacfiyati,
+        непереведённый турецкий или совпадающий с прошлым исходником. Текст,
+        написанный менеджером или AI, длиной исходника не перебивается.
+        """
         if existing_product.product_type != "medicines":
             return False
         if scraped_product.source != "ilacfiyati":
@@ -3719,9 +3747,13 @@ class ScraperIntegrationService:
             "Özet:",
             "KULLANMA TALİMATI",
         )
-        current_looks_like_source = any(marker in current_description for marker in source_markers)
-        next_is_much_richer = len(next_description) > max(len(current_description) + 500, len(current_description) * 2)
-        return current_looks_like_source or next_is_much_richer
+        from apps.catalog.product_semantics import looks_untranslated_turkish
+
+        return (
+            any(marker in current_description for marker in source_markers)
+            or looks_untranslated_turkish(current_description)
+            or (previous_source or "").strip() == current_description
+        )
 
     def _get_book_product(self, product: Product) -> "BookProduct":
         """Находит или создаёт BookProduct для Product с product_type='books'."""
