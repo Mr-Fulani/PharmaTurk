@@ -1418,7 +1418,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                       <div
                         key={page[0]?.uid || pageIndex}
                         className={classNames(
-                          'grid min-w-0 flex-[0_0_100%] snap-start grid-cols-1 items-stretch gap-4 lg:gap-6',
+                          // На телефоне слайд 88% ширины: край следующей карточки подсказывает свайп
+                          'grid min-w-0 flex-[0_0_88%] snap-start grid-cols-1 items-stretch gap-4 sm:flex-[0_0_100%] lg:gap-6',
                           // Неполная страница (1–2 отзыва) — по центру, без пустой колонки
                           page.length >= 3 && 'md:grid-cols-3',
                           page.length === 2 && 'md:mx-auto md:max-w-3xl md:grid-cols-2',
@@ -1434,8 +1435,32 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     ))}
                   </div>
 
-                  <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-3">
+                  {/* Телефон: миниатюрные точки вместо стрелок, счётчика и полосы прогресса */}
+                  {totalPages > 1 && (
+                    <div className="mt-3 flex items-center justify-center gap-1.5 sm:hidden" role="tablist">
+                      {testimonialPages.map((page, pageIndex) => (
+                        <button
+                          key={page[0]?.uid || pageIndex}
+                          type="button"
+                          role="tab"
+                          onClick={() => goToPage(pageIndex)}
+                          className="flex h-6 items-center px-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-full"
+                          aria-label={`${t('go_to_testimonials_page', 'Перейти к отзывам')} ${pageIndex + 1}`}
+                          aria-selected={pageIndex === currentPage}
+                        >
+                          <span className={classNames(
+                            'block h-1.5 rounded-full transition-all duration-300',
+                            pageIndex === currentPage
+                              ? 'w-4 bg-[var(--accent)]'
+                              : 'w-1.5 bg-gray-300 dark:bg-gray-600'
+                          )} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex flex-col gap-4 sm:mt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="hidden min-w-0 items-center gap-3 sm:flex">
                       <span className="min-w-[3.25rem] text-xs font-black tabular-nums tracking-[0.16em] text-gray-500 dark:text-gray-400">
                         {String(currentPage + 1).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}
                       </span>
@@ -1471,7 +1496,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
                     <Link
                       href="/testimonials?action=add"
-                      className="inline-flex items-center justify-center gap-2 rounded-full bg-red-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:-translate-y-0.5 hover:bg-red-700 hover:shadow-xl active:translate-y-0"
+                      className="inline-flex items-center justify-center gap-2 self-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:-translate-y-0.5 hover:bg-red-700 hover:shadow-xl active:translate-y-0 sm:self-auto sm:px-6 sm:py-3"
                     >
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
