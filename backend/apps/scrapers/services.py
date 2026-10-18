@@ -4385,6 +4385,9 @@ class ScraperIntegrationService:
             if isinstance(target, FurnitureProduct):
                 updated = bool(sync_furniture_dynamic_attributes(target, attrs)) or updated
 
+        if product.product_type in ("medicines", "supplements"):
+            updated = self._assign_manufacturer_brand(product, attrs) or updated
+
         # --- Общие поля → Product ---
 
         # Weight (e.g. "0,441" kg from ummaland)
@@ -4424,6 +4427,26 @@ class ScraperIntegrationService:
                     updated = True
 
         return updated
+
+    def _assign_manufacturer_brand(self, product: Product, attrs: Dict[str, Any]) -> bool:
+        """Лекарства и БАДы: бренд = производитель, если бренда нет или стоит «Другое»."""
+        from apps.catalog.utils.manufacturer_brands import (
+            OTHER_BRAND_SLUG,
+            get_or_create_manufacturer_brand,
+        )
+
+        manufacturer = str(attrs.get("manufacturer") or "").strip()
+        if not manufacturer or (product.brand_id and product.brand.slug != OTHER_BRAND_SLUG):
+            return False
+        brand = get_or_create_manufacturer_brand(manufacturer, product.product_type)
+        if brand is None:
+            return False
+        product.brand = brand
+        domain = product.domain_item
+        if domain is not product and (not domain.brand_id or domain.brand.slug == OTHER_BRAND_SLUG):
+            type(domain).objects.filter(pk=domain.pk).update(brand=brand)
+            domain.brand = brand
+        return True
 
     def _create_new_product(
         self, session: ScrapingSession, scraped_product: ScrapedProduct

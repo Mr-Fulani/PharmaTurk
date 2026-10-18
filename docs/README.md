@@ -38,6 +38,7 @@
 
 - [CATALOG_FAVORITES_PROXY_MEDIA.md](CATALOG_FAVORITES_PROXY_MEDIA.md) — доменные id, избранное, R2 и proxy-media;
 - [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) — безопасный backfill характеристик мебели;
+- [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`) и бренды производителей лекарств/БАДов;
 - [HYDRATION_ERRORS_GUIDE.md](HYDRATION_ERRORS_GUIDE.md) — диагностика hydration;
 - [TZ_SEO_PERF_FIXES.md](TZ_SEO_PERF_FIXES.md) — архивное ТЗ и отчёт SEO/performance от 2026-06-12;
 - [frontend/LOCALIZATION_GUIDE.md](../frontend/LOCALIZATION_GUIDE.md) — локализация frontend;
