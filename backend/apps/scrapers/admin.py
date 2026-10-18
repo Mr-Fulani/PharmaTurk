@@ -92,6 +92,7 @@ class ScraperConfigAdmin(admin.ModelAdmin):
         "priority",
         "success_rate_display",
         "last_run_display",
+        "last_error_display",
         "actions_column",
     ]
     list_filter = [
@@ -172,6 +173,7 @@ class ScraperConfigAdmin(admin.ModelAdmin):
                     "last_run_at",
                     "last_success_at",
                     "last_error_at",
+                    "last_error_message",
                     "total_runs",
                     "successful_runs",
                     "total_products_scraped",
@@ -236,6 +238,17 @@ class ScraperConfigAdmin(admin.ModelAdmin):
             return f"{minutes} мин. назад"
 
     last_run_display.short_description = "Последний запуск"
+
+    def last_error_display(self, obj):
+        """Причина статуса «Ошибка» прямо в списке парсеров."""
+        if obj.status != "error" or not obj.last_error_message:
+            return "—"
+        message = obj.last_error_message
+        short = message if len(message) <= 120 else f"{message[:117]}..."
+        when = timezone.localtime(obj.last_error_at).strftime("%d.%m.%Y %H:%M") if obj.last_error_at else ""
+        return format_html('<span title="{}">{} {}</span>', message, when, short)
+
+    last_error_display.short_description = "Последняя ошибка"
 
     def actions_column(self, obj):
         """Колонка с действиями."""
