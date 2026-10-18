@@ -22,6 +22,12 @@
 | Stage `mudaroba-stage-9122b27`: 4 остановленных контейнера (5 недель), тома и `~/pharmaturk-stage-9122b27` | ≈ 0,16 ГБ | `docker compose -p mudaroba-stage-9122b27 down -v` и удаление каталога, только после согласия |
 | 6 остановленных `mudaroba-migrate-run-*` | 0 Б сами, но держат образы `820bcd7…` и `bb0a7ba…` (≈ 1,9 ГБ каждый) | Появлялись из-за `backend_release.py` (`compose run` без `--rm`), исправлено в этом PR. Существующие удалить `docker rm`, после чего `prune-images.sh` сможет убрать старый образ |
 
+Выполнено 2026-10-18 с согласия владельца: удалены 6 `migrate-run-*`, образ
+backend `bb0a7ba…`, брошенный снапшот Qdrant и stage `mudaroba-stage-9122b27`
+(контейнеры, тома, сети, git worktree; архив тома PostgreSQL —
+`backups/stage-9122b27-postgres-data-20261018.tar.gz`, 10 МБ). Свободно стало
+9,5 ГБ (74 %). Бэкапы, journald и анонимные тома не трогали.
+
 Логи остальных контейнеров маленькие (Redis 32 МБ, PostgreSQL 17 МБ, Qdrant 14 МБ).
 Ротация для PostgreSQL, Redis и Qdrant начнёт действовать только при плановом
 пересоздании этих сервисов: `deploy.sh` их не пересоздаёт (`--no-recreate`).
