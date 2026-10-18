@@ -317,3 +317,42 @@ class AIModerationQueue(models.Model):
 
     class Meta:
         ordering = ['-priority', 'created_at']
+
+
+class AITranslationMemory(models.Model):
+    """Память переводов: одинаковый исходный текст переводится моделью один раз.
+
+    Ключ — sha256 нормализованного текста источника (плюс тип и категория
+    товара). Тексты берутся из исходного лога, чтобы правки модератора тоже
+    переиспользовались; ru_text/en_text — снимок на момент генерации.
+    """
+
+    namespace = models.CharField(max_length=50, verbose_name="Пространство")
+    source_hash = models.CharField(max_length=64, verbose_name="Хэш источника")
+    source_text = models.TextField(blank=True, default="", verbose_name="Исходный текст")
+    ru_text = models.TextField(blank=True, default="", verbose_name="Текст RU")
+    en_text = models.TextField(blank=True, default="", verbose_name="Текст EN")
+    source_log = models.ForeignKey(
+        AIProcessingLog,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Исходный AI-лог",
+    )
+    hits = models.PositiveIntegerField(default=0, verbose_name="Повторных использований")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Память переводов AI"
+        verbose_name_plural = "Память переводов AI"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["namespace", "source_hash"],
+                name="ai_translation_memory_unique_source",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.namespace}:{self.source_hash[:12]}"
