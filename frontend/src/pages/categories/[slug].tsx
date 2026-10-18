@@ -696,6 +696,9 @@ const compactProductForCard = (product: Product & Record<string, any>): Product 
         }))
       : product.book_authors,
     is_bestseller: product.is_bestseller,
+    // Медикаменты: действующее вещество и производитель для карточки
+    active_ingredient: product.active_ingredient,
+    manufacturer: product.manufacturer,
   }) as Product
 }
 
@@ -1945,9 +1948,15 @@ export default function CategoryPage({
                         isFeatured={(product as any).is_featured}
                         rating={product.rating}
                         brandName={
+                          // У медикаментов бренд чаще всего «Другое» — производитель информативнее
+                          (effectiveProductType === 'medicines' && (product as any).manufacturer) ||
                           product.brand?.name ||
                           (product.brand_id != null ? brandNameById.get(product.brand_id) : undefined)
                         }
+                        subtitle={effectiveProductType === 'medicines' ? (product as any).active_ingredient : undefined}
+                        note={effectiveProductType === 'medicines'
+                          ? t('medicine_card_delivery_note', 'Из Турции · 7–21 дн.')
+                          : undefined}
                       />
                     )
                   })}

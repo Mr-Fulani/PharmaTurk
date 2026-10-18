@@ -47,6 +47,17 @@ function requestScopeFingerprint(value: string | undefined): string {
  * Результат не кэшируется: после завершения следующий вызов снова обращается к API.
  * Это сохраняет актуальность корзины/профиля и устраняет двойные эффекты React Strict Mode.
  */
+/**
+ * Язык открытой страницы — по URL (ru без префикса, en на /en). Cookie NEXT_LOCALE не
+ * годится: она остаётся от прошлого переключения, и русская страница получала английские
+ * данные (отзывы, названия). На сервере — ru: SSR передаёт язык явно.
+ */
+function pageLocale(): string {
+  if (typeof window === 'undefined') return 'ru'
+  const path = window.location.pathname
+  return path === '/en' || path.startsWith('/en/') ? 'en' : 'ru'
+}
+
 export function getSingleFlight<T = any>(
   url: string,
   config?: AxiosRequestConfig
@@ -62,8 +73,8 @@ export function getSingleFlight<T = any>(
     // достаточно отпечатка: сырой токен не должен даже временно жить в Map.
     headers: requestScopeFingerprint(stableRequestKey(config?.headers || null)),
     responseType: config?.responseType || 'json',
-    language: Cookies.get('NEXT_LOCALE') || document.documentElement.lang || 'ru',
-    currency: Cookies.get('currency') || preferredCurrency || defaultCurrencyForLocale(document.documentElement.lang),
+    language: pageLocale(),
+    currency: Cookies.get('currency') || preferredCurrency || defaultCurrencyForLocale(pageLocale()),
     // Интерцептор в любом случае создаёт cookie для анонимного запроса.
     // Делаем это до построения ключа, чтобы два самых первых GET тоже совпали.
     cartSession: requestScopeFingerprint(Cookies.get('cart_session') || ensureCartSession()),
@@ -163,11 +174,8 @@ api.interceptors.request.use((config) => {
       ; (config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
   }
 
-  // Прокидываем язык для локализации ответов DRF/Django
-  // Приоритет: Кука -> Путь в URL -> Язык HTML тега -> Язык по умолчанию (ru)
-  const htmlLang = typeof document !== 'undefined' ? document.documentElement.lang : null
-  const locale = Cookies.get('NEXT_LOCALE') || 
-    (typeof window !== 'undefined' ? (window.location.pathname.startsWith('/en') ? 'en' : (window.location.pathname.startsWith('/ru') ? 'ru' : (htmlLang || 'ru'))) : 'ru')
+  // Прокидываем язык для локализации ответов DRF/Django — язык открытой страницы
+  const locale = pageLocale()
     ; (config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
     ; (config.headers as AxiosRequestHeaders)['X-Language'] = locale
 
@@ -177,7 +185,7 @@ api.interceptors.request.use((config) => {
     explicit: (config.headers as AxiosRequestHeaders)['X-Currency'],
     stored: storedCurrency,
     preferred: preferredCurrency,
-    locale: htmlLang,
+    locale,
   })
   if (process.env.NODE_ENV === 'development') {
     console.log('[API Currency]', { storedCurrency, preferredCurrency, resolvedCurrency, url: config.url })

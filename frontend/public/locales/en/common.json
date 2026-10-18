@@ -792,6 +792,7 @@
   "category_meta_count_one": "{{formattedCount}} product",
   "category_meta_count_other": "{{formattedCount}} products",
   "category_meta_tail": "Original products, current prices, ordering via a Mudaroba manager",
+  "medicine_card_delivery_note": "From Turkey · 7–21 days",
   "brand_meta_description_suffix": "{{brand}} from Turkey with delivery{{categories}}. Current prices, original products, ordering via a Mudaroba manager.",
   "pagination_page_label": "Page {{page}}",
   "products_count": "products",

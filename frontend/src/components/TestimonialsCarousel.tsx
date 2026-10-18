@@ -94,7 +94,15 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   const isProgrammaticPauseRef = useRef<Map<string, boolean>>(new Map()) // Флаг программной паузы (при скролле)
   const [youtubeApiReady, setYoutubeApiReady] = useState(false)
   const playerReadyMapRef = useRef<Map<string, boolean>>(new Map())
-  const itemsPerPage = 3 // A "page" for pagination dots
+  // «Страница» карусели: 3 карточки от md, на телефоне — одна на всю ширину (листается свайпом)
+  const [itemsPerPage, setItemsPerPage] = useState(3)
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 768px)')
+    const sync = () => setItemsPerPage(query.matches ? 3 : 1)
+    sync()
+    query.addEventListener('change', sync)
+    return () => query.removeEventListener('change', sync)
+  }, [])
   const muteToggleTimeoutRef = useRef<Map<string, NodeJS.Timeout>>(new Map()) // Debounce для мобильных
 
   const updateVideoMuted = (mutator: (map: Map<string, boolean>) => void) => {
@@ -511,7 +519,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       pages.push(testimonials.slice(index, index + itemsPerPage))
     }
     return pages
-  }, [testimonials])
+  }, [testimonials, itemsPerPage])
 
   const totalPages = testimonialPages.length
   const isAutoplayPaused = isPointerOver || hasFocusWithin
@@ -1230,15 +1238,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     )
   }
 
-  const renderTestimonialCard = (
-    testimonial: ReviewFeedItem,
-    featured: boolean,
-    cardIndex: number,
-    pageSize: number
-  ) => {
+  const renderTestimonialCard = (testimonial: ReviewFeedItem, cardIndex: number) => {
     const reviewUrl = buildReviewDetailUrl(testimonial)
-    const isTallSecondary = !featured && pageSize === 2
-    const isSingleCard = featured && pageSize === 1
     const subjectLabel = testimonial.review_type === 'service'
       ? t('review_about_service', 'Отзыв об услуге: {{name}}', { name: testimonial.product_name || '' })
       : testimonial.review_type === 'product'
@@ -1249,110 +1250,72 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       : testimonial.review_type === 'product'
         ? t('review_kind_product', 'Товар')
         : t('review_kind_platform', 'Платформа')
+    const createdAt = testimonial.created_at ? new Date(testimonial.created_at) : null
+    const dateLabel = createdAt && !Number.isNaN(createdAt.getTime())
+      ? createdAt.toLocaleDateString(locale === 'en' ? 'en-GB' : 'ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
+      : null
 
     return (
       <m.article
         key={testimonial.uid}
-        layout={!shouldReduceMotion}
         data-testid="homepage-testimonial-card"
         data-testimonial-id={testimonial.uid}
-        data-featured={featured ? 'true' : 'false'}
-        initial={shouldReduceMotion ? false : { opacity: 0, y: 24, scale: 0.97 }}
-        whileInView={{ opacity: 1, y: 0, scale: 1 }}
-        viewport={{ once: true, amount: 0.18 }}
-        transition={{
-          layout: { type: 'spring', stiffness: 260, damping: 30 },
-          opacity: { duration: 0.35, delay: cardIndex * 0.07 },
-          y: { type: 'spring', stiffness: 220, damping: 24, delay: cardIndex * 0.07 },
-          scale: { type: 'spring', stiffness: 220, damping: 24, delay: cardIndex * 0.07 },
-        }}
-        whileHover={shouldReduceMotion ? undefined : { y: featured ? -6 : -4, scale: featured ? 1.004 : 1.01 }}
+        initial={shouldReduceMotion ? false : { opacity: 0, y: 18 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.15 }}
+        transition={{ duration: 0.4, delay: cardIndex * 0.06, ease: 'easeOut' }}
         className={classNames(
-          'testimonial-card group relative isolate overflow-hidden rounded-[1.75rem]',
-          'border border-white/80 bg-white/95 shadow-[0_20px_60px_-32px_rgba(15,23,42,0.45)]',
+          'testimonial-card group relative flex h-full min-w-0 flex-col overflow-hidden rounded-3xl',
+          'border border-black/[0.06] bg-white shadow-[0_18px_50px_-30px_rgba(15,23,42,0.35)]',
+          'transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-[0_26px_60px_-30px_rgba(15,23,42,0.45)]',
           'dark:border-white/10 dark:bg-[var(--surface)] dark:shadow-black/30',
-          'focus-within:ring-2 focus-within:ring-red-500/60',
-          featured
-            ? 'min-h-[510px] sm:col-span-2 lg:col-span-1 lg:row-span-2'
-            : 'min-h-[224px] sm:col-span-1 lg:col-start-2',
-          isTallSecondary && 'lg:row-span-2',
-          isSingleCard && 'lg:col-span-2'
+          'focus-within:ring-2 focus-within:ring-[var(--accent)]/50'
         )}
       >
-        <div
-          className={classNames(
-            'grid h-full min-h-[inherit]',
-            featured
-              ? 'md:grid-cols-[minmax(0,1.16fr)_minmax(260px,0.84fr)]'
-              : 'grid-cols-[42%_58%]',
-            isTallSecondary && 'lg:grid-cols-1 lg:grid-rows-[minmax(0,1.15fr)_auto]'
-          )}
-        >
-          <div
-            className={classNames(
-              'relative min-w-0 overflow-hidden bg-gray-100 dark:bg-gray-900',
-              featured ? 'min-h-[300px] md:min-h-0' : 'min-h-[224px]',
-              isTallSecondary && 'lg:min-h-[300px]'
-            )}
+        <div className="relative aspect-[4/3] w-full overflow-hidden bg-gray-100 dark:bg-gray-900">
+          <Link
+            href={reviewUrl}
+            className="absolute inset-0 block overflow-hidden"
+            aria-label={`${subjectLabel}: ${testimonial.text}`}
           >
-            <Link
-              href={reviewUrl}
-              className="absolute inset-0 block overflow-hidden"
-              aria-label={`${subjectLabel}: ${testimonial.text}`}
-            >
-              <div className="h-full w-full transition-transform duration-700 ease-out group-hover:scale-[1.045]">
-                {renderMedia(testimonial)}
-              </div>
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 via-slate-950/5 to-transparent" />
-              <span className="absolute bottom-3 left-3 rounded-full border border-white/25 bg-black/35 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-                {kindLabel}
-              </span>
-            </Link>
-            {renderVideoControls(testimonial, !featured)}
+            <div className="h-full w-full transition-transform duration-700 ease-out group-hover:scale-[1.04]">
+              {renderMedia(testimonial)}
+            </div>
+            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/35 to-transparent" />
+            <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-gray-800 shadow-sm backdrop-blur-md dark:bg-black/60 dark:text-gray-100">
+              {kindLabel}
+            </span>
+          </Link>
+          {renderVideoControls(testimonial, true)}
+        </div>
+
+        <div className="flex flex-1 flex-col gap-3 p-5">
+          <div className="flex items-center justify-between gap-3">
+            {renderRating(testimonial, false)}
+            {dateLabel && (
+              <time dateTime={testimonial.created_at} className="testimonial-quote text-xs text-[var(--text-weak)]">
+                {dateLabel}
+              </time>
+            )}
           </div>
 
-          <div className={classNames('relative flex min-w-0 flex-col', featured ? 'p-6 sm:p-7' : 'p-4')}>
-            <span
-              aria-hidden="true"
-              className={classNames(
-                'pointer-events-none absolute right-4 top-1 select-none font-serif leading-none text-red-500/10 dark:text-red-300/10',
-                featured ? 'text-[8rem]' : 'text-7xl'
-              )}
-            >
-              “
-            </span>
-
-            <Link href={reviewUrl} className="relative z-10 flex min-h-0 flex-1 flex-col">
-              <span className={classNames(
-                'mb-3 block font-bold leading-snug text-red-600 dark:text-red-400',
-                featured ? 'line-clamp-3 text-sm' : 'line-clamp-2 text-[11px]'
-              )}>
-                {subjectLabel}
+          <Link href={reviewUrl} className="flex min-h-0 flex-1 flex-col gap-2">
+            {testimonial.review_type !== 'platform' && testimonial.product_name && (
+              <span className="testimonial-quote line-clamp-1 text-xs font-semibold text-[var(--accent)]">
+                {testimonial.product_name}
               </span>
-              <blockquote className={classNames(
-                'text-balance text-gray-700 dark:text-gray-300',
-                featured
-                  ? 'line-clamp-8 text-lg leading-relaxed sm:text-xl'
-                  : 'line-clamp-5 text-sm leading-relaxed'
-              )}>
-                «{testimonial.text}»
-              </blockquote>
+            )}
+            <blockquote className="testimonial-quote line-clamp-5 text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
+              {testimonial.text}
+            </blockquote>
+            <span className="mt-auto inline-flex items-center gap-1 pt-1 text-sm font-semibold text-[var(--text-strong)]">
+              {t('read_testimonial', 'Читать отзыв')}
+              <ArrowUpRightIcon className="h-4 w-4 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+            </span>
+          </Link>
 
-              {featured && (
-                <span className="mt-auto inline-flex items-center gap-1.5 pt-5 text-sm font-bold text-[var(--text-strong)]">
-                  {t('read_testimonial', 'Читать отзыв')}
-                  <ArrowUpRightIcon className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                </span>
-              )}
-            </Link>
-
-            <div className={classNames(
-              'relative z-20 mt-4 flex items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-white/10',
-              !featured && 'mt-3 pt-3'
-            )}>
-              {renderAuthor(testimonial, !featured)}
-              {renderRating(testimonial, !featured)}
-            </div>
+          <div className="flex items-center gap-3 border-t border-black/[0.06] pt-4 text-sm dark:border-white/10">
+            {renderAuthor(testimonial, false)}
           </div>
         </div>
       </m.article>
@@ -1403,7 +1366,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                   </Link>
 
                   {totalPages > 1 && (
-                    <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white/80 p-1 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/5">
+                    // На телефоне листают свайпом — стрелки только с sm
+                    <div className="hidden items-center gap-1 rounded-full border border-gray-200 bg-white/80 p-1 shadow-sm backdrop-blur-md sm:flex dark:border-white/10 dark:bg-white/5">
                       <button
                         type="button"
                         onClick={() => goToPage(currentPage - 1)}
@@ -1453,19 +1417,50 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     {testimonialPages.map((page, pageIndex) => (
                       <div
                         key={page[0]?.uid || pageIndex}
-                        className="grid min-w-0 flex-[0_0_100%] snap-start gap-4 sm:grid-cols-2 lg:min-h-[520px] lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.85fr)] lg:grid-rows-2 lg:gap-5"
+                        className={classNames(
+                          // На телефоне слайд 88% ширины: край следующей карточки подсказывает свайп
+                          'grid min-w-0 flex-[0_0_88%] snap-start grid-cols-1 items-stretch gap-4 sm:flex-[0_0_100%] lg:gap-6',
+                          // Неполная страница (1–2 отзыва) — по центру, без пустой колонки
+                          page.length >= 3 && 'md:grid-cols-3',
+                          page.length === 2 && 'md:mx-auto md:max-w-3xl md:grid-cols-2',
+                          page.length === 1 && 'md:mx-auto md:max-w-sm'
+                        )}
                         data-testid="homepage-testimonial-page"
                         aria-label={`${t('testimonials_page_title', 'Страница отзывов')} ${pageIndex + 1}`}
                       >
                         {page.map((testimonial, cardIndex) => (
-                          renderTestimonialCard(testimonial, cardIndex === 0, cardIndex, page.length)
+                          renderTestimonialCard(testimonial, cardIndex)
                         ))}
                       </div>
                     ))}
                   </div>
 
-                  <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-3">
+                  {/* Телефон: миниатюрные точки вместо стрелок, счётчика и полосы прогресса */}
+                  {totalPages > 1 && (
+                    <div className="mt-3 flex items-center justify-center gap-1.5 sm:hidden" role="tablist">
+                      {testimonialPages.map((page, pageIndex) => (
+                        <button
+                          key={page[0]?.uid || pageIndex}
+                          type="button"
+                          role="tab"
+                          onClick={() => goToPage(pageIndex)}
+                          className="flex h-6 items-center px-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-full"
+                          aria-label={`${t('go_to_testimonials_page', 'Перейти к отзывам')} ${pageIndex + 1}`}
+                          aria-selected={pageIndex === currentPage}
+                        >
+                          <span className={classNames(
+                            'block h-1.5 rounded-full transition-all duration-300',
+                            pageIndex === currentPage
+                              ? 'w-4 bg-[var(--accent)]'
+                              : 'w-1.5 bg-gray-300 dark:bg-gray-600'
+                          )} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex flex-col gap-4 sm:mt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="hidden min-w-0 items-center gap-3 sm:flex">
                       <span className="min-w-[3.25rem] text-xs font-black tabular-nums tracking-[0.16em] text-gray-500 dark:text-gray-400">
                         {String(currentPage + 1).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}
                       </span>
@@ -1501,7 +1496,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
                     <Link
                       href="/testimonials?action=add"
-                      className="inline-flex items-center justify-center gap-2 rounded-full bg-red-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:-translate-y-0.5 hover:bg-red-700 hover:shadow-xl active:translate-y-0"
+                      className="inline-flex items-center justify-center gap-2 self-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:-translate-y-0.5 hover:bg-red-700 hover:shadow-xl active:translate-y-0 sm:self-auto sm:px-6 sm:py-3"
                     >
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1519,6 +1514,13 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       <style jsx>{`
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
+        }
+
+        /* Длинный текст отзыва — читаемым шрифтом, декоративный InkVerse остаётся в заголовках */
+        :global(.testimonial-quote) {
+          font-family: 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+          text-transform: none;
+          letter-spacing: normal;
         }
 
         .testimonial-ambient {

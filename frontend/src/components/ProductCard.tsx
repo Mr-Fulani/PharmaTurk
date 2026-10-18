@@ -75,6 +75,10 @@ interface ProductCardProps {
    */
   hasManualMainImage?: boolean
   imageFit?: 'cover' | 'contain' | 'lower-cover'
+  /** Строка под названием (у медикаментов — действующее вещество). */
+  subtitle?: string | null
+  /** Короткая пометка под названием (у медикаментов — откуда и сроки доставки). */
+  note?: string | null
 }
 
 export default function ProductCard({
@@ -109,6 +113,8 @@ export default function ProductCard({
   reviewsCount,
   isBestseller,
   isNew,
+  subtitle,
+  note,
   isFeatured,
   hasManualMainImage = false,
   imageFit = 'cover'
@@ -231,12 +237,17 @@ export default function ProductCard({
   const displayReviewsCount = typeof reviewsCount === 'number' && reviewsCount > 0
     ? reviewsCount
     : null
+  // Без отзывов подпись «Отзывы» — шум на каждой карточке: показываем только счётчик
   const reviewsLabel = displayReviewsCount !== null
     ? t('product_reviews_count', {
         count: displayReviewsCount,
         formattedCount: new Intl.NumberFormat(locale || i18n.language).format(displayReviewsCount),
       })
-    : t('product_reviews_title', 'Отзывы')
+    : null
+  // «Новинка» ничего не говорит о препарате
+  const showNewBadge = Boolean(isNew) && productType !== 'medicines'
+  const displaySubtitle = subtitle?.trim() || null
+  const displayNote = note?.trim() || null
   const displayBrandName = brandName?.trim() || null
   const variantPreviewOverlay = variantPreviewImage ? (
     // Миниатюра варианта уже загружена в свотче, поэтому подмена не создаёт
@@ -350,6 +361,11 @@ export default function ProductCard({
         <div className="flex-1 flex flex-col justify-between">
           <div>
             <h3 className="text-lg font-semibold text-[var(--text-strong)] mb-2 hover-text-warm transition-colors">{localizedName}</h3>
+            {(displaySubtitle || displayNote) && (
+              <p className="-mt-1 mb-2 text-xs text-[var(--text-weak)]">
+                {[displaySubtitle, displayNote].filter(Boolean).join(' · ')}
+              </p>
+            )}
             {localizedDescription && (
               <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-3">{localizedDescription}</p>
             )}
@@ -383,10 +399,12 @@ export default function ProductCard({
                   <span>{displayRating.toFixed(1)}</span>
                 </div>
               )}
-              <div className="inline-flex items-center gap-1 text-sm text-[var(--text-weak)]">
-                <ChatBubbleOvalLeftIcon className="h-4 w-4 text-gray-400 dark:text-gray-500" aria-hidden="true" />
-                <span>{reviewsLabel}</span>
-              </div>
+              {reviewsLabel && (
+                <div className="inline-flex items-center gap-1 text-sm text-[var(--text-weak)]">
+                  <ChatBubbleOvalLeftIcon className="h-4 w-4 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                  <span>{reviewsLabel}</span>
+                </div>
+              )}
               {displayBrandName && (
                 <span
                   className="ml-auto max-w-[45%] truncate text-xs font-semibold text-[var(--accent)]"
@@ -480,7 +498,7 @@ export default function ProductCard({
         )}
         {variantPreviewOverlay}
         
-        {(badge || isFeatured || isNew || (productType === 'books' && isBestseller)) && (
+        {(badge || isFeatured || showNewBadge || (productType === 'books' && isBestseller)) && (
           <div className="absolute left-2 top-2 flex flex-col gap-1 z-10">
             {badge && (
               <span className="rounded-md bg-pink-100/90 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
@@ -497,7 +515,7 @@ export default function ProductCard({
                 {t('bestseller', 'Бестселлер')}
               </span>
             )}
-            {isNew && (
+            {showNewBadge && (
               <span className="rounded-md bg-green-100/90 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
                 {t('product_new', 'Новинка')}
               </span>
@@ -563,6 +581,14 @@ export default function ProductCard({
         <h3 className="line-clamp-2 min-h-[2.5rem] text-sm font-medium leading-5 text-[var(--text-strong)]">
           {localizedName}
         </h3>
+        {displaySubtitle && (
+          <p className="mt-0.5 line-clamp-1 text-xs text-[var(--text-weak)]" title={displaySubtitle}>
+            {displaySubtitle}
+          </p>
+        )}
+        {displayNote && (
+          <p className="mt-0.5 text-[11px] text-[var(--text-weak)] opacity-80">{displayNote}</p>
+        )}
 
         {/* Информация специфичная для книг */}
         {productType === 'books' && (
@@ -593,10 +619,12 @@ export default function ProductCard({
               <span className="font-semibold text-[var(--text-strong)]">{displayRating.toFixed(1)}</span>
             </>
           )}
-          <span className={`${displayRating !== null ? 'ml-1' : ''} inline-flex items-center gap-1 text-[var(--text-weak)]`}>
-            <ChatBubbleOvalLeftIcon className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" aria-hidden="true" />
-            {reviewsLabel}
-          </span>
+          {reviewsLabel && (
+            <span className={`${displayRating !== null ? 'ml-1' : ''} inline-flex items-center gap-1 text-[var(--text-weak)]`}>
+              <ChatBubbleOvalLeftIcon className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+              {reviewsLabel}
+            </span>
+          )}
           {displayBrandName && (
             <span
               className="ml-auto max-w-[55%] truncate text-right font-semibold text-[var(--accent)]"
