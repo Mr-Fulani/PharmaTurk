@@ -46,6 +46,7 @@ from apps.ai.services.quality_checker import (
     get_moderation_reasons,
 )
 from apps.ai.services.medicine_fact_check import check_medicine_short_fields, doses_match
+from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
 from apps.ai.services.result_applier import build_content_snapshot
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.size_inventory import (
@@ -537,6 +538,11 @@ class ContentGenerator:
                 # Используем сырое описание как основное, если оно богаче
                 if len(str(raw_caption)) > len(str(data.get("description", ""))):
                     data["description"] = str(raw_caption)
+            # После применения AI description — уже AI-текст; исходник парсера
+            # хранится отдельно, и переобработка должна опираться на него.
+            source_description = product.external_data.get(SOURCE_DESCRIPTION_KEY)
+            if source_description and not data.get("raw_description"):
+                data["raw_description"] = source_description
 
         # Атрибуты по типу товара — в контекст для AI (known_attributes в промпте)
         book_item = getattr(product, "book_item", None)
@@ -2901,6 +2907,7 @@ class ContentGenerator:
                         "updated_at",
                     ]
                 )
+                self._clear_source_changed_flag(log.product_id)
                 if is_partial:
                     self._create_moderation_task(log, reasons=semantic_report.reasons)
                 else:
@@ -2924,6 +2931,18 @@ class ContentGenerator:
             )
             raise
         return log
+
+    @staticmethod
+    def _clear_source_changed_flag(product_id: int) -> None:
+        """После применения новый результат уже учитывает свежий исходник."""
+        # Свежий экземпляр: сохранение Product синхронизирует доменную модель,
+        # и устаревшие name/description из памяти не должны туда попасть.
+        product = Product.objects.filter(pk=product_id).first()
+        external = product.external_data if product and isinstance(product.external_data, dict) else {}
+        if SOURCE_CHANGED_KEY in external:
+            external.pop(SOURCE_CHANGED_KEY)
+            product.external_data = external
+            product.save(update_fields=["external_data"])
 
     def _apply_changes_to_product(
         self,

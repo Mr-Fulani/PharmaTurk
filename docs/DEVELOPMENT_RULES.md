@@ -56,6 +56,9 @@ docker-compose за nginx и Cloudflare.
    существующего товара и не перезаписывает описание/SEO/переводы, изменённые
    после генерации (снимок `input_data["content_snapshot"]`). Новые поля,
    которые пишет AI, подчиняются тем же правилам (см. `AI_GUIDE.md`).
+   Парсеры и импорты не перезаписывают тексты товара с применённым
+   AI-результатом (`apps/ai/services/ownership.py`): исходник — в
+   `external_data["source_description"]`, смена — флаг `ai_source_changed_at`.
 8. Глобальный DRF default — `IsAuthenticated`. Каждый действительно публичный
    endpoint обязан явно объявлять `AllowAny`; административные и служебные
    операции — `IsAdminUser` либо более строгое объектное permission. Нельзя

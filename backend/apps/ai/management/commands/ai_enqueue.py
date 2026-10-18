@@ -13,6 +13,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Avg, Exists, OuterRef, Q
 
 from apps.ai.models import AIProcessingLog, AIProcessingStatus
+from apps.ai.services.ownership import SOURCE_CHANGED_KEY
 from apps.ai.tasks import ACTIVE_AI_LOG_STATUSES, enqueue_or_apply_product_ai
 from apps.catalog.models import Category, Product
 
@@ -50,6 +51,11 @@ class Command(BaseCommand):
             help="С --wait: остановиться, если в батче упало больше N",
         )
         parser.add_argument("--missing-description", action="store_true", help="Только товары без описания")
+        parser.add_argument(
+            "--source-changed",
+            action="store_true",
+            help="Только AI-товары, у которых после обработки изменился исходник (нужен --force)",
+        )
         parser.add_argument(
             "--include-processed",
             action="store_true",
@@ -121,6 +127,8 @@ class Command(BaseCommand):
             qs = qs.filter(category_id__in=self._category_tree_ids(category))
         if options["missing_description"]:
             qs = qs.filter(Q(description__isnull=True) | Q(description=""))
+        if options["source_changed"]:
+            qs = qs.filter(external_data__has_key=SOURCE_CHANGED_KEY)
         if not (options["include_processed"] or options["force"]):
             done = AIProcessingLog.objects.filter(
                 product_id=OuterRef("pk"),
