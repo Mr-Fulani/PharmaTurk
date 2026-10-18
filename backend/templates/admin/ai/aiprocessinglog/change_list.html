@@ -3,6 +3,9 @@
 
 {% block object-tools-items %}
 <li>
+  <a href="{% url 'admin:ai_airun_changelist' %}" class="button">AI-прогоны</a>
+</li>
+<li>
   <a href="{% url 'ai_manual_tasks' %}" class="button">Задачи вручную (AI)</a>
 </li>
 {{ block.super }}

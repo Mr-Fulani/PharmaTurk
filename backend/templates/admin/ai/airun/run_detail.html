@@ -1,0 +1,142 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}{{ block.super }}{% include "admin/ai/airun/_styles.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Начало</a>
+  &rsaquo; <a href="{% url 'admin:app_list' 'ai' %}">AI</a>
+  &rsaquo; <a href="{% url 'admin:ai_airun_changelist' %}">AI-прогоны</a>
+  &rsaquo; #{{ run.pk }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="airun-card">
+  <h2>{{ run.get_kind_display }} — <span id="airun-status">{{ state.status_label }}</span></h2>
+  <p style="margin:0">
+    Запустил: {{ run.created_by|default:"—" }} · создан {{ run.created_at|date:"d.m.Y H:i" }}
+    {% if run.started_at %}· начат {{ run.started_at|date:"d.m.Y H:i" }}{% endif %}
+    {% if run.finished_at %}· закончен {{ run.finished_at|date:"d.m.Y H:i" }}{% endif %}
+  </p>
+  {% if run.kind == "products" %}
+  <p style="margin:6px 0 0">
+    Условия: тип товара <b>{{ run.get_product_type_display }}</b>{% if run.category %}, категория <b>{{ run.category }}</b>{% endif %},
+    до {{ run.limit }} товаров{% if run.missing_description %}, только без описания{% endif %},
+    {% if run.auto_apply %}<b>результат сразу применяется к товарам</b>{% else %}результат ждёт вашей проверки (не применяется сам){% endif %}.
+  </p>
+  {% elif run.product_type %}
+  <p style="margin:6px 0 0">Тип товара: <b>{{ run.get_product_type_display }}</b>, до {{ run.limit }} записей.</p>
+  {% else %}
+  <p style="margin:6px 0 0">До {{ run.limit }} записей.</p>
+  {% endif %}
+</div>
+
+<div id="airun-message">
+{% if state.stalled %}
+  <div class="airun-warn">Прогон давно не делал ни шага — похоже, фоновая обработка прервалась (например, после перезапуска сервера). Нажмите «Продолжить».</div>
+{% elif run.status == "failed" %}
+  <div class="airun-error">{{ run.message|default:"Ошибка." }}</div>
+{% elif run.status == "stopped" %}
+  <div class="airun-warn">{{ run.message }}</div>
+{% elif run.status == "finished" and run.message %}
+  <div class="airun-ok">{{ run.message }}</div>
+{% endif %}
+</div>
+
+{% if run.kind == "products" %}
+<div class="airun-card">
+  <h2>Прогресс</h2>
+  <div class="airun-bar"><div id="airun-bar" style="width: {{ state.percent }}%"></div></div>
+  <p style="margin:0"><b id="airun-processed">{{ state.processed }}</b> из <b>{{ state.selected }}</b> товаров (<span id="airun-percent">{{ state.percent }}</span>%)</p>
+  <div class="airun-stats">
+    <div class="airun-stat"><b id="airun-queued">{{ state.queued }}</b><small>поставлено в обработку</small></div>
+    <div class="airun-stat"><b id="airun-in_progress">{{ state.in_progress }}</b><small>обрабатываются сейчас</small></div>
+    <div class="airun-stat"><b id="airun-done">{{ state.done }}</b><small>готово</small></div>
+    <div class="airun-stat"><b id="airun-moderation">{{ state.moderation }}</b><small>на модерации (нужна ваша проверка)</small></div>
+    <div class="airun-stat"><b id="airun-failed">{{ state.failed }}</b><small>ошибки</small></div>
+    <div class="airun-stat"><b id="airun-skipped">{{ state.skipped }}</b><small>пропущено (уже обработаны)</small></div>
+    <div class="airun-stat"><b id="airun-cancelled">{{ state.cancelled }}</b><small>отменено при остановке</small></div>
+    <div class="airun-stat"><b id="airun-remaining">{{ state.remaining }}</b><small>ещё ждут очереди</small></div>
+    <div class="airun-stat"><b>$<span id="airun-cost">{{ state.cost }}</span></b><small>потрачено (оценка ${{ state.estimate }})</small></div>
+  </div>
+  <div class="airun-buttons">
+    <a class="button" href="{{ logs_url }}">📄 Логи этого прогона</a>
+    <a class="button" href="{{ moderation_url }}">Очередь модерации</a>
+    <button type="button" class="button" onclick="location.reload()">🔄 Обновить</button>
+    {% if can_act and state.can_stop %}
+    <form method="post" action="{% url 'admin:ai_airun_stop' run.pk %}" onsubmit="return confirm('Остановить прогон? Уже обрабатываемые товары доработают, остальные будут отменены.');">
+      {% csrf_token %}<button type="submit" class="airun-big airun-danger">■ Остановить</button>
+    </form>
+    {% endif %}
+    {% if can_act and state.can_resume %}
+    <form method="post" action="{% url 'admin:ai_airun_resume' run.pk %}">
+      {% csrf_token %}<button type="submit" class="airun-big" style="background:#15803d">▶ Продолжить</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if state.live %}<p class="help" style="color:var(--body-quiet-color)">Страница обновляется сама каждые 5 секунд.</p>{% endif %}
+</div>
+
+{% else %}
+<div class="airun-note">{{ info.text }}</div>
+{% if run.status == "draft" %}
+  <div class="airun-card">
+    <h2>Что будет сделано</h2>
+    {% if state.preview_ready %}
+      <p style="font-size:15px">{{ run.report.preview.summary }}</p>
+      {% if run.report.preview.lines %}<div class="airun-lines">{% for line in run.report.preview.lines %}<div>{{ line }}</div>{% endfor %}</div>{% endif %}
+      {% if can_act and run.selected_count %}
+      <form method="post" action="{% url 'admin:ai_airun_confirm' run.pk %}" style="margin-top:12px">
+        {% csrf_token %}
+        <button type="submit" class="airun-big" style="background:#15803d">✔ Да, выполнить</button>
+        <a class="button" href="{% url 'admin:ai_airun_changelist' %}" style="margin-left:8px">Отмена</a>
+      </form>
+      {% elif not run.selected_count %}
+      <div class="airun-ok">Делать нечего — подходящих записей нет.</div>
+      {% endif %}
+    {% else %}
+      <p>Считаем… обычно до минуты (если сейчас идёт большой прогон — дольше). Страница обновится сама.</p>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="airun-card">
+    <h2>Результат</h2>
+    {% if run.status == "running" %}<p>Выполняется… Страница обновится сама.</p>{% endif %}
+    {% if run.report.result %}
+      <p style="font-size:15px">{{ run.report.result.summary }}</p>
+      {% if run.report.result.lines %}<div class="airun-lines">{% for line in run.report.result.lines %}<div>{{ line }}</div>{% endfor %}</div>{% endif %}
+    {% endif %}
+    {% if run.kind == "retry_titles" and run.status == "finished" %}
+    <p><a class="button" href="{% url 'admin:ai_airun_maintenance' 'close_moderation' %}">Дальше: закрыть решённые записи модерации</a></p>
+    {% endif %}
+  </div>
+{% endif %}
+{% endif %}
+
+{% if state.live %}
+<script>
+(function () {
+  var url = "{% url 'admin:ai_airun_status' run.pk %}";
+  var initial = {status: "{{ state.status }}", preview: {{ state.preview_ready|yesno:"true,false" }}, stalled: {{ state.stalled|yesno:"true,false" }}};
+  var fields = ["queued", "in_progress", "done", "moderation", "failed", "skipped", "cancelled", "remaining", "processed", "percent", "cost"];
+  function tick() {
+    fetch(url, {credentials: "same-origin"}).then(function (r) { return r.json(); }).then(function (s) {
+      if (s.status !== initial.status || s.preview_ready !== initial.preview || s.stalled !== initial.stalled || !s.live) {
+        location.reload();
+        return;
+      }
+      fields.forEach(function (f) {
+        var el = document.getElementById("airun-" + f);
+        if (el) { el.textContent = s[f]; }
+      });
+      var bar = document.getElementById("airun-bar");
+      if (bar) { bar.style.width = s.percent + "%"; }
+      setTimeout(tick, 5000);
+    }).catch(function () { setTimeout(tick, 15000); });
+  }
+  setTimeout(tick, 5000);
+})();
+</script>
+{% endif %}
+{% endblock %}

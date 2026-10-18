@@ -1,0 +1,80 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}{{ block.super }}{{ media }}{% include "admin/ai/airun/_styles.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Начало</a>
+  &rsaquo; <a href="{% url 'admin:app_list' 'ai' %}">AI</a>
+  &rsaquo; <a href="{% url 'admin:ai_airun_changelist' %}">AI-прогоны</a>
+  &rsaquo; Новый прогон
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="airun-note">
+  Прогон — это AI-обработка сразу многих товаров: AI пишет название, описание и SEO на русском и английском.
+  Это стоит денег (OpenAI), поэтому порядок такой:
+  <b>1)</b> выберите условия; <b>2)</b> нажмите «Посчитать» — увидите, сколько товаров войдёт и примерную стоимость;
+  <b>3)</b> нажмите «Запустить». Обработка идёт в фоне партиями по {{ batch_size }} товаров — страницу можно закрыть.
+  Если в партии больше {{ max_error_percent }}% ошибок, прогон остановится сам.
+</div>
+
+{% if running %}
+<div class="airun-warn">
+  Сейчас идут прогоны:
+  {% for r in running %}<a href="{% url 'admin:ai_airun_change' r.pk %}">#{{ r.pk }} — {{ r.get_kind_display }}{% if r.product_type %} ({{ r.get_product_type_display }}){% endif %}</a>{% if not forloop.last %}, {% endif %}{% endfor %}.
+  Второй прогон того же типа товаров запустить нельзя, пока не закончится первый.
+</div>
+{% endif %}
+
+<form method="post" class="airun-form" novalidate>
+  {% csrf_token %}
+  <div class="airun-card">
+    {% if form.non_field_errors %}<div class="airun-error">{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form %}{% if field.name != "cost_confirmed" %}
+    <div class="form-row">
+      {% if field.field.widget.input_type == "checkbox" %}
+        {{ field }} <label class="inline" for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {% else %}
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+      {% endif %}
+      {% if field.errors %}<div class="airun-error" style="margin:6px 0 0">{{ field.errors|join:" " }}</div>{% endif %}
+      {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+    </div>
+    {% endif %}{% endfor %}
+  </div>
+
+  {% if preview %}
+  <div class="airun-card">
+    <h2>Что будет сделано</h2>
+    {% if preview.count %}
+      <p style="font-size:15px">Войдёт товаров: <b>{{ preview.count }}</b>
+        (всего подходит под условия и ещё не обработано: {{ preview.total_available }}).<br>
+        Примерная стоимость: <b>${{ preview.estimate|floatformat:2 }}</b>.</p>
+      {% if preview.sample %}
+      <p>Первые товары:</p>
+      <ul>{% for name in preview.sample %}<li>{{ name }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if cost_over %}
+      <div class="airun-warn">
+        Стоимость больше ${{ cost_warning }}. Проверьте условия. Если всё верно — поставьте галочку:<br>
+        <label class="inline"><input type="checkbox" name="cost_confirmed" value="on"> Да, я согласен потратить примерно ${{ preview.estimate|floatformat:2 }}</label>
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="airun-ok">Под эти условия не подходит ни одного необработанного товара — запускать нечего.</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="airun-buttons">
+    <button type="submit" name="action" value="estimate" class="airun-big">🧮 Посчитать</button>
+    {% if preview and preview.count %}
+    <button type="submit" name="action" value="start" class="airun-big" style="background:#15803d">▶ Запустить</button>
+    {% else %}
+    <span class="help">Кнопка «Запустить» появится после подсчёта.</span>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}

@@ -177,6 +177,13 @@ docker compose exec backend poetry run python manage.py clear_similar_cache
 
 Они публикуются в очередь `ai` и по умолчанию используют `auto_apply=False`.
 
+Массовые AI-прогоны из раздела админки «AI → AI-прогоны» (см. [docs/AI_RUNS_ADMIN_GUIDE.md](docs/AI_RUNS_ADMIN_GUIDE.md)) тоже не входят в Beat:
+
+- `advance_ai_run(run_id, token)` — короткий шаг прогона: проверяет партию, ставит следующую и перепланирует себя через 15 с (`priority=0`, `acks_late`);
+- `run_ai_maintenance(run_id, dry_run)` — предпросмотр и выполнение «Перегенерировать отклонённые названия» / «Закрыть решённые записи модерации».
+
+Обе идут в очередь `ai`; если `celery_ai` остановлен, прогон через 5 минут покажется зависшим, а партия — остановится через 30 минут.
+
 ## Другие отключённые scheduled entries
 
 В `CELERY_BEAT_SCHEDULE` закомментированы:

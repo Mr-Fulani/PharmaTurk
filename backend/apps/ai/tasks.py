@@ -281,6 +281,32 @@ def enqueue_or_apply_product_ai(
     return log, "skipped"
 
 
+@shared_task(acks_late=True, reject_on_worker_lost=True)
+def advance_ai_run(run_id: int, token: str):
+    """Шаг AI-прогона из админки: проверить партию и поставить следующую."""
+    from apps.ai.services.ai_runs import advance_run, fail_run
+
+    try:
+        return advance_run(run_id, token)
+    except Exception as exc:
+        logger.exception("AI run %s step failed", run_id)
+        fail_run(run_id, exc)
+        raise
+
+
+@shared_task(acks_late=True)
+def run_ai_maintenance(run_id: int, dry_run: bool):
+    """Предпросмотр или выполнение обслуживающей операции AI-прогона."""
+    from apps.ai.services.ai_runs import execute_maintenance, fail_run
+
+    try:
+        return execute_maintenance(run_id, dry_run)
+    except Exception as exc:
+        logger.exception("AI maintenance run %s failed", run_id)
+        fail_run(run_id, exc)
+        raise
+
+
 @shared_task
 def prepare_variant_ai_candidates_task(product_id: int, force: bool = False):
     """Собирает очередь вариантов, для которых потенциально нужна отдельная AI-обработка."""

@@ -1,0 +1,31 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}{{ block.super }}{% include "admin/ai/airun/_styles.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Начало</a>
+  &rsaquo; <a href="{% url 'admin:app_list' 'ai' %}">AI</a>
+  &rsaquo; <a href="{% url 'admin:ai_airun_changelist' %}">AI-прогоны</a>
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="airun-note">{{ info.text }}</div>
+<form method="post" class="airun-form" novalidate>
+  {% csrf_token %}
+  <div class="airun-card">
+    {% for field in form %}
+    <div class="form-row">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+      {% if field.errors %}<div class="airun-error" style="margin:6px 0 0">{{ field.errors|join:" " }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p>Сначала ничего не меняется: будет показан список того, что будет сделано. Выполнение — только после вашего подтверждения.</p>
+  <div class="airun-buttons">
+    <button type="submit" class="airun-big">🔍 Показать, что будет сделано</button>
+  </div>
+</form>
+{% endblock %}
