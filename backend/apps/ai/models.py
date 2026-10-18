@@ -329,6 +329,7 @@ class AITranslationMemory(models.Model):
 
     namespace = models.CharField(max_length=50, verbose_name="Пространство")
     source_hash = models.CharField(max_length=64, verbose_name="Хэш источника")
+    source_text = models.TextField(blank=True, default="", verbose_name="Исходный текст")
     ru_text = models.TextField(blank=True, default="", verbose_name="Текст RU")
     en_text = models.TextField(blank=True, default="", verbose_name="Текст EN")
     source_log = models.ForeignKey(
