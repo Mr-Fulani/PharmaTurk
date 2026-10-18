@@ -1,3 +1,4 @@
+import hashlib
 import httpx
 import re
 import time
@@ -682,7 +683,27 @@ class IkeaService:
                 product.price = price
                 updated = True
                 
-            if not product.description or (normalized.get("description") and len(normalized["description"]) > len(product.description)):
+            from apps.ai.services.ownership import (
+                SOURCE_DESCRIPTION_HASH_KEY,
+                has_applied_ai_content,
+                remember_source_description,
+            )
+
+            # Описание с применённым AI-результатом или правленное менеджером
+            # не перебиваем более длинным исходником.
+            old_external = product.external_data if isinstance(product.external_data, dict) else {}
+            ai_owned = has_applied_ai_content(getattr(product, "base_product", None))
+            current_is_source = (
+                SOURCE_DESCRIPTION_HASH_KEY not in old_external
+                or hashlib.sha256((product.description or "").strip().encode("utf-8")).hexdigest()
+                == old_external.get(SOURCE_DESCRIPTION_HASH_KEY)
+            )
+            if not product.description or (
+                not ai_owned
+                and current_is_source
+                and normalized.get("description")
+                and len(normalized["description"]) > len(product.description)
+            ):
                 product.description = normalized["description"]
                 updated = True
                 
@@ -720,9 +741,22 @@ class IkeaService:
                     "dimensions": normalized.get("dimensions", ""),
                     "furniture_type": normalized.get("furniture_type", ""),
                 },
-                "scraped_at": timezone.now().isoformat()
+                "scraped_at": timezone.now().isoformat(),
+                # Служебные ключи AI и исходника не теряем при замене external_data.
+                **{
+                    key: value
+                    for key, value in old_external.items()
+                    if key.startswith("ai_") or key.startswith("source_description")
+                },
             }
-            
+            remember_source_description(
+                product.external_data,
+                normalized.get("description") or "",
+                current_description=product.description or "",
+                ai_owned=ai_owned,
+                now_iso=timezone.now().isoformat(),
+            )
+
             if updated or True: # Всегда сохраняем внешние данные
                 product.save()
 

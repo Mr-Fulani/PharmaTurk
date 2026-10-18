@@ -154,7 +154,7 @@ docker compose exec backend poetry run python manage.py setup_ai_rag
 - качество LLM не гарантировано, особенно при слабых исходных данных;
 - `auto_apply=true` переносит риск прямо в каталог;
 - OpenAI, Redis и worker `ai` обязательны для асинхронного pipeline;
-- сумма `cost_usd` ориентировочная: тарифы зашиты в клиент и требуют ручного обновления;
+- сумма `cost_usd` ориентировочная: тарифы берутся из `AI_CONFIG["PRICING"]` (`AI_PRICING_JSON`) и требуют обновления при смене цен;
 - RAG-индекс не синхронизируется после каждого изменения модели автоматически;
 - AI и visual search используют общий hardened image fetcher: DNS/IP и redirect
   проверяются на каждом переходе, загрузка и число пикселей ограничены, а R2
