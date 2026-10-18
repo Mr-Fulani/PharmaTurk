@@ -49,6 +49,10 @@ def get_moderation_reasons(
     raw_response = getattr(log, "raw_llm_response", None)
     rule_content = raw_response.get("rule_content") if isinstance(raw_response, dict) else None
     from_facts = isinstance(rule_content, dict) and rule_content.get("description_source") == "template"
+    if isinstance(rule_content, dict):
+        # Узкий запрос пересказывает источник без «воды»: короткий исходник даёт
+        # короткое описание. Порог ловит только пустой/сломанный ответ.
+        minimum_description_words = 10
     if not from_facts and (
         len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE))
         < minimum_description_words

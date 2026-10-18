@@ -461,3 +461,72 @@ def test_color_is_left_to_variant_titles_when_product_has_variants():
 
     assert facts.color is None
     assert build_titles(facts)["ru"] == "Мужские кроссовки BUCKY 6FX"
+
+
+def _russian_belt(slug):
+    from apps.catalog.models import AccessoryProduct
+
+    category = Category.objects.get_or_create(slug="belts", defaults={"name": "Пояса и ремни"})[0]
+    brand = Brand.objects.get_or_create(name="LC Waikiki", defaults={"slug": "lc-waikiki-rule"})[0]
+    belt = AccessoryProduct.objects.create(
+        name="Кожаный ремень LC Waikiki",
+        slug=slug,
+        description=(
+            "<p>Кожаный ремень от LC Waikiki выполнен из искусственной кожи коричневого цвета с "
+            "серебристой застежкой. Уход за изделием: нельзя стирать, гладить и сушить в барабане.</p>"
+        ),
+        category=category,
+        brand=brand,
+    )
+    belt.refresh_from_db()
+    product = belt.base_product
+    product.external_data = {"attributes": {"gender": "men", "material": "Искусственная кожа", "color": "Koyu Kahverengi"}}
+    product.save()
+    product.refresh_from_db()
+    return product
+
+
+@pytest.mark.django_db
+def test_russian_name_gets_rule_english_title_and_survives_missing_en_from_llm():
+    """Пилот 18.10: модель вернула только RU-описание — лог падал целиком."""
+    product = _russian_belt("rule-ru-belt")
+    ru = "Ремень LC Waikiki из искусственной кожи коричневого цвета с серебристой застежкой."
+    llm = SimpleNamespace(
+        model="test-model",
+        generate_content=Mock(return_value=_llm_result({"ru": {"generated_description": ru}, "en": {}})),
+    )
+
+    log = _generator(llm).process_product(product.id, options={"analyze_images": False, "force": True})
+
+    assert log.status == AIProcessingStatus.COMPLETED, get_moderation_reasons(log)
+    prompt = llm.generate_content.call_args.kwargs["user_prompt"]
+    assert '"need_titles": []' in prompt  # EN-название — правилами
+    en = log.extracted_attributes["seo_translations"]["en"]
+    assert en["generated_title"] == "LC Waikiki Men's Faux Leather Belt"
+    assert en["generated_description"].startswith("LC Waikiki Men's Faux Leather Belt. Material: faux leather.")
+    assert en["meta_title"] == "LC Waikiki Men's Faux Leather Belt — buy with delivery from Turkey"
+    assert log.raw_llm_response["rule_content"]["description_fallback"] == ["en"]
+    assert not AITranslationMemory.objects.exists()  # неполный перевод не запоминаем
+    # 12 слов — короче прежнего порога 20, но это пересказ короткого источника
+    assert "short_description" not in get_moderation_reasons(log)
+
+
+@pytest.mark.django_db
+def test_empty_llm_answer_falls_back_to_fact_descriptions_instead_of_failing():
+    product = _russian_belt("rule-ru-belt-empty")
+    llm = SimpleNamespace(model="test-model", generate_content=Mock(return_value=_llm_result({"ru": {}, "en": {}})))
+
+    log = _generator(llm).process_product(product.id, options={"analyze_images": False, "force": True})
+
+    assert log.status != AIProcessingStatus.FAILED
+    assert log.generated_description.startswith("Кожаный ремень LC Waikiki. Материал: искусственная кожа.")
+    assert log.raw_llm_response["rule_content"]["description_fallback"] == ["ru", "en"]
+
+
+@pytest.mark.django_db
+def test_rule_path_fails_only_when_nothing_russian_can_be_built():
+    from apps.ai.services.rules.pipeline import validate_rule_content
+
+    with pytest.raises(ValueError, match="ru.generated_title, ru.generated_description"):
+        validate_rule_content({"ru": {}, "en": {"generated_title": "X", "generated_description": "Y"}})
+    validate_rule_content({"ru": {"generated_title": "Ремень", "generated_description": "Описание"}, "en": {}})

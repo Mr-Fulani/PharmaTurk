@@ -292,6 +292,16 @@ CATEGORY_KINDS: dict[str, Kind] = {
     "hw-caps": KINDS["kep"],
     "uw-mens-underwear": KINDS["boxer"],
     "burkini": _k("буркини", N, "Burkini"),
+    # мебель: когда furniture_type нет в словаре
+    "wardrobes": _k("гардероб", M, "Wardrobe"),
+    "beds": _k("кровать", F, "Bed"),
+    "armchairs": _k("кресло", N, "Armchair"),
+    "dressers": _k("комод", M, "Chest of Drawers"),
+    "sofas": _k("диван", M, "Sofa"),
+    "day-beds": _k("кушетка", F, "Day-Bed"),
+    "sofa-beds": _k("диван-кровать", M, "Sofa-Bed"),
+    "coffee-tables": _k("журнальный столик", M, "Coffee Table"),
+    "bed-bases": _k("основание кровати", N, "Bed Base"),
 }
 
 # Мебель IKEA: значение furniture_type (без названия серии) → тип.

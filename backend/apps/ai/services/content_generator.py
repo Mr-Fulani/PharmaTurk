@@ -54,7 +54,11 @@ from apps.ai.services.medicine_reference import CODE_FIELDS, build_reference_tra
 from apps.ai.services.medicine_title import build_medicine_title
 from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
 from apps.ai.services.result_applier import build_content_snapshot
-from apps.ai.services.rules.pipeline import plan_rule_content, run_rule_content
+from apps.ai.services.rules.pipeline import (
+    plan_rule_content,
+    run_rule_content,
+    validate_rule_content,
+)
 from apps.ai.services.semantic_validator import SemanticValidator, _title_has_turkish_words
 from apps.ai.services.size_inventory import (
     extract_sizes_from_input,
@@ -452,7 +456,10 @@ class ContentGenerator:
                 self._save_generation_usage(log_entry, generation_result)
 
                 # Парсинг результатов
-                self._validate_generated_content(content, processing_type)
+                if rule_plan is not None:
+                    validate_rule_content(content)
+                else:
+                    self._validate_generated_content(content, processing_type)
                 self._parse_and_save_results(log_entry, content)
                 if processing_type == "categorization_only" and not log_entry.suggested_category_id:
                     raise ValueError("AI вернул неизвестную или неактивную категорию")

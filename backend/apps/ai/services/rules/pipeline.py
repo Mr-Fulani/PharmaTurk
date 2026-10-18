@@ -43,9 +43,10 @@ SYSTEM_PROMPT = """
 1. Пересказывай только факты из source_text и facts. Не придумывай свойства, материалы, назначение и уход.
 2. Убери цены, валюты, коды, артикулы, контакты, ссылки, хештеги, сведения о производителе и импортёре, размеры, наличие и срочность («осталось мало»).
 3. Без рекламных штампов («идеально подходит», «стильный образ», «доступен в разных цветах и размерах»).
-4. ru — только на русском, en — только на английском; это один и тот же смысл. Каждое — от 20 до 100 слов, допускаются теги <p>.
-5. Многозначные слова переводи по category_path: «şapka» в «Кепки» — «кепка» / «cap».
-6. Если в source_text есть строки вида «Kumaş: Suni Deri», передавай факт точно: «из искусственной кожи».
+4. Всегда возвращай ОБА блока: ru — только на русском, en — только на английском, один и тот же смысл. Если source_text на русском — en.generated_description это его перевод на английский.
+5. Сохраняй все факты источника (материал, состав, посадка, застёжка, уход). Объём каждого описания — 20–100 слов; если фактов мало, пиши короче, но не добавляй выдуманное. Допускаются теги <p>.
+6. Многозначные слова переводи по category_path: «şapka» в «Кепки» — «кепка» / «cap».
+7. Если в source_text есть строки вида «Kumaş: Suni Deri», передавай факт точно: «из искусственной кожи».
 
 Правила названия (generated_title), только если язык есть в need_titles:
 - короткое название: тип товара по category_path, бренд и модель латиницей как в источнике;
@@ -111,8 +112,10 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     memory_hit = None
     if is_thin_source(source_text, str(input_data.get("name") or ""), facts):
         descriptions = build_fact_description(facts, titles)
-        if descriptions:
+        if len(descriptions) == 2:
             description_source = "template"
+        else:
+            descriptions = {}
     if not descriptions and source_text:
         memory_hit = memory.lookup(namespace, source_text)
         if memory_hit:
@@ -198,7 +201,14 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
                 plan.title_sources[locale] = "llm"
             if plan.description_source == "llm":
                 descriptions[locale] = str(bucket.get("generated_description") or "").strip()
-        if plan.description_source == "llm" and plan.source_text:
+        # Модель иногда возвращает один язык: недостающий — описание из фактов,
+        # лог не падает целиком. Неполный перевод в память не кладём.
+        fallback = build_fact_description(plan.facts, titles) if plan.description_source == "llm" else {}
+        for locale in ("ru", "en"):
+            if plan.description_source == "llm" and not descriptions.get(locale) and fallback.get(locale):
+                descriptions[locale] = fallback[locale]
+                result.setdefault("description_fallback", []).append(locale)
+        if plan.description_source == "llm" and plan.source_text and not result.get("description_fallback"):
             memory.remember(
                 plan.memory_namespace,
                 plan.source_text,
@@ -224,7 +234,16 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
         "description_source": plan.description_source,
         "title_sources": plan.title_sources,
         "llm_called": plan.needs_llm,
+        "description_fallback": result.pop("description_fallback", []),
         "memory_hit": plan.memory_hit and {k: plan.memory_hit[k] for k in ("memory_id", "source_log_id")},
         "facts": plan.facts.as_dict(),
     }
     return result
+
+
+def validate_rule_content(content: dict[str, Any]) -> None:
+    """Обязательны только RU-название и RU-описание: EN без них применяется частично."""
+    ru = content.get("ru") if isinstance(content.get("ru"), dict) else {}
+    missing = [f"ru.{field}" for field in ("generated_title", "generated_description") if not str(ru.get(field) or "").strip()]
+    if missing:
+        raise ValueError("AI не вернул обязательные поля: " + ", ".join(missing))
