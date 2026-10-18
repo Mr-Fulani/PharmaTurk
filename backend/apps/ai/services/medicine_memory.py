@@ -1,0 +1,451 @@
+"""Перевод МНН и инструкций лекарств через память переводов.
+
+Память (AITranslationMemory) хранит проверенные переводы фрагментов:
+namespace ``medicine_inn`` — действующие вещества, ``medicine_paragraph`` —
+абзацы клинических разделов. Модель переводит только то, чего в памяти ещё
+нет, одним запросом на товар; в память попадает только перевод, прошедший
+проверки (дозировки, язык, МНН). Правка менеджера в админке берётся из памяти
+при следующей обработке, а правка МНН сразу разносится по товарам
+(apps.ai.signals).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import re
+from typing import Any, Callable, Optional
+
+from apps.ai.services.medicine_fact_check import doses_match, inn_matches
+from apps.catalog.product_semantics import looks_untranslated_turkish
+from apps.ai.services.medicine_reference import fold_tr
+from apps.ai.services.translation_memory import lookup, normalize_source_text, remember, source_hash
+
+logger = logging.getLogger(__name__)
+
+INN_NAMESPACE = "medicine_inn"
+PARAGRAPH_NAMESPACE = "medicine_paragraph"
+
+# Один запрос на товар; больше — несколько запросов (лимит ответа 16k токенов).
+PARAGRAPH_BATCH_CHARS = 20000
+PARAGRAPH_MAX_TOKENS = 16000
+# Ключи source_tabs ilacfiyati с клиническими разделами, которые переводятся полностью.
+CLINICAL_SOURCE_TABS = ("indications", "before_use_warnings", "usage_instructions", "side_effects", "storage_conditions")
+
+INN_SYSTEM_PROMPT = (
+    "Ты фармацевт-переводчик. Переводи турецкие названия действующих веществ (МНН) "
+    "на русский и английский. RU — русское МНН полностью кириллицей, включая соль и "
+    "гидрат (maleat → малеат, hidroklorür → гидрохлорид, sodyum → натрия, potasyum → калия, "
+    "kalsiyum → кальция, trihidrat → тригидрат, asit → кислота); латиница в RU допустима "
+    "только в обозначениях с цифрами (B12, D3). EN — международное непатентованное название. "
+    "Ничего не добавляй. Ответ — строго JSON."
+)
+
+PARAGRAPH_SYSTEM_PROMPT = (
+    "Ты профессиональный медицинский переводчик. Переводи абзацы официальной инструкции "
+    "препарата с турецкого на русский и английский. Каждый абзац переводи полностью и "
+    "отдельно: не сокращай, не пересказывай, не объединяй и не добавляй факты. Сохраняй "
+    "каждую дозировку, число, единицу, предупреждение и название препарата. Русский — "
+    "естественный перевод, а не кириллическая транслитерация турецкого. Терминология: "
+    "oblong = продолговатые, yaygın olmayan = нечастые, uzatılmış salımlı tablet = таблетки "
+    "пролонгированного высвобождения, kısıtlanmış beyaz reçete = ограниченный белый рецепт, "
+    "ek izlemeye tabi ilaç = препарат под дополнительным наблюдением. Ответ — строго JSON."
+)
+
+
+def peek(namespace: str, texts) -> dict[str, dict[str, str]]:
+    """Как lookup, но без счётчика использований — для отчётов и разноса правок."""
+    from apps.ai.models import AITranslationMemory
+
+    by_hash = {source_hash(t): normalize_source_text(t) for t in texts if normalize_source_text(t)}
+    found = {}
+    hashes = list(by_hash)
+    for start in range(0, len(hashes), 5000):
+        rows = AITranslationMemory.objects.filter(
+            namespace=namespace, source_hash__in=hashes[start:start + 5000]
+        ).exclude(ru_text="").exclude(en_text="").values_list("source_hash", "ru_text", "en_text")
+        for key, ru, en in rows:
+            found[by_hash[key]] = {"ru": ru, "en": en}
+    return found
+
+
+_EMPTY_USAGE = {"tokens": {"prompt": 0, "completion": 0, "total": 0}, "cost_usd": 0.0, "processing_time_ms": 0}
+
+
+def _add_usage(total: dict, result: Optional[dict]) -> None:
+    if not result:
+        return
+    for key, value in (result.get("tokens") or {}).items():
+        total["tokens"][key] = total["tokens"].get(key, 0) + (value or 0)
+    total["cost_usd"] = round(total["cost_usd"] + (result.get("cost_usd") or 0), 6)
+    total["processing_time_ms"] += result.get("processing_time_ms") or 0
+
+
+def _new_usage() -> dict:
+    return {"tokens": dict(_EMPTY_USAGE["tokens"]), "cost_usd": 0.0, "processing_time_ms": 0}
+
+
+def translation_user_prompt(items: dict[str, str]) -> str:
+    return (
+        'Переведи значения. Ключи не меняй, не пропускай ни одного. '
+        'Верни JSON вида {"ru": {"1": "…"}, "en": {"1": "…"}}.\n\n'
+        f"{json.dumps(items, ensure_ascii=False)}"
+    )
+
+
+def items_from_user_prompt(user_prompt: str) -> dict[str, str]:
+    return json.loads(user_prompt.split("\n\n", 1)[1])
+
+
+def _call_translator(llm, system_prompt: str, items: dict[str, str], *, max_tokens: int) -> tuple[dict, dict]:
+    """Один запрос: {"id": текст} → ({"ru": {id: …}, "en": {id: …}}, usage)."""
+    user_prompt = translation_user_prompt(items)
+    try:
+        result = llm.generate_content(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            temperature=0.0,
+            max_retries=3,
+        )
+    except Exception as exc:
+        logger.exception("Medicine memory translation failed: %s", exc)
+        return {}, {}
+    payload = result.get("content")
+    if result.get("truncated") or result.get("json_error") or not isinstance(payload, dict):
+        return {}, result
+    return payload, result
+
+
+# Оценка по пилоту 18.10.2026 (gpt-4o-mini): турецкий ≈ 3.2 символа на токен
+# промпта; ответ RU+EN ≈ 0.54 токена на символ источника; ~300 токенов
+# инструкций и ~6 токенов JSON на элемент.
+def estimate_translation_cost(
+    values: Optional[list[str]] = None,
+    *,
+    chars: Optional[int] = None,
+    items_per_request: Optional[int] = None,
+    request_chars: Optional[int] = None,
+) -> dict:
+    from django.conf import settings
+
+    values = values or []
+    chars = chars if chars is not None else sum(len(v) for v in values)
+    items = len(values) or (chars // 400)
+    if items_per_request:
+        requests = -(-len(values) // items_per_request)
+    else:
+        requests = -(-chars // (request_chars or PARAGRAPH_BATCH_CHARS))
+    prompt_tokens = chars / 3.2 + requests * 300 + items * 6
+    completion_tokens = chars * 0.54 + items * 12
+    model = settings.AI_CONFIG.get("MODEL", "gpt-4o-mini")
+    price = (settings.AI_CONFIG.get("PRICING") or {}).get(model) or {}
+    cost = (prompt_tokens * price.get("input", 0) + completion_tokens * price.get("output", 0)) / 1_000_000
+    return {
+        "requests": requests,
+        "prompt_tokens": int(prompt_tokens),
+        "completion_tokens": int(completion_tokens),
+        "cost_usd": round(cost, 4),
+    }
+
+
+# ── МНН ───────────────────────────────────────────────────────────────────
+
+
+def split_inn(value: Any) -> list[str]:
+    """Комбинация «A + B» → ключи памяти по каждому веществу."""
+    return [fold_tr(part) for part in re.split(r"\s*\+\s*", str(value or "")) if fold_tr(part)]
+
+
+def _cyrillic_inn_ok(source: str, ru: str) -> bool:
+    if not re.search(r"[А-Яа-яЁё]", ru):
+        return False
+    # Латиница — только в обозначениях с цифрами (B12, D3): «Клорфенирамин Maleat» — брак.
+    if any(not re.search(r"\d", word) for word in re.findall(r"[A-Za-z][A-Za-z0-9-]*", ru)):
+        return False
+    return inn_matches(source, ru, "ru")
+
+
+def _english_inn_ok(source: str, en: str) -> bool:
+    return bool(en) and not re.search(r"[А-Яа-яЁё]", en) and inn_matches(source, en, "en")
+
+
+def translate_inn_values(values: list[str], llm, *, batch_size: int = 100) -> tuple[dict, dict]:
+    """Перевод ключей МНН моделью (без памяти). Возвращает только прошедшие проверку."""
+    accepted: dict[str, dict[str, str]] = {}
+    usage = _new_usage()
+    for start in range(0, len(values), batch_size):
+        chunk = values[start:start + batch_size]
+        items = {str(index): value for index, value in enumerate(chunk, 1)}
+        payload, result = _call_translator(llm, INN_SYSTEM_PROMPT, items, max_tokens=4000)
+        _add_usage(usage, result)
+        ru_payload = payload.get("ru") if isinstance(payload.get("ru"), dict) else {}
+        en_payload = payload.get("en") if isinstance(payload.get("en"), dict) else {}
+        for key, source in items.items():
+            ru = str(ru_payload.get(key) or "").strip()
+            en = str(en_payload.get(key) or "").strip()
+            if _cyrillic_inn_ok(source, ru) and _english_inn_ok(source, en):
+                accepted[source] = {"ru": ru[:1].upper() + ru[1:], "en": en[:1].upper() + en[1:]}
+            else:
+                logger.warning("Rejected INN translation %r → %r / %r", source, ru, en)
+    return accepted, usage
+
+
+def translate_active_ingredient(
+    value: Any,
+    *,
+    llm=None,
+    product_id: Optional[int] = None,
+) -> tuple[Optional[tuple[str, str]], Optional[dict]]:
+    """(RU, EN) МНН из памяти; новые вещества — коротким запросом, если есть llm."""
+    keys = split_inn(value)
+    if not keys:
+        return None, None
+    found = lookup(INN_NAMESPACE, keys)
+    missing = [key for key in dict.fromkeys(keys) if key not in found]
+    usage = None
+    if missing and llm is not None:
+        translated, usage = translate_inn_values(missing, llm)
+        if translated:
+            remember(INN_NAMESPACE, translated)
+            found.update(translated)
+    if any(key not in found for key in keys):
+        logger.info("Medicine %s: INN %r is not fully translated", product_id, value)
+        return None, usage
+    return (
+        " + ".join(found[key]["ru"] for key in keys),
+        " + ".join(found[key]["en"] for key in keys),
+    ), usage
+
+
+def propagate_inn_translations(keys: set[str]) -> int:
+    """Перевод МНН из памяти → active_ingredient в переводах товаров с этим веществом.
+
+    Обновляются существующие переводы (товары после AI-обработки) с хотя бы
+    одним веществом из keys, если переведены все вещества комбинации.
+    Возвращает число обновлённых строк перевода.
+    """
+    from apps.catalog.models import MedicineProduct, MedicineProductTranslation
+
+    by_value: dict[tuple[str, str], list[int]] = {}
+    rows = MedicineProduct.objects.exclude(active_ingredient="").values_list("pk", "active_ingredient")
+    products = [(pk, split_inn(value)) for pk, value in rows.iterator(chunk_size=5000)]
+    products = [(pk, parts) for pk, parts in products if keys.intersection(parts)]
+    found = peek(INN_NAMESPACE, {p for _, parts in products for p in parts})
+    for pk, parts in products:
+        if all(part in found for part in parts):
+            value = (
+                " + ".join(found[p]["ru"] for p in parts)[:300],
+                " + ".join(found[p]["en"] for p in parts)[:300],
+            )
+            by_value.setdefault(value, []).append(pk)
+    updated = 0
+    for (ru, en), product_ids in by_value.items():
+        for locale, text in (("ru", ru), ("en", en)):
+            updated += (
+                MedicineProductTranslation.objects.filter(product_id__in=product_ids, locale=locale)
+                .exclude(active_ingredient=text)
+                .update(active_ingredient=text)
+            )
+    return updated
+
+
+# ── Абзацы инструкций ─────────────────────────────────────────────────────
+
+
+def normalize_paragraph(text: str) -> str:
+    """Ключ абзаца в памяти — та же нормализация, что у translation_memory."""
+    return normalize_source_text(text)
+
+
+def source_tab_texts(external_data: Any) -> list[str]:
+    tabs = ((external_data or {}).get("attributes") or {}).get("source_tabs") or {}
+    texts = []
+    for key in CLINICAL_SOURCE_TABS:
+        payload = tabs.get(key)
+        text = payload.get("text") if isinstance(payload, dict) else payload
+        if text and str(text).strip():
+            texts.append(str(text))
+    return texts
+
+
+def split_paragraphs(text: str) -> list[str]:
+    """Текст раздела → абзацы и разделители по очереди: [абзац, "\\n", абзац, …]."""
+    return re.split(r"(\n+)", str(text or "").strip())
+
+
+def needs_translation(paragraph: str) -> bool:
+    """Абзацы без слов («1.», «-», «500 mg») переносим как есть."""
+    return len(re.findall(r"[^\W\d_]", paragraph)) >= 2
+
+
+def _looks_russian(source: str, ru: str) -> bool:
+    if len(re.findall(r"[^\W\d_]", source)) < 20:
+        return True
+    cyrillic = len(re.findall(r"[А-Яа-яЁё]", ru))
+    return cyrillic >= 10 and not looks_untranslated_turkish(ru)
+
+
+def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
+    """Пустой список — перевод абзаца годится в память и в карточку."""
+    problems = []
+    if not ru or not en:
+        return ["missing"]
+    if not doses_match(source, ru) or not doses_match(source, en):
+        problems.append("fact_mismatch")
+    if not _looks_russian(source, ru):
+        problems.append("ru_not_russian")
+    if re.search(r"[А-Яа-яЁё]", en):
+        problems.append("en_has_cyrillic")
+    if len(source) >= 200 and min(len(ru), len(en)) / len(source) < 0.5:
+        problems.append("too_short")
+    return problems
+
+
+def paragraph_items(batch: list[str]) -> dict[str, str]:
+    return {str(index): text for index, text in enumerate(batch, 1)}
+
+
+def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, dict]:
+    """Ответ модели по абзацам → (принятые {текст: {ru, en}}, отклонённые {текст: причины})."""
+    payload = payload if isinstance(payload, dict) else {}
+    ru_payload = payload.get("ru") if isinstance(payload.get("ru"), dict) else {}
+    en_payload = payload.get("en") if isinstance(payload.get("en"), dict) else {}
+    accepted, rejected = {}, {}
+    for key, source in items.items():
+        ru = str(ru_payload.get(key) or "").strip()
+        en = str(en_payload.get(key) or "").strip()
+        problems = paragraph_problems(source, ru, en)
+        if problems:
+            rejected[source] = problems
+        else:
+            accepted[source] = {"ru": ru, "en": en}
+    return accepted, rejected
+
+
+def paragraph_batches(paragraphs: list[str]) -> list[list[str]]:
+    batches: list[list[str]] = []
+    current: list[str] = []
+    size = 0
+    for paragraph in paragraphs:
+        if current and size + len(paragraph) > PARAGRAPH_BATCH_CHARS:
+            batches.append(current)
+            current, size = [], 0
+        current.append(paragraph)
+        size += len(paragraph)
+    if current:
+        batches.append(current)
+    return batches
+
+
+def translate_paragraphs(
+    paragraphs: list[str],
+    llm,
+    *,
+    on_batch: Optional[Callable[[dict], None]] = None,
+) -> tuple[dict, dict, dict]:
+    """Перевод новых абзацев моделью: (принятые, причины отказа, usage).
+
+    Абзацы с отказом повторяются один раз отдельным коротким запросом.
+    """
+    accepted: dict[str, dict[str, str]] = {}
+    rejected: dict[str, list[str]] = {}
+    usage = _new_usage()
+
+    def run(batch: list[str]) -> None:
+        items = paragraph_items(batch)
+        payload, result = _call_translator(llm, PARAGRAPH_SYSTEM_PROMPT, items, max_tokens=PARAGRAPH_MAX_TOKENS)
+        _add_usage(usage, result)
+        batch_accepted, batch_rejected = check_paragraph_payload(items, payload)
+        accepted.update(batch_accepted)
+        rejected.update(batch_rejected)
+        for source in batch_accepted:
+            rejected.pop(source, None)
+
+    for batch in paragraph_batches(paragraphs):
+        run(batch)
+    retry = [paragraph for paragraph in paragraphs if paragraph in rejected]
+    for batch in paragraph_batches(retry):
+        run(batch)
+    usage["retried_paragraphs"] = len(retry)
+    return accepted, rejected, usage
+
+
+def translate_sections_by_paragraph(
+    sections: dict[str, str],
+    llm,
+    *,
+    product_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """Разделы инструкции: абзацы из памяти, новые — моделью одним запросом на товар.
+
+    Возвращает {"ru": {поле: текст}, "en": {...}, "quality": {...}, "usage": {...}}.
+    Раздел попадает в ru/en, только если переведены все его абзацы.
+    """
+    structure = {field: split_paragraphs(text) for field, text in sections.items()}
+    unique = list(dict.fromkeys(
+        normalize_paragraph(part)
+        for parts in structure.values()
+        for part in parts[::2]
+        if needs_translation(part)
+    ))
+    found = lookup(PARAGRAPH_NAMESPACE, unique) if unique else {}
+    cached = len(found)
+    missing = [paragraph for paragraph in unique if paragraph not in found]
+    usage = _new_usage()
+    rejected: dict[str, list[str]] = {}
+    if missing and llm is not None:
+        accepted, rejected, usage = translate_paragraphs(missing, llm)
+        if accepted:
+            remember(PARAGRAPH_NAMESPACE, accepted)
+            found.update(accepted)
+    elif missing:
+        rejected = {paragraph: ["missing"] for paragraph in missing}
+
+    result: dict[str, Any] = {"ru": {}, "en": {}, "quality": {}, "usage": usage}
+    for field, parts in structure.items():
+        texts = {"ru": [], "en": []}
+        problems: set[str] = set()
+        for index, part in enumerate(parts):
+            if index % 2:  # разделитель «\n…»
+                texts["ru"].append(part)
+                texts["en"].append(part)
+                continue
+            key = normalize_paragraph(part)
+            if not needs_translation(part):
+                texts["ru"].append(key)
+                texts["en"].append(key)
+            elif key in found:
+                texts["ru"].append(found[key]["ru"])
+                texts["en"].append(found[key]["en"])
+            else:
+                problems.update(rejected.get(key) or ["missing"])
+        source_text = sections[field]
+        complete = not problems
+        quality = {
+            "source_length": len(source_text),
+            "source_sha256": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+            "paragraphs": len(parts[::2]),
+            "ru_complete": complete,
+            "en_complete": complete,
+            "complete": complete,
+        }
+        if complete:
+            for locale in ("ru", "en"):
+                result[locale][field] = "".join(texts[locale]).strip()
+        else:
+            quality["problems"] = sorted(problems)
+            if "fact_mismatch" in problems:
+                quality["fact_mismatch"] = ["ru", "en"]
+            logger.warning("Medicine %s section %s incomplete: %s", product_id, field, sorted(problems))
+        quality["ru_length"] = len(result["ru"].get(field, ""))
+        quality["en_length"] = len(result["en"].get(field, ""))
+        result["quality"][field] = quality
+    usage.update({
+        "paragraphs_total": len(unique),
+        "paragraphs_cached": cached,
+        "paragraphs_translated": len(missing) - len(rejected),
+        "paragraphs_rejected": len(rejected),
+    })
+    return result

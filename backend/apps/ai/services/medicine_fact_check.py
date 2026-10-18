@@ -1,8 +1,10 @@
 """Сверка фактов перевода лекарства с турецким исходником.
 
 Проверяются только факты, ошибка в которых опасна и которые можно сравнить
-без LLM: дозировки с единицами, МНН и цвет/тип рецепта. Поле с расхождением
-помечается в medicine_translation_quality как неполное и уходит в модерацию.
+без LLM: дозировки с единицами в клинических разделах и МНН в переводе из
+памяти переводов. Раздел с расхождением помечается в
+medicine_translation_quality как неполный и уходит в модерацию. Справочные
+поля (форма, рецепт, объём…) заполняет код — их сверять не нужно.
 """
 
 from __future__ import annotations
@@ -34,15 +36,28 @@ _DOSE_RE = re.compile(
 # Турецкий процент пишется перед числом: «%5», в RU/EN — после: «5%».
 _PERCENT_RE = re.compile(r"%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%")
 
-# Цвет/тип турецкого рецепта → обязательные основы в RU и EN.
-_PRESCRIPTION_MARKERS = {
-    "kısıtlanmış": ("огранич", "restrict"),
-    "beyaz": ("бел", "white"),
-    "kırmızı": ("красн", "red"),
-    "yeşil": ("зел", "green"),
-    "mor": ("фиолет", "purple"),
-    "turuncu": ("оранж", "orange"),
-}
+# Соли, ионы и гидраты: в RU/EN другой корень и порядок слов («Sodyum Klorür» →
+# «Натрия хлорид»), поэтому при сверке МНН их не сравниваем.
+_SALT_WORDS_TR = re.compile(
+    r"\b(?:di|tri)?(?:sodyum|potasyum|kalsiyum|magnezyum|lityum|amonyum|demir|cinko|"
+    r"klorur|hidroklorur|hidrobromur|bromur|iyodur|florur|maleat|sulfat|fosfat|asetat|"
+    r"sitrat|karbonat|bikarbonat|hidrojen|laktat|glukonat|tartarat|fumarat|suksinat|"
+    r"mesilat|besilat|tosilat|nitrat|oksit|hidroksit|(?:mono|di|tri|hemi|seski)?hidrat|"
+    r"anhidr\w*|asit|tuzu)\b"
+)
+_SALT_WORDS_RU = re.compile(
+    r"\b(?:ди|три)?(?:натри|кали|кальци|магни|лити|аммони|желез|цинк|хлорид|гидрохлорид|"
+    r"гидробромид|бромид|иодид|йодид|фторид|малеат|сульфат|фосфат|ацетат|цитрат|карбонат|"
+    r"гидрокарбонат|лактат|глюконат|тартрат|фумарат|сукцинат|мезилат|безилат|тозилат|"
+    r"нитрат|оксид|гидроксид|(?:моно|ди|три|геми|сескви)?гидрат|безводн|кислот)\w*"
+)
+_SALT_WORDS_EN = re.compile(
+    r"\b(?:di|tri)?(?:sodium|potassium|calcium|magnesium|lithium|ammonium|iron|ferrous|ferric|"
+    r"zinc|chloride|hydrochloride|hydrobromide|bromide|iodide|fluoride|maleate|sulfate|"
+    r"sulphate|phosphate|acetate|citrate|carbonate|bicarbonate|hydrogen|lactate|gluconate|"
+    r"tartrate|fumarate|succinate|mesylate|mesilate|besylate|besilate|tosylate|nitrate|oxide|"
+    r"hydroxide|(?:mono|di|tri|hemi|sesqui)?hydrate|anhydrous|acid|salt)\b"
+)
 
 
 def _normalize_number(raw: str) -> str:
@@ -86,52 +101,15 @@ def _latin_letters(value: Any, locale: str) -> str:
 
 
 def inn_matches(source: Any, translation: Any, locale: str) -> bool:
-    """МНН в переводе — то же вещество (с поправкой на транслитерацию)."""
-    source_letters = _latin_letters(source, "tr")
-    translated_letters = _latin_letters(translation, locale)
+    """МНН в переводе — то же вещество (с поправкой на транслитерацию и соли)."""
+    source_text = str(source or "").lower().translate(str.maketrans("ıçğöşü", "icgosu"))
+    salt_re = {"ru": _SALT_WORDS_RU, "en": _SALT_WORDS_EN}.get(locale)
+    translated_text = str(translation or "").lower()
+    if salt_re is not None:
+        source_text = _SALT_WORDS_TR.sub(" ", source_text)
+        translated_text = salt_re.sub(" ", translated_text)
+    source_letters = _latin_letters(source_text, "tr")
+    translated_letters = _latin_letters(translated_text, locale)
     if not source_letters or not translated_letters:
         return True
     return SequenceMatcher(None, source_letters, translated_letters).ratio() >= 0.6
-
-
-def prescription_matches(source: Any, translation: Any, locale: str) -> bool:
-    """Цвет и ограничения турецкого рецепта сохранены в переводе."""
-    source_text = str(source or "").lower()
-    translated = str(translation or "").lower()
-    if not source_text or not translated:
-        return True
-    index = 0 if locale == "ru" else 1
-    for marker, stems in _PRESCRIPTION_MARKERS.items():
-        if re.search(rf"\b{marker}\b", source_text) and stems[index] not in translated:
-            return False
-    return True
-
-
-def check_medicine_short_fields(
-    source: dict[str, Any],
-    translations: dict[str, dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    """Проверка коротких полей: МНН, тип рецепта, объём/дозировка упаковки.
-
-    Возвращает {field: {"complete": False, "fact_mismatch": [...]}} только для
-    полей с расхождением.
-    """
-    checks = {
-        "active_ingredient": inn_matches,
-        "prescription_type": prescription_matches,
-        "volume": lambda src, value, _locale: doses_match(src, value),
-    }
-    problems: dict[str, dict[str, Any]] = {}
-    for field, check in checks.items():
-        source_value = source.get(field)
-        if not source_value:
-            continue
-        failed_locales = [
-            locale
-            for locale in ("ru", "en")
-            if (translations.get(locale) or {}).get(field)
-            and not check(source_value, translations[locale][field], locale)
-        ]
-        if failed_locales:
-            problems[field] = {"complete": False, "fact_mismatch": failed_locales}
-    return problems

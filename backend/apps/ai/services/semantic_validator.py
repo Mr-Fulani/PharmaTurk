@@ -9,6 +9,8 @@ from typing import Any, Iterable
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.category_policy import CATEGORY_POLICY_OVERRIDES, build_category_policy
 from apps.catalog.product_semantics import looks_untranslated_turkish
+from apps.ai.services.medicine_reference import fold_tr
+from apps.ai.services.medicine_title import FORM_WORDS
 from apps.ai.services.rules.vocab import fold, generic_title_words
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
@@ -207,7 +209,8 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
     }
     prefix = re.split(r"(?=\d|%)", upper, maxsplit=1)[0]
     for token in re.findall(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9_-]{2,}", prefix):
-        if token not in generic_prefix_words:
+        # Слова лекарственной формы («FILM TABLET») переводятся — это не бренд.
+        if token not in generic_prefix_words and fold_tr(token) not in FORM_WORDS:
             result.add(f"BRAND:{token}")
 
     unit_aliases = {
