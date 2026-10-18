@@ -4,6 +4,7 @@ from django.db import IntegrityError, transaction
 from apps.ai.models import AIApplicationStatus, AIProcessingLog
 from apps.ai.models import AIProcessingStatus
 from apps.ai.services.content_generator import ContentGenerator
+from apps.ai.services.medicine_memory import paragraph_problems
 from apps.ai.services.result_applier import AIResultApplier
 from apps.catalog.models import (
     AccessoryProduct,
@@ -440,11 +441,7 @@ def test_medicine_ru_translation_allows_official_turkish_acronym():
     source = "Yan etki bildirimi hakkında resmi hasta bilgilendirme metni. " * 10
 
     assert generator._looks_untranslated_turkish(translated) is False
-    assert generator._medicine_translation_has_coverage(
-        source,
-        translated,
-        locale="ru",
-    )
+    assert paragraph_problems(source, translated, "If side effects occur, contact your doctor. " * 10) == []
 
 
 def test_medicine_ru_translation_repair_catches_cyrillic_turkish_transliteration():
@@ -489,12 +486,8 @@ def test_medicine_section_translation_overrides_bad_ru_long_section():
         def generate_content(self, **_kwargs):
             return {
                 "content": {
-                    "ru": {
-                        "usage_instructions": "Всегда принимайте препарат так, как рекомендовал врач. " * 20,
-                    },
-                    "en": {
-                        "usage_instructions": "Always take the medicine as instructed by your doctor. " * 20,
-                    },
+                    "ru": {"1": "Всегда принимайте препарат так, как рекомендовал врач. " * 20},
+                    "en": {"1": "Always take the medicine as instructed by your doctor. " * 20},
                 },
                 "tokens": {"prompt": 100, "completion": 50, "total": 150},
                 "cost_usd": 0.001,
@@ -561,7 +554,7 @@ def test_medicine_full_translation_discards_short_preview_and_marks_failed_cover
     assert not content["attributes"]["medicine_translation_quality"]["indications"]["complete"]
 
 
-def test_medicine_translation_retries_only_missing_locale_for_omitted_field():
+def test_medicine_translation_retries_only_rejected_paragraph_once():
     source_text = "RINVOQ nemden korunarak 25 derece altında saklanmalıdır. " * 12
     ru_text = "Храните RINVOQ в сухом месте при температуре ниже 25 градусов. " * 12
     en_text = "Store RINVOQ in a dry place below 25 degrees. " * 12
@@ -573,9 +566,9 @@ def test_medicine_translation_retries_only_missing_locale_for_omitted_field():
         def generate_content(self, **kwargs):
             self.calls.append(kwargs)
             content = (
-                {"ru": {"storage_conditions": ru_text}, "en": {}}
+                {"ru": {"1": ru_text}, "en": {}}
                 if len(self.calls) == 1
-                else {"en": {"storage_conditions": en_text}}
+                else {"ru": {"1": ru_text}, "en": {"1": en_text}}
             )
             return {
                 "content": content,
@@ -595,17 +588,13 @@ def test_medicine_translation_retries_only_missing_locale_for_omitted_field():
     )
 
     assert len(generator.llm.calls) == 2
-    assert '"en": {"field": "full translation"}' in generator.llm.calls[1]["user_prompt"]
-    assert '"ru": {"field": "full translation"}' not in generator.llm.calls[1]["user_prompt"]
     assert result["failed_fields"] == []
-    assert result["retried_fields"] == ["storage_conditions"]
+    assert result["retried_paragraphs"] == 1
     assert result["translated_fields"] == ["storage_conditions"]
     assert result["tokens"]["total"] == 40
     assert content["ru"]["storage_conditions"] == ru_text.strip()
     assert content["en"]["storage_conditions"] == en_text.strip()
-    quality = content["attributes"]["medicine_translation_quality"]["storage_conditions"]
-    assert quality["complete"] is True
-    assert quality["retried_locales"] == ["en"]
+    assert content["attributes"]["medicine_translation_quality"]["storage_conditions"]["complete"] is True
 
 
 def test_partial_apply_blocks_incomplete_medicine_section_in_both_locales():

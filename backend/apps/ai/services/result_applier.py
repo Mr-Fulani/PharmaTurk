@@ -7,6 +7,7 @@ from django.db import models, transaction
 from django.utils.text import slugify as django_slugify
 from apps.catalog.models import Product, GlobalAttributeKey
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
+from apps.ai.services.medicine_reference import dosage_form_labels
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.size_inventory import apply_size_inventory
 
@@ -600,6 +601,10 @@ class MedicineAIApplier(BaseAIApplier):
                     continue
                 val = data[field]
                 val_str = str(val).strip() if val is not None else ""
+                # dosage_form — varchar(20): только подпись из справочника форм,
+                # свободный текст модели («таблетки, покрытые…») не пишем.
+                if field == "dosage_form" and val_str not in dosage_form_labels(locale):
+                    continue
                 if field in limits:
                     val_str = val_str[:limits[field]]
                 current = getattr(trans, field, None)
