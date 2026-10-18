@@ -69,6 +69,35 @@ class SemanticValidationReport:
         return bool(self.reasons)
 
 
+def _ancestor_ids(category: Any) -> set[int]:
+    ids: set[int] = set()
+    parent = getattr(category, "parent", None)
+    while parent is not None and parent.pk not in ids and len(ids) < 20:
+        ids.add(parent.pk)
+        parent = getattr(parent, "parent", None)
+    return ids
+
+
+# Турецкие слова каталога, которые модель оставляет в названии латиницей или
+# транслитерирует кириллицей («Эркек сандалии», «TAKVIYE EDICI GIDA»).
+_TURKISH_TITLE_WORDS = re.compile(
+    r"\b(erkek|kadın|kadin|çocuk|cocuk|takviye|edici|gıda|gida|ayakkabı|ayakkabi|"
+    r"tişört|tisort|gömlek|gomlek|pantolon|elbise|çanta|canta|kemer|sandalet|terlik|"
+    r"kapsül|kapsul|şurup|surup|merhem|damla)\b",
+    re.IGNORECASE,
+)
+_TURKISH_TITLE_TRANSLITERATIONS = re.compile(
+    r"(эркек|кадын|кадин|чоджук|чочук|айаккаб|аяккаб|тишорт|гёмлек|гомлек|пантолон|"
+    r"элбисе|такви|эдиджи|гыда|ортофед)",
+    re.IGNORECASE,
+)
+
+
+def _title_has_turkish_words(title: Any) -> bool:
+    text = str(title or "")
+    return bool(_TURKISH_TITLE_WORDS.search(text) or _TURKISH_TITLE_TRANSLITERATIONS.search(text))
+
+
 def _normalized(value: Any) -> str:
     text = re.sub(r"<[^>]+>", " ", str(value or "")).casefold()
     return re.sub(r"[^a-zа-яё0-9]+", " ", text).strip()
@@ -170,6 +199,27 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
     if pack_match:
         result.add(f"PACK:{pack_match.group(1)}")
     return result
+
+
+def _supplement_identity_tokens(value: Any, *, source: bool = False) -> set[str]:
+    """Идентичность БАДа: бренд, дозировки и фасовка.
+
+    Название БАДа в источнике — турецкое описание («… TAKVIYE EDICI GIDA
+    KAPSUL»), его слова при переводе обязаны исчезнуть. Сохраняться должны
+    бренд (первое слово источника), дозировки и количество в упаковке.
+    """
+    text = str(value or "")
+    facts = {token for token in _medicine_identity_tokens(text) if token.startswith("DOSE:")}
+    # Фасовка: до двух слов между числом и формой («100 мягких желатиновых капсул»).
+    for number in re.findall(
+        r"(?<![\w.,])(\d+)\s*(?:[A-ZА-ЯЁÇĞİÖŞÜ]+\s+){0,2}"
+        r"(?:ADET|TABLET\w*|KAPS[UÜ]L\w*|CAPSULES?|SA[SŞ]E|SACHETS?|ШТ\w*|ТАБЛЕТ\w*|КАПСУЛ\w*|САШЕ|ПАКЕТИК\w*)\b",
+        text.upper(),
+    ):
+        facts.add(f"PACK:{number}")
+    words = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü-]{2,}", text)
+    brands = words[:1] if source else words
+    return facts | {f"BRAND:{word.upper()}" for word in brands}
 
 
 class CategorySemanticIndex:
@@ -347,12 +397,15 @@ class SemanticValidator:
         )
         # Заданную категорию AI не меняет (она определяет наценку): другое
         # предложение — повод для модератора, а не для авто-применения.
+        # Предложение родительской (более общей) категории — не повод для
+        # модератора: текущая категория точнее.
         suggested_category_id = getattr(log, "suggested_category_id", None)
-        current_category_id = getattr(product, "category_id", None)
+        current_category = getattr(product, "category", None)
         if (
             suggested_category_id
-            and current_category_id
-            and suggested_category_id != current_category_id
+            and current_category is not None
+            and suggested_category_id != current_category.pk
+            and suggested_category_id not in _ancestor_ids(current_category)
         ):
             report.reasons.append("category_change_suggested")
         return report
@@ -398,9 +451,16 @@ class SemanticValidator:
             _medicine_identity_tokens if product_type == "medicines" else _identity_tokens
         )
         original_tokens = identity_tokens(getattr(product, "name", ""))
+        if product_type == "supplements":
+            identity_tokens = _supplement_identity_tokens
+            original_tokens = _supplement_identity_tokens(getattr(product, "name", ""), source=True)
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
                 continue
+            if _title_has_turkish_words(title):
+                report.rejected_fields.add("title")
+                report.reasons.append("title_untranslated")
+                break
             title_text = _normalized(title)
             own_aliases = policy.aliases.get(locale, ())
             matching_own_aliases = [

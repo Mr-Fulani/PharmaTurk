@@ -22,7 +22,11 @@ from apps.catalog.models import (
     GlobalAttributeKey,
 )
 from apps.catalog.constants import ECOMMERCE_ATTRIBUTES
-from apps.catalog.attribute_specs import ATTRIBUTE_SPECS, normalize_product_type
+from apps.catalog.attribute_specs import (
+    ATTRIBUTE_SPECS,
+    get_dynamic_attribute_spec,
+    normalize_product_type,
+)
 from apps.catalog.utils.variant_titles import (
     build_variant_display_title,
     should_replace_variant_title,
@@ -2471,9 +2475,11 @@ class ContentGenerator:
         if first_line:
             s = first_line
 
-        # 2. Обрезаем по запятой (формат «Название, подзаголовок»)
-        if "," in s:
-            s = s.split(",")[0].strip()
+        # 2. Книги: обрезаем подзаголовок после запятой («Название, подзаголовок»).
+        # У остальных после запятой идут дозировка/фасовка («100 мг, 15 таблеток»),
+        # а десятичную запятую («2,5 мг») не режем никогда.
+        if product_type == "books":
+            s = re.split(r",(?!\d)", s)[0].strip()
 
         # 3. Убираем служебные хвосты цен/валют/артикулов
         s = self._strip_price_and_codes_from_title(s)
@@ -2549,12 +2555,17 @@ class ContentGenerator:
             for row in (input_data.get("available_dynamic_attributes") or [])
             if isinstance(row, dict) and row.get("slug")
         }
+        product_type = input_data.get("product_type")
         approved = []
         for row in dynamic_attrs:
             if not isinstance(row, dict):
                 continue
             slug = str(row.get("slug") or "").strip().lower()
             if not slug or (allowed_slugs and slug not in allowed_slugs):
+                continue
+            # Как в SemanticValidator: атрибут без спецификации для типа товара
+            # (например, «путь введения» у БАДа) молча отбрасываем, а не шлём в модерацию.
+            if product_type and get_dynamic_attribute_spec(product_type, slug) is None:
                 continue
             values_to_check = [
                 str(row.get("value") or "").strip(),

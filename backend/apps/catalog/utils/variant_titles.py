@@ -8,7 +8,14 @@ def strip_price_and_codes_from_title(title: str) -> str:
     cleaned = str(title)
     cleaned = re.sub(r"\b[A-Z0-9]{2,}-[A-Z0-9]+\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b\d+[.,]\d+\s*(TL|TRY|USD|EUR|RUB|KZT|USDT)\b", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b\d+[.,]\d+\b", "", cleaned)
+    # Цена без валюты («349,00»). Дозировки и размеры («2,5 MG», «0,5 мл», «1,5 м»)
+    # не трогаем: у них одна цифра после запятой или единица измерения следом.
+    cleaned = re.sub(
+        r"\b\d+[.,]\d{2}\b(?!\s*(?:mg|мг|mcg|мкг|ml|мл|g|г|gr|kg|кг|l|л|iu|ме|%|cm|см|mm|мм|m|м)\b)",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.sub(r"\(\s*\)", "", cleaned)
     cleaned = re.sub(r"\s+-\s+$", "", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)

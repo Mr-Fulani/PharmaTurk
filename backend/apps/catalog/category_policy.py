@@ -23,6 +23,13 @@ CATEGORY_POLICY_OVERRIDES: dict[str, dict[str, Any]] = {
     "mattresses": {
         "aliases": {"ru": ("матрас",), "en": ("mattress",)},
     },
+    # Dresser — это комод, а шифоньер/гардероб — шкаф для одежды.
+    "dressers": {
+        "aliases": {"ru": ("комод",), "en": ("dresser", "chest of drawers")},
+    },
+    "wardrobes": {
+        "aliases": {"ru": ("шифоньер", "гардероб", "платяной шкаф"), "en": ("wardrobe",)},
+    },
 }
 
 
