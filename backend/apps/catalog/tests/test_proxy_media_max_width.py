@@ -152,3 +152,68 @@ def test_proxy_media_rejects_unsatisfiable_range(rf):
     assert resp.status_code == 416
     assert resp['Content-Range'] == 'bytes */10'
     assert resp['Accept-Ranges'] == 'bytes'
+
+
+def test_proxy_media_max_width_does_not_store_image_bytes_in_cache(rf, small_jpeg_bytes):
+    """Байты ресайза кэширует nginx (proxy_cache), Redis ими не раздувается."""
+    proxy_media = _proxy_media_view()
+
+    mock_cache = MagicMock()
+    mock_cache.get.return_value = None
+    mock_storage = MagicMock()
+    cm = MagicMock()
+    cm.__enter__.return_value = io.BytesIO(small_jpeg_bytes)
+    cm.__exit__.return_value = None
+    mock_storage.open.return_value = cm
+
+    with override_settings(R2_PUBLIC_URL='https://test.r2.dev'):
+        with patch(
+            'apps.catalog.utils.media_path.resolve_existing_media_storage_key',
+            return_value='products/card_test.jpg',
+        ):
+            with patch('django.core.files.storage.default_storage', mock_storage):
+                with patch('django.core.cache.cache', mock_cache):
+                    req = rf.get(
+                        '/api/catalog/proxy-media/',
+                        {'path': 'products/card_test.jpg', 'max_width': '200'},
+                    )
+                    resp = proxy_media(req)
+
+    assert resp.status_code == 200
+    assert resp['Content-Type'] == 'image/webp'
+    assert resp['Cache-Control'] == 'public, max-age=2592000, immutable'
+    mock_cache.set.assert_not_called()
+
+
+def test_proxy_media_webp_conversion_does_not_store_image_bytes_in_cache(rf, small_jpeg_bytes):
+    proxy_media = _proxy_media_view()
+
+    class SizedBytesIO(io.BytesIO):
+        @property
+        def size(self):
+            return len(self.getbuffer())
+
+    mock_cache = MagicMock()
+    mock_cache.get.return_value = None
+    mock_storage = MagicMock()
+    mock_storage.open.return_value = SizedBytesIO(small_jpeg_bytes)
+
+    with override_settings(R2_PUBLIC_URL='https://test.r2.dev'):
+        with patch(
+            'apps.catalog.utils.media_path.resolve_existing_media_storage_key',
+            return_value='products/full_test.jpg',
+        ):
+            with patch('django.core.files.storage.default_storage', mock_storage):
+                with patch('django.core.cache.cache', mock_cache):
+                    req = rf.get(
+                        '/api/catalog/proxy-media/',
+                        {'path': 'products/full_test.jpg'},
+                        HTTP_ACCEPT='image/avif,image/webp,*/*',
+                    )
+                    resp = proxy_media(req)
+
+    assert resp.status_code == 200
+    assert resp['Content-Type'] == 'image/webp'
+    assert Image.open(io.BytesIO(resp.content)).format == 'WEBP'
+    assert resp['Cache-Control'] == 'public, max-age=2592000, immutable'
+    mock_cache.set.assert_not_called()

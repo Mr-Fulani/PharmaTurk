@@ -10,14 +10,14 @@
 | Образы Docker (`overlay2` ≈ 12 ГБ вместе со слоями контейнеров) | ≈ 7,9 ГБ | Backend ≈ 1,9 ГБ и frontend ≈ 0,9 ГБ на релиз. Теперь `deploy.sh` после успешного релиза удаляет образы всех релизов, кроме текущего и предыдущего (`prune-images.sh`). Сейчас лишний backend `bb0a7ba…`, но его удерживают остановленные контейнеры `migrate-run-*` (см. ниже). `node:22.23.2-bookworm-slim` (227 МБ) не используется |
 | `/var/log/journal` (журнал systemd) | 2,6 ГБ | Ограничить: `SystemMaxUse=300M` в `/etc/systemd/journald.conf` и однократно `journalctl --vacuum-size=300M`. Нужен sudo (делает владелец сервера) |
 | Том `mudaroba_postgres_data` | 3,1 ГБ | Рабочие данные, не трогать |
-| Том `mudaroba_redis_data` (`dump.rdb`) | 1,8 ГБ | Почти целиком кэш картинок, см. раздел Redis |
+| Том `mudaroba_redis_data` (`dump.rdb`) | 1,8 ГБ | Почти целиком кэш картинок; бэкенд больше их туда не пишет, старые ключи удалить вручную (см. раздел Redis) |
 | Том `mudaroba_huggingface_cache` | 1,1 ГБ | Модели эмбеддингов, рабочий кэш, не трогать |
 | Том `mudaroba_qdrant_data` | 0,7 ГБ | Рабочие данные, не трогать |
 | Анонимные тома без контейнеров (≈ 150 шт.) | ≈ 0,22 ГБ | `docker volume prune` (удаляет только анонимные тома без контейнеров), только после согласия |
 | `backups/pharmaturk`: 5 предрелизных бэкапов от 17–18.10 | 3,2 ГБ (≈ 640 МБ каждый) | `prune-backups.sh --keep 2` (сначала dry-run) освободит ≈ 1,9 ГБ. Только после согласия |
 | `backups/*.sql.gz` (pre-brand-merge, pre-brands-media от 18.10) | 0,48 ГБ | Удалить после проверки результатов слияния брендов, только после согласия |
 | Лог контейнера nginx (json-file без ротации) | 0,47 ГБ за 7 недель | Ротация `max-size: 50m`, `max-file: 3` добавлена в `docker-compose.prod.yml`. Действует после пересоздания контейнера (nginx пересоздаётся полным деплоем) |
-| Кэш nginx `proxy_media` в слое контейнера | 1,0 ГБ | Лимит уже есть (`max_size=1g`), дублирует кэш картинок в Redis |
+| Кэш nginx `proxy_media` в слое контейнера | 1,0 ГБ | Лимит уже есть (`max_size=1g`). Теперь это единственный кэш готовых картинок. Пропадает при пересоздании контейнера nginx (тома нет), `docker restart` его сохраняет |
 | Брошенный полный снапшот Qdrant `full-snapshot-2026-09-07-22-46-14.snapshot` в слое контейнера qdrant | 0,38 ГБ | Удалить через API Qdrant (`DELETE /snapshots/<имя>`), только после согласия |
 | Stage `mudaroba-stage-9122b27`: 4 остановленных контейнера (5 недель), тома и `~/pharmaturk-stage-9122b27` | ≈ 0,16 ГБ | `docker compose -p mudaroba-stage-9122b27 down -v` и удаление каталога, только после согласия |
 | 6 остановленных `mudaroba-migrate-run-*` | 0 Б сами, но держат образы `820bcd7…` и `bb0a7ba…` (≈ 1,9 ГБ каждый) | Появлялись из-за `backend_release.py` (`compose run` без `--rm`), исправлено в этом PR. Существующие удалить `docker rm`, после чего `prune-images.sh` сможет убрать старый образ |
@@ -52,11 +52,13 @@ db1 — кэш Django (≈ 100 тыс. ключей, ≈ 1,8 ГБ), db2 — ре
 (≈ 5,4 тыс. ключей, TTL ≈ 15 ч). `maxmemory` не задан, политика `noeviction`,
 RDB-снимки `save 3600 1 300 100 60 10000`, `stop-writes-on-bgsave-error yes`.
 
-Почти весь кэш — байты картинок: ключи `r2webp_*` и `r2mw_q_*`
-(`backend/apps/catalog/views.py`, TTL 30 дней, до 2,6 МБ на ключ). Из-за них
-`dump.rdb` весит 1,8 ГБ: каждый BGSAVE пишет на диск ещё столько же (временный
-файл) и делает fork процесса на 1,8 ГБ при 2,2 ГБ свободной памяти. Когда места
-не хватило, BGSAVE упал, Redis запретил запись (MISCONF) — и брокер, и кэш.
+Почти весь кэш состоял из байтов картинок: ключи `r2webp_*` и `r2mw_q_*`
+из `proxy_media` (`backend/apps/catalog/views.py`, TTL 30 дней, до 2,6 МБ
+на ключ). Из-за них `dump.rdb` весил 1,8 ГБ: каждый BGSAVE пишет на диск ещё
+столько же (временный файл) и делает fork процесса на 1,8 ГБ при 2,2 ГБ
+свободной памяти. Когда места не хватило, BGSAVE упал, Redis запретил запись
+(MISCONF) — и брокер, и кэш. С этого PR бэкенд байты картинок в Redis не
+пишет (см. «Устранение причины»).
 
 Очереди Celery вытеснять нельзя: ключи брокера (списки очередей, `unacked`,
 `_kombu.binding.*`) без TTL, их потеря = потерянные задачи.
@@ -100,6 +102,32 @@ RDB-снимки `save 3600 1 300 100 60 10000`, `stop-writes-on-bgsave-error ye
 
 ### Устранение причины
 
-Кэшировать в Redis байты картинок не нужно: nginx уже кэширует `proxy_media`
-на 1 ГБ / 30 дней. Убрать `r2webp_*`/`r2mw_q_*` из Redis или сократить TTL —
-отдельная задача на бэкенде.
+`proxy_media` больше не кладёт байты картинок в Django-кэш: ни ресайзы
+(`?max_width=`/`?w=`, бывшие `r2mw_q_*`), ни полноразмерный webp (бывшие
+`r2webp_*`). Готовые ответы кэширует nginx (`proxy_cache proxy_media` в
+`nginx/default.conf`: 1 ГБ, 30 дней без обращений, ключ учитывает webp в
+`Accept`), браузер и CDN — по `Cache-Control: public, max-age=2592000, immutable`.
+Повторный запрос картинки до Django не доходит, поэтому скорость отдачи не
+меняется. Разница только на промахе nginx: картинку, которую раньше отдавал
+Redis, Django заново прочитает из R2 и пережмёт (одна генерация на ключ, дальше
+снова из кэша nginx). Тест: `test_proxy_media_*_does_not_store_image_bytes_in_cache`
+в `backend/apps/catalog/tests/test_proxy_media_max_width.py`.
+
+Кэш картинок Instagram в Redis (`insta_img_*` в `proxy_image`, до
+1 МБ, сутки) остался: он маленький и защищает от лимитов Instagram.
+
+После деплоя старые ключи сами истекут за 30 дней, но до этого держат ≈ 1,8 ГБ
+памяти и `dump.rdb`. Удалить их сразу (только с согласия владельца; брокер и
+результаты Celery в других БД не затрагиваются):
+
+```bash
+docker exec mudaroba-redis-1 sh -c \
+  'for p in ":1:r2webp_*" ":1:r2mw_q_*"; do
+     redis-cli -n 1 --scan --pattern "$p" --count 1000 | xargs -r -n 500 redis-cli -n 1 UNLINK >/dev/null
+   done; redis-cli -n 1 DBSIZE; redis-cli INFO memory | grep used_memory_human; redis-cli BGSAVE'
+```
+
+Если после этого доля `MISS` в `X-Cache-Status` у `/api/catalog/proxy-media`
+заметно вырастет (кэш nginx упирается в 1 ГБ: `du -sh /var/cache/nginx/proxy_media`
+в контейнере nginx), можно поднять `max_size` до 2g: на диске освобождаются
+1,8 ГБ `dump.rdb` и столько же под временный файл BGSAVE.
