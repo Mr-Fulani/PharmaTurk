@@ -475,7 +475,11 @@ class SemanticValidator:
                         continue
                     if isinstance(details, dict) and not details.get("complete", False):
                         report.rejected_fields.add(f"medicine_translation:{field_name}")
-                        report.reasons.append("incomplete_medicine_translation")
+                        report.reasons.append(
+                            "medicine_fact_mismatch"
+                            if details.get("fact_mismatch")
+                            else "incomplete_medicine_translation"
+                        )
             translations_data = attrs.get("translations_data")
             ru_data = (
                 translations_data.get("ru")
