@@ -337,6 +337,9 @@ export default function BannerCarousel({ position, className = '', initialBanner
         )}
 
         {shouldShowContent && (
+          <div className={styles.scrim} aria-hidden="true" />
+        )}
+        {shouldShowContent && (
           <div 
             key={`content-${media.id}-${isActive}`}
             className={styles.content}
