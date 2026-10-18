@@ -147,8 +147,26 @@ class MediaEnrichmentStatusFilter(admin.SimpleListFilter):
         return queryset.filter(media_enrichment_status=self.value())
 
 
+# Больше товаров за одно действие — только через `manage.py ai_enqueue`
+# (батчи, лимит, --dry-run), а не в HTTP-запросе админки.
+AI_ADMIN_MAX_PRODUCTS = 100
+
+
 class RunAIActionMixin(GlobalActivationActionsMixin):
     """Общий миксин для запуска задач AI из админки."""
+
+    def _ai_selection_too_large(self, request, queryset) -> bool:
+        if queryset.count() <= AI_ADMIN_MAX_PRODUCTS:
+            return False
+        self.message_user(
+            request,
+            _(
+                "Выбрано больше %(limit)s товаров. Массовую обработку запускайте "
+                "командой manage.py ai_enqueue (лимит, батчи, --dry-run)."
+            ) % {"limit": AI_ADMIN_MAX_PRODUCTS},
+            level=messages.ERROR,
+        )
+        return True
 
     declared_admin_actions = (
         "run_ai",
@@ -166,6 +184,8 @@ class RunAIActionMixin(GlobalActivationActionsMixin):
         from apps.ai.tasks import enqueue_product_ai_task
         from apps.ai.models import AIProcessingLog, AIProcessingStatus
 
+        if self._ai_selection_too_large(request, queryset):
+            return
         # Проверяем, является ли модель доменной
         is_domain = hasattr(queryset.model, "base_product")
         id_field = "base_product_id" if is_domain else "id"
@@ -201,27 +221,25 @@ class RunAIActionMixin(GlobalActivationActionsMixin):
 
     def run_ai_auto_apply(self, request, queryset):
         """Один запуск: полная обработка + авто-применение."""
-        from apps.ai.tasks import enqueue_product_ai_task
+        from apps.ai.tasks import enqueue_or_apply_product_ai
 
-        queued = 0
+        if self._ai_selection_too_large(request, queryset):
+            return
+        counts = {"queued": 0, "apply_queued": 0, "skipped": 0}
         for obj in queryset:
             pid = self._resolve_base_product_id(obj)
             if not pid:
                 continue
-
-            enqueue_product_ai_task(
-                product_id=pid,
-                processing_type="full",
-                auto_apply=True,
-            )
-            queued += 1
+            _log, action = enqueue_or_apply_product_ai(product_id=pid, auto_apply=True)
+            counts[action] += 1
 
         self.message_user(
             request,
             _(
-                "Запущена полная AI обработка/авто-применение для %(count)s товаров. "
-                "Если у товара уже есть готовый AI-лог, будет применен он."
-            ) % {"count": queued},
+                "AI с авто-применением: поставлено в обработку %(queued)s, "
+                "готовых логов отправлено на применение %(apply_queued)s, "
+                "пропущено (в очереди, на модерации или уже применено) %(skipped)s."
+            ) % counts,
             level=messages.SUCCESS,
         )
     run_ai_auto_apply.short_description = _("[AI] Полная AI обработка + авто-применение")

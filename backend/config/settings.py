@@ -881,6 +881,16 @@ AI_CONFIG = {
     'MODEL': env("AI_MODEL", default="gpt-4o-mini"),
     'VISION_MODEL': env("AI_VISION_MODEL", default="gpt-4o-mini"),
     'EMBEDDING_MODEL': env("AI_EMBEDDING_MODEL", default="text-embedding-3-small"),
+    # USD за 1M токенов; cached_input — цена кэшированной части промпта.
+    # Переопределяется целиком через AI_PRICING_JSON при смене тарифов/модели.
+    'PRICING': env.json(
+        "AI_PRICING_JSON",
+        default={
+            "gpt-4o-mini": {"input": 0.15, "cached_input": 0.075, "output": 0.60},
+            "gpt-4o": {"input": 2.50, "cached_input": 1.25, "output": 10.00},
+            "text-embedding-3-small": {"input": 0.02, "output": 0},
+        },
+    ),
 }
 
 # R2 Configuration (Used for AI processing and media proxy)
