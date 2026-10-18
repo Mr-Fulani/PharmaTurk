@@ -211,13 +211,16 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
   useEffect(() => {
     if (typeof window === 'undefined') return
 
+    // Пока посетитель сам не перетащил виджет, он всегда в правом нижнем углу: при смене
+    // размера окна (поворот, скрытие адресной строки на телефоне) возвращаем его в угол,
+    // а не оставляем на старых координатах. Перетащенный — только удерживаем в границах.
     const handleResize = () => {
-      setPosition((prev) => clampPosition(prev.x, prev.y))
+      setPosition((prev) => (hasCustomPosition ? clampPosition(prev.x, prev.y) : getDefaultPosition()))
     }
 
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [hasCustomPosition])
 
   useEffect(() => {
     if (!open) return
