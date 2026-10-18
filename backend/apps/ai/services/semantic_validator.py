@@ -201,6 +201,27 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
     return result
 
 
+def _supplement_identity_tokens(value: Any, *, source: bool = False) -> set[str]:
+    """Идентичность БАДа: бренд, дозировки и фасовка.
+
+    Название БАДа в источнике — турецкое описание («… TAKVIYE EDICI GIDA
+    KAPSUL»), его слова при переводе обязаны исчезнуть. Сохраняться должны
+    бренд (первое слово источника), дозировки и количество в упаковке.
+    """
+    text = str(value or "")
+    facts = {token for token in _medicine_identity_tokens(text) if token.startswith("DOSE:")}
+    # Фасовка: до двух слов между числом и формой («100 мягких желатиновых капсул»).
+    for number in re.findall(
+        r"(?<![\w.,])(\d+)\s*(?:[A-ZА-ЯЁÇĞİÖŞÜ]+\s+){0,2}"
+        r"(?:ADET|TABLET\w*|KAPS[UÜ]L\w*|CAPSULES?|SA[SŞ]E|SACHETS?|ШТ\w*|ТАБЛЕТ\w*|КАПСУЛ\w*|САШЕ|ПАКЕТИК\w*)\b",
+        text.upper(),
+    ):
+        facts.add(f"PACK:{number}")
+    words = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü-]{2,}", text)
+    brands = words[:1] if source else words
+    return facts | {f"BRAND:{word.upper()}" for word in brands}
+
+
 class CategorySemanticIndex:
     """In-memory category policy index for bulk semantic validation.
 
@@ -430,6 +451,9 @@ class SemanticValidator:
             _medicine_identity_tokens if product_type == "medicines" else _identity_tokens
         )
         original_tokens = identity_tokens(getattr(product, "name", ""))
+        if product_type == "supplements":
+            identity_tokens = _supplement_identity_tokens
+            original_tokens = _supplement_identity_tokens(getattr(product, "name", ""), source=True)
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
                 continue

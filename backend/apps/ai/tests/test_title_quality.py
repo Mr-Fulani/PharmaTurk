@@ -85,3 +85,39 @@ def test_brand_with_turkish_letters_alone_is_not_flagged():
 
     assert not _title_has_turkish_words("Футболка LC Waikiki")
     assert not _title_has_turkish_words(SimpleNamespace() and "Кольцо из серебра с ониксом")
+
+
+@pytest.mark.django_db
+def test_supplement_title_keeps_brand_and_pack_but_may_translate_turkish_words():
+    from apps.catalog.models import Product
+
+    category = Category.objects.create(name="БАДы", slug="title-quality-supplements")
+    product = Product.objects.create(
+        name="SOLGAR VITAMIN D3 YUMUSAK JELATIN KAPSUL 1000 IU 100 kapsül",
+        slug="title-quality-solgar",
+        product_type="supplements",
+        category=category,
+    )
+
+    def reasons(title):
+        log = AIProcessingLog.objects.create(product=product, processing_type="full", input_data={}, generated_title=title)
+        return SemanticValidator().validate_log(log).reasons
+
+    assert "title_identity_lost" not in reasons("Витамин D3 Solgar 1000 МЕ, 100 мягких желатиновых капсул")
+    assert "title_identity_lost" in reasons("Витамин D3 1000 МЕ, 100 капсул")  # пропал бренд
+    assert "title_identity_lost" in reasons("Витамин D3 Solgar, 60 капсул")  # другая фасовка
+
+
+def test_attributes_without_spec_for_product_type_are_dropped_before_moderation():
+    generator = ContentGenerator.__new__(ContentGenerator)
+    rows = [
+        {"slug": "administration_route", "value": "перорально", "value_ru": "перорально", "value_en": "oral"},
+        {"slug": "sgk_status", "value": "не оплачивается", "value_ru": "не оплачивается", "value_en": "not covered"},
+    ]
+
+    kept = generator._apply_confidence_gate_to_dynamic_attributes(
+        rows,
+        {"product_type": "supplements", "description": "перорально, не оплачивается", "available_dynamic_attributes": []},
+    )
+
+    assert kept == []

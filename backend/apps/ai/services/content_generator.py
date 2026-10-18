@@ -22,7 +22,11 @@ from apps.catalog.models import (
     GlobalAttributeKey,
 )
 from apps.catalog.constants import ECOMMERCE_ATTRIBUTES
-from apps.catalog.attribute_specs import ATTRIBUTE_SPECS, normalize_product_type
+from apps.catalog.attribute_specs import (
+    ATTRIBUTE_SPECS,
+    get_dynamic_attribute_spec,
+    normalize_product_type,
+)
 from apps.catalog.utils.variant_titles import (
     build_variant_display_title,
     should_replace_variant_title,
@@ -2551,12 +2555,17 @@ class ContentGenerator:
             for row in (input_data.get("available_dynamic_attributes") or [])
             if isinstance(row, dict) and row.get("slug")
         }
+        product_type = input_data.get("product_type")
         approved = []
         for row in dynamic_attrs:
             if not isinstance(row, dict):
                 continue
             slug = str(row.get("slug") or "").strip().lower()
             if not slug or (allowed_slugs and slug not in allowed_slugs):
+                continue
+            # Как в SemanticValidator: атрибут без спецификации для типа товара
+            # (например, «путь введения» у БАДа) молча отбрасываем, а не шлём в модерацию.
+            if product_type and get_dynamic_attribute_spec(product_type, slug) is None:
                 continue
             values_to_check = [
                 str(row.get("value") or "").strip(),
