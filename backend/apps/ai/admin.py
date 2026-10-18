@@ -8,6 +8,7 @@ from django.utils.safestring import mark_safe
 from django.urls import path, reverse, NoReverseMatch
 from apps.catalog.product_semantics import looks_untranslated_turkish
 
+from .admin_runs import AIRunLogFilter
 from .models import (
     AIApplicationStatus,
     AIProcessingLog,
@@ -694,6 +695,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         "created_at",
         "processed_by",
         "llm_model",
+        AIRunLogFilter,
     )
     search_fields = ("product__name", "generated_title", "error_message")
     list_select_related = ("product",)

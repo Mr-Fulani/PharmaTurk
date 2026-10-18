@@ -4,7 +4,8 @@
 запрещённого атрибута, а теперь такой атрибут просто не применяется. Закрытие
 идёт тем же путём, что и ручное «Проверено — применить к товару»
 (ContentGenerator.apply_log_to_product): применяются разрешённые поля, лог
-становится approved, запись очереди получает resolved_at.
+становится approved, запись очереди получает resolved_at. То же делает кнопка
+в админке: AI → AI-прогоны → «Закрыть решённые записи модерации».
 
     manage.py close_resolved_ai_moderation --dry-run
     manage.py close_resolved_ai_moderation --product-type supplements --limit 50
@@ -12,9 +13,7 @@
 
 from django.core.management.base import BaseCommand
 
-from apps.ai.models import AIModerationQueue, AIProcessingStatus
-from apps.ai.services.content_generator import ContentGenerator
-from apps.ai.services.quality_checker import get_moderation_reasons
+from apps.ai.services.bulk_ops import close_resolved_moderation
 
 
 class Command(BaseCommand):
@@ -26,44 +25,17 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true", help="Только показать, что будет закрыто")
 
     def handle(self, *args, **options):
-        queue = (
-            AIModerationQueue.objects.filter(
-                resolved_at__isnull=True,
-                log_entry__status=AIProcessingStatus.MODERATION,
-            )
-            .select_related("log_entry__product")
-            .order_by("id")
+        result = close_resolved_moderation(
+            product_types=options["product_type"],
+            limit=options["limit"],
+            dry_run=options["dry_run"],
+            report=self._report,
         )
-        if options["product_type"]:
-            queue = queue.filter(log_entry__product__product_type__in=options["product_type"])
-
-        generator = None if options["dry_run"] else ContentGenerator()
-        closed = kept = failed = 0
-        for task in queue.iterator():
-            if options["limit"] and closed >= options["limit"]:
-                break
-            log = task.log_entry
-            reasons = get_moderation_reasons(log)
-            if reasons:
-                kept += 1
-                continue
-            if options["dry_run"]:
-                closed += 1
-                self.stdout.write(f"закрыть: лог {log.id}, товар {log.product_id}, причина в очереди «{task.reason}»")
-                continue
-            try:
-                generator.apply_log_to_product(log)
-            except ValueError as exc:
-                failed += 1
-                self.stdout.write(self.style.WARNING(f"лог {log.id}: {exc}"))
-                continue
-            log.refresh_from_db()
-            if log.status == AIProcessingStatus.APPROVED:
-                closed += 1
-                self.stdout.write(f"закрыт: лог {log.id}, товар {log.product_id}")
-            else:
-                kept += 1
         verb = "будет закрыто" if options["dry_run"] else "закрыто"
         self.stdout.write(self.style.SUCCESS(
-            f"Итого: {verb} {closed}, осталось на модерации {kept}, ошибок {failed}"
+            f"Итого: {verb} {result['closed']}, осталось на модерации {result['kept']}, "
+            f"ошибок {result['failed']}"
         ))
+
+    def _report(self, message, warning=False):
+        self.stdout.write(self.style.WARNING(message) if warning else message)

@@ -7,25 +7,13 @@
 """
 
 import time
-from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import Avg, Exists, OuterRef, Q
 
 from apps.ai.models import AIProcessingLog, AIProcessingStatus
-from apps.ai.services.ownership import SOURCE_CHANGED_KEY
+from apps.ai.services.bulk_ops import estimate_ai_cost, select_products_for_ai
 from apps.ai.tasks import ACTIVE_AI_LOG_STATUSES, enqueue_or_apply_product_ai
-from apps.catalog.models import Category, Product
-
-# Оценка стоимости, если по типу товара ещё нет завершённых логов (USD, p90 аудита).
-_FALLBACK_COST_USD = {"medicines": Decimal("0.008")}
-_DEFAULT_COST_USD = Decimal("0.002")
-_DONE_STATUSES = (
-    AIProcessingStatus.COMPLETED,
-    AIProcessingStatus.APPROVED,
-    AIProcessingStatus.MODERATION,
-    *ACTIVE_AI_LOG_STATUSES,
-)
+from apps.catalog.models import Category
 
 
 class Command(BaseCommand):
@@ -71,7 +59,7 @@ class Command(BaseCommand):
         if options["limit"] <= 0 or options["batch_size"] <= 0:
             raise CommandError("--limit и --batch-size должны быть > 0")
         product_ids = list(self._queryset(options).values_list("id", flat=True)[: options["limit"]])
-        estimate = self._estimate_cost(product_ids)
+        estimate = estimate_ai_cost(product_ids)
         self.stdout.write(
             f"Выбрано товаров: {len(product_ids)}; оценка стоимости ≈ ${estimate:.2f}; "
             f"auto_apply={options['auto_apply']}, force={options['force']}"
@@ -114,55 +102,23 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Итого: {totals}"))
 
     def _queryset(self, options):
-        qs = Product.objects.all()
-        if options["ids"]:
-            ids = [int(value) for value in options["ids"].split(",") if value.strip()]
-            qs = qs.filter(id__in=ids)
-        if options["product_type"]:
-            qs = qs.filter(product_type__in=options["product_type"])
+        category = None
         if options["category"]:
             category = Category.objects.filter(slug=options["category"]).first()
             if category is None:
                 raise CommandError(f"Категория {options['category']} не найдена")
-            qs = qs.filter(category_id__in=self._category_tree_ids(category))
-        if options["missing_description"]:
-            qs = qs.filter(Q(description__isnull=True) | Q(description=""))
-        if options["source_changed"]:
-            qs = qs.filter(external_data__has_key=SOURCE_CHANGED_KEY)
-        if not (options["include_processed"] or options["force"]):
-            done = AIProcessingLog.objects.filter(
-                product_id=OuterRef("pk"),
-                processing_type=options["processing_type"],
-                status__in=_DONE_STATUSES,
-            )
-            qs = qs.exclude(Exists(done))
-        return qs.order_by("id")
-
-    @staticmethod
-    def _category_tree_ids(category):
-        ids, frontier = {category.id}, [category.id]
-        while frontier:
-            frontier = list(
-                Category.objects.filter(parent_id__in=frontier).exclude(id__in=ids).values_list("id", flat=True)
-            )
-            ids.update(frontier)
-        return ids
-
-    @staticmethod
-    def _estimate_cost(product_ids):
-        total = Decimal("0")
-        types = Product.objects.filter(id__in=product_ids).values_list("product_type", flat=True)
-        averages = {}
-        for product_type in types:
-            if product_type not in averages:
-                avg = AIProcessingLog.objects.filter(
-                    product__product_type=product_type, cost_usd__gt=0
-                ).aggregate(value=Avg("cost_usd"))["value"]
-                averages[product_type] = (
-                    Decimal(str(avg)) if avg else _FALLBACK_COST_USD.get(product_type, _DEFAULT_COST_USD)
-                )
-            total += averages[product_type]
-        return total
+        ids = None
+        if options["ids"]:
+            ids = [int(value) for value in options["ids"].split(",") if value.strip()]
+        return select_products_for_ai(
+            product_types=options["product_type"],
+            category=category,
+            ids=ids,
+            missing_description=options["missing_description"],
+            source_changed=options["source_changed"],
+            include_processed=options["include_processed"] or options["force"],
+            processing_type=options["processing_type"],
+        )
 
     def _wait_for_batch(self, log_ids, timeout):
         deadline = time.monotonic() + timeout

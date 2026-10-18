@@ -95,7 +95,7 @@ def _light_generator():
 
 def test_close_command_resolves_entries_without_remaining_reasons(monkeypatch):
     monkeypatch.setattr(
-        "apps.ai.management.commands.close_resolved_ai_moderation.ContentGenerator", _light_generator
+        "apps.ai.services.bulk_ops.ContentGenerator", _light_generator
     )
     noisy = _log(_supplement("noise-1").base_product, FORBIDDEN, status=AIProcessingStatus.MODERATION)
     real = _log(

@@ -266,8 +266,7 @@ def test_retry_titles_command_fixes_rejected_titles_then_close_applies(category,
             cost=0.0002,
         )),
     )
-    for module in ("retry_ai_titles", "close_resolved_ai_moderation"):
-        monkeypatch.setattr(f"apps.ai.management.commands.{module}.ContentGenerator", lambda: generator)
+    monkeypatch.setattr("apps.ai.services.bulk_ops.ContentGenerator", lambda: generator)
 
     out = StringIO()
     call_command("retry_ai_titles", "--limit", "10", "--dry-run", stdout=out)

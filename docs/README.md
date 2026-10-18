@@ -55,6 +55,7 @@
 ### AI, рекомендации и фоновые задачи
 
 - [AI_GUIDE.md](../AI_GUIDE.md) — основной AI workflow;
+- [AI_RUNS_ADMIN_GUIDE.md](AI_RUNS_ADMIN_GUIDE.md) — пошагово: массовый AI-прогон и обслуживание кнопками в админке;
 - [AI_MODULE_OVERVIEW.md](../AI_MODULE_OVERVIEW.md) — состав AI-модуля;
 - [AI_TEMPLATES.md](../AI_TEMPLATES.md) — AI-шаблоны;
 - [AI_TEST_COMMANDS.md](../AI_TEST_COMMANDS.md) и [AI_QUICK_TEST.md](../AI_QUICK_TEST.md) — специализированные проверки;

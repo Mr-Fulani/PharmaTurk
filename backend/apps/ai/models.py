@@ -317,3 +317,99 @@ class AIModerationQueue(models.Model):
 
     class Meta:
         ordering = ['-priority', 'created_at']
+
+
+class AIRun(models.Model):
+    """Массовый AI-прогон или обслуживающая операция, запущенные из админки.
+
+    Прогон товаров ставит их в AI-очередь партиями фоновой задачей
+    ``advance_ai_run`` (services/ai_runs.py); обслуживающие операции
+    повторяют команды retry_ai_titles и close_resolved_ai_moderation.
+    """
+
+    class Kind(models.TextChoices):
+        PRODUCTS = 'products', 'Обработка товаров'
+        RETRY_TITLES = 'retry_titles', 'Перегенерация отклонённых названий БАДов'
+        CLOSE_MODERATION = 'close_moderation', 'Закрытие решённых записей модерации'
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Черновик'
+        RUNNING = 'running', 'Идёт'
+        STOPPED = 'stopped', 'Остановлен'
+        FINISHED = 'finished', 'Завершён'
+        FAILED = 'failed', 'Ошибка'
+
+    kind = models.CharField('Что делаем', max_length=20, choices=Kind.choices, default=Kind.PRODUCTS)
+    status = models.CharField(
+        'Состояние', max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ai_runs',
+        verbose_name='Кто запустил',
+    )
+
+    # Условия отбора
+    product_type = models.CharField(
+        'Тип товара', max_length=32, choices=Product.PRODUCT_TYPE_CHOICES, blank=True
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Категория',
+    )
+    limit = models.PositiveIntegerField('Лимит товаров', default=0)
+    missing_description = models.BooleanField('Только без описания', default=False)
+    auto_apply = models.BooleanField('Сразу применять к товарам', default=False)
+
+    # Ход прогона (заполняет фоновая задача)
+    pending_product_ids = models.JSONField('Ещё не поставлены', default=list, blank=True)
+    current_batch_log_ids = models.JSONField('Текущая партия', default=list, blank=True)
+    batch_started_at = models.DateTimeField('Партия начата', null=True, blank=True)
+    tick_token = models.CharField(max_length=36, blank=True, editable=False)
+    heartbeat_at = models.DateTimeField('Последняя проверка', null=True, blank=True)
+    logs = models.ManyToManyField(
+        AIProcessingLog, related_name='ai_runs', blank=True, verbose_name='Логи прогона'
+    )
+
+    # Счётчики
+    selected_count = models.PositiveIntegerField('Отобрано', default=0)
+    queued_count = models.PositiveIntegerField('Поставлено', default=0)
+    done_count = models.PositiveIntegerField('Готово', default=0)
+    moderation_count = models.PositiveIntegerField('На модерации', default=0)
+    failed_count = models.PositiveIntegerField('Ошибки', default=0)
+    cancelled_count = models.PositiveIntegerField('Отменено', default=0)
+    skipped_count = models.PositiveIntegerField('Пропущено', default=0)
+    estimated_cost_usd = models.DecimalField('Оценка ($)', max_digits=10, decimal_places=4, default=0)
+    cost_usd = models.DecimalField('Потрачено ($)', max_digits=10, decimal_places=6, default=0)
+
+    message = models.TextField('Пояснение', blank=True)
+    report = models.JSONField('Отчёт', default=dict, blank=True)
+
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    started_at = models.DateTimeField('Запущен', null=True, blank=True)
+    finished_at = models.DateTimeField('Закончен', null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'AI-прогон'
+        verbose_name_plural = 'AI-прогоны'
+        constraints = [
+            # Второй прогон того же типа не стартует, пока идёт первый
+            # (защита и от двойного клика).
+            models.UniqueConstraint(
+                fields=['kind', 'product_type'],
+                condition=models.Q(status='running'),
+                name='ai_run_one_running_per_type',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Прогон #{self.pk}: {self.get_kind_display()}"
