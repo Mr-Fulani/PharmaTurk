@@ -6,11 +6,7 @@ import pytest
 from apps.ai.models import AIProcessingLog, AIProcessingStatus
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.llm_client import LLMClient
-from apps.ai.services.medicine_fact_check import (
-    check_medicine_short_fields,
-    doses_match,
-    extract_doses,
-)
+from apps.ai.services.medicine_fact_check import doses_match, extract_doses
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.tasks import process_product_ai_task
@@ -100,24 +96,6 @@ def test_dose_extraction_matches_across_languages():
     assert doses_match(source, en)
     assert not doses_match(source, ru.replace("500 мг", "50 мг"))
     assert not doses_match(source, en.replace("0.125 mg", "0.125 g"))
-
-
-def test_short_field_check_flags_wrong_inn_and_prescription_color():
-    source = {
-        "active_ingredient": "Parasetamol",
-        "prescription_type": "Kırmızı Reçete",
-        "volume": "20 tablet, 500 mg",
-    }
-    translations = {
-        "ru": {"active_ingredient": "парацетамол", "prescription_type": "белый рецепт", "volume": "20 таблеток, 500 мг"},
-        "en": {"active_ingredient": "Ibuprofen", "prescription_type": "red prescription", "volume": "20 tablets, 50 mg"},
-    }
-
-    problems = check_medicine_short_fields(source, translations)
-
-    assert problems["active_ingredient"]["fact_mismatch"] == ["en"]
-    assert problems["prescription_type"]["fact_mismatch"] == ["ru"]
-    assert problems["volume"]["fact_mismatch"] == ["en"]
 
 
 @pytest.mark.django_db

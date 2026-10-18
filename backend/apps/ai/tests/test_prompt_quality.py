@@ -42,7 +42,10 @@ def test_medicine_prompt_puts_static_instructions_before_product_data():
     prefix = _common_prefix(prompt_a, prompt_b)
     # Общий префикс включает все инструкции и схему ответа — его кэширует OpenAI.
     assert "Требования к качеству" in prefix
-    assert '"attributes"' in prefix
+    assert '"special_notes"' in prefix
+    # Справочные поля и атрибуты заполняет код — модель их не возвращает.
+    assert '"dosage_form"' not in prefix
+    assert '"attributes"' not in prompt_a
     assert prompt_a.index("Данные о лекарственном препарате") > prompt_a.index("Верни строго JSON")
 
 
