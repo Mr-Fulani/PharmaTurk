@@ -8,7 +8,14 @@ from apps.catalog.models import Brand, MedicineProduct, Product, SupplementProdu
 from apps.catalog.utils.manufacturer_brands import (
     manufacturer_brand_key,
     manufacturer_display_name,
+    manufacturer_key_tokens,
+    root_tokens,
 )
+
+
+def _roots(variants):
+    tokens = [manufacturer_key_tokens(v) for v in variants]
+    return {root_tokens(t, set(tokens)) for t in tokens}
 
 
 @pytest.mark.parametrize(
@@ -20,15 +27,31 @@ from apps.catalog.utils.manufacturer_brands import (
         ["Türktıpsan", "Turktıpsan Sağlık Turizm Eğitim Ve Ticaret A.Ş."],
         ["TEB", "Teb Yurt Dışından İlaç Temini Birimi"],
         ["Pfizer", "Pfizer Pfe", "Pfizer Pfe İlaçları Anonim Şirketi"],
+        ["Abbott", "Abbott Laboratuarları İthalat İhracat Ve Ticaret Limited Şirketi"],
+        ["Sanofi", "Sanofi Pasteur", "Sanofi Pasteur Aşı Tic. A.Ş."],
+        ["Galen", "Galen İlaç San.Ve Tic.A.Ş"],
     ],
 )
-def test_manufacturer_spellings_share_one_key(variants):
-    assert len({manufacturer_brand_key(v) for v in variants}) == 1
+def test_manufacturer_spellings_share_one_root(variants):
+    assert len(_roots(variants)) == 1
 
 
-def test_different_firms_keep_different_keys():
-    assert manufacturer_brand_key("Neutec") != manufacturer_brand_key("Neutec İnhaler")
-    assert manufacturer_brand_key("Santa Farma") != manufacturer_brand_key("Santa")
+@pytest.mark.parametrize(
+    "variants",
+    [
+        ["Merck İlaç", "Merck Sharp Dohme"],
+        ["Fresenius Medikal", "Fresenius Kabi"],
+        ["Bio-Gen", "Biogen Turkey"],
+    ],
+)
+def test_different_firms_keep_different_roots(variants):
+    assert len(_roots(variants)) == len(variants)
+
+
+def test_key_and_display_handle_dotted_legal_form():
+    assert manufacturer_brand_key("Galen İlaç San.Ve Tic.A.Ş") == manufacturer_brand_key("Galen")
+    assert manufacturer_display_name("Mentis İlaç San.Tic.Ltd.Şti") == "Mentis İlaç"
+    assert manufacturer_brand_key("B.Braun Medikal Dış Ticaret A.Ş.") == "bbraun"
 
 
 def test_display_name_drops_only_legal_form():
@@ -68,8 +91,8 @@ def test_assign_brands_dry_run_then_apply(other_brand, tmp_path):
     assert "новых=1" in out.getvalue()
     assert not Brand.objects.filter(name="Abdi İbrahim").exists()
     rows = {row["key"]: row for row in csv.DictReader(report.open(encoding="utf-8"))}
-    assert rows["abdiibrahim"]["to_assign"] == "3"
-    assert rows["abdiibrahim"]["kept_other_brand"] == "1"
+    assert rows["abdi ibrahim"]["to_assign"] == "3"
+    assert rows["abdi ibrahim"]["kept_other_brand"] == "1"
     assert rows["deva"]["existing_brand_id"] == str(deva.pk)
 
     call_command("assign_manufacturer_brands", "--apply", "--report", str(tmp_path / "a.csv"), stdout=StringIO())
@@ -92,6 +115,35 @@ def test_assign_brands_dry_run_then_apply(other_brand, tmp_path):
     call_command("assign_manufacturer_brands", "--apply", "--report", str(tmp_path / "b.csv"), stdout=out)
     assert Brand.objects.count() == brands_before
     assert "проставить=0" in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_assign_brands_merges_pharma_duplicates_but_not_other_categories(other_brand, tmp_path):
+    abbott = Brand.objects.create(name="Abbott", slug="abbott", category_slugs=["medicines"])
+    duplicate = Brand.objects.create(
+        name="Abbott Laboratuarları", slug="abbott-laboratuarlari", category_slugs=["medicines"],
+    )
+    curated = Brand.objects.create(
+        name="Abbott Diagnostics", slug="abbott-diagnostics", category_slugs=["medicines"],
+        description="Ручное описание",
+    )
+    apple = Brand.objects.create(name="Apple", slug="apple", category_slugs=["electronics"])
+    on_duplicate = _medicine("abbott-1", "Abbott Laboratuarları", brand=duplicate)
+    on_curated = _medicine("abbott-2", "Abbott", brand=curated)
+    pharma_apple = _medicine("apple-1", "Apple Pharma İlaç A.Ş.")
+
+    call_command("assign_manufacturer_brands", "--apply", "--report", str(tmp_path / "m.csv"), stdout=StringIO())
+
+    on_duplicate.refresh_from_db()
+    assert on_duplicate.brand_id == abbott.pk
+    assert Product.objects.get(pk=on_duplicate.base_product_id).brand_id == abbott.pk
+    assert not Brand.objects.filter(pk=duplicate.pk).exists()
+    on_curated.refresh_from_db()
+    assert on_curated.brand_id == abbott.pk
+    assert Brand.objects.filter(pk=curated.pk).exists()  # ручное описание — не удаляем
+    pharma_apple.refresh_from_db()
+    assert pharma_apple.brand_id not in (apple.pk, other_brand.pk)
+    assert pharma_apple.brand.external_data == {"source": "manufacturer"}
 
 
 @pytest.mark.django_db

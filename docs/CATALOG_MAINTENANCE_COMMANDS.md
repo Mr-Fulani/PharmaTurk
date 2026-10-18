@@ -34,13 +34,20 @@ manage.py repair_broken_media --apply            # всё, включая пер
 
 Бренд медикамента и БАДа = производитель (`MedicineProduct.manufacturer`,
 у БАДов — `external_data.attributes.manufacturer`). Варианты написания одной фирмы
-склеиваются по ключу (`apps/catalog/utils/manufacturer_brands.py`): турецкий регистр
-и буквы (İ/ı/ş/ü…), юридические хвосты (`San. ve Tic. A.Ş.`, `Ltd. Şti.`),
+склеиваются (`apps/catalog/utils/manufacturer_brands.py`): турецкий регистр
+и буквы (İ/ı/ş/ü…), юридические хвосты (`San. ve Tic. A.Ş.`, `Tic.Ltd.Şti`),
 родовые слова (`İlaç`, `Sağlık Ürünleri`), дефисы (`Farma-Tek` = `Farmatek`).
-Ручные склейки, которые правилами не выводятся, — `MANUFACTURER_KEY_ALIASES`.
+Фирма = самый короткий набор слов, с которого начинаются остальные написания
+(`Sanofi` ← `Sanofi Pasteur Aşı`, `TEB` ← `Teb Yurt Dışından İlaç Temini Birimi`).
+Разные фирмы с общим первым словом (MSD / Merck İlaç, Fresenius Kabi / Medikal,
+Biogen / Bio-Gen) перечислены в `_NO_PREFIX_ROOTS`. По началу названия сопоставляются
+только фарм-бренды (категории medicines/supplements/medical-equipment).
 
-- Существующий бренд с тем же ключом переиспользуется, ему добавляются категории
-  `medicines`/`supplements`; иначе создаётся бренд с самым частым написанием.
+- Существующий бренд фирмы переиспользуется, ему добавляются категории
+  `medicines`/`supplements`; иначе создаётся бренд с самым частым написанием
+  (`external_data.source = manufacturer`).
+- Фарм-бренды-дубли одной фирмы сливаются: их медикаменты и БАДы переносятся на
+  основной бренд, дубль без логотипа/описания/сайта и без других товаров удаляется.
 - Бренд проставляется только товарам без бренда или с заглушкой «Другое» (`slug=other`),
   вместе с теневым `Product`; ручные бренды не меняются.
 - Новые товары получают бренд при парсинге: `ScraperIntegrationService._assign_manufacturer_brand`.
