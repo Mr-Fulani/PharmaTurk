@@ -95,7 +95,7 @@ _TURKISH_TITLE_WORDS = re.compile(
     # Фарма и БАДы: формы, фасовка и служебные слова источника.
     r"kapsül|kapsul|şurup|surup|merhem|damla|damlası|damlasi|suspansiyon|süspansiyon|"
     r"giderici|saşe|sase|şişe|sise|efervesan|çiğneme|cigneme|tableti|kapsülü|ağız|agiz|"
-    r"spreyi|losyon|içeren|iceren|ekstresi|yağı|yagi|balık|balik)\b",
+    r"sprey|spreyi|losyon|içeren|iceren|ekstresi|yağı|yagi|balık|balik)\b",
     re.IGNORECASE,
 )
 _TURKISH_TITLE_TRANSLITERATIONS = re.compile(
@@ -103,9 +103,13 @@ _TURKISH_TITLE_TRANSLITERATIONS = re.compile(
     r"элбисе|такви|эдиджи|гыда|ортофед|"
     # «саше» и «балык» — нормальные русские слова, их не включаем.
     r"дамла|гидерич|гидериджи|суспансийон|суспансиён|шурубу|шуруп|шише|"
-    r"эфервесан|чигнеме|ичерен|экстреси)",
+    r"эфервесан|чигнеме|ичерен|экстреси|"
+    # «балик яги» — транслитерация «balık yağı» (рыбий жир).
+    r"\bбалик\b|\bяг[иы]\b)",
     re.IGNORECASE,
 )
+# Латинские единицы в RU-названии БАДа: промпт требует «мл».
+_SUPPLEMENT_RU_TITLE_LATIN_UNITS = re.compile(r"(?<![A-Za-z])ml\b", re.IGNORECASE)
 
 
 def _title_has_turkish_words(title: Any) -> bool:
@@ -480,7 +484,11 @@ class SemanticValidator:
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
                 continue
-            if _title_has_turkish_words(title):
+            if _title_has_turkish_words(title) or (
+                locale == "ru"
+                and product_type == "supplements"
+                and _SUPPLEMENT_RU_TITLE_LATIN_UNITS.search(str(title))
+            ):
                 report.rejected_fields.add("title")
                 report.reasons.append("title_untranslated")
                 break
