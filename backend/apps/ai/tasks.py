@@ -239,6 +239,48 @@ def process_product_ai_task(
         raise
 
 
+@shared_task(acks_late=True, reject_on_worker_lost=True)
+def apply_ai_log_task(log_id: int):
+    """Применить готовый (completed) AI-лог к товару без повторной генерации."""
+    log = AIProcessingLog.objects.select_related("product").filter(
+        pk=log_id, status=AIProcessingStatus.COMPLETED
+    ).first()
+    if log is None:
+        return {"status": "skipped", "log_id": log_id}
+    ContentGenerator().apply_log_to_product(log)
+    return {"status": "success", "log_id": log_id}
+
+
+def enqueue_or_apply_product_ai(
+    *,
+    product_id: int,
+    auto_apply: bool = False,
+    force: bool = False,
+    index_vectors: bool = True,
+    processing_type: str = "full",
+):
+    """Поставить товар в AI-очередь; при auto_apply применить уже готовый лог.
+
+    Возвращает ``(log, action)``, где action: ``queued`` — новая задача,
+    ``apply_queued`` — готовый лог отправлен на применение, ``skipped`` —
+    лог уже в очереди/обработке, на модерации или применён.
+    """
+    log, _task_id, submitted = enqueue_product_ai_task(
+        product_id=product_id,
+        processing_type=processing_type,
+        auto_apply=auto_apply,
+        force=force,
+        index_vectors=index_vectors,
+    )
+    if submitted:
+        return log, "queued"
+    if auto_apply and log.status == AIProcessingStatus.COMPLETED:
+        log_id = log.id
+        transaction.on_commit(lambda: apply_ai_log_task.delay(log_id))
+        return log, "apply_queued"
+    return log, "skipped"
+
+
 @shared_task
 def prepare_variant_ai_candidates_task(product_id: int, force: bool = False):
     """Собирает очередь вариантов, для которых потенциально нужна отдельная AI-обработка."""
