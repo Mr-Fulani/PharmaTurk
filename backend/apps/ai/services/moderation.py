@@ -27,6 +27,9 @@ from apps.catalog.product_semantics import looks_untranslated_turkish
 
 MODERATION_REASON_LABELS = {
     "low_confidence": "Низкая уверенность в выбранной категории",
+    "category_change_suggested": (
+        "AI предлагает другую категорию; заданная категория не меняется автоматически"
+    ),
     "suspicious_price": "Подозрительно низкая цена во входных данных",
     "sensitive_content": "В описании найдена подозрительная формулировка",
     "short_description": "Описание содержит меньше 20 слов",
@@ -36,6 +39,9 @@ MODERATION_REASON_LABELS = {
     "untranslated_attribute": "Атрибут содержит непереведённый турецкий текст",
     "incomplete_medicine_translation": (
         "Медицинский раздел переведён не полностью и не будет применён"
+    ),
+    "medicine_fact_mismatch": (
+        "Дозировка, МНН или тип рецепта в переводе не совпадают с исходником"
     ),
     "untranslated_medicine_field": (
         "Русское поле лекарства содержит непереведённый турецкий текст"
@@ -504,7 +510,9 @@ def build_change_preview(
         proposed_category is not None
         and getattr(proposed_category, "pk", None) != getattr(current_category, "pk", None)
     )
-    if category_changes and (confidence is None or confidence < 0.75):
+    if category_changes and current_category is not None:
+        category_reason = "Заданная категория не меняется автоматически — смените вручную"
+    elif category_changes and (confidence is None or confidence < 0.75):
         category_reason = "Категория применяется только при уверенности не ниже 75%"
     proposed_category_text = None
     if proposed_category is not None:

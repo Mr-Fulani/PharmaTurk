@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import httpx
+import openai
 import pytest
 from celery.exceptions import Retry
 
@@ -147,10 +149,12 @@ def test_book_applier_does_not_invent_stock(monkeypatch):
     assert target.stock_quantity == 0
 
 
-def test_celery_task_retries_processing_errors(monkeypatch):
+def test_celery_task_retries_network_errors(monkeypatch):
     class BrokenGenerator:
         def process_product(self, **kwargs):
-            raise RuntimeError("temporary OpenAI failure")
+            raise openai.APIConnectionError(
+                request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+            )
 
     monkeypatch.setattr("apps.ai.tasks.ContentGenerator", BrokenGenerator)
     retry_calls = []
@@ -163,7 +167,7 @@ def test_celery_task_retries_processing_errors(monkeypatch):
 
     with pytest.raises(Retry):
         process_product_ai_task.run(product_id=123)
-    assert isinstance(retry_calls[0][0], RuntimeError)
+    assert isinstance(retry_calls[0][0], openai.APIConnectionError)
     assert retry_calls[0][1] == 60
 
 

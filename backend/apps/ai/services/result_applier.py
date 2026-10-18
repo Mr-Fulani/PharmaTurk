@@ -1,8 +1,9 @@
 import datetime
+import hashlib
 import logging
 import re
 from typing import Any, Dict, Optional, List
-from django.db import transaction
+from django.db import models, transaction
 from django.utils.text import slugify as django_slugify
 from apps.catalog.models import Product, GlobalAttributeKey
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
@@ -14,6 +15,46 @@ logger = logging.getLogger(__name__)
 
 def _canonical_attr_slug(slug: str) -> str:
     return str(slug or "").strip().lower().replace("_", "-")
+
+
+# Поля доменной модели/Product, которые AI перезаписывает только если менеджер
+# не правил их после генерации (см. build_content_snapshot).
+_SNAPSHOT_TARGET_FIELDS = (
+    "description",
+    "meta_title", "meta_description", "meta_keywords", "og_title", "og_description",
+    "seo_title", "seo_description", "keywords",
+)
+
+
+def _snapshot_hash(value: Any) -> str:
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:16]
+
+
+def build_content_snapshot(target: Any) -> Dict[str, Any]:
+    """Снимок описания, SEO и переводов на момент генерации.
+
+    Хранятся только хэши непустых значений: тексты лекарств большие, а для
+    проверки «менялось ли поле после генерации» достаточно сравнить хэш.
+    """
+    snapshot: Dict[str, Any] = {"fields": {}, "translations": {}}
+    if target is None:
+        return snapshot
+    for field in _SNAPSHOT_TARGET_FIELDS:
+        value = getattr(target, field, None)
+        if value:
+            snapshot["fields"][field] = _snapshot_hash(value)
+    manager = getattr(target, "translations", None)
+    if manager is None:
+        return snapshot
+    for trans in manager.all():
+        snapshot["translations"][trans.locale] = {
+            f.name: _snapshot_hash(getattr(trans, f.name))
+            for f in trans._meta.concrete_fields
+            if isinstance(f, (models.CharField, models.TextField))
+            and f.name != "locale"
+            and getattr(trans, f.name)
+        }
+    return snapshot
 
 
 def _make_unique_slug_for_domain(name: str, model_class, current_pk: Optional[int] = None, max_length: int = 500) -> str:
@@ -41,7 +82,20 @@ def _make_unique_slug_for_domain(name: str, model_class, current_pk: Optional[in
 
 class BaseAIApplier:
     """Базовый класс для применения результатов AI к любым товарам."""
-    
+
+    # Снимок build_content_snapshot из input_data лога. None — защита выключена
+    # (прямой вызов или старый лог без снимка).
+    content_snapshot: Optional[Dict[str, Any]] = None
+
+    def _may_overwrite(self, current: Any, *path: str) -> bool:
+        """Можно ли перезаписать значение: оно пустое или не менялось с генерации."""
+        if not current or self.content_snapshot is None:
+            return True
+        node: Any = self.content_snapshot
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        return node == _snapshot_hash(current)
+
     def apply(self, target: Any, ai_data: Dict[str, Any]) -> bool:
         """Применяет данные к объекту (Product или доменному объекту).
 
@@ -55,7 +109,8 @@ class BaseAIApplier:
         
         # 2. Описание (имя не трогаем — сохраняем оригинал)
         new_desc = ai_data.get('generated_description')
-        if new_desc and getattr(target, 'description', None) != new_desc:
+        current_desc = getattr(target, 'description', None)
+        if new_desc and current_desc != new_desc and self._may_overwrite(current_desc, "fields", "description"):
             target.description = new_desc
             updated = True
             
@@ -107,7 +162,8 @@ class BaseAIApplier:
             if isinstance(val, list):
                 val = ", ".join(map(str, val))
                 
-            if val and getattr(target, model_key, None) != val:
+            current = getattr(target, model_key, None)
+            if val and current != val and self._may_overwrite(current, "fields", model_key):
                 if model_key in ['seo_title', 'meta_title']:
                     val = str(val)[:70]
                 if model_key in ['seo_description', 'meta_description']:
@@ -144,7 +200,8 @@ class BaseAIApplier:
             trans_updated = False
             for field in ['name', 'description']:
                 val = data.get(f'generated_{field}') or data.get(field)
-                if val and getattr(trans, field, None) != val:
+                current = getattr(trans, field, None)
+                if val and current != val and self._may_overwrite(current, "translations", locale, field):
                     setattr(trans, field, val)
                     trans_updated = True
 
@@ -177,7 +234,8 @@ class BaseAIApplier:
                     val = val[:500]
                 elif model_field == 'meta_keywords':
                     val = val[:500]
-                if getattr(trans, model_field, None) != val:
+                current = getattr(trans, model_field, None)
+                if current != val and self._may_overwrite(current, "translations", locale, model_field):
                     setattr(trans, model_field, val)
                     trans_updated = True
             
@@ -253,10 +311,11 @@ class BaseAIApplier:
             if current.value != value:
                 current.value = value
                 changed = True
-            if (current.value_ru or None) != value_ru:
+            # Не обнуляем перевод, который AI не вернул: он мог быть заполнен вручную.
+            if value_ru is not None and (current.value_ru or None) != value_ru:
                 current.value_ru = value_ru
                 changed = True
-            if (current.value_en or None) != value_en:
+            if value_en is not None and (current.value_en or None) != value_en:
                 current.value_en = value_en
                 changed = True
             if current.sort_order != sort_order:
@@ -543,7 +602,8 @@ class MedicineAIApplier(BaseAIApplier):
                 val_str = str(val).strip() if val is not None else ""
                 if field in limits:
                     val_str = val_str[:limits[field]]
-                if getattr(trans, field, None) != val_str:
+                current = getattr(trans, field, None)
+                if current != val_str and self._may_overwrite(current, "translations", locale, field):
                     setattr(trans, field, val_str)
                     trans_updated = True
             if trans_updated or created:
@@ -571,10 +631,14 @@ class AIResultApplier:
         ai_data: Dict[str, Any],
         *,
         rejected_fields: set[str] | None = None,
+        content_snapshot: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Главная точка входа для применения данных к продукту.
         Автоматически определяет домен и нужный обработчик.
+
+        content_snapshot — снимок из input_data лога: описание, SEO и переводы,
+        изменённые после генерации, не перезаписываются.
         """
         rejected_fields = rejected_fields or set()
         target = product.domain_item
@@ -591,9 +655,10 @@ class AIResultApplier:
             handler_class = self._type_handlers.get(product_type, BaseAIApplier)
             
         handler = handler_class()
+        handler.content_snapshot = content_snapshot
         logger.info(f"Applying AI results to {product} (type: {product_type}, site: {site}) via {handler.__class__.__name__}")
 
-        # Применяем сгенерированное название к товару: обновляем доменную модель (name + slug), sync скопирует в Product
+        # Применяем сгенерированное название к товару: обновляем доменную модель (только name), sync скопирует в Product
         with transaction.atomic():
             suggested_category = ai_data.get("suggested_category")
             try:
@@ -605,22 +670,29 @@ class AIResultApplier:
                 and getattr(suggested_category, "is_active", False)
                 and category_confidence >= 0.75
             ):
-                if product.category_id != suggested_category.id:
+                # Категория определяет наценку и цену: AI только заполняет пустую.
+                # Несовпадение с заданной категорией уходит в модерацию
+                # (SemanticValidator.validate_log → category_change_suggested).
+                if product.category_id is None:
                     product.category = suggested_category
                     product.save(update_fields=["category"])
-                if target is not None and hasattr(target, "category_id") and target.category_id != suggested_category.id:
+                if target is not None and hasattr(target, "category_id") and target.category_id is None:
                     target.category = suggested_category
                     target.save(update_fields=["category"])
 
             new_title = "" if "title" in rejected_fields else (ai_data.get("generated_title") or "").strip()
             if new_title and target is not None:
+                # Slug не меняем: старые URL товара должны продолжать открываться.
                 target.name = new_title[:500]
-                target.slug = _make_unique_slug_for_domain(
-                    new_title,
-                    target.__class__,
-                    current_pk=getattr(target, "pk", None),
-                )
-                target.save(update_fields=["name", "slug"])
+                update_fields = ["name"]
+                if not getattr(target, "slug", None):
+                    target.slug = _make_unique_slug_for_domain(
+                        new_title,
+                        target.__class__,
+                        current_pk=getattr(target, "pk", None),
+                    )
+                    update_fields.append("slug")
+                target.save(update_fields=update_fields)
             elif new_title:
                 product.name = new_title[:500]
                 product.save(update_fields=["name"])

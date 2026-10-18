@@ -335,7 +335,7 @@ class SemanticValidator:
         translations = (
             attrs.get("seo_translations") if isinstance(attrs.get("seo_translations"), dict) else {}
         )
-        return self.validate(
+        report = self.validate(
             product,
             generated_titles={
                 "ru": getattr(log, "generated_title", ""),
@@ -345,6 +345,17 @@ class SemanticValidator:
             sizes=attrs.get("sizes") or [],
             extracted_attributes=attrs,
         )
+        # Заданную категорию AI не меняет (она определяет наценку): другое
+        # предложение — повод для модератора, а не для авто-применения.
+        suggested_category_id = getattr(log, "suggested_category_id", None)
+        current_category_id = getattr(product, "category_id", None)
+        if (
+            suggested_category_id
+            and current_category_id
+            and suggested_category_id != current_category_id
+        ):
+            report.reasons.append("category_change_suggested")
+        return report
 
     def validate(
         self,
@@ -464,7 +475,11 @@ class SemanticValidator:
                         continue
                     if isinstance(details, dict) and not details.get("complete", False):
                         report.rejected_fields.add(f"medicine_translation:{field_name}")
-                        report.reasons.append("incomplete_medicine_translation")
+                        report.reasons.append(
+                            "medicine_fact_mismatch"
+                            if details.get("fact_mismatch")
+                            else "incomplete_medicine_translation"
+                        )
             translations_data = attrs.get("translations_data")
             ru_data = (
                 translations_data.get("ru")

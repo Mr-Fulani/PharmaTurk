@@ -788,3 +788,194 @@ def test_apply_log_with_cyrillic_turkish_transliteration_blanks_ru_field():
     assert log.status == AIProcessingStatus.APPROVED
     ru = medicine.translations.get(locale="ru")
     assert ru.indications == ""
+
+
+def _accessory_log(product, **overrides):
+    data = {
+        "product": product,
+        "processing_type": "full",
+        "status": AIProcessingStatus.COMPLETED,
+        "input_data": {},
+        "generated_title": "Новый ремень MODEL-202",
+        "generated_description": " ".join(["Подробное описание товара"] * 10),
+        "generated_seo_title": "SEO заголовок ремня",
+        "generated_seo_description": "Подробное SEO описание ремня для каталога.",
+        "generated_keywords": ["ремень"],
+        "extracted_attributes": {
+            "seo_translations": {
+                "ru": {
+                    "generated_title": "Новый ремень MODEL-202",
+                    "generated_description": "AI описание RU",
+                    "meta_title": "AI SEO RU",
+                },
+                "en": {
+                    "generated_title": "New belt MODEL-202",
+                    "generated_description": "AI description EN",
+                    "meta_title": "AI SEO EN",
+                },
+            }
+        },
+    }
+    data.update(overrides)
+    return AIProcessingLog.objects.create(**data)
+
+
+def _generator():
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator.result_applier = AIResultApplier()
+    return generator
+
+
+def test_ai_does_not_move_product_out_of_assigned_category_and_sends_log_to_moderation():
+    from apps.ai.models import AIModerationQueue
+
+    root = Category.objects.create(name="Медицина", slug="ai-guard-medicines-root")
+    child = Category.objects.create(name="Анальгетики", slug="ai-guard-analgesics", parent=root)
+    accessory = AccessoryProduct.objects.create(
+        name="Ремень MODEL-202", slug="ai-guard-category-kept", category=child
+    )
+    accessory.refresh_from_db()
+    product = accessory.base_product
+    log = _accessory_log(product, suggested_category=root, category_confidence=0.95)
+
+    _generator().apply_log_to_product(log)
+
+    accessory.refresh_from_db()
+    product.refresh_from_db()
+    log.refresh_from_db()
+    assert accessory.category_id == child.id
+    assert product.category_id == child.id
+    assert log.status == AIProcessingStatus.MODERATION
+    assert "category_change_suggested" in log.application_report["semantic_reasons"]
+    assert AIModerationQueue.objects.get(log_entry=log).resolved_at is None
+
+
+def test_ai_fills_category_only_when_product_has_none():
+    category = Category.objects.create(name="Ремни", slug="ai-guard-belts")
+    accessory = AccessoryProduct.objects.create(name="Ремень MODEL-202", slug="ai-guard-category-empty")
+    accessory.refresh_from_db()
+    product = accessory.base_product
+    assert product.category_id is None
+
+    AIResultApplier().apply_to_product(
+        product, {"suggested_category": category, "category_confidence": 0.9}
+    )
+
+    accessory.refresh_from_db()
+    product.refresh_from_db()
+    assert accessory.category_id == category.id
+    assert product.category_id == category.id
+
+
+def test_medicine_prompt_and_fallback_do_not_suggest_root_medicines_category():
+    name = "MAJEZIK 100 MG 15 FILM TABLET"
+    product = MedicineProduct.objects.create(name=name, slug="majezik-prompt-no-root-category").base_product
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator._collect_input_data = lambda _product: {"name": name}
+    generator._get_prompt_template = lambda *_args, **_kwargs: ""
+
+    prompt = generator._construct_medicine_user_prompt(product, {}, "full")
+    fallback = generator._build_medicine_fallback_content({"name": name})
+
+    assert '"medicines"' not in prompt
+    assert "0.95" not in prompt
+    assert "suggested_category_slug" not in fallback
+    assert "category_confidence" not in fallback
+
+
+def test_ai_title_changes_name_but_keeps_existing_slug():
+    medicine = MedicineProduct.objects.create(
+        name="MAJEZIK 100 MG 15 FILM TABLET",
+        slug="majezik-100-mg-15-film-tablet",
+    )
+    medicine.refresh_from_db()
+    product = medicine.base_product
+
+    AIResultApplier().apply_to_product(
+        product, {"generated_title": "Маджезик 100 мг, 15 таблеток, покрытых оболочкой"}
+    )
+
+    medicine.refresh_from_db()
+    product.refresh_from_db()
+    assert medicine.name == "Маджезик 100 мг, 15 таблеток, покрытых оболочкой"
+    assert medicine.slug == "majezik-100-mg-15-film-tablet"
+    assert product.slug == "majezik-100-mg-15-film-tablet"
+
+
+def test_dynamic_attribute_keeps_manual_translation_when_ai_omits_it():
+    key, _ = GlobalAttributeKey.objects.get_or_create(slug="material", defaults={"sort_order": 17})
+    accessory = AccessoryProduct.objects.create(name="Ремень", slug="ai-guard-keep-value-en")
+    accessory.refresh_from_db()
+    accessory.dynamic_attributes.create(
+        attribute_key=key,
+        value="Кожа с тиснением",
+        value_ru="Кожа с тиснением",
+        value_en="Embossed leather",
+        sort_order=key.sort_order,
+    )
+
+    AIResultApplier().apply_to_product(
+        accessory.base_product,
+        {"extracted_attributes": {"dynamic_attributes": [{"slug": "material", "value": "Кожа с тиснением под рептилию"}]}},
+    )
+
+    value = accessory.dynamic_attributes.get(attribute_key=key)
+    assert value.value_ru == "Кожа с тиснением под рептилию"
+    assert value.value_en == "Embossed leather"
+
+
+def test_apply_keeps_content_edited_after_generation_and_overwrites_untouched():
+    from apps.ai.services.result_applier import build_content_snapshot
+
+    accessory = AccessoryProduct.objects.create(
+        name="Ремень MODEL-202",
+        slug="ai-guard-manual-edits",
+        description="Спарсенное описание",
+        meta_title="Спарсенный SEO",
+    )
+    accessory.refresh_from_db()
+    accessory.translations.create(locale="ru", name="Ремень", description="Спарсенное RU")
+    accessory.translations.create(locale="en", name="Belt", description="Scraped EN")
+    product = accessory.base_product
+    # Снимок на момент генерации; потом менеджер правит описание и RU-перевод.
+    log = _accessory_log(product, input_data={"content_snapshot": build_content_snapshot(accessory)})
+    accessory.description = "Ручное описание"
+    accessory.save()
+    accessory.translations.filter(locale="ru").update(description="Ручное RU")
+
+    _generator()._apply_changes_to_product(product, log)
+
+    accessory.refresh_from_db()
+    ru = accessory.translations.get(locale="ru")
+    en = accessory.translations.get(locale="en")
+    assert accessory.description == "Ручное описание"
+    assert ru.description == "Ручное RU"
+    # Не менявшиеся после генерации и пустые поля AI перезаписывает.
+    assert accessory.meta_title == "AI SEO EN"
+    assert en.description == "AI description EN"
+    assert ru.meta_title == "AI SEO RU"
+
+
+def test_processing_stores_content_snapshot_in_input_data():
+    accessory = AccessoryProduct.objects.create(
+        name="Ремень", slug="ai-guard-snapshot-stored", description="Спарсенное описание"
+    )
+    accessory.refresh_from_db()
+    product = accessory.base_product
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator.llm = type("LLM", (), {"model": "test"})()
+    generator._collect_input_data = lambda _product: {"name": _product.name}
+    generator._should_use_images_for_product = lambda _product: False
+    log = AIProcessingLog.objects.create(
+        product=product, processing_type="image_analysis", status=AIProcessingStatus.PENDING, input_data={}
+    )
+
+    generator.process_product(
+        product.id,
+        processing_type="image_analysis",
+        options=None,
+        log_entry_id=log.id,
+    )
+
+    log.refresh_from_db()
+    assert log.input_data["content_snapshot"]["fields"]["description"]

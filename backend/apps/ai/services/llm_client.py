@@ -24,12 +24,29 @@ class LLMClient:
         client_class = AsyncOpenAI if async_mode else OpenAI
         self.client = client_class(api_key=settings.OPENAI_API_KEY)
         
-        # Pricing для подсчета стоимости (обновлять по мере изменений OpenAI)
-        self.pricing = {
-            'gpt-4o-mini': {'input': 0.00015, 'output': 0.0006},  # per 1K tokens
-            'gpt-4o': {'input': 0.005, 'output': 0.015},
-            'text-embedding-3-small': {'input': 0.00002, 'output': 0},
+        # USD за 1M токенов из settings.AI_CONFIG["PRICING"] (env AI_PRICING_JSON).
+        self.pricing = settings.AI_CONFIG.get('PRICING') or {}
+
+    def _usage_and_cost(self, model: str, usage) -> tuple[Dict, float]:
+        """Токены и стоимость вызова с учётом кэшированной части промпта."""
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached = int(getattr(details, "cached_tokens", 0) or 0)
+        tokens = {
+            'prompt': usage.prompt_tokens,
+            'completion': usage.completion_tokens,
+            'total': usage.total_tokens,
+            'cached': cached,
         }
+        price = self.pricing.get(model)
+        if price is None:
+            logger.warning("No AI pricing for model %s; cost_usd recorded as 0", model)
+            return tokens, 0.0
+        cost = (
+            (tokens['prompt'] - cached) * price.get('input', 0)
+            + cached * price.get('cached_input', price.get('input', 0))
+            + tokens['completion'] * price.get('output', 0)
+        ) / 1_000_000
+        return tokens, cost
 
     def _notify_admin_quota_error(self):
         """Оповещение админа в Telegram об исчерпании лимита (с антиспам кэшем на 1 час)."""
@@ -108,7 +125,10 @@ class LLMClient:
                 'tokens': {'prompt': int, 'completion': int, 'total': int},
                 'cost_usd': float,
                 'processing_time_ms': int,
-                'raw_response': dict
+                'raw_response': dict,
+                'finish_reason': str,
+                'truncated': bool,   # ответ обрезан по max_tokens
+                'json_error': bool,  # json_mode, но ответ не разобрался как JSON
             }
         """
         start_time = time.time()
@@ -122,6 +142,7 @@ class LLMClient:
         backoff = initial_backoff_ms / 1000.0
         response = None
         content = None
+        json_error = False
         while attempt <= max_retries:
             try:
                 if json_mode:
@@ -134,6 +155,7 @@ class LLMClient:
                     )
                     raw_text = response.choices[0].message.content or ""
                     content = self._parse_json_response(raw_text)
+                    json_error = not content and bool(raw_text.strip())
                 else:
                     response = self.client.chat.completions.create(
                         model=self.model,
@@ -169,22 +191,20 @@ class LLMClient:
                 attempt += 1
 
         processing_time = int((time.time() - start_time) * 1000)
-        tokens = {
-            'prompt': response.usage.prompt_tokens,
-            'completion': response.usage.completion_tokens,
-            'total': response.usage.total_tokens
-        }
-        
-        model_pricing = self.pricing.get(self.model, self.pricing.get('gpt-4o-mini'))
-        cost = (tokens['prompt'] * model_pricing['input'] + 
-               tokens['completion'] * model_pricing['output']) / 1000
-        
+        tokens, cost = self._usage_and_cost(self.model, response.usage)
+
+        finish_reason = getattr(response.choices[0], "finish_reason", None) or ""
+        if finish_reason == "length":
+            logger.warning("LLM response truncated by max_tokens=%s", max_tokens)
         return {
             'content': content,
             'tokens': tokens,
             'cost_usd': round(cost, 6),
             'processing_time_ms': processing_time,
-            'raw_response': response.model_dump()
+            'raw_response': response.model_dump(),
+            'finish_reason': finish_reason,
+            'truncated': finish_reason == "length",
+            'json_error': json_error,
         }
         
 
@@ -272,16 +292,8 @@ class LLMClient:
                 attempt += 1
 
         processing_time = int((time.time() - start_time) * 1000)
-        tokens = {
-            'prompt': response.usage.prompt_tokens,
-            'completion': response.usage.completion_tokens,
-            'total': response.usage.total_tokens
-        }
-        
-        model_pricing = self.pricing.get(self.vision_model, self.pricing.get('gpt-4o-mini'))
-        cost = (tokens['prompt'] * model_pricing['input'] + 
-               tokens['completion'] * model_pricing['output']) / 1000
-        
+        tokens, cost = self._usage_and_cost(self.vision_model, response.usage)
+
         return {
             'content': result_content,
             'tokens': tokens,

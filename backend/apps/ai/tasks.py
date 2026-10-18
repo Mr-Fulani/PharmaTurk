@@ -5,13 +5,36 @@ from django.db import transaction
 from django.db.models import Count, Q
 
 import logging
+from datetime import timedelta
 from typing import List
+
+import openai
+import requests
 
 from apps.catalog.models import Product
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.models import AIProcessingLog, AIProcessingStatus
 
 logger = logging.getLogger(__name__)
+
+# PENDING/PROCESSING-лог без движения дольше этого срока считается зависшим
+# (воркер упал, задача потерялась) и не блокирует повторную постановку.
+STALE_AI_LOG_AFTER = timedelta(minutes=60)
+ACTIVE_AI_LOG_STATUSES = (AIProcessingStatus.PENDING, AIProcessingStatus.PROCESSING)
+
+
+def _is_retryable_ai_error(exc: Exception) -> bool:
+    """Повторяем только временные сбои: сеть, таймаут, 429 и 5xx."""
+    if "insufficient_quota" in str(exc).lower():
+        return False
+    if isinstance(exc, openai.APIConnectionError):
+        return True
+    if isinstance(exc, openai.APIStatusError):
+        return exc.status_code == 429 or exc.status_code >= 500
+    if isinstance(exc, requests.HTTPError):
+        status = getattr(exc.response, "status_code", None)
+        return status is not None and (status == 429 or status >= 500)
+    return isinstance(exc, (requests.ConnectionError, requests.Timeout, ConnectionError, TimeoutError))
 
 
 def _resolve_processing_type(processing_type: str, options: dict | None) -> str:
@@ -34,11 +57,14 @@ def enqueue_product_ai_task(
     auto_apply: bool = False,
     options: dict | None = None,
     force: bool = False,
+    index_vectors: bool = True,
 ):
     """Создать видимый pending-лог и после commit поставить задачу в очередь.
 
     Возвращает ``(log, task_id, submitted)``. Повторное нажатие не плодит
     pending-задачи и не запускает уже успешно обработанный товар без ``force``.
+    ``index_vectors=False`` отключает переиндексацию рекомендаций после
+    обработки (на время массового прогона).
     """
     import uuid
 
@@ -46,10 +72,18 @@ def enqueue_product_ai_task(
     # Блокировка строки товара делает проверку/создание pending-лога атомарной
     # при двойном клике или параллельных admin/API запросах.
     product = Product.objects.select_for_update().get(pk=product_id)
-    reusable_statuses = [
-        AIProcessingStatus.PENDING,
-        AIProcessingStatus.PROCESSING,
-    ]
+    AIProcessingLog.objects.filter(
+        product=product,
+        processing_type=resolved_type,
+        status__in=ACTIVE_AI_LOG_STATUSES,
+        updated_at__lt=timezone.now() - STALE_AI_LOG_AFTER,
+    ).update(
+        status=AIProcessingStatus.FAILED,
+        error_message="Задача зависла: лог не обновлялся дольше "
+        f"{int(STALE_AI_LOG_AFTER.total_seconds() // 60)} мин",
+        completed_at=timezone.now(),
+    )
+    reusable_statuses = list(ACTIVE_AI_LOG_STATUSES)
     if not force:
         reusable_statuses.extend(
             [
@@ -89,6 +123,7 @@ def enqueue_product_ai_task(
                     "options": options,
                     "force": force,
                     "log_entry_id": log_entry.id,
+                    "index_vectors": index_vectors,
                 },
                 task_id=task_id,
                 priority=9,
@@ -105,7 +140,9 @@ def enqueue_product_ai_task(
     return log_entry, task_id, True
 
 
-@shared_task(bind=True, max_retries=3)
+# acks_late + reject_on_worker_lost: при деплое/падении celery_ai задача
+# возвращается в очередь и продолжает тот же PROCESSING-лог.
+@shared_task(bind=True, max_retries=3, acks_late=True, reject_on_worker_lost=True)
 def process_product_ai_task(
     self,
     product_id: int,
@@ -114,8 +151,15 @@ def process_product_ai_task(
     options: dict = None,
     force: bool = False,
     log_entry_id: int | None = None,
+    index_vectors: bool = True,
 ):
     """Обработка одного товара AI (описание, категория, анализ изображений)."""
+    if log_entry_id is not None and not AIProcessingLog.objects.filter(
+        pk=log_entry_id, status__in=ACTIVE_AI_LOG_STATUSES
+    ).exists():
+        # Лог признан зависшим и заменён новым (или уже завершён) — не дублируем.
+        logger.info("AI task skipped: log %s is no longer active", log_entry_id)
+        return {"status": "skipped", "log_id": log_entry_id, "product_id": product_id}
     try:
         if options is None:
             options = {}
@@ -157,8 +201,9 @@ def process_product_ai_task(
             )
         if processing_type in ("full", "description_only"):
             prepare_variant_ai_candidates_task.delay(product_id=product_id, force=force)
-        from apps.recommendations.tasks import index_product_vectors
-        index_product_vectors.apply_async(args=[[product_id]], countdown=60)
+        if index_vectors:
+            from apps.recommendations.tasks import index_product_vectors
+            index_product_vectors.apply_async(args=[[product_id]], countdown=60)
         return {
             "status": "success",
             "log_id": log_entry.id,
@@ -166,18 +211,74 @@ def process_product_ai_task(
         }
     except Exception as e:
         logger.exception("Error in AI task for product %s: %s", product_id, e)
+        if _is_retryable_ai_error(e) and self.request.retries < self.max_retries:
+            # Повтор продолжает тот же лог: возвращаем его в PENDING, чтобы
+            # process_product подхватил его, а не создал новый.
+            reopened = 1
+            if log_entry_id:
+                reopened = AIProcessingLog.objects.filter(
+                    pk=log_entry_id,
+                    status__in=[*ACTIVE_AI_LOG_STATUSES, AIProcessingStatus.FAILED],
+                ).update(
+                    status=AIProcessingStatus.PENDING,
+                    error_message=f"Повтор {self.request.retries + 1}/{self.max_retries}: {e}",
+                    completed_at=None,
+                    updated_at=timezone.now(),
+                )
+            if reopened:
+                raise self.retry(exc=e, countdown=min(60 * (2 ** self.request.retries), 300))
         if log_entry_id:
             AIProcessingLog.objects.filter(
                 pk=log_entry_id,
-                status__in=[AIProcessingStatus.PENDING, AIProcessingStatus.PROCESSING],
+                status__in=ACTIVE_AI_LOG_STATUSES,
             ).update(
                 status=AIProcessingStatus.FAILED,
                 error_message=str(e),
                 completed_at=timezone.now(),
             )
-        if self.request.retries < self.max_retries:
-            raise self.retry(exc=e, countdown=min(60 * (2 ** self.request.retries), 300))
         raise
+
+
+@shared_task(acks_late=True, reject_on_worker_lost=True)
+def apply_ai_log_task(log_id: int):
+    """Применить готовый (completed) AI-лог к товару без повторной генерации."""
+    log = AIProcessingLog.objects.select_related("product").filter(
+        pk=log_id, status=AIProcessingStatus.COMPLETED
+    ).first()
+    if log is None:
+        return {"status": "skipped", "log_id": log_id}
+    ContentGenerator().apply_log_to_product(log)
+    return {"status": "success", "log_id": log_id}
+
+
+def enqueue_or_apply_product_ai(
+    *,
+    product_id: int,
+    auto_apply: bool = False,
+    force: bool = False,
+    index_vectors: bool = True,
+    processing_type: str = "full",
+):
+    """Поставить товар в AI-очередь; при auto_apply применить уже готовый лог.
+
+    Возвращает ``(log, action)``, где action: ``queued`` — новая задача,
+    ``apply_queued`` — готовый лог отправлен на применение, ``skipped`` —
+    лог уже в очереди/обработке, на модерации или применён.
+    """
+    log, _task_id, submitted = enqueue_product_ai_task(
+        product_id=product_id,
+        processing_type=processing_type,
+        auto_apply=auto_apply,
+        force=force,
+        index_vectors=index_vectors,
+    )
+    if submitted:
+        return log, "queued"
+    if auto_apply and log.status == AIProcessingStatus.COMPLETED:
+        log_id = log.id
+        transaction.on_commit(lambda: apply_ai_log_task.delay(log_id))
+        return log, "apply_queued"
+    return log, "skipped"
 
 
 @shared_task
