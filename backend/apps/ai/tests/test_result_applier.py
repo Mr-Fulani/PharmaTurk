@@ -836,7 +836,8 @@ def test_ai_does_not_move_product_out_of_assigned_category_and_sends_log_to_mode
     )
     accessory.refresh_from_db()
     product = accessory.base_product
-    log = _accessory_log(product, suggested_category=root, category_confidence=0.95)
+    other = Category.objects.create(name="Витамины", slug="ai-guard-vitamins", parent=root)
+    log = _accessory_log(product, suggested_category=other, category_confidence=0.95)
 
     _generator().apply_log_to_product(log)
 

@@ -35,6 +35,7 @@ MODERATION_REASON_LABELS = {
     "short_description": "Описание содержит меньше 20 слов",
     "title_category_mismatch": "Название не соответствует категории товара",
     "title_identity_lost": "В названии потеряна модель или серия товара",
+    "title_untranslated": "В названии остались турецкие слова или их транслитерация",
     "forbidden_attribute": "AI предложил атрибут, недопустимый для этого типа товара",
     "untranslated_attribute": "Атрибут содержит непереведённый турецкий текст",
     "incomplete_medicine_translation": (
@@ -490,7 +491,7 @@ def build_change_preview(
         (
             reason
             for reason in semantic_report.reasons
-            if reason in {"title_category_mismatch", "title_identity_lost"}
+            if reason in {"title_category_mismatch", "title_identity_lost", "title_untranslated"}
         ),
         "",
     )
