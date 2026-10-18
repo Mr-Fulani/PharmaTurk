@@ -9,6 +9,7 @@ from typing import Any, Iterable
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.category_policy import CATEGORY_POLICY_OVERRIDES, build_category_policy
 from apps.catalog.product_semantics import looks_untranslated_turkish
+from apps.ai.services.rules.vocab import fold, generic_title_words
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
     size_inventory_block_reason,
@@ -503,6 +504,13 @@ class SemanticValidator:
         if product_type == "supplements":
             identity_tokens = _supplement_identity_tokens
             original_tokens = _supplement_identity_tokens(getattr(product, "name", ""), source=True)
+        elif product_type != "medicines":
+            # Турецкие названия часто целиком в ВЕРХНЕМ регистре: общие слова
+            # («TEE», «SNEAKER», «BEYAZ») — не идентичность, а бренд/модель
+            # («LC WAIKIKI» → «LC Waikiki») сверяем без учёта регистра.
+            generic = generic_title_words()
+            original_tokens = {token for token in original_tokens if fold(token) not in generic}
+            identity_tokens = lambda value: _identity_tokens(str(value or "").upper())  # noqa: E731
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
                 continue

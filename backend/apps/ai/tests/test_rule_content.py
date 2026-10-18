@@ -436,3 +436,17 @@ def test_hyphen_codes_are_not_required_title_identity():
     from apps.ai.services.semantic_validator import _identity_tokens
 
     assert _identity_tokens("Bisiklet Yaka Beyaz Erkek T-Shirt J5SM-TST7325 BUCKY 6FX") == {"BUCKY", "6FX"}
+
+
+@pytest.mark.django_db
+def test_identity_ignores_generic_uppercase_words_and_case():
+    category = Category.objects.create(name="Пояса и ремни", slug="rule-belts")
+    product = SimpleNamespace(name="Kemer - LC WAIKIKI - 199,99 TL", product_type="accessories", category=category, domain_item=None)
+    report = SemanticValidator().validate(
+        product, generated_titles={"ru": "Мужской ремень LC Waikiki, черный"}, dynamic_attributes=[]
+    )
+    assert "title_identity_lost" not in report.reasons
+
+    tee = SimpleNamespace(name="Siyah Erkek T-Shirt JORX90 TEE SS CREW", product_type="clothing", category=category, domain_item=None)
+    report = SemanticValidator().validate(tee, generated_titles={"ru": "Мужская футболка, черная"}, dynamic_attributes=[])
+    assert "title_identity_lost" in report.reasons  # модель JORX90/CREW потеряна

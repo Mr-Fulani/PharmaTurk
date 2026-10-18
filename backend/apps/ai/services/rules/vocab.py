@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
 
 _FOLD = str.maketrans({"ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u", "â": "a", "î": "i", "û": "u"})
 
@@ -235,6 +236,8 @@ KINDS: dict[str, Kind] = {
     "bot": _k("ботинки", PL, "Boots"),
     "cizme": _k("сапоги", PL, "Boots"),
     "loafer": _k("лоферы", PL, "Loafers"),
+    "slip on": _k("слипоны", PL, "Slip-Ons"),
+    "slip-on": _k("слипоны", PL, "Slip-Ons"),
     "babet": _k("балетки", PL, "Ballet Flats"),
     "ayakkabi": _k("обувь", F, "Shoes", generic=True),
     "ayakkabisi": _k("обувь", F, "Shoes", generic=True),
@@ -366,6 +369,46 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "cizgili": ("в полоску", "Striped"),
     "kapusonlu": ("с капюшоном", "Hooded"),
     "nakisli": ("с вышивкой", "Embroidered"),
+    "relaxed": ("свободного кроя", "Relaxed Fit"),
+    "loose fit": ("свободного кроя", "Loose Fit"),
+    "rahat kalip": ("свободного кроя", "Relaxed Fit"),
+    "regular kalip": ("прямого кроя", "Regular Fit"),
+    "standart kalip": ("прямого кроя", "Regular Fit"),
+    "slim kalip": ("приталенного кроя", "Slim Fit"),
+    "oversize kalip": ("оверсайз", "Oversize"),
+    "buyuk beden": ("большого размера", "Plus Size"),
+    "yazi baskili": ("с надписью", "Slogan"),
+    "yazili": ("с надписью", "Slogan"),
+    "jakarli": ("из жаккарда", "Jacquard"),
+    "cizgi": ("с полосками", "Striped"),
+    "graphic": ("с принтом", "Graphic"),
+    "logo": ("с логотипом", "Logo"),
+    "short sleeve": ("с коротким рукавом", "Short Sleeve"),
+    "long sleeve": ("с длинным рукавом", "Long Sleeve"),
+    "ortopetik": ("с ортопедической стелькой", "Orthopedic"),
+    "ortapedik": ("с ортопедической стелькой", "Orthopedic"),
+    "orto pedik": ("с ортопедической стелькой", "Orthopedic"),
+    "ortopedik taban": ("с ортопедической стелькой", "Orthopedic"),
+    "kaymaz": ("с нескользящей подошвой", "Non-Slip"),
+    "kaymaz taban": ("с нескользящей подошвой", "Non-Slip"),
+    "isikli": ("со светящейся подошвой", "Light-Up"),
+    "lastikli": ("на резинке", "Elastic"),
+    "kapali burun": ("с закрытым носком", "Closed-Toe"),
+    "dikdortgen": ("прямоугольной формы", "Rectangular"),
+    "oval": ("овальной формы", "Oval"),
+    "yuvarlak": ("круглой формы", "Round"),
+    "fit": ("", ""),
+    "kalip": ("", ""),
+    "kesim": ("", ""),
+    "detayli": ("", ""),
+    "yumusak": ("", ""),
+    "dokulu": ("", ""),
+    "flamli": ("", ""),
+    "comfort": ("", ""),
+    "esnek": ("", ""),
+    "taban": ("", ""),
+    "tabanli": ("", ""),
+    "doktor tavsiyeli": ("", ""),
     "poplin": ("из поплина", "Poplin"),
     "kombin": ("", ""),
     "cesitli": ("", ""),
@@ -529,3 +572,12 @@ def translate_furniture_finish(raw: str | None) -> tuple[str, str] | None:
         ru_parts.append(f"{prefix} {ru_masculine(color.ru)}".strip())
         en_parts.append(f"{prefix} {color.en.lower()}".strip())
     return "/".join(ru_parts), "/".join(en_parts)
+
+
+@lru_cache(maxsize=1)
+def generic_title_words() -> frozenset[str]:
+    """Однословные словарные слова (тип, цвет, пол, описание) — не бренд/модель."""
+    words = set()
+    for mapping in (KINDS, COLORS, AUDIENCE, DESCRIPTORS, COLOR_MODIFIERS):
+        words.update(key for key in mapping if " " not in key)
+    return frozenset(words | COLOR_NOISE)
