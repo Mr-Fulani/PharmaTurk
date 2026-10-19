@@ -24,8 +24,8 @@ Beat только публикует задачи. Для исполнения �
 | `monitoring-production-watchdog` | `apps.monitoring.tasks.run_production_watchdog` | каждые 5 минут | `celery` | Проверяет homepage/liveness/readiness и доставляет дедуплицированные Telegram alert/recovery. |
 | `coinremitter-outbox-dispatch` | `apps.payments.tasks.dispatch_pending_crypto_invoice_requests` | каждую минуту | `celery` | Подбирает durable pending invoice requests, пропущенные immediate publish. |
 | `coinremitter-reconciliation` | `apps.payments.tasks.reconcile_coinremitter_state` | каждые 5 минут | `celery` | Карантинирует stale provider claims и пишет read-only drift summary. |
-| `currency-update-rates` | `currency.update_rates` | каждые 4 часа | `celery` | Обновляет курсы валют. |
-| `currency-update-prices` | `currency.update_product_prices` | каждые 24 часа | `celery` | Вызывает `update_product_prices`, batch size 200. |
+| `currency-update-rates` | `currency.update_rates` | каждые 4 часа: `00:05`, `04:05`, … `20:05` | `celery` | Обновляет курсы валют. |
+| `currency-update-prices` | `currency.update_product_prices` | ежедневно `05:00` | `celery` | Вызывает `update_product_prices`, batch size 200. |
 | `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | каждые 7 дней | `celery` | Удаляет сессии и логи скрапинга старше 30 дней. |
 | `orders-cleanup-stale-anonymous-carts` | `orders.cleanup_stale_anonymous_carts` | ежедневно `04:10` | `celery` | Батчами удаляет неактивные анонимные корзины; user carts не затрагивает. |
 | `orders-remind-abandoned-carts` | `orders.remind_abandoned_carts` | ежечасно `:20` | `celery` | Одно напоминание (Telegram при `telegram_notifications`, email при `email_notifications`) о заявке вошедшего клиента, не менявшейся ≥24 ч (не старше 7 дней); `Cart.reminder_sent_at`. |
@@ -33,7 +33,7 @@ Beat только публикует задачи. Для исполнения �
 | `cleanup-orphaned-media` | `catalog.cleanup_orphaned_media` | воскресенье `03:30` | `celery` | Удаляет безопасно определённые orphaned media; при превышении лимита — только отчёт в Telegram. |
 | `catalog-recompute-sort-ranks` | `catalog.recompute_sort_ranks` | ежедневно `04:50` | `celery` | Пересчитывает `sort_rank` медикаментов и БАДов — порядок «Популярные» (по умолчанию) на их страницах. |
 | `payments-expire-crypto-invoices` | `apps.payments.tasks.expire_pending_crypto_payments` | каждые 10 минут | `celery` | Помечает просроченные pending crypto invoices как `expired`. |
-| `ai-cleanup-old-logs` | `apps.ai.tasks.cleanup_old_ai_logs` | каждые 7 дней | `ai` | Удаляет `completed`/`approved` AI-логи старше 30 дней. |
+| `ai-cleanup-old-logs` | `apps.ai.tasks.cleanup_old_ai_logs` | воскресенье `04:40` | `ai` | Удаляет `completed`/`approved` AI-логи старше 30 дней. |
 | `recsys-sync-stale-nightly` | `apps.recommendations.tasks.sync_stale_products_to_qdrant` | ежедневно `02:15` | `recsys` | Ставит на индексацию до 200 новых/изменённых товаров батчами по 25. |
 | `cleanup-temp-images` | `apps.recommendations.tasks.cleanup_temp_images` | каждый час | `recsys` | Удаляет файлы старше часа из storage-префикса `temp/`. |
 
@@ -51,6 +51,8 @@ Beat только публикует задачи. Для исполнения �
 ### Валюты
 
 `currency.update_rates` вызывает `CurrencyRateService.update_rates()`. `currency.update_product_prices` запускает management-команду пересчёта и не обновляет курс повторно внутри того же запуска.
+
+Обе задачи стоят на `crontab`, а не на интервалах: состояние beat пропадает при каждом деплое, и интервал отсчитывался заново — курсы обновлялись с разрывами 9–12 ч, а пересчёт раз в 24 ч при нескольких деплоях в сутки не срабатывал. Пересчёт в `05:00` идёт после ночного окна `02:15`–`04:50` и на курсах `04:05`; `catalog.recompute_sort_ranks` (`04:50`) от сконвертированных цен не зависит — смотрит только на наличие базовой цены.
 
 Обе задачи перехватывают исключения и возвращают `{"status": "error"}` вместо обязательного Celery failure. Поэтому мониторинг должен проверять не только state задачи, но и её result/log message.
 
