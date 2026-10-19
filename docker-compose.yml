@@ -1,7 +1,7 @@
 name: mudaroba
 
 # Память сервера (7,7 ГБ) поделена жёсткими mem_limit так, чтобы их сумма
-# (≈ 6,85 ГиБ) оставляла место системе: контейнер, вышедший за лимит, получает
+# (≈ 6,81 ГиБ) оставляла место системе: контейнер, вышедший за лимит, получает
 # OOM внутри себя, а не вешает весь хост. Расчёт — docs/PROD_MEMORY.md.
 services:
   postgres:
@@ -48,7 +48,7 @@ services:
       - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
-    mem_limit: 768m
+    mem_limit: 512m
     networks: [data]
 
   backend:
@@ -163,7 +163,7 @@ services:
       QDRANT_PORT: 6333
       REDIS_CACHE_URL: redis://redis-cache:6379/0
     command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2 --max-memory-per-child=400000"
-    mem_limit: 512m
+    mem_limit: 640m
     networks: [data, egress]
 
   celery_recsys:
@@ -205,7 +205,7 @@ services:
     environment:
       REDIS_CACHE_URL: redis://redis-cache:6379/0
     command: bash -c "poetry run celery -A config beat --loglevel=info"
-    mem_limit: 160m
+    mem_limit: 384m
     networks: [data]
 
   # One-shot schema operation used by release tooling. It never starts during a

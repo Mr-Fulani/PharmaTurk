@@ -12,6 +12,12 @@ services:
     logging: *default-logging
     environment:
       USE_RUNSERVER: 0
+      # Воркер gunicorn уходит на перезапуск после N запросов. При 200 оба
+      # воркера перезапускались каждые ~5 мин, часто одновременно, и запросы
+      # из очереди получали 502 (2026-10-19). 2000 ± 500 — примерно раз в час
+      # и вразнобой.
+      GUNICORN_MAX_REQUESTS: 2000
+      GUNICORN_MAX_REQUESTS_JITTER: 500
     volumes:
       - staticfiles:/app/staticfiles
     dns:
@@ -24,7 +30,7 @@ services:
     command: npm run start
     restart: always
     # Лимит только для production-сборки: dev-сервер Next (override) прожорливее.
-    mem_limit: 512m
+    mem_limit: 384m
     logging: *default-logging
     # Remove direct port 80 mapping, let Nginx handle it
     environment:
