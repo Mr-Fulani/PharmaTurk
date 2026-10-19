@@ -1,9 +1,13 @@
+import sys
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
+from celery.exceptions import TimeoutError as CeleryTimeoutError
 from django.contrib.auth import get_user_model
+from kombu.exceptions import OperationalError
 from django.contrib.auth.models import AnonymousUser
 from PIL import Image
 from rest_framework.test import APIClient, APIRequestFactory
@@ -15,6 +19,7 @@ from apps.recommendations.services.image_encoder import (
     _normalize_clip_image_features,
 )
 from apps.recommendations.services.safe_image_fetcher import UnsafeImageURLError
+from apps.recommendations.tasks import encode_search_image
 from apps.recommendations.throttles import (
     VisualSearchAnonThrottle,
     VisualSearchUserThrottle,
@@ -161,7 +166,7 @@ def test_view_rejects_unsafe_image_before_qdrant_or_clip():
     with patch(
         "apps.recommendations.views.fetch_search_image",
         side_effect=UnsafeImageURLError(),
-    ), patch.object(CLIPEncoder, "encode_image") as encode, patch.object(
+    ), patch.object(encode_search_image, "apply_async") as encode, patch.object(
         RecommendationViewSet,
         "_get_engine",
     ) as get_engine:
@@ -174,6 +179,13 @@ def test_view_rejects_unsafe_image_before_qdrant_or_clip():
     get_engine.assert_not_called()
 
 
+def _encoded_result(vector=(0.0,) * 512, error=None):
+    result = Mock()
+    result.get.return_value = list(vector) if vector is not None else None
+    result.get.side_effect = error
+    return result
+
+
 def test_successful_empty_search_preserves_response_contract():
     engine = Mock()
     engine.find_similar_by_image_vector.return_value = []
@@ -181,9 +193,9 @@ def test_successful_empty_search_preserves_response_contract():
         "apps.recommendations.views.fetch_search_image",
         return_value=Image.new("RGB", (8, 8)),
     ), patch.object(
-        CLIPEncoder,
-        "encode_image",
-        return_value=np.zeros(512, dtype=np.float32),
+        encode_search_image,
+        "apply_async",
+        return_value=_encoded_result(),
     ), patch.object(
         RecommendationViewSet,
         "_get_engine",
@@ -202,9 +214,9 @@ def test_unexpected_backend_error_is_generic():
         "apps.recommendations.views.fetch_search_image",
         return_value=Image.new("RGB", (8, 8)),
     ), patch.object(
-        CLIPEncoder,
-        "encode_image",
-        return_value=np.zeros(512, dtype=np.float32),
+        encode_search_image,
+        "apply_async",
+        return_value=_encoded_result(),
     ), patch.object(
         RecommendationViewSet,
         "_get_engine",
@@ -216,3 +228,127 @@ def test_unexpected_backend_error_is_generic():
     assert response.status_code == 503
     assert response.data == {"error": "search_unavailable"}
     assert "internal-secret-detail" not in str(response.data)
+
+
+def test_web_search_queues_clip_and_never_imports_torch():
+    """CLIP (torch ≈ 190 МБ + веса) живёт в celery_recsys, не в gunicorn-воркере."""
+    engine = Mock()
+    engine.find_similar_by_image_vector.return_value = []
+    heavy_modules = (
+        "torch",
+        "transformers",
+        "sentence_transformers",
+        "apps.recommendations.services.image_encoder",
+    )
+    with patch.dict(sys.modules), patch(
+        "apps.recommendations.views.fetch_search_image",
+        return_value=Image.new("RGB", (1600, 1200)),
+    ), patch.object(
+        encode_search_image,
+        "apply_async",
+        return_value=_encoded_result(),
+    ) as apply_async, patch.object(
+        RecommendationViewSet,
+        "_get_engine",
+        return_value=engine,
+    ):
+        for name in heavy_modules:
+            sys.modules.pop(name, None)
+        response = _post_visual_search(
+            {"image_url": "https://images.example/a.jpg", "limit": 12}
+        )
+        loaded = [name for name in heavy_modules if name in sys.modules]
+
+    assert response.status_code == 200
+    assert loaded == []
+    (image_bytes,) = apply_async.call_args.kwargs["args"]
+    assert apply_async.call_args.kwargs["expires"] == 15
+    # Через брокер идёт уменьшенная копия, а не исходник до 5 МБ.
+    assert Image.open(BytesIO(image_bytes)).size == (512, 384)
+    apply_async.return_value.get.assert_called_once_with(timeout=15)
+    vector = engine.find_similar_by_image_vector.call_args.kwargs["image_vector"]
+    assert vector.dtype == np.float32
+    assert vector.shape == (512,)
+
+
+@pytest.mark.parametrize(
+    "result_kwargs, apply_error",
+    [
+        ({"error": CeleryTimeoutError("The operation timed out.")}, None),
+        ({"error": RuntimeError("CUDA out of memory")}, None),
+        ({"vector": None}, None),
+        ({}, OperationalError("broker unavailable")),
+    ],
+    ids=["timeout", "task-error", "encoder-unavailable", "broker-down"],
+)
+def test_encoding_failure_returns_search_unavailable(result_kwargs, apply_error):
+    result = _encoded_result(**result_kwargs)
+    with patch(
+        "apps.recommendations.views.fetch_search_image",
+        return_value=Image.new("RGB", (8, 8)),
+    ), patch.object(
+        encode_search_image,
+        "apply_async",
+        return_value=result,
+        side_effect=apply_error,
+    ), patch.object(RecommendationViewSet, "_get_engine") as get_engine:
+        response = _post_visual_search(
+            {"image_url": "https://images.example/a.jpg", "limit": 12}
+        )
+
+    assert response.status_code == 503
+    assert response.data == {"error": "search_unavailable"}
+    get_engine.assert_not_called()
+
+
+def test_encode_task_validates_bytes_and_returns_plain_list():
+    buffer = BytesIO()
+    Image.new("RGB", (8, 8)).save(buffer, format="JPEG")
+    with patch.object(
+        CLIPEncoder,
+        "encode_image",
+        return_value=np.ones(512, dtype=np.float32),
+    ) as encode:
+        vector = encode_search_image(buffer.getvalue())
+
+    encode.assert_called_once_with(buffer.getvalue())
+    assert vector == [1.0] * 512
+
+
+def test_encode_task_returns_none_for_rejected_image():
+    with patch.object(CLIPEncoder, "_encode_image_impl") as encode_impl:
+        assert encode_search_image(b"not an image") is None
+    encode_impl.assert_not_called()
+
+
+def test_encode_task_has_own_queue_and_indexing_stays_in_recsys():
+    from config.celery import app
+
+    def queue_for(task_name):
+        return app.amqp.router.route({}, task_name)["queue"].name
+
+    assert queue_for(encode_search_image.name) == "recsys_search"
+    assert queue_for("apps.recommendations.tasks.index_product_vectors") == "recsys"
+
+
+@pytest.mark.parametrize(
+    "queues, warmed",
+    [({"recsys_search": None, "recsys": None}, True), ({"ai": None}, False)],
+    ids=["celery_recsys", "other-worker"],
+)
+def test_only_visual_search_worker_preloads_clip_on_start(queues, warmed):
+    from apps.recommendations.tasks import _warm_up_visual_search
+
+    sender = SimpleNamespace(
+        app=SimpleNamespace(
+            amqp=SimpleNamespace(queues=SimpleNamespace(consume_from=queues))
+        )
+    )
+    with patch.object(encode_search_image, "apply_async") as apply_async:
+        _warm_up_visual_search(sender=sender)
+
+    assert apply_async.called is warmed
+    if warmed:
+        (image_bytes,) = apply_async.call_args.kwargs["args"]
+        assert Image.open(BytesIO(image_bytes)).format == "PNG"
+        assert apply_async.call_args.kwargs["ignore_result"] is True

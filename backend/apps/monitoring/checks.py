@@ -74,3 +74,40 @@ def production_watchdog_configuration_check(app_configs, **kwargs):
             )
         )
     return errors
+
+
+@register()
+def db_backup_configuration_check(app_configs, **kwargs):
+    if not getattr(settings, "DB_BACKUP_ENABLED", False):
+        return []
+
+    errors = []
+    endpoint = urlsplit(getattr(settings, "DB_BACKUP_S3_ENDPOINT_URL", ""))
+    if endpoint.scheme != "https" or not endpoint.netloc:
+        errors.append(
+            Error("DB_BACKUP_S3_ENDPOINT_URL must be an HTTPS URL.", id="monitoring.E010")
+        )
+    for name in (
+        "DB_BACKUP_S3_BUCKET",
+        "DB_BACKUP_S3_ACCESS_KEY_ID",
+        "DB_BACKUP_S3_SECRET_ACCESS_KEY",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+    ):
+        if not getattr(settings, name, ""):
+            errors.append(Error(f"DB_BACKUP_ENABLED requires {name}.", id="monitoring.E011"))
+    # cleanup_orphaned_media удаляет из бакета медиа всё, на что нет ссылок в БД,
+    # а ключи медиа есть у всего приложения — копии должны жить отдельно.
+    if settings.DB_BACKUP_S3_BUCKET and settings.DB_BACKUP_S3_BUCKET == getattr(
+        settings, "R2_BUCKET_NAME", ""
+    ):
+        errors.append(
+            Error("DB_BACKUP_S3_BUCKET must differ from the media bucket.", id="monitoring.E012")
+        )
+    if settings.DB_BACKUP_S3_ACCESS_KEY_ID and settings.DB_BACKUP_S3_ACCESS_KEY_ID == getattr(
+        settings, "R2_ACCESS_KEY_ID", ""
+    ):
+        errors.append(
+            Error("DB_BACKUP_S3_ACCESS_KEY_ID must be a separate key.", id="monitoring.E013")
+        )
+    return errors

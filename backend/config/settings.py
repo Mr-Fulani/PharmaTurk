@@ -254,6 +254,15 @@ CELERY_TASK_ANNOTATIONS = {
         "time_limit": 60,
         "soft_time_limit": 45,
     },
+    # pg_dump ≈ 250 МБ потоком в бакет — минуты; пробное восстановление дольше.
+    "apps.monitoring.tasks.run_database_backup": {
+        "time_limit": 60 * 60,
+        "soft_time_limit": 55 * 60,
+    },
+    "apps.monitoring.tasks.check_database_backup": {
+        "time_limit": 2 * 60 * 60,
+        "soft_time_limit": 115 * 60,
+    },
     "apps.payments.tasks.create_coinremitter_invoice_request": {
         "time_limit": 90,
         "soft_time_limit": 75,
@@ -268,6 +277,8 @@ from celery.schedules import crontab
 # Очереди изолированы: AI и тяжёлая векторизация не должны блокировать друг друга.
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
+    # Точное имя важнее шаблона ниже: поиск по фото не стоит за батчами индексации.
+    "apps.recommendations.tasks.encode_search_image": {"queue": "recsys_search"},
     "apps.recommendations.tasks.*": {"queue": "recsys"},
     "apps.payments.tasks.*": {"queue": "celery"},
     "apps.monitoring.tasks.*": {"queue": "celery"},
@@ -314,11 +325,31 @@ CELERY_BEAT_SCHEDULE = {
     # "vapi-full-sync": {"task": "apps.vapi.tasks.full_catalog_sync", "schedule": 60*60*24*3, "args": (100,)},
     # run-all-scrapers: отключено, доработаем после парсеров
     # "run-all-scrapers": {"task": "apps.scrapers.tasks.run_all_active_scrapers", "schedule": 60 * 60 * 12},
-    # Очистка старых сессий парсинга каждую неделю
+    # Сессии парсинга и логи товаров (scrapedproductlog) старше 30 дней — каждую
+    # ночь, пачками. Только crontab: состояние beat (celerybeat-schedule) живёт в
+    # слое контейнера и теряется при каждом деплое, интервал в неделю не успевал
+    # сработать ни разу.
     "cleanup-scraper-sessions": {
         "task": "apps.scrapers.tasks.cleanup_old_sessions",
-        "schedule": 60 * 60 * 24 * 7,  # неделя
+        "schedule": crontab(hour=4, minute=20),
         "args": (30,),  # хранить 30 дней
+    },
+    # Бэкап БД во внешний бакет (docs/DB_BACKUP.md). CELERY_TIMEZONE не задан,
+    # поэтому crontab считается в UTC: 01:15 UTC = 04:15 МСК, ночной минимум
+    # трафика, до recsys-sync-stale-nightly. Без DB_BACKUP_ENABLED задачи
+    # ничего не делают.
+    "monitoring-database-backup": {
+        "task": "apps.monitoring.tasks.run_database_backup",
+        "schedule": crontab(hour=1, minute=15),
+    },
+    "monitoring-database-backup-check": {
+        "task": "apps.monitoring.tasks.check_database_backup",
+        "schedule": crontab(hour=1, minute=45, day_of_week=0),
+    },
+    # Просроченные сессии Django (manage.py clearsessions) — каждую ночь.
+    "users-clear-expired-sessions": {
+        "task": "users.clear_expired_sessions",
+        "schedule": crontab(hour=4, minute=0),
     },
     # «Новинка» живёт NEW_BADGE_DAYS дней с момента добавления товара.
     "catalog-expire-new-badges": {
@@ -953,6 +984,16 @@ PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS = env.int(
     "PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS",
     default=10,
 )
+# Ежедневный pg_dump во внешний S3-совместимый бакет (docs/DB_BACKUP.md).
+# Отдельный бакет и отдельные ключи, не R2_* медиа.
+DB_BACKUP_ENABLED = env.bool("DB_BACKUP_ENABLED", default=False)
+DB_BACKUP_S3_ENDPOINT_URL = env("DB_BACKUP_S3_ENDPOINT_URL", default="")
+DB_BACKUP_S3_REGION = env("DB_BACKUP_S3_REGION", default="auto")
+DB_BACKUP_S3_BUCKET = env("DB_BACKUP_S3_BUCKET", default="")
+DB_BACKUP_S3_ACCESS_KEY_ID = env("DB_BACKUP_S3_ACCESS_KEY_ID", default="")
+DB_BACKUP_S3_SECRET_ACCESS_KEY = env("DB_BACKUP_S3_SECRET_ACCESS_KEY", default="")
+DB_BACKUP_HEARTBEAT_URL = env("DB_BACKUP_HEARTBEAT_URL", default="")
+DB_BACKUP_TEST_RESTORE_ENABLED = env.bool("DB_BACKUP_TEST_RESTORE_ENABLED", default=False)
 validate_telegram_webhook_settings(
     debug=DEBUG,
     bot_token=TELEGRAM_BOT_TOKEN,

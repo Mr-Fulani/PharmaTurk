@@ -1,6 +1,8 @@
 """API views for recommendations (search_by_image, personalized, complete_the_look)."""
 import logging
+from io import BytesIO
 
+import numpy as np
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
@@ -22,6 +24,7 @@ from .serializers import (
     VisualSearchResponseSerializer,
 )
 from .services.safe_image_fetcher import ImageFetchError, fetch_search_image
+from .tasks import encode_search_image
 from .throttles import (
     RecommendationAnonThrottle,
     RecommendationUserThrottle,
@@ -31,6 +34,31 @@ from .throttles import (
 
 
 logger = logging.getLogger(__name__)
+
+# Сколько веб-поток ждёт вектор из celery_recsys; потом 503 search_unavailable.
+VISUAL_SEARCH_TIMEOUT_SECONDS = 15
+# CLIP всё равно сжимает картинку до 224 px. PNG-копия ≤ 512 px (обычно
+# 0,1–0,2 МБ, не больше ≈ 1 МБ) вместо исходных ≤ 5 МБ щадит брокер Redis
+# (noeviction, 128 МБ); вектор совпадает с оригиналом на 0,998+ по косинусу.
+VISUAL_SEARCH_MAX_SIDE = 512
+
+
+def _encode_search_image(image):
+    """Вектор CLIP из celery_recsys: torch и модель в веб-процесс не грузятся."""
+    preview = image.copy()
+    preview.thumbnail((VISUAL_SEARCH_MAX_SIDE, VISUAL_SEARCH_MAX_SIDE))
+    buffer = BytesIO()
+    preview.save(buffer, format="PNG")
+    result = encode_search_image.apply_async(
+        args=[buffer.getvalue()],
+        # Воркер выбросит задачу, которую веб уже перестал ждать.
+        expires=VISUAL_SEARCH_TIMEOUT_SECONDS,
+    )
+    vector = result.get(timeout=VISUAL_SEARCH_TIMEOUT_SECONDS)
+    result.forget()
+    if vector is None:
+        raise RuntimeError("image encoder unavailable")
+    return np.asarray(vector, dtype=np.float32)
 
 
 def _public_card_products(product_ids=None):
@@ -136,7 +164,7 @@ class RecommendationViewSet(viewsets.ViewSet):
         image_url = serializer.validated_data["image_url"]
         n_results = serializer.validated_data["limit"]
         try:
-            # Validate and fully decode before loading CLIP or contacting Qdrant.
+            # Validate and fully decode before queueing CLIP or contacting Qdrant.
             image = fetch_search_image(image_url, request=request)
         except ImageFetchError:
             return Response(
@@ -148,11 +176,8 @@ class RecommendationViewSet(viewsets.ViewSet):
             )
 
         try:
-            from .services.image_encoder import CLIPEncoder
-
-            image_vector = CLIPEncoder().encode_image(image)
-            if image_vector is None:
-                raise RuntimeError("image encoder unavailable")
+            # Таймаут, ошибка задачи или недоступный брокер — тоже 503 ниже.
+            image_vector = _encode_search_image(image)
             engine = self._get_engine()
             results = engine.find_similar_by_image_vector(
                 image_vector=image_vector,

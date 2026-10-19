@@ -90,7 +90,7 @@ PostgreSQL/Redis/Qdrant persistence прошли. Перед выпуском ga
 | `qdrant` | векторы товаров и визуальный поиск |
 | `celeryworker` | общая очередь `celery` |
 | `celery_ai` | очередь `ai` |
-| `celery_recsys` | очередь `recsys` |
+| `celery_recsys` | очереди `recsys_search` (поиск по фото) и `recsys` |
 | `celerybeat` | расписание фоновых задач |
 | `nginx` | production reverse proxy |
 

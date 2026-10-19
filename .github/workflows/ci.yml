@@ -219,6 +219,18 @@ jobs:
           -v "$PWD/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"
           -v "$PWD/nginx/cloudflare-realip.inc:/etc/nginx/cloudflare-realip.inc:ro"
           nginx:1.30.4-alpine3.24 nginx -t
+      - name: Validate Nginx with origin TLS enabled
+        run: |
+          tls="$(mktemp -d)"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=mudaroba.com \
+            -keyout "$tls/origin.key" -out "$tls/origin.pem" 2>/dev/null
+          cp nginx/origin-tls.inc.example "$tls/origin-tls.inc"
+          chmod -R a+rX "$tls"
+          docker run --rm --network none \
+            -v "$PWD/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/nginx/cloudflare-realip.inc:/etc/nginx/cloudflare-realip.inc:ro" \
+            -v "$tls:/etc/nginx/tls:ro" \
+            nginx:1.30.4-alpine3.24 nginx -t
       - name: Validate immutable application image contract
         env:
           IMAGE_TAG: ${{ github.sha }}

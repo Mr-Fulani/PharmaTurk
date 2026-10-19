@@ -86,3 +86,7 @@ backend/products_db_dump.txt
 exemple/
 # Локальные отчёты аудита (не коммитим)
 docs/AUDIT_2026-10-15_SEO_GROWTH.md
+
+# Origin TLS: certificate, key and enabled snippet live only on the server
+nginx/tls/*
+!nginx/tls/.gitkeep

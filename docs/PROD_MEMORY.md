@@ -33,7 +33,7 @@
 | Сервис | mem_limit | Факт 19.10 | Почему столько |
 |---|---|---|---|
 | backend | 2 ГиБ | 426 МБ → 1,1 ГБ после #101 | 2 gunicorn-воркера по ≈ 560 МБ, см. «Веб-воркер» ниже |
-| celery_recsys | 1,5 ГиБ | — | CLIP + MiniLM в памяти ≈ 1,3 ГБ, concurrency 1 |
+| celery_recsys | 1,5 ГиБ | — | CLIP + MiniLM в памяти ≈ 1,3 ГБ, concurrency 1; CLIP (≈ 0,75 ГБ) — с момента старта, для поиска по фото |
 | postgres | 640 МиБ | 400 МБ | shared_buffers 128 МБ + соединения; кэш страниц ОС освобождается сам |
 | celeryworker | 640 МиБ | 381 МБ | concurrency 2, `--max-memory-per-child=400000` |
 | celery_ai | 640 МиБ | 328 МБ | было 512: AI-задачи с длинными инструкциями лекарств; concurrency 2 |
@@ -43,6 +43,10 @@
 | redis (брокер) | 256 МиБ | ≈ 14 МБ вместе с кэшем | `maxmemory 128mb`, вдвое больше — запас на fork при BGSAVE |
 | redis-cache | 192 МиБ | — | `maxmemory 128mb`, без записи на диск и fork |
 | nginx | 128 МиБ | — | процессы nginx; кэш `proxy_media` на диске |
+
+Ночной бэкап базы (`docs/DB_BACKUP.md`) отдельного контейнера не требует:
+`pg_dump` работает внутри `celeryworker` и добавляет к нему несколько десятков
+МБ плюс буфер загрузки 16 МиБ.
 
 ### Веб-воркер gunicorn
 
@@ -56,10 +60,13 @@
   qdrant-client, openai); torch, transformers и sentence-transformers не
   импортируются;
 - GET по всем 153 маршрутам без параметров torch тоже не подгружает;
-- единственный путь к моделям в веб-процессе — POST `search_by_image`: CLIP
-  (torch ≈ 190 МБ + transformers + веса ≈ 600 МБ) грузится в обслуживший запрос
-  воркер и остаётся там до его перезапуска. MiniLM (`TextEncoder`) в вебе не
-  используется — только в `celery_recsys`.
+- POST `search_by_image` раньше грузил CLIP (torch ≈ 190 МБ + transformers +
+  веса ≈ 600 МБ) в обслуживший запрос воркер до его перезапуска. Теперь картинку
+  кодирует `celery_recsys` (задача `encode_search_image`, очередь
+  `recsys_search`), а веб ждёт вектор до 15 секунд и иначе отвечает 503
+  `search_unavailable`. Тест `test_web_search_queues_clip_and_never_imports_torch`
+  проверяет, что после поиска torch и transformers нет в `sys.modules`.
+  MiniLM (`TextEncoder`) в вебе тоже не используется.
 
 Значит, остальные ≈ 330 МБ на воркер — данные запросов (кэши каталога,
 ответы с большими списками, арены Pillow после proxy-media), которые теперь
@@ -71,9 +78,17 @@
 docker exec mudaroba-backend-1 sh -c 'for p in /proc/[0-9]*; do c=$(tr "\0" " " < $p/cmdline); case "$c" in *gunicorn*) echo "$(basename $p) $(grep -E "VmRSS|RssAnon|RssFile" $p/status | tr -s " " | tr "\n" " ") torch=$(grep -c libtorch $p/maps)";; esac; done'
 ```
 
-Риск: если поиск по фото попадёт в оба воркера, каждый вырастет до ≈ 1,3 ГБ —
-2 ГиБ не хватит, и OOM убьёт воркер (gunicorn поднимет новый). Устранение —
-кодировать картинку CLIP в `celery_recsys`, а не в веб-процессе (отдельная задача).
+Раньше поиск по фото, попавший в оба воркера, раздувал каждый до ≈ 1,3 ГБ и
+упирал backend в 2 ГиБ. Теперь веб-воркер от поиска не растёт; `torch=0` в
+проверке выше — норма для любого воркера. Потолок `celery_recsys` тот же:
+поиск использует тот же экземпляр CLIP, что и индексация, без второго процесса
+(`--concurrency=1`). Разница лишь в том, что CLIP (≈ 0,75 ГБ вместе с torch)
+грузится при старте воркера, а не в 02:15 на ночной индексации. Через брокер
+идёт PNG-копия ≤ 512 px (обычно 0,1–0,2 МБ, не больше ≈ 1 МБ), а не исходник до
+5 МБ — Redis с `maxmemory 128mb` и `noeviction` их не накопит: веб ждёт 15 с, и
+задачу с тем же `expires` воркер выбрасывает, не кодируя.
+Как индексация уступает очередь поиску — `CELERY_TASKS.md`, «Поиск по фото в
+`celery_recsys`».
 
 `--max-memory-per-child` (КиБ): дочерний процесс Celery, разросшийся после
 задачи больше ≈ 390 МиБ, заменяется свежим (как `max-requests` у gunicorn).
@@ -167,6 +182,8 @@ frontend/nginx — релиз только полный (`deploy.sh`), `backend_
 сети `data` и после отката).
 
 ## Swap (делает владелец под root)
+
+Вместе с обновлениями ОС и перезагрузкой одним окном — [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md).
 
 У `deploy` нет sudo, поэтому swap включается через root: по SSH, если у root
 есть ключ, или через консоль Hetzner Cloud (сервер → иконка `>_` «Console»;

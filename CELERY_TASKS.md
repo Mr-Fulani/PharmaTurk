@@ -4,11 +4,14 @@
 
 Временная зона проекта — `Europe/Moscow`. Расписания `crontab` ниже указаны в этой зоне. Интервалы (`10 минут`, `4 часа`, `7 дней`) отсчитываются Celery Beat и не привязаны к конкретному часу суток.
 
+Состояние beat (`/app/celerybeat-schedule`) живёт в слое контейнера и пропадает при каждом пересоздании `celerybeat`, то есть при деплое. Интервал после этого отсчитывается заново, поэтому задача с интервалом длиннее промежутка между деплоями может не сработать никогда (так было с `cleanup-scraper-sessions` раз в 7 дней). Всё, что реже нескольких раз в час, ставьте через `crontab`.
+
 ## Очереди и workers
 
 | Шаблон задачи | Очередь | Worker в Compose |
 |---|---|---|
 | `apps.ai.tasks.*` | `ai` | `celery_ai` |
+| `apps.recommendations.tasks.encode_search_image` | `recsys_search` | `celery_recsys` |
 | `apps.recommendations.tasks.*` | `recsys` | `celery_recsys` |
 | `apps.payments.tasks.*` | `celery` | `celeryworker` |
 | `apps.monitoring.tasks.*` | `celery` | `celeryworker` |
@@ -22,11 +25,14 @@ Beat только публикует задачи. Для исполнения �
 | Имя schedule | Задача | Расписание | Очередь | Основной эффект |
 |---|---|---|---|---|
 | `monitoring-production-watchdog` | `apps.monitoring.tasks.run_production_watchdog` | каждые 5 минут | `celery` | Проверяет homepage/liveness/readiness и доставляет дедуплицированные Telegram alert/recovery. |
+| `monitoring-database-backup` | `apps.monitoring.tasks.run_database_backup` | ежедневно `01:15` UTC | `celery` | `pg_dump` потоком во внешний бакет, ротация 7/4/3, Telegram при сбое; только при `DB_BACKUP_ENABLED=true`. |
+| `monitoring-database-backup-check` | `apps.monitoring.tasks.check_database_backup` | воскресенье `01:45` UTC | `celery` | Свежесть, SHA-256 и `pg_restore --list` последней копии; по флагу — пробное восстановление. |
 | `coinremitter-outbox-dispatch` | `apps.payments.tasks.dispatch_pending_crypto_invoice_requests` | каждую минуту | `celery` | Подбирает durable pending invoice requests, пропущенные immediate publish. |
 | `coinremitter-reconciliation` | `apps.payments.tasks.reconcile_coinremitter_state` | каждые 5 минут | `celery` | Карантинирует stale provider claims и пишет read-only drift summary. |
 | `currency-update-rates` | `currency.update_rates` | каждые 4 часа: `00:05`, `04:05`, … `20:05` | `celery` | Обновляет курсы валют. |
 | `currency-update-prices` | `currency.update_product_prices` | ежедневно `05:00` | `celery` | Вызывает `update_product_prices`, batch size 200. |
-| `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | каждые 7 дней | `celery` | Удаляет сессии и логи скрапинга старше 30 дней. |
+| `users-clear-expired-sessions` | `users.clear_expired_sessions` | ежедневно `04:00` | `celery` | `manage.py clearsessions`: удаляет просроченные сессии Django. |
+| `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | ежедневно `04:20` | `celery` | Пачками по 1000 удаляет логи товаров (`ScrapedProductLog`) и сессии скрапинга старше 30 дней. |
 | `orders-cleanup-stale-anonymous-carts` | `orders.cleanup_stale_anonymous_carts` | ежедневно `04:10` | `celery` | Батчами удаляет неактивные анонимные корзины; user carts не затрагивает. |
 | `orders-remind-abandoned-carts` | `orders.remind_abandoned_carts` | ежечасно `:20` | `celery` | Одно напоминание (Telegram при `telegram_notifications`, email при `email_notifications`) о заявке вошедшего клиента, не менявшейся ≥24 ч (не старше 7 дней); `Cart.reminder_sent_at`. |
 | `scrapers-weekly-duplicate-candidates` | `apps.scrapers.tasks.find_and_merge_duplicates` | понедельник `04:30` | `celery` | Ищет и сохраняет кандидатов на ручную дедупликацию. |
@@ -66,6 +72,13 @@ liveness/readiness. Состояние инцидента хранится в ca
 readiness-alert не подавляется. Полная процедура описана в
 `docs/PRODUCTION_MONITORING_RUNBOOK.md`.
 
+### Бэкап базы
+
+Ежедневная копия PostgreSQL во внешний S3-совместимый бакет (Cloudflare R2) и
+еженедельная проверка. Выключены, пока не задан `DB_BACKUP_ENABLED=true` с
+ключами отдельного бакета. Устройство, включение и восстановление —
+`docs/DB_BACKUP.md`. Ручной запуск: `manage.py db_backup [--check]`.
+
 ### CoinRemitter outbox
 
 `create_coinremitter_invoice_request` выполняет внешний `invoice/create` только
@@ -86,7 +99,11 @@ provider idempotency key, любой неоднозначный результа
 
 ### Очистка скраперных данных
 
-`cleanup_old_sessions(30)` удаляет `ScrapingSession` и `ScrapedProductLog` старше cutoff. Это реальное удаление данных, поэтому изменение retention требует отдельного решения по аудиту и резервному копированию.
+`cleanup_old_sessions(30)` удаляет `ScrapedProductLog`, затем `ScrapingSession` старше cutoff пачками (`batch_size`, по умолчанию 1000, допустимо 1..10000), каждая пачка — отдельная транзакция. Это реальное удаление данных, поэтому изменение retention требует отдельного решения по аудиту и резервному копированию. Первая чистка накопленного и `VACUUM` — `docs/PROD_DB_MAINTENANCE.md`.
+
+### Сессии Django
+
+`users.clear_expired_sessions` вызывает `manage.py clearsessions`. У `Session` нет связей и сигналов, удаление — один `DELETE` без загрузки строк в память. Сессии создают анонимная корзина и избранное, ≈ 2–3 тыс. в сутки.
 
 ### Очистка анонимных корзин
 
@@ -182,6 +199,19 @@ docker compose exec backend poetry run python manage.py clear_similar_cache
 ```
 
 `--force` сбрасывает marker синхронизации и создаёт существенно более тяжёлую нагрузку; применять его следует только при подтверждённом рассинхроне.
+
+### Поиск по фото в `celery_recsys`
+
+POST `/api/recommendations/search_by_image/` не грузит CLIP в веб-процесс: веб проверяет картинку, кладёт её уменьшенную копию (PNG ≤ 512 px) в задачу `encode_search_image` (очередь `recsys_search`) и ждёт вектор 15 секунд (`expires` у задачи такой же — опоздавшую задачу воркер выбросит). Таймаут, ошибка задачи или недоступный брокер — ответ 503 `search_unavailable`.
+
+Тот же однопоточный `celery_recsys` ведёт индексацию, поэтому:
+
+- воркер слушает `-Q recsys_search,recsys` с `--disable-prefetch` — следующую задачу он берёт из Redis только при свободном слоте и не держит в памяти заранее взятый батч индексации;
+- задача индексации, запущенная воркером, перед каждым следующим товаром смотрит длину списка `recsys_search` в брокере и, если поиск ждёт, ставит оставшиеся товары новой задачей (`priority=3`) и завершается. Поиск ждёт не больше одного товара (картинка + CLIP, обычно 1–2 с). Прямой вызов из `sync_product_vectors` батч не прерывает.
+
+При старте воркер, слушающий `recsys_search`, сам ставит туда задачу на картинке 32×32 (сигнал `worker_ready`): импорт torch и загрузка CLIP (≈ 15–17 с) проходят сразу, а не на первом поиске, который иначе не уложился бы в 15 секунд.
+
+Проверка очереди на проде (только чтение): `docker exec mudaroba-redis-1 redis-cli LLEN recsys_search` — в норме 0.
 
 ### Временные изображения visual search
 

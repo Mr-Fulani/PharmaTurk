@@ -1,0 +1,17 @@
+# Origin TLS for Cloudflare Full (strict). Enable on the server:
+#   cp nginx/origin-tls.inc.example nginx/tls/origin-tls.inc
+# next to nginx/tls/origin.pem and nginx/tls/origin.key (Cloudflare Origin
+# Certificate), then `nginx -t` and reload. Steps: docs/PROD_ORIGIN_SECURITY.md.
+listen 443 ssl;
+http2 on;
+ssl_certificate /etc/nginx/tls/origin.pem;
+ssl_certificate_key /etc/nginx/tls/origin.key;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_session_cache shared:origin_tls:10m;
+ssl_session_timeout 1d;
+
+# Optional Authenticated Origin Pulls: 443 accepts only clients presenting the
+# Cloudflare origin-pull certificate. Uncomment after enabling it in Cloudflare
+# and saving the CA as nginx/tls/cloudflare-origin-pull-ca.pem.
+# ssl_client_certificate /etc/nginx/tls/cloudflare-origin-pull-ca.pem;
+# ssl_verify_client on;

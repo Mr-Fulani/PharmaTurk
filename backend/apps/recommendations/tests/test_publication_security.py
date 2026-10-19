@@ -389,3 +389,73 @@ def test_explicit_index_task_deindexes_ids_excluded_by_public_policy():
     assert result == {"indexed": 1, "removed": 1, "errors": [], "remaining": 0}
     engine.delete_product.assert_called_once_with(2)
     engine.upsert_product.assert_called_once()
+
+
+def _index_three_products_while_search_waits(run):
+    products = [
+        SimpleNamespace(id=product_id, name="Product", description="", category=None)
+        for product_id in (1, 2, 3)
+    ]
+    indexable_queryset = MagicMock()
+    indexable_queryset.values_list.return_value = [1, 2, 3]
+    indexable_queryset.select_related.return_value.prefetch_related.return_value = (
+        products
+    )
+    engine = Mock()
+    encoder = Mock()
+    encoder.encode.return_value.tolist.return_value = [0.0]
+    vector_engine_module = importlib.import_module(
+        "apps.recommendations.services.vector_engine"
+    )
+    text_encoder_module = ModuleType("apps.recommendations.services.text_encoder")
+    text_encoder_module.TextEncoder = Mock(return_value=encoder)
+    image_encoder_module = ModuleType("apps.recommendations.services.image_encoder")
+    image_encoder_module.CLIPEncoder = Mock()
+
+    with patch("apps.recommendations.tasks.public_recommendation_products"), patch(
+        "apps.recommendations.tasks._exclude_variant_shadows",
+        return_value=indexable_queryset,
+    ), patch.object(
+        vector_engine_module,
+        "QdrantRecommendationEngine",
+        return_value=engine,
+    ), patch.dict(
+        sys.modules,
+        {
+            text_encoder_module.__name__: text_encoder_module,
+            image_encoder_module.__name__: image_encoder_module,
+        },
+    ), patch(
+        "apps.recommendations.tasks._working_product_image_url",
+        return_value="",
+    ), patch(
+        "apps.recommendations.tasks._visual_search_waiting",
+        return_value=True,
+    ), patch.object(index_product_vectors, "apply_async") as requeue:
+        result = run()
+    return result, engine, requeue
+
+
+def test_index_task_yields_to_waiting_visual_search():
+    """Однопоточный celery_recsys не держит поиск по фото до конца батча."""
+    # apply() исполняет задачу как воркер (request.called_directly=False).
+    result, engine, requeue = _index_three_products_while_search_waits(
+        lambda: index_product_vectors.apply(kwargs={"product_ids": [1, 2, 3]}).get()
+    )
+
+    assert result["indexed"] == 1
+    assert result["remaining"] == 2
+    engine.upsert_product.assert_called_once()
+    requeue.assert_called_once_with(kwargs={"product_ids": [2, 3]}, priority=3)
+
+
+def test_direct_index_call_finishes_batch_despite_waiting_search():
+    """sync_product_vectors вызывает задачу напрямую и доводит батч до конца."""
+    result, engine, requeue = _index_three_products_while_search_waits(
+        lambda: index_product_vectors(product_ids=[1, 2, 3])
+    )
+
+    assert result["indexed"] == 3
+    assert result["remaining"] == 0
+    assert engine.upsert_product.call_count == 3
+    requeue.assert_not_called()

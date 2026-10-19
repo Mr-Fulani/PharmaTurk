@@ -1,10 +1,15 @@
 """Celery tasks for recommendations (indexing, event logging)."""
 from celery import shared_task
+from celery.signals import worker_ready
 import logging
 
 from .selectors import public_recommendation_products
 
 logger = logging.getLogger(__name__)
+
+# Лёгкая очередь поиска по фото. Её слушает тот же однопоточный celery_recsys,
+# что и индексацию (модели в памяти одного процесса), см. CELERY_TASKS.md.
+VISUAL_SEARCH_QUEUE = "recsys_search"
 
 
 def _working_product_image_url(product):
@@ -111,8 +116,46 @@ def remove_product_vectors(product_ids):
     }
 
 
+def _visual_search_waiting() -> bool:
+    """В брокере ждёт поиск по фото — индексация должна уступить слот."""
+    from celery import current_app
+
+    try:
+        with current_app.pool.acquire(block=True) as connection:
+            return connection.default_channel.client.llen(VISUAL_SEARCH_QUEUE) > 0
+    except Exception:
+        logger.warning("Cannot check visual search queue", exc_info=True)
+        return False
+
+
 @shared_task(acks_late=False)
-def index_product_vectors(product_ids=None, batch_size=100):
+def encode_search_image(image_bytes):
+    """Вектор CLIP для поиска по фото: torch и веса живут только в celery_recsys."""
+    from .services.image_encoder import CLIPEncoder
+
+    # encode_image(bytes) заново проверяет формат и размеры картинки.
+    vector = CLIPEncoder().encode_image(image_bytes)
+    return None if vector is None else vector.tolist()
+
+
+@worker_ready.connect
+def _warm_up_visual_search(sender, **kwargs):
+    """Загрузить CLIP при старте celery_recsys, а не на первом поиске по фото.
+
+    Импорт torch и модели занимает ≈ 17 с — дольше, чем веб ждёт вектор.
+    """
+    if VISUAL_SEARCH_QUEUE not in sender.app.amqp.queues.consume_from:
+        return
+    from io import BytesIO
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (32, 32)).save(buffer, format="PNG")
+    encode_search_image.apply_async(args=[buffer.getvalue()], ignore_result=True)
+
+
+@shared_task(bind=True, acks_late=False)
+def index_product_vectors(self, product_ids=None, batch_size=100):
     """
     Index products into Qdrant.
     If product_ids is None, select products without vector_data or with last_synced < updated_at.
@@ -163,7 +206,17 @@ def index_product_vectors(product_ids=None, batch_size=100):
     total = 0
     text_encoder = None
     image_encoder = None
-    for product in queryset:
+    products = list(queryset)
+    for position, product in enumerate(products):
+        # Воркер recsys однопоточный: пока идёт батч, поиск по фото ждёт и
+        # через 15 секунд отвечает 503. Хотя бы один товар — для прогресса.
+        if position and not self.request.called_directly and _visual_search_waiting():
+            remaining_ids = [item.id for item in products[position:]]
+            index_product_vectors.apply_async(
+                kwargs={"product_ids": remaining_ids},
+                priority=3,
+            )
+            break
         try:
             if text_encoder is None:
                 text_encoder = TextEncoder()
