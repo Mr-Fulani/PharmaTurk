@@ -36,7 +36,7 @@ interface Banner {
 }
 
 interface BannerCarouselProps {
-  position: 'main' | 'after_brands' | 'after_popular_products' | 'before_footer'
+  position: 'main' | 'after_brands' | 'after_popular_products' | 'before_footer' | 'how_to_order'
   className?: string
   initialBanners?: Banner[]
 }

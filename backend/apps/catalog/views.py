@@ -3823,8 +3823,8 @@ class BannerViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
                 name="position",
                 type=str,
                 required=False,
-                description="Фильтр по позиции баннера: main, after_brands, before_footer",
-                enum=['main', 'after_brands', 'before_footer']
+                description="Фильтр по позиции баннера: main, after_brands, before_footer, after_popular_products, how_to_order",
+                enum=['main', 'after_brands', 'before_footer', 'after_popular_products', 'how_to_order']
             ),
         ],
         responses={200: BannerSerializer(many=True)},

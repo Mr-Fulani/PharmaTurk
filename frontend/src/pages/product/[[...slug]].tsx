@@ -42,6 +42,7 @@ import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
 import { gtmViewItem } from '../../lib/gtm'
+import { ArrowRightIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline'
 
 type CategoryType = string
 
@@ -2680,9 +2681,20 @@ export default function ProductPage({
                     <Link
                       href="/how-to-order-medicines"
                       prefetch={false}
-                      className="w-full inline-flex items-center justify-center rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition-all duration-200"
+                      className="group flex w-full items-center gap-3 rounded-xl border border-[var(--accent-muted)] bg-gradient-to-r from-[var(--accent-soft)] to-white px-4 py-3 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md active:translate-y-0"
                     >
-                      {t('medicine_how_to_order_button', 'Как заказать из Турции')}
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-sm">
+                        <ClipboardDocumentCheckIcon className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-base font-semibold text-[var(--accent-strong)]">
+                          {t('medicine_how_to_order_button', 'Как заказать')}
+                        </span>
+                        <span className="block text-xs text-gray-600">
+                          {t('medicine_how_to_order_hint', 'Заявка → подбор → расчёт → доставка')}
+                        </span>
+                      </span>
+                      <ArrowRightIcon className="h-5 w-5 shrink-0 text-[var(--accent)] transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
                     </Link>
                   </>
                 ) : (
@@ -2747,7 +2759,8 @@ export default function ProductPage({
             </div>
 
             {/* Безопасность и сервис */}
-            {!isService && <SecurityAndService />}
+            {/* У медикаментов оплаты на сайте нет — плашку «Безопасность платежей» не показываем */}
+            {!isService && !isMedicine && <SecurityAndService />}
           </div>
         </div>
 
