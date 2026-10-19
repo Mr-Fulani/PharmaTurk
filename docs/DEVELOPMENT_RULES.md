@@ -110,6 +110,7 @@ docker-compose за nginx и Cloudflare.
 5. После деплоя следить за Search Console (Coverage) минимум неделю при SEO-изменениях.
 6. Диск прода: `pull-images.sh` не скачивает образы при свободных < 4 ГиБ; полный `deploy.sh` после успеха удаляет образы релизов старше предыдущего. Бэкапы, тома и stage-данные удаляются только по явному согласию (см. [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md)).
 7. Память прода: у каждого постоянного сервиса Compose есть `mem_limit`, сумма ≤ 7 ГиБ (тест `scripts/release/test_compose_memory.py`). Новый сервис или больший лимит — за счёт других. Кэш Django только в `redis-cache` (вытесняемый), брокер Celery — `noeviction` (см. [PROD_MEMORY.md](PROD_MEMORY.md)).
+8. Бэкап базы: ежедневно во внешний приватный бакет отдельным ключом (не ключом медиа), ротация 7/4/3, еженедельная проверка; восстановление с нуля — [DB_BACKUP.md](DB_BACKUP.md). Новая таблица, без которой база бесполезна, — в `REQUIRED_TABLES` (`apps/monitoring/db_backup.py`).
 
 ## 8. Сокращённый backend-релиз
 

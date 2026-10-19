@@ -7,6 +7,7 @@ from celery import shared_task
 from django.conf import settings
 from django.core.cache import cache
 
+from . import db_backup
 from .watchdog import (
     ProbeResult,
     format_failure_notification,
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 STATE_KEY = "monitoring:production-watchdog:v1:state"
 LOCK_KEY = "monitoring:production-watchdog:v1:lock"
+BACKUP_LOCK_KEY = "monitoring:db-backup:v1:lock"
 
 
 def _load_state() -> tuple[dict, bool]:
@@ -131,3 +133,60 @@ def run_production_watchdog() -> dict:
                 cache.delete(LOCK_KEY)
             except Exception:  # noqa: BLE001
                 logger.exception("production_watchdog_unlock_failed")
+
+
+def _run_backup_job(stage: str, job) -> dict:
+    """Бэкап и его проверка не идут одновременно; без кэша бэкап важнее блокировки."""
+    if not getattr(settings, "DB_BACKUP_ENABLED", False):
+        return {"status": "disabled"}
+    try:
+        lock_acquired = cache.add(BACKUP_LOCK_KEY, "1", timeout=2 * 60 * 60)
+    except Exception:  # noqa: BLE001
+        logger.exception("db_backup_lock_failed")
+        lock_acquired = None
+    if lock_acquired is False:
+        return {"status": "locked"}
+    try:
+        return job()
+    except Exception as exc:  # noqa: BLE001 - любой сбой бэкапа должен дойти до админа
+        logger.exception("db_backup_failed", extra={"db_backup_stage": stage})
+        error = str(exc)[:500] if isinstance(exc, db_backup.BackupError) else (
+            f"{type(exc).__name__}: {str(exc)[:300]}"
+        )
+        send_admin_telegram_notification(
+            f"🔴 Бэкап базы Mudaroba: {stage} — сбой\n{error}\nЧто делать: docs/DB_BACKUP.md"
+        )
+        return {"status": "failed", "error": error}
+    finally:
+        if lock_acquired:
+            try:
+                cache.delete(BACKUP_LOCK_KEY)
+            except Exception:  # noqa: BLE001
+                logger.exception("db_backup_unlock_failed")
+
+
+def _backup_and_ping() -> dict:
+    result = db_backup.create_backup()
+    db_backup.ping_heartbeat()
+    return result
+
+
+def _check_backup() -> dict:
+    result = db_backup.verify_latest_backup()
+    restore = result.get("restore") or {}
+    if restore.get("status") == "skipped":
+        logger.warning("db_backup_restore_check_skipped", extra={"reason": restore["reason"]})
+        send_admin_telegram_notification(
+            f"⚠️ Бэкап базы Mudaroba: пробное восстановление пропущено — {restore['reason']}"
+        )
+    return result
+
+
+@shared_task(name="apps.monitoring.tasks.run_database_backup", ignore_result=True)
+def run_database_backup() -> dict:
+    return _run_backup_job("ежедневная копия", _backup_and_ping)
+
+
+@shared_task(name="apps.monitoring.tasks.check_database_backup", ignore_result=True)
+def check_database_backup() -> dict:
+    return _run_backup_job("еженедельная проверка", _check_backup)

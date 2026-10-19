@@ -254,6 +254,15 @@ CELERY_TASK_ANNOTATIONS = {
         "time_limit": 60,
         "soft_time_limit": 45,
     },
+    # pg_dump ≈ 250 МБ потоком в бакет — минуты; пробное восстановление дольше.
+    "apps.monitoring.tasks.run_database_backup": {
+        "time_limit": 60 * 60,
+        "soft_time_limit": 55 * 60,
+    },
+    "apps.monitoring.tasks.check_database_backup": {
+        "time_limit": 2 * 60 * 60,
+        "soft_time_limit": 115 * 60,
+    },
     "apps.payments.tasks.create_coinremitter_invoice_request": {
         "time_limit": 90,
         "soft_time_limit": 75,
@@ -316,6 +325,18 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.scrapers.tasks.cleanup_old_sessions",
         "schedule": 60 * 60 * 24 * 7,  # неделя
         "args": (30,),  # хранить 30 дней
+    },
+    # Бэкап БД во внешний бакет (docs/DB_BACKUP.md). CELERY_TIMEZONE не задан,
+    # поэтому crontab считается в UTC: 01:15 UTC = 04:15 МСК, ночной минимум
+    # трафика, до recsys-sync-stale-nightly. Без DB_BACKUP_ENABLED задачи
+    # ничего не делают.
+    "monitoring-database-backup": {
+        "task": "apps.monitoring.tasks.run_database_backup",
+        "schedule": crontab(hour=1, minute=15),
+    },
+    "monitoring-database-backup-check": {
+        "task": "apps.monitoring.tasks.check_database_backup",
+        "schedule": crontab(hour=1, minute=45, day_of_week=0),
     },
     # «Новинка» живёт NEW_BADGE_DAYS дней с момента добавления товара.
     "catalog-expire-new-badges": {
@@ -950,6 +971,16 @@ PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS = env.int(
     "PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS",
     default=10,
 )
+# Ежедневный pg_dump во внешний S3-совместимый бакет (docs/DB_BACKUP.md).
+# Отдельный бакет и отдельные ключи, не R2_* медиа.
+DB_BACKUP_ENABLED = env.bool("DB_BACKUP_ENABLED", default=False)
+DB_BACKUP_S3_ENDPOINT_URL = env("DB_BACKUP_S3_ENDPOINT_URL", default="")
+DB_BACKUP_S3_REGION = env("DB_BACKUP_S3_REGION", default="auto")
+DB_BACKUP_S3_BUCKET = env("DB_BACKUP_S3_BUCKET", default="")
+DB_BACKUP_S3_ACCESS_KEY_ID = env("DB_BACKUP_S3_ACCESS_KEY_ID", default="")
+DB_BACKUP_S3_SECRET_ACCESS_KEY = env("DB_BACKUP_S3_SECRET_ACCESS_KEY", default="")
+DB_BACKUP_HEARTBEAT_URL = env("DB_BACKUP_HEARTBEAT_URL", default="")
+DB_BACKUP_TEST_RESTORE_ENABLED = env.bool("DB_BACKUP_TEST_RESTORE_ENABLED", default=False)
 validate_telegram_webhook_settings(
     debug=DEBUG,
     bot_token=TELEGRAM_BOT_TOKEN,

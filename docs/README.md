@@ -28,6 +28,7 @@
 | [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | rollout, метрики, alerting и безопасный повтор source-offer checks | актуализирован 2026-08-31 |
 | [PRODUCTION_MONITORING_RUNBOOK.md](PRODUCTION_MONITORING_RUNBOOK.md) | synthetic/readiness watchdog, Telegram delivery, дедупликация, внешняя проверка доступности и triage | актуализирован 2026-10-19 |
 | [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md) | что занимает диск прода, очистка образов при деплое, лимиты Redis и ротация логов | снимок 2026-10-18 |
+| [DB_BACKUP.md](DB_BACKUP.md) | ежедневный бэкап базы в отдельный бакет R2, проверка, включение и восстановление с нуля на новом сервере | 2026-10-19 |
 | [PROD_MEMORY.md](PROD_MEMORY.md) | лимиты памяти контейнеров, брокер и кэш в разных Redis, swap, применение без потери очередей | после инцидента 2026-10-19 |
 | [PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md) | Bright Data proxy/Web Unlocker: тарифы, бюджет, возможности и безопасное переиспользование | актуализирован 2026-08-31 |
 | [SOURCE_OFFER_CART_API.md](SOURCE_OFFER_CART_API.md) | Cart API: verification fields, issue codes, 409/503 и действия клиента | актуализирован 2026-08-27 |

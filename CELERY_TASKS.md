@@ -22,6 +22,8 @@ Beat только публикует задачи. Для исполнения �
 | Имя schedule | Задача | Расписание | Очередь | Основной эффект |
 |---|---|---|---|---|
 | `monitoring-production-watchdog` | `apps.monitoring.tasks.run_production_watchdog` | каждые 5 минут | `celery` | Проверяет homepage/liveness/readiness и доставляет дедуплицированные Telegram alert/recovery. |
+| `monitoring-database-backup` | `apps.monitoring.tasks.run_database_backup` | ежедневно `01:15` UTC | `celery` | `pg_dump` потоком во внешний бакет, ротация 7/4/3, Telegram при сбое; только при `DB_BACKUP_ENABLED=true`. |
+| `monitoring-database-backup-check` | `apps.monitoring.tasks.check_database_backup` | воскресенье `01:45` UTC | `celery` | Свежесть, SHA-256 и `pg_restore --list` последней копии; по флагу — пробное восстановление. |
 | `coinremitter-outbox-dispatch` | `apps.payments.tasks.dispatch_pending_crypto_invoice_requests` | каждую минуту | `celery` | Подбирает durable pending invoice requests, пропущенные immediate publish. |
 | `coinremitter-reconciliation` | `apps.payments.tasks.reconcile_coinremitter_state` | каждые 5 минут | `celery` | Карантинирует stale provider claims и пишет read-only drift summary. |
 | `currency-update-rates` | `currency.update_rates` | каждые 4 часа | `celery` | Обновляет курсы валют. |
@@ -63,6 +65,13 @@ liveness/readiness. Состояние инцидента хранится в ca
 восстановление закрывает инцидент отдельным сообщением. При недоступном cache
 readiness-alert не подавляется. Полная процедура описана в
 `docs/PRODUCTION_MONITORING_RUNBOOK.md`.
+
+### Бэкап базы
+
+Ежедневная копия PostgreSQL во внешний S3-совместимый бакет (Cloudflare R2) и
+еженедельная проверка. Выключены, пока не задан `DB_BACKUP_ENABLED=true` с
+ключами отдельного бакета. Устройство, включение и восстановление —
+`docs/DB_BACKUP.md`. Ручной запуск: `manage.py db_backup [--check]`.
 
 ### CoinRemitter outbox
 

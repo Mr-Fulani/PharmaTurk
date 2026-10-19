@@ -18,6 +18,8 @@ ENV POETRY_VERSION=2.4.1 \
     POETRY_HTTP_RETRY=5 \
     HF_HOME=/home/app/.cache/huggingface
 
+# postgresql-client (в bookworm — 15, как сервер): pg_dump/pg_restore для бэкапа БД
+# во внешний бакет, см. docs/DB_BACKUP.md.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
@@ -33,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     shared-mime-info \
     libcairo2 \
     libglib2.0-0 \
+    postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 # Force IPv4 priority over IPv6 to fix "Network is unreachable" issues with SMTP/APIs
