@@ -311,11 +311,19 @@ CELERY_BEAT_SCHEDULE = {
     # "vapi-full-sync": {"task": "apps.vapi.tasks.full_catalog_sync", "schedule": 60*60*24*3, "args": (100,)},
     # run-all-scrapers: отключено, доработаем после парсеров
     # "run-all-scrapers": {"task": "apps.scrapers.tasks.run_all_active_scrapers", "schedule": 60 * 60 * 12},
-    # Очистка старых сессий парсинга каждую неделю
+    # Сессии парсинга и логи товаров (scrapedproductlog) старше 30 дней — каждую
+    # ночь, пачками. Только crontab: состояние beat (celerybeat-schedule) живёт в
+    # слое контейнера и теряется при каждом деплое, интервал в неделю не успевал
+    # сработать ни разу.
     "cleanup-scraper-sessions": {
         "task": "apps.scrapers.tasks.cleanup_old_sessions",
-        "schedule": 60 * 60 * 24 * 7,  # неделя
+        "schedule": crontab(hour=4, minute=20),
         "args": (30,),  # хранить 30 дней
+    },
+    # Просроченные сессии Django (manage.py clearsessions) — каждую ночь.
+    "users-clear-expired-sessions": {
+        "task": "users.clear_expired_sessions",
+        "schedule": crontab(hour=4, minute=0),
     },
     # «Новинка» живёт NEW_BADGE_DAYS дней с момента добавления товара.
     "catalog-expire-new-badges": {
