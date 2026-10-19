@@ -21,7 +21,7 @@
 ## Бюджет памяти
 
 Лимиты в `docker-compose.yml` (frontend — в `docker-compose.prod.yml`, потому
-что dev-сервер Next прожорливее). Сумма — 6,81 ГиБ, системе остаётся
+что dev-сервер Next прожорливее). Сумма — 7 ГиБ, системе остаётся
 ≈ 0,7 ГиБ плюс swap 4 ГиБ. Тест `scripts/release/test_compose_memory.py`
 не даёт сумме превысить 7 ГиБ и требует лимит у каждого постоянного сервиса.
 
@@ -32,17 +32,48 @@
 
 | Сервис | mem_limit | Факт 19.10 | Почему столько |
 |---|---|---|---|
-| backend | 1,5 ГиБ | 426 МБ | 2 gunicorn-воркера; поиск по фото грузит CLIP (≈ 0,7 ГБ) в воркер |
+| backend | 2 ГиБ | 426 МБ → 1,1 ГБ после #101 | 2 gunicorn-воркера по ≈ 560 МБ, см. «Веб-воркер» ниже |
 | celery_recsys | 1,5 ГиБ | — | CLIP + MiniLM в памяти ≈ 1,3 ГБ, concurrency 1 |
 | postgres | 640 МиБ | 400 МБ | shared_buffers 128 МБ + соединения; кэш страниц ОС освобождается сам |
 | celeryworker | 640 МиБ | 381 МБ | concurrency 2, `--max-memory-per-child=400000` |
 | celery_ai | 640 МиБ | 328 МБ | было 512: AI-задачи с длинными инструкциями лекарств; concurrency 2 |
 | qdrant | 512 МиБ | 283 МБ | было 768: векторы в RAM, данные ≈ 0,7 ГБ на диске |
-| frontend | 384 МиБ | 147 МБ | было 512: Next.js production-сервер, запас на оптимизатор картинок |
-| celerybeat | 384 МиБ | ≈ 195 МБ | было 160 (OOM): процесс Django + планировщик |
-| redis (брокер) | 384 МиБ | — | `maxmemory 192mb`, вдвое больше — запас на fork при BGSAVE |
+| frontend | 320 МиБ | 147 МБ | было 512: Next.js production-сервер, запас на оптимизатор картинок |
+| celerybeat | 256 МиБ | ≈ 195 МБ | было 160 (OOM): процесс Django + планировщик |
+| redis (брокер) | 256 МиБ | ≈ 14 МБ вместе с кэшем | `maxmemory 128mb`, вдвое больше — запас на fork при BGSAVE |
 | redis-cache | 192 МиБ | — | `maxmemory 128mb`, без записи на диск и fork |
 | nginx | 128 МиБ | — | процессы nginx; кэш `proxy_media` на диске |
+
+### Веб-воркер gunicorn
+
+После #101 (перезапуск воркера раз в 2000±500 запросов вместо 200±40) каждый
+воркер на проде держит ≈ 560 МБ, backend целиком — 1,1 ГБ, поэтому лимит 2 ГиБ
+(сумма осталась 7 ГиБ за счёт celerybeat 256m, брокера 256m/128mb и frontend 320m).
+
+Замер 2026-10-19 (локально, тот же образ, gunicorn gthread 2×8, `DJANGO_DEBUG=0`):
+
+- воркер после старта — 200–235 МБ (Django, DRF, numpy, Pillow, boto3,
+  qdrant-client, openai); torch, transformers и sentence-transformers не
+  импортируются;
+- GET по всем 153 маршрутам без параметров torch тоже не подгружает;
+- единственный путь к моделям в веб-процессе — POST `search_by_image`: CLIP
+  (torch ≈ 190 МБ + transformers + веса ≈ 600 МБ) грузится в обслуживший запрос
+  воркер и остаётся там до его перезапуска. MiniLM (`TextEncoder`) в вебе не
+  используется — только в `celery_recsys`.
+
+Значит, остальные ≈ 330 МБ на воркер — данные запросов (кэши каталога,
+ответы с большими списками, арены Pillow после proxy-media), которые теперь
+живут в 10 раз дольше между перезапусками. Проверка на проде (только чтение):
+`RssAnon` — куча Python, `RssFile` — отображённые библиотеки и файлы,
+`torch` > 0 — в воркер загружена модель.
+
+```bash
+docker exec mudaroba-backend-1 sh -c 'for p in /proc/[0-9]*; do c=$(tr "\0" " " < $p/cmdline); case "$c" in *gunicorn*) echo "$(basename $p) $(grep -E "VmRSS|RssAnon|RssFile" $p/status | tr -s " " | tr "\n" " ") torch=$(grep -c libtorch $p/maps)";; esac; done'
+```
+
+Риск: если поиск по фото попадёт в оба воркера, каждый вырастет до ≈ 1,3 ГБ —
+2 ГиБ не хватит, и OOM убьёт воркер (gunicorn поднимет новый). Устранение —
+кодировать картинку CLIP в `celery_recsys`, а не в веб-процессе (отдельная задача).
 
 `--max-memory-per-child` (КиБ): дочерний процесс Celery, разросшийся после
 задачи больше ≈ 390 МиБ, заменяется свежим (как `max-requests` у gunicorn).
@@ -90,12 +121,12 @@ frontend/nginx — релиз только полный (`deploy.sh`), `backend_
 
 1. Проверки: `df -h /` (≥ 4 ГиБ свободно), снимок `docker stats` (см. выше),
    `docker exec mudaroba-redis-1 redis-cli INFO memory | grep used_memory_human`
-   — должно быть заметно меньше 192 МБ (после чистки 19.10 было ≈ 14 МБ).
+   — должно быть заметно меньше 128 МБ (после чистки 19.10 было ≈ 14 МБ).
 2. Сразу, без перезапуска, ограничить текущий Redis (действует до пересоздания
    контейнера, дальше значения берутся из Compose):
 
    ```bash
-   docker exec mudaroba-redis-1 redis-cli CONFIG SET maxmemory 192mb
+   docker exec mudaroba-redis-1 redis-cli CONFIG SET maxmemory 128mb
    docker exec mudaroba-redis-1 redis-cli CONFIG SET maxmemory-policy noeviction
    ```
 
@@ -108,7 +139,7 @@ frontend/nginx — релиз только полный (`deploy.sh`), `backend_
 
    ```bash
    docker update --memory 640m --memory-swap 1280m mudaroba-postgres-1
-   docker update --memory 384m --memory-swap 768m mudaroba-redis-1
+   docker update --memory 256m --memory-swap 512m mudaroba-redis-1
    docker update --memory 512m --memory-swap 1024m mudaroba-qdrant-1
    ```
 
@@ -128,7 +159,7 @@ frontend/nginx — релиз только полный (`deploy.sh`), `backend_
 сверить счётчики и запустить beat.
 
 Откат: деплой предыдущего тега. Старый Compose берёт `REDIS_CACHE_URL` из
-`.env`, то есть кэш вернётся в db1 брокера, где теперь `noeviction` и 192 МБ:
+`.env`, то есть кэш вернётся в db1 брокера, где теперь `noeviction` и 128 МБ:
 заполнившийся кэш начнёт блокировать постановку задач. Поэтому при откате
 сначала вернуть брокеру прежний режим
 (`redis-cli CONFIG SET maxmemory 0`) либо прописать в `.env`

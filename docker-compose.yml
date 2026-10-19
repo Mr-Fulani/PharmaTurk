@@ -1,7 +1,7 @@
 name: mudaroba
 
 # Память сервера (7,7 ГБ) поделена жёсткими mem_limit так, чтобы их сумма
-# (≈ 6,81 ГиБ) оставляла место системе: контейнер, вышедший за лимит, получает
+# (7 ГиБ) оставляла место системе: контейнер, вышедший за лимит, получает
 # OOM внутри себя, а не вешает весь хост. Расчёт — docs/PROD_MEMORY.md.
 services:
   postgres:
@@ -28,10 +28,10 @@ services:
   # при BGSAVE.
   redis:
     image: redis:7.4.10-alpine3.21
-    command: ["redis-server", "--maxmemory", "192mb", "--maxmemory-policy", "noeviction"]
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis_data:/data
-    mem_limit: 384m
+    mem_limit: 256m
     networks: [data]
 
   # Кэш Django: только в памяти, старые ключи вытесняются сами (allkeys-lru),
@@ -87,7 +87,7 @@ services:
       - staticfiles:/app/staticfiles
       - huggingface_cache:/home/app/.cache/huggingface
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
-    mem_limit: 1.5g
+    mem_limit: 2g
     networks: [edge, data]
 
   frontend:
@@ -205,7 +205,7 @@ services:
     environment:
       REDIS_CACHE_URL: redis://redis-cache:6379/0
     command: bash -c "poetry run celery -A config beat --loglevel=info"
-    mem_limit: 384m
+    mem_limit: 256m
     networks: [data]
 
   # One-shot schema operation used by release tooling. It never starts during a
