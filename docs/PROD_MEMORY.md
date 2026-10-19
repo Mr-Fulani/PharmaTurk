@@ -137,6 +137,8 @@ frontend/nginx — релиз только полный (`deploy.sh`), `backend_
 
 ## Swap (делает владелец под root)
 
+Вместе с обновлениями ОС и перезагрузкой одним окном — [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md).
+
 У `deploy` нет sudo, поэтому swap включается через root: по SSH, если у root
 есть ключ, или через консоль Hetzner Cloud (сервер → иконка `>_` «Console»;
 пароль root, если его нет, задаётся во вкладке Rescue → «Reset root password»).
