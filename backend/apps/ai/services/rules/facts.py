@@ -273,6 +273,13 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
 
     if _CYRILLIC_RE.search(name):
         facts.russian_name = re.sub(r"\s+", " ", _PRICE_RE.sub(" ", name)).strip(" -")
+        # Латиница русского названия — бренд/модель для EN («Кепка JEEP® с деталями»).
+        brand_words = {vocab.fold(word) for word in facts.brand.split()}
+        facts.model = " ".join(
+            token
+            for token in _TOKEN_RE.findall(facts.russian_name)
+            if _is_model_token(token) and vocab.fold(token) not in brand_words and not _HYPHEN_CODE_RE.match(token)
+        )
     elif product_type == "furniture":
         facts.model = name.strip()
     else:
@@ -283,7 +290,7 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
     category = getattr(product, "category", None)
     category_kind = vocab.CATEGORY_KINDS.get(getattr(category, "slug", "") or "")
     if product_type == "furniture":
-        facts.kind = _furniture_kind(attrs.get("furniture_type"))
+        facts.kind = _furniture_kind(attrs.get("furniture_type")) or category_kind
         if not facts.has_variants and not attrs.get("furniture_variants"):
             facts.finish = vocab.translate_furniture_finish(attrs.get("color"))
     elif facts.kind is None or (facts.kind.generic and category_kind):

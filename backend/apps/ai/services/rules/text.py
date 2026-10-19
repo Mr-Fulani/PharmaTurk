@@ -52,13 +52,10 @@ def build_titles(facts: ProductFacts) -> dict[str, str]:
     if facts.product_type == "islamic_clothing":
         return {"ru": "", "en": ""}  # названия — подписи Instagram, нужен пересказ
     if facts.russian_name:
-        # Название уже на русском (Zara RU, ручные правки): RU сохраняем,
-        # EN собираем только при известном типе, иначе — LLM.
-        en = ""
-        if facts.kind and facts.product_type == "furniture":
-            latin = " ".join(re.findall(r"\b[A-ZÅÄÖ][A-ZÅÄÖ/]{2,}\b", facts.russian_name))
-            en = f"{latin} {facts.kind.en}".strip() if latin else ""
-        return {"ru": facts.russian_name, "en": en}
+        # Название уже на русском (Zara RU, прошлый AI, ручные правки): RU
+        # сохраняем, EN собираем из фактов при известном типе, иначе — LLM.
+        # Цвета в RU-названии нет — не добавляем его и в EN.
+        return {"ru": facts.russian_name, "en": _english_title(facts, with_color=False) if facts.kind else ""}
     if facts.kind is None or facts.untranslated:
         return {"ru": "", "en": ""}
     identity = _identity(facts)
@@ -78,18 +75,30 @@ def build_titles(facts: ProductFacts) -> dict[str, str]:
     ru_parts.extend(ru for ru, _ in facts.descriptors)
     ru = " ".join(part for part in ru_parts if part)
 
-    en_parts = [identity, facts.audience[1] if facts.audience else ""]
-    en_parts.extend(en for _, en in facts.descriptors)
-    en_parts.append(facts.kind.en)
-    en = " ".join(part for part in en_parts if part)
-
     for amount in (facts.volume, facts.pack):
         if amount:
-            ru, en = f"{ru}, {amount[0]}", f"{en}, {amount[1]}"
+            ru = f"{ru}, {amount[0]}"
     if facts.color:
         ru = f"{ru}, {facts.color.ru_for(facts.kind.gender)}"
+    return {"ru": ru, "en": _english_title(facts)}
+
+
+def _english_title(facts: ProductFacts, *, with_color: bool = True) -> str:
+    """«LC Waikiki Men's Faux Leather Belt, Black», «IKEA HAVBERG Armchair»."""
+    identity = _identity(facts)
+    if facts.product_type == "furniture":
+        en = f"{identity} {facts.kind.en}".strip()
+        return f"{en}, {facts.finish[1]}" if facts.finish and with_color else en
+    parts = [identity, facts.audience[1] if facts.audience else ""]
+    parts.extend(en for _, en in facts.descriptors)
+    parts.append(facts.kind.en)
+    en = " ".join(part for part in parts if part)
+    for amount in (facts.volume, facts.pack):
+        if amount:
+            en = f"{en}, {amount[1]}"
+    if facts.color and with_color:
         en = f"{en}, {facts.color.en}"
-    return {"ru": ru, "en": en}
+    return en
 
 
 def _significant_words(text: str) -> list[str]:
@@ -110,12 +119,10 @@ def is_thin_source(source_text: str, name: str, facts: ProductFacts) -> bool:
 
 def build_fact_description(facts: ProductFacts, titles: dict[str, str]) -> dict[str, str]:
     """Описание из подтверждённых фактов: без выдуманных свойств и «воды»."""
-    if not titles.get("ru") or not titles.get("en"):
+    ru = [f"{titles['ru'].split(', ')[0]}."] if titles.get("ru") else []
+    en = [f"{titles['en'].split(', ')[0]}."] if titles.get("en") else []
+    if not ru and not en:
         return {}
-    ru_title = titles["ru"].split(", ")[0]
-    en_title = titles["en"].split(", ")[0]
-    ru = [f"{ru_title}."]
-    en = [f"{en_title}."]
     if facts.composition:
         ru.append(f"Состав: {facts.composition[0]}.")
         en.append(f"Composition: {facts.composition[1]}.")
@@ -136,7 +143,13 @@ def build_fact_description(facts: ProductFacts, titles: dict[str, str]) -> dict[
         en.append(f"Color: {facts.color.en.lower()}.")
     ru.append("Оригинальный товар из Турции, заказ через менеджера Mudaroba.")
     en.append("Original product from Turkey, ordered via a Mudaroba manager.")
-    return {"ru": " ".join(ru), "en": " ".join(en)}
+    # Язык без названия пропускается (описание без типа товара бессмысленно).
+    result = {}
+    if titles.get("ru"):
+        result["ru"] = " ".join(ru)
+    if titles.get("en"):
+        result["en"] = " ".join(en)
+    return result
 
 
 def _first_sentence(description: str) -> str:
