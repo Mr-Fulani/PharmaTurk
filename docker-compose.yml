@@ -183,11 +183,14 @@ services:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
       REDIS_CACHE_URL: redis://redis-cache:6379/0
-    command: bash -c "poetry run celery -A config worker -Q recsys -n recsys_worker@%h --loglevel=info --concurrency=1"
+    command: bash -c "poetry run celery -A config worker -Q recsys_search,recsys -n recsys_worker@%h --loglevel=info --concurrency=1 --disable-prefetch"
     volumes:
       - huggingface_cache:/home/app/.cache/huggingface
     # Модели CLIP + MiniLM держатся в памяти процесса (≈ 1,3 ГБ), поэтому
-    # concurrency=1 и без перезапуска процесса после задачи.
+    # concurrency=1 и без перезапуска процесса после задачи. Здесь же кодируется
+    # картинка поиска по фото (очередь recsys_search): веб CLIP не грузит.
+    # --disable-prefetch: следующая задача берётся из Redis только при свободном
+    # слоте, иначе поиск ждал бы ещё и заранее взятый батч индексации.
     mem_limit: 1.5g
     networks: [data, egress]
 
