@@ -21,23 +21,28 @@
 ## Бюджет памяти
 
 Лимиты в `docker-compose.yml` (frontend — в `docker-compose.prod.yml`, потому
-что dev-сервер Next прожорливее). Сумма — 6,84 ГиБ, системе остаётся
+что dev-сервер Next прожорливее). Сумма — 6,81 ГиБ, системе остаётся
 ≈ 0,7 ГиБ плюс swap 4 ГиБ. Тест `scripts/release/test_compose_memory.py`
 не даёт сумме превысить 7 ГиБ и требует лимит у каждого постоянного сервиса.
 
-| Сервис | mem_limit | Почему столько |
-|---|---|---|
-| backend | 1,5 ГиБ | без изменений: 2 gunicorn-воркера, поиск по фото грузит CLIP (≈ 0,7 ГБ) |
-| celery_recsys | 1,5 ГиБ | было 3g; CLIP + MiniLM в памяти ≈ 1,3 ГБ, concurrency 1 |
-| qdrant | 768 МиБ | векторы в RAM, данные ≈ 0,7 ГБ на диске |
-| postgres | 640 МиБ | shared_buffers 128 МБ + соединения; кэш страниц ОС освобождается сам |
-| celeryworker | 640 МиБ | было 3g; concurrency 2, `--max-memory-per-child=400000` |
-| frontend | 512 МиБ | Next.js production-сервер |
-| celery_ai | 512 МиБ | было 3g; concurrency 2 (ждёт OpenAI), `--max-memory-per-child=400000` |
-| redis (брокер) | 384 МиБ | `maxmemory 192mb`, вдвое больше — запас на fork при BGSAVE |
-| redis-cache | 192 МиБ | `maxmemory 128mb`, без записи на диск и fork |
-| celerybeat | 160 МиБ | один процесс планировщика |
-| nginx | 128 МиБ | процессы nginx; кэш `proxy_media` на диске |
+Пересчитано по факту после деплоя 2026-10-19 (`docker stats` через ≈ 40 минут
+работы): запас не меньше 30 % над наблюдаемым. Первая версия давала celerybeat
+160 МиБ при реальных ≈ 195 МБ — его 46 раз убил OOM, пока лимит не подняли
+вручную.
+
+| Сервис | mem_limit | Факт 19.10 | Почему столько |
+|---|---|---|---|
+| backend | 1,5 ГиБ | 426 МБ | 2 gunicorn-воркера; поиск по фото грузит CLIP (≈ 0,7 ГБ) в воркер |
+| celery_recsys | 1,5 ГиБ | — | CLIP + MiniLM в памяти ≈ 1,3 ГБ, concurrency 1 |
+| postgres | 640 МиБ | 400 МБ | shared_buffers 128 МБ + соединения; кэш страниц ОС освобождается сам |
+| celeryworker | 640 МиБ | 381 МБ | concurrency 2, `--max-memory-per-child=400000` |
+| celery_ai | 640 МиБ | 328 МБ | было 512: AI-задачи с длинными инструкциями лекарств; concurrency 2 |
+| qdrant | 512 МиБ | 283 МБ | было 768: векторы в RAM, данные ≈ 0,7 ГБ на диске |
+| frontend | 384 МиБ | 147 МБ | было 512: Next.js production-сервер, запас на оптимизатор картинок |
+| celerybeat | 384 МиБ | ≈ 195 МБ | было 160 (OOM): процесс Django + планировщик |
+| redis (брокер) | 384 МиБ | — | `maxmemory 192mb`, вдвое больше — запас на fork при BGSAVE |
+| redis-cache | 192 МиБ | — | `maxmemory 128mb`, без записи на диск и fork |
+| nginx | 128 МиБ | — | процессы nginx; кэш `proxy_media` на диске |
 
 `--max-memory-per-child` (КиБ): дочерний процесс Celery, разросшийся после
 задачи больше ≈ 390 МиБ, заменяется свежим (как `max-requests` у gunicorn).
@@ -48,8 +53,8 @@
 может уйти в swap на объём своего лимита (Docker по умолчанию
 `memswap = 2 × mem_limit`) — станет медленнее, но не повесит хост.
 
-Цифры выбраны по составу процессов, без снимка `docker stats` с прода. Перед
-применением снимите его (только чтение) и сравните с таблицей:
+Перед изменением лимитов снимите свежий снимок (только чтение) и сравните с
+таблицей:
 
 ```bash
 docker stats --no-stream --format '{{.Name}} {{.MemUsage}}'
@@ -104,7 +109,7 @@ frontend/nginx — релиз только полный (`deploy.sh`), `backend_
    ```bash
    docker update --memory 640m --memory-swap 1280m mudaroba-postgres-1
    docker update --memory 384m --memory-swap 768m mudaroba-redis-1
-   docker update --memory 768m --memory-swap 1536m mudaroba-qdrant-1
+   docker update --memory 512m --memory-swap 1024m mudaroba-qdrant-1
    ```
 
 5. Проверка: `curl -s https://mudaroba.com/api/health/` → `"cache":true`;
