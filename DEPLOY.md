@@ -106,10 +106,13 @@ frontend, а не только перезапустить контейнер.
 
 ## 4. TLS, Cloudflare и доверенная proxy-цепочка
 
-Проверенный в репозитории production Compose публикует только Nginx-порт `80`.
-Сам контейнерный Nginx сертификат не обслуживает: TLS должен завершаться во
-внешнем ingress с origin-сертификатом либо трафик должен поступать через
-Cloudflare Tunnel.
+Production Compose публикует только Nginx: порты `80` и `443`, только на IPv4
+(на `[::]` Docker пускает трафик через `docker-proxy`, и nginx видит адрес шлюза
+вместо клиента — проверка «только Cloudflare» обходится). Порт `443` начинает
+работать, когда в `nginx/tls/` на сервере лежат Cloudflare Origin Certificate и
+`origin-tls.inc` (копия `nginx/origin-tls.inc.example`); без них Nginx работает
+только на `80`. Пошагово, включая Cloudflare Full (strict) и Hetzner Cloud
+Firewall: [docs/PROD_ORIGIN_SECURITY.md](docs/PROD_ORIGIN_SECURITY.md).
 
 Текущий Nginx сохраняет входящий `X-Forwarded-Proto=https`, иначе использует
 собственный `$scheme`. Django доверяет этому заголовку. Это корректно только

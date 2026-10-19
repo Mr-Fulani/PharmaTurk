@@ -1192,32 +1192,55 @@ def search_products_task(self,
         }
 
 
+def _delete_in_batches(queryset, batch_size: int) -> int:
+    """Удалить строки queryset пачками по pk, каждая пачка — своя транзакция.
+
+    Один большой ``DELETE`` держит блокировки строк и раздувает WAL на всё время
+    операции; пачки по ``batch_size`` коротко блокируют только свои строки.
+    """
+    model = queryset.model
+    deleted = 0
+    while True:
+        ids = list(queryset.order_by("pk").values_list("pk", flat=True)[:batch_size])
+        if not ids:
+            return deleted
+        with transaction.atomic():
+            _total, by_model = model.objects.filter(pk__in=ids).delete()
+        deleted += by_model.get(model._meta.label, 0)
+
+
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
-def cleanup_old_sessions(self, days_to_keep: int = 30) -> Dict:
-    """Задача: очистка старых сессий парсинга.
-    
+def cleanup_old_sessions(self, days_to_keep: int = 30, batch_size: int = 1000) -> Dict:
+    """Задача: очистка старых сессий парсинга и логов товаров.
+
     Args:
-        days_to_keep: Количество дней для хранения сессий
-        
+        days_to_keep: Количество дней для хранения сессий и логов
+        batch_size: Сколько строк удалять за одну транзакцию
+
     Returns:
         Результаты очистки
     """
+    if days_to_keep < 1:
+        raise ValueError("days_to_keep must be at least 1")
+    if batch_size < 1 or batch_size > 10_000:
+        raise ValueError("batch_size must be between 1 and 10000")
+
     try:
         from datetime import timedelta
-        
-        cutoff_date = timezone.now() - timedelta(days=days_to_keep)
-        
-        # Удаляем старые сессии
-        old_sessions = ScrapingSession.objects.filter(created_at__lt=cutoff_date)
-        deleted_count = old_sessions.count()
-        old_sessions.delete()
-        
-        # Очищаем старые логи товаров
+
         from .models import ScrapedProductLog
-        old_logs = ScrapedProductLog.objects.filter(created_at__lt=cutoff_date)
-        deleted_logs = old_logs.count()
-        old_logs.delete()
-        
+
+        cutoff_date = timezone.now() - timedelta(days=days_to_keep)
+
+        # Сначала логи (основной объём — scraped_data), затем сами сессии:
+        # удаление сессии каскадом удаляет и её оставшиеся логи.
+        deleted_logs = _delete_in_batches(
+            ScrapedProductLog.objects.filter(created_at__lt=cutoff_date), batch_size
+        )
+        deleted_count = _delete_in_batches(
+            ScrapingSession.objects.filter(created_at__lt=cutoff_date), batch_size
+        )
+
         result = {
             'status': 'success',
             'deleted_sessions': deleted_count,
@@ -1225,17 +1248,17 @@ def cleanup_old_sessions(self, days_to_keep: int = 30) -> Dict:
             'cutoff_date': cutoff_date.isoformat(),
             'timestamp': timezone.now().isoformat()
         }
-        
+
         logger.info(f"Очистка завершена: удалено {deleted_count} сессий и {deleted_logs} логов")
         return result
-        
+
     except Exception as e:
         error_msg = f"Ошибка при очистке старых сессий: {e}"
         logger.error(error_msg)
-        
+
         if self.request.retries < self.max_retries:
             raise self.retry(exc=e)
-        
+
         return {
             'status': 'error',
             'error': error_msg,

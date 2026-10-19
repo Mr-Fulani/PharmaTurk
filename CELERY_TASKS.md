@@ -4,6 +4,8 @@
 
 Временная зона проекта — `Europe/Moscow`. Расписания `crontab` ниже указаны в этой зоне. Интервалы (`10 минут`, `4 часа`, `7 дней`) отсчитываются Celery Beat и не привязаны к конкретному часу суток.
 
+Состояние beat (`/app/celerybeat-schedule`) живёт в слое контейнера и пропадает при каждом пересоздании `celerybeat`, то есть при деплое. Интервал после этого отсчитывается заново, поэтому задача с интервалом длиннее промежутка между деплоями может не сработать никогда (так было с `cleanup-scraper-sessions` раз в 7 дней). Всё, что реже нескольких раз в час, ставьте через `crontab`.
+
 ## Очереди и workers
 
 | Шаблон задачи | Очередь | Worker в Compose |
@@ -29,7 +31,8 @@ Beat только публикует задачи. Для исполнения �
 | `coinremitter-reconciliation` | `apps.payments.tasks.reconcile_coinremitter_state` | каждые 5 минут | `celery` | Карантинирует stale provider claims и пишет read-only drift summary. |
 | `currency-update-rates` | `currency.update_rates` | каждые 4 часа: `00:05`, `04:05`, … `20:05` | `celery` | Обновляет курсы валют. |
 | `currency-update-prices` | `currency.update_product_prices` | ежедневно `05:00` | `celery` | Вызывает `update_product_prices`, batch size 200. |
-| `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | каждые 7 дней | `celery` | Удаляет сессии и логи скрапинга старше 30 дней. |
+| `users-clear-expired-sessions` | `users.clear_expired_sessions` | ежедневно `04:00` | `celery` | `manage.py clearsessions`: удаляет просроченные сессии Django. |
+| `cleanup-scraper-sessions` | `apps.scrapers.tasks.cleanup_old_sessions` | ежедневно `04:20` | `celery` | Пачками по 1000 удаляет логи товаров (`ScrapedProductLog`) и сессии скрапинга старше 30 дней. |
 | `orders-cleanup-stale-anonymous-carts` | `orders.cleanup_stale_anonymous_carts` | ежедневно `04:10` | `celery` | Батчами удаляет неактивные анонимные корзины; user carts не затрагивает. |
 | `orders-remind-abandoned-carts` | `orders.remind_abandoned_carts` | ежечасно `:20` | `celery` | Одно напоминание (Telegram при `telegram_notifications`, email при `email_notifications`) о заявке вошедшего клиента, не менявшейся ≥24 ч (не старше 7 дней); `Cart.reminder_sent_at`. |
 | `scrapers-weekly-duplicate-candidates` | `apps.scrapers.tasks.find_and_merge_duplicates` | понедельник `04:30` | `celery` | Ищет и сохраняет кандидатов на ручную дедупликацию. |
@@ -96,7 +99,11 @@ provider idempotency key, любой неоднозначный результа
 
 ### Очистка скраперных данных
 
-`cleanup_old_sessions(30)` удаляет `ScrapingSession` и `ScrapedProductLog` старше cutoff. Это реальное удаление данных, поэтому изменение retention требует отдельного решения по аудиту и резервному копированию.
+`cleanup_old_sessions(30)` удаляет `ScrapedProductLog`, затем `ScrapingSession` старше cutoff пачками (`batch_size`, по умолчанию 1000, допустимо 1..10000), каждая пачка — отдельная транзакция. Это реальное удаление данных, поэтому изменение retention требует отдельного решения по аудиту и резервному копированию. Первая чистка накопленного и `VACUUM` — `docs/PROD_DB_MAINTENANCE.md`.
+
+### Сессии Django
+
+`users.clear_expired_sessions` вызывает `manage.py clearsessions`. У `Session` нет связей и сигналов, удаление — один `DELETE` без загрузки строк в память. Сессии создают анонимная корзина и избранное, ≈ 2–3 тыс. в сутки.
 
 ### Очистка анонимных корзин
 
