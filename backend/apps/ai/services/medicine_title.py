@@ -178,10 +178,8 @@ def _pack(number: str, unit: str, locale: str) -> str:
     return f"{number} {en_forms[0] if number == '1' else en_forms[1]}"
 
 
-def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
-    """RU/EN-название из исходного названия или None, если разобрать нельзя."""
-    source = re.sub(r"[()]", " ", str(name or "")).strip()
-    tokens = source.split()
+def _brand_tokens(tokens: list[str]) -> list[str]:
+    """Первые слова названия — до дозировки, формы или пути введения."""
     brand: list[str] = []
     for token in tokens:
         folded = fold_tr(token)
@@ -193,6 +191,28 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
         ):
             break
         brand.append(token)
+    return brand
+
+
+def paragraph_brand(name: Any, active_ingredient: Any = "") -> str:
+    """Бренд для метки {BRAND} в абзацах инструкций: первые слова названия до дозировки.
+
+    Пусто, если короче 3 букв или совпадает с МНН: «IBUPROFEN 400 MG» — это
+    вещество, и в переводе оно должно стать «ибупрофеном», а не меткой.
+    """
+    brand = " ".join(_brand_tokens(re.sub(r"[()]", " ", str(name or "")).split()))
+    words = set(re.findall(r"[a-z]+", fold_tr(brand)))
+    if sum(map(len, words)) < 3:
+        return ""
+    inn_words = {word for word in re.findall(r"[a-z]+", fold_tr(active_ingredient)) if len(word) >= 4}
+    return "" if words & inn_words else brand
+
+
+def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
+    """RU/EN-название из исходного названия или None, если разобрать нельзя."""
+    source = re.sub(r"[()]", " ", str(name or "")).strip()
+    tokens = source.split()
+    brand = _brand_tokens(tokens)
     if not brand or len(brand) == len(tokens):
         return None
     rest = fold_tr(" ".join(tokens[len(brand):]))

@@ -8,12 +8,14 @@ import pytest
 from apps.ai.models import AIProcessingLog, AITranslationMemory
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.medicine_memory import (
+    BRAND_TOKEN,
     INN_NAMESPACE,
     PARAGRAPH_NAMESPACE,
+    normalize_paragraph,
     translate_active_ingredient,
 )
 from apps.ai.services.medicine_reference import translate_reference_field, translate_volume
-from apps.ai.services.medicine_title import build_medicine_title
+from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.translation_memory import lookup, remember
@@ -253,6 +255,84 @@ def test_paragraph_with_changed_dose_is_not_cached_and_blocks_section():
     assert "usage_instructions" not in content["ru"]
     assert len(llm.calls_of("абзацы")) == 2  # один повтор
     assert lookup(PARAGRAPH_NAMESPACE, [PARA_A.strip()]) == {}
+
+
+BRANDED_RU = f"Не принимайте {BRAND_TOKEN} при аллергии на флурбипрофен и другие обезболивающие. " * 2
+BRANDED_EN = f"Do not take {BRAND_TOKEN} if you are allergic to flurbiprofen or other painkillers. " * 2
+
+
+def _branded(text):
+    return f"{text} ağrı kesicilere alerjiniz varsa kullanmayınız. " * 2
+
+
+def test_brand_is_replaced_by_token_with_turkish_suffixes_and_case():
+    assert paragraph_brand("MAJEZIK 100 MG 15 FILM TABLET", "Flurbiprofen") == "MAJEZIK"
+    assert paragraph_brand("IBUPROFEN 400 MG 20 TABLET", "İbuprofen") == ""  # вещество, а не бренд
+    assert paragraph_brand("AB 5 MG TABLET") == ""
+    assert normalize_paragraph("MAJEZİK'in  etkisi; Majezik’i alın; MAJEZIK kullanın", "MAJEZIK") == (
+        "{BRAND}'in etkisi; {BRAND}'i alın; {BRAND} kullanın"
+    )
+    # Гармония гласных: «PAROL'ün», «ZINCO'yu» — тот же ключ, что «MAJEZIK'in», «MAJEZIK'i».
+    assert normalize_paragraph("PAROL'ün etkisi, PAROL'ü alın", "PAROL") == "{BRAND}'in etkisi, {BRAND}'i alın"
+    assert normalize_paragraph("ZINCO'yu ZINCO'ya ZINCO'da", "ZINCO") == "{BRAND}'i {BRAND}'e {BRAND}'de"
+    # Слово со строчной и часть другого слова — не бренд.
+    assert normalize_paragraph("grip olursanız GRIPIN alın", "GRIP") == "grip olursanız GRIPIN alın"
+
+
+def test_same_paragraph_with_different_brands_is_translated_once():
+    key = normalize_paragraph(_branded("MAJEZIK'i"), "MAJEZIK")
+    assert key == normalize_paragraph(_branded("PAROL'ü"), "PAROL")
+    llm = RecordingLLM(paragraphs={key: (BRANDED_RU.strip(), BRANDED_EN.strip())})
+    generator = _generator(llm)
+
+    first = {"ru": {}, "en": {}}
+    generator._translate_medicine_source_sections(
+        first, {"contraindications": _branded("MAJEZIK'i")}, product_id=1, brand="MAJEZIK"
+    )
+    second = {"ru": {}, "en": {}}
+    usage = generator._translate_medicine_source_sections(
+        second, {"contraindications": _branded("PAROL'ü")}, product_id=2, brand="PAROL"
+    )
+
+    assert len(llm.calls_of("абзацы")) == 1
+    assert usage["paragraphs_cached"] == 1
+    assert first["ru"]["contraindications"] == BRANDED_RU.strip().replace(BRAND_TOKEN, "MAJEZIK")
+    assert first["en"]["contraindications"] == BRANDED_EN.strip().replace(BRAND_TOKEN, "MAJEZIK")
+    assert second["ru"]["contraindications"].startswith("Не принимайте PAROL при аллергии")
+    assert second["en"]["contraindications"].startswith("Do not take PAROL if")
+    entry = AITranslationMemory.objects.get(namespace=PARAGRAPH_NAMESPACE)
+    assert entry.source_text == key and BRAND_TOKEN in entry.ru_text
+
+
+def test_paragraph_without_brand_token_in_answer_is_rejected():
+    key = normalize_paragraph(_branded("MAJEZIK'i"), "MAJEZIK")
+    ru = BRANDED_RU.replace(BRAND_TOKEN, "Маджезик").strip()
+    llm = RecordingLLM(paragraphs={key: (ru, BRANDED_EN.strip())})
+    content = {"ru": {}, "en": {}}
+
+    _generator(llm)._translate_medicine_source_sections(
+        content, {"contraindications": _branded("MAJEZIK'i")}, product_id=4, brand="MAJEZIK"
+    )
+
+    quality = content["attributes"]["medicine_translation_quality"]["contraindications"]
+    assert quality["problems"] == ["brand_token_missing"]
+    assert "contraindications" not in content["ru"]
+    assert lookup(PARAGRAPH_NAMESPACE, [key]) == {}
+
+
+def test_paragraph_batch_masks_brand_like_regular_processing():
+    from apps.ai.management.commands.medicine_paragraph_batch import Command
+
+    for name, slug, suffix in (("MAJEZIK 100 MG 15 FILM TABLET", "batch-majezik", "MAJEZIK'i"),
+                               ("PAROL 500 MG 20 TABLET", "batch-parol", "PAROL'ü")):
+        MedicineProduct.objects.create(
+            name=name, slug=slug,
+            external_data={"attributes": {"source_tabs": {"before_use_warnings": {"text": _branded(suffix)}}}},
+        )
+
+    assert Command()._missing_paragraphs({"limit_products": 0}) == [
+        normalize_paragraph(_branded("MAJEZIK'i"), "MAJEZIK")
+    ]
 
 
 def test_title_template_from_structured_name():

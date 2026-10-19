@@ -51,7 +51,7 @@ from apps.ai.services.quality_checker import (
 from apps.ai.services.medicine_fact_check import doses_match
 from apps.ai.services.medicine_memory import translate_active_ingredient, translate_sections_by_paragraph
 from apps.ai.services.medicine_reference import CODE_FIELDS, build_reference_translations
-from apps.ai.services.medicine_title import build_medicine_title
+from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
 from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
 from apps.ai.services.result_applier import build_content_snapshot
 from apps.ai.services.rules.pipeline import plan_rule_content, run_rule_content
@@ -425,6 +425,7 @@ class ContentGenerator:
                         content,
                         source_sections,
                         product_id=product_id,
+                        brand=paragraph_brand(input_data.get("name"), input_data.get("active_ingredient")),
                     )
                     if section_result:
                         self._merge_generation_usage(
@@ -1849,6 +1850,7 @@ class ContentGenerator:
         source_sections: Dict[str, str],
         *,
         product_id: Optional[int] = None,
+        brand: str = "",
     ):
         """Полный перевод клинических разделов по абзацам через память переводов."""
         if not source_sections or not isinstance(content, dict):
@@ -1879,6 +1881,7 @@ class ContentGenerator:
             clinical_sections,
             getattr(self, "llm", None),
             product_id=product_id,
+            brand=brand,
         )
         ru_data.update(translated["ru"])
         en_data.update(translated["en"])

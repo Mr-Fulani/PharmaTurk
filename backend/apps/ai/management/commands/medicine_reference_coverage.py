@@ -24,7 +24,7 @@ from apps.ai.services.medicine_memory import (
     split_paragraphs,
 )
 from apps.ai.services.medicine_reference import CODE_FIELDS, translate_reference_field
-from apps.ai.services.medicine_title import build_medicine_title
+from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
 from apps.ai.services.translation_memory import source_hash
 from apps.ai.models import AITranslationMemory
 from apps.catalog.models import MedicineProduct
@@ -85,11 +85,13 @@ class Command(BaseCommand):
     def _paragraphs(self, qs):
         lengths: dict[str, int] = {}
         total_chars = 0
-        for external_data in qs.values_list("external_data", flat=True).iterator(chunk_size=500):
+        rows = qs.values_list("name", "active_ingredient", "external_data")
+        for name, active_ingredient, external_data in rows.iterator(chunk_size=500):
+            brand = paragraph_brand(name, active_ingredient)
             for text in source_tab_texts(external_data):
                 for part in split_paragraphs(text)[::2]:
                     if needs_translation(part):
-                        paragraph = normalize_paragraph(part)
+                        paragraph = normalize_paragraph(part, brand)
                         total_chars += len(paragraph)
                         lengths.setdefault(source_hash(paragraph), len(paragraph))
         cached = set()
