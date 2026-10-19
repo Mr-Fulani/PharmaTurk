@@ -9,6 +9,7 @@
 | Шаблон задачи | Очередь | Worker в Compose |
 |---|---|---|
 | `apps.ai.tasks.*` | `ai` | `celery_ai` |
+| `apps.recommendations.tasks.encode_search_image` | `recsys_search` | `celery_recsys` |
 | `apps.recommendations.tasks.*` | `recsys` | `celery_recsys` |
 | `apps.payments.tasks.*` | `celery` | `celeryworker` |
 | `apps.monitoring.tasks.*` | `celery` | `celeryworker` |
@@ -180,6 +181,19 @@ docker compose exec backend poetry run python manage.py clear_similar_cache
 ```
 
 `--force` сбрасывает marker синхронизации и создаёт существенно более тяжёлую нагрузку; применять его следует только при подтверждённом рассинхроне.
+
+### Поиск по фото в `celery_recsys`
+
+POST `/api/recommendations/search_by_image/` не грузит CLIP в веб-процесс: веб проверяет картинку, кладёт её уменьшенную копию (PNG ≤ 512 px) в задачу `encode_search_image` (очередь `recsys_search`) и ждёт вектор 15 секунд (`expires` у задачи такой же — опоздавшую задачу воркер выбросит). Таймаут, ошибка задачи или недоступный брокер — ответ 503 `search_unavailable`.
+
+Тот же однопоточный `celery_recsys` ведёт индексацию, поэтому:
+
+- воркер слушает `-Q recsys_search,recsys` с `--disable-prefetch` — следующую задачу он берёт из Redis только при свободном слоте и не держит в памяти заранее взятый батч индексации;
+- задача индексации, запущенная воркером, перед каждым следующим товаром смотрит длину списка `recsys_search` в брокере и, если поиск ждёт, ставит оставшиеся товары новой задачей (`priority=3`) и завершается. Поиск ждёт не больше одного товара (картинка + CLIP, обычно 1–2 с). Прямой вызов из `sync_product_vectors` батч не прерывает.
+
+При старте воркер, слушающий `recsys_search`, сам ставит туда задачу на картинке 32×32 (сигнал `worker_ready`): импорт torch и загрузка CLIP (≈ 15–17 с) проходят сразу, а не на первом поиске, который иначе не уложился бы в 15 секунд.
+
+Проверка очереди на проде (только чтение): `docker exec mudaroba-redis-1 redis-cli LLEN recsys_search` — в норме 0.
 
 ### Временные изображения visual search
 

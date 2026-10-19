@@ -268,6 +268,8 @@ from celery.schedules import crontab
 # Очереди изолированы: AI и тяжёлая векторизация не должны блокировать друг друга.
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
+    # Точное имя важнее шаблона ниже: поиск по фото не стоит за батчами индексации.
+    "apps.recommendations.tasks.encode_search_image": {"queue": "recsys_search"},
     "apps.recommendations.tasks.*": {"queue": "recsys"},
     "apps.payments.tasks.*": {"queue": "celery"},
     "apps.monitoring.tasks.*": {"queue": "celery"},
