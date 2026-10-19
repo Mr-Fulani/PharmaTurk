@@ -20,6 +20,9 @@ interface SourcingRequestFormProps {
   placement: string
   /** Начальный комментарий, например название категории или поисковый запрос */
   initialComment?: string
+  /** Заголовок и подзаголовок блока вместо общих «Найдём любой товар из Турции» */
+  title?: string
+  subtitle?: string
 }
 
 const inputBase =
@@ -32,7 +35,7 @@ const labelClass = 'text-sm font-medium text-[var(--text-strong)]'
  * «Найдём любой товар из Турции по ссылке или фото» — заявка менеджеру без входа.
  * Вошедшему пользователю контакты подставляются из аккаунта и профиля.
  */
-export default function SourcingRequestForm({ placement, initialComment = '' }: SourcingRequestFormProps) {
+export default function SourcingRequestForm({ placement, initialComment = '', title, subtitle }: SourcingRequestFormProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const { user } = useAuth()
@@ -189,10 +192,10 @@ export default function SourcingRequestForm({ placement, initialComment = '' }: 
   const heading = (
     <div className="mb-8 text-center">
       <h2 className="text-2xl md:text-3xl font-bold text-main">
-        {t('sourcing_title', 'Не нашли нужный товар? Найдём любой товар из Турции')}
+        {title || t('sourcing_title', 'Не нашли нужный товар? Найдём любой товар из Турции')}
       </h2>
       <p className="mx-auto mt-3 max-w-2xl text-sm md:text-base text-main/70">
-        {t('sourcing_subtitle', 'Пришлите ссылку с любого турецкого сайта или фото — менеджер найдёт товар и рассчитает цену с доставкой.')}
+        {subtitle || t('sourcing_subtitle', 'Пришлите ссылку с любого турецкого сайта или фото — менеджер найдёт товар и рассчитает цену с доставкой.')}
       </p>
     </div>
   )

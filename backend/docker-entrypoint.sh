@@ -78,7 +78,7 @@ if [ "${USE_RUNSERVER:-0}" = "1" ]; then
     exec poetry run python manage.py runserver 0.0.0.0:8000
 else
     echo "Запускаем gunicorn..."
-    # The production backend container is capped at 1.5 GiB. Django workers retain
+    # The production backend container is capped at 2 GiB. Django workers retain
     # native/Pillow/http parser arenas after large media and supplier responses, so
     # four long-lived processes can hit the cgroup limit even when the host still
     # has free memory. Two gthread workers keep 16 concurrent request threads while

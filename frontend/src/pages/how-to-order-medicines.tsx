@@ -1,118 +1,105 @@
 import axios from 'axios'
 import { GetServerSideProps } from 'next'
+import dynamic from 'next/dynamic'
+import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
+import { ArrowRightIcon } from '@heroicons/react/24/outline'
 
 import SEO from '../components/SEO'
+import BannerCarousel from '../components/BannerCarouselMedia'
+import HowToOrderGuide, { HowToOrderContacts, getHowToOrderFaqs } from '../components/HowToOrderGuide'
+import { buildHowToOrderSchemas } from '../lib/howToOrder'
+import { SITE_URL } from '../lib/siteMeta'
 import { getInternalApiUrl } from '../lib/urls'
 
-type FooterSettings = {
-  phone?: string | null
-  email?: string | null
-  location?: string | null
-  telegram_url?: string | null
-  whatsapp_url?: string | null
-  vk_url?: string | null
-  instagram_url?: string | null
-  crypto_payment_text?: string | null
-}
+const SourcingRequestForm = dynamic(() => import('../components/SourcingRequestForm'), { ssr: false })
 
-export default function HowToOrderMedicinesPage({ footerSettings }: { footerSettings: FooterSettings }) {
+const PAGE_PATH = '/how-to-order-medicines'
+
+export default function HowToOrderMedicinesPage({ contacts, banners }: { contacts: HowToOrderContacts; banners: any[] }) {
   const { t } = useTranslation('common')
-  const hasTelegram = Boolean((footerSettings.telegram_url || '').trim())
-  const hasWhatsapp = Boolean((footerSettings.whatsapp_url || '').trim())
+  const router = useRouter()
+  const localePrefix = router.locale && router.locale !== router.defaultLocale ? `/${router.locale}` : ''
 
-  const faqs = [
-    {
-      q: t('medicine_how_to_order_q1', 'Можно ли купить лекарства на сайте?'),
-      a: t('medicine_how_to_order_a1', 'Наш сайт не продает лекарства. Мы помогаем с консультацией по наличию, актуальным ценам и порядку заказа из Турции.'),
-    },
-    {
-      q: t('medicine_how_to_order_q2', 'Как узнать актуальную цену?'),
-      a: t('medicine_how_to_order_a2', 'Откройте карточку нужного препарата и нажмите «Узнать актуальную цену». Статус проверки и обновлённая справочная цена появятся прямо в карточке.'),
-    },
-    {
-      q: t('medicine_how_to_order_q3', 'Какие данные нужны для консультации?'),
-      a: t('medicine_how_to_order_a3', 'Название препарата, форма выпуска, дозировка, объем или количество, а также страна доставки.'),
-    },
-    {
-      q: t('medicine_how_to_order_q4', 'Нужен ли рецепт?'),
-      a: t('medicine_how_to_order_a4', 'Для рецептурных препаратов может потребоваться рецепт. Уточните у нашего консультанта, мы подскажем требования для конкретного препарата и страны доставки.'),
-    },
-    {
-      q: t('medicine_how_to_order_q5', 'Как происходит доставка?'),
-      a: t('medicine_how_to_order_a5', 'Мы организуем доставку из Турции через проверенные логистические каналы. Сроки и стоимость зависят от страны и выбранного способа доставки.'),
-    },
-    {
-      q: t('medicine_how_to_order_q6', 'Можно ли оформить заказ на несколько препаратов?'),
-      a: t('medicine_how_to_order_a6', 'Да, можно оформить один запрос на несколько препаратов. Мы проверим наличие и предложим оптимальный вариант.'),
-    },
+  const title = t('hto_h1', 'Как заказать лекарства из Турции и Европы')
+  const faqs = getHowToOrderFaqs(t)
+  const breadcrumbs = [
+    { href: '/', label: t('breadcrumb_home', 'Главная') },
+    { href: '/categories/medicines', label: t('hto_breadcrumb_medicines', 'Лекарства') },
+    { href: PAGE_PATH, label: t('hto_breadcrumb', 'Как заказать') },
   ]
 
   return (
     <>
       <SEO
-        title={t('medicine_how_to_order_title', 'Как заказать лекарства из Турции')}
-        description={t('medicine_how_to_order_subtitle', 'Ответы на частые вопросы о заказе и доставке лекарственных препаратов из Турции.')}
-        canonical="/how-to-order-medicines"
+        title={t('hto_meta_title', 'Как заказать лекарства из Турции и Европы — заявка и доставка')}
+        description={t('hto_meta_description', 'Заказ лекарств из Турции и Европы по заявке: подбор и проверка наличия, расчёт, оплата после расчёта, доставка. Стоматологические препараты для клиник.')}
+        canonical={PAGE_PATH}
+        structuredData={buildHowToOrderSchemas({ siteUrl: SITE_URL, localePrefix, faqs, breadcrumbs })}
       />
-      <main className="mx-auto min-h-screen max-w-5xl p-6 sm:p-10">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm sm:p-8">
-          <h1 className="mb-3 text-center text-3xl font-bold text-main md:text-4xl">
-            {t('medicine_how_to_order_title', 'Как заказать лекарства из Турции')}
-          </h1>
-          <p className="mx-auto mb-8 max-w-2xl text-center text-base text-main/70">
-            {t('medicine_how_to_order_subtitle', 'Ответы на частые вопросы о заказе и доставке лекарственных препаратов из Турции.')}
-          </p>
+      <main className="bg-page text-main min-h-screen">
+        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-8">
+          <nav aria-label={t('breadcrumbs', 'Хлебные крошки')} className="mb-6 flex flex-wrap items-center gap-2 text-sm text-main">
+            {breadcrumbs.map((item, idx) => {
+              const isLast = idx === breadcrumbs.length - 1
+              return (
+                <span key={item.href} className="flex items-center gap-2">
+                  {isLast ? (
+                    <span className="font-medium">{item.label}</span>
+                  ) : (
+                    <Link href={item.href} className="transition-colors hover:text-[var(--accent)]">{item.label}</Link>
+                  )}
+                  {!isLast && <span className="text-main/60">/</span>}
+                </span>
+              )
+            })}
+          </nav>
 
-          <h2 className="mb-4 text-xl font-semibold text-main">
-            {t('medicine_how_to_order_faq_title', 'Часто задаваемые вопросы')}
-          </h2>
-          <div className="space-y-3">
-            {faqs.map((item, index) => (
-              <details key={`${index}-${item.q}`} className="rounded-lg border border-gray-200 bg-white/70 p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-main">
-                  {item.q}
-                </summary>
-                <div className="mt-2 text-sm leading-relaxed text-main/70">
-                  {item.a}
-                </div>
-              </details>
-            ))}
-          </div>
+          <header className="mx-auto max-w-3xl text-center">
+            <h1 className="text-3xl font-bold leading-tight text-main md:text-5xl">{title}</h1>
+            <p className="mt-4 text-base text-main/75 md:text-lg">
+              {t('hto_lead', 'Подберём препарат, проверим наличие в аптеках и у поставщиков Турции и Европы, рассчитаем стоимость с доставкой. Для клиник — стоматологические препараты, которых нет в розничных аптеках.')}
+            </p>
+            <p className="mt-3 text-sm text-main/60">
+              {t('hto_disclaimer', 'Сайт не продаёт лекарства: мы консультируем, подбираем и организуем доставку, оплата — только после согласованного расчёта.')}
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <a
+                href="#sourcing"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-6 py-3.5 text-base font-semibold text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] hover:shadow-lg"
+              >
+                {t('hto_cta_request', 'Оставить заявку')}
+                <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
+              </a>
+              <a
+                href="#dental"
+                className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] px-6 py-3.5 text-base font-semibold text-main transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {t('hto_cta_clinics', 'Для стоматологических клиник')}
+              </a>
+            </div>
+          </header>
 
-          {(hasWhatsapp || hasTelegram) && (
-            <div className="mt-10 rounded-xl border border-gray-200 bg-white/70 p-6 text-center">
-              <h3 className="text-xl font-semibold text-main">{t('customer_service', 'Служба поддержки')}</h3>
-              <p className="mt-2 text-sm text-main/70">
-                {t('customer_service_description', 'Наша служба поддержки готова помочь вам с любыми вопросами. Свяжитесь с нами в любое время.')}
-              </p>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                {hasWhatsapp && (
-                  <a
-                    href={footerSettings.whatsapp_url || ''}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-900 transition-all hover:bg-gray-50"
-                  >
-                    <img src="/whatsapp-icon.png" alt="WhatsApp" width="18" height="18" />
-                    {t('order_via_whatsapp', 'Заказать через WhatsApp')}
-                  </a>
-                )}
-                {hasTelegram && (
-                  <a
-                    href={footerSettings.telegram_url || ''}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-900 transition-all hover:bg-gray-50"
-                  >
-                    <img src="/telegram-icon.png" alt="Telegram" width="18" height="18" />
-                    {t('order_via_telegram', 'Заказать через Telegram')}
-                  </a>
-                )}
-              </div>
+          {/* Баннеры позиции «Страница „Как заказать“» — включаются и заполняются в админке */}
+          {banners.length > 0 && (
+            <div className="mt-10">
+              <BannerCarousel position="how_to_order" initialBanners={banners} />
             </div>
           )}
+
+          <div className="mt-14 md:mt-20">
+            <HowToOrderGuide faqs={faqs} contacts={contacts} />
+          </div>
+
+          <div className="mt-14 md:mt-20">
+            <SourcingRequestForm
+              placement="how_to_order"
+              title={t('hto_form_title', 'Не нашли препарат в каталоге? Пришлите название, ссылку или фото')}
+              subtitle={t('hto_form_subtitle', 'Менеджер проверит наличие в Турции и Европе, рассчитает стоимость с доставкой и свяжется с вами выбранным способом.')}
+            />
+          </div>
         </div>
       </main>
     </>
@@ -120,34 +107,26 @@ export default function HowToOrderMedicinesPage({ footerSettings }: { footerSett
 }
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
-  let footerSettings: FooterSettings = {
-    phone: '',
-    email: '',
-    location: '',
-    telegram_url: '',
-    whatsapp_url: '',
-    vk_url: '',
-    instagram_url: '',
-    crypto_payment_text: '',
+  const locale = ctx.locale ?? 'ru'
+  const langHeaders = { 'Accept-Language': locale, 'X-Language': locale }
+  const [footerRes, bannersRes] = await Promise.allSettled([
+    axios.get(getInternalApiUrl('settings/footer-settings'), { timeout: 3000 }),
+    axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'how_to_order' }, headers: langHeaders, timeout: 3000 }),
+  ])
+  const footer = footerRes.status === 'fulfilled' ? footerRes.value.data || {} : {}
+  const contacts: HowToOrderContacts = {
+    phone: footer.phone || '',
+    email: footer.email || '',
+    telegram_url: footer.telegram_url || '',
+    whatsapp_url: footer.whatsapp_url || '',
   }
-  try {
-    const res = await axios.get(getInternalApiUrl('settings/footer-settings'))
-    const data = res.data || {}
-    footerSettings = {
-      phone: data.phone || '',
-      email: data.email || '',
-      location: data.location || '',
-      telegram_url: data.telegram_url || '',
-      whatsapp_url: data.whatsapp_url || '',
-      vk_url: data.vk_url || '',
-      instagram_url: data.instagram_url || '',
-      crypto_payment_text: data.crypto_payment_text || '',
-    }
-  } catch {}
+  // Баннеры необязательны: ошибка API не ломает страницу
+  const banners = bannersRes.status === 'fulfilled' && Array.isArray(bannersRes.value.data) ? bannersRes.value.data : []
   return {
     props: {
-      footerSettings,
-      ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
+      contacts,
+      banners,
+      ...(await serverSideTranslations(locale, ['common'])),
     },
   }
 }

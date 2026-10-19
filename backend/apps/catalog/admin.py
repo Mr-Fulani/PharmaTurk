@@ -2986,7 +2986,7 @@ class BannerAdmin(nested_admin.NestedModelAdmin):
     inlines = [BannerTranslationNestedInline, BannerMediaNestedInline]
 
     def get_queryset(self, request):
-        """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый. Не вызываем super(),
+        """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый, 5—«Как заказать». Не вызываем super(),
         т.к. родитель применяет order_by до аннотации — строим queryset сами."""
         qs = self.model._default_manager.get_queryset()
         return qs.annotate(
@@ -2995,13 +2995,14 @@ class BannerAdmin(nested_admin.NestedModelAdmin):
                 When(position='after_brands', then=Value(2)),
                 When(position='before_footer', then=Value(3)),
                 When(position='after_popular_products', then=Value(4)),
+                When(position='how_to_order', then=Value(5)),
                 default=Value(99),
                 output_field=IntegerField()
             )
         )
 
     def get_ordering(self, request):
-        """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый."""
+        """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый, 5—«Как заказать»."""
         return ('position_order', 'sort_order', '-created_at')
     
     fieldsets = (

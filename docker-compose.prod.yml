@@ -30,7 +30,7 @@ services:
     command: npm run start
     restart: always
     # Лимит только для production-сборки: dev-сервер Next (override) прожорливее.
-    mem_limit: 384m
+    mem_limit: 320m
     logging: *default-logging
     # Remove direct port 80 mapping, let Nginx handle it
     environment:
