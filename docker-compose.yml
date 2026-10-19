@@ -48,7 +48,7 @@ services:
       - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
-    mem_limit: 512m
+    mem_limit: 384m
     networks: [data]
 
   backend:
@@ -208,7 +208,7 @@ services:
     environment:
       REDIS_CACHE_URL: redis://redis-cache:6379/0
     command: bash -c "poetry run celery -A config beat --loglevel=info"
-    mem_limit: 256m
+    mem_limit: 384m
     networks: [data]
 
   # One-shot schema operation used by release tooling. It never starts during a
