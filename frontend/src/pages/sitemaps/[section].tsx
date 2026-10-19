@@ -29,7 +29,7 @@ async function buildStaticUrls(today: string): Promise<SitemapUrl[]> {
     ['/', '/', 'daily', 1.0],
     ['/categories', '/categories', 'daily', 0.9],
     ['/brands', '/brands', 'weekly', 0.7],
-    ['/how-to-order-medicines', '/how-to-order-medicines', 'monthly', 0.5],
+    ['/how-to-order-medicines', '/how-to-order-medicines', 'monthly', 0.8],
     ['/testimonials', '/testimonials', 'weekly', 0.6],
     ['/delivery', '/delivery', 'monthly', 0.6],
     ['/returns', '/returns', 'monthly', 0.5],

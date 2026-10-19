@@ -292,15 +292,18 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.payments.tasks.reconcile_coinremitter_state",
         "schedule": COINREMITTER_RECONCILIATION_INTERVAL_SECONDS,
     },
-    # Валюта: обновление курсов каждые 4 часа
+    # Валюта: обновление курсов каждые 4 часа (00:05, 04:05, …). Только crontab:
+    # состояние beat (celerybeat-schedule) живёт в слое контейнера и теряется при
+    # каждом деплое, интервал отсчитывался заново и давал разрывы по 9–12 ч.
     "currency-update-rates": {
         "task": "currency.update_rates",
-        "schedule": 60 * 60 * 4,
+        "schedule": crontab(hour="*/4", minute=5),
     },
-    # Валюта: пересчёт цен товаров по курсам — раз в день
+    # Валюта: пересчёт цен товаров по курсам — каждый день в 05:00, после ночного
+    # окна 02:15–04:50 и на курсах 04:05. Интервал в 24 ч не доживал до срабатывания.
     "currency-update-prices": {
         "task": "currency.update_product_prices",
-        "schedule": 60 * 60 * 24,
+        "schedule": crontab(hour=5, minute=0),
         "kwargs": {"batch_size": 200},
     },
     # refresh-stock: заглушка — отключено, доработаем после парсеров
@@ -366,10 +369,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.payments.tasks.expire_pending_crypto_payments",
         "schedule": 60 * 10,
     },
-    # AI: очистка старых логов (раз в неделю, не тратит токены)
+    # AI: очистка старых логов (раз в неделю, не тратит токены) — воскресенье 04:40.
     "ai-cleanup-old-logs": {
         "task": "apps.ai.tasks.cleanup_old_ai_logs",
-        "schedule": 60 * 60 * 24 * 7,
+        "schedule": crontab(hour=4, minute=40, day_of_week=0),
         "kwargs": {"days": 30},
     },
     # RecSys: каждую ночь индексируем только новые/изменённые товары малыми пакетами.

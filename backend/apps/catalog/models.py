@@ -5845,13 +5845,14 @@ class IncenseProductImage(models.Model):
 
 
 class Banner(models.Model):
-    """Баннер для главной страницы."""
+    """Баннер для главной страницы и страницы «Как заказать»."""
     
     POSITION_CHOICES = [
         ('main', _('1 — Главный')),
         ('after_brands', _('2 — Второй')),
         ('before_footer', _('3 — Третий')),
         ('after_popular_products', _('4 — Четвертый')),
+        ('how_to_order', _('Страница «Как заказать»')),
     ]
     
     title = models.CharField(
