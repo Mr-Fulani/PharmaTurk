@@ -9,6 +9,7 @@ from typing import Any, Iterable
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.category_policy import CATEGORY_POLICY_OVERRIDES, build_category_policy
 from apps.catalog.product_semantics import looks_untranslated_turkish
+from apps.ai.services.medicine_fact_check import strip_proper_name_lines
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.medicine_title import FORM_WORDS
 from apps.ai.services.rules.vocab import fold, generic_title_words
@@ -129,6 +130,36 @@ _TURKISH_TITLE_TRANSLITERATIONS = re.compile(
 )
 # Латинские единицы в RU-названии БАДа: промпт требует «мл».
 _SUPPLEMENT_RU_TITLE_LATIN_UNITS = re.compile(r"(?<![A-Za-z])ml\b", re.IGNORECASE)
+
+
+# RU-название лекарства: транслитерация турецких форм («ДИЛАЛТИ», «ФИЛЬМ-…»,
+# «80 ТАБЛЕТ») — брак; «капсул», «ампул», «флакон» — нормальные русские слова.
+_MEDICINE_RU_TITLE_TRANSLITERATIONS = re.compile(
+    r"(дилалт|фил[ьл]?м|таблет(?![а-яё])|(?<![а-яё])тоз(?![а-яё])|[чц][её]зелти|жексий|"
+    r"инфюз|лиофилизе(?![а-яё])|(?<![а-яё])помад|(?<![а-яё])д?жел(?![а-яё])|"
+    r"(?<![а-яё])г[её]з(?![а-яё])|(?<![а-яё])бурун|солюсй|сусп[ае]нсий)",
+    re.IGNORECASE,
+)
+# Латиница в RU-названии лекарства допустима только в бренде источника и в этих обозначениях.
+_MEDICINE_RU_TITLE_LATIN_OK = frozenset({
+    "IV", "IM", "SC", "SR", "XR", "MR", "CR", "XL", "LA", "ER", "EC", "ODT", "RETARD", "FORTE",
+    "FORT", "PLUS", "MITE", "DEPOT", "DUO", "JUNIOR", "MAX",
+})
+
+
+def _medicine_ru_title_untranslated(title: Any, source_name: Any) -> bool:
+    """В RU-названии лекарства осталась латиница не из бренда (MG, ML, TU) или транслитерация."""
+    text = str(title or "")
+    if _MEDICINE_RU_TITLE_TRANSLITERATIONS.search(text):
+        return True
+    prefix = re.split(r"(?=\d|%)", str(source_name or ""), maxsplit=1)[0]
+    brand = {fold_tr(token).upper() for token in re.findall(r"[^\W_][\w.'-]*", prefix)}
+    for token in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü.'-]*", text):
+        word = fold_tr(token.strip(".'-")).upper()
+        if word in brand or word in _MEDICINE_RU_TITLE_LATIN_OK or re.search(r"\d", word):
+            continue
+        return True
+    return False
 
 
 def _title_has_turkish_words(title: Any) -> bool:
@@ -521,6 +552,10 @@ class SemanticValidator:
                 locale == "ru"
                 and product_type == "supplements"
                 and _SUPPLEMENT_RU_TITLE_LATIN_UNITS.search(str(title))
+            ) or (
+                locale == "ru"
+                and product_type == "medicines"
+                and _medicine_ru_title_untranslated(title, getattr(product, "name", ""))
             ):
                 report.rejected_fields.add("title")
                 report.reasons.append("title_untranslated")
@@ -616,7 +651,7 @@ class SemanticValidator:
             for field_name, value in ru_data.items():
                 if field_name in kept_current_fields:
                     continue
-                if looks_untranslated_turkish(value):
+                if looks_untranslated_turkish(strip_proper_name_lines(value)):
                     report.rejected_fields.add(f"medicine_translation:{field_name}")
                     report.reasons.append("untranslated_medicine_field")
 

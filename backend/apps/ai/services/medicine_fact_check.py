@@ -60,6 +60,40 @@ _SALT_WORDS_EN = re.compile(
 )
 
 
+# Строки с фирмой и адресом (конец раздела хранения инструкции: «Ruhsat sahibi:
+# … İlaç San. ve Tic. A.Ş., … Mah. … Cad. No:4 … İstanbul, Tel: …»). Имена и
+# адреса не переводятся и остаются латиницей с турецкими буквами — при проверке
+# «перевод не на турецком» такие строки не учитываются.
+_PROPER_NAME_LINE = re.compile(
+    r"(?:^|\s)(?:ruhsat sahibi|uretim yeri|uretici|imal eden|ithalatci)\b|"
+    r"\b(?:a\.\s?s\.?|ltd\.?|sti\.?|tic\.|san\.|gmbh|s\.p\.a\.?|inc\.?|limited|mah\.|mahallesi|"
+    r"cad\.|caddesi|cd\.|sok\.|sokak|sk\.|bulvari|blv\.|plaza|osb|organize sanayi|faks|fax|e-?posta|"
+    r"posta kodu|ag|srl|llc|corp|pvt|s\.a\.|b\.v\.|n\.v\.|pharma|pharmaceuticals?|laborator\w*)(?=\W|$)|"
+    r"\b(?:no|kat|tel)\s*:"
+)
+
+
+# Обращение к читателю («bildiriniz», «danışınız») — это текст инструкции, а не реквизиты.
+_INSTRUCTION_WORDS = re.compile(r"\w(?:iniz|unuz)\b|\b(?:bildir\w*|kullan\w*|danis\w*|doktor\w*)\b")
+
+
+def is_proper_name_line(text: Any) -> bool:
+    """Строка — название фирмы, адрес или контакты, а не текст инструкции."""
+    from apps.ai.services.medicine_reference import fold_tr
+
+    folded = fold_tr(text)
+    return (
+        len(folded) <= 250
+        and not _INSTRUCTION_WORDS.search(folded)
+        and bool(_PROPER_NAME_LINE.search(folded))
+    )
+
+
+def strip_proper_name_lines(text: Any) -> str:
+    """Текст без строк с фирмами/адресами — для проверки языка перевода."""
+    return "\n".join(line for line in str(text or "").splitlines() if not is_proper_name_line(line))
+
+
 def _normalize_number(raw: str) -> str:
     value = re.sub(r"[ \u00a0]", "", raw)
     if re.fullmatch(r"[1-9]\d{0,2}(?:[.,]\d{3})+", value):

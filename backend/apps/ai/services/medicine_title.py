@@ -118,6 +118,75 @@ FORM_PHRASES = {
     "gargara": ("раствор для полоскания", "gargle"),
     "ampul": ("ампулы", "ampoules"),
     "flakon": ("флакон", "vial"),
+    # Пилот 18.10.2026: формы, которые модель переводила с браком.
+    "dilalti sprey": ("подъязычный спрей", "sublingual spray"),
+    "dilalti tablet": ("подъязычные таблетки", "sublingual tablets"),
+    "dilalti damla": ("подъязычные капли", "sublingual drops"),
+    "agiz ici sprey": ("спрей для полости рта", "oromucosal spray"),
+    "agiz spreyi": ("спрей для полости рта", "oromucosal spray"),
+    "deri spreyi": ("спрей для наружного применения", "cutaneous spray"),
+    "topikal sprey": ("спрей для наружного применения", "cutaneous spray"),
+    "topikal cozelti": ("раствор для наружного применения", "cutaneous solution"),
+    "iv infuzyon icin liyofilize toz": (
+        "лиофилизат для приготовления раствора для инфузий", "powder for solution for infusion"
+    ),
+    "infuzyon icin liyofilize toz": (
+        "лиофилизат для приготовления раствора для инфузий", "powder for solution for infusion"
+    ),
+    "infuzyonluk cozelti icin liyofilize toz": (
+        "лиофилизат для приготовления раствора для инфузий", "powder for solution for infusion"
+    ),
+    "infuzyonluk cozelti icin toz": (
+        "порошок для приготовления раствора для инфузий", "powder for solution for infusion"
+    ),
+    "enjeksiyonluk cozelti icin liyofilize toz": (
+        "лиофилизат для приготовления раствора для инъекций", "powder for solution for injection"
+    ),
+    "enjeksiyonluk cozelti hazirlamak icin liyofilize toz": (
+        "лиофилизат для приготовления раствора для инъекций", "powder for solution for injection"
+    ),
+    "enjeksiyonluk cozelti hazirlamak icin toz": (
+        "порошок для приготовления раствора для инъекций", "powder for solution for injection"
+    ),
+    "iv infuzyon icin konsantre cozelti": (
+        "концентрат для приготовления раствора для инфузий", "concentrate for solution for infusion"
+    ),
+    "infuzyon icin konsantre cozelti": (
+        "концентрат для приготовления раствора для инфузий", "concentrate for solution for infusion"
+    ),
+    "infuzyonluk konsantre cozelti": (
+        "концентрат для приготовления раствора для инфузий", "concentrate for solution for infusion"
+    ),
+    "konsantre infuzyon cozeltisi": (
+        "концентрат для приготовления раствора для инфузий", "concentrate for solution for infusion"
+    ),
+    "konsantre cozelti": ("концентрат для приготовления раствора", "concentrate for solution"),
+    "enjektabl solusyon": ("раствор для инъекций", "solution for injection"),
+    "enjeksiyonluk solusyon": ("раствор для инъекций", "solution for injection"),
+    "oral solusyon": ("раствор для приёма внутрь", "oral solution"),
+    "solusyon": ("раствор", "solution"),
+    "sert jelatin kapsul": ("капсулы", "capsules"),
+    "yumusak jelatin kapsul": ("мягкие капсулы", "soft capsules"),
+    "modifiye salimli kapsul": ("капсулы с модифицированным высвобождением", "modified-release capsules"),
+    "kontrollu salimli kapsul": ("капсулы с контролируемым высвобождением", "controlled-release capsules"),
+    "vajinal kapsul": ("вагинальные капсулы", "vaginal capsules"),
+    "vajinal jel": ("вагинальный гель", "vaginal gel"),
+    "rektal krem": ("ректальный крем", "rectal cream"),
+    "rektal pomad": ("ректальная мазь", "rectal ointment"),
+    "oral toz": ("порошок для приёма внутрь", "oral powder"),
+    "kuru surup": ("порошок для приготовления сиропа", "powder for syrup"),
+    "inhalasyon icin kuru toz": ("порошок для ингаляций", "inhalation powder"),
+    "inhalasyon tozu": ("порошок для ингаляций", "inhalation powder"),
+    "inhalasyon suspansiyonu": ("суспензия для ингаляций", "inhalation suspension"),
+    "basincli inhalasyon suspansiyonu": ("суспензия для ингаляций под давлением", "pressurised inhalation suspension"),
+    "inhalasyon cozeltisi": ("раствор для ингаляций", "inhalation solution"),
+    "emme tableti": ("таблетки для рассасывания", "lozenges"),
+    "agizda eriyen tablet": ("таблетки, диспергируемые в полости рта", "orodispersible tablets"),
+    "kopuk": ("пена", "foam"),
+    "macun": ("паста", "paste"),
+    "pudra": ("присыпка", "powder"),
+    "implant": ("имплантат", "implant"),
+    "kartus": ("картридж", "cartridge"),
 }
 FORM_WORDS = {word for phrase in FORM_PHRASES for word in phrase.split()}
 _FORM_RE = re.compile(
@@ -128,7 +197,24 @@ _FORM_RE = re.compile(
 _PACK_WORDS = {
     "adet": "piece", "ampul": "ampoule", "flakon": "vial", "sase": "sachet",
     "kalem": "pen", "enjektor": "syringe", "doz": "dose", "puskurtme": "dose",
-    "tup": "tube", "sise": "vial", "flaster": "patch",
+    "tup": "tube", "sise": "vial", "flaster": "patch", "kutu": "box",
+    "blister": "blister", "kartus": "cartridge",
+}
+# Обозначения линейки после дозировки («200 MG CR») — сохраняются как в источнике.
+_SERIES_WORDS = {
+    "sr", "xr", "mr", "cr", "xl", "la", "er", "ec", "odt", "retard", "forte", "fort",
+    "plus", "mite", "depot", "duo", "junior", "max",
+}
+# Уточнения после формы → RU/EN.
+_MODIFIERS = {
+    "setli": ("с системой", "with set"),
+    "setsiz": ("без системы", "without set"),
+    "pediatrik": ("детский", "paediatric"),
+    "cocuk": ("детский", "for children"),
+    "bebek": ("для младенцев", "for infants"),
+    "yetiskin": ("для взрослых", "adult"),
+    "steril": ("стерильный", "sterile"),
+    "sekersiz": ("без сахара", "sugar-free"),
 }
 _PACK_RE = re.compile(r"(\d+)\s+(" + "|".join(_PACK_WORDS) + r")\b")
 
@@ -137,9 +223,10 @@ _UNITS = {
     "g": ("г", "g"), "gr": ("г", "g"), "ml": ("мл", "ml"), "l": ("л", "l"),
     "iu": ("МЕ", "IU"), "ui": ("МЕ", "IU"), "mmol": ("ммоль", "mmol"), "meq": ("мэкв", "mEq"),
     "doz": ("доза", "dose"), "puskurtme": ("доза", "dose"), "saat": ("ч", "h"), "h": ("ч", "h"),
+    "tu": ("ТЕ", "TU"), "u": ("ЕД", "U"),
 }
 _NUM = r"\d+(?:[.,]\d+)?"
-_UNIT = r"(?:mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq)"
+_UNIT = r"(?:mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq|tu|u)"
 _PER = r"(?:mg|mcg|g|ml|doz|puskurtme|saat|h|l)"
 _DOSE_RE = re.compile(
     rf"(?:%\s*({_NUM})|({_NUM})\s*%|({_NUM})\s*({_UNIT})(?:\s*/\s*({_NUM})?\s*({_PER}))?)(?![a-z])"
@@ -201,7 +288,9 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
     volumes = {"ru": [], "en": []}
     grams = {"ru": [], "en": []}
     packs = {"ru": [], "en": []}
-    form = None
+    series: list[str] = []
+    forms: list[tuple[str, str]] = []
+    modifiers: list[tuple[str, str]] = []
     route = None
     while rest:
         rest = rest.lstrip(" ,+-")
@@ -211,7 +300,9 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
         pack = _PACK_RE.match(rest)
         dose = _DOSE_RE.match(rest)
         form_match = _FORM_RE.match(rest)
-        counted_form = re.match(r"(\d+)\s+", rest)
+        counted = re.match(r"(\d+)\s+", rest)
+        counted_form = _FORM_RE.match(rest[counted.end():]) if counted else None
+        word = re.match(r"[a-z]+\b", rest)
         if multi:
             count, size, unit = multi.groups()
             unit = "g" if unit == "gr" else unit
@@ -219,25 +310,27 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
             volumes["en"].append(f"{count} × {_num(size, 'en')} {_UNITS[unit][1]}")
             rest = rest[multi.end():]
         elif pack:
-            number, word = pack.groups()
+            number, pack_word = pack.groups()
             for locale in ("ru", "en"):
-                packs[locale].append(_pack(number, _PACK_WORDS[word], locale))
+                packs[locale].append(_pack(number, _PACK_WORDS[pack_word], locale))
             rest = rest[pack.end():]
         elif dose:
             for locale in ("ru", "en"):
                 text, kind = _format_dose(dose, locale)
                 {"strength": strengths, "volume": volumes, "grams": grams}[kind][locale].append(text)
             rest = rest[dose.end():]
-        elif form_match and form is None:
-            form = FORM_PHRASES[form_match.group(0)]
+        elif form_match:
+            if FORM_PHRASES[form_match.group(0)] not in forms:
+                forms.append(FORM_PHRASES[form_match.group(0)])
             rest = rest[form_match.end():]
-        elif counted_form and _FORM_RE.match(rest[counted_form.end():]) and form is None:
-            number = counted_form.group(1)
-            form_match = _FORM_RE.match(rest[counted_form.end():])
-            form = FORM_PHRASES[form_match.group(0)]
+        elif counted_form:
+            # «15 FILM TABLET», «(80 TABLET)»: число перед формой — фасовка.
+            number = counted.group(1)
+            if not forms:
+                forms.append(FORM_PHRASES[counted_form.group(0)])
             packs["ru"].append(f"{number} шт.")
             packs["en"].append(f"{number} {'pc' if number == '1' else 'pcs'}")
-            rest = rest[counted_form.end() + form_match.end():]
+            rest = rest[counted.end() + counted_form.end():]
         elif _ROUTE_ABBR_RE.match(rest) and route is None:
             route_match = _ROUTE_ABBR_RE.match(rest)
             codes = re.findall(r"im|iv|sc", route_match.group(0))
@@ -246,23 +339,35 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
                 "/".join(_ROUTE_ABBR[c][1] for c in codes),
             )
             rest = rest[route_match.end():]
+        elif word and word.group(0) in _SERIES_WORDS:
+            series.append(word.group(0).upper())
+            rest = rest[word.end():]
+        elif word and word.group(0) in _MODIFIERS:
+            modifiers.append(_MODIFIERS[word.group(0)])
+            rest = rest[word.end():]
         else:
             return None
 
-    if form is None and not (strengths["ru"] or volumes["ru"] or grams["ru"]):
+    if not forms and not (strengths["ru"] or volumes["ru"] or grams["ru"]):
         return None
     # Граммы у мазей/кремов/гелей/порошков — масса упаковки, у прочих — дозировка.
-    grams_are_volume = form is not None and form[1].split()[-1] in _MASS_FORMS
+    grams_are_volume = bool(forms) and forms[0][1].split()[-1] in _MASS_FORMS
     for locale in ("ru", "en"):
         (volumes if grams_are_volume else strengths)[locale][:0] = grams[locale]
     result = {}
     for index, locale in enumerate(("ru", "en")):
-        head = " ".join(brand + strengths[locale])
+        # «12MG/1.2ML (10MG/ML)»: вторая концентрация — в скобках, как в источнике.
+        strength = strengths[locale][:1] + [
+            f"({value})" if "/" in value and "/" in strengths[locale][0] else value
+            for value in strengths[locale][1:]
+        ]
+        head = " ".join(brand + strength + series)
         parts = [head]
-        if form:
-            parts.append(form[index] + (f" ({route[index]})" if route else ""))
+        if forms:
+            parts.append(", ".join(form[index] for form in forms) + (f" ({route[index]})" if route else ""))
         elif route:
             parts.append(route[index])
+        parts.extend(modifier[index] for modifier in modifiers)
         parts.extend(volumes[locale])
         parts.extend(packs[locale])
         result[locale] = ", ".join(parts)

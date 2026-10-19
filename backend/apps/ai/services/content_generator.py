@@ -48,7 +48,7 @@ from apps.ai.services.quality_checker import (
     create_moderation_task,
     get_moderation_reasons,
 )
-from apps.ai.services.medicine_fact_check import doses_match
+from apps.ai.services.medicine_fact_check import doses_match, strip_proper_name_lines
 from apps.ai.services.medicine_memory import translate_active_ingredient, translate_sections_by_paragraph
 from apps.ai.services.medicine_reference import CODE_FIELDS, build_reference_translations
 from apps.ai.services.medicine_title import build_medicine_title
@@ -1644,7 +1644,8 @@ class ContentGenerator:
         )
 
     def _looks_untranslated_turkish(self, text: Any) -> bool:
-        value = str(text or "").strip()
+        # Фирмы и адреса («… İlaç San. ve Tic. A.Ş., … Mah.») законно остаются латиницей.
+        value = strip_proper_name_lines(text).strip()
         # Preserve official all-caps abbreviations and brand names such as
         # TÜFAM/TİTCK/AUGMENTİN.  A single Turkish diacritic in a proper name
         # does not make an otherwise complete Russian translation Turkish.

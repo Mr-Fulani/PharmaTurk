@@ -262,7 +262,7 @@ def test_title_template_from_structured_name():
     }
     assert build_medicine_title("ZINCO SURUP 150 ML") == {"ru": "ZINCO, сироп, 150 мл", "en": "ZINCO, syrup, 150 ml"}
     # Незнакомое слово после бренда — шаблон не строится, название даст модель.
-    assert build_medicine_title("X 5 MG SETLI") is None
+    assert build_medicine_title("X 5 MG KARISIM") is None
 
 
 def test_full_medicine_processing_uses_code_and_memory():
@@ -430,3 +430,118 @@ def test_manager_edits_inn_in_admin_and_it_reaches_products(client, django_user_
 
     assert response.status_code == 302
     assert medicine.translations.get(locale="ru").active_ingredient == "Парацетамол"
+
+
+# ── Пилот 18.10.2026 (15 лекарств): названия от модели с браком и неполный раздел хранения ──
+
+PILOT_TITLES = {
+    # id 306: модель — «… ДИЛАЛТИ СПРЕЙ, РАСТВОР (АЛЬТЕРНАРИЯ)»
+    "SULGEN 30000 TU/ML DİLALTI SPREY, ÇÖZELTİ": (
+        "SULGEN 30000 ТЕ/мл, подъязычный спрей, раствор",
+        "SULGEN 30000 TU/ml, sublingual spray, solution",
+    ),
+    # id 113: модель — «… 50 MG ФИЛЬМ-КАПСУЛИРОВАННЫЕ ТАБЛЕТКИ (80 ТАБЛЕТ)»
+    "SOLOPINA 50 MG FİLM KAPLI TABLET (80 TABLET)": (
+        "SOLOPINA 50 мг, таблетки, покрытые плёночной оболочкой, 80 шт.",
+        "SOLOPINA 50 mg, film-coated tablets, 80 pcs",
+    ),
+    # id 339: модель — «LEMTRADA 12MG/1.2ML (10MG/ML) ИНЪЕКЦИЯ»
+    "LEMTRADA 12MG/1.2ML (10MG/ML) IV İNFÜZYON İÇİN KONSANTRE ÇÖZELTİ": (
+        "LEMTRADA 12 мг/1,2 мл (10 мг/мл), концентрат для приготовления раствора для инфузий",
+        "LEMTRADA 12 mg/1.2 ml (10 mg/ml), concentrate for solution for infusion",
+    ),
+    "HERCEPTIN 150 MG IV İNFÜZYON İÇİN LİYOFİLİZE TOZ 1 FLAKON": (
+        "HERCEPTIN 150 мг, лиофилизат для приготовления раствора для инфузий, 1 флакон",
+        "HERCEPTIN 150 mg, powder for solution for infusion, 1 vial",
+    ),
+    "TEGRETOL 200 MG CR 50 TABLET": ("TEGRETOL 200 мг CR, таблетки, 50 шт.", "TEGRETOL 200 mg CR, tablets, 50 pcs"),
+}
+
+
+@pytest.mark.parametrize("source", PILOT_TITLES)
+def test_pilot_forms_are_covered_by_title_template(source):
+    ru, en = PILOT_TITLES[source]
+    assert build_medicine_title(source) == {"ru": ru, "en": en}
+
+
+@pytest.mark.parametrize(
+    "source,llm_title",
+    [
+        ("SULGEN 30000 TU/ML DİLALTI SPREY, ÇÖZELTİ (ALTERNARIA)", "SULGEN 30000 TU/ML ДИЛАЛТИ СПРЕЙ, РАСТВОР (АЛЬТЕРНАРИЯ)"),
+        ("SOLOPINA 50 MG FİLM KAPLI TABLET (80 TABLET)", "SOLOPINA 50 MG ФИЛЬМ-КАПСУЛИРОВАННЫЕ ТАБЛЕТКИ (80 ТАБЛЕТ)"),
+        ("LEMTRADA 12MG/1.2ML (10MG/ML) IV İNFÜZYON İÇİN KONSANTRE ÇÖZELTİ", "LEMTRADA 12MG/1.2ML (10MG/ML) ИНЪЕКЦИЯ"),
+    ],
+)
+def test_llm_medicine_title_with_transliteration_or_latin_units_is_rejected(source, llm_title):
+    category, _ = Category.objects.get_or_create(slug="pilot-medicines", defaults={"name": "Медицина"})
+    medicine = MedicineProduct.objects.create(
+        name=source, slug=f"pilot-title-{abs(hash(source)) % 10**8}", category=category
+    )
+    medicine.refresh_from_db()
+    validator = SemanticValidator()
+
+    bad = validator.validate(medicine.base_product, generated_titles={"ru": llm_title}, dynamic_attributes=[])
+    template = build_medicine_title(source) or {
+        "ru": "SULGEN 30000 ТЕ/мл, подъязычный спрей, раствор (альтернария)"
+    }
+    good = validator.validate(
+        medicine.base_product, generated_titles={"ru": template["ru"]}, dynamic_attributes=[]
+    )
+
+    assert "title_untranslated" in bad.reasons
+    assert "title" in bad.rejected_fields
+    assert "title_untranslated" not in good.reasons
+
+
+STORAGE_SECTION = (
+    "25°C'nin altındaki oda sıcaklığında, ambalajında saklayınız. Dondurmayınız.\n"
+    "Ruhsat sahibi: Abdi İbrahim İlaç San. ve Tic. A.Ş.\n"
+    "Reşitpaşa Mahallesi, Eski Büyükdere Cad. No: 4 34467 Maslak / Sarıyer / İstanbul\n"
+    "Tel: 0212 366 84 00 Faks: 0212 276 20 20"
+)
+
+
+def test_storage_section_requisites_are_translated_by_code_and_not_blocked():
+    storage = STORAGE_SECTION.splitlines()[0]
+    llm = RecordingLLM(paragraphs={storage: (
+        "Хранить при температуре ниже 25 °C в оригинальной упаковке. Не замораживать.",
+        "Store below 25 °C in the original package. Do not freeze.",
+    )})
+    generator = _generator(llm)
+    content = {"ru": {}, "en": {}}
+
+    generator._translate_medicine_source_sections(content, {"storage_conditions": STORAGE_SECTION}, product_id=211)
+
+    sent = json.loads(llm.calls_of("абзацы")[0]["user_prompt"].split("\n\n", 1)[1])
+    assert list(sent.values()) == [storage]  # реквизиты модели не отправляются
+    quality = content["attributes"]["medicine_translation_quality"]["storage_conditions"]
+    assert quality["complete"] is True
+    ru = content["ru"]["storage_conditions"]
+    assert "Владелец регистрационного удостоверения: Abdi İbrahim İlaç San. ve Tic. A.Ş." in ru
+    assert "Тел.: 0212 366 84 00 Факс: 0212 276 20 20" in ru
+    assert "Marketing authorisation holder:" in content["en"]["storage_conditions"]
+    # Ни применение, ни валидатор не считают адрес непереведённым текстом.
+    assert generator._looks_untranslated_turkish(ru) is False
+    medicine = MedicineProduct.objects.create(name="STORAGE MED", slug="storage-requisites")
+    medicine.refresh_from_db()
+    log = AIProcessingLog.objects.create(
+        product=medicine.base_product,
+        processing_type="full",
+        input_data={},
+        extracted_attributes={
+            "medicine_translation_quality": content["attributes"]["medicine_translation_quality"],
+            "translations_data": {"ru": {"storage_conditions": ru}, "en": {}},
+        },
+    )
+    report = SemanticValidator().validate_log(log)
+    assert "untranslated_medicine_field" not in report.reasons
+    assert "incomplete_medicine_translation" not in report.reasons
+
+
+def test_instruction_paragraph_with_phone_is_still_translated_by_model():
+    from apps.ai.services.medicine_fact_check import is_proper_name_line
+
+    assert not is_proper_name_line(
+        "Türkiye Farmakovijilans Merkezi (TÜFAM)'ne bildiriniz (e-posta: tufam@titck.gov.tr; tel: 0 800 314 00 08)."
+    )
+    assert not is_proper_name_line("Günde 10 mg/kg verilir.")
