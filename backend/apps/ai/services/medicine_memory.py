@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import re
+from functools import lru_cache
 from typing import Any, Callable, Optional
 
 from apps.ai.services.medicine_fact_check import doses_match, inn_matches, is_proper_name_line
@@ -26,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 INN_NAMESPACE = "medicine_inn"
 PARAGRAPH_NAMESPACE = "medicine_paragraph"
+# Бренд товара в абзаце → метка: абзацы разных препаратов совпадают в памяти.
+BRAND_TOKEN = "{BRAND}"
 
 # Один запрос на товар; больше — несколько запросов (лимит ответа 16k токенов).
 PARAGRAPH_BATCH_CHARS = 20000
@@ -46,7 +49,9 @@ PARAGRAPH_SYSTEM_PROMPT = (
     "Ты профессиональный медицинский переводчик. Переводи абзацы официальной инструкции "
     "препарата с турецкого на русский и английский. Каждый абзац переводи полностью и "
     "отдельно: не сокращай, не пересказывай, не объединяй и не добавляй факты. Сохраняй "
-    "каждую дозировку, число, единицу, предупреждение и название препарата. Русский — "
+    "каждую дозировку, число, единицу, предупреждение и название препарата. Метку {BRAND} "
+    "(название препарата) переноси в оба перевода ровно как есть: не переводи, не склоняй, "
+    "не убирай. Русский — "
     "естественный перевод, а не кириллическая транслитерация турецкого. Терминология: "
     "oblong = продолговатые, yaygın olmayan = нечастые, uzatılmış salımlı tablet = таблетки "
     "пролонгированного высвобождения, kısıtlanmış beyaz reçete = ограниченный белый рецепт, "
@@ -254,9 +259,48 @@ def propagate_inn_translations(keys: set[str]) -> int:
 # ── Абзацы инструкций ─────────────────────────────────────────────────────
 
 
-def normalize_paragraph(text: str) -> str:
-    """Ключ абзаца в памяти — та же нормализация, что у translation_memory."""
-    return normalize_source_text(text)
+# Буква бренда после fold_tr → все её написания в турецком тексте.
+_TR_LETTERS = {"c": "cCçÇ", "g": "gGğĞ", "i": "iIıİ", "o": "oOöÖ", "s": "sSşŞ", "u": "uUüÜ"}
+
+
+@lru_cache(maxsize=512)
+def _brand_re(brand: str) -> re.Pattern:
+    parts = []
+    for char in fold_tr(brand):
+        if char == " ":
+            parts.append(r"\s+")
+        elif char in _TR_LETTERS:
+            parts.append(f"[{_TR_LETTERS[char]}]")
+        elif char.isalpha():
+            parts.append(f"[{char}{char.upper()}]")
+        else:
+            parts.append(re.escape(char))
+    # «MAJEZIK'in», «MAJEZİK’i» — суффикс после апострофа.
+    return re.compile(rf"(?<!\w)({''.join(parts)})(?:['’`](\w+))?(?!\w)")
+
+
+def _canonical_suffix(suffix: str) -> str:
+    """Суффикс по гармонии гласных → одна форма: 'ı/'ü/'yu → 'i, 'nın → 'in, 'ya → 'e, 'te → 'de."""
+    folded = re.sub(r"^[yns](?=[aeiou])", "", fold_tr(suffix))
+    return re.sub(r"^t", "d", folded).translate(str.maketrans("au", "ei"))
+
+
+def normalize_paragraph(text: str, brand: str = "") -> str:
+    """Ключ абзаца в памяти: нормализация translation_memory, бренд товара → BRAND_TOKEN.
+
+    Метка ставится на бренд с заглавной буквы («MAJEZIK», «Majezik»); слово
+    со строчной («grip») — обычный текст.
+    """
+    text = normalize_source_text(text)
+    if not brand:
+        return text
+
+    def mask(match: re.Match) -> str:
+        if not match.group(1)[0].isupper():
+            return match.group(0)
+        return BRAND_TOKEN + (f"'{_canonical_suffix(match.group(2))}" if match.group(2) else "")
+
+    return _brand_re(brand).sub(mask, text)
 
 
 def source_tab_texts(external_data: Any) -> list[str]:
@@ -323,6 +367,8 @@ def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
         problems.append("en_has_cyrillic")
     if len(source) >= 200 and min(len(ru), len(en)) / len(source) < 0.5:
         problems.append("too_short")
+    if BRAND_TOKEN in source and (BRAND_TOKEN not in ru or BRAND_TOKEN not in en):
+        problems.append("brand_token_missing")
     return problems
 
 
@@ -400,15 +446,19 @@ def translate_sections_by_paragraph(
     llm,
     *,
     product_id: Optional[int] = None,
+    brand: str = "",
 ) -> dict[str, Any]:
     """Разделы инструкции: абзацы из памяти, новые — моделью одним запросом на товар.
+
+    ``brand`` (``paragraph_brand``) в ключах памяти заменяется меткой и
+    подставляется обратно в перевод.
 
     Возвращает {"ru": {поле: текст}, "en": {...}, "quality": {...}, "usage": {...}}.
     Раздел попадает в ru/en, только если переведены все его абзацы.
     """
     structure = {field: split_paragraphs(text) for field, text in sections.items()}
     unique = list(dict.fromkeys(
-        normalize_paragraph(part)
+        normalize_paragraph(part, brand)
         for parts in structure.values()
         for part in parts[::2]
         if needs_translation(part) and not is_proper_name_line(part)
@@ -435,7 +485,7 @@ def translate_sections_by_paragraph(
                 texts["ru"].append(part)
                 texts["en"].append(part)
                 continue
-            key = normalize_paragraph(part)
+            key = normalize_paragraph(part, brand)
             if not needs_translation(part):
                 texts["ru"].append(key)
                 texts["en"].append(key)
@@ -444,8 +494,8 @@ def translate_sections_by_paragraph(
                 texts["ru"].append(ru)
                 texts["en"].append(en)
             elif key in found:
-                texts["ru"].append(found[key]["ru"])
-                texts["en"].append(found[key]["en"])
+                texts["ru"].append(found[key]["ru"].replace(BRAND_TOKEN, brand))
+                texts["en"].append(found[key]["en"].replace(BRAND_TOKEN, brand))
             else:
                 problems.update(rejected.get(key) or ["missing"])
         source_text = sections[field]

@@ -33,6 +33,7 @@ from apps.ai.services.medicine_memory import (
     split_paragraphs,
     translation_user_prompt,
 )
+from apps.ai.services.medicine_title import paragraph_brand
 from apps.ai.services.translation_memory import remember, source_hash
 from apps.catalog.models import MedicineProduct
 
@@ -56,15 +57,18 @@ class Command(BaseCommand):
             self._collect(options["batch_id"])
 
     def _missing_paragraphs(self, options) -> list[str]:
-        qs = MedicineProduct.objects.filter(is_active=True).order_by("pk").values_list("external_data", flat=True)
+        qs = MedicineProduct.objects.filter(is_active=True).order_by("pk").values_list(
+            "name", "active_ingredient", "external_data"
+        )
         if options["limit_products"]:
             qs = qs[: options["limit_products"]]
         paragraphs: dict[str, str] = {}
-        for external_data in qs.iterator(chunk_size=200):
+        for name, active_ingredient, external_data in qs.iterator(chunk_size=200):
+            brand = paragraph_brand(name, active_ingredient)
             for text in source_tab_texts(external_data):
                 for part in split_paragraphs(text)[::2]:
                     if needs_translation(part):
-                        paragraph = normalize_paragraph(part)
+                        paragraph = normalize_paragraph(part, brand)
                         paragraphs.setdefault(source_hash(paragraph), paragraph)
         hashes = list(paragraphs)
         for start in range(0, len(hashes), 5000):
