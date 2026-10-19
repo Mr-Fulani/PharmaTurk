@@ -18,9 +18,34 @@ recovery notification after all probes recover. Telegram failures never log the
 tokenized API URL.
 
 This in-process watchdog cannot detect loss of the whole Docker host, its
-Internet connection, Redis broker, or Celery Beat itself. Keep that residual
-risk visible and add a separate off-host uptime check when a provider/receiver
-is selected.
+Internet connection, Redis broker, or Celery Beat itself. That is why it stayed
+silent during the 2026-10-19 outage: the host froze out of memory (see
+`PROD_MEMORY.md`), so Beat and the `celery` worker that run the watchdog froze
+with it. It is also off unless production `.env` sets
+`PRODUCTION_WATCHDOG_ENABLED=true` (default `false`). The off-host check below
+covers the residual risk.
+
+## External uptime check (off-host)
+
+Provider: HetrixTools free plan (15 monitors, 1-minute checks, Telegram and
+e-mail alerts, commercial use allowed; log in at least once per 90 days or the
+free account is deactivated). UptimeRobot's free plan is limited to
+non-commercial use and has no Telegram, so it fits only as an e-mail backup.
+
+Setup (owner, in the HetrixTools web UI):
+
+1. Register at hetrixtools.com and confirm the e-mail.
+2. Contact Lists → add a list, enable Telegram and follow the bot link it shows
+   (press Start in Telegram); keep the account e-mail as a second channel.
+3. Uptime Monitors → add a Website monitor `https://mudaroba.com/api/health/`,
+   keyword `"status":"ok"` (DRF renders compact JSON; not-ready is also HTTP 503), interval 1 minute,
+   several locations, alert after 2 failed checks, the contact list from step 2.
+4. Add a second Website monitor `https://mudaroba.com/` (homepage through
+   Cloudflare/Nginx/Next.js).
+5. Check delivery with the contact list's test notification.
+
+If Cloudflare starts challenging the monitor (false alarms with 403), allow the
+provider's user agent or IPs in a Cloudflare WAF skip rule for these two paths.
 
 ## Configuration
 

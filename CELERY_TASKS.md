@@ -30,7 +30,7 @@ Beat только публикует задачи. Для исполнения �
 | `orders-cleanup-stale-anonymous-carts` | `orders.cleanup_stale_anonymous_carts` | ежедневно `04:10` | `celery` | Батчами удаляет неактивные анонимные корзины; user carts не затрагивает. |
 | `orders-remind-abandoned-carts` | `orders.remind_abandoned_carts` | ежечасно `:20` | `celery` | Одно напоминание (Telegram при `telegram_notifications`, email при `email_notifications`) о заявке вошедшего клиента, не менявшейся ≥24 ч (не старше 7 дней); `Cart.reminder_sent_at`. |
 | `scrapers-weekly-duplicate-candidates` | `apps.scrapers.tasks.find_and_merge_duplicates` | понедельник `04:30` | `celery` | Ищет и сохраняет кандидатов на ручную дедупликацию. |
-| `cleanup-orphaned-media` | `catalog.cleanup_orphaned_media` | ежедневно `03:00` | `celery` | Удаляет безопасно определённые orphaned media. |
+| `cleanup-orphaned-media` | `catalog.cleanup_orphaned_media` | воскресенье `03:30` | `celery` | Удаляет безопасно определённые orphaned media; при превышении лимита — только отчёт в Telegram. |
 | `catalog-recompute-sort-ranks` | `catalog.recompute_sort_ranks` | ежедневно `04:50` | `celery` | Пересчитывает `sort_rank` медикаментов и БАДов — порядок «Популярные» (по умолчанию) на их страницах. |
 | `payments-expire-crypto-invoices` | `apps.payments.tasks.expire_pending_crypto_payments` | каждые 10 минут | `celery` | Помечает просроченные pending crypto invoices как `expired`. |
 | `ai-cleanup-old-logs` | `apps.ai.tasks.cleanup_old_ai_logs` | каждые 7 дней | `ai` | Удаляет `completed`/`approved` AI-логи старше 30 дней. |
@@ -119,11 +119,29 @@ docker compose exec backend poetry run python manage.py shell -c \
 
 `catalog.cleanup_orphaned_media`:
 
+- раз в неделю, воскресенье `03:30`: тихий час и не вместе с `recsys-sync-stale-nightly` (02:15);
 - в `DEBUG=True` пропускает выполнение;
+- память: пути из БД читаются `values_list(...).iterator()` и хранятся только как
+  8-байтовые отпечатки (blake2b) в отсортированном массиве; R2 читается потоково
+  (постраничный листинг бакета), полный список ключей не строится. Совпадение
+  отпечатков может только сохранить файл, но не удалить его;
 - исключает защищённые AI/temp/avatar и чужие environment prefixes;
-- прекращает удаление, если в БД найдено меньше 100 media paths;
-- прекращает удаление, если кандидаты составляют более половины storage;
-- возвращает `skipped`/`aborted`/`error` как результат, поэтому эти состояния нужно мониторить отдельно.
+- ничего не удаляет и шлёт отчёт админу в Telegram (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`), если:
+  какое-то поле с медиа в БД не прочиталось; в БД меньше 100 путей; к удалению больше
+  `ORPHANED_MEDIA_MAX_DELETE` файлов (по умолчанию 3000) или больше
+  `ORPHANED_MEDIA_MAX_DELETE_PERCENT` процентов хранилища (по умолчанию 10);
+- ошибка листинга или БД тоже приходит в Telegram, удаление не начинается;
+- возвращает `skipped`/`aborted`/`dry_run`/`error`/`success` и счётчики `db_paths`, `storage`,
+  `orphaned`, `protected_excluded`, `deleted`.
+
+Отчёт без удаления и ручной запуск с другим лимитом после проверки отчёта:
+
+```bash
+docker compose exec celeryworker poetry run python manage.py shell -c \
+  "from apps.catalog.tasks import cleanup_orphaned_media as t; print(t.run(dry_run=True))"
+docker compose exec celeryworker poetry run python manage.py shell -c \
+  "from apps.catalog.tasks import cleanup_orphaned_media as t; print(t.run(max_delete=6000))"
+```
 
 Это защитные ограничения, а не гарантия резервного копирования. Перед сменой `R2_PREFIX`, storage backend или структуры media paths необходим отдельный dry audit.
 

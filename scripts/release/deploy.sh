@@ -62,7 +62,7 @@ release_log "entering a controlled maintenance window before schema changes"
 release_compose_prod stop \
   nginx frontend backend celeryworker celery_ai celery_recsys celerybeat
 release_log "ensuring existing state services are running without recreating containers or volumes"
-release_compose_prod up -d --no-recreate postgres redis qdrant
+release_compose_prod up -d --no-recreate postgres redis redis-cache qdrant
 release_log "applying committed migrations exactly once"
 release_compose_prod --profile ops run --rm --no-deps migrate migrate --noinput
 release_log "starting one consistent release without rebuilding or automatic migrations"

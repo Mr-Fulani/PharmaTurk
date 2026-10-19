@@ -223,6 +223,9 @@ ANONYMOUS_CART_CLEANUP_BATCH_SIZE = env.int(
     default=500,
 )
 CELERY_TASK_SOFT_TIME_LIMIT = 60 * 25
+# cleanup_orphaned_media: больше файлов к удалению — только отчёт админу, без удаления.
+ORPHANED_MEDIA_MAX_DELETE = env.int("ORPHANED_MEDIA_MAX_DELETE", default=3000)
+ORPHANED_MEDIA_MAX_DELETE_PERCENT = env.float("ORPHANED_MEDIA_MAX_DELETE_PERCENT", default=10.0)
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # Redis возвращает неподтверждённую задачу в очередь после visibility timeout.
 # Значение должно быть больше hard limit скрейпера, иначе долгий чанк может
@@ -343,10 +346,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.scrapers.tasks.find_and_merge_duplicates",
         "schedule": crontab(hour=4, minute=30, day_of_week=1),  # понедельник в 4:30
     },
-    # Очистка неиспользуемых медиа из R2/локального хранилища ежедневно в 3:00
+    # Очистка неиспользуемых медиа из R2 раз в неделю: воскресенье 03:30, тихий
+    # час, после recsys-sync-stale-nightly (02:15, ≤ 200 товаров, несколько минут).
     "cleanup-orphaned-media": {
         "task": "catalog.cleanup_orphaned_media",
-        "schedule": crontab(hour=3, minute=0),
+        "schedule": crontab(hour=3, minute=30, day_of_week=0),
     },
     # AI: задачи, тратящие токены OpenAI, отключены — только ручной запуск через админку /admin/ai/manual-tasks/
     # Крипто: пометить истёкшие инвойсы (каждые 10 мин)

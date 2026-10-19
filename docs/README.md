@@ -26,8 +26,9 @@
 | [SOURCE_OFFER_CART_VERIFICATION_PLAN.md](SOURCE_OFFER_CART_VERIFICATION_PLAN.md) | рабочий план проверки цены и наличия первоисточника в корзине и checkout | активен с 2026-08-27 |
 | [PRODUCT_CARD_SOURCE_REFRESH_PLAN.md](PRODUCT_CARD_SOURCE_REFRESH_PLAN.md) | план и статус обновления цены/вариантов спарсенной карточки при открытии | активен с 2026-08-29 |
 | [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | rollout, метрики, alerting и безопасный повтор source-offer checks | актуализирован 2026-08-31 |
-| [PRODUCTION_MONITORING_RUNBOOK.md](PRODUCTION_MONITORING_RUNBOOK.md) | synthetic/readiness watchdog, Telegram delivery, дедупликация и triage | актуализирован 2026-09-04 |
+| [PRODUCTION_MONITORING_RUNBOOK.md](PRODUCTION_MONITORING_RUNBOOK.md) | synthetic/readiness watchdog, Telegram delivery, дедупликация, внешняя проверка доступности и triage | актуализирован 2026-10-19 |
 | [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md) | что занимает диск прода, очистка образов при деплое, лимиты Redis и ротация логов | снимок 2026-10-18 |
+| [PROD_MEMORY.md](PROD_MEMORY.md) | лимиты памяти контейнеров, брокер и кэш в разных Redis, swap, применение без потери очередей | после инцидента 2026-10-19 |
 | [PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md) | Bright Data proxy/Web Unlocker: тарифы, бюджет, возможности и безопасное переиспользование | актуализирован 2026-08-31 |
 | [SOURCE_OFFER_CART_API.md](SOURCE_OFFER_CART_API.md) | Cart API: verification fields, issue codes, 409/503 и действия клиента | актуализирован 2026-08-27 |
 | [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | актуализирован и проверен 2026-08-21 |

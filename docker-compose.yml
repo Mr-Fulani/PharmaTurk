@@ -1,5 +1,8 @@
 name: mudaroba
 
+# Память сервера (7,7 ГБ) поделена жёсткими mem_limit так, чтобы их сумма
+# (≈ 6,85 ГиБ) оставляла место системе: контейнер, вышедший за лимит, получает
+# OOM внутри себя, а не вешает весь хост. Расчёт — docs/PROD_MEMORY.md.
 services:
   postgres:
     image: postgres:15.18-alpine3.24
@@ -15,12 +18,28 @@ services:
       timeout: 3s
       retries: 15
       start_period: 5s
+    mem_limit: 640m
     networks: [data]
 
+  # Брокер и результаты Celery. Ключи очередей без TTL: вытеснять их нельзя,
+  # поэтому noeviction — при лимите Redis отказывает в записи, но ничего не
+  # теряет. RDB-снимки (настройки save по умолчанию) сохраняют очереди при
+  # пересоздании контейнера. mem_limit вдвое больше maxmemory — запас на fork
+  # при BGSAVE.
   redis:
     image: redis:7.4.10-alpine3.21
+    command: ["redis-server", "--maxmemory", "192mb", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis_data:/data
+    mem_limit: 384m
+    networks: [data]
+
+  # Кэш Django: только в памяти, старые ключи вытесняются сами (allkeys-lru),
+  # при рестарте просто пустеет.
+  redis-cache:
+    image: redis:7.4.10-alpine3.21
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    mem_limit: 192m
     networks: [data]
 
   qdrant:
@@ -29,6 +48,7 @@ services:
       - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
+    mem_limit: 768m
     networks: [data]
 
   backend:
@@ -50,6 +70,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      redis-cache:
+        condition: service_started
       qdrant:
         condition: service_started
     env_file:
@@ -57,6 +79,7 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      REDIS_CACHE_URL: redis://redis-cache:6379/0
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-1}
       RUN_SEED_CATALOG: ${RUN_SEED_CATALOG:-0}
       REGISTER_TELEGRAM_WEBHOOK_ON_START: ${REGISTER_TELEGRAM_WEBHOOK_ON_START:-0}
@@ -106,6 +129,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      redis-cache:
+        condition: service_started
       qdrant:
         condition: service_started
     env_file:
@@ -113,8 +138,11 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-    command: bash -c "poetry run celery -A config worker -Q celery --loglevel=info --concurrency=2"
-    mem_limit: 3g
+      REDIS_CACHE_URL: redis://redis-cache:6379/0
+    # --max-memory-per-child (КиБ): процесс, разросшийся после задачи (Pillow,
+    # большие ответы поставщиков), заменяется свежим вместо роста до OOM.
+    command: bash -c "poetry run celery -A config worker -Q celery --loglevel=info --concurrency=2 --max-memory-per-child=400000"
+    mem_limit: 640m
     networks: [data, egress]
 
   celery_ai:
@@ -124,6 +152,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      redis-cache:
+        condition: service_started
       qdrant:
         condition: service_started
     env_file:
@@ -131,8 +161,9 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-    command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2"
-    mem_limit: 3g
+      REDIS_CACHE_URL: redis://redis-cache:6379/0
+    command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2 --max-memory-per-child=400000"
+    mem_limit: 512m
     networks: [data, egress]
 
   celery_recsys:
@@ -142,6 +173,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      redis-cache:
+        condition: service_started
       qdrant:
         condition: service_started
     env_file:
@@ -149,10 +182,13 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      REDIS_CACHE_URL: redis://redis-cache:6379/0
     command: bash -c "poetry run celery -A config worker -Q recsys -n recsys_worker@%h --loglevel=info --concurrency=1"
     volumes:
       - huggingface_cache:/home/app/.cache/huggingface
-    mem_limit: 3g
+    # Модели CLIP + MiniLM держатся в памяти процесса (≈ 1,3 ГБ), поэтому
+    # concurrency=1 и без перезапуска процесса после задачи.
+    mem_limit: 1.5g
     networks: [data, egress]
 
   celerybeat:
@@ -162,9 +198,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      redis-cache:
+        condition: service_started
     env_file:
       - .env
+    environment:
+      REDIS_CACHE_URL: redis://redis-cache:6379/0
     command: bash -c "poetry run celery -A config beat --loglevel=info"
+    mem_limit: 160m
     networks: [data]
 
   # One-shot schema operation used by release tooling. It never starts during a
@@ -177,11 +218,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      redis-cache:
+        condition: service_started
     env_file:
       - .env
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      REDIS_CACHE_URL: redis://redis-cache:6379/0
     entrypoint: ["poetry", "run", "python", "manage.py"]
     command: ["migrate", "--noinput"]
     networks: [data]
@@ -191,6 +235,7 @@ services:
     depends_on:
       - frontend
       - backend
+    mem_limit: 128m
     networks: [edge]
 
 volumes:

@@ -1,8 +1,10 @@
 """Celery tasks for catalog refresh, source checks, pricing and media."""
 from __future__ import annotations
 
+from array import array
 from celery import shared_task
 from django.core.management import call_command
+import hashlib
 import logging
 
 from apps.catalog.services import MedicineMediaEnricher
@@ -235,64 +237,64 @@ def _normalize_media_path(path: str) -> str:
     return p
 
 
-def _collect_db_media_paths():
+def _iter_db_media_paths(unreadable_fields: list):
     """
-    Собрать все пути к медиа-файлам из БД.
-    Динамически обходит все модели всех приложений, находит FileField/ImageField,
-    а также URLField, и собирает пути. Это защищает от пропуска новых моделей/полей.
+    Пути медиа из БД по одному, без загрузки всего списка в память.
+    Обходит все FileField/ImageField/URLField всех моделей, чтобы новые модели
+    и поля не пропускались. Поле, которое не удалось прочитать, попадает в
+    unreadable_fields: без его путей файлы выглядели бы осиротевшими.
     """
     from django.apps import apps
-    from django.db.models import FileField, ImageField, URLField
+    from django.db.models import FileField, URLField
     from urllib.parse import urlparse
 
-    paths = set()
-    seen = set()  # (model_label, field_name) для логирования
-
     for model in apps.get_models():
-        for field in model._meta.get_fields():
-            if not isinstance(field, (FileField, ImageField, URLField)):
+        if model._meta.proxy:
+            continue  # та же таблица, что у конкретной модели
+        for field in model._meta.local_concrete_fields:
+            if not isinstance(field, (FileField, URLField)):
                 continue
-            key = (model._meta.label, field.name)
-            if key in seen:
-                continue
-            seen.add(key)
             try:
-                manager = getattr(model, "_base_manager", model.objects)
-                for obj in manager.only(field.name).iterator(chunk_size=500):
-                    val = getattr(obj, field.name, None)
-                    if not val:
-                        continue
-                    if isinstance(field, (FileField, ImageField)):
-                        if getattr(val, "name", None):
-                            normalized = _normalize_media_path(val.name)
-                            if normalized:
-                                paths.add(normalized)
-                    elif isinstance(field, URLField):
-                        if isinstance(val, str) and val.strip():
-                            parsed = urlparse(val)
-                            path = parsed.path
-                            normalized = _normalize_media_path(path)
-                            if normalized:
-                                paths.add(normalized)
+                values = (
+                    model._base_manager.exclude(**{f"{field.name}__isnull": True})
+                    .exclude(**{field.name: ""})
+                    .values_list(field.name, flat=True)
+                    .iterator(chunk_size=2000)
+                )
+                for value in values:
+                    path = urlparse(value).path if isinstance(field, URLField) else value
+                    normalized = _normalize_media_path(path)
+                    if normalized:
+                        yield normalized
             except Exception as e:
+                unreadable_fields.append(f"{model._meta.label}.{field.name}")
                 logger.warning("cleanup_orphaned_media: skip %s.%s: %s", model._meta.label, field.name, e)
-    return paths
 
 
-def _list_storage_files(storage, path=""):
-    """Рекурсивно собрать все ключи файлов в хранилище."""
-    collected = set()
-    try:
-        dirs, files = storage.listdir(path)
-        for f in files:
-            full = f"{path}/{f}" if path else f
-            collected.add(_normalize_media_path(full))
-        for d in dirs:
-            prefix = f"{path}/{d}" if path else d
-            collected.update(_list_storage_files(storage, prefix))
-    except Exception:
-        pass
-    return collected
+def _media_fingerprint(path: str) -> int:
+    """8-байтовый отпечаток пути. Совпадение отпечатков только сохраняет файл."""
+    return int.from_bytes(hashlib.blake2b(path.encode(), digest_size=8).digest(), "big")
+
+
+def _iter_storage_paths(storage):
+    """Ключи хранилища по одному, без построения полного списка."""
+    bucket = getattr(storage, "bucket", None)
+    if bucket is not None:
+        # S3/R2: плоский постраничный листинг (по 1000 ключей за запрос).
+        location = (getattr(storage, "location", "") or "").strip("/")
+        prefix = f"{location}/" if location else ""
+        for obj in bucket.objects.filter(Prefix=prefix):
+            yield _normalize_media_path(obj.key[len(prefix):])
+        return
+    yield from _walk_storage(storage)
+
+
+def _walk_storage(storage, path=""):
+    dirs, files = storage.listdir(path)
+    for f in files:
+        yield _normalize_media_path(f"{path}/{f}" if path else f)
+    for d in dirs:
+        yield from _walk_storage(storage, f"{path}/{d}" if path else d)
 
 
 # Префиксы путей, которые НИКОГДА не удалять (AI-обработка, кэш, временные файлы, аватарки).
@@ -342,65 +344,112 @@ def _is_protected_path(path: str) -> bool:
     return False
 
 
-@shared_task(name="catalog.cleanup_orphaned_media")
-def cleanup_orphaned_media():
+_CLEANUP_MIN_DB_PATHS = 100
+
+
+def _report_cleanup_abort(result: dict, sample: list) -> None:
+    from apps.monitoring.watchdog import send_admin_telegram_notification
+
+    lines = [
+        f"⚠️ cleanup_orphaned_media: удаление отменено ({result['reason']})",
+        f"Путей в БД: {result['db_paths']}, файлов в хранилище: {result['storage']}, "
+        f"к удалению: {result['orphaned']} (лимит {result['max_delete']} / {result['max_delete_percent']}%)",
+    ]
+    if result.get("unreadable_fields"):
+        lines.append("Не прочитаны поля: " + ", ".join(result["unreadable_fields"][:10]))
+    if sample:
+        lines.append("Примеры: " + ", ".join(sample[:10]))
+    lines.append("Ручной запуск с другим лимитом: CELERY_TASKS.md, «Очистка orphaned media»")
+    send_admin_telegram_notification("\n".join(lines))
+
+
+@shared_task(name="catalog.cleanup_orphaned_media", soft_time_limit=60 * 55, time_limit=60 * 60)
+def cleanup_orphaned_media(dry_run=False, max_delete=None, max_delete_percent=None):
     """
     Удаление файлов из R2/локального хранилища, которых нет в БД.
     Не удаляет: защищённые префиксы (AI, temp), пути других окружений (dev/, staging/).
-    На проде (R2_PREFIX="") listdir возвращает весь бакет — без защиты dev/ файлы удалялись бы.
+    На проде (R2_PREFIX="") листинг возвращает весь бакет — без защиты dev/ файлы удалялись бы.
+
+    Память: из БД держим только 8-байтовые отпечатки путей, хранилище читаем
+    потоково. Если к удалению больше max_delete файлов или max_delete_percent
+    процентов хранилища — ничего не удаляем, только отчёт админу в Telegram.
     """
     from django.conf import settings
     if getattr(settings, 'DEBUG', False):
         logger.info("cleanup_orphaned_media skipped: DEBUG=True. (Prevents local celery from wiping shared media across developers using the same R2 prefix)")
         return {"status": "skipped", "message": "Disabled in DEBUG mode"}
 
+    import numpy as np
     from django.core.files.storage import default_storage
 
+    if max_delete is None:
+        max_delete = settings.ORPHANED_MEDIA_MAX_DELETE
+    if max_delete_percent is None:
+        max_delete_percent = settings.ORPHANED_MEDIA_MAX_DELETE_PERCENT
+
     try:
-        db_paths = _collect_db_media_paths()
-        try:
-            storage_paths = _list_storage_files(default_storage)
-        except Exception as e:
-            logger.warning("Could not list storage files (e.g. not using R2): %s", e)
-            return {"status": "skipped", "message": "Storage listing not supported", "deleted": 0}
+        unreadable_fields = []
+        fingerprints = array("Q", (_media_fingerprint(p) for p in _iter_db_media_paths(unreadable_fields)))
+        db_index = np.unique(np.frombuffer(fingerprints, dtype=np.uint64))  # отсортирован
+        del fingerprints
 
-        # Только те файлы в storage, которых нет в БД
-        orphaned = storage_paths - db_paths
-        # Исключаем защищённые пути (AI, temp, avatars) и пути других окружений (dev/, staging/)
-        to_delete = [p for p in orphaned if not _is_protected_path(p)]
+        def referenced(path):
+            fp = np.uint64(_media_fingerprint(path))
+            i = np.searchsorted(db_index, fp)
+            return i < len(db_index) and db_index[i] == fp
 
-        logger.info(
-            "cleanup_orphaned_media: db_paths=%s, storage_paths=%s, orphaned=%s, protected_excluded=%s, to_delete=%s",
-            len(db_paths),
-            len(storage_paths),
-            len(orphaned),
-            len(orphaned) - len(to_delete),
-            len(to_delete),
-        )
-        if to_delete and len(to_delete) <= 20:
-            logger.info("cleanup_orphaned_media: will delete paths: %s", to_delete)
-        elif to_delete:
-            logger.info("cleanup_orphaned_media: will delete first 10 paths: %s", to_delete[:10])
+        storage_total = 0
+        protected = 0
+        candidates = []  # не больше max_delete: при превышении удаления не будет
+        orphaned = 0
+        for path in _iter_storage_paths(default_storage):
+            storage_total += 1
+            if referenced(path):
+                continue
+            if _is_protected_path(path):
+                protected += 1
+                continue
+            orphaned += 1
+            if len(candidates) < max_delete:
+                candidates.append(path)
 
-        # Предохранитель (инцидент 2026-06-14): стек с ПУСТОЙ БД + общий R2-бакет
-        # стёр весь каталог, т.к. "осиротевшим" оказалось всё. Не удаляем, если БД
-        # подозрительно пуста или удаление затронуло бы слишком большую долю хранилища.
-        MIN_DB_PATHS = 100
-        if len(db_paths) < MIN_DB_PATHS:
-            logger.error(
-                "cleanup_orphaned_media ABORTED: db_paths=%s < %s — похоже на пустую/битую БД, удаление пропущено",
-                len(db_paths), MIN_DB_PATHS,
-            )
-            return {"status": "aborted", "reason": "db_paths_too_low", "db_paths": len(db_paths), "deleted": 0}
-        if storage_paths and len(to_delete) > len(storage_paths) // 2:
-            logger.error(
-                "cleanup_orphaned_media ABORTED: to_delete=%s > 50%% storage=%s — защита от массового удаления",
-                len(to_delete), len(storage_paths),
-            )
-            return {"status": "aborted", "reason": "mass_deletion_guard", "to_delete": len(to_delete), "storage": len(storage_paths), "deleted": 0}
+        result = {
+            "db_paths": len(db_index),
+            "storage": storage_total,
+            "protected_excluded": protected,
+            "orphaned": orphaned,
+            "max_delete": max_delete,
+            "max_delete_percent": max_delete_percent,
+            "deleted": 0,
+        }
+        logger.info("cleanup_orphaned_media: %s", result)
+        if candidates:
+            logger.info("cleanup_orphaned_media: first paths to delete: %s", candidates[:20])
+
+        # Предохранители (инцидент 2026-06-14: стек с ПУСТОЙ БД + общий R2-бакет
+        # стёр весь каталог, т.к. "осиротевшим" оказалось всё).
+        reason = None
+        if unreadable_fields:
+            reason = "db_fields_unreadable"
+            result["unreadable_fields"] = unreadable_fields
+        elif len(db_index) < _CLEANUP_MIN_DB_PATHS:
+            reason = "db_paths_too_low"
+        elif orphaned > max_delete:
+            reason = "max_delete_exceeded"
+        elif orphaned * 100 > storage_total * max_delete_percent:
+            reason = "max_delete_percent_exceeded"
+        if reason:
+            result.update(status="aborted", reason=reason)
+            logger.error("cleanup_orphaned_media ABORTED: %s", result)
+            if not dry_run:
+                _report_cleanup_abort(result, candidates)
+            return result
+        if dry_run:
+            result.update(status="dry_run", sample=candidates[:20])
+            return result
 
         deleted = 0
-        for path in to_delete:
+        for path in candidates:
             try:
                 # default_storage уже настроен на R2_PREFIX через location
                 # поэтому удаление path удалит именно то, что нужно.
@@ -409,9 +458,12 @@ def cleanup_orphaned_media():
             except Exception as e:
                 logger.warning("Failed to delete orphaned file %s: %s", path, e)
         logger.info("cleanup_orphaned_media: deleted %s orphaned files", deleted)
-        return {"status": "success", "deleted": deleted}
+        result.update(status="success", deleted=deleted)
+        return result
     except Exception as e:
         logger.exception("cleanup_orphaned_media failed: %s", e)
+        from apps.monitoring.watchdog import send_admin_telegram_notification
+        send_admin_telegram_notification(f"⚠️ cleanup_orphaned_media упала: {type(e).__name__}: {str(e)[:200]}")
         return {"status": "error", "message": str(e), "deleted": 0}
 
 

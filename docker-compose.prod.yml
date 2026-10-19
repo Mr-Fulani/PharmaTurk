@@ -23,6 +23,8 @@ services:
       target: production
     command: npm run start
     restart: always
+    # Лимит только для production-сборки: dev-сервер Next (override) прожорливее.
+    mem_limit: 512m
     logging: *default-logging
     # Remove direct port 80 mapping, let Nginx handle it
     environment:
@@ -49,6 +51,10 @@ services:
     logging: *default-logging
 
   redis:
+    restart: always
+    logging: *default-logging
+
+  redis-cache:
     restart: always
     logging: *default-logging
 

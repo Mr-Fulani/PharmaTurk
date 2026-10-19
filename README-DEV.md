@@ -31,11 +31,12 @@ poetry run python manage.py runserver 0.0.0.0:8000
 
 При `DJANGO_DEBUG=0` обязательны секрет длиной не менее 32 символов и явный список hosts. Для обычной локальной разработки используйте `DJANGO_DEBUG=1`; не переносите этот режим в production.
 
-Celery broker, Django cache/throttles и Celery result backend используют один
-Redis-сервис, но разные logical DB: соответственно `/0`, `/1` и `/2`. Не
-сводите их к одной DB — очистка cache не должна затрагивать очередь задач.
-На production с ограниченным `maxmemory` предпочтительны отдельные instances,
-поскольку logical DB всё равно делят память и eviction policy.
+Celery broker и result backend живут в сервисе `redis` (logical DB `/0` и `/2`,
+`noeviction`), Django cache/throttles — в отдельном `redis-cache` (`allkeys-lru`,
+без записи на диск). `docker-compose.yml` сам задаёт сервисам
+`REDIS_CACHE_URL=redis://redis-cache:6379/0`. При запуске backend вне Docker
+укажите три разных Redis URL — очистка или вытеснение cache не должны
+затрагивать очередь задач. Подробности — `docs/PROD_MEMORY.md`.
 
 Для scraper proxy TLS всегда проверяется. Если провайдер инспектирует HTTPS,
 укажите путь к его PEM bundle в `SCRAPER_PROXY_CA_BUNDLE`; `verify=False` в

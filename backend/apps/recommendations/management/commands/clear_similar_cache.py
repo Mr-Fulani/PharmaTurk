@@ -9,7 +9,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         import redis
-        redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
+        # Кэш Django живёт в REDIS_CACHE_URL, не в брокере Celery.
+        redis_url = settings.REDIS_CACHE_URL
         client = redis.from_url(redis_url)
         pattern = "*rec:similar*"
         deleted = 0
