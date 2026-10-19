@@ -15,7 +15,7 @@ import tempfile
 from pin_versions import pin, pinned_content, sha
 
 WRITERS = ("backend", "celeryworker", "celery_ai", "celery_recsys", "celerybeat")
-PRESERVED = ("frontend", "nginx", "postgres", "redis", "qdrant")
+PRESERVED = ("frontend", "nginx", "postgres", "redis", "redis-cache", "qdrant")
 SAFE_TABLES = ["scrapers_sitescrapertask", "django_migrations"]
 
 
@@ -111,7 +111,7 @@ class Release:
             command = self.compose[:6] + files + ["config", "--format", "json"]
             previous = json.loads(run(command, env=self.env))["services"]
         for service in PRESERVED:
-            if current[service] != previous[service]:
+            if current[service] != previous.get(service):
                 raise ValueError(f"Protected Compose service {service} changed; use full release")
 
     def plan(self):
