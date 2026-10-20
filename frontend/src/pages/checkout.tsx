@@ -26,8 +26,7 @@ import {
 import { useReducedMotion } from 'framer-motion'
 import AnimatedOrderButton, { OrderButtonState } from '../components/AnimatedOrderButton'
 import type { Cart } from '../types/cart'
-import { gtmBeginCheckout, gtmPurchase, type GtmEcommerceItem } from '../lib/gtm'
-import { ymReachGoal } from '../lib/ym'
+import { gtmBeginCheckout, gtmGenerateLead, type GtmEcommerceItem } from '../lib/gtm'
 import { ONLINE_PAYMENTS_ENABLED } from '../lib/payments'
 import ContactChannelPicker, { isUsernameChannel } from '../components/ContactChannelPicker'
 import { defaultCurrencyForLocale } from '../lib/requestCurrency'
@@ -150,7 +149,6 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
             Number(loadedCart.final_amount ?? loadedCart.total_amount) || 0,
             loadedCart.currency,
           )
-          ymReachGoal('begin_checkout')
         }
         setAddresses(addressesRes.data || [])
 
@@ -323,8 +321,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       if (orderNumber && cart) {
         const orderValue = Number(res.data?.total_amount) || 0
         const orderCurrency = res.data?.currency || cart.currency
-        gtmPurchase(String(orderNumber), toGtmItems(cart), orderValue, orderCurrency)
-        ymReachGoal('purchase', { order_price: orderValue, currency: orderCurrency, payment_method: paymentMethod })
+        gtmGenerateLead({
+          source: 'order',
+          value: orderValue,
+          currency: orderCurrency,
+          transactionId: String(orderNumber),
+          paymentMethod,
+        })
       }
       setItemsCount(0)
       await refreshCart()

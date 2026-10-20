@@ -1294,7 +1294,7 @@ export default function ProductPage({
     }
   }, [buildGallerySource, product, selectedVariant, router.asPath])
 
-  // GA4: просмотр карточки — первый шаг воронки view_item → add_to_cart → begin_checkout → purchase.
+  // GA4: просмотр карточки — первый шаг воронки view_item → add_to_cart → begin_checkout → generate_lead.
   // Хук стоит до раннего return; данные события заполняются ниже, при рендере карточки.
   // Одно событие на товар: смена варианта или валюты — не новый просмотр.
   const viewItemRef = useRef<Parameters<typeof gtmViewItem> | null>(null)
@@ -1465,17 +1465,16 @@ export default function ProductPage({
   })
   const priceForSchema = selectedVariant?.price || product.price || product.active_variant_price
   const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
-  // item_id совпадает с тем, что AddToCartButton передаёт в add_to_cart
-  viewItemRef.current = [
-    {
-      item_id: (cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : cartProductSlug) || product.slug,
-      item_name: displayProductName || product.name,
-      item_category: productType,
-      ...(seoBrandName && { item_brand: seoBrandName }),
-      ...(Number(priceForSchema) > 0 && { price: Number(priceForSchema) }),
-    },
-    currencyForSchema || undefined,
-  ]
+  // Одна позиция для view_item и add_to_cart (AddToCartButton, BuyNowButton): id, название, тип и цена совпадают
+  const analyticsItem = {
+    item_id: (cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : cartProductSlug) || product.slug,
+    item_name: displayProductName || product.name,
+    item_category: productType,
+    ...(seoBrandName && { item_brand: seoBrandName }),
+    ...(Number(priceForSchema) > 0 && { price: Number(priceForSchema) }),
+  }
+  const analyticsCurrency = currencyForSchema || undefined
+  viewItemRef.current = [analyticsItem, analyticsCurrency]
   // aggregateRating только при наличии и рейтинга, и отзывов — без счётчика схема невалидна
   const ratingForSchema = Number(product.rating)
   const hasRatingForSchema =
@@ -2677,6 +2676,8 @@ export default function ProductPage({
                       quantity={quantity}
                       className="w-full"
                       label={t('add_to_cart', 'В заявку')}
+                      analyticsItem={analyticsItem}
+                      analyticsCurrency={analyticsCurrency}
                     />
                     <Link
                       href="/how-to-order-medicines"
@@ -2715,6 +2716,8 @@ export default function ProductPage({
                       price={displayTotalPrice}
                       className="w-full"
                       label={t('add_to_cart', 'В корзину')}
+                      analyticsItem={analyticsItem}
+                      analyticsCurrency={analyticsCurrency}
                     />
                     <BuyNowButton
                       productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
@@ -2724,6 +2727,8 @@ export default function ProductPage({
                       requireSize={!isBaseProduct && sizeRequired}
                       quantity={quantity}
                       className="w-full"
+                      analyticsItem={analyticsItem}
+                      analyticsCurrency={analyticsCurrency}
                     />
                   </>
                   )

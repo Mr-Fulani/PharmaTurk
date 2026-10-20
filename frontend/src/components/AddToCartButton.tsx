@@ -3,8 +3,7 @@ import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
 import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerification'
 import { useCartStore } from '../store/cart'
-import { gtmAddToCart } from '../lib/gtm'
-import { ymReachGoal } from '../lib/ym'
+import { gtmAddToCart, type GtmEcommerceItem } from '../lib/gtm'
 import styles from './AddToCartButton.module.css'
 
 interface AddToCartButtonProps {
@@ -18,6 +17,9 @@ interface AddToCartButtonProps {
   quantity?: number
   showPrice?: boolean
   price?: string
+  /** Товар для аналитики (как в view_item карточки): название, тип, цена */
+  analyticsItem?: GtmEcommerceItem
+  analyticsCurrency?: string
 }
 
 export default function AddToCartButton({
@@ -30,7 +32,9 @@ export default function AddToCartButton({
   label,
   quantity = 1,
   showPrice = false,
-  price
+  price,
+  analyticsItem,
+  analyticsCurrency,
 }: AddToCartButtonProps) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -131,8 +135,11 @@ export default function AddToCartButton({
         await refresh()
       }
 
-      gtmAddToCart({ item_id: productId ?? productSlug ?? '', item_name: productSlug || String(productId ?? '') }, quantity)
-      ymReachGoal('add_to_cart')
+      gtmAddToCart(
+        { ...(analyticsItem ?? { item_id: productId ?? productSlug ?? '', item_name: productSlug || String(productId ?? '') }), ...(size && { item_variant: size }) },
+        quantity,
+        analyticsCurrency,
+      )
 
       setDone(true)
       resetTimerRef.current = setTimeout(() => {

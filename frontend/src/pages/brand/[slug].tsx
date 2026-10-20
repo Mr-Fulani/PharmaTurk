@@ -16,6 +16,8 @@ import { buildBrandProductsParams, brandProductsRequestKey, shouldShowGenderFilt
 import { ProductTranslation, BrandTranslation, getLocalizedBrandDescription, getLocalizedBrandName } from '../../lib/i18n'
 import { getSingleFlight } from '../../lib/api'
 import { useViewMode } from '../../hooks/useViewMode'
+import { useViewItemList } from '../../hooks/useViewItemList'
+import { gtmProductItem } from '../../lib/gtm'
 import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
 import { buildCatalogSeoState } from '../../lib/categoryRouting'
@@ -152,6 +154,13 @@ function BrandPageContent({
   const router = useRouter()
   const [viewMode, setViewMode] = useViewMode()
   const [products, setProducts] = useState<Product[]>(brandData.products || [])
+  useViewItemList(
+    { id: `brand:${brandData.slug}`, name: brandData.name },
+    products.map((product) => {
+      const productType = (product.product_type || 'medicines').replace(/_/g, '-')
+      return gtmProductItem(product, productType, isBaseProductType(productType))
+    }),
+  )
   const [totalCount, setTotalCount] = useState(brandData.totalCount || 0)
   const [currentPage, setCurrentPage] = useState(Number(page) || 1)
   const [loading, setLoading] = useState(false)

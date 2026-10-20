@@ -44,6 +44,8 @@ import CategoryHero from '../../components/CategoryHero'
 import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
 import { ProductCardGalleryImage } from '../../components/ProductCardImageGallery'
 import { useViewMode } from '../../hooks/useViewMode'
+import { useViewItemList } from '../../hooks/useViewItemList'
+import { gtmProductItem } from '../../lib/gtm'
 import { safeJsonLd } from '../../lib/sanitizeHtml'
 import dynamic from 'next/dynamic'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
@@ -958,6 +960,13 @@ export default function CategoryPage({
   }, [categoryDescription, t, router.locale, slug, currentCategory])
 
   const [products, setProducts] = useState(initialProducts)
+  useViewItemList(
+    { id: `category:${routeSlugForState}`, name: categoryName || routeSlugForState },
+    products.map((product) => {
+      const productType = (product.product_type || categoryType).replace(/_/g, '-')
+      return gtmProductItem(product, productType, isBaseProductType(productType))
+    }),
+  )
   const [totalCount, setTotalCount] = useState(initialTotalCount)
   const [currentPage, setCurrentPage] = useState(initialCurrentPage)
   const [totalPages, setTotalPages] = useState(initialTotalPages)

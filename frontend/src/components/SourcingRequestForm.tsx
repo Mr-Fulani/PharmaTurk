@@ -3,8 +3,7 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
-import { gtmEvent } from '../lib/gtm'
-import { ymReachGoal } from '../lib/ym'
+import { gtmGenerateLead } from '../lib/gtm'
 import ContactChannelPicker, { isUsernameChannel } from './ContactChannelPicker'
 import { CameraIcon, DocumentMagnifyingGlassIcon, LinkIcon, TruckIcon } from '@heroicons/react/24/outline'
 
@@ -156,8 +155,7 @@ export default function SourcingRequestForm({ placement, initialComment = '', ti
     try {
       await api.post('/orders/sourcing-requests/', body)
       setState('sent')
-      ymReachGoal('sourcing_request', { placement })
-      gtmEvent({ event: 'sourcing_request', placement })
+      gtmGenerateLead({ source: 'sourcing', placement })
     } catch (err: any) {
       setState('idle')
       const data = err?.response?.data
