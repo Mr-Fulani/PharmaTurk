@@ -1,6 +1,7 @@
 """Medicine import safeguards and opt-in refinement; no saves or source requests."""
 
 import re
+from urllib.parse import urlparse
 
 from django.conf import settings
 
@@ -90,19 +91,42 @@ def validate_new_medicine(scraped):
 
 
 def prepare_medicine_category_mapping(session, scraped):
-    """A task root outranks config defaults, but is not a forced leaf override."""
+    """A task root outranks config defaults, but is not a forced leaf override.
+
+    True — категория IlacFiyati определена здесь (лекарство под корнем или БАД
+    по прямой ссылке), остальное сопоставление категорий не нужно.
+    """
     scraped.__dict__.pop("_medicine_category_root", None)
     scraped.__dict__.pop("_medicine_import_skip_reason", None)
     scraped.__dict__.pop("_medicine_media_deferred", None)
     if str(scraped.source or "").strip().lower() != "ilacfiyati":
         return False
     category = session.target_category or session.scraper_config.default_category
+    if _is_supplement_url(scraped.url) and (
+        not category or (category.slug == "medicines" and category.parent_id is None)
+    ):
+        # БАД по прямой ссылке без своей категории в задаче: корень «Медицина»
+        # из конфигурации делал его лекарством — существующий БАД пропускался
+        # (конфликт типа), новый создавался лекарством. Категорию уже
+        # сохранённого БАДа не трогаем: "supplements" лишь задаёт тип новому.
+        supplements = Category.objects.filter(
+            slug="supplements", parent__isnull=True, is_active=True,
+        ).first()
+        if supplements is not None:
+            scraped.__dict__.pop("_category_override", None)
+            scraped.category = supplements.slug
+            return True
     if not category or category.slug != "medicines" or category.parent_id is not None:
         return False
     scraped.__dict__.pop("_category_override", None)
     scraped._medicine_category_root = category
     scraped.category = category.slug
     return True
+
+
+def _is_supplement_url(url):
+    parts = urlparse(str(url or "")).path.strip("/").split("/")
+    return len(parts) >= 2 and parts[0] == "takviye-edici-gida"
 
 
 def resolve_medicine_category(scraped, *, existing=None, is_variant_update=False):
