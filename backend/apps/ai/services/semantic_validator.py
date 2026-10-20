@@ -11,7 +11,7 @@ from apps.catalog.category_policy import CATEGORY_POLICY_OVERRIDES, build_catego
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_fact_check import strip_proper_name_lines
 from apps.ai.services.medicine_reference import fold_tr
-from apps.ai.services.medicine_title import FORM_WORDS
+from apps.ai.services.medicine_title import FORM_PHRASES, is_form_word
 from apps.ai.services.rules.vocab import fold, generic_title_words
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
@@ -137,9 +137,21 @@ _SUPPLEMENT_RU_TITLE_LATIN_UNITS = re.compile(r"(?<![A-Za-z])ml\b", re.IGNORECAS
 _MEDICINE_RU_TITLE_TRANSLITERATIONS = re.compile(
     r"(дилалт|фил[ьл]?м|таблет(?![а-яё])|(?<![а-яё])тоз(?![а-яё])|[чц][её]зелти|жексий|"
     r"инфюз|лиофилизе(?![а-яё])|(?<![а-яё])помад|(?<![а-яё])д?жел(?![а-яё])|"
-    r"(?<![а-яё])г[её]з(?![а-яё])|(?<![а-яё])бурун|солюсй|сусп[ае]нсий)",
+    r"(?<![а-яё])г[её]з(?![а-яё])|(?<![а-яё])бурун|солюсй|сусп[ае]нсий|"
+    # Пилот 20.10.2026: «УЗАТИЛМИШ САЛИМЛИ», «Топикальный», «СЕРТ КАПСУЛЫ», «И.М./ОРОЛЬ»,
+    # «(50 ТБ)», «ЭНТЕРИК», «ФИЛЬМ-КАПЛИ ТАБЛЕТКИ» (kaplı — «покрытые», а не «капли»).
+    r"узатил|салимл|топикал|(?<![а-яё])серт(?![а-яё])|(?<![а-яё])орол|(?<![а-яё])тб(?![а-яё])|"
+    r"(?<![а-яё])энтерик|капли[\s-]+таблет|"
+    # AIRun 3, лог 1036: «%8 АМИНОКИСЛОТ ИВ ИНФУЗИЯ 500 МЛ (СЕТ)» — «ИВ», «СЕТ» и
+    # турецкая запись процента «%8» (по-русски «8%»).
+    r"(?<![а-яё])ив(?![а-яё])|(?<![а-яё])сет(?![а-яё])|%\s*\d)",
     re.IGNORECASE,
 )
+# Название лекарства, обрезанное прежней обработкой на десятичном разделителе:
+# «MOUNJARO 7» (7,5 MG), «DIFFERIN 0» (%0,1), «Аугментин 200 мг/28», «Кенакорт %0».
+# «% 0,1» и «%5» — турецкая запись процента, а не обрезка.
+_MEDICINE_TITLE_TRUNCATED = re.compile(r"(?:(?<![\w%.,-])(?<!%\s)\d+(?:[.,/]\d+)*|%\s*0)\s*$")
+_CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 # Латиница в RU-названии лекарства допустима только в бренде источника и в этих обозначениях.
 _MEDICINE_RU_TITLE_LATIN_OK = frozenset({
     "IV", "IM", "SC", "SR", "XR", "MR", "CR", "XL", "LA", "ER", "EC", "ODT", "RETARD", "FORTE",
@@ -152,14 +164,38 @@ def _medicine_ru_title_untranslated(title: Any, source_name: Any) -> bool:
     text = str(title or "")
     if _MEDICINE_RU_TITLE_TRANSLITERATIONS.search(text):
         return True
-    prefix = re.split(r"(?=\d|%)", str(source_name or ""), maxsplit=1)[0]
-    brand = {fold_tr(token).upper() for token in re.findall(r"[^\W_][\w.'-]*", prefix)}
+    # Бренд — слова до первой дозировки; цифра внутри бренда («B6 VIGEN», «D-3») — не дозировка.
+    prefix = re.split(r"(?=(?<![\w-])\d|%)", str(source_name or ""), maxsplit=1)[0]
+    brand = {fold_tr(token.strip(".'-")).upper() for token in re.findall(r"[^\W_][\w.'-]*", prefix)}
     for token in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü.'-]*", text):
         word = fold_tr(token.strip(".'-")).upper()
         if word in brand or word in _MEDICINE_RU_TITLE_LATIN_OK or re.search(r"\d", word):
             continue
         return True
     return False
+
+
+def _medicine_title_problem(title: Any, source_name: Any) -> str:
+    """Причина брака названия лекарства, которую не ловят общие проверки, или ''.
+
+    У старых товаров название в БД уже переведено прежней обработкой
+    («DISAVER 50 MG ФИЛЬМ-КАПЛИ ТАБЛЕТКИ») или обрезано («MOUNJARO 7»): шаблон
+    из такого названия не строится, а модель копирует его как есть.
+    Исправленное модератором название проходит: проверяется сам результат.
+    """
+    text = str(title or "")
+    if _MEDICINE_TITLE_TRUNCATED.search(text):
+        return "title_truncated"
+    if _CYRILLIC.search(str(source_name or "")) and _normalized(text) == _normalized(source_name):
+        return "title_source_translated"
+    return ""
+
+
+def _without_medicine_forms(title_text: str, locale: str) -> str:
+    """Название без лекарственной формы: «gastro-resistant tablets» — не категория «gastro»."""
+    for form_text in _MEDICINE_FORM_TEXTS[locale]:
+        title_text = re.sub(rf"(?:^|\s){re.escape(form_text)}(?=$|\s)", " ", title_text)
+    return title_text
 
 
 def _title_has_turkish_words(title: Any) -> bool:
@@ -170,6 +206,15 @@ def _title_has_turkish_words(title: Any) -> bool:
 def _normalized(value: Any) -> str:
     text = re.sub(r"<[^>]+>", " ", str(value or "")).casefold()
     return re.sub(r"[^a-zа-яё0-9]+", " ", text).strip()
+
+
+# Подписи лекарственных форм шаблона названия (нормализованные), длинные — первыми.
+_MEDICINE_FORM_TEXTS = {
+    locale: sorted(
+        {_normalized(labels[index]) for labels in FORM_PHRASES.values()}, key=len, reverse=True
+    )
+    for index, locale in enumerate(("ru", "en"))
+}
 
 
 def _contains_phrase(text: str, phrase: str) -> bool:
@@ -237,11 +282,16 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
         "MERHEM",
         "ILAC",
         "İLAÇ",
+        # Связки и уточнения источника: «… COZELTI ICEREN FLAKON», «SISE SETSIZ».
+        "ICEREN",
+        "İÇEREN",
+        "SETLI",
+        "SETSIZ",
     }
     prefix = re.split(r"(?=\d|%)", upper, maxsplit=1)[0]
     for token in re.findall(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9_-]{2,}", prefix):
         # Слова лекарственной формы («FILM TABLET») переводятся — это не бренд.
-        if token not in generic_prefix_words and fold_tr(token) not in FORM_WORDS:
+        if token not in generic_prefix_words and not is_form_word(token):
             result.add(f"BRAND:{token}")
 
     unit_aliases = {
@@ -527,7 +577,9 @@ class SemanticValidator:
         if size_reason:
             report.rejected_fields.add("sizes")
             report.reasons.append(size_reason)
-        if policy is None:
+        # Лекарство без категории (на проде 20.10.2026 — 140) проверяется так же:
+        # название и медицинские разделы от категории не зависят.
+        if policy is None and product_type != "medicines":
             report.reasons = list(dict.fromkeys(report.reasons))
             return report
 
@@ -548,6 +600,15 @@ class SemanticValidator:
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
                 continue
+            medicine_problem = (
+                _medicine_title_problem(title, getattr(product, "name", ""))
+                if product_type == "medicines"
+                else ""
+            )
+            if medicine_problem:
+                report.rejected_fields.add("title")
+                report.reasons.append(medicine_problem)
+                break
             if _title_has_turkish_words(title) or (
                 locale == "ru"
                 and product_type == "supplements"
@@ -561,7 +622,7 @@ class SemanticValidator:
                 report.reasons.append("title_untranslated")
                 break
             title_text = _normalized(title)
-            own_aliases = policy.aliases.get(locale, ())
+            own_aliases = policy.aliases.get(locale, ()) if policy is not None else ()
             matching_own_aliases = [
                 _normalized(alias)
                 for alias in own_aliases
@@ -571,11 +632,17 @@ class SemanticValidator:
                 (_alias_specificity(alias)[0] for alias in matching_own_aliases),
                 default=0,
             )
-            conflicting_match = self._longest_conflicting_category_match(
-                category,
-                title_text,
-                locale,
-                own_match_words,
+            conflicting_match = (
+                self._longest_conflicting_category_match(
+                    category,
+                    _without_medicine_forms(title_text, locale)
+                    if product_type == "medicines"
+                    else title_text,
+                    locale,
+                    own_match_words,
+                )
+                if policy is not None
+                else ""
             )
             if (
                 product_type in _DOSAGE_FORM_PRODUCT_TYPES
@@ -604,7 +671,8 @@ class SemanticValidator:
                 not slug
                 or (product_type and get_dynamic_attribute_spec(product_type, slug) is None)
                 or (
-                    policy.allowed_dynamic_attributes
+                    policy is not None
+                    and policy.allowed_dynamic_attributes
                     and slug not in policy.allowed_dynamic_attributes
                 )
             ):
