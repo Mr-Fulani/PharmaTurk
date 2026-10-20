@@ -102,6 +102,12 @@ DOMAINS = {
 _VARIANT_TABLE = re.compile(r'"catalog_\w*variant\w*"')
 
 
+@pytest.fixture(autouse=True)
+def _no_image_downloads(monkeypatch):
+    """Сигнал автоскачивания картинок не ходит в сеть за тестовыми URL."""
+    monkeypatch.setattr("apps.catalog.signals._download_url_to_file", lambda url: None)
+
+
 def _add_products(domain, brand, category, suffix, start, count):
     """Товары без собственных картинок — карточка берёт их у вариантов.
 
@@ -120,6 +126,7 @@ def _add_products(domain, brand, category, suffix, start, count):
             price=100,
             currency="TRY",
             is_active=True,
+            **({"gender": "unisex"} if domain == "perfumery" else {}),
         )
         active_count = 2 if index % 2 == 0 else 1
         for position in range(active_count + 1):
