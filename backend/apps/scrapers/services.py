@@ -2530,9 +2530,12 @@ class ScraperIntegrationService:
         self, furniture_product: "FurnitureProduct", product: Product, variants: List[Dict[str, Any]]
     ) -> bool:
         """Создаёт/обновляет FurnitureVariant (цвета) под одной карточкой мебели — как при ручном вводе."""
+        from apps.ai.services.ownership import has_applied_ai_content
         from apps.catalog.models import FurnitureProductImage, FurnitureVariant, FurnitureVariantImage
 
         changed = False
+        # Как у одежды: название варианта товара с AI-результатом не перетираем.
+        keep_variant_names = has_applied_ai_content(product)
         for spec in variants:
             if not isinstance(spec, dict):
                 continue
@@ -2587,6 +2590,8 @@ class ScraperIntegrationService:
                     "stock_quantity",
                     "is_active",
                 ):
+                    if keep_variant_names and field == "name" and variant.name:
+                        continue
                     nv = defaults.get(field)
                     if nv is not None and getattr(variant, field) != nv:
                         setattr(variant, field, nv)
@@ -2847,6 +2852,12 @@ class ScraperIntegrationService:
 
         changed = False
         seen_external_ids: List[str] = []
+        # Названия вариантов пишет и AI (sync_variant_titles_from_parent): у
+        # товара с применённым AI-результатом повторный парсинг их не трогает,
+        # иначе EN-название снова становится «русское название - Black».
+        from apps.ai.services.ownership import has_applied_ai_content
+
+        keep_variant_names = has_applied_ai_content(product)
 
         for idx, spec in enumerate(variants):
             if not isinstance(spec, dict):
@@ -2898,6 +2909,8 @@ class ScraperIntegrationService:
             if not created:
                 variant_dirty = False
                 for field, value in defaults.items():
+                    if keep_variant_names and field in ("name", "name_en") and getattr(variant, field):
+                        continue
                     if value is not None and getattr(variant, field) != value:
                         setattr(variant, field, value)
                         changed = True
