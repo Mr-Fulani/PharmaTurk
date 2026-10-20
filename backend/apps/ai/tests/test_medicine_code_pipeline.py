@@ -56,8 +56,8 @@ class RecordingLLM:
         if "абзацы" in system:
             items = json.loads(kwargs["user_prompt"].split("\n\n", 1)[1])
             return _result({
-                "ru": {k: self.paragraphs[v][0] for k, v in items.items() if v in self.paragraphs},
-                "en": {k: self.paragraphs[v][1] for k, v in items.items() if v in self.paragraphs},
+                k: {"ru": self.paragraphs[v][0], "en": self.paragraphs[v][1]}
+                for k, v in items.items() if v in self.paragraphs
             })
         return _result(self.card)
 
@@ -330,7 +330,7 @@ def test_paragraph_batch_masks_brand_like_regular_processing():
             external_data={"attributes": {"source_tabs": {"before_use_warnings": {"text": _branded(suffix)}}}},
         )
 
-    assert Command()._missing_paragraphs({"limit_products": 0}) == [
+    assert list(Command()._missing_paragraphs({"limit_products": 0})) == [
         normalize_paragraph(_branded("MAJEZIK'i"), "MAJEZIK")
     ]
 
@@ -402,53 +402,64 @@ def test_full_medicine_processing_uses_code_and_memory():
     assert "title" not in report.rejected_fields
 
 
-def _fake_batch_client(uploaded, translate):
-    """OpenAI-клиент для Batch API: файлы пакета отдаются потоково, как в openai>=1."""
+def _fake_batch_client(uploaded, translate, answer=None):
+    """OpenAI-клиент для Batch API: файлы пакета отдаются потоково, как в openai>=1.
+
+    Каждый submit — новый пакет batch-N (готов сразу) со своим входным файлом
+    file-in-N; ``answer(items)`` — ответ модели на запрос целиком (для сдвига).
+    """
     from contextlib import contextmanager
 
-    def output_lines():
-        for line in uploaded["jsonl"].splitlines():
+    files, batches = uploaded.setdefault("files", {}), uploaded.setdefault("batches", [])
+    answer = answer or (lambda items: {k: dict(zip(("ru", "en"), translate(v))) for k, v in items.items()})
+
+    def output_lines(file_id):
+        for line in files[file_id.replace("out", "in")].splitlines():
             request = json.loads(line)
             items = json.loads(request["body"]["messages"][1]["content"].split("\n\n", 1)[1])
-            answer = {
-                "ru": {k: translate(v)[0] for k, v in items.items()},
-                "en": {k: translate(v)[1] for k, v in items.items()},
-            }
             yield json.dumps({
                 "custom_id": request["custom_id"],
                 "response": {"body": {
-                    "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(answer)}}],
+                    "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(answer(items))}}],
                     "usage": {"prompt_tokens": 1000, "completion_tokens": 1000},
                 }},
             })
 
     @contextmanager
     def content(file_id):
-        if file_id == "file-in":
-            data = uploaded["jsonl"].encode("utf-8")
+        if file_id.startswith("file-in"):
+            data = files[file_id].encode("utf-8")
             yield SimpleNamespace(iter_bytes=lambda: iter([data[:100], data[100:]]))
         else:
-            yield SimpleNamespace(iter_lines=output_lines)
+            yield SimpleNamespace(iter_lines=lambda: output_lines(file_id))
 
     class FakeFiles:
         with_streaming_response = SimpleNamespace(content=content)
 
         def create(self, file, purpose):
-            uploaded["jsonl"] = file[1].decode("utf-8")
-            return SimpleNamespace(id="file-in")
+            file_id = f"file-in-{len(files) + 1}"
+            files[file_id] = uploaded["jsonl"] = file[1].decode("utf-8")
+            return SimpleNamespace(id=file_id)
 
         def retrieve(self, file_id):
-            return SimpleNamespace(bytes=len(uploaded["jsonl"].encode("utf-8")))
+            return SimpleNamespace(bytes=len(files[file_id].encode("utf-8")))
 
     class FakeBatches:
         def create(self, **kwargs):
             uploaded["batch"] = kwargs
-            return SimpleNamespace(id="batch-1")
+            batch = SimpleNamespace(
+                id=f"batch-{len(batches) + 1}", status="completed", created_at=1_760_000_000 + len(batches),
+                input_file_id=kwargs["input_file_id"], output_file_id=kwargs["input_file_id"].replace("in", "out"),
+                request_counts=None, metadata=kwargs["metadata"],
+            )
+            batches.append(batch)
+            return batch
 
         def retrieve(self, batch_id):
-            return SimpleNamespace(
-                status="completed", input_file_id="file-in", output_file_id="file-out", request_counts=None
-            )
+            return next(batch for batch in batches if batch.id == batch_id)
+
+        def list(self, limit):
+            return list(reversed(batches))
 
     class FakeClient:
         model = "gpt-4o-mini"
@@ -567,6 +578,180 @@ def test_large_paragraph_batch_is_collected_in_chunks_and_repeat_adds_nothing(mo
     assert "записано новых абзацев: 1500" in out.getvalue()
     assert "записано новых абзацев: 0" in out.getvalue()
     assert "запросов 1/" in out.getvalue()
+
+
+def _numbered(i):
+    """Абзац с номером и его верный перевод: чужой перевод виден по числам."""
+    return (
+        f"Bu ilaç {i}. paragrafta günde {i} kez kullanılır ve doktor kontrolü gerekir.",
+        f"Этот препарат в абзаце {i} применяют {i} раз в день под контролем врача.",
+        f"This medicine in paragraph {i} is used {i} times a day under medical control.",
+    )
+
+
+def _translate_numbered(text):
+    return _numbered(int(text.split()[2].rstrip(".")))[1:]
+
+
+def _skip_fourth(items):
+    """Ответ модели, пропустившей 4-й абзац: дальше каждому ключу достаётся перевод следующего."""
+    keys = list(items)
+    rows = [dict(zip(("ru", "en"), _translate_numbered(items[key]))) for key in keys]
+    return dict(zip(keys, rows[:3] + rows[4:] + [{}]))
+
+
+def test_paragraph_requests_are_short_and_ask_ru_en_per_item():
+    from apps.ai.services.medicine_memory import paragraph_batches
+
+    sources = [_numbered(i)[0] for i in range(2, 27)]
+    assert [len(batch) for batch in paragraph_batches(sources)] == [10, 10, 5]
+    assert [len(batch) for batch in paragraph_batches(["a" * 3000, "b" * 3000])] == [1, 1]
+    llm = RecordingLLM(paragraphs={_numbered(i)[0]: _numbered(i)[1:] for i in range(2, 27)})
+    content = {"ru": {}, "en": {}}
+
+    _generator(llm)._translate_medicine_source_sections(
+        content, {"usage_instructions": "\n".join(sources)}, product_id=301
+    )
+
+    calls = llm.calls_of("абзацы")
+    assert len(calls) == 3
+    assert '{"1": {"ru": "…", "en": "…"}' in calls[0]["user_prompt"]
+    assert content["ru"]["usage_instructions"].startswith("Этот препарат в абзаце 2 применяют")
+    assert AITranslationMemory.objects.filter(namespace=PARAGRAPH_NAMESPACE).count() == 25
+
+
+def test_shift_rejects_whole_short_request_and_only_it_is_retried():
+    sources = [_numbered(i)[0] for i in range(2, 22)]
+
+    class SkipOnceLLM(RecordingLLM):
+        def generate_content(self, **kwargs):
+            result = super().generate_content(**kwargs)
+            if len(self.calls_of("абзацы")) == 1:
+                items = json.loads(kwargs["user_prompt"].split("\n\n", 1)[1])
+                result["content"] = _skip_fourth(items)
+            return result
+
+    llm = SkipOnceLLM(paragraphs={_numbered(i)[0]: _numbered(i)[1:] for i in range(2, 22)})
+    content = {"ru": {}, "en": {}}
+
+    usage = _generator(llm)._translate_medicine_source_sections(
+        content, {"side_effects": "\n".join(sources)}, product_id=302
+    )
+
+    calls = llm.calls_of("абзацы")
+    assert len(calls) == 3  # 2 запроса + повтор первого целиком
+    retried = json.loads(calls[2]["user_prompt"].split("\n\n", 1)[1])
+    assert list(retried.values()) == sources[:10]  # и абзацы до пропуска, а второй запрос — нет
+    assert content["attributes"]["medicine_translation_quality"]["side_effects"]["complete"] is True
+    assert usage["retried_paragraphs"] == 10
+
+
+def _part_products(count, per_product=6):
+    for index in range(count):
+        numbers = range(2 + index * per_product, 2 + (index + 1) * per_product)
+        MedicineProduct.objects.create(
+            name=f"PART MED {index}",
+            slug=f"part-med-{index}",
+            external_data={"attributes": {"source_tabs": {"usage_instructions": {
+                "text": "\n".join(_numbered(i)[0] for i in numbers)
+            }}}},
+        )
+    return list(MedicineProduct.objects.filter(slug__startswith="part-med-").order_by("pk").values_list("pk", flat=True))
+
+
+def test_paragraph_batch_goes_in_parts_and_next_part_waits_for_previous(monkeypatch):
+    from io import StringIO
+
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    from apps.ai.management.commands import medicine_paragraph_batch
+
+    pks = _part_products(4)
+    uploaded = {}
+    monkeypatch.setattr(medicine_paragraph_batch, "LLMClient", _fake_batch_client(uploaded, _translate_numbered))
+    out = StringIO()
+
+    call_command("medicine_paragraph_batch", "submit", "--part-size", "10", stdout=out)
+    first = uploaded["batches"][0]
+    # 10 абзацев набрано на втором лекарстве — часть дошла до его конца.
+    assert first.metadata == {
+        "kind": PARAGRAPH_NAMESPACE, "part": "1", "paragraphs": "12", "last_product": str(pks[1]), "retry_of": "",
+    }
+    assert len(uploaded["files"]["file-in-1"].splitlines()) == 2  # запросы по 10 и 2 абзаца
+    with pytest.raises(CommandError, match="не забрана"):
+        call_command("medicine_paragraph_batch", "submit", "--part-size", "10", stdout=out)
+
+    call_command("medicine_paragraph_batch", "collect", first.id, stdout=out)
+    assert "брак 0 (0.0%)" in out.getvalue()
+    assert "можно следующую часть" in out.getvalue()
+
+    first.status = "in_progress"
+    with pytest.raises(CommandError, match="ещё в работе"):
+        call_command("medicine_paragraph_batch", "submit", stdout=out)
+    first.status = "completed"
+
+    call_command("medicine_paragraph_batch", "submit", "--part-size", "10", stdout=out)
+    second = uploaded["batches"][1]
+    assert second.metadata["part"] == "2" and second.metadata["last_product"] == str(pks[3])
+    assert _numbered(14)[0] in uploaded["files"]["file-in-2"] and _numbered(13)[0] not in uploaded["files"]["file-in-2"]
+    call_command("medicine_paragraph_batch", "collect", second.id, stdout=out)
+
+    call_command("medicine_paragraph_batch", "submit", stdout=out)
+    assert "проход по каталогу закончен" in out.getvalue()
+    status = StringIO()
+    call_command("medicine_paragraph_batch", "status", stdout=status)
+    assert status.getvalue().index("№2 batch-2 — completed") < status.getvalue().index("№1 batch-1")
+
+
+def test_part_with_shift_stops_run_and_retry_sends_only_rejected(monkeypatch):
+    from io import StringIO
+
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    from apps.ai.management.commands import medicine_paragraph_batch
+
+    pks = _part_products(3)
+    state = {"skip": True}
+
+    def answer(items):
+        if state["skip"] and len(items) == 10:
+            return _skip_fourth(items)
+        return {key: dict(zip(("ru", "en"), _translate_numbered(text))) for key, text in items.items()}
+
+    uploaded = {}
+    monkeypatch.setattr(
+        medicine_paragraph_batch, "LLMClient", _fake_batch_client(uploaded, _translate_numbered, answer)
+    )
+    out = StringIO()
+
+    call_command("medicine_paragraph_batch", "submit", "--part-size", "10", stdout=out)
+    call_command("medicine_paragraph_batch", "collect", "batch-1", stdout=out)
+
+    report = out.getvalue()
+    assert "абзацев 12, запросов 2; принято 2, брак 10 (83.3%); сдвиг в 1 запросах (50.0%)" in report
+    assert "shifted 10" in report
+    assert "$0.0625 за 1000 абзацев" in report  # 2 запроса × (1000 × $0.075 + 1000 × $0.30) / 1 млн
+    assert "СТОП" in report
+    with pytest.raises(CommandError, match="больше порога 15%"):
+        call_command("medicine_paragraph_batch", "submit", stdout=out)
+
+    state["skip"] = False
+    call_command("medicine_paragraph_batch", "submit", "--retry", "batch-1", stdout=out)
+    retry = uploaded["batches"][1]
+    assert retry.metadata["retry_of"] == "batch-1" and retry.metadata["paragraphs"] == "10"
+    sent = [
+        text for line in uploaded["files"]["file-in-2"].splitlines()
+        for text in json.loads(json.loads(line)["body"]["messages"][1]["content"].split("\n\n", 1)[1]).values()
+    ]
+    assert sent == [_numbered(i)[0] for i in range(2, 12)]
+    call_command("medicine_paragraph_batch", "collect", retry.id, stdout=out)
+
+    call_command("medicine_paragraph_batch", "submit", "--part-size", "10", stdout=out)
+    third = uploaded["batches"][2]
+    assert third.metadata["part"] == "3" and third.metadata["last_product"] == str(pks[2])
+    assert AITranslationMemory.objects.filter(namespace=PARAGRAPH_NAMESPACE).count() == 12
 
 
 def test_coverage_report_and_inn_dry_run_do_not_call_model():

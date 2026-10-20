@@ -199,20 +199,30 @@ def test_request_shift_finds_answer_shifted_after_skipped_item():
     assert {3, 4, 5, 6, 7, 8, 9} <= request_shift(SOURCES, *_shifted_from(3))
 
 
-def test_shifted_answer_is_rejected_and_aligned_part_accepted():
+def test_shifted_answer_rejects_whole_request():
     ru, en = _shifted_from(6)
     items = {str(index): source for index, source in enumerate(SOURCES, 1)}
-    payload = {
-        "ru": {str(index): text for index, text in enumerate(ru, 1) if text},
-        "en": {str(index): text for index, text in enumerate(en, 1) if text},
-    }
+    payload = {str(index): {"ru": r, "en": e} for index, (r, e) in enumerate(zip(ru, en), 1) if r}
 
     accepted, rejected = check_paragraph_payload(items, payload)
 
-    for source in SOURCES[6:]:
-        assert "shifted" in rejected[source]
-    assert SOURCES[0] in accepted and SOURCES[4] in accepted
-    assert accepted[SOURCES[0]]["ru"] == VISCOTEARS[0][1]
+    assert accepted == {}
+    assert all("shifted" in rejected[source] for source in SOURCES)
+
+
+def test_answer_in_per_item_and_previous_format_is_accepted():
+    items = {str(index): source for index, source in enumerate(SOURCES, 1)}
+    per_item = {str(index): {"ru": ru, "en": en} for index, (_, ru, en) in enumerate(VISCOTEARS, 1)}
+    previous = {  # пакеты Batch API, отправленные до перехода на {"1": {"ru", "en"}}
+        "ru": {str(index): ru for index, (_, ru, _) in enumerate(VISCOTEARS, 1)},
+        "en": {str(index): en for index, (_, _, en) in enumerate(VISCOTEARS, 1)},
+    }
+
+    accepted, rejected = check_paragraph_payload(items, per_item)
+
+    assert check_paragraph_payload(items, previous) == (accepted, rejected)
+    assert not any("shifted" in problems for problems in rejected.values())
+    assert accepted[SOURCES[0]] == {"ru": VISCOTEARS[0][1], "en": VISCOTEARS[0][2]}
 
 
 def test_audit_sequence_marks_shifted_chain_in_memory_order():
