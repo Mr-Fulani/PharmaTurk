@@ -51,7 +51,16 @@ def _validate_identity(scraped, existing, medicine):
     stored = [_mapping(_mapping(existing.external_data).get("attributes"))]
     if medicine is not None:
         stored.append(_mapping(_mapping(medicine.external_data).get("attributes")))
-    for field in ("barcode", "atc_code", "active_ingredient"):
+    fields = ("barcode", "atc_code", "active_ingredient")
+    if any(
+        _mapping(getattr(item, "external_data", None)).get("is_stub") is True
+        for item in (existing, medicine) if item is not None
+    ):
+        # Заглушка аналога наследует МНН и ATC родительского препарата
+        # («amoksisilin» против «Amoksisilin trihidrat» в карточке аналога):
+        # сверяем только собственный штрихкод аналога.
+        fields = ("barcode",)
+    for field in fields:
         values = [attrs.get(field), *(data.get(field) for data in stored)]
         if medicine is not None:
             values.append(getattr(medicine, field))
