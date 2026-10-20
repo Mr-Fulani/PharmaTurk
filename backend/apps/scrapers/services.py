@@ -2033,6 +2033,13 @@ class ScraperIntegrationService:
                 if variant and variant.product and variant.product.base_product:
                     existing_by_external_id = variant.product.base_product
 
+            if not existing_by_external_id:
+                existing_by_external_id = self._find_product_by_fashion_variants(scraped_product)
+                if existing_by_external_id is not None:
+                    # Группа пришла с другим составом цветов: объединяем, а не
+                    # снимаем цвета, которых нет в этой выдаче.
+                    existing_by_external_id._fashion_variant_owner_match = True
+
             if existing_by_external_id:
                 return self._update_existing_product(
                     session,
@@ -2746,6 +2753,42 @@ class ScraperIntegrationService:
         }
         return configs.get(product_type)
 
+    FASHION_VARIANT_PRODUCT_TYPES = ("clothing", "shoes", "headwear", "underwear", "islamic_clothing")
+
+    def _find_product_by_fashion_variants(self, scraped_product: ScrapedProduct) -> Optional[Product]:
+        """Товар, которому уже принадлежит цвет из пришедшей группы.
+
+        id группы LCW/FLO — минимальный id цвета: он меняется, когда цвет
+        пропадает или страницы цветов ссылаются друг на друга несимметрично
+        (живой листинг LCW 20.10). id цвета стабилен — по нему находим уже
+        сохранённую карточку вместо создания дубля.
+        """
+        from django.db.models import Count
+
+        attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+        variant_ids = [
+            str(row.get("external_id") or "").strip()
+            for row in attrs.get("fashion_variants") or []
+            if isinstance(row, dict)
+        ]
+        variant_ids = [value for value in variant_ids if value]
+        if not variant_ids:
+            return None
+        for product_type in self.FASHION_VARIANT_PRODUCT_TYPES:
+            variant_model = self._fashion_model_config(product_type)["variant_model"]
+            owner = (
+                variant_model.objects.filter(
+                    external_id__in=variant_ids, product__base_product__isnull=False,
+                )
+                .values("product__base_product_id")
+                .annotate(colors=Count("id"))
+                .order_by("-colors", "product__base_product_id")
+                .first()
+            )
+            if owner:
+                return Product.objects.filter(pk=owner["product__base_product_id"]).first()
+        return None
+
     def _normalize_variant_sizes_payload(self, raw_sizes: Any) -> List[Dict[str, Any]]:
         normalized: List[Dict[str, Any]] = []
         if not raw_sizes:
@@ -2853,6 +2896,18 @@ class ScraperIntegrationService:
 
         changed = False
         seen_external_ids: List[str] = []
+        # Цвет принадлежит одной карточке: цвет, уже сохранённый у другого
+        # товара, не копируем сюда вторым вариантом.
+        incoming_ids = [
+            str(spec.get("external_id") or "").strip()
+            for spec in variants
+            if isinstance(spec, dict) and spec.get("external_id")
+        ]
+        owned_elsewhere = set(
+            VariantModel.objects.filter(external_id__in=incoming_ids)
+            .exclude(product=domain_product)
+            .values_list("external_id", flat=True)
+        )
         # Названия вариантов пишет и AI (sync_variant_titles_from_parent): у
         # товара с применённым AI-результатом повторный парсинг их не трогает,
         # иначе EN-название снова становится «русское название - Black».
@@ -2865,7 +2920,7 @@ class ScraperIntegrationService:
                 continue
 
             ext = str(spec.get("external_id") or "").strip()
-            if not ext:
+            if not ext or ext in owned_elsewhere:
                 continue
             seen_external_ids.append(ext)
 
@@ -2986,7 +3041,8 @@ class ScraperIntegrationService:
                 changed = True
 
         stale_qs = domain_product.variants.exclude(external_id__in=seen_external_ids)
-        if stale_qs.filter(is_active=True).exists():
+        merge_only = getattr(product, "_fashion_variant_owner_match", False)
+        if not merge_only and stale_qs.filter(is_active=True).exists():
             stale_qs.update(is_active=False, is_available=False, stock_quantity=0)
             changed = True
 
