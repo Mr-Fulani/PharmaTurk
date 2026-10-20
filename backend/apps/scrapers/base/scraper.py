@@ -150,6 +150,8 @@ class BaseScraper(ABC):
         # None — парсер не сообщает; True/False — явный сигнал для Celery,
         # нужен ли следующий постраничный чанк.
         self.has_more_pages = None
+        # Итоговый URL последнего успешного _make_request (после редиректов).
+        self.last_response_url = ""
 
         # Прокси для обхода репутационных блокировок (Akamai и т.п.).
         # Активен только при use_proxy=True и заданном SCRAPER_PROXY_URL.
@@ -334,6 +336,7 @@ class BaseScraper(ABC):
                 
                 response = self.client.get(url, **kwargs)
                 response.raise_for_status()
+                self.last_response_url = str(response.url or url)
                 
                 # Задержка между запросами со случайным разбросом (jitter)
                 if attempt < self.max_retries:

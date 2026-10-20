@@ -259,8 +259,11 @@ class InditexSiblingParser(ZaraParser):
         category_id = self._category_id_from_url(category_url)
         if not category_id:
             self.has_more_pages = False
+            # Ссылки меню вида «…-n3294.html» без ?celement= сайт отдаёт
+            # 301 сам на себя, id категории из них не достать.
             raise MalformedOfferResponse(
-                f"{self.SOURCE_LABEL}: не удалось определить id категории на {category_url}"
+                f"{self.SOURCE_LABEL}: не удалось определить id категории на {category_url}. "
+                "Откройте категорию на сайте и вставьте адрес целиком, вместе с ?celement=…"
             )
         catalog_id = self._resolve_catalog_id()
         listing = self._api_json(
