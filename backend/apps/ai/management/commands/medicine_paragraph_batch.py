@@ -10,9 +10,18 @@
     manage.py medicine_paragraph_batch submit --limit-products 500 --dry-run
     manage.py medicine_paragraph_batch submit --limit-products 500
     manage.py medicine_paragraph_batch collect <batch_id>
+
+``collect`` работает потоково (пиковая память — десятки МБ) и пишет в память
+порциями по 500 строк, каждая в своей транзакции; прерванный (Ctrl+C) или
+упавший collect повторяется той же командой — записанное не дублируется.
+Входной файл пакета (~200–300 МБ на весь каталог) временно кладётся в
+``--work-dir`` (по умолчанию системный tmp), нужно ещё 1 ГБ свободного места.
 """
 
 import json
+import re
+import shutil
+import tempfile
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -34,8 +43,12 @@ from apps.ai.services.medicine_memory import (
     translation_user_prompt,
 )
 from apps.ai.services.medicine_title import paragraph_brand
-from apps.ai.services.translation_memory import remember, source_hash
+from apps.ai.services.translation_memory import REMEMBER_BATCH_SIZE, remember, source_hash
 from apps.catalog.models import MedicineProduct
+
+
+# Запас свободного места сверх размера входного файла пакета (диск прода маленький).
+MIN_FREE_DISK_BYTES = 1024 * 2**20
 
 
 class Command(BaseCommand):
@@ -47,6 +60,8 @@ class Command(BaseCommand):
         parser.add_argument("--limit-products", type=int, default=0, help="Сколько лекарств взять (0 — все)")
         parser.add_argument("--max-requests", type=int, default=2000, help="Максимум запросов в пакете")
         parser.add_argument("--dry-run", action="store_true", help="submit: только оценка, без отправки")
+        parser.add_argument("--work-dir", default="", help="collect: папка для временного входного файла")
+        parser.add_argument("--progress-every", type=int, default=50, help="collect: прогресс каждые N запросов")
 
     def handle(self, *args, **options):
         if options["action"] == "submit":
@@ -54,7 +69,7 @@ class Command(BaseCommand):
         else:
             if not options["batch_id"]:
                 raise CommandError("collect требует batch_id")
-            self._collect(options["batch_id"])
+            self._collect(options["batch_id"], options)
 
     def _missing_paragraphs(self, options) -> list[str]:
         qs = MedicineProduct.objects.filter(is_active=True).order_by("pk").values_list(
@@ -119,38 +134,118 @@ class Command(BaseCommand):
             f"Пакет отправлен: {batch.id}. Забрать: manage.py medicine_paragraph_batch collect {batch.id}"
         ))
 
-    def _collect(self, batch_id: str):
+    def _collect(self, batch_id: str, options):
+        """Потоковая загрузка готового пакета в память переводов.
+
+        Ответ читается построчно прямо из OpenAI; входной файл (исходные абзацы)
+        скачивается во временный файл и читается по смещениям — в памяти Python
+        только текущая строка и порция до REMEMBER_BATCH_SIZE абзацев. Запись
+        идемпотентна: прерванный collect можно просто повторить.
+        """
         client = LLMClient()
         batch = client.client.batches.retrieve(batch_id)
         counts = getattr(batch, "request_counts", None)
         if batch.status != "completed":
             self.stdout.write(f"Статус пакета: {batch.status}; {counts}")
             return
-        requests = {}
-        for line in client.client.files.content(batch.input_file_id).text.splitlines():
-            row = json.loads(line)
-            requests[row["custom_id"]] = items_from_user_prompt(row["body"]["messages"][1]["content"])
-        accepted, rejected, cost = {}, 0, 0.0
-        output = client.client.files.content(batch.output_file_id).text if batch.output_file_id else ""
-        for line in output.splitlines():
-            row = json.loads(line)
-            body = (row.get("response") or {}).get("body") or {}
-            items = requests.get(row.get("custom_id")) or {}
-            choice = (body.get("choices") or [{}])[0]
-            payload = {}
-            if choice.get("finish_reason") != "length":
-                payload = client._parse_json_response((choice.get("message") or {}).get("content") or "")
-            usage = body.get("usage") or {}
-            price = client.pricing.get(client.model) or {}
-            cost += (
-                usage.get("prompt_tokens", 0) * price.get("input", 0)
-                + usage.get("completion_tokens", 0) * price.get("output", 0)
-            ) / 1_000_000 / 2  # Batch API — половина цены
-            batch_accepted, batch_rejected = check_paragraph_payload(items, payload)
-            accepted.update(batch_accepted)
-            rejected += len(batch_rejected)
-        remember(PARAGRAPH_NAMESPACE, accepted)
+        if not batch.output_file_id:
+            self.stdout.write(f"У пакета нет файла ответов; {counts}")
+            return
+        total = getattr(counts, "completed", None) or getattr(counts, "total", None) or 0
+        price = client.pricing.get(client.model) or {}
+        stats = {"requests": 0, "accepted": 0, "rejected": 0, "created": 0, "cost": 0.0}
+        pending: dict = {}
+
+        def flush():
+            stats["created"] += remember(PARAGRAPH_NAMESPACE, pending)
+            pending.clear()
+
+        work_dir = options["work_dir"] or tempfile.gettempdir()
+        with tempfile.NamedTemporaryFile(dir=work_dir, suffix=".jsonl") as input_file:
+            self._download_input(client, batch.input_file_id, input_file, work_dir)
+            offsets = self._index_requests(input_file)
+            try:
+                with client.client.files.with_streaming_response.content(batch.output_file_id) as response:
+                    for line in response.iter_lines():
+                        if not line.strip():
+                            continue
+                        row = json.loads(line)
+                        body = (row.get("response") or {}).get("body") or {}
+                        items = self._request_items(input_file, offsets.get(row.get("custom_id")))
+                        choice = (body.get("choices") or [{}])[0]
+                        payload = {}
+                        if choice.get("finish_reason") != "length":
+                            payload = client._parse_json_response(
+                                (choice.get("message") or {}).get("content") or ""
+                            )
+                        usage = body.get("usage") or {}
+                        stats["cost"] += (
+                            usage.get("prompt_tokens", 0) * price.get("input", 0)
+                            + usage.get("completion_tokens", 0) * price.get("output", 0)
+                        ) / 1_000_000 / 2  # Batch API — половина цены
+                        accepted, rejected = check_paragraph_payload(items, payload)
+                        pending.update(accepted)
+                        stats["accepted"] += len(accepted)
+                        stats["rejected"] += len(rejected)
+                        stats["requests"] += 1
+                        if len(pending) >= REMEMBER_BATCH_SIZE:
+                            flush()
+                        if stats["requests"] % options["progress_every"] == 0:
+                            self._progress(stats, total)
+                    flush()
+            except KeyboardInterrupt:
+                flush()
+                self._progress(stats, total)
+                self.stdout.write(self.style.WARNING(
+                    f"Остановлено. Записанное сохранено; повтор: manage.py medicine_paragraph_batch collect {batch_id}"
+                ))
+                return
+        self._progress(stats, total)
         self.stdout.write(self.style.SUCCESS(
-            f"В память записано абзацев: {len(accepted)}, отклонено проверкой: {rejected} "
-            f"(переведутся при обычной обработке); стоимость ≈${cost:.2f}; {counts}"
+            f"В память записано новых абзацев: {stats['created']} (принято {stats['accepted']}, "
+            f"отклонено проверкой {stats['rejected']} — переведутся при обычной обработке); "
+            f"стоимость ≈${stats['cost']:.2f}; {counts}"
         ))
+
+    def _progress(self, stats, total):
+        self.stdout.write(
+            f"запросов {stats['requests']}/{total or '?'}: принято {stats['accepted']}, "
+            f"отклонено {stats['rejected']}, записано новых {stats['created']}"
+        )
+        self.stdout.flush()
+
+    def _download_input(self, client, file_id, target, work_dir):
+        size = getattr(client.client.files.retrieve(file_id), "bytes", 0) or 0
+        free = shutil.disk_usage(work_dir).free
+        if size and free < size + MIN_FREE_DISK_BYTES:
+            raise CommandError(
+                f"Мало места в {work_dir}: свободно {free // 2**20} МБ, нужно "
+                f"{(size + MIN_FREE_DISK_BYTES) // 2**20} МБ (--work-dir)"
+            )
+        with client.client.files.with_streaming_response.content(file_id) as response:
+            for chunk in response.iter_bytes():
+                target.write(chunk)
+        target.flush()
+
+    @staticmethod
+    def _index_requests(input_file) -> dict[str, int]:
+        """custom_id → смещение строки во входном файле."""
+        offsets = {}
+        input_file.seek(0)
+        while True:
+            offset = input_file.tell()
+            line = input_file.readline()
+            if not line:
+                break
+            match = re.search(rb'"custom_id"\s*:\s*"([^"]+)"', line)
+            if match:
+                offsets[match.group(1).decode()] = offset
+        return offsets
+
+    @staticmethod
+    def _request_items(input_file, offset) -> dict[str, str]:
+        if offset is None:
+            return {}
+        input_file.seek(offset)
+        row = json.loads(input_file.readline())
+        return items_from_user_prompt(row["body"]["messages"][1]["content"])

@@ -402,43 +402,43 @@ def test_full_medicine_processing_uses_code_and_memory():
     assert "title" not in report.rejected_fields
 
 
-def test_paragraph_batch_api_submit_then_collect_fills_memory(monkeypatch):
-    from io import StringIO
+def _fake_batch_client(uploaded, translate):
+    """OpenAI-клиент для Batch API: файлы пакета отдаются потоково, как в openai>=1."""
+    from contextlib import contextmanager
 
-    from django.core.management import call_command
-
-    from apps.ai.management.commands import medicine_paragraph_batch
-
-    MedicineProduct.objects.create(
-        name="BATCH MED",
-        slug="batch-med-paragraphs",
-        external_data={"attributes": {"source_tabs": {"side_effects": {"text": f"{PARA_B}\n{PARA_C}"}}}},
-    )
-    remember(PARAGRAPH_NAMESPACE, {PARA_B.strip(): {"ru": "уже есть", "en": "cached"}})
-    uploaded = {}
-
-    class FakeFiles:
-        def create(self, file, purpose):
-            uploaded["jsonl"] = file[1].decode("utf-8")
-            return SimpleNamespace(id="file-in")
-
-        def content(self, file_id):
-            if file_id == "file-in":
-                return SimpleNamespace(text=uploaded["jsonl"])
-            request = json.loads(uploaded["jsonl"].splitlines()[0])
+    def output_lines():
+        for line in uploaded["jsonl"].splitlines():
+            request = json.loads(line)
             items = json.loads(request["body"]["messages"][1]["content"].split("\n\n", 1)[1])
             answer = {
-                "ru": {k: TRANSLATIONS[v][0].strip() for k, v in items.items()},
-                "en": {k: TRANSLATIONS[v][1].strip() for k, v in items.items()},
+                "ru": {k: translate(v)[0] for k, v in items.items()},
+                "en": {k: translate(v)[1] for k, v in items.items()},
             }
-            row = {
+            yield json.dumps({
                 "custom_id": request["custom_id"],
                 "response": {"body": {
                     "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(answer)}}],
                     "usage": {"prompt_tokens": 1000, "completion_tokens": 1000},
                 }},
-            }
-            return SimpleNamespace(text=json.dumps(row))
+            })
+
+    @contextmanager
+    def content(file_id):
+        if file_id == "file-in":
+            data = uploaded["jsonl"].encode("utf-8")
+            yield SimpleNamespace(iter_bytes=lambda: iter([data[:100], data[100:]]))
+        else:
+            yield SimpleNamespace(iter_lines=output_lines)
+
+    class FakeFiles:
+        with_streaming_response = SimpleNamespace(content=content)
+
+        def create(self, file, purpose):
+            uploaded["jsonl"] = file[1].decode("utf-8")
+            return SimpleNamespace(id="file-in")
+
+        def retrieve(self, file_id):
+            return SimpleNamespace(bytes=len(uploaded["jsonl"].encode("utf-8")))
 
     class FakeBatches:
         def create(self, **kwargs):
@@ -459,7 +459,25 @@ def test_paragraph_batch_api_submit_then_collect_fills_memory(monkeypatch):
         def _parse_json_response(raw):
             return json.loads(raw)
 
-    monkeypatch.setattr(medicine_paragraph_batch, "LLMClient", FakeClient)
+    return FakeClient
+
+
+def test_paragraph_batch_api_submit_then_collect_fills_memory(monkeypatch):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.ai.management.commands import medicine_paragraph_batch
+
+    MedicineProduct.objects.create(
+        name="BATCH MED",
+        slug="batch-med-paragraphs",
+        external_data={"attributes": {"source_tabs": {"side_effects": {"text": f"{PARA_B}\n{PARA_C}"}}}},
+    )
+    remember(PARAGRAPH_NAMESPACE, {PARA_B.strip(): {"ru": "уже есть", "en": "cached"}})
+    uploaded = {}
+    client = _fake_batch_client(uploaded, lambda text: tuple(t.strip() for t in TRANSLATIONS[text]))
+    monkeypatch.setattr(medicine_paragraph_batch, "LLMClient", client)
     out = StringIO()
 
     call_command("medicine_paragraph_batch", "submit", stdout=out)
@@ -471,7 +489,84 @@ def test_paragraph_batch_api_submit_then_collect_fills_memory(monkeypatch):
     ]
     assert uploaded["batch"]["completion_window"] == "24h"
     assert lookup(PARAGRAPH_NAMESPACE, [PARA_C.strip()])[PARA_C.strip()]["ru"].startswith("Во время беременности")
-    assert "записано абзацев: 1" in out.getvalue()
+    assert "записано новых абзацев: 1" in out.getvalue()
+
+
+def test_remember_writes_in_chunks_and_is_idempotent(monkeypatch):
+    from apps.ai.services import translation_memory
+
+    sizes = []
+    original = AITranslationMemory.objects.bulk_create
+
+    def spy(objs, **kwargs):
+        objs = list(objs)
+        sizes.append(len(objs))
+        return original(objs, **kwargs)
+
+    monkeypatch.setattr(AITranslationMemory.objects, "bulk_create", spy)
+    rows = {f"Paragraf {i} için metin.": {"ru": f"Абзац {i}", "en": f"Paragraph {i}"} for i in range(1201)}
+
+    created = translation_memory.remember(PARAGRAPH_NAMESPACE, rows)
+    again = translation_memory.remember(PARAGRAPH_NAMESPACE, rows)
+
+    assert created == 1201
+    assert again == 0
+    assert max(sizes) <= translation_memory.REMEMBER_BATCH_SIZE
+    assert sizes[:3] == [500, 500, 201]
+    assert AITranslationMemory.objects.filter(namespace=PARAGRAPH_NAMESPACE).count() == 1201
+
+
+def test_large_paragraph_batch_is_collected_in_chunks_and_repeat_adds_nothing(monkeypatch):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.ai.management.commands import medicine_paragraph_batch
+
+    paragraphs = [f"Bu ilaç {i}. paragrafta günde {i} kez kullanılır ve doktor kontrolü gerekir." for i in range(1500)]
+    for index in range(0, len(paragraphs), 100):
+        MedicineProduct.objects.create(
+            name=f"BIG MED {index}",
+            slug=f"big-batch-{index}",
+            external_data={"attributes": {"source_tabs": {"usage_instructions": {
+                "text": "\n".join(paragraphs[index:index + 100])
+            }}}},
+        )
+    uploaded = {}
+
+    def translate(text):
+        number = text.split()[2].rstrip(".")
+        return (
+            f"Этот препарат в абзаце {number} применяют {number} раз в день под контролем врача.",
+            f"This medicine in paragraph {number} is used {number} times a day under medical control.",
+        )
+
+    monkeypatch.setattr(medicine_paragraph_batch, "LLMClient", _fake_batch_client(uploaded, translate))
+    from apps.ai.services import medicine_memory
+
+    monkeypatch.setattr(medicine_memory, "PARAGRAPH_BATCH_CHARS", 3000)
+    sizes = []
+    original = AITranslationMemory.objects.bulk_create
+
+    def spy(objs, **kwargs):
+        objs = list(objs)
+        sizes.append(len(objs))
+        return original(objs, **kwargs)
+
+    monkeypatch.setattr(AITranslationMemory.objects, "bulk_create", spy)
+    out = StringIO()
+
+    call_command("medicine_paragraph_batch", "submit", stdout=out)
+    call_command("medicine_paragraph_batch", "collect", "batch-1", "--progress-every", "1", stdout=out)
+    first = AITranslationMemory.objects.filter(namespace=PARAGRAPH_NAMESPACE).count()
+    call_command("medicine_paragraph_batch", "collect", "batch-1", stdout=out)
+
+    assert first == 1500
+    assert AITranslationMemory.objects.filter(namespace=PARAGRAPH_NAMESPACE).count() == 1500
+    assert max(sizes) <= 500
+    assert "записано новых абзацев: 1500" in out.getvalue()
+    assert "записано новых абзацев: 0" in out.getvalue()
+    assert "запросов 1/" in out.getvalue()
 
 
 def test_coverage_report_and_inn_dry_run_do_not_call_model():
