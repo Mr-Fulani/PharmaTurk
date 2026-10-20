@@ -4651,21 +4651,46 @@ class ScraperIntegrationService:
         success: bool,
         source_item_gone: bool = False,
     ):
-        """Обновляет статистику парсера."""
-        config.total_runs += 1
-        config.last_run_at = timezone.now()
+        """Обновляет статистику парсера.
 
+        Пишет только поля статистики: config загружен в начале задачи, и полный
+        save() через десятки минут откатывал бы правки админа (включение,
+        прокси, cookies). Успех снимает «Ошибку» и её текст — статус «Активен»
+        нужен проверкам наличия и обновлению карточек, — но не трогает
+        «Обслуживание»/«Неактивен», выставленные вручную.
+        """
+        from django.db.models import F
+
+        now = timezone.now()
+        updates: Dict[str, Any] = {
+            "total_runs": F("total_runs") + 1,
+            "last_run_at": now,
+        }
         if success:
-            config.successful_runs += 1
-            config.last_success_at = timezone.now()
-            config.total_products_scraped += session.products_found
-            config.status = "active"
+            updates.update(
+                successful_runs=F("successful_runs") + 1,
+                last_success_at=now,
+                total_products_scraped=F("total_products_scraped") + session.products_found,
+                last_error_at=None,
+                last_error_message="",
+            )
         elif not source_item_gone:
-            config.last_error_at = timezone.now()
-            config.last_error_message = session.error_message
-            config.status = "error"
+            updates.update(
+                last_error_at=now,
+                last_error_message=session.error_message,
+                status="error",
+            )
 
-        config.save()
+        configs = ScraperConfig.objects.filter(pk=config.pk)
+        configs.update(**updates)
+        if success:
+            configs.filter(status="error").update(status="active")
+        config.refresh_from_db(
+            fields=[
+                "total_runs", "last_run_at", "successful_runs", "last_success_at",
+                "total_products_scraped", "last_error_at", "last_error_message", "status",
+            ]
+        )
 
     def _extract_search_query(self, url: str) -> Optional[str]:
         """Извлекает поисковый запрос из URL."""
