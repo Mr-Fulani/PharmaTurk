@@ -328,7 +328,17 @@ def _looks_russian(source: str, ru: str) -> bool:
     if len(re.findall(r"[^\W\d_]", source)) < 20:
         return True
     cyrillic = len(re.findall(r"[А-Яа-яЁё]", ru))
-    return cyrillic >= 10 and not looks_untranslated_turkish(ru)
+    if not cyrillic or looks_untranslated_turkish(ru):
+        return False
+    # Бренд (слово заглавными) переносится латиницей и переводить его не нужно:
+    # «5. DERMOVATE'IN SAKLANMASI» → «5. Хранение DERMOVATE» — 8 кириллических букв.
+    kept = {fold_tr(word) for word in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", ru)}
+    translatable = sum(
+        len(word)
+        for word in re.findall(r"[^\W\d_]+", source)
+        if not (word.isupper() and fold_tr(word) in kept)
+    )
+    return cyrillic >= min(10, translatable // 2)
 
 
 # Подписи реквизитов в конце инструкции; имена фирм и адреса не переводятся.

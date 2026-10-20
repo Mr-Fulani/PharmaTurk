@@ -12,12 +12,18 @@ from apps.ai.services.medicine_memory import (
     INN_NAMESPACE,
     PARAGRAPH_NAMESPACE,
     normalize_paragraph,
+    paragraph_problems,
     translate_active_ingredient,
 )
-from apps.ai.services.medicine_reference import translate_reference_field, translate_volume
+from apps.ai.services.medicine_reference import (
+    meaningful_special_notes,
+    neutral_prescription_text,
+    translate_reference_field,
+    translate_volume,
+)
 from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
 from apps.ai.services.result_applier import AIResultApplier
-from apps.ai.services.semantic_validator import SemanticValidator
+from apps.ai.services.semantic_validator import _MEDICINE_TITLE_TRUNCATED, SemanticValidator
 from apps.ai.services.translation_memory import lookup, remember
 from apps.catalog.models import Category, MedicineProduct
 
@@ -75,9 +81,9 @@ def _generator(llm):
 
 def test_reference_fields_are_translated_by_dictionary():
     assert translate_reference_field("prescription_type", "Kısıtlanmış Beyaz Reçete") == (
-        "Ограниченный белый рецепт", "Restricted white prescription",
+        "Рецептурный препарат с ограничением назначения", "Restricted prescription medicine",
     )
-    assert translate_reference_field("prescription_type", "BEYAZ REÇETE")[0] == "Белый рецепт"
+    assert translate_reference_field("prescription_type", "BEYAZ REÇETE")[0] == "Рецептурный препарат"
     assert translate_reference_field("sgk_status", "Bedeli Ödenir") == ("Оплачивается SGK", "Covered by SGK")
     assert translate_reference_field("origin_country", "İMAL")[1] == "Manufactured in Turkey"
     assert translate_reference_field("shelf_life", "24 Ay") == ("24 месяца", "24 months")
@@ -125,7 +131,7 @@ def test_code_fields_replace_model_values_and_are_not_fact_checked():
     assert content["ru"]["volume"] == "20 таблеток"
     assert content["en"]["volume"] == "20 tablets"
     assert content["ru"]["dosage_form"] == "Таблетки"
-    assert content["ru"]["prescription_type"] == "Белый рецепт"
+    assert content["ru"]["prescription_type"] == "Рецептурный препарат"
     assert content["attributes"]["barcode"] == "8690000000001"
     assert content["attributes"]["medicine_translation_quality"] == {}
 
@@ -720,3 +726,253 @@ def test_instruction_paragraph_with_phone_is_still_translated_by_model():
         "Türkiye Farmakovijilans Merkezi (TÜFAM)'ne bildiriniz (e-posta: tufam@titck.gov.tr; tel: 0 800 314 00 08)."
     )
     assert not is_proper_name_line("Günde 10 mg/kg verilir.")
+
+
+# ── Пилот 20.10.2026 (AIRun 2, 50 лекарств id 179–252): брак, который проходил проверки ──
+
+
+def _medicine(name):
+    category, _ = Category.objects.get_or_create(slug="pilot2-medicines", defaults={"name": "Медицина"})
+    medicine = MedicineProduct.objects.create(
+        name=name, slug=f"pilot2-{abs(hash(name)) % 10**8}", category=category
+    )
+    medicine.refresh_from_db()
+    return medicine.base_product
+
+
+def _reasons(source, ru, en=""):
+    return SemanticValidator().validate(
+        _medicine(source), generated_titles={"ru": ru, "en": en}, dynamic_attributes=[]
+    )
+
+
+# 1. Названия ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["MOUNJARO 7", "DIFFERIN 0", "ZOPROTEC PLUS 30/12", "A-FERIN SINUS 500/30/1",
+     "Аугментин 200 мг/28", "Кенакорт-А Орабаз %0", "OMNITROPE 15 MG (45 IU)/1"],
+)
+def test_truncated_medicine_title_goes_to_moderation(title):
+    # Прошлая обработка обрезала название на десятичном разделителе (7,5 MG → «7»);
+    # модель копирует его, и лог уходил как «готово».
+    report = _reasons(title, title, title)
+
+    assert report.reasons[0] == "title_truncated"
+    assert "title" in report.rejected_fields
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["INDOCOLIR GOZ DAMLASI % 0,1", "DERMOVATE %0,05", "D-COLEFOR 20.000 IU",
+     "MAJEZIK 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт.", "BENEXOL B12"],
+)
+def test_percent_dose_and_template_titles_are_not_truncated(title):
+    assert not _MEDICINE_TITLE_TRUNCATED.search(title)
+
+
+def test_copy_of_already_translated_source_name_goes_to_moderation():
+    # Шаблон из кириллического названия не строится, модель копирует мусор как есть.
+    source = "KLAMOKS BID 400/57 СУСПЕНЗИЯ ДЛЯ ПРИГОТОВЛЕНИЯ КРУПНОГО ПАХНУЩЕГО ПРАПОРТА 100 МЛ"
+    report = _reasons(source, source, "KLAMOKS BID 400/57 SUSPENSION 100 ML")
+
+    assert report.reasons[0] == "title_source_translated"
+    assert "title" in report.rejected_fields
+
+
+def test_moderator_fixed_title_of_translated_source_passes():
+    report = _reasons(
+        "CLEOCIN T 1% Топикальный раствор 30 мл",
+        "CLEOCIN T 1%, раствор для наружного применения, 30 мл",
+        "CLEOCIN T 1%, cutaneous solution, 30 ml",
+    )
+
+    assert "title" not in report.rejected_fields
+    assert report.reasons == []
+
+
+@pytest.mark.parametrize(
+    "source,title",
+    [
+        ("PEXA XR 3 MG UZATILMIS SALIMLI 30 TABLET", "PEXA XR 3 мг УЗАТИЛМИШ САЛИМЛИ 30 таблеток"),
+        ("CLEOCIN T %1 TOPIKAL COZELTI 30 ML", "CLEOCIN T 1% Топикальный раствор 30 мл"),
+        ("OMHEAL 40 MG SERT KAPSUL (28 KAPSUL)", "OMHEAL 40 мг СЕРТ КАПСУЛЫ (28 капсул)"),
+        ("CALIRA-MET 5 MG/1000 MG FILM KAPLI TABLET", "CALIRA-MET 5 мг/1000 мг ПЛЕНКА КАПЛИ ТАБЛЕТКИ"),
+        ("BENEXOL B12 FILM KAPLI TABLET (50 TB)", "BENEXOL B12 таблетки (50 ТБ)"),
+        ("DEVIT-3 300.000 IU/ML IM/ORAL COZELTI", "DEVIT-3 300.000 МЕ/мл, И.М./ОРОЛЬ раствор"),
+    ],
+)
+def test_cyrillic_transliteration_of_turkish_form_is_untranslated(source, title):
+    report = _reasons(source, title)
+
+    assert "title_untranslated" in report.reasons
+
+
+def test_hyphenated_brand_and_film_coated_survive_title_cleanup():
+    # «DEVIT-3», «CALIRA-MET» и «film-coated» похожи на артикул и вырезались.
+    generator = ContentGenerator.__new__(ContentGenerator)
+    content = {
+        "ru": {"generated_title": "CALIRA-MET 5 мг/1000 мг, таблетки, покрытые плёночной оболочкой, 56 шт."},
+        "en": {"generated_title": "CALIRA-MET 5 mg/1000 mg, film-coated tablets, 56 pcs"},
+    }
+
+    generator._sanitize_ai_content(content, {"product_type": "medicines"})
+
+    assert content["en"]["generated_title"] == "CALIRA-MET 5 mg/1000 mg, film-coated tablets, 56 pcs"
+    assert generator._normalize_product_name(content["ru"]["generated_title"], "medicines").startswith(
+        "CALIRA-MET 5 мг"
+    )
+    assert generator._normalize_product_name("DEVIT-3 50.000 IU", "medicines") == "DEVIT-3 50.000 IU"
+    # У остальных доменов артикулы по-прежнему вырезаются.
+    assert generator._normalize_product_name("Платье J5SM-TST7325", "clothing") == "Платье"
+
+
+# 2. Хранение: заголовок раздела с брендом латиницей ───────────────────
+
+
+@pytest.mark.parametrize(
+    "source,ru,en",
+    [
+        ("5. DERMOVATE'IN SAKLANMASI", "5. Хранение DERMOVATE", "5. Storage of DERMOVATE"),
+        ("5. AUGMENTİN'İN SAKLANMASI", "5. ХРАНЕНИЕ AUGMENTIN", "5. STORAGE OF AUGMENTIN"),
+        ("5. {BRAND} SR'NİN SAKLANMASI", "5. Хранение {BRAND} SR", "5. Storage of {BRAND} SR"),
+    ],
+)
+def test_storage_heading_with_latin_brand_is_russian(source, ru, en):
+    # Все 9 разделов хранения с ru_not_russian в пилоте: единственный непринятый
+    # абзац — этот заголовок («Хранение» — 8 кириллических букв при пороге 10).
+    assert paragraph_problems(source, ru, en) == []
+
+
+@pytest.mark.parametrize(
+    "source,ru",
+    [
+        ("5. DERMOVATE'IN SAKLANMASI", "5. DERMOVATE'IN SAKLANMASI"),
+        (
+            "DERMOVATE'ı çocukların göremeyeceği, erişemeyeceği yerlerde ve ambalajında saklayınız.",
+            "Хранение DERMOVATE: cocuklarin goremeyecegi yerlerde ve ambalajinda saklayiniz.",
+        ),
+    ],
+)
+def test_untranslated_storage_paragraph_is_still_rejected(source, ru):
+    assert "ru_not_russian" in paragraph_problems(source, ru, "Keep DERMOVATE away from children.")
+
+
+# 3. Тип рецепта ────────────────────────────────────────────────────────
+
+
+def test_prescription_type_is_clear_for_russian_buyer():
+    assert translate_reference_field("prescription_type", "Beyaz Reçete") == (
+        "Рецептурный препарат", "Prescription medicine",
+    )
+    assert translate_reference_field("prescription_type", "Kırmızı Reçete") == (
+        "Рецептурный препарат строгого учёта", "Controlled prescription medicine",
+    )
+    assert translate_reference_field("prescription_type", "Reçetesiz") == (
+        "Безрецептурный препарат", "Over-the-counter medicine",
+    )
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Препарат принимается перорально и отпускается по белому рецепту.",
+         "Препарат принимается перорально и отпускается по рецепту."),
+        ("Для его получения необходим белый рецепт.", "Для его получения необходим рецепт."),
+        ("Белый рецепт.", "Рецепт."),
+        ("The product requires a white prescription.", "The product requires a prescription."),
+        ("Available by White Prescription.", "Available by Prescription."),
+        ("Рецептурный препарат, без рецепта не отпускается.", "Рецептурный препарат, без рецепта не отпускается."),
+    ],
+)
+def test_prescription_colour_is_removed_from_text(text, expected):
+    assert neutral_prescription_text(text) == expected
+
+
+# 4. Особые сведения без предмета ───────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("Birlikte kullanılmamalıdır. Dikkatli olunmalıdır.", ""),
+        ("Hastalar duyarlılıkları belli oluncaya kadar kullanmamalıdır.", ""),
+        (
+            "Dikkatli olunmalıdır. Tedavi süresince emzirmemesi önerilir.(Kullanılmamalıdır) Yüksek riskli ilaç!",
+            "Tedavi süresince emzirmemesi önerilir.(Kullanılmamalıdır) Yüksek riskli ilaç!",
+        ),
+        ("Araç ve makine kullanılmamalıdır.", "Araç ve makine kullanılmamalıdır."),
+        ("", ""),
+    ],
+)
+def test_special_notes_without_subject_are_dropped(source, expected):
+    assert meaningful_special_notes(source) == expected
+
+
+def _process(special_notes, card_notes):
+    category = Category.objects.create(name="Медицина", slug="pilot2-notes")
+    medicine = MedicineProduct.objects.create(
+        name="MAJEZIK 100 MG 15 FILM TABLET",
+        slug="pilot2-notes",
+        category=category,
+        dosage_form="tablet",
+        prescription_type="Beyaz Reçete",
+        special_notes=special_notes,
+    )
+    medicine.refresh_from_db()
+    card = {
+        "ru": {
+            "generated_description": "MAJEZIK — таблетки, покрытые плёночной оболочкой, 100 мг. "
+            "Препарат отпускается по белому рецепту и имеет срок годности 24 месяца.",
+            "seo_title": "MAJEZIK 100 мг",
+            "seo_description": "MAJEZIK 100 мг, по белому рецепту.",
+            "keywords": ["MAJEZIK"],
+            "special_notes": card_notes[0],
+        },
+        "en": {
+            "generated_description": "MAJEZIK film-coated tablets 100 mg. It is available by white prescription.",
+            "seo_title": "MAJEZIK 100 mg",
+            "seo_description": "MAJEZIK 100 mg.",
+            "keywords": ["MAJEZIK"],
+            "special_notes": card_notes[1],
+        },
+    }
+    llm = RecordingLLM(card=card)
+    generator = _generator(llm)
+    generator._should_use_images_for_product = lambda _product: False
+    log = generator.process_product(medicine.base_product.id, options={"analyze_images": False, "force": True})
+    prompt = [c for c in llm.calls if "медицинский редактор" in c["system_prompt"]][0]["user_prompt"]
+    facts = json.loads(prompt.split("Данные о лекарственном препарате:", 1)[1])
+    return AIProcessingLog.objects.get(pk=log.pk), facts
+
+
+def test_meaningless_special_notes_are_not_accepted_and_rx_is_neutral():
+    log, facts = _process(
+        "Birlikte kullanılmamalıdır. Dikkatli olunmalıdır.",
+        ("Не следует использовать совместно. Необходимо проявлять осторожность.",
+         "Should not be used together. Caution is advised."),
+    )
+
+    assert "special_notes" not in facts["source_facts"]
+    translations = log.extracted_attributes["translations_data"]
+    assert "special_notes" not in translations["ru"]
+    assert "special_notes" not in translations["en"]
+    assert translations["ru"]["prescription_type"] == "Рецептурный препарат"
+    assert "белому" not in log.generated_description
+    assert "отпускается по рецепту" in log.generated_description
+    seo = log.extracted_attributes["seo_translations"]
+    assert "white" not in seo["en"]["generated_description"]
+    assert "белому" not in seo["ru"]["meta_description"]
+
+
+def test_special_notes_with_subject_are_kept():
+    log, facts = _process(
+        "Dikkatli olunmalıdır. Laktasyon döneminde kullanılmamalıdır.",
+        ("Не применять в период лактации.", "Do not use during lactation."),
+    )
+
+    assert facts["source_facts"]["special_notes"] == "Laktasyon döneminde kullanılmamalıdır."
+    assert log.extracted_attributes["translations_data"]["ru"]["special_notes"] == (
+        "Не применять в период лактации."
+    )

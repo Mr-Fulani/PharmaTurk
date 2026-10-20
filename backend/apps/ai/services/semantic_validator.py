@@ -137,9 +137,18 @@ _SUPPLEMENT_RU_TITLE_LATIN_UNITS = re.compile(r"(?<![A-Za-z])ml\b", re.IGNORECAS
 _MEDICINE_RU_TITLE_TRANSLITERATIONS = re.compile(
     r"(дилалт|фил[ьл]?м|таблет(?![а-яё])|(?<![а-яё])тоз(?![а-яё])|[чц][её]зелти|жексий|"
     r"инфюз|лиофилизе(?![а-яё])|(?<![а-яё])помад|(?<![а-яё])д?жел(?![а-яё])|"
-    r"(?<![а-яё])г[её]з(?![а-яё])|(?<![а-яё])бурун|солюсй|сусп[ае]нсий)",
+    r"(?<![а-яё])г[её]з(?![а-яё])|(?<![а-яё])бурун|солюсй|сусп[ае]нсий|"
+    # Пилот 20.10.2026: «УЗАТИЛМИШ САЛИМЛИ», «Топикальный», «СЕРТ КАПСУЛЫ», «И.М./ОРОЛЬ»,
+    # «(50 ТБ)», «ЭНТЕРИК», «ФИЛЬМ-КАПЛИ ТАБЛЕТКИ» (kaplı — «покрытые», а не «капли»).
+    r"узатил|салимл|топикал|(?<![а-яё])серт(?![а-яё])|(?<![а-яё])орол|(?<![а-яё])тб(?![а-яё])|"
+    r"(?<![а-яё])энтерик|капли[\s-]+таблет)",
     re.IGNORECASE,
 )
+# Название лекарства, обрезанное прежней обработкой на десятичном разделителе:
+# «MOUNJARO 7» (7,5 MG), «DIFFERIN 0» (%0,1), «Аугментин 200 мг/28», «Кенакорт %0».
+# «% 0,1» и «%5» — турецкая запись процента, а не обрезка.
+_MEDICINE_TITLE_TRUNCATED = re.compile(r"(?:(?<![\w%.,-])(?<!%\s)\d+(?:[.,/]\d+)*|%\s*0)\s*$")
+_CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 # Латиница в RU-названии лекарства допустима только в бренде источника и в этих обозначениях.
 _MEDICINE_RU_TITLE_LATIN_OK = frozenset({
     "IV", "IM", "SC", "SR", "XR", "MR", "CR", "XL", "LA", "ER", "EC", "ODT", "RETARD", "FORTE",
@@ -160,6 +169,22 @@ def _medicine_ru_title_untranslated(title: Any, source_name: Any) -> bool:
             continue
         return True
     return False
+
+
+def _medicine_title_problem(title: Any, source_name: Any) -> str:
+    """Причина брака названия лекарства, которую не ловят общие проверки, или ''.
+
+    У старых товаров название в БД уже переведено прежней обработкой
+    («DISAVER 50 MG ФИЛЬМ-КАПЛИ ТАБЛЕТКИ») или обрезано («MOUNJARO 7»): шаблон
+    из такого названия не строится, а модель копирует его как есть.
+    Исправленное модератором название проходит: проверяется сам результат.
+    """
+    text = str(title or "")
+    if _MEDICINE_TITLE_TRUNCATED.search(text):
+        return "title_truncated"
+    if _CYRILLIC.search(str(source_name or "")) and _normalized(text) == _normalized(source_name):
+        return "title_source_translated"
+    return ""
 
 
 def _title_has_turkish_words(title: Any) -> bool:
@@ -548,6 +573,15 @@ class SemanticValidator:
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
                 continue
+            medicine_problem = (
+                _medicine_title_problem(title, getattr(product, "name", ""))
+                if product_type == "medicines"
+                else ""
+            )
+            if medicine_problem:
+                report.rejected_fields.add("title")
+                report.reasons.append(medicine_problem)
+                break
             if _title_has_turkish_words(title) or (
                 locale == "ru"
                 and product_type == "supplements"

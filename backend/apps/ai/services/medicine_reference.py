@@ -81,18 +81,65 @@ def dosage_form_labels(locale: str) -> set[str]:
     return {labels[index] for labels in DOSAGE_FORM_LABELS.values()}
 
 
-# ── Тип рецепта.
+# ── Тип рецепта. Цвет турецкого бланка («белый рецепт») покупателю из России
+# ничего не говорит: белый — обычный рецептурный препарат; красный, зелёный,
+# оранжевый, фиолетовый — препараты строгого учёта. Формулировки нейтральные:
+# на сайте лекарства не продаются.
+_RX_CONTROLLED = ("рецептурный препарат строгого учёта", "controlled prescription medicine")
 PRESCRIPTION_TYPES = {
-    "beyazrecete": ("белый рецепт", "white prescription"),
-    "normalrecete": ("обычный рецепт", "regular prescription"),
-    "kisitlanmisbeyazrecete": ("ограниченный белый рецепт", "restricted white prescription"),
-    "yesilrecete": ("зелёный рецепт", "green prescription"),
-    "morrecete": ("фиолетовый рецепт", "purple prescription"),
-    "turuncurecete": ("оранжевый рецепт", "orange prescription"),
-    "kirmizirecete": ("красный рецепт", "red prescription"),
-    "kontroletabirecete": ("рецепт на контролируемый препарат", "controlled-drug prescription"),
-    "recetesiz": ("без рецепта", "without prescription"),
+    "beyazrecete": ("рецептурный препарат", "prescription medicine"),
+    "normalrecete": ("рецептурный препарат", "prescription medicine"),
+    "kisitlanmisbeyazrecete": (
+        "рецептурный препарат с ограничением назначения", "restricted prescription medicine"
+    ),
+    "yesilrecete": _RX_CONTROLLED,
+    "morrecete": _RX_CONTROLLED,
+    "turuncurecete": _RX_CONTROLLED,
+    "kirmizirecete": _RX_CONTROLLED,
+    "kontroletabirecete": _RX_CONTROLLED,
+    "recetesiz": ("безрецептурный препарат", "over-the-counter medicine"),
 }
+# Цвет рецепта в тексте модели («отпускается по белому рецепту») — убирается кодом.
+_RX_COLOR_RE = re.compile(
+    r"\b(?:(?:обычн|бел|красн|зел[её]н|оранжев|фиолетов)(?:ый|ого|ому|ым|ом|ая|ой|ую|ые|ых|ыми)"
+    r"\s+(рецепт)|(?:white|red|green|orange|purple|normal|regular)\s+(prescription))",
+    re.IGNORECASE,
+)
+
+
+def neutral_prescription_text(text: Any) -> Any:
+    """«по белому рецепту» → «по рецепту», «a white prescription» → «a prescription»."""
+    if not isinstance(text, str):
+        return text
+
+    def drop_color(match: re.Match) -> str:
+        word = match.group(1) or match.group(2)
+        return word[:1].upper() + word[1:] if match.group(0)[0].isupper() else word.lower()
+
+    return _RX_COLOR_RE.sub(drop_color, text)
+
+
+# ── Особые сведения: бейджи «ÖZEL BİLGİLER» ilacfiyati. У части бейджей на
+# самом сайте нет предмета: с чем «не применять совместно», в чём «осторожность»,
+# чего «не использовать, пока не известна чувствительность» (это про транспорт).
+# В карточку такие фразы не переводятся.
+_CONTEXT_FREE_NOTES = frozenset({
+    "birlikte kullanilmamalidir",
+    "dikkatli olunmalidir",
+    "hastalar duyarliliklari belli oluncaya kadar kullanmamalidir",
+})
+_NOTE_SENTENCE_RE = re.compile(r"[^.!?]+[.!?]*(?:\([^)]*\))?")
+
+
+def meaningful_special_notes(value: Any) -> str:
+    """Особые сведения источника без фраз, в которых не сказано, о чём речь."""
+    sentences = [s.strip() for s in _NOTE_SENTENCE_RE.findall(str(value or "")) if s.strip()]
+    return " ".join(
+        sentence
+        for sentence in sentences
+        if re.sub(r"[^a-z ]", "", fold_tr(sentence)).strip() not in _CONTEXT_FREE_NOTES
+    )
+
 
 SGK_STATUSES = {
     "bedeliodenir": ("оплачивается SGK", "covered by SGK"),
