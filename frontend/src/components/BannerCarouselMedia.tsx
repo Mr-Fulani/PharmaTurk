@@ -4,6 +4,8 @@ import { useTranslation } from 'next-i18next'
 import Image from 'next/image'
 import { getSingleFlight } from '../lib/api'
 import styles from './BannerCarousel.module.css'
+import { resolveBannerLink } from '../lib/bannerLink'
+import { SITE_URL } from '../lib/siteMeta'
 import {
   getPlaceholderImageUrl,
   getVideoEmbedUrl,
@@ -363,11 +365,12 @@ export default function BannerCarousel({ position, className = '', initialBanner
               onClick={(e) => {
                 e.stopPropagation()
                 if (linkUrl) {
-                  const isExternal = /^https?:\/\//.test(linkUrl)
-                  if (isExternal) {
-                    window.location.href = linkUrl
+                  // Адрес своего сайта открываем в текущей языковой версии (en → /en/...)
+                  const link = resolveBannerLink(linkUrl, [new URL(SITE_URL).hostname, window.location.hostname])
+                  if (link.external) {
+                    window.location.href = link.external
                   } else {
-                    router.push(linkUrl)
+                    router.push(link.internal)
                   }
                 }
               }}
