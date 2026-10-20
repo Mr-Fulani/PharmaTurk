@@ -15,6 +15,7 @@ import re
 from typing import Any, Optional
 
 from apps.ai.services.medicine_reference import _COUNT_UNITS, fold_tr, ru_plural
+from apps.ai.services.ownership import SOURCE_NAME_KEY
 
 # Турецкая форма (после fold_tr) → (RU, EN). Сравнение — по самой длинной фразе.
 FORM_PHRASES = {
@@ -590,3 +591,64 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
         parts.extend(packs[locale])
         result[locale] = ", ".join(parts)
     return result
+
+
+# Название, обрезанное прежней обработкой на десятичном разделителе:
+# «MOUNJARO 7» (7,5 MG), «DIFFERIN 0» (%0,1), «Аугментин 200 мг/28», «Кенакорт %0».
+# «% 0,1» и «%5» — турецкая запись процента, а не обрезка.
+TRUNCATED_TITLE_RE = re.compile(r"(?:(?<![\w%.,-])(?<!%\s)\d+(?:[.,/]\d+)*|%\s*0)\s*$")
+CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
+# Штрихкод во вкладке аналогов ilacfiyati: «BARKOD 8699…», «Barkod: 8699…» или число строкой ниже.
+_BARCODE_LINE_RE = re.compile(r"barkod\s*:?\s*(\d*)$", re.IGNORECASE)
+
+
+def looks_like_source_name(name: Any) -> bool:
+    """Название похоже на турецкий оригинал: без кириллицы и не обрезано прежней обработкой."""
+    text = str(name or "").strip()
+    return bool(text) and not CYRILLIC_RE.search(text) and not TRUNCATED_TITLE_RE.search(text)
+
+
+def equivalents_source_name(external_data: Any) -> str:
+    """Название товара из сохранённой вкладки аналогов ilacfiyati или ''.
+
+    Источник перечисляет среди аналогов и сам препарат: его название — строка
+    перед «BARKOD» с тем же штрихкодом, что attributes.barcode.
+    """
+    attrs = external_data.get("attributes") if isinstance(external_data, dict) else None
+    if not isinstance(attrs, dict):
+        return ""
+    barcode = str(attrs.get("barcode") or "").strip()
+    tabs = attrs.get("source_tabs")
+    tab = tabs.get("equivalents") if isinstance(tabs, dict) else None
+    text = tab.get("text") if isinstance(tab, dict) else tab
+    if not barcode or not text:
+        return ""
+    lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+    for index in range(1, len(lines)):
+        match = _BARCODE_LINE_RE.match(lines[index])
+        if not match:
+            continue
+        code = match.group(1) or (lines[index + 1] if index + 1 < len(lines) else "")
+        if code == barcode:
+            return lines[index - 1]
+    return ""
+
+
+def medicine_source_name(name: Any, external_data: Any) -> tuple[str, str]:
+    """Турецкое название лекарства для шаблона и проверок и откуда оно взято.
+
+    Применение AI пишет в name RU-название, а прежние обработки оставили в name
+    переводы («DISAVER 50 MG ФИЛЬМ-КАПЛИ ТАБЛЕТКИ») и обрезки («MOUNJARO 7»).
+    Порядок: external_data["source_name"] → name, если он похож на оригинал, →
+    строка аналогов с тем же штрихкодом → name как есть.
+    """
+    stored = external_data.get(SOURCE_NAME_KEY) if isinstance(external_data, dict) else None
+    if str(stored or "").strip():
+        return str(stored).strip(), "source_name"
+    current = str(name or "").strip()
+    if looks_like_source_name(current):
+        return current, "name"
+    equivalent = equivalents_source_name(external_data)
+    if equivalent:
+        return equivalent, "equivalents"
+    return current, "name"

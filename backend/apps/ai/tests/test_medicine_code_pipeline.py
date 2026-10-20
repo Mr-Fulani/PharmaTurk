@@ -21,9 +21,16 @@ from apps.ai.services.medicine_reference import (
     translate_reference_field,
     translate_volume,
 )
-from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
+from apps.ai.services.medicine_title import (
+    TRUNCATED_TITLE_RE,
+    build_medicine_title,
+    equivalents_source_name,
+    looks_like_source_name,
+    medicine_source_name,
+    paragraph_brand,
+)
 from apps.ai.services.result_applier import AIResultApplier
-from apps.ai.services.semantic_validator import _MEDICINE_TITLE_TRUNCATED, SemanticValidator
+from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.translation_memory import lookup, remember
 from apps.catalog.models import Category, MedicineProduct
 
@@ -769,7 +776,7 @@ def test_truncated_medicine_title_goes_to_moderation(title):
      "MAJEZIK 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт.", "BENEXOL B12"],
 )
 def test_percent_dose_and_template_titles_are_not_truncated(title):
-    assert not _MEDICINE_TITLE_TRUNCATED.search(title)
+    assert not TRUNCATED_TITLE_RE.search(title)
 
 
 def test_copy_of_already_translated_source_name_goes_to_moderation():
@@ -1112,3 +1119,172 @@ def test_template_title_is_not_rejected_by_validator(source):
     report = _reasons(source, title["ru"], title["en"])
 
     assert "title" not in report.rejected_fields, report.reasons
+
+
+# ── Турецкий оригинал названия (external_data["source_name"]) ──
+# Прод 20.10.2026: у 119 из 13 033 лекарств name уже переведён или обрезан, а
+# применение AI пишет в name RU-название — шаблон строится только из турецкого.
+
+DISAVER = "DISAVER 50 MG FILM KAPLI TABLET (28 TABLET)"
+DISAVER_RU = "DISAVER 50 MG ФИЛЬМ-КАПЛИ ТАБЛЕТКИ"
+DISAVER_BARCODE = "8699536090170"
+
+
+def _equivalents(text, barcode=DISAVER_BARCODE):
+    return {"attributes": {"barcode": barcode, "source_tabs": {"equivalents": {"text": text}}}}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Текущая вёрстка: строка названия, под ней «BARKOD <код>»; сам препарат — среди аналогов.
+        f"SERTRALIN 50 MG 28 TABLET\nBARKOD 8699546090114\n{DISAVER}\nBARKOD {DISAVER_BARCODE}",
+        f"{DISAVER}\nBarkod: {DISAVER_BARCODE}\nATC Kodu: N06AB06",
+        f"SERTRALIN 50 MG 28 TABLET\nBARKOD\n8699546090114\n{DISAVER}\nBARKOD\n{DISAVER_BARCODE}",
+    ],
+)
+def test_source_name_is_found_in_equivalents_by_own_barcode(text):
+    assert equivalents_source_name(_equivalents(text)) == DISAVER
+
+
+@pytest.mark.parametrize(
+    "external_data",
+    [
+        _equivalents("SERTRALIN 50 MG 28 TABLET\nBARKOD 8699546090114"),  # своего штрихкода нет
+        _equivalents(f"{DISAVER}\nBARKOD {DISAVER_BARCODE}", barcode=""),
+        {"attributes": {"barcode": DISAVER_BARCODE}},
+        None,
+    ],
+)
+def test_equivalents_without_own_barcode_give_nothing(external_data):
+    assert equivalents_source_name(external_data) == ""
+
+
+def test_medicine_source_name_prefers_stored_then_untouched_name_then_equivalents():
+    equivalents = _equivalents(f"{DISAVER}\nBARKOD {DISAVER_BARCODE}")
+
+    assert medicine_source_name("Дисавер 50 мг", {**equivalents, "source_name": "DISAVER 50 MG"}) == (
+        "DISAVER 50 MG", "source_name",
+    )
+    assert medicine_source_name("DISAVER 50 MG 28 TABLET", equivalents) == ("DISAVER 50 MG 28 TABLET", "name")
+    assert medicine_source_name(DISAVER_RU, equivalents) == (DISAVER, "equivalents")
+    assert medicine_source_name("MOUNJARO 7", equivalents) == (DISAVER, "equivalents")
+    # Турецкого названия нет нигде — остаётся name, нужен перескрейп.
+    assert medicine_source_name(DISAVER_RU, {}) == (DISAVER_RU, "name")
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [(DISAVER, True), (DISAVER_RU, False), ("MOUNJARO 7", False), ("DERMOVATE %0,05", True), ("", False)],
+)
+def test_looks_like_source_name(name, expected):
+    assert looks_like_source_name(name) is expected
+
+
+def _medicine_with(name, external_data, slug):
+    category, _ = Category.objects.get_or_create(slug="source-name-medicines", defaults={"name": "Медицина"})
+    medicine = MedicineProduct.objects.create(
+        name=name, slug=slug, category=category, external_data=external_data
+    )
+    medicine.refresh_from_db()
+    return medicine
+
+
+def test_template_is_built_from_equivalents_when_name_is_translated():
+    medicine = _medicine_with(DISAVER_RU, _equivalents(f"{DISAVER}\nBARKOD {DISAVER_BARCODE}"), "disaver-ru")
+    generator = _generator(RecordingLLM())
+
+    input_data = generator._collect_input_data(medicine.base_product)
+    code_fields = generator._build_medicine_code_fields(input_data, allow_llm=False)
+
+    assert input_data["name"] == DISAVER
+    assert code_fields["title"] == build_medicine_title(DISAVER)
+    assert code_fields["title"]["ru"] == "DISAVER 50 мг, таблетки, покрытые плёночной оболочкой, 28 шт."
+
+
+def test_template_title_is_validated_against_turkish_source_not_translated_name():
+    medicine = _medicine_with(DISAVER_RU, _equivalents(f"{DISAVER}\nBARKOD {DISAVER_BARCODE}"), "disaver-check")
+    title = build_medicine_title(DISAVER)
+    validator = SemanticValidator()
+
+    report = validator.validate(
+        medicine.base_product, generated_titles=title, dynamic_attributes=[]
+    )
+    # Фасовка источника («28 TABLET») обязательна и для названия от модели.
+    no_pack = validator.validate(
+        medicine.base_product,
+        generated_titles={"ru": "DISAVER 50 мг, таблетки, покрытые плёночной оболочкой"},
+        dynamic_attributes=[],
+    )
+
+    assert report.reasons == []
+    assert no_pack.reasons == ["title_identity_lost"]
+
+
+def test_first_ai_title_keeps_turkish_name_in_source_name():
+    medicine = _medicine_with(DISAVER, {"source": "ilacfiyati"}, "disaver-apply")
+    product = medicine.base_product
+    applier = AIResultApplier()
+
+    applier.apply_to_product(product, {"generated_title": "DISAVER 50 мг, таблетки, 28 шт."})
+    product.refresh_from_db()
+    applier.apply_to_product(product, {"generated_title": "DISAVER 50 мг, таблетки, покрытые оболочкой, 28 шт."})
+
+    product.refresh_from_db()
+    medicine.refresh_from_db()
+    assert product.name == medicine.name == "DISAVER 50 мг, таблетки, покрытые оболочкой, 28 шт."
+    # Второе применение не затирает оригинал прежним RU-названием.
+    assert product.external_data["source_name"] == medicine.external_data["source_name"] == DISAVER
+    assert product.external_data["source"] == "ilacfiyati"
+
+
+@pytest.mark.parametrize("name", [DISAVER_RU, "MOUNJARO 7"])
+def test_translated_or_truncated_name_is_not_kept_as_source_name(name):
+    medicine = _medicine_with(name, {}, f"broken-{abs(hash(name)) % 10**6}")
+
+    AIResultApplier().apply_to_product(medicine.base_product, {"generated_title": "DISAVER 50 мг, 28 шт."})
+
+    medicine.base_product.refresh_from_db()
+    assert "source_name" not in medicine.base_product.external_data
+
+
+def test_reprocessing_of_applied_medicine_rebuilds_template_and_passes_validation():
+    # До 20.10.2026: после применения name = RU-название, шаблон не строился,
+    # и копия названия уходила в модерацию (title_source_translated).
+    medicine = _medicine_with(DISAVER, {}, "disaver-reprocess")
+    product = medicine.base_product
+    title = build_medicine_title(DISAVER)
+    AIResultApplier().apply_to_product(product, {"generated_title": title["ru"]})
+    product.refresh_from_db()
+    generator = _generator(RecordingLLM())
+
+    input_data = generator._collect_input_data(product)
+    code_fields = generator._build_medicine_code_fields(input_data, allow_llm=False)
+    report = SemanticValidator().validate(product, generated_titles=title, dynamic_attributes=[])
+
+    assert product.name == title["ru"]
+    assert input_data["name"] == DISAVER
+    assert code_fields["title"] == title
+    assert report.reasons == []
+
+
+def test_paragraph_batch_keys_use_brand_of_turkish_original():
+    # Обработка маскирует бренд из турецкого оригинала — пакет обязан строить те же ключи.
+    from apps.ai.management.commands.medicine_paragraph_batch import Command
+
+    paragraph = "DISAVER'i çocukların göremeyeceği yerde saklayınız ve ambalajında muhafaza ediniz."
+    MedicineProduct.objects.create(
+        name="Дисавер 50 мг, таблетки, 28 шт.",  # бренд из RU-названия не совпал бы с источником
+        slug="batch-source-name",
+        is_active=True,
+        external_data={
+            "source_name": DISAVER,
+            "attributes": {"source_tabs": {"storage_conditions": {"text": paragraph}}},
+        },
+    )
+
+    paragraphs = Command()._missing_paragraphs({"limit_products": 0})
+
+    assert paragraphs == [normalize_paragraph(paragraph, "DISAVER")]
+    assert paragraphs[0].startswith(f"{BRAND_TOKEN}'i ")
+
