@@ -69,12 +69,17 @@ def test_currency_change_is_updated_even_when_numeric_amount_is_equal():
 
 
 @pytest.mark.django_db
-def test_zero_source_price_is_not_treated_as_missing():
+def test_zero_source_price_is_not_written_to_storefront():
+    # 0 у источника — «цена не опубликована»: ноль на витрину не пишется и
+    # не превращает прежнюю цену в «скидку 100 %» (DEVELOPMENT_RULES §5.1).
     svc, session, product = _setup()
+    svc._update_existing_product(session, _scraped(), product)
+    product.refresh_from_db()
     action, updated = svc._update_existing_product(session, _scraped(price=0), product)
     updated.refresh_from_db()
-    assert action == "updated"
-    assert updated.price == 0
+    assert action == "skipped"
+    assert updated.price == 100
+    assert updated.old_price is None
 
 
 @pytest.mark.django_db

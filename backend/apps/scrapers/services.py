@@ -3406,15 +3406,21 @@ class ScraperIntegrationService:
             if not price_refresh_disabled:
                 source_currency = str(scraped_product.currency or "").strip().upper()
                 current_currency = str(existing_product.currency or "").strip().upper()
+                source_price = scraped_product.price
+                if source_price is not None and source_price <= 0:
+                    # 0 у источника — «цена не опубликована», а не бесплатно:
+                    # ноль на витрину не пишем (DEVELOPMENT_RULES §5.1), как и
+                    # при создании товара.
+                    source_price = None
                 price_changed = (
-                    scraped_product.price is not None
-                    and scraped_product.price != existing_product.price
+                    source_price is not None
+                    and source_price != existing_product.price
                 )
                 currency_changed = bool(source_currency and source_currency != current_currency)
                 if price_changed or currency_changed:
                     existing_product.old_price = existing_product.price
-                    if scraped_product.price is not None:
-                        existing_product.price = scraped_product.price
+                    if source_price is not None:
+                        existing_product.price = source_price
                     if source_currency:
                         existing_product.currency = source_currency
                     updated = True
