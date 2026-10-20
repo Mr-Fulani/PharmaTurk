@@ -27,6 +27,13 @@ Bershka, Flo, Pull&Bear, Massimo Dutti — это не обход каталог
 июля висит 403 (сейчас карточки обновляются, ошибка старая — поле не очищается
 при успехе). У IlacFiyati — «No space left on device» от 15.07.
 
+> Уточнение 2026-10-20 ([AUDIT_2026-10-20_PARSERS.md](AUDIT_2026-10-20_PARSERS.md)):
+> обновление карточки при открытии (`product_card_source_refresh.py`) не
+> создаёт `ScrapingSession` и не трогает `ScraperConfig`; сессии с
+> `max_products` 1–2 у LCW/Ikea создал, вероятно, `repair_broken_media --rescrape`
+> (18.10). Успешный прогон теперь очищает `last_error_message` и снимает
+> статус «Ошибка».
+
 ## 900 активных товаров без картинки
 
 | Что | Сколько |

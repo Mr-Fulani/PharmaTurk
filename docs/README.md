@@ -34,6 +34,7 @@
 | [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict) с Origin Certificate на 443, закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-10-19 |
 | [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md) | под root: обновления ОС и Docker, swap, журнал systemd, перезагрузка в тихий час | 2026-10-19 |
 | [AUDIT_2026-10-19_PARSERS_CATALOG.md](AUDIT_2026-10-19_PARSERS_CATALOG.md) | почему не запускаются Instagram/UmmaLand/Akakce, товары без картинки и цены, сброс интервалов beat при деплое | отчёт 2026-10-19 |
+| [AUDIT_2026-10-20_PARSERS.md](AUDIT_2026-10-20_PARSERS.md) | живые пробы всех 13 парсеров, найденные и исправленные баги, что решить по Instagram/UmmaLand/akakce/ilacabak | отчёт 2026-10-20 |
 | [PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md) | Bright Data proxy/Web Unlocker: тарифы, бюджет, возможности и безопасное переиспользование | актуализирован 2026-08-31 |
 | [SOURCE_OFFER_CART_API.md](SOURCE_OFFER_CART_API.md) | Cart API: verification fields, issue codes, 409/503 и действия клиента | актуализирован 2026-08-27 |
 | [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | актуализирован и проверен 2026-08-21 |
