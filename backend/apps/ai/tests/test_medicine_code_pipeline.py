@@ -1,6 +1,7 @@
 """Лекарства: справочные поля, МНН, название и разделы — кодом и памятью переводов."""
 
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -11,7 +12,9 @@ from apps.ai.services.medicine_memory import (
     BRAND_TOKEN,
     INN_NAMESPACE,
     PARAGRAPH_NAMESPACE,
+    items_from_user_prompt,
     normalize_paragraph,
+    split_paragraphs,
     translate_active_ingredient,
 )
 from apps.ai.services.medicine_reference import translate_reference_field, translate_volume
@@ -333,6 +336,85 @@ def test_paragraph_batch_masks_brand_like_regular_processing():
     assert list(Command()._missing_paragraphs({"limit_products": 0})) == [
         normalize_paragraph(_branded("MAJEZIK'i"), "MAJEZIK")
     ]
+
+
+# Строки, на которые парсер разрезал одно предложение строчным тегом (<b>, <sup>,
+# <sub>, <a>), — примеры со страниц ilacfiyati.com.
+CUT_SENTENCES = [
+    (
+        "Somatropine veya NORDITROPIN\n®\n'un içerisindeki herhangi bir bileşene karşı alerjiniz varsa.",
+        "Somatropine veya NORDITROPIN®'un içerisindeki herhangi bir bileşene karşı alerjiniz varsa.",
+    ),
+    ("NORDITROPIN\n'in yiyecek ve içecek ile kullanılması", "NORDITROPIN'in yiyecek ve içecek ile kullanılması"),
+    ("EPORON\n®\ntedavisinin gerekli olduğuna karar verebilir.", "EPORON® tedavisinin gerekli olduğuna karar verebilir."),
+    ("1. EPORON\n®\nNEDİR VE NE İÇİN KULLANILIR?", "1. EPORON® NEDİR VE NE İÇİN KULLANILIR?"),
+    ("MON.LUTEC\nile radyoaktif olarak işaretlenen ilacın uygulanması", "MON.LUTEC ile radyoaktif olarak işaretlenen ilacın uygulanması"),
+    ("DERHAL\ndoktorunuza başvurunuz:", "DERHAL doktorunuza başvurunuz:"),
+    ("A\nşağıdakilerden biri olursa kullanmayı durdurunuz.", "Aşağıdakilerden biri olursa kullanmayı durdurunuz."),
+    ("Kanda B\n12\nvitamini konsantrasyonunu azaltabilir.", "Kanda B12 vitamini konsantrasyonunu azaltabilir."),
+    ("günde bir defa 150 mg/m\n2\n'ye kadar", "günde bir defa 150 mg/m2'ye kadar"),
+    (
+        "Ayrıca karşılaştığınız yan etkileri\nwww.titck.gov.tr\nsitesinde yer alan ikona tıklayarak bildiriniz.",
+        "Ayrıca karşılaştığınız yan etkileri www.titck.gov.tr sitesinde yer alan ikona tıklayarak bildiriniz.",
+    ),
+    ("25\no\nC altındaki oda sıcaklığında saklayınız.", "25o C altındaki oda sıcaklığında saklayınız."),
+    ("Bu durum sizin için geçerliyse\n, doktorunuza danışınız.", "Bu durum sizin için geçerliyse, doktorunuza danışınız."),
+]
+
+# Строки — отдельные абзацы: списки, таблица доз, нумерация, заголовки, реквизиты.
+KEPT_LINES = [
+    "Yaygın:\nbaş ağrısı\nbulantı\nishal",
+    "Yaygın olmayan yan etkiler\ngöz kapağında kaşıntı\ngörme bozuklukları",
+    "AUGMENTİN ES miktarı\n8\nGünde iki kez 3 ml\n12\nGünde iki kez 4,5 ml",
+    "1.\nEPORON nedir ve ne için kullanılır?\n2.\nEPORON'u kullanmadan önce dikkat edilmesi gerekenler",
+    "2. EPORON'U KULLANMADAN ÖNCE DİKKAT EDİLMESİ GEREKENLER\nEPORON'u aşağıdaki durumlarda KULLANMAYINIZ",
+    "Ruhsat sahibi:\nAbdi İbrahim İlaç San. ve Tic. A.Ş.\nReşitpaşa Mah. Eski Büyükdere Cad. No:4\n34467 Maslak / İstanbul",
+    "Bu ilacı kullanmadan önce bu kullanma talimatını dikkatlice okuyunuz.\n"
+    "Bu ilaç kişisel olarak sizin için reçete edilmiştir, başkalarına vermeyiniz.",
+    "Ambalajında saklayınız.\n25\nderecenin altında tutunuz.",
+    # Через пустую строку не клеится.
+    "Somatropine veya NORDITROPIN\n\n'un içerisindeki herhangi bir bileşene karşı alerjiniz varsa.",
+]
+
+
+@pytest.mark.parametrize("text, paragraph", CUT_SENTENCES)
+def test_line_cut_by_inline_tag_is_glued_to_its_sentence(text, paragraph):
+    assert split_paragraphs(text) == [paragraph]
+
+
+@pytest.mark.parametrize("text", KEPT_LINES)
+def test_regular_lines_stay_separate_paragraphs(text):
+    assert split_paragraphs(text) == re.split(r"(\n+)", text)
+
+
+def test_glued_sentence_gets_one_memory_key_with_canonical_suffix():
+    paragraph = split_paragraphs(CUT_SENTENCES[0][0])[0]
+    key = "Somatropine veya {BRAND}'in içerisindeki herhangi bir bileşene karşı alerjiniz varsa."
+    assert normalize_paragraph(paragraph, "NORDITROPIN") == key
+    assert normalize_paragraph("Somatropine veya MAJEZİK'in içerisindeki herhangi bir bileşene karşı "
+                               "alerjiniz varsa.", "MAJEZIK") == key
+    # Знак ® после бренда в ключ не попадает и суффикс после него приводится к одной форме.
+    assert normalize_paragraph("2. EPORON®'U KULLANMADAN ÖNCE", "EPORON") == "2. {BRAND}'i KULLANMADAN ÖNCE"
+
+
+def test_cut_sentence_is_translated_as_one_paragraph():
+    source = "Somatropine veya MAJEZIK\n®\n'in içerisindeki herhangi bir bileşene karşı alerjiniz varsa."
+    key = "Somatropine veya {BRAND}'in içerisindeki herhangi bir bileşene karşı alerjiniz varsa."
+    llm = RecordingLLM(paragraphs={key: (
+        "Если у вас аллергия на соматропин или любой компонент препарата {BRAND}.",
+        "If you are allergic to somatropin or any of the ingredients of {BRAND}.",
+    )})
+    content = {"ru": {}, "en": {}}
+
+    _generator(llm)._translate_medicine_source_sections(
+        content, {"contraindications": source}, product_id=5, brand="MAJEZIK"
+    )
+
+    calls = llm.calls_of("абзацы")
+    assert len(calls) == 1 and items_from_user_prompt(calls[0]["user_prompt"]) == {"1": key}
+    assert content["ru"]["contraindications"] == (
+        "Если у вас аллергия на соматропин или любой компонент препарата MAJEZIK."
+    )
 
 
 def test_title_template_from_structured_name():
