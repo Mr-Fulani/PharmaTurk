@@ -438,10 +438,15 @@ def test_medicine_ru_translation_allows_official_turkish_acronym():
         "Сообщить о реакции также можно в Турецкий центр фармаконадзора TÜFAM. "
         * 8
     )
+    english = (
+        "If side effects occur, contact your doctor or pharmacist. "
+        "You can also report the reaction to the Turkish Pharmacovigilance Center TÜFAM. "
+        * 8
+    )
     source = "Yan etki bildirimi hakkında resmi hasta bilgilendirme metni. " * 10
 
     assert generator._looks_untranslated_turkish(translated) is False
-    assert paragraph_problems(source, translated, "If side effects occur, contact your doctor. " * 10) == []
+    assert paragraph_problems(source, translated, english) == []
 
 
 def test_medicine_ru_translation_repair_catches_cyrillic_turkish_transliteration():

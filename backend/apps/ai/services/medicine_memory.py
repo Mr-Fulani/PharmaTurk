@@ -19,6 +19,7 @@ from functools import lru_cache
 from typing import Any, Callable, Optional
 
 from apps.ai.services.medicine_fact_check import doses_match, inn_matches, is_proper_name_line
+from apps.ai.services.medicine_paragraph_check import item_problems, request_shift
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.translation_memory import lookup, normalize_source_text, remember, source_hash
@@ -369,6 +370,8 @@ def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
         problems.append("too_short")
     if BRAND_TOKEN in source and (BRAND_TOKEN not in ru or BRAND_TOKEN not in en):
         problems.append("brand_token_missing")
+    # Чужой перевод: номер заголовка, числа, длина, RU≠EN, понятия, частота.
+    problems.extend(item_problems(source, ru, en))
     return problems
 
 
@@ -377,15 +380,24 @@ def paragraph_items(batch: list[str]) -> dict[str, str]:
 
 
 def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, dict]:
-    """Ответ модели по абзацам → (принятые {текст: {ru, en}}, отклонённые {текст: причины})."""
+    """Ответ модели по абзацам → (принятые {текст: {ru, en}}, отклонённые {текст: причины}).
+
+    Кроме проверок каждого абзаца ищется сдвиг ответа: модель пропустила
+    элемент, и ключам достались переводы соседних абзацев (``shifted``).
+    """
     payload = payload if isinstance(payload, dict) else {}
     ru_payload = payload.get("ru") if isinstance(payload.get("ru"), dict) else {}
     en_payload = payload.get("en") if isinstance(payload.get("en"), dict) else {}
+    keys = list(items)
+    ru_texts = [str(ru_payload.get(key) or "").strip() for key in keys]
+    en_texts = [str(en_payload.get(key) or "").strip() for key in keys]
+    shifted = request_shift([items[key] for key in keys], ru_texts, en_texts)
     accepted, rejected = {}, {}
-    for key, source in items.items():
-        ru = str(ru_payload.get(key) or "").strip()
-        en = str(en_payload.get(key) or "").strip()
+    for index, (key, ru, en) in enumerate(zip(keys, ru_texts, en_texts)):
+        source = items[key]
         problems = paragraph_problems(source, ru, en)
+        if index in shifted:
+            problems.append("shifted")
         if problems:
             rejected[source] = problems
         else:
