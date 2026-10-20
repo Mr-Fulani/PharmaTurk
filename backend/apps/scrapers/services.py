@@ -4732,8 +4732,19 @@ class DeduplicationService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
+    # Поля, которые реально нужны сравнению. Полная загрузка всех товаров
+    # (описания, external_data лекарств) не помещалась в лимит воркера.
+    SCAN_FIELDS = (
+        "id", "name", "product_type", "category_id", "brand_id", "created_at", "updated_at",
+        *STRONG_MATCH_FIELDS,
+    )
+    SCAN_EXTERNAL_KEYS = ("source", "source_variant_id", "source_variant_slug")
+
     @staticmethod
     def _safe_external_data(product: Product) -> Dict[str, Any]:
+        light = getattr(product, "_dedup_external_data", None)
+        if light is not None:
+            return light
         return product.external_data if isinstance(product.external_data, dict) else {}
 
     @classmethod
@@ -4840,10 +4851,21 @@ class DeduplicationService:
         """Находит кандидатов в дубликаты товаров по набору сигналов."""
         candidates: List[Dict[str, Any]] = []
         seen_pair_keys: set[str] = set()
-        products = list(
-            Product.objects.select_related("brand", "category").all()
+        from django.db.models.fields.json import KT
+
+        queryset = Product.objects.only(*self.SCAN_FIELDS).annotate(
+            **{f"dedup_{key}": KT(f"external_data__{key}") for key in self.SCAN_EXTERNAL_KEYS}
         )
-        products = [product for product in products if not self._is_shadow_variant_product(product)]
+        products = []
+        for product in queryset.iterator(chunk_size=2000):
+            # Только нужные ключи external_data, без загрузки всего JSON.
+            product._dedup_external_data = {
+                key: getattr(product, f"dedup_{key}")
+                for key in self.SCAN_EXTERNAL_KEYS
+                if getattr(product, f"dedup_{key}")
+            }
+            if not self._is_shadow_variant_product(product):
+                products.append(product)
 
         buckets: Dict[Tuple[str, str], List[Product]] = {}
         for product in products:
