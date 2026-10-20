@@ -3554,6 +3554,12 @@ class ScraperIntegrationService:
             existing_product.external_data.setdefault("source", scraped_product.source)
         if scraped_product.scraped_at:
             existing_product.external_data["scraped_at"] = scraped_product.scraped_at
+        if scraped_product.source == "ilacfiyati" and not is_variant_update:
+            from apps.ai.services.ownership import remember_source_name
+
+            # name у товара с AI-результатом переведён, а шаблон названия
+            # лекарства строится только из турецкого оригинала.
+            remember_source_name(existing_product.external_data, scraped_product.name)
         if prepared_attrs:
             if is_variant_update:
                 variant_content = existing_product.external_data.get("variant_content") or {}
@@ -4547,6 +4553,8 @@ class ScraperIntegrationService:
                 "scraped_at": scraped_product.scraped_at,
                 "attributes": prepared_attrs,
                 "stock_quantity": scraped_product.stock_quantity,
+                # Турецкий оригинал для шаблона названия (см. _update_existing_product_impl).
+                **({"source_name": scraped_product.name} if scraped_product.source == "ilacfiyati" else {}),
             },
             barcode=scraped_product.barcode,
         )

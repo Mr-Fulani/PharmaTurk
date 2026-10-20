@@ -11,7 +11,13 @@ from apps.catalog.category_policy import CATEGORY_POLICY_OVERRIDES, build_catego
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_fact_check import strip_proper_name_lines
 from apps.ai.services.medicine_reference import fold_tr
-from apps.ai.services.medicine_title import FORM_PHRASES, is_form_word
+from apps.ai.services.medicine_title import (
+    CYRILLIC_RE,
+    FORM_PHRASES,
+    TRUNCATED_TITLE_RE,
+    is_form_word,
+    medicine_source_name,
+)
 from apps.ai.services.rules.vocab import fold, generic_title_words
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
@@ -147,11 +153,6 @@ _MEDICINE_RU_TITLE_TRANSLITERATIONS = re.compile(
     r"(?<![а-яё])ив(?![а-яё])|(?<![а-яё])сет(?![а-яё])|%\s*\d)",
     re.IGNORECASE,
 )
-# Название лекарства, обрезанное прежней обработкой на десятичном разделителе:
-# «MOUNJARO 7» (7,5 MG), «DIFFERIN 0» (%0,1), «Аугментин 200 мг/28», «Кенакорт %0».
-# «% 0,1» и «%5» — турецкая запись процента, а не обрезка.
-_MEDICINE_TITLE_TRUNCATED = re.compile(r"(?:(?<![\w%.,-])(?<!%\s)\d+(?:[.,/]\d+)*|%\s*0)\s*$")
-_CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 # Латиница в RU-названии лекарства допустима только в бренде источника и в этих обозначениях.
 _MEDICINE_RU_TITLE_LATIN_OK = frozenset({
     "IV", "IM", "SC", "SR", "XR", "MR", "CR", "XL", "LA", "ER", "EC", "ODT", "RETARD", "FORTE",
@@ -184,9 +185,9 @@ def _medicine_title_problem(title: Any, source_name: Any) -> str:
     Исправленное модератором название проходит: проверяется сам результат.
     """
     text = str(title or "")
-    if _MEDICINE_TITLE_TRUNCATED.search(text):
+    if TRUNCATED_TITLE_RE.search(text):
         return "title_truncated"
-    if _CYRILLIC.search(str(source_name or "")) and _normalized(text) == _normalized(source_name):
+    if CYRILLIC_RE.search(str(source_name or "")) and _normalized(text) == _normalized(source_name):
         return "title_source_translated"
     return ""
 
@@ -586,7 +587,14 @@ class SemanticValidator:
         identity_tokens = (
             _medicine_identity_tokens if product_type == "medicines" else _identity_tokens
         )
-        original_tokens = identity_tokens(getattr(product, "name", ""))
+        # Лекарство сверяется с турецким оригиналом, из которого строится шаблон:
+        # name после применения AI переведён, у старых товаров ещё и обрезан.
+        source_name = (
+            medicine_source_name(getattr(product, "name", ""), getattr(product, "external_data", None))[0]
+            if product_type == "medicines"
+            else getattr(product, "name", "")
+        )
+        original_tokens = identity_tokens(source_name)
         if product_type == "supplements":
             identity_tokens = _supplement_identity_tokens
             original_tokens = _supplement_identity_tokens(getattr(product, "name", ""), source=True)
@@ -601,7 +609,7 @@ class SemanticValidator:
             if not str(title or "").strip():
                 continue
             medicine_problem = (
-                _medicine_title_problem(title, getattr(product, "name", ""))
+                _medicine_title_problem(title, source_name)
                 if product_type == "medicines"
                 else ""
             )
@@ -616,7 +624,7 @@ class SemanticValidator:
             ) or (
                 locale == "ru"
                 and product_type == "medicines"
-                and _medicine_ru_title_untranslated(title, getattr(product, "name", ""))
+                and _medicine_ru_title_untranslated(title, source_name)
             ):
                 report.rejected_fields.add("title")
                 report.reasons.append("title_untranslated")

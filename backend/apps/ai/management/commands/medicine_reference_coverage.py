@@ -24,7 +24,7 @@ from apps.ai.services.medicine_memory import (
     split_paragraphs,
 )
 from apps.ai.services.medicine_reference import CODE_FIELDS, translate_reference_field
-from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
+from apps.ai.services.medicine_title import build_medicine_title, medicine_source_name, paragraph_brand
 from apps.ai.services.translation_memory import source_hash
 from apps.ai.models import AITranslationMemory
 from apps.catalog.models import MedicineProduct
@@ -87,7 +87,8 @@ class Command(BaseCommand):
         total_chars = 0
         rows = qs.values_list("name", "active_ingredient", "external_data")
         for name, active_ingredient, external_data in rows.iterator(chunk_size=500):
-            brand = paragraph_brand(name, active_ingredient)
+            # Ключи абзацев — как при обработке: бренд из турецкого оригинала.
+            brand = paragraph_brand(medicine_source_name(name, external_data)[0], active_ingredient)
             for text in source_tab_texts(external_data):
                 for part in split_paragraphs(text)[::2]:
                     if needs_translation(part):

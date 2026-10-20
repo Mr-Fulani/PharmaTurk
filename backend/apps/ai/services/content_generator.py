@@ -56,7 +56,7 @@ from apps.ai.services.medicine_reference import (
     meaningful_special_notes,
     neutral_prescription_text,
 )
-from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
+from apps.ai.services.medicine_title import build_medicine_title, medicine_source_name, paragraph_brand
 from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
 from apps.ai.services.result_applier import build_content_snapshot
 from apps.ai.services.rules.pipeline import (
@@ -617,6 +617,10 @@ class ContentGenerator:
             "brand": product.brand.name if product.brand else None,
             "category_context": self._get_category_context(product),
         }
+        if product.product_type == "medicines":
+            # Шаблон названия, промпт и бренд абзацев — по турецкому оригиналу:
+            # name после применения AI переведён, у старых товаров ещё и обрезан.
+            data["name"] = medicine_source_name(product.name, product.external_data)[0]
 
         variant_context = self._collect_variant_context(product)
         if variant_context:
