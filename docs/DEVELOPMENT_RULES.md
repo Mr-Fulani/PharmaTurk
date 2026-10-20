@@ -37,6 +37,11 @@ docker-compose за nginx и Cloudflare.
    персонализации. Ответ с пользовательскими/currency-cookie либо `Set-Cookie`
    должен использовать `private, no-store`. Персонализацию по возможности
    загружать на клиенте, не включать в общий SSR-кэш.
+   Ответ-ошибка в CDN-кэш не попадает: при 500 (исключение в gSSP или в рендере)
+   `pages/_error.tsx` перезаписывает заголовок на `private, no-store`, поэтому
+   public-кэш можно ставить в начале gSSP и не сбрасывать перед `throw`.
+   Осознанный `notFound` (только по явному 404 API, §1.5) рендерит `404.tsx`,
+   он сохраняет кэш страницы. `getInitialProps` из `_error.tsx` не убирать.
 3. **Параллель, не серия:** несколько независимых запросов к API в gSSP — только `Promise.all/allSettled` с таймаутами. Циклы по страницам пагинации в SSR запрещены.
 4. **Запросы к БД:** новый list/detail-эндпоинт обязан иметь `select_related`/`prefetch_related` и `only()` по факту использования сериализатором. Проверка — `django-debug-toolbar`/`assertNumQueries` в тесте.
 5. **Медиа:** изображения — через `cdn.mudaroba.com` или proxy-media с `max_width`; в `<Image>` указывать `sizes`; `priority` — только для LCP-элемента. Видео никогда не стримить через Django, если есть прямой CDN-URL.
