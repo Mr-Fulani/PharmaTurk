@@ -65,6 +65,11 @@ def _get_media_bytes(client, url, headers):
     return _ranged_download(client, url, headers), ""
 
 
+def _looks_like_html(content) -> bool:
+    head = bytes(content[:512]).lstrip().lower()
+    return head.startswith((b"<!doctype html", b"<html", b"<head", b"<body"))
+
+
 def download_and_optimize_parsed_media(
     url,
     parser_name,
@@ -155,6 +160,11 @@ def download_and_optimize_parsed_media(
             try:
                 file_to_save = optimizer.optimize_image(BytesIO(content))
             except Exception as e:
+                if _looks_like_html(content):
+                    # Заглушка CDN/антибота (Range-фолбэк принимает любой 200):
+                    # сохранённая как .jpg, она становится битой картинкой в R2.
+                    logger.warning("Parsed media is an HTML page, not an image: %s", url)
+                    return ""
                 logger.warning("Image optimization failed, saving as-is: %s", e)
                 file_to_save = ContentFile(content)
         else:
