@@ -178,13 +178,8 @@ class IlacFiyatiParser(BaseScraper):
         """Авточепочка по ?pg= — для корневых каталогов и разделов БАДов."""
         return cls.is_ilacfiyati_listing_url(url)
 
-    def _extract_listing_product_urls(self, html: str) -> List[str]:
-        soup = BeautifulSoup(html, "html.parser")
-        urls = []
-
-        # Categories and real product cards use the same /ilaclar/<slug>
-        # shape. Scope extraction to the search-result cards so navigation
-        # and filter links cannot be persisted as products.
+    def _listing_results_root(self, soup: BeautifulSoup):
+        """Блок «Arama Sonuçları» листинга или ``None``, если его нет."""
         result_heading = next(
             (
                 heading
@@ -194,11 +189,20 @@ class IlacFiyatiParser(BaseScraper):
             ),
             None,
         )
-        results_root = (
+        return (
             result_heading.find_parent("div", class_="row")
             if result_heading is not None
             else None
         )
+
+    def _extract_listing_product_urls(self, html: str) -> List[str]:
+        soup = BeautifulSoup(html, "html.parser")
+        urls = []
+
+        # Categories and real product cards use the same /ilaclar/<slug>
+        # shape. Scope extraction to the search-result cards so navigation
+        # and filter links cannot be persisted as products.
+        results_root = self._listing_results_root(soup)
         if results_root is None:
             self.logger.warning(
                 "IlacFiyati: catalog results container was not found"
@@ -540,6 +544,17 @@ class IlacFiyatiParser(BaseScraper):
                     )
 
                 product_urls = self._extract_listing_product_urls(html)
+
+                if not product_urls and self._listing_results_root(
+                    BeautifulSoup(html, "html.parser")
+                ) is None:
+                    # Конец каталога и пустая выборка сохраняют заголовок
+                    # «Arama Sonuçları»; без него это смена вёрстки или
+                    # страница защиты, а не «товары закончились».
+                    raise IlacFiyatiSourceError(
+                        f"IlacFiyati: на странице каталога нет блока «Arama Sonuçları» "
+                        f"(вёрстка изменилась или это страница защиты): {url}"
+                    )
 
                 if not product_urls:
                     self.stop_reason = (
