@@ -31,7 +31,7 @@ services:
     command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis_data:/data
-    mem_limit: 256m
+    mem_limit: 192m
     networks: [data]
 
   # Кэш Django: только в памяти, старые ключи вытесняются сами (allkeys-lru),
@@ -163,7 +163,7 @@ services:
       QDRANT_PORT: 6333
       REDIS_CACHE_URL: redis://redis-cache:6379/0
     command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2 --max-memory-per-child=400000"
-    mem_limit: 640m
+    mem_limit: 512m
     networks: [data, egress]
 
   celery_recsys:
