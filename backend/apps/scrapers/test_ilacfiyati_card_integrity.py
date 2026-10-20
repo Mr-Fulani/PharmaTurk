@@ -105,6 +105,53 @@ def test_missing_inline_section_does_not_read_whole_page():
     assert parser._extract_tab_text(soup, "side_effects") == ""
 
 
+@pytest.mark.parametrize(
+    "html, expected",
+    [
+        (  # бренд в <b>, ® в <sup>, суффикс после него — одна строка, а не три
+            "<p>Somatropine veya <b>NORDITROPIN</b><sup>®</sup>'un içerisindeki maddelere alerjiniz varsa.</p>",
+            "Somatropine veya NORDITROPIN®'un içerisindeki maddelere alerjiniz varsa.",
+        ),
+        (
+            "<p><b>EPORON</b><sup>®</sup> tedavisinin gerekli olduğuna doktorunuz karar verir.</p>",
+            "EPORON® tedavisinin gerekli olduğuna doktorunuz karar verir.",
+        ),
+        ("<p>Kanda B<sub>12</sub> vitamini düzeyi düşükse.</p>", "Kanda B12 vitamini düzeyi düşükse."),
+        ("<p>25 <sup>o</sup>C altındaki oda sıcaklığında saklayınız.</p>", "25 oC altındaki oda sıcaklığında saklayınız."),
+        (
+            '<p>Yan etkileri <a href="http://www.titck.gov.tr">www.titck.gov.tr</a> sitesine bildiriniz.</p>',
+            "Yan etkileri www.titck.gov.tr sitesine bildiriniz.",
+        ),
+        (  # пункты списка — отдельные строки, строчный тег внутри пункта — нет
+            "<ul><li>baş ağrısı</li>\n<li><i>bulantı</i>, kusma</li></ul>",
+            "baş ağrısı\nbulantı, kusma",
+        ),
+        (  # таблица доз: ячейка — строка
+            "<table><tr><td><b>Yaş</b></td><td>Doz</td></tr>"
+            "<tr><td>2-6 yaş</td><td>Günde iki kez <b>5 ml</b></td></tr></table>",
+            "Yaş\nDoz\n2-6 yaş\nGünde iki kez 5 ml",
+        ),
+        ("<p>İlk satır<br>ikinci satır</p>", "İlk satır\nikinci satır"),
+        (  # реклама посреди предложения не режет строку
+            '<p>Her bir ARYOSEVEN<div class="text-center my-4"><ins class="adsbygoogle"></ins>'
+            "<script>(adsbygoogle = window.adsbygoogle || []).push({});</script></div>"
+            "<sup>®</sup>'in flakonu kullanılır.</p>",
+            "Her bir ARYOSEVEN®'in flakonu kullanılır.",
+        ),
+        (  # перевод строки в исходнике HTML — пробел
+            "<p>\n  Doktorunuza\n  <b>DERHAL</b> danışınız.\n</p><p>Yeni paragraf.</p>",
+            "Doktorunuza DERHAL danışınız.\nYeni paragraf.",
+        ),
+    ],
+)
+def test_inline_section_breaks_lines_only_between_blocks(html, expected):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    soup = BeautifulSoup(
+        f'<div id="medicineAccordion"><div id="content-yan-etkileri">{html}</div></div>', "html.parser"
+    )
+    assert parser._extract_tab_text(soup, "side_effects") == expected
+
+
 def test_repeated_current_parse_produces_identical_content(monkeypatch):
     parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
     monkeypatch.setattr(parser, "_make_request", lambda url: CURRENT_HTML)
