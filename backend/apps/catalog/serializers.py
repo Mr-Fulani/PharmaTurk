@@ -1192,7 +1192,7 @@ def card_variant_main_gallery(obj, variant_image_serializer_cls, context):
 
 
 # ---------------------------------------------------------------------------
-# Варианты и их картинки из prefetch-кэша
+# Варианты и картинки (вариантов и товаров) из prefetch-кэша
 # ---------------------------------------------------------------------------
 def _prefetched_related(instance, relation):
     """Объекты связи из prefetch-кэша или None, если связь не prefetch-нута.
@@ -1224,7 +1224,7 @@ def _prefetched_active_variants(obj):
 
 
 def _variant_cover_image(variant, *, fallback_to_first=True):
-    """Главная картинка варианта (is_main, иначе первая) — из prefetch-кэша, если он есть."""
+    """Главная картинка варианта или товара (is_main, иначе первая) — из prefetch-кэша, если он есть."""
     images = _prefetched_related(variant, "images")
     if images is None:
         image = variant.images.filter(is_main=True).first()
@@ -1238,7 +1238,7 @@ def _variant_cover_image(variant, *, fallback_to_first=True):
 
 
 def _variant_images_by_sort_order(variant):
-    """``variant.images.all().order_by("sort_order")`` без запроса при prefetch."""
+    """``variant.images.all().order_by("sort_order")`` без запроса при prefetch (и для товара)."""
     images = _prefetched_related(variant, "images")
     if images is None:
         return variant.images.all().order_by("sort_order")
@@ -2543,18 +2543,12 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
                 return _resolve_media_url(v_main.image_url, request)
         gallery = getattr(obj, "images", None)
         if gallery:
-            main_img = obj.images.filter(is_main=True).first()
+            main_img = _variant_cover_image(obj)
             if main_img:
                 file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
                 if file_url:
                     return file_url
                 return _resolve_media_url(main_img.image_url, request)
-            first_img = obj.images.first()
-            if first_img:
-                file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
-                if file_url:
-                    return file_url
-                return _resolve_media_url(first_img.image_url, request)
         return None
     
     def get_video_url(self, obj):
@@ -2639,7 +2633,7 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
         if card is not None:
             return card
         product_rows = ClothingProductImageSerializer(
-            obj.images.all().order_by("sort_order"), many=True, context=self.context
+            _variant_images_by_sort_order(obj), many=True, context=self.context
         ).data
         variant = self._get_active_variant(obj)
         variant_rows = ClothingVariantImageSerializer(
@@ -3070,7 +3064,7 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
         if card is not None:
             return card
         product_rows = ShoeProductImageSerializer(
-            obj.images.all().order_by("sort_order"), many=True, context=self.context
+            _variant_images_by_sort_order(obj), many=True, context=self.context
         ).data
         variant = self._get_active_variant(obj)
         variant_rows = ShoeVariantImageSerializer(
@@ -3422,18 +3416,12 @@ class ElectronicsProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelS
             return _resolve_media_url(obj.main_image, request)
         gallery = getattr(obj, "images", None)
         if gallery:
-            main_img = obj.images.filter(is_main=True).first()
+            main_img = _variant_cover_image(obj)
             if main_img:
                 file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
                 if file_url:
                     return file_url
                 return _resolve_media_url(main_img.image_url, request)
-            first_img = obj.images.first()
-            if first_img:
-                file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
-                if file_url:
-                    return file_url
-                return _resolve_media_url(first_img.image_url, request)
         return None
     
     def get_price_formatted(self, obj):
@@ -3470,7 +3458,7 @@ class ElectronicsProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelS
         gallery = getattr(obj, "images", None)
         if not gallery:
             return []
-        return ElectronicsProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+        return ElectronicsProductImageSerializer(_variant_images_by_sort_order(obj), many=True).data
 
 class FurnitureProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений товаров мебели (галерея)."""
@@ -3900,9 +3888,9 @@ class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
                     variant_images, many=True, context=ctx
                 ).data
 
-        product_images = obj.images.all().order_by("sort_order")
+        product_images = _variant_images_by_sort_order(obj)
         product_rows: list = []
-        if product_images.exists():
+        if product_images:
             product_rows = FurnitureProductImageSerializer(
                 product_images, many=True, context=ctx
             ).data
@@ -4279,18 +4267,12 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
                 return _resolve_media_url(v_main.image_url, request)
         gallery = getattr(obj, "images", None)
         if gallery:
-            main_img = gallery.filter(is_main=True).first()
+            main_img = _variant_cover_image(obj)
             if main_img:
                 file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
                 if file_url:
                     return file_url
                 return _resolve_media_url(main_img.image_url, request)
-            first_img = gallery.first()
-            if first_img:
-                file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
-                if file_url:
-                    return file_url
-                return _resolve_media_url(first_img.image_url, request)
         return None
 
     def get_video_url(self, obj):
@@ -4426,7 +4408,7 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
         product_images = []
         if gallery:
             product_images = JewelryProductImageSerializer(
-                gallery.all().order_by("sort_order"),
+                _variant_images_by_sort_order(obj),
                 many=True,
                 context=self.context
             ).data
@@ -7330,7 +7312,7 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
-        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        img = _variant_cover_image(obj)
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:
@@ -7568,7 +7550,7 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
-        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        img = _variant_cover_image(obj)
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:
@@ -7806,7 +7788,7 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
             return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
-        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        img = _variant_cover_image(obj)
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:

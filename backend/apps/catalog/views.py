@@ -1074,6 +1074,7 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         'variants__sizes',
         'sizes',
         'dynamic_attributes__attribute_key',
+        'dynamic_attributes__attribute_key__translations',
         'category__translations',
         'brand__translations',
         'base_product__translations',
