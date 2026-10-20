@@ -1289,6 +1289,26 @@ def test_paragraph_batch_keys_use_brand_of_turkish_original():
     assert paragraphs[0].startswith(f"{BRAND_TOKEN}'i ")
 
 
+def test_coverage_report_counts_title_template_by_turkish_original():
+    # После массового AI name — RU-название; отчёт считает шаблон, как обработка.
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    for slug, external_data in (
+        ("coverage-source-name", {"source_name": DISAVER}),
+        ("coverage-equivalents", _equivalents(f"{DISAVER}\nBARKOD {DISAVER_BARCODE}")),
+        ("coverage-no-source", {}),  # турецкого названия нет — шаблон не строится
+    ):
+        MedicineProduct.objects.create(name=DISAVER_RU, slug=slug, is_active=True, external_data=external_data)
+    out = StringIO()
+
+    call_command("medicine_reference_coverage", stdout=out)
+
+    assert build_medicine_title(DISAVER_RU) is None
+    assert "Название по шаблону: 2 из 3" in out.getvalue()
+
+
 def test_medicine_source_names_command_reports_and_records_equivalents():
     from io import StringIO
 
