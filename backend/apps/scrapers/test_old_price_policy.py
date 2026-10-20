@@ -83,3 +83,21 @@ def test_new_product_gets_source_old_price():
     product.refresh_from_db()
     assert status == "created"
     assert (product.price, product.old_price) == (80, 120)
+
+
+def test_ummaland_detail_reads_strikethrough_price(monkeypatch):
+    from apps.scrapers.parsers.ummaland import UmmalandParser
+
+    html = """
+    <h1 class="product-block__heading">Большая книга РАМАДАНА</h1>
+    <div class="product-prices">
+      <div class="product-price"> 768 ₽</div>
+      <p class="product-old-price"> 960 ₽</p>
+    </div>
+    """
+    parser = UmmalandParser("https://umma-land.com")
+    monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: html if "product/" in url else None)
+
+    product = parser.parse_product_detail("https://umma-land.com/product/bolshaya-kniga-ramadana")
+
+    assert (product.price, product.old_price) == (Decimal("768"), Decimal("960"))

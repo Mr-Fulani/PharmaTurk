@@ -565,3 +565,14 @@ def test_scraper_service_routes_zara_category_to_list(monkeypatch):
             {"max_pages": 1, "start_page": 2},
         )
     ]
+
+
+def test_zara_sale_old_price_from_color(monkeypatch):
+    payload = _detail_payload()
+    payload["product"]["detail"]["colors"][0]["oldPrice"] = 349000
+    parser = ZaraParser()
+    monkeypatch.setattr(parser, "_make_ajax_request", lambda requested_url: _payload_html(payload))
+
+    product = parser.parse_product_detail("https://www.zara.com/tr/tr/kisa-balon-kollu-elbise-p03897114.html")
+
+    assert (product.price, product.old_price) == (2490.0, 3490.0)
