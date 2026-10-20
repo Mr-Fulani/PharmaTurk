@@ -5,7 +5,7 @@ import re
 import logging
 from decimal import Decimal
 from django.conf import settings
-from django.db.models import Count
+from django.db.models import Count, prefetch_related_objects
 from rest_framework import serializers
 
 logger = logging.getLogger(__name__)
@@ -1189,6 +1189,60 @@ def card_variant_main_gallery(obj, variant_image_serializer_cls, context):
         row["color"] = getattr(variant, "color", "") or ""
         rows.append(row)
     return rows or None
+
+
+# ---------------------------------------------------------------------------
+# Варианты и их картинки из prefetch-кэша
+# ---------------------------------------------------------------------------
+def _prefetched_related(instance, relation):
+    """Объекты связи из prefetch-кэша или None, если связь не prefetch-нута.
+
+    ``.filter()``/``.order_by()`` на менеджере идут мимо prefetch и бьют в БД.
+    """
+    rows = getattr(instance, "_prefetched_objects_cache", {}).get(relation)
+    return None if rows is None else list(rows)
+
+
+def _prefetched_active_variants(obj):
+    """Активные варианты товара из prefetch-кэша по (sort_order, id) или None.
+
+    None — варианты не prefetch-нуты, вызывающий код идёт в БД, как раньше.
+    Список мемоизируется на товаре, пока жив тот же prefetch-кэш: default/active
+    вариант сериализатор берёт до десятка раз на товар (страница бренда мебели
+    и одежды — ~300 запросов к вариантам на 24 товара).
+    """
+    prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("variants")
+    if prefetched is None:
+        return None
+    memo = obj.__dict__.get("_active_variants_memo")
+    if memo is None or memo[0] is not prefetched:
+        variants = [v for v in prefetched if v.is_active]
+        variants.sort(key=lambda v: (v.sort_order or 0, v.id or 0))
+        memo = (prefetched, variants)
+        obj.__dict__["_active_variants_memo"] = memo
+    return memo[1]
+
+
+def _variant_cover_image(variant, *, fallback_to_first=True):
+    """Главная картинка варианта (is_main, иначе первая) — из prefetch-кэша, если он есть."""
+    images = _prefetched_related(variant, "images")
+    if images is None:
+        image = variant.images.filter(is_main=True).first()
+        if image is None and fallback_to_first:
+            image = variant.images.first()
+        return image
+    image = next((img for img in images if img.is_main), None)
+    if image is None and fallback_to_first and images:
+        image = images[0]
+    return image
+
+
+def _variant_images_by_sort_order(variant):
+    """``variant.images.all().order_by("sort_order")`` без запроса при prefetch."""
+    images = _prefetched_related(variant, "images")
+    if images is None:
+        return variant.images.all().order_by("sort_order")
+    return sorted(images, key=lambda img: img.sort_order or 0)
 
 
 class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
@@ -2481,18 +2535,12 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
                 return file_url
             if variant.main_image:
                 return _resolve_media_url(variant.main_image, request)
-            v_main = variant.images.filter(is_main=True).first()
+            v_main = _variant_cover_image(variant)
             if v_main:
                 file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
                 if file_url:
                     return file_url
                 return _resolve_media_url(v_main.image_url, request)
-            v_first = variant.images.first()
-            if v_first:
-                file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
-                if file_url:
-                    return file_url
-                return _resolve_media_url(v_first.image_url, request)
         gallery = getattr(obj, "images", None)
         if gallery:
             main_img = obj.images.filter(is_main=True).first()
@@ -2595,7 +2643,7 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
         ).data
         variant = self._get_active_variant(obj)
         variant_rows = ClothingVariantImageSerializer(
-            variant.images.all().order_by("sort_order"), many=True, context=self.context
+            _variant_images_by_sort_order(variant), many=True, context=self.context
         ).data if variant else []
 
         merged = []
@@ -2615,6 +2663,9 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
         variants = getattr(obj, "variants", None)
         if not variants:
             return None
+        cached = _prefetched_active_variants(obj)
+        if cached is not None:
+            return next((v for v in cached if v.price is not None), None) or (cached[0] if cached else None)
         priced = variants.filter(is_active=True, price__isnull=False).order_by("sort_order", "id").first()
         if priced:
             return priced
@@ -2626,6 +2677,9 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
             return None
         active_slug = self.context.get("active_variant_slug")
         if active_slug:
+            cached = _prefetched_active_variants(obj)
+            if cached is not None:
+                return next((v for v in cached if v.slug == active_slug), None)
             return variants.filter(slug=active_slug, is_active=True).first()
         return self._get_default_variant(obj)
 
@@ -2633,7 +2687,11 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
         variants = getattr(obj, "variants", None)
         if not variants:
             return []
-        qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
+        qs = _prefetched_active_variants(obj)
+        if qs is not None:
+            prefetch_related_objects(qs, "images")
+        else:
+            qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
         return ClothingVariantSerializer(qs, many=True, context={'request': self.context.get('request')}).data
 
     def _get_preferred_currency(self, obj) -> str:
@@ -2732,18 +2790,12 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
             return file_url
         if variant.main_image:
             return _resolve_media_url(variant.main_image, request)
-        main_img = variant.images.filter(is_main=True).first()
+        main_img = _variant_cover_image(variant)
         if main_img:
             file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
             if file_url:
                 return file_url
             return _resolve_media_url(main_img.image_url, request)
-        first_img = variant.images.first()
-        if first_img:
-            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
-            if file_url:
-                return file_url
-            return _resolve_media_url(first_img.image_url, request)
         return None
 
 class ShoeCategorySerializer(serializers.ModelSerializer):
@@ -3022,7 +3074,7 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
         ).data
         variant = self._get_active_variant(obj)
         variant_rows = ShoeVariantImageSerializer(
-            variant.images.all().order_by("sort_order"), many=True, context=self.context
+            _variant_images_by_sort_order(variant), many=True, context=self.context
         ).data if variant else []
 
         merged = []
@@ -3159,18 +3211,12 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
             return file_url
         if variant.main_image:
             return _resolve_media_url(variant.main_image, request)
-        main_img = variant.images.filter(is_main=True).first()
+        main_img = _variant_cover_image(variant)
         if main_img:
             file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
             if file_url:
                 return file_url
             return _resolve_media_url(main_img.image_url, request)
-        first_img = variant.images.first()
-        if first_img:
-            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
-            if file_url:
-                return file_url
-            return _resolve_media_url(first_img.image_url, request)
         return None
 
 class ShoeProductImageSerializer(serializers.ModelSerializer):
@@ -3577,7 +3623,7 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
         gallery = getattr(obj, "images", None)
         if not gallery:
             return []
-        return FurnitureVariantImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+        return FurnitureVariantImageSerializer(_variant_images_by_sort_order(obj), many=True).data
 
     def get_size_display(self, obj):
         """Краткий размер из IKEA variant1 (например 120x70 cm) для карточки у цены."""
@@ -3676,18 +3722,12 @@ class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
                 return file_url
             if variant.main_image:
                 return _resolve_media_url(variant.main_image, request)
-            v_main = variant.images.filter(is_main=True).first()
+            v_main = _variant_cover_image(variant)
             if v_main:
                 file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
                 if file_url:
                     return file_url
                 return _resolve_media_url(v_main.image_url, request)
-            v_first = variant.images.first()
-            if v_first:
-                file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
-                if file_url:
-                    return file_url
-                return _resolve_media_url(v_first.image_url, request)
         return None
 
     def get_video_url(self, obj):
@@ -3854,8 +3894,8 @@ class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
         variant = self._get_active_variant(obj)
         variant_rows: list = []
         if variant:
-            variant_images = variant.images.all().order_by("sort_order")
-            if variant_images.exists():
+            variant_images = _variant_images_by_sort_order(variant)
+            if variant_images:
                 variant_rows = FurnitureVariantImageSerializer(
                     variant_images, many=True, context=ctx
                 ).data
@@ -3882,6 +3922,9 @@ class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
         variants = getattr(obj, "variants", None)
         if not variants:
             return None
+        cached = _prefetched_active_variants(obj)
+        if cached is not None:
+            return cached[0] if cached else None
         return variants.filter(is_active=True).order_by("sort_order", "id").first()
 
     def _get_active_variant(self, obj):
@@ -3890,6 +3933,9 @@ class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
             return None
         active_slug = self.context.get("active_variant_slug")
         if active_slug:
+            cached = _prefetched_active_variants(obj)
+            if cached is not None:
+                return next((v for v in cached if v.slug == active_slug), None)
             return variants.filter(slug=active_slug, is_active=True).first()
         return self._get_default_variant(obj)
 
@@ -3897,7 +3943,11 @@ class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
         variants = getattr(obj, "variants", None)
         if not variants:
             return []
-        qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
+        qs = _prefetched_active_variants(obj)
+        if qs is not None:
+            prefetch_related_objects(qs, "images")
+        else:
+            qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
         return FurnitureVariantSerializer(qs, many=True, context=self.context).data
 
     def get_default_variant_slug(self, obj):
@@ -3989,18 +4039,12 @@ class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
             return file_url
         if variant.main_image:
             return _resolve_media_url(variant.main_image, request)
-        main_img = variant.images.filter(is_main=True).first()
+        main_img = _variant_cover_image(variant)
         if main_img:
             file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
             if file_url:
                 return file_url
             return _resolve_media_url(main_img.image_url, request)
-        first_img = variant.images.first()
-        if first_img:
-            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
-            if file_url:
-                return file_url
-            return _resolve_media_url(first_img.image_url, request)
         return None
 
 # ============================================================================
@@ -4159,7 +4203,7 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
         gallery = getattr(obj, "images", None)
         if not gallery:
             return []
-        return JewelryVariantImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+        return JewelryVariantImageSerializer(_variant_images_by_sort_order(obj), many=True).data
 
 
 class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
@@ -4227,18 +4271,12 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
                 return file_url
             if variant.main_image:
                 return _resolve_media_url(variant.main_image, request)
-            v_main = variant.images.filter(is_main=True).first()
+            v_main = _variant_cover_image(variant)
             if v_main:
                 file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
                 if file_url:
                     return file_url
                 return _resolve_media_url(v_main.image_url, request)
-            v_first = variant.images.first()
-            if v_first:
-                file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
-                if file_url:
-                    return file_url
-                return _resolve_media_url(v_first.image_url, request)
         gallery = getattr(obj, "images", None)
         if gallery:
             main_img = gallery.filter(is_main=True).first()
@@ -4395,7 +4433,7 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
         variant_images = []
         if variant:
             variant_images = JewelryVariantImageSerializer(
-                variant.images.all().order_by("sort_order"),
+                _variant_images_by_sort_order(variant),
                 many=True,
                 context=self.context
             ).data
@@ -4421,6 +4459,9 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
         variants = getattr(obj, "variants", None)
         if not variants:
             return None
+        cached = _prefetched_active_variants(obj)
+        if cached is not None:
+            return cached[0] if cached else None
         return variants.filter(is_active=True).order_by("sort_order", "id").first()
 
     def _get_active_variant(self, obj):
@@ -4429,6 +4470,9 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
             return None
         active_slug = self.context.get("active_variant_slug")
         if active_slug:
+            cached = _prefetched_active_variants(obj)
+            if cached is not None:
+                return next((v for v in cached if v.slug == active_slug), None)
             return variants.filter(slug=active_slug, is_active=True).first()
         return self._get_default_variant(obj)
 
@@ -4436,7 +4480,11 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
         variants = getattr(obj, "variants", None)
         if not variants:
             return []
-        qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
+        qs = _prefetched_active_variants(obj)
+        if qs is not None:
+            prefetch_related_objects(qs, "images", "sizes")
+        else:
+            qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
         return JewelryVariantSerializer(qs, many=True, context=self.context).data
 
     def get_default_variant_slug(self, obj):
@@ -4491,18 +4539,12 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
             return file_url
         if variant.main_image:
             return _resolve_media_url(variant.main_image, request)
-        main_img = variant.images.filter(is_main=True).first()
+        main_img = _variant_cover_image(variant)
         if main_img:
             file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
             if file_url:
                 return file_url
             return _resolve_media_url(main_img.image_url, request)
-        first_img = variant.images.first()
-        if first_img:
-            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
-            if file_url:
-                return file_url
-            return _resolve_media_url(first_img.image_url, request)
         return None
 
     def get_active_variant_old_price_formatted(self, obj):
@@ -5514,13 +5556,23 @@ class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
         raw = getattr(type(obj), '_domain_product_type', None)
         return str(raw).replace('_', '-') if raw else None
 
+    def _get_default_variant(self, obj):
+        cached = _prefetched_active_variants(obj)
+        if cached is not None:
+            return cached[0] if cached else None
+        return obj.variants.filter(is_active=True).order_by('sort_order').first()
+
     def _get_active_variant(self, obj):
         active_slug = self.context.get('active_variant_slug')
         if active_slug:
-            variant = obj.variants.filter(slug=active_slug, is_active=True).first()
+            cached = _prefetched_active_variants(obj)
+            if cached is not None:
+                variant = next((v for v in cached if v.slug == active_slug), None)
+            else:
+                variant = obj.variants.filter(slug=active_slug, is_active=True).first()
             if variant:
                 return variant
-        return obj.variants.filter(is_active=True).order_by('sort_order').first()
+        return self._get_default_variant(obj)
 
     def _get_preferred_currency(self, obj):
         request = self.context.get('request')
@@ -5579,7 +5631,7 @@ class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
                 return file_url
             if variant.main_image:
                 return _resolve_media_url(variant.main_image, request)
-            v_main = variant.images.filter(is_main=True).first()
+            v_main = _variant_cover_image(variant, fallback_to_first=False)
             if v_main:
                 file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
                 if file_url:
@@ -5642,10 +5694,15 @@ class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
         return product_images
 
     def get_variants(self, obj):
-        return PerfumeryVariantSerializer(obj.variants.filter(is_active=True).order_by('sort_order'), many=True, context=self.context).data
+        variants = _prefetched_active_variants(obj)
+        if variants is not None:
+            prefetch_related_objects(variants, "images")
+        else:
+            variants = obj.variants.filter(is_active=True).order_by('sort_order')
+        return PerfumeryVariantSerializer(variants, many=True, context=self.context).data
 
     def get_default_variant_slug(self, obj):
-        v = obj.variants.filter(is_active=True).order_by('sort_order').first()
+        v = self._get_default_variant(obj)
         return v.slug if v else None
 
     def get_active_variant_slug(self, obj):
@@ -5687,7 +5744,7 @@ class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
             return file_url
         if v.main_image:
             return _resolve_media_url(v.main_image, request)
-        v_main = v.images.filter(is_main=True).first()
+        v_main = _variant_cover_image(v, fallback_to_first=False)
         if v_main:
             file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
             if file_url:
@@ -7210,7 +7267,7 @@ class HeadwearVariantSerializer(serializers.ModelSerializer):
             return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
-        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        img = _variant_cover_image(obj)
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:
@@ -7301,16 +7358,26 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             return []
 
     def _get_default_variant(self, obj):
+        cached = _prefetched_active_variants(obj)
+        if cached is not None:
+            return cached[0] if cached else None
         return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
 
     def _get_active_variant(self, obj):
         active_slug = self.context.get("active_variant_slug")
         if active_slug:
+            cached = _prefetched_active_variants(obj)
+            if cached is not None:
+                return next((v for v in cached if v.slug == active_slug), None)
             return obj.variants.filter(slug=active_slug, is_active=True).first()
         return self._get_default_variant(obj)
 
     def get_variants(self, obj):
-        qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
+        qs = _prefetched_active_variants(obj)
+        if qs is not None:
+            prefetch_related_objects(qs, "images", "sizes")
+        else:
+            qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
         return HeadwearVariantSerializer(qs, many=True, context=self.context).data
 
     def get_default_variant_slug(self, obj):
@@ -7439,7 +7506,7 @@ class UnderwearVariantSerializer(serializers.ModelSerializer):
             return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
-        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        img = _variant_cover_image(obj)
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:
@@ -7529,16 +7596,26 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             return []
 
     def _get_default_variant(self, obj):
+        cached = _prefetched_active_variants(obj)
+        if cached is not None:
+            return cached[0] if cached else None
         return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
 
     def _get_active_variant(self, obj):
         active_slug = self.context.get("active_variant_slug")
         if active_slug:
+            cached = _prefetched_active_variants(obj)
+            if cached is not None:
+                return next((v for v in cached if v.slug == active_slug), None)
             return obj.variants.filter(slug=active_slug, is_active=True).first()
         return self._get_default_variant(obj)
 
     def get_variants(self, obj):
-        qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
+        qs = _prefetched_active_variants(obj)
+        if qs is not None:
+            prefetch_related_objects(qs, "images", "sizes")
+        else:
+            qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
         return UnderwearVariantSerializer(qs, many=True, context=self.context).data
 
     def get_default_variant_slug(self, obj):
@@ -7667,7 +7744,7 @@ class IslamicClothingVariantSerializer(serializers.ModelSerializer):
             return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
-        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        img = _variant_cover_image(obj)
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:
@@ -7757,16 +7834,26 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
             return []
 
     def _get_default_variant(self, obj):
+        cached = _prefetched_active_variants(obj)
+        if cached is not None:
+            return cached[0] if cached else None
         return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
 
     def _get_active_variant(self, obj):
         active_slug = self.context.get("active_variant_slug")
         if active_slug:
+            cached = _prefetched_active_variants(obj)
+            if cached is not None:
+                return next((v for v in cached if v.slug == active_slug), None)
             return obj.variants.filter(slug=active_slug, is_active=True).first()
         return self._get_default_variant(obj)
 
     def get_variants(self, obj):
-        qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
+        qs = _prefetched_active_variants(obj)
+        if qs is not None:
+            prefetch_related_objects(qs, "images", "sizes")
+        else:
+            qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
         return IslamicClothingVariantSerializer(qs, many=True, context=self.context).data
 
     def get_default_variant_slug(self, obj):

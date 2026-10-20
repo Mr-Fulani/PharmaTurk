@@ -65,6 +65,14 @@ docker-compose за nginx и Cloudflare.
    endpoint обязан явно объявлять `AllowAny`; административные и служебные
    операции — `IsAdminUser` либо более строгое объектное permission. Нельзя
    полагаться на неявный default при изменении публичности API.
+9. **Варианты в доменных сериализаторах — из prefetch-кэша.** `.filter()`,
+   `.order_by()` и `.exists()` на менеджере `variants`/`images` идут мимо
+   prefetch: default/active вариант запрашивается до десятка раз на товар, и
+   страница бренда мебели/одежды делала ~300 запросов к вариантам. Брать
+   варианты и их картинки через `_prefetched_active_variants`,
+   `_variant_cover_image`, `_variant_images_by_sort_order`
+   (`apps/catalog/serializers.py`); без prefetch они идут в БД по-прежнему.
+   Тест — `apps/catalog/tests/test_domain_variant_queries.py`.
 
 ## 4. Фронтенд (Next.js)
 
