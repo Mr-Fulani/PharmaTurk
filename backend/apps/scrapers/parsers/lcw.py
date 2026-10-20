@@ -3,7 +3,7 @@
 import copy
 import re
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import quote_plus, urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -149,6 +149,10 @@ class LcwParser(BaseScraper):
         self.has_more_pages = True
         seen_urls = set()
         seen_family_urls = set()
+        # Итоговые URL цветов, загруженных в группах этого прохода: LCW
+        # редиректит (301) старые id цветов на другие, и ссылка листинга на
+        # такой цвет иначе собирается второй карточкой той же модели.
+        self._resolved_variant_urls = set()
         seen_group_ids = set()
         seen_family_keys = set()
         yielded = 0
@@ -188,12 +192,19 @@ class LcwParser(BaseScraper):
                     continue
 
                 product_url = urljoin(self.base_url, href)
-                if product_url in seen_urls or product_url in seen_family_urls:
+                if (
+                    product_url in seen_urls
+                    or product_url in seen_family_urls
+                    or product_url in self._resolved_variant_urls
+                ):
                     continue
 
                 new_on_page += 1
                 seen_urls.add(product_url)
-                detail_html = self._make_request(product_url)
+                detail_html, final_url = self._fetch_with_final_url(product_url)
+                if final_url != product_url and final_url in self._resolved_variant_urls:
+                    continue
+                self._resolved_variant_urls.add(final_url)
                 parsed_variant = self._parse_single_variant(product_url, detail_html) if detail_html else None
                 family_key = self._build_family_key(parsed_variant)
                 if family_key and family_key in seen_family_keys:
@@ -240,6 +251,12 @@ class LcwParser(BaseScraper):
             if new_on_page == 0:
                 self.has_more_pages = False
                 break
+
+    def _fetch_with_final_url(self, url: str) -> Tuple[Optional[str], str]:
+        """HTML и итоговый URL после редиректов (или исходный, если неизвестен)."""
+        self.last_response_url = ""
+        html = self._make_request(url)
+        return html, (self.last_response_url or url)
 
     def _extract_listing_product_urls(self, html: str) -> Set[str]:
         """Канонические URL товаров страницы без загрузки detail."""
@@ -342,9 +359,12 @@ class LcwParser(BaseScraper):
                 len(group_urls),
                 product_url,
             )
-            variant_html = self._make_request(variant_url)
+            variant_html, final_url = self._fetch_with_final_url(variant_url)
             if not variant_html:
                 continue
+            resolved_urls = getattr(self, "_resolved_variant_urls", None)
+            if resolved_urls is not None:
+                resolved_urls.add(final_url)
             parsed_variant = self._parse_single_variant(variant_url, variant_html)
             if not parsed_variant:
                 continue
@@ -511,7 +531,10 @@ class LcwParser(BaseScraper):
         meta_title = soup.find("meta", property="og:title")
         if meta_title and meta_title.get("content"):
             title = clean_text(meta_title["content"])
-            return re.sub(r"\s*\|\s*LCW\s*$", "", title).strip()
+            # С октября 2026 og:title бывает рекламным «Tişört - LC WAIKIKI -
+            # 359,99 TL»: тип и цена вместо названия — берём <title>.
+            if not self.PRICE_RE.search(title):
+                return re.sub(r"\s*\|\s*LCW\s*$", "", title).strip()
 
         title_tag = soup.find("title")
         if title_tag:
