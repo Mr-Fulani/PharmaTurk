@@ -127,8 +127,9 @@ class UmmalandParser(BaseScraper):
                                 
                         api_product.images = all_images
                         
-                        # Устанавливаем количество
-                        api_product.stock_quantity = 3
+                        # Точного остатка источник не даёт: 3 — условное «есть»,
+                        # распроданная книга должна оставаться без наличия.
+                        api_product.stock_quantity = 3 if api_product.is_available else 0
                         
                         if self.validate_product(api_product):
                             products.append(api_product)
@@ -600,6 +601,10 @@ class UmmalandParser(BaseScraper):
             price = None
             price_container = soup.select_one('.product-price') or soup.select_one('.price')
             if price_container:
+                # Значок скидки «-20%» лежит внутри блока цены: без удаления
+                # «768 ₽ -20%» превращается в 76820.
+                for badge in price_container.select('.product-percentage'):
+                    badge.decompose()
                 # Если есть ins (новая цена), берем ее
                 ins_price = price_container.select_one('ins .woocommerce-Price-amount') or price_container.select_one('ins')
                 if ins_price:
