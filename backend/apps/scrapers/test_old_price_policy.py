@@ -101,3 +101,17 @@ def test_ummaland_detail_reads_strikethrough_price(monkeypatch):
     product = parser.parse_product_detail("https://umma-land.com/product/bolshaya-kniga-ramadana")
 
     assert (product.price, product.old_price) == (Decimal("768"), Decimal("960"))
+
+
+def test_zara_sale_old_price_from_color(monkeypatch):
+    from apps.scrapers.parsers.zara import ZaraParser
+    from apps.scrapers.test_zara_parser import _detail_payload, _payload_html
+
+    payload = _detail_payload()
+    payload["product"]["detail"]["colors"][0]["oldPrice"] = 349000
+    parser = ZaraParser()
+    monkeypatch.setattr(parser, "_make_ajax_request", lambda requested_url: _payload_html(payload))
+
+    product = parser.parse_product_detail("https://www.zara.com/tr/tr/kisa-balon-kollu-elbise-p03897114.html")
+
+    assert (product.price, product.old_price) == (2490.0, 3490.0)
