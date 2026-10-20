@@ -32,9 +32,10 @@ PARAGRAPH_NAMESPACE = "medicine_paragraph"
 BRAND_TOKEN = "{BRAND}"
 
 # Запрос — до 10 абзацев и до 5000 символов. В длинном JSON модель пропускает
-# абзац, и дальше каждому ключу достаётся перевод соседнего: при 20 000 символов
-# (≈ 125 абзацев) 20.10.2026 так испорчено 21,5 % памяти. При сдвиге отклоняется
-# весь запрос, поэтому сдвиг портит и отправляет на повтор не больше 10 абзацев
+# абзац, и дальше каждому ключу достаётся перевод соседнего: в пакете 20.10.2026
+# (20 000 символов, ≈ 154 абзаца) сдвиг был в 59 % запросов, среди первых 10
+# абзацев — у 1,6 %, к концу запроса — до 54 %. При сдвиге отклоняется весь
+# запрос, поэтому сдвиг портит и отправляет на повтор не больше 10 абзацев
 # (docs/MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md, «Маленькие запросы»).
 PARAGRAPH_BATCH_ITEMS = 10
 PARAGRAPH_BATCH_CHARS = 5000
@@ -414,11 +415,16 @@ def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, 
     Кроме проверок каждого абзаца ищется сдвиг ответа: модель пропустила
     элемент, и ключам достались переводы соседних абзацев. Тогда отклоняется
     весь запрос (``shifted``): он короткий, и повтор дешевле риска принять
-    чужой перевод на границе сдвига.
+    чужой перевод на границе сдвига. Сдвигом считается и ответ, где у части
+    абзацев нет перевода: в пакете 20.10.2026 так выглядели 86 % запросов со
+    сдвигом (модель пропускала абзац и заканчивала ответ на ключ раньше).
     """
     keys = list(items)
     ru_texts, en_texts = _paragraph_answers(payload, keys)
-    shifted = bool(request_shift([items[key] for key in keys], ru_texts, en_texts))
+    answered = [bool(ru and en) for ru, en in zip(ru_texts, en_texts)]
+    shifted = (any(answered) and not all(answered)) or bool(
+        request_shift([items[key] for key in keys], ru_texts, en_texts)
+    )
     accepted, rejected = {}, {}
     for key, ru, en in zip(keys, ru_texts, en_texts):
         source = items[key]

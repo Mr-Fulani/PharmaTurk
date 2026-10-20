@@ -210,6 +210,19 @@ def test_shifted_answer_rejects_whole_request():
     assert all("shifted" in rejected[source] for source in SOURCES)
 
 
+def test_answer_without_some_paragraph_rejects_whole_request():
+    items = {str(index): source for index, source in enumerate(SOURCES, 1)}
+    # Модель закончила ответ на ключ раньше — пропустила абзац (так в 86 % сдвигов 20.10).
+    payload = {str(index): {"ru": ru, "en": en} for index, (_, ru, en) in enumerate(VISCOTEARS[:-1], 1)}
+
+    accepted, rejected = check_paragraph_payload(items, payload)
+
+    assert accepted == {}
+    assert all("shifted" in rejected[source] for source in SOURCES)
+    _, failed = check_paragraph_payload(items, {})  # пустой ответ — сбой запроса, а не сдвиг
+    assert not any("shifted" in problems for problems in failed.values())
+
+
 def test_answer_in_per_item_and_previous_format_is_accepted():
     items = {str(index): source for index, source in enumerate(SOURCES, 1)}
     per_item = {str(index): {"ru": ru, "en": en} for index, (_, ru, en) in enumerate(VISCOTEARS, 1)}
