@@ -801,6 +801,11 @@ def test_moderator_fixed_title_of_translated_source_passes():
         ("CALIRA-MET 5 MG/1000 MG FILM KAPLI TABLET", "CALIRA-MET 5 мг/1000 мг ПЛЕНКА КАПЛИ ТАБЛЕТКИ"),
         ("BENEXOL B12 FILM KAPLI TABLET (50 TB)", "BENEXOL B12 таблетки (50 ТБ)"),
         ("DEVIT-3 300.000 IU/ML IM/ORAL COZELTI", "DEVIT-3 300.000 МЕ/мл, И.М./ОРОЛЬ раствор"),
+        # AIRun 3, лог 1036 — уходил как «готово»
+        (
+            "PF K-CAMINE %8 AMINO ASIT IV INFUZYON ICIN COZELTI 500 ML (SETLI)",
+            "PF K-CAMINE %8 АМИНОКИСЛОТ ИВ ИНФУЗИЯ 500 МЛ (СЕТ)",
+        ),
     ],
 )
 def test_cyrillic_transliteration_of_turkish_form_is_untranslated(source, title):
@@ -976,3 +981,134 @@ def test_special_notes_with_subject_are_kept():
     assert log.extracted_attributes["translations_data"]["ru"]["special_notes"] == (
         "Не применять в период лактации."
     )
+
+
+def test_medicine_without_category_is_still_validated():
+    # Пилот AIRun 3, лог 1056: у товара нет категории, проверки пропускались, и
+    # «RINGER LAKTAT OSEL» (бренд BIOSEL испорчен моделью) ушёл как «готово».
+    medicine = MedicineProduct.objects.create(
+        name="RINGER LAKTAT BIOSEL ENJEKTABL SOL. 500 ML SETLI SISE", slug="pilot3-no-category"
+    )
+    medicine.refresh_from_db()
+    validator = SemanticValidator()
+
+    broken = validator.validate(
+        medicine.base_product,
+        generated_titles={"ru": "RINGER LAKTAT OSEL 500 мл инъекционный раствор"},
+        dynamic_attributes=[],
+    )
+    incomplete = validator.validate(
+        medicine.base_product,
+        generated_titles={},
+        dynamic_attributes=[],
+        extracted_attributes={"medicine_translation_quality": {"storage_conditions": {"complete": False}}},
+    )
+
+    assert medicine.base_product.category_id is None
+    assert "title" in broken.rejected_fields
+    assert "incomplete_medicine_translation" in incomplete.reasons
+
+
+# Пилот AIRun 3 (логи 1025–1074) и разбор всех 13 тыс. названий: шаблон сдавался или ошибался.
+PILOT3_TITLES = {
+    # лог 1062: «+» между дозировками превращался в скобки
+    "NASOWELL 1 MG/ML + 50 MG/ML BURUN SPREYI, COZELTI": (
+        "NASOWELL 1 мг/мл + 50 мг/мл, назальный спрей, раствор",
+        "NASOWELL 1 mg/ml + 50 mg/ml, nasal spray, solution",
+    ),
+    # лог 1061: модель перевернула смысл — «раствор для приготовления лиофилизированного порошка»
+    "CERNEVIT IV/IM ENJEKSIYONLUK/INFUZYONLUK COZELTI HAZIRLAMAK ICIN LIYOFILIZE TOZ (4 FLAKON)": (
+        "CERNEVIT, лиофилизат для приготовления раствора для инъекций и инфузий (в/в, в/м), 4 флакона",
+        "CERNEVIT, powder for solution for injection/infusion (IV/IM), 4 vials",
+    ),
+    "AMOKLAVIN BID 400/57 MG FORTE ORAL SUSPANSIYON HAZIRLAMAK ICIN KURU TOZ (70 ML)": (
+        "AMOKLAVIN BID 400/57 мг FORTE, порошок для приготовления суспензии для приёма внутрь, 70 мл",
+        "AMOKLAVIN BID 400/57 mg FORTE, powder for oral suspension, 70 ml",
+    ),
+    "VERQUVO 5 MG 98 TABLETS": ("VERQUVO 5 мг, таблетки, 98 шт.", "VERQUVO 5 mg, tablets, 98 pcs"),
+    "LYSODREN 500 MG, 100 TAB": ("LYSODREN 500 мг, таблетки, 100 шт.", "LYSODREN 500 mg, tablets, 100 pcs"),
+    "PANTHEC 20 MG 28 ENT.TABLET": (
+        "PANTHEC 20 мг, кишечнорастворимые таблетки, 28 шт.",
+        "PANTHEC 20 mg, gastro-resistant tablets, 28 pcs",
+    ),
+    "ISOFLUDEM 100 ML SISE": ("ISOFLUDEM, флакон, 100 мл", "ISOFLUDEM, bottle, 100 ml"),
+    # лог 1056: модель испортила бренд (BIOSEL → OSEL)
+    "RINGER LAKTAT BIOSEL ENJEKTABL SOL. 500 ML SETLI SISE": (
+        "RINGER LAKTAT BIOSEL, раствор для инъекций, флакон, с системой, 500 мл",
+        "RINGER LAKTAT BIOSEL, solution for injection, bottle, with set, 500 ml",
+    ),
+    "VOCHERON 8 MG/4 ML IM/IV ENJEKSIYONLUK/INFUZYONLUK COZELTI": (
+        "VOCHERON 8 мг/4 мл, раствор для инъекций и инфузий (в/м, в/в)",
+        "VOCHERON 8 mg/4 ml, solution for injection/infusion (IM/IV)",
+    ),
+    "MEDOTILIN 1000 MG/4 ML IM/IV ENJEKSIYONLUK COZELTI ICEREN 5 AMPUL": (
+        "MEDOTILIN 1000 мг/4 мл, раствор для инъекций (в/м, в/в), 5 ампул",
+        "MEDOTILIN 1000 mg/4 ml, solution for injection (IM/IV), 5 ampoules",
+    ),
+    "PIMREVA 200 MG VE 50 MG FILM KAPLI TABLET (56 TABLET)": (
+        "PIMREVA 200 мг + 50 мг, таблетки, покрытые плёночной оболочкой, 56 шт.",
+        "PIMREVA 200 mg + 50 mg, film-coated tablets, 56 pcs",
+    ),
+    "KEDAY XR 300 MG UZATILMIS SALIMLI 30 TABLET": (
+        "KEDAY XR 300 мг, таблетки пролонгированного высвобождения, 30 шт.",
+        "KEDAY XR 300 mg, prolonged-release tablets, 30 pcs",
+    ),
+    "ESPEROCT 500 IU ENJEKSIYONLUK COZELTI HAZIRLAMAK ICIN TOZ VE COZUCU (1 FLAKON)": (
+        "ESPEROCT 500 МЕ, порошок для приготовления раствора для инъекций, с растворителем, 1 флакон",
+        "ESPEROCT 500 IU, powder for solution for injection, with solvent, 1 vial",
+    ),
+    "TRELEGY ELLIPTA 100/62,5/25 MCG KULLANIMA HAZIR INHALASYON TOZU 30 ADET": (
+        "TRELEGY ELLIPTA 100/62,5/25 мкг, порошок для ингаляций, 30 шт.",
+        "TRELEGY ELLIPTA 100/62.5/25 mcg, inhalation powder, 30 pcs",
+    ),
+    # «ICEREN FLAKON (1 FLAKON)» — флакон не повторяется
+    "TIROXAN 12,5 MG/50 ML IV INFUZYON ICIN KONSANTRE COZELTI ICEREN FLAKON (1 FLAKON)": (
+        "TIROXAN 12,5 мг/50 мл, концентрат для приготовления раствора для инфузий, 1 флакон",
+        "TIROXAN 12.5 mg/50 ml, concentrate for solution for infusion, 1 vial",
+    ),
+    # «TAB» — часть бренда, а не сокращение формы
+    "OLFREX EASY TAB 10 MG 28 AGIZDA DAGILAN TABLET": (
+        "OLFREX EASY TAB 10 мг, таблетки, диспергируемые в полости рта, 28 шт.",
+        "OLFREX EASY TAB 10 mg, orodispersible tablets, 28 pcs",
+    ),
+    # «24 … (24 TABLET)» давало «24 шт., 24 шт.»
+    "FLEXTRA 400 MG 24 FILM KAPLI TABLET (24 TABLET)": (
+        "FLEXTRA 400 мг, таблетки, покрытые плёночной оболочкой, 24 шт.",
+        "FLEXTRA 400 mg, film-coated tablets, 24 pcs",
+    ),
+}
+
+
+@pytest.mark.parametrize("source", PILOT3_TITLES)
+def test_pilot3_forms_are_covered_by_title_template(source):
+    ru, en = PILOT3_TITLES[source]
+    assert build_medicine_title(source) == {"ru": ru, "en": en}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # «500» без единицы перед «(20 TABLET)» — то ли доза, то ли фасовка
+        "KLACID MR 500 DEGISTIRILMIS SALIM TABLET (20 TABLET)",
+        "ADENOSIN-L.M. 5 MG/ML ENJ/INF. ICIN COZ. ICEREN 2 ML 10 AMPUL",
+    ],
+)
+def test_ambiguous_medicine_name_is_left_to_model(source):
+    assert build_medicine_title(source) is None
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "B6 VIGEN 250 MG 30 TABLET",  # цифра внутри бренда — не дозировка
+        "RINGER BIOSEL ENJEKTABL SOL. 1000 ML SETSIZ SISE",  # «SOL.» — не бренд
+        "EMARAY IV ENJEKSIYONLUK COZELTI ICEREN FLAKON 20 ML",  # «ICEREN» — не бренд
+        "ECOPIRIN 100 MG 30 ENTERIK TABLET",  # «gastro-resistant tablets» — не категория «gastro»
+        *PILOT3_TITLES,
+    ],
+)
+def test_template_title_is_not_rejected_by_validator(source):
+    title = build_medicine_title(source)
+    report = _reasons(source, title["ru"], title["en"])
+
+    assert "title" not in report.rejected_fields, report.reasons
