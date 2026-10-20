@@ -74,6 +74,7 @@ from apps.catalog.models import (
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.ikea_category_mapping import resolve_ikea_category
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
+from apps.catalog.utils.old_price import source_old_price
 import datetime
 
 
@@ -3431,12 +3432,22 @@ class ScraperIntegrationService:
                 )
                 currency_changed = bool(source_currency and source_currency != current_currency)
                 if price_changed or currency_changed:
-                    existing_product.old_price = existing_product.price
                     if source_price is not None:
                         existing_product.price = source_price
                     if source_currency:
                         existing_product.currency = source_currency
                     updated = True
+                if source_price is not None:
+                    # Зачёркнутая цена — только та, что показывает источник, и
+                    # только выше текущей. Прежняя цена в old_price давала
+                    # бессрочные ложные скидки (у лекарств цены регулируются,
+                    # источник её не отдаёт — значит, пусто).
+                    new_old_price = source_old_price(
+                        getattr(scraped_product, "old_price", None), existing_product.price,
+                    )
+                    if existing_product.old_price != new_old_price:
+                        existing_product.old_price = new_old_price
+                        updated = True
 
             # Обновляем наличие
             if scraped_product.is_available != existing_product.is_available:
@@ -4555,6 +4566,7 @@ class ScraperIntegrationService:
             name=scraped_product.name,
             description=scraped_product.description,
             price=float(scraped_product.price) if scraped_product.price else None,
+            old_price=getattr(scraped_product, "old_price", None),
             currency=scraped_product.currency,
             category=scraped_product.category,
             brand=scraped_product.brand,
