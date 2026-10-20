@@ -3,6 +3,7 @@ import api, { getSingleFlight, initCartSession } from '../lib/api'
 import { ProductTranslation } from '../lib/i18n'
 import { matchesFavoriteSlug } from '../lib/favoriteLinks'
 import { matchesFavoriteProductIdentity } from '../lib/favoriteIdentity'
+import { gtmAddToWishlist, gtmProductItem } from '../lib/gtm'
 import { ProductCardGalleryImage } from '../components/ProductCardImageGallery'
 
 export interface Favorite {
@@ -147,6 +148,12 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
         })
       }
       if (isFavoritePayload(response.data)) {
+        const { product } = response.data
+        const price = Number(product.active_variant_price ?? product.price)
+        gtmAddToWishlist(
+          { ...gtmProductItem(product, pt, !slug), ...(price > 0 && { price }) },
+          product.active_variant_currency || product.currency || undefined,
+        )
         mutationVersion += 1
         set((state) => {
           const favorites = [
