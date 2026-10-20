@@ -3954,7 +3954,17 @@ class GlobalAttributeKey(models.Model):
         lang = translation.get_language()
         if not lang:
             return self.slug
-            
+
+        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("translations")
+        if prefetched is not None:
+            # Страница бренда prefetch-ит переводы ключей: .filter() бил бы в БД
+            # на каждый атрибут каждого товара. Порядок поиска — как ниже.
+            by_locale = {t.locale: t for t in prefetched}
+            trans = by_locale.get(lang) or by_locale.get(lang.split('-')[0]) or by_locale.get('en')
+            if not trans and prefetched:
+                trans = min(prefetched, key=lambda t: t.pk)
+            return trans.name if trans else self.slug
+
         trans = self.translations.filter(locale=lang).first()
         
         if not trans and '-' in lang:

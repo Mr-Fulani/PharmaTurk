@@ -71,7 +71,11 @@ docker-compose за nginx и Cloudflare.
    варианты и их картинки через `_prefetched_active_variants`,
    `_variant_cover_image`, `_variant_images_by_sort_order`
    (`apps/catalog/serializers.py`); без prefetch они идут в БД по-прежнему.
-   Тест — `apps/catalog/tests/test_domain_variant_queries.py`.
+   Галерея самого товара (`obj.images`) — через те же два хелпера картинок.
+   Название ключа атрибута (`GlobalAttributeKey.name`) берёт переводы из
+   prefetch `…attribute_key__translations`, если он есть. Тесты —
+   `apps/catalog/tests/test_domain_variant_queries.py`,
+   `apps/catalog/tests/test_brand_card_gallery_queries.py`.
 
 ## 4. Фронтенд (Next.js)
 
