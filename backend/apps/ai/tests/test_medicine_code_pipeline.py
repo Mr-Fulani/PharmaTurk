@@ -1288,3 +1288,38 @@ def test_paragraph_batch_keys_use_brand_of_turkish_original():
     assert paragraphs == [normalize_paragraph(paragraph, "DISAVER")]
     assert paragraphs[0].startswith(f"{BRAND_TOKEN}'i ")
 
+
+def test_medicine_source_names_command_reports_and_records_equivalents():
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.catalog.models import Product
+
+    found = _medicine_with(DISAVER_RU, _equivalents(f"{DISAVER}\nBARKOD {DISAVER_BARCODE}"), "cmd-found")
+    stored = _medicine_with("MOUNJARO 7", {"source_name": "MOUNJARO 7,5 MG/0,5 ML 4 KALEM"}, "cmd-stored")
+    missing = _medicine_with("KLAMOKS BID 400/57 СУСПЕНЗИЯ 100 МЛ", {}, "cmd-missing")
+    Product.objects.filter(pk=missing.base_product.pk).update(
+        external_url="https://ilacfiyati.com/ilaclar/klamoks-bid"
+    )
+    _medicine_with(DISAVER, {}, "cmd-fine")  # нормальное название в отчёт не попадает
+
+    out = StringIO()
+    call_command("medicine_source_names", "--dry-run", stdout=out)
+    report = out.getvalue()
+    found.base_product.refresh_from_db()
+
+    assert "name переведён или обрезан: 3" in report
+    assert f"{found.base_product.pk}\tequivalents\t{DISAVER_RU!r} → {DISAVER!r}\n" in report
+    assert f"{stored.base_product.pk}\tsource_name\t" in report
+    assert "Турецкое название без перескрейпа: 2 (source_name 1, вкладка аналогов 1)" in report
+    assert "Нужен перескрейп по URL: 1" in report
+    assert "https://ilacfiyati.com/ilaclar/klamoks-bid" in report
+    assert "source_name" not in found.base_product.external_data  # dry-run ничего не пишет
+
+    call_command("medicine_source_names", stdout=StringIO())
+
+    found.base_product.refresh_from_db()
+    found.refresh_from_db()
+    assert found.base_product.external_data["source_name"] == found.external_data["source_name"] == DISAVER
+    assert found.base_product.name == DISAVER_RU  # name не меняется
