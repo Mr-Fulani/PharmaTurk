@@ -662,7 +662,10 @@ def test_partial_apply_blocks_incomplete_medicine_section_in_both_locales():
     )
 
 
-def test_apply_log_with_turkish_ru_sections_blanks_turkish_fields():
+def test_apply_log_without_category_sends_turkish_ru_section_to_moderation():
+    # До 20.10.2026 лекарство без категории валидатор не проверял, и лог с
+    # турецким RU-разделом применялся как APPROVED. Теперь — как у лекарства с
+    # категорией: раздел не применяется ни в одном языке, лог остаётся на модерации.
     medicine = MedicineProduct.objects.create(
         name="AUGMENTIN 875 MG/125 MG",
         slug="augmentin-875-mg125-mg",
@@ -710,7 +713,6 @@ def test_apply_log_with_turkish_ru_sections_blanks_turkish_fields():
     generator.result_applier = AIResultApplier()
     log = AIProcessingLog.objects.get(product=product)
 
-    # Контракт с c439591: лог применяется, турецкие RU-поля заменяются пустой строкой
     generator.apply_log_to_product(
         log,
         allow_approved=True,
@@ -719,11 +721,12 @@ def test_apply_log_with_turkish_ru_sections_blanks_turkish_fields():
 
     log.refresh_from_db()
     medicine.refresh_from_db()
-    assert log.status == AIProcessingStatus.APPROVED
-    ru = medicine.translations.get(locale="ru")
-    assert ru.indications == ""
-    en = medicine.translations.get(locale="en")
-    assert en.indications == "English indications."
+    assert log.status == AIProcessingStatus.MODERATION
+    assert log.application_status == AIApplicationStatus.PARTIAL
+    assert "medicine_translation:indications" in log.application_report["rejected_fields"]
+    for locale in ("ru", "en"):
+        translation = medicine.translations.filter(locale=locale).first()
+        assert translation is None or not translation.indications
 
 
 def test_apply_log_with_cyrillic_turkish_transliteration_blanks_ru_field():
