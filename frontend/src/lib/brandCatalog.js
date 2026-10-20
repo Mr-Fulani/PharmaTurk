@@ -17,6 +17,9 @@ export function buildBrandProductsParams(filters, page, pageSize) {
   const params = {
     page,
     page_size: pageSize,
+    // Компактные карточки, как в категориях: без полных инструкций лекарств
+    // и вложенных бренда/категории (ответ бренда лекарств 0.8 МБ → ~30 КБ).
+    view: 'card',
   }
   if (filters.categorySlugs?.length > 0) params.category_slug = filters.categorySlugs.join(',')
   else if (filters.categories?.length > 0) params.category_id = filters.categories
@@ -31,6 +34,13 @@ export function buildBrandProductsParams(filters, page, pageSize) {
 
 export function brandProductsRequestKey(slug, params) {
   return JSON.stringify([slug, params])
+}
+
+// Текст описания бренда без HTML для meta description. У брендов-производителей
+// лекарств описания нет (getLocalizedBrandDescription → null) — раньше здесь
+// падал SSR и страница отдавала 500.
+export function brandDescriptionText(description) {
+  return String(description || '').replace(/<[^>]*>/g, ' ')
 }
 
 export function shouldShowGenderFilter(categorySlugs) {

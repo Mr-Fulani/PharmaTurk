@@ -5,7 +5,9 @@ Celery Beat schedules `catalog.refresh_brand_product_counts` every 60 seconds.
 It uses the same public Product visibility rules as before: active, available,
 excluding source variants and medicine stubs. Metadata, media and homepage
 priorities are read live. Brand detail/product endpoints retain exact database
-counts.
+counts: detail runs one COUNT served by the 0208 partial index (no JOIN
+annotation since October 2026), products uses the length of its merged list
+(see [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md)).
 
 The same refresh stores a per-product-type snapshot
 (`catalog:brand-type-product-counts:v1`, `{product_type: {brand_id: total}}`) from
