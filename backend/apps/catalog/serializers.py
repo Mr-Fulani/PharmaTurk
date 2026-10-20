@@ -340,17 +340,21 @@ def _resolve_video_file_url(file_field, request):
     return _resolve_file_url(file_field, request)
 
 
-def serialize_product_for_card(product, request, *, hide_counts=True):
+def serialize_product_for_card(product, request, *, hide_counts=True, context=None):
     """
     Сериализует товар для карточки с учётом типа (shoes, clothing и т.д.).
     Используется в recommendations API, чтобы возвращать active_variant_price,
     main_image_url и другие поля, которые ProductSerializer не предоставляет
     для товаров с вариантами.
+
+    context — общий для всех товаров списка: батч-кэши категорий и брендов
+    (CategorySerializer/BrandSerializer) живут в нём и считаются один раз
+    на список, а не на товар.
     """
     # Card payloads never expose brand counters. Passing this through every
     # domain serializer avoids an expensive per-brand products_count query
     # while preserving the existing price/currency/markup implementation.
-    ctx = {'request': request, 'hide_counts': hide_counts}
+    ctx = context if context is not None else {'request': request, 'hide_counts': hide_counts}
     # Простые домены имеют теневой Product, который используется общей
     # категорийной выдачей. Сериализуем его и на странице бренда: иначе один
     # товар получает разные id/main_image_url в зависимости от маршрута, а

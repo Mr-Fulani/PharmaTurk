@@ -140,7 +140,7 @@ from .supplement_market_check_api import (
     build_supplement_market_check_response
     as _build_supplement_market_check_response,
 )
-from .querysets import non_public_shadow_product_q
+from .querysets import non_public_shadow_product_q, source_variant_q
 from .throttles import (
     MEDICINE_MARKET_CHECK_THROTTLES,
     PRODUCT_CARD_SOURCE_REFRESH_THROTTLES,
@@ -1099,16 +1099,24 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         if model is Product:
             queryset = queryset.exclude(non_public_shadow_product_q())
         else:
+            # Служебные строки исключаются подзапросом по id, а не условием на
+            # external_data в основном запросе: планировщик проверял `?` по
+            # каждой строке таблицы раньше brand_id и детоастил дампы парсеров
+            # (TEB, 872 лекарства: 3.7 с). Подзапросы читают маленькие
+            # частичные индексы 0217 — их предикаты совпадают с SQL ниже.
             if 'external_data' in field_names:
                 queryset = queryset.exclude(
-                    models.Q(external_data__has_key='source_variant_id') |
-                    models.Q(external_data__has_key='source_variant_slug')
+                    id__in=model.objects.filter(source_variant_q()).values('id')
                 )
             # Domain sync can create a MedicineProduct projection for a
             # service/stub Product.  The domain row is still non-public when
             # its canonical base product is a variant or medicine stub.
             if 'base_product' in field_names:
-                queryset = queryset.exclude(non_public_shadow_product_q('base_product__'))
+                queryset = queryset.exclude(
+                    base_product_id__in=Product.objects.filter(
+                        non_public_shadow_product_q()
+                    ).values('id')
+                )
         if excluded_product_types is not None:
             # Теневой Product: типы, обслуживаемые доменными моделями.
             queryset = queryset.exclude(product_type__in=excluded_product_types)
@@ -1214,20 +1222,12 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Фильтрует бренды по типу товара/категории."""
+        # Счётчик не аннотируется: для list его добавляет _attach_product_counts
+        # объектам итоговой страницы, products ставит его сам, categories он не
+        # нужен, а detail получает точное число из BrandSerializer — COUNT по
+        # частичному индексу 0208. Аннотация (LEFT JOIN + FILTER) детоастила
+        # external_data всех товаров бренда на каждом вызове (IKEA: 0.5 с ×3).
         queryset = Brand.objects.filter(is_active=True).prefetch_related('translations')
-        if getattr(self, 'action', None) != 'list':
-            # Detail/actions сохраняют прежний точный счётчик. Для list он
-            # добавляется только объектам итоговой страницы в list(), иначе
-            # paginator дважды выполняет тяжёлый GROUP BY по всей Product.
-            queryset = queryset.annotate(
-                _products_count=models.Count(
-                    'products',
-                    filter=(
-                        models.Q(products__is_active=True, products__is_available=True)
-                        & ~non_public_shadow_product_q('products__')
-                    ),
-                )
-            )
         queryset = queryset.order_by('name')
 
         # Прямой фильтр по primary_category_slug
@@ -1423,20 +1423,28 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             previous_url = f"{path}?{query.urlencode()}"
         else:
             previous_url = None
+        # view=card (витрина бренда) — только поля карточки, как у категорий:
+        # полные инструкции лекарств раздували страницу до 0.8 МБ, а вложенные
+        # бренд и категория со счётчиками карточке не нужны.
+        card_view = request.query_params.get('view') == 'card'
+        # Один context на страницу: дерево категорий, их счётчики и бренд
+        # считаются один раз, а не для каждого товара (24 GROUP BY по всей
+        # catalog_product — ~1 с на странице).
         # The brand inventory endpoint historically exposes the nested brand
         # with its exact inventory count.  Keep that API contract here while
         # search/recommendation cards continue to suppress expensive counters.
+        serializer_context = {'request': request, 'hide_counts': card_view}
         results = []
         for product in page_items:
-            row = serialize_product_for_card(product, request, hide_counts=False)
+            row = serialize_product_for_card(product, request, context=serializer_context)
+            if card_view:
+                results.append(compact_card_product_payload(row))
+                continue
             # Generic card/search responses deliberately omit the expensive
             # nested brand. The brand inventory route is the one exception:
             # it historically exposes the exact nested brand/count contract.
             if 'brand' not in row and getattr(product, 'brand', None) is not None:
-                row['brand'] = BrandSerializer(
-                    product.brand,
-                    context={'request': request, 'hide_counts': False},
-                ).data
+                row['brand'] = BrandSerializer(product.brand, context=serializer_context).data
             results.append(row)
         attach_review_aggregates(results)
         return Response({
