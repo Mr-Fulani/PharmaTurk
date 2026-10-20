@@ -446,7 +446,13 @@ class ZaraParser(BaseScraper):
                 seen_products.add(identity)
                 new_on_page += 1
 
-                product = self.parse_product_detail(product_url)
+                try:
+                    product = self.parse_product_detail(product_url)
+                except (OfferNotFound, OfferGone):
+                    # Снятая карточка (404/410) ещё висит в листинге: пропускаем её,
+                    # а не обрываем обход всей категории.
+                    self.logger.info("Zara: карточка снята с продажи, пропуск %s", product_url)
+                    continue
                 if product is None:
                     product = self._build_list_fallback(component, product_url, payload)
                 if product and self.validate_product(product):

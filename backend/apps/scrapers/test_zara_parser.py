@@ -565,3 +565,30 @@ def test_scraper_service_routes_zara_category_to_list(monkeypatch):
             {"max_pages": 1, "start_page": 2},
         )
     ]
+
+
+@pytest.mark.parametrize("error_class", [OfferNotFound, OfferGone])
+def test_zara_category_skips_removed_product_and_continues(monkeypatch, error_class):
+    category_url = "https://www.zara.com/tr/tr/kadin-elbiseler-l1066.html"
+    removed = _category_component("03897114", "KISA ELBISE", page=1)
+    alive = _category_component("02693645", "KEMERLI ELBISE", page=1)
+    category_html = _payload_html(
+        _category_payload([removed, alive], page=1, is_last_page=True)
+    )
+    alive_html = _payload_html(_detail_payload(product_id="02693645", name="KEMERLI ELBISE"))
+
+    def fake_request(url):
+        if url == category_url:
+            return category_html
+        if "p03897114.html" in url:
+            raise error_class(url)
+        if "p02693645.html" in url:
+            return alive_html
+        return None
+
+    parser = ZaraParser()
+    monkeypatch.setattr(parser, "_make_ajax_request", fake_request)
+
+    products = list(parser.parse_product_list(category_url, max_pages=1))
+
+    assert [product.external_id for product in products] == ["zara-02693645"]
