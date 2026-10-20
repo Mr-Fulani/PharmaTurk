@@ -47,6 +47,8 @@ class ProductData:
     contraindications: List[str] = field(default_factory=list)
     side_effects: List[str] = field(default_factory=list)
     interactions: List[str] = field(default_factory=list)
+    # Зачёркнутая цена источника (не прежняя цена товара).
+    old_price: Optional[float] = None
 
 
 @dataclass

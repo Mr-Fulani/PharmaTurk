@@ -108,6 +108,8 @@ class UmmalandParser(BaseScraper):
                         # Обновляем описание и атрибуты из детальной страницы
                         api_product.description = detail_product.description
                         api_product.attributes.update(detail_product.attributes)
+                        if detail_product.old_price and detail_product.price == api_product.price:
+                            api_product.old_price = detail_product.old_price
                         
                         # Объединяем изображения (убираем дубликаты)
                         all_images = []
@@ -615,7 +617,13 @@ class UmmalandParser(BaseScraper):
                 # Обработка ситуаций, когда текст содержит "от 100 руб" или диапазон
                 # Извлекаем первое числовое значение
                 price = normalize_price(price_text)
-            
+
+            # Зачёркнутая цена книги со скидкой («960 ₽» рядом с «768 ₽ -20%»).
+            old_price = None
+            old_price_elem = soup.select_one('.product-old-price')
+            if old_price_elem:
+                old_price = normalize_price(clean_text(old_price_elem.text))
+
             is_available = True
             stock_elem = soup.select_one('.product-available__text') or soup.select_one('.stock')
             if stock_elem:
@@ -642,6 +650,7 @@ class UmmalandParser(BaseScraper):
                 name=name,
                 description=description,
                 price=price,
+                old_price=old_price,
                 currency="RUB",
                 url=product_url,
                 images=images,

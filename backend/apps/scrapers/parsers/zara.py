@@ -531,6 +531,7 @@ class ZaraParser(BaseScraper):
             name=clean_text(str(product.get("name") or "")),
             description=description,
             price=price,
+            old_price=first_variant.get("old_price"),
             currency=self._payload_currency(payload),
             url=self._canonical_url(product_url),
             images=list(first_variant.get("images") or []),
@@ -705,6 +706,8 @@ class ZaraParser(BaseScraper):
                 f"{product.get('name') or ''} - {color.get('name') or ''}".strip(" -")
             ),
             "price": self._normalize_price_value(color.get("price")),
+            # Зачёркнутая цена распродажи, если Zara её отдаёт.
+            "old_price": self._normalize_price_value(color.get("oldPrice")),
             "currency": "TRY",
             "external_url": self._canonical_url(product_url),
             "images": images,

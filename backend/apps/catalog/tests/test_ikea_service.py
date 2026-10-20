@@ -188,5 +188,6 @@ class TestIkeaService:
         
         assert product.id == initial_product.id
         assert product.price == 600
-        assert product.old_price == 500
+        # Прежняя цена — не зачёркнутая цена источника (ложная скидка).
+        assert product.old_price is None
         assert FurnitureProduct.objects.count() == 1

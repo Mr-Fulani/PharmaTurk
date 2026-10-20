@@ -519,3 +519,34 @@ def test_scraper_service_routes_flo_category_to_list(monkeypatch):
     assert products == []
     assert incremental["found"] == 1
     assert calls[0][0] == "https://www.flo.com.tr/ayakkabi?cinsiyet=erkek"
+
+
+@pytest.mark.parametrize("hidden,expected_old", [("False", 2799.99), ("True", None)])
+def test_flo_sells_at_special_price_and_keeps_regular_as_strikethrough(monkeypatch, hidden, expected_old):
+    # Живая карточка 20.10.2026: price=2799.99 — цена без скидки, продаётся за
+    # special_price=2299.99 (её же показывают страница и JSON-LD Offer).
+    detail = {
+        **_detail(),
+        "price": "2799.99",
+        "special_price": "2299.99",
+        "web_hidden_strikethrough_price": hidden,
+        "colors": [],
+    }
+    parser = FloParser()
+    monkeypatch.setattr(parser, "_fetch", lambda url: _product_html(detail))
+
+    product = parser.parse_product_detail("https://www.flo.com.tr/urun/x-101792825")
+
+    assert product.price == 2299.99
+    assert product.old_price == expected_old
+    assert product.attributes["fashion_variants"][0]["price"] == 2299.99
+
+
+def test_flo_without_special_price_has_no_strikethrough(monkeypatch):
+    parser = FloParser()
+    monkeypatch.setattr(parser, "_fetch", lambda url: _product_html({**_detail(), "colors": []}))
+
+    product = parser.parse_product_detail("https://www.flo.com.tr/urun/x-101792825")
+
+    assert product.price == 3499.0
+    assert product.old_price is None

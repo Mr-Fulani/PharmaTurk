@@ -74,6 +74,7 @@ from apps.catalog.models import (
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.ikea_category_mapping import resolve_ikea_category
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
+from apps.catalog.utils.old_price import source_old_price
 import datetime
 
 
@@ -2032,6 +2033,13 @@ class ScraperIntegrationService:
                 if variant and variant.product and variant.product.base_product:
                     existing_by_external_id = variant.product.base_product
 
+            if not existing_by_external_id:
+                existing_by_external_id = self._find_product_by_fashion_variants(scraped_product)
+                if existing_by_external_id is not None:
+                    # Группа пришла с другим составом цветов: объединяем, а не
+                    # снимаем цвета, которых нет в этой выдаче.
+                    existing_by_external_id._fashion_variant_owner_match = True
+
             if existing_by_external_id:
                 return self._update_existing_product(
                     session,
@@ -2530,9 +2538,12 @@ class ScraperIntegrationService:
         self, furniture_product: "FurnitureProduct", product: Product, variants: List[Dict[str, Any]]
     ) -> bool:
         """Создаёт/обновляет FurnitureVariant (цвета) под одной карточкой мебели — как при ручном вводе."""
+        from apps.ai.services.ownership import has_applied_ai_content
         from apps.catalog.models import FurnitureProductImage, FurnitureVariant, FurnitureVariantImage
 
         changed = False
+        # Как у одежды: название варианта товара с AI-результатом не перетираем.
+        keep_variant_names = has_applied_ai_content(product)
         for spec in variants:
             if not isinstance(spec, dict):
                 continue
@@ -2587,6 +2598,8 @@ class ScraperIntegrationService:
                     "stock_quantity",
                     "is_active",
                 ):
+                    if keep_variant_names and field == "name" and variant.name:
+                        continue
                     nv = defaults.get(field)
                     if nv is not None and getattr(variant, field) != nv:
                         setattr(variant, field, nv)
@@ -2740,6 +2753,42 @@ class ScraperIntegrationService:
         }
         return configs.get(product_type)
 
+    FASHION_VARIANT_PRODUCT_TYPES = ("clothing", "shoes", "headwear", "underwear", "islamic_clothing")
+
+    def _find_product_by_fashion_variants(self, scraped_product: ScrapedProduct) -> Optional[Product]:
+        """Товар, которому уже принадлежит цвет из пришедшей группы.
+
+        id группы LCW/FLO — минимальный id цвета: он меняется, когда цвет
+        пропадает или страницы цветов ссылаются друг на друга несимметрично
+        (живой листинг LCW 20.10). id цвета стабилен — по нему находим уже
+        сохранённую карточку вместо создания дубля.
+        """
+        from django.db.models import Count
+
+        attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+        variant_ids = [
+            str(row.get("external_id") or "").strip()
+            for row in attrs.get("fashion_variants") or []
+            if isinstance(row, dict)
+        ]
+        variant_ids = [value for value in variant_ids if value]
+        if not variant_ids:
+            return None
+        for product_type in self.FASHION_VARIANT_PRODUCT_TYPES:
+            variant_model = self._fashion_model_config(product_type)["variant_model"]
+            owner = (
+                variant_model.objects.filter(
+                    external_id__in=variant_ids, product__base_product__isnull=False,
+                )
+                .values("product__base_product_id")
+                .annotate(colors=Count("id"))
+                .order_by("-colors", "product__base_product_id")
+                .first()
+            )
+            if owner:
+                return Product.objects.filter(pk=owner["product__base_product_id"]).first()
+        return None
+
     def _normalize_variant_sizes_payload(self, raw_sizes: Any) -> List[Dict[str, Any]]:
         normalized: List[Dict[str, Any]] = []
         if not raw_sizes:
@@ -2847,13 +2896,31 @@ class ScraperIntegrationService:
 
         changed = False
         seen_external_ids: List[str] = []
+        # Цвет принадлежит одной карточке: цвет, уже сохранённый у другого
+        # товара, не копируем сюда вторым вариантом.
+        incoming_ids = [
+            str(spec.get("external_id") or "").strip()
+            for spec in variants
+            if isinstance(spec, dict) and spec.get("external_id")
+        ]
+        owned_elsewhere = set(
+            VariantModel.objects.filter(external_id__in=incoming_ids)
+            .exclude(product=domain_product)
+            .values_list("external_id", flat=True)
+        )
+        # Названия вариантов пишет и AI (sync_variant_titles_from_parent): у
+        # товара с применённым AI-результатом повторный парсинг их не трогает,
+        # иначе EN-название снова становится «русское название - Black».
+        from apps.ai.services.ownership import has_applied_ai_content
+
+        keep_variant_names = has_applied_ai_content(product)
 
         for idx, spec in enumerate(variants):
             if not isinstance(spec, dict):
                 continue
 
             ext = str(spec.get("external_id") or "").strip()
-            if not ext:
+            if not ext or ext in owned_elsewhere:
                 continue
             seen_external_ids.append(ext)
 
@@ -2898,6 +2965,8 @@ class ScraperIntegrationService:
             if not created:
                 variant_dirty = False
                 for field, value in defaults.items():
+                    if keep_variant_names and field in ("name", "name_en") and getattr(variant, field):
+                        continue
                     if value is not None and getattr(variant, field) != value:
                         setattr(variant, field, value)
                         changed = True
@@ -2972,7 +3041,8 @@ class ScraperIntegrationService:
                 changed = True
 
         stale_qs = domain_product.variants.exclude(external_id__in=seen_external_ids)
-        if stale_qs.filter(is_active=True).exists():
+        merge_only = getattr(product, "_fashion_variant_owner_match", False)
+        if not merge_only and stale_qs.filter(is_active=True).exists():
             stale_qs.update(is_active=False, is_available=False, stock_quantity=0)
             changed = True
 
@@ -3406,18 +3476,34 @@ class ScraperIntegrationService:
             if not price_refresh_disabled:
                 source_currency = str(scraped_product.currency or "").strip().upper()
                 current_currency = str(existing_product.currency or "").strip().upper()
+                source_price = scraped_product.price
+                if source_price is not None and source_price <= 0:
+                    # 0 у источника — «цена не опубликована», а не бесплатно:
+                    # ноль на витрину не пишем (DEVELOPMENT_RULES §5.1), как и
+                    # при создании товара.
+                    source_price = None
                 price_changed = (
-                    scraped_product.price is not None
-                    and scraped_product.price != existing_product.price
+                    source_price is not None
+                    and source_price != existing_product.price
                 )
                 currency_changed = bool(source_currency and source_currency != current_currency)
                 if price_changed or currency_changed:
-                    existing_product.old_price = existing_product.price
-                    if scraped_product.price is not None:
-                        existing_product.price = scraped_product.price
+                    if source_price is not None:
+                        existing_product.price = source_price
                     if source_currency:
                         existing_product.currency = source_currency
                     updated = True
+                if source_price is not None:
+                    # Зачёркнутая цена — только та, что показывает источник, и
+                    # только выше текущей. Прежняя цена в old_price давала
+                    # бессрочные ложные скидки (у лекарств цены регулируются,
+                    # источник её не отдаёт — значит, пусто).
+                    new_old_price = source_old_price(
+                        getattr(scraped_product, "old_price", None), existing_product.price,
+                    )
+                    if existing_product.old_price != new_old_price:
+                        existing_product.old_price = new_old_price
+                        updated = True
 
             # Обновляем наличие
             if scraped_product.is_available != existing_product.is_available:
@@ -4542,6 +4628,7 @@ class ScraperIntegrationService:
             name=scraped_product.name,
             description=scraped_product.description,
             price=float(scraped_product.price) if scraped_product.price else None,
+            old_price=getattr(scraped_product, "old_price", None),
             currency=scraped_product.currency,
             category=scraped_product.category,
             brand=scraped_product.brand,
@@ -4653,21 +4740,46 @@ class ScraperIntegrationService:
         success: bool,
         source_item_gone: bool = False,
     ):
-        """Обновляет статистику парсера."""
-        config.total_runs += 1
-        config.last_run_at = timezone.now()
+        """Обновляет статистику парсера.
 
+        Пишет только поля статистики: config загружен в начале задачи, и полный
+        save() через десятки минут откатывал бы правки админа (включение,
+        прокси, cookies). Успех снимает «Ошибку» и её текст — статус «Активен»
+        нужен проверкам наличия и обновлению карточек, — но не трогает
+        «Обслуживание»/«Неактивен», выставленные вручную.
+        """
+        from django.db.models import F
+
+        now = timezone.now()
+        updates: Dict[str, Any] = {
+            "total_runs": F("total_runs") + 1,
+            "last_run_at": now,
+        }
         if success:
-            config.successful_runs += 1
-            config.last_success_at = timezone.now()
-            config.total_products_scraped += session.products_found
-            config.status = "active"
+            updates.update(
+                successful_runs=F("successful_runs") + 1,
+                last_success_at=now,
+                total_products_scraped=F("total_products_scraped") + session.products_found,
+                last_error_at=None,
+                last_error_message="",
+            )
         elif not source_item_gone:
-            config.last_error_at = timezone.now()
-            config.last_error_message = session.error_message
-            config.status = "error"
+            updates.update(
+                last_error_at=now,
+                last_error_message=session.error_message,
+                status="error",
+            )
 
-        config.save()
+        configs = ScraperConfig.objects.filter(pk=config.pk)
+        configs.update(**updates)
+        if success:
+            configs.filter(status="error").update(status="active")
+        config.refresh_from_db(
+            fields=[
+                "total_runs", "last_run_at", "successful_runs", "last_success_at",
+                "total_products_scraped", "last_error_at", "last_error_message", "status",
+            ]
+        )
 
     def _extract_search_query(self, url: str) -> Optional[str]:
         """Извлекает поисковый запрос из URL."""
@@ -4696,8 +4808,19 @@ class DeduplicationService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
+    # Поля, которые реально нужны сравнению. Полная загрузка всех товаров
+    # (описания, external_data лекарств) не помещалась в лимит воркера.
+    SCAN_FIELDS = (
+        "id", "name", "product_type", "category_id", "brand_id", "created_at", "updated_at",
+        *STRONG_MATCH_FIELDS,
+    )
+    SCAN_EXTERNAL_KEYS = ("source", "source_variant_id", "source_variant_slug")
+
     @staticmethod
     def _safe_external_data(product: Product) -> Dict[str, Any]:
+        light = getattr(product, "_dedup_external_data", None)
+        if light is not None:
+            return light
         return product.external_data if isinstance(product.external_data, dict) else {}
 
     @classmethod
@@ -4804,10 +4927,21 @@ class DeduplicationService:
         """Находит кандидатов в дубликаты товаров по набору сигналов."""
         candidates: List[Dict[str, Any]] = []
         seen_pair_keys: set[str] = set()
-        products = list(
-            Product.objects.select_related("brand", "category").all()
+        from django.db.models.fields.json import KT
+
+        queryset = Product.objects.only(*self.SCAN_FIELDS).annotate(
+            **{f"dedup_{key}": KT(f"external_data__{key}") for key in self.SCAN_EXTERNAL_KEYS}
         )
-        products = [product for product in products if not self._is_shadow_variant_product(product)]
+        products = []
+        for product in queryset.iterator(chunk_size=2000):
+            # Только нужные ключи external_data, без загрузки всего JSON.
+            product._dedup_external_data = {
+                key: getattr(product, f"dedup_{key}")
+                for key in self.SCAN_EXTERNAL_KEYS
+                if getattr(product, f"dedup_{key}")
+            }
+            if not self._is_shadow_variant_product(product):
+                products.append(product)
 
         buckets: Dict[Tuple[str, str], List[Product]] = {}
         for product in products:

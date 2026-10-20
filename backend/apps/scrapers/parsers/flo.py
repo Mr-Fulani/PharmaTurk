@@ -329,7 +329,7 @@ class FloParser(BaseScraper):
         sku = str(detail.get("sku") or "")
         sizes = self._build_sizes(detail.get("options"))
         images = self._extract_images(detail)
-        price = self._normalize_price_value(detail.get("price"))
+        price, old_price = self._selling_and_old_price(detail)
         color = clean_text(str(detail.get("renk") or detail.get("orj_renk") or ""))
         is_available = str(detail.get("is_in_stock")).lower() == "true" or any(
             row["is_available"] for row in sizes
@@ -342,6 +342,7 @@ class FloParser(BaseScraper):
                 f"{detail.get('name') or ''} - {color}".strip(" -")
             ),
             "price": price,
+            "old_price": old_price,
             "currency": "TRY",
             "external_url": self._canonical_url(product_url),
             "images": images,
@@ -412,6 +413,7 @@ class FloParser(BaseScraper):
             name=clean_text(str(detail.get("name") or "")),
             description=self._clean_description(detail.get("description")),
             price=primary["price"],
+            old_price=primary.get("old_price"),
             currency="TRY",
             url=primary["external_url"],
             images=primary["images"],
@@ -529,6 +531,21 @@ class FloParser(BaseScraper):
     def _clean_description(value: Any) -> str:
         text = re.sub(r"<[^>]+>", " ", str(value or ""))
         return clean_text(text)
+
+    @classmethod
+    def _selling_and_old_price(cls, detail: Dict[str, Any]):
+        """Цена продажи и зачёркнутая цена FLO.
+
+        ``price`` у FLO — цена без скидки, продаётся товар за ``special_price``
+        (её же отдаёт JSON-LD Offer и показывает страница: 2 299,99 вместо
+        2 799,99). Зачёркнутая цена — только если FLO её не скрывает.
+        """
+        regular = cls._normalize_price_value(detail.get("price"))
+        special = cls._normalize_price_value(detail.get("special_price"))
+        if special and regular and 0 < special < regular:
+            hidden = str(detail.get("web_hidden_strikethrough_price")).lower() == "true"
+            return special, (None if hidden else regular)
+        return regular or special, None
 
     @staticmethod
     def _normalize_price_value(value: Any) -> Optional[float]:

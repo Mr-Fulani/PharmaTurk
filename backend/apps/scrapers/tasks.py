@@ -1561,24 +1561,39 @@ def run_stub_refresh_task(
                         chunk_skipped += 1
                         last_processed_id = stub.id
                     else:
+                        # Тот же путь, что у обычного прогона: категория, бренд и
+                        # отложенная (после проверки карточки) загрузка картинок.
+                        integration_service._apply_category_mapping(session, scraped)
+                        integration_service._apply_brand_mapping(session, scraped)
+                        if str(scraped.source or "").strip().lower() == "ilacfiyati":
+                            scraped._medicine_media_deferred = True
                         # Product update and durable cursor move are atomic: a
                         # killed worker can neither skip the product nor count it twice.
                         next_processed_total = processed_total + 1
                         with transaction.atomic():
-                            integration_service._update_existing_product(
+                            action, _ = integration_service._update_existing_product(
                                 session,
                                 scraped,
                                 stub.base_product,
                             )
+                            is_updated = action == "updated"
                             _checkpoint_stub_refresh_product(
                                 site_task_id=site_task_id,
                                 processed_total=next_processed_total,
                                 product_id=stub.id,
-                                updated=1,
+                                updated=int(is_updated),
+                                skipped=int(not is_updated),
+                            )
+                        if not is_updated:
+                            logger.info(
+                                "stub_refresh: заглушка %s не обновлена: %s",
+                                stub.external_url,
+                                getattr(scraped, "_medicine_import_skip_reason", "") or action,
                             )
                         processed_total = next_processed_total
                         chunk_found += 1
-                        chunk_updated += 1
+                        chunk_updated += int(is_updated)
+                        chunk_skipped += int(not is_updated)
                         last_processed_id = stub.id
                 except SoftTimeLimitExceeded:
                     raise
