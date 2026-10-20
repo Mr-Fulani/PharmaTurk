@@ -103,7 +103,7 @@ class Command(BaseCommand):
                 ).values_list("source_hash", flat=True)
             )
         missing_chars = sum(length for h, length in lengths.items() if h not in cached)
-        estimate = estimate_translation_cost(chars=missing_chars, request_chars=20000)
+        estimate = estimate_translation_cost(chars=missing_chars)
         unique_chars = sum(lengths.values())
         self.stdout.write(
             f"\nАбзацы инструкций: всего {total_chars:,} симв., уникальных {unique_chars:,} "
