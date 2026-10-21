@@ -31,6 +31,7 @@ from .utils.storage_paths import (
     get_domain_variant_gallery_upload_path,
     get_banner_image_upload_path,
     get_banner_video_upload_path,
+    get_banner_poster_upload_path,
     get_banner_gif_upload_path,
     get_jewelry_main_upload_path,
     get_jewelry_gallery_upload_path,
@@ -6059,7 +6060,18 @@ class BannerMedia(models.Model):
         null=True,
         help_text=_("Локальный видеофайл (MP4, WebM)")
     )
-    
+    video_poster = models.ImageField(
+        _("Постер видео"),
+        upload_to=get_banner_poster_upload_path,
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text=_(
+            "Кадр, который виден, пока ролик не играет (миниатюры карусели). "
+            "WebP до 1400 px по ширине, 50–100 КБ."
+        )
+    )
+
     # Поля для GIF
     gif_url = models.URLField(
         _("URL GIF"),

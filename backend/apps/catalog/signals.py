@@ -1190,6 +1190,7 @@ def delete_banner_media_files(sender, instance, **kwargs):
     """Очищаем все файлы баннера из R2 при удалении записи."""
     delete_file_from_storage(instance.image)
     delete_file_from_storage(instance.video_file)
+    delete_file_from_storage(instance.video_poster)
     delete_file_from_storage(instance.gif_file)
     # На случай если файл удалён, но URL остался — удаляем и по URL (если он внутренний)
     if not instance.image:
