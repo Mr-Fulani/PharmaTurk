@@ -3476,6 +3476,13 @@ class ScraperIntegrationService:
             if not price_refresh_disabled:
                 source_currency = str(scraped_product.currency or "").strip().upper()
                 current_currency = str(existing_product.currency or "").strip().upper()
+                if getattr(scraped_product, "price_unpublished", False) and (
+                    existing_product.price is not None or existing_product.old_price is not None
+                ):
+                    # Источник показывает 0,00 — цена снята: старую на витрине не держим.
+                    existing_product.price = None
+                    existing_product.old_price = None
+                    updated = True
                 source_price = scraped_product.price
                 if source_price is not None and source_price <= 0:
                     # 0 у источника — «цена не опубликована», а не бесплатно:
