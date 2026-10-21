@@ -71,7 +71,11 @@ from apps.catalog.models import (
     Author,
     ProductAuthor,
 )
-from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
+from apps.catalog.constants import get_or_create_root_category
+from apps.catalog.scraper_category_mapping import (
+    _resolve_product_type,
+    resolve_category_and_product_type,
+)
 from apps.catalog.ikea_category_mapping import resolve_ikea_category
 from apps.catalog.utils.parser_media_handler import (
     download_and_optimize_parsed_media,
@@ -1716,6 +1720,16 @@ class ScraperIntegrationService:
                 scraped_product._category_override = flo_category
                 return
 
+        # Задачи Zara/Inditex сохраняют в «Одежду», но сумку, ремень, украшение
+        # или шапку парсер узнаёт по семейству товара в API. Категорию другого
+        # типа, выбранную в задаче, не перебиваем. Override не ставим: у
+        # существующего товара категория и тип не меняются (это смена домена,
+        # см. domain_sync.retire_stale_domain_records).
+        accessory_category = self._inditex_accessory_category(session, scraped_product, category)
+        if accessory_category:
+            scraped_product.category = accessory_category.slug
+            return
+
         if category and category.slug != "furniture":
             scraped_product.category = category.slug or category.name
             scraped_product._category_override = category
@@ -1755,6 +1769,22 @@ class ScraperIntegrationService:
             scraped_product.category = category.slug or category.name
             if getattr(session, "target_category_id", None):
                 scraped_product._category_override = category
+
+    @staticmethod
+    def _inditex_accessory_category(
+        session: ScrapingSession, scraped_product: ScrapedProduct, category
+    ) -> Optional[Category]:
+        """Первая существующая категория из подсказки парсера, если задача — «Одежда»."""
+        attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+        slugs = attrs.get("inditex_category_slugs") or []
+        if not slugs:
+            return None
+        effective = category or session.scraper_config.default_category
+        if effective is not None and _resolve_product_type(effective) != "clothing":
+            return None
+        found = {row.slug: row for row in Category.objects.filter(slug__in=slugs, is_active=True)}
+        # Последний slug — корень типа (accessories, jewelry, headwear).
+        return next((found[slug] for slug in slugs if slug in found), None) or get_or_create_root_category(slugs[-1])
 
     def _apply_brand_mapping(
         self, session: ScrapingSession, scraped_product: ScrapedProduct

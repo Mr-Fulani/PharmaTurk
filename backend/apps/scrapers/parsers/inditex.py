@@ -21,6 +21,7 @@ from curl_cffi import requests as curl_requests
 from ..base.offers import MalformedOfferResponse, OfferGone, OfferNotFound
 from ..base.scraper import ScrapedProduct, ScraperAccessBlockedError, SiteCategoriesError
 from ..base.utils import clean_text
+from .inditex_categories import resolve_inditex_category_slugs
 from .zara import ZaraParser
 
 
@@ -467,6 +468,22 @@ class InditexSiblingParser(ZaraParser):
         }
         if first_variant.get("color"):
             attrs["color"] = first_variant["color"]
+        purchasers = [
+            item.get("value") for item in detail.get("purchaser") or [] if isinstance(item, dict)
+        ]
+        category_slugs = resolve_inditex_category_slugs(
+            name,
+            (
+                summary.get("subFamilyNameEN") or row.get("subFamilyNameEN"),
+                subfamily,
+                summary.get("familyNameEN") or row.get("familyNameEN"),
+                family,
+                *purchasers,
+            ),
+            attrs["gender"],
+        )
+        if category_slugs:
+            attrs["inditex_category_slugs"] = category_slugs
 
         total_stock = sum(int(v.get("stock_quantity") or 0) for v in variants)
         return ScrapedProduct(

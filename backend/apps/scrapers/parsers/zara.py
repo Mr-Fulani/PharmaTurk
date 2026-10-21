@@ -34,6 +34,7 @@ from ..base.offers import (
     translate_offer_check_errors,
 )
 from ..base.utils import clean_text
+from .inditex_categories import resolve_inditex_category_slugs
 
 
 class ZaraParser(BaseScraper):
@@ -564,6 +565,13 @@ class ZaraParser(BaseScraper):
         }
         if first_variant.get("color"):
             attrs["color"] = first_variant["color"]
+        category_slugs = resolve_inditex_category_slugs(
+            product.get("name"),
+            (product.get("subfamilyName"), product.get("familyName")),
+            attrs["gender"],
+        )
+        if category_slugs:
+            attrs["inditex_category_slugs"] = category_slugs
 
         total_stock = sum(int(v.get("stock_quantity") or 0) for v in variants)
         return ScrapedProduct(
@@ -801,6 +809,12 @@ class ZaraParser(BaseScraper):
         images = self._extract_images(colors[0]) if colors and isinstance(colors[0], dict) else []
         availability = str(component.get("availability") or "").lower()
         category_data = payload.get("category") if isinstance(payload.get("category"), dict) else {}
+        attrs: Dict[str, Any] = {"is_list_fallback": True}
+        category_slugs = resolve_inditex_category_slugs(
+            name, (component.get("subfamilyName"), component.get("familyName"))
+        )
+        if category_slugs:
+            attrs["inditex_category_slugs"] = category_slugs
         return ScrapedProduct(
             name=name,
             price=self._normalize_price_value(component.get("price")),
@@ -819,7 +833,7 @@ class ZaraParser(BaseScraper):
                 if availability in self.AVAILABLE_STATUSES
                 else 0
             ),
-            attributes={"is_list_fallback": True},
+            attributes=attrs,
             source=self.get_name(),
         )
 

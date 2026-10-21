@@ -8,6 +8,9 @@
 
 import logging
 
+from django.core.exceptions import FieldDoesNotExist
+from django.db import transaction
+from django.db.models.fields.files import FieldFile
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -179,3 +182,204 @@ def ensure_domain_product_for_base(product):
             product.pk,
             e,
         )
+
+
+# --- Смена типа товара ------------------------------------------------------
+# Смена product_type (админка, нормалайзер) создаёт запись нового домена, но
+# прежняя доменная запись оставалась активной: товар продолжал отдаваться в
+# выдаче старого типа, а фото (у одежды — фото вариантов) в новую запись не
+# попадали. Переносим ссылки на медиа и снимаем прежнюю запись с публикации
+# через update(): save() доменной записи синхронизирует её в Product и вернул
+# бы товару старый тип и is_active=False. Файлы в хранилище не удаляются —
+# на них по-прежнему ссылаются обе записи.
+
+_VARIANT_RELATIONS = ("variants", "book_variants")
+_GALLERY_RELATIONS = ("images", "gallery_images")
+
+
+def domain_models():
+    """product_type → доменная модель со связью base_product (все типы)."""
+    from django.apps import apps
+
+    from .models import AbstractDomainProduct
+
+    return {
+        model._domain_product_type: model
+        for model in apps.get_app_config("catalog").get_models()
+        if issubclass(model, AbstractDomainProduct)
+        and model._domain_product_type
+        and any(field.name == "base_product" for field in model._meta.concrete_fields)
+    }
+
+
+def is_retired_domain_record(domain, product) -> bool:
+    """Запись прежнего типа товара, у которого уже есть запись текущего типа."""
+    current_type = str(product.product_type or "").replace("-", "_")
+    if not current_type or current_type == domain._domain_product_type:
+        return False
+    current_model = domain_models().get(current_type)
+    return bool(current_model and current_model.objects.filter(base_product_id=product.pk).exists())
+
+
+def _child_relation(model, names):
+    """(имя менеджера, модель строк, поле-родитель) первой обратной FK из names."""
+    for name in names:
+        try:
+            field = model._meta.get_field(name)
+        except FieldDoesNotExist:
+            continue
+        if field.one_to_many:
+            return name, field.related_model, field.field.name
+    return None
+
+
+def _media_key(row) -> str:
+    file_name = getattr(getattr(row, "image_file", None), "name", "") or ""
+    return file_name or (getattr(row, "image_url", "") or "")
+
+
+def _copied_values(row, target_model, exclude) -> dict:
+    """Значения полей строки, которые есть и у модели-получателя (без pk и родителя)."""
+    target_fields = {field.name for field in target_model._meta.concrete_fields}
+    values = {}
+    for field in row._meta.concrete_fields:
+        if field.primary_key or field.name in exclude or field.name not in target_fields:
+            continue
+        value = getattr(row, field.attname)
+        values[field.attname] = value.name if isinstance(value, FieldFile) else value
+    return values
+
+
+def _copy_children(rows, relation, parent, *, sort_start=None) -> int:
+    """Копирует строки картинок/размеров в relation записи parent (bulk_create без сигналов:
+    ссылки на файлы переносятся как есть, ничего не скачивается)."""
+    _name, model, parent_field = relation
+    copies = []
+    for index, row in enumerate(rows):
+        values = _copied_values(row, model, {parent_field, "created_at", "updated_at"})
+        if sort_start is not None and "sort_order" in values:
+            values["sort_order"] = sort_start + index
+        copies.append(model(**values, **{parent_field: parent}))
+    model.objects.bulk_create(copies)
+    return len(copies)
+
+
+def _move_domain_media(stale, target, *, dry_run: bool) -> dict:
+    """Переносит в target галерею stale и его варианты (или их фото, если у target вариантов нет)."""
+    source_variants = _child_relation(type(stale), _VARIANT_RELATIONS)
+    target_variants = _child_relation(type(target), _VARIANT_RELATIONS)
+    source_gallery = _child_relation(type(stale), _GALLERY_RELATIONS)
+    target_gallery = _child_relation(type(target), _GALLERY_RELATIONS)
+
+    variants = []
+    if source_variants:
+        variants = list(getattr(stale, source_variants[0]).order_by("sort_order", "pk"))
+    copy_variants = bool(
+        variants and target_variants
+        and not getattr(target, target_variants[0]).exists()
+    )
+
+    gallery_rows = list(getattr(stale, source_gallery[0]).order_by("sort_order", "pk")) if source_gallery else []
+    if not copy_variants:
+        for variant in variants:
+            images = _child_relation(type(variant), ("images",))
+            if images:
+                gallery_rows.extend(getattr(variant, images[0]).order_by("sort_order", "pk"))
+
+    new_gallery_rows = []
+    if target_gallery:
+        manager = getattr(target, target_gallery[0])
+        existing = list(manager.all())
+        seen = {_media_key(row) for row in existing}
+        # Фото вариантов новой записи тоже уже есть на витрине (обратная смена типа).
+        for variant in getattr(target, target_variants[0]).all() if target_variants else []:
+            images = _child_relation(type(variant), ("images",))
+            if images:
+                seen.update(_media_key(row) for row in getattr(variant, images[0]).all())
+        for row in gallery_rows:
+            key = _media_key(row)
+            if key and key not in seen:
+                seen.add(key)
+                new_gallery_rows.append(row)
+
+    result = {"gallery": len(new_gallery_rows), "variants": len(variants) if copy_variants else 0}
+    if dry_run:
+        return result
+
+    if new_gallery_rows:
+        start = max((row.sort_order or 0 for row in existing), default=-1) + 1
+        _copy_children(new_gallery_rows, target_gallery, target, sort_start=start)
+        has_main_flag = any(f.name == "is_main" for f in target_gallery[1]._meta.concrete_fields)
+        if has_main_flag and not any(row.is_main for row in existing):
+            # Главная — картинка с адресом main_image записи, иначе первая перенесённая;
+            # флаги is_main фото вариантов (по одному на цвет) не переносим.
+            copied = list(manager.exclude(pk__in=[row.pk for row in existing]).order_by("sort_order", "pk"))
+            main = next(
+                (row for row in copied if target.main_image and row.image_url == target.main_image),
+                copied[0],
+            )
+            manager.filter(pk__in=[row.pk for row in copied]).exclude(pk=main.pk).update(is_main=False)
+            manager.filter(pk=main.pk).update(is_main=True)
+
+    if copy_variants:
+        _name, variant_model, parent_field = target_variants
+        for variant in variants:
+            values = _copied_values(variant, variant_model, {parent_field, "created_at", "updated_at"})
+            if values.get("slug") and variant_model.objects.filter(slug=values["slug"]).exists():
+                values["slug"] = ""
+            copy = variant_model(**values, **{parent_field: target})
+            copy.save()
+            for names in (("images",), ("sizes",)):
+                source = _child_relation(type(variant), names)
+                destination = _child_relation(variant_model, names)
+                if source and destination:
+                    _copy_children(
+                        list(getattr(variant, source[0]).order_by("pk")), destination, copy,
+                    )
+    return result
+
+
+def retire_stale_domain_records(product, *, dry_run: bool = False) -> list:
+    """Переносит медиа доменных записей прежнего типа в запись текущего и снимает их с публикации.
+
+    Базовый Product не меняется. Пока записи текущего типа нет (тип без
+    доменной модели в _get_domain_map), прежние записи не трогаем. Повторный
+    вызов безопасен: уже перенесённые картинки повторно не копируются.
+    """
+    if not product or not product.pk:
+        return []
+    models = domain_models()
+    target_model = models.get(str(product.product_type or "").replace("-", "_"))
+    target = target_model.objects.filter(base_product_id=product.pk).first() if target_model else None
+    stale_rows = [
+        row
+        for model in models.values()
+        if model is not target_model
+        for row in model.objects.filter(base_product_id=product.pk)
+    ]
+    if not stale_rows:
+        return []
+    if target is None:
+        logger.warning(
+            "Product pk=%s (%s): нет доменной записи текущего типа, прежние %s не сняты",
+            product.pk,
+            product.product_type,
+            [f"{type(row).__name__}:{row.pk}" for row in stale_rows],
+        )
+        return []
+
+    report = []
+    for stale in stale_rows:
+        with transaction.atomic():
+            moved = _move_domain_media(stale, target, dry_run=dry_run)
+            if not dry_run:
+                type(stale).objects.filter(pk=stale.pk).update(is_active=False)
+        report.append({
+            "model": type(stale).__name__,
+            "pk": stale.pk,
+            "was_active": stale.is_active,
+            "target": f"{type(target).__name__}:{target.pk}",
+            **moved,
+        })
+        logger.info("Product pk=%s: прежняя доменная запись снята %s", product.pk, report[-1])
+    return report
