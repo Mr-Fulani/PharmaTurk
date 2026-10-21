@@ -4,12 +4,14 @@
 а сбой источника — давать ошибку, а не пустой «успешный» список.
 """
 
+import json
 from pathlib import Path
 
 import pytest
 
 from apps.scrapers.base.scraper import SiteCategoriesError
 from apps.scrapers.parsers.flo import FloParser
+from apps.scrapers.parsers.ikea import IkeaParser
 
 FIXTURES = Path(__file__).parent / "test_fixtures" / "site_categories"
 
@@ -94,6 +96,43 @@ def test_flo_categories_come_from_listing_category_filter(monkeypatch):
 def test_flo_categories_fail_without_category_filter(monkeypatch, html):
     parser = FloParser()
     monkeypatch.setattr(parser, "_fetch", lambda url: html)
+
+    with pytest.raises(SiteCategoriesError):
+        parser.parse_categories()
+
+
+# --- IKEA --------------------------------------------------------------------
+
+
+def test_ikea_categories_are_product_menu_sections(monkeypatch):
+    parser = IkeaParser(base_url="https://www.ikea.com.tr")
+    menu = json.loads(_fixture("ikea_menuproduct.json"))
+    monkeypatch.setattr(parser.ikea_service, "fetch_product_menu", lambda: menu)
+
+    categories = parser.parse_categories()
+
+    # Заголовки меню («Tüm Mobilyalar» > 10 000 товаров, кампании) и
+    # подкатегории разделов не берутся.
+    assert _pairs(categories) == [
+        (
+            "Günlük İhtiyaçlar",
+            "https://www.ikea.com.tr/kategori/gunluk-ihtiyaclar",
+            "gunluk-ihtiyaclar",
+        ),
+        ("Bebek & Çocuk", "https://www.ikea.com.tr/kategori/bebek-ve-cocuk", "bebek-ve-cocuk"),
+        (
+            "IKEA Yiyecek-İçecek",
+            "https://www.ikea.com.tr/kategori/ikea-yiyecek-icecek",
+            "ikea-yiyecek-icecek",
+        ),
+    ]
+    assert all("/kategori/" in row["url"] for row in categories)
+
+
+@pytest.mark.parametrize("menu", [{}, {"headlines": [], "categories": []}])
+def test_ikea_categories_fail_on_menu_without_sections(monkeypatch, menu):
+    parser = IkeaParser(base_url="https://www.ikea.com.tr")
+    monkeypatch.setattr(parser.ikea_service, "fetch_product_menu", lambda: menu)
 
     with pytest.raises(SiteCategoriesError):
         parser.parse_categories()

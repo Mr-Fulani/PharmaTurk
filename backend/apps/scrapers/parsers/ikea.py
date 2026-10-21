@@ -1,9 +1,10 @@
 """Парсер для сайта IKEA Turkey."""
 
 import logging
-from typing import Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
-from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.scraper import BaseScraper, ScrapedProduct, SiteCategoriesError
+from ..base.utils import clean_text
 from ..base.offers import (
     OfferCheckContext,
     OfferCheckResult,
@@ -32,6 +33,34 @@ class IkeaParser(BaseScraper):
 
     def get_supported_domains(self) -> List[str]:
         return ["ikea.com.tr", "www.ikea.com.tr"]
+
+    def parse_categories(self) -> List[Dict[str, Any]]:
+        """Разделы меню «Ürünler» (Depolama, Yatak Odası, Züccaciye…) для обхода сайта.
+
+        Берём сами разделы, а не их подкатегории: подкатегории меню — выборка
+        внутри раздела, а у IKEA товар состоит сразу в нескольких категориях.
+        Листинг идёт через поиск API, который отдаёт не больше 10 000 товаров
+        на категорию; разделы этот предел не превышают, «Tüm Mobilyalar» — да,
+        поэтому заголовки меню («Tüm …», кампании, коллекции) не берём.
+        """
+        menu = self.ikea_service.fetch_product_menu()
+        sections = menu.get("categories") if isinstance(menu, dict) else None
+        if not isinstance(sections, list):
+            raise SiteCategoriesError("IKEA: в меню товаров нет списка разделов")
+        rows = []
+        for section in sections:
+            url = str(section.get("url") or "") if isinstance(section, dict) else ""
+            if "/kategori/" not in urlparse(url).path:
+                continue
+            slug, _language = self.ikea_service.parse_category_list_url(url)
+            rows.append(
+                {
+                    "name": clean_text(str(section.get("title") or slug)),
+                    "url": url,
+                    "external_id": slug,
+                }
+            )
+        return self._site_categories(rows)
 
     @classmethod
     def is_ikea_product_url(cls, url: str) -> bool:

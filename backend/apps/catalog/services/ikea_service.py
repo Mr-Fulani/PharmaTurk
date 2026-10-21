@@ -90,7 +90,9 @@ class IkeaService:
         if cache_key in self._category_slug_cache:
             return self._category_slug_cache[cache_key]
 
-        response = self.client.get(category_url)
+        # Меню IKEA ещё ссылается на переименованные разделы
+        # (/kategori/bebek-ve-cocuk → 301 на bebek-ve-cocuk-urunleri).
+        response = self.client.get(category_url, follow_redirects=True)
         raise_for_blocked_status(
             status_code=response.status_code,
             url=str(response.url or category_url),
@@ -314,6 +316,18 @@ class IkeaService:
         # IKEA часто отдаёт stockCount=0 и onlineStockStatus=NoStock при онлайн-заказе;
         # количество тогда задаётся в scrapers (дефолт 3 шт).
         return None, True
+
+    def fetch_product_menu(self) -> Dict:
+        """Меню «Ürünler» витрины: разделы и их подкатегории (как в шапке сайта)."""
+        url = f"{self.BASE_URL}/menuproduct"
+        response = self.client.get(url, params={"showOnWeb": "true"})
+        raise_for_blocked_status(
+            status_code=response.status_code,
+            url=str(response.url or url),
+            source="IKEA",
+        )
+        response.raise_for_status()
+        return response.json()
 
     def search_items(
         self,
