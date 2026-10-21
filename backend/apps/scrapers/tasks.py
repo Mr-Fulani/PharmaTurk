@@ -126,62 +126,107 @@ def _cancel_site_task(site_task_id: int, message: str) -> None:
     )
 
 
-def _sweep_parsed_orphans(parser_name: str) -> int:
+# Чистка products/parsed/ после парсинга. Порог по числу файлов, а не по доле:
+# после переноса в читаемые пути ничейными становятся почти все файлы прохода
+# (21.10.2026: 2540 из 2885 у ilacfiyati), доля ничего не говорит о сбое.
+_SWEEP_MIN_PRODUCTS = 100
+
+
+def _report_sweep_abort(parser: str, orphans: list, max_delete: int) -> None:
+    from apps.monitoring.watchdog import send_admin_telegram_notification
+
+    send_admin_telegram_notification(
+        f"⚠️ Чистка products/parsed/{parser}/: к удалению {len(orphans)} файлов — больше лимита "
+        f"{max_delete}, ничего не удалено.\n"
+        "Примеры: " + ", ".join(orphans[:5]) + "\n"
+        "Что делать: CELERY_TASKS.md, «Чистка products/parsed/ после парсинга»"
+    )
+
+
+def _sweep_parsed_orphans(parser_name: str, *, max_delete: Optional[int] = None, dry_run: bool = False) -> int:
     """Удаляет из products/parsed/<parser>/ файлы без единой ссылки в БД.
 
     Сигнал переноса чистит parsed-оригиналы у сохранённых товаров, но у
     пропущенных (дубли) скачанное медиа оставалось орфаном. Этот sweep после
-    скрейпа гарантирует, что products/parsed/ не копится. Удаляем ТОЛЬКО файлы
-    с нулём ссылок — это не массовый cleanup, риска вайпа нет.
-    """
-    try:
-        from django.apps import apps
-        from django.core.files.storage import default_storage
-        from apps.catalog.utils.r2_utils import get_r2_client
-        from django.conf import settings
+    скрейпа не даёт products/parsed/ копиться.
 
-        prefix = f"products/parsed/{(parser_name or '').lower()}/"
-        client = get_r2_client()
-        bucket = settings.R2_BUCKET_NAME
-        paginator = client.get_paginator("list_objects_v2")
+    Резервной копии медиа товаров нет, поэтому удаляется только то, что точно
+    не нужно:
+    - ссылки ищутся по всем полям медиа одним запросом на поле; любая ошибка
+      проверки — ничего не удаляем;
+    - файлы моложе PARSED_MEDIA_SWEEP_MIN_AGE_HOURS не трогаем: их могла только
+      что скачать другая задача, ещё не записав строку товара;
+    - пока идёт другая задача этого парсера, sweep пропускается;
+    - кандидатов больше PARSED_MEDIA_SWEEP_MAX_DELETE — ничего не удаляем,
+      отчёт админу в Telegram.
+
+    Возвращает число удалённых файлов (при dry_run — сколько было бы удалено).
+    """
+    import re
+    from datetime import timedelta
+
+    from django.core.files.storage import default_storage
+
+    from apps.catalog.models import Product
+    from apps.catalog.utils.media_references import MediaReferenceCheckError, referenced_media_paths
+    from apps.catalog.utils.r2_utils import get_r2_client
+
+    parser = (parser_name or "").lower()
+    if not re.fullmatch(r"[a-z0-9_-]+", parser):
+        logger.warning("parsed-sweep: недопустимое имя парсера %r, пропущен", parser_name)
+        return 0
+    if max_delete is None:
+        max_delete = settings.PARSED_MEDIA_SWEEP_MAX_DELETE
+    if SiteScraperTask.objects.filter(
+        scraper_config__parser_class__iexact=parser, status__in=("pending", "running")
+    ).exists():
+        logger.info("parsed-sweep %s: пропущен — идёт другая задача этого парсера", parser)
+        return 0
+    try:
+        # Пустая или чужая БД (стек 14.06.2026) сочла бы ничейным всё.
+        if Product.objects.count() < _SWEEP_MIN_PRODUCTS:
+            logger.error("parsed-sweep %s: в БД меньше %s товаров, ничего не удалено", parser, _SWEEP_MIN_PRODUCTS)
+            return 0
+        fragment = f"products/parsed/{parser}/"
+        # Ключи — относительно хранилища: на dev у R2 префикс dev/ (R2_PREFIX).
+        location = (getattr(settings, "R2_CONFIG", {}).get("prefix", "") or "").strip("/")
+        list_prefix = f"{location}/{fragment}" if location else fragment
+        cutoff = timezone.now() - timedelta(hours=settings.PARSED_MEDIA_SWEEP_MIN_AGE_HOURS)
+        paginator = get_r2_client().get_paginator("list_objects_v2")
         keys = [
-            obj["Key"]
-            for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
+            obj["Key"][len(list_prefix) - len(fragment):]
+            for page in paginator.paginate(Bucket=settings.R2_BUCKET_NAME, Prefix=list_prefix)
             for obj in page.get("Contents", [])
+            if obj["LastModified"] < cutoff
         ]
         if not keys:
             return 0
-
-        image_fields = []
-        for model in apps.get_app_config("catalog").get_models():
-            for field in model._meta.get_fields():
-                fname = getattr(field, "name", "")
-                if hasattr(field, "attname") and any(
-                    k in fname for k in ("image_url", "image_file", "main_image", "video")
-                ):
-                    image_fields.append((model, fname))
-
-        def referenced(key: str) -> bool:
-            for model, fname in image_fields:
-                try:
-                    if model.objects.filter(**{f"{fname}__contains": key}).exists():
-                        return True
-                except Exception:
-                    continue
-            return False
-
-        orphans = [k for k in keys if not referenced(k)]
-        for key in orphans:
-            try:
-                default_storage.delete(key)
-            except Exception:
-                pass
-        if orphans:
-            logger.info("parsed-sweep %s: удалено орфанов %s/%s", parser_name, len(orphans), len(keys))
-        return len(orphans)
-    except Exception as exc:  # noqa: BLE001 — sweep не должен ронять задачу
-        logger.warning("parsed-sweep %s не удался: %s", parser_name, exc)
+        referenced = referenced_media_paths(fragment)
+    except MediaReferenceCheckError as exc:
+        logger.error("parsed-sweep %s: ссылки не проверены, ничего не удалено: %s", parser, exc)
         return 0
+    except Exception as exc:  # noqa: BLE001 — sweep не должен ронять задачу
+        logger.warning("parsed-sweep %s не удался: %s", parser, exc)
+        return 0
+
+    orphans = [key for key in keys if key not in referenced]
+    if len(orphans) > max_delete:
+        logger.error("parsed-sweep %s: %s файлов больше лимита %s, ничего не удалено", parser, len(orphans), max_delete)
+        if not dry_run:
+            _report_sweep_abort(parser, orphans, max_delete)
+        return 0
+    if dry_run:
+        return len(orphans)
+    deleted = 0
+    for key in orphans:
+        try:
+            default_storage.delete(key)
+            deleted += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("parsed-sweep %s: не удалён %s: %s", parser, key, exc)
+    if orphans:
+        logger.info("parsed-sweep %s: удалено орфанов %s/%s", parser, deleted, len(keys))
+    return deleted
 
 
 def _category_content_error(exc: Exception) -> bool:
