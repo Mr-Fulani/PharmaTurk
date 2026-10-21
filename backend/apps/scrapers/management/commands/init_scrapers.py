@@ -12,7 +12,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Обработчик команды."""
         
-        # ... (ilacabak and zara configs remain unchanged) ...
+        # ... (zara config remains unchanged) ...
 
         # Создаем конфигурацию для umma-land.com
         ummaland_config, created = ScraperConfig.objects.get_or_create(
@@ -71,36 +71,6 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING('Конфигурация парсера ummaland уже существует')
             )
-        ilacabak_config, created = ScraperConfig.objects.get_or_create(
-            name='ilacabak',
-            defaults={
-                'parser_class': 'ilacabak',
-                'base_url': 'https://ilacabak.com',
-                'description': 'Парсер для турецких медикаментов и БАДов с сайта ilacabak.com',
-                'status': 'active',
-                'is_enabled': True,
-                'priority': 10,
-                'delay_min': 2.0,
-                'delay_max': 4.0,
-                'timeout': 30,
-                'max_retries': 3,
-                'max_pages_per_run': 5,
-                'max_products_per_run': 100,
-                'sync_enabled': True,
-                'sync_interval_hours': 24,
-                'use_proxy': False,
-            }
-        )
-        
-        if created:
-            self.stdout.write(
-                self.style.SUCCESS('Создана конфигурация парсера ilacabak')
-            )
-        else:
-            self.stdout.write(
-                self.style.WARNING('Конфигурация парсера ilacabak уже существует')
-            )
-        
         # Создаем конфигурацию для zara.com
         zara_config, created = ScraperConfig.objects.get_or_create(
             name='zara',

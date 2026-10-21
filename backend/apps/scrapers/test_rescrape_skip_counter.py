@@ -89,3 +89,25 @@ def test_scraped_sources_is_upserted_instead_of_growing_forever():
         svc._update_existing_product(session, _scraped(), product)
         product.refresh_from_db()
     assert len(product.external_data["scraped_sources"]) == 1
+
+
+@pytest.mark.django_db
+def test_unpublished_source_price_clears_stale_storefront_price():
+    # IlacFiyati показывает 0,00 — цена снята; старую цену на витрине не держим.
+    svc, session, product = _setup()
+    scraped = _scraped(price=None)
+    scraped.price_unpublished = True
+
+    action, updated = svc._update_existing_product(session, scraped, product)
+    updated.refresh_from_db()
+
+    assert action == "updated"
+    assert updated.price is None
+
+
+@pytest.mark.django_db
+def test_missing_source_price_without_unpublished_flag_keeps_price():
+    svc, session, product = _setup()
+    svc._update_existing_product(session, _scraped(price=None), product)
+    product.refresh_from_db()
+    assert product.price == 100

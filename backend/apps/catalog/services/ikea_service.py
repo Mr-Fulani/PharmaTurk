@@ -445,6 +445,7 @@ class IkeaService:
                 except ExternalAccessBlockedError:
                     raise
                 except Exception as e:
+                    response_statuses.append(None)
                     logger.error(f"Error in fallback category search (lang={lang}): {e}")
 
         if page == 1 and response_statuses and all(
@@ -452,6 +453,15 @@ class IkeaService:
         ):
             raise IkeaCategoryAPIError(
                 f"IKEA product API returned HTTP 404 for category '{category_slug}'"
+            )
+        if not products and any(
+            status is None or status >= 500 for status in response_statuses
+        ):
+            # Таймаут или 5xx давали пустую страницу — парсер принимал её за
+            # конец каталога и «успешно» обрывал обход посреди категории.
+            raise IkeaCategoryAPIError(
+                f"IKEA product API не ответил для категории '{category_slug}' "
+                f"(страница {page}): таймаут или ошибка сервера"
             )
 
         return products

@@ -191,3 +191,32 @@ class TestIkeaService:
         # Прежняя цена — не зачёркнутая цена источника (ложная скидка).
         assert product.old_price is None
         assert FurnitureProduct.objects.count() == 1
+
+
+@pytest.mark.parametrize("failure", ["timeout", 502])
+def test_category_page_timeout_or_5xx_is_an_error_not_catalog_end(monkeypatch, failure):
+    import httpx
+
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=failure if isinstance(failure, int) else 200)
+    response.url = "https://frontendapi.ikea.com.tr/api/search/products"
+
+    def fake_get(*args, **kwargs):
+        if failure == "timeout":
+            raise httpx.ReadTimeout("timed out")
+        return response
+
+    monkeypatch.setattr(ikea_service.client, "get", fake_get)
+
+    with pytest.raises(IkeaCategoryAPIError, match="не ответил"):
+        ikea_service.get_category_products("kanepeler", page=3)
+
+
+def test_category_page_with_200_and_no_products_is_catalog_end(monkeypatch):
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=200)
+    response.url = "https://frontendapi.ikea.com.tr/api/search/products"
+    response.json.return_value = {"products": []}
+    monkeypatch.setattr(ikea_service.client, "get", lambda *args, **kwargs: response)
+
+    assert ikea_service.get_category_products("kanepeler", page=3) == []

@@ -702,3 +702,25 @@ def test_parse_product_list_skips_listing_url_reached_by_variant_redirect(monkey
 
     assert [product.external_id for product in products] == ["lcw-4827603"]
     assert direct_requests == []
+
+
+def test_parse_product_list_skips_card_that_failed_to_load(monkeypatch):
+    # Раньше вместо карточки публиковался товар из текста плитки — без фото,
+    # размеров и с другой схемой id; при следующем прогоне получался дубль.
+    parser = LcwParser()
+
+    def fake_make_request(url, **kwargs):
+        if "sayfa=" in url:
+            return ""
+        if url.endswith("-t-345"):
+            return LCW_CATEGORY_HTML
+        if url.endswith("-4827604"):
+            return None  # карточка не загрузилась
+        return LCW_DETAIL_HTML
+
+    monkeypatch.setattr(parser, "_make_request", fake_make_request)
+
+    products = list(parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345"))
+
+    assert [product.external_id for product in products] == ["lcw-4827603"]
+    assert parser.item_errors == 1

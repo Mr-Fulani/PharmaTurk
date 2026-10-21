@@ -3,10 +3,13 @@
 import json
 import logging
 import re
+import time
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse
 
+import httpx
 from bs4 import BeautifulSoup
+from celery.exceptions import SoftTimeLimitExceeded
 
 from apps.http_errors import raise_for_blocked_status
 
@@ -24,6 +27,7 @@ class UmmalandParser(BaseScraper):
     """Парсер для сайта Ummaland.com."""
     
     API_URL = "https://umma-land.com/wp-json/filters/products/"
+    CATEGORY_API_TIMEOUT_SECONDS = 90
 
     @classmethod
     def is_category_url(cls, url: str) -> bool:
@@ -59,9 +63,12 @@ class UmmalandParser(BaseScraper):
     def parse_product_list(self, 
                           category_url: str, 
                           max_pages: int = 10) -> List[ScrapedProduct]:
-        """Парсит список товаров из категории."""
-        products = []
-        
+        """Парсит список товаров из категории.
+
+        Генератор: каждая книга отдаётся сразу после разбора, чтобы сервис
+        сохранял её до мягкого лимита Celery. Раньше список собирался целиком,
+        и при «timed out» на большой категории не сохранялось ничего.
+        """
         try:
             self.logger.info(f"Парсинг категории: {category_url}")
             
@@ -134,9 +141,10 @@ class UmmalandParser(BaseScraper):
                         api_product.stock_quantity = 3 if api_product.is_available else 0
                         
                         if self.validate_product(api_product):
-                            products.append(api_product)
+                            yield api_product
                             
-                except ScraperAccessBlockedError:
+                except (ScraperAccessBlockedError, SoftTimeLimitExceeded):
+                    # Мягкий лимит Celery не глушим: сервис завершит чанк штатно.
                     raise
                 except Exception as e:
                     self.logger.error(f"Ошибка при обработке товара {item.get('name')}: {e}")
@@ -147,8 +155,6 @@ class UmmalandParser(BaseScraper):
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге списка товаров: {e}")
             raise
-        
-        return products
     
     def _get_category_id(self, url: str) -> Optional[int]:
         """Получает ID категории из HTML страницы."""
@@ -185,24 +191,36 @@ class UmmalandParser(BaseScraper):
             # "sort": "date" 
         }
         
-        try:
-            response = self.client.post(
-                self.API_URL, 
-                json=payload,
-                headers={"Content-Type": "application/json"}
-            )
-            raise_for_blocked_status(
-                status_code=response.status_code,
-                url=str(response.url or self.API_URL),
-                source="Ummaland",
-            )
-            response.raise_for_status()
-            return response.json()
-        except ScraperAccessBlockedError:
-            raise
-        except Exception as e:
-            self.logger.error(f"Ошибка API запроса: {e}")
-            raise
+        # Ответ — вся категория одним JSON: на больших категориях обычного
+        # таймаута не хватает, а единственная неудача обрывала весь прогон.
+        timeout = max(float(self.timeout or 0), self.CATEGORY_API_TIMEOUT_SECONDS)
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self.client.post(
+                    self.API_URL,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=timeout,
+                )
+                raise_for_blocked_status(
+                    status_code=response.status_code,
+                    url=str(response.url or self.API_URL),
+                    source="Ummaland",
+                )
+                response.raise_for_status()
+                return response.json()
+            except ScraperAccessBlockedError:
+                raise
+            except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as e:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                retryable = status is None or status == 429 or status >= 500
+                self.logger.warning(f"Ummaland: ошибка API категории (попытка {attempt + 1}): {e}")
+                if not retryable or attempt >= self.max_retries:
+                    raise
+                time.sleep(2 ** attempt * 3)
+            except Exception as e:
+                self.logger.error(f"Ошибка API запроса: {e}")
+                raise
 
     def _parse_api_item(self, item: Dict) -> Optional[ScrapedProduct]:
         """Преобразует элемент API в ScrapedProduct."""
