@@ -21,7 +21,10 @@ interface SitemapTestimonial {
   id: number
 }
 
-async function buildStaticUrls(today: string): Promise<SitemapUrl[]> {
+// Сюда сборщики пишут, какой запрос к API не удался: такая секция неполная.
+type Failures = string[]
+
+async function buildStaticUrls(today: string, failures: Failures): Promise<SitemapUrl[]> {
   const urls: SitemapUrl[] = []
 
   // 1. Статические страницы
@@ -60,6 +63,7 @@ async function buildStaticUrls(today: string): Promise<SitemapUrl[]> {
       }
     }
   } catch (err) {
+    failures.push('pages')
     console.error('Sitemap: Failed to fetch dynamic pages', err)
   }
 
@@ -74,13 +78,14 @@ async function buildStaticUrls(today: string): Promise<SitemapUrl[]> {
       urls.push(buildUrl(`/testimonials/${testimonial.id}`, `/testimonials/${testimonial.id}`, 'weekly', 0.5))
     }
   } catch (err) {
+    failures.push('testimonials')
     console.error('Sitemap: Failed to fetch testimonials', err)
   }
 
   return urls
 }
 
-async function buildCategoryUrls(): Promise<SitemapUrl[]> {
+async function buildCategoryUrls(failures: Failures): Promise<SitemapUrl[]> {
   const urls: SitemapUrl[] = []
   const seenSlugs = new Set<string>()
   const HIGH_PRIORITY_CATEGORIES = new Set(['medicines', 'supplements', 'uslugi'])
@@ -101,13 +106,14 @@ async function buildCategoryUrls(): Promise<SitemapUrl[]> {
         urls.push(url)
       }
     }
-  } catch {
-    // продолжаем без категорий
+  } catch (err) {
+    failures.push('categories')
+    console.error('Sitemap: Failed to fetch categories', err)
   }
   return urls
 }
 
-async function buildBrandUrls(today: string): Promise<SitemapUrl[]> {
+async function buildBrandUrls(today: string, failures: Failures): Promise<SitemapUrl[]> {
   const urls: SitemapUrl[] = []
   const seenSlugs = new Set<string>()
   try {
@@ -125,12 +131,13 @@ async function buildBrandUrls(today: string): Promise<SitemapUrl[]> {
       urls.push(url)
     }
   } catch (err) {
+    failures.push('brands')
     console.error('Sitemap: Failed to fetch brands', err)
   }
   return urls
 }
 
-async function buildServiceUrls(today: string): Promise<SitemapUrl[]> {
+async function buildServiceUrls(today: string, failures: Failures): Promise<SitemapUrl[]> {
   const urls: SitemapUrl[] = []
   const seenSlugs = new Set<string>()
   try {
@@ -149,12 +156,13 @@ async function buildServiceUrls(today: string): Promise<SitemapUrl[]> {
       urls.push(url)
     }
   } catch (err) {
+    failures.push('services')
     console.error('Sitemap: Failed to fetch services', err)
   }
   return urls
 }
 
-async function buildDomainProductUrls(domain: string, today: string): Promise<SitemapUrl[]> {
+async function buildDomainProductUrls(domain: string, today: string, failures: Failures): Promise<SitemapUrl[]> {
   // Лёгкий эндпоинт /api/catalog/sitemap-products?domain=X — только slug + updated_at.
   const urls: SitemapUrl[] = []
   const seenSlugs = new Set<string>()
@@ -176,6 +184,7 @@ async function buildDomainProductUrls(domain: string, today: string): Promise<Si
       urls.push(url)
     }
   } catch (err) {
+    failures.push(`products-${domain}`)
     console.error(`Sitemap: Failed to fetch products for domain ${domain}`, err)
   }
   return urls
@@ -185,14 +194,20 @@ export default function SitemapSection() {
   return null
 }
 
+interface SectionXml {
+  xml: string
+  complete: boolean
+  empty: boolean
+}
+
 // Холодная сборка products-medicines — ~25 последовательных запросов к API
 // (~20 с). Готовый XML живёт в памяти процесса: после первой сборки ответ не
-// ждёт API, устаревшая секция пересобирается в фоне. Пустые не кэшируем —
-// это сбой API, а не пустой каталог.
+// ждёт API, устаревшая секция пересобирается в фоне. Неполные (сбой API) и
+// пустые не кэшируем.
 const SECTION_FRESH_MS = 6 * 60 * 60 * 1000
 const sectionXmlCache = createStaleWhileRevalidateCache({
   freshMs: SECTION_FRESH_MS,
-  shouldStore: (xml: string) => xml.includes('<url>'),
+  shouldStore: (section: SectionXml) => section.complete && !section.empty,
 })
 
 function isKnownSection(section: string): boolean {
@@ -200,17 +215,19 @@ function isKnownSection(section: string): boolean {
   return section.startsWith('products-') && SITEMAP_DOMAINS.includes(section.slice('products-'.length))
 }
 
-async function buildSectionUrls(section: string): Promise<SitemapUrl[]> {
+async function buildSectionUrls(section: string, failures: Failures): Promise<SitemapUrl[]> {
   const today = new Date().toISOString().split('T')[0]
-  if (section === 'static') return buildStaticUrls(today)
-  if (section === 'categories') return buildCategoryUrls()
-  if (section === 'brands') return buildBrandUrls(today)
-  if (section === 'services') return buildServiceUrls(today)
-  return buildDomainProductUrls(section.slice('products-'.length), today)
+  if (section === 'static') return buildStaticUrls(today, failures)
+  if (section === 'categories') return buildCategoryUrls(failures)
+  if (section === 'brands') return buildBrandUrls(today, failures)
+  if (section === 'services') return buildServiceUrls(today, failures)
+  return buildDomainProductUrls(section.slice('products-'.length), today, failures)
 }
 
-async function buildSectionXml(section: string): Promise<string> {
-  return generateSitemapXml(await buildSectionUrls(section))
+async function buildSectionXml(section: string): Promise<SectionXml> {
+  const failures: Failures = []
+  const urls = await buildSectionUrls(section, failures)
+  return { xml: generateSitemapXml(urls), complete: failures.length === 0, empty: urls.length === 0 }
 }
 
 export const getServerSideProps: GetServerSideProps = async ({ params, res }) => {
@@ -220,10 +237,20 @@ export const getServerSideProps: GetServerSideProps = async ({ params, res }) =>
   if (!isKnownSection(section)) {
     return { notFound: true }
   }
-  const xml: string = await sectionXmlCache.get(section, () => buildSectionXml(section))
+  const { xml, complete, empty }: SectionXml = await sectionXmlCache.get(section, () => buildSectionXml(section))
 
   res.setHeader('Content-Type', 'application/xml; charset=utf-8')
-  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+  if (complete) {
+    res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+  } else {
+    // Сбой API: раньше Cloudflare сутки держал пустую секцию. Неполную не
+    // кэшируем, а пустую отдаём 503 — бот повторит позже, URL не выпадут.
+    res.setHeader('Cache-Control', 'no-store')
+    if (empty) {
+      res.statusCode = 503
+      res.setHeader('Retry-After', '300')
+    }
+  }
   res.write(xml)
   res.end()
 
