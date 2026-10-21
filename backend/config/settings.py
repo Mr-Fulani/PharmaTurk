@@ -75,7 +75,6 @@ INSTALLED_APPS = [
     "apps.payments",
     "apps.vapi",
     "apps.scrapers",
-    "apps.favorites",
     "apps.feedback",
     "apps.settings",
     "apps.pages",
