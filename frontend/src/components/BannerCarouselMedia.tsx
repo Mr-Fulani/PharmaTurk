@@ -42,6 +42,12 @@ interface BannerCarouselProps {
 }
 
 const EMPTY_BANNERS: Banner[] = []
+// Пауза перед единственной повторной загрузкой слайда: сбой CDN/сети обычно разовый
+const IMAGE_RETRY_DELAY_MS = 1500
+// Миниатюры видны только шире 640px (BannerCarousel.module.css)
+const THUMBNAILS_MEDIA_QUERY = '(min-width: 641px)'
+
+const withRetryParam = (url: string) => `${url}${url.includes('?') ? '&' : '?'}retry=1`
 
 export default function BannerCarousel({ position, className = '', initialBanners = EMPTY_BANNERS }: BannerCarouselProps) {
   const router = useRouter()
@@ -66,6 +72,8 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
   const [fallbackMediaIds, setFallbackMediaIds] = useState<Record<number, boolean>>({})
+  const [retriedMediaIds, setRetriedMediaIds] = useState<Record<number, boolean>>({})
+  const [thumbnailsVisible, setThumbnailsVisible] = useState(false)
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
   const initialMountRef = useRef(true)
@@ -125,6 +133,15 @@ export default function BannerCarousel({ position, className = '', initialBanner
     observer.observe(container)
     return () => observer.disconnect()
   }, [loading, banners.length])
+
+  // На телефоне миниатюры скрыты: не тянем их полноразмерные картинки с CDN
+  useEffect(() => {
+    const query = window.matchMedia(THUMBNAILS_MEDIA_QUERY)
+    const update = () => setThumbnailsVisible(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
 
   // Функция для сброса и перезапуска автоматического переключения
   const resetAutoPlay = useCallback(() => {
@@ -279,35 +296,41 @@ export default function BannerCarousel({ position, className = '', initialBanner
           // Keep a visited slide's full-size source when it becomes a thumbnail.
           // Otherwise rotation downloads a second image and demotes the LCP resource.
           const fullSize = index === 0 || media.id === firstMediaId || expandedMediaIds[media.id]
+          // Hidden phone thumbnails get no image, except the next slide once the
+          // first one has loaded, so autoplay does not reveal an empty slide.
+          if (!fullSize && !thumbnailsVisible && !(index === 1 && firstMediaReady)) return null
           const isHero = position === 'main' && media.id === firstMediaId
           const optimizedUrl = fullSize
             ? finalUrl
             : withListingImageMaxWidth(finalUrl, 440)
+          const imageUrl = retriedMediaIds[media.id] && !isFallback
+            ? withRetryParam(optimizedUrl)
+            : optimizedUrl
 
           return (
             <div className="relative h-full w-full">
               <Image
-                src={optimizedUrl}
+                src={imageUrl}
                 alt={title || t('banner_image_alt', 'Banner')}
                 fill
+                // Ready-made CDN webp (~1672px) is served as is: the /_next/image
+                // optimizer runs inside Next and ran out of memory under load.
+                unoptimized
                 priority={isHero}
                 fetchPriority={isHero ? 'high' : 'auto'}
                 loading={isHero ? 'eager' : 'lazy'}
-                // Wide artwork is cropped with object-cover. Account for its
-                // hidden width so the visible crop stays sharp on narrow screens.
-                sizes={fullSize
-                  ? '(max-width: 480px) 740px, (max-width: 768px) 970px, 1380px'
-                  : '(max-width: 768px) 25vw, 220px'
-                }
                 className={`${styles.itemImage} object-cover`}
                 onLoadingComplete={() => {
                   if (media.id === firstMediaId) setFirstMediaReady(true)
                   if (isActive) setLoading(false)
                 }}
                 onError={() => {
-                  if (!isFallback) {
-                    setFallbackMediaIds(prev => ({ ...prev, [media.id]: true }))
+                  if (isFallback) return
+                  if (!retriedMediaIds[media.id]) {
+                    setTimeout(() => setRetriedMediaIds(prev => ({ ...prev, [media.id]: true })), IMAGE_RETRY_DELAY_MS)
+                    return
                   }
+                  setFallbackMediaIds(prev => ({ ...prev, [media.id]: true }))
                 }}
               />
             </div>
