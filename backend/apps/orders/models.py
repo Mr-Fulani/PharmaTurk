@@ -129,8 +129,12 @@ class Cart(models.Model):
     session_key = models.CharField(_("Ключ сессии"), max_length=64, blank=True, db_index=True)
     currency = models.CharField(_("Валюта"), max_length=10, default="USD")
     promo_code = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True, blank=True, related_name="carts", verbose_name=_("Промокод"))
-    # Когда отправлено напоминание о брошенной заявке (один раз на «простой» корзины)
+    # Последнее напоминание о брошенной заявке. Круг напоминаний — пока корзина не менялась
+    # после reminder_sent_at; reminder_count — сколько напоминаний ушло в этом круге.
     reminder_sent_at = models.DateTimeField(_("Напоминание отправлено"), null=True, blank=True)
+    reminder_count = models.PositiveSmallIntegerField(_("Напоминаний в текущем круге"), default=0)
+    # Язык сайта при последнем добавлении товара: на нём пишем напоминание (User.language сайт не обновляет)
+    locale = models.CharField(_("Язык сайта"), max_length=8, blank=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
@@ -729,3 +733,120 @@ class SourcingRequest(models.Model):
 
     def __str__(self) -> str:
         return f"Поиск #{self.pk} — {self.contact_name}"
+
+
+class CartReminderSettings(models.Model):
+    """Напоминания клиенту о неотправленном Списке заявки — одна запись, правится в админке."""
+
+    enabled = models.BooleanField(
+        _("Напоминания включены"),
+        default=False,
+        help_text=_("Пока выключено, клиентам ничего не уходит. Тестовая отправка себе работает всегда."),
+    )
+    email_enabled = models.BooleanField(
+        _("Отправлять на email"),
+        default=True,
+        help_text=_("Только на подтверждённый email клиента."),
+    )
+    telegram_enabled = models.BooleanField(
+        _("Отправлять в Telegram"),
+        default=True,
+        help_text=_("Только если клиент привязал Telegram к аккаунту и не выключил в нём уведомления."),
+    )
+    first_delay_hours = models.PositiveSmallIntegerField(
+        _("Первое напоминание через, часов"),
+        default=24,
+        validators=[MinValueValidator(1)],
+        help_text=_("Сколько часов Список заявки не менялся."),
+    )
+    second_delay_hours = models.PositiveSmallIntegerField(
+        _("Второе напоминание через, часов"),
+        default=72,
+        help_text=_("Тоже считается от последнего изменения Списка. 0 — второе не отправлять."),
+    )
+    pause_days = models.PositiveSmallIntegerField(
+        _("Пауза перед новым кругом, дней"),
+        default=7,
+        help_text=_(
+            "Если после напоминаний клиент снова изменил Список, следующее придёт "
+            "не раньше, чем через столько дней после прошлого."
+        ),
+    )
+    max_age_days = models.PositiveSmallIntegerField(
+        _("Не напоминать о Списках старше, дней"),
+        default=7,
+        validators=[MinValueValidator(1)],
+        help_text=_("Списки, которые не менялись дольше, пропускаются — в том числе при первом включении."),
+    )
+    updated_at = models.DateTimeField(_("Обновлено"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("🛒 Напоминания о заявке: настройки")
+        verbose_name_plural = _("🛒 Заказы — Напоминания о заявке: настройки")
+
+    def __str__(self) -> str:
+        return str(_("Напоминания о заявке: настройки"))
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.second_delay_hours and self.second_delay_hours <= self.first_delay_hours:
+            errors["second_delay_hours"] = _("Второе напоминание должно быть позже первого (или 0).")
+        if self.max_age_days * 24 <= max(self.first_delay_hours, self.second_delay_hours):
+            errors["max_age_days"] = _("Срок должен быть больше задержек напоминаний.")
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> "CartReminderSettings":
+        obj, _created = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class CartReminderLog(models.Model):
+    """Журнал напоминаний о Списке заявки: одна строка — одно сообщение в один канал."""
+
+    class Channel(models.TextChoices):
+        EMAIL = "email", "Email"
+        TELEGRAM = "telegram", "Telegram"
+
+    class Status(models.TextChoices):
+        SENDING = "sending", _("Отправляется")
+        SENT = "sent", _("Отправлено")
+        FAILED = "failed", _("Ошибка")
+
+    class Step(models.IntegerChoices):
+        TEST = 0, _("Тест")
+        FIRST = 1, _("Первое")
+        SECOND = 2, _("Второе")
+
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="cart_reminder_logs", verbose_name=_("Клиент"),
+    )
+    cart = models.ForeignKey(
+        Cart, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reminder_logs", verbose_name=_("Корзина"),
+    )
+    step = models.PositiveSmallIntegerField(_("Напоминание"), choices=Step.choices)
+    channel = models.CharField(_("Канал"), max_length=16, choices=Channel.choices)
+    status = models.CharField(_("Статус"), max_length=16, choices=Status.choices, default=Status.SENDING)
+    recipient = models.CharField(_("Получатель"), max_length=254, blank=True)
+    error = models.CharField(_("Ошибка"), max_length=300, blank=True)
+    items_count = models.PositiveIntegerField(_("Позиций"), default=0)
+    total = models.DecimalField(_("Сумма"), max_digits=14, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(_("Валюта"), max_length=10, blank=True)
+    clicked_at = models.DateTimeField(_("Перешёл по ссылке"), null=True, blank=True)
+    created_at = models.DateTimeField(_("Отправлено"), auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = _("🛒 Напоминание о заявке")
+        verbose_name_plural = _("🛒 Заказы — Напоминания о заявке: журнал")
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.get_step_display()} · {self.get_channel_display()} · {self.recipient}"

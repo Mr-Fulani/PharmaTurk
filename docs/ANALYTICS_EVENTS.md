@@ -69,6 +69,21 @@
 - GA4 сам добавляет события расширенной статистики: `view_search_results` (параметр `q`),
   `form_start`/`form_submit`, `click` (исходящие ссылки), `scroll`, `file_download`.
 
+## UTM напоминаний о Списке заявки
+
+Ссылки из напоминаний ([CART_REMINDERS.md](CART_REMINDERS.md)) приходят на сайт с метками —
+в GA4 «Источник / канал» и в Метрике «UTM-метки»:
+
+| Метка | Значения |
+|---|---|
+| `utm_source` | `cart_reminder` |
+| `utm_medium` | `email` / `telegram` |
+| `utm_campaign` | `cart_reminder_1` (первое), `cart_reminder_2` (второе), `cart_reminder_test` (тест из админки) |
+| `utm_content` | `product` (карточка товара), `cart` (Список заявки), `checkout` (кнопка «Отправить заявку») |
+
+Заявки после напоминаний видны в отчётах по `generate_lead` с этим источником; переходы без
+согласия на cookie GA4 не видит, но журнал напоминаний в админке их считает («Перешёл по ссылке»).
+
 ## Серверные события (Measurement Protocol) — не используются
 
 Рассматривались для заявок (отправка `generate_lead` из Django при создании заявки).

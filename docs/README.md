@@ -60,6 +60,7 @@
 
 - [CRYPTO_PAYMENTS.md](../CRYPTO_PAYMENTS.md) — CoinRemitter и жизненный цикл криптоинвойса;
 - [notifications-and-receipts.md](notifications-and-receipts.md) — каналы уведомлений и PDF-чеки;
+- [CART_REMINDERS.md](CART_REMINDERS.md) — напоминания о неотправленном Списке заявки: включение в админке, кому и когда, отписка, журнал;
 - [SOCIAL_AUTH_PRODUCTION.md](SOCIAL_AUTH_PRODUCTION.md) — production OAuth/social auth;
 - [DUPLICATE_MODERATION_GUIDE.md](../DUPLICATE_MODERATION_GUIDE.md) — модерация дублей.
 

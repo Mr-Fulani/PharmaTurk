@@ -1,0 +1,47 @@
+{# Отписка от напоминаний о Списке заявки — apps/orders/cart_reminder_views.py #}
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>{{ labels.title }} — Mudaroba</title>
+  <style>
+    body { margin: 0; background: #f0f2f8; font-family: 'Segoe UI', Arial, sans-serif; color: #2f2e57; }
+    .card { max-width: 520px; margin: 48px auto; padding: 0 16px; }
+    .head { border-radius: 20px 20px 0 0; background: linear-gradient(135deg, #0c1628 0%, #1a2a4a 60%, #0c2340 100%); padding: 16px 24px; color: #fff; font-size: 26px; font-weight: 700; }
+    .line { height: 3px; background: linear-gradient(90deg, #c9a84c, #f5d485, #c9a84c); }
+    .body { background: #fff; border-radius: 0 0 20px 20px; padding: 24px; }
+    h1 { margin: 0 0 12px; font-size: 20px; }
+    p { margin: 0 0 16px; font-size: 15px; line-height: 1.5; color: #4e4b66; }
+    button { border: 0; border-radius: 12px; background: #5a4fcf; color: #fff; font-size: 15px; font-weight: 700; padding: 12px 22px; cursor: pointer; }
+    a { color: #5a4fcf; text-decoration: none; font-weight: 600; }
+    .links { font-size: 14px; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="head">Mudaroba</div>
+    <div class="line"></div>
+    <div class="body">
+      <h1>{{ labels.title }}</h1>
+      {% if state == "confirm" %}
+      <p>{{ labels.confirm }}</p>
+      <form method="post">
+        <button type="submit">{{ labels.button }}</button>
+      </form>
+      {% elif state == "done" %}
+      <p>{{ labels.done }}</p>
+      <p class="links"><a href="{{ profile_url }}">{{ labels.profile }}</a></p>
+      {% else %}
+      <p>{{ labels.invalid }}</p>
+      <p class="links"><a href="{{ profile_url }}">{{ labels.profile }}</a></p>
+      {% endif %}
+      <p class="links"><a href="{{ home_url }}">{{ labels.home }}</a></p>
+    </div>
+  </div>
+</body>
+
+</html>

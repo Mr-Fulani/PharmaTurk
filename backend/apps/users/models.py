@@ -35,7 +35,9 @@ class User(AbstractUser):
     email_notifications = models.BooleanField(_('email уведомления'), default=True)
     telegram_notifications = models.BooleanField(_('telegram уведомления'), default=False)
     push_notifications = models.BooleanField(_('push уведомления'), default=True)
-    
+    # Напоминания о неотправленном Списке заявки (email/Telegram); отписка — ссылкой, /stop в боте или в профиле
+    cart_reminders_enabled = models.BooleanField(_('напоминания о Списке заявки'), default=True)
+
     telegram_id = models.CharField(_('telegram ID'), max_length=50, blank=True)
     telegram_username = models.CharField(_('Telegram'), max_length=50, blank=True)
     telegram_sync_token = models.CharField(_('токен привязки Telegram'), max_length=64, blank=True, null=True, unique=True)
