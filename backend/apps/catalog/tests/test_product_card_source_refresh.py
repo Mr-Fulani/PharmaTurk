@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from urllib.parse import urlparse
@@ -6,6 +7,7 @@ from uuid import uuid4
 import pytest
 from django.core.cache import cache
 from django.db.models.signals import post_save
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -52,6 +54,10 @@ class DummyInstagramParser:
     pass
 
 
+class DummyFloParser:
+    pass
+
+
 def _fake_registry(value):
     if value == "zara":
         return DummyZaraParser
@@ -61,7 +67,11 @@ def _fake_registry(value):
         return DummyLcwParser
     if value == "instagram":
         return DummyInstagramParser
+    if value == "flo":
+        return DummyFloParser
     host = (urlparse(str(value or "")).hostname or "").casefold()
+    if host == "www.flo.com.tr":
+        return DummyFloParser
     if host == "www.zara.com" or host.endswith(".zara.com"):
         return DummyZaraParser
     if host == "www.akakce.com" or host.endswith(".akakce.com"):
@@ -969,6 +979,69 @@ def test_new_card_open_enqueues_after_previous_refresh_finished(
 
     assert result["status"] == "pending"
     assert len(calls) == 1
+
+
+@pytest.mark.django_db
+def test_paid_flo_card_skips_source_request_after_recent_successful_check(
+    parsed_clothing,
+    settings,
+    monkeypatch,
+):
+    """FLO идёт через платный Web Unlocker (лимит зоны в месяц).
+
+    Недавно успешно проверенный URL повторно не запрашиваем. Окно задано только
+    для FLO: Zara, проверенная минуту назад, обновляется при каждом открытии.
+    """
+    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = ["zara", "flo"]
+    zara_product, *_ = parsed_clothing
+    flo_product = Product.objects.create(
+        name="FLO shoe",
+        slug=f"flo-shoe-{uuid4().hex}",
+        product_type="shoes",
+        price=Decimal("1999.99"),
+        currency="TRY",
+        external_id="flo-101",
+        is_available=True,
+    )
+    flo_offer = ProductSourceOffer.objects.create(
+        product=flo_product,
+        parser_key="flo",
+        canonical_url="https://www.flo.com.tr/urun/test-shoe-101",
+        external_product_id="flo-101",
+        variant_key="flo-variant-101",
+        size_key="40",
+        source_price=Decimal("1999.99"),
+        source_currency="TRY",
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+        stock_precision=ProductSourceOffer.StockPrecision.BOOLEAN,
+        last_successful_check_at=timezone.now() - timedelta(hours=1),
+    )
+    zara_product.source_offers.update(
+        last_successful_check_at=timezone.now() - timedelta(minutes=1)
+    )
+    calls = []
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_product_card_source_task.apply_async",
+        lambda *args, **kwargs: calls.append(kwargs),
+    )
+    service = ProductCardSourceRefreshService()
+
+    fresh = service.request_refresh(flo_product)
+
+    # «idle»: карточка показывает сохранённые данные, покупка не блокируется.
+    assert fresh["eligible"] is True
+    assert fresh["status"] == "idle"
+    assert fresh["checked_at"]
+    assert calls == []
+
+    assert service.request_refresh(zara_product)["status"] == "pending"
+    assert len(calls) == 1
+
+    ProductSourceOffer.objects.filter(pk=flo_offer.pk).update(
+        last_successful_check_at=timezone.now() - timedelta(hours=13)
+    )
+    assert service.request_refresh(flo_product)["status"] == "pending"
+    assert len(calls) == 2
 
 
 @pytest.mark.django_db

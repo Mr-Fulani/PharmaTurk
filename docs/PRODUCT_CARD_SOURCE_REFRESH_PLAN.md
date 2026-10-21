@@ -110,6 +110,7 @@
 | ручной товар / флаг выключен / источник не разрешён | `not_eligible`, сеть не вызывается |
 | React Strict Mode в рамках одного открытия | frontend переиспользует один POST/promise; backend возвращает тот же `pending/running` job |
 | карточку открыли заново после `succeeded`/`failed` | ставится новый refresh job |
+| платный источник (FLO), URL успешно проверен в пределах `PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS` | `idle` без запроса: сохранённые данные, покупка не блокируется |
 | timeout, 403/challenge, 429, 5xx, proxy failure | старые данные сохраняются, короткий error cooldown |
 | redirect на чужой домен или другая source identity | terminal failure, транзакции нет |
 | пустая матрица fashion-вариантов, неверная цена/валюта | terminal failure, транзакции нет |
@@ -131,9 +132,16 @@ PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES=1
 PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS=300
 PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS=30
 PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS=150
+PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS={"flo":43200}
 PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO=0.05
 PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO=20
 ```
+
+`PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS` — окно свежести по источникам (JSON).
+Задано только FLO (12 ч): его карточка идёт через платный Web Unlocker. Окно считается
+от `ProductSourceOffer.last_successful_check_at` открытого URL; ошибка его не открывает.
+Источники без записи проверяются при каждом открытии. Бюджет — в
+[PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md).
 
 Rollback не требует обратной записи данных: сначала установить
 `PRODUCT_CARD_SOURCE_REFRESH_ENABLED=false`, затем при необходимости удалить только

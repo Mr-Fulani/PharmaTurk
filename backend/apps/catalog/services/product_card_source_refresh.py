@@ -14,6 +14,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlparse
@@ -299,6 +300,51 @@ class ProductCardSourceRefreshService:
             "retryable": False,
         }
 
+    @staticmethod
+    def _freshness_seconds(parser_key: str) -> int:
+        mapping = getattr(settings, "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS", {}) or {}
+        if not isinstance(mapping, dict):
+            return 0
+        for key, value in mapping.items():
+            if str(key).strip().casefold() == parser_key:
+                try:
+                    return max(0, min(int(value), 7 * 24 * 3600))
+                except (TypeError, ValueError):
+                    return 0
+        return 0
+
+    def _fresh_state(self, target: RefreshTarget) -> dict[str, Any] | None:
+        """Состояние без запроса, если открытый URL недавно успешно проверен.
+
+        Окно задаётся только платным источникам (FLO: Web Unlocker с месячным
+        лимитом зоны). Успешную проверку пишут обновление карточки, полный
+        импорт и проверка корзины; ошибки окно не открывают.
+        """
+        window = self._freshness_seconds(target.parser_key)
+        if not window:
+            return None
+        checked_at = (
+            target.product.source_offers.filter(
+                is_active=True,
+                parser_key=target.parser_key,
+                canonical_url=target.offer.canonical_url,
+                last_successful_check_at__gte=timezone.now() - timedelta(seconds=window),
+            )
+            .order_by("-last_successful_check_at")
+            .values_list("last_successful_check_at", flat=True)
+            .first()
+        )
+        if checked_at is None:
+            return None
+        # «idle», а не «succeeded»: карточка не перечитывается и не сообщает
+        # об обновлении, покупка по сохранённым данным не блокируется.
+        return {
+            "status": "idle",
+            "source": target.parser_key,
+            "retryable": False,
+            "checked_at": checked_at.isoformat(),
+        }
+
     def _set_state(
         self,
         product_id: int,
@@ -329,6 +375,10 @@ class ProductCardSourceRefreshService:
             "running",
         }:
             return {"eligible": True, **existing}
+
+        fresh = self._fresh_state(target)
+        if fresh is not None:
+            return {"eligible": True, **fresh}
 
         lock_seconds = _setting_int(
             "PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS",
