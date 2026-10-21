@@ -234,17 +234,6 @@ def _white_cap_variant_html():
     )
 
 
-LCW_HOME_HTML = """
-<html>
-  <body>
-    <a href="/erkek-tisort-t-345">Erkek Tisort</a>
-    <a href="/kadin-elbise-t-120">Kadin Elbise</a>
-    <a href="/magaza/lc-waikiki-s-1">Magaza</a>
-  </body>
-</html>
-"""
-
-
 def _white_variant_html():
     return (
         LCW_DETAIL_HTML.replace("Yeni Siyah", "Beyaz")
@@ -286,18 +275,6 @@ def test_chunking_is_enabled_only_for_lcw_category_urls():
     assert not LcwParser.supports_page_chunking_for_url(
         "https://www.lcw.com/erkek-100-hakiki-deri-4-cm-spor-lacivert-kemer-lacivert-o-4579317"
     )
-
-
-def test_parse_categories_from_homepage(monkeypatch):
-    parser = LcwParser()
-    monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: LCW_HOME_HTML)
-
-    categories = parser.parse_categories()
-
-    assert [item["url"] for item in categories] == [
-        "https://www.lcw.com/erkek-tisort-t-345",
-        "https://www.lcw.com/kadin-elbise-t-120",
-    ]
 
 
 def test_extract_images_does_not_mix_og_preview_into_real_gallery():

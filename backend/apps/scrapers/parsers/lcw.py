@@ -1,6 +1,7 @@
 """Парсер для lcw.com (LC Waikiki)."""
 
 import copy
+import json
 import re
 from dataclasses import replace
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -8,7 +9,7 @@ from urllib.parse import quote_plus, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.scraper import BaseScraper, ScrapedProduct, SiteCategoriesError
 from ..base.offers import (
     MalformedOfferResponse,
     OfferCheckContext,
@@ -29,6 +30,25 @@ class LcwParser(BaseScraper):
     MAX_VARIANTS_PER_PRODUCT = 24
     PRODUCT_PATH_RE = re.compile(r"-o-(\d+)(?:$|[/?#])")
     CATEGORY_PATH_RE = re.compile(r"-t-(\d+)(?:$|[/?#])")
+    # Корни каталога для обхода всего сайта. Общего дерева LCW не отдаёт:
+    # CategoryTree листинга содержит только ветку открытой категории. Пять
+    # первых — вкладки шапки (KADIN … EV | YAŞAM), остальные — отделы, на
+    # которые меню ссылается изнутри вкладок (kozmetik, oyuncak, kitap…).
+    SITE_ROOT_PATHS = (
+        "/kadin-t-1",
+        "/erkek-t-2",
+        "/cocuk-t-3",
+        "/bebek-t-4",
+        "/ev-yasam-t-5",
+        "/kisisel-bakim-kozmetik-t-6202",
+        "/anne-bebek-oyuncak-t-4647",
+        "/kitap-t-4886",
+        "/ofis-kirtasiye-t-5223",
+        "/elektronik-t-4168",
+        "/supermarket-t-5678",
+        "/hediye-t-6526",
+    )
+    CATEGORY_TREE_MARKER = '"CategoryTree":'
     PRICE_RE = re.compile(r"(\d[\d.]*,\d{2}\s*(?:TL|₺))", re.IGNORECASE)
     VARIANT_COUNT_RE = re.compile(r"\s+\+\d+\s*$")
     SIZE_SPLIT_RE = re.compile(r"\s{2,}|\n+")
@@ -98,38 +118,50 @@ class LcwParser(BaseScraper):
         return ["lcw.com", "www.lcw.com"]
 
     def parse_categories(self) -> List[Dict[str, Any]]:
-        html = self._make_request(self.base_url)
-        if not html:
-            return []
+        """Подразделы корней каталога (Kadın Giyim, Erkek Ayakkabı, Mutfak…).
 
-        soup = BeautifulSoup(html, "html.parser")
-        categories: List[Dict[str, Any]] = []
-        seen_urls = set()
-
-        for anchor in soup.select("a[href]"):
-            href = anchor.get("href", "").strip()
-            if not self._is_category_url(href):
+        Подразделы берутся из ``CategoryTree`` страницы корня. Если среди них
+        есть адреса не категорийного вида (``-u-``: Genç Kız Giyim и т. п.),
+        обходим корень целиком — так ни один товар не выпадет.
+        """
+        rows: List[Dict[str, Any]] = []
+        for path in self.SITE_ROOT_PATHS:
+            url = urljoin(self.base_url, path)
+            html = self._make_request(url)
+            if not html:
+                self.logger.warning("LCW: корень каталога %s не открылся, пропускаем", url)
                 continue
+            root = self._extract_category_tree(html)
+            if root is None or str(root.get("CategoryTreeId")) != self._extract_category_id(url):
+                raise SiteCategoriesError(
+                    f"LCW: на странице {url} нет дерева этого раздела (CategoryTree)"
+                )
+            children = [
+                child for child in root.get("ChildCategories") or [] if isinstance(child, dict)
+            ]
+            child_urls = [urljoin(self.base_url, str(child.get("Url") or "")) for child in children]
+            if not children or not all(self._is_category_url(item) for item in child_urls):
+                children, child_urls = [root], [url]
+            for child, child_url in zip(children, child_urls):
+                rows.append(
+                    {
+                        "name": clean_text(str(child.get("TreeTextKeyword") or "")),
+                        "url": child_url,
+                        "external_id": str(child.get("CategoryTreeId") or ""),
+                    }
+                )
+        return self._site_categories(rows)
 
-            absolute_url = urljoin(self.base_url, href)
-            if absolute_url in seen_urls:
-                continue
-
-            name = clean_text(anchor.get_text(" ", strip=True))
-            if not name or len(name) < 2:
-                continue
-
-            seen_urls.add(absolute_url)
-            categories.append(
-                {
-                    "name": name,
-                    "url": absolute_url,
-                    "external_id": self._extract_category_id(absolute_url),
-                    "source": self.get_name(),
-                }
-            )
-
-        return categories
+    def _extract_category_tree(self, html: str) -> Optional[Dict[str, Any]]:
+        """Ветка дерева категорий, которую LCW встраивает в листинг (``"CategoryTree":{…}``)."""
+        index = (html or "").find(self.CATEGORY_TREE_MARKER)
+        if index < 0:
+            return None
+        try:
+            tree, _ = json.JSONDecoder().raw_decode(html[index + len(self.CATEGORY_TREE_MARKER):])
+        except json.JSONDecodeError:
+            return None
+        return tree if isinstance(tree, dict) else None
 
     @staticmethod
     def _lcw_page_url(category_url: str, page: int) -> str:

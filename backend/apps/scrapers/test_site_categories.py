@@ -13,6 +13,7 @@ from apps.scrapers.base.scraper import SiteCategoriesError
 from apps.scrapers.parsers.bershka import BershkaParser
 from apps.scrapers.parsers.flo import FloParser
 from apps.scrapers.parsers.ikea import IkeaParser
+from apps.scrapers.parsers.lcw import LcwParser
 from apps.scrapers.parsers.zara import ZaraParser
 from apps.scrapers.test_inditex_parsers import _parser, _routes
 
@@ -244,4 +245,71 @@ def test_inditex_categories_fail_when_tree_is_missing(monkeypatch):
     )
 
     with pytest.raises(SiteCategoriesError, match="Bershka"):
+        parser.parse_categories()
+
+
+# --- LCW ---------------------------------------------------------------------
+
+
+def _lcw_parser(monkeypatch, pages, roots):
+    parser = LcwParser()
+    parser.SITE_ROOT_PATHS = roots
+    requested = []
+
+    def fake_request(url, **kwargs):
+        requested.append(url)
+        return pages.get(url)
+
+    monkeypatch.setattr(parser, "_make_request", fake_request)
+    return parser, requested
+
+
+def test_lcw_categories_are_root_subtrees(monkeypatch):
+    parser, requested = _lcw_parser(
+        monkeypatch,
+        {
+            "https://www.lcw.com/kadin-t-1": _fixture("lcw_kadin_t_1.html"),
+            "https://www.lcw.com/cocuk-t-3": _fixture("lcw_cocuk_t_3.html"),
+        },
+        ("/kadin-t-1", "/hediye-t-6526", "/cocuk-t-3"),
+    )
+
+    categories = parser.parse_categories()
+
+    assert requested == [
+        "https://www.lcw.com/kadin-t-1",
+        "https://www.lcw.com/hediye-t-6526",
+        "https://www.lcw.com/cocuk-t-3",
+    ]
+    # Kadın — шесть подразделов; у Çocuk среди подразделов адреса -u-, которые
+    # категорийный режим не принимает, поэтому корень обходится целиком.
+    # Недоступный корень (Hediye) пропускается.
+    assert _pairs(categories) == [
+        ("Kadın Ev Giyim", "https://www.lcw.com/kadin-ev-giyim-t-7009", "7009"),
+        ("Kadın Giyim", "https://www.lcw.com/kadin-giyim-t-10", "10"),
+        ("Kadın Aksesuar", "https://www.lcw.com/kadin-aksesuar-t-26", "26"),
+        ("Kadın Ayakkabı", "https://www.lcw.com/kadin-ayakkabi-t-33", "33"),
+        ("Kadın İç Giyim", "https://www.lcw.com/kadin-ic-giyim-t-6983", "6983"),
+        ("Kadın Plaj Havlusu", "https://www.lcw.com/kadin-plaj-havlusu-t-282", "282"),
+        ("Çocuk", "https://www.lcw.com/cocuk-t-3", "3"),
+    ]
+    assert all(LcwParser.is_lcw_category_url(row["url"]) for row in categories)
+
+
+def test_lcw_categories_fail_when_root_page_lacks_its_tree(monkeypatch):
+    # Корень открылся, но дерево на странице чужое (редирект/смена вёрстки).
+    parser, _ = _lcw_parser(
+        monkeypatch,
+        {"https://www.lcw.com/erkek-t-2": _fixture("lcw_kadin_t_1.html")},
+        ("/erkek-t-2",),
+    )
+
+    with pytest.raises(SiteCategoriesError, match="erkek-t-2"):
+        parser.parse_categories()
+
+
+def test_lcw_categories_fail_when_no_root_opens(monkeypatch):
+    parser, _ = _lcw_parser(monkeypatch, {}, ("/kadin-t-1", "/erkek-t-2"))
+
+    with pytest.raises(SiteCategoriesError):
         parser.parse_categories()
