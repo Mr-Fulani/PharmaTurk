@@ -55,6 +55,32 @@ grep -F "candidate: ${backup_root}/20260802T120000Z_pre_example" <<< "$dry_run" 
 [[ -d "${backup_root}/20260803T120000Z_pre_example" ]]
 [[ -d "${backup_root}/20260804T120000Z_pre_example" ]]
 
+# deploy.sh after a successful release: the newest three valid backups and the
+# current one (from the manifest) stay, older valid ones are removed.
+(
+  source "${SCRIPT_DIR}/common.sh"
+  deploy_root="${temp_root}/deploy-backups"
+  mkdir -p "$deploy_root"
+  for index in 01 02 03 04 05 06; do
+    path="${deploy_root}/202609${index}T120000Z_pre_example"
+    mkdir -m 700 "$path"
+    printf 'format=mudaroba-release-backup-v1\n' > "$path/release.manifest"
+    printf 'postgres\n' > "$path/postgres.dump"
+    printf 'qdrant\n' > "$path/qdrant.snapshot"
+    printf 'env\n' > "$path/env.backup"
+  done
+  mkdir "${deploy_root}/backend-release-abc"  # not a release backup: never touched
+  # The deploy's own backup is protected even when it is not among the newest.
+  current="${deploy_root}/20260901T120000Z_pre_example"
+  release_prune_backups_after_deploy "${current}/release.manifest" >/dev/null
+  [[ -d "$current" ]]
+  [[ ! -e "${deploy_root}/20260902T120000Z_pre_example" ]]
+  [[ ! -e "${deploy_root}/20260903T120000Z_pre_example" ]]
+  for index in 04 05 06; do [[ -d "${deploy_root}/202609${index}T120000Z_pre_example" ]]; done
+  [[ -d "${deploy_root}/backend-release-abc" ]]
+)
+grep -F 'release_prune_backups_after_deploy "$BACKUP_MANIFEST"' "${SCRIPT_DIR}/deploy.sh" >/dev/null
+
 # Image pruning and the free-space gate run against stub docker/df commands.
 stub_bin="${temp_root}/bin"
 mkdir -p "$stub_bin"
