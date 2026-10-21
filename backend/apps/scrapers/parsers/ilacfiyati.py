@@ -203,6 +203,16 @@ class IlacFiyatiParser(BaseScraper):
             else None
         )
 
+    def parse_categories(self) -> List[Dict[str, Any]]:
+        """Весь сайт = два корневых каталога с полной пагинацией: лекарства и БАДы."""
+        origin = "https://ilacfiyati.com"
+        return [
+            {"name": "Лекарства", "url": f"{origin}/ilaclar", "external_id": "ilaclar",
+             "source": self.get_name()},
+            {"name": "БАДы", "url": f"{origin}/takviye-edici-gida",
+             "external_id": "takviye-edici-gida", "source": self.get_name()},
+        ]
+
     @staticmethod
     def _inside_analog_block(node) -> bool:
         return bool(

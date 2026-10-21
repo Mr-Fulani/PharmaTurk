@@ -27,7 +27,17 @@ class UmmalandParser(BaseScraper):
     """Парсер для сайта Ummaland.com."""
     
     API_URL = "https://umma-land.com/wp-json/filters/products/"
+    CATEGORIES_API_URL = "https://umma-land.com/wp-json/wc/store/products/categories?per_page=100"
     CATEGORY_API_TIMEOUT_SECONDS = 90
+    # Вся категория приходит одним ответом API; «страница» чанка — 20 товаров.
+    SUPPORTS_PAGE_CHUNKING = True
+    PAGE_SIZE = 20
+    # Витринные подборки повторяют товары обычных разделов.
+    SHOWCASE_CATEGORY_SLUGS = frozenset({"new", "popular", "special", "uncategorized"})
+
+    @classmethod
+    def supports_page_chunking_for_url(cls, url: str) -> bool:
+        return cls.is_category_url(url)
 
     @classmethod
     def is_category_url(cls, url: str) -> bool:
@@ -51,18 +61,40 @@ class UmmalandParser(BaseScraper):
         ]
     
     def parse_categories(self) -> List[Dict[str, Any]]:
-        """Парсит список категорий."""
-        # Возвращаем основные категории
-        return [
-            {
-                'name': 'Книги',
-                'url': 'https://umma-land.com/product-category/books',
-            }
-        ]
+        """Корневые разделы магазина (книги, праздники, игры, канцелярия…) из WooCommerce API.
 
-    def parse_product_list(self, 
-                          category_url: str, 
-                          max_pages: int = 10) -> List[ScrapedProduct]:
+        Подразделы входят в корневые, витринные подборки («Новинки», «Популярное»)
+        повторяют товары разделов — их не берём.
+        """
+        response = self.client.get(self.CATEGORIES_API_URL)
+        raise_for_blocked_status(
+            status_code=response.status_code,
+            url=str(response.url or self.CATEGORIES_API_URL),
+            source="Ummaland",
+        )
+        response.raise_for_status()
+        categories = [
+            {
+                "name": clean_text(str(row.get("name") or "")),
+                "url": str(row.get("permalink") or ""),
+                "external_id": str(row.get("id") or ""),
+                "source": self.get_name(),
+            }
+            for row in response.json() or []
+            if isinstance(row, dict)
+            and not row.get("parent")
+            and int(row.get("count") or 0) > 0
+            and str(row.get("slug") or "") not in self.SHOWCASE_CATEGORY_SLUGS
+            and self.is_category_url(str(row.get("permalink") or ""))
+        ]
+        if not categories:
+            raise RuntimeError("Ummaland: API не вернул ни одной категории магазина")
+        return categories
+
+    def parse_product_list(self,
+                          category_url: str,
+                          max_pages: int = 10,
+                          start_page: int = 1) -> List[ScrapedProduct]:
         """Парсит список товаров из категории.
 
         Генератор: каждая книга отдаётся сразу после разбора, чтобы сервис
@@ -85,10 +117,13 @@ class UmmalandParser(BaseScraper):
             api_products = self._fetch_products_from_api(category_id)
             self.logger.info(f"Получено {len(api_products)} товаров из API")
             
-            if max_pages:
-                per_page = 20
-                api_products = api_products[:max_pages * per_page]
-                self.logger.info(f"Ограничено до {max_pages} страниц")
+            # Чанк = max_pages «страниц» по PAGE_SIZE товаров с start_page:
+            # раньше бралось только начало категории (max_pages * 20), и при
+            # «Страниц за запуск» = 1 вся категория обрывалась на 20 книгах.
+            first = (max(1, start_page) - 1) * self.PAGE_SIZE
+            last = first + max(1, max_pages or 1) * self.PAGE_SIZE
+            self.has_more_pages = last < len(api_products)
+            api_products = api_products[first:last]
 
             if hasattr(self, 'max_products') and self.max_products:
                 api_products = api_products[:self.max_products]
