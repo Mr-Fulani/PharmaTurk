@@ -388,6 +388,11 @@ class InditexSiblingParser(ZaraParser):
             description = clean_text(str(value or ""))
             if description:
                 break
+        if not description:
+            # Bershka и Massimo Dutti отдают пустые description/longDescription;
+            # то, что сайт показывает как описание (JSON-LD), лежит в атрибутах
+            # DESCRIPTION, плюс состав и уход из той же карточки.
+            description = self._fallback_description(row, summary, detail)
 
         subfamily_info = (
             detail.get("subfamilyInfo") if isinstance(detail.get("subfamilyInfo"), dict) else {}
@@ -485,6 +490,50 @@ class InditexSiblingParser(ZaraParser):
             "sku": str(color.get("reference") or color_id),
             "availability": "in_stock" if is_available else "out_of_stock",
         }
+
+    @staticmethod
+    def _fallback_description(
+        row: Dict[str, Any], summary: Dict[str, Any], detail: Dict[str, Any]
+    ) -> str:
+        lines: List[str] = []
+        phrases: List[str] = []
+        for source in (row, summary):
+            for attr in source.get("attributes") or []:
+                if isinstance(attr, dict) and str(attr.get("type") or "") == "DESCRIPTION":
+                    value = clean_text(str(attr.get("value") or ""))
+                    if value and value not in phrases:
+                        phrases.append(value)
+        if phrases:
+            lines.append(", ".join(phrases))
+        parts = []
+        composition = detail.get("compositionDetail") if isinstance(detail.get("compositionDetail"), dict) else {}
+        for part in composition.get("parts") or []:
+            if not isinstance(part, dict):
+                continue
+            components = ", ".join(
+                " ".join(
+                    value for value in (
+                        clean_text(str(item.get("material") or "")),
+                        clean_text(str(item.get("percentage") or "")),
+                    ) if value
+                )
+                for item in part.get("components") or []
+                if isinstance(item, dict) and item.get("material")
+            )
+            if components:
+                label = clean_text(str(part.get("description") or ""))
+                parts.append(f"{label}: {components}" if label else components)
+        if parts:
+            lines.append("Bileşim: " + "; ".join(parts))
+        care = [
+            clean_text(str(item.get("description") or ""))
+            for item in detail.get("care") or []
+            if isinstance(item, dict)
+        ]
+        care = [item for item in care if item]
+        if care:
+            lines.append("Bakım: " + "; ".join(care))
+        return "\n".join(lines)
 
     def _galleries_by_color(self, detail: Dict[str, Any]) -> Dict[str, List[str]]:
         default_set = detail.get("xmediaDefaultSet") or 0
