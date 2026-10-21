@@ -90,7 +90,7 @@ export default function CategoryHero({
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-3 px-8 py-4 bg-white/10 hover:bg-white/20 border border-white/40 rounded-2xl transition-all duration-300 group backdrop-blur-sm hover:scale-105 active:scale-95 shadow-lg"
+                className="inline-flex items-center gap-3 px-8 py-4 text-white hover:text-white bg-white/10 hover:bg-white/20 border border-white/40 rounded-2xl transition-all duration-300 group backdrop-blur-sm hover:scale-105 active:scale-95 shadow-lg"
               >
                 <div className="relative">
                   <img
