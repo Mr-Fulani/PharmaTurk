@@ -71,8 +71,8 @@ def test_base_scraper_keeps_404_as_not_found(monkeypatch):
         ),
         (
             UmmalandParser(base_url="https://umma-land.com"),
-            lambda parser: parser.parse_product_list(
-                "https://umma-land.com/product-category/books", max_pages=1
+            lambda parser: list(
+                parser.parse_product_list("https://umma-land.com/product-category/books", max_pages=1)
             ),
         ),
     ],
@@ -116,10 +116,10 @@ def test_ummaland_missing_category_id_is_a_task_error(monkeypatch):
     monkeypatch.setattr(parser, "_get_category_id", lambda url: None)
 
     with pytest.raises(RuntimeError, match="не удалось найти ID категории"):
-        parser.parse_product_list(
+        list(parser.parse_product_list(
             "https://umma-land.com/product-category/books",
             max_pages=1,
-        )
+        ))
 
 
 @pytest.mark.parametrize("method_name", ["fetch_item_details", "search_items"])

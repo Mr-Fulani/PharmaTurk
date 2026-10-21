@@ -2,6 +2,8 @@
 
 from decimal import Decimal
 
+import pytest
+
 from apps.scrapers.parsers.ummaland import UmmalandParser
 
 DISCOUNTED_CARD = """
@@ -50,3 +52,65 @@ def test_sold_out_book_from_listing_has_zero_stock(monkeypatch):
     products = parser.parse_product_list("https://umma-land.com/product-category/books")
 
     assert [(p.is_available, p.stock_quantity) for p in products] == [(False, 0), (True, 3)]
+
+
+def test_listing_yields_books_one_by_one(monkeypatch):
+    # Генератор: первая книга уже отдана на сохранение, когда на второй
+    # срабатывает мягкий лимит Celery, и лимит не глушится обработкой ошибок.
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    url = "https://umma-land.com/product/first"
+    parser = _parser_with_pages(monkeypatch, {url: DISCOUNTED_CARD})
+    monkeypatch.setattr(parser, "_get_category_id", lambda category_url: 16)
+    monkeypatch.setattr(
+        parser,
+        "_fetch_products_from_api",
+        lambda category_id: [
+            {"id": 1, "name": "Первая", "link": url, "price": "500", "in_stock": True},
+            {"id": 2, "name": "Вторая", "link": "https://umma-land.com/product/second", "price": "500", "in_stock": True},
+        ],
+    )
+    original_detail = parser.parse_product_detail
+
+    def detail(product_url):
+        if product_url.endswith("/second"):
+            raise SoftTimeLimitExceeded()
+        return original_detail(product_url)
+
+    monkeypatch.setattr(parser, "parse_product_detail", detail)
+    listing = parser.parse_product_list("https://umma-land.com/product-category/books")
+
+    first = next(listing)
+    assert first.name == "Первая"
+    with pytest.raises(SoftTimeLimitExceeded):
+        next(listing)
+
+
+def test_category_api_retries_timeout(monkeypatch):
+    import httpx
+
+    parser = UmmalandParser("https://umma-land.com")
+    parser.max_retries = 1
+    monkeypatch.setattr("apps.scrapers.parsers.ummaland.time.sleep", lambda seconds: None)
+    calls = []
+
+    class _Ok:
+        status_code = 200
+        url = parser.API_URL
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [{"id": 1}]
+
+    def post(url, **kwargs):
+        calls.append(kwargs.get("timeout"))
+        if len(calls) == 1:
+            raise httpx.ReadTimeout("timed out")
+        return _Ok()
+
+    monkeypatch.setattr(parser.client, "post", post)
+
+    assert parser._fetch_products_from_api(16) == [{"id": 1}]
+    assert len(calls) == 2 and calls[0] >= 90
