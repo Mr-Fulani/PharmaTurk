@@ -103,6 +103,108 @@ curl -s https://mudaroba.com/api/health/
 сначала переименовать текущие (`ALTER TABLE … RENAME TO …_new`) и после
 проверки удалить лишнее.
 
+## Таблицы товаров: autovacuum после массовых правок
+
+20 и 21.10.2026 после массовых правок лекарств (чистка `old_price`,
+перескрейпы, применение AI) `/api/catalog/medicines/products` отвечал 8–13 с,
+пока не прогнали `VACUUM (ANALYZE)` вручную. У `catalog_medicineproduct`
+autovacuum не запускался ни разу (`last_autovacuum` пустой), autoanalyze —
+запускался.
+
+### Почему
+
+1. `COUNT(*)` списка читается index-only сканом частичных индексов
+   0194/0208/0212 и не трогает `external_data`. Index-only скан дешёв, только
+   пока страницы таблицы отмечены в visibility map «все строки видимы».
+   UPDATE снимает отметку со своей страницы, вернуть её может только VACUUM.
+2. Пороги по умолчанию: autoanalyze — 50 + 10 % изменённых строк (у лекарств
+   1353), autovacuum — 50 + 20 % мёртвых (2657). После правки ≈ 2000 строк
+   ANALYZE запустился и записал в `pg_class.relallvisible` новую, низкую долю
+   видимых страниц, а VACUUM — нет. Без новых правок таблица так и оставалась.
+3. Планировщик счёл index-only скан дорогим (почти каждую строку проверять по
+   таблице) и выбрал seq scan. Условие `external_data ? 'is_stub'` он считает
+   почти бесплатным, а на деле оно детоастит jsonb каждой строки: 394 МБ TOAST
+   (тексты инструкций), ≈ 48 тыс. буферов с диска, 12,8 с.
+
+У `catalog_product` то же самое (условия `source_variant_*` и `is_stub`, TOAST
+403 МБ), но там порог VACUUM достигался чаще. Остальные доменные таблицы не
+страдают: их TOAST мал (БАДы 2,4 МБ), seq scan по ним — миллисекунды.
+
+### Замеры
+
+| Где | Видимых страниц | План `COUNT` | Буферов | Время |
+|---|---|---|---|---|
+| прод 20–21.10, до ручного VACUUM | — | Seq Scan | ≈ 48 тыс. с диска | 12,8 с |
+| прод 21.10 после ручного VACUUM | 100 % | Index Only Scan | 166 | 3,6 мс |
+| копия, правка 2000 строк, пороги по умолчанию | 44 % | Seq Scan | 99,7 тыс. | 1,3 с (всё в памяти) |
+| копия, правка 2000 строк, пороги 0218 | 100 % | Index Only Scan | 49 | 10 мс |
+
+Копия — синтетическая таблица той же формы, что на проде: 13 035 строк,
+heap 25 МБ, TOAST 407 МБ, те же частичные индексы, тот же SQL `COUNT`, правка
+`UPDATE … SET old_price = NULL` пачками по 500, как в
+`clear_heuristic_old_prices`. В логе копии с порогами по умолчанию — только
+`automatic analyze`, с 0218 — `automatic vacuum` (0,25 с) через минуту после
+правки, затем analyze. План переключается на seq scan, когда видимыми остаются
+меньше ≈ 75 % страниц: хватает ≈ 550 изменённых строк (4 % таблицы), если после
+них прошёл ANALYZE, а VACUUM — нет. На проде seq scan оценивается всего в
+4,5 раза дороже index-only (3718 против 820), хотя на деле медленнее в тысячи раз.
+
+### Что сделано
+
+Миграция `catalog.0218` для `catalog_product` и `catalog_medicineproduct`:
+`autovacuum_vacuum_scale_factor = 0.01` и
+`autovacuum_vacuum_insert_scale_factor = 0.01`. Теперь VACUUM приходит раньше
+ANALYZE: у лекарств после 180 мёртвых строк (ANALYZE — после 1353 изменений),
+у Product — после 311 (ANALYZE — 2660); после вставок — 1130 и 1261.
+TOAST-таблицы берут те же значения. Повторный VACUUM дешёвый: уже видимые
+страницы он пропускает. Это работает для любой правки — команд, Celery,
+админки, AI — без VACUUM в коде каждой команды. Тест —
+`apps/catalog/tests/test_product_tables_autovacuum.py`.
+
+После деплоя ничего делать не нужно: `migrate` ставит настройки за доли
+секунды (блокировка `SHARE UPDATE EXCLUSIVE`, чтение и запись не ждут).
+
+### Если список всё же тормозит
+
+Только чтение:
+
+```sql
+SELECT relname, n_dead_tup, n_mod_since_analyze, last_autovacuum, last_autoanalyze
+FROM pg_stat_user_tables WHERE relname IN ('catalog_product', 'catalog_medicineproduct');
+SELECT relname, reloptions, round(relallvisible::numeric / greatest(relpages, 1), 2) AS visible
+FROM pg_class WHERE relname IN ('catalog_product', 'catalog_medicineproduct');
+```
+
+`visible` ниже 0,75 при пустом `reloptions` — миграция не применена; при
+заполненном — autovacuum ещё не догнал правку или ему мешает долгая транзакция
+(VACUUM не отмечает видимыми строки моложе самой старой открытой транзакции):
+
+```sql
+SELECT pid, now() - xact_start AS age, state, left(query, 80)
+FROM pg_stat_activity WHERE xact_start < now() - interval '10 minutes';
+```
+
+Лечение — обычный VACUUM, без блокировок, ≈ 2,5 мин на обе таблицы:
+
+```sql
+VACUUM (ANALYZE) catalog_medicineproduct;
+VACUUM (ANALYZE) catalog_product;
+```
+
+### Что решили не делать
+
+- **Булев столбец `is_stub` вместо условия на jsonb.** Seq scan тогда не
+  детоастил бы, и план не зависел бы от VACUUM. Но в `catalog_product` то же
+  делают ключи `source_variant_id`/`source_variant_slug` — нужно 2–3 столбца,
+  пересоздать 12 частичных индексов (0194/0195/0208/0212/0217), поменять
+  фильтры в `views.py` и `querysets.py` и поддерживать флаги при каждой записи
+  `external_data`. `GeneratedField` перезаписал бы таблицы с 400 МБ TOAST под
+  исключительной блокировкой, а заполнение обычного столбца — само массовая
+  правка всех строк. Вернуться к этому при следующей переделке выборок.
+- **VACUUM в конце массовых команд.** Его пришлось бы добавлять в каждую
+  команду и задачу (и не забывать в новых), а внутри транзакции он не
+  работает. Пониженный порог закрывает все пути записи сразу.
+
 ## Дальше
 
 - Рост `django_session` (≈ 2–3 тыс. в сутки) создают `orders/views.py`

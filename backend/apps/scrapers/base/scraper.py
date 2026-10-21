@@ -120,6 +120,10 @@ ScrapedProductDetailResult = Union[Optional[ScrapedProduct], List[ScrapedProduct
 ScraperAccessBlockedError = ExternalAccessBlockedError
 
 
+class CategoryPageNotFoundError(RuntimeError):
+    """Первая страница категории не открылась (404): ссылки нет, это не «каталог закончился»."""
+
+
 class SiteCategoriesError(RuntimeError):
     """Источник не отдал список категорий для обхода всего сайта."""
 

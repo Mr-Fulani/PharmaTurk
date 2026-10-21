@@ -560,6 +560,7 @@
   "products_not_found_description": "Try changing filter parameters or select another category",
   "reset_filters": "Reset Filters",
   "sidebar_reset": "Reset",
+  "sidebar_show_results": "Show results",
   "sidebar_price": "Price",
   "sidebar_price_from": "From",
   "sidebar_price_to": "To",

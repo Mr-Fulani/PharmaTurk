@@ -11,7 +11,8 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
-from .base.scraper import ScraperAccessBlockedError
+from .base.offers import OfferVerificationError
+from .base.scraper import CategoryPageNotFoundError, ScraperAccessBlockedError
 from .models import (
     InstagramScraperTask,
     ScraperConfig,
@@ -181,6 +182,19 @@ def _sweep_parsed_orphans(parser_name: str) -> int:
     except Exception as exc:  # noqa: BLE001 — sweep не должен ронять задачу
         logger.warning("parsed-sweep %s не удался: %s", parser_name, exc)
         return 0
+
+
+def _category_content_error(exc: Exception) -> bool:
+    """Ошибка содержимого категории: повтор через минуту даст то же самое.
+
+    Пустая выдача или лукбук без карточек (MalformedOfferResponse и другие
+    неповторяемые ошибки источника), 404 страницы категории. Проба на проде
+    21.10: «Весь сайт» Massimo Dutti повторял каждую такую категорию по
+    четыре раза через прокси, прежде чем перейти к следующей.
+    """
+    if isinstance(exc, CategoryPageNotFoundError):
+        return True
+    return isinstance(exc, OfferVerificationError) and not exc.error.retryable
 
 
 def _site_task_status(site_task_id: Optional[int]) -> Optional[str]:
@@ -1169,7 +1183,7 @@ def run_scraper_task(
                 'timestamp': timezone.now().isoformat(),
             }
         
-        if self.request.retries < self.max_retries:
+        if not _category_content_error(e) and self.request.retries < self.max_retries:
             raise self.retry(exc=e)
 
         if site_task and site_task.task_type == "site":

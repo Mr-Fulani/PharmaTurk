@@ -9,7 +9,12 @@ from urllib.parse import quote_plus, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from ..base.scraper import BaseScraper, ScrapedProduct, SiteCategoriesError
+from ..base.scraper import (
+    BaseScraper,
+    CategoryPageNotFoundError,
+    ScrapedProduct,
+    SiteCategoriesError,
+)
 from ..base.offers import (
     MalformedOfferResponse,
     OfferCheckContext,
@@ -204,6 +209,12 @@ class LcwParser(BaseScraper):
         while pages_done < max(1, max_pages):
             html = self._make_request(self._lcw_page_url(category_url, page))
             if not html:
+                if page == 1:
+                    # 404 на первой странице — категории нет; иначе задача
+                    # «успешно» завершалась с нулём товаров.
+                    raise CategoryPageNotFoundError(
+                        f"LCW: страница категории не найдена: {category_url}"
+                    )
                 self.has_more_pages = False
                 break
             soup = BeautifulSoup(html, "html.parser")

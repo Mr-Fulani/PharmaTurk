@@ -558,6 +558,7 @@
   "products_not_found_description": "Попробуйте изменить параметры фильтров или выберите другую категорию",
   "reset_filters": "Сбросить фильтры",
   "sidebar_reset": "Сбросить",
+  "sidebar_show_results": "Показать результаты",
   "sidebar_price": "Цена",
   "sidebar_price_from": "От",
   "sidebar_price_to": "До",
