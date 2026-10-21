@@ -19,7 +19,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from curl_cffi import requests as curl_requests
 
 from ..base.offers import MalformedOfferResponse, OfferGone, OfferNotFound
-from ..base.scraper import ScrapedProduct, ScraperAccessBlockedError
+from ..base.scraper import ScrapedProduct, ScraperAccessBlockedError, SiteCategoriesError
 from ..base.utils import clean_text
 from .zara import ZaraParser
 
@@ -44,6 +44,9 @@ class InditexSiblingParser(ZaraParser):
     LANGUAGE_ID = -43
     # Сколько карточек запрашивается одним productsArray (= одна «страница» чанка).
     API_PAGE_SIZE = 12
+    # Категория здесь — один запрос списка id, поэтому предел выше общего:
+    # у Massimo Dutti ~500 публичных узлов (фильтры по цвету, ткани, лукбуки).
+    MAX_SITE_CATEGORIES = 800
     # 402 Akamai отдаёт на некоторых редиректах вместо 403 — это тот же отказ.
     BLOCKED_STATUS_CODES = (401, 402, 403)
     INTERSTITIAL_REFRESH_RE = re.compile(
@@ -221,6 +224,55 @@ class InditexSiblingParser(ZaraParser):
         raise MalformedOfferResponse(
             f"{self.SOURCE_LABEL}: API магазина {self.STORE_ID} не вернул каталог"
         )
+
+    # --- категории всего магазина -----------------------------------------
+
+    def parse_categories(self) -> List[Dict[str, Any]]:
+        """Все страницы-категории магазина из дерева ``/itxrest/2/.../category``.
+
+        Берём каждый узел с публичным адресом (``categoryUrl``), и родителя, и
+        его подкатегории: листинг родителя у витрин Inditex не всегда содержит
+        все товары детей, а повтор товара в соседней категории дёшев — карточки
+        приходят пачками по API_PAGE_SIZE в одном запросе productsArray.
+        Узлы без имени — скрытые служебные контейнеры меню (лукбуки, тесты),
+        их поддеревья пропускаем.
+        """
+        catalog_id = self._resolve_catalog_id()
+        data = self._api_json(
+            f"2/catalog/store/{self.STORE_ID}/{catalog_id}/category",
+            typeCatalog=1,
+        )
+        tree = data.get("categories") if isinstance(data, dict) else None
+        if not isinstance(tree, list):
+            raise SiteCategoriesError(
+                f"{self.SOURCE_LABEL}: API магазина {self.STORE_ID} не вернул дерево категорий"
+            )
+        return self._site_categories(self._iter_category_pages(tree, ()))
+
+    def _iter_category_pages(self, rows: List[Any], path: tuple) -> Iterator[Dict[str, Any]]:
+        origin = self._origin()
+        locale_prefix = urlparse(self.WARMUP_URL).path.rstrip("/")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = clean_text(str(row.get("name") or ""))
+            if not name:
+                continue
+            here = path + (name,)
+            category_id = str(row.get("id") or "")
+            slug = str(row.get("categoryUrl") or "").strip("/")
+            if slug and category_id.isdigit():
+                # Листинг читает id категории из ?celement=, а -n<seo id> нужен
+                # для распознавания адреса как категории.
+                yield {
+                    "name": " > ".join(here),
+                    "url": (
+                        f"{origin}{locale_prefix}/{quote(slug, safe='/-')}.html"
+                        f"?{urlencode({'celement': category_id})}"
+                    ),
+                    "external_id": category_id,
+                }
+            yield from self._iter_category_pages(row.get("subcategories") or [], here)
 
     # --- идентификаторы из URL --------------------------------------------
 

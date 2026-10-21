@@ -10,9 +10,11 @@ from pathlib import Path
 import pytest
 
 from apps.scrapers.base.scraper import SiteCategoriesError
+from apps.scrapers.parsers.bershka import BershkaParser
 from apps.scrapers.parsers.flo import FloParser
 from apps.scrapers.parsers.ikea import IkeaParser
 from apps.scrapers.parsers.zara import ZaraParser
+from apps.scrapers.test_inditex_parsers import _parser, _routes
 
 FIXTURES = Path(__file__).parent / "test_fixtures" / "site_categories"
 
@@ -189,4 +191,57 @@ def test_zara_categories_fail_when_tree_is_missing(monkeypatch):
     monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: "<html></html>")
 
     with pytest.raises(SiteCategoriesError, match="Zara"):
+        parser.parse_categories()
+
+
+# --- Inditex (Bershka, Pull&Bear, Massimo Dutti) -----------------------------
+
+
+def test_inditex_categories_come_from_itxrest_tree(monkeypatch):
+    # Дерево Bershka урезано; безымянный служебный контейнер с «PARFÜM»
+    # взят из дерева Massimo Dutti, где такие контейнеры держат лукбуки.
+    parser = _parser(
+        BershkaParser,
+        _routes(**{"/40259537/category?": [(200, _fixture("bershka_category_tree.json"))]}),
+        monkeypatch,
+    )
+
+    categories = parser.parse_categories()
+
+    base = "https://www.bershka.com/tr"
+    assert _pairs(categories) == [
+        (
+            "KADıN > DESTACADOS > ÖZEL FİYATLAR",
+            f"{base}/kadin/promo-up-to-3025-n4404.html?celement=1010419519",
+            "1010419519",
+        ),
+        (
+            "KADıN > YENI KOLEKSIYON > Ceket",
+            f"{base}/kadinlar/kiyafetler/ceketler-n4364.html?celement=1010193212",
+            "1010193212",
+        ),
+        (
+            "KADıN > YENI KOLEKSIYON > Ceket > Blazer",
+            f"{base}/kadin/giyim/ceket-ve-kaban/blazer-n3811.html?celement=1010193258",
+            "1010193258",
+        ),
+    ]
+    assert parser.ajax_session.requests[-1].startswith(
+        "https://www.bershka.com/itxrest/2/catalog/store/44109521/40259537/category?"
+    )
+    assert "typeCatalog=1" in parser.ajax_session.requests[-1]
+    for row in categories:
+        assert BershkaParser.is_category_url(row["url"])
+        # id категории листинг берёт из адреса, без загрузки страницы.
+        assert parser._category_id_from_url(row["url"]) == row["external_id"]
+
+
+def test_inditex_categories_fail_when_tree_is_missing(monkeypatch):
+    parser = _parser(
+        BershkaParser,
+        _routes(**{"/40259537/category?": [(200, '{"errorCode": 1}')]}),
+        monkeypatch,
+    )
+
+    with pytest.raises(SiteCategoriesError, match="Bershka"):
         parser.parse_categories()
