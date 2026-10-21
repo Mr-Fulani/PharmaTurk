@@ -3159,6 +3159,17 @@ class ScraperIntegrationService:
                 "is_available": bool(avail and stock_quantity > 0),
                 "is_active": True,
             }
+            # Зачёркнутая цена цвета — только та, что показывает источник, и
+            # только выше текущей (source_old_price): акция кончилась — пусто.
+            # Без ключа парсер её не знает (LCW) — поле не трогаем.
+            sets_old_price = "old_price" in spec and hasattr(VariantModel, "old_price")
+            variant_old_price = (
+                source_old_price(self._safe_decimal(spec.get("old_price")), price_dec)
+                if sets_old_price
+                else None
+            )
+            if sets_old_price:
+                defaults["old_price"] = variant_old_price
 
             variant, created = VariantModel.objects.get_or_create(
                 product=domain_product,
@@ -3174,6 +3185,10 @@ class ScraperIntegrationService:
                         setattr(variant, field, value)
                         changed = True
                         variant_dirty = True
+                if sets_old_price and variant.old_price != variant_old_price:
+                    variant.old_price = variant_old_price
+                    changed = True
+                    variant_dirty = True
                 if variant_dirty:
                     variant.save()
             changed = changed or created

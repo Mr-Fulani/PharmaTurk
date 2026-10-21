@@ -115,3 +115,39 @@ def test_zara_sale_old_price_from_color(monkeypatch):
     product = parser.parse_product_detail("https://www.zara.com/tr/tr/kisa-balon-kollu-elbise-p03897114.html")
 
     assert (product.price, product.old_price) == (2490.0, 3490.0)
+
+
+
+@pytest.mark.django_db
+def test_rescrape_writes_colour_strikethrough_only_from_source():
+    """Проба FLO на проде 21.10: у товара 899,99 и зачёркнутая 1199,99, а у
+    обоих цветов зачёркнутой не было — полный импорт её в варианты не писал."""
+    from apps.catalog.models import ClothingVariant
+
+    category = Category.objects.create(name="Одежда цвет", slug="clothing-colour-old-price")
+    product = Product.objects.create(
+        name="FLO tişört", slug="flo-colour-old-price", category=category,
+        product_type="clothing", price=Decimal("899.99"), currency="TRY",
+        external_id="flo-201", external_data={},
+    )
+    clothing = product.domain_item
+    spec = {
+        "external_id": "flo-variant-201", "color": "Siyah", "price": "899.99",
+        "old_price": "1199.99", "currency": "TRY", "stock_quantity": 3, "is_available": True,
+    }
+    service = ScraperIntegrationService()
+
+    service._sync_fashion_variants(product, variants=[spec])
+    variant = ClothingVariant.objects.get(product=clothing, external_id="flo-variant-201")
+    assert variant.old_price == Decimal("1199.99")
+
+    # Акция кончилась: источник отдаёт ту же цену — зачёркнутая очищается.
+    service._sync_fashion_variants(product, variants=[{**spec, "old_price": "899.99"}])
+    variant.refresh_from_db()
+    assert variant.old_price is None
+
+    # Парсер без зачёркнутой цены цвета (ключа нет) поле не трогает.
+    ClothingVariant.objects.filter(pk=variant.pk).update(old_price=Decimal("999.99"))
+    service._sync_fashion_variants(product, variants=[{k: v for k, v in spec.items() if k != "old_price"}])
+    variant.refresh_from_db()
+    assert variant.old_price == Decimal("999.99")
