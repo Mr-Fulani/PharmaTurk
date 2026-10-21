@@ -1844,7 +1844,7 @@ export default function CategoryPage({
               {/* Mobile filter button */}
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden flex items-center gap-2 px-4 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg hover:bg-[var(--accent-soft)] transition-colors text-main"
+                className="lg:hidden flex min-h-11 items-center gap-2 px-4 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg hover:bg-[var(--accent-soft)] transition-colors text-main"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -1856,7 +1856,7 @@ export default function CategoryPage({
               <div className="flex items-center gap-2 ml-auto">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 rounded-lg transition-colors ${viewMode === 'grid'
+                  className={`p-3 rounded-lg transition-colors ${viewMode === 'grid'
                     ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                     : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
                     }`}
@@ -1868,7 +1868,7 @@ export default function CategoryPage({
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 rounded-lg transition-colors ${viewMode === 'list'
+                  className={`p-3 rounded-lg transition-colors ${viewMode === 'list'
                     ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                     : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
                     }`}
