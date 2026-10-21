@@ -117,7 +117,6 @@ def test_zara_sale_old_price_from_color(monkeypatch):
     assert (product.price, product.old_price) == (2490.0, 3490.0)
 
 
-
 @pytest.mark.django_db
 def test_rescrape_writes_colour_strikethrough_only_from_source():
     """Проба FLO на проде 21.10: у товара 899,99 и зачёркнутая 1199,99, а у
