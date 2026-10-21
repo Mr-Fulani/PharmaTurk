@@ -19,7 +19,7 @@ PARSER_MODES = {
         "label": "Zara",
         "product": "https://www.zara.com/tr/tr/<название>-p02286602.html",
         "category": "https://www.zara.com/tr/tr/kadin-elbiseler-l1066.html",
-        "site": "категории из меню витрины",
+        "site": "все разделы меню магазина (~340, с промо-подборками — обход долгий)",
     },
     "bershka": {
         "label": "Bershka",
@@ -44,20 +44,20 @@ PARSER_MODES = {
         "label": "LC Waikiki",
         "product": "https://www.lcw.com/<название>-o-5271243",
         "category": "https://www.lcw.com/erkek-tisort-t-345",
-        "site": "категории из меню витрины",
+        "site": "подразделы 12 корней каталога (Kadın, Erkek, Çocuk, Bebek, Ev & Yaşam…)",
     },
     "flo": {
         "label": "FLO",
         "product": "https://www.flo.com.tr/urun/<название>-101987837",
         "category": "https://www.flo.com.tr/sandalet",
-        "site": "категории из меню витрины",
+        "site": "дерево категорий /tum-kategoriler (~130 разделов)",
         "note": "Идёт через платный прокси — большие прогоны только с согласия.",
     },
     "ikea": {
         "label": "IKEA",
         "product": "https://www.ikea.com.tr/urun/<название>-80541594",
         "category": "https://www.ikea.com.tr/kategori/kanepeler",
-        "site": "категории из меню витрины",
+        "site": "разделы меню «Ürünler» (~22)",
     },
     "ummaland": {
         "label": "UmmaLand",

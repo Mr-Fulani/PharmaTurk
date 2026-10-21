@@ -111,6 +111,21 @@ def _instagram_task_product_cache_key(run_token: str, identity: str) -> str:
     return f"scraper:instagram-run:{run_token}:product:{digest}"
 
 
+def _catalog_scope(site_task_id, site_run_token, start_url: str) -> Optional[str]:
+    """Пространство состояния обхода категории (CatalogTraversalState).
+
+    Живёт в пределах прохода: resume продолжает его, новый запуск (новый
+    run_token) — с нуля. У каждой категории своё: в режиме «Весь сайт»
+    категории пересекаются, и общий набор «уже видели» останавливал бы
+    категорию после трёх страниц товаров соседней (её остальные товары
+    терялись). Повтор товара из соседней категории просто обновляет его.
+    """
+    if not site_task_id:
+        return None
+    listing = hashlib.sha256(str(start_url or "").encode()).hexdigest()[:16]
+    return f"{site_task_id}:{site_run_token or 'legacy'}:{listing}"
+
+
 def _scraped_product_identity(product: ScrapedProduct) -> str:
     """Stable identity used to prevent the same catalog card crossing chunks twice."""
     source = str(getattr(product, "source", "") or "").strip().casefold()
@@ -1108,12 +1123,9 @@ class ScraperIntegrationService:
                     list_kwargs["start_page"] = start_page
                 catalog_managed = bool(getattr(parser, "SUPPORTS_CATALOG_STATE", False))
                 if catalog_managed:
-                    # Состояние обхода живёт в пространстве прохода: resume
-                    # продолжает его, новый запуск (новый run_token) — с нуля.
-                    catalog_scope = (
-                        f"{site_task_id}:{site_run_token or 'legacy'}" if site_task_id else None
+                    parser.catalog_state = CatalogTraversalState(
+                        _catalog_scope(site_task_id, site_run_token, start_url)
                     )
-                    parser.catalog_state = CatalogTraversalState(catalog_scope)
                     parser.catalog_result_count = lambda: incremental_results["found"]
                 try:
                     for product in parser.parse_product_list(start_url, **list_kwargs):

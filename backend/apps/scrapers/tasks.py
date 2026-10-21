@@ -210,7 +210,9 @@ def _pause_site_task(site_task_id: int, message: str) -> None:
 # задача переходит к следующей. Позиция (site_category_index + resume_page)
 # лежит в базе, поэтому пауза, «Продолжить» и рестарт воркера её не теряют.
 
-SITE_CATEGORY_LIMIT = 500
+# Предохранитель задачи. Основной предел — у парсера
+# (BaseScraper.MAX_SITE_CATEGORIES: 500, у Inditex 800).
+SITE_CATEGORY_LIMIT = 1000
 
 
 def _discover_site_categories(scraper_config: ScraperConfig) -> List[Dict[str, str]]:
