@@ -2523,7 +2523,7 @@ class ClothingVariant(models.Model):
     old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_domain_variant_main_upload_path,
@@ -3112,7 +3112,7 @@ class ShoeVariant(models.Model):
     old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_domain_variant_main_upload_path,
@@ -3442,7 +3442,7 @@ class JewelryVariant(models.Model):
     old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_jewelry_variant_upload_path,
@@ -3954,7 +3954,17 @@ class GlobalAttributeKey(models.Model):
         lang = translation.get_language()
         if not lang:
             return self.slug
-            
+
+        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("translations")
+        if prefetched is not None:
+            # Страница бренда prefetch-ит переводы ключей: .filter() бил бы в БД
+            # на каждый атрибут каждого товара. Порядок поиска — как ниже.
+            by_locale = {t.locale: t for t in prefetched}
+            trans = by_locale.get(lang) or by_locale.get(lang.split('-')[0]) or by_locale.get('en')
+            if not trans and prefetched:
+                trans = min(prefetched, key=lambda t: t.pk)
+            return trans.name if trans else self.slug
+
         trans = self.translations.filter(locale=lang).first()
         
         if not trans and '-' in lang:
@@ -4502,7 +4512,7 @@ class FurnitureVariant(models.Model):
     old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_domain_variant_main_upload_path,
@@ -4560,7 +4570,7 @@ class FurnitureVariantImage(models.Model):
         related_name="images",
         verbose_name=_("Вариант мебели")
     )
-    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."), max_length=2000)
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_variant_gallery_upload_path,
@@ -4897,7 +4907,7 @@ class PerfumeryVariant(models.Model):
     stock_quantity = models.PositiveIntegerField(
         _("Количество на складе"), null=True, blank=True,
     )
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_domain_variant_main_upload_path,
@@ -4957,6 +4967,7 @@ class PerfumeryVariantImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
+        max_length=2000,
         help_text=_("Ссылка на изображение."),
     )
     image_file = models.ImageField(
@@ -6230,7 +6241,7 @@ class BookVariant(models.Model):
     currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
@@ -6315,7 +6326,7 @@ class BookVariantImage(models.Model):
         related_name="images",
         verbose_name=_("Вариант книги")
     )
-    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."), max_length=2000)
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_variant_gallery_upload_path,
@@ -6919,7 +6930,7 @@ class HeadwearVariant(models.Model):
     old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, blank=True, null=True)
     external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
@@ -7078,7 +7089,7 @@ class UnderwearVariant(models.Model):
     old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, blank=True, null=True)
     external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
@@ -7237,7 +7248,7 @@ class IslamicClothingVariant(models.Model):
     old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
     main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, blank=True, null=True)
     external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)

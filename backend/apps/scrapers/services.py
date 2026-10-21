@@ -73,7 +73,12 @@ from apps.catalog.models import (
 )
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.ikea_category_mapping import resolve_ikea_category
-from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
+from apps.catalog.utils.parser_media_handler import (
+    download_and_optimize_parsed_media,
+    parsed_media_fingerprint,
+    source_url_fingerprint,
+)
+from apps.catalog.utils.old_price import source_old_price
 import datetime
 
 
@@ -108,6 +113,21 @@ def _scraper_task_product_cache_key(
 def _instagram_task_product_cache_key(run_token: str, identity: str) -> str:
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     return f"scraper:instagram-run:{run_token}:product:{digest}"
+
+
+def _catalog_scope(site_task_id, site_run_token, start_url: str) -> Optional[str]:
+    """Пространство состояния обхода категории (CatalogTraversalState).
+
+    Живёт в пределах прохода: resume продолжает его, новый запуск (новый
+    run_token) — с нуля. У каждой категории своё: в режиме «Весь сайт»
+    категории пересекаются, и общий набор «уже видели» останавливал бы
+    категорию после трёх страниц товаров соседней (её остальные товары
+    терялись). Повтор товара из соседней категории просто обновляет его.
+    """
+    if not site_task_id:
+        return None
+    listing = hashlib.sha256(str(start_url or "").encode()).hexdigest()[:16]
+    return f"{site_task_id}:{site_run_token or 'legacy'}:{listing}"
 
 
 def _scraped_product_identity(product: ScrapedProduct) -> str:
@@ -1107,12 +1127,9 @@ class ScraperIntegrationService:
                     list_kwargs["start_page"] = start_page
                 catalog_managed = bool(getattr(parser, "SUPPORTS_CATALOG_STATE", False))
                 if catalog_managed:
-                    # Состояние обхода живёт в пространстве прохода: resume
-                    # продолжает его, новый запуск (новый run_token) — с нуля.
-                    catalog_scope = (
-                        f"{site_task_id}:{site_run_token or 'legacy'}" if site_task_id else None
+                    parser.catalog_state = CatalogTraversalState(
+                        _catalog_scope(site_task_id, site_run_token, start_url)
                     )
-                    parser.catalog_state = CatalogTraversalState(catalog_scope)
                     parser.catalog_result_count = lambda: incremental_results["found"]
                 try:
                     for product in parser.parse_product_list(start_url, **list_kwargs):
@@ -1905,8 +1922,107 @@ class ScraperIntegrationService:
             if isinstance(val, str) and val in url_map:
                 attributes[key] = url_map[val]
 
+    @staticmethod
+    def _media_owner_product(scraped_product: ScrapedProduct) -> Optional[Product]:
+        """Товар, чьи медиа прошлых проходов берутся до _process_single_product.
+
+        Только единственный товар с этим external_id: его же обновит _process_single_product
+        (и как товар API, и как товар парсера). Иначе медиа качаются, как раньше.
+        """
+        if not scraped_product.external_id:
+            return None
+        rows = list(Product.objects.filter(external_id=scraped_product.external_id)[:2])
+        return rows[0] if len(rows) == 1 else None
+
+    @staticmethod
+    def _index_media_manifest(index: Dict[str, Tuple[str, str, str]], manifest: Any) -> None:
+        """parser_media_manifest (parsed-URL → читаемая копия) → индекс по отпечатку исходного URL."""
+        from apps.catalog.signals import _get_path_from_storage_url
+
+        if not isinstance(manifest, dict):
+            return
+        for parsed_url, readable_url in manifest.items():
+            fingerprint = parsed_media_fingerprint(parsed_url)
+            key = _get_path_from_storage_url(str(readable_url or "")) if fingerprint else None
+            if key:
+                index.setdefault(fingerprint, (parsed_url, readable_url, key))
+
+    def _stored_parser_media(
+        self, product: Optional[Product]
+    ) -> Tuple[Dict[str, Tuple[str, str, str]], Dict[str, Dict[str, Tuple[str, str, str]]]]:
+        """Медиа товара из прошлых проходов по отпечатку исходного URL: (галерея, {цвет: …}).
+
+        Галерея — parser_media_manifest товара, цвета — parser_media_manifest варианта и
+        строки, сохранённые сигналом из внешнего URL. Значение: (URL, по которому строку
+        узнаёт синхронизация галереи, читаемая копия, ключ хранилища).
+        """
+        from apps.catalog.signals import is_internal_storage_url
+
+        gallery: Dict[str, Tuple[str, str, str]] = {}
+        variants: Dict[str, Dict[str, Tuple[str, str, str]]] = {}
+        if product is None:
+            return gallery, variants
+        if product.product_type == "furniture":
+            from apps.catalog.models import FurnitureVariant as variant_model
+        else:
+            config = self._fashion_model_config(product.product_type)
+            variant_model = config["variant_model"] if config else None
+
+        external = product.external_data if isinstance(product.external_data, dict) else {}
+        self._index_media_manifest(gallery, external.get("parser_media_manifest"))
+        if variant_model is None:
+            return gallery, variants
+        for variant in variant_model.objects.filter(product__base_product=product).prefetch_related("images"):
+            entries = variants.setdefault(str(variant.external_id or ""), {})
+            variant_external = variant.external_data if isinstance(variant.external_data, dict) else {}
+            self._index_media_manifest(entries, variant_external.get("parser_media_manifest"))
+            for row in variant.images.all():
+                url = row.image_url or ""
+                key = getattr(row.image_file, "name", "") or ""
+                if url and key and not is_internal_storage_url(url):
+                    entries.setdefault(source_url_fingerprint(url), (url, row.image_file.url, key))
+        return gallery, variants
+
+    @staticmethod
+    def _stored_media_reuse(
+        source_urls: List[str],
+        own: Dict[str, Tuple[str, str, str]],
+        fallback: Tuple[Dict[str, Tuple[str, str, str]], ...] = (),
+    ) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """Исходные URL, копия которых на месте → (URL вместо скачивания, читаемая копия).
+
+        Своя запись (галерея товара или этот цвет) отдаёт URL, по которому её узнаёт
+        синхронизация галереи; запись другого владельца — читаемую копию.
+        """
+        from django.core.files.storage import default_storage
+
+        reuse: Dict[str, str] = {}
+        copies: Dict[str, str] = {}
+        for url in source_urls:
+            if not isinstance(url, str) or not url or url in reuse:
+                continue
+            fingerprint = source_url_fingerprint(url)
+            entry = own.get(fingerprint)
+            is_own = entry is not None
+            if not is_own:
+                entry = next((index[fingerprint] for index in fallback if fingerprint in index), None)
+            if entry is None:
+                continue
+            sync_url, readable_url, key = entry
+            try:
+                if not default_storage.exists(key):
+                    continue
+            except Exception:
+                continue
+            reuse[url] = sync_url if is_own else readable_url
+            copies[url] = readable_url
+        return reuse, copies
+
     def _normalize_scraped_media(
-        self, session: ScrapingSession, scraped_product: ScrapedProduct
+        self,
+        session: ScrapingSession,
+        scraped_product: ScrapedProduct,
+        product: Optional[Product] = None,
     ) -> None:
         if not isinstance(scraped_product.attributes, dict):
             scraped_product.attributes = dict(scraped_product.attributes or {})
@@ -1972,38 +2088,61 @@ class ScraperIntegrationService:
         DIRECT_READABLE_PARSERS = ("ummaland",)
         skip_parsed = any(p in (parser_name or "").lower() for p in DIRECT_READABLE_PARSERS)
 
+        # Медиа, уже сохранённые у товара прошлыми проходами, не качаются заново
+        # (HEAD + GET + Pillow + PUT в R2 на каждый проход): parsed-копия к этому
+        # моменту перенесена в читаемый путь, и проверка её имени их не находит.
+        stored_gallery, stored_variants = self._stored_parser_media(
+            product if product is not None else self._media_owner_product(scraped_product)
+        )
+
         if media_urls and not skip_parsed:
+            # Корень одежды без своей галереи (фото только у цветов) берёт копии цветов.
+            reuse_map, stored_copies = self._stored_media_reuse(
+                media_urls, stored_gallery, tuple(stored_variants.values())
+            )
             new_images, url_map = self._download_parsed_media_urls(
                 session,
                 source_urls=media_urls,
                 parser_name=parser_name,
                 product_id=product_id,
                 sub_folder=sub_folder,
+                reuse_map=reuse_map,
             )
             scraped_product.images = new_images
             shared_source_to_r2.update(url_map)
+            # Другим владельцам — только существующие файлы, не parsed-ключи прошлых проходов.
+            shared_source_to_r2.update(stored_copies)
             self._remap_attribute_urls(attributes, url_map)
 
-        # Медиа цветовых вариантов IKEA (отдельные sprCode, одна карточка FurnitureProduct)
-        fv = attributes.get("furniture_variants")
-        if isinstance(fv, list):
-            for spec in fv:
+        # Медиа цветовых вариантов: IKEA (furniture_variants — отдельные sprCode под одной
+        # карточкой мебели) и одежда/обувь (fashion_variants — LCW, FLO, Zara, Bershka,
+        # Pull&Bear, Massimo Dutti). Тот же лимит, оптимизация и общая карта URL, что у
+        # корневой галереи; иначе внешние URL цветов синхронно качал pre_save-сигнал.
+        for variants_key in ("furniture_variants", "fashion_variants"):
+            variants = attributes.get(variants_key)
+            if not isinstance(variants, list):
+                continue
+            for spec in variants:
                 if not isinstance(spec, dict):
                     continue
                 vid = str(spec.get("external_id") or product_id).strip() or product_id
                 raw_imgs = spec.get("images") or []
                 if not raw_imgs:
                     continue
+                own_reuse, stored_copies = self._stored_media_reuse(
+                    list(raw_imgs), stored_variants.get(vid, {})
+                )
                 variant_images, variant_map = self._download_parsed_media_urls(
                     session,
                     source_urls=list(raw_imgs),
                     parser_name=parser_name,
                     product_id=vid,
                     sub_folder=sub_folder,
-                    reuse_map=shared_source_to_r2,
+                    reuse_map={**shared_source_to_r2, **own_reuse},
                 )
                 spec["images"] = variant_images
                 shared_source_to_r2.update(variant_map)
+                shared_source_to_r2.update(stored_copies)
 
     def _process_single_product(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
@@ -2031,6 +2170,13 @@ class ScraperIntegrationService:
                 ).select_related('product__base_product').first()
                 if variant and variant.product and variant.product.base_product:
                     existing_by_external_id = variant.product.base_product
+
+            if not existing_by_external_id:
+                existing_by_external_id = self._find_product_by_fashion_variants(scraped_product)
+                if existing_by_external_id is not None:
+                    # Группа пришла с другим составом цветов: объединяем, а не
+                    # снимаем цвета, которых нет в этой выдаче.
+                    existing_by_external_id._fashion_variant_owner_match = True
 
             if existing_by_external_id:
                 return self._update_existing_product(
@@ -2458,7 +2604,21 @@ class ScraperIntegrationService:
 
     def _same_parser_media(self, existing_image: Any, incoming_url: str) -> bool:
         """Match parsed and readable copies even though their URLs are different."""
-        if (getattr(existing_image, "image_url", "") or "") == incoming_url:
+        from apps.catalog.signals import is_internal_storage_url
+
+        existing_url = getattr(existing_image, "image_url", "") or ""
+        if existing_url == incoming_url:
+            return True
+        # Строка, сохранённая сигналом из внешнего URL (галереи цветов одежды до общего
+        # конвейера), и parsed-копия того же URL: имя parsed-файла хранит его отпечаток.
+        fingerprint = parsed_media_fingerprint(incoming_url)
+        if (
+            fingerprint
+            and existing_url
+            and getattr(getattr(existing_image, "image_file", None), "name", "")
+            and not is_internal_storage_url(existing_url)
+            and source_url_fingerprint(existing_url) == fingerprint
+        ):
             return True
         incoming_key = self._media_storage_key(incoming_url)
         existing_key = self._media_storage_key(getattr(existing_image, "image_file", None))
@@ -2466,6 +2626,48 @@ class ScraperIntegrationService:
             existing_key = self._media_storage_key(getattr(existing_image, "image_url", ""))
         incoming_digest = self._storage_digest(incoming_key)
         return bool(incoming_digest and incoming_digest == self._storage_digest(existing_key))
+
+    @staticmethod
+    def _stored_variant_copy(manifest: Dict[str, Any], url: str) -> str:
+        """Читаемая копия parsed-URL из parser_media_manifest цвета, если файл на месте."""
+        from django.core.files.storage import default_storage
+
+        from apps.catalog.signals import _get_path_from_storage_url
+
+        readable_url = str(manifest.get(url) or "")
+        key = _get_path_from_storage_url(readable_url) if readable_url else None
+        if not key:
+            return url
+        try:
+            return readable_url if default_storage.exists(key) else url
+        except Exception:
+            return url
+
+    @staticmethod
+    def _remember_variant_media(variant: Any, image_urls: List[str], rows: List[Any]) -> None:
+        """parser_media_manifest цвета: parsed-URL → читаемая копия, как у товара в
+        CatalogNormalizer._normalize_product_images; следующий проход берёт её без скачивания."""
+        from apps.catalog.signals import is_internal_storage_url
+
+        manifest = {}
+        for url, row in zip(image_urls, rows):
+            stored = getattr(row, "image_url", "") or ""
+            if (
+                parsed_media_fingerprint(url)
+                and "/products/parsed/" not in stored
+                and is_internal_storage_url(stored)
+            ):
+                manifest[url] = stored
+        external = dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
+        if (external.get("parser_media_manifest") or {}) == manifest:
+            return
+        if manifest:
+            external["parser_media_manifest"] = manifest
+        else:
+            external.pop("parser_media_manifest", None)
+        # Служебная запись: без сигналов save() и без признака «товар изменился».
+        variant.__class__.objects.filter(pk=variant.pk).update(external_data=external)
+        variant.external_data = external
 
     def _sync_variant_images(
         self,
@@ -2477,10 +2679,15 @@ class ScraperIntegrationService:
         color: str,
     ) -> Tuple[bool, str]:
         """Synchronize a variant gallery without recreating identical media rows."""
+        external = variant.external_data if isinstance(variant.external_data, dict) else {}
+        manifest = external.get("parser_media_manifest")
+        manifest = manifest if isinstance(manifest, dict) else {}
+        # parsed-URL прошлого прохода (взят без скачивания) → читаемая копия этого цвета.
+        resolved_urls = [self._stored_variant_copy(manifest, url) for url in image_urls]
         existing = list(variant.images.all().order_by("sort_order", "id"))
-        same_media = len(existing) == len(image_urls) and all(
+        same_media = len(existing) == len(resolved_urls) and all(
             self._same_parser_media(row, url)
-            for row, url in zip(existing, image_urls)
+            for row, url in zip(existing, resolved_urls)
         )
         changed = False
 
@@ -2505,11 +2712,13 @@ class ScraperIntegrationService:
                 (getattr(existing[0], "image_url", "") if existing else "")
                 or (getattr(getattr(existing[0], "image_file", None), "url", "") if existing else "")
             )
+            self._remember_variant_media(variant, image_urls, existing)
             return changed, first_url
 
-        variant.images.all().delete()
+        # Новые строки — до удаления старых: post_delete удаляет файл без ссылок,
+        # а новые строки могут ссылаться на ту же читаемую копию.
         saved_images = []
-        for index, url in enumerate(image_urls):
+        for index, url in enumerate(resolved_urls):
             image = image_model(
                 variant=variant,
                 image_url=url,
@@ -2519,6 +2728,8 @@ class ScraperIntegrationService:
             )
             image.save()
             saved_images.append(image)
+        variant.images.filter(pk__in=[row.pk for row in existing]).delete()
+        self._remember_variant_media(variant, image_urls, saved_images)
         first_url = (
             (getattr(saved_images[0], "image_url", "") if saved_images else "")
             or (getattr(getattr(saved_images[0], "image_file", None), "url", "") if saved_images else "")
@@ -2530,9 +2741,12 @@ class ScraperIntegrationService:
         self, furniture_product: "FurnitureProduct", product: Product, variants: List[Dict[str, Any]]
     ) -> bool:
         """Создаёт/обновляет FurnitureVariant (цвета) под одной карточкой мебели — как при ручном вводе."""
+        from apps.ai.services.ownership import has_applied_ai_content
         from apps.catalog.models import FurnitureProductImage, FurnitureVariant, FurnitureVariantImage
 
         changed = False
+        # Как у одежды: название варианта товара с AI-результатом не перетираем.
+        keep_variant_names = has_applied_ai_content(product)
         for spec in variants:
             if not isinstance(spec, dict):
                 continue
@@ -2587,6 +2801,8 @@ class ScraperIntegrationService:
                     "stock_quantity",
                     "is_active",
                 ):
+                    if keep_variant_names and field == "name" and variant.name:
+                        continue
                     nv = defaults.get(field)
                     if nv is not None and getattr(variant, field) != nv:
                         setattr(variant, field, nv)
@@ -2740,6 +2956,42 @@ class ScraperIntegrationService:
         }
         return configs.get(product_type)
 
+    FASHION_VARIANT_PRODUCT_TYPES = ("clothing", "shoes", "headwear", "underwear", "islamic_clothing")
+
+    def _find_product_by_fashion_variants(self, scraped_product: ScrapedProduct) -> Optional[Product]:
+        """Товар, которому уже принадлежит цвет из пришедшей группы.
+
+        id группы LCW/FLO — минимальный id цвета: он меняется, когда цвет
+        пропадает или страницы цветов ссылаются друг на друга несимметрично
+        (живой листинг LCW 20.10). id цвета стабилен — по нему находим уже
+        сохранённую карточку вместо создания дубля.
+        """
+        from django.db.models import Count
+
+        attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+        variant_ids = [
+            str(row.get("external_id") or "").strip()
+            for row in attrs.get("fashion_variants") or []
+            if isinstance(row, dict)
+        ]
+        variant_ids = [value for value in variant_ids if value]
+        if not variant_ids:
+            return None
+        for product_type in self.FASHION_VARIANT_PRODUCT_TYPES:
+            variant_model = self._fashion_model_config(product_type)["variant_model"]
+            owner = (
+                variant_model.objects.filter(
+                    external_id__in=variant_ids, product__base_product__isnull=False,
+                )
+                .values("product__base_product_id")
+                .annotate(colors=Count("id"))
+                .order_by("-colors", "product__base_product_id")
+                .first()
+            )
+            if owner:
+                return Product.objects.filter(pk=owner["product__base_product_id"]).first()
+        return None
+
     def _normalize_variant_sizes_payload(self, raw_sizes: Any) -> List[Dict[str, Any]]:
         normalized: List[Dict[str, Any]] = []
         if not raw_sizes:
@@ -2847,13 +3099,31 @@ class ScraperIntegrationService:
 
         changed = False
         seen_external_ids: List[str] = []
+        # Цвет принадлежит одной карточке: цвет, уже сохранённый у другого
+        # товара, не копируем сюда вторым вариантом.
+        incoming_ids = [
+            str(spec.get("external_id") or "").strip()
+            for spec in variants
+            if isinstance(spec, dict) and spec.get("external_id")
+        ]
+        owned_elsewhere = set(
+            VariantModel.objects.filter(external_id__in=incoming_ids)
+            .exclude(product=domain_product)
+            .values_list("external_id", flat=True)
+        )
+        # Названия вариантов пишет и AI (sync_variant_titles_from_parent): у
+        # товара с применённым AI-результатом повторный парсинг их не трогает,
+        # иначе EN-название снова становится «русское название - Black».
+        from apps.ai.services.ownership import has_applied_ai_content
+
+        keep_variant_names = has_applied_ai_content(product)
 
         for idx, spec in enumerate(variants):
             if not isinstance(spec, dict):
                 continue
 
             ext = str(spec.get("external_id") or "").strip()
-            if not ext:
+            if not ext or ext in owned_elsewhere:
                 continue
             seen_external_ids.append(ext)
 
@@ -2889,6 +3159,17 @@ class ScraperIntegrationService:
                 "is_available": bool(avail and stock_quantity > 0),
                 "is_active": True,
             }
+            # Зачёркнутая цена цвета — только та, что показывает источник, и
+            # только выше текущей (source_old_price): акция кончилась — пусто.
+            # Без ключа парсер её не знает (LCW) — поле не трогаем.
+            sets_old_price = "old_price" in spec and hasattr(VariantModel, "old_price")
+            variant_old_price = (
+                source_old_price(self._safe_decimal(spec.get("old_price")), price_dec)
+                if sets_old_price
+                else None
+            )
+            if sets_old_price:
+                defaults["old_price"] = variant_old_price
 
             variant, created = VariantModel.objects.get_or_create(
                 product=domain_product,
@@ -2898,10 +3179,16 @@ class ScraperIntegrationService:
             if not created:
                 variant_dirty = False
                 for field, value in defaults.items():
+                    if keep_variant_names and field in ("name", "name_en") and getattr(variant, field):
+                        continue
                     if value is not None and getattr(variant, field) != value:
                         setattr(variant, field, value)
                         changed = True
                         variant_dirty = True
+                if sets_old_price and variant.old_price != variant_old_price:
+                    variant.old_price = variant_old_price
+                    changed = True
+                    variant_dirty = True
                 if variant_dirty:
                     variant.save()
             changed = changed or created
@@ -2972,7 +3259,8 @@ class ScraperIntegrationService:
                 changed = True
 
         stale_qs = domain_product.variants.exclude(external_id__in=seen_external_ids)
-        if stale_qs.filter(is_active=True).exists():
+        merge_only = getattr(product, "_fashion_variant_owner_match", False)
+        if not merge_only and stale_qs.filter(is_active=True).exists():
             stale_qs.update(is_active=False, is_available=False, stock_quantity=0)
             changed = True
 
@@ -3387,7 +3675,7 @@ class ScraperIntegrationService:
                 return "skipped", existing_product
 
         if getattr(scraped_product, "_medicine_media_deferred", False):
-            self._normalize_scraped_media(session, scraped_product)
+            self._normalize_scraped_media(session, scraped_product, product=existing_product)
             scraped_product._medicine_media_deferred = False
             prepared_attrs = self._prepare_scraped_attributes(
                 scraped_product, existing_product.product_type,
@@ -3406,18 +3694,41 @@ class ScraperIntegrationService:
             if not price_refresh_disabled:
                 source_currency = str(scraped_product.currency or "").strip().upper()
                 current_currency = str(existing_product.currency or "").strip().upper()
+                if getattr(scraped_product, "price_unpublished", False) and (
+                    existing_product.price is not None or existing_product.old_price is not None
+                ):
+                    # Источник показывает 0,00 — цена снята: старую на витрине не держим.
+                    existing_product.price = None
+                    existing_product.old_price = None
+                    updated = True
+                source_price = scraped_product.price
+                if source_price is not None and source_price <= 0:
+                    # 0 у источника — «цена не опубликована», а не бесплатно:
+                    # ноль на витрину не пишем (DEVELOPMENT_RULES §5.1), как и
+                    # при создании товара.
+                    source_price = None
                 price_changed = (
-                    scraped_product.price is not None
-                    and scraped_product.price != existing_product.price
+                    source_price is not None
+                    and source_price != existing_product.price
                 )
                 currency_changed = bool(source_currency and source_currency != current_currency)
                 if price_changed or currency_changed:
-                    existing_product.old_price = existing_product.price
-                    if scraped_product.price is not None:
-                        existing_product.price = scraped_product.price
+                    if source_price is not None:
+                        existing_product.price = source_price
                     if source_currency:
                         existing_product.currency = source_currency
                     updated = True
+                if source_price is not None:
+                    # Зачёркнутая цена — только та, что показывает источник, и
+                    # только выше текущей. Прежняя цена в old_price давала
+                    # бессрочные ложные скидки (у лекарств цены регулируются,
+                    # источник её не отдаёт — значит, пусто).
+                    new_old_price = source_old_price(
+                        getattr(scraped_product, "old_price", None), existing_product.price,
+                    )
+                    if existing_product.old_price != new_old_price:
+                        existing_product.old_price = new_old_price
+                        updated = True
 
             # Обновляем наличие
             if scraped_product.is_available != existing_product.is_available:
@@ -3554,6 +3865,12 @@ class ScraperIntegrationService:
             existing_product.external_data.setdefault("source", scraped_product.source)
         if scraped_product.scraped_at:
             existing_product.external_data["scraped_at"] = scraped_product.scraped_at
+        if scraped_product.source == "ilacfiyati" and not is_variant_update:
+            from apps.ai.services.ownership import remember_source_name
+
+            # name у товара с AI-результатом переведён, а шаблон названия
+            # лекарства строится только из турецкого оригинала.
+            remember_source_name(existing_product.external_data, scraped_product.name)
         if prepared_attrs:
             if is_variant_update:
                 variant_content = existing_product.external_data.get("variant_content") or {}
@@ -4536,6 +4853,7 @@ class ScraperIntegrationService:
             name=scraped_product.name,
             description=scraped_product.description,
             price=float(scraped_product.price) if scraped_product.price else None,
+            old_price=getattr(scraped_product, "old_price", None),
             currency=scraped_product.currency,
             category=scraped_product.category,
             brand=scraped_product.brand,
@@ -4547,6 +4865,8 @@ class ScraperIntegrationService:
                 "scraped_at": scraped_product.scraped_at,
                 "attributes": prepared_attrs,
                 "stock_quantity": scraped_product.stock_quantity,
+                # Турецкий оригинал для шаблона названия (см. _update_existing_product_impl).
+                **({"source_name": scraped_product.name} if scraped_product.source == "ilacfiyati" else {}),
             },
             barcode=scraped_product.barcode,
         )
@@ -4645,21 +4965,46 @@ class ScraperIntegrationService:
         success: bool,
         source_item_gone: bool = False,
     ):
-        """Обновляет статистику парсера."""
-        config.total_runs += 1
-        config.last_run_at = timezone.now()
+        """Обновляет статистику парсера.
 
+        Пишет только поля статистики: config загружен в начале задачи, и полный
+        save() через десятки минут откатывал бы правки админа (включение,
+        прокси, cookies). Успех снимает «Ошибку» и её текст — статус «Активен»
+        нужен проверкам наличия и обновлению карточек, — но не трогает
+        «Обслуживание»/«Неактивен», выставленные вручную.
+        """
+        from django.db.models import F
+
+        now = timezone.now()
+        updates: Dict[str, Any] = {
+            "total_runs": F("total_runs") + 1,
+            "last_run_at": now,
+        }
         if success:
-            config.successful_runs += 1
-            config.last_success_at = timezone.now()
-            config.total_products_scraped += session.products_found
-            config.status = "active"
+            updates.update(
+                successful_runs=F("successful_runs") + 1,
+                last_success_at=now,
+                total_products_scraped=F("total_products_scraped") + session.products_found,
+                last_error_at=None,
+                last_error_message="",
+            )
         elif not source_item_gone:
-            config.last_error_at = timezone.now()
-            config.last_error_message = session.error_message
-            config.status = "error"
+            updates.update(
+                last_error_at=now,
+                last_error_message=session.error_message,
+                status="error",
+            )
 
-        config.save()
+        configs = ScraperConfig.objects.filter(pk=config.pk)
+        configs.update(**updates)
+        if success:
+            configs.filter(status="error").update(status="active")
+        config.refresh_from_db(
+            fields=[
+                "total_runs", "last_run_at", "successful_runs", "last_success_at",
+                "total_products_scraped", "last_error_at", "last_error_message", "status",
+            ]
+        )
 
     def _extract_search_query(self, url: str) -> Optional[str]:
         """Извлекает поисковый запрос из URL."""
@@ -4688,8 +5033,19 @@ class DeduplicationService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
+    # Поля, которые реально нужны сравнению. Полная загрузка всех товаров
+    # (описания, external_data лекарств) не помещалась в лимит воркера.
+    SCAN_FIELDS = (
+        "id", "name", "product_type", "category_id", "brand_id", "created_at", "updated_at",
+        *STRONG_MATCH_FIELDS,
+    )
+    SCAN_EXTERNAL_KEYS = ("source", "source_variant_id", "source_variant_slug")
+
     @staticmethod
     def _safe_external_data(product: Product) -> Dict[str, Any]:
+        light = getattr(product, "_dedup_external_data", None)
+        if light is not None:
+            return light
         return product.external_data if isinstance(product.external_data, dict) else {}
 
     @classmethod
@@ -4796,10 +5152,21 @@ class DeduplicationService:
         """Находит кандидатов в дубликаты товаров по набору сигналов."""
         candidates: List[Dict[str, Any]] = []
         seen_pair_keys: set[str] = set()
-        products = list(
-            Product.objects.select_related("brand", "category").all()
+        from django.db.models.fields.json import KT
+
+        queryset = Product.objects.only(*self.SCAN_FIELDS).annotate(
+            **{f"dedup_{key}": KT(f"external_data__{key}") for key in self.SCAN_EXTERNAL_KEYS}
         )
-        products = [product for product in products if not self._is_shadow_variant_product(product)]
+        products = []
+        for product in queryset.iterator(chunk_size=2000):
+            # Только нужные ключи external_data, без загрузки всего JSON.
+            product._dedup_external_data = {
+                key: getattr(product, f"dedup_{key}")
+                for key in self.SCAN_EXTERNAL_KEYS
+                if getattr(product, f"dedup_{key}")
+            }
+            if not self._is_shadow_variant_product(product):
+                products.append(product)
 
         buckets: Dict[Tuple[str, str], List[Product]] = {}
         for product in products:

@@ -25,6 +25,14 @@ class ExternalAccessBlockedError(RuntimeError):
         super().__init__(f"{source} {reason} (HTTP {status_code}, {host})")
 
 
+class PaidAccessUnavailableError(ExternalAccessBlockedError):
+    """Платный провайдер доступа (Bright Data) отказал сам, а не магазин.
+
+    Лимит зоны исчерпан, зона приостановлена, кончился баланс или отозван
+    токен. Запрос не дошёл до источника — о товаре он ничего не говорит.
+    """
+
+
 def raise_for_blocked_status(*, status_code: int, url: str, source: str) -> None:
     """Преобразует отказ источника или прокси в единую ошибку доступа."""
     if status_code in (401, 403, 407):

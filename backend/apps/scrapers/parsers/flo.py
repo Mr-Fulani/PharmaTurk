@@ -14,7 +14,13 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from django.conf import settings
 from bs4 import BeautifulSoup
 
-from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
+from ..base.scraper import (
+    BaseScraper,
+    CategoryPageNotFoundError,
+    ScrapedProduct,
+    ScraperAccessBlockedError,
+    SiteCategoriesError,
+)
 from ..base.catalog_state import CatalogTraversalState
 from ..base.offers import (
     MalformedOfferResponse,
@@ -56,6 +62,8 @@ class FloParser(BaseScraper):
 
     PRODUCT_PATH_RE = re.compile(r"/urun/[^/?#]*?-(\d{4,})(?:[/?#]|$)", re.IGNORECASE)
     PRODUCT_DETAIL_MARKER = "window.productDetail = "
+    # Листинг всего каталога: его фильтр «kategori» — полное дерево категорий.
+    ALL_CATEGORIES_PATH = "/tum-kategoriler"
     PRODUCT_LINK_RE = re.compile(r'href="(/urun/[^"#?]*-\d{4,})"', re.IGNORECASE)
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
     # Предохранитель: максимум цветов на одну карточку (защита от аномалий).
@@ -139,6 +147,43 @@ class FloParser(BaseScraper):
 
     def get_supported_domains(self) -> List[str]:
         return ["flo.com.tr", "www.flo.com.tr"]
+
+    def parse_categories(self) -> List[Dict[str, Any]]:
+        """Категории всего каталога — из фильтра «kategori» страницы /tum-kategoriler.
+
+        У каждой ссылки фильтра ``data-value`` вида
+        ``category__18_19__Günlük Ayakkabı__8262__gunluk-ayakkabi``: путь id
+        от корня, имя, служебный номер и slug. Берём разделы второго уровня
+        (листинг раздела включает его подразделы) и корни без подразделов.
+        """
+        url = urljoin(self.base_url, self.ALL_CATEGORIES_PATH)
+        html = self._fetch(url)
+        if not html:
+            raise SiteCategoriesError(f"FLO: страница категорий не загрузилась: {url}")
+        nodes: Dict[tuple, tuple] = {}
+        soup = BeautifulSoup(html, "html.parser")
+        for anchor in soup.select("a.js-listing-filter-category[data-value]"):
+            parts = str(anchor.get("data-value") or "").split("__")
+            if len(parts) != 5 or parts[0] != "category":
+                continue
+            path = tuple(parts[1].split("_"))
+            href = str(anchor.get("href") or "") or f"/{parts[4]}"
+            nodes[path] = (clean_text(parts[2]), href)
+        parents = {path[:-1] for path in nodes}
+        rows = []
+        for path, (name, href) in nodes.items():
+            if len(path) == 2 or (len(path) == 1 and path not in parents):
+                titles = [
+                    nodes[path[:depth]][0] for depth in range(1, len(path)) if path[:depth] in nodes
+                ]
+                rows.append(
+                    {
+                        "name": " > ".join(titles + [name]),
+                        "url": self._canonical_url(urljoin(self.base_url, href)),
+                        "external_id": path[-1],
+                    }
+                )
+        return self._site_categories(rows)
 
     @classmethod
     def is_flo_product_url(cls, url: str) -> bool:
@@ -230,6 +275,11 @@ class FloParser(BaseScraper):
             page_url = self._page_url(category_url, page)
             html = self._fetch(page_url)
             if not html:
+                if page == 1:
+                    # 404 на первой странице — категории нет, а не конец каталога.
+                    raise CategoryPageNotFoundError(
+                        f"FLO: страница категории не найдена: {category_url}"
+                    )
                 self.has_more_pages = False
                 self.stop_reason = f"FLO вернул пустую страницу каталога: {page_url}"
                 break
@@ -329,7 +379,7 @@ class FloParser(BaseScraper):
         sku = str(detail.get("sku") or "")
         sizes = self._build_sizes(detail.get("options"))
         images = self._extract_images(detail)
-        price = self._normalize_price_value(detail.get("price"))
+        price, old_price = self._selling_and_old_price(detail)
         color = clean_text(str(detail.get("renk") or detail.get("orj_renk") or ""))
         is_available = str(detail.get("is_in_stock")).lower() == "true" or any(
             row["is_available"] for row in sizes
@@ -342,6 +392,7 @@ class FloParser(BaseScraper):
                 f"{detail.get('name') or ''} - {color}".strip(" -")
             ),
             "price": price,
+            "old_price": old_price,
             "currency": "TRY",
             "external_url": self._canonical_url(product_url),
             "images": images,
@@ -410,8 +461,12 @@ class FloParser(BaseScraper):
 
         return ScrapedProduct(
             name=clean_text(str(detail.get("name") or "")),
-            description=self._clean_description(detail.get("description")),
+            description=(
+                self._clean_description(detail.get("description"))
+                or self._features_description(detail)
+            ),
             price=primary["price"],
+            old_price=primary.get("old_price"),
             currency="TRY",
             url=primary["external_url"],
             images=primary["images"],
@@ -525,10 +580,54 @@ class FloParser(BaseScraper):
                 return clean_text(str(row["name"]))
         return ""
 
+    # Поля блока «Ürün Özellikleri» карточки FLO (живая карточка 21.10).
+    FEATURE_FIELDS = (
+        ("Marka", "manufacturer"),
+        ("Model", "model"),
+        ("Renk", "renk"),
+        ("Cinsiyet", "cinsiyet"),
+        ("Dış Materyal", "materyal"),
+        ("İç Materyal", "ic_astar_1"),
+        ("Taban", "taban"),
+        ("Saya", "saya"),
+        ("Kapama Şekli", "kapama_sekli"),
+        ("Topuk Yüksekliği", "topuk_yuksekligi"),
+        ("Üretim Yeri", "uretim_yeri"),
+    )
+
+    @classmethod
+    def _features_description(cls, detail: Dict[str, Any]) -> str:
+        """Описание из «Ürün Özellikleri», если текстового описания у FLO нет.
+
+        У части товаров FLO поле description пустое и на самом сайте — там
+        только характеристики; без них товар сохранялся без описания.
+        """
+        parts = []
+        for label, key in cls.FEATURE_FIELDS:
+            value = clean_text(str(detail.get(key) or ""))
+            if value:
+                parts.append(f"{label}: {value}")
+        return "; ".join(parts)
+
     @staticmethod
     def _clean_description(value: Any) -> str:
         text = re.sub(r"<[^>]+>", " ", str(value or ""))
         return clean_text(text)
+
+    @classmethod
+    def _selling_and_old_price(cls, detail: Dict[str, Any]):
+        """Цена продажи и зачёркнутая цена FLO.
+
+        ``price`` у FLO — цена без скидки, продаётся товар за ``special_price``
+        (её же отдаёт JSON-LD Offer и показывает страница: 2 299,99 вместо
+        2 799,99). Зачёркнутая цена — только если FLO её не скрывает.
+        """
+        regular = cls._normalize_price_value(detail.get("price"))
+        special = cls._normalize_price_value(detail.get("special_price"))
+        if special and regular and 0 < special < regular:
+            hidden = str(detail.get("web_hidden_strikethrough_price")).lower() == "true"
+            return special, (None if hidden else regular)
+        return regular or special, None
 
     @staticmethod
     def _normalize_price_value(value: Any) -> Optional[float]:

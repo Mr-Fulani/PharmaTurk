@@ -12,10 +12,12 @@ import Pagination from '../../components/Pagination'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { buildProductUrl, getSiteOrigin } from '../../lib/urls'
 import { buildCatalogPageQuery, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
-import { buildBrandProductsParams, brandProductsRequestKey, shouldShowGenderFilter } from '../../lib/brandCatalog'
+import { buildBrandProductsParams, brandProductsRequestKey, brandDescriptionText, shouldShowGenderFilter } from '../../lib/brandCatalog'
 import { ProductTranslation, BrandTranslation, getLocalizedBrandDescription, getLocalizedBrandName } from '../../lib/i18n'
 import { getSingleFlight } from '../../lib/api'
 import { useViewMode } from '../../hooks/useViewMode'
+import { useViewItemList } from '../../hooks/useViewItemList'
+import { gtmProductItem } from '../../lib/gtm'
 import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
 import { buildCatalogSeoState } from '../../lib/categoryRouting'
@@ -152,6 +154,13 @@ function BrandPageContent({
   const router = useRouter()
   const [viewMode, setViewMode] = useViewMode()
   const [products, setProducts] = useState<Product[]>(brandData.products || [])
+  useViewItemList(
+    { id: `brand:${brandData.slug}`, name: brandData.name },
+    products.map((product) => {
+      const productType = (product.product_type || 'medicines').replace(/_/g, '-')
+      return gtmProductItem(product, productType, isBaseProductType(productType))
+    }),
+  )
   const [totalCount, setTotalCount] = useState(brandData.totalCount || 0)
   const [currentPage, setCurrentPage] = useState(Number(page) || 1)
   const [loading, setLoading] = useState(false)
@@ -284,7 +293,7 @@ function BrandPageContent({
     categories: brandCategoryNames ? `: ${brandCategoryNames.toLowerCase()}` : '',
   })
   const metaDescription = truncateAtWord(
-    appendSentenceIfShort(localizedBrandDescription.replace(/<[^>]*>/g, ' '), brandMetaSuffix),
+    appendSentenceIfShort(brandDescriptionText(localizedBrandDescription), brandMetaSuffix),
     200
   )
   const breadcrumbs = [
@@ -531,8 +540,7 @@ export async function getServerSideProps(ctx: any) {
     const { getInternalApiUrl } = await import('../../lib/urls')
     const slugValue = Array.isArray(slug) ? slug[0] : String(slug || '')
 
-    const brandRes = await axios.get(getInternalApiUrl(`catalog/brands/${encodeURIComponent(slugValue)}`))
-    const brand: Brand = brandRes.data
+    const brandPathSlug = encodeURIComponent(slugValue)
 
     const filters = parseCatalogFiltersQuery(ctx.query || {}, defaultFilters) as FilterState
     const productParams = buildBrandProductsParams(filters, page, pageSize)
@@ -540,8 +548,11 @@ export async function getServerSideProps(ctx: any) {
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
     const currency = currencyMatch ? decodeURIComponent(currencyMatch[1]).toUpperCase() : defaultCurrencyForLocale(ctx.locale)
 
-    const [productsRes, categoriesRes] = await Promise.all([
-      axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/products`), {
+    // Бренд, товары и категории — параллельно: эндпоинты товаров/категорий
+    // находят бренд по тому же slug, что и detail (SmartSlugLookupMixin).
+    const [brandRes, productsRes, categoriesRes] = await Promise.all([
+      axios.get(getInternalApiUrl(`catalog/brands/${brandPathSlug}`)),
+      axios.get(getInternalApiUrl(`catalog/brands/${brandPathSlug}/products`), {
         params: productParams,
         headers: {
           'X-Currency': currency,
@@ -550,8 +561,9 @@ export async function getServerSideProps(ctx: any) {
       }),
       // Категории бренда — некритичны для первого экрана: при ошибке сайдбар
       // просто останется без секции категорий.
-      axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/categories`)).catch(() => null),
+      axios.get(getInternalApiUrl(`catalog/brands/${brandPathSlug}/categories`)).catch(() => null),
     ])
+    const brand: Brand = brandRes.data
     const productsData = productsRes.data
     const products = extractResults(productsData)
     const totalCount = typeof productsData?.count === 'number' ? productsData.count : products.length

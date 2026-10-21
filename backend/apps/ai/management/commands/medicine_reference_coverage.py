@@ -11,6 +11,7 @@
 from collections import Counter
 
 from django.core.management.base import BaseCommand
+from django.db.models.fields.json import KT
 
 from apps.ai.services.medicine_memory import (
     INN_NAMESPACE,
@@ -24,7 +25,7 @@ from apps.ai.services.medicine_memory import (
     split_paragraphs,
 )
 from apps.ai.services.medicine_reference import CODE_FIELDS, translate_reference_field
-from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
+from apps.ai.services.medicine_title import build_medicine_title, medicine_source_name, paragraph_brand
 from apps.ai.services.translation_memory import source_hash
 from apps.ai.models import AITranslationMemory
 from apps.catalog.models import MedicineProduct
@@ -40,14 +41,26 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         qs = MedicineProduct.objects.filter(is_active=True)
         fields = [f for f in CODE_FIELDS if f != "volume"]
-        rows = qs.values_list("name", "active_ingredient", "volume", *fields)
+        # Из external_data — только то, что читает medicine_source_name, а не весь JSON.
+        rows = qs.values_list(
+            "name", "active_ingredient", "volume",
+            KT("external_data__source_name"),
+            KT("external_data__attributes__barcode"),
+            KT("external_data__attributes__source_tabs__equivalents__text"),
+            *fields,
+        )
         total = 0
         unknown = {field: Counter() for field in (*fields, "volume")}
         covered = Counter()
         titles = 0
         inn_parts = Counter()
-        for name, inn, volume, *values in rows.iterator(chunk_size=2000):
+        for name, inn, volume, source_name, barcode, equivalents, *values in rows.iterator(chunk_size=2000):
             total += 1
+            # Как при обработке: шаблон и объём — по турецкому оригиналу, name после AI — RU.
+            name = medicine_source_name(name, {
+                "source_name": source_name,
+                "attributes": {"barcode": barcode, "source_tabs": {"equivalents": {"text": equivalents}}},
+            })[0]
             data = dict(zip(fields, values), name=name, volume=volume)
             for field in (*fields, "volume"):
                 value = data.get(field)
@@ -87,7 +100,8 @@ class Command(BaseCommand):
         total_chars = 0
         rows = qs.values_list("name", "active_ingredient", "external_data")
         for name, active_ingredient, external_data in rows.iterator(chunk_size=500):
-            brand = paragraph_brand(name, active_ingredient)
+            # Ключи абзацев — как при обработке: бренд из турецкого оригинала.
+            brand = paragraph_brand(medicine_source_name(name, external_data)[0], active_ingredient)
             for text in source_tab_texts(external_data):
                 for part in split_paragraphs(text)[::2]:
                     if needs_translation(part):
@@ -103,7 +117,7 @@ class Command(BaseCommand):
                 ).values_list("source_hash", flat=True)
             )
         missing_chars = sum(length for h, length in lengths.items() if h not in cached)
-        estimate = estimate_translation_cost(chars=missing_chars, request_chars=20000)
+        estimate = estimate_translation_cost(chars=missing_chars)
         unique_chars = sum(lengths.values())
         self.stdout.write(
             f"\nАбзацы инструкций: всего {total_chars:,} симв., уникальных {unique_chars:,} "

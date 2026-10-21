@@ -3,10 +3,13 @@
 import json
 import logging
 import re
+import time
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse
 
+import httpx
 from bs4 import BeautifulSoup
+from celery.exceptions import SoftTimeLimitExceeded
 
 from apps.http_errors import raise_for_blocked_status
 
@@ -24,6 +27,17 @@ class UmmalandParser(BaseScraper):
     """Парсер для сайта Ummaland.com."""
     
     API_URL = "https://umma-land.com/wp-json/filters/products/"
+    CATEGORIES_API_URL = "https://umma-land.com/wp-json/wc/store/products/categories?per_page=100"
+    CATEGORY_API_TIMEOUT_SECONDS = 90
+    # Вся категория приходит одним ответом API; «страница» чанка — 20 товаров.
+    SUPPORTS_PAGE_CHUNKING = True
+    PAGE_SIZE = 20
+    # Витринные подборки повторяют товары обычных разделов.
+    SHOWCASE_CATEGORY_SLUGS = frozenset({"new", "popular", "special", "uncategorized"})
+
+    @classmethod
+    def supports_page_chunking_for_url(cls, url: str) -> bool:
+        return cls.is_category_url(url)
 
     @classmethod
     def is_category_url(cls, url: str) -> bool:
@@ -47,21 +61,46 @@ class UmmalandParser(BaseScraper):
         ]
     
     def parse_categories(self) -> List[Dict[str, Any]]:
-        """Парсит список категорий."""
-        # Возвращаем основные категории
-        return [
-            {
-                'name': 'Книги',
-                'url': 'https://umma-land.com/product-category/books',
-            }
-        ]
+        """Корневые разделы магазина (книги, праздники, игры, канцелярия…) из WooCommerce API.
 
-    def parse_product_list(self, 
-                          category_url: str, 
-                          max_pages: int = 10) -> List[ScrapedProduct]:
-        """Парсит список товаров из категории."""
-        products = []
-        
+        Подразделы входят в корневые, витринные подборки («Новинки», «Популярное»)
+        повторяют товары разделов — их не берём.
+        """
+        response = self.client.get(self.CATEGORIES_API_URL)
+        raise_for_blocked_status(
+            status_code=response.status_code,
+            url=str(response.url or self.CATEGORIES_API_URL),
+            source="Ummaland",
+        )
+        response.raise_for_status()
+        categories = [
+            {
+                "name": clean_text(str(row.get("name") or "")),
+                "url": str(row.get("permalink") or ""),
+                "external_id": str(row.get("id") or ""),
+                "source": self.get_name(),
+            }
+            for row in response.json() or []
+            if isinstance(row, dict)
+            and not row.get("parent")
+            and int(row.get("count") or 0) > 0
+            and str(row.get("slug") or "") not in self.SHOWCASE_CATEGORY_SLUGS
+            and self.is_category_url(str(row.get("permalink") or ""))
+        ]
+        if not categories:
+            raise RuntimeError("Ummaland: API не вернул ни одной категории магазина")
+        return categories
+
+    def parse_product_list(self,
+                          category_url: str,
+                          max_pages: int = 10,
+                          start_page: int = 1) -> List[ScrapedProduct]:
+        """Парсит список товаров из категории.
+
+        Генератор: каждая книга отдаётся сразу после разбора, чтобы сервис
+        сохранял её до мягкого лимита Celery. Раньше список собирался целиком,
+        и при «timed out» на большой категории не сохранялось ничего.
+        """
         try:
             self.logger.info(f"Парсинг категории: {category_url}")
             
@@ -78,10 +117,13 @@ class UmmalandParser(BaseScraper):
             api_products = self._fetch_products_from_api(category_id)
             self.logger.info(f"Получено {len(api_products)} товаров из API")
             
-            if max_pages:
-                per_page = 20
-                api_products = api_products[:max_pages * per_page]
-                self.logger.info(f"Ограничено до {max_pages} страниц")
+            # Чанк = max_pages «страниц» по PAGE_SIZE товаров с start_page:
+            # раньше бралось только начало категории (max_pages * 20), и при
+            # «Страниц за запуск» = 1 вся категория обрывалась на 20 книгах.
+            first = (max(1, start_page) - 1) * self.PAGE_SIZE
+            last = first + max(1, max_pages or 1) * self.PAGE_SIZE
+            self.has_more_pages = last < len(api_products)
+            api_products = api_products[first:last]
 
             if hasattr(self, 'max_products') and self.max_products:
                 api_products = api_products[:self.max_products]
@@ -108,6 +150,8 @@ class UmmalandParser(BaseScraper):
                         # Обновляем описание и атрибуты из детальной страницы
                         api_product.description = detail_product.description
                         api_product.attributes.update(detail_product.attributes)
+                        if detail_product.old_price and detail_product.price == api_product.price:
+                            api_product.old_price = detail_product.old_price
                         
                         # Объединяем изображения (убираем дубликаты)
                         all_images = []
@@ -127,13 +171,15 @@ class UmmalandParser(BaseScraper):
                                 
                         api_product.images = all_images
                         
-                        # Устанавливаем количество
-                        api_product.stock_quantity = 3
+                        # Точного остатка источник не даёт: 3 — условное «есть»,
+                        # распроданная книга должна оставаться без наличия.
+                        api_product.stock_quantity = 3 if api_product.is_available else 0
                         
                         if self.validate_product(api_product):
-                            products.append(api_product)
+                            yield api_product
                             
-                except ScraperAccessBlockedError:
+                except (ScraperAccessBlockedError, SoftTimeLimitExceeded):
+                    # Мягкий лимит Celery не глушим: сервис завершит чанк штатно.
                     raise
                 except Exception as e:
                     self.logger.error(f"Ошибка при обработке товара {item.get('name')}: {e}")
@@ -144,8 +190,6 @@ class UmmalandParser(BaseScraper):
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге списка товаров: {e}")
             raise
-        
-        return products
     
     def _get_category_id(self, url: str) -> Optional[int]:
         """Получает ID категории из HTML страницы."""
@@ -182,24 +226,36 @@ class UmmalandParser(BaseScraper):
             # "sort": "date" 
         }
         
-        try:
-            response = self.client.post(
-                self.API_URL, 
-                json=payload,
-                headers={"Content-Type": "application/json"}
-            )
-            raise_for_blocked_status(
-                status_code=response.status_code,
-                url=str(response.url or self.API_URL),
-                source="Ummaland",
-            )
-            response.raise_for_status()
-            return response.json()
-        except ScraperAccessBlockedError:
-            raise
-        except Exception as e:
-            self.logger.error(f"Ошибка API запроса: {e}")
-            raise
+        # Ответ — вся категория одним JSON: на больших категориях обычного
+        # таймаута не хватает, а единственная неудача обрывала весь прогон.
+        timeout = max(float(self.timeout or 0), self.CATEGORY_API_TIMEOUT_SECONDS)
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self.client.post(
+                    self.API_URL,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=timeout,
+                )
+                raise_for_blocked_status(
+                    status_code=response.status_code,
+                    url=str(response.url or self.API_URL),
+                    source="Ummaland",
+                )
+                response.raise_for_status()
+                return response.json()
+            except ScraperAccessBlockedError:
+                raise
+            except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as e:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                retryable = status is None or status == 429 or status >= 500
+                self.logger.warning(f"Ummaland: ошибка API категории (попытка {attempt + 1}): {e}")
+                if not retryable or attempt >= self.max_retries:
+                    raise
+                time.sleep(2 ** attempt * 3)
+            except Exception as e:
+                self.logger.error(f"Ошибка API запроса: {e}")
+                raise
 
     def _parse_api_item(self, item: Dict) -> Optional[ScrapedProduct]:
         """Преобразует элемент API в ScrapedProduct."""
@@ -600,6 +656,10 @@ class UmmalandParser(BaseScraper):
             price = None
             price_container = soup.select_one('.product-price') or soup.select_one('.price')
             if price_container:
+                # Значок скидки «-20%» лежит внутри блока цены: без удаления
+                # «768 ₽ -20%» превращается в 76820.
+                for badge in price_container.select('.product-percentage'):
+                    badge.decompose()
                 # Если есть ins (новая цена), берем ее
                 ins_price = price_container.select_one('ins .woocommerce-Price-amount') or price_container.select_one('ins')
                 if ins_price:
@@ -615,7 +675,17 @@ class UmmalandParser(BaseScraper):
                 # Обработка ситуаций, когда текст содержит "от 100 руб" или диапазон
                 # Извлекаем первое числовое значение
                 price = normalize_price(price_text)
-            
+
+            # Зачёркнутая цена книги со скидкой («960 ₽» рядом с «768 ₽ -20%»).
+            # Только из блока цены самого товара: карточки рекомендаций ниже
+            # тоже размечены .product-old-price, и у книги без скидки бралась
+            # чужая зачёркнутая цена (на проде 1360 ₽ у 5 товаров).
+            old_price = None
+            prices_block = soup.select_one('.product-prices')
+            old_price_elem = prices_block.select_one('.product-old-price') if prices_block else None
+            if old_price_elem:
+                old_price = normalize_price(clean_text(old_price_elem.text))
+
             is_available = True
             stock_elem = soup.select_one('.product-available__text') or soup.select_one('.stock')
             if stock_elem:
@@ -642,6 +712,7 @@ class UmmalandParser(BaseScraper):
                 name=name,
                 description=description,
                 price=price,
+                old_price=old_price,
                 currency="RUB",
                 url=product_url,
                 images=images,

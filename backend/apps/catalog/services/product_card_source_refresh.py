@@ -14,6 +14,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlparse
@@ -28,7 +29,10 @@ from apps.catalog.models import PriceHistory, Product, ProductSourceOffer
 from apps.catalog.services.source_offer_verification import (
     SourceOfferVerificationService,
     manual_only_source_keys,
+    paid_freshness_seconds,
 )
+from apps.catalog.utils.old_price import source_old_price
+from apps.http_errors import PaidAccessUnavailableError
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.base.offers import OfferGone, OfferNotFound
 from apps.scrapers.models import ScraperConfig
@@ -159,11 +163,22 @@ def _currency(value: Any) -> str:
     return code
 
 
+def _variant_old_price(spec: dict[str, Any], price: Decimal) -> dict[str, Decimal | None]:
+    """Зачёркнутая цена цвета, если парсер её передаёт (ключ ``old_price``).
+
+    Без ключа парсер зачёркнутую цену варианта не знает — поле не трогаем.
+    """
+    if "old_price" not in spec:
+        return {}
+    return {"old_price": source_old_price(_decimal(spec.get("old_price")), price)}
+
+
 class ProductCardSourceRefreshService:
     """Eligibility, queue state and inventory-only reconciliation for one card."""
 
     SAFE_STATUS_MESSAGES = {
         "source_unavailable": "Источник временно недоступен. Показаны последние сохранённые данные.",
+        "paid_access_unavailable": "Цена будет уточнена менеджером.",
         "source_not_found": "Товар больше недоступен у поставщика. Показаны последние сохранённые данные.",
         "rate_limited": "Источник временно ограничил запросы. Показаны последние сохранённые данные.",
         "invalid_source": "Источник товара не прошёл проверку безопасности.",
@@ -288,6 +303,38 @@ class ProductCardSourceRefreshService:
             "retryable": False,
         }
 
+    def _fresh_state(self, target: RefreshTarget) -> dict[str, Any] | None:
+        """Состояние без запроса, если открытый URL недавно успешно проверен.
+
+        Окно задаётся только платным источникам (FLO: Web Unlocker с месячным
+        лимитом зоны). Успешную проверку пишут обновление карточки, полный
+        импорт и проверка корзины; ошибки окно не открывают.
+        """
+        window = paid_freshness_seconds(target.parser_key)
+        if not window:
+            return None
+        checked_at = (
+            target.product.source_offers.filter(
+                is_active=True,
+                parser_key=target.parser_key,
+                canonical_url=target.offer.canonical_url,
+                last_successful_check_at__gte=timezone.now() - timedelta(seconds=window),
+            )
+            .order_by("-last_successful_check_at")
+            .values_list("last_successful_check_at", flat=True)
+            .first()
+        )
+        if checked_at is None:
+            return None
+        # «idle», а не «succeeded»: карточка не перечитывается и не сообщает
+        # об обновлении, покупка по сохранённым данным не блокируется.
+        return {
+            "status": "idle",
+            "source": target.parser_key,
+            "retryable": False,
+            "checked_at": checked_at.isoformat(),
+        }
+
     def _set_state(
         self,
         product_id: int,
@@ -318,6 +365,10 @@ class ProductCardSourceRefreshService:
             "running",
         }:
             return {"eligible": True, **existing}
+
+        fresh = self._fresh_state(target)
+        if fresh is not None:
+            return {"eligible": True, **fresh}
 
         lock_seconds = _setting_int(
             "PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS",
@@ -771,6 +822,7 @@ class ProductCardSourceRefreshService:
                 available = self._availability(variant_snapshot, spec.get("is_available"))
                 stock = self._stock(variant_snapshot, available=available)
 
+            variant_old_price = _variant_old_price(spec, price)
             color = str(spec.get("color") or "").strip()[:50]
             display_name = str(spec.get("display_name") or "").strip()[:500]
             name = display_name or " — ".join(value for value in (domain_product.name, color) if value)
@@ -782,6 +834,7 @@ class ProductCardSourceRefreshService:
                 "gtin": str(spec.get("gtin") or "")[:100],
                 "mpn": str(spec.get("mpn") or "")[:100],
                 "price": price,
+                **variant_old_price,
                 "currency": currency,
                 "external_url": str(spec.get("external_url") or "")[:2000],
                 "sort_order": int(spec.get("sort_order") or index),
@@ -809,6 +862,7 @@ class ProductCardSourceRefreshService:
                 update_values: dict[str, Any] = {}
                 for field, value in {
                     "price": price,
+                    **variant_old_price,
                     "currency": currency,
                     "is_available": available,
                     "stock_quantity": stock,
@@ -871,11 +925,13 @@ class ProductCardSourceRefreshService:
             snapshot = by_option.get((external_id, ""))
             available = self._availability(snapshot, spec.get("is_available"))
             stock = self._stock(snapshot, available=available)
+            variant_old_price = _variant_old_price(spec, price)
             defaults = {
                 "name": str(spec.get("display_name") or domain_product.name)[:500],
                 "color": str(spec.get("color") or "")[:50],
                 "sku": str(spec.get("sku") or external_id)[:100],
                 "price": price,
+                **variant_old_price,
                 "currency": currency,
                 "external_url": str(spec.get("external_url") or "")[:2000],
                 "sort_order": int(spec.get("sort_order") or index),
@@ -901,6 +957,7 @@ class ProductCardSourceRefreshService:
             updates: dict[str, Any] = {}
             for field, value in {
                 "price": price,
+                **variant_old_price,
                 "currency": currency,
                 "is_available": available,
                 "stock_quantity": stock,
@@ -1034,6 +1091,7 @@ class ProductCardSourceRefreshService:
         product: Product,
         *,
         price: Decimal,
+        old_price: Decimal | None,
         currency: str,
         available: bool,
         stock: int | None,
@@ -1047,6 +1105,10 @@ class ProductCardSourceRefreshService:
             "currency": currency,
             "is_available": available,
         }
+        if "old_price" in fields:
+            # Доменная карточка при save() копирует old_price в Product —
+            # без этой записи прежняя зачёркнутая цена вернулась бы обратно.
+            values["old_price"] = old_price
         if "stock_quantity" in fields:
             values["stock_quantity"] = stock
         domain.__class__.objects.filter(pk=domain.pk).update(**values)
@@ -1067,6 +1129,9 @@ class ProductCardSourceRefreshService:
             raise ProductCardRefreshError(
                 "invalid_payload", "Invalid base price", retryable=False
             )
+        # Зачёркнутая цена — только та, что показывает источник, и только выше
+        # текущей (DEVELOPMENT_RULES §5.1): акция закончилась — old_price пустой.
+        old_price = source_old_price(_decimal(scraped.old_price), price)
         available, stock = self._aggregate_stock(snapshots)
         attrs = scraped.attributes if isinstance(scraped.attributes, dict) else {}
         counts = {"variants_created": 0, "variants_updated": 0, "sizes_created": 0, "sizes_updated": 0}
@@ -1099,6 +1164,7 @@ class ProductCardSourceRefreshService:
         self._update_domain_price_stock(
             product,
             price=price,
+            old_price=old_price,
             currency=currency,
             available=available,
             stock=stock,
@@ -1111,6 +1177,7 @@ class ProductCardSourceRefreshService:
         # metadata or media manifests even when save(update_fields=...) is used.
         Product.objects.filter(pk=product.pk).update(
             price=price,
+            old_price=old_price,
             currency=currency,
             is_available=available,
             stock_quantity=stock,
@@ -1198,6 +1265,14 @@ class ProductCardSourceRefreshService:
                         scraped = self._fetch_product(target)
                     except ProductCardRefreshError:
                         raise
+                    except PaidAccessUnavailableError as exc:
+                        # Лимит Web Unlocker исчерпан или зона приостановлена:
+                        # покупка не блокируется, цену уточняет менеджер.
+                        raise ProductCardRefreshError(
+                            "paid_access_unavailable",
+                            "Paid source access is unavailable",
+                            retryable=False,
+                        ) from exc
                     except Exception as exc:
                         raise ProductCardRefreshError(
                             "source_unavailable",

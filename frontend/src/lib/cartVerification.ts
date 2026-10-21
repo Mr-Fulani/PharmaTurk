@@ -36,6 +36,10 @@ const ISSUE_COPY: Record<
     key: 'cart_issue_cart_changed',
     fallback: 'Корзина изменилась во время проверки. Данные обновлены.',
   },
+  manager_price_confirmation: {
+    key: 'cart_issue_manager_price_confirmation',
+    fallback: 'Цена будет уточнена менеджером',
+  },
 }
 
 export function getCartIssueCopy(code?: string) {

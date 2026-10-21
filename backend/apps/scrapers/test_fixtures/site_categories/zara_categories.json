@@ -1,0 +1,634 @@
+{
+ "categories": [
+  {
+   "id": 1881757,
+   "key": "I2024-MUJER",
+   "name": "KADIN",
+   "sectionName": "WOMAN",
+   "attributes": {
+    "mustDisplayContent": false,
+    "showSubcategories": false,
+    "displayOpen": true,
+    "isDivider": false,
+    "isLineBreak": false,
+    "isTitle": false
+   },
+   "seo": {
+    "seoCategoryId": 1000,
+    "keyword": "kadin",
+    "irrelevant": false,
+    "isHiddenInMenu": false,
+    "seoExtraInfo": {
+     "irrelevant": false,
+     "isHiddenInMenu": false,
+     "isCanonicalReference": false
+    }
+   },
+   "layout": "marketing-content-view",
+   "isRedirected": false,
+   "isSelected": false,
+   "hasSubcategories": true,
+   "irrelevant": false,
+   "menuLevel": 1,
+   "subcategories": [
+    {
+     "id": 2642765,
+     "key": "I2024-MUJER-DESTACADA_NOVEDADES",
+     "name": "YENİ ÜRÜNLER",
+     "sectionName": "WOMAN",
+     "attributes": {
+      "mustDisplayContent": false,
+      "showSubcategories": false,
+      "displayOpen": true,
+      "isDivider": false,
+      "isLineBreak": false,
+      "isTitle": false
+     },
+     "isIndexed": true,
+     "seo": {
+      "seoCategoryId": 17359,
+      "keyword": "woman-highlight-new",
+      "irrelevant": true,
+      "isHiddenInMenu": false,
+      "seoExtraInfo": {
+       "irrelevant": true,
+       "isHiddenInMenu": false,
+       "isCanonicalReference": false
+      }
+     },
+     "layout": "products-category-view",
+     "isRedirected": false,
+     "isSelected": false,
+     "hasSubcategories": true,
+     "irrelevant": true,
+     "menuLevel": 2,
+     "subcategories": [
+      {
+       "id": 2546081,
+       "key": "I2024-MUJER-ULTIMA_SEMANA",
+       "name": "THE NEW",
+       "sectionName": "WOMAN",
+       "attributes": {
+        "mustDisplayContent": true,
+        "showSubcategories": false,
+        "isDivider": false,
+        "isLineBreak": false,
+        "isTitle": false
+       },
+       "seo": {
+        "seoCategoryId": 1180,
+        "keyword": "kadin-yeni-gelenler",
+        "irrelevant": false,
+        "isHiddenInMenu": false,
+        "seoExtraInfo": {
+         "irrelevant": false,
+         "isHiddenInMenu": false,
+         "isCanonicalReference": true
+        }
+       },
+       "layout": "products-category-view",
+       "isRedirected": false,
+       "isSelected": false,
+       "hasSubcategories": false,
+       "irrelevant": false,
+       "menuLevel": 3,
+       "subcategories": []
+      }
+     ]
+    },
+    {
+     "id": 2725897,
+     "key": "I2024-DIVIDER_WOMAN_01",
+     "name": "DIVIDER_MENU_WOMAN1",
+     "sectionName": "WOMAN",
+     "attributes": {
+      "mustDisplayContent": false,
+      "showSubcategories": false,
+      "isDivider": true,
+      "isLineBreak": false,
+      "isTitle": false
+     },
+     "layout": "divider-category-view",
+     "isRedirected": false,
+     "isSelected": false,
+     "hasSubcategories": false,
+     "irrelevant": true,
+     "menuLevel": 2,
+     "subcategories": []
+    },
+    {
+     "id": 2643249,
+     "key": "I2024-MUJER-DESTACADA_COLECCION",
+     "name": "KOLEKSİYON",
+     "sectionName": "WOMAN",
+     "attributes": {
+      "mustDisplayContent": false,
+      "showSubcategories": false,
+      "displayOpen": true,
+      "isDivider": false,
+      "isLineBreak": false,
+      "isTitle": false
+     },
+     "isIndexed": true,
+     "seo": {
+      "seoCategoryId": 2158,
+      "keyword": "kadin-koleksiyonlari",
+      "irrelevant": false,
+      "isHiddenInMenu": false,
+      "seoExtraInfo": {
+       "irrelevant": false,
+       "isHiddenInMenu": false,
+       "isCanonicalReference": false
+      }
+     },
+     "layout": "products-category-view",
+     "isRedirected": false,
+     "isSelected": false,
+     "hasSubcategories": true,
+     "irrelevant": false,
+     "menuLevel": 2,
+     "subcategories": [
+      {
+       "id": 2417770,
+       "key": "I2024-MUJER-CAZADORAS",
+       "name": "CEKET",
+       "sectionName": "WOMAN",
+       "attributes": {
+        "mustDisplayContent": true,
+        "showSubcategories": false,
+        "isDivider": false,
+        "isLineBreak": false,
+        "isTitle": false,
+        "hasAllSubcategoriesHidden": true
+       },
+       "seo": {
+        "seoCategoryId": 1114,
+        "keyword": "kadin-ceketler",
+        "irrelevant": false,
+        "isHiddenInMenu": false,
+        "seoExtraInfo": {
+         "irrelevant": false,
+         "isHiddenInMenu": false,
+         "isCanonicalReference": false
+        }
+       },
+       "redirectCategoryId": 2417772,
+       "layout": "products-category-view",
+       "isRedirected": true,
+       "isSelected": false,
+       "hasSubcategories": true,
+       "irrelevant": false,
+       "menuLevel": 3,
+       "subcategories": [
+        {
+         "id": 2417772,
+         "key": "I2024-MUJER-CAZADORAS-VER_TODO",
+         "name": "TÜMÜNÜ GÖR",
+         "sectionName": "WOMAN",
+         "attributes": {
+          "mustDisplayContent": false,
+          "showSubcategories": false,
+          "isDivider": false,
+          "isLineBreak": false,
+          "isTitle": false
+         },
+         "seo": {
+          "seoCategoryId": 1114,
+          "keyword": "kadin-ceketler",
+          "irrelevant": false,
+          "isHiddenInMenu": true,
+          "seoExtraInfo": {
+           "irrelevant": false,
+           "isHiddenInMenu": true,
+           "isCanonicalReference": false
+          }
+         },
+         "layout": "products-category-view",
+         "isRedirected": false,
+         "isSelected": false,
+         "hasSubcategories": false,
+         "irrelevant": false,
+         "menuLevel": 4,
+         "subcategories": []
+        },
+        {
+         "id": 2417747,
+         "key": "I2024-MUJER-CAZADORAS-BOMBERS",
+         "name": "BOMBER",
+         "sectionName": "WOMAN",
+         "attributes": {
+          "mustDisplayContent": false,
+          "showSubcategories": false,
+          "isDivider": false,
+          "isLineBreak": false,
+          "isTitle": false
+         },
+         "seo": {
+          "seoCategoryId": 1116,
+          "keyword": "kadin-ceketler-bomberlar",
+          "irrelevant": false,
+          "isHiddenInMenu": true,
+          "seoExtraInfo": {
+           "irrelevant": false,
+           "isHiddenInMenu": true,
+           "isCanonicalReference": false
+          }
+         },
+         "layout": "products-category-view",
+         "isRedirected": false,
+         "isSelected": false,
+         "hasSubcategories": false,
+         "irrelevant": false,
+         "menuLevel": 4,
+         "subcategories": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 757004,
+     "key": "MU:GIFTCARD",
+     "name": "HEDİYE KARTI",
+     "sectionName": "WOMAN",
+     "attributes": {
+      "mustDisplayContent": true,
+      "showSubcategories": false,
+      "isDivider": false,
+      "isLineBreak": false,
+      "isTitle": false,
+      "hasAllSubcategoriesHidden": true
+     },
+     "seo": {
+      "seoCategoryId": 1394,
+      "keyword": "z-hediye-karti",
+      "irrelevant": false,
+      "isHiddenInMenu": false,
+      "seoExtraInfo": {
+       "irrelevant": false,
+       "isHiddenInMenu": false,
+       "isCanonicalReference": false
+      }
+     },
+     "redirectCategoryId": 2543429,
+     "layout": "marketing-content-view",
+     "isRedirected": true,
+     "isSelected": false,
+     "hasSubcategories": true,
+     "irrelevant": false,
+     "menuLevel": 2,
+     "subcategories": [
+      {
+       "id": 2543429,
+       "key": "GIFTCARD-LANDING",
+       "name": "DETAYLAR",
+       "sectionName": "WOMAN",
+       "attributes": {
+        "mustDisplayContent": false,
+        "showSubcategories": false,
+        "isDivider": false,
+        "isLineBreak": false,
+        "isTitle": false
+       },
+       "seo": {
+        "seoCategoryId": 1394,
+        "keyword": "z-hediye-karti",
+        "irrelevant": false,
+        "isHiddenInMenu": true,
+        "seoExtraInfo": {
+         "irrelevant": false,
+         "isHiddenInMenu": true,
+         "isCanonicalReference": true
+        }
+       },
+       "layout": "marketing-content-view",
+       "isRedirected": false,
+       "isSelected": false,
+       "hasSubcategories": false,
+       "irrelevant": false,
+       "menuLevel": 3,
+       "subcategories": []
+      },
+      {
+       "id": 815531,
+       "key": "MUJER-GIFTCARD_MOVIMIENTOS",
+       "name": "Bakiyeye göz at",
+       "sectionName": "WOMAN",
+       "attributes": {
+        "mustDisplayContent": false,
+        "showSubcategories": false,
+        "isDivider": false,
+        "isLineBreak": false,
+        "isTitle": false
+       },
+       "seo": {
+        "seoCategoryId": 1394,
+        "keyword": "z-hediye-karti",
+        "irrelevant": false,
+        "isHiddenInMenu": true,
+        "seoExtraInfo": {
+         "irrelevant": false,
+         "isHiddenInMenu": true,
+         "isCanonicalReference": false
+        }
+       },
+       "layout": "giftcard-balance-view",
+       "isRedirected": false,
+       "isSelected": false,
+       "hasSubcategories": false,
+       "irrelevant": false,
+       "menuLevel": 3,
+       "subcategories": []
+      },
+      {
+       "id": 815530,
+       "key": "MUJER-GIFTCARD_ACTIVAR",
+       "name": "KART AKTiVASYONU",
+       "sectionName": "WOMAN",
+       "attributes": {
+        "mustDisplayContent": false,
+        "showSubcategories": false,
+        "isDivider": false,
+        "isLineBreak": false,
+        "isTitle": false
+       },
+       "seo": {
+        "seoCategoryId": 1394,
+        "keyword": "z-hediye-karti",
+        "irrelevant": false,
+        "isHiddenInMenu": true,
+        "seoExtraInfo": {
+         "irrelevant": false,
+         "isHiddenInMenu": true,
+         "isCanonicalReference": false
+        }
+       },
+       "layout": "giftcard-activation-view",
+       "isRedirected": false,
+       "isSelected": false,
+       "hasSubcategories": false,
+       "irrelevant": false,
+       "menuLevel": 3,
+       "subcategories": []
+      }
+     ]
+    },
+    {
+     "id": 2418845,
+     "key": "I2024-MUJER-TIENDA_APP",
+     "name": "MAĞAZALAR",
+     "sectionName": "WOMAN",
+     "attributes": {
+      "mustDisplayContent": false,
+      "showSubcategories": false,
+      "isDivider": false,
+      "isLineBreak": false,
+      "isTitle": false
+     },
+     "seo": {
+      "seoCategoryId": 1404,
+      "keyword": "z-maazalar",
+      "irrelevant": false,
+      "isHiddenInMenu": false,
+      "seoExtraInfo": {
+       "irrelevant": false,
+       "isHiddenInMenu": false,
+       "isCanonicalReference": false
+      }
+     },
+     "layout": "store-locator-view",
+     "isRedirected": false,
+     "isSelected": false,
+     "hasSubcategories": false,
+     "irrelevant": false,
+     "menuLevel": 2,
+     "subcategories": []
+    }
+   ]
+  },
+  {
+   "id": 2124389,
+   "key": "I2024-ZARA_HOME",
+   "name": "ZARA HOME",
+   "sectionName": "HOME",
+   "attributes": {
+    "mustDisplayContent": false,
+    "showSubcategories": false,
+    "isDivider": false,
+    "isLineBreak": false,
+    "isTitle": false
+   },
+   "seo": {
+    "seoCategoryId": 2085,
+    "keyword": "home",
+    "irrelevant": false,
+    "isHiddenInMenu": false,
+    "seoExtraInfo": {
+     "irrelevant": false,
+     "isHiddenInMenu": false,
+     "isCanonicalReference": false
+    }
+   },
+   "layout": "marketing-content-view",
+   "isRedirected": false,
+   "isSelected": false,
+   "hasSubcategories": true,
+   "irrelevant": false,
+   "menuLevel": 1,
+   "subcategories": [
+    {
+     "id": 2525018,
+     "key": "V2025-ZARA_HOME-LIBROS_REVISTAS_PAPELERIA",
+     "name": "KİTAP | DERGİ | KIRTASİYE",
+     "sectionName": "HOME",
+     "attributes": {
+      "mustDisplayContent": false,
+      "showSubcategories": false,
+      "isDivider": false,
+      "isLineBreak": false,
+      "isTitle": false
+     },
+     "seo": {
+      "seoCategoryId": 5293,
+      "keyword": "home-kiosco",
+      "irrelevant": false,
+      "isHiddenInMenu": false,
+      "seoExtraInfo": {
+       "irrelevant": false,
+       "isHiddenInMenu": false,
+       "isCanonicalReference": false
+      }
+     },
+     "isRedirected": false,
+     "isSelected": false,
+     "hasSubcategories": false,
+     "irrelevant": false,
+     "menuLevel": 2,
+     "subcategories": []
+    }
+   ]
+  },
+  {
+   "id": 1881296,
+   "key": "I2024-BEAUTY",
+   "name": "BEAUTY",
+   "sectionName": "BEAUTY",
+   "attributes": {
+    "mustDisplayContent": false,
+    "showSubcategories": false,
+    "isDivider": false,
+    "isLineBreak": false,
+    "isTitle": false
+   },
+   "seo": {
+    "seoCategoryId": 1414,
+    "keyword": "kadin-beauty",
+    "irrelevant": false,
+    "isHiddenInMenu": false,
+    "seoExtraInfo": {
+     "irrelevant": false,
+     "isHiddenInMenu": false,
+     "isCanonicalReference": false
+    }
+   },
+   "layout": "marketing-content-view",
+   "isRedirected": false,
+   "isSelected": false,
+   "hasSubcategories": true,
+   "irrelevant": false,
+   "menuLevel": 1,
+   "subcategories": [
+    {
+     "id": 2422780,
+     "key": "I2024-BEAUTY-MUJER",
+     "name": "KADIN",
+     "sectionName": "BEAUTY",
+     "attributes": {
+      "mustDisplayContent": false,
+      "showSubcategories": false,
+      "displayOpen": true,
+      "isDivider": false,
+      "isLineBreak": false,
+      "isTitle": false
+     },
+     "isIndexed": true,
+     "seo": {
+      "seoCategoryId": 1414,
+      "keyword": "kadin-beauty",
+      "irrelevant": false,
+      "isHiddenInMenu": false,
+      "seoExtraInfo": {
+       "irrelevant": false,
+       "isHiddenInMenu": false,
+       "isCanonicalReference": false
+      }
+     },
+     "layout": "products-category-view",
+     "isRedirected": false,
+     "isSelected": false,
+     "hasSubcategories": true,
+     "irrelevant": false,
+     "menuLevel": 2,
+     "subcategories": [
+      {
+       "id": 2422281,
+       "key": "I2024-BEAUTY-MUJER-BEAUTY",
+       "name": "MAKYAJ",
+       "sectionName": "BEAUTY",
+       "attributes": {
+        "mustDisplayContent": true,
+        "showSubcategories": false,
+        "isDivider": false,
+        "isLineBreak": false,
+        "isTitle": false,
+        "hasAllSubcategoriesHidden": true
+       },
+       "seo": {
+        "seoCategoryId": 1000,
+        "keyword": "kadin",
+        "irrelevant": false,
+        "isHiddenInMenu": false,
+        "seoExtraInfo": {
+         "irrelevant": false,
+         "isHiddenInMenu": false,
+         "isCanonicalReference": false
+        }
+       },
+       "redirectCategoryId": 1881272,
+       "layout": "marketing-content-view",
+       "isRedirected": true,
+       "isSelected": false,
+       "hasSubcategories": true,
+       "irrelevant": false,
+       "menuLevel": 3,
+       "subcategories": [
+        {
+         "id": 1881272,
+         "key": "I2024-BEAUTY-COLLECTION-VER_TODO",
+         "name": "TÜMÜNÜ GÖR",
+         "sectionName": "BEAUTY",
+         "attributes": {
+          "mustDisplayContent": false,
+          "showSubcategories": false,
+          "isDivider": false,
+          "isLineBreak": false,
+          "isTitle": false
+         },
+         "seo": {
+          "seoCategoryId": 4414,
+          "keyword": "kadin-beauty-makyaj",
+          "irrelevant": false,
+          "isHiddenInMenu": true,
+          "seoExtraInfo": {
+           "irrelevant": false,
+           "isHiddenInMenu": true,
+           "isCanonicalReference": true
+          }
+         },
+         "layout": "products-category-view",
+         "isRedirected": false,
+         "isSelected": false,
+         "hasSubcategories": false,
+         "irrelevant": false,
+         "menuLevel": 4,
+         "subcategories": []
+        },
+        {
+         "id": 1881304,
+         "key": "I2024-BEAUTY-COLLECTION-LIPS",
+         "name": "RUJ",
+         "sectionName": "BEAUTY",
+         "attributes": {
+          "mustDisplayContent": true,
+          "showSubcategories": false,
+          "isDivider": false,
+          "isLineBreak": false,
+          "isTitle": false
+         },
+         "seo": {
+          "seoCategoryId": 4238,
+          "keyword": "kadin-beauty-dudak",
+          "irrelevant": false,
+          "isHiddenInMenu": true,
+          "seoExtraInfo": {
+           "irrelevant": false,
+           "isHiddenInMenu": true,
+           "isCanonicalReference": false
+          }
+         },
+         "layout": "products-category-view",
+         "isRedirected": false,
+         "isSelected": false,
+         "hasSubcategories": false,
+         "irrelevant": false,
+         "menuLevel": 4,
+         "subcategories": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

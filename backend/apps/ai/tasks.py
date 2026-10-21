@@ -294,6 +294,32 @@ def advance_ai_run(run_id: int, token: str):
         raise
 
 
+@shared_task(acks_late=True, reject_on_worker_lost=True)
+def advance_medicine_paragraph_run(run_id: int, token: str):
+    """Шаг перевода абзацев инструкций: проверить часть в OpenAI, забрать готовую, отправить следующую."""
+    from apps.ai.services.ai_runs import advance_paragraph_run, fail_run
+
+    try:
+        return advance_paragraph_run(run_id, token)
+    except Exception as exc:
+        logger.exception("Medicine paragraph run %s step failed", run_id)
+        fail_run(run_id, exc)
+        raise
+
+
+@shared_task(acks_late=True)
+def preview_medicine_paragraph_run(run_id: int):
+    """«Посчитать» для перевода абзацев: абзацы не в памяти, части и оценка цены."""
+    from apps.ai.services.ai_runs import fail_run, preview_paragraph_run
+
+    try:
+        return preview_paragraph_run(run_id)
+    except Exception as exc:
+        logger.exception("Medicine paragraph preview %s failed", run_id)
+        fail_run(run_id, exc)
+        raise
+
+
 @shared_task(acks_late=True)
 def run_ai_maintenance(run_id: int, dry_run: bool):
     """Предпросмотр или выполнение обслуживающей операции AI-прогона."""

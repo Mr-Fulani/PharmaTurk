@@ -24,7 +24,7 @@ async function renderer(file, globals = {}) {
     'next/router': { useRouter: () => ({ locale: 'ru' }) },
     'next-i18next': { useTranslation: () => ({ t: (_, fallback) => fallback }) },
     '../lib/media': { resolveMediaUrl: url => url, getPlaceholderImageUrl: () => '/fallback.svg', getVideoEmbedUrl: () => null, withListingImageMaxWidth: url => url },
-    '../lib/api': {}, './BannerCarousel.module.css': {},
+    '../lib/api': {}, './BannerCarousel.module.css': {}, '../lib/bannerLink': {}, '../lib/siteMeta': {},
   }
   vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date, ...globals })
   return props => { cursor = 0; return exports.default(props) }

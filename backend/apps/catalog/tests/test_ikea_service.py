@@ -94,6 +94,34 @@ def test_resolve_category_api_slug_uses_localized_page_value(monkeypatch):
     ) == "şifonyerler"
 
 
+def test_resolve_category_api_slug_follows_renamed_section_redirect(monkeypatch):
+    # Меню IKEA (21.10.2026) ведёт на /kategori/bebek-ve-cocuk, а сайт отвечает
+    # 301 на /kategori/bebek-ve-cocuk-urunleri — ключ API берётся с итоговой страницы.
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=200)
+    response.url = "https://www.ikea.com.tr/kategori/bebek-ve-cocuk-urunleri"
+    response.text = (
+        '<input id="ctl00_ContentPlaceHolder1_search_categoryUrl" '
+        'value="bebek-ve-çocuk-urunleri">'
+    )
+    response.raise_for_status.return_value = None
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return response
+
+    monkeypatch.setattr(ikea_service.client, "get", fake_get)
+
+    assert ikea_service.resolve_category_api_slug(
+        "https://www.ikea.com.tr/kategori/bebek-ve-cocuk",
+        "bebek-ve-cocuk",
+    ) == "bebek-ve-çocuk-urunleri"
+    assert calls == [
+        ("https://www.ikea.com.tr/kategori/bebek-ve-cocuk", {"follow_redirects": True})
+    ]
+
+
 def test_category_first_page_404_is_not_reported_as_empty(monkeypatch):
     ikea_service = IkeaService()
     response = MagicMock(status_code=404)
@@ -188,5 +216,35 @@ class TestIkeaService:
         
         assert product.id == initial_product.id
         assert product.price == 600
-        assert product.old_price == 500
+        # Прежняя цена — не зачёркнутая цена источника (ложная скидка).
+        assert product.old_price is None
         assert FurnitureProduct.objects.count() == 1
+
+
+@pytest.mark.parametrize("failure", ["timeout", 502])
+def test_category_page_timeout_or_5xx_is_an_error_not_catalog_end(monkeypatch, failure):
+    import httpx
+
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=failure if isinstance(failure, int) else 200)
+    response.url = "https://frontendapi.ikea.com.tr/api/search/products"
+
+    def fake_get(*args, **kwargs):
+        if failure == "timeout":
+            raise httpx.ReadTimeout("timed out")
+        return response
+
+    monkeypatch.setattr(ikea_service.client, "get", fake_get)
+
+    with pytest.raises(IkeaCategoryAPIError, match="не ответил"):
+        ikea_service.get_category_products("kanepeler", page=3)
+
+
+def test_category_page_with_200_and_no_products_is_catalog_end(monkeypatch):
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=200)
+    response.url = "https://frontendapi.ikea.com.tr/api/search/products"
+    response.json.return_value = {"products": []}
+    monkeypatch.setattr(ikea_service.client, "get", lambda *args, **kwargs: response)
+
+    assert ikea_service.get_category_products("kanepeler", page=3) == []

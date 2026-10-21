@@ -8,7 +8,14 @@ import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import MedicinePriceCheck from '../../components/MedicinePriceCheck'
 import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components/SupplementPurchasePanel'
-import { SCHEMA_RETURN_POLICY, canPublishSchemaOffer, resolveSchemaAvailability, resolveSchemaSku } from '../../lib/productAvailability'
+import {
+  SCHEMA_RETURN_POLICY,
+  canPublishSchemaOffer,
+  resolveSchemaAvailability,
+  resolveSchemaSku,
+  sourceRefreshBlocksPurchase,
+  sourceRefreshNeedsManagerPrice,
+} from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
 import ServiceAttributes from '../../components/ServiceAttributes'
@@ -937,7 +944,8 @@ export default function ProductPage({
     product &&
     (productType === 'supplements' || product.product_type === 'supplements')
   )
-  const sourceRefreshFailed = sourceRefresh?.status === 'failed'
+  const sourceRefreshFailed = sourceRefreshBlocksPurchase(sourceRefresh)
+  const sourcePriceByManager = sourceRefreshNeedsManagerPrice(sourceRefresh)
   const sourceProductNotFound = Boolean(
     sourceRefresh?.status === 'failed' &&
     sourceRefresh.error_code === 'source_not_found'
@@ -1294,7 +1302,7 @@ export default function ProductPage({
     }
   }, [buildGallerySource, product, selectedVariant, router.asPath])
 
-  // GA4: просмотр карточки — первый шаг воронки view_item → add_to_cart → begin_checkout → purchase.
+  // GA4: просмотр карточки — первый шаг воронки view_item → add_to_cart → begin_checkout → generate_lead.
   // Хук стоит до раннего return; данные события заполняются ниже, при рендере карточки.
   // Одно событие на товар: смена варианта или валюты — не новый просмотр.
   const viewItemRef = useRef<Parameters<typeof gtmViewItem> | null>(null)
@@ -1465,17 +1473,16 @@ export default function ProductPage({
   })
   const priceForSchema = selectedVariant?.price || product.price || product.active_variant_price
   const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
-  // item_id совпадает с тем, что AddToCartButton передаёт в add_to_cart
-  viewItemRef.current = [
-    {
-      item_id: (cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : cartProductSlug) || product.slug,
-      item_name: displayProductName || product.name,
-      item_category: productType,
-      ...(seoBrandName && { item_brand: seoBrandName }),
-      ...(Number(priceForSchema) > 0 && { price: Number(priceForSchema) }),
-    },
-    currencyForSchema || undefined,
-  ]
+  // Одна позиция для view_item и add_to_cart (AddToCartButton, BuyNowButton): id, название, тип и цена совпадают
+  const analyticsItem = {
+    item_id: (cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : cartProductSlug) || product.slug,
+    item_name: displayProductName || product.name,
+    item_category: productType,
+    ...(seoBrandName && { item_brand: seoBrandName }),
+    ...(Number(priceForSchema) > 0 && { price: Number(priceForSchema) }),
+  }
+  const analyticsCurrency = currencyForSchema || undefined
+  viewItemRef.current = [analyticsItem, analyticsCurrency]
   // aggregateRating только при наличии и рейтинга, и отзывов — без счётчика схема невалидна
   const ratingForSchema = Number(product.rating)
   const hasRatingForSchema =
@@ -2298,15 +2305,17 @@ export default function ProductPage({
                     )
                     : sourceRefresh.status === 'succeeded'
                       ? t('product_source_refresh_succeeded', 'Цена и наличие обновлены')
-                      : sourceRefresh.error_code === 'source_not_found'
-                        ? t(
-                          'product_source_refresh_not_found',
-                          'Товар больше недоступен у поставщика. Показана последняя сохранённая цена.'
-                        )
-                        : t(
-                          'product_source_refresh_unavailable',
-                          'Не удалось подтвердить наличие у поставщика. Покупка временно недоступна. Показана последняя сохранённая цена.'
-                        )}
+                      : sourcePriceByManager
+                        ? t('product_source_refresh_manager_price', 'Цена будет уточнена менеджером.')
+                        : sourceRefresh.error_code === 'source_not_found'
+                          ? t(
+                            'product_source_refresh_not_found',
+                            'Товар больше недоступен у поставщика. Показана последняя сохранённая цена.'
+                          )
+                          : t(
+                            'product_source_refresh_unavailable',
+                            'Не удалось подтвердить наличие у поставщика. Покупка временно недоступна. Показана последняя сохранённая цена.'
+                          )}
                 </span>
               </div>
             )}
@@ -2677,6 +2686,8 @@ export default function ProductPage({
                       quantity={quantity}
                       className="w-full"
                       label={t('add_to_cart', 'В заявку')}
+                      analyticsItem={analyticsItem}
+                      analyticsCurrency={analyticsCurrency}
                     />
                     <Link
                       href="/how-to-order-medicines"
@@ -2715,6 +2726,8 @@ export default function ProductPage({
                       price={displayTotalPrice}
                       className="w-full"
                       label={t('add_to_cart', 'В корзину')}
+                      analyticsItem={analyticsItem}
+                      analyticsCurrency={analyticsCurrency}
                     />
                     <BuyNowButton
                       productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
@@ -2724,6 +2737,8 @@ export default function ProductPage({
                       requireSize={!isBaseProduct && sizeRequired}
                       quantity={quantity}
                       className="w-full"
+                      analyticsItem={analyticsItem}
+                      analyticsCurrency={analyticsCurrency}
                     />
                   </>
                   )

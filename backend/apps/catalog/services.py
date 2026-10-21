@@ -18,6 +18,7 @@ from django.db.models import Q
 from .models import Category, Brand, Product, ProductImage, PriceHistory
 from .scraper_category_mapping import resolve_category_and_product_type
 from apps.vapi.client import ProductData
+from apps.catalog.utils.old_price import source_old_price
 from apps.catalog.utils.storage_paths import detect_media_type
 
 logger = logging.getLogger(__name__)
@@ -717,6 +718,7 @@ class CatalogNormalizer:
             "slug": slug,
             "description": product_data.description or "",
             "price": product_data.price,
+            "old_price": source_old_price(product_data.old_price, product_data.price),
             "currency": product_data.currency,
             "is_available": product_data.availability,
             "main_image": main_image_url,
@@ -789,8 +791,11 @@ class CatalogNormalizer:
             product.last_synced_at = timezone.now()
             
             # Обновляем цену и сохраняем историю
+            if product_data.price is not None:
+                # Зачёркнутая цена — только от источника; прежняя цена давала
+                # ложные скидки (DEVELOPMENT_RULES §5.1).
+                product.old_price = source_old_price(product_data.old_price, product_data.price)
             if product_data.price is not None and product_data.price != old_price:
-                product.old_price = old_price
                 product.price = product_data.price
                 product.currency = product_data.currency
                 

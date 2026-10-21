@@ -133,7 +133,8 @@ def test_market_check_updates_price_without_projecting_fake_stock(supplement, mo
     supplement.base_product.refresh_from_db()
     check.refresh_from_db()
     assert supplement.price == Decimal("59.90")
-    assert supplement.old_price == Decimal("49.70")
+    # Прежняя цена — не зачёркнутая цена источника (ложная скидка).
+    assert supplement.old_price is None
     assert supplement.is_available is False
     assert supplement.stock_quantity is None
     assert supplement.base_product.is_available is False

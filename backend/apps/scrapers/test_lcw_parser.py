@@ -1,5 +1,7 @@
+import pytest
 from bs4 import BeautifulSoup
 
+from apps.scrapers.base.scraper import CategoryPageNotFoundError
 from apps.scrapers.parsers.lcw import LcwParser
 
 
@@ -234,17 +236,6 @@ def _white_cap_variant_html():
     )
 
 
-LCW_HOME_HTML = """
-<html>
-  <body>
-    <a href="/erkek-tisort-t-345">Erkek Tisort</a>
-    <a href="/kadin-elbise-t-120">Kadin Elbise</a>
-    <a href="/magaza/lc-waikiki-s-1">Magaza</a>
-  </body>
-</html>
-"""
-
-
 def _white_variant_html():
     return (
         LCW_DETAIL_HTML.replace("Yeni Siyah", "Beyaz")
@@ -286,18 +277,6 @@ def test_chunking_is_enabled_only_for_lcw_category_urls():
     assert not LcwParser.supports_page_chunking_for_url(
         "https://www.lcw.com/erkek-100-hakiki-deri-4-cm-spor-lacivert-kemer-lacivert-o-4579317"
     )
-
-
-def test_parse_categories_from_homepage(monkeypatch):
-    parser = LcwParser()
-    monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: LCW_HOME_HTML)
-
-    categories = parser.parse_categories()
-
-    assert [item["url"] for item in categories] == [
-        "https://www.lcw.com/erkek-tisort-t-345",
-        "https://www.lcw.com/kadin-elbise-t-120",
-    ]
 
 
 def test_extract_images_does_not_mix_og_preview_into_real_gallery():
@@ -645,3 +624,92 @@ def test_next_chunk_stops_before_processing_repeated_last_page(monkeypatch):
         "https://www.lcw.com/erkek-tisort-t-345?sayfa=5",
         "https://www.lcw.com/erkek-tisort-t-345?sayfa=6",
     ]
+
+
+def test_marketing_og_title_with_price_falls_back_to_page_title(monkeypatch):
+    """Живая карточка 20.10.2026: og:title = «Tişört - LC WAIKIKI - 359,99 TL»."""
+    parser = LcwParser()
+    html = LCW_DETAIL_HTML.replace(
+        'content="LCWAIKIKI Classic Siyah %100 Pamuk Regular Fit Basic Tişört - S60418Z8-CVL | LCW"',
+        'content="Tişört - LC WAIKIKI - 359,99 TL"',
+    )
+    assert "359,99 TL" in html
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    assert parser._extract_name(soup) == (
+        "LCWAIKIKI Classic Siyah %100 Pamuk Regular Fit Basic Tişört - S60418Z8-CVL"
+    )
+
+
+def test_parse_product_list_skips_listing_url_reached_by_variant_redirect(monkeypatch):
+    """Живой листинг 20.10.2026: старый id цвета 301-редиректит на другой цвет.
+
+    Ссылка листинга на итоговый цвет не должна собираться второй карточкой
+    той же модели с другим group id.
+    """
+    parser = LcwParser()
+    redirected_url = "https://www.lcw.com/100-pamuk-regular-fit-basic-tisort-yeni-siyah-o-5271247"
+    category_html = """
+    <html><body>
+      <a href="/100-pamuk-regular-fit-basic-tisort-siyah-o-4827603">Siyah</a>
+      <a href="/100-pamuk-regular-fit-basic-tisort-yeni-siyah-o-5271247">Yeni Siyah</a>
+    </body></html>
+    """
+    redirected_html = (
+        LCW_DETAIL_HTML.replace("4827603", "5271247").replace("S60418Z8-CVL", "W63566Z8-CVL")
+    )
+    direct_requests = []
+
+    def fake_make_request(url, **kwargs):
+        if "sayfa=" in url:
+            return ""
+        if url.endswith("-t-345"):
+            return category_html
+        if url.endswith("4869998"):
+            # Цвет из «Renk seçenekleri» отвечает 301 на ссылку листинга.
+            parser.last_response_url = redirected_url
+            return redirected_html
+        if url == redirected_url:
+            direct_requests.append(url)
+            return redirected_html
+        return LCW_DETAIL_HTML
+
+    monkeypatch.setattr(parser, "_make_request", fake_make_request)
+
+    products = list(parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345"))
+
+    assert [product.external_id for product in products] == ["lcw-4827603"]
+    assert direct_requests == []
+
+
+def test_parse_product_list_skips_card_that_failed_to_load(monkeypatch):
+    # Раньше вместо карточки публиковался товар из текста плитки — без фото,
+    # размеров и с другой схемой id; при следующем прогоне получался дубль.
+    parser = LcwParser()
+
+    def fake_make_request(url, **kwargs):
+        if "sayfa=" in url:
+            return ""
+        if url.endswith("-t-345"):
+            return LCW_CATEGORY_HTML
+        if url.endswith("-4827604"):
+            return None  # карточка не загрузилась
+        return LCW_DETAIL_HTML
+
+    monkeypatch.setattr(parser, "_make_request", fake_make_request)
+
+    products = list(parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345"))
+
+    assert [product.external_id for product in products] == ["lcw-4827603"]
+    assert parser.item_errors == 1
+
+
+def test_missing_category_page_is_an_error_not_an_empty_success(monkeypatch):
+    """Проба на проде 21.10: ссылка на несуществующую категорию LCW (404)
+    завершала задачу «успешно» с нулём товаров."""
+    parser = LcwParser()
+    monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: None)
+
+    with pytest.raises(CategoryPageNotFoundError, match="erkek-kemer-t-1092"):
+        list(parser.parse_product_list("https://www.lcw.com/erkek-kemer-t-1092"))

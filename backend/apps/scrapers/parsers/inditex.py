@@ -19,7 +19,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from curl_cffi import requests as curl_requests
 
 from ..base.offers import MalformedOfferResponse, OfferGone, OfferNotFound
-from ..base.scraper import ScrapedProduct, ScraperAccessBlockedError
+from ..base.scraper import ScrapedProduct, ScraperAccessBlockedError, SiteCategoriesError
 from ..base.utils import clean_text
 from .zara import ZaraParser
 
@@ -44,6 +44,9 @@ class InditexSiblingParser(ZaraParser):
     LANGUAGE_ID = -43
     # Сколько карточек запрашивается одним productsArray (= одна «страница» чанка).
     API_PAGE_SIZE = 12
+    # Категория здесь — один запрос списка id, поэтому предел выше общего:
+    # у Massimo Dutti ~500 публичных узлов (фильтры по цвету, ткани, лукбуки).
+    MAX_SITE_CATEGORIES = 800
     # 402 Akamai отдаёт на некоторых редиректах вместо 403 — это тот же отказ.
     BLOCKED_STATUS_CODES = (401, 402, 403)
     INTERSTITIAL_REFRESH_RE = re.compile(
@@ -182,6 +185,8 @@ class InditexSiblingParser(ZaraParser):
             backoff = retry_after or min(120.0, (2 ** attempt) * 3.0)
             self.logger.info("%s: повторный запрос через %.1f сек.", self.SOURCE_LABEL, backoff)
             time.sleep(backoff)
+        # Повторы исчерпаны на сетевой ошибке или 429/5xx — источник недоступен.
+        self._source_transport_failed = True
         return None
 
     def _warm_session(self) -> None:
@@ -222,6 +227,55 @@ class InditexSiblingParser(ZaraParser):
             f"{self.SOURCE_LABEL}: API магазина {self.STORE_ID} не вернул каталог"
         )
 
+    # --- категории всего магазина -----------------------------------------
+
+    def parse_categories(self) -> List[Dict[str, Any]]:
+        """Все страницы-категории магазина из дерева ``/itxrest/2/.../category``.
+
+        Берём каждый узел с публичным адресом (``categoryUrl``), и родителя, и
+        его подкатегории: листинг родителя у витрин Inditex не всегда содержит
+        все товары детей, а повтор товара в соседней категории дёшев — карточки
+        приходят пачками по API_PAGE_SIZE в одном запросе productsArray.
+        Узлы без имени — скрытые служебные контейнеры меню (лукбуки, тесты),
+        их поддеревья пропускаем.
+        """
+        catalog_id = self._resolve_catalog_id()
+        data = self._api_json(
+            f"2/catalog/store/{self.STORE_ID}/{catalog_id}/category",
+            typeCatalog=1,
+        )
+        tree = data.get("categories") if isinstance(data, dict) else None
+        if not isinstance(tree, list):
+            raise SiteCategoriesError(
+                f"{self.SOURCE_LABEL}: API магазина {self.STORE_ID} не вернул дерево категорий"
+            )
+        return self._site_categories(self._iter_category_pages(tree, ()))
+
+    def _iter_category_pages(self, rows: List[Any], path: tuple) -> Iterator[Dict[str, Any]]:
+        origin = self._origin()
+        locale_prefix = urlparse(self.WARMUP_URL).path.rstrip("/")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = clean_text(str(row.get("name") or ""))
+            if not name:
+                continue
+            here = path + (name,)
+            category_id = str(row.get("id") or "")
+            slug = str(row.get("categoryUrl") or "").strip("/")
+            if slug and category_id.isdigit():
+                # Листинг читает id категории из ?celement=, а -n<seo id> нужен
+                # для распознавания адреса как категории.
+                yield {
+                    "name": " > ".join(here),
+                    "url": (
+                        f"{origin}{locale_prefix}/{quote(slug, safe='/-')}.html"
+                        f"?{urlencode({'celement': category_id})}"
+                    ),
+                    "external_id": category_id,
+                }
+            yield from self._iter_category_pages(row.get("subcategories") or [], here)
+
     # --- идентификаторы из URL --------------------------------------------
 
     def _product_id_from_url(self, url: str) -> str:
@@ -259,14 +313,25 @@ class InditexSiblingParser(ZaraParser):
         category_id = self._category_id_from_url(category_url)
         if not category_id:
             self.has_more_pages = False
+            # Ссылки меню вида «…-n3294.html» без ?celement= сайт отдаёт
+            # 301 сам на себя, id категории из них не достать.
             raise MalformedOfferResponse(
-                f"{self.SOURCE_LABEL}: не удалось определить id категории на {category_url}"
+                f"{self.SOURCE_LABEL}: не удалось определить id категории на {category_url}. "
+                "Откройте категорию на сайте и вставьте адрес целиком, вместе с ?celement=…"
             )
         catalog_id = self._resolve_catalog_id()
         listing = self._api_json(
             f"3/catalog/store/{self.STORE_ID}/{catalog_id}/category/{category_id}/product",
             showProducts="false",
-        ) or {}
+        )
+        if not isinstance(listing, dict) or not (
+            "sortedProductIds" in listing or "productIds" in listing
+        ):
+            # Нет ответа или изменилась схема API — это не «пустая категория».
+            self.has_more_pages = False
+            raise MalformedOfferResponse(
+                f"{self.SOURCE_LABEL}: API не вернул список товаров категории {category_id}"
+            )
         product_ids = list(
             dict.fromkeys(
                 str(value)
@@ -286,14 +351,28 @@ class InditexSiblingParser(ZaraParser):
             data = self._api_json(
                 f"3/catalog/store/{self.STORE_ID}/{catalog_id}/productsArray",
                 productIds=",".join(chunk),
-            ) or {}
-            for row in data.get("products") or []:
+            )
+            rows = data.get("products") if isinstance(data, dict) else None
+            if not rows:
+                # Сбой productsArray молча пропускал целую страницу товаров.
+                raise MalformedOfferResponse(
+                    f"{self.SOURCE_LABEL}: productsArray не вернул товары (страница {page})"
+                )
+            parsed_rows = 0
+            for row in rows:
                 product = self._scraped_from_api(row, category_url)
+                if product is not None:
+                    parsed_rows += 1
                 if product and self.validate_product(product):
                     yield product
                     yielded += 1
                     if self.max_products and yielded >= self.max_products:
                         return
+            if not parsed_rows:
+                # Ни одной карточки с цветами: изменилась схема ответа.
+                raise MalformedOfferResponse(
+                    f"{self.SOURCE_LABEL}: в ответе productsArray нет карточек с цветами (страница {page})"
+                )
             pages_done += 1
             if page * self.API_PAGE_SIZE >= len(product_ids):
                 self.has_more_pages = False
@@ -310,7 +389,13 @@ class InditexSiblingParser(ZaraParser):
         )
         if not data:
             return None
-        return self._scraped_from_api(data, product_url)
+        product = self._scraped_from_api(data, product_url)
+        if product is None:
+            # Ответ есть, но карточка без цветов: это не «товар снят».
+            raise MalformedOfferResponse(
+                f"{self.SOURCE_LABEL}: в карточке {product_id} нет цветов или названия"
+            )
+        return product
 
     # --- разбор ответа API -------------------------------------------------
 
@@ -336,6 +421,11 @@ class InditexSiblingParser(ZaraParser):
             for index, color in enumerate(colors)
         ]
         variants = [variant for variant in variants if variant]
+        if not variants:
+            # Без цветов нет ни цены, ни наличия: такая карточка не должна снять
+            # товар с продажи при перепарсинге (смена схемы API).
+            self.logger.warning("%s: в карточке %s нет цветов", self.SOURCE_LABEL, product_id)
+            return None
         first_variant = variants[0] if variants else {}
 
         description = ""
@@ -350,6 +440,11 @@ class InditexSiblingParser(ZaraParser):
             description = clean_text(str(value or ""))
             if description:
                 break
+        if not description:
+            # Bershka и Massimo Dutti отдают пустые description/longDescription;
+            # то, что сайт показывает как описание (JSON-LD), лежит в атрибутах
+            # DESCRIPTION, плюс состав и уход из той же карточки.
+            description = self._fallback_description(row, summary, detail)
 
         subfamily_info = (
             detail.get("subfamilyInfo") if isinstance(detail.get("subfamilyInfo"), dict) else {}
@@ -378,6 +473,7 @@ class InditexSiblingParser(ZaraParser):
             name=name,
             description=description,
             price=first_variant.get("price"),
+            old_price=first_variant.get("old_price"),
             currency="TRY",
             url=product_url,
             images=list(first_variant.get("images") or []),
@@ -405,6 +501,7 @@ class InditexSiblingParser(ZaraParser):
             return None
         sizes = []
         prices = []
+        old_prices = []
         for index, size in enumerate(color.get("sizes") or []):
             if not isinstance(size, dict) or not size.get("name"):
                 continue
@@ -413,6 +510,10 @@ class InditexSiblingParser(ZaraParser):
             price = self._normalize_price_value(size.get("price"))
             if price is not None:
                 prices.append(price)
+            # Зачёркнутая цена распродажи (oldPrice размера, в курушах как price).
+            old_price = self._normalize_price_value(size.get("oldPrice"))
+            if old_price is not None:
+                old_prices.append(old_price)
             sizes.append(
                 {
                     "size": clean_text(str(size.get("name"))),
@@ -431,6 +532,7 @@ class InditexSiblingParser(ZaraParser):
             "color": color_name,
             "display_name": clean_text(f"{product_name} - {color_name}".strip(" -")),
             "price": min(prices) if prices else None,
+            "old_price": max(old_prices) if old_prices else None,
             "currency": "TRY",
             "external_url": product_url,
             "images": galleries.get(color_id, []),
@@ -440,6 +542,50 @@ class InditexSiblingParser(ZaraParser):
             "sku": str(color.get("reference") or color_id),
             "availability": "in_stock" if is_available else "out_of_stock",
         }
+
+    @staticmethod
+    def _fallback_description(
+        row: Dict[str, Any], summary: Dict[str, Any], detail: Dict[str, Any]
+    ) -> str:
+        lines: List[str] = []
+        phrases: List[str] = []
+        for source in (row, summary):
+            for attr in source.get("attributes") or []:
+                if isinstance(attr, dict) and str(attr.get("type") or "") == "DESCRIPTION":
+                    value = clean_text(str(attr.get("value") or ""))
+                    if value and value not in phrases:
+                        phrases.append(value)
+        if phrases:
+            lines.append(", ".join(phrases))
+        parts = []
+        composition = detail.get("compositionDetail") if isinstance(detail.get("compositionDetail"), dict) else {}
+        for part in composition.get("parts") or []:
+            if not isinstance(part, dict):
+                continue
+            components = ", ".join(
+                " ".join(
+                    value for value in (
+                        clean_text(str(item.get("material") or "")),
+                        clean_text(str(item.get("percentage") or "")),
+                    ) if value
+                )
+                for item in part.get("components") or []
+                if isinstance(item, dict) and item.get("material")
+            )
+            if components:
+                label = clean_text(str(part.get("description") or ""))
+                parts.append(f"{label}: {components}" if label else components)
+        if parts:
+            lines.append("Bileşim: " + "; ".join(parts))
+        care = [
+            clean_text(str(item.get("description") or ""))
+            for item in detail.get("care") or []
+            if isinstance(item, dict)
+        ]
+        care = [item for item in care if item]
+        if care:
+            lines.append("Bakım: " + "; ".join(care))
+        return "\n".join(lines)
 
     def _galleries_by_color(self, detail: Dict[str, Any]) -> Dict[str, List[str]]:
         default_set = detail.get("xmediaDefaultSet") or 0

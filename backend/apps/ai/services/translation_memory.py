@@ -13,6 +13,7 @@ import hashlib
 import re
 from typing import Any, Callable, Iterable
 
+from django.db import transaction
 from django.db.models import F
 
 from apps.ai.models import AIProcessingLog, AITranslationMemory
@@ -70,33 +71,56 @@ def lookup(
     return found
 
 
+# Строк в одной вставке: каждая порция — отдельный INSERT … ON CONFLICT DO NOTHING
+# в своей транзакции. Одна вставка на ~300 тыс. абзацев уронила Postgres по OOM
+# (лимит контейнера 640 МБ, 20.10.2026).
+REMEMBER_BATCH_SIZE = 500
+
+
 def remember(
     namespace: str,
     translations: Translations,
     *,
     log: AIProcessingLog | None = None,
+    batch_size: int = REMEMBER_BATCH_SIZE,
 ) -> int:
-    """Сохранить новые переводы; существующие строки не трогаются. → сколько создано."""
-    rows = []
+    """Сохранить новые переводы порциями; существующие строки не трогаются. → сколько создано.
+
+    Повторный вызов с теми же текстами ничего не меняет (идемпотентно), поэтому
+    прерванную запись можно просто повторить.
+    """
+    created = 0
+    chunk: dict[str, AITranslationMemory] = {}
     for text, values in translations.items():
         normalized = normalize_source_text(text)
         ru, en = str((values or {}).get("ru") or "").strip(), str((values or {}).get("en") or "").strip()
-        if normalized and ru and en:
-            rows.append(
-                AITranslationMemory(
-                    namespace=namespace,
-                    source_hash=source_hash(normalized),
-                    source_text=normalized,
-                    ru_text=ru,
-                    en_text=en,
-                    source_log=log,
-                )
-            )
-    if not rows:
-        return 0
-    before = AITranslationMemory.objects.filter(namespace=namespace).count()
-    AITranslationMemory.objects.bulk_create(rows, ignore_conflicts=True)
-    return AITranslationMemory.objects.filter(namespace=namespace).count() - before
+        if not (normalized and ru and en):
+            continue
+        key = source_hash(normalized)
+        chunk[key] = AITranslationMemory(
+            namespace=namespace,
+            source_hash=key,
+            source_text=normalized,
+            ru_text=ru,
+            en_text=en,
+            source_log=log,
+        )
+        if len(chunk) >= batch_size:
+            created += _insert_chunk(namespace, chunk)
+            chunk = {}
+    if chunk:
+        created += _insert_chunk(namespace, chunk)
+    return created
+
+
+def _insert_chunk(namespace: str, chunk: dict[str, AITranslationMemory]) -> int:
+    with transaction.atomic():
+        existing = set(
+            AITranslationMemory.objects.filter(namespace=namespace, source_hash__in=list(chunk))
+            .values_list("source_hash", flat=True)
+        )
+        AITranslationMemory.objects.bulk_create(chunk.values(), ignore_conflicts=True)
+    return len(chunk) - len(existing)
 
 
 def get_or_translate(

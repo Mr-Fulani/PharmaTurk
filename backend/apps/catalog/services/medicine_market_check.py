@@ -754,7 +754,8 @@ class MedicineMarketCheckService:
                 previous_price != price or str(medicine.currency or "").upper() != currency
             )
             if price_changed:
-                medicine.old_price = previous_price
+                # Цены лекарств регулируются: прежняя цена не «старая цена со скидкой».
+                medicine.old_price = None
                 medicine.price = price
                 medicine.currency = currency
                 # MedicineProduct.save() synchronizes the shadow Product while preserving

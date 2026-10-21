@@ -3,8 +3,8 @@
 Память (AITranslationMemory) хранит проверенные переводы фрагментов:
 namespace ``medicine_inn`` — действующие вещества, ``medicine_paragraph`` —
 абзацы клинических разделов. Модель переводит только то, чего в памяти ещё
-нет, одним запросом на товар; в память попадает только перевод, прошедший
-проверки (дозировки, язык, МНН). Правка менеджера в админке берётся из памяти
+нет, короткими запросами (до 10 абзацев); в память попадает только перевод,
+прошедший проверки (дозировки, язык, МНН, сдвиг ответа). Правка менеджера в админке берётся из памяти
 при следующей обработке, а правка МНН сразу разносится по товарам
 (apps.ai.signals).
 """
@@ -19,6 +19,7 @@ from functools import lru_cache
 from typing import Any, Callable, Optional
 
 from apps.ai.services.medicine_fact_check import doses_match, inn_matches, is_proper_name_line
+from apps.ai.services.medicine_paragraph_check import item_problems, request_shift
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.translation_memory import lookup, normalize_source_text, remember, source_hash
@@ -30,8 +31,14 @@ PARAGRAPH_NAMESPACE = "medicine_paragraph"
 # Бренд товара в абзаце → метка: абзацы разных препаратов совпадают в памяти.
 BRAND_TOKEN = "{BRAND}"
 
-# Один запрос на товар; больше — несколько запросов (лимит ответа 16k токенов).
-PARAGRAPH_BATCH_CHARS = 20000
+# Запрос — до 10 абзацев и до 5000 символов. В длинном JSON модель пропускает
+# абзац, и дальше каждому ключу достаётся перевод соседнего: в пакете 20.10.2026
+# (20 000 символов, ≈ 154 абзаца) сдвиг был в 59 % запросов, среди первых 10
+# абзацев — у 1,6 %, к концу запроса — до 54 %. При сдвиге отклоняется весь
+# запрос, поэтому сдвиг портит и отправляет на повтор не больше 10 абзацев
+# (docs/MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md, «Маленькие запросы»).
+PARAGRAPH_BATCH_ITEMS = 10
+PARAGRAPH_BATCH_CHARS = 5000
 PARAGRAPH_MAX_TOKENS = 16000
 # Ключи source_tabs ilacfiyati с клиническими разделами, которые переводятся полностью.
 CLINICAL_SOURCE_TABS = ("indications", "before_use_warnings", "usage_instructions", "side_effects", "storage_conditions")
@@ -99,13 +106,25 @@ def translation_user_prompt(items: dict[str, str]) -> str:
     )
 
 
+def paragraph_user_prompt(items: dict[str, str]) -> str:
+    """Абзацы: RU и EN каждого — в одном объекте под его номером, а не двумя
+    отдельными списками, где перевод легче съезжает к соседнему ключу."""
+    return (
+        'Переведи каждый абзац. Ключи не меняй, абзацы не пропускай и не объединяй. '
+        'Верни JSON вида {"1": {"ru": "…", "en": "…"}, "2": {"ru": "…", "en": "…"}}.\n\n'
+        f"{json.dumps(items, ensure_ascii=False)}"
+    )
+
+
 def items_from_user_prompt(user_prompt: str) -> dict[str, str]:
     return json.loads(user_prompt.split("\n\n", 1)[1])
 
 
-def _call_translator(llm, system_prompt: str, items: dict[str, str], *, max_tokens: int) -> tuple[dict, dict]:
-    """Один запрос: {"id": текст} → ({"ru": {id: …}, "en": {id: …}}, usage)."""
-    user_prompt = translation_user_prompt(items)
+def _call_translator(
+    llm, system_prompt: str, items: dict[str, str], *, max_tokens: int, prompt=translation_user_prompt
+) -> tuple[dict, dict]:
+    """Один запрос: {"id": текст} → (JSON ответа модели, usage)."""
+    user_prompt = prompt(items)
     try:
         result = llm.generate_content(
             system_prompt=system_prompt,
@@ -141,7 +160,7 @@ def estimate_translation_cost(
     if items_per_request:
         requests = -(-len(values) // items_per_request)
     else:
-        requests = -(-chars // (request_chars or PARAGRAPH_BATCH_CHARS))
+        requests = max(-(-chars // (request_chars or PARAGRAPH_BATCH_CHARS)), -(-items // PARAGRAPH_BATCH_ITEMS))
     prompt_tokens = chars / 3.2 + requests * 300 + items * 6
     completion_tokens = chars * 0.54 + items * 12
     model = settings.AI_CONFIG.get("MODEL", "gpt-4o-mini")
@@ -275,8 +294,8 @@ def _brand_re(brand: str) -> re.Pattern:
             parts.append(f"[{char}{char.upper()}]")
         else:
             parts.append(re.escape(char))
-    # «MAJEZIK'in», «MAJEZİK’i» — суффикс после апострофа.
-    return re.compile(rf"(?<!\w)({''.join(parts)})(?:['’`](\w+))?(?!\w)")
+    # «MAJEZIK'in», «MAJEZİK’i», «EPORON®'u» — знак ® и суффикс после апострофа.
+    return re.compile(rf"(?<!\w)({''.join(parts)})[®™]*(?:['’`](\w+))?(?!\w)")
 
 
 def _canonical_suffix(suffix: str) -> str:
@@ -289,7 +308,8 @@ def normalize_paragraph(text: str, brand: str = "") -> str:
     """Ключ абзаца в памяти: нормализация translation_memory, бренд товара → BRAND_TOKEN.
 
     Метка ставится на бренд с заглавной буквы («MAJEZIK», «Majezik»); слово
-    со строчной («grip») — обычный текст.
+    со строчной («grip») — обычный текст. Знак ® после бренда в ключ не
+    попадает: «EPORON®'u» и «MAJEZIK'i» — один абзац.
     """
     text = normalize_source_text(text)
     if not brand:
@@ -314,9 +334,85 @@ def source_tab_texts(external_data: Any) -> list[str]:
     return texts
 
 
+# Парсер ilacfiyati собирает раздел через get_text("\n"), и строчный тег внутри
+# предложения (<b>, <sup>, <sub>, <a>) становится отдельной строкой: «EPORON» /
+# «®» / «'u kullanmayınız.», «B» / «12» / «vitamini». По разметке 349 страниц
+# так разорвана каждая 9-я граница строк (docs/MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md,
+# «Обрывки абзацев»).
+_MARK_LINE = re.compile(r"[®™©]+")
+_INDEX_LINE = re.compile(r"\d{1,3}")  # B12, D3, m2, (177Lu — <sup>/<sub>
+# Индекс клеится к одиночной букве или скобке: «B» / «12», «mL/m» / «2»; число
+# после слова — ячейка таблицы доз («AUGMENTİN ES miktarı» / «8» / «Günde iki kez 3 ml»).
+_INDEX_BASE_END = re.compile(r"(?:(?<![^\W\d_])[^\W\d_]|\()$")
+_DEGREE_LINE = re.compile(r"[o°]")  # 25 <sup>o</sup>C
+_URL_LINE = re.compile(r"(?:https?://|www\.)\S+")
+_SUFFIX_START = re.compile(r"['’`][a-zçğıöşü]")  # «'un», «'in» после бренда
+_CLOSING_START = re.compile(r"[,.;:)\]]")
+_LOWER_START = re.compile(r"[a-zçğıöşü]")
+_SENTENCE_END = re.compile(r"[.:;!?]$")
+
+
+def _line_kind(line: str) -> str:
+    if _MARK_LINE.fullmatch(line):
+        return "mark"
+    if _INDEX_LINE.fullmatch(line) or _DEGREE_LINE.fullmatch(line):
+        return "index"
+    return "url" if _URL_LINE.fullmatch(line) else ""
+
+
+def _is_caps_word(text: str) -> bool:
+    """«DERHAL», «MON.LUTEC», буквица «A» — до трёх слов заглавными."""
+    letters = re.sub(r"[\W\d_]", "", text)
+    return bool(letters) and letters.isupper() and len(text.split()) <= 3
+
+
+def _continuation_glue(paragraph: str, line: str, previous_kind: str) -> Optional[str]:
+    """Чем приклеить строку к абзацу, если она продолжает его предложение; None — новый абзац.
+
+    Строка со строчной буквы сама по себе ничего не значит: так же начинаются
+    пункты списка побочных эффектов («baş ağrısı» / «bulantı»). Она клеится
+    только после строки, которая не может кончать фразу: ®, индекс, ссылка,
+    слово заглавными.
+    """
+    if _MARK_LINE.fullmatch(line) or _SUFFIX_START.match(line) or _CLOSING_START.match(line):
+        return ""
+    if previous_kind in ("mark", "index") or (previous_kind == "url" and _LOWER_START.match(line)):
+        return " "
+    if _DEGREE_LINE.fullmatch(line) and paragraph[-1:].isdigit():
+        return ""
+    if _SENTENCE_END.search(paragraph):
+        return None
+    if _INDEX_LINE.fullmatch(line) and _INDEX_BASE_END.search(paragraph):
+        return ""
+    if _URL_LINE.fullmatch(line):
+        return " "
+    if _LOWER_START.match(line) and _is_caps_word(paragraph):
+        return "" if len(paragraph) == 1 else " "
+    return None
+
+
 def split_paragraphs(text: str) -> list[str]:
-    """Текст раздела → абзацы и разделители по очереди: [абзац, "\\n", абзац, …]."""
-    return re.split(r"(\n+)", str(text or "").strip())
+    """Текст раздела → абзацы и разделители по очереди: [абзац, "\\n", абзац, …].
+
+    Строка, которую от предложения отрезал строчный тег, приклеивается к
+    абзацу (``_continuation_glue``): иначе модель получает обрывки
+    «Somatropine veya {BRAND}» и «'un içerisindeki…», склеивает их сама, и ответ
+    съезжает на ключ. Через пустую строку не клеится.
+    """
+    parts = re.split(r"(\n+)", str(text or "").strip())
+    merged = [parts[0].strip()]
+    kind = ""
+    for separator, line in zip(parts[1::2], parts[2::2]):
+        line = line.strip()
+        glue = _continuation_glue(merged[-1], line, kind) if separator == "\n" else None
+        if glue is None:
+            merged += [separator, line]
+        else:
+            merged[-1] += glue + line
+        kind = _line_kind(line)
+        if kind == "index" and glue is None:  # «8» — ячейка таблицы, а не индекс
+            kind = ""
+    return merged
 
 
 def needs_translation(paragraph: str) -> bool:
@@ -328,7 +424,17 @@ def _looks_russian(source: str, ru: str) -> bool:
     if len(re.findall(r"[^\W\d_]", source)) < 20:
         return True
     cyrillic = len(re.findall(r"[А-Яа-яЁё]", ru))
-    return cyrillic >= 10 and not looks_untranslated_turkish(ru)
+    if not cyrillic or looks_untranslated_turkish(ru):
+        return False
+    # Бренд (слово заглавными) переносится латиницей и переводить его не нужно:
+    # «5. DERMOVATE'IN SAKLANMASI» → «5. Хранение DERMOVATE» — 8 кириллических букв.
+    kept = {fold_tr(word) for word in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", ru)}
+    translatable = sum(
+        len(word)
+        for word in re.findall(r"[^\W\d_]+", source)
+        if not (word.isupper() and fold_tr(word) in kept)
+    )
+    return cyrillic >= min(10, translatable // 2)
 
 
 # Подписи реквизитов в конце инструкции; имена фирм и адреса не переводятся.
@@ -369,6 +475,8 @@ def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
         problems.append("too_short")
     if BRAND_TOKEN in source and (BRAND_TOKEN not in ru or BRAND_TOKEN not in en):
         problems.append("brand_token_missing")
+    # Чужой перевод: номер заголовка, числа, длина, RU≠EN, понятия, частота.
+    problems.extend(item_problems(source, ru, en))
     return problems
 
 
@@ -376,16 +484,40 @@ def paragraph_items(batch: list[str]) -> dict[str, str]:
     return {str(index): text for index, text in enumerate(batch, 1)}
 
 
-def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, dict]:
-    """Ответ модели по абзацам → (принятые {текст: {ru, en}}, отклонённые {текст: причины})."""
+def _paragraph_answers(payload: Any, keys: list[str]) -> tuple[list[str], list[str]]:
+    """RU и EN по ключам из ответа {"1": {"ru", "en"}} или прежнего
+    {"ru": {"1"}, "en": {"1"}} (пакеты Batch API, отправленные до смены формата)."""
     payload = payload if isinstance(payload, dict) else {}
-    ru_payload = payload.get("ru") if isinstance(payload.get("ru"), dict) else {}
-    en_payload = payload.get("en") if isinstance(payload.get("en"), dict) else {}
+    if isinstance(payload.get("ru"), dict) or isinstance(payload.get("en"), dict):
+        ru, en = (payload.get(locale) if isinstance(payload.get(locale), dict) else {} for locale in ("ru", "en"))
+        rows = [{"ru": ru.get(key), "en": en.get(key)} for key in keys]
+    else:
+        rows = [payload.get(key) if isinstance(payload.get(key), dict) else {} for key in keys]
+    return [str(row.get("ru") or "").strip() for row in rows], [str(row.get("en") or "").strip() for row in rows]
+
+
+def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, dict]:
+    """Ответ модели по абзацам → (принятые {текст: {ru, en}}, отклонённые {текст: причины}).
+
+    Кроме проверок каждого абзаца ищется сдвиг ответа: модель пропустила
+    элемент, и ключам достались переводы соседних абзацев. Тогда отклоняется
+    весь запрос (``shifted``): он короткий, и повтор дешевле риска принять
+    чужой перевод на границе сдвига. Сдвигом считается и ответ, где у части
+    абзацев нет перевода: в пакете 20.10.2026 так выглядели 86 % запросов со
+    сдвигом (модель пропускала абзац и заканчивала ответ на ключ раньше).
+    """
+    keys = list(items)
+    ru_texts, en_texts = _paragraph_answers(payload, keys)
+    answered = [bool(ru and en) for ru, en in zip(ru_texts, en_texts)]
+    shifted = (any(answered) and not all(answered)) or bool(
+        request_shift([items[key] for key in keys], ru_texts, en_texts)
+    )
     accepted, rejected = {}, {}
-    for key, source in items.items():
-        ru = str(ru_payload.get(key) or "").strip()
-        en = str(en_payload.get(key) or "").strip()
+    for key, ru, en in zip(keys, ru_texts, en_texts):
+        source = items[key]
         problems = paragraph_problems(source, ru, en)
+        if shifted:
+            problems.append("shifted")
         if problems:
             rejected[source] = problems
         else:
@@ -394,11 +526,12 @@ def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, 
 
 
 def paragraph_batches(paragraphs: list[str]) -> list[list[str]]:
+    """Абзацы → запросы: не больше PARAGRAPH_BATCH_ITEMS абзацев и PARAGRAPH_BATCH_CHARS символов."""
     batches: list[list[str]] = []
     current: list[str] = []
     size = 0
     for paragraph in paragraphs:
-        if current and size + len(paragraph) > PARAGRAPH_BATCH_CHARS:
+        if current and (len(current) >= PARAGRAPH_BATCH_ITEMS or size + len(paragraph) > PARAGRAPH_BATCH_CHARS):
             batches.append(current)
             current, size = [], 0
         current.append(paragraph)
@@ -424,7 +557,9 @@ def translate_paragraphs(
 
     def run(batch: list[str]) -> None:
         items = paragraph_items(batch)
-        payload, result = _call_translator(llm, PARAGRAPH_SYSTEM_PROMPT, items, max_tokens=PARAGRAPH_MAX_TOKENS)
+        payload, result = _call_translator(
+            llm, PARAGRAPH_SYSTEM_PROMPT, items, max_tokens=PARAGRAPH_MAX_TOKENS, prompt=paragraph_user_prompt
+        )
         _add_usage(usage, result)
         batch_accepted, batch_rejected = check_paragraph_payload(items, payload)
         accepted.update(batch_accepted)
@@ -448,7 +583,7 @@ def translate_sections_by_paragraph(
     product_id: Optional[int] = None,
     brand: str = "",
 ) -> dict[str, Any]:
-    """Разделы инструкции: абзацы из памяти, новые — моделью одним запросом на товар.
+    """Разделы инструкции: абзацы из памяти, новые — моделью короткими запросами.
 
     ``brand`` (``paragraph_brand``) в ключах памяти заменяется меткой и
     подставляется обратно в перевод.

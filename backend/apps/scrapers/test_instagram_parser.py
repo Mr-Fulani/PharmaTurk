@@ -446,3 +446,39 @@ def test_cli_config_mode_rejects_root_url_without_source(monkeypatch):
     with patch.object(ScraperConfig.objects, "get", return_value=config):
         with pytest.raises(CommandError, match="--username"):
             command._run_with_config(7, 1, "books")
+
+
+def test_login_checkpoint_is_reported_instead_of_silent_anonymous_run(monkeypatch):
+    # Прод 20.10.2026: «Login: Checkpoint required» — раньше парсер молча
+    # продолжал без входа и получал непонятный 401 профиля.
+    parser = InstagramParser(username="bot", password="secret")
+    monkeypatch.setattr(
+        parser.loader,
+        "login",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            instaloader.exceptions.LoginException(
+                "Login: Checkpoint required. Point your browser to /auth_platform/?apc=x"
+            )
+        ),
+    )
+
+    with pytest.raises(ExternalAccessBlockedError, match="подтвердить вход") as exc_info:
+        parser._ensure_authenticated()
+
+    assert exc_info.value.status_code == 401
+
+
+def test_configured_sessionid_cookie_is_used_instead_of_password_login(monkeypatch):
+    parser = InstagramParser(username="bot", password="secret")
+    parser.configure_request_identity(cookies={"sessionid": "browser-session", "csrftoken": "t"})
+    monkeypatch.setattr(
+        parser.loader,
+        "login",
+        lambda *args, **kwargs: pytest.fail("password login must not run with a session cookie"),
+    )
+
+    parser._ensure_authenticated()
+
+    assert parser._authenticated is True
+    assert parser.loader.context.is_logged_in
+    assert parser.loader.context._session.cookies.get("sessionid") == "browser-session"

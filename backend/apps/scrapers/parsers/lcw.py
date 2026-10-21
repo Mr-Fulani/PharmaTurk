@@ -1,14 +1,20 @@
 """Парсер для lcw.com (LC Waikiki)."""
 
 import copy
+import json
 import re
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import quote_plus, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.scraper import (
+    BaseScraper,
+    CategoryPageNotFoundError,
+    ScrapedProduct,
+    SiteCategoriesError,
+)
 from ..base.offers import (
     MalformedOfferResponse,
     OfferCheckContext,
@@ -29,6 +35,25 @@ class LcwParser(BaseScraper):
     MAX_VARIANTS_PER_PRODUCT = 24
     PRODUCT_PATH_RE = re.compile(r"-o-(\d+)(?:$|[/?#])")
     CATEGORY_PATH_RE = re.compile(r"-t-(\d+)(?:$|[/?#])")
+    # Корни каталога для обхода всего сайта. Общего дерева LCW не отдаёт:
+    # CategoryTree листинга содержит только ветку открытой категории. Пять
+    # первых — вкладки шапки (KADIN … EV | YAŞAM), остальные — отделы, на
+    # которые меню ссылается изнутри вкладок (kozmetik, oyuncak, kitap…).
+    SITE_ROOT_PATHS = (
+        "/kadin-t-1",
+        "/erkek-t-2",
+        "/cocuk-t-3",
+        "/bebek-t-4",
+        "/ev-yasam-t-5",
+        "/kisisel-bakim-kozmetik-t-6202",
+        "/anne-bebek-oyuncak-t-4647",
+        "/kitap-t-4886",
+        "/ofis-kirtasiye-t-5223",
+        "/elektronik-t-4168",
+        "/supermarket-t-5678",
+        "/hediye-t-6526",
+    )
+    CATEGORY_TREE_MARKER = '"CategoryTree":'
     PRICE_RE = re.compile(r"(\d[\d.]*,\d{2}\s*(?:TL|₺))", re.IGNORECASE)
     VARIANT_COUNT_RE = re.compile(r"\s+\+\d+\s*$")
     SIZE_SPLIT_RE = re.compile(r"\s{2,}|\n+")
@@ -98,38 +123,50 @@ class LcwParser(BaseScraper):
         return ["lcw.com", "www.lcw.com"]
 
     def parse_categories(self) -> List[Dict[str, Any]]:
-        html = self._make_request(self.base_url)
-        if not html:
-            return []
+        """Подразделы корней каталога (Kadın Giyim, Erkek Ayakkabı, Mutfak…).
 
-        soup = BeautifulSoup(html, "html.parser")
-        categories: List[Dict[str, Any]] = []
-        seen_urls = set()
-
-        for anchor in soup.select("a[href]"):
-            href = anchor.get("href", "").strip()
-            if not self._is_category_url(href):
+        Подразделы берутся из ``CategoryTree`` страницы корня. Если среди них
+        есть адреса не категорийного вида (``-u-``: Genç Kız Giyim и т. п.),
+        обходим корень целиком — так ни один товар не выпадет.
+        """
+        rows: List[Dict[str, Any]] = []
+        for path in self.SITE_ROOT_PATHS:
+            url = urljoin(self.base_url, path)
+            html = self._make_request(url)
+            if not html:
+                self.logger.warning("LCW: корень каталога %s не открылся, пропускаем", url)
                 continue
+            root = self._extract_category_tree(html)
+            if root is None or str(root.get("CategoryTreeId")) != self._extract_category_id(url):
+                raise SiteCategoriesError(
+                    f"LCW: на странице {url} нет дерева этого раздела (CategoryTree)"
+                )
+            children = [
+                child for child in root.get("ChildCategories") or [] if isinstance(child, dict)
+            ]
+            child_urls = [urljoin(self.base_url, str(child.get("Url") or "")) for child in children]
+            if not children or not all(self._is_category_url(item) for item in child_urls):
+                children, child_urls = [root], [url]
+            for child, child_url in zip(children, child_urls):
+                rows.append(
+                    {
+                        "name": clean_text(str(child.get("TreeTextKeyword") or "")),
+                        "url": child_url,
+                        "external_id": str(child.get("CategoryTreeId") or ""),
+                    }
+                )
+        return self._site_categories(rows)
 
-            absolute_url = urljoin(self.base_url, href)
-            if absolute_url in seen_urls:
-                continue
-
-            name = clean_text(anchor.get_text(" ", strip=True))
-            if not name or len(name) < 2:
-                continue
-
-            seen_urls.add(absolute_url)
-            categories.append(
-                {
-                    "name": name,
-                    "url": absolute_url,
-                    "external_id": self._extract_category_id(absolute_url),
-                    "source": self.get_name(),
-                }
-            )
-
-        return categories
+    def _extract_category_tree(self, html: str) -> Optional[Dict[str, Any]]:
+        """Ветка дерева категорий, которую LCW встраивает в листинг (``"CategoryTree":{…}``)."""
+        index = (html or "").find(self.CATEGORY_TREE_MARKER)
+        if index < 0:
+            return None
+        try:
+            tree, _ = json.JSONDecoder().raw_decode(html[index + len(self.CATEGORY_TREE_MARKER):])
+        except json.JSONDecodeError:
+            return None
+        return tree if isinstance(tree, dict) else None
 
     @staticmethod
     def _lcw_page_url(category_url: str, page: int) -> str:
@@ -149,6 +186,11 @@ class LcwParser(BaseScraper):
         self.has_more_pages = True
         seen_urls = set()
         seen_family_urls = set()
+        # Итоговые URL цветов, загруженных в группах этого прохода: LCW
+        # редиректит (301) старые id цветов на другие, и ссылка листинга на
+        # такой цвет иначе собирается второй карточкой той же модели.
+        self._resolved_variant_urls = set()
+        self.item_errors = 0
         seen_group_ids = set()
         seen_family_keys = set()
         yielded = 0
@@ -167,6 +209,12 @@ class LcwParser(BaseScraper):
         while pages_done < max(1, max_pages):
             html = self._make_request(self._lcw_page_url(category_url, page))
             if not html:
+                if page == 1:
+                    # 404 на первой странице — категории нет; иначе задача
+                    # «успешно» завершалась с нулём товаров.
+                    raise CategoryPageNotFoundError(
+                        f"LCW: страница категории не найдена: {category_url}"
+                    )
                 self.has_more_pages = False
                 break
             soup = BeautifulSoup(html, "html.parser")
@@ -188,12 +236,19 @@ class LcwParser(BaseScraper):
                     continue
 
                 product_url = urljoin(self.base_url, href)
-                if product_url in seen_urls or product_url in seen_family_urls:
+                if (
+                    product_url in seen_urls
+                    or product_url in seen_family_urls
+                    or product_url in self._resolved_variant_urls
+                ):
                     continue
 
                 new_on_page += 1
                 seen_urls.add(product_url)
-                detail_html = self._make_request(product_url)
+                detail_html, final_url = self._fetch_with_final_url(product_url)
+                if final_url != product_url and final_url in self._resolved_variant_urls:
+                    continue
+                self._resolved_variant_urls.add(final_url)
                 parsed_variant = self._parse_single_variant(product_url, detail_html) if detail_html else None
                 family_key = self._build_family_key(parsed_variant)
                 if family_key and family_key in seen_family_keys:
@@ -209,7 +264,11 @@ class LcwParser(BaseScraper):
                 else:
                     product = self.parse_product_detail(product_url)
                 if not product:
-                    product = self._build_list_product(anchor, product_url, category_url)
+                    # Карточка не загрузилась. Товар из текста плитки (без фото и
+                    # размеров, с другой схемой id) потом становился дублем.
+                    self.item_errors += 1
+                    self.logger.warning("LCW: карточка не загрузилась, пропуск %s", product_url)
+                    continue
 
                 group_id = ""
                 if product and isinstance(product.attributes, dict):
@@ -240,6 +299,12 @@ class LcwParser(BaseScraper):
             if new_on_page == 0:
                 self.has_more_pages = False
                 break
+
+    def _fetch_with_final_url(self, url: str) -> Tuple[Optional[str], str]:
+        """HTML и итоговый URL после редиректов (или исходный, если неизвестен)."""
+        self.last_response_url = ""
+        html = self._make_request(url)
+        return html, (self.last_response_url or url)
 
     def _extract_listing_product_urls(self, html: str) -> Set[str]:
         """Канонические URL товаров страницы без загрузки detail."""
@@ -342,9 +407,12 @@ class LcwParser(BaseScraper):
                 len(group_urls),
                 product_url,
             )
-            variant_html = self._make_request(variant_url)
+            variant_html, final_url = self._fetch_with_final_url(variant_url)
             if not variant_html:
                 continue
+            resolved_urls = getattr(self, "_resolved_variant_urls", None)
+            if resolved_urls is not None:
+                resolved_urls.add(final_url)
             parsed_variant = self._parse_single_variant(variant_url, variant_html)
             if not parsed_variant:
                 continue
@@ -409,37 +477,6 @@ class LcwParser(BaseScraper):
 
     def _is_category_url(self, url: str) -> bool:
         return self.is_lcw_category_url(url) and "/magaza/" not in url
-
-    def _build_list_product(
-        self,
-        anchor,
-        product_url: str,
-        category_url: str,
-    ) -> Optional[ScrapedProduct]:
-        anchor_text = clean_text(anchor.get_text(" ", strip=True))
-        if not anchor_text:
-            return None
-
-        price_text = self._extract_price_text(anchor_text)
-        name = anchor_text
-        if price_text:
-            name = clean_text(name.replace(price_text, ""))
-        name = self.VARIANT_COUNT_RE.sub("", name).strip()
-
-        if not name:
-            return None
-
-        return ScrapedProduct(
-            name=name,
-            price=float(normalize_price(price_text)) if price_text else None,
-            currency=extract_currency(price_text) if price_text else "TRY",
-            url=product_url,
-            images=[],
-            category=self._extract_category_name_from_url(category_url),
-            brand="",
-            external_id=f"lcw-{self._extract_product_id(product_url)}",
-            source=self.get_name(),
-        )
 
     def _parse_single_variant(self, product_url: str, html: str) -> Optional[Dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
@@ -511,7 +548,10 @@ class LcwParser(BaseScraper):
         meta_title = soup.find("meta", property="og:title")
         if meta_title and meta_title.get("content"):
             title = clean_text(meta_title["content"])
-            return re.sub(r"\s*\|\s*LCW\s*$", "", title).strip()
+            # С октября 2026 og:title бывает рекламным «Tişört - LC WAIKIKI -
+            # 359,99 TL»: тип и цена вместо названия — берём <title>.
+            if not self.PRICE_RE.search(title):
+                return re.sub(r"\s*\|\s*LCW\s*$", "", title).strip()
 
         title_tag = soup.find("title")
         if title_tag:
@@ -1296,8 +1336,3 @@ class LcwParser(BaseScraper):
     def _extract_category_id(self, url: str) -> str:
         match = self.CATEGORY_PATH_RE.search(urlparse(url).path)
         return match.group(1) if match else ""
-
-    def _extract_category_name_from_url(self, category_url: str) -> str:
-        slug = urlparse(category_url).path.strip("/").split("/")[-1]
-        slug = re.sub(r"-t-\d+$", "", slug)
-        return clean_text(slug.replace("-", " "))

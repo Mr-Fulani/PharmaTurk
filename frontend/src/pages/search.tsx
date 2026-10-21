@@ -11,7 +11,6 @@ const SourcingRequestForm = dynamic(() => import('../components/SourcingRequestF
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { gtmSearch } from '../lib/gtm'
-import { ymReachGoal } from '../lib/ym'
 
 export default function SearchPage() {
   const router = useRouter()
@@ -30,7 +29,6 @@ export default function SearchPage() {
       return
     }
     gtmSearch(q)
-    ymReachGoal('search', { query: q })
     let cancelled = false
     const run = async () => {
       setLoading(true)

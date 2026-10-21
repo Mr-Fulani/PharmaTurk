@@ -5,7 +5,7 @@ import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, CData, NavigableString, Tag
 from celery.exceptions import SoftTimeLimitExceeded
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
@@ -135,6 +135,14 @@ class IlacFiyatiParser(BaseScraper):
         "Sitemizde yer alan içerik bilgi amaçlı",
     )
 
+    # Теги, с которых в тексте раздела начинается новая строка. Остальные
+    # (<b>, <sup>, <sub>, <a>, <i>, <span>…) строчные: их текст остаётся в строке.
+    BLOCK_TAGS = frozenset({
+        "address", "article", "blockquote", "br", "dd", "div", "dl", "dt",
+        "h1", "h2", "h3", "h4", "h5", "h6", "hr", "li", "ol", "p", "pre", "section",
+        "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+    })
+
     def get_name(self) -> str:
         """Возвращает уникальное имя парсера."""
         return "ilacfiyati"
@@ -178,13 +186,8 @@ class IlacFiyatiParser(BaseScraper):
         """Авточепочка по ?pg= — для корневых каталогов и разделов БАДов."""
         return cls.is_ilacfiyati_listing_url(url)
 
-    def _extract_listing_product_urls(self, html: str) -> List[str]:
-        soup = BeautifulSoup(html, "html.parser")
-        urls = []
-
-        # Categories and real product cards use the same /ilaclar/<slug>
-        # shape. Scope extraction to the search-result cards so navigation
-        # and filter links cannot be persisted as products.
+    def _listing_results_root(self, soup: BeautifulSoup):
+        """Блок «Arama Sonuçları» листинга или ``None``, если его нет."""
         result_heading = next(
             (
                 heading
@@ -194,11 +197,38 @@ class IlacFiyatiParser(BaseScraper):
             ),
             None,
         )
-        results_root = (
+        return (
             result_heading.find_parent("div", class_="row")
             if result_heading is not None
             else None
         )
+
+    def parse_categories(self) -> List[Dict[str, Any]]:
+        """Весь сайт = два корневых каталога с полной пагинацией: лекарства и БАДы."""
+        origin = "https://ilacfiyati.com"
+        return [
+            {"name": "Лекарства", "url": f"{origin}/ilaclar", "external_id": "ilaclar",
+             "source": self.get_name()},
+            {"name": "БАДы", "url": f"{origin}/takviye-edici-gida",
+             "external_id": "takviye-edici-gida", "source": self.get_name()},
+        ]
+
+    @staticmethod
+    def _inside_analog_block(node) -> bool:
+        return bool(
+            node.find_parent(class_="medicine-item")
+            or node.find_parent(id="active-ingredient-equivalent")
+            or node.find_parent(id="sgk-equivalent")
+        )
+
+    def _extract_listing_product_urls(self, html: str) -> List[str]:
+        soup = BeautifulSoup(html, "html.parser")
+        urls = []
+
+        # Categories and real product cards use the same /ilaclar/<slug>
+        # shape. Scope extraction to the search-result cards so navigation
+        # and filter links cannot be persisted as products.
+        results_root = self._listing_results_root(soup)
         if results_root is None:
             self.logger.warning(
                 "IlacFiyati: catalog results container was not found"
@@ -319,6 +349,23 @@ class IlacFiyatiParser(BaseScraper):
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
         return text[:12000]
 
+    def _block_text(self, node: Tag) -> str:
+        """Текст узла: новая строка только на границе блочного элемента (BLOCK_TAGS).
+
+        get_text("\\n") ставит перевод строки между любыми тегами, и строчный тег
+        внутри предложения резал его: «Somatropine veya <b>NORDITROPIN</b><sup>®</sup>'un …»
+        давало три строки, а строка раздела — абзац памяти переводов. Строчные теги
+        остаются в строке с исходными пробелами; перевод строки в исходнике HTML — пробел.
+        """
+        parts = []
+        for child in node.children:
+            if isinstance(child, Tag):
+                text = self._block_text(child)
+                parts.append(f"\n{text}\n" if child.name in self.BLOCK_TAGS else text)
+            elif type(child) in (NavigableString, CData):
+                parts.append(re.sub(r"\s*\n\s*", " ", str(child)))
+        return "".join(parts)
+
     def _extract_tab_text(self, soup: BeautifulSoup, tab_key: str) -> str:
         # Current pages contain all sections inline. Never fall back to the
         # entire page: that mixes instructions, other medicines and navigation.
@@ -327,9 +374,15 @@ class IlacFiyatiParser(BaseScraper):
             if root is None:
                 return ""
             fragment = BeautifulSoup(str(root), "html.parser")
+            # Рекламу сайт вставляет и посреди предложения: «ARYOSEVEN<div class="text-center
+            # my-4"><ins class="adsbygoogle">…</div><sup>®</sup>'in» — без обёртки её <div>
+            # разрезал бы строку.
+            for node in fragment.select("div:has(> ins.adsbygoogle)"):
+                if not node.get_text(strip=True):
+                    node.decompose()
             for node in fragment.select("script, style, ins, button, .adsbygoogle"):
                 node.decompose()
-            return self._clean_tab_text(fragment.get_text("\n", strip=True))
+            return self._clean_tab_text(self._block_text(fragment))
 
         tab = self.DETAIL_TABS.get(tab_key) or {}
         keywords = tuple(self._normalize_tr_key(k) for k in tab.get("keywords", ()))
@@ -540,6 +593,17 @@ class IlacFiyatiParser(BaseScraper):
                     )
 
                 product_urls = self._extract_listing_product_urls(html)
+
+                if not product_urls and self._listing_results_root(
+                    BeautifulSoup(html, "html.parser")
+                ) is None:
+                    # Конец каталога и пустая выборка сохраняют заголовок
+                    # «Arama Sonuçları»; без него это смена вёрстки или
+                    # страница защиты, а не «товары закончились».
+                    raise IlacFiyatiSourceError(
+                        f"IlacFiyati: на странице каталога нет блока «Arama Sonuçları» "
+                        f"(вёрстка изменилась или это страница защиты): {url}"
+                    )
 
                 if not product_urls:
                     self.stop_reason = (
@@ -784,6 +848,9 @@ class IlacFiyatiParser(BaseScraper):
                                 break
             if price is None and not price_unpublished:
                 for text_node in soup.find_all(string=STANDALONE_PRICE_RE):
+                    if self._inside_analog_block(text_node):
+                        # Цены аналогов на той же странице — не цена этого препарата.
+                        continue
                     match = STANDALONE_PRICE_RE.search(str(text_node))
                     parsed_price = normalize_price(match["amount"] or match["amount_after"])
                     if parsed_price is not None and parsed_price > 0:

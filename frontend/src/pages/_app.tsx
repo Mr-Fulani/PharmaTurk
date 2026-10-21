@@ -15,8 +15,7 @@ import { useCartStore } from '../store/cart'
 import { initCartSession } from '../lib/api'
 import { appWithTranslation } from 'next-i18next'
 import { useCookieConsent } from '../hooks/useCookieConsent'
-import { gtmPageView } from '../lib/gtm'
-import { ga4PageView } from '../lib/gtag'
+import { gtmPageView, handleContactLinkClick } from '../lib/gtm'
 import { ymPageHit } from '../lib/ym'
 // eslint-disable-next-line
 const nextI18NextConfig = require('../../next-i18next.config.js')
@@ -79,13 +78,20 @@ function App({ Component, pageProps }: AppProps) {
     }
   }, [router])
 
+  // ─── Аналитика: клики по WhatsApp/Telegram/телефону/email в любом месте сайта ─
+  useEffect(() => {
+    document.addEventListener('click', handleContactLinkClick, true)
+    return () => document.removeEventListener('click', handleContactLinkClick, true)
+  }, [])
+
   // ─── Аналитика: pageview при каждой смене маршрута ────────────────────────
+  // GA4 считает переходы сам (расширенная статистика: «изменения истории браузера»),
+  // ручной page_view в gtag задваивал просмотры
   useEffect(() => {
     if (consent !== 'accepted') return
 
     const handleRouteChangeComplete = (url: string) => {
       gtmPageView(url)
-      ga4PageView(url)
       ymPageHit(url)
     }
 
@@ -125,7 +131,8 @@ ym(${YM_ID},'init',{
   clickmap: true,
   trackLinks: true,
   accurateTrackBounce: true,
-  webvisor: false
+  webvisor: false,
+  ecommerce: 'dataLayer'
 });
               `.trim(),
             }}

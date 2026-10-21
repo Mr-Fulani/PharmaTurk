@@ -15,7 +15,6 @@ from apps.scrapers.services import ScraperIntegrationService, ScrapingSession
 from apps.scrapers.models import ScraperConfig
 from apps.catalog.models import Product, BookProduct
 from apps.scrapers.parsers.ummaland import UmmalandParser
-from apps.scrapers.parsers.ilacabak import IlacabakParser
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -41,9 +40,6 @@ def run_test():
     if "ummaland" in domain or "umma-land" in domain:
         parser_class = UmmalandParser
         parser_name = "ummaland"
-    elif "ilacabak" in domain:
-        parser_class = IlacabakParser
-        parser_name = "ilacabak"
     else:
         print(f"Unknown domain: {domain}")
         return

@@ -5,8 +5,7 @@ import api, { initCartSession } from '../lib/api'
 import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerification'
 import { useCartStore } from '../store/cart'
 import { isBaseProductType } from '../lib/product'
-import { gtmAddToCart } from '../lib/gtm'
-import { ymReachGoal } from '../lib/ym'
+import { gtmAddToCart, type GtmEcommerceItem } from '../lib/gtm'
 
 interface BuyNowButtonProps {
   productId?: number
@@ -16,6 +15,9 @@ interface BuyNowButtonProps {
   requireSize?: boolean
   className?: string
   quantity?: number
+  /** Товар для аналитики (как в view_item карточки): название, тип, цена */
+  analyticsItem?: GtmEcommerceItem
+  analyticsCurrency?: string
 }
 
 /**
@@ -29,7 +31,9 @@ export default function BuyNowButton({
   size,
   requireSize = false,
   className,
-  quantity = 1
+  quantity = 1,
+  analyticsItem,
+  analyticsCurrency,
 }: BuyNowButtonProps) {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -69,8 +73,12 @@ export default function BuyNowButton({
       } else {
         await refresh()
       }
-      gtmAddToCart({ item_id: productId ?? productSlug ?? '', item_name: productSlug || String(productId ?? '') }, quantity)
-      ymReachGoal('buy_now')
+      gtmAddToCart(
+        { ...(analyticsItem ?? { item_id: productId ?? productSlug ?? '', item_name: productSlug || String(productId ?? '') }), ...(size && { item_variant: size }) },
+        quantity,
+        analyticsCurrency,
+        'buy_now',
+      )
       router.push('/cart')
     } catch (err: any) {
       const conflict = getCartVerificationError(err)

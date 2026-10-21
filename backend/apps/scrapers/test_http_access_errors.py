@@ -4,7 +4,6 @@ import pytest
 
 from apps.catalog.services import IkeaService
 from apps.http_errors import ExternalAccessBlockedError
-from apps.scrapers.parsers.ilacabak import IlacabakParser
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
 from apps.scrapers.parsers.instagram import InstagramParser
 from apps.scrapers.parsers.lcw import LcwParser
@@ -60,10 +59,6 @@ def test_base_scraper_keeps_404_as_not_found(monkeypatch):
     ("parser", "run"),
     [
         (
-            IlacabakParser(),
-            lambda parser: parser.parse_product_list("https://ilacabak.com/category", max_pages=1),
-        ),
-        (
             IlacFiyatiParser(base_url="https://www.ilacfiyati.com"),
             lambda parser: list(
                 parser.parse_product_list("https://www.ilacfiyati.com/ilaclar", max_pages=1)
@@ -71,8 +66,8 @@ def test_base_scraper_keeps_404_as_not_found(monkeypatch):
         ),
         (
             UmmalandParser(base_url="https://umma-land.com"),
-            lambda parser: parser.parse_product_list(
-                "https://umma-land.com/product-category/books", max_pages=1
+            lambda parser: list(
+                parser.parse_product_list("https://umma-land.com/product-category/books", max_pages=1)
             ),
         ),
     ],
@@ -116,10 +111,10 @@ def test_ummaland_missing_category_id_is_a_task_error(monkeypatch):
     monkeypatch.setattr(parser, "_get_category_id", lambda url: None)
 
     with pytest.raises(RuntimeError, match="не удалось найти ID категории"):
-        parser.parse_product_list(
+        list(parser.parse_product_list(
             "https://umma-land.com/product-category/books",
             max_pages=1,
-        )
+        ))
 
 
 @pytest.mark.parametrize("method_name", ["fetch_item_details", "search_items"])

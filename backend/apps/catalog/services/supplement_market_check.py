@@ -677,7 +677,8 @@ class SupplementMarketCheckService:
                 previous_price != price or str(supplement.currency or "").upper() != currency
             )
             if price_changed:
-                supplement.old_price = previous_price
+                # Прежняя цена — не зачёркнутая цена источника, иначе ложная скидка.
+                supplement.old_price = None
                 supplement.price = price
                 supplement.currency = currency
                 supplement.save()

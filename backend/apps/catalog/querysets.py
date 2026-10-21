@@ -17,3 +17,11 @@ def non_public_shadow_product_q(prefix: str = '') -> models.Q:
             & models.Q(**{field('external_data__is_stub'): True})
         )
     )
+
+
+def source_variant_q() -> models.Q:
+    """Доменные строки — копии вариантов исходного товара, а не отдельные товары."""
+    return (
+        models.Q(external_data__has_key='source_variant_id')
+        | models.Q(external_data__has_key='source_variant_slug')
+    )

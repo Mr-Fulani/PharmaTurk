@@ -2,8 +2,10 @@
 import hashlib
 import logging
 import os
+import re
 import time
 from io import BytesIO
+from urllib.parse import urlparse
 
 import httpx
 from django.core.files.base import ContentFile
@@ -16,6 +18,36 @@ from apps.catalog.utils.storage_paths import (
 )
 
 logger = logging.getLogger(__name__)
+
+# CDN LC Waikiki и FLO (img-lcwaikiki.mncdn.com, floimages.mncdn.com) отвечают 422
+# на запрос без браузерного User-Agent, а ScraperConfig.user_agent по умолчанию пуст.
+DEFAULT_MEDIA_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/140.0.0.0 Safari/537.36"
+)
+
+
+def _with_default_user_agent(headers):
+    """Заголовки запроса медиа: User-Agent вызывающего сохраняется, иначе — браузерный."""
+    result = dict(headers or {})
+    if not any(str(key).lower() == "user-agent" for key in result):
+        result["User-Agent"] = DEFAULT_MEDIA_USER_AGENT
+    return result
+
+
+def source_url_fingerprint(url) -> str:
+    """Отпечаток исходного URL, который входит в имя parsed-файла."""
+    return hashlib.md5(str(url or "").encode("utf-8")).hexdigest()[:12]
+
+
+def parsed_media_fingerprint(url) -> str:
+    """Отпечаток исходного URL из имени файла products/parsed/… ('' для других URL)."""
+    path = urlparse(str(url or "")).path
+    if "/products/parsed/" not in "/" + path.lstrip("/"):
+        return ""
+    fingerprint = os.path.splitext(os.path.basename(path))[0].rsplit("-", 1)[-1]
+    return fingerprint if re.fullmatch(r"[0-9a-f]{12}", fingerprint) else ""
 
 
 def _ranged_download(client, url, headers, chunk=512 * 1024, max_bytes=200 * 1024 * 1024):
@@ -65,6 +97,11 @@ def _get_media_bytes(client, url, headers):
     return _ranged_download(client, url, headers), ""
 
 
+def _looks_like_html(content) -> bool:
+    head = bytes(content[:512]).lstrip().lower()
+    return head.startswith((b"<!doctype html", b"<html", b"<head", b"<body"))
+
+
 def download_and_optimize_parsed_media(
     url,
     parser_name,
@@ -82,7 +119,7 @@ def download_and_optimize_parsed_media(
         parser_name: Имя парсера (instagram, ilacabak, zara и т.д.)
         product_id: ID или external_id товара
         index: Индекс файла (0 для главного)
-        headers: Опциональные HTTP-заголовки
+        headers: Опциональные HTTP-заголовки (без User-Agent — DEFAULT_MEDIA_USER_AGENT)
         timeout: Таймаут запроса в секундах
         sub_folder: Опциональная подпапка для сохранения (например, имя аккаунта)
 
@@ -94,6 +131,7 @@ def download_and_optimize_parsed_media(
 
     try:
         parser_slug = parser_name.lower().replace(" ", "-").replace("_", "-")
+        headers = _with_default_user_agent(headers)
 
         content = None
         content_type = ""
@@ -136,8 +174,7 @@ def download_and_optimize_parsed_media(
             else:
                 ext = ext or ".jpg"
 
-            raw_hash = str(hashlib.md5(url.encode("utf-8")).hexdigest())
-            url_hash = "".join(c for i, c in enumerate(raw_hash) if i < 12)
+            url_hash = source_url_fingerprint(url)
             filename = f"{parser_slug}-{product_id}-{index}-{url_hash}{ext}"
             path = get_parsed_media_upload_path(parser_name, media_type, filename, sub_folder)
             if default_storage.exists(path):
@@ -155,6 +192,11 @@ def download_and_optimize_parsed_media(
             try:
                 file_to_save = optimizer.optimize_image(BytesIO(content))
             except Exception as e:
+                if _looks_like_html(content):
+                    # Заглушка CDN/антибота (Range-фолбэк принимает любой 200):
+                    # сохранённая как .jpg, она становится битой картинкой в R2.
+                    logger.warning("Parsed media is an HTML page, not an image: %s", url)
+                    return ""
                 logger.warning("Image optimization failed, saving as-is: %s", e)
                 file_to_save = ContentFile(content)
         else:

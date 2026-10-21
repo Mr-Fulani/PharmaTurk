@@ -30,10 +30,12 @@
 | [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md) | что занимает диск прода, очистка образов при деплое, лимиты Redis и ротация логов | снимок 2026-10-18 |
 | [DB_BACKUP.md](DB_BACKUP.md) | ежедневный бэкап базы в отдельный бакет R2, проверка, включение и восстановление с нуля на новом сервере | 2026-10-19 |
 | [PROD_MEMORY.md](PROD_MEMORY.md) | лимиты памяти контейнеров, брокер и кэш в разных Redis, swap, применение без потери очередей | после инцидента 2026-10-19 |
-| [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md) | ночная чистка сессий Django и логов парсеров, первая чистка, VACUUM / VACUUM FULL и их блокировки | снимок 2026-10-19 |
+| [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md) | ночная чистка сессий Django и логов парсеров, первая чистка, VACUUM / VACUUM FULL и их блокировки; autovacuum таблиц товаров после массовых правок | снимок 2026-10-19, autovacuum — 2026-10-21 |
 | [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict) с Origin Certificate на 443, закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-10-19 |
 | [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md) | под root: обновления ОС и Docker, swap, журнал systemd, перезагрузка в тихий час | 2026-10-19 |
 | [AUDIT_2026-10-19_PARSERS_CATALOG.md](AUDIT_2026-10-19_PARSERS_CATALOG.md) | почему не запускаются Instagram/UmmaLand/Akakce, товары без картинки и цены, сброс интервалов beat при деплое | отчёт 2026-10-19 |
+| [AUDIT_2026-10-20_PARSERS.md](AUDIT_2026-10-20_PARSERS.md) | живые пробы всех 13 парсеров, найденные и исправленные баги, что решить по Instagram/UmmaLand/akakce/ilacabak | отчёт 2026-10-20 |
+| [PARSER_MODES.md](PARSER_MODES.md) | три режима каждого парсера (товар, категория до конца, весь сайт / профиль Instagram), как запустить в админке, откуда берутся категории | 2026-10-21 |
 | [PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md) | Bright Data proxy/Web Unlocker: тарифы, бюджет, возможности и безопасное переиспользование | актуализирован 2026-08-31 |
 | [SOURCE_OFFER_CART_API.md](SOURCE_OFFER_CART_API.md) | Cart API: verification fields, issue codes, 409/503 и действия клиента | актуализирован 2026-08-27 |
 | [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | актуализирован и проверен 2026-08-21 |
@@ -47,6 +49,7 @@
 - [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) — безопасный backfill характеристик мебели;
 - [AUTO_PARTS_AI_DESIGN.md](AUTO_PARTS_AI_DESIGN.md) — дизайн домена автозапчастей: OEM-номера, применимость, обработка без LLM;
 - [HOW_TO_ORDER_PAGE.md](HOW_TO_ORDER_PAGE.md) — страница «Как заказать»: разделы, SEO, позиция баннеров `how_to_order`;
+- [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md) — скорость страницы бренда: замеры, детоаст `external_data`, частичные индексы 0217, `view=card`;
 - [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`) и бренды производителей лекарств/БАДов;
 - [HYDRATION_ERRORS_GUIDE.md](HYDRATION_ERRORS_GUIDE.md) — диагностика hydration;
 - [TZ_SEO_PERF_FIXES.md](TZ_SEO_PERF_FIXES.md) — архивное ТЗ и отчёт SEO/performance от 2026-06-12;
@@ -63,7 +66,8 @@
 ### AI, рекомендации и фоновые задачи
 
 - [AI_GUIDE.md](../AI_GUIDE.md) — основной AI workflow;
-- [AI_RUNS_ADMIN_GUIDE.md](AI_RUNS_ADMIN_GUIDE.md) — пошагово: массовый AI-прогон и обслуживание кнопками в админке;
+- [AI_RUNS_ADMIN_GUIDE.md](AI_RUNS_ADMIN_GUIDE.md) — пошагово: массовый AI-прогон, обслуживание и перевод абзацев инструкций (Batch API) кнопками в админке;
+- [MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md](MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md) — сдвинутые переводы в памяти абзацев инструкций: правила без LLM, цифры, `medicine_paragraph_audit` и порядок действий на проде;
 - [AI_MODULE_OVERVIEW.md](../AI_MODULE_OVERVIEW.md) — состав AI-модуля;
 - [AI_TEMPLATES.md](../AI_TEMPLATES.md) — AI-шаблоны;
 - [AI_TEST_COMMANDS.md](../AI_TEST_COMMANDS.md) и [AI_QUICK_TEST.md](../AI_QUICK_TEST.md) — специализированные проверки;
@@ -75,6 +79,7 @@ AI и VAPI HTTP API являются административными и тр�
 ### Импорт и парсеры
 
 - [SCRAPERS_GUIDE.md](../SCRAPERS_GUIDE.md) — общий workflow парсеров;
+- [PARSER_MODES.md](PARSER_MODES.md) — режимы «товар / категория / весь сайт» и как их запускать;
 - [INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md) и [quickstart](../backend/INSTAGRAM_PARSER_QUICKSTART.md);
 - [PARSER_R2_GUIDE.md](../PARSER_R2_GUIDE.md) — storage для результатов парсинга;
 - [UMMALAND_PARSER_GUIDE.md](../UMMALAND_PARSER_GUIDE.md) — доменный parser guide.
