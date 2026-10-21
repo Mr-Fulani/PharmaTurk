@@ -734,6 +734,7 @@ def test_shifted_medicine_paragraphs_go_to_moderation_and_name_the_paragraphs():
     preview = build_change_preview(log, semantic_report=report)
     storage_rows = [row for row in preview if row.label == "Условия хранения"]
     assert storage_rows and all(row.decision == "blocked" for row in storage_rows)
+    assert storage_rows[0].reason.startswith("Абзацы 1–")
     assert "похожи на чужой перевод" in storage_rows[0].reason
     form = AIProcessingLogForm(instance=log)
     help_text = form.fields["medicine_storage_conditions_ru"].help_text
@@ -756,6 +757,20 @@ def test_shifted_medicine_paragraphs_go_to_moderation_and_name_the_paragraphs():
     )
     assert "условия хранения" in message and "похожи на чужой перевод" in message
     assert "перезапустите AI" in message
+
+
+def test_paragraph_reason_in_preview_keeps_locale_case():
+    medicine = _medicine_with_storage("moderation-paragraph-reason-case")
+    log = _storage_log(medicine, shifted=False)
+    report = SemanticValidationReport(
+        rejected_fields={"medicine_translation:storage_conditions"},
+        reasons=["medicine_paragraph_mismatch"],
+        paragraph_findings={"storage_conditions": [{"number": 2, "problems": ["ru_en_mismatch"]}]},
+    )
+
+    rows = [row for row in build_change_preview(log, semantic_report=report) if row.label == "Условия хранения"]
+
+    assert rows[0].reason == "Абзац 2 похож на чужой перевод: RU и EN расходятся — раздел не будет применён"
 
 
 def test_correct_medicine_paragraphs_are_applied():

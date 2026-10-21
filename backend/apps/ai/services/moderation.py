@@ -518,10 +518,9 @@ def _medicine_rows(
             ):
                 blocked_reason = "Поле содержит непереведённый турецкий текст"
             if field in paragraph_findings and not preserved_reason:
-                blocked_reason = (
-                    describe_paragraph_findings(paragraph_findings[field]).capitalize()
-                    + " — раздел не будет применён"
-                )
+                description = describe_paragraph_findings(paragraph_findings[field])
+                # Не capitalize(): он опустил бы «RU и EN» в «ru и en».
+                blocked_reason = description[:1].upper() + description[1:] + " — раздел не будет применён"
             _row(
                 rows,
                 f"Лекарство {locale.upper()}",
