@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('catalog', '0217_brand_storefront_nonpublic_indexes'),
+        ('catalog', '0218_product_tables_autovacuum'),
     ]
 
     operations = [
