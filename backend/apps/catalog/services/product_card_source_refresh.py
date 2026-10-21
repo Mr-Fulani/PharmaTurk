@@ -29,6 +29,7 @@ from apps.catalog.services.source_offer_verification import (
     SourceOfferVerificationService,
     manual_only_source_keys,
 )
+from apps.catalog.utils.old_price import source_old_price
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.base.offers import OfferGone, OfferNotFound
 from apps.scrapers.models import ScraperConfig
@@ -157,6 +158,16 @@ def _currency(value: Any) -> str:
     if not re.fullmatch(r"[A-Z]{3,5}", code):
         return ""
     return code
+
+
+def _variant_old_price(spec: dict[str, Any], price: Decimal) -> dict[str, Decimal | None]:
+    """Зачёркнутая цена цвета, если парсер её передаёт (ключ ``old_price``).
+
+    Без ключа парсер зачёркнутую цену варианта не знает — поле не трогаем.
+    """
+    if "old_price" not in spec:
+        return {}
+    return {"old_price": source_old_price(_decimal(spec.get("old_price")), price)}
 
 
 class ProductCardSourceRefreshService:
@@ -771,6 +782,7 @@ class ProductCardSourceRefreshService:
                 available = self._availability(variant_snapshot, spec.get("is_available"))
                 stock = self._stock(variant_snapshot, available=available)
 
+            variant_old_price = _variant_old_price(spec, price)
             color = str(spec.get("color") or "").strip()[:50]
             display_name = str(spec.get("display_name") or "").strip()[:500]
             name = display_name or " — ".join(value for value in (domain_product.name, color) if value)
@@ -782,6 +794,7 @@ class ProductCardSourceRefreshService:
                 "gtin": str(spec.get("gtin") or "")[:100],
                 "mpn": str(spec.get("mpn") or "")[:100],
                 "price": price,
+                **variant_old_price,
                 "currency": currency,
                 "external_url": str(spec.get("external_url") or "")[:2000],
                 "sort_order": int(spec.get("sort_order") or index),
@@ -809,6 +822,7 @@ class ProductCardSourceRefreshService:
                 update_values: dict[str, Any] = {}
                 for field, value in {
                     "price": price,
+                    **variant_old_price,
                     "currency": currency,
                     "is_available": available,
                     "stock_quantity": stock,
@@ -871,11 +885,13 @@ class ProductCardSourceRefreshService:
             snapshot = by_option.get((external_id, ""))
             available = self._availability(snapshot, spec.get("is_available"))
             stock = self._stock(snapshot, available=available)
+            variant_old_price = _variant_old_price(spec, price)
             defaults = {
                 "name": str(spec.get("display_name") or domain_product.name)[:500],
                 "color": str(spec.get("color") or "")[:50],
                 "sku": str(spec.get("sku") or external_id)[:100],
                 "price": price,
+                **variant_old_price,
                 "currency": currency,
                 "external_url": str(spec.get("external_url") or "")[:2000],
                 "sort_order": int(spec.get("sort_order") or index),
@@ -901,6 +917,7 @@ class ProductCardSourceRefreshService:
             updates: dict[str, Any] = {}
             for field, value in {
                 "price": price,
+                **variant_old_price,
                 "currency": currency,
                 "is_available": available,
                 "stock_quantity": stock,
@@ -1034,6 +1051,7 @@ class ProductCardSourceRefreshService:
         product: Product,
         *,
         price: Decimal,
+        old_price: Decimal | None,
         currency: str,
         available: bool,
         stock: int | None,
@@ -1047,6 +1065,10 @@ class ProductCardSourceRefreshService:
             "currency": currency,
             "is_available": available,
         }
+        if "old_price" in fields:
+            # Доменная карточка при save() копирует old_price в Product —
+            # без этой записи прежняя зачёркнутая цена вернулась бы обратно.
+            values["old_price"] = old_price
         if "stock_quantity" in fields:
             values["stock_quantity"] = stock
         domain.__class__.objects.filter(pk=domain.pk).update(**values)
@@ -1067,6 +1089,9 @@ class ProductCardSourceRefreshService:
             raise ProductCardRefreshError(
                 "invalid_payload", "Invalid base price", retryable=False
             )
+        # Зачёркнутая цена — только та, что показывает источник, и только выше
+        # текущей (DEVELOPMENT_RULES §5.1): акция закончилась — old_price пустой.
+        old_price = source_old_price(_decimal(scraped.old_price), price)
         available, stock = self._aggregate_stock(snapshots)
         attrs = scraped.attributes if isinstance(scraped.attributes, dict) else {}
         counts = {"variants_created": 0, "variants_updated": 0, "sizes_created": 0, "sizes_updated": 0}
@@ -1099,6 +1124,7 @@ class ProductCardSourceRefreshService:
         self._update_domain_price_stock(
             product,
             price=price,
+            old_price=old_price,
             currency=currency,
             available=available,
             stock=stock,
@@ -1111,6 +1137,7 @@ class ProductCardSourceRefreshService:
         # metadata or media manifests even when save(update_fields=...) is used.
         Product.objects.filter(pk=product.pk).update(
             price=price,
+            old_price=old_price,
             currency=currency,
             is_available=available,
             stock_quantity=stock,

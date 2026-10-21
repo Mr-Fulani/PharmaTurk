@@ -14,6 +14,8 @@ from apps.catalog.models import (
     ClothingProduct,
     ClothingVariant,
     ClothingVariantSize,
+    FurnitureProduct,
+    FurnitureVariant,
     PriceHistory,
     Product,
     ProductSourceOffer,
@@ -220,11 +222,12 @@ def parsed_clothing(db):
     return product, domain, black, red
 
 
-def _scraped(*, external_id="zara-100"):
-    return ScrapedProduct(
+def _scraped(*, external_id="zara-100", old_price=None, variant_old_prices=None):
+    scraped = ScrapedProduct(
         name="Supplier title must not overwrite",
         description="Supplier description must not overwrite",
         price=120,
+        old_price=old_price,
         currency="TRY",
         url="https://www.zara.com/tr/tr/test-product-p100.html",
         external_id=external_id,
@@ -263,6 +266,11 @@ def _scraped(*, external_id="zara-100"):
             ]
         },
     )
+    # Парсеры FLO/Zara/Inditex передают зачёркнутую цену цвета ключом old_price.
+    for spec in scraped.attributes["fashion_variants"]:
+        if spec["external_id"] in (variant_old_prices or {}):
+            spec["old_price"] = variant_old_prices[spec["external_id"]]
+    return scraped
 
 
 def test_flo_card_fetch_explicitly_requests_web_unlocker(settings, monkeypatch):
@@ -547,7 +555,9 @@ def test_success_updates_only_raw_price_inventory_and_observed_options(
     red.refresh_from_db()
     assert product.price == Decimal("120.00")
     assert domain.price == Decimal("120.00")
-    assert product.old_price == domain.old_price == Decimal("160.00")
+    # Источник не показал зачёркнутую цену — прежняя «скидка» не остаётся.
+    assert product.old_price is None
+    assert domain.old_price is None
     assert product.currency == domain.currency == "TRY"
     assert product.description == "Manually curated description"
     assert domain.description == "Manually curated description"
@@ -557,6 +567,7 @@ def test_success_updates_only_raw_price_inventory_and_observed_options(
     assert black.name == "Curated black title"
     assert black.main_image == "https://manual.example/black.jpg"
     assert black.price == Decimal("120.00")
+    # Без ключа old_price у цвета парсер его зачёркнутую цену не знает — не трогаем.
     assert black.old_price == Decimal("150.00")
     assert black.is_available is True
     assert black.stock_quantity is None
@@ -580,6 +591,134 @@ def test_success_updates_only_raw_price_inventory_and_observed_options(
     ).exists()
     # The service stores source truth; existing currency + product markup stays public-only.
     assert apply_product_markup(product.price, product) == Decimal("132.00")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("source_old_price", [None, 120, 110])
+def test_card_refresh_clears_strikethrough_when_source_sale_ended(
+    parsed_clothing,
+    monkeypatch,
+    source_old_price,
+):
+    """Акция у источника закончилась: цена выросла, старая зачёркнутая не остаётся.
+
+    Зачёркнутая цена не выше текущей — тоже не скидка (DEVELOPMENT_RULES §5.1).
+    """
+    product, domain, black, _red = parsed_clothing
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(
+        service,
+        "_fetch_product",
+        lambda target: _scraped(
+            old_price=source_old_price,
+            variant_old_prices={"black": source_old_price},
+        ),
+    )
+
+    result = service.run(product.pk)
+
+    assert result["status"] == "succeeded"
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    black.refresh_from_db()
+    assert product.price == domain.price == black.price == Decimal("120.00")
+    assert product.old_price is None
+    assert domain.old_price is None
+    assert black.old_price is None
+    # Сохранение доменной карточки синхронизирует её в Product: старое значение
+    # не возвращается.
+    domain.save()
+    product.refresh_from_db()
+    assert product.old_price is None
+
+
+@pytest.mark.django_db
+def test_card_refresh_writes_source_strikethrough_when_sale_starts(
+    parsed_clothing,
+    monkeypatch,
+):
+    product, domain, black, _red = parsed_clothing
+    Product.objects.filter(pk=product.pk).update(old_price=None)
+    ClothingProduct.objects.filter(pk=domain.pk).update(old_price=None)
+    ClothingVariant.objects.filter(pk=black.pk).update(old_price=None)
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(
+        service,
+        "_fetch_product",
+        lambda target: _scraped(
+            old_price=150,
+            variant_old_prices={"black": 150, "blue": 160},
+        ),
+    )
+
+    result = service.run(product.pk)
+
+    assert result["status"] == "succeeded"
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    black.refresh_from_db()
+    assert product.price == domain.price == Decimal("120.00")
+    assert product.old_price == domain.old_price == Decimal("150.00")
+    assert black.old_price == Decimal("150.00")
+    assert domain.variants.get(external_id="blue").old_price == Decimal("160.00")
+    domain.save()
+    product.refresh_from_db()
+    assert product.old_price == Decimal("150.00")
+
+
+@pytest.mark.django_db
+def test_furniture_refresh_sets_variant_strikethrough_only_from_payload():
+    furniture = FurnitureProduct.objects.create(
+        name="Parsed furniture",
+        slug=f"parsed-furniture-{uuid4().hex}",
+        price=Decimal("100.00"),
+        currency="TRY",
+        external_id="ikea-1",
+        external_data={"source": "ikea"},
+    )
+    furniture.refresh_from_db()
+    product = furniture.base_product
+    on_sale = FurnitureVariant.objects.create(
+        product=furniture,
+        external_id="ikea-sale",
+        color="white",
+        price=Decimal("100.00"),
+        currency="TRY",
+    )
+    without_source_data = FurnitureVariant.objects.create(
+        product=furniture,
+        external_id="ikea-plain",
+        color="black",
+        price=Decimal("100.00"),
+        currency="TRY",
+        old_price=Decimal("140.00"),
+    )
+
+    ProductCardSourceRefreshService()._sync_furniture_inventory(
+        product,
+        [
+            {
+                "external_id": "ikea-sale",
+                "price": 90,
+                "old_price": 120,
+                "currency": "TRY",
+                "is_available": True,
+            },
+            {
+                "external_id": "ikea-plain",
+                "price": 90,
+                "currency": "TRY",
+                "is_available": True,
+            },
+        ],
+        [],
+    )
+
+    on_sale.refresh_from_db()
+    without_source_data.refresh_from_db()
+    assert on_sale.price == Decimal("90.00")
+    assert on_sale.old_price == Decimal("120.00")
+    assert without_source_data.old_price == Decimal("140.00")
 
 
 @pytest.mark.django_db
@@ -839,6 +978,7 @@ def test_supplement_single_offer_refresh_uses_commercial_adapter(monkeypatch):
         slug=f"parsed-supplement-{uuid4().hex}",
         price=Decimal("200.00"),
         currency="TRY",
+        old_price=Decimal("250.00"),
         external_id="reference-catalog-id",
         external_data={"source": "ilacfiyati"},
         is_available=True,
@@ -875,6 +1015,9 @@ def test_supplement_single_offer_refresh_uses_commercial_adapter(monkeypatch):
     supplement.refresh_from_db()
     offer.refresh_from_db()
     assert product.price == supplement.price == Decimal("150.00")
+    # Akakçe не показывает зачёркнутую цену: прежняя old_price не остаётся скидкой.
+    assert product.old_price is None
+    assert supplement.old_price is None
     assert product.is_available is True
     # Full-card reconcile must not erase seller diagnostics already owned by verifier.
     assert offer.response_metadata == {"seller_name": "Trusted seller"}
