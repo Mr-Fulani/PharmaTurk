@@ -2,8 +2,10 @@
 import hashlib
 import logging
 import os
+import re
 import time
 from io import BytesIO
+from urllib.parse import urlparse
 
 import httpx
 from django.core.files.base import ContentFile
@@ -32,6 +34,20 @@ def _with_default_user_agent(headers):
     if not any(str(key).lower() == "user-agent" for key in result):
         result["User-Agent"] = DEFAULT_MEDIA_USER_AGENT
     return result
+
+
+def source_url_fingerprint(url) -> str:
+    """Отпечаток исходного URL, который входит в имя parsed-файла."""
+    return hashlib.md5(str(url or "").encode("utf-8")).hexdigest()[:12]
+
+
+def parsed_media_fingerprint(url) -> str:
+    """Отпечаток исходного URL из имени файла products/parsed/… ('' для других URL)."""
+    path = urlparse(str(url or "")).path
+    if "/products/parsed/" not in "/" + path.lstrip("/"):
+        return ""
+    fingerprint = os.path.splitext(os.path.basename(path))[0].rsplit("-", 1)[-1]
+    return fingerprint if re.fullmatch(r"[0-9a-f]{12}", fingerprint) else ""
 
 
 def _ranged_download(client, url, headers, chunk=512 * 1024, max_bytes=200 * 1024 * 1024):
@@ -158,8 +174,7 @@ def download_and_optimize_parsed_media(
             else:
                 ext = ext or ".jpg"
 
-            raw_hash = str(hashlib.md5(url.encode("utf-8")).hexdigest())
-            url_hash = "".join(c for i, c in enumerate(raw_hash) if i < 12)
+            url_hash = source_url_fingerprint(url)
             filename = f"{parser_slug}-{product_id}-{index}-{url_hash}{ext}"
             path = get_parsed_media_upload_path(parser_name, media_type, filename, sub_folder)
             if default_storage.exists(path):

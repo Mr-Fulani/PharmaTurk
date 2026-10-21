@@ -73,7 +73,11 @@ from apps.catalog.models import (
 )
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.ikea_category_mapping import resolve_ikea_category
-from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
+from apps.catalog.utils.parser_media_handler import (
+    download_and_optimize_parsed_media,
+    parsed_media_fingerprint,
+    source_url_fingerprint,
+)
 from apps.catalog.utils.old_price import source_old_price
 import datetime
 
@@ -1985,10 +1989,15 @@ class ScraperIntegrationService:
             shared_source_to_r2.update(url_map)
             self._remap_attribute_urls(attributes, url_map)
 
-        # Медиа цветовых вариантов IKEA (отдельные sprCode, одна карточка FurnitureProduct)
-        fv = attributes.get("furniture_variants")
-        if isinstance(fv, list):
-            for spec in fv:
+        # Медиа цветовых вариантов: IKEA (furniture_variants — отдельные sprCode под одной
+        # карточкой мебели) и одежда/обувь (fashion_variants — LCW, FLO, Zara, Bershka,
+        # Pull&Bear, Massimo Dutti). Тот же лимит, оптимизация и общая карта URL, что у
+        # корневой галереи; иначе внешние URL цветов синхронно качал pre_save-сигнал.
+        for variants_key in ("furniture_variants", "fashion_variants"):
+            variants = attributes.get(variants_key)
+            if not isinstance(variants, list):
+                continue
+            for spec in variants:
                 if not isinstance(spec, dict):
                     continue
                 vid = str(spec.get("external_id") or product_id).strip() or product_id
@@ -2466,7 +2475,21 @@ class ScraperIntegrationService:
 
     def _same_parser_media(self, existing_image: Any, incoming_url: str) -> bool:
         """Match parsed and readable copies even though their URLs are different."""
-        if (getattr(existing_image, "image_url", "") or "") == incoming_url:
+        from apps.catalog.signals import is_internal_storage_url
+
+        existing_url = getattr(existing_image, "image_url", "") or ""
+        if existing_url == incoming_url:
+            return True
+        # Строка, сохранённая сигналом из внешнего URL (галереи цветов одежды до общего
+        # конвейера), и parsed-копия того же URL: имя parsed-файла хранит его отпечаток.
+        fingerprint = parsed_media_fingerprint(incoming_url)
+        if (
+            fingerprint
+            and existing_url
+            and getattr(getattr(existing_image, "image_file", None), "name", "")
+            and not is_internal_storage_url(existing_url)
+            and source_url_fingerprint(existing_url) == fingerprint
+        ):
             return True
         incoming_key = self._media_storage_key(incoming_url)
         existing_key = self._media_storage_key(getattr(existing_image, "image_file", None))
