@@ -20,12 +20,14 @@ from .services.moderation import (
     APPLICATION_LABELS,
     MEDICINE_TRANSLATION_FIELD_LABELS,
     build_change_preview,
+    describe_paragraph_findings,
     get_incomplete_medicine_field_messages,
     get_moderation_reason_labels,
     get_rejected_field_labels,
     get_workflow_title,
     reject_log,
 )
+from .services.semantic_validator import medicine_paragraph_findings
 from .services.size_inventory import (
     merge_confirmed_sizes,
     parse_moderator_size_list,
@@ -213,6 +215,28 @@ def _persist_medicine_current_translation_fallbacks(log):
     log.extracted_attributes = attrs
     log.save(update_fields=["extracted_attributes", "updated_at"])
     return used_fallbacks
+
+
+def _paragraph_findings_help(findings, limit=5):
+    """Подсказка у поля формы: какие абзацы раздела похожи на чужой перевод."""
+    lines = [
+        "Сейчас заблокировано: " + describe_paragraph_findings(findings) + "."
+    ]
+    numbered = [item for item in findings if item.get("number")]
+    # help_text админка выводит как HTML — текст абзацев экранируем.
+    for item in numbered[:limit]:
+        lines.append(
+            f"№{item['number']}: исходник «{escape(item['source'][:120])}» → "
+            f"RU «{escape(item['ru'][:120])}»"
+        )
+    if len(numbered) > limit:
+        lines.append("…")
+    lines.append(
+        "Исправьте эти абзацы в RU и EN и сохраните — исправленный текст применится "
+        "без этой проверки; либо выберите «Не менять этот раздел товара», либо "
+        "перезапустите AI."
+    )
+    return " ".join(lines)
 
 
 MEDICINE_EDITOR_FORM_FIELDS = tuple(
@@ -449,6 +473,7 @@ class AIProcessingLogForm(forms.ModelForm):
             medicine_fallbacks = _medicine_current_translation_fallbacks(
                 self.instance
             )
+            paragraph_findings = medicine_paragraph_findings(self.instance)
             for medicine_field in MEDICINE_EDITOR_FIELDS:
                 ru_field = _medicine_editor_field_name(medicine_field, "ru")
                 en_field = _medicine_editor_field_name(medicine_field, "en")
@@ -483,6 +508,10 @@ class AIProcessingLogForm(forms.ModelForm):
                         f"RU {details.get('ru_length', 0)}, EN {details.get('en_length', 0)}. "
                         "Заполните недостающий язык либо сохраните его текущее значение товара."
                     )
+                    self.fields[ru_field].help_text = warning
+                    self.fields[en_field].help_text = warning
+                if medicine_field in paragraph_findings:
+                    warning = _paragraph_findings_help(paragraph_findings[medicine_field])
                     self.fields[ru_field].help_text = warning
                     self.fields[en_field].help_text = warning
                 if fallback_values:
@@ -625,6 +654,13 @@ class AIProcessingLogForm(forms.ModelForm):
                     # фактов с исходником — правка модератора снимает блок.
                     if medicine_field in MEDICINE_CLINICAL_FIELDS or medicine_field in quality:
                         details = dict(quality.get(medicine_field) or {})
+                        # Текст, исправленный модератором, проверку абзацев не
+                        # проходит повторно: за него отвечает модератор.
+                        if (
+                            ru_value != str(self.fields[ru_field].initial or "").strip()
+                            or en_value != str(self.fields[en_field].initial or "").strip()
+                        ):
+                            details["paragraphs_reviewed"] = True
                         ru_complete = bool(ru_value) and not looks_untranslated_turkish(ru_value)
                         en_complete = bool(en_value)
                         details.update(
@@ -1024,6 +1060,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 medicine_details = get_incomplete_medicine_field_messages(
                     obj,
                     semantic_report.rejected_fields,
+                    paragraph_findings=semantic_report.paragraph_findings,
                 )
                 if medicine_details:
                     reasons[1:1] = medicine_details

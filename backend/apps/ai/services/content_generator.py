@@ -2756,6 +2756,14 @@ class ContentGenerator:
                     "moderator_preserved_locales": moderator_preserved_locales,
                     "applied_at": applied_at.isoformat(),
                 }
+                if semantic_report.paragraph_findings:
+                    log.application_report["paragraph_problems"] = {
+                        field_name: [
+                            {"number": item["number"], "problems": item["problems"]}
+                            for item in items
+                        ]
+                        for field_name, items in semantic_report.paragraph_findings.items()
+                    }
                 log.applied_at = applied_at
                 if user is not None:
                     log.processed_by = user

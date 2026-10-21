@@ -14,7 +14,12 @@ from django.db.models import F
 
 from apps.ai.management.commands.medicine_paragraph_audit import SUSPECT_NAMESPACE
 from apps.ai.models import AITranslationMemory
-from apps.ai.services.medicine_memory import PARAGRAPH_NAMESPACE, check_paragraph_payload, paragraph_problems
+from apps.ai.services.medicine_memory import (
+    PARAGRAPH_NAMESPACE,
+    check_paragraph_payload,
+    paragraph_problems,
+    section_paragraph_problems,
+)
 from apps.ai.services.medicine_paragraph_check import audit_sequence, item_problems, plain_numbers, request_shift
 from apps.ai.services.translation_memory import lookup, remember
 
@@ -247,6 +252,39 @@ def test_audit_sequence_marks_shifted_chain_in_memory_order():
     assert reasons[0] == []
     assert all("shifted" in row for row in reasons[3:])
     assert audit_sequence(VISCOTEARS) == [[] for _ in VISCOTEARS]
+
+
+def _section(rows):
+    return "\n".join(rows)
+
+
+def test_section_check_passes_correct_translation_and_finds_shifted_paragraphs():
+    ru, en = [row[1] for row in VISCOTEARS], [row[2] for row in VISCOTEARS]
+    assert section_paragraph_problems(_section(SOURCES), _section(ru), _section(en)) == []
+
+    # Лог до 21.10: модель пропустила абзац 6, дальше у каждого — перевод следующего.
+    shifted_ru, shifted_en = _shifted_from(5)
+    shifted_ru[-1], shifted_en[-1] = "Обратитесь к врачу.", "Consult your doctor."
+    findings = section_paragraph_problems(_section(SOURCES), _section(shifted_ru), _section(shifted_en))
+
+    assert {item["number"] for item in findings} >= {6, 7, 8, 9, 10}
+    assert all("shifted" in item["problems"] for item in findings if 6 <= item["number"] <= 9)
+    assert findings[0]["source"] in SOURCES and findings[0]["ru"] in shifted_ru
+
+
+def test_section_check_aligns_both_paragraph_splits_and_reports_unaligned_section():
+    # До 21.10 «®» и «'u …» после бренда были отдельными абзацами, теперь — один абзац.
+    source = "EPORON\n®\n'u kullanmadan önce doktorunuza danışınız."
+    old_ru = "EPORON\n®\n'u — перед применением проконсультируйтесь с врачом."
+    old_en = "EPORON\n®\n'u — consult your doctor before use."
+    new_ru = "Перед применением EPORON проконсультируйтесь с врачом."
+    new_en = "Consult your doctor before using EPORON."
+
+    assert section_paragraph_problems(source, new_ru, new_en, brand="EPORON") == []
+    assert all(item["number"] for item in section_paragraph_problems(source, old_ru, old_en, brand="EPORON"))
+    assert section_paragraph_problems(source, "Одна строка\nвторая\nтретья\nчетвёртая", new_en) == [
+        {"number": 0, "problems": ["paragraph_count_mismatch"], "source": "", "ru": "", "en": ""}
+    ]
 
 
 def _memory_with_shifted_chain():
