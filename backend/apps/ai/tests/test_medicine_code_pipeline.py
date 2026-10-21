@@ -337,7 +337,7 @@ def test_paragraph_without_brand_token_in_answer_is_rejected():
 
 
 def test_paragraph_batch_masks_brand_like_regular_processing():
-    from apps.ai.management.commands.medicine_paragraph_batch import Command
+    from apps.ai.services.medicine_paragraph_batch import iter_missing_paragraphs
 
     for name, slug, suffix in (("MAJEZIK 100 MG 15 FILM TABLET", "batch-majezik", "MAJEZIK'i"),
                                ("PAROL 500 MG 20 TABLET", "batch-parol", "PAROL'ü")):
@@ -346,7 +346,7 @@ def test_paragraph_batch_masks_brand_like_regular_processing():
             external_data={"attributes": {"source_tabs": {"before_use_warnings": {"text": _branded(suffix)}}}},
         )
 
-    assert list(Command()._missing_paragraphs({"limit_products": 0})) == [
+    assert [paragraph for paragraph, _ in iter_missing_paragraphs()] == [
         normalize_paragraph(_branded("MAJEZIK'i"), "MAJEZIK")
     ]
 

@@ -365,12 +365,16 @@ class AIRun(models.Model):
     Прогон товаров ставит их в AI-очередь партиями фоновой задачей
     ``advance_ai_run`` (services/ai_runs.py); обслуживающие операции
     повторяют команды retry_ai_titles и close_resolved_ai_moderation.
+    Перевод абзацев инструкций отправляет их в OpenAI Batch API частями
+    (задача ``advance_medicine_paragraph_run``, как команда
+    medicine_paragraph_batch); настройки, оценка и список частей — в ``report``.
     """
 
     class Kind(models.TextChoices):
         PRODUCTS = 'products', 'Обработка товаров'
         RETRY_TITLES = 'retry_titles', 'Перегенерация отклонённых названий БАДов'
         CLOSE_MODERATION = 'close_moderation', 'Закрытие решённых записей модерации'
+        MEDICINE_PARAGRAPHS = 'medicine_paragraphs', 'Перевод абзацев инструкций (Batch API)'
 
     class Status(models.TextChoices):
         DRAFT = 'draft', 'Черновик'
