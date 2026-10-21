@@ -9,6 +9,7 @@ from django.core.files.storage import default_storage
 from PIL import Image
 
 from apps.catalog.models import Category, ClothingVariant, ClothingVariantImage, Product
+from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.utils import parser_media_handler
 from apps.catalog.utils.parser_media_handler import source_url_fingerprint
 from apps.catalog.utils.storage_paths import get_parsed_media_upload_path
@@ -269,3 +270,142 @@ def test_colour_rows_saved_from_source_urls_match_their_parsed_copies(monkeypatc
     ScraperIntegrationService()._sync_fashion_variants(product, variants=[_colour("lcw-pipe-3-red", parsed)])
 
     assert _variant_rows(product) == before
+
+
+def _clothing_pass(session, external_id, red, blue):
+    """Один проход задачи (новый сервис, как у новой задачи) по группе из двух цветов."""
+    group = _lcw_group(
+        external_id, [_colour(f"{external_id}-red", red), _colour(f"{external_id}-blue", blue, 1)]
+    )
+    return ScraperIntegrationService()._process_scraped_products(session, [group])
+
+
+@pytest.mark.django_db
+def test_second_identical_pass_reuses_stored_colour_galleries(monkeypatch):
+    downloads = _fake_downloads(monkeypatch)
+    signal_downloads = _signal_downloads(monkeypatch)
+    session, category = _lcw_session("media-pipeline-rescrape")
+    product = _clothing(category, "lcw-pipe-4")
+    red = [f"{CDN}/again-red-{i}.jpg" for i in range(2)]
+    blue = [f"{CDN}/again-blue-{i}.jpg" for i in range(2)]
+    _clothing_pass(session, "lcw-pipe-4", red, blue)
+    stored = _variant_rows(product)
+    assert len(stored) == 4 and sorted(downloads) == sorted(red + blue)
+    downloads.clear()
+
+    result = _clothing_pass(session, "lcw-pipe-4", red, blue)
+
+    # Раньше каждый проход заново качал все фото: HEAD + GET + Pillow + PUT в R2.
+    assert downloads == []
+    assert signal_downloads == []
+    assert _variant_rows(product) == stored
+    assert result["skipped"] == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_missing_stored_copy_is_downloaded_again_without_losing_the_others(monkeypatch):
+    # transaction=True: удаление файлов после delete() идёт сразу, как на проде без atomic.
+    downloads = _fake_downloads(monkeypatch)
+    _signal_downloads(monkeypatch)
+    session, category = _lcw_session("media-pipeline-missing")
+    product = _clothing(category, "lcw-pipe-5")
+    red = [f"{CDN}/lost-red-{i}.jpg" for i in range(2)]
+    blue = [f"{CDN}/lost-blue-{i}.jpg" for i in range(2)]
+    _clothing_pass(session, "lcw-pipe-5", red, blue)
+    lost = ClothingVariantImage.objects.get(
+        variant__product__base_product=product, variant__external_id="lcw-pipe-5-red", sort_order=0,
+    )
+    default_storage.delete(lost.image_file.name)
+    downloads.clear()
+
+    _clothing_pass(session, "lcw-pipe-5", red, blue)
+
+    assert downloads == [red[0]]
+    rows = _variant_rows(product)
+    assert len(rows) == 4
+    assert all(default_storage.exists(image_file) for _, _, image_file in rows)
+
+
+@pytest.mark.django_db
+def test_colour_rows_saved_from_source_urls_are_reused_without_download(monkeypatch):
+    downloads = _fake_downloads(monkeypatch)
+    signal_downloads = _signal_downloads(monkeypatch)
+    session, category = _lcw_session("media-pipeline-legacy-pass")
+    product = _clothing(category, "lcw-pipe-6")
+    red = [f"{CDN}/kept-red-{i}.jpg" for i in range(2)]
+    blue = [f"{CDN}/kept-blue-{i}.jpg" for i in range(2)]
+    for sort_order, (colour, urls) in enumerate((("red", red), ("blue", blue))):
+        variant = ClothingVariant.objects.create(
+            product=product.domain_item, name=f"Tişört - Renk {sort_order}", color=f"Renk {sort_order}",
+            external_id=f"lcw-pipe-6-{colour}", price=100, currency="TRY", sort_order=sort_order,
+            is_active=True, is_available=True,
+        )
+        for index, url in enumerate(urls):
+            # Так строки цветов сохранял сигнал: image_url — исходный URL, файл рядом.
+            key = default_storage.save(
+                f"products/clothing/legacy-pass/{source_url_fingerprint(url)}.jpg", ContentFile(_image_for(url))
+            )
+            ClothingVariantImage.objects.create(
+                variant=variant, image_url=url, image_file=key, sort_order=index, is_main=index == 0,
+            )
+    # Главные фото цвета и карточки — на файле галереи, как их оставил прошлый проход.
+    ScraperIntegrationService()._dedupe_main_into_gallery(product)
+    stored = _variant_rows(product)
+
+    _clothing_pass(session, "lcw-pipe-6", red, blue)
+
+    assert downloads == []
+    assert signal_downloads == []
+    assert _variant_rows(product) == stored
+
+
+def _accessory(external_id):
+    category, product_type = resolve_category_and_product_type("Kemer")
+    return Product.objects.create(
+        name="Kemer",
+        slug=f"kemer-{external_id}",
+        category=category,
+        product_type=product_type,
+        price=10,
+        currency="TRY",
+        external_id=external_id,
+        external_url=f"https://www.lcw.com/kemer-o-{external_id}",
+        external_data={"source": "lcw"},
+    )
+
+
+def _accessory_pass(session, external_id, images):
+    scraped = ScrapedProduct(
+        name="Kemer",
+        price=10,
+        currency="TRY",
+        source="lcw",
+        external_id=external_id,
+        url=f"https://www.lcw.com/kemer-o-{external_id}",
+        images=list(images),
+    )
+    return ScraperIntegrationService()._process_scraped_products(session, [scraped])
+
+
+def _gallery_rows(product):
+    return list(
+        product.domain_item.gallery_images.order_by("sort_order", "id").values_list("pk", "image_url", "image_file")
+    )
+
+
+@pytest.mark.django_db
+def test_second_identical_pass_reuses_stored_product_gallery(monkeypatch):
+    downloads = _fake_downloads(monkeypatch)
+    session, _ = _lcw_session("media-pipeline-gallery")
+    product = _accessory("lcw-pipe-7")
+    images = [f"{CDN}/belt-{i}.jpg" for i in range(3)]
+    _accessory_pass(session, "lcw-pipe-7", images)
+    stored = _gallery_rows(product)
+    assert len(stored) == 3 and all("/products/parsed/" not in "/" + row[2] for row in stored)
+    downloads.clear()
+
+    result = _accessory_pass(session, "lcw-pipe-7", images)
+
+    assert downloads == []
+    assert _gallery_rows(product) == stored
+    assert result["skipped"] == 1

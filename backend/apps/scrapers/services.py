@@ -1910,8 +1910,107 @@ class ScraperIntegrationService:
             if isinstance(val, str) and val in url_map:
                 attributes[key] = url_map[val]
 
+    @staticmethod
+    def _media_owner_product(scraped_product: ScrapedProduct) -> Optional[Product]:
+        """Товар, чьи медиа прошлых проходов берутся до _process_single_product.
+
+        Только единственный товар с этим external_id: его же обновит _process_single_product
+        (и как товар API, и как товар парсера). Иначе медиа качаются, как раньше.
+        """
+        if not scraped_product.external_id:
+            return None
+        rows = list(Product.objects.filter(external_id=scraped_product.external_id)[:2])
+        return rows[0] if len(rows) == 1 else None
+
+    @staticmethod
+    def _index_media_manifest(index: Dict[str, Tuple[str, str, str]], manifest: Any) -> None:
+        """parser_media_manifest (parsed-URL → читаемая копия) → индекс по отпечатку исходного URL."""
+        from apps.catalog.signals import _get_path_from_storage_url
+
+        if not isinstance(manifest, dict):
+            return
+        for parsed_url, readable_url in manifest.items():
+            fingerprint = parsed_media_fingerprint(parsed_url)
+            key = _get_path_from_storage_url(str(readable_url or "")) if fingerprint else None
+            if key:
+                index.setdefault(fingerprint, (parsed_url, readable_url, key))
+
+    def _stored_parser_media(
+        self, product: Optional[Product]
+    ) -> Tuple[Dict[str, Tuple[str, str, str]], Dict[str, Dict[str, Tuple[str, str, str]]]]:
+        """Медиа товара из прошлых проходов по отпечатку исходного URL: (галерея, {цвет: …}).
+
+        Галерея — parser_media_manifest товара, цвета — parser_media_manifest варианта и
+        строки, сохранённые сигналом из внешнего URL. Значение: (URL, по которому строку
+        узнаёт синхронизация галереи, читаемая копия, ключ хранилища).
+        """
+        from apps.catalog.signals import is_internal_storage_url
+
+        gallery: Dict[str, Tuple[str, str, str]] = {}
+        variants: Dict[str, Dict[str, Tuple[str, str, str]]] = {}
+        if product is None:
+            return gallery, variants
+        if product.product_type == "furniture":
+            from apps.catalog.models import FurnitureVariant as variant_model
+        else:
+            config = self._fashion_model_config(product.product_type)
+            variant_model = config["variant_model"] if config else None
+
+        external = product.external_data if isinstance(product.external_data, dict) else {}
+        self._index_media_manifest(gallery, external.get("parser_media_manifest"))
+        if variant_model is None:
+            return gallery, variants
+        for variant in variant_model.objects.filter(product__base_product=product).prefetch_related("images"):
+            entries = variants.setdefault(str(variant.external_id or ""), {})
+            variant_external = variant.external_data if isinstance(variant.external_data, dict) else {}
+            self._index_media_manifest(entries, variant_external.get("parser_media_manifest"))
+            for row in variant.images.all():
+                url = row.image_url or ""
+                key = getattr(row.image_file, "name", "") or ""
+                if url and key and not is_internal_storage_url(url):
+                    entries.setdefault(source_url_fingerprint(url), (url, row.image_file.url, key))
+        return gallery, variants
+
+    @staticmethod
+    def _stored_media_reuse(
+        source_urls: List[str],
+        own: Dict[str, Tuple[str, str, str]],
+        fallback: Tuple[Dict[str, Tuple[str, str, str]], ...] = (),
+    ) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """Исходные URL, копия которых на месте → (URL вместо скачивания, читаемая копия).
+
+        Своя запись (галерея товара или этот цвет) отдаёт URL, по которому её узнаёт
+        синхронизация галереи; запись другого владельца — читаемую копию.
+        """
+        from django.core.files.storage import default_storage
+
+        reuse: Dict[str, str] = {}
+        copies: Dict[str, str] = {}
+        for url in source_urls:
+            if not isinstance(url, str) or not url or url in reuse:
+                continue
+            fingerprint = source_url_fingerprint(url)
+            entry = own.get(fingerprint)
+            is_own = entry is not None
+            if not is_own:
+                entry = next((index[fingerprint] for index in fallback if fingerprint in index), None)
+            if entry is None:
+                continue
+            sync_url, readable_url, key = entry
+            try:
+                if not default_storage.exists(key):
+                    continue
+            except Exception:
+                continue
+            reuse[url] = sync_url if is_own else readable_url
+            copies[url] = readable_url
+        return reuse, copies
+
     def _normalize_scraped_media(
-        self, session: ScrapingSession, scraped_product: ScrapedProduct
+        self,
+        session: ScrapingSession,
+        scraped_product: ScrapedProduct,
+        product: Optional[Product] = None,
     ) -> None:
         if not isinstance(scraped_product.attributes, dict):
             scraped_product.attributes = dict(scraped_product.attributes or {})
@@ -1977,16 +2076,30 @@ class ScraperIntegrationService:
         DIRECT_READABLE_PARSERS = ("ummaland",)
         skip_parsed = any(p in (parser_name or "").lower() for p in DIRECT_READABLE_PARSERS)
 
+        # Медиа, уже сохранённые у товара прошлыми проходами, не качаются заново
+        # (HEAD + GET + Pillow + PUT в R2 на каждый проход): parsed-копия к этому
+        # моменту перенесена в читаемый путь, и проверка её имени их не находит.
+        stored_gallery, stored_variants = self._stored_parser_media(
+            product if product is not None else self._media_owner_product(scraped_product)
+        )
+
         if media_urls and not skip_parsed:
+            # Корень одежды без своей галереи (фото только у цветов) берёт копии цветов.
+            reuse_map, stored_copies = self._stored_media_reuse(
+                media_urls, stored_gallery, tuple(stored_variants.values())
+            )
             new_images, url_map = self._download_parsed_media_urls(
                 session,
                 source_urls=media_urls,
                 parser_name=parser_name,
                 product_id=product_id,
                 sub_folder=sub_folder,
+                reuse_map=reuse_map,
             )
             scraped_product.images = new_images
             shared_source_to_r2.update(url_map)
+            # Другим владельцам — только существующие файлы, не parsed-ключи прошлых проходов.
+            shared_source_to_r2.update(stored_copies)
             self._remap_attribute_urls(attributes, url_map)
 
         # Медиа цветовых вариантов: IKEA (furniture_variants — отдельные sprCode под одной
@@ -2004,16 +2117,20 @@ class ScraperIntegrationService:
                 raw_imgs = spec.get("images") or []
                 if not raw_imgs:
                     continue
+                own_reuse, stored_copies = self._stored_media_reuse(
+                    list(raw_imgs), stored_variants.get(vid, {})
+                )
                 variant_images, variant_map = self._download_parsed_media_urls(
                     session,
                     source_urls=list(raw_imgs),
                     parser_name=parser_name,
                     product_id=vid,
                     sub_folder=sub_folder,
-                    reuse_map=shared_source_to_r2,
+                    reuse_map={**shared_source_to_r2, **own_reuse},
                 )
                 spec["images"] = variant_images
                 shared_source_to_r2.update(variant_map)
+                shared_source_to_r2.update(stored_copies)
 
     def _process_single_product(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
@@ -2498,6 +2615,48 @@ class ScraperIntegrationService:
         incoming_digest = self._storage_digest(incoming_key)
         return bool(incoming_digest and incoming_digest == self._storage_digest(existing_key))
 
+    @staticmethod
+    def _stored_variant_copy(manifest: Dict[str, Any], url: str) -> str:
+        """Читаемая копия parsed-URL из parser_media_manifest цвета, если файл на месте."""
+        from django.core.files.storage import default_storage
+
+        from apps.catalog.signals import _get_path_from_storage_url
+
+        readable_url = str(manifest.get(url) or "")
+        key = _get_path_from_storage_url(readable_url) if readable_url else None
+        if not key:
+            return url
+        try:
+            return readable_url if default_storage.exists(key) else url
+        except Exception:
+            return url
+
+    @staticmethod
+    def _remember_variant_media(variant: Any, image_urls: List[str], rows: List[Any]) -> None:
+        """parser_media_manifest цвета: parsed-URL → читаемая копия, как у товара в
+        CatalogNormalizer._normalize_product_images; следующий проход берёт её без скачивания."""
+        from apps.catalog.signals import is_internal_storage_url
+
+        manifest = {}
+        for url, row in zip(image_urls, rows):
+            stored = getattr(row, "image_url", "") or ""
+            if (
+                parsed_media_fingerprint(url)
+                and "/products/parsed/" not in stored
+                and is_internal_storage_url(stored)
+            ):
+                manifest[url] = stored
+        external = dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
+        if (external.get("parser_media_manifest") or {}) == manifest:
+            return
+        if manifest:
+            external["parser_media_manifest"] = manifest
+        else:
+            external.pop("parser_media_manifest", None)
+        # Служебная запись: без сигналов save() и без признака «товар изменился».
+        variant.__class__.objects.filter(pk=variant.pk).update(external_data=external)
+        variant.external_data = external
+
     def _sync_variant_images(
         self,
         *,
@@ -2508,10 +2667,15 @@ class ScraperIntegrationService:
         color: str,
     ) -> Tuple[bool, str]:
         """Synchronize a variant gallery without recreating identical media rows."""
+        external = variant.external_data if isinstance(variant.external_data, dict) else {}
+        manifest = external.get("parser_media_manifest")
+        manifest = manifest if isinstance(manifest, dict) else {}
+        # parsed-URL прошлого прохода (взят без скачивания) → читаемая копия этого цвета.
+        resolved_urls = [self._stored_variant_copy(manifest, url) for url in image_urls]
         existing = list(variant.images.all().order_by("sort_order", "id"))
-        same_media = len(existing) == len(image_urls) and all(
+        same_media = len(existing) == len(resolved_urls) and all(
             self._same_parser_media(row, url)
-            for row, url in zip(existing, image_urls)
+            for row, url in zip(existing, resolved_urls)
         )
         changed = False
 
@@ -2536,11 +2700,13 @@ class ScraperIntegrationService:
                 (getattr(existing[0], "image_url", "") if existing else "")
                 or (getattr(getattr(existing[0], "image_file", None), "url", "") if existing else "")
             )
+            self._remember_variant_media(variant, image_urls, existing)
             return changed, first_url
 
-        variant.images.all().delete()
+        # Новые строки — до удаления старых: post_delete удаляет файл без ссылок,
+        # а новые строки могут ссылаться на ту же читаемую копию.
         saved_images = []
-        for index, url in enumerate(image_urls):
+        for index, url in enumerate(resolved_urls):
             image = image_model(
                 variant=variant,
                 image_url=url,
@@ -2550,6 +2716,8 @@ class ScraperIntegrationService:
             )
             image.save()
             saved_images.append(image)
+        variant.images.filter(pk__in=[row.pk for row in existing]).delete()
+        self._remember_variant_media(variant, image_urls, saved_images)
         first_url = (
             (getattr(saved_images[0], "image_url", "") if saved_images else "")
             or (getattr(getattr(saved_images[0], "image_file", None), "url", "") if saved_images else "")
@@ -3480,7 +3648,7 @@ class ScraperIntegrationService:
                 return "skipped", existing_product
 
         if getattr(scraped_product, "_medicine_media_deferred", False):
-            self._normalize_scraped_media(session, scraped_product)
+            self._normalize_scraped_media(session, scraped_product, product=existing_product)
             scraped_product._medicine_media_deferred = False
             prepared_attrs = self._prepare_scraped_attributes(
                 scraped_product, existing_product.product_type,
