@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   buildBrandProductsParams,
   brandProductsRequestKey,
+  brandDescriptionText,
   shouldShowGenderFilter,
 } from './brandCatalog.js'
 
@@ -20,10 +21,11 @@ const baseFilters = {
   sortBy: 'name_asc',
 }
 
-test('default filters produce only page, page_size and ordering', () => {
+test('default filters produce only page, page_size, compact view and ordering', () => {
   assert.deepEqual(buildBrandProductsParams(baseFilters, 1, 24), {
     page: 1,
     page_size: 24,
+    view: 'card',
     ordering: 'name_asc',
   })
 })
@@ -53,6 +55,7 @@ test('gender, price and flags map to query params', () => {
   assert.deepEqual(buildBrandProductsParams(filters, 3, 24), {
     page: 3,
     page_size: 24,
+    view: 'card',
     gender: 'women,kids',
     price_min: 100,
     price_max: 500,
@@ -80,4 +83,10 @@ test('gender filter is shown for fashion categories only', () => {
   assert.equal(shouldShowGenderFilter(['medicines', 'supplements']), false)
   assert.equal(shouldShowGenderFilter([]), false)
   assert.equal(shouldShowGenderFilter(undefined), false)
+})
+
+test('brand description text tolerates brands without description', () => {
+  assert.equal(brandDescriptionText(null), '')
+  assert.equal(brandDescriptionText(undefined), '')
+  assert.equal(brandDescriptionText('<p>Немецкий</p>бренд'), ' Немецкий бренд')
 })

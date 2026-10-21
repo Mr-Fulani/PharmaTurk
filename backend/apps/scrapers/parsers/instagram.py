@@ -345,7 +345,17 @@ class InstagramParser(BaseScraper):
 
         ВАЖНО: Используйте только бот-аккаунты. Авторизация личного аккаунта
         ведёт к блокировке.
+
+        Если в настройках парсера есть cookie ``sessionid`` (сессия из браузера),
+        вход по паролю не выполняется: повторные входы по паролю с сервера
+        Instagram и отправляет на «Checkpoint required».
         """
+        session_cookies = self.loader.context._session.cookies.get_dict()
+        if session_cookies.get("sessionid"):
+            self.loader.load_session(self.username, session_cookies)
+            self._authenticated = True
+            self.logger.info("Instagram: сессия @%s из cookies, без входа по паролю", self.username)
+            return
         try:
             self.loader.login(self.username, self.password)
             self._authenticated = True
@@ -356,6 +366,25 @@ class InstagramParser(BaseScraper):
                 operation=f"авторизация @{self.username}",
                 url=self.base_url,
             )
+        except instaloader.exceptions.LoginException as e:
+            if "checkpoint" not in str(e).lower():
+                self.logger.warning(
+                    "Ошибка авторизации для @%s: %s. Продолжаем без авторизации.",
+                    self.username,
+                    e,
+                )
+                return
+            # Тихое «продолжаем без входа» превращалось в непонятный 401 профиля.
+            raise ScraperAccessBlockedError(
+                message=(
+                    f"Instagram требует подтвердить вход аккаунта @{self.username} "
+                    "(Checkpoint required): войдите в аккаунт в браузере или приложении, "
+                    "подтвердите вход и вставьте cookie sessionid в настройки парсера Instagram."
+                ),
+                source="Instagram",
+                status_code=401,
+                url=self.base_url,
+            ) from e
         except instaloader.exceptions.InstaloaderException as e:
             self.logger.warning(
                 "Ошибка авторизации для @%s: %s. Продолжаем без авторизации.",

@@ -34,6 +34,7 @@
 | [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict) с Origin Certificate на 443, закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-10-19 |
 | [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md) | под root: обновления ОС и Docker, swap, журнал systemd, перезагрузка в тихий час | 2026-10-19 |
 | [AUDIT_2026-10-19_PARSERS_CATALOG.md](AUDIT_2026-10-19_PARSERS_CATALOG.md) | почему не запускаются Instagram/UmmaLand/Akakce, товары без картинки и цены, сброс интервалов beat при деплое | отчёт 2026-10-19 |
+| [AUDIT_2026-10-20_PARSERS.md](AUDIT_2026-10-20_PARSERS.md) | живые пробы всех 13 парсеров, найденные и исправленные баги, что решить по Instagram/UmmaLand/akakce/ilacabak | отчёт 2026-10-20 |
 | [PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md) | Bright Data proxy/Web Unlocker: тарифы, бюджет, возможности и безопасное переиспользование | актуализирован 2026-08-31 |
 | [SOURCE_OFFER_CART_API.md](SOURCE_OFFER_CART_API.md) | Cart API: verification fields, issue codes, 409/503 и действия клиента | актуализирован 2026-08-27 |
 | [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | актуализирован и проверен 2026-08-21 |
@@ -47,6 +48,7 @@
 - [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) — безопасный backfill характеристик мебели;
 - [AUTO_PARTS_AI_DESIGN.md](AUTO_PARTS_AI_DESIGN.md) — дизайн домена автозапчастей: OEM-номера, применимость, обработка без LLM;
 - [HOW_TO_ORDER_PAGE.md](HOW_TO_ORDER_PAGE.md) — страница «Как заказать»: разделы, SEO, позиция баннеров `how_to_order`;
+- [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md) — скорость страницы бренда: замеры, детоаст `external_data`, частичные индексы 0217, `view=card`;
 - [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`) и бренды производителей лекарств/БАДов;
 - [HYDRATION_ERRORS_GUIDE.md](HYDRATION_ERRORS_GUIDE.md) — диагностика hydration;
 - [TZ_SEO_PERF_FIXES.md](TZ_SEO_PERF_FIXES.md) — архивное ТЗ и отчёт SEO/performance от 2026-06-12;
@@ -63,7 +65,7 @@
 ### AI, рекомендации и фоновые задачи
 
 - [AI_GUIDE.md](../AI_GUIDE.md) — основной AI workflow;
-- [AI_RUNS_ADMIN_GUIDE.md](AI_RUNS_ADMIN_GUIDE.md) — пошагово: массовый AI-прогон и обслуживание кнопками в админке;
+- [AI_RUNS_ADMIN_GUIDE.md](AI_RUNS_ADMIN_GUIDE.md) — пошагово: массовый AI-прогон, обслуживание и перевод абзацев инструкций (Batch API) кнопками в админке;
 - [MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md](MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md) — сдвинутые переводы в памяти абзацев инструкций: правила без LLM, цифры, `medicine_paragraph_audit` и порядок действий на проде;
 - [AI_MODULE_OVERVIEW.md](../AI_MODULE_OVERVIEW.md) — состав AI-модуля;
 - [AI_TEMPLATES.md](../AI_TEMPLATES.md) — AI-шаблоны;

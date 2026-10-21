@@ -8,6 +8,8 @@ from django.utils.text import slugify as django_slugify
 from apps.catalog.models import Product, GlobalAttributeKey
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.ai.services.medicine_reference import dosage_form_labels
+from apps.ai.services.medicine_title import looks_like_source_name
+from apps.ai.services.ownership import SOURCE_NAME_KEY, remember_source_name
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.size_inventory import apply_size_inventory
 
@@ -80,6 +82,20 @@ def _make_unique_slug_for_domain(name: str, model_class, current_pk: Optional[in
             qs = qs.exclude(pk=current_pk)
         i += 1
     return slug
+
+
+def _remember_name_before_ai_title(item) -> bool:
+    """Перед первым AI-названием лекарства запоминает турецкий оригинал из name.
+
+    Название, уже переведённое или обрезанное прежней обработкой, не
+    запоминается: шаблон из него не строится (medicine_title.medicine_source_name).
+    """
+    external = item.external_data if isinstance(item.external_data, dict) else {}
+    if external.get(SOURCE_NAME_KEY) or not looks_like_source_name(item.name):
+        return False
+    item.external_data = external
+    return remember_source_name(external, item.name)
+
 
 class BaseAIApplier:
     """Базовый класс для применения результатов AI к любым товарам."""
@@ -687,9 +703,11 @@ class AIResultApplier:
 
             new_title = "" if "title" in rejected_fields else (ai_data.get("generated_title") or "").strip()
             if new_title and target is not None:
+                update_fields = ["name"]
+                if product_type == "medicines" and _remember_name_before_ai_title(target):
+                    update_fields.append("external_data")
                 # Slug не меняем: старые URL товара должны продолжать открываться.
                 target.name = new_title[:500]
-                update_fields = ["name"]
                 if not getattr(target, "slug", None):
                     target.slug = _make_unique_slug_for_domain(
                         new_title,
@@ -699,8 +717,11 @@ class AIResultApplier:
                     update_fields.append("slug")
                 target.save(update_fields=update_fields)
             elif new_title:
+                update_fields = ["name"]
+                if product_type == "medicines" and _remember_name_before_ai_title(product):
+                    update_fields.append("external_data")
                 product.name = new_title[:500]
-                product.save(update_fields=["name"])
+                product.save(update_fields=update_fields)
             cleaned_data = dict(ai_data)
             attrs = dict(cleaned_data.get("extracted_attributes") or {})
             dynamic = attrs.get("dynamic_attributes")

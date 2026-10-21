@@ -50,8 +50,13 @@ from apps.ai.services.quality_checker import (
 )
 from apps.ai.services.medicine_fact_check import doses_match, strip_proper_name_lines
 from apps.ai.services.medicine_memory import translate_active_ingredient, translate_sections_by_paragraph
-from apps.ai.services.medicine_reference import CODE_FIELDS, build_reference_translations
-from apps.ai.services.medicine_title import build_medicine_title, paragraph_brand
+from apps.ai.services.medicine_reference import (
+    CODE_FIELDS,
+    build_reference_translations,
+    meaningful_special_notes,
+    neutral_prescription_text,
+)
+from apps.ai.services.medicine_title import build_medicine_title, medicine_source_name, paragraph_brand
 from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
 from apps.ai.services.result_applier import build_content_snapshot
 from apps.ai.services.rules.pipeline import (
@@ -612,6 +617,10 @@ class ContentGenerator:
             "brand": product.brand.name if product.brand else None,
             "category_context": self._get_category_context(product),
         }
+        if product.product_type == "medicines":
+            # Шаблон названия, промпт и бренд абзацев — по турецкому оригиналу:
+            # name после применения AI переведён, у старых товаров ещё и обрезан.
+            data["name"] = medicine_source_name(product.name, product.external_data)[0]
 
         variant_context = self._collect_variant_context(product)
         if variant_context:
@@ -1382,7 +1391,7 @@ class ContentGenerator:
         4. Технические турецкие значения переводи, но коды оставляй как есть.
            Примеры: "Topikal" -> "топическое применение" / "topical use";
            "Rektal" -> "ректальное введение" / "rectal administration";
-           "Beyaz Reçete" -> "белый рецепт" / "white prescription";
+           "Beyaz Reçete" -> "рецептурный препарат" / "prescription medicine";
            "Bedeli Ödenir" -> "оплачивается SGK" / "covered by SGK";
            "Bedeli Ödenmez" -> "не оплачивается SGK" / "not covered by SGK";
            "İthal" -> "импортный" / "imported";
@@ -1458,6 +1467,7 @@ class ContentGenerator:
         code_fields: Dict[str, Any],
     ) -> None:
         """Справочные поля, МНН, название и атрибуты — из кода, поверх ответа модели."""
+        has_special_notes = bool(meaningful_special_notes(input_data.get("special_notes")))
         for locale in ("ru", "en"):
             payload = content.get(locale)
             if not isinstance(payload, dict):
@@ -1467,6 +1477,12 @@ class ContentGenerator:
             payload.update(code_fields[locale])
             if code_fields.get("title"):
                 payload["generated_title"] = code_fields["title"][locale]
+            # Только бейджи без предмета («Не применять совместно.») — особых сведений нет.
+            if not has_special_notes:
+                payload.pop("special_notes", None)
+            for field in ("generated_description", "seo_title", "seo_description"):
+                if field in payload:
+                    payload[field] = neutral_prescription_text(payload[field])
         attrs = {
             key: input_data[key]
             for key in MEDICINE_SOURCE_ATTRIBUTE_KEYS
@@ -1492,11 +1508,13 @@ class ContentGenerator:
         source_summary = source_sections.get("summary") or ""
 
         # Исходные значения даём модели только там, где у кода нет перевода.
-        source_facts = {
+        special_notes = meaningful_special_notes(input_data.get("special_notes"))
+        source_facts = {"special_notes": special_notes} if special_notes else {}
+        source_facts.update({
             key: input_data[key]
-            for key in ("special_notes", *code_fields.get("unknown", {}))
+            for key in code_fields.get("unknown", {})
             if input_data.get(key) not in (None, "")
-        }
+        })
         data = {
             "product_name": input_data.get("name", ""),
             "brand": input_data.get("brand") or "Unknown",
@@ -1613,7 +1631,7 @@ class ContentGenerator:
                 "seo_title": f"{name} - информация о препарате"[:70],
                 "seo_description": description_ru[:160],
                 "keywords": keywords,
-                "special_notes": input_data.get("special_notes") or "",
+                "special_notes": meaningful_special_notes(input_data.get("special_notes")),
             },
             "en": {
                 "generated_title": name,
@@ -2316,8 +2334,10 @@ class ContentGenerator:
         if product_type == "books":
             s = re.split(r",(?!\d)", s)[0].strip()
 
-        # 3. Убираем служебные хвосты цен/валют/артикулов
-        s = self._strip_price_and_codes_from_title(s)
+        # 3. Убираем служебные хвосты цен/валют/артикулов. Лекарства — кроме: бренд
+        # с дефисом («DEVIT-3», «CALIRA-MET») и «film-coated» похожи на артикул.
+        if product_type != "medicines":
+            s = self._strip_price_and_codes_from_title(s)
 
         s_str = str(s)
         return s_str[:255] if len(s_str) > 255 else s_str
@@ -2462,7 +2482,7 @@ class ContentGenerator:
                         bucket[field],
                         remove_sizes=remove_sizes,
                     )
-            if bucket.get("generated_title"):
+            if bucket.get("generated_title") and input_data.get("product_type") != "medicines":
                 bucket["generated_title"] = self._strip_price_and_codes_from_title(bucket["generated_title"])
 
         had_attributes = isinstance(content.get("attributes"), dict)

@@ -446,7 +446,13 @@ class ZaraParser(BaseScraper):
                 seen_products.add(identity)
                 new_on_page += 1
 
-                product = self.parse_product_detail(product_url)
+                try:
+                    product = self.parse_product_detail(product_url)
+                except (OfferNotFound, OfferGone):
+                    # Снятая карточка (404/410) ещё висит в листинге: пропускаем её,
+                    # а не обрываем обход всей категории.
+                    self.logger.info("Zara: карточка снята с продажи, пропуск %s", product_url)
+                    continue
                 if product is None:
                     product = self._build_list_fallback(component, product_url, payload)
                 if product and self.validate_product(product):
@@ -531,6 +537,7 @@ class ZaraParser(BaseScraper):
             name=clean_text(str(product.get("name") or "")),
             description=description,
             price=price,
+            old_price=first_variant.get("old_price"),
             currency=self._payload_currency(payload),
             url=self._canonical_url(product_url),
             images=list(first_variant.get("images") or []),
@@ -705,6 +712,8 @@ class ZaraParser(BaseScraper):
                 f"{product.get('name') or ''} - {color.get('name') or ''}".strip(" -")
             ),
             "price": self._normalize_price_value(color.get("price")),
+            # Зачёркнутая цена распродажи, если Zara её отдаёт.
+            "old_price": self._normalize_price_value(color.get("oldPrice")),
             "currency": "TRY",
             "external_url": self._canonical_url(product_url),
             "images": images,

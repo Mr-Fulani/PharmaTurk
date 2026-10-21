@@ -364,3 +364,37 @@ def test_scraper_config_identity_reaches_inditex_transport():
         assert parser.client.headers["User-Agent"] == "Configured Chrome UA"
     finally:
         parser.__exit__(None, None, None)
+
+
+def test_inditex_sale_old_price_comes_from_size_old_price(monkeypatch):
+    detail = json.loads(_fixture("bershka_product_detail.json"))
+    for summary in detail["bundleProductSummaries"]:
+        for color in summary["detail"]["colors"]:
+            for size in color.get("sizes") or []:
+                size["oldPrice"] = 129000
+    parser = _parser(
+        BershkaParser,
+        _routes(**{"/product/228309045/detail": [(200, json.dumps(detail))]}),
+        monkeypatch,
+    )
+
+    product = parser.parse_product_detail(
+        "https://www.bershka.com/tr/k%C4%B1sa-kollu-bask%C4%B1l%C4%B1-boxy-fit-ti%C5%9F%C3%B6rt"
+        "-c0p228309045.html?colorId=403"
+    )
+
+    assert (product.price, product.old_price) == (950.0, 1290.0)
+
+
+def test_inditex_without_sale_has_no_old_price(monkeypatch):
+    parser = _parser(
+        BershkaParser,
+        _routes(**{"/product/228309045/detail": [(200, _fixture("bershka_product_detail.json"))]}),
+        monkeypatch,
+    )
+
+    product = parser.parse_product_detail(
+        "https://www.bershka.com/tr/x-c0p228309045.html?colorId=403"
+    )
+
+    assert product.old_price is None

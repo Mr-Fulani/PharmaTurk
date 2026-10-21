@@ -8,18 +8,25 @@
 
 ``tick_token`` защищает от двух параллельных цепочек шагов (например,
 после «Продолжить»): шаг со старым токеном ничего не делает.
+
+Перевод абзацев инструкций (Batch API) устроен так же: шаг
+``advance_medicine_paragraph_run`` раз в 5 минут проверяет часть в OpenAI,
+забирает готовую и отправляет следующую (services/medicine_paragraph_batch.py).
 """
 
 import uuid
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from apps.ai.models import AIProcessingLog, AIProcessingStatus, AIRun
+from apps.ai.services import medicine_paragraph_batch as batch_api
 from apps.ai.services.bulk_ops import estimate_ai_cost, select_products_for_ai
+from apps.ai.services.llm_client import LLMClient
+from apps.ai.services.medicine_memory import PARAGRAPH_NAMESPACE
 from apps.ai.tasks import ACTIVE_AI_LOG_STATUSES
 
 # Защиты прогона
@@ -114,10 +121,11 @@ def start_products_run(
 
 
 def is_stalled(run):
+    stalled_after = PARAGRAPH_STALLED_AFTER if run.kind == AIRun.Kind.MEDICINE_PARAGRAPHS else STALLED_AFTER
     return (
         run.status == AIRun.Status.RUNNING
         and run.heartbeat_at is not None
-        and timezone.now() - run.heartbeat_at > STALLED_AFTER
+        and timezone.now() - run.heartbeat_at > stalled_after
     )
 
 
@@ -138,6 +146,8 @@ def stop_run(run, reason="Остановлен вручную. Чтобы обр
 
 def resume_run(run):
     """Продолжить остановленный, упавший или зависший прогон с того же места."""
+    if run.kind == AIRun.Kind.MEDICINE_PARAGRAPHS:
+        return _resume_paragraphs(run)
     with transaction.atomic():
         run = AIRun.objects.select_for_update().get(pk=run.pk)
         if run.kind != AIRun.Kind.PRODUCTS:
@@ -213,10 +223,13 @@ def advance_run(run_id, token):
 
 
 def fail_run(run_id, exc):
-    run = AIRun.objects.filter(pk=run_id).only("kind").first()
+    run = AIRun.objects.filter(pk=run_id).only("kind", "status").first()
     hint = (
         "Можно нажать «Продолжить»."
-        if run is not None and run.kind == AIRun.Kind.PRODUCTS
+        if run is not None and (
+            run.kind == AIRun.Kind.PRODUCTS
+            or (run.kind == AIRun.Kind.MEDICINE_PARAGRAPHS and run.status == AIRun.Status.RUNNING)
+        )
         else "Можно запустить операцию заново."
     )
     AIRun.objects.filter(pk=run_id, status__in=[AIRun.Status.RUNNING, AIRun.Status.DRAFT]).update(
@@ -447,3 +460,460 @@ def execute_maintenance(run_id, dry_run):
     run.cost_usd = result.get("cost_usd", Decimal("0"))
     run.save()
     return "finished"
+
+
+# ------------------------------------------ перевод абзацев инструкций (Batch API)
+
+
+# Часть готовится в OpenAI от минут до 24 ч — её состояние проверяется раз в 5 минут.
+PARAGRAPH_TICK_SECONDS = 300
+PARAGRAPH_STALLED_AFTER = timedelta(minutes=20)
+PARAGRAPH_MIN_PART = 10
+PARAGRAPH_MAX_PART = 20000
+# Часть в этих состояниях больше не ждёт OpenAI.
+PART_DONE_STATES = ("collected", "failed")
+PART_STATES = {
+    "validating": "OpenAI проверяет файл",
+    "in_progress": "переводится в OpenAI",
+    "finalizing": "OpenAI собирает ответ",
+    "cancelling": "отменяется в OpenAI",
+    "completed": "готова, забираем",
+    "collected": "забрана",
+    "failed": "не выполнена",
+    "expired": "не успела за 24 ч",
+    "cancelled": "отменена в OpenAI",
+}
+REASON_LABELS = {
+    "shifted": "сдвиг ответа",
+    "missing": "нет перевода",
+    "fact_mismatch": "дозировки",
+    "number_mismatch": "числа",
+    "heading_mismatch": "номер заголовка",
+    "length_mismatch": "длина",
+    "ru_en_mismatch": "RU и EN расходятся",
+    "concept_mismatch": "смысл",
+    "frequency_mismatch": "частота побочного действия",
+    "ru_not_russian": "RU не по-русски",
+    "en_has_cyrillic": "кириллица в EN",
+    "too_short": "слишком коротко",
+    "brand_token_missing": "потеряна метка {BRAND}",
+}
+
+
+def create_paragraph_preview(*, user, part_size, max_defect, wait_each_part):
+    """Черновик прогона: фоновая задача посчитает абзацы, части и цену (dry-run)."""
+    if not PARAGRAPH_MIN_PART <= part_size <= PARAGRAPH_MAX_PART:
+        raise RunError(f"Размер части — от {PARAGRAPH_MIN_PART} до {PARAGRAPH_MAX_PART} абзацев.")
+    if not 0 < max_defect <= 1:
+        raise RunError("Порог брака — от 1 до 100 %.")
+    run = AIRun.objects.create(
+        kind=AIRun.Kind.MEDICINE_PARAGRAPHS,
+        status=AIRun.Status.DRAFT,
+        created_by=user,
+        report={
+            "settings": {"part_size": part_size, "max_defect": max_defect, "wait_each_part": wait_each_part},
+            "parts": [],
+        },
+    )
+    from apps.ai.tasks import preview_medicine_paragraph_run
+
+    transaction.on_commit(
+        lambda: preview_medicine_paragraph_run.apply_async(args=[run.pk], priority=0), robust=True
+    )
+    return run
+
+
+def preview_paragraph_run(run_id):
+    """Dry-run: сколько абзацев не в памяти, сколько частей и запросов, оценка цены."""
+    run = AIRun.objects.get(pk=run_id)
+    if run.status != AIRun.Status.DRAFT:
+        return "skipped"
+    part_size = run.report["settings"]["part_size"]
+    totals = {"parts": 0, "paragraphs": 0, "chars": 0, "requests": 0, "cost_usd": 0.0, "regular_cost_usd": 0.0}
+    for paragraphs, _ in batch_api.iter_parts(0, part_size):
+        totals["parts"] += 1
+        for key, value in batch_api.estimate(paragraphs).items():
+            totals[key] += value
+    if totals["paragraphs"]:
+        summary = (
+            f"Не в памяти переводов {_num(totals['paragraphs'])} абзацев ({_num(totals['chars'])} симв.): "
+            f"{totals['parts']} частей по ≈ {_num(part_size)} абзацев, {_num(totals['requests'])} запросов. "
+            f"Оценка ≈ ${totals['cost_usd']:.2f} в Batch API (обычной обработкой ≈ "
+            f"${totals['regular_cost_usd']:.2f}). Каждая часть готовится в OpenAI до 24 часов."
+        )
+    else:
+        summary = "Все абзацы инструкций уже в памяти переводов — переводить нечего."
+    AIRun.objects.filter(pk=run.pk, status=AIRun.Status.DRAFT).update(
+        report={**run.report, "preview": {**totals, "summary": summary}},
+        selected_count=totals["paragraphs"],
+        estimated_cost_usd=Decimal(str(round(totals["cost_usd"], 4))),
+        updated_at=timezone.now(),
+    )
+    return "previewed"
+
+
+def start_paragraph_run(run):
+    """«Запустить»: первая часть уйдёт в OpenAI в первом же шаге."""
+    with transaction.atomic():
+        run = _lock(run)
+        if run.kind != AIRun.Kind.MEDICINE_PARAGRAPHS or run.status != AIRun.Status.DRAFT:
+            raise RunError("Этот прогон уже запускался.")
+        if not run.report.get("preview"):
+            raise RunError("Оценка ещё считается — подождите и обновите страницу.")
+        if not run.selected_count:
+            raise RunError("Переводить нечего: все абзацы уже в памяти переводов.")
+        _run_paragraphs(run)
+    return run
+
+
+def stop_paragraph_run(run):
+    """«Стоп»: новые части не отправляются; часть, уже отправленную в OpenAI, заберём и остановимся."""
+    with transaction.atomic():
+        run = _lock(run)
+        if run.status != AIRun.Status.RUNNING:
+            raise RunError("Прогон уже не идёт.")
+        part = part_in_flight(run)
+        if part is None:
+            _stop_paragraphs(run, "Остановлен вручную. Чтобы идти дальше с того же места, нажмите «Следующая часть».")
+        elif run.report.get("stop_requested"):
+            raise RunError("Остановка уже запрошена — ждём, когда OpenAI закончит текущую часть.")
+        else:
+            run.report["stop_requested"] = True
+            run.message = (
+                f"Остановка: новые части отправляться не будут. Часть №{part['number']} уже в OpenAI — "
+                "её заберём, как только она будет готова (до 24 часов), и прогон остановится."
+            )
+            run.save(update_fields=["report", "message", "updated_at"])
+    return run
+
+
+def next_paragraph_part(run):
+    """«Следующая часть»: продолжить остановленный прогон, даже если брак был выше порога."""
+    with transaction.atomic():
+        run = _lock(run)
+        if not paragraph_state(run)["can_next"]:
+            raise RunError("Следующую часть можно отправить, когда прогон остановлен и прошлая часть забрана.")
+        _run_paragraphs(run, "next")
+    return run
+
+
+def retry_paragraph_part(run):
+    """«Повторить отклонённые»: заново отправить абзацы последней части, которых нет в памяти."""
+    with transaction.atomic():
+        run = _lock(run)
+        if not paragraph_state(run)["can_retry"]:
+            raise RunError("Повторять нечего: у последней забранной части нет отклонённых абзацев.")
+        _run_paragraphs(run, "retry")
+    return run
+
+
+def _resume_paragraphs(run):
+    with transaction.atomic():
+        run = _lock(run)
+        if not paragraph_state(run)["can_resume"]:
+            raise RunError("Прогон и так идёт." if run.status == AIRun.Status.RUNNING else "Продолжать нечего.")
+        _run_paragraphs(run)
+    return run
+
+
+def part_in_flight(run):
+    """Последняя часть, если OpenAI её ещё не вернул или она не забрана."""
+    parts = (run.report or {}).get("parts") or []
+    if parts and parts[-1]["state"] not in PART_DONE_STATES:
+        return parts[-1]
+    return None
+
+
+def paragraph_state(run):
+    """Кнопки и сводка прогона абзацев для страницы и автообновления."""
+    parts = run.report.get("parts") or []
+    in_flight = part_in_flight(run)
+    retry = _retry_source(run)
+    stopped = run.status == AIRun.Status.STOPPED
+    covered = sum(p["paragraphs"] for p in parts if not p.get("retry_of") and p["state"] != "failed")
+    collected = sum(p["paragraphs"] for p in parts if p["state"] == "collected")
+    return {
+        "in_flight": in_flight is not None,
+        "stop_requested": bool(run.report.get("stop_requested")),
+        "can_stop": run.status == AIRun.Status.RUNNING and not run.report.get("stop_requested"),
+        "can_resume": run.started_at is not None and (
+            is_stalled(run) or run.status == AIRun.Status.FAILED or (stopped and in_flight is not None)
+        ),
+        "can_next": stopped and in_flight is None,
+        "can_retry": run.status in (AIRun.Status.STOPPED, AIRun.Status.FINISHED)
+        and in_flight is None and retry is not None,
+        "retry_part": retry["number"] if retry else None,
+        "retry_count": retry["defect_count"] if retry else 0,
+        "covered": covered,
+        "percent": min(100, round(covered * 100 / run.selected_count)) if run.selected_count else 0,
+        "per_1000": f"{float(run.cost_usd) / collected * 1000:.4f}" if collected else "",
+        "parts_key": "|".join(f"{p['number']}:{p['state']}:{p.get('requests_done', 0)}" for p in parts),
+    }
+
+
+def advance_paragraph_run(run_id, token):
+    """Один шаг прогона абзацев. Вызывается задачей ``advance_medicine_paragraph_run``.
+
+    Строка прогона заблокирована на весь шаг (кнопки в это время отвечают
+    «повторите через минуту»), поэтому сбор части пишет память одной
+    транзакцией: при сбое шаг повторится целиком, записанное не задвоится.
+    """
+    with transaction.atomic():
+        run = AIRun.objects.select_for_update().filter(pk=run_id).first()
+        if run is None or run.status != AIRun.Status.RUNNING or run.tick_token != token:
+            return "skipped"
+        run.heartbeat_at = timezone.now()
+        client = LLMClient()
+        part = part_in_flight(run)
+        if part is not None:
+            batch = client.client.batches.retrieve(part["batch_id"])
+            counts = getattr(batch, "request_counts", None)
+            part["state"] = batch.status
+            part["requests_done"] = getattr(counts, "completed", 0) or 0
+            part["requests_failed"] = getattr(counts, "failed", 0) or 0
+            if batch.status in batch_api.RUNNING_STATUSES:
+                run.save()
+                _schedule_paragraph_tick(run)
+                return "waiting"
+            if not batch.output_file_id:
+                part["state"] = "failed"
+                _stop_paragraphs(run, _failed_part_message(part, batch))
+                return "part_failed"
+            try:
+                stats = batch_api.collect_part(client, batch)
+            except batch_api.PartError as exc:
+                _stop_paragraphs(
+                    run,
+                    f"Готовую часть №{part['number']} не удалось забрать: {exc}. "
+                    "Когда причина устранена, нажмите «Продолжить».",
+                )
+                return "collect_failed"
+            _record_part(run, part, batch, stats)
+            reason = _pause_reason(run, part)
+            if reason:
+                _stop_paragraphs(run, reason)
+                return "stopped"
+        return _send_part(run, client)
+
+
+def _send_part(run, client):
+    """Отправить следующую часть каталога или повтор отклонённых абзацев последней части."""
+    action = run.report.pop("next_action", "next")
+    running = batch_api.running_parts(client)
+    if running:
+        _stop_paragraphs(
+            run,
+            f"В OpenAI ещё идёт часть, отправленная не этим прогоном: "
+            f"{', '.join(batch_api.describe(batch) for batch in running)}. Чтобы абзацы не оплатились "
+            "дважды, дождитесь её и заберите (консоль: medicine_paragraph_batch collect), потом нажмите "
+            "кнопку ещё раз.",
+        )
+        return "busy"
+    retry_of = None
+    if action == "retry":
+        retry_of = _retry_source(run)
+        if retry_of is None:
+            _stop_paragraphs(run, "Повторять нечего: у последней забранной части нет отклонённых абзацев.")
+            return "nothing_to_retry"
+        try:
+            paragraphs, _ = batch_api.rejected_paragraphs(client, client.client.batches.retrieve(retry_of["batch_id"]))
+        except batch_api.PartError as exc:
+            _stop_paragraphs(run, f"Не удалось подготовить повтор: {exc}.")
+            return "retry_failed"
+        last_product = retry_of["last_product"]
+        if not paragraphs:
+            _stop_paragraphs(
+                run,
+                f"Отклонённые абзацы части №{retry_of['number']} уже в памяти (переведены при обработке "
+                "лекарств) — повторять нечего. Нажмите «Следующая часть».",
+            )
+            return "nothing_to_retry"
+    else:
+        found = next(batch_api.iter_parts(_cursor(run), run.report["settings"]["part_size"]), None)
+        if found is None:
+            _finish_paragraphs(run)
+            return "finished"
+        paragraphs, last_product = found
+    number = len(run.report["parts"]) + 1
+    cost = batch_api.estimate(paragraphs)
+    batch = batch_api.submit_part(client, paragraphs, metadata={
+        "kind": PARAGRAPH_NAMESPACE,
+        "part": str(number),
+        "paragraphs": str(len(paragraphs)),
+        "last_product": "" if retry_of else str(last_product),
+        "retry_of": retry_of["batch_id"] if retry_of else "",
+        "run": str(run.pk),
+    })
+    run.report["parts"].append({
+        "number": number,
+        "batch_id": batch.id,
+        "retry_of": retry_of["number"] if retry_of else None,
+        "paragraphs": len(paragraphs),
+        "last_product": last_product,
+        "requests": cost["requests"],
+        "estimate_usd": round(cost["cost_usd"], 4),
+        "state": batch.status,
+        "sent_at": timezone.now().isoformat(),
+    })
+    _refresh_paragraph_counters(run)
+    run.message = ""
+    run.save()
+    _schedule_paragraph_tick(run)
+    return "submitted"
+
+
+def _record_part(run, part, batch, stats):
+    summary = batch_api.part_summary(stats, part["paragraphs"])
+    part.update({
+        "state": "collected",
+        "openai_status": batch.status,
+        "accepted": summary["accepted"],
+        "rejected": summary["rejected"],
+        "no_answer": summary["no_answer"],
+        "defect_count": summary["defect_count"],
+        "defect": round(summary["defect"], 4),
+        "shifted_requests": summary["shifted_requests"],
+        "reasons": summary["reasons"],
+        "cost_usd": round(summary["cost_usd"], 6),
+        "per_1000": round(summary["per_1000"], 4),
+        "collected_at": timezone.now().isoformat(),
+    })
+    _refresh_paragraph_counters(run)
+
+
+def _pause_reason(run, part):
+    """Почему не отправлять следующую часть сразу; None — можно дальше."""
+    settings = run.report["settings"]
+    line = (
+        f"Часть №{part['number']}: принято {_num(part['accepted'])} из {_num(part['paragraphs'])} абзацев, "
+        f"брак {_num(part['defect_count'])} ({part['defect']:.1%}, порог {settings['max_defect']:.0%}), "
+        f"сдвиг в {part['shifted_requests']} запросах, потрачено ${part['cost_usd']:.4f}."
+    )
+    if part["openai_status"] != "completed":
+        return (
+            f"{line} OpenAI не выполнил часть целиком ({PART_STATES.get(part['openai_status'], part['openai_status'])}) "
+            "— забрано то, что готово. «Повторить отклонённые» отправит остальные абзацы этой части, "
+            "«Следующая часть» — пойдёт дальше без них."
+        )
+    if part["defect"] > settings["max_defect"]:
+        return (
+            f"Остановлен автоматически: брак выше порога. {line} Причины: {reason_text(part['reasons'])}. "
+            "«Повторить отклонённые» отправит заново только отклонённые абзацы этой части; если брак снова "
+            "высокий — сообщите разработчику. «Следующая часть» — идти дальше без повтора."
+        )
+    if run.report.pop("stop_requested", False):
+        return f"Остановлен вручную. {line} Чтобы идти дальше, нажмите «Следующая часть»."
+    if settings["wait_each_part"]:
+        return f"{line} Проверьте переводы в «Памяти переводов» и нажмите «Следующая часть»."
+    return None
+
+
+def reason_text(reasons):
+    """{"shifted": 10, …} → «сдвиг ответа 10, числа 3» (у абзаца бывает несколько причин)."""
+    return ", ".join(f"{REASON_LABELS.get(code, code)} {count}" for code, count in reasons.items()) or "—"
+
+
+def _failed_part_message(part, batch):
+    errors = getattr(getattr(batch, "errors", None), "data", None) or []
+    detail = f" Ответ OpenAI: {getattr(errors[0], 'message', errors[0])}." if errors else ""
+    return (
+        f"OpenAI не вернул ни одного перевода части №{part['number']} "
+        f"({PART_STATES.get(batch.status, batch.status)}).{detail} Абзацы этой части не в памяти: "
+        "«Следующая часть» отправит их заново. Если повторится — сообщите разработчику."
+    )
+
+
+def _retry_source(run):
+    """Последняя забранная часть, если у неё есть отклонённые абзацы."""
+    collected = [p for p in run.report.get("parts") or [] if p["state"] == "collected"]
+    if collected and collected[-1]["defect_count"]:
+        return collected[-1]
+    return None
+
+
+def _cursor(run):
+    """Лекарство, после которого начинается следующая часть: конец последней забранной части."""
+    for part in reversed(run.report.get("parts") or []):
+        if not part.get("retry_of") and part["state"] == "collected":
+            return part["last_product"]
+    return 0
+
+
+def _refresh_paragraph_counters(run):
+    """Отправлено, принято, брак (без принятых повтором) и потрачено — по частям прогона."""
+    parts = run.report.get("parts") or []
+    collected = [p for p in parts if p["state"] == "collected"]
+    run.queued_count = sum(p["paragraphs"] for p in parts if p["state"] != "failed")
+    run.done_count = sum(p["accepted"] for p in collected)
+    run.failed_count = max(
+        0,
+        sum(p["defect_count"] for p in collected if not p.get("retry_of"))
+        - sum(p["accepted"] for p in collected if p.get("retry_of")),
+    )
+    run.cost_usd = Decimal(str(round(sum(p["cost_usd"] for p in collected), 6)))
+
+
+def _run_paragraphs(run, action=None):
+    """Перевести прогон в «Идёт» и запустить цепочку шагов (строка уже заблокирована)."""
+    now = timezone.now()
+    run.status = AIRun.Status.RUNNING
+    run.started_at = run.started_at or now
+    run.tick_token = str(uuid.uuid4())
+    run.heartbeat_at = now
+    run.finished_at = None
+    run.message = ""
+    run.report.pop("stop_requested", None)
+    if action:
+        run.report["next_action"] = action
+    try:
+        with transaction.atomic():
+            run.save()
+    except IntegrityError:
+        raise RunError("Уже идёт другой перевод абзацев. Дождитесь его окончания или остановите его.")
+    _schedule_paragraph_tick(run, countdown=0)
+
+
+def _stop_paragraphs(run, reason):
+    run.status = AIRun.Status.STOPPED
+    run.message = reason
+    run.finished_at = timezone.now()
+    run.tick_token = ""
+    run.report.pop("stop_requested", None)
+    _refresh_paragraph_counters(run)
+    run.save()
+
+
+def _finish_paragraphs(run):
+    run.status = AIRun.Status.FINISHED
+    run.finished_at = timezone.now()
+    run.tick_token = ""
+    run.message = (
+        f"Проход по каталогу закончен: частей {len(run.report['parts'])}, принято в память "
+        f"{_num(run.done_count)} абзацев, не попали в память {_num(run.failed_count)}, потрачено "
+        f"${run.cost_usd:.4f}. Не попавшие в память абзацы переведутся при обработке лекарств; "
+        "или запустите перевод абзацев ещё раз — он возьмёт только их."
+    )
+    run.save()
+
+
+def _lock(run):
+    try:
+        return AIRun.objects.select_for_update(nowait=True).get(pk=run.pk)
+    except DatabaseError:
+        raise RunError("Сейчас идёт шаг прогона (например, забираем готовую часть) — повторите через минуту.")
+
+
+def _schedule_paragraph_tick(run, countdown=None):
+    from apps.ai.tasks import advance_medicine_paragraph_run
+
+    run_id, token = run.pk, run.tick_token
+    delay = PARAGRAPH_TICK_SECONDS if countdown is None else countdown
+    transaction.on_commit(
+        lambda: advance_medicine_paragraph_run.apply_async(args=[run_id, token], countdown=delay, priority=0),
+        robust=True,
+    )
+
+
+def _num(value):
+    """12345 → «12 345»."""
+    return f"{value:,}".replace(",", " ")

@@ -74,15 +74,20 @@ class ScrapedProduct:
     
     # Аналоги (muadilleri/eşdeğerleri)
     analogs: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Зачёркнутая цена, которую показывает сам источник (не прежняя цена).
+    old_price: Optional[float] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Преобразует объект в словарь."""
         safe_attrs = _json_safe_scraped_value(self.attributes)
         price_out = float(self.price) if self.price is not None else None
+        old_price_out = float(self.old_price) if self.old_price is not None else None
         payload = {
             'name': self.name,
             'description': self.description,
             'price': price_out,
+            'old_price': old_price_out,
             'currency': self.currency,
             'url': self.url,
             'images': self.images,
@@ -145,6 +150,8 @@ class BaseScraper(ABC):
         # None — парсер не сообщает; True/False — явный сигнал для Celery,
         # нужен ли следующий постраничный чанк.
         self.has_more_pages = None
+        # Итоговый URL последнего успешного _make_request (после редиректов).
+        self.last_response_url = ""
 
         # Прокси для обхода репутационных блокировок (Akamai и т.п.).
         # Активен только при use_proxy=True и заданном SCRAPER_PROXY_URL.
@@ -329,6 +336,7 @@ class BaseScraper(ABC):
                 
                 response = self.client.get(url, **kwargs)
                 response.raise_for_status()
+                self.last_response_url = str(response.url or url)
                 
                 # Задержка между запросами со случайным разбросом (jitter)
                 if attempt < self.max_retries:

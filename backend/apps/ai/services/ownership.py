@@ -4,7 +4,8 @@
 карточки — название, описание, переводы, SEO — принадлежат AI/менеджеру.
 Повторный парсинг их не перезаписывает: свежий исходный текст сохраняется в
 external_data["source_description"], а его изменение помечается
-external_data["ai_source_changed_at"] как сигнал к переобработке.
+external_data["ai_source_changed_at"] как сигнал к переобработке. Название
+источника (у лекарств — турецкий оригинал) хранится в external_data["source_name"].
 """
 
 import hashlib
@@ -14,6 +15,10 @@ from apps.ai.models import AIApplicationStatus, AIProcessingLog, AIProcessingSta
 SOURCE_DESCRIPTION_KEY = "source_description"
 SOURCE_DESCRIPTION_HASH_KEY = "source_description_sha256"
 SOURCE_CHANGED_KEY = "ai_source_changed_at"
+# Название товара в источнике. Применение AI пишет в name переведённое
+# название, а шаблон названия лекарства строится только из турецкого
+# (medicine_title.medicine_source_name).
+SOURCE_NAME_KEY = "source_name"
 
 
 def has_applied_ai_content(product) -> bool:
@@ -57,4 +62,13 @@ def remember_source_description(
         return True
     if ai_owned and previous:
         external_data[SOURCE_CHANGED_KEY] = now_iso
+    return True
+
+
+def remember_source_name(external_data: dict, name: str) -> bool:
+    """Запоминает название товара в источнике; True, если external_data изменился."""
+    name = (name or "").strip()
+    if not name or external_data.get(SOURCE_NAME_KEY) == name:
+        return False
+    external_data[SOURCE_NAME_KEY] = name
     return True

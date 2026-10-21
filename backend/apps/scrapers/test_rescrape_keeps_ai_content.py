@@ -4,11 +4,11 @@ import pytest
 
 from apps.ai.models import AIApplicationStatus, AIProcessingLog, AIProcessingStatus
 from apps.ai.services.content_generator import ContentGenerator
-from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
+from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY, SOURCE_NAME_KEY
 from apps.ai.services.result_applier import AIResultApplier
 from apps.catalog.models import GlobalAttributeKey, MedicineProduct, Product
 from apps.scrapers.base.scraper import ScrapedProduct
-from apps.scrapers.services import ScraperIntegrationService
+from apps.scrapers.services import ScraperIntegrationService, scraping_in_progress_context
 
 pytestmark = pytest.mark.django_db
 
@@ -171,3 +171,113 @@ def test_ai_reprocessing_uses_stored_source_and_apply_clears_flag():
     product.refresh_from_db()
     assert SOURCE_CHANGED_KEY not in product.external_data
     assert product.name == "Маджезик 100 мг, 15 таблеток"
+
+
+def test_rescrape_records_turkish_source_name_without_touching_translated_name():
+    # Прод 20.10.2026: у 103 лекарств name переведён прежней обработкой, а
+    # парсер name существующего товара не пишет — оригинал кладётся в source_name.
+    product = Product.objects.create(
+        name="MAJEZIK 100 MG 15 ФИЛЬМ ТАБЛЕТКИ",
+        slug="majezik-translated-name",
+        product_type="medicines",
+        external_id="majezik-100-mg-15-film-tablet",
+        external_url=URL,
+        external_data={"source": "ilacfiyati"},
+    )
+
+    ScraperIntegrationService()._update_existing_product(None, _scraped(), product)
+
+    product.refresh_from_db()
+    medicine = MedicineProduct.objects.get(base_product=product)
+    assert product.name == "MAJEZIK 100 MG 15 ФИЛЬМ ТАБЛЕТКИ"
+    assert product.external_data[SOURCE_NAME_KEY] == "MAJEZIK 100 MG 15 FILM TABLET"
+    assert medicine.external_data[SOURCE_NAME_KEY] == "MAJEZIK 100 MG 15 FILM TABLET"
+
+
+def test_rescrape_after_ai_keeps_ai_title_and_source_name():
+    _medicine, product = _ai_processed_medicine()
+
+    ScraperIntegrationService()._update_existing_product(None, _scraped(), product)
+
+    product.refresh_from_db()
+    assert product.name == "Маджезик 100 мг, 15 таблеток"
+    assert product.external_data[SOURCE_NAME_KEY] == "MAJEZIK 100 MG 15 FILM TABLET"
+
+
+def test_new_ilacfiyati_product_records_source_name():
+    service = ScraperIntegrationService()
+
+    with scraping_in_progress_context():
+        _action, product = service._create_new_product(None, _scraped())
+
+    product.refresh_from_db()
+    assert product.external_data[SOURCE_NAME_KEY] == "MAJEZIK 100 MG 15 FILM TABLET"
+
+
+def _clothing_with_ai_named_variant(slug):
+    from apps.catalog.models import Category, ClothingVariant
+
+    category = Category.objects.create(name=f"Одежда {slug}", slug=f"clothing-{slug}")
+    product = Product.objects.create(
+        name="Рубашка LCW",
+        slug=slug,
+        category=category,
+        product_type="clothing",
+        price=100,
+        currency="TRY",
+        external_id=f"lcw-{slug}",
+        external_data={},
+    )
+    clothing = product.domain_item
+    ClothingVariant.objects.create(
+        product=clothing,
+        name="Рубашка из льна - Чёрный",
+        name_en="Linen shirt - Black",
+        color="black",
+        external_id=f"lcw-var-{slug}",
+        price=100,
+        currency="TRY",
+    )
+    return product, clothing
+
+
+def _variant_spec(slug):
+    return {
+        "external_id": f"lcw-var-{slug}",
+        "color": "black",
+        "price": "120",
+        "currency": "TRY",
+        "external_url": "https://www.lcw.com/rubashka-o-1",
+        "stock_quantity": 3,
+        "is_available": True,
+    }
+
+
+def test_rescrape_keeps_ai_variant_names_but_updates_price():
+    product, clothing = _clothing_with_ai_named_variant("ai-variant-names")
+    AIProcessingLog.objects.create(
+        product=product,
+        processing_type="full",
+        status=AIProcessingStatus.APPROVED,
+        application_status=AIApplicationStatus.APPLIED,
+        input_data={},
+    )
+
+    ScraperIntegrationService()._sync_fashion_variants(
+        product, variants=[_variant_spec("ai-variant-names")]
+    )
+
+    variant = clothing.variants.get()
+    assert (variant.name, variant.name_en) == ("Рубашка из льна - Чёрный", "Linen shirt - Black")
+    assert variant.price == 120
+
+
+def test_rescrape_refreshes_variant_names_without_ai_content():
+    product, clothing = _clothing_with_ai_named_variant("plain-variant-names")
+
+    ScraperIntegrationService()._sync_fashion_variants(
+        product, variants=[_variant_spec("plain-variant-names")]
+    )
+
+    variant = clothing.variants.get()
+    assert variant.name_en != "Linen shirt - Black"

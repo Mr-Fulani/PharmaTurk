@@ -108,6 +108,8 @@ class UmmalandParser(BaseScraper):
                         # Обновляем описание и атрибуты из детальной страницы
                         api_product.description = detail_product.description
                         api_product.attributes.update(detail_product.attributes)
+                        if detail_product.old_price and detail_product.price == api_product.price:
+                            api_product.old_price = detail_product.old_price
                         
                         # Объединяем изображения (убираем дубликаты)
                         all_images = []
@@ -127,8 +129,9 @@ class UmmalandParser(BaseScraper):
                                 
                         api_product.images = all_images
                         
-                        # Устанавливаем количество
-                        api_product.stock_quantity = 3
+                        # Точного остатка источник не даёт: 3 — условное «есть»,
+                        # распроданная книга должна оставаться без наличия.
+                        api_product.stock_quantity = 3 if api_product.is_available else 0
                         
                         if self.validate_product(api_product):
                             products.append(api_product)
@@ -600,6 +603,10 @@ class UmmalandParser(BaseScraper):
             price = None
             price_container = soup.select_one('.product-price') or soup.select_one('.price')
             if price_container:
+                # Значок скидки «-20%» лежит внутри блока цены: без удаления
+                # «768 ₽ -20%» превращается в 76820.
+                for badge in price_container.select('.product-percentage'):
+                    badge.decompose()
                 # Если есть ins (новая цена), берем ее
                 ins_price = price_container.select_one('ins .woocommerce-Price-amount') or price_container.select_one('ins')
                 if ins_price:
@@ -615,7 +622,13 @@ class UmmalandParser(BaseScraper):
                 # Обработка ситуаций, когда текст содержит "от 100 руб" или диапазон
                 # Извлекаем первое числовое значение
                 price = normalize_price(price_text)
-            
+
+            # Зачёркнутая цена книги со скидкой («960 ₽» рядом с «768 ₽ -20%»).
+            old_price = None
+            old_price_elem = soup.select_one('.product-old-price')
+            if old_price_elem:
+                old_price = normalize_price(clean_text(old_price_elem.text))
+
             is_available = True
             stock_elem = soup.select_one('.product-available__text') or soup.select_one('.stock')
             if stock_elem:
@@ -642,6 +655,7 @@ class UmmalandParser(BaseScraper):
                 name=name,
                 description=description,
                 price=price,
+                old_price=old_price,
                 currency="RUB",
                 url=product_url,
                 images=images,

@@ -11,6 +11,7 @@ from django.utils.text import slugify
 from django.utils import timezone
 
 from apps.http_errors import ExternalAccessBlockedError, raise_for_blocked_status
+from apps.catalog.utils.old_price import source_old_price
 from apps.catalog.ikea_category_mapping import resolve_ikea_category
 from apps.catalog.models import (
     FurnitureProduct,
@@ -679,8 +680,12 @@ class IkeaService:
             updated = False
             # Обновляем поля, если они изменились или были пусты
             if product.price != price:
-                product.old_price = product.price
                 product.price = price
+                updated = True
+            # Зачёркнутая цена — только от источника (прежняя цена = ложная скидка).
+            new_old_price = source_old_price(normalized.get("old_price"), product.price)
+            if product.old_price != new_old_price:
+                product.old_price = new_old_price
                 updated = True
                 
             from apps.ai.services.ownership import (
@@ -789,8 +794,9 @@ class IkeaService:
             }
         )
         
-        if not v_created and variant.price != price:
-            variant.old_price = variant.price
+        new_variant_old_price = source_old_price(normalized.get("old_price"), price)
+        if not v_created and (variant.price != price or variant.old_price != new_variant_old_price):
+            variant.old_price = new_variant_old_price
             variant.price = price
             variant.save(update_fields=["price", "old_price", "updated_at"])
 

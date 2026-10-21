@@ -736,3 +736,14 @@ def test_ilacfiyati_invalid_detail_page_is_not_silent_success(monkeypatch):
 
     with pytest.raises(IlacFiyatiSourceError, match="название препарата не найдено"):
         parser.parse_product_detail("https://ilacfiyati.com/ilaclar/missing")
+
+
+def test_ilacfiyati_catalog_without_results_block_is_an_error_not_end_of_catalog(monkeypatch):
+    # Живой сайт 20.10.2026: даже за последней страницей (?pg=999) и при пустом
+    # фильтре заголовок «Arama Sonuçları» остаётся. Его пропажа — смена вёрстки
+    # или страница защиты; тихий «успех с 0 товаров» скрыл бы поломку.
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    monkeypatch.setattr(parser, "_make_request", lambda _url: "<html><body>Just a moment...</body></html>")
+
+    with pytest.raises(IlacFiyatiSourceError, match="Arama Sonuçları"):
+        list(parser.parse_product_list(IMMUNITY_URL, max_pages=1))

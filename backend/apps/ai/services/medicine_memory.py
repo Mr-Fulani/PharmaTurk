@@ -294,8 +294,8 @@ def _brand_re(brand: str) -> re.Pattern:
             parts.append(f"[{char}{char.upper()}]")
         else:
             parts.append(re.escape(char))
-    # «MAJEZIK'in», «MAJEZİK’i» — суффикс после апострофа.
-    return re.compile(rf"(?<!\w)({''.join(parts)})(?:['’`](\w+))?(?!\w)")
+    # «MAJEZIK'in», «MAJEZİK’i», «EPORON®'u» — знак ® и суффикс после апострофа.
+    return re.compile(rf"(?<!\w)({''.join(parts)})[®™]*(?:['’`](\w+))?(?!\w)")
 
 
 def _canonical_suffix(suffix: str) -> str:
@@ -308,7 +308,8 @@ def normalize_paragraph(text: str, brand: str = "") -> str:
     """Ключ абзаца в памяти: нормализация translation_memory, бренд товара → BRAND_TOKEN.
 
     Метка ставится на бренд с заглавной буквы («MAJEZIK», «Majezik»); слово
-    со строчной («grip») — обычный текст.
+    со строчной («grip») — обычный текст. Знак ® после бренда в ключ не
+    попадает: «EPORON®'u» и «MAJEZIK'i» — один абзац.
     """
     text = normalize_source_text(text)
     if not brand:
@@ -333,9 +334,85 @@ def source_tab_texts(external_data: Any) -> list[str]:
     return texts
 
 
+# Парсер ilacfiyati собирает раздел через get_text("\n"), и строчный тег внутри
+# предложения (<b>, <sup>, <sub>, <a>) становится отдельной строкой: «EPORON» /
+# «®» / «'u kullanmayınız.», «B» / «12» / «vitamini». По разметке 349 страниц
+# так разорвана каждая 9-я граница строк (docs/MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md,
+# «Обрывки абзацев»).
+_MARK_LINE = re.compile(r"[®™©]+")
+_INDEX_LINE = re.compile(r"\d{1,3}")  # B12, D3, m2, (177Lu — <sup>/<sub>
+# Индекс клеится к одиночной букве или скобке: «B» / «12», «mL/m» / «2»; число
+# после слова — ячейка таблицы доз («AUGMENTİN ES miktarı» / «8» / «Günde iki kez 3 ml»).
+_INDEX_BASE_END = re.compile(r"(?:(?<![^\W\d_])[^\W\d_]|\()$")
+_DEGREE_LINE = re.compile(r"[o°]")  # 25 <sup>o</sup>C
+_URL_LINE = re.compile(r"(?:https?://|www\.)\S+")
+_SUFFIX_START = re.compile(r"['’`][a-zçğıöşü]")  # «'un», «'in» после бренда
+_CLOSING_START = re.compile(r"[,.;:)\]]")
+_LOWER_START = re.compile(r"[a-zçğıöşü]")
+_SENTENCE_END = re.compile(r"[.:;!?]$")
+
+
+def _line_kind(line: str) -> str:
+    if _MARK_LINE.fullmatch(line):
+        return "mark"
+    if _INDEX_LINE.fullmatch(line) or _DEGREE_LINE.fullmatch(line):
+        return "index"
+    return "url" if _URL_LINE.fullmatch(line) else ""
+
+
+def _is_caps_word(text: str) -> bool:
+    """«DERHAL», «MON.LUTEC», буквица «A» — до трёх слов заглавными."""
+    letters = re.sub(r"[\W\d_]", "", text)
+    return bool(letters) and letters.isupper() and len(text.split()) <= 3
+
+
+def _continuation_glue(paragraph: str, line: str, previous_kind: str) -> Optional[str]:
+    """Чем приклеить строку к абзацу, если она продолжает его предложение; None — новый абзац.
+
+    Строка со строчной буквы сама по себе ничего не значит: так же начинаются
+    пункты списка побочных эффектов («baş ağrısı» / «bulantı»). Она клеится
+    только после строки, которая не может кончать фразу: ®, индекс, ссылка,
+    слово заглавными.
+    """
+    if _MARK_LINE.fullmatch(line) or _SUFFIX_START.match(line) or _CLOSING_START.match(line):
+        return ""
+    if previous_kind in ("mark", "index") or (previous_kind == "url" and _LOWER_START.match(line)):
+        return " "
+    if _DEGREE_LINE.fullmatch(line) and paragraph[-1:].isdigit():
+        return ""
+    if _SENTENCE_END.search(paragraph):
+        return None
+    if _INDEX_LINE.fullmatch(line) and _INDEX_BASE_END.search(paragraph):
+        return ""
+    if _URL_LINE.fullmatch(line):
+        return " "
+    if _LOWER_START.match(line) and _is_caps_word(paragraph):
+        return "" if len(paragraph) == 1 else " "
+    return None
+
+
 def split_paragraphs(text: str) -> list[str]:
-    """Текст раздела → абзацы и разделители по очереди: [абзац, "\\n", абзац, …]."""
-    return re.split(r"(\n+)", str(text or "").strip())
+    """Текст раздела → абзацы и разделители по очереди: [абзац, "\\n", абзац, …].
+
+    Строка, которую от предложения отрезал строчный тег, приклеивается к
+    абзацу (``_continuation_glue``): иначе модель получает обрывки
+    «Somatropine veya {BRAND}» и «'un içerisindeki…», склеивает их сама, и ответ
+    съезжает на ключ. Через пустую строку не клеится.
+    """
+    parts = re.split(r"(\n+)", str(text or "").strip())
+    merged = [parts[0].strip()]
+    kind = ""
+    for separator, line in zip(parts[1::2], parts[2::2]):
+        line = line.strip()
+        glue = _continuation_glue(merged[-1], line, kind) if separator == "\n" else None
+        if glue is None:
+            merged += [separator, line]
+        else:
+            merged[-1] += glue + line
+        kind = _line_kind(line)
+        if kind == "index" and glue is None:  # «8» — ячейка таблицы, а не индекс
+            kind = ""
+    return merged
 
 
 def needs_translation(paragraph: str) -> bool:
@@ -347,7 +424,17 @@ def _looks_russian(source: str, ru: str) -> bool:
     if len(re.findall(r"[^\W\d_]", source)) < 20:
         return True
     cyrillic = len(re.findall(r"[А-Яа-яЁё]", ru))
-    return cyrillic >= 10 and not looks_untranslated_turkish(ru)
+    if not cyrillic or looks_untranslated_turkish(ru):
+        return False
+    # Бренд (слово заглавными) переносится латиницей и переводить его не нужно:
+    # «5. DERMOVATE'IN SAKLANMASI» → «5. Хранение DERMOVATE» — 8 кириллических букв.
+    kept = {fold_tr(word) for word in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", ru)}
+    translatable = sum(
+        len(word)
+        for word in re.findall(r"[^\W\d_]+", source)
+        if not (word.isupper() and fold_tr(word) in kept)
+    )
+    return cyrillic >= min(10, translatable // 2)
 
 
 # Подписи реквизитов в конце инструкции; имена фирм и адреса не переводятся.

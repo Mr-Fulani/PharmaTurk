@@ -1,0 +1,74 @@
+{% if run.started_at %}
+<div class="airun-card">
+  <h2>Прогресс</h2>
+  <div class="airun-bar"><div id="airun-bar" style="width: {{ state.percent }}%"></div></div>
+  <p style="margin:0">Пройдено каталога: <b>{{ state.covered }}</b> из <b>{{ run.selected_count }}</b> абзацев, которых не было в памяти (<span id="airun-percent">{{ state.percent }}</span>%)</p>
+  <div class="airun-stats">
+    <div class="airun-stat"><b>{{ parts|length }}</b><small>частей отправлено (с повторами)</small></div>
+    <div class="airun-stat"><b id="airun-queued">{{ state.queued }}</b><small>абзацев отправлено</small></div>
+    <div class="airun-stat"><b id="airun-done">{{ state.done }}</b><small>принято в память</small></div>
+    <div class="airun-stat"><b id="airun-failed">{{ state.failed }}</b><small>брак — не попали в память</small></div>
+    <div class="airun-stat"><b>$<span id="airun-cost">{{ state.cost }}</span></b><small>потрачено (оценка всего прохода ${{ state.estimate }})</small></div>
+    <div class="airun-stat"><b>{% if state.per_1000 %}${{ state.per_1000 }}{% else %}—{% endif %}</b><small>цена за 1000 абзацев</small></div>
+  </div>
+  <div class="airun-buttons">
+    <a class="button" href="{{ memory_url }}">📄 Память переводов абзацев</a>
+    <button type="button" class="button" onclick="location.reload()">🔄 Обновить</button>
+    {% if can_act and state.can_stop %}
+    <form method="post" action="{% url 'admin:ai_airun_stop' run.pk %}" onsubmit="return confirm('Остановить? Новые части отправляться не будут; часть, уже отправленная в OpenAI, будет забрана, когда будет готова.');">
+      {% csrf_token %}<button type="submit" class="airun-big airun-danger">■ Стоп</button>
+    </form>
+    {% endif %}
+    {% if can_act and state.can_resume %}
+    <form method="post" action="{% url 'admin:ai_airun_resume' run.pk %}">
+      {% csrf_token %}<button type="submit" class="airun-big" style="background:#15803d">▶ Продолжить</button>
+    </form>
+    {% endif %}
+    {% if can_act and state.can_next %}
+    <form method="post" action="{% url 'admin:ai_airun_next_part' run.pk %}">
+      {% csrf_token %}<button type="submit" class="airun-big" style="background:#15803d">▶ Следующая часть</button>
+    </form>
+    {% endif %}
+    {% if can_act and state.can_retry %}
+    <form method="post" action="{% url 'admin:ai_airun_retry_part' run.pk %}">
+      {% csrf_token %}<button type="submit" class="airun-big">↻ Повторить отклонённые (часть №{{ state.retry_part }}: {{ state.retry_count }} абзацев)</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if state.live %}<p class="help" style="color:var(--body-quiet-color)">Страница обновляется сама. Состояние части в OpenAI система проверяет раз в 5 минут.</p>{% endif %}
+</div>
+
+<div class="airun-card" style="max-width:none">
+  <h2>Части</h2>
+  {% if parts %}
+  <div style="overflow-x:auto">
+  <table style="width:100%">
+    <thead>
+      <tr>
+        <th>№</th><th>Состояние</th><th>Абзацев</th><th>Запросов</th><th>Принято</th><th>Брак</th>
+        <th>Сдвиг (запросов)</th><th>Потрачено</th><th>За 1000 абзацев</th><th>Отправлена / забрана</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for part in parts %}
+      <tr>
+        <td><b>{{ part.number }}</b>{% if part.retry_of %}<br><small>повтор части №{{ part.retry_of }}</small>{% else %}<br><small>до лекарства #{{ part.last_product }}</small>{% endif %}</td>
+        <td>{{ part.state_label }}<br><small style="color:var(--body-quiet-color)">{{ part.batch_id }}</small></td>
+        <td>{{ part.paragraphs }}</td>
+        <td>{% if part.requests_done or part.requests_failed %}{{ part.requests_done }} / {{ part.requests }}{% if part.requests_failed %}, с ошибкой {{ part.requests_failed }}{% endif %}{% else %}{{ part.requests }}{% endif %}</td>
+        <td>{% if part.collected %}{{ part.accepted }}{% else %}—{% endif %}</td>
+        <td>{% if part.collected %}{{ part.defect_count }} ({{ part.defect_percent }}){% if part.defect_count %}<br><small>{{ part.reasons_text }}{% if part.no_answer %}; без ответа {{ part.no_answer }}{% endif %}</small>{% endif %}{% else %}—{% endif %}</td>
+        <td>{% if part.collected %}{{ part.shifted_requests }}{% else %}—{% endif %}</td>
+        <td>{% if part.collected %}${{ part.cost }}{% else %}<small>оценка ${{ part.estimate }}</small>{% endif %}</td>
+        <td>{% if part.collected %}${{ part.per_1000 }}{% else %}—{% endif %}</td>
+        <td>{{ part.sent|date:"d.m H:i" }}{% if part.collected_at_dt %} / {{ part.collected_at_dt|date:"d.m H:i" }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p>Первая часть ещё не отправлена — это займёт до минуты после запуска.</p>
+  {% endif %}
+</div>
+{% endif %}

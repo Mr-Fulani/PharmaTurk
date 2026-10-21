@@ -317,3 +317,28 @@ def test_merge_candidate_deletes_duplicate_domain_product_with_variants():
     canonical.refresh_from_db()
     assert candidate.status == "merged"
     assert canonical.external_data["additional_images"] == ["https://shop.example.com/linen-shirt.jpg"]
+
+
+@pytest.mark.django_db
+def test_find_duplicates_scans_catalog_in_one_light_query(django_assert_num_queries):
+    # Еженедельный поиск идёт на воркере с лимитом памяти: описания и полный
+    # external_data (у лекарств — тексты вкладок) не загружаются, N+1 нет.
+    category = _make_category("Аптечка")
+    brand = _make_brand("Light Brand")
+    for index in range(3):
+        _make_product(
+            name=f"Light product {index}",
+            brand=brand,
+            category=category,
+            external_id="LIGHT-1" if index < 2 else "LIGHT-2",
+            source="api" if index == 0 else "ilacfiyati",
+        )
+
+    with django_assert_num_queries(1):
+        duplicates = DeduplicationService().find_duplicates()
+        canonical = duplicates[0]["canonical_product"]
+        assert canonical.get_deferred_fields() >= {"description", "external_data"}
+
+    assert len(duplicates) == 1
+    assert duplicates[0]["reasons"][0] == "Совпадает внешний ID"
+    assert DeduplicationService()._source_priority(canonical) == 300

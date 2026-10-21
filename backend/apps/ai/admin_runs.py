@@ -10,12 +10,15 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect, JsonResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
+from django.utils.dateparse import parse_datetime
 from django.utils.html import format_html
 
 from apps.catalog.models import Category, Product
 
 from .models import AIRun
 from .services import ai_runs
+from .services.medicine_memory import PARAGRAPH_NAMESPACE
+from .services.medicine_paragraph_batch import MAX_DEFECT, PART_SIZE
 
 STATUS_COLORS = {
     AIRun.Status.DRAFT: ("#475569", "#e2e8f0"),
@@ -81,6 +84,49 @@ class MaintenanceForm(forms.Form):
         choices=[("", "Все типы"), *Product.PRODUCT_TYPE_CHOICES],
         required=False,
     )
+
+
+class ParagraphRunForm(forms.Form):
+    part_size = forms.IntegerField(
+        label="Абзацев в части",
+        min_value=ai_runs.PARAGRAPH_MIN_PART,
+        max_value=ai_runs.PARAGRAPH_MAX_PART,
+        initial=PART_SIZE,
+        help_text=(
+            f"Часть из {PART_SIZE} абзацев стоит ≈ $0.16 и готовится в OpenAI до 24 часов. "
+            "Для первой пробы поставьте 200–500."
+        ),
+    )
+    max_defect = forms.IntegerField(
+        label="Порог брака, %",
+        min_value=1,
+        max_value=100,
+        initial=round(MAX_DEFECT * 100),
+        help_text="Если в готовой части не прошло проверку больше этой доли абзацев, прогон остановится сам.",
+    )
+    wait_each_part = forms.BooleanField(
+        label="После каждой части ждать моей кнопки «Следующая часть»",
+        required=False,
+        help_text="Без галочки следующая часть отправляется сама, если брак не выше порога.",
+    )
+
+
+PARAGRAPH_INFO = {
+    "title": "Перевести абзацы инструкций лекарств (Batch API)",
+    "text": (
+        "Переводит на русский и английский абзацы инструкций лекарств (показания, противопоказания, "
+        "применение, побочные действия, хранение), которых ещё нет в памяти переводов. Работает через "
+        "OpenAI Batch API: вдвое дешевле обычной обработки, но каждая часть готовится до 24 часов. "
+        "Абзацы уходят частями; готовую часть система забирает сама, проверяет каждый перевод теми же "
+        "правилами, что обычная обработка, и записывает принятые в память. Товары на сайте сами не "
+        "меняются: обработка лекарств потом берёт переводы из памяти бесплатно."
+    ),
+    "submit_label": "🧮 Посчитать",
+    "intro": (
+        "Сначала ничего не отправляется: система посчитает, сколько абзацев не переведено, сколько "
+        "это частей и примерно сколько стоит. Отправка — только после кнопки «▶ Запустить»."
+    ),
+}
 
 
 MAINTENANCE_INFO = {
@@ -172,7 +218,8 @@ class AIRunAdmin(admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        if obj is not None and obj.status == AIRun.Status.RUNNING:
+        # Часть в OpenAI без прогона никто не заберёт — деньги за неё пропадут.
+        if obj is not None and (obj.status == AIRun.Status.RUNNING or ai_runs.part_in_flight(obj)):
             return False
         return super().has_delete_permission(request, obj)
 
@@ -197,6 +244,9 @@ class AIRunAdmin(admin.ModelAdmin):
             path("<int:run_id>/stop/", wrap(self.stop_view), name="ai_airun_stop"),
             path("<int:run_id>/resume/", wrap(self.resume_view), name="ai_airun_resume"),
             path("<int:run_id>/confirm/", wrap(self.confirm_view), name="ai_airun_confirm"),
+            path("paragraphs/", wrap(self.paragraphs_view), name="ai_airun_paragraphs"),
+            path("<int:run_id>/next-part/", wrap(self.next_part_view), name="ai_airun_next_part"),
+            path("<int:run_id>/retry-part/", wrap(self.retry_part_view), name="ai_airun_retry_part"),
         ] + super().get_urls()
 
     def _context(self, request, **extra):
@@ -280,9 +330,35 @@ class AIRunAdmin(admin.ModelAdmin):
             can_act=self.has_add_permission(request),
             logs_url=f"{reverse('admin:ai_aiprocessinglog_changelist')}?ai_run={run.pk}",
             moderation_url=reverse("admin:ai_aimoderationqueue_changelist"),
-            info=MAINTENANCE_INFO.get(run.kind),
+            memory_url=f"{reverse('admin:ai_aitranslationmemory_changelist')}?namespace={PARAGRAPH_NAMESPACE}",
+            info=PARAGRAPH_INFO if run.kind == AIRun.Kind.MEDICINE_PARAGRAPHS else MAINTENANCE_INFO.get(run.kind),
+            parts=self._parts(run),
         )
         return TemplateResponse(request, "admin/ai/airun/run_detail.html", context)
+
+    def _parts(self, run):
+        """Строки таблицы частей перевода абзацев, новые сверху."""
+        if run.kind != AIRun.Kind.MEDICINE_PARAGRAPHS:
+            return []
+        rows = []
+        for part in reversed(run.report.get("parts") or []):
+            state = ai_runs.PART_STATES.get(part["state"], part["state"])
+            if part["state"] == "collected" and part.get("openai_status") != "completed":
+                state = f"забрана частично ({ai_runs.PART_STATES.get(part['openai_status'], part['openai_status'])})"
+            collected = part["state"] == "collected"
+            rows.append({
+                **part,
+                "state_label": state,
+                "collected": collected,
+                "defect_percent": f"{part['defect']:.1%}" if collected else "",
+                "reasons_text": ai_runs.reason_text(part.get("reasons") or {}) if collected else "",
+                "cost": f"{part['cost_usd']:.4f}" if collected else "",
+                "estimate": f"{part['estimate_usd']:.4f}",
+                "per_1000": f"{part['per_1000']:.4f}" if collected else "",
+                "sent": parse_datetime(part["sent_at"]),
+                "collected_at_dt": parse_datetime(part["collected_at"]) if collected else None,
+            })
+        return rows
 
     def _state(self, run):
         """Данные для страницы и для автообновления (status/)."""
@@ -320,6 +396,8 @@ class AIRunAdmin(admin.ModelAdmin):
             "live": run.status == AIRun.Status.RUNNING
             or (run.status == AIRun.Status.DRAFT and not run.report.get("preview"))
             or (run.status == AIRun.Status.STOPPED and ai_runs.in_progress_count(run) > 0),
+            "parts_key": "",
+            **(ai_runs.paragraph_state(run) if run.kind == AIRun.Kind.MEDICINE_PARAGRAPHS else {}),
         }
 
     def status_view(self, request, run_id):
@@ -341,6 +419,12 @@ class AIRunAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(reverse("admin:ai_airun_change", args=[run.pk]))
 
     def stop_view(self, request, run_id):
+        if self._get_run(request, run_id).kind == AIRun.Kind.MEDICINE_PARAGRAPHS:
+            return self._post_action(
+                request, run_id, ai_runs.stop_paragraph_run,
+                "Новые части отправляться не будут. Если часть уже в OpenAI, её заберём, когда она будет "
+                "готова, и прогон остановится.",
+            )
         return self._post_action(
             request, run_id, ai_runs.stop_run,
             "Прогон остановлен. Товары, которые уже обрабатывались, доработают; "
@@ -351,9 +435,49 @@ class AIRunAdmin(admin.ModelAdmin):
         return self._post_action(request, run_id, ai_runs.resume_run, "Прогон продолжен.")
 
     def confirm_view(self, request, run_id):
+        if self._get_run(request, run_id).kind == AIRun.Kind.MEDICINE_PARAGRAPHS:
+            return self._post_action(
+                request, run_id, ai_runs.start_paragraph_run,
+                "Прогон запущен: первая часть уйдёт в OpenAI в течение минуты. Страница обновляется сама.",
+            )
         return self._post_action(
             request, run_id, ai_runs.confirm_maintenance, "Операция запущена. Страница обновляется сама."
         )
+
+    def next_part_view(self, request, run_id):
+        return self._post_action(
+            request, run_id, ai_runs.next_paragraph_part, "Следующая часть уйдёт в OpenAI в течение минуты."
+        )
+
+    def retry_part_view(self, request, run_id):
+        return self._post_action(
+            request, run_id, ai_runs.retry_paragraph_part,
+            "Отклонённые абзацы уйдут в OpenAI повторной частью в течение минуты.",
+        )
+
+    # --- перевод абзацев инструкций (Batch API)
+
+    def paragraphs_view(self, request):
+        self._require_add(request)
+        if request.method == "POST":
+            form = ParagraphRunForm(request.POST)
+            if form.is_valid():
+                data = form.cleaned_data
+                try:
+                    run = ai_runs.create_paragraph_preview(
+                        user=request.user,
+                        part_size=data["part_size"],
+                        max_defect=data["max_defect"] / 100,
+                        wait_each_part=data["wait_each_part"],
+                    )
+                except ai_runs.RunError as exc:
+                    messages.error(request, str(exc))
+                else:
+                    return HttpResponseRedirect(reverse("admin:ai_airun_change", args=[run.pk]))
+        else:
+            form = ParagraphRunForm()
+        context = self._context(request, title=PARAGRAPH_INFO["title"], info=PARAGRAPH_INFO, form=form)
+        return TemplateResponse(request, "admin/ai/airun/maintenance.html", context)
 
     # --- обслуживающие операции
 

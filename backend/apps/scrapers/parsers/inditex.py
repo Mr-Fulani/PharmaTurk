@@ -259,8 +259,11 @@ class InditexSiblingParser(ZaraParser):
         category_id = self._category_id_from_url(category_url)
         if not category_id:
             self.has_more_pages = False
+            # Ссылки меню вида «…-n3294.html» без ?celement= сайт отдаёт
+            # 301 сам на себя, id категории из них не достать.
             raise MalformedOfferResponse(
-                f"{self.SOURCE_LABEL}: не удалось определить id категории на {category_url}"
+                f"{self.SOURCE_LABEL}: не удалось определить id категории на {category_url}. "
+                "Откройте категорию на сайте и вставьте адрес целиком, вместе с ?celement=…"
             )
         catalog_id = self._resolve_catalog_id()
         listing = self._api_json(
@@ -378,6 +381,7 @@ class InditexSiblingParser(ZaraParser):
             name=name,
             description=description,
             price=first_variant.get("price"),
+            old_price=first_variant.get("old_price"),
             currency="TRY",
             url=product_url,
             images=list(first_variant.get("images") or []),
@@ -405,6 +409,7 @@ class InditexSiblingParser(ZaraParser):
             return None
         sizes = []
         prices = []
+        old_prices = []
         for index, size in enumerate(color.get("sizes") or []):
             if not isinstance(size, dict) or not size.get("name"):
                 continue
@@ -413,6 +418,10 @@ class InditexSiblingParser(ZaraParser):
             price = self._normalize_price_value(size.get("price"))
             if price is not None:
                 prices.append(price)
+            # Зачёркнутая цена распродажи (oldPrice размера, в курушах как price).
+            old_price = self._normalize_price_value(size.get("oldPrice"))
+            if old_price is not None:
+                old_prices.append(old_price)
             sizes.append(
                 {
                     "size": clean_text(str(size.get("name"))),
@@ -431,6 +440,7 @@ class InditexSiblingParser(ZaraParser):
             "color": color_name,
             "display_name": clean_text(f"{product_name} - {color_name}".strip(" -")),
             "price": min(prices) if prices else None,
+            "old_price": max(old_prices) if old_prices else None,
             "currency": "TRY",
             "external_url": product_url,
             "images": galleries.get(color_id, []),

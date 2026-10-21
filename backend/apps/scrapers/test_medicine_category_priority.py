@@ -491,3 +491,82 @@ def test_real_html_to_catalog_keeps_own_data_and_reuses_images(catalog, monkeypa
     assert second["skipped"] == 1 and second["errors"] == 0
     assert list(MedicineProductImage.objects.filter(product=domain).order_by("pk").values()) == before
     assert image_get.call_count == 2, "Identical second pass must not download duplicate images"
+
+
+SUPPLEMENT_URL = "https://ilacfiyati.com/takviye-edici-gida/solgar-vitamin-c-1000-mg-100-tablet"
+
+
+@pytest.fixture
+def supplement_catalog(catalog):
+    kind, _ = CategoryType.objects.get_or_create(slug="supplements", defaults={"name": "Supplements"})
+    root, _ = Category.objects.update_or_create(
+        slug="supplements", defaults={"name": "БАДы", "category_type": kind, "parent": None, "is_active": True},
+    )
+    vitamins, _ = Category.objects.update_or_create(
+        slug="vitamins-test", defaults={"name": "Витамины", "category_type": kind, "parent": root, "is_active": True},
+    )
+    return {**catalog, "supplements": root, "vitamins": vitamins}
+
+
+def supplement_scraped(**overrides):
+    values = dict(
+        name="SOLGAR VITAMIN C 1000 MG 100 TABLET", source="ilacfiyati", category="",
+        external_id="solgar-vitamin-c-1000-mg-100-tablet", url=SUPPLEMENT_URL,
+        price=950, currency="TRY", is_available=True, attributes={"manufacturer": "Solgar"},
+    )
+    values.update(overrides)
+    return ScrapedProduct(**values)
+
+
+def test_supplement_url_with_default_medicine_root_maps_to_supplements(supplement_catalog):
+    # Перепарсинг БАДа по ссылке из конфигурации с корнем «Медицина» (18.10:
+    # «variant_or_product_type_conflict» и пропуск) — теперь корень «БАДы».
+    item = supplement_scraped()
+    ScraperIntegrationService()._apply_category_mapping(
+        session(None, supplement_catalog["root"]), item,
+    )
+    assert item.category == "supplements"
+    assert getattr(item, "_medicine_category_root", None) is None
+    assert getattr(item, "_category_override", None) is None
+
+
+def test_supplement_url_with_explicit_supplement_subcategory_keeps_task_choice(supplement_catalog):
+    item = supplement_scraped()
+    ScraperIntegrationService()._apply_category_mapping(
+        session(supplement_catalog["vitamins"], supplement_catalog["root"]), item,
+    )
+    assert item.category == "vitamins-test"
+    assert item._category_override == supplement_catalog["vitamins"]
+
+
+def test_existing_supplement_is_updated_by_url_and_keeps_its_category(supplement_catalog):
+    existing = Product.objects.create(
+        name="Solgar Vitamin C", slug="solgar-vitamin-c-1000", product_type="supplements",
+        category=supplement_catalog["vitamins"], price=900, currency="TRY",
+        external_id="solgar-vitamin-c-1000-mg-100-tablet", external_url=SUPPLEMENT_URL,
+        external_data={"source": "ilacfiyati"},
+    )
+    service = ScraperIntegrationService()
+    run = real_session(supplement_catalog, target=None)
+    run.start_url = SUPPLEMENT_URL
+
+    result = service._process_scraped_products(run, [supplement_scraped()])
+
+    existing.refresh_from_db()
+    assert result["updated"] == 1 and result["skipped"] == 0
+    assert existing.product_type == "supplements"
+    assert existing.category == supplement_catalog["vitamins"]
+    assert existing.price == 950
+
+
+def test_new_supplement_by_url_is_created_as_supplement(supplement_catalog):
+    service = ScraperIntegrationService()
+    run = real_session(supplement_catalog, target=None)
+
+    result = service._process_scraped_products(run, [supplement_scraped()])
+
+    assert result["created"] == 1
+    product = Product.objects.get(external_id="solgar-vitamin-c-1000-mg-100-tablet")
+    assert product.product_type == "supplements"
+    assert product.category == supplement_catalog["supplements"]
+    assert not MedicineProduct.objects.filter(base_product=product).exists()

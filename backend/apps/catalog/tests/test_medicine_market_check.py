@@ -130,7 +130,8 @@ def test_market_check_updates_only_price_and_equivalents(medicine, monkeypatch):
     medicine.base_product.refresh_from_db()
     check.refresh_from_db()
     assert medicine.price == Decimal("125.45")
-    assert medicine.old_price == Decimal("100.00")
+    # Цены лекарств регулируются: прежняя цена не становится «старой».
+    assert medicine.old_price is None
     assert medicine.is_available is False
     assert medicine.stock_quantity == 0
     assert medicine.base_product.is_available is False

@@ -25,6 +25,11 @@
     до {{ run.limit }} товаров{% if run.missing_description %}, только без описания{% endif %},
     {% if run.auto_apply %}<b>результат сразу применяется к товарам</b>{% else %}результат ждёт вашей проверки (не применяется сам){% endif %}.
   </p>
+  {% elif run.kind == "medicine_paragraphs" %}
+  <p style="margin:6px 0 0">
+    Частями по <b>{{ run.report.settings.part_size }}</b> абзацев, порог брака <b>{% widthratio run.report.settings.max_defect 1 100 %} %</b>,
+    {% if run.report.settings.wait_each_part %}<b>после каждой части ждёт кнопки «Следующая часть»</b>{% else %}следующая часть уходит сама, если брак не выше порога{% endif %}.
+  </p>
   {% elif run.product_type %}
   <p style="margin:6px 0 0">Тип товара: <b>{{ run.get_product_type_display }}</b>, до {{ run.limit }} записей.</p>
   {% else %}
@@ -41,6 +46,8 @@
   <div class="airun-warn">{{ run.message }}</div>
 {% elif run.status == "finished" and run.message %}
   <div class="airun-ok">{{ run.message }}</div>
+{% elif run.status == "running" and run.message %}
+  <div class="airun-note">{{ run.message }}</div>
 {% endif %}
 </div>
 
@@ -89,16 +96,18 @@
       {% if can_act and run.selected_count %}
       <form method="post" action="{% url 'admin:ai_airun_confirm' run.pk %}" style="margin-top:12px">
         {% csrf_token %}
-        <button type="submit" class="airun-big" style="background:#15803d">✔ Да, выполнить</button>
+        <button type="submit" class="airun-big" style="background:#15803d">{% if run.kind == "medicine_paragraphs" %}▶ Запустить{% else %}✔ Да, выполнить{% endif %}</button>
         <a class="button" href="{% url 'admin:ai_airun_changelist' %}" style="margin-left:8px">Отмена</a>
       </form>
       {% elif not run.selected_count %}
       <div class="airun-ok">Делать нечего — подходящих записей нет.</div>
       {% endif %}
     {% else %}
-      <p>Считаем… обычно до минуты (если сейчас идёт большой прогон — дольше). Страница обновится сама.</p>
+      <p>Считаем… {% if run.kind == "medicine_paragraphs" %}просмотр всего каталога лекарств занимает несколько минут{% else %}обычно до минуты (если сейчас идёт большой прогон — дольше){% endif %}. Страница обновится сама.</p>
     {% endif %}
   </div>
+{% elif run.kind == "medicine_paragraphs" %}
+  {% include "admin/ai/airun/_paragraphs.html" %}
 {% else %}
   <div class="airun-card">
     <h2>Результат</h2>
@@ -118,11 +127,11 @@
 <script>
 (function () {
   var url = "{% url 'admin:ai_airun_status' run.pk %}";
-  var initial = {status: "{{ state.status }}", preview: {{ state.preview_ready|yesno:"true,false" }}, stalled: {{ state.stalled|yesno:"true,false" }}};
+  var initial = {status: "{{ state.status }}", preview: {{ state.preview_ready|yesno:"true,false" }}, stalled: {{ state.stalled|yesno:"true,false" }}, parts: "{{ state.parts_key }}"};
   var fields = ["queued", "in_progress", "done", "moderation", "failed", "skipped", "cancelled", "remaining", "processed", "percent", "cost"];
   function tick() {
     fetch(url, {credentials: "same-origin"}).then(function (r) { return r.json(); }).then(function (s) {
-      if (s.status !== initial.status || s.preview_ready !== initial.preview || s.stalled !== initial.stalled || !s.live) {
+      if (s.status !== initial.status || s.preview_ready !== initial.preview || s.stalled !== initial.stalled || s.parts_key !== initial.parts || !s.live) {
         location.reload();
         return;
       }
