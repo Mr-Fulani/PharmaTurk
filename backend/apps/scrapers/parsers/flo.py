@@ -14,7 +14,12 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from django.conf import settings
 from bs4 import BeautifulSoup
 
-from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
+from ..base.scraper import (
+    BaseScraper,
+    ScrapedProduct,
+    ScraperAccessBlockedError,
+    SiteCategoriesError,
+)
 from ..base.catalog_state import CatalogTraversalState
 from ..base.offers import (
     MalformedOfferResponse,
@@ -56,6 +61,8 @@ class FloParser(BaseScraper):
 
     PRODUCT_PATH_RE = re.compile(r"/urun/[^/?#]*?-(\d{4,})(?:[/?#]|$)", re.IGNORECASE)
     PRODUCT_DETAIL_MARKER = "window.productDetail = "
+    # Листинг всего каталога: его фильтр «kategori» — полное дерево категорий.
+    ALL_CATEGORIES_PATH = "/tum-kategoriler"
     PRODUCT_LINK_RE = re.compile(r'href="(/urun/[^"#?]*-\d{4,})"', re.IGNORECASE)
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
     # Предохранитель: максимум цветов на одну карточку (защита от аномалий).
@@ -139,6 +146,43 @@ class FloParser(BaseScraper):
 
     def get_supported_domains(self) -> List[str]:
         return ["flo.com.tr", "www.flo.com.tr"]
+
+    def parse_categories(self) -> List[Dict[str, Any]]:
+        """Категории всего каталога — из фильтра «kategori» страницы /tum-kategoriler.
+
+        У каждой ссылки фильтра ``data-value`` вида
+        ``category__18_19__Günlük Ayakkabı__8262__gunluk-ayakkabi``: путь id
+        от корня, имя, служебный номер и slug. Берём разделы второго уровня
+        (листинг раздела включает его подразделы) и корни без подразделов.
+        """
+        url = urljoin(self.base_url, self.ALL_CATEGORIES_PATH)
+        html = self._fetch(url)
+        if not html:
+            raise SiteCategoriesError(f"FLO: страница категорий не загрузилась: {url}")
+        nodes: Dict[tuple, tuple] = {}
+        soup = BeautifulSoup(html, "html.parser")
+        for anchor in soup.select("a.js-listing-filter-category[data-value]"):
+            parts = str(anchor.get("data-value") or "").split("__")
+            if len(parts) != 5 or parts[0] != "category":
+                continue
+            path = tuple(parts[1].split("_"))
+            href = str(anchor.get("href") or "") or f"/{parts[4]}"
+            nodes[path] = (clean_text(parts[2]), href)
+        parents = {path[:-1] for path in nodes}
+        rows = []
+        for path, (name, href) in nodes.items():
+            if len(path) == 2 or (len(path) == 1 and path not in parents):
+                titles = [
+                    nodes[path[:depth]][0] for depth in range(1, len(path)) if path[:depth] in nodes
+                ]
+                rows.append(
+                    {
+                        "name": " > ".join(titles + [name]),
+                        "url": self._canonical_url(urljoin(self.base_url, href)),
+                        "external_id": path[-1],
+                    }
+                )
+        return self._site_categories(rows)
 
     @classmethod
     def is_flo_product_url(cls, url: str) -> bool:
@@ -411,7 +455,10 @@ class FloParser(BaseScraper):
 
         return ScrapedProduct(
             name=clean_text(str(detail.get("name") or "")),
-            description=self._clean_description(detail.get("description")),
+            description=(
+                self._clean_description(detail.get("description"))
+                or self._features_description(detail)
+            ),
             price=primary["price"],
             old_price=primary.get("old_price"),
             currency="TRY",
@@ -526,6 +573,35 @@ class FloParser(BaseScraper):
             if isinstance(row, dict) and row.get("name"):
                 return clean_text(str(row["name"]))
         return ""
+
+    # Поля блока «Ürün Özellikleri» карточки FLO (живая карточка 21.10).
+    FEATURE_FIELDS = (
+        ("Marka", "manufacturer"),
+        ("Model", "model"),
+        ("Renk", "renk"),
+        ("Cinsiyet", "cinsiyet"),
+        ("Dış Materyal", "materyal"),
+        ("İç Materyal", "ic_astar_1"),
+        ("Taban", "taban"),
+        ("Saya", "saya"),
+        ("Kapama Şekli", "kapama_sekli"),
+        ("Topuk Yüksekliği", "topuk_yuksekligi"),
+        ("Üretim Yeri", "uretim_yeri"),
+    )
+
+    @classmethod
+    def _features_description(cls, detail: Dict[str, Any]) -> str:
+        """Описание из «Ürün Özellikleri», если текстового описания у FLO нет.
+
+        У части товаров FLO поле description пустое и на самом сайте — там
+        только характеристики; без них товар сохранялся без описания.
+        """
+        parts = []
+        for label, key in cls.FEATURE_FIELDS:
+            value = clean_text(str(detail.get(key) or ""))
+            if value:
+                parts.append(f"{label}: {value}")
+        return "; ".join(parts)
 
     @staticmethod
     def _clean_description(value: Any) -> str:

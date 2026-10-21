@@ -202,6 +202,121 @@ def _pause_site_task(site_task_id: int, message: str) -> None:
     )
 
 
+# --- Режим «Весь сайт» ------------------------------------------------------
+#
+# Задача типа «site» находит категории источника один раз (parse_categories),
+# хранит их в SiteScraperTask.site_categories и обходит по очереди: каждая
+# категория идёт обычным режимом «категория» со своей цепочкой чанков, затем
+# задача переходит к следующей. Позиция (site_category_index + resume_page)
+# лежит в базе, поэтому пауза, «Продолжить» и рестарт воркера её не теряют.
+
+# Предохранитель задачи. Основной предел — у парсера
+# (BaseScraper.MAX_SITE_CATEGORIES: 500, у Inditex 800).
+SITE_CATEGORY_LIMIT = 1000
+
+
+def _discover_site_categories(scraper_config: ScraperConfig) -> List[Dict[str, str]]:
+    parser_class = get_parser(scraper_config.parser_class)
+    if not parser_class:
+        raise ValueError(f"Парсер {scraper_config.parser_class} не найден")
+    with parser_class(
+        base_url=scraper_config.base_url,
+        timeout=scraper_config.timeout,
+        max_retries=scraper_config.max_retries,
+        use_proxy=scraper_config.use_proxy,
+        username=scraper_config.scraper_username,
+        password=scraper_config.scraper_password,
+    ) as parser:
+        parser.delay_range = (scraper_config.delay_min, scraper_config.delay_max)
+        parser.configure_request_identity(
+            user_agent=scraper_config.user_agent,
+            headers=scraper_config.headers,
+            cookies=scraper_config.cookies,
+        )
+        rows = parser.parse_categories() or []
+    categories: List[Dict[str, str]] = []
+    seen = set()
+    for row in rows:
+        url = str((row or {}).get("url") or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        categories.append({"name": str(row.get("name") or "")[:200], "url": url})
+        if len(categories) >= SITE_CATEGORY_LIMIT:
+            break
+    if not categories:
+        raise RuntimeError(
+            f"{scraper_config.name}: парсер не нашёл ни одной категории сайта — "
+            "режим «Весь сайт» для него недоступен"
+        )
+    return categories
+
+
+def _site_category_url(site_task: SiteScraperTask, scraper_config: ScraperConfig) -> Optional[str]:
+    """URL категории, которую режим «Весь сайт» обходит сейчас (None — категорий больше нет)."""
+    categories = site_task.site_categories if isinstance(site_task.site_categories, list) else []
+    if not categories:
+        categories = _discover_site_categories(scraper_config)
+        SiteScraperTask.objects.filter(id=site_task.id).update(
+            site_categories=categories, site_category_index=0,
+        )
+        site_task.site_categories = categories
+        site_task.site_category_index = 0
+    index = int(site_task.site_category_index or 0)
+    if index >= len(categories):
+        return None
+    return categories[index]["url"]
+
+
+def _mapped_site_category(scraper_config: ScraperConfig, category_url: str):
+    """Наша категория для категории источника из «Сопоставлений категорий», если задана."""
+    from .models import CategoryMapping
+
+    mapping = (
+        CategoryMapping.objects.filter(
+            scraper_config=scraper_config,
+            is_active=True,
+            external_category_url=category_url,
+        )
+        .select_related("internal_category")
+        .order_by("priority", "id")
+        .first()
+    )
+    return mapping.internal_category if mapping else None
+
+
+def _start_next_site_category(
+    site_task: SiteScraperTask,
+    *,
+    chain_kwargs: Dict,
+    updates: Dict,
+):
+    """Переходит к следующей категории сайта; None — категорий больше нет."""
+    categories = site_task.site_categories if isinstance(site_task.site_categories, list) else []
+    next_index = int(site_task.site_category_index or 0) + 1
+    if next_index >= len(categories):
+        return None
+    next_task = run_scraper_task.apply_async(kwargs=dict(
+        chain_kwargs,
+        start_url=categories[next_index]["url"],
+        start_page=1,
+    ))
+    SiteScraperTask.objects.filter(id=site_task.id).update(
+        **updates,
+        site_category_index=next_index,
+        resume_page=1,
+        task_id=next_task.id,
+    )
+    logger.info(
+        "Весь сайт %s: категория %s/%s готова, дальше %s",
+        site_task.id,
+        next_index,
+        len(categories),
+        categories[next_index]["url"],
+    )
+    return next_task
+
+
 def revoke_site_scraper_task(task: SiteScraperTask, *, terminate: bool = True) -> bool:
     """Отзывает текущую Celery-задачу для SiteScraperTask, если task_id известен."""
     if not task.task_id:
@@ -657,6 +772,29 @@ def run_scraper_task(
                 target_category = site_task.target_subcategory
             elif site_task.target_category_id:
                 target_category = site_task.target_category
+            if site_task.task_type == "site":
+                category_url = _site_category_url(site_task, scraper_config)
+                if category_url is None:
+                    SiteScraperTask.objects.filter(id=site_task.id).update(
+                        status="completed", resume_page=1, finished_at=timezone.now(),
+                    )
+                    return {
+                        "status": "success",
+                        "message": "Все категории сайта пройдены",
+                        "scraper_name": scraper_config.name,
+                    }
+                start_url = category_url
+                position = int(site_task.site_category_index or 0)
+                category_name = site_task.site_categories[position].get("name") or category_url
+                log_lines[1] = f"URL: {category_url}"
+                log_lines.insert(
+                    1,
+                    f"Весь сайт: категория {position + 1}/{len(site_task.site_categories)} — {category_name}",
+                )
+                if target_category is None:
+                    # Без целевой категории в задаче: сопоставление категорий
+                    # конфигурации, иначе автоопределение парсера.
+                    target_category = _mapped_site_category(scraper_config, category_url)
 
         # Запускаем парсер
         integration_service = ScraperIntegrationService()
@@ -879,6 +1017,33 @@ def run_scraper_task(
                     f"({products_this_chunk} товаров, всего {new_total}/{effective_max}). "
                     f"Следующий чанк со стр.{next_start_page}"
                 )
+            elif (
+                site_task.task_type == "site"
+                and site_task.status != "cancelled"
+                and new_total < effective_max
+                and _start_next_site_category(
+                    site_task,
+                    chain_kwargs=dict(
+                        scraper_config_id=scraper_config_id,
+                        max_pages=runtime_max_pages,
+                        max_products=max_products,
+                        max_images_per_product=max_images_per_product,
+                        site_task_id=site_task_id,
+                        total_scraped=new_total,
+                        total_created=new_created,
+                        total_updated=new_updated,
+                        total_skipped=new_skipped,
+                        total_analogs_found=new_analogs_found,
+                        total_analog_links_saved=new_analog_links_saved,
+                        total_analog_stubs_created=new_analog_stubs_created,
+                        total_analog_stubs_upgraded=new_analog_stubs_upgraded,
+                        total_analog_errors=new_analog_errors,
+                        site_run_token=site_run_token,
+                    ),
+                    updates=common_updates,
+                )
+            ):
+                pass
             else:
                 SiteScraperTask.objects.filter(id=site_task.id).update(
                     **common_updates,
@@ -1006,7 +1171,46 @@ def run_scraper_task(
         
         if self.request.retries < self.max_retries:
             raise self.retry(exc=e)
-        
+
+        if site_task and site_task.task_type == "site":
+            # Весь сайт: категория, упавшая после всех повторов, не обрывает
+            # обход остальных — ошибка остаётся в задаче, идём к следующей.
+            site_task.refresh_from_db()
+            continued = site_task.site_categories and _start_next_site_category(
+                site_task,
+                chain_kwargs=dict(
+                    scraper_config_id=scraper_config_id,
+                    max_pages=max_pages,
+                    max_products=max_products,
+                    max_images_per_product=max_images_per_product,
+                    site_task_id=site_task_id,
+                    total_scraped=total_scraped,
+                    total_created=total_created,
+                    total_updated=total_updated,
+                    total_skipped=total_skipped,
+                    total_analogs_found=total_analogs_found,
+                    total_analog_links_saved=total_analog_links_saved,
+                    total_analog_stubs_created=total_analog_stubs_created,
+                    total_analog_stubs_upgraded=total_analog_stubs_upgraded,
+                    total_analog_errors=total_analog_errors,
+                    site_run_token=site_run_token,
+                ),
+                updates=dict(
+                    status="running",
+                    finished_at=None,
+                    errors_count=F("errors_count") + 1,
+                    error_message=f"Категория пропущена после ошибок: {error_msg}"[:2000],
+                ),
+            )
+            if continued:
+                return {
+                    'status': 'error',
+                    'error': error_msg,
+                    'continued_with_next_category': True,
+                    'scraper_config_id': scraper_config_id,
+                    'timestamp': timezone.now().isoformat(),
+                }
+
         return {
             'status': 'error',
             'error': error_msg,

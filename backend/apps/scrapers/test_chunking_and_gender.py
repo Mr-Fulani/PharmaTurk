@@ -48,8 +48,9 @@ def test_only_paginating_parser_supports_chunking():
     assert IlacFiyatiParser.SUPPORTS_PAGE_CHUNKING is True
     assert LcwParser.SUPPORTS_PAGE_CHUNKING is True
     assert IkeaParser.SUPPORTS_PAGE_CHUNKING is True
-    # UmmaLand берёт весь листинг из API за один проход → чепочка переоткрыла бы те же товары.
-    assert UmmalandParser.SUPPORTS_PAGE_CHUNKING is False
+    # UmmaLand берёт весь листинг из API одним ответом, но чанк режет его по
+    # start_page (страницы по 20 товаров) — следующий чанк не переоткрывает те же.
+    assert UmmalandParser.SUPPORTS_PAGE_CHUNKING is True
 
 
 def test_ummaland_distinguishes_category_and_single_product_urls():
@@ -64,7 +65,7 @@ def test_ummaland_distinguishes_category_and_single_product_urls():
 
 @pytest.mark.parametrize(
     "parser_class",
-    [FloParser, IkeaParser, IlacFiyatiParser, LcwParser, ZaraParser],
+    [FloParser, IkeaParser, IlacFiyatiParser, LcwParser, ZaraParser, UmmalandParser],
 )
 def test_every_chunking_parser_has_url_specific_guard(parser_class):
     assert parser_class.SUPPORTS_PAGE_CHUNKING is True

@@ -518,8 +518,11 @@ class InstagramScraperTask(models.Model):
     max_posts = models.PositiveIntegerField(
         _("Максимум постов"),
         default=50,
-        validators=[MinValueValidator(1), MaxValueValidator(500)],
-        help_text=_("Количество постов для парсинга (не критично если больше чем есть)"),
+        validators=[MinValueValidator(1), MaxValueValidator(5000)],
+        help_text=_(
+            "Сколько постов профиля пройти. Весь профиль — поставьте число не меньше "
+            "количества постов (например, 5000). Для одного поста не используется."
+        ),
     )
 
     # Статус и результаты
@@ -594,7 +597,8 @@ class SiteScraperTask(models.Model):
         ("failed", _("Ошибка")),
     ]
     TASK_TYPE_CHOICES = [
-        ("catalog", _("Парсинг каталога")),
+        ("catalog", _("Товар или категория по ссылке")),
+        ("site", _("Весь сайт (все категории)")),
         ("stub_refresh", _("Обновление заглушек")),
     ]
 
@@ -653,7 +657,15 @@ class SiteScraperTask(models.Model):
         choices=TASK_TYPE_CHOICES,
         default="catalog",
     )
-    start_url = models.URLField(_("Начальный URL"), blank=True)
+    start_url = models.URLField(
+        _("Ссылка"),
+        blank=True,
+        help_text=_(
+            "Ссылка на карточку товара — спарсится один товар; ссылка на страницу "
+            "категории — вся категория, все страницы до конца (или до «Макс. товаров»). "
+            "Для типа «Весь сайт» ссылка не нужна: берётся адрес сайта из конфигурации."
+        ),
+    )
     max_pages = models.PositiveIntegerField(
         _("Страниц за один запуск"),
         default=1,
@@ -715,6 +727,22 @@ class SiteScraperTask(models.Model):
             "С какой страницы продолжить после паузы (только для парсеров с "
             "постраничной пагинацией). Обновляется автоматически по ходу обхода."
         ),
+    )
+    site_categories = models.JSONField(
+        _("Категории сайта"),
+        default=list,
+        blank=True,
+        editable=False,
+        help_text=_(
+            "Режим «Весь сайт»: список категорий источника, найденный в начале прохода. "
+            "Категории обходятся по очереди, каждая — до конца."
+        ),
+    )
+    site_category_index = models.PositiveIntegerField(
+        _("Текущая категория сайта"),
+        default=0,
+        editable=False,
+        help_text=_("Режим «Весь сайт»: номер категории (с нуля), которая обходится сейчас."),
     )
     stub_cursor_id = models.PositiveBigIntegerField(
         _("ID заглушки для продолжения"),
