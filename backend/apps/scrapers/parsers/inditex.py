@@ -150,7 +150,6 @@ class InditexSiblingParser(ZaraParser):
 
     def _fetch_text(self, url: str, *, accept: str = "application/json") -> Optional[str]:
         """GET с проходом bm-verify, повторами 429/5xx и понятными ошибками."""
-        last_status = None
         for attempt in range(self.max_retries + 1):
             response = None
             try:
@@ -161,7 +160,6 @@ class InditexSiblingParser(ZaraParser):
                 self.logger.warning("%s: сетевая ошибка %s: %s", self.SOURCE_LABEL, url, exc)
             else:
                 status = response.status_code
-                last_status = status
                 final_url = str(response.url or url)
                 if status < 400:
                     return response.text
