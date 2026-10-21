@@ -5,7 +5,7 @@ import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, CData, NavigableString, Tag
 from celery.exceptions import SoftTimeLimitExceeded
 
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
@@ -134,6 +134,14 @@ class IlacFiyatiParser(BaseScraper):
         "Copyright ©",
         "Sitemizde yer alan içerik bilgi amaçlı",
     )
+
+    # Теги, с которых в тексте раздела начинается новая строка. Остальные
+    # (<b>, <sup>, <sub>, <a>, <i>, <span>…) строчные: их текст остаётся в строке.
+    BLOCK_TAGS = frozenset({
+        "address", "article", "blockquote", "br", "dd", "div", "dl", "dt",
+        "h1", "h2", "h3", "h4", "h5", "h6", "hr", "li", "ol", "p", "pre", "section",
+        "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+    })
 
     def get_name(self) -> str:
         """Возвращает уникальное имя парсера."""
@@ -323,6 +331,23 @@ class IlacFiyatiParser(BaseScraper):
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
         return text[:12000]
 
+    def _block_text(self, node: Tag) -> str:
+        """Текст узла: новая строка только на границе блочного элемента (BLOCK_TAGS).
+
+        get_text("\\n") ставит перевод строки между любыми тегами, и строчный тег
+        внутри предложения резал его: «Somatropine veya <b>NORDITROPIN</b><sup>®</sup>'un …»
+        давало три строки, а строка раздела — абзац памяти переводов. Строчные теги
+        остаются в строке с исходными пробелами; перевод строки в исходнике HTML — пробел.
+        """
+        parts = []
+        for child in node.children:
+            if isinstance(child, Tag):
+                text = self._block_text(child)
+                parts.append(f"\n{text}\n" if child.name in self.BLOCK_TAGS else text)
+            elif type(child) in (NavigableString, CData):
+                parts.append(re.sub(r"\s*\n\s*", " ", str(child)))
+        return "".join(parts)
+
     def _extract_tab_text(self, soup: BeautifulSoup, tab_key: str) -> str:
         # Current pages contain all sections inline. Never fall back to the
         # entire page: that mixes instructions, other medicines and navigation.
@@ -331,9 +356,15 @@ class IlacFiyatiParser(BaseScraper):
             if root is None:
                 return ""
             fragment = BeautifulSoup(str(root), "html.parser")
+            # Рекламу сайт вставляет и посреди предложения: «ARYOSEVEN<div class="text-center
+            # my-4"><ins class="adsbygoogle">…</div><sup>®</sup>'in» — без обёртки её <div>
+            # разрезал бы строку.
+            for node in fragment.select("div:has(> ins.adsbygoogle)"):
+                if not node.get_text(strip=True):
+                    node.decompose()
             for node in fragment.select("script, style, ins, button, .adsbygoogle"):
                 node.decompose()
-            return self._clean_tab_text(fragment.get_text("\n", strip=True))
+            return self._clean_tab_text(self._block_text(fragment))
 
         tab = self.DETAIL_TABS.get(tab_key) or {}
         keywords = tuple(self._normalize_tr_key(k) for k in tab.get("keywords", ()))
