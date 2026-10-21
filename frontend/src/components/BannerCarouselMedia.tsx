@@ -19,6 +19,7 @@ interface BannerMedia {
   content_type: 'image' | 'video' | 'gif'
   content_url: string
   content_mime_type?: string
+  poster_url?: string
   sort_order: number
   link_url?: string
   title?: string
@@ -235,6 +236,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const renderMediaItem = (media: BannerMedia, index: number) => {
     const isActive = activeMediaId !== null ? media.id === activeMediaId : index === 0
     const fullUrl = media.content_url ? resolveMediaUrl(media.content_url) : ''
+    const posterUrl = media.poster_url ? resolveMediaUrl(media.poster_url) : ''
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl, 'ambient') : null
     const playVideo = index === 0 && nearViewport
 
@@ -345,8 +347,12 @@ export default function BannerCarousel({ position, className = '', initialBanner
             ref={(video) => {
               if (!video) return
               const visible = index === 0 || getComputedStyle(video).visibility !== 'hidden'
-              if (nearViewport && visible) video.play().catch(() => {})
-              else video.pause()
+              if (nearViewport && visible) {
+                // Кадр из админки виден, пока грузится ролик. Не пропсом poster:
+                // постер скрытого <video> браузер тоже скачивает.
+                if (posterUrl && video.getAttribute('poster') !== posterUrl) video.setAttribute('poster', posterUrl)
+                video.play().catch(() => {})
+              } else video.pause()
             }}
             autoPlay={playVideo}
             preload={playVideo ? 'auto' : 'none'}
