@@ -20,8 +20,9 @@
 
 ## Окно
 
-05:15 МСК = **02:15 UTC** (часы сервера в UTC). Ночные задачи Celery идут
-02:15–04:50 МСК и к этому времени заканчиваются. Не пятница, не накануне
+05:15 МСК = **02:15 UTC** (часы сервера в UTC). Ночные задачи Celery (crontab
+по МСК) идут 01:15–05:00 МСК: первая — бэкап БД в 01:15, последняя — пересчёт
+цен `currency-update-prices` в 05:00; к 05:15 они заканчиваются. Не пятница, не накануне
 важного. Займёт 20–30 минут, сайт недоступен 3–5 минут (перезапуск Docker и
 перезагрузка).
 
@@ -92,7 +93,6 @@ swapon --show                               # /swapfile 4G
 free -h                                     # Swap: 4.0Gi
 df -h /
 docker ps --format '{{.Names}} {{.Status}}' # 11 контейнеров mudaroba-*, все Up
-docker restart mudaroba-nginx-1             # обязательно: иначе возможны массовые 502
 curl -s https://mudaroba.com/api/health/    # "status":"ok", "cache":true
 docker exec mudaroba-redis-1 redis-cli LLEN celery
 ```

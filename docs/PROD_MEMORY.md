@@ -176,13 +176,13 @@ frontend/nginx — релиз только полный (`deploy.sh`), `backend_
    (`up -d --no-recreate postgres redis redis-cache qdrant`) и пересоздаёт
    backend, воркеры, beat, frontend и nginx уже с новыми лимитами и кэшем в
    `redis-cache`. Postgres, redis и qdrant он не пересоздаёт. После деплоя —
-   `docker restart mudaroba-nginx-1` и смоук `/api` через сайт.
+   смоук `/api` через сайт.
 4. Лимиты postgres/redis/qdrant применить без перезапуска:
 
    ```bash
    docker update --memory 640m --memory-swap 1280m mudaroba-postgres-1
-   docker update --memory 256m --memory-swap 512m mudaroba-redis-1
-   docker update --memory 512m --memory-swap 1024m mudaroba-qdrant-1
+   docker update --memory 192m --memory-swap 384m mudaroba-redis-1
+   docker update --memory 384m --memory-swap 768m mudaroba-qdrant-1
    ```
 
 5. Проверка: `curl -s https://mudaroba.com/api/health/` → `"cache":true`;
@@ -245,3 +245,25 @@ free -h
 Необязательно, раз уж вы под root — ограничить журнал systemd (освободит
 ≈ 2,3 ГБ): в `/etc/systemd/journald.conf` задать `SystemMaxUse=300M`, затем
 `systemctl restart systemd-journald` и `journalctl --vacuum-size=300M`.
+
+## nginx и новые адреса контейнеров
+
+Рестарт nginx после деплоя не нужен (проверено 22.10.2026). До 15.07.2026 nginx
+определял адреса `backend` и `frontend` один раз при старте, и после пересоздания
+контейнера с новым IP отвечал 502 на все `/api/*`, пока его не перезапустят
+(03.07.2026 — около 4 часов: картинки через proxy-media «пропали»). С коммита
+`09ece5f0` в `nginx/default.conf` upstream-ы объявлены с `resolve` и общим `zone`, а
+`resolver 127.0.0.11 valid=10s` — DNS Docker: nginx сам перечитывает адрес не реже
+раза в 10 секунд. На проде nginx 1.30.4 (параметр `resolve` в open source nginx — с
+1.27.3).
+
+Проверка 22.10.2026 в локальном Docker с тем же образом и тем же блоком upstream:
+«backend» удалён и создан заново с другим IP (старый занят другим контейнером), nginx
+не перезапускался — 502 («no live upstreams») ≤ 10 секунд, пока новый контейнер не
+появился в DNS, затем 200 с нового адреса. `deploy.sh` всё равно останавливает nginx на
+время миграций и запускает последним; у `backend_release.py` (nginx не трогает) эти
+≤ 10 секунд совпадают с заменой единственного backend.
+
+Смоук `/api` через сайт после релиза остаётся обязательным
+(`postdeploy-smoke.sh` в `deploy.sh`; после `backend_release.py` — вручную):
+SSR ходит в backend напрямую, и страницы могут открываться при сломанном `/api`.

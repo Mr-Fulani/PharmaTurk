@@ -75,7 +75,6 @@ INSTALLED_APPS = [
     "apps.payments",
     "apps.vapi",
     "apps.scrapers",
-    "apps.favorites",
     "apps.feedback",
     "apps.settings",
     "apps.pages",
@@ -226,6 +225,10 @@ CELERY_TASK_SOFT_TIME_LIMIT = 60 * 25
 # cleanup_orphaned_media: больше файлов к удалению — только отчёт админу, без удаления.
 ORPHANED_MEDIA_MAX_DELETE = env.int("ORPHANED_MEDIA_MAX_DELETE", default=3000)
 ORPHANED_MEDIA_MAX_DELETE_PERCENT = env.float("ORPHANED_MEDIA_MAX_DELETE_PERCENT", default=10.0)
+# Чистка products/parsed/<парсер>/ после парсинга: больше файлов — только отчёт
+# админу; моложе MIN_AGE_HOURS не трогать (их могла скачать параллельная задача).
+PARSED_MEDIA_SWEEP_MAX_DELETE = env.int("PARSED_MEDIA_SWEEP_MAX_DELETE", default=20000)
+PARSED_MEDIA_SWEEP_MIN_AGE_HOURS = env.int("PARSED_MEDIA_SWEEP_MIN_AGE_HOURS", default=6)
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # Redis возвращает неподтверждённую задачу в очередь после visibility timeout.
 # Значение должно быть больше hard limit скрейпера, иначе долгий чанк может
@@ -295,6 +298,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.monitoring.tasks.run_production_watchdog",
         "schedule": PRODUCTION_WATCHDOG_INTERVAL_SECONDS,
     },
+    # Диск и Redis (docs/PROD_DISK_AND_REDIS.md) — каждые 10 минут; без
+    # SERVER_RESOURCES_MONITOR_ENABLED задача ничего не делает.
+    "monitoring-server-resources": {
+        "task": "apps.monitoring.tasks.check_server_resources",
+        "schedule": crontab(minute="*/10"),
+    },
     "coinremitter-outbox-dispatch": {
         "task": "apps.payments.tasks.dispatch_pending_crypto_invoice_requests",
         "schedule": COINREMITTER_OUTBOX_DISPATCH_INTERVAL_SECONDS,
@@ -317,8 +326,6 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=5, minute=0),
         "kwargs": {"batch_size": 200},
     },
-    # refresh-stock: заглушка — отключено, доработаем после парсеров
-    # "refresh-stock": {"task": "apps.catalog.tasks.refresh_stock", "schedule": 60 * 60 * 2},
     # VAPI: отключено — не используется. Включить при работе с VAPI API.
     # "vapi-sync-products": {"task": "apps.vapi.tasks.pull_products", "schedule": 60*60*6, "args": (1, 100)},
     # "vapi-sync-categories": {"task": "apps.vapi.tasks.sync_categories_and_brands", "schedule": 60*60*24},
@@ -335,9 +342,9 @@ CELERY_BEAT_SCHEDULE = {
         "args": (30,),  # хранить 30 дней
     },
     # Бэкап БД во внешний бакет (docs/DB_BACKUP.md). CELERY_TIMEZONE не задан,
-    # поэтому crontab считается в UTC: 01:15 UTC = 04:15 МСК, ночной минимум
-    # трафика, до recsys-sync-stale-nightly. Без DB_BACKUP_ENABLED задачи
-    # ничего не делают.
+    # поэтому Celery берёт TIME_ZONE = Europe/Moscow и crontab считается по МСК:
+    # 01:15 МСК — ночной минимум трафика, до recsys-sync-stale-nightly (02:15).
+    # Без DB_BACKUP_ENABLED задачи ничего не делают.
     "monitoring-database-backup": {
         "task": "apps.monitoring.tasks.run_database_backup",
         "schedule": crontab(hour=1, minute=15),
@@ -345,6 +352,16 @@ CELERY_BEAT_SCHEDULE = {
     "monitoring-database-backup-check": {
         "task": "apps.monitoring.tasks.check_database_backup",
         "schedule": crontab(hour=1, minute=45, day_of_week=0),
+    },
+    # Копия медиа маркетинга, страниц и услуг — после бэкапа БД (crontab по
+    # Europe/Moscow, как и он) и до cleanup-orphaned-media (воскресенье 03:30).
+    "monitoring-media-backup": {
+        "task": "apps.monitoring.tasks.run_media_backup",
+        "schedule": crontab(hour=2, minute=0),
+    },
+    "monitoring-media-backup-check": {
+        "task": "apps.monitoring.tasks.check_media_backup",
+        "schedule": crontab(hour=2, minute=30, day_of_week=0),
     },
     # Просроченные сессии Django (manage.py clearsessions) — каждую ночь.
     "users-clear-expired-sessions": {
@@ -991,6 +1008,18 @@ PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS = env.int(
     "PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS",
     default=10,
 )
+# Диск и Redis (apps/monitoring/resources.py): включается вместе с watchdog,
+# алерт в тот же Telegram. 4 ГиБ — меньше pull-images.sh не скачивает образы.
+SERVER_RESOURCES_MONITOR_ENABLED = env.bool(
+    "SERVER_RESOURCES_MONITOR_ENABLED",
+    default=PRODUCTION_WATCHDOG_ENABLED,
+)
+SERVER_DISK_MIN_FREE_GB = env.float("SERVER_DISK_MIN_FREE_GB", default=4.0)
+# Брокер — noeviction: у maxmemory Celery перестаёт ставить задачи. Кэш —
+# allkeys-lru и держится у maxmemory, порог выше 100 % ловит только сбой вытеснения.
+REDIS_BROKER_MAX_MEMORY_PERCENT = env.float("REDIS_BROKER_MAX_MEMORY_PERCENT", default=70.0)
+REDIS_CACHE_MAX_MEMORY_PERCENT = env.float("REDIS_CACHE_MAX_MEMORY_PERCENT", default=110.0)
+SERVER_RESOURCES_REPEAT_SECONDS = env.int("SERVER_RESOURCES_REPEAT_SECONDS", default=6 * 3600)
 # Ежедневный pg_dump во внешний S3-совместимый бакет (docs/DB_BACKUP.md).
 # Отдельный бакет и отдельные ключи, не R2_* медиа.
 DB_BACKUP_ENABLED = env.bool("DB_BACKUP_ENABLED", default=False)
@@ -1001,6 +1030,11 @@ DB_BACKUP_S3_ACCESS_KEY_ID = env("DB_BACKUP_S3_ACCESS_KEY_ID", default="")
 DB_BACKUP_S3_SECRET_ACCESS_KEY = env("DB_BACKUP_S3_SECRET_ACCESS_KEY", default="")
 DB_BACKUP_HEARTBEAT_URL = env("DB_BACKUP_HEARTBEAT_URL", default="")
 DB_BACKUP_TEST_RESTORE_ENABLED = env.bool("DB_BACKUP_TEST_RESTORE_ENABLED", default=False)
+# Ночная копия медиа маркетинга, страниц и услуг в тот же бакет под media/
+# (apps/monitoring/media_backup.py); товарные фото не копируются.
+MEDIA_BACKUP_ENABLED = env.bool("MEDIA_BACKUP_ENABLED", default=DB_BACKUP_ENABLED)
+MEDIA_BACKUP_PREFIXES = env.list("MEDIA_BACKUP_PREFIXES", default=["marketing/", "pages/", "services/"])
+MEDIA_BACKUP_KEEP_DELETED_DAYS = env.int("MEDIA_BACKUP_KEEP_DELETED_DAYS", default=30)
 validate_telegram_webhook_settings(
     debug=DEBUG,
     bot_token=TELEGRAM_BOT_TOKEN,

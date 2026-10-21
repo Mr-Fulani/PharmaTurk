@@ -339,10 +339,13 @@ class MyParser(BaseScraper):
 
 Правила:
 - `SUPPORTS_PAGE_CHUNKING = True` ставить **только** если `parse_product_list`
-  принимает `start_page` и реально начинает обход с этой страницы. Примеры:
-  `IlacFiyatiParser` (пагинация `?pg=`), `LcwParser` (пагинация `?sayfa=`).
-- Если парсер за один вызов забирает весь листинг (через API, без постраничного
-  обхода — `ummaland`, `ikea`, `zara`), флаг **оставить `False`**. Иначе чепочка
+  принимает `start_page` и реально начинает обход с этой страницы. Сейчас флаг
+  у ilacfiyati (`?pg=`), lcw (`?sayfa=`), zara, flo, ikea (страница API — 40
+  товаров) и ummaland (вся категория одним ответом API, «страница» — 20 товаров).
+  Classmethod `supports_page_chunking_for_url(url)` сужает его до ссылок
+  категорий: у карточки товара цепочки нет.
+- Если парсер не начинает обход с `start_page`, флаг **оставить `False`**
+  (сейчас `False` у Bershka, Pull&Bear, Massimo Dutti и Instagram). Иначе чепочка
   будет повторно открывать те же товары: счётчики раздуются (напр. «510
   обновлено» при 104 реальных карточках), а `start_page` уронит парсер без
   такого аргумента (`TypeError`).
@@ -391,9 +394,13 @@ class MyParser(BaseScraper):
 
 ### 4.7. Категории всего сайта (`parse_categories`)
 
+Три режима запуска (товар, категория, весь сайт) и как их выбрать в админке —
+[docs/PARSER_MODES.md](docs/PARSER_MODES.md).
+
 Для обхода всего сайта парсер отдаёт список категорий
 `{"name", "url", "external_id", "source"}`; каждый `url` открывается
-категорийным режимом этого же парсера (все страницы до конца). Хвост общий —
+категорийным режимом этого же парсера (все страницы до конца; у Bershka,
+Pull&Bear и Massimo Dutti — одним запуском без чанков, см. 6.5.0). Хвост общий —
 `BaseScraper._site_categories`: повторы по URL убираются, длина ограничена
 `MAX_SITE_CATEGORIES` (500, у Inditex 800 — там категория стоит один запрос),
 пустой список — `SiteCategoriesError`, а не «успех с нулём». Товар, лежащий в
@@ -406,6 +413,8 @@ class MyParser(BaseScraper):
 | Zara | `/tr/tr/categories?ajax=true` (AJAX-транспорт) | узлы с листингом; узел со скрытыми детьми-фильтрами — целиком (через `redirectCategoryId`) | 338 |
 | Bershka, Pull&Bear, Massimo Dutti | `/itxrest/2/catalog/store/{STORE_ID}/{catalog}/category?typeCatalog=1` | каждый узел с `categoryUrl` (адрес `…-n<seo>.html?celement=<id>`); безымянные скрытые контейнеры пропускаются | 257 / 350 / 493 |
 | LCW | `CategoryTree` страниц корней `LcwParser.SITE_ROOT_PATHS` | подразделы корня; если среди них есть адреса `-u-` — корень целиком | 53 |
+| IlacFiyati | список в коде (`IlacFiyatiParser.parse_categories`) | два корневых каталога с полной пагинацией: `/ilaclar` (лекарства) и `/takviye-edici-gida` (БАДы) | 2 |
+| UmmaLand | WooCommerce API `/wp-json/wc/store/products/categories?per_page=100` | корневые разделы (`parent = 0`) с товарами; витринные подборки `SHOWCASE_CATEGORY_SLUGS` («Новинки», «Популярное»…) — нет | — |
 
 Ограничения:
 
@@ -420,6 +429,9 @@ class MyParser(BaseScraper):
   останавливают обход категории. Если прогон всего сайта даёт категориям общее
   пространство состояния, сильно пересекающиеся категории могут остановиться
   раньше — поэтому FLO отдаёт разделы без вложенных повторов.
+- **IlacFiyati и UmmaLand** собирают список сами, без `_site_categories`: пустой
+  ответ API UmmaLand — `RuntimeError` парсера, страховка от пустого списка —
+  `tasks._discover_site_categories`.
 
 ---
 
@@ -649,7 +661,6 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `ummaland` | `UmmalandParser` | ummaland.com, umma-land.com |
 | `instagram` | `InstagramParser` | instagram.com, www.instagram.com |
 | `zara` | `ZaraParser` | zara.com, www.zara.com, tr.zara.com |
-| `ilacabak` | `IlacabakParser` | ilacabak.com, www.ilacabak.com |
 | `ilacfiyati` | `IlacFiyatiParser` | ilacfiyati.com, www.ilacfiyati.com |
 | `ikea` | `IkeaParser` | ikea.com.tr, www.ikea.com.tr |
 | `lcw` | `LcwParser` | lcw.com, www.lcw.com |
@@ -657,6 +668,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `bershka` | `BershkaParser` | bershka.com, www.bershka.com |
 | `pullandbear` | `PullAndBearParser` | pullandbear.com, www.pullandbear.com |
 | `massimodutti` | `MassimoDuttiParser` | massimodutti.com, www.massimodutti.com |
+| `akakce` | `AkakceParser` | akakce.com, www.akakce.com |
 
 ### 6.4. IKEA Turkey (`ikea.com.tr`)
 
@@ -731,7 +743,11 @@ Zara может вернуть на второй странице также э�
 residential/mobile прокси. Включается без правок кода: задать `SCRAPER_PROXY_URL`
 в `.env` и поставить флаг **«Использовать прокси»** (`use_proxy`) в `ScraperConfig`.
 Прокси применяется на уровне `BaseScraper` (httpx-клиент) и к requests-сессиям
-парсеров — то есть доступен всем парсерам, не только Zara.
+парсеров — то есть доступен всем парсерам, не только Zara. Проверка TLS через
+прокси не отключается (`verify=False` нет): Bright Data — только порт `44445` и
+закреплённый CA в `SCRAPER_PROXY_CA_BUNDLE`
+(`/app/certs/brightdata_root_ca_44445.crt`), иначе парсер не стартует
+(`BaseScraper._validate_proxy_tls_configuration`).
 
 Тесты контракта: `backend/apps/scrapers/test_zara_parser.py`.
 
@@ -766,8 +782,10 @@ Bershka 44109521, Pull&Bear 25009521, Massimo Dutti 34009471), каталог
 
 **Запросы.** Карточка — `…/category/0/product/{id}/detail`. Категория —
 `…/category/{id}/product?showProducts=false` (список id), затем карточки пачками
-по 12 через `…/productsArray?productIds=…`; одна пачка = одна «страница» чанка,
-`has_more_pages` гаснет на последней пачке.
+по 12 через `…/productsArray?productIds=…`; одна пачка = одна «страница».
+Цепочки чанков нет (`SUPPORTS_PAGE_CHUNKING = False`): категория идёт одним
+запуском, не больше «Страниц за один запуск» пачек и «Макс. товаров» — для
+категории целиком «Страниц за один запуск» ставить ≥ числа товаров / 12.
 
 **Разбор.** Цвета — `bundleProductSummaries[0].detail.colors`, варианты
 `<prefix>-variant-<id товара>-<id цвета>`, `external_id = <prefix>-<id товара>`.
@@ -991,8 +1009,8 @@ LCW возвращает **один** `ScrapedProduct` на семейство �
 7. **Описание разбросано по нескольким блокам**  
    Сначала пробуем rich DOM parse, если не вышло — идём в regex fallback.
 
-8. **На листинге есть только урезанные данные**  
-   Есть `_build_list_product()` как деградационный сценарий, если detail parse временно не дал результат.
+8. **Карточка не загрузилась, на листинге только урезанные данные**  
+   Товар из текста плитки не собирается (`_build_list_product()` убран в PR #131: такие товары без фото и размеров, с другой схемой id, потом становились дублями). Ссылка пропускается, `item_errors` увеличивается.
 
 #### Что обязательно повторять в новых парсерах
 
@@ -1170,21 +1188,33 @@ class ScrapingSession(models.Model):
 
 ```python
 class SiteScraperTask(models.Model):
-    config = ForeignKey(ScraperConfig)
-    url = URLField()                              # URL категории для парсинга
-    target_category = ForeignKey(Category, null=True)  # ← ГЛАВНОЕ ПОЛЕ для категории
+    scraper_config = ForeignKey(ScraperConfig, related_name="site_tasks")
+    task_type = CharField(default="catalog")  # catalog (товар/категория по ссылке) / site (весь сайт) / stub_refresh
+    start_url = URLField(blank=True)  # карточка → один товар, категория → вся категория; для site не нужна
+    target_category = ForeignKey(Category, null=True)     # ← ГЛАВНОЕ ПОЛЕ для категории
+    target_subcategory = ForeignKey(Category, null=True)  # если задана — главнее target_category
+    target_brand = ForeignKey(Brand, null=True)  # бренд всем товарам задачи
     gender = CharField(blank=True)   # men / women / unisex; пусто = автоопределение
-    max_pages = IntegerField(default=10)
-    max_products = IntegerField(null=True)
-    is_active = BooleanField(default=True)
-    last_run = DateTimeField(null=True)
-    status = CharField(...)  # pending / running / completed / failed
+    max_pages = PositiveIntegerField(default=1)       # «Страниц за один запуск» (размер чанка)
+    max_products = PositiveIntegerField(default=50)   # лимит на всю цепочку чанков
+    max_images_per_product = PositiveIntegerField(default=20)
+    status = CharField(...)  # pending / running / paused / cancelled / completed / failed
+    task_id = CharField(blank=True)      # текущий Celery task
+    run_token = UUIDField(null=True)     # ID прохода: новый при запуске/перезапуске, не при паузе
+    session = ForeignKey(ScrapingSession, null=True)
+    resume_page = PositiveIntegerField(default=1)  # страница для «Продолжить»
+    site_categories = JSONField(default=list)      # «Весь сайт»: категории из parse_categories()
+    site_category_index = PositiveIntegerField(default=0)  # «Весь сайт»: текущая категория
+    stub_cursor_id = PositiveBigIntegerField(default=0)    # курсор stub_refresh
+    # + счётчики (products_found/created/updated/skipped, pages_processed,
+    #   analog_*, errors_count), log_output, error_message,
+    #   created_at, started_at, finished_at
 ```
 
 > **target_category** — основной способ назначить категорию. Если задан,
 > все товары из этой задачи попадут именно в эту категорию.
-> Приоритет категорий: `task.target_category` > `session.target_category` >
-> `config.category_mapping` > `config.default_category`.
+> Приоритет категорий: `task.target_subcategory` > `task.target_category` >
+> `session.target_category` > `config.category_mapping` > `config.default_category`.
 
 > **gender** — необязательный override пола для всех товаров задачи
 > (`men` / `women` / `unisex`). Если задан, проставляется в
@@ -1202,8 +1232,10 @@ class SiteScraperTask(models.Model):
   опросом внутри чанка, чанк завершается штатно (товары сохранены),
   `resume_page` стоит на текущей странице. Счётчики **не** сбрасываются.
 - **Продолжить (стр. N)** (у `paused`) — возобновляет с `resume_page`, передавая
-  накопленные счётчики как базу (без сброса). Только для парсеров с пагинацией
-  (`SUPPORTS_PAGE_CHUNKING`: ilacfiyati, lcw, zara, flo).
+  накопленные счётчики как базу (без сброса). С места — только для парсеров с
+  постраничными чанками (`SUPPORTS_PAGE_CHUNKING` + `supports_page_chunking_for_url`
+  для ссылки категории: ilacfiyati, lcw, zara, flo, ikea, ummaland). У Bershka,
+  Pull&Bear и Massimo Dutti чанков нет — категория начнётся сначала.
 - **Перезапустить** — как и раньше, полный сброс счётчиков и `resume_page=1`,
   старт с 1-й страницы.
 - **Остановить** — жёсткая остановка (`cancelled`), без возобновления.
@@ -1336,11 +1368,12 @@ attributes = {
    В коде каталога (константы или `resolve_category_and_product_type`) добавить slug категории и при необходимости алиасы названий (например `"украшения"` → `jewelry`). Тогда при выборе `target_category` с этим slug товарам будет выставляться нужный `product_type` и создаваться правильная доменная модель.
 
 3. **CatalogNormalizer (sync из metadata)**  
-   Реализовать обработчик «сырые attributes → поля доменной модели» (например `_sync_jewelry_metadata(product, attrs)`) и зарегистрировать его в реестре `_SYNC_METADATA_HANDLERS[product_type]`. Вызов идёт из `_sync_product_fields_from_metadata` при любом нормалайзе (в т.ч. не только из скраперов).
+   Реализовать метод `CatalogNormalizer` «сырые attributes → поля доменной модели» (например `_sync_jewelry_metadata(product, attrs)`) и добавить его имя в реестр `SYNC_METADATA_HANDLER_NAMES` (`backend/apps/catalog/services.py`, `product_type` → имя метода). Вызов идёт из `_sync_product_fields_from_metadata` при любом нормалайзе (в т.ч. не только из скраперов).
 
 4. **ScraperIntegrationService**  
-   - Реализовать «найти или создать доменный объект» (например `_get_jewelry_product(product)`) и зарегистрировать в `_DOMAIN_GETTERS[product_type]`.  
-   - Реализовать обновление атрибутов из парсера (например `_update_jewelry_attributes(product, attrs)`) и зарегистрировать в `_ATTRIBUTE_UPDATE_HANDLERS[product_type]`.  
+   Реестры — словари `product_type` → имя метода в `backend/apps/scrapers/services.py`.
+   - Реализовать «найти или создать доменный объект» (например `_get_jewelry_product(product)`) и добавить имя в `_DOMAIN_GETTER_NAMES`. Сейчас этот реестр нигде не читается: getter вызывается напрямую из обработчика атрибутов.  
+   - Реализовать обновление атрибутов из парсера (например `_update_jewelry_attributes(product, attrs, *, session=None) -> bool`) и добавить имя в `_ATTRIBUTE_UPDATE_HANDLER_NAMES`; его вызывает `_update_product_attributes`.  
    - Если для типа нужно особое правило (например, обнулять бренд только у книг) — добавить тип в соответствующий набор (например `BRAND_CLEAR_PRODUCT_TYPES`).
 
 5. **Проверка AI и domain_sync**  
@@ -2027,9 +2060,11 @@ allowlist при включённой verification означает все adapt
 
 ---
 
-## Продакшен: после `git pull`
+## Продакшен и обновление кода
 
-Файл `docker-compose.yml` задаёт проект **`pharmaturk`** (`name: pharmaturk`). Сервисы бэкенда: **`backend`**, **`celeryworker`**, **`celery_ai`**, **`celerybeat`** — у всех подключается корневой **`.env`** (`env_file`).
+Файл `docker-compose.yml` задаёт проект **`mudaroba`** (`name: mudaroba`); на проде команды compose и деплой — только с **`-p mudaroba`**. Сервисы бэкенда: **`backend`**, **`celeryworker`**, **`celery_ai`**, **`celery_recsys`**, **`celerybeat`** и one-shot **`migrate`** (профиль `ops`) — у всех подключается корневой **`.env`** (`env_file`).
+
+Выкат на прод — только скриптами `scripts/release/` (`predeploy.sh` → бэкап → `deploy.sh --project-name mudaroba`): процедура в [DEPLOY.md](DEPLOY.md) (раздел «Обновление приложения») и [scripts/release/README.md](scripts/release/README.md). Ручные `git pull` + `docker compose build/up/restart` ниже — для локальной разработки.
 
 ### Entrypoint бэкенда (`docker-entrypoint.sh`)
 
@@ -2049,13 +2084,15 @@ cd backend && poetry run python manage.py migrate
 
 ### Celery после обновления кода
 
-Чтобы воркеры подхватили новый код парсеров и задач:
+Локально (`docker-compose.override.yml` монтирует `./backend` в воркеры) достаточно перезапуска:
 
 ```bash
-docker compose restart celeryworker celery_ai celerybeat
+docker compose restart celeryworker celery_ai celery_recsys celerybeat
 ```
 
 (достаточно только `celeryworker`, если менялись обычные парсеры, без очереди `ai`.)
+
+На проде код запечён в образ `mudaroba-backend:<SHA>`: `restart` оставит старый код. Правки парсеров/задач попадают в воркеры только новым образом и пересозданием контейнеров — это делает `scripts/release/deploy.sh`.
 
 ### Sentry
 
@@ -2065,24 +2102,26 @@ docker compose restart celeryworker celery_ai celerybeat
 
 ### Миграции, затронувшие парсеры
 
-Пример: **`scrapers.0012`** — поле `ScraperConfig.default_brand`. После выката убедитесь, что `migrate` прошёл (автоматически при старте `backend` или вручную командой выше).
+Пример: **`scrapers.0012`** — поле `ScraperConfig.default_brand`. После выката убедитесь, что `migrate` прошёл (в релизе — шагом `migrate` в `deploy.sh`; локально — при старте `backend` или вручную командой выше).
 
 ### Если `service "backend" is not running` или `No such image: mudaroba-backend`
 
 Образ **`mudaroba-backend:${IMAGE_TAG:-local}`** в `docker-compose.yml` собирается локально (`build`), в реестр публично не выкладывается. Режим **`./restart.sh --fast` / `--quick`** **не** вызывает `docker compose build` и передаёт **`--no-build`**: на чистом сервере или после `prune` SHA-образа не будет — контейнеры не поднимутся.
 
-**Что сделать на проде (из корня репозитория, с нужными `-f`, например prod-override):**
+**Что сделать локально (из корня репозитория):**
 
 ```bash
 # Один раз после clone / потери образов — со сборкой (без --fast):
 ./restart.sh --logs
 
 # Или только сборка backend, затем up:
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build backend
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose build backend
+docker compose up -d
 ```
 
 Дальше, когда образ уже есть на машине, для быстрого рестарта можно снова использовать **`--fast`**.
+
+На проде образы не собираются вручную: SHA-образы готовит `predeploy.sh`, ставит `deploy.sh`, откат — `rollback.sh` (см. [scripts/release/README.md](scripts/release/README.md)).
 
 Команда **`docker compose exec backend ...`** работает только при **запущенном** контейнере `backend`; сначала нужен успешный **`up`**.
 
@@ -2103,7 +2142,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 | Парсер Ummaland | `backend/apps/scrapers/parsers/ummaland.py` |
 | Парсер Instagram | `backend/apps/scrapers/parsers/instagram.py` |
 | Парсер Zara | `backend/apps/scrapers/parsers/zara.py` |
-| Парсер Ilacabak | `backend/apps/scrapers/parsers/ilacabak.py` |
+| Парсер Akakçe | `backend/apps/scrapers/parsers/akakce.py` |
 | Парсер LC Waikiki | `backend/apps/scrapers/parsers/lcw.py` |
 | Сервис интеграции | `backend/apps/scrapers/services.py` |
 | Модели ScraperConfig/Task | `backend/apps/scrapers/models.py` |

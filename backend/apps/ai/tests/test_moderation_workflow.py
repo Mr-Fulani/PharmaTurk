@@ -20,7 +20,12 @@ from apps.ai.models import (
     AIProcessingStatus,
 )
 from apps.ai.services.content_generator import ContentGenerator
-from apps.ai.services.moderation import build_change_preview, get_workflow_title, reject_log
+from apps.ai.services.moderation import (
+    build_change_preview,
+    get_incomplete_medicine_field_messages,
+    get_workflow_title,
+    reject_log,
+)
 from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidationReport, SemanticValidator
@@ -641,6 +646,185 @@ def test_moderator_can_keep_current_blocked_medicine_section_and_close_review():
     )
     assert saved.application_report["moderator_kept_fields"] == ["storage_conditions"]
     assert saved.status == AIProcessingStatus.APPROVED
+
+
+# Раздел хранения VISCOTEARS: исходник и верный перевод по абзацам.
+STORAGE_ROWS = (
+    ("5. VISCOTEARS'IN SAKLANMASI", "5. ХРАНЕНИЕ VISCOTEARS", "5. STORAGE OF VISCOTEARS"),
+    (
+        "VISCOTEARS'ı çocukların göremeyeceği, erişemeyeceği yerlerde ve ambalajında saklayınız.",
+        "Храните VISCOTEARS в недоступном для детей месте и в упаковке.",
+        "Store VISCOTEARS in a place out of the reach of children and in its packaging.",
+    ),
+    (
+        "25°C'nin altındaki oda sıcaklığında saklayınız.",
+        "Храните при комнатной температуре ниже 25°C.",
+        "Store at room temperature below 25°C.",
+    ),
+    (
+        "Kullandıktan sonra kapağını hemen kapatınız.",
+        "После использования сразу закройте крышку.",
+        "Immediately close the cap after use.",
+    ),
+    (
+        "Tüp açıldıktan sonra 6 hafta içerisinde kullanılmalıdır. Kullanılmayan kısmı saklamayınız.",
+        "После открытия тюбик следует использовать в течение 6 недель. Не храните неиспользованную часть.",
+        "The tube should be used within 6 weeks after opening. Do not store any unused portion.",
+    ),
+)
+
+
+def _storage_log(medicine, *, shifted):
+    """Лог лекарства с переводом хранения по абзацам; shifted — ответ модели со сдвигом (как до 21.10)."""
+    ru = [row[1] for row in STORAGE_ROWS]
+    en = [row[2] for row in STORAGE_ROWS]
+    if shifted:
+        ru = ru[1:] + ["Обратитесь к врачу."]
+        en = en[1:] + ["Consult your doctor."]
+    return _reviewable_log(
+        medicine.base_product,
+        generated_title="TESTMED 10 мг, таблетки",
+        generated_description=(
+            "Краткое точное описание препарата содержит действующее вещество форму выпуска "
+            "дозировку количество таблеток способ приема и сведения изготовителя"
+        ),
+        input_data={
+            "attributes": {
+                "source_tabs": {
+                    "storage_conditions": {"text": "\n".join(row[0] for row in STORAGE_ROWS)}
+                }
+            }
+        },
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_title": "TESTMED 10 мг, таблетки"},
+                "en": {"generated_title": "TESTMED 10 mg tablets"},
+            },
+            "translations_data": {
+                "ru": {"storage_conditions": "\n".join(ru)},
+                "en": {"storage_conditions": "\n".join(en)},
+            },
+            "medicine_translation_quality": {
+                "storage_conditions": {"source_length": 300, "complete": True}
+            },
+        },
+    )
+
+
+def _medicine_with_storage(slug):
+    medicine = MedicineProduct.objects.create(name="TESTMED 10 MG TABLET", slug=slug)
+    medicine.refresh_from_db()
+    for locale, text in (("ru", "Текущее хранение RU"), ("en", "Current storage EN")):
+        MedicineProductTranslation.objects.create(
+            product=medicine, locale=locale, storage_conditions=text
+        )
+    return medicine
+
+
+def test_shifted_medicine_paragraphs_go_to_moderation_and_name_the_paragraphs():
+    medicine = _medicine_with_storage("moderation-shifted-medicine-paragraphs")
+    log = _storage_log(medicine, shifted=True)
+
+    report = SemanticValidator().validate_log(log)
+    assert "medicine_translation:storage_conditions" in report.rejected_fields
+    assert "medicine_paragraph_mismatch" in report.reasons
+    numbers = {item["number"] for item in report.paragraph_findings["storage_conditions"]}
+    assert {1, 2, 3, 4} <= numbers
+
+    preview = build_change_preview(log, semantic_report=report)
+    storage_rows = [row for row in preview if row.label == "Условия хранения"]
+    assert storage_rows and all(row.decision == "blocked" for row in storage_rows)
+    assert storage_rows[0].reason.startswith("Абзацы 1–")
+    assert "похожи на чужой перевод" in storage_rows[0].reason
+    form = AIProcessingLogForm(instance=log)
+    help_text = form.fields["medicine_storage_conditions_ru"].help_text
+    assert "№1: исходник «5. VISCOTEARS&#x27;IN SAKLANMASI»" in help_text
+    assert "перевод соседнего абзаца (сдвиг)" in help_text
+
+    _generator().apply_log_to_product(log)
+
+    medicine.refresh_from_db()
+    log.refresh_from_db()
+    assert medicine.translations.get(locale="ru").storage_conditions == "Текущее хранение RU"
+    assert medicine.translations.get(locale="en").storage_conditions == "Current storage EN"
+    assert log.status == AIProcessingStatus.MODERATION
+    assert log.application_status == AIApplicationStatus.PARTIAL
+    reported = log.application_report["paragraph_problems"]["storage_conditions"]
+    assert {1, 2, 3, 4} <= {item["number"] for item in reported}
+    assert AIModerationQueue.objects.filter(log_entry=log, resolved_at__isnull=True).exists()
+    message = " ".join(
+        get_incomplete_medicine_field_messages(log, log.application_report["rejected_fields"])
+    )
+    assert "условия хранения" in message and "похожи на чужой перевод" in message
+    assert "перезапустите AI" in message
+
+
+def test_paragraph_reason_in_preview_keeps_locale_case():
+    medicine = _medicine_with_storage("moderation-paragraph-reason-case")
+    log = _storage_log(medicine, shifted=False)
+    report = SemanticValidationReport(
+        rejected_fields={"medicine_translation:storage_conditions"},
+        reasons=["medicine_paragraph_mismatch"],
+        paragraph_findings={"storage_conditions": [{"number": 2, "problems": ["ru_en_mismatch"]}]},
+    )
+
+    rows = [row for row in build_change_preview(log, semantic_report=report) if row.label == "Условия хранения"]
+
+    assert rows[0].reason == "Абзац 2 похож на чужой перевод: RU и EN расходятся — раздел не будет применён"
+
+
+def test_correct_medicine_paragraphs_are_applied():
+    medicine = _medicine_with_storage("moderation-correct-medicine-paragraphs")
+    log = _storage_log(medicine, shifted=False)
+
+    report = SemanticValidator().validate_log(log)
+    assert report.paragraph_findings == {}
+    assert "medicine_translation:storage_conditions" not in report.rejected_fields
+
+    _generator().apply_log_to_product(log)
+
+    medicine.refresh_from_db()
+    assert medicine.translations.get(locale="ru").storage_conditions.startswith("5. ХРАНЕНИЕ VISCOTEARS")
+
+
+def test_moderator_fix_of_flagged_paragraphs_is_applied_without_paragraph_check():
+    medicine = _medicine_with_storage("moderation-fixed-medicine-paragraphs")
+    log = _storage_log(medicine, shifted=True)
+    initial_form = AIProcessingLogForm(instance=log)
+    data = _bound_admin_form_data(log)
+    for field_name in MEDICINE_EDITOR_FORM_FIELDS:
+        data[field_name] = initial_form.fields[field_name].initial or ""
+    fixed_ru = "Храните VISCOTEARS при температуре ниже 25°C, в недоступном для детей месте."
+    data["medicine_storage_conditions_ru"] = fixed_ru
+
+    form = AIProcessingLogForm(data=data, instance=log)
+    assert form.is_valid(), form.errors
+    saved = form.save(commit=False)
+    saved.save()
+
+    quality = saved.extracted_attributes["medicine_translation_quality"]["storage_conditions"]
+    assert quality["paragraphs_reviewed"] is True
+    assert SemanticValidator().validate_log(saved).paragraph_findings == {}
+    _generator().apply_log_to_product(saved)
+    medicine.refresh_from_db()
+    assert medicine.translations.get(locale="ru").storage_conditions == fixed_ru
+
+
+def test_unchanged_form_save_keeps_paragraph_check():
+    medicine = _medicine_with_storage("moderation-unchanged-medicine-paragraphs")
+    log = _storage_log(medicine, shifted=True)
+    initial_form = AIProcessingLogForm(instance=log)
+    data = _bound_admin_form_data(log)
+    for field_name in MEDICINE_EDITOR_FORM_FIELDS:
+        data[field_name] = initial_form.fields[field_name].initial or ""
+    data["medicine_storage_conditions_decision"] = "merge_current"
+
+    form = AIProcessingLogForm(data=data, instance=log)
+    assert form.is_valid(), form.errors
+    saved = form.save(commit=False)
+    saved.save()
+
+    assert "storage_conditions" in SemanticValidator().validate_log(saved).paragraph_findings
 
 
 def test_category_alternatives_accepts_an_empty_list_in_admin_form():

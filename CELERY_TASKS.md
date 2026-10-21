@@ -2,7 +2,7 @@
 
 Источник правды для расписания — `CELERY_BEAT_SCHEDULE` в `backend/config/settings.py`. Инициализация приложения находится в `backend/config/celery.py`; задачи обнаруживаются через `autodiscover_tasks()`.
 
-Временная зона проекта — `Europe/Moscow`. Расписания `crontab` ниже указаны в этой зоне. Интервалы (`10 минут`, `4 часа`, `7 дней`) отсчитываются Celery Beat и не привязаны к конкретному часу суток.
+Временная зона проекта — `Europe/Moscow`: `CELERY_TIMEZONE` не задан, поэтому Celery берёт `TIME_ZONE` из настроек Django (`enable_utc` остаётся включённым). Расписания `crontab` ниже указаны по МСК. Интервалы (`каждую минуту`, `10 минут`, `каждый час`) отсчитываются Celery Beat и не привязаны к конкретному часу суток.
 
 Состояние beat (`/app/celerybeat-schedule`) живёт в слое контейнера и пропадает при каждом пересоздании `celerybeat`, то есть при деплое. Интервал после этого отсчитывается заново, поэтому задача с интервалом длиннее промежутка между деплоями может не сработать никогда (так было с `cleanup-scraper-sessions` раз в 7 дней). Всё, что реже нескольких раз в час, ставьте через `crontab`.
 
@@ -24,9 +24,10 @@ Beat только публикует задачи. Для исполнения �
 
 | Имя schedule | Задача | Расписание | Очередь | Основной эффект |
 |---|---|---|---|---|
+| `catalog-brand-product-counts` | `catalog.refresh_brand_product_counts` | каждые 60 секунд (`expires` 60 с) | `celery` | Пересчитывает число публичных товаров по брендам (всего и по типу товара) в кэш, TTL 15 минут; при уже идущем пересчёте возвращает `already_running`. |
 | `monitoring-production-watchdog` | `apps.monitoring.tasks.run_production_watchdog` | каждые 5 минут | `celery` | Проверяет homepage/liveness/readiness и доставляет дедуплицированные Telegram alert/recovery. |
-| `monitoring-database-backup` | `apps.monitoring.tasks.run_database_backup` | ежедневно `01:15` UTC | `celery` | `pg_dump` потоком во внешний бакет, ротация 7/4/3, Telegram при сбое; только при `DB_BACKUP_ENABLED=true`. |
-| `monitoring-database-backup-check` | `apps.monitoring.tasks.check_database_backup` | воскресенье `01:45` UTC | `celery` | Свежесть, SHA-256 и `pg_restore --list` последней копии; по флагу — пробное восстановление. |
+| `monitoring-database-backup` | `apps.monitoring.tasks.run_database_backup` | ежедневно `01:15` | `celery` | `pg_dump` потоком во внешний бакет, ротация 7/4/3, Telegram при сбое; только при `DB_BACKUP_ENABLED=true`. |
+| `monitoring-database-backup-check` | `apps.monitoring.tasks.check_database_backup` | воскресенье `01:45` | `celery` | Свежесть, SHA-256 и `pg_restore --list` последней копии; по флагу — пробное восстановление. |
 | `coinremitter-outbox-dispatch` | `apps.payments.tasks.dispatch_pending_crypto_invoice_requests` | каждую минуту | `celery` | Подбирает durable pending invoice requests, пропущенные immediate publish. |
 | `coinremitter-reconciliation` | `apps.payments.tasks.reconcile_coinremitter_state` | каждые 5 минут | `celery` | Карантинирует stale provider claims и пишет read-only drift summary. |
 | `currency-update-rates` | `currency.update_rates` | каждые 4 часа: `00:05`, `04:05`, … `20:05` | `celery` | Обновляет курсы валют. |
@@ -37,11 +38,15 @@ Beat только публикует задачи. Для исполнения �
 | `orders-remind-abandoned-carts` | `orders.remind_abandoned_carts` | ежечасно `:20` | `celery` | Напоминания о неотправленном Списке заявки (email/Telegram) по настройкам в админке; по умолчанию выключены, без них задача ничего не делает. До 50 корзин за запуск; см. `docs/CART_REMINDERS.md`. |
 | `scrapers-weekly-duplicate-candidates` | `apps.scrapers.tasks.find_and_merge_duplicates` | понедельник `04:30` | `celery` | Ищет и сохраняет кандидатов на ручную дедупликацию. |
 | `cleanup-orphaned-media` | `catalog.cleanup_orphaned_media` | воскресенье `03:30` | `celery` | Удаляет безопасно определённые orphaned media; при превышении лимита — только отчёт в Telegram. |
+| `catalog-expire-new-badges` | `catalog.expire_new_badges` | ежедневно `03:40` | `celery` | Снимает «Новинку» (`is_new`) с товаров, добавленных раньше `NEW_BADGE_DAYS` дней назад (по умолчанию 30). |
 | `catalog-recompute-sort-ranks` | `catalog.recompute_sort_ranks` | ежедневно `04:50` | `celery` | Пересчитывает `sort_rank` медикаментов и БАДов — порядок «Популярные» (по умолчанию) на их страницах. |
 | `payments-expire-crypto-invoices` | `apps.payments.tasks.expire_pending_crypto_payments` | каждые 10 минут | `celery` | Помечает просроченные pending crypto invoices как `expired`. |
+| `monitoring-server-resources` | `apps.monitoring.tasks.check_server_resources` | каждые 10 минут | `celery` | Свободное место на диске, память и снимки обоих Redis; алерт и «в норме» в Telegram, повтор не чаще раза в 6 ч (`docs/PROD_DISK_AND_REDIS.md`). |
 | `ai-cleanup-old-logs` | `apps.ai.tasks.cleanup_old_ai_logs` | воскресенье `04:40` | `ai` | Удаляет `completed`/`approved` AI-логи старше 30 дней. |
 | `recsys-sync-stale-nightly` | `apps.recommendations.tasks.sync_stale_products_to_qdrant` | ежедневно `02:15` | `recsys` | Ставит на индексацию до 200 новых/изменённых товаров батчами по 25. |
 | `cleanup-temp-images` | `apps.recommendations.tasks.cleanup_temp_images` | каждый час | `recsys` | Удаляет файлы старше часа из storage-префикса `temp/`. |
+| `monitoring-media-backup` | `apps.monitoring.tasks.run_media_backup` | ежедневно `02:00` | `celery` | Копия `marketing/`, `pages/`, `services/` бакета медиа в бакет бэкапов (`media/`): только новое и изменённое, пропавшие файлы хранятся 30 дней; при `MEDIA_BACKUP_ENABLED` (= `DB_BACKUP_ENABLED`). `docs/DB_BACKUP.md`, «Копия медиа». |
+| `monitoring-media-backup-check` | `apps.monitoring.tasks.check_media_backup` | воскресенье `02:30` | `celery` | Копия медиа свежая (не старше 26 ч) и полная по манифесту; Telegram при сбое. |
 
 ### Обогащение медиа лекарств
 
@@ -164,6 +169,42 @@ docker compose exec celeryworker poetry run python manage.py shell -c \
 
 Это защитные ограничения, а не гарантия резервного копирования. Перед сменой `R2_PREFIX`, storage backend или структуры media paths необходим отдельный dry audit.
 
+### Чистка products/parsed/ после парсинга
+
+Не задача Beat: `_sweep_parsed_orphans` (`apps/scrapers/tasks.py`) вызывается, когда
+цепочка задачи парсера завершилась, и удаляет из `products/parsed/<парсер>/` файлы,
+на которые не ссылается ни одно поле БД. Это копии, уже перенесённые сигналами в
+читаемые пути, и медиа пропущенных дублей. Резервной копии медиа товаров нет, поэтому
+(с 22.10.2026):
+
+- ссылки ищутся пакетно (`apps/catalog/utils/media_references.py`): по одному запросу
+  `LIKE` на каждое поле с медиа во всех моделях (FileField, URLField и текстовые поля
+  с медийным именем — 272 поля на проде), а не по запросу на файл; путь находится в имени
+  файла, в URL CDN и в `?path=` proxy-media. Ошибка любого запроса — ничего не удаляется;
+- файлы моложе `PARSED_MEDIA_SWEEP_MIN_AGE_HOURS` (6 ч) не трогаются: их могла только что
+  скачать другая задача, ещё не записав строку товара; они удалятся следующим проходом;
+- пока у парсера есть задача `pending`/`running`, чистка пропускается (зависшая в
+  `running` задача её откладывает — тогда отменить задачу в админке);
+- в БД меньше 100 товаров (пустая или чужая база, как стек 14.06.2026) — ничего не удаляется;
+- кандидатов больше `PARSED_MEDIA_SWEEP_MAX_DELETE` (20 000) — ничего не удаляется, админу
+  приходит отчёт в Telegram. Доля от числа файлов не проверяется, как у
+  `cleanup_orphaned_media`: после переноса ничейными становятся почти все файлы прохода
+  (21.10.2026 у ilacfiyati — 2540 из 2885, из них 2518 моложе 6 ч);
+- ключи листинга считаются относительно `R2_PREFIX`: на dev чистится `dev/products/parsed/…`.
+
+Отчёт без удаления и ручной запуск с другим лимитом после проверки:
+
+```bash
+docker compose exec celeryworker poetry run python manage.py shell -c \
+  "from apps.scrapers.tasks import _sweep_parsed_orphans as s; print(s('ilacfiyati', dry_run=True))"
+docker compose exec celeryworker poetry run python manage.py shell -c \
+  "from apps.scrapers.tasks import _sweep_parsed_orphans as s; print(s('ilacfiyati', max_delete=40000))"
+```
+
+Та же пакетная проверка, тоже закрытая при сбое, защищает старое главное фото, которое
+парсер удаляет после переключения `main_image_file` на файл галереи
+(`ScraperIntegrationService._media_key_referenced`).
+
 ### Ранг медикаментов и БАДов
 
 `catalog.recompute_sort_ranks` (`services/catalog_sort_rank.py`) для
@@ -230,9 +271,11 @@ POST `/api/recommendations/search_by_image/` не грузит CLIP в веб-п
 Массовые AI-прогоны из раздела админки «AI → AI-прогоны» (см. [docs/AI_RUNS_ADMIN_GUIDE.md](docs/AI_RUNS_ADMIN_GUIDE.md)) тоже не входят в Beat:
 
 - `advance_ai_run(run_id, token)` — короткий шаг прогона: проверяет партию, ставит следующую и перепланирует себя через 15 с (`priority=0`, `acks_late`);
-- `run_ai_maintenance(run_id, dry_run)` — предпросмотр и выполнение «Перегенерировать отклонённые названия» / «Закрыть решённые записи модерации».
+- `run_ai_maintenance(run_id, dry_run)` — предпросмотр и выполнение «Перегенерировать отклонённые названия» / «Закрыть решённые записи модерации»;
+- `preview_medicine_paragraph_run(run_id)` — «Посчитать» для перевода абзацев инструкций лекарств: абзацы, которых нет в памяти, части, запросы и оценка цены (`priority=0`);
+- `advance_medicine_paragraph_run(run_id, token)` — шаг перевода абзацев через OpenAI Batch API: проверяет часть, забирает готовую, отправляет следующую и перепланирует себя через 5 минут (`priority=0`, `acks_late`).
 
-Обе идут в очередь `ai`; если `celery_ai` остановлен, прогон через 5 минут покажется зависшим, а партия — остановится через 30 минут.
+Все идут в очередь `ai`; если `celery_ai` остановлен, прогон товаров через 5 минут покажется зависшим, а партия — остановится через 30 минут; прогон абзацев считается зависшим через 20 минут без шага.
 
 ## Другие отключённые scheduled entries
 
@@ -253,6 +296,16 @@ POST `/api/recommendations/search_by_image/` не грузит CLIP в веб-п
 - `currency.refresh_margin_snapshots`;
 - `currency.refresh_usdt_price_snapshots`;
 - `catalog.sync_ikea_products`;
+- `catalog.refresh_product_card_source` — обновляет цену и наличие одной спарсенной карточки из первоисточника, без импорта контента; ставит `POST catalog/products/<slug>/source-refresh`, который фронтенд шлёт при открытии карточки;
+- `catalog.refresh_medicine_market_check` — проверяет справочную цену лекарства и его аналогов; ставит `POST catalog/medicines/products/<slug>/market-check` по кнопке проверки цены на карточке;
+- `catalog.refresh_supplement_market_check` — то же для справочной цены БАДа; ставит `POST catalog/supplements/products/<slug>/market-check`, который карточка БАДа шлёт сама при открытии;
+- `catalog.discover_supplement_stock_offer` — ищет продавца (offer) БАДа независимо от справочной цены; ставит тот же `market-check` БАДа, если активного offer ещё нет;
+- `apps.scrapers.tasks.run_scraper_task` — запуск парсера чанками, каждый чанк ставит следующий; ставят админка (запуск `ScraperConfig`, задача парсинга сайта) и `manage.py run_scraper --async`;
+- `apps.scrapers.tasks.run_stub_refresh_task` — обновление заглушек лекарств короткими чанками с ID-курсором; ставит запуск задачи парсинга сайта с типом «Обновление заглушек» в админке, дальше — сама себя;
+- `apps.scrapers.tasks.run_instagram_scraper_task` — парсинг Instagram; ставит запуск «Задачи парсинга Instagram» в админке;
+- `apps.feedback.tasks.notify_admin_product_review` — Telegram админу о новом или изменённом отзыве на модерации; ставит API отзывов;
+- `apps.feedback.tasks.notify_admin_product_question` — Telegram админу о новом вопросе о товаре; ставит API вопросов;
+- `apps.feedback.tasks.notify_review_author_reply` — автору отзыва об ответе магазина (Telegram, если включён, и email); ставит сохранение ответа в админке отзывов;
 - точечная и полная индексация рекомендаций;
 - AI batch/variant tasks;
 - задачи уведомлений заказов и криптоплатежей.

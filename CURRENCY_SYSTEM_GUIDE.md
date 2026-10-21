@@ -107,22 +107,9 @@ results = currency_converter.convert_to_multiple_currencies(
 ```
 
 ### Использование в парсерах
-```python
-from catalog.parsers.base_currency_parser import TurkishMedicineParser
-
-parser = TurkishMedicineParser()
-
-product_data = {
-    'name': 'Аспирин',
-    'price': '45.50 ₺',
-    'old_price': '50.00 ₺',
-    'brand': 'Bayer',
-    'category': 'medicines'
-}
-
-parsed = parser.parse_product(product_data)
-# Результат содержит конвертированные цены
-```
+Отдельных «валютных» классов парсеров нет (`base_currency_parser.py` удалён
+22.10.2026 как неиспользуемый). Парсеры сохраняют цену в валюте источника,
+пересчёт делает задача `currency.update_product_prices` (см. `CELERY_TASKS.md`).
 
 ## 🔧 Админ-панель
 
@@ -193,10 +180,12 @@ X-Currency: KZT
 - Настраивается через админ-панель
 
 ### Периодичность обновлений
-- Курсы валют: каждые 4 часа
-- Цены товаров: ежедневно в 2:00
-- Очистка логов: еженедельно
-- Резервное копирование: ежедневно
+Расписание — `CELERY_BEAT_SCHEDULE` в `backend/config/settings.py`, время по МСК (подробнее — `CELERY_TASKS.md`):
+
+- Курсы валют: каждые 4 часа, в 00:05, 04:05, … 20:05 (`currency.update_rates`)
+- Цены товаров: ежедневно в 05:00 (`currency.update_product_prices`, `batch_size=200`)
+- Очистка логов и проверка здоровья: не по расписанию, только ручной запуск
+- Резервного копирования курсов нет
 
 ## 🔄 Автоматические задачи
 
@@ -205,7 +194,6 @@ X-Currency: KZT
 - `currency.update_product_prices` - обновление цен
 - `currency.cleanup_old_logs` - очистка логов
 - `currency.health_check` - проверка здоровья
-- `currency.backup_rates` - резервное копирование
 
 ### Запуск
 ```bash
@@ -285,31 +273,6 @@ class CustomCurrencyConverter(CurrencyConverter):
 ```
 
 ## 📝 Примеры использования
-
-### Парсинг турецкого сайта
-```python
-from catalog.parsers.base_currency_parser import TurkishMedicineParser
-
-parser = TurkishMedicineParser()
-
-# Данные с турецкого сайта
-raw_data = {
-    'id': '12345',
-    'name': 'İbuprofen 400mg',
-    'price': '28,90 ₺',
-    'old_price': '35,50 ₺',
-    'brand': 'Bayer',
-    'category': 'Ağrı Kesiciler',
-    'in_stock': True,
-    'images': ['https://example.com/image.jpg']
-}
-
-# Автоматическая конвертация цен
-product_data = parser.parse_product(raw_data)
-
-# Создание товара
-product = Product.objects.create(**product_data)
-```
 
 ### Массовое обновление
 ```python

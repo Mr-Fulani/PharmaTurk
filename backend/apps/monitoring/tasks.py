@@ -7,7 +7,7 @@ from celery import shared_task
 from django.conf import settings
 from django.core.cache import cache
 
-from . import db_backup
+from . import db_backup, media_backup, resources
 from .watchdog import (
     ProbeResult,
     format_failure_notification,
@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 STATE_KEY = "monitoring:production-watchdog:v1:state"
 LOCK_KEY = "monitoring:production-watchdog:v1:lock"
 BACKUP_LOCK_KEY = "monitoring:db-backup:v1:lock"
+RESOURCES_STATE_KEY = "monitoring:server-resources:v1:state"
+MEDIA_BACKUP_LOCK_KEY = "monitoring:media-backup:v1:lock"
 
 
 def _load_state() -> tuple[dict, bool]:
@@ -135,12 +137,19 @@ def run_production_watchdog() -> dict:
                 logger.exception("production_watchdog_unlock_failed")
 
 
-def _run_backup_job(stage: str, job) -> dict:
+def _run_backup_job(
+    stage: str,
+    job,
+    *,
+    enabled_setting: str = "DB_BACKUP_ENABLED",
+    lock_key: str = BACKUP_LOCK_KEY,
+    title: str = "Бэкап базы Mudaroba",
+) -> dict:
     """Бэкап и его проверка не идут одновременно; без кэша бэкап важнее блокировки."""
-    if not getattr(settings, "DB_BACKUP_ENABLED", False):
+    if not getattr(settings, enabled_setting, False):
         return {"status": "disabled"}
     try:
-        lock_acquired = cache.add(BACKUP_LOCK_KEY, "1", timeout=2 * 60 * 60)
+        lock_acquired = cache.add(lock_key, "1", timeout=2 * 60 * 60)
     except Exception:  # noqa: BLE001
         logger.exception("db_backup_lock_failed")
         lock_acquired = None
@@ -154,13 +163,13 @@ def _run_backup_job(stage: str, job) -> dict:
             f"{type(exc).__name__}: {str(exc)[:300]}"
         )
         send_admin_telegram_notification(
-            f"🔴 Бэкап базы Mudaroba: {stage} — сбой\n{error}\nЧто делать: docs/DB_BACKUP.md"
+            f"🔴 {title}: {stage} — сбой\n{error}\nЧто делать: docs/DB_BACKUP.md"
         )
         return {"status": "failed", "error": error}
     finally:
         if lock_acquired:
             try:
-                cache.delete(BACKUP_LOCK_KEY)
+                cache.delete(lock_key)
             except Exception:  # noqa: BLE001
                 logger.exception("db_backup_unlock_failed")
 
@@ -190,3 +199,79 @@ def run_database_backup() -> dict:
 @shared_task(name="apps.monitoring.tasks.check_database_backup", ignore_result=True)
 def check_database_backup() -> dict:
     return _run_backup_job("еженедельная проверка", _check_backup)
+
+
+@shared_task(name="apps.monitoring.tasks.check_server_resources", ignore_result=True)
+def check_server_resources() -> dict:
+    """Диск и Redis на пределе — в Telegram тем же каналом, что watchdog.
+
+    Новая проблема — сразу, та же — не чаще SERVER_RESOURCES_REPEAT_SECONDS,
+    после исправления всех — сообщение о восстановлении. Состояние в кэше; если
+    кэш недоступен, алерт не подавляется.
+    """
+    if not getattr(settings, "SERVER_RESOURCES_MONITOR_ENABLED", False):
+        return {"status": "disabled"}
+    problems = {problem.key: problem for problem in resources.collect_problems()}
+    try:
+        state = cache.get(RESOURCES_STATE_KEY) or {}
+    except Exception:  # noqa: BLE001 - Redis-кэш сам может быть причиной
+        logger.exception("server_resources_state_read_failed")
+        state = {}
+    active = set(state.get("active") or ())
+    now = time.time()
+    status = "healthy"
+    if problems:
+        due = bool(set(problems) - active) or now - float(state.get("last_alert_at") or 0) >= int(
+            settings.SERVER_RESOURCES_REPEAT_SECONDS
+        )
+        status = "problem"
+        if due and send_admin_telegram_notification(resources.format_problems(list(problems.values()))):
+            state["last_alert_at"] = now
+            status = "alerted"
+    elif active and send_admin_telegram_notification("✅ Mudaroba: диск и Redis снова в норме"):
+        status = "recovered"
+    elif active:
+        problems = {key: None for key in active}  # восстановление не доставлено — повторим
+    state["active"] = sorted(problems)
+    try:
+        cache.set(RESOURCES_STATE_KEY, state, timeout=7 * 86_400)
+    except Exception:  # noqa: BLE001
+        logger.exception("server_resources_state_write_failed")
+    if status != "healthy":
+        logger.warning("server_resources", extra={"server_resources_problems": sorted(problems)})
+    return {"status": status, "problems": sorted(problems)}
+
+
+def _media_backup_and_report() -> dict:
+    result = media_backup.backup_media()
+    if result["newly_missing"]:
+        # Файл пропал из бакета медиа: копия хранится ограниченный срок — надо заметить.
+        send_admin_telegram_notification(
+            f"⚠️ Копия медиа Mudaroba: из бакета медиа пропало {len(result['newly_missing'])} файлов: "
+            + ", ".join(result["newly_missing"][:5])
+            + f"\nКопии хранятся до {result['keep_until']}. Вернуть: manage.py restore_media_backup "
+            "<путь> (docs/DB_BACKUP.md, «Копия медиа»)"
+        )
+    return result
+
+
+@shared_task(name="apps.monitoring.tasks.run_media_backup", ignore_result=True)
+def run_media_backup() -> dict:
+    return _run_backup_job(
+        "ежедневная копия",
+        _media_backup_and_report,
+        enabled_setting="MEDIA_BACKUP_ENABLED",
+        lock_key=MEDIA_BACKUP_LOCK_KEY,
+        title="Копия медиа Mudaroba",
+    )
+
+
+@shared_task(name="apps.monitoring.tasks.check_media_backup", ignore_result=True)
+def check_media_backup() -> dict:
+    return _run_backup_job(
+        "еженедельная проверка",
+        media_backup.verify_media_backup,
+        enabled_setting="MEDIA_BACKUP_ENABLED",
+        lock_key=MEDIA_BACKUP_LOCK_KEY,
+        title="Копия медиа Mudaroba",
+    )

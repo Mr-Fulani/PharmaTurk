@@ -2424,18 +2424,6 @@ class ScraperIntegrationService:
 
         return score
 
-    def _is_ai_enabled_for_session(
-        self,
-        session: ScrapingSession,
-        action: str,
-    ) -> bool:
-        config = session.scraper_config
-        if action == "created":
-            return bool(getattr(config, "ai_on_create_enabled", True))
-        if action == "updated":
-            return bool(getattr(config, "ai_on_update_enabled", True))
-        return True
-
     def _get_furniture_product(self, product: Product) -> "FurnitureProduct":
         """Находит или создаёт FurnitureProduct для Product с product_type='furniture'."""
         from apps.catalog.models import FurnitureProduct
@@ -3492,22 +3480,18 @@ class ScraperIntegrationService:
         return updated
 
     def _media_key_referenced(self, key: str) -> bool:
-        """Есть ли в БД хоть одна ссылка на R2-ключ (чтобы не удалить нужный файл)."""
-        from django.apps import apps
+        """Есть ли в БД хоть одна ссылка на R2-ключ (чтобы не удалить нужный файл).
+
+        Ошибка проверки — «есть»: удалять файл вслепую нельзя, резервной копии нет.
+        """
+        from apps.catalog.utils.media_references import MediaReferenceCheckError, referenced_media_paths
         if not key:
             return True
-        for model in apps.get_app_config("catalog").get_models():
-            for f in model._meta.get_fields():
-                n = getattr(f, "name", "")
-                if hasattr(f, "attname") and any(
-                    x in n for x in ("image_url", "image_file", "main_image", "video")
-                ):
-                    try:
-                        if model.objects.filter(**{f"{n}__contains": key}).exists():
-                            return True
-                    except Exception:
-                        continue
-        return False
+        try:
+            return bool(referenced_media_paths(key))
+        except MediaReferenceCheckError as exc:
+            self.logger.warning("Ссылки на %s не проверены, файл оставлен: %s", key, exc)
+            return True
 
     def _point_main_to_image(self, obj, gallery_img) -> None:
         """main_image_file объекта → файл галереи (тот же ключ). Старую копию,

@@ -51,9 +51,13 @@ external platform:
   --output /secure/backups/release.manifest
 ```
 
-Backup retention is always a separate operation and defaults to dry-run. Review
-the exact candidates before using the destructive mode. Keep the current
-pre-deploy backup protected until its observation and rollback window closes.
+Manual backup retention defaults to dry-run. Review the exact candidates before
+using the destructive mode. Keep the current pre-deploy backup protected until
+its observation and rollback window closes. After a successful deploy and smoke
+check, `deploy.sh` itself runs `prune-backups.sh --keep 3 --apply` with the
+backup from `--backup-manifest` protected (`release_prune_backups_after_deploy`
+in `common.sh`): the three newest valid backups and the current one stay. A
+pruning failure is reported but does not fail the completed deploy.
 The validator accepts both current backup names and the historical
 `manifest.env`/`env.production` layout, but never treats incomplete directories
 or loose files as deletion candidates:

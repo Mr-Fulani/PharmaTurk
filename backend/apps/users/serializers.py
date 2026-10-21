@@ -109,47 +109,6 @@ class UserLoginSerializer(serializers.Serializer):
         return attrs
 
 
-class SMSSendCodeSerializer(serializers.Serializer):
-    """
-    Сериализатор для отправки SMS кода.
-    TODO: Реализовать после интеграции SMS провайдера.
-    """
-    phone_number = serializers.CharField(
-        max_length=17,
-        help_text="Номер телефона в формате +79991234567"
-    )
-    
-    def validate_phone_number(self, value):
-        """Валидация номера телефона"""
-        from django.core.validators import RegexValidator
-        from django.core.exceptions import ValidationError
-        
-        phone_regex = RegexValidator(
-            regex=r'^\+?1?\d{9,15}$',
-            message="Номер телефона должен быть в формате: '+999999999'. До 15 цифр."
-        )
-        try:
-            phone_regex(value)
-        except ValidationError:
-            raise serializers.ValidationError("Неверный формат номера телефона")
-        return value
-
-
-class SMSVerifyCodeSerializer(serializers.Serializer):
-    """
-    Сериализатор для проверки SMS кода и входа.
-    TODO: Реализовать после интеграции SMS провайдера.
-    """
-    phone_number = serializers.CharField(max_length=17)
-    code = serializers.CharField(max_length=6, min_length=6)
-    
-    def validate_code(self, value):
-        """Валидация кода (только цифры)"""
-        if not value.isdigit():
-            raise serializers.ValidationError("Код должен содержать только цифры")
-        return value
-
-
 class SocialAuthSerializer(serializers.Serializer):
     """Вход через фактически поддерживаемые Google и VK providers."""
     provider = serializers.ChoiceField(
@@ -424,19 +383,6 @@ class UserSessionSerializer(serializers.ModelSerializer):
         read_only_fields = ['session_key', 'ip_address', 'user_agent', 'country', 'city']
 
 
-class UserStatsSerializer(serializers.Serializer):
-    """
-    Сериализатор для статистики пользователя
-    """
-    total_orders = serializers.IntegerField()
-    total_spent = serializers.DecimalField(max_digits=10, decimal_places=2)
-    favorite_products_count = serializers.IntegerField()
-    active_addresses_count = serializers.IntegerField()
-    last_order_date = serializers.DateTimeField(allow_null=True)
-    registration_date = serializers.DateTimeField()
-    days_since_registration = serializers.IntegerField()
-
-
 class PublicUserProfileSerializer(serializers.ModelSerializer):
     """
     Сериализатор для публичного профиля пользователя
@@ -609,8 +555,3 @@ class TelegramAuthRequestSerializer(serializers.Serializer):
     photo_url = serializers.URLField(required=False, allow_blank=True)
     auth_date = serializers.IntegerField()
     hash = serializers.CharField()
-
-
-class SMSUnavailableResponseSerializer(serializers.Serializer):
-    message = serializers.CharField()
-    note = serializers.CharField()

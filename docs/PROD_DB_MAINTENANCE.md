@@ -66,7 +66,7 @@ docker exec mudaroba-postgres-1 sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES
   | gzip > ~/backups/pre-db-cleanup-$(date +%Y%m%d-%H%M).sql.gz
 ls -lh ~/backups/pre-db-cleanup-*.sql.gz
 
-# 1. Удаление (после деплоя этого PR — теми же задачами, что ночью)
+# 1. Удаление (после деплоя PR #103 — теми же задачами, что ночью)
 docker exec mudaroba-backend-1 poetry run python manage.py clearsessions
 docker exec mudaroba-backend-1 poetry run python manage.py shell -c \
   "from apps.scrapers.tasks import cleanup_old_sessions; print(cleanup_old_sessions.run(30))"
@@ -94,7 +94,7 @@ df -h /
 curl -s https://mudaroba.com/api/health/
 ```
 
-До деплоя этого PR шаг 1 можно выполнить так же: `clearsessions` есть в Django,
+До деплоя PR #103 (в main попал вместе с #102) шаг 1 можно выполнить так же: `clearsessions` есть в Django,
 а старая `cleanup_old_sessions(30)` удаляет те же логи одним запросом (13,7 тыс.
 строк — допустимо).
 

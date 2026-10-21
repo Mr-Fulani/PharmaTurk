@@ -47,6 +47,11 @@
 | `PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS` | `300` | freshness/success TTL и защита от повторных запросов |
 | `PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS` | `30` | короткий cooldown retryable source errors |
 | `PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS` | `150` | singleflight одной карточки, дольше hard timeout task |
+| `PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS` | `12` | таймаут одного запроса к поставщику, 1..30 с; для FLO при включённом Web Unlocker вместо него `FLO_WEB_UNLOCKER_TIMEOUT_SECONDS` |
+| `PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES` | `1` | повторы запроса внутри одного refresh, 0..2; слот concurrency держится `timeout × (retries + 1) + 5` с |
+| `PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS` | `{"flo":86400}` | JSON по источникам, до 7 суток: предложение, успешно проверенное в этом окне, не запрашивается повторно ни на карточке, ни в корзине (бережёт лимит платного FLO); у остальных источников 0 |
+| `PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO` | `0.05` | anomaly guard: новая цена дешевле `0.05 ×` текущей цены товара (или цены offer в той же валюте) отклоняется как `invalid_payload` и не сохраняется; 0.001..1 |
+| `PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO` | `20` | та же проверка сверху: новая цена дороже `20 ×` текущей отклоняется; 1..1000 |
 | `SCRAPER_PRICE_REFRESH_DISABLED_SOURCES` | `instagram` | повторный полный импорт может обновить контент/медиа, но не сохранённую цену |
 | `FLO_WEB_UNLOCKER_TIMEOUT_SECONDS` | `60` | окно одного provider request; у FLO render-canary занимал около 24 секунд |
 
@@ -176,6 +181,71 @@ docker compose exec backend poetry run python manage.py shell -c \
 ```bash
 docker compose exec celeryworker poetry run celery -A config inspect registered
 ```
+
+## Поиск продавца БАДов: `discover_supplement_stock_offers`
+
+БАД продаётся по живой цене, только если у товара есть активный offer `akakce` (цена
+продавца и наличие да/нет); `ilacfiyati` даёт лишь справочную цену. Offer появляется двумя
+путями:
+
+- **Автоматически, по требованию.** Кнопка «Проверить цену и наличие» на карточке БАДа,
+  кроме справочной проверки цены, ставит Celery-задачу
+  `catalog.discover_supplement_stock_offer` (очередь `celery`, soft/hard limit 55/60 с,
+  до 2 повторов через 60 с при временной ошибке). Задача ставится, только если
+  `SUPPLEMENT_STOCK_DISCOVERY_ENABLED=true`, `SOURCE_OFFER_VERIFICATION_ENABLED=true`,
+  `akakce` есть в `SOURCE_OFFER_VERIFICATION_SOURCES` и в `SUPPLEMENT_STOCK_ADAPTER_SOURCES`,
+  в БД есть активный `ScraperConfig` akakce с `use_proxy=True`, у товара ещё нет активного
+  offer akakce и нет отрицательного кэша.
+- **Вручную** — командой ниже: первый canary, разбор конкретного товара, небольшой прогон.
+
+Что делает: ищет название БАДа на Akakce (до 5 кандидатов) и принимает кандидата только
+при строгом совпадении названия (все числа — дозировка, количество — должны совпасть) и
+с отрывом от второго кандидата не меньше 0.05. Затем открывает страницу товара и берёт
+самого дешёвого продавца в наличии из JSON-LD. С `--apply` сохраняет один
+`ProductSourceOffer` (`parser_key=akakce`, `priority=20`, продавец в `response_metadata`);
+уже существующий активный offer никогда не перезаписывает. На товар — до двух запросов
+через платный прокси; действуют лимиты `akakce` в `SOURCE_OFFER_SOURCE_CONCURRENCY` и
+`SOURCE_OFFER_SOURCE_RATE_PER_MINUTE` и circuit breaker источника.
+
+| Флаг | Что делает |
+| --- | --- |
+| без `--apply` | dry-run: ищет и показывает кандидата (`matched_dry_run`), ничего не пишет, в том числе отрицательный кэш |
+| `--apply` | сохраняет найденные offers и отрицательный кэш |
+| `--create-config` | только с `--apply`: создаёт `ScraperConfig` `akakce-supplement-stock` (прокси, `sync_enabled=False`), если активного нет |
+| `--supplement-id N`, `--slug S` | конкретные `SupplementProduct`; флаги можно повторять |
+| `--limit N` | 1..100, по умолчанию 10; товары берутся по возрастанию id |
+
+Команда не смотрит на `SUPPLEMENT_STOCK_DISCOVERY_ENABLED` и отрицательный кэш (они нужны
+только автоматическому пути), но без активного `ScraperConfig` akakce завершается ошибкой,
+если не указан `--create-config`. Товар с уже найденным offer возвращает `existing` без
+запросов к источнику, но занимает место в `--limit`, поэтому для разбора указывайте
+`--supplement-id`/`--slug`.
+
+```bash
+docker compose exec backend poetry run python manage.py \
+  discover_supplement_stock_offers --supplement-id 123            # dry-run одного БАДа
+docker compose exec backend poetry run python manage.py \
+  discover_supplement_stock_offers --supplement-id 123 --apply    # сохранить offer
+```
+
+Статусы в выводе: `created`, `existing`, `matched_dry_run`, `no_match` (нет уверенного
+совпадения), `missing_product_identity`, `error:<код>` с `retryable=true|false`
+(`source_not_configured`, `source_circuit_open`, `rate_limited`, `source_busy`, коды
+парсера). Последняя строка — `DRY-RUN: {...}` или `APPLY: {...}` со счётчиками.
+
+Связанные переменные (`backend/config/settings.py`):
+
+| Переменная | Default | Назначение |
+| --- | --- | --- |
+| `SUPPLEMENT_STOCK_DISCOVERY_ENABLED` | `false` | автоматический поиск по кнопке на карточке |
+| `SUPPLEMENT_STOCK_DISCOVERY_REQUEST_TIMEOUT_SECONDS` | `12` | таймаут запроса к Akakce, 3..20 с |
+| `SUPPLEMENT_STOCK_DISCOVERY_ENQUEUE_LOCK_SECONDS` | `60` | повторно не ставить задачу для того же товара, 10..300 с |
+| `SUPPLEMENT_STOCK_DISCOVERY_NO_MATCH_TTL_SECONDS` | `21600` | отрицательный кэш после `no_match` и окончательной ошибки, 60..86400 с |
+| `SUPPLEMENT_STOCK_DISCOVERY_ERROR_TTL_SECONDS` | `300` | отрицательный кэш после временной ошибки, 60..86400 с |
+
+Отрицательный кэш — ключ `supplement-stock-discovery:v1:negative:<product_id>` в кэше
+Django; успешный `--apply` его снимает. Массовые прогоны идут через платный прокси —
+только с согласия владельца (`PAID_WEB_ACCESS_SERVICES.md`).
 
 ## Согласованность витрины и feed
 

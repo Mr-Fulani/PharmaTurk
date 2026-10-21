@@ -1,0 +1,98 @@
+# Management-команды: справочник
+
+Проверено по коду: 2026-10-22. Здесь только команды, которых нет в тематических
+документах; остальные — по ссылкам ниже. Код команд —
+`backend/apps/<приложение>/management/commands/<команда>.py`.
+
+## Как запускать
+
+На проде — из корня проекта на сервере, compose-проект `mudaroba` (как в
+[FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md)):
+
+```bash
+docker compose -p mudaroba -f docker-compose.yml -f docker-compose.prod.yml \
+  exec -T backend poetry run python manage.py <команда> [флаги]
+
+# то же короче, по имени контейнера (как в PROD_DB_MAINTENANCE.md)
+docker exec mudaroba-backend-1 poetry run python manage.py <команда> [флаги]
+```
+
+`poetry run` обязателен: зависимости стоят в `/app/.venv`, системный `python` их не
+видит. Локально — `docker compose exec backend poetry run python manage.py …`.
+
+Перед командой, которая пишет в БД: сначала dry-run или отчёт, затем `pg_dump`
+(пример — [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md)). Команды, которые ходят на
+внешние сайты через платный прокси, — только с согласия владельца
+([PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md)).
+
+## Где описаны остальные команды
+
+| Документ | Команды |
+| --- | --- |
+| [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) | `repair_broken_media`, `assign_manufacturer_brands`, `clear_heuristic_old_prices`, `repair_lcw_names`, `retire_stale_domain_records` |
+| [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | `audit_source_offer_rollout`, `discover_supplement_stock_offers` |
+| [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) | `backfill_furniture_attributes` |
+| [AI_GUIDE.md](../AI_GUIDE.md) | `ai_enqueue`, `retry_ai_titles`, `close_resolved_ai_moderation`, `medicine_paragraph_audit`, `medicine_paragraph_batch`, `medicine_reference_coverage`, `medicine_source_names`, `translate_medicine_inn`, `benchmark_ai` |
+| [AI_MODULE_OVERVIEW.md](../AI_MODULE_OVERVIEW.md) | `setup_ai_rag` = `init_qdrant` + `sync_categories` + `import_templates` |
+| [AI_TEMPLATES.md](../AI_TEMPLATES.md) | `seed_ai_category_instructions` |
+| [CELERY_TASKS.md](../CELERY_TASKS.md) | `sync_product_vectors`, `clear_similar_cache` |
+| [DB_BACKUP.md](DB_BACKUP.md) | `db_backup` (запускается в `celeryworker`) |
+| [DEPLOY.md](../DEPLOY.md) | `set_telegram_webhook`, `reconcile_coinremitter`, `cleanup_legacy_receipts` |
+| [CURRENCY_SYSTEM_GUIDE.md](../CURRENCY_SYSTEM_GUIDE.md) | `update_product_prices` |
+| [README-DEV.md](../README-DEV.md) | `seed_catalog_data`, `load_initial_pages` |
+| [SCRAPERS_GUIDE.md](../SCRAPERS_GUIDE.md) | `heal_parsed_gallery_media` |
+| [UMMALAND_PARSER_GUIDE.md](../UMMALAND_PARSER_GUIDE.md) | `run_scraper` |
+| [INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md), [INSTAGRAM_PARSER_IMPLEMENTATION.md](../INSTAGRAM_PARSER_IMPLEMENTATION.md) | `run_instagram_scraper`, `init_instagram_scraper` |
+
+## catalog
+
+| Команда | Что делает, флаги | На проде |
+| --- | --- | --- |
+| `audit_dynamic_attribute_keys` | Сверяет category-привязки динамических атрибутов (`GlobalAttributeKey`) с `ECOMMERCE_ATTRIBUTES`: ключи без категорий и расхождения. `--only-unbound` — только ключи без привязок; `--sync` — добавить недостающие привязки (лишние не снимает) | без `--sync` — только чтение |
+| `backfill_category_seo` | Заполняет пустые meta/OG-поля категорий значениями по умолчанию, заполненные не трогает. `--dry-run` — показать без сохранения | пишет в БД; сначала `--dry-run` |
+| `backfill_source_offers` | Создаёт `ProductSourceOffer` из сохранённой истории парсинга (`external_url`, `external_data.scraped_sources`), без запросов к источникам; идемпотентна. Dry-run по умолчанию; `--apply`, `--source <parser key>`, `--start-id`, `--limit` (1..10000, 1000), `--batch-size` (200). Шаг 2 rollout в [runbook](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | пишет только с `--apply` |
+| `download_all_media` | Скачивает в R2 внешние картинки товаров, отзывов, услуг, категорий и брендов; уже лежащие в R2 пропускает. `--only products\|main_images\|testimonials\|services\|categories\|brands\|all`, `--limit`, `--force` (перекачать), `--sync-internal` (URL уже на нашем CDN — проставить путь в файловое поле без скачивания), `--dry-run` | пишет в R2 и БД; сначала `--dry-run`. Битые ссылки на R2 чинит `repair_broken_media` |
+| `download_banner_media` | То же для медиа баннеров (`BannerMedia`: картинка, видео, GIF). `--banner-id`, `--force`, `--dry-run` | пишет в R2 и БД |
+| `refresh_currency_margin_snapshots` | Пересчитывает `*_price_with_margin` в `ProductPrice`, `ProductVariantPrice`, `ServicePrice` и `Product.final_price_rub/usd` по текущим маржам валютных пар; курсы и базовые цены не трогает. То же делает задача `currency.refresh_margin_snapshots` после сохранения маржи в админке. Флагов нет | пишет в БД (все строки цен, одна транзакция) |
+| `remap_flo_shoe_categories` | Обувь FLO из корня `shoes` раскладывает по `sandals`, `sneakers`, `home-shoes`, `boots`, `dress-shoes` по названию и URL (доменная запись и базовый `Product`). Новые товары парсер раскладывает тем же правилом. Dry-run по умолчанию, `--apply` | пишет только с `--apply` |
+| `remap_ikea_categories` | Показывает и с `--apply` переносит товары IKEA в уверенно определённые подкатегории мебели; категории не создаёт и не удаляет (без нужных категорий `--apply` падает). `--limit`, `--show-all` | пишет только с `--apply` |
+| `seed_perfumery_brands` | Создаёт 46 брендов парфюмерии (`primary_category_slug=perfumery`). `update_or_create` по slug: у существующего бренда перезапишет название, описание, сайт и `is_active`. Флагов нет | пишет в БД; осторожно — перезапись описаний брендов |
+| `sync_ikea_products` | Загружает товары IKEA TR по артикулам (`--item-codes A B …`) или поиску (`--search "…"`, `--limit` 10) и создаёт/обновляет `FurnitureProduct`. Штатный путь — парсер IKEA из админки ([PARSER_MODES.md](PARSER_MODES.md)) | пишет в БД, запросы к IKEA |
+| `sync_vk_photos` | Загружает фото (до `--max-photos`, 5) и видео наших товаров в уже существующие товары ВК Маркета, сопоставляя по `external_id` из YML. `--offer-id`, `--category <slug>`, `--skip-video`, `--dry-run`. Нужны `VK_YML_API`, `VK_USER_TOKEN`, `VK_GROUP_ID`; БД не меняет | меняет публичный ВК Маркет — только с согласия владельца, сначала `--dry-run` |
+| `update_currency_rates` | Загружает курсы ЦБ РФ и Нацбанка Казахстана в `CurrencyRate`, пишет `CurrencyUpdateLog`. Её вызывает действие админки «Обновить выбранные курсы»; ежедневная задача `currency.update_rates` идёт через `CurrencyRateService`, не через неё. Флагов нет | пишет в БД |
+| `migrate_media_hierarchy` | **Устарело.** Разовый перенос файлов R2 из `products/{leaf}/` в `products/{root}/…/{leaf}/` (2026-06-15); через пять дней раскладку заменила `migrate_product_media_layout`. `--dry-run`, `--limit` | не запускать |
+| `migrate_product_media_layout` | **Устарело** — разовая миграция 2026-06-20. Переносит файлы R2 из старых папок `…/main\|gallery\|variants/` в одну папку на товар (`products/{категория}/{slug}/…`): copy → проверка → UPDATE без сигналов → delete. Новые загрузки уже идут в эту раскладку. `--dry-run`, `--limit` | только `--dry-run`, чтобы увидеть остатки |
+| `reclassify_terminal_source_offer_errors` | **Устарело** — разовая (2026-09-04) для строк, записанных до исправления адаптеров LCW и Zara в том же коммите: offers с `last_error_code=option_not_found` и точным сообщением адаптера переводит в `out_of_stock` (LCW, размер) или `discontinued` (Zara, цвет), без запросов к источнику. Dry-run по умолчанию; `--apply`, `--source all\|lcw\|zara`, `--limit` (5000, до 10000) | повторный запуск безопасен, сначала без `--apply` |
+| `update_productprice_currencies` | **Устарело** (январь 2026). Пересчитывает конвертированные цены строк `ProductPrice` в RUB/USD/KZT/EUR/TRY — без USDT и без `Product.final_price_*`. Штатно — `update_product_prices` (задача `currency.update_product_prices` ежедневно) и `refresh_currency_margin_snapshots`. `--batch-size` (50), `--dry-run` | не запускать |
+
+### Тестовые данные (только локально)
+
+Все команды ниже создают тестовые бренды, категории или товары в текущей базе. На
+проде не запускать.
+
+| Команда | Что создаёт |
+| --- | --- |
+| `create_test_data` | бренды, категории и товары одежды, обуви и электроники; категории создаются через `create()`, повторный запуск падает на уникальном slug |
+| `create_medicine_test_data` | 10 медикаментов (`Product` без категории) и фарм-бренды |
+| `create_turkish_brands` | турецкие бренды и тестовую одежду к ним |
+| `seed_turkish_brands` | турецкие и мировые бренды с переводами (переводы перезаписывает) и примерные товары для витрин |
+| `generate_test_products` | 1–3 товара `… [TEST]` в каждую листовую категорию: `--count` (2), `--clear` — удалить прежние `[TEST]`, `--dry-run` |
+
+## ai
+
+| Команда | Что делает, флаги | На проде |
+| --- | --- | --- |
+| `test_ai_books` | Создаёт 5 тестовых книг в категории `books-test` и прогоняет по ним AI-генерацию с `auto_apply=True`. Флагов нет | не запускать: тестовые товары и платные запросы OpenAI |
+
+## recommendations
+
+| Команда | Что делает, флаги | На проде |
+| --- | --- | --- |
+| `recsys_stats` | Покрытие доступных товаров векторами (`ProductVector`) и показы, клики, CTR и конверсия по алгоритмам из `RecommendationEvent`. Флагов нет | только чтение |
+
+## scrapers
+
+| Команда | Что делает, флаги | На проде |
+| --- | --- | --- |
+| `backend_release_plan` | Гейт сокращённого backend-релиза: падает, если есть задачи парсеров в `pending/running` или Celery-воркеры заняты или не отвечают; печатает JSON плана миграций и пропускает только добавление nullable UUID-поля в `SiteScraperTask`. Вручную не нужна — её вызывает `scripts/release/backend_release.py` через сервис `migrate` в read-only транзакции | только чтение |
+| `init_scrapers` | Создаёт `ScraperConfig` `ummaland`, `zara`, `lcw` и маппинг категории «Книги» для UmmaLand, если их нет (`get_or_create`, существующие не меняет). Для пустой локальной базы | на проде конфиги ведутся в админке — не нужна |

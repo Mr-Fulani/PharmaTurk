@@ -128,3 +128,20 @@ release_verify_backup_manifest() {
   [[ "$(release_sha256 "$postgres_dump")" = "$postgres_expected" ]] || release_die "PostgreSQL dump checksum mismatch"
   [[ "$(release_sha256 "$qdrant_snapshot")" = "$qdrant_expected" ]] || release_die "Qdrant snapshot checksum mismatch"
 }
+
+# После успешного релиза: копии перед деплоем (≈ 690 МБ каждая) копились вручную
+# и дважды заполнили диск. Остаются три новейшие валидные и текущая — из манифеста.
+RELEASE_BACKUP_KEEP=3
+
+release_prune_backups_after_deploy() {
+  local manifest="$1"
+  local backup_dir backup_root
+  backup_dir="$(cd "$(dirname "$manifest")" && pwd -P)"
+  backup_root="$(dirname "$backup_dir")"
+  "${RELEASE_SCRIPT_DIR}/prune-backups.sh" \
+    --backup-root "$backup_root" \
+    --keep "$RELEASE_BACKUP_KEEP" \
+    --protect "$backup_dir" \
+    --apply \
+    --confirm "PRUNE BACKUPS ${backup_root}"
+}
