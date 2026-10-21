@@ -13,7 +13,7 @@ import httpx
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
-from apps.http_errors import raise_for_blocked_status
+from apps.http_errors import PaidAccessUnavailableError, raise_for_blocked_status
 
 
 logger = logging.getLogger(__name__)
@@ -192,6 +192,18 @@ class BrightDataWebUnlockerClient:
             )
         return body
 
+    @staticmethod
+    def _provider_refused(status_code: int, provider_error_code: str) -> bool:
+        """Отказ самого Bright Data: лимит зоны, приостановка, баланс, токен.
+
+        402/407 и 401 на Bearer-токен магазин не отдаёт. 400/403 бывают и
+        ответом магазина в raw-формате, поэтому считаются отказом провайдера
+        только с его заголовком ошибки ``x-brd-error-code``.
+        """
+        if status_code in {401, 402, 407}:
+            return True
+        return status_code in {400, 403} and bool(provider_error_code)
+
     def fetch(self, target_url: str) -> UnlockedResponse:
         """Fetch one trusted URL. Bright Data owns CAPTCHA retries internally."""
 
@@ -266,6 +278,12 @@ class BrightDataWebUnlockerClient:
                 "provider_status": provider_status,
             },
         )
+        if self._provider_refused(response.status_code, provider_error_code):
+            raise PaidAccessUnavailableError(
+                source="Bright Data Web Unlocker",
+                status_code=response.status_code,
+                url=self.ENDPOINT,
+            )
         raise_for_blocked_status(
             status_code=response.status_code,
             url=self.ENDPOINT,

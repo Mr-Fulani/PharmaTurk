@@ -569,3 +569,75 @@ def test_anonymous_user_merge_preserves_verification_snapshot(source_cart_produc
     assert values["verification_status"] == CartItem.VerificationStatus.VERIFIED
     assert values["observed_source_price"] == Decimal("90.00")
     assert values["observed_public_price"] == Decimal("100.00")
+
+
+@pytest.mark.django_db
+def test_revalidate_paid_access_unavailable_keeps_line_in_request(settings):
+    """Лимит Web Unlocker исчерпан: строка FLO не блокирует заявку менеджеру."""
+    settings.SOURCE_OFFER_VERIFICATION_SOURCES = ["flo"]
+    product = Product.objects.create(
+        name="FLO cart shoe",
+        slug=f"flo-cart-shoe-{uuid4().hex}",
+        product_type="shoes",
+        price=Decimal("100.00"),
+        currency="TRY",
+        stock_quantity=None,
+        external_data={"source_parser": "flo"},
+    )
+    offer = ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="flo",
+        canonical_url="https://www.flo.com.tr/urun/test-shoe-101",
+        external_product_id="flo-101",
+        source_price=Decimal("100.00"),
+        source_currency="TRY",
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+        stock_precision=ProductSourceOffer.StockPrecision.BOOLEAN,
+    )
+    cart = Cart.objects.create(session_key="paid-access-cart", currency="TRY")
+    CartItem.objects.create(
+        cart=cart,
+        product=product,
+        quantity=2,
+        price=Decimal("100.00"),
+        currency="TRY",
+        source_offer=offer,
+        verification_status=CartItem.VerificationStatus.NOT_CHECKED,
+    )
+    refused = OfferCheckResult(
+        availability_status=OfferAvailability.SOURCE_UNREACHABLE,
+        stock_precision=OfferStockPrecision.UNKNOWN,
+        canonical_url=offer.canonical_url,
+        error=OfferCheckError(
+            code=OfferCheckErrorCode.PAID_ACCESS_UNAVAILABLE,
+            message="Bright Data Web Unlocker запретил доступ (HTTP 402)",
+            retryable=False,
+        ),
+    )
+
+    with (
+        patch(
+            "apps.orders.cart_source_verification.SourceOfferVerificationService.verify",
+            return_value=refused,
+        ),
+        patch(
+            "apps.orders.cart_source_verification.CartSourceOfferPolicy._public_price_from_source",
+            side_effect=lambda **kwargs: kwargs["source_price"],
+        ),
+        patch("apps.orders.shipping_pricing.calculate_item_shipping_costs_usd"),
+    ):
+        response = _client(cart.session_key).post(reverse("cart-revalidate"), {})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["has_blocking_issues"] is False
+    assert payload["payable_items_count"] == 2
+    line = payload["items"][0]
+    assert line["is_payable"] is True
+    assert line["issues"] == [
+        {
+            "code": "manager_price_confirmation",
+            "message": "Цена будет уточнена менеджером",
+            "blocking": False,
+        }
+    ]

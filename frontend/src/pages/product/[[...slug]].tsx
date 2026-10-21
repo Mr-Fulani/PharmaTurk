@@ -8,7 +8,14 @@ import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import MedicinePriceCheck from '../../components/MedicinePriceCheck'
 import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components/SupplementPurchasePanel'
-import { SCHEMA_RETURN_POLICY, canPublishSchemaOffer, resolveSchemaAvailability, resolveSchemaSku } from '../../lib/productAvailability'
+import {
+  SCHEMA_RETURN_POLICY,
+  canPublishSchemaOffer,
+  resolveSchemaAvailability,
+  resolveSchemaSku,
+  sourceRefreshBlocksPurchase,
+  sourceRefreshNeedsManagerPrice,
+} from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
 import ServiceAttributes from '../../components/ServiceAttributes'
@@ -937,7 +944,8 @@ export default function ProductPage({
     product &&
     (productType === 'supplements' || product.product_type === 'supplements')
   )
-  const sourceRefreshFailed = sourceRefresh?.status === 'failed'
+  const sourceRefreshFailed = sourceRefreshBlocksPurchase(sourceRefresh)
+  const sourcePriceByManager = sourceRefreshNeedsManagerPrice(sourceRefresh)
   const sourceProductNotFound = Boolean(
     sourceRefresh?.status === 'failed' &&
     sourceRefresh.error_code === 'source_not_found'
@@ -2297,15 +2305,17 @@ export default function ProductPage({
                     )
                     : sourceRefresh.status === 'succeeded'
                       ? t('product_source_refresh_succeeded', 'Цена и наличие обновлены')
-                      : sourceRefresh.error_code === 'source_not_found'
-                        ? t(
-                          'product_source_refresh_not_found',
-                          'Товар больше недоступен у поставщика. Показана последняя сохранённая цена.'
-                        )
-                        : t(
-                          'product_source_refresh_unavailable',
-                          'Не удалось подтвердить наличие у поставщика. Покупка временно недоступна. Показана последняя сохранённая цена.'
-                        )}
+                      : sourcePriceByManager
+                        ? t('product_source_refresh_manager_price', 'Цена будет уточнена менеджером.')
+                        : sourceRefresh.error_code === 'source_not_found'
+                          ? t(
+                            'product_source_refresh_not_found',
+                            'Товар больше недоступен у поставщика. Показана последняя сохранённая цена.'
+                          )
+                          : t(
+                            'product_source_refresh_unavailable',
+                            'Не удалось подтвердить наличие у поставщика. Покупка временно недоступна. Показана последняя сохранённая цена.'
+                          )}
                 </span>
               </div>
             )}
