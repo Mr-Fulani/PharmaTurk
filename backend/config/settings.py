@@ -706,6 +706,13 @@ PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS = env.int(
 PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS = env.int(
     "PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS", default=150
 )
+# Платный транспорт (FLO через Bright Data Web Unlocker, лимит зоны 4 900 запросов
+# в месяц): предложение, успешно проверенное за последние N секунд, повторно не
+# запрашивается ни при открытии карточки, ни при открытии корзины. Источник без
+# записи проверяется при каждом открытии.
+PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS = env.json(
+    "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS", default={"flo": 86400}
+)
 PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO = env.float(
     "PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO", default=0.05
 )

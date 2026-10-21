@@ -26,6 +26,7 @@ from apps.catalog.utils.currency_converter import currency_converter
 from apps.catalog.utils.product_markup import apply_product_markup
 from apps.catalog.services.source_offer_verification import (
     SourceOfferVerificationService,
+    fresh_saved_result,
     manual_only_source_keys,
 )
 from apps.orders.models import CartItem
@@ -470,7 +471,33 @@ class CartSourceOfferPolicy:
             return None
 
         currency = str(target_currency or "RUB").strip().upper()
-        result = self.verifier.verify(offer, force=force)
+        result = None
+        if force and self.verifier.is_enabled_for(offer.parser_key):
+            # Платный источник (FLO): строка, успешно проверенная в окне
+            # свежести (24 ч), не проверяется заново при каждом открытии /cart.
+            result = fresh_saved_result(offer)
+        if result is None:
+            result = self.verifier.verify(offer, force=force)
+        if (
+            result.error is not None
+            and result.error.code == OfferCheckErrorCode.PAID_ACCESS_UNAVAILABLE
+        ):
+            # Лимит Web Unlocker исчерпан или зона приостановлена. Заказ — заявка
+            # менеджеру, онлайн-оплаты нет: строка остаётся в заявке по последней
+            # сохранённой цене, менеджер уточнит цену и наличие.
+            return self._priced_decision(
+                offer=offer,
+                result=result,
+                currency=currency,
+                public_price=(
+                    self._catalog_public_price(product=product, target_currency=currency)
+                    or self._money(baseline_public_price)
+                ),
+                baseline_public_price=baseline_public_price,
+                acknowledged_price=acknowledged_price,
+                acknowledged_currency=acknowledged_currency,
+                issues=(CartItem.VerificationIssue.MANAGER_PRICE_CONFIRMATION,),
+            )
         availability_is_informational = self.availability_is_informational(product)
         if result.error is not None or result.availability_status in {
             OfferAvailability.OUT_OF_STOCK,

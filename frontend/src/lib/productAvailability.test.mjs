@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { canPublishSchemaOffer, resolveSchemaAvailability, resolveSchemaSku } from './productAvailability.js'
+import {
+  canPublishSchemaOffer,
+  resolveSchemaAvailability,
+  resolveSchemaSku,
+  sourceRefreshBlocksPurchase,
+  sourceRefreshNeedsManagerPrice,
+} from './productAvailability.js'
 
 test('supplier-projected out of stock wins over stale variant availability', () => {
   assert.equal(
@@ -66,4 +72,20 @@ test('schema sku keeps short slugs and replaces ones Google rejects', () => {
   const longSlug = 'cleocin-150-mg-16-kapsul-cleocin-150-mg-16-kapsul-2'
   assert.ok(longSlug.length > 50)
   assert.equal(resolveSchemaSku({ slug: longSlug, productType: 'medicines', id: 42 }), 'medicines-42')
+})
+
+test('paid source access refusal keeps purchase and asks manager for the price', () => {
+  const refused = { status: 'failed', error_code: 'paid_access_unavailable' }
+  assert.equal(sourceRefreshNeedsManagerPrice(refused), true)
+  assert.equal(sourceRefreshBlocksPurchase(refused), false)
+})
+
+test('other card refresh failures still block purchase', () => {
+  for (const errorCode of ['source_unavailable', 'source_not_found', 'rate_limited']) {
+    const failed = { status: 'failed', error_code: errorCode }
+    assert.equal(sourceRefreshBlocksPurchase(failed), true)
+    assert.equal(sourceRefreshNeedsManagerPrice(failed), false)
+  }
+  assert.equal(sourceRefreshBlocksPurchase({ status: 'idle' }), false)
+  assert.equal(sourceRefreshBlocksPurchase(null), false)
 })

@@ -9,7 +9,12 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.test import override_settings
 
-from apps.http_errors import ExternalAccessBlockedError
+from apps.http_errors import ExternalAccessBlockedError, PaidAccessUnavailableError
+from apps.scrapers.base.offers import (
+    OfferCheckErrorCode,
+    OfferSourceUnavailable,
+    translate_offer_check_errors,
+)
 from apps.scrapers.base.web_unlocker import (
     BrightDataWebUnlockerClient,
     UnlockedResponse,
@@ -128,6 +133,58 @@ def test_unlocker_auth_and_access_failures_are_typed(status_code):
 
     assert error.value.status_code == status_code
     assert "test-token" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    ("status_code", "headers"),
+    [
+        (402, {}),
+        (407, {}),
+        (401, {}),
+        (403, {"x-brd-error-code": "zone_suspended"}),
+        (400, {"x-brd-error-code": "zone_limit"}),
+    ],
+)
+def test_unlocker_provider_refusal_is_paid_access_unavailable(status_code, headers):
+    """Лимит зоны, приостановка, баланс или токен — отказ самого Bright Data."""
+    client = _client(
+        lambda _request: httpx.Response(status_code, headers=headers, text="refused")
+    )
+    try:
+        with pytest.raises(PaidAccessUnavailableError) as error:
+            client.fetch(TARGET)
+    finally:
+        client.close()
+
+    assert error.value.status_code == status_code
+    assert "test-token" not in str(error.value)
+
+
+def test_unlocker_store_403_without_provider_error_is_not_paid_access_refusal():
+    client = _client(lambda _request: httpx.Response(403, text="denied"))
+    try:
+        with pytest.raises(ExternalAccessBlockedError) as error:
+            client.fetch(TARGET)
+    finally:
+        client.close()
+
+    assert not isinstance(error.value, PaidAccessUnavailableError)
+
+
+def test_paid_access_refusal_is_a_non_retryable_offer_error():
+    @translate_offer_check_errors
+    def check(_offer):
+        raise PaidAccessUnavailableError(
+            source="Bright Data Web Unlocker",
+            status_code=402,
+            url=BrightDataWebUnlockerClient.ENDPOINT,
+        )
+
+    with pytest.raises(OfferSourceUnavailable) as error:
+        check(None)
+
+    assert error.value.error.code == OfferCheckErrorCode.PAID_ACCESS_UNAVAILABLE
+    assert error.value.error.retryable is False
 
 
 @pytest.mark.parametrize("target_status", [404, 410, 429, 503])

@@ -6,7 +6,11 @@ import pytest
 from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
 from apps.scrapers.base.catalog_state import CatalogTraversalState
 from apps.scrapers.parsers.flo import FloParser, resolve_flo_shoe_category_slug
-from apps.scrapers.services import ScraperIntegrationService, _scraped_product_identity
+from apps.scrapers.services import (
+    ScraperIntegrationService,
+    _catalog_scope,
+    _scraped_product_identity,
+)
 from apps.catalog.models import Category
 
 
@@ -550,3 +554,68 @@ def test_flo_without_special_price_has_no_strikethrough(monkeypatch):
 
     assert product.price == 3499.0
     assert product.old_price is None
+
+
+def test_flo_empty_source_description_is_built_from_product_features(monkeypatch):
+    # Живая карточка 21.10 (Vans Fılmore): description пустой и на сайте FLO —
+    # там только «Ürün Özellikleri»; раньше товар сохранялся без описания.
+    detail = {
+        **_detail(),
+        "description": "",
+        "manufacturer": "Vans",
+        "model": "Fılmore",
+        "renk": "Siyah",
+        "cinsiyet": "Unisex",
+        "materyal": "DERI (DANA)",
+        "ic_astar_1": "TEKSTIL",
+        "taban": "KAUCUK",
+        "colors": [],
+    }
+    parser = FloParser()
+    monkeypatch.setattr(parser, "_fetch", lambda url: _product_html(detail))
+
+    product = parser.parse_product_detail("https://www.flo.com.tr/urun/x-101792825")
+
+    assert product.description == (
+        "Marka: Vans; Model: Fılmore; Renk: Siyah; Cinsiyet: Unisex; "
+        "Dış Materyal: DERI (DANA); İç Materyal: TEKSTIL; Taban: KAUCUK"
+    )
+
+
+def test_flo_source_description_still_wins(monkeypatch):
+    parser = FloParser()
+    monkeypatch.setattr(parser, "_fetch", lambda url: _product_html({**_detail(), "colors": []}))
+
+    product = parser.parse_product_detail("https://www.flo.com.tr/urun/x-101792825")
+
+    assert product.description.startswith("Nike Court Borough Low Recraft")
+
+
+def test_site_categories_get_their_own_traversal_state(monkeypatch):
+    """Весь сайт: категория, чьи первые страницы — товары соседней, обходится до конца.
+
+    С общим на проход состоянием «уже видели» три такие страницы подряд
+    останавливали категорию, и её товар с четвёртой страницы терялся.
+    """
+    first = "https://www.flo.com.tr/sneaker"
+    second = "https://www.flo.com.tr/spor-ayakkabi"
+    assert _catalog_scope(7, "run", first) == _catalog_scope(7, "run", first)
+    assert _catalog_scope(7, "run", first) != _catalog_scope(7, "run", second)
+    assert _catalog_scope(None, "run", first) is None
+
+    pages = {
+        first: _listing_html(["111111", "222222", "333333"], has_next=False),
+        second: _listing_html(["111111"]),
+        f"{second}?page=2": _listing_html(["222222"]),
+        f"{second}?page=3": _listing_html(["333333"]),
+        f"{second}?page=4": _listing_html(["444444"], has_next=False),
+    }
+    requested = []
+    found = []
+    for url in (first, second):
+        parser = FloParser()
+        parser.catalog_state = CatalogTraversalState(_catalog_scope(7, "run", url))
+        _mock_flo_catalog(monkeypatch, parser, pages, requested)
+        found.extend(parser.parse_product_list(url, max_pages=10))
+
+    assert "444444" in [p.sku for p in found]

@@ -203,6 +203,24 @@ class IlacFiyatiParser(BaseScraper):
             else None
         )
 
+    def parse_categories(self) -> List[Dict[str, Any]]:
+        """Весь сайт = два корневых каталога с полной пагинацией: лекарства и БАДы."""
+        origin = "https://ilacfiyati.com"
+        return [
+            {"name": "Лекарства", "url": f"{origin}/ilaclar", "external_id": "ilaclar",
+             "source": self.get_name()},
+            {"name": "БАДы", "url": f"{origin}/takviye-edici-gida",
+             "external_id": "takviye-edici-gida", "source": self.get_name()},
+        ]
+
+    @staticmethod
+    def _inside_analog_block(node) -> bool:
+        return bool(
+            node.find_parent(class_="medicine-item")
+            or node.find_parent(id="active-ingredient-equivalent")
+            or node.find_parent(id="sgk-equivalent")
+        )
+
     def _extract_listing_product_urls(self, html: str) -> List[str]:
         soup = BeautifulSoup(html, "html.parser")
         urls = []
@@ -830,6 +848,9 @@ class IlacFiyatiParser(BaseScraper):
                                 break
             if price is None and not price_unpublished:
                 for text_node in soup.find_all(string=STANDALONE_PRICE_RE):
+                    if self._inside_analog_block(text_node):
+                        # Цены аналогов на той же странице — не цена этого препарата.
+                        continue
                     match = STANDALONE_PRICE_RE.search(str(text_node))
                     parsed_price = normalize_price(match["amount"] or match["amount_after"])
                     if parsed_price is not None and parsed_price > 0:

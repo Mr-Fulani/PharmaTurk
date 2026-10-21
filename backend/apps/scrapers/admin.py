@@ -8,7 +8,7 @@ from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.urls import reverse
 from django.utils import timezone
@@ -329,8 +329,26 @@ class ScraperConfigAdmin(admin.ModelAdmin):
     disable_scrapers.short_description = "Отключить выбранные парсеры"
 
 
+class SiteScraperTaskForm(forms.ModelForm):
+    class Meta:
+        model = SiteScraperTask
+        fields = "__all__"
+
+    def clean(self):
+        data = super().clean()
+        if data.get("task_type") == "catalog" and not data.get("start_url"):
+            # Пустая ссылка в этом типе раньше запускала старый обход «всех
+            # категорий» в памяти — теперь для этого есть тип «Весь сайт».
+            self.add_error(
+                "start_url",
+                "Вставьте ссылку на товар или категорию — или выберите тип «Весь сайт».",
+            )
+        return data
+
+
 @admin.register(SiteScraperTask)
 class SiteScraperTaskAdmin(admin.ModelAdmin):
+    form = SiteScraperTaskForm
     # Список задач сам перезагружается каждые 5с — счётчики видны вживую.
     change_list_template = "admin/scrapers/sitescrapertask/change_list.html"
     list_display = [
@@ -381,11 +399,17 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     "max_pages",
                     "max_products",
                     "max_images_per_product",
+                    "modes_help",
                 ],
                 "description": (
-                    "Тип «Парсинг каталога» — стандартный режим постраничного обхода. "
-                    "Тип «Обновление заглушек» — обходит товары с флагом is_stub и дополняет их данными; "
-                    "start_url в этом режиме не нужен."
+                    "Три режима. Один товар — тип «Товар или категория по ссылке» и ссылка на "
+                    "карточку товара. Вся категория — тот же тип и ссылка на страницу категории: "
+                    "все страницы пройдут цепочкой до конца (или до «Макс. товаров»). "
+                    "Весь сайт — тип «Весь сайт»: ссылка не нужна, парсер сам найдёт категории "
+                    "и обойдёт их по очереди; без «Целевой категории» товары раскладываются по "
+                    "«Сопоставлениям категорий» конфигурации или автоматически. "
+                    "Тип «Обновление заглушек» дополняет товары-заглушки аналогов (ссылка не нужна). "
+                    "Примеры ссылок — в таблице ниже."
                 ),
             },
         ),
@@ -394,6 +418,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             {
                 "fields": [
                     "status",
+                    "site_progress",
                     "products_found",
                     "products_created",
                     "products_updated",
@@ -417,6 +442,8 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
 
     readonly_fields = [
         "status",
+        "site_progress",
+        "modes_help",
         "products_found",
         "products_created",
         "products_updated",
@@ -509,6 +536,47 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     logger.exception("Failed to auto-start SiteScraperTask #%s after admin save", task_pk)
 
             transaction.on_commit(enqueue_after_commit)
+
+    @admin.display(description="Как запустить")
+    def modes_help(self, obj):
+        from .modes import PARSER_MODES
+
+        selected = getattr(getattr(obj, "scraper_config", None), "parser_class", "")
+        rows = [
+            (key, info) for key, info in PARSER_MODES.items()
+            if not selected or key == selected
+        ] or list(PARSER_MODES.items())
+        body = format_html_join(
+            "",
+            "<tr><td><b>{}</b></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            (
+                (
+                    info["label"],
+                    info["product"],
+                    info["category"],
+                    info["site"],
+                    info.get("note", ""),
+                )
+                for _key, info in rows
+            ),
+        )
+        return format_html(
+            '<table style="font-size:12px"><tr><th>Парсер</th><th>Один товар — ссылка</th>'
+            "<th>Вся категория — ссылка</th><th>Весь сайт (тип «Весь сайт»)</th>"
+            "<th>Важно</th></tr>{}</table>",
+            body,
+        )
+
+    @admin.display(description="Весь сайт: прогресс")
+    def site_progress(self, obj):
+        if getattr(obj, "task_type", "") != "site":
+            return "—"
+        categories = obj.site_categories if isinstance(obj.site_categories, list) else []
+        if not categories:
+            return "категории ещё не найдены"
+        index = min(int(obj.site_category_index or 0), len(categories) - 1)
+        name = categories[index].get("name") or categories[index].get("url")
+        return f"категория {index + 1} из {len(categories)}: {name}"
 
     @admin.display(description="Пол", ordering="gender", empty_value="—")
     def gender_display(self, obj):
@@ -733,6 +801,8 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             task.errors_count = 0
             task.resume_page = 1
             task.stub_cursor_id = 0
+            task.site_categories = []
+            task.site_category_index = 0
             task.run_token = uuid.uuid4()
 
         task.status = "running"
@@ -1643,10 +1713,11 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
                     "category",
                 ],
                 "description": (
-                    "Укажите либо ссылку на пост (парсинг одного поста), "
-                    "либо username профиля и количество постов. "
-                    "Обязательно выберите «Целевую категорию» — она определяет "
-                    "тип товара и раздел каталога."
+                    "Один пост — вставьте ссылку на пост. Весь профиль — оставьте ссылку "
+                    "пустой, укажите username и «Максимум постов» не меньше числа постов "
+                    "профиля (например, 5000). Для профиля нужен вход: cookie sessionid в "
+                    "настройках парсера Instagram. Обязательно выберите «Целевую категорию» — "
+                    "она определяет тип товара и раздел каталога."
                 ),
             },
         ),

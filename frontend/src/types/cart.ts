@@ -18,6 +18,7 @@ export type CartVerificationIssueCode =
   | 'source_unreachable'
   | 'verification_unsupported'
   | 'cart_changed'
+  | 'manager_price_confirmation'
 
 export type CartStockPrecision = 'exact' | 'boolean' | 'unknown'
 export type CartPriceChangeState = 'none' | 'decreased' | 'increased'

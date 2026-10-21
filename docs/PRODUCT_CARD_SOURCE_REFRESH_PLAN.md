@@ -1,6 +1,6 @@
 # Обновление спарсенной карточки при открытии
 
-Последняя проверка по коду: 2026-08-30
+Последняя проверка по коду: 2026-10-21
 
 Ветка реализации: `codex/product-card-source-refresh-lcw-hotfix`
 
@@ -19,8 +19,12 @@
 - Лекарства `ilacfiyati` остаются в отдельном справочном price-check flow.
 - Название, описание, переводы, SEO, категория, бренд и существующие медиа не
   обновляются этим контуром.
-- `old_price`/акционная цена также не перезаписывается последней наблюдаемой ценой;
-  динамика пишется в `PriceHistory`.
+- `old_price` — только зачёркнутая цена, которую показывает сам источник, и только
+  выше новой текущей (`source_old_price`, DEVELOPMENT_RULES §5.1). Обновление пишет её
+  в `Product` и доменную карточку, а у цвета — если парсер передаёт `old_price`
+  варианта (FLO, Zara, Inditex). Нет зачёркнутой цены у источника (акция кончилась,
+  Akakçe) — поле очищается. Прежняя наблюдаемая цена скидкой не является; динамика
+  пишется в `PriceHistory`.
 - URL, parser key и source identity берутся только из БД; клиент не передаёт источник.
 - Сетевой/структурный сбой не меняет карточку. Все изменения применяются одной
   транзакцией только после полной валидации ответа.
@@ -106,6 +110,8 @@
 | ручной товар / флаг выключен / источник не разрешён | `not_eligible`, сеть не вызывается |
 | React Strict Mode в рамках одного открытия | frontend переиспользует один POST/promise; backend возвращает тот же `pending/running` job |
 | карточку открыли заново после `succeeded`/`failed` | ставится новый refresh job |
+| платный источник (FLO), URL успешно проверен в пределах `PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS` | `idle` без запроса: сохранённые данные, покупка не блокируется |
+| лимит Web Unlocker исчерпан, зона приостановлена, баланс или токен (отказ самого Bright Data) | `failed/paid_access_unavailable`, не повторяемая: данные не меняются, покупка не блокируется, на карточке «Цена будет уточнена менеджером» |
 | timeout, 403/challenge, 429, 5xx, proxy failure | старые данные сохраняются, короткий error cooldown |
 | redirect на чужой домен или другая source identity | terminal failure, транзакции нет |
 | пустая матрица fashion-вариантов, неверная цена/валюта | terminal failure, транзакции нет |
@@ -127,9 +133,18 @@ PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES=1
 PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS=300
 PRODUCT_CARD_SOURCE_REFRESH_ERROR_TTL_SECONDS=30
 PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS=150
+PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS={"flo":86400}
 PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO=0.05
 PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO=20
 ```
+
+`PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS` — окно свежести по источникам (JSON).
+Задано только FLO (24 ч, решение владельца 2026-10-21): его карточка идёт через платный
+Web Unlocker. Окно считается от `ProductSourceOffer.last_successful_check_at` открытого
+URL; ошибка его не открывает. То же окно действует в корзине
+([SOURCE_OFFER_CART_API.md](SOURCE_OFFER_CART_API.md)). Источники без записи
+проверяются при каждом открытии. Бюджет — в
+[PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md).
 
 Rollback не требует обратной записи данных: сначала установить
 `PRODUCT_CARD_SOURCE_REFRESH_ENABLED=false`, затем при необходимости удалить только

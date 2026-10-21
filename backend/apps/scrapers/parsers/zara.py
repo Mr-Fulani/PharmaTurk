@@ -14,14 +14,21 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from apps.http_errors import raise_for_blocked_status
 
-from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
+from ..base.scraper import (
+    BaseScraper,
+    ScrapedProduct,
+    ScraperAccessBlockedError,
+    SiteCategoriesError,
+)
 from ..base.offers import (
     MalformedOfferResponse,
     OfferAvailability,
     OfferCheckContext,
+    OfferCheckErrorCode,
     OfferGone,
     OfferNotFound,
     OfferCheckResult,
+    OfferSourceUnavailable,
     OfferStockPrecision,
     result_from_scraped_product,
     translate_offer_check_errors,
@@ -52,6 +59,9 @@ class ZaraParser(BaseScraper):
     # Маркеры защитной страницы Akamai BotManager (HTTP 200 без данных).
     CHALLENGE_MARKERS = ("bm-verify", "/_sec/", "pardon our interruption", "bobcmn")
     AJAX_REQUEST_EXCEPTIONS = (requests.RequestException,)
+    # Макеты узлов дерева /categories, открывающихся листингом товаров. У части
+    # листингов макета нет вовсе (ZARA HOME > KİTAP | DERGİ | KIRTASİYE).
+    LISTING_LAYOUTS = {"products-category-view", "srpls-products-category-view", None}
 
     def __init__(self, base_url: str = "https://www.zara.com", **kwargs):
         super().__init__(base_url=base_url, delay_range=(2, 4), **kwargs)
@@ -78,6 +88,8 @@ class ZaraParser(BaseScraper):
         self._last_ajax_response_at: Optional[float] = None
         self._ajax_request_count = 0
         self._session_warmed = False
+        # Источник не ответил (сеть, 429, 5xx) — это не «карточки нет».
+        self._source_transport_failed = False
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.ajax_session.close()
@@ -201,6 +213,7 @@ class ZaraParser(BaseScraper):
         """Запрашивает чистый JSON Zara через отдельный HTTP/1.1 transport."""
         ajax_url = self._ajax_url(url)
         self._warm_session()
+        last_status = None
         for attempt in range(self.max_retries + 1):
             try:
                 self._wait_before_ajax_request()
@@ -233,6 +246,7 @@ class ZaraParser(BaseScraper):
                 raise
             except self.AJAX_REQUEST_EXCEPTIONS as exc:
                 status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                last_status = status_code
                 self.logger.warning(
                     "Ошибка Zara AJAX-запроса к %s (HTTP %s): %s",
                     ajax_url,
@@ -261,6 +275,8 @@ class ZaraParser(BaseScraper):
                 backoff = retry_after or min(120.0, (2 ** attempt) * random.uniform(2.0, 4.0))
                 self.logger.info("Zara: повторный запрос через %.1f сек.", backoff)
                 time.sleep(backoff)
+        if last_status is None or last_status == 429 or last_status >= 500:
+            self._source_transport_failed = True
         return None
 
     def _wait_before_ajax_request(self) -> None:
@@ -331,33 +347,46 @@ class ZaraParser(BaseScraper):
         return payload
 
     def parse_categories(self) -> List[Dict[str, Any]]:
-        html = self._make_request(self.base_url)
-        if not html:
-            return []
-        return self._extract_category_links(html, self.base_url)
+        """Листинги всего магазина из дерева меню ``/categories`` (AJAX-транспорт).
 
-    def _extract_category_links(self, html: str, page_url: str) -> List[Dict[str, Any]]:
-        soup = BeautifulSoup(html, "html.parser")
-        categories: List[Dict[str, Any]] = []
-        seen: Set[str] = set()
-        for anchor in soup.select("a[href]"):
-            href = str(anchor.get("href") or "").strip()
-            if not self.CATEGORY_PATH_RE.search(urlparse(href).path or href):
+        Обычный HTML Zara отдаёт защитную страницу Akamai, поэтому дерево
+        берём тем же JSON-запросом, что и листинги.
+        """
+        url = urljoin(self.WARMUP_URL, "categories")
+        payload = self._request_payload(url)
+        tree = payload.get("categories") if isinstance(payload, dict) else None
+        if not isinstance(tree, list):
+            raise SiteCategoriesError(f"{self.SOURCE_LABEL}: дерево категорий не получено ({url})")
+        return self._site_categories(self._iter_listing_categories(tree, ()))
+
+    def _iter_listing_categories(self, rows: List[Any], path: tuple) -> Iterator[Dict[str, Any]]:
+        """Узлы дерева, которые открываются листингом товаров.
+
+        Узел с видимыми детьми раскрываем. Узел, у которого все дети скрыты
+        (фильтры «TÜMÜNÜ GÖR», «SİYAH», «BOMBER»…), берём целиком: меню
+        ведёт его на ``redirectCategoryId`` — обычно ребёнка «Tümünü gör».
+        """
+        for row in rows:
+            if not isinstance(row, dict):
                 continue
-            url = self._canonical_url(urljoin(page_url, href))
-            if url in seen:
+            here = path + (clean_text(str(row.get("name") or "")),)
+            subs = [sub for sub in row.get("subcategories") or [] if isinstance(sub, dict)]
+            attributes = row.get("attributes") if isinstance(row.get("attributes"), dict) else {}
+            if subs and not attributes.get("hasAllSubcategoriesHidden"):
+                yield from self._iter_listing_categories(subs, here)
                 continue
-            seen.add(url)
-            match = self.CATEGORY_PATH_RE.search(urlparse(url).path)
-            categories.append(
-                {
-                    "name": clean_text(anchor.get_text(" ", strip=True)) or self.BRAND_NAME,
-                    "url": url,
-                    "external_id": match.group(1) if match else "",
-                    "source": self.get_name(),
-                }
-            )
-        return categories
+            redirect = str(row.get("redirectCategoryId") or "")
+            target = next((sub for sub in subs if str(sub.get("id")) == redirect), row)
+            seo = target.get("seo") if isinstance(target.get("seo"), dict) else {}
+            keyword = str(seo.get("keyword") or "").strip(" /")
+            seo_id = str(seo.get("seoCategoryId") or "").strip()
+            if target.get("layout") not in self.LISTING_LAYOUTS or not keyword or not seo_id:
+                continue
+            yield {
+                "name": " > ".join(part for part in here if part),
+                "url": f"{self.WARMUP_URL.rstrip('/')}/{keyword}-l{seo_id}.html",
+                "external_id": seo_id,
+            }
 
     def _extract_category_links_from_payload(
         self,
@@ -434,7 +463,11 @@ class ZaraParser(BaseScraper):
             payload = self._request_payload(page_url)
             if not payload:
                 self.has_more_pages = False
-                break
+                # За последней страницей Zara отдаёт payload с isLastPage;
+                # пустой ответ — сбой источника, а не конец категории.
+                raise MalformedOfferResponse(
+                    f"{self.SOURCE_LABEL}: нет данных страницы категории {page_url}"
+                )
 
             components = self._extract_category_components(payload, page)
             new_on_page = 0
@@ -554,8 +587,16 @@ class ZaraParser(BaseScraper):
     @translate_offer_check_errors
     def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
         """One payload request; selection of color/size is in-memory and read-only."""
+        self._source_transport_failed = False
         scraped = self.parse_product_detail(offer.canonical_url)
         if scraped is None:
+            if self._source_transport_failed:
+                # Сбой сети или 5xx у источника не превращаем в «нет в наличии».
+                raise OfferSourceUnavailable(
+                    OfferCheckErrorCode.TRANSPORT_ERROR,
+                    f"{self.SOURCE_LABEL} не ответил (сеть или ошибка сервера)",
+                    retryable=True,
+                )
             raise OfferNotFound(offer.canonical_url)
         if (
             offer.external_product_id

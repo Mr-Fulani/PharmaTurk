@@ -20,7 +20,6 @@ from apps.scrapers.base.web_unlocker import WebUnlockerExpectationError
 from apps.scrapers.parsers.flo import FloParser
 from apps.scrapers.parsers.bershka import BershkaParser
 from apps.scrapers.parsers.ikea import IkeaParser
-from apps.scrapers.parsers.ilacabak import IlacabakParser
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
 from apps.scrapers.parsers.instagram import InstagramParser
 from apps.scrapers.parsers.lcw import LcwParser
@@ -101,7 +100,7 @@ def test_base_parser_requires_explicit_offer_support():
 
 @pytest.mark.parametrize(
     "parser_class",
-    [InstagramParser, IlacFiyatiParser, IlacabakParser],
+    [InstagramParser, IlacFiyatiParser],
 )
 def test_manual_or_unreliable_sources_are_explicitly_unsupported(parser_class):
     parser = object.__new__(parser_class)

@@ -90,7 +90,9 @@ class IkeaService:
         if cache_key in self._category_slug_cache:
             return self._category_slug_cache[cache_key]
 
-        response = self.client.get(category_url)
+        # Меню IKEA ещё ссылается на переименованные разделы
+        # (/kategori/bebek-ve-cocuk → 301 на bebek-ve-cocuk-urunleri).
+        response = self.client.get(category_url, follow_redirects=True)
         raise_for_blocked_status(
             status_code=response.status_code,
             url=str(response.url or category_url),
@@ -315,6 +317,18 @@ class IkeaService:
         # количество тогда задаётся в scrapers (дефолт 3 шт).
         return None, True
 
+    def fetch_product_menu(self) -> Dict:
+        """Меню «Ürünler» витрины: разделы и их подкатегории (как в шапке сайта)."""
+        url = f"{self.BASE_URL}/menuproduct"
+        response = self.client.get(url, params={"showOnWeb": "true"})
+        raise_for_blocked_status(
+            status_code=response.status_code,
+            url=str(response.url or url),
+            source="IKEA",
+        )
+        response.raise_for_status()
+        return response.json()
+
     def search_items(
         self,
         query: str,
@@ -445,6 +459,7 @@ class IkeaService:
                 except ExternalAccessBlockedError:
                     raise
                 except Exception as e:
+                    response_statuses.append(None)
                     logger.error(f"Error in fallback category search (lang={lang}): {e}")
 
         if page == 1 and response_statuses and all(
@@ -452,6 +467,15 @@ class IkeaService:
         ):
             raise IkeaCategoryAPIError(
                 f"IKEA product API returned HTTP 404 for category '{category_slug}'"
+            )
+        if not products and any(
+            status is None or status >= 500 for status in response_statuses
+        ):
+            # Таймаут или 5xx давали пустую страницу — парсер принимал её за
+            # конец каталога и «успешно» обрывал обход посреди категории.
+            raise IkeaCategoryAPIError(
+                f"IKEA product API не ответил для категории '{category_slug}' "
+                f"(страница {page}): таймаут или ошибка сервера"
             )
 
         return products

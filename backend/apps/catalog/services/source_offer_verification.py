@@ -7,7 +7,7 @@ import math
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Iterator
 from urllib.parse import urlparse
@@ -70,6 +70,56 @@ def manual_only_source_keys() -> set[str]:
         )
         if str(value or "").strip()
     }
+
+
+def paid_freshness_seconds(parser_key: str) -> int:
+    """Окно свежести платного источника из PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS.
+
+    Задано только FLO (Web Unlocker с месячным лимитом зоны): успешно
+    проверенное предложение не запрашивается повторно ни при открытии
+    карточки, ни при открытии корзины. Остальные источники — 0.
+    """
+    mapping = getattr(settings, "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS", {}) or {}
+    if not isinstance(mapping, dict):
+        return 0
+    normalized_key = str(parser_key or "").strip().casefold()
+    for key, value in mapping.items():
+        if str(key).strip().casefold() == normalized_key:
+            try:
+                return max(0, min(int(value), 7 * 24 * 3600))
+            except (TypeError, ValueError):
+                return 0
+    return 0
+
+
+def fresh_saved_result(offer: ProductSourceOffer) -> OfferCheckResult | None:
+    """Последняя успешная проверка предложения, если она в окне свежести.
+
+    Только когда последняя проверка и была успешной: после ошибки сохранённые
+    наличие и остаток уже затёрты, и результат собрать не из чего.
+    """
+    window = paid_freshness_seconds(offer.parser_key)
+    checked_at = offer.last_successful_check_at
+    if (
+        not window
+        or checked_at is None
+        or offer.last_error_code
+        or checked_at < timezone.now() - timedelta(seconds=window)
+    ):
+        return None
+    try:
+        return OfferCheckResult(
+            availability_status=OfferAvailability(offer.availability_status),
+            stock_precision=OfferStockPrecision(offer.stock_precision),
+            canonical_url=offer.canonical_url,
+            source_price=offer.source_price,
+            source_currency=offer.source_currency or "",
+            stock_quantity=offer.stock_quantity,
+            checked_at=checked_at,
+            response_metadata={"saved_check": True},
+        )
+    except ValueError:
+        return None
 
 
 def _setting_int(name: str, default: int, *, minimum: int = 0, maximum: int = 10000) -> int:

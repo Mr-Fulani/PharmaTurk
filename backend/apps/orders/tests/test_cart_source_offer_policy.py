@@ -1,7 +1,9 @@
+from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from django.utils import timezone
 
 from apps.catalog.models import Product, ProductSourceOffer, ShoeProduct, ShoeVariant
 from apps.orders.cart_source_verification import CartSourceOfferPolicy
@@ -556,3 +558,133 @@ def test_price_decrease_is_applied_with_non_blocking_notice(offer_product, monke
     assert decision.public_price == Decimal("80.00")
     assert decision.price_change_state == CartItem.PriceChangeState.DECREASED
     assert decision.issues == (CartItem.VerificationIssue.SOURCE_PRICE_CHANGED,)
+
+
+@pytest.fixture
+def flo_offer(db):
+    product = Product.objects.create(
+        name="FLO shoe",
+        slug=f"flo-shoe-{uuid4().hex}",
+        product_type="shoes",
+        price=Decimal("1999.99"),
+        currency="TRY",
+        is_available=True,
+        external_data={"source_parser": "flo"},
+    )
+    offer = ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="flo",
+        canonical_url="https://www.flo.com.tr/urun/test-shoe-101",
+        external_product_id="flo-101",
+        size_key="40",
+        source_price=Decimal("1999.99"),
+        source_currency="TRY",
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+        stock_precision=ProductSourceOffer.StockPrecision.BOOLEAN,
+        last_successful_check_at=timezone.now() - timedelta(hours=23),
+    )
+    return product, offer
+
+
+def _evaluate_flo(policy, product):
+    return policy.evaluate(
+        product=product,
+        chosen_size="40",
+        quantity=1,
+        target_currency="TRY",
+        baseline_public_price=Decimal("1999.99"),
+        force=True,
+    )
+
+
+@pytest.mark.django_db
+def test_paid_flo_cart_line_reuses_check_from_last_24_hours(flo_offer, monkeypatch):
+    """Открытие /cart не тратит запрос Web Unlocker на строку, проверенную за 24 ч."""
+    product, offer = flo_offer
+    monkeypatch.setattr(
+        CartSourceOfferPolicy,
+        "_public_price_from_source",
+        lambda *_args, **kwargs: kwargs["source_price"],
+    )
+    verifier = FakeVerifier(_result(price="1899.99"), enabled_sources=("flo",))
+    policy = CartSourceOfferPolicy(verifier)
+
+    saved = _evaluate_flo(policy, product)
+
+    assert verifier.calls == []
+    assert saved.payable is True
+    assert saved.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert saved.public_price == Decimal("1999.99")
+    assert saved.result.checked_at == offer.last_successful_check_at
+
+    # Последняя проверка была ошибкой: сохранённое наличие уже затёрто.
+    ProductSourceOffer.objects.filter(pk=offer.pk).update(last_error_code="timeout")
+    _evaluate_flo(policy, product)
+    assert verifier.calls == [(offer.pk, True)]
+
+    ProductSourceOffer.objects.filter(pk=offer.pk).update(
+        last_error_code="",
+        last_successful_check_at=timezone.now() - timedelta(hours=25),
+    )
+    stale = _evaluate_flo(policy, product)
+    assert verifier.calls == [(offer.pk, True), (offer.pk, True)]
+    assert stale.public_price == Decimal("1899.99")
+
+
+@pytest.mark.django_db
+def test_free_source_cart_line_is_still_checked_on_every_open(offer_product):
+    shadow, matching = offer_product
+    ProductSourceOffer.objects.filter(pk=matching.pk).update(
+        last_successful_check_at=timezone.now() - timedelta(minutes=1)
+    )
+    verifier = FakeVerifier(_result())
+
+    CartSourceOfferPolicy(verifier).evaluate(
+        product=shadow,
+        chosen_size="M",
+        quantity=1,
+        target_currency="TRY",
+        baseline_public_price=Decimal("100.00"),
+        force=True,
+    )
+
+    assert verifier.calls == [(matching.pk, True)]
+
+
+@pytest.mark.django_db
+def test_paid_access_unavailable_keeps_line_orderable_with_manager_price(
+    flo_offer,
+    monkeypatch,
+):
+    """Лимит зоны исчерпан: строка остаётся в заявке, цену уточняет менеджер."""
+    product, offer = flo_offer
+    ProductSourceOffer.objects.filter(pk=offer.pk).update(
+        last_successful_check_at=timezone.now() - timedelta(days=3)
+    )
+    monkeypatch.setattr(
+        CartSourceOfferPolicy,
+        "_public_price_from_source",
+        lambda *_args, **kwargs: kwargs["source_price"],
+    )
+    verifier = FakeVerifier(
+        _result(
+            availability=OfferAvailability.SOURCE_UNREACHABLE,
+            price=None,
+            precision=OfferStockPrecision.UNKNOWN,
+            error=OfferCheckError(
+                code=OfferCheckErrorCode.PAID_ACCESS_UNAVAILABLE,
+                message="Bright Data Web Unlocker запретил доступ (HTTP 402)",
+                retryable=False,
+            ),
+        ),
+        enabled_sources=("flo",),
+    )
+
+    decision = _evaluate_flo(CartSourceOfferPolicy(verifier), product)
+
+    assert verifier.calls == [(offer.pk, True)]
+    assert decision.payable is True
+    assert decision.allow_cart is True
+    assert decision.verification_status == CartItem.VerificationStatus.VERIFIED
+    assert decision.issues == (CartItem.VerificationIssue.MANAGER_PRICE_CONFIRMATION,)
+    assert decision.public_price == Decimal("1999.99")

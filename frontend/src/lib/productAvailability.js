@@ -50,3 +50,16 @@ export const SCHEMA_RETURN_POLICY = {
   returnMethod: 'https://schema.org/ReturnByMail',
   returnFees: 'https://schema.org/ReturnFeesCustomerResponsibility',
 }
+
+// Платный доступ к источнику (лимит Web Unlocker FLO) исчерпан или приостановлен.
+// Заказ — заявка менеджеру, онлайн-оплаты нет: покупку не блокируем, цену уточнит
+// менеджер.
+export const MANAGER_PRICE_REFRESH_ERROR = 'paid_access_unavailable'
+
+export function sourceRefreshNeedsManagerPrice(state) {
+  return state?.status === 'failed' && state.error_code === MANAGER_PRICE_REFRESH_ERROR
+}
+
+export function sourceRefreshBlocksPurchase(state) {
+  return state?.status === 'failed' && !sourceRefreshNeedsManagerPrice(state)
+}

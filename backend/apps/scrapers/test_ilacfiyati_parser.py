@@ -747,3 +747,27 @@ def test_ilacfiyati_catalog_without_results_block_is_an_error_not_end_of_catalog
 
     with pytest.raises(IlacFiyatiSourceError, match="Arama Sonuçları"):
         list(parser.parse_product_list(IMMUNITY_URL, max_pages=1))
+
+
+def test_ilacfiyati_price_fallback_skips_analog_prices(monkeypatch):
+    # Без метки цены запасной поиск шёл по всей странице и брал цену первого
+    # аналога из встроенного блока «Muadilleri».
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    html = """
+        <html><body>
+        <h1 class="page-title">PAROL 500 MG 20 TABLET</h1>
+        <div id="active-ingredient-equivalent">
+          <div class="medicine-item"><a href="/ilaclar/minoset-500-mg">MINOSET</a> 61,20 TL</div>
+        </div>
+        <p>Güncel fiyat: 48,90 TL</p>
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+
+    product = parser.parse_product_detail(
+        "https://ilacfiyati.com/ilaclar/parol-500-mg-20-tablet",
+        include_detail_tabs=False,
+        include_analogs=False,
+    )
+
+    assert str(product.price) == "48.90"
