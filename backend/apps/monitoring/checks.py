@@ -111,3 +111,21 @@ def db_backup_configuration_check(app_configs, **kwargs):
             Error("DB_BACKUP_S3_ACCESS_KEY_ID must be a separate key.", id="monitoring.E013")
         )
     return errors
+
+
+@register()
+def media_backup_configuration_check(app_configs, **kwargs):
+    if not getattr(settings, "MEDIA_BACKUP_ENABLED", False):
+        return []
+    errors = []
+    for name in ("DB_BACKUP_S3_ENDPOINT_URL", "DB_BACKUP_S3_BUCKET", "DB_BACKUP_S3_ACCESS_KEY_ID",
+                 "DB_BACKUP_S3_SECRET_ACCESS_KEY"):
+        if not getattr(settings, name, ""):
+            errors.append(Error(f"MEDIA_BACKUP_ENABLED requires {name}.", id="monitoring.E014"))
+    # Пустой префикс — весь бакет медиа (≈ 19 ГБ товарных фото), их не копируем.
+    prefixes = [str(prefix).strip("/") for prefix in getattr(settings, "MEDIA_BACKUP_PREFIXES", [])]
+    if not prefixes or any(not prefix or prefix.split("/")[0] == "products" for prefix in prefixes):
+        errors.append(
+            Error("MEDIA_BACKUP_PREFIXES must list non-empty prefixes outside products/.", id="monitoring.E015")
+        )
+    return errors
