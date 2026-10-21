@@ -1177,6 +1177,14 @@ class AbstractDomainProduct(models.Model):
             if base_product_id:
                 product = Product.objects.filter(pk=base_product_id).first()
                 self.base_product = product
+        if product:
+            from .domain_sync import is_retired_domain_record
+
+            # Товару сменили тип: эта запись осталась от прежнего типа и снята
+            # с публикации. Её save() не должен вернуть товару старый тип и
+            # выключить его (domain_sync.retire_stale_domain_records).
+            if is_retired_domain_record(self, product):
+                return
         if not product:
             # Создаём новую shadow-копию
             base_slug = self.slug

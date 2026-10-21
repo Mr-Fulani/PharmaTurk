@@ -115,6 +115,26 @@ class ProductForm(forms.ModelForm):
             raise ValidationError(_("Минимальное количество заказа должно быть не меньше 1."))
         return value
 
+    def clean(self):
+        cleaned_data = super().clean()
+        category = cleaned_data.get("category")
+        # Сменили только категорию, и она другого типа (сумка из «Одежды» в
+        # «Мужские сумки»): тип товара следует за категорией, иначе товар
+        # остаётся одеждой в чужой категории. Смена типа переносит фото в новую
+        # доменную запись (signals.ensure_domain_product_for_base_product).
+        if (
+            category is not None
+            and "product_type" in self.fields
+            and "category" in self.changed_data
+            and "product_type" not in self.changed_data
+        ):
+            from .scraper_category_mapping import _resolve_product_type
+
+            category_type = _resolve_product_type(category)
+            if category_type in dict(Product.PRODUCT_TYPE_CHOICES):
+                cleaned_data["product_type"] = category_type
+        return cleaned_data
+
 
 # Подсказки по уровням иерархии категорий (L1=корневая, L2=подкатегория, L3+=глубже)
 CATEGORY_NAME_PLACEHOLDER = _("L1: Одежда | L2: Пальто | L3: Пальто женское")
