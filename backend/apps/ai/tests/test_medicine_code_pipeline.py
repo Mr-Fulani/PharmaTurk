@@ -1537,7 +1537,7 @@ def test_reprocessing_of_applied_medicine_rebuilds_template_and_passes_validatio
 
 def test_paragraph_batch_keys_use_brand_of_turkish_original():
     # Обработка маскирует бренд из турецкого оригинала — пакет обязан строить те же ключи.
-    from apps.ai.management.commands.medicine_paragraph_batch import Command
+    from apps.ai.services.medicine_paragraph_batch import iter_missing_paragraphs
 
     paragraph = "DISAVER'i çocukların göremeyeceği yerde saklayınız ve ambalajında muhafaza ediniz."
     MedicineProduct.objects.create(
@@ -1550,7 +1550,7 @@ def test_paragraph_batch_keys_use_brand_of_turkish_original():
         },
     )
 
-    paragraphs = list(Command()._missing_paragraphs({"limit_products": 0}))
+    paragraphs = [paragraph for paragraph, _pk in iter_missing_paragraphs()]
 
     assert paragraphs == [normalize_paragraph(paragraph, "DISAVER")]
     assert paragraphs[0].startswith(f"{BRAND_TOKEN}'i ")
