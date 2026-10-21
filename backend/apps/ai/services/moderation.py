@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from apps.ai.models import AIApplicationStatus, AIProcessingStatus
 from apps.ai.services.quality_checker import get_moderation_reasons
-from apps.ai.services.semantic_validator import SemanticValidator
+from apps.ai.services.semantic_validator import SemanticValidator, medicine_paragraph_findings
 from apps.ai.services.size_inventory import (
     current_product_sizes,
     merge_confirmed_sizes,
@@ -55,6 +55,10 @@ MODERATION_REASON_LABELS = {
     ),
     "untranslated_medicine_field": (
         "Русское поле лекарства содержит непереведённый турецкий текст"
+    ),
+    "medicine_paragraph_mismatch": (
+        "Абзацы медицинского раздела похожи на чужой перевод (сдвиг или расхождение "
+        "с исходником) — раздел не будет применён"
     ),
     "ambiguous_variant_sizes": (
         "У товара есть варианты: размеры нужно привязать к конкретному варианту вручную"
@@ -98,6 +102,46 @@ MEDICINE_TRANSLATION_FIELD_LABELS = {
 }
 
 
+# Причины section_paragraph_problems — для модератора.
+PARAGRAPH_PROBLEM_LABELS = {
+    "shifted": "перевод соседнего абзаца (сдвиг)",
+    "number_mismatch": "числа не совпадают с исходником",
+    "length_mismatch": "длина не совпадает с исходником",
+    "ru_en_mismatch": "RU и EN расходятся",
+    "concept_mismatch": "нет понятий исходника",
+    "frequency_mismatch": "другая частота побочного эффекта",
+    "heading_mismatch": "другой номер заголовка",
+    "fact_mismatch": "дозировка не совпадает с исходником",
+    "brand_token_missing": "потеряно название препарата",
+    "ru_not_russian": "RU не переведён на русский",
+    "en_has_cyrillic": "кириллица в EN",
+    "too_short": "перевод намного короче исходника",
+    "missing": "нет перевода",
+    "paragraph_count_mismatch": "число абзацев перевода не совпадает с исходником",
+}
+
+
+def _number_ranges(numbers: list[int]) -> str:
+    """[4, 7, 8, 9] → «4, 7–9»."""
+    ranges: list[list[int]] = []
+    for number in sorted(set(numbers)):
+        if ranges and number == ranges[-1][1] + 1:
+            ranges[-1][1] = number
+        else:
+            ranges.append([number, number])
+    return ", ".join(str(a) if a == b else f"{a}–{b}" for a, b in ranges)
+
+
+def describe_paragraph_findings(findings: list[dict[str, Any]]) -> str:
+    """Абзацы одного раздела → «абзацы 4, 7–9 похожи на чужой перевод: сдвиг; числа…»."""
+    numbers = [item["number"] for item in findings if item.get("number")]
+    problems = list(dict.fromkeys(problem for item in findings for problem in item.get("problems") or ()))
+    reasons = "; ".join(PARAGRAPH_PROBLEM_LABELS.get(problem, problem) for problem in problems)
+    if not numbers:
+        return reasons
+    return f"абзац{'ы' if len(numbers) > 1 else ''} {_number_ranges(numbers)} похож{'и' if len(numbers) > 1 else ''} на чужой перевод: {reasons}"
+
+
 def get_rejected_field_labels(fields: list[str] | set[str] | tuple[str, ...]) -> list[str]:
     """Translate internal field gates into compact moderator-facing labels."""
     labels: list[str] = []
@@ -118,10 +162,14 @@ def get_rejected_field_labels(fields: list[str] | set[str] | tuple[str, ...]) ->
 def get_incomplete_medicine_field_messages(
     log,
     rejected_fields: list[str] | set[str] | tuple[str, ...],
+    *,
+    paragraph_findings: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[str]:
     """Explain missing medicine locales and confirm what happened to current data."""
     if getattr(getattr(log, "product", None), "product_type", None) != "medicines":
         return []
+    if paragraph_findings is None:
+        paragraph_findings = medicine_paragraph_findings(log)
     attrs = log.extracted_attributes if isinstance(log.extracted_attributes, dict) else {}
     translations_data = (
         attrs.get("translations_data")
@@ -174,15 +222,23 @@ def get_incomplete_medicine_field_messages(
             problems.append("AI не создал " + "/".join(missing))
         if incomplete:
             problems.append("AI создал неполный " + "/".join(incomplete))
+        if field_name in paragraph_findings:
+            problems.append(describe_paragraph_findings(paragraph_findings[field_name]))
         problem_text = "; ".join(problems) or "полнота RU/EN не подтверждена"
         preserved_text = (
             " Текущие " + "/".join(existing) + " товара сохранены без изменений."
             if existing
             else ""
         )
+        advice = (
+            " Исправьте эти абзацы RU и EN в форме лога, оставьте текущий раздел товара "
+            "или перезапустите AI."
+            if field_name in paragraph_findings
+            else ""
+        )
         messages.append(
             f"Для «{label}»: {problem_text}. Раздел не применён ни в одном языке."
-            f"{preserved_text}"
+            f"{preserved_text}{advice}"
         )
     return messages
 
@@ -378,6 +434,7 @@ def _medicine_rows(
     target: Any,
     attrs: dict[str, Any],
     translations: dict[str, Any],
+    paragraph_findings: dict[str, list[dict[str, Any]]],
 ) -> None:
     if getattr(target, "_domain_product_type", "") != "medicines":
         return
@@ -460,6 +517,11 @@ def _medicine_rows(
                 and looks_untranslated_turkish(strip_proper_name_lines(proposed))
             ):
                 blocked_reason = "Поле содержит непереведённый турецкий текст"
+            if field in paragraph_findings and not preserved_reason:
+                blocked_reason = (
+                    describe_paragraph_findings(paragraph_findings[field]).capitalize()
+                    + " — раздел не будет применён"
+                )
             _row(
                 rows,
                 f"Лекарство {locale.upper()}",
@@ -653,7 +715,7 @@ def build_change_preview(
 
     _book_rows(rows, target, attrs)
     _jewelry_rows(rows, target, attrs)
-    _medicine_rows(rows, target, attrs, translations)
+    _medicine_rows(rows, target, attrs, translations, semantic_report.paragraph_findings)
     return rows
 
 

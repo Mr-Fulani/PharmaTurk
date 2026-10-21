@@ -661,3 +661,44 @@ def translate_sections_by_paragraph(
         "paragraphs_rejected": len(rejected),
     })
     return result
+
+
+def _lines(text: str) -> list[str]:
+    return [line.strip() for line in re.split(r"\n+", str(text or "")) if line.strip()]
+
+
+def section_paragraph_problems(source: str, ru: str, en: str, brand: str = "") -> list[dict[str, Any]]:
+    """Абзацы готового перевода раздела с признаками чужого перевода (пустой список — их нет).
+
+    Элемент: {"number": номер абзаца с 1, "problems": причины, "source", "ru", "en"}.
+    Раздел собран ``translate_sections_by_paragraph`` из переводов абзацев в
+    порядке исходника, поэтому абзацы сопоставляются по строкам. Проверка —
+    та же, что перед записью в память (``paragraph_problems``), плюс сдвиг по
+    соседним абзацам (``request_shift``): логи, переведённые до 21.10.2026,
+    содержат сдвинутые ответы модели (docs/MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md).
+    До 21.10.2026 исходник делился по строкам без склейки обрывков — подходит
+    любое деление, у которого число абзацев совпадает с RU и EN; иначе сверить
+    нельзя: [{"number": 0, "problems": ["paragraph_count_mismatch"]}]. Абзацы
+    без слов и реквизиты фирм переносит код — их не проверяем.
+    """
+    ru_parts, en_parts = _lines(ru), _lines(en)
+    for parts in (split_paragraphs(source), re.split(r"(\n+)", str(source or "").strip())):
+        sources = [part.strip() for part in parts[::2] if part.strip()]
+        if len(sources) == len(ru_parts) == len(en_parts):
+            break
+    else:
+        return [{"number": 0, "problems": ["paragraph_count_mismatch"], "source": "", "ru": "", "en": ""}]
+    rows = [
+        {"number": number, "problems": [], "source": part, "ru": ru_text, "en": en_text}
+        for number, (part, ru_text, en_text) in enumerate(zip(sources, ru_parts, en_parts), 1)
+        if needs_translation(part) and not is_proper_name_line(part)
+    ]
+    # Как в памяти: бренд — метка {BRAND} и в исходнике, и в переводе.
+    keys = [normalize_paragraph(row["source"], brand) for row in rows]
+    ru_texts = [row["ru"].replace(brand, BRAND_TOKEN) if brand else row["ru"] for row in rows]
+    en_texts = [row["en"].replace(brand, BRAND_TOKEN) if brand else row["en"] for row in rows]
+    for row, key, ru_text, en_text in zip(rows, keys, ru_texts, en_texts):
+        row["problems"] = paragraph_problems(key, ru_text, en_text)
+    for index in request_shift(keys, ru_texts, en_texts):
+        rows[index]["problems"].append("shifted")
+    return [row for row in rows if row["problems"]]

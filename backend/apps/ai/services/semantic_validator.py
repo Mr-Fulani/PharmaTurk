@@ -10,6 +10,7 @@ from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.category_policy import CATEGORY_POLICY_OVERRIDES, build_category_policy
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_fact_check import strip_proper_name_lines
+from apps.ai.services.medicine_memory import section_paragraph_problems
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.medicine_title import (
     CYRILLIC_RE,
@@ -17,6 +18,7 @@ from apps.ai.services.medicine_title import (
     TRUNCATED_TITLE_RE,
     is_form_word,
     medicine_source_name,
+    paragraph_brand,
 )
 from apps.ai.services.rules.vocab import fold, generic_title_words
 from apps.ai.services.size_inventory import (
@@ -98,10 +100,66 @@ class SemanticValidationReport:
     rejected_fields: set[str] = field(default_factory=set)
     reasons: list[str] = field(default_factory=list)
     canonical_product_kind: str = ""
+    # Поле лекарства → абзацы с признаками чужого перевода (medicine_paragraph_findings).
+    paragraph_findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     @property
     def needs_moderation(self) -> bool:
         return bool(self.reasons)
+
+
+# Поле перевода лекарства → раздел source_tabs, из которого оно переведено
+# (как в ContentGenerator._build_medicine_source_sections).
+_MEDICINE_SOURCE_TABS = {
+    "indications": "indications",
+    "contraindications": "before_use_warnings",
+    "usage_instructions": "usage_instructions",
+    "side_effects": "side_effects",
+    "storage_conditions": "storage_conditions",
+}
+
+
+def medicine_paragraph_findings(log, attrs: dict[str, Any] | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Клинические разделы лога лекарства, где перевод абзацев похож на чужой.
+
+    Перевод сверяется с исходником, из которого он сделан (``input_data`` лога),
+    теми же правилами, что и абзацы в памяти (``section_paragraph_problems``).
+    Не проверяются: раздел без исходника в логе (перевод сделан не по абзацам),
+    раздел, который модератор решил не менять, и текст, исправленный
+    модератором в форме лога (``paragraphs_reviewed``).
+    """
+    if attrs is None:
+        attrs = getattr(log, "extracted_attributes", None)
+    attrs = attrs if isinstance(attrs, dict) else {}
+    input_data = getattr(log, "input_data", None)
+    input_data = input_data if isinstance(input_data, dict) else {}
+    source_attrs = input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {}
+    tabs = source_attrs.get("source_tabs") if isinstance(source_attrs.get("source_tabs"), dict) else {}
+    translations = attrs.get("translations_data") if isinstance(attrs.get("translations_data"), dict) else {}
+    ru_data = translations.get("ru") if isinstance(translations.get("ru"), dict) else {}
+    en_data = translations.get("en") if isinstance(translations.get("en"), dict) else {}
+    quality = attrs.get("medicine_translation_quality")
+    quality = quality if isinstance(quality, dict) else {}
+    decisions = attrs.get("medicine_moderator_decisions")
+    decisions = decisions if isinstance(decisions, dict) else {}
+    brand = paragraph_brand(input_data.get("name"), input_data.get("active_ingredient"))
+    findings = {}
+    for field_name, tab in _MEDICINE_SOURCE_TABS.items():
+        payload = tabs.get(tab)
+        source = str((payload.get("text") if isinstance(payload, dict) else payload) or "").strip()
+        ru, en = str(ru_data.get(field_name) or ""), str(en_data.get(field_name) or "")
+        details = quality.get(field_name) if isinstance(quality.get(field_name), dict) else {}
+        if (
+            not source
+            or not (ru.strip() or en.strip())
+            or decisions.get(field_name) == "keep_current"
+            or details.get("paragraphs_reviewed")
+        ):
+            continue
+        problems = section_paragraph_problems(source, ru, en, brand=brand)
+        if problems:
+            findings[field_name] = problems
+    return findings
 
 
 def _ancestor_ids(category: Any) -> set[int]:
@@ -543,6 +601,14 @@ class SemanticValidator:
             and suggested_category_id not in _ancestor_ids(current_category)
         ):
             report.reasons.append("category_change_suggested")
+        # Сдвинутые переводы абзацев (у 92 логов 20.10.2026) проверки полноты не
+        # видят: раздел «полный», но абзацы — от соседних. Такой раздел не применяется.
+        if product_type == "medicines":
+            report.paragraph_findings = medicine_paragraph_findings(log, attrs)
+            for field_name in report.paragraph_findings:
+                report.rejected_fields.add(f"medicine_translation:{field_name}")
+                report.reasons.append("medicine_paragraph_mismatch")
+            report.reasons = list(dict.fromkeys(report.reasons))
         return report
 
     def validate(
