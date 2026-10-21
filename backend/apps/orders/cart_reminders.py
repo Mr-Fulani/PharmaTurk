@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 MAX_STEPS = 2
 # Сколько позиций показываем в сообщении; остальные — «и ещё N»
 MAX_LISTED_ITEMS = 10
+# Telegram ограничивает сообщение 4096 символами — длинные названия обрезаем
+TELEGRAM_NAME_LIMIT = 120
 # Задача ежечасная: не занимаем воркер дольше, остаток уйдёт в следующий запуск
 RUN_TIME_BUDGET_SECONDS = 10 * 60
 UNSUBSCRIBE_SALT = "orders.cart-reminders.unsubscribe"
@@ -479,8 +481,11 @@ def render_telegram(content: dict, log: CartReminderLog) -> tuple[str, dict]:
     lines = [f"🛒 <b>{esc(labels['subject'][log.step])}</b>", esc(labels["intro"]), ""]
     for line in shown:
         url = _tracked_link(log, line["path"], "product", locale)
+        name = line["name"]
+        if len(name) > TELEGRAM_NAME_LIMIT:
+            name = name[: TELEGRAM_NAME_LIMIT - 1].rstrip() + "…"
         lines.append(
-            f"• <a href=\"{esc(url, quote=True)}\">{esc(line['name'])}</a> — "
+            f"• <a href=\"{esc(url, quote=True)}\">{esc(name)}</a> — "
             f"{line['quantity']} × {esc(line['price_text'])}"
         )
     if len(content["items"]) > len(shown):

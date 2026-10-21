@@ -338,6 +338,19 @@ def test_telegram_message_escapes_names_and_has_stop_button():
     assert targets and all("utm_medium=telegram" in t for t in targets)
 
 
+@pytest.mark.django_db
+def test_telegram_message_fits_limit_with_long_names():
+    cart = _cart(_user(telegram_id="710", telegram_notifications=True))
+    content, log = _render(cart)
+    content["items"] = [{**content["items"][0], "name": "Очень длинное название " * 30} for _ in range(15)]
+
+    text, _markup = cart_reminders.render_telegram(content, log)
+
+    visible = re.sub(r"<[^>]+>", "", text)
+    assert len(visible) < 4096
+    assert "и ещё 5" in visible
+
+
 def test_resend_payload_carries_unsubscribe_headers(settings):
     from django.core.mail import EmailMultiAlternatives
 
