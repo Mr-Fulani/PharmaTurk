@@ -12,6 +12,9 @@ from .models import User
 logger = logging.getLogger(__name__)
 
 TELEGRAM_SYNC_TOKEN_MAX_AGE_SECONDS = 15 * 60
+# Кнопка и команды отписки от напоминаний о Списке заявки (apps/orders/cart_reminders.py)
+CART_REMINDERS_OFF_CALLBACK = "cart_reminders_off"
+CART_REMINDERS_STOP_COMMANDS = ("/stop", "/stop_reminders")
 TELEGRAM_SYNC_TOKEN_FUTURE_SKEW_SECONDS = 60
 _TELEGRAM_SYNC_TOKEN_SIGNATURE_HEX_LENGTH = 24
 
@@ -118,8 +121,14 @@ def generate_telegram_sync_token(user: User) -> str:
 def process_telegram_webhook(payload: dict) -> bool:
     """Обрабатывает входящий вебхук от Telegram бота"""
     try:
+        callback = payload.get('callback_query')
+        if callback:
+            return _process_cart_reminders_callback(callback)
+
         message = payload.get('message', {})
         text = message.get('text', '').strip()
+        if text.split('@', 1)[0].lower() in CART_REMINDERS_STOP_COMMANDS:
+            return _process_cart_reminders_stop(message)
         logger.info(
             "Telegram webhook process: has_start_command=%s, from_id=%s",
             text.startswith('/start '),
@@ -217,6 +226,68 @@ def process_telegram_webhook(payload: dict) -> bool:
     except Exception as e:
         logger.error(f"Telegram webhook error: {e}")
         return False
+
+
+def _disable_cart_reminders(telegram_id: str, chat_id, language_code: str) -> bool:
+    """Отписывает от напоминаний о Списке заявки аккаунт, к которому привязан этот Telegram."""
+    updated = User.objects.filter(telegram_id=telegram_id).update(cart_reminders_enabled=False)
+    is_en = (language_code or "").lower().startswith("en")
+    if updated:
+        text = (
+            "🔕 Request list reminders are off. Messages about your requests will keep coming. "
+            "You can turn reminders back on in your profile on mudaroba.com."
+            if is_en else
+            "🔕 Напоминания о Списке заявки отключены. Сообщения о ваших заявках будут приходить как раньше. "
+            "Включить напоминания снова можно в профиле на mudaroba.com."
+        )
+    else:
+        text = (
+            "This Telegram is not linked to a Mudaroba account."
+            if is_en else
+            "Этот Telegram не привязан к аккаунту Mudaroba."
+        )
+    _send_telegram_message(chat_id, text)
+    logger.info("Telegram: cart reminders disabled for %s account(s)", updated)
+    return bool(updated)
+
+
+def _process_cart_reminders_stop(message: dict) -> bool:
+    """Команда /stop в личном чате с ботом."""
+    from_user = message.get('from', {})
+    telegram_id = str(from_user.get('id', ''))
+    chat = message.get('chat', {})
+    if not telegram_id or chat.get('type') != 'private' or str(chat.get('id')) != telegram_id:
+        return False
+    return _disable_cart_reminders(telegram_id, chat.get('id'), from_user.get('language_code', ''))
+
+
+def _process_cart_reminders_callback(callback: dict) -> bool:
+    """Кнопка «Не присылать напоминания» под напоминанием; from.id — тот, кто нажал."""
+    if callback.get('data') != CART_REMINDERS_OFF_CALLBACK:
+        return False
+    from_user = callback.get('from', {})
+    telegram_id = str(from_user.get('id', ''))
+    chat = (callback.get('message') or {}).get('chat', {})
+    if not telegram_id or str(chat.get('id', '')) != telegram_id:
+        return False
+    _answer_callback_query(callback.get('id'))
+    return _disable_cart_reminders(telegram_id, chat.get('id'), from_user.get('language_code', ''))
+
+
+def _answer_callback_query(callback_id) -> None:
+    """Убирает «часики» с нажатой кнопки."""
+    try:
+        import requests
+        bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+        if not bot_token or not callback_id:
+            return
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+            json={"callback_query_id": callback_id},
+            timeout=5,
+        )
+    except Exception:
+        logger.error("Failed to answer Telegram callback query")
 
 
 def _send_telegram_message(chat_id: int, text: str) -> None:

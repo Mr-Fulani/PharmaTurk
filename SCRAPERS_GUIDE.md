@@ -1770,6 +1770,23 @@ attributes = {
 4. ScraperConfig.default_category     ← низший приоритет
 ```
 
+**Исключение — аксессуары Zara/Inditex.** У Zara, Bershka, Pull&Bear и Massimo Dutti
+категория конфигурации — «Одежда», но в тех же листингах есть сумки, кошельки,
+ремни, украшения и шапки. Парсер узнаёт их по последнему слову турецкого названия
+(«… makyaj çantası», «… kemer», «… küpe») и по семейству товара из API (Zara:
+`familyName` «CANTA», «TAKLIT MUCEVHER»; Massimo Dutti: `familyNameEN` «BAGS AND
+BACKPACKS», отдел закупки «COMPLEMENTOS») и кладёт в
+`attributes["inditex_category_slugs"]` категории от точной к корню типа
+(`mens-bags` → `bags-wallets` → `accessories`; украшения → `jewelry`, шапки →
+`headwear`). Если категория задачи или конфигурации из ветки «Одежда», новый товар
+получает первую существующую из них; явно выбранная категория другого типа
+(например «Сумки») остаётся главной. Существующему товару категория и тип при
+перепарсинге не меняются — их меняют в админке (фото переедут в новую доменную
+запись) или командой `retire_stale_domain_records`. Английское название
+(`nameEn`) не используется: «Midi dress with belt» кончается словом «belt», но это
+платье. Код — `apps/scrapers/parsers/inditex_categories.py`, тесты —
+`test_inditex_accessory_categories.py` (фрагменты настоящих ответов 21.10).
+
 ---
 
 ## 16. Устранение неполадок

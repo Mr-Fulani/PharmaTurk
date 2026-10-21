@@ -1190,6 +1190,7 @@ def delete_banner_media_files(sender, instance, **kwargs):
     """Очищаем все файлы баннера из R2 при удалении записи."""
     delete_file_from_storage(instance.image)
     delete_file_from_storage(instance.video_file)
+    delete_file_from_storage(instance.video_poster)
     delete_file_from_storage(instance.gif_file)
     # На случай если файл удалён, но URL остался — удаляем и по URL (если он внутренний)
     if not instance.image:
@@ -1247,15 +1248,34 @@ def _save_downloaded_file_to_storage(instance, file_attr, file_obj):
     setattr(instance, file_attr, ContentFile(content, name=basename))
 
 
+@receiver(pre_save, sender=Product)
+def remember_product_type_before_save(sender, instance, update_fields=None, **kwargs):
+    """pre_save: product_type из БД, если save() может его сменить."""
+    instance._product_type_before_save = None
+    if not instance.pk or (update_fields is not None and "product_type" not in update_fields):
+        return
+    instance._product_type_before_save = (
+        sender._base_manager.filter(pk=instance.pk).values_list("product_type", flat=True).first()
+    )
+
+
 @receiver(post_save, sender=Product)
 def ensure_domain_product_for_base_product(sender, instance, **kwargs):
     """
     При сохранении Product (скрапер, импорт, админка) создаём запись в доменной
     модели (PerfumeryProduct, MedicineProduct и т.д.), если её ещё нет, чтобы
     товар отображался в нужном разделе админки и в правильном API.
+
+    При смене product_type картинки прежней доменной записи (и её варианты, если
+    новый тип их поддерживает) переносятся в новую, а прежняя снимается с
+    публикации без выключения самого Product.
     """
-    from .domain_sync import ensure_domain_product_for_base
+    from .domain_sync import ensure_domain_product_for_base, retire_stale_domain_records
     ensure_domain_product_for_base(instance)
+    previous_type = getattr(instance, "_product_type_before_save", None)
+    instance._product_type_before_save = None
+    if previous_type and previous_type != instance.product_type:
+        retire_stale_domain_records(instance)
 
 
 @receiver(post_save, sender=Product)

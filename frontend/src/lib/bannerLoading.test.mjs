@@ -12,13 +12,15 @@ async function renderer(file) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText
   const states = []
+  const effects = []
+  const observers = []
   let cursor = 0
   const exports = {}
   const modules = {
     react: {
       useState(initial) { const i = cursor++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value }] },
       useRef(initial) { const i = cursor++; if (!(i in states)) states[i] = { current: initial }; return states[i] },
-      useEffect() {}, useCallback: fn => fn,
+      useEffect(effect) { effects.push(effect) }, useCallback: fn => fn,
     },
     'react/jsx-runtime': require('react/jsx-runtime'), 'next/image': Image,
     'next/router': { useRouter: () => ({ locale: 'ru' }) },
@@ -26,8 +28,9 @@ async function renderer(file) {
     '../lib/media': { resolveMediaUrl: url => url, getPlaceholderImageUrl: () => '/fallback.svg', getVideoEmbedUrl: () => null, withListingImageMaxWidth: url => url },
     '../lib/api': {}, './BannerCarousel.module.css': {}, '../lib/bannerLink': {}, '../lib/siteMeta': {},
   }
-  vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date })
-  return props => { cursor = 0; return exports.default(props) }
+  class IntersectionObserver { constructor(callback, options) { observers.push({ callback, options }) } observe() {} disconnect() {} }
+  vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date, IntersectionObserver, getComputedStyle: element => ({ visibility: element.visibility }) })
+  return Object.assign(props => { cursor = 0; effects.length = 0; return exports.default(props) }, { effects, observers })
 }
 function nodes(node, match) {
   if (!node || typeof node !== 'object') return []
@@ -60,6 +63,20 @@ test('rotation preserves the original hero source size and priority', async () =
   assert.equal(original.fetchPriority, 'high')
   assert.equal(images.filter(i => i.props.priority).length, 1)
 })
+test('a failed slide is retried straight from the CDN before the placeholder', async () => {
+  const render = await renderer('../components/BannerCarouselMedia.tsx')
+  const hero = () => nodes(render(props('how_to_order')), node => node.type === Image)[0].props
+  assert.notEqual(hero().unoptimized, true)
+  hero().onError()
+  assert.equal(hero().src, 'https://cdn.mudaroba.com/1.webp')
+  assert.equal(hero().unoptimized, true)
+  hero().onError()
+  assert.equal(hero().src, '/fallback.svg')
+})
+test('next/image never asks the optimizer for widths above 1920', () => {
+  const { images } = require('../../next.config.js')
+  assert.equal(Math.max(...images.deviceSizes), 1920)
+})
 test('homepage proxy sources retain the asset path and contain one width parameter', async () => {
   const render = await renderer('../components/FallbackMediaImage.tsx')
   const image = render({ src: '/api/catalog/proxy-media/?path=marketing%2Fcards%2Ftest.jpg&max_width=600&w=600', alt: 'Card', sizes: '96px', responsiveProxy: true })
@@ -81,4 +98,72 @@ test('existing proxy callers retain their original image request', async () => {
   const image = render({ src, alt: 'Card' })
   assert.equal(image.props.src, src)
   assert.equal(image.props.srcSet, undefined)
+})
+test('banner videos play near the screen and never in hidden thumbnails', async () => {
+  const clips = [7, 8, 9].map(id => ({ id, content_type: 'video', content_url: `https://cdn.mudaroba.com/${id}.mp4` }))
+  const videoProps = position => ({ position, initialBanners: [{ id: 1, position, media_files: clips }] })
+  // On a phone every thumbnail is visibility:hidden, on desktop they are visible.
+  const players = (tree, thumbnails = 'hidden') => nodes(tree, node => node.type === 'video').map((video, index) => {
+    let call = null
+    video.ref({ visibility: index === 0 ? 'visible' : thumbnails, play: () => { call = 'play'; return Promise.resolve() }, pause: () => { call = 'pause' } })
+    return [video.props.autoPlay, video.props.preload, call]
+  })
+  const idle = [false, 'none', 'pause']
+  const playing = [true, 'auto', 'play']
+  const preview = [false, 'none', 'play']
+  const render = await renderer('../components/BannerCarouselMedia.tsx')
+  let tree = render(videoProps('after_brands'))
+  assert.deepEqual(players(tree), [idle, idle, idle])
+  assert.deepEqual(players(tree, 'visible'), [idle, idle, idle])
+  tree.ref.current = {}
+  render.effects.forEach(effect => effect())
+  const near = render.observers.find(observer => observer.options.rootMargin)
+  near.callback([{ isIntersecting: true }])
+  tree = render(videoProps('after_brands'))
+  assert.deepEqual(players(tree), [playing, idle, idle])
+  assert.deepEqual(players(tree, 'visible'), [playing, preview, preview])
+  nodes(tree, n => n.props?.['aria-label'] === 'Следующее медиа')[0].props.onClick()
+  tree = render(videoProps('after_brands'))
+  assert.equal(nodes(tree, node => node.type === 'source')[0].props.src, 'https://cdn.mudaroba.com/8.mp4')
+  assert.deepEqual(players(tree), [playing, idle, idle])
+  near.callback([{ isIntersecting: false }])
+  tree = render(videoProps('after_brands'))
+  assert.deepEqual(players(tree), [idle, idle, idle])
+  assert.deepEqual(players(tree, 'visible'), [idle, idle, idle])
+  const main = await renderer('../components/BannerCarouselMedia.tsx')
+  assert.deepEqual(players(main(videoProps('main'))), [playing, idle, idle])
+})
+test('banner video posters appear only where the clip may load', async () => {
+  const clips = [7, 8, 9].map(id => ({ id, content_type: 'video', content_url: `https://cdn.mudaroba.com/${id}.mp4`, poster_url: id === 9 ? '' : `https://cdn.mudaroba.com/${id}.webp` }))
+  const videoProps = { position: 'after_brands', initialBanners: [{ id: 1, position: 'after_brands', media_files: clips }] }
+  // The ref callback sets the poster, so read the element attribute; thumbnails keep preload=none.
+  const posters = (tree, thumbnails) => nodes(tree, node => node.type === 'video').map((video, index) => {
+    const attributes = {}
+    video.ref({
+      visibility: index === 0 ? 'visible' : thumbnails,
+      getAttribute: name => attributes[name] ?? null,
+      setAttribute: (name, value) => { attributes[name] = value },
+      play: () => Promise.resolve(),
+      pause: () => {},
+    })
+    return [attributes.poster, video.props.preload]
+  })
+  const render = await renderer('../components/BannerCarouselMedia.tsx')
+  let tree = render(videoProps)
+  assert.deepEqual(posters(tree, 'visible'), [[undefined, 'none'], [undefined, 'none'], [undefined, 'none']])
+  tree.ref.current = {}
+  render.effects.forEach(effect => effect())
+  render.observers.find(observer => observer.options.rootMargin).callback([{ isIntersecting: true }])
+  tree = render(videoProps)
+  assert.deepEqual(posters(tree, 'visible'), [
+    ['https://cdn.mudaroba.com/7.webp', 'auto'],
+    ['https://cdn.mudaroba.com/8.webp', 'none'],
+    [undefined, 'none'],
+  ])
+  // Phone: thumbnails are hidden, only the active slide gets a poster.
+  assert.deepEqual(posters(tree, 'hidden'), [
+    ['https://cdn.mudaroba.com/7.webp', 'auto'],
+    [undefined, 'none'],
+    [undefined, 'none'],
+  ])
 })

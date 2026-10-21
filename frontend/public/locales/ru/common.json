@@ -369,6 +369,8 @@
   "telegram_bind_button": "Привязать Telegram",
   "telegram_bind_hint": "Нажмите кнопку → откройте Telegram → нажмите Start. Вернитесь сюда — страница обновится.",
   "telegram_bound": "Telegram привязан",
+  "profile_telegram_notifications": "Получать уведомления и чеки в Telegram",
+  "profile_cart_reminders": "Напоминать о неотправленном Списке заявки (email и Telegram)",
   "telegram_binding": "Привязка...",
   "profile_messengers": "Мессенджеры",
   "social_networks": "Социальные сети",

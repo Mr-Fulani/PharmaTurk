@@ -45,7 +45,7 @@ class UserAdmin(BaseUserAdmin):
         (_('Permissions'), {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'is_verified', 'groups', 'user_permissions'),
         }),
-        (_('Settings'), {'fields': ('language', 'currency', 'email_notifications', 'telegram_notifications', 'push_notifications')}),
+        (_('Settings'), {'fields': ('language', 'currency', 'email_notifications', 'telegram_notifications', 'push_notifications', 'cart_reminders_enabled')}),
         (_('Telegram'), {'fields': ('telegram_id',)}),
         (_('Social Networks'), {
             'fields': ('google_id', 'facebook_id', 'vk_id', 'yandex_id', 'apple_id'),

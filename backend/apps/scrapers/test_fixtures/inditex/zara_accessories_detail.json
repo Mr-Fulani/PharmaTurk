@@ -1,0 +1,209 @@
+{
+ "bag": {
+  "url": "https://www.zara.com/tr/tr/halka-detayli-bowling-canta-p16447810.html",
+  "payload": {
+   "product": {
+    "id": 562866047,
+    "name": "HALKA DETAYLI BOWLING ÇANTA",
+    "kind": "Other",
+    "sectionName": "WOMAN",
+    "familyName": "CANTA",
+    "subfamilyName": "Z1:BAGS LARGE",
+    "seo": {
+     "keyword": "halka-detayli-bowling-canta",
+     "seoProductId": "16447810"
+    },
+    "detail": {
+     "reference": "16447810-I2026",
+     "displayReference": "6447/810",
+     "colors": [
+      {
+       "id": "800",
+       "productId": 562885476,
+       "name": "Siyah",
+       "reference": "C16447810800000-I2026",
+       "price": 289000,
+       "rawDescription": "Modelin boyu: 180 cm<br/><br/>Bowling çanta. Yanları büzgülü askili top. Yanlarda metal halka ve bağcık detayı. Çift omuz askılı. Fermuarlı iç cepli. Mıknatıslı çıtçıtlı kapak kapamalı.<br/><br/>Yükseklik x Genişlik x Derinlik: 21,5 x 37 x 10,5 cm",
+       "description": "Modelin boyu: 180 cm\n\nBowling çanta. Yanları büzgülü askili top. Yanlarda metal halka ve bağcık detayı. Çift omuz askılı. Fermuarlı iç cepli. Mıknatıslı çıtçıtlı kapak kapamalı.\n\nYükseklik x Genişlik x Derinlik: 21,5 x 37 x 10,5 cm",
+       "xmedia": [
+        {
+         "type": "image",
+         "url": "https://static.zara.net/assets/public/a20f/460b/10064539b8db/f9659d61c666/06050114500-000-p/06050114500-000-p.jpg?ts=1791998734414&w={width}",
+         "extraInfo": {
+          "assetId": "a20f460b10064539b8dbf9659d61c666",
+          "deliveryUrl": "https://static.zara.net/assets/public/a20f/460b/10064539b8db/f9659d61c666/06050114500-000-p/06050114500-000-p.jpg?ts=1791998734414"
+         }
+        },
+        {
+         "type": "image",
+         "url": "https://static.zara.net/assets/public/8ba2/d9ed/05cc433ba7a9/e6d0d159ec26/06050114500-000-a7/06050114500-000-a7.jpg?ts=1791998734508&w={width}",
+         "extraInfo": {
+          "assetId": "8ba2d9ed05cc433ba7a9e6d0d159ec26",
+          "deliveryUrl": "https://static.zara.net/assets/public/8ba2/d9ed/05cc433ba7a9/e6d0d159ec26/06050114500-000-a7/06050114500-000-a7.jpg?ts=1791998734508"
+         }
+        }
+       ],
+       "sizes": [
+        {
+         "id": 3,
+         "name": "STANDART",
+         "availability": "in_stock",
+         "sku": 562866048
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "breadCrumbs": [
+    {
+     "text": "HALKA DETAYLI BOWLING ÇANTA",
+     "id": 0
+    }
+   ],
+   "clientAppConfig": {
+    "formatterConfig": {
+     "currencyCode": "TRY"
+    }
+   }
+  }
+ },
+ "jewelry": {
+  "url": "https://www.zara.com/tr/tr/isiltili-metal-dairesel-kupe-p04736283.html",
+  "payload": {
+   "product": {
+    "id": 580758836,
+    "name": "PARLAK DETAYLI DAİRESEL METAL KÜPE",
+    "kind": "Wear",
+    "sectionName": "WOMAN",
+    "familyName": "TAKLIT MUCEVHER",
+    "subfamilyName": "BIS. PENDIENTES",
+    "seo": {
+     "keyword": "isiltili-metal-dairesel-kupe",
+     "seoProductId": "04736283"
+    },
+    "detail": {
+     "reference": "04736283-I2026",
+     "displayReference": "4736/283",
+     "colors": [
+      {
+       "id": "808",
+       "productId": 580760561,
+       "name": "Gümüş",
+       "reference": "C04736283808000-I2026",
+       "price": 95000,
+       "rawDescription": "Dairesel formlu, kontrast parlak detaylı metal küpe. Arkası iğneli.",
+       "description": "Dairesel formlu, kontrast parlak detaylı metal küpe. Arkası iğneli.",
+       "xmedia": [
+        {
+         "type": "image",
+         "url": "https://static.zara.net/assets/public/524d/184e/4d6e4518957b/7f90a183634a/04736283808-p/04736283808-p.jpg?ts=1792154652866&w={width}",
+         "extraInfo": {
+          "assetId": "524d184e4d6e4518957b7f90a183634a",
+          "deliveryUrl": "https://static.zara.net/assets/public/524d/184e/4d6e4518957b/7f90a183634a/04736283808-p/04736283808-p.jpg?ts=1792154652866"
+         }
+        },
+        {
+         "type": "image",
+         "url": "https://static.zara.net/assets/public/424e/16ab/047d4ffd90f2/9158ab535e79/04736283808-a7/04736283808-a7.jpg?ts=1792146671631&w={width}",
+         "extraInfo": {
+          "assetId": "424e16ab047d4ffd90f29158ab535e79",
+          "deliveryUrl": "https://static.zara.net/assets/public/424e/16ab/047d4ffd90f2/9158ab535e79/04736283808-a7/04736283808-a7.jpg?ts=1792146671631"
+         }
+        }
+       ],
+       "sizes": [
+        {
+         "id": 3,
+         "name": "M",
+         "availability": "in_stock",
+         "sku": 580758837
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "breadCrumbs": [
+    {
+     "text": "PARLAK DETAYLI DAİRESEL METAL KÜPE",
+     "id": 0
+    }
+   ],
+   "clientAppConfig": {
+    "formatterConfig": {
+     "currencyCode": "TRY"
+    }
+   }
+  }
+ },
+ "men_acc": {
+  "url": "https://www.zara.com/tr/tr/metal-kusgozlu-yikamali-sapka-p04988313.html",
+  "payload": {
+   "product": {
+    "id": 581685003,
+    "name": "METAL KUŞGÖZLÜ YIKAMALI ŞAPKA",
+    "kind": "Wear",
+    "sectionName": "MAN",
+    "familyName": "SAPKA",
+    "subfamilyName": "Gorro/Gorra",
+    "seo": {
+     "keyword": "metal-kusgozlu-yikamali-sapka",
+     "seoProductId": "04988313"
+    },
+    "detail": {
+     "reference": "04988313-I2026",
+     "displayReference": "4988/313",
+     "colors": [
+      {
+       "id": "800",
+       "productId": 581691229,
+       "name": "Siyah",
+       "reference": "C04988313800000-I2026",
+       "price": 139000,
+       "rawDescription": "Modelin boyu: 186 cm<br/><br/>Pamuklu kumaştan şapka. Metal kuşgözü uygulamalı. Eskitme görünümlü, arkası ayarlanabilir.",
+       "description": "Modelin boyu: 186 cm\n\nPamuklu kumaştan şapka. Metal kuşgözü uygulamalı. Eskitme görünümlü, arkası ayarlanabilir.",
+       "xmedia": [
+        {
+         "type": "image",
+         "url": "https://static.zara.net/assets/public/0bd5/0f19/20414945bd3c/7ec2a35b35a0/04988313800-a1/04988313800-a1.jpg?ts=1792137666506&w={width}",
+         "extraInfo": {
+          "assetId": "0bd50f1920414945bd3c7ec2a35b35a0",
+          "deliveryUrl": "https://static.zara.net/assets/public/0bd5/0f19/20414945bd3c/7ec2a35b35a0/04988313800-a1/04988313800-a1.jpg?ts=1792137666506"
+         }
+        },
+        {
+         "type": "image",
+         "url": "https://static.zara.net/assets/public/529a/a66a/0abf4da0b160/a89c00c89ebb/04988313800-a2/04988313800-a2.jpg?ts=1792137666163&w={width}",
+         "extraInfo": {
+          "assetId": "529aa66a0abf4da0b160a89c00c89ebb",
+          "deliveryUrl": "https://static.zara.net/assets/public/529a/a66a/0abf4da0b160/a89c00c89ebb/04988313800-a2/04988313800-a2.jpg?ts=1792137666163"
+         }
+        }
+       ],
+       "sizes": [
+        {
+         "id": 3,
+         "name": "M",
+         "availability": "in_stock",
+         "sku": 581685004
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "breadCrumbs": [
+    {
+     "text": "METAL KUŞGÖZLÜ YIKAMALI ŞAPKA",
+     "id": 0
+    }
+   ],
+   "clientAppConfig": {
+    "formatterConfig": {
+     "currencyCode": "TRY"
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,157 @@
+{
+ "id": 69539551,
+ "type": "BundleBean",
+ "name": "Büyük napa deri makyaj çantası",
+ "nameEn": "Large nappa leather toiletry bag",
+ "productType": "Clothing",
+ "section": "2",
+ "sectionNameEN": "MEN",
+ "family": "33",
+ "familyName": "DERİ DIŞ GİYİM",
+ "familyNameEN": "BAGSÂ ANDÂ BACKPACKS",
+ "subFamily": "869",
+ "subFamilyName": "SEYAHAT ÜRÜNLERİ",
+ "subFamilyNameEN": "TRAVEL ITEMS",
+ "productUrl": "buyuk-napa-deri-makyaj-cantası-l02350316",
+ "bundleProductSummaries": [
+  {
+   "id": 65538889,
+   "type": "ProductBean",
+   "name": "Büyük napa deri makyaj çantası",
+   "nameEn": "Large nappa leather toiletry bag",
+   "productType": "Clothing",
+   "section": "2",
+   "sectionNameEN": "MEN",
+   "family": "33",
+   "familyName": "DERİ DIŞ GİYİM",
+   "familyNameEN": "BAGSÂ ANDÂ BACKPACKS",
+   "subFamily": "869",
+   "subFamilyName": "SEYAHAT ÜRÜNLERİ",
+   "subFamilyNameEN": "TRAVEL ITEMS",
+   "productUrl": "buyuk-napa-deri-makyaj-cantası-l02350316",
+   "attributes": [
+    {
+     "id": "7000000000001539000",
+     "name": "[comp_lvl_1]",
+     "value": "COMPLEMENTOS",
+     "type": "XCOMPRADOR"
+    },
+    {
+     "id": "7000000000001539001",
+     "name": "[comp_lvl_2]",
+     "value": "COMPLEMENTOS",
+     "type": "XCOMPRADOR"
+    }
+   ],
+   "detail": {
+    "description": "Genişlik x Yükseklik x Derinlik: 26 x 15 x 15 cm",
+    "longDescription": "Napa bitişli %100 sığır derisinden üretilmiş makyaj çantası. Fermuar kapamalı tasarım. Yan sap detayı ve entegre dış ön cep. Fermuarlı iç cepli pamuklu iç astar.",
+    "reference": "02350316-I2026",
+    "displayReference": "2350/316",
+    "purchaser": [
+     {
+      "level": "[comp_lvl_1]",
+      "value": "COMPLEMENTOS"
+     },
+     {
+      "level": "[comp_lvl_2]",
+      "value": "COMPLEMENTOS"
+     }
+    ],
+    "subfamilyInfo": {
+     "subFamilyId": 5905,
+     "subFamilyCode": 869,
+     "subFamilyName": "SEYAHAT ÜRÜNLERİ"
+    },
+    "colors": [
+     {
+      "id": "800",
+      "name": "SİYAH",
+      "reference": "C0235031680002-I2026",
+      "sizes": [
+       {
+        "sku": 65538891,
+        "name": "01",
+        "partnumber": "0235031680001-I2026",
+        "isBuyable": true,
+        "price": "760000",
+        "oldPrice": null,
+        "visibilityValue": "COMING_SOON"
+       }
+      ]
+     }
+    ],
+    "xmediaDefaultSet": null,
+    "xmedia": [
+     {
+      "colorCode": "800",
+      "xmediaItems": [
+       {
+        "set": 0,
+        "medias": [
+         {
+          "idMedia": "b39f8c0d5dfd45a4a8c4c7a06f4da1f8",
+          "clazz": 1,
+          "extraInfo": {
+           "assetId": "b39f8c0d5dfd45a4a8c4c7a06f4da1f8",
+           "deliveryUrl": "https://static.massimodutti.net/assets/public/b39f/8c0d/5dfd45a4a8c4/c7a06f4da1f8/02350316800-o1/02350316800-o1.jpg?ts=1791879053097"
+          }
+         },
+         {
+          "idMedia": "f1e245c7364b4e1e84b8bdbca9d70328",
+          "clazz": 2,
+          "extraInfo": {
+           "assetId": "f1e245c7364b4e1e84b8bdbca9d70328",
+           "deliveryUrl": "https://static.massimodutti.net/assets/public/f1e2/45c7/364b4e1e84b8/bdbca9d70328/02350316800-o5/02350316800-o5.jpg?ts=1791879053548"
+          }
+         },
+         {
+          "idMedia": "0b929b80d59c4895bd6617b57067d496",
+          "clazz": 2,
+          "extraInfo": {
+           "assetId": "0b929b80d59c4895bd6617b57067d496",
+           "deliveryUrl": "https://static.massimodutti.net/assets/public/0b92/9b80/d59c4895bd66/17b57067d496/02350316800-o4/02350316800-o4.jpg?ts=1791879053274"
+          }
+         },
+         {
+          "idMedia": "b7343c0d4a494c41ac4b9dcebd180aed",
+          "clazz": 2,
+          "extraInfo": {
+           "assetId": "b7343c0d4a494c41ac4b9dcebd180aed",
+           "deliveryUrl": "https://static.massimodutti.net/assets/public/b734/3c0d/4a494c41ac4b/9dcebd180aed/02350316800-o3/02350316800-o3.jpg?ts=1791879052834"
+          }
+         },
+         {
+          "idMedia": "db42da3d5adf4904b2954ae8ffc8dbc6",
+          "clazz": 2,
+          "extraInfo": {
+           "assetId": "db42da3d5adf4904b2954ae8ffc8dbc6",
+           "deliveryUrl": "https://static.massimodutti.net/assets/public/db42/da3d/5adf4904b295/4ae8ffc8dbc6/02350316800-o2/02350316800-o2.jpg?ts=1791879053232"
+          }
+         }
+        ]
+       }
+      ],
+      "xmediaLocations": [
+       {
+        "set": 0,
+        "locations": [
+         {
+          "mediaLocations": [
+           "b39f8c0d5dfd45a4a8c4c7a06f4da1f8",
+           "db42da3d5adf4904b2954ae8ffc8dbc6",
+           "b7343c0d4a494c41ac4b9dcebd180aed",
+           "0b929b80d59c4895bd6617b57067d496",
+           "f1e245c7364b4e1e84b8bdbca9d70328"
+          ],
+          "location": 1
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

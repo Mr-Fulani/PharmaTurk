@@ -2953,7 +2953,7 @@ class BannerMediaNestedInline(nested_admin.NestedStackedInline):
     fieldsets = (
         (None, {'fields': ('content_type', 'sort_order')}),
         (_('Изображение'), {'fields': ('image', 'image_url')}),
-        (_('Видео'), {'fields': ('video_file', 'video_url')}),
+        (_('Видео'), {'fields': ('video_file', 'video_url', 'video_poster')}),
         (_('GIF'), {'fields': ('gif_file', 'gif_url')}),
         (_('Текст и ссылка (fallback)'), {
             'fields': ('title', 'description', 'link_text', 'link_url'),
@@ -3053,7 +3053,7 @@ class BannerMediaAdmin(admin.ModelAdmin):
             'description': _('Загрузите изображение локально или укажите внешний URL')
         }),
         (_('Видео'), {
-            'fields': ('video_file', 'video_url'),
+            'fields': ('video_file', 'video_url', 'video_poster'),
             'description': _('Загрузите видеофайл локально или укажите внешний URL')
         }),
         (_('GIF'), {
@@ -3090,7 +3090,7 @@ class BannerMediaAdmin(admin.ModelAdmin):
                 return [
                     base_fields,
                     (_('Видео'), {
-                        'fields': ('video_file', 'video_url'),
+                        'fields': ('video_file', 'video_url', 'video_poster'),
                         'description': _('Загрузите видеофайл локально или укажите внешний URL')
                     }),
                     text_fields,
@@ -3113,7 +3113,7 @@ class BannerMediaAdmin(admin.ModelAdmin):
                 'description': _('Загрузите изображение локально или укажите внешний URL')
             }),
             (_('Видео'), {
-                'fields': ('video_file', 'video_url'),
+                'fields': ('video_file', 'video_url', 'video_poster'),
                 'description': _('Загрузите видеофайл локально или укажите внешний URL')
             }),
             (_('GIF'), {

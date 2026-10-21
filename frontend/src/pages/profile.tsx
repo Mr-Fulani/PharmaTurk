@@ -62,6 +62,7 @@ interface UserProfile {
   telegram_username?: string
   telegram_bound?: boolean
   telegram_notifications?: boolean
+  cart_reminders_enabled?: boolean
   total_orders?: number
   total_spent?: string
 }
@@ -169,6 +170,7 @@ export default function ProfilePage() {
     whatsapp_phone: '',
     telegram_username: '',
     telegram_notifications: true,
+    cart_reminders_enabled: true,
   })
 
   // Форма адреса
@@ -267,6 +269,7 @@ export default function ProfilePage() {
         telegram_username: profileData.telegram_username || '',
         telegram_bound: profileData.telegram_bound === true,
         telegram_notifications: profileData.telegram_notifications !== false,
+        cart_reminders_enabled: profileData.cart_reminders_enabled !== false,
         total_orders: profileData.total_orders || 0,
         total_spent: String(profileData.total_spent || '0'),
       })
@@ -279,6 +282,7 @@ export default function ProfilePage() {
         whatsapp_phone: profileData.whatsapp_phone || '',
         telegram_username: profileData.telegram_username || '',
         telegram_notifications: profileData.telegram_notifications !== false,
+        cart_reminders_enabled: profileData.cart_reminders_enabled !== false,
       })
     } catch (error) {
       console.error('Failed to load profile:', error)
@@ -430,6 +434,7 @@ export default function ProfilePage() {
         whatsapp_phone: profile.whatsapp_phone || '',
         telegram_username: profile.telegram_username || '',
         telegram_notifications: profile.telegram_notifications !== false,
+        cart_reminders_enabled: profile.cart_reminders_enabled !== false,
       })
     }
   }
@@ -468,6 +473,7 @@ export default function ProfilePage() {
           whatsapp_phone: formData.whatsapp_phone,
           telegram_username: formData.telegram_username,
           telegram_notifications: formData.telegram_notifications,
+          cart_reminders_enabled: formData.cart_reminders_enabled,
         })
       }
 
@@ -807,6 +813,15 @@ export default function ProfilePage() {
                           className="rounded text-[var(--accent)] focus:ring-[var(--accent)]"
                         />
                         <span>{t('profile_telegram_notifications', 'Получать уведомления и чеки в Telegram')}</span>
+                      </label>
+                      <label className="mt-2 flex items-center space-x-2 text-sm text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.cart_reminders_enabled}
+                          onChange={(e) => setFormData({ ...formData, cart_reminders_enabled: e.target.checked })}
+                          className="rounded text-[var(--accent)] focus:ring-[var(--accent)]"
+                        />
+                        <span>{t('profile_cart_reminders', 'Напоминать о неотправленном Списке заявки (email и Telegram)')}</span>
                       </label>
                     </div>
                     <div className="flex gap-2 pt-4">

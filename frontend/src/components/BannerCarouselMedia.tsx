@@ -19,6 +19,7 @@ interface BannerMedia {
   content_type: 'image' | 'video' | 'gif'
   content_url: string
   content_mime_type?: string
+  poster_url?: string
   sort_order: number
   link_url?: string
   title?: string
@@ -64,10 +65,13 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const [expandedMediaIds, setExpandedMediaIds] = useState<Record<number, boolean>>({})
   const [firstMediaReady, setFirstMediaReady] = useState(false)
   const [inViewport, setInViewport] = useState(false)
+  // Главный баннер стоит в первом экране: его ролик не ждёт гидратации.
+  const [nearViewport, setNearViewport] = useState(position === 'main')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
   const [fallbackMediaIds, setFallbackMediaIds] = useState<Record<number, boolean>>({})
+  const [directMediaIds, setDirectMediaIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
   const initialMountRef = useRef(true)
@@ -119,13 +123,22 @@ export default function BannerCarousel({ position, className = '', initialBanner
     if (!container) return
     if (typeof IntersectionObserver === 'undefined') {
       setInViewport(true)
+      setNearViewport(true)
       return
     }
     const observer = new IntersectionObserver(([entry]) => {
       setInViewport(entry.isIntersecting)
     }, { threshold: 0.1 })
+    // Ролики (по 2 МБ) начинают грузиться за полэкрана до блока, а не вместе со страницей.
+    const nearObserver = new IntersectionObserver(([entry]) => {
+      setNearViewport(entry.isIntersecting)
+    }, { rootMargin: '50% 0px' })
     observer.observe(container)
-    return () => observer.disconnect()
+    nearObserver.observe(container)
+    return () => {
+      observer.disconnect()
+      nearObserver.disconnect()
+    }
   }, [loading, banners.length])
 
   // Функция для сброса и перезапуска автоматического переключения
@@ -224,7 +237,9 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const renderMediaItem = (media: BannerMedia, index: number) => {
     const isActive = activeMediaId !== null ? media.id === activeMediaId : index === 0
     const fullUrl = media.content_url ? resolveMediaUrl(media.content_url) : ''
+    const posterUrl = media.poster_url ? resolveMediaUrl(media.poster_url) : ''
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl, 'ambient') : null
+    const playVideo = index === 0 && nearViewport
 
     const handleThumbnailClick = () => {
       if (index >= 1 && displayMedia.length > 1) {
@@ -285,6 +300,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
           const optimizedUrl = fullSize
             ? finalUrl
             : withListingImageMaxWidth(finalUrl, 440)
+          const isDirect = !isFallback && directMediaIds[media.id]
 
           return (
             <div className="relative h-full w-full">
@@ -292,6 +308,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 src={optimizedUrl}
                 alt={title || t('banner_image_alt', 'Banner')}
                 fill
+                unoptimized={isDirect}
                 priority={isHero}
                 fetchPriority={isHero ? 'high' : 'auto'}
                 loading={isHero ? 'eager' : 'lazy'}
@@ -307,9 +324,14 @@ export default function BannerCarousel({ position, className = '', initialBanner
                   if (isActive) setLoading(false)
                 }}
                 onError={() => {
-                  if (!isFallback) {
-                    setFallbackMediaIds(prev => ({ ...prev, [media.id]: true }))
+                  if (isFallback) return
+                  // The /_next/image optimizer runs inside Next (OOM, restart):
+                  // retry the ready-made file straight from the CDN first.
+                  if (!isDirect) {
+                    setDirectMediaIds(prev => ({ ...prev, [media.id]: true }))
+                    return
                   }
+                  setFallbackMediaIds(prev => ({ ...prev, [media.id]: true }))
                 }}
               />
             </div>
@@ -326,7 +348,22 @@ export default function BannerCarousel({ position, className = '', initialBanner
         )}
         {media.content_type === 'video' && !embedUrl && fullUrl && (
           <video
-            autoPlay
+            // Ролики играют, только пока блок рядом с экраном: активный слайд и видимые
+            // миниатюры (на десктопе). Скрытые CSS-ом миниатюры (на телефоне все) ролик
+            // не качают: preload="metadata" у этих mp4 (moov в конце) скачивает файл почти
+            // целиком. autoPlay сам ролик не останавливает.
+            ref={(video) => {
+              if (!video) return
+              const visible = index === 0 || getComputedStyle(video).visibility !== 'hidden'
+              if (nearViewport && visible) {
+                // Кадр из админки виден, пока грузится ролик. Не пропсом poster:
+                // постер скрытого <video> браузер тоже скачивает.
+                if (posterUrl && video.getAttribute('poster') !== posterUrl) video.setAttribute('poster', posterUrl)
+                video.play().catch(() => {})
+              } else video.pause()
+            }}
+            autoPlay={playVideo}
+            preload={playVideo ? 'auto' : 'none'}
             loop
             muted
             playsInline
