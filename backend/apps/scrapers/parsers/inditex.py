@@ -150,6 +150,7 @@ class InditexSiblingParser(ZaraParser):
 
     def _fetch_text(self, url: str, *, accept: str = "application/json") -> Optional[str]:
         """GET с проходом bm-verify, повторами 429/5xx и понятными ошибками."""
+        last_status = None
         for attempt in range(self.max_retries + 1):
             response = None
             try:
@@ -160,6 +161,7 @@ class InditexSiblingParser(ZaraParser):
                 self.logger.warning("%s: сетевая ошибка %s: %s", self.SOURCE_LABEL, url, exc)
             else:
                 status = response.status_code
+                last_status = status
                 final_url = str(response.url or url)
                 if status < 400:
                     return response.text
@@ -182,6 +184,8 @@ class InditexSiblingParser(ZaraParser):
             backoff = retry_after or min(120.0, (2 ** attempt) * 3.0)
             self.logger.info("%s: повторный запрос через %.1f сек.", self.SOURCE_LABEL, backoff)
             time.sleep(backoff)
+        # Повторы исчерпаны на сетевой ошибке или 429/5xx — источник недоступен.
+        self._source_transport_failed = True
         return None
 
     def _warm_session(self) -> None:
@@ -269,7 +273,15 @@ class InditexSiblingParser(ZaraParser):
         listing = self._api_json(
             f"3/catalog/store/{self.STORE_ID}/{catalog_id}/category/{category_id}/product",
             showProducts="false",
-        ) or {}
+        )
+        if not isinstance(listing, dict) or not (
+            "sortedProductIds" in listing or "productIds" in listing
+        ):
+            # Нет ответа или изменилась схема API — это не «пустая категория».
+            self.has_more_pages = False
+            raise MalformedOfferResponse(
+                f"{self.SOURCE_LABEL}: API не вернул список товаров категории {category_id}"
+            )
         product_ids = list(
             dict.fromkeys(
                 str(value)
@@ -289,14 +301,28 @@ class InditexSiblingParser(ZaraParser):
             data = self._api_json(
                 f"3/catalog/store/{self.STORE_ID}/{catalog_id}/productsArray",
                 productIds=",".join(chunk),
-            ) or {}
-            for row in data.get("products") or []:
+            )
+            rows = data.get("products") if isinstance(data, dict) else None
+            if not rows:
+                # Сбой productsArray молча пропускал целую страницу товаров.
+                raise MalformedOfferResponse(
+                    f"{self.SOURCE_LABEL}: productsArray не вернул товары (страница {page})"
+                )
+            parsed_rows = 0
+            for row in rows:
                 product = self._scraped_from_api(row, category_url)
+                if product is not None:
+                    parsed_rows += 1
                 if product and self.validate_product(product):
                     yield product
                     yielded += 1
                     if self.max_products and yielded >= self.max_products:
                         return
+            if not parsed_rows:
+                # Ни одной карточки с цветами: изменилась схема ответа.
+                raise MalformedOfferResponse(
+                    f"{self.SOURCE_LABEL}: в ответе productsArray нет карточек с цветами (страница {page})"
+                )
             pages_done += 1
             if page * self.API_PAGE_SIZE >= len(product_ids):
                 self.has_more_pages = False
@@ -313,7 +339,13 @@ class InditexSiblingParser(ZaraParser):
         )
         if not data:
             return None
-        return self._scraped_from_api(data, product_url)
+        product = self._scraped_from_api(data, product_url)
+        if product is None:
+            # Ответ есть, но карточка без цветов: это не «товар снят».
+            raise MalformedOfferResponse(
+                f"{self.SOURCE_LABEL}: в карточке {product_id} нет цветов или названия"
+            )
+        return product
 
     # --- разбор ответа API -------------------------------------------------
 
@@ -339,6 +371,11 @@ class InditexSiblingParser(ZaraParser):
             for index, color in enumerate(colors)
         ]
         variants = [variant for variant in variants if variant]
+        if not variants:
+            # Без цветов нет ни цены, ни наличия: такая карточка не должна снять
+            # товар с продажи при перепарсинге (смена схемы API).
+            self.logger.warning("%s: в карточке %s нет цветов", self.SOURCE_LABEL, product_id)
+            return None
         first_variant = variants[0] if variants else {}
 
         description = ""

@@ -19,9 +19,11 @@ from ..base.offers import (
     MalformedOfferResponse,
     OfferAvailability,
     OfferCheckContext,
+    OfferCheckErrorCode,
     OfferGone,
     OfferNotFound,
     OfferCheckResult,
+    OfferSourceUnavailable,
     OfferStockPrecision,
     result_from_scraped_product,
     translate_offer_check_errors,
@@ -78,6 +80,8 @@ class ZaraParser(BaseScraper):
         self._last_ajax_response_at: Optional[float] = None
         self._ajax_request_count = 0
         self._session_warmed = False
+        # Источник не ответил (сеть, 429, 5xx) — это не «карточки нет».
+        self._source_transport_failed = False
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.ajax_session.close()
@@ -201,6 +205,7 @@ class ZaraParser(BaseScraper):
         """Запрашивает чистый JSON Zara через отдельный HTTP/1.1 transport."""
         ajax_url = self._ajax_url(url)
         self._warm_session()
+        last_status = None
         for attempt in range(self.max_retries + 1):
             try:
                 self._wait_before_ajax_request()
@@ -233,6 +238,7 @@ class ZaraParser(BaseScraper):
                 raise
             except self.AJAX_REQUEST_EXCEPTIONS as exc:
                 status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                last_status = status_code
                 self.logger.warning(
                     "Ошибка Zara AJAX-запроса к %s (HTTP %s): %s",
                     ajax_url,
@@ -261,6 +267,8 @@ class ZaraParser(BaseScraper):
                 backoff = retry_after or min(120.0, (2 ** attempt) * random.uniform(2.0, 4.0))
                 self.logger.info("Zara: повторный запрос через %.1f сек.", backoff)
                 time.sleep(backoff)
+        if last_status is None or last_status == 429 or last_status >= 500:
+            self._source_transport_failed = True
         return None
 
     def _wait_before_ajax_request(self) -> None:
@@ -434,7 +442,11 @@ class ZaraParser(BaseScraper):
             payload = self._request_payload(page_url)
             if not payload:
                 self.has_more_pages = False
-                break
+                # За последней страницей Zara отдаёт payload с isLastPage;
+                # пустой ответ — сбой источника, а не конец категории.
+                raise MalformedOfferResponse(
+                    f"{self.SOURCE_LABEL}: нет данных страницы категории {page_url}"
+                )
 
             components = self._extract_category_components(payload, page)
             new_on_page = 0
@@ -554,8 +566,16 @@ class ZaraParser(BaseScraper):
     @translate_offer_check_errors
     def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
         """One payload request; selection of color/size is in-memory and read-only."""
+        self._source_transport_failed = False
         scraped = self.parse_product_detail(offer.canonical_url)
         if scraped is None:
+            if self._source_transport_failed:
+                # Сбой сети или 5xx у источника не превращаем в «нет в наличии».
+                raise OfferSourceUnavailable(
+                    OfferCheckErrorCode.TRANSPORT_ERROR,
+                    f"{self.SOURCE_LABEL} не ответил (сеть или ошибка сервера)",
+                    retryable=True,
+                )
             raise OfferNotFound(offer.canonical_url)
         if (
             offer.external_product_id
