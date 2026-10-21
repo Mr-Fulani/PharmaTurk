@@ -3,7 +3,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
+from apps.scrapers.base.scraper import (
+    CategoryPageNotFoundError,
+    ScrapedProduct,
+    ScraperAccessBlockedError,
+)
 from apps.scrapers.base.catalog_state import CatalogTraversalState
 from apps.scrapers.parsers.flo import FloParser, resolve_flo_shoe_category_slug
 from apps.scrapers.services import (
@@ -619,3 +623,11 @@ def test_site_categories_get_their_own_traversal_state(monkeypatch):
         found.extend(parser.parse_product_list(url, max_pages=10))
 
     assert "444444" in [p.sku for p in found]
+
+
+def test_missing_category_page_is_an_error_not_an_empty_success(monkeypatch):
+    parser = FloParser()
+    monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: None)
+
+    with pytest.raises(CategoryPageNotFoundError, match="olmayan-kategori"):
+        list(parser.parse_product_list("https://www.flo.com.tr/olmayan-kategori"))

@@ -1,5 +1,7 @@
+import pytest
 from bs4 import BeautifulSoup
 
+from apps.scrapers.base.scraper import CategoryPageNotFoundError
 from apps.scrapers.parsers.lcw import LcwParser
 
 
@@ -701,3 +703,13 @@ def test_parse_product_list_skips_card_that_failed_to_load(monkeypatch):
 
     assert [product.external_id for product in products] == ["lcw-4827603"]
     assert parser.item_errors == 1
+
+
+def test_missing_category_page_is_an_error_not_an_empty_success(monkeypatch):
+    """Проба на проде 21.10: ссылка на несуществующую категорию LCW (404)
+    завершала задачу «успешно» с нулём товаров."""
+    parser = LcwParser()
+    monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: None)
+
+    with pytest.raises(CategoryPageNotFoundError, match="erkek-kemer-t-1092"):
+        list(parser.parse_product_list("https://www.lcw.com/erkek-kemer-t-1092"))

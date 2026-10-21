@@ -677,8 +677,12 @@ class UmmalandParser(BaseScraper):
                 price = normalize_price(price_text)
 
             # Зачёркнутая цена книги со скидкой («960 ₽» рядом с «768 ₽ -20%»).
+            # Только из блока цены самого товара: карточки рекомендаций ниже
+            # тоже размечены .product-old-price, и у книги без скидки бралась
+            # чужая зачёркнутая цена (на проде 1360 ₽ у 5 товаров).
             old_price = None
-            old_price_elem = soup.select_one('.product-old-price')
+            prices_block = soup.select_one('.product-prices')
+            old_price_elem = prices_block.select_one('.product-old-price') if prices_block else None
             if old_price_elem:
                 old_price = normalize_price(clean_text(old_price_elem.text))
 

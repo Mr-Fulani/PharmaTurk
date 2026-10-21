@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 
 from ..base.scraper import (
     BaseScraper,
+    CategoryPageNotFoundError,
     ScrapedProduct,
     ScraperAccessBlockedError,
     SiteCategoriesError,
@@ -274,6 +275,11 @@ class FloParser(BaseScraper):
             page_url = self._page_url(category_url, page)
             html = self._fetch(page_url)
             if not html:
+                if page == 1:
+                    # 404 на первой странице — категории нет, а не конец каталога.
+                    raise CategoryPageNotFoundError(
+                        f"FLO: страница категории не найдена: {category_url}"
+                    )
                 self.has_more_pages = False
                 self.stop_reason = f"FLO вернул пустую страницу каталога: {page_url}"
                 break
