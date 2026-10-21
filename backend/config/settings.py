@@ -225,6 +225,10 @@ CELERY_TASK_SOFT_TIME_LIMIT = 60 * 25
 # cleanup_orphaned_media: больше файлов к удалению — только отчёт админу, без удаления.
 ORPHANED_MEDIA_MAX_DELETE = env.int("ORPHANED_MEDIA_MAX_DELETE", default=3000)
 ORPHANED_MEDIA_MAX_DELETE_PERCENT = env.float("ORPHANED_MEDIA_MAX_DELETE_PERCENT", default=10.0)
+# Чистка products/parsed/<парсер>/ после парсинга: больше файлов — только отчёт
+# админу; моложе MIN_AGE_HOURS не трогать (их могла скачать параллельная задача).
+PARSED_MEDIA_SWEEP_MAX_DELETE = env.int("PARSED_MEDIA_SWEEP_MAX_DELETE", default=20000)
+PARSED_MEDIA_SWEEP_MIN_AGE_HOURS = env.int("PARSED_MEDIA_SWEEP_MIN_AGE_HOURS", default=6)
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # Redis возвращает неподтверждённую задачу в очередь после visibility timeout.
 # Значение должно быть больше hard limit скрейпера, иначе долгий чанк может

@@ -128,6 +128,12 @@ docker-compose за nginx и Cloudflare.
    Парсеры Zara/Inditex отмечают сумки, кошельки, ремни, украшения и шапки
    (`attributes["inditex_category_slugs"]`), и категория задачи из ветки «Одежда»
    не делает их одеждой. См. [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md).
+14. **Файл медиа удаляется только после проверки ссылок, закрытой при сбое.** Резервной
+   копии медиа товаров нет: код, который удаляет файл из R2, проверяет ссылки через
+   `apps/catalog/utils/media_references.py` (один запрос на поле, а не на файл) и при
+   `MediaReferenceCheckError` ничего не удаляет; `except: continue` в проверке ссылок
+   запрещён. Массовое удаление — с потолком числа файлов и отчётом админу при превышении
+   (`cleanup_orphaned_media`, чистка `products/parsed/` — `CELERY_TASKS.md`).
 
 ## 4. Фронтенд (Next.js)
 

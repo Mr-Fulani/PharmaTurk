@@ -166,6 +166,42 @@ docker compose exec celeryworker poetry run python manage.py shell -c \
 
 Это защитные ограничения, а не гарантия резервного копирования. Перед сменой `R2_PREFIX`, storage backend или структуры media paths необходим отдельный dry audit.
 
+### Чистка products/parsed/ после парсинга
+
+Не задача Beat: `_sweep_parsed_orphans` (`apps/scrapers/tasks.py`) вызывается, когда
+цепочка задачи парсера завершилась, и удаляет из `products/parsed/<парсер>/` файлы,
+на которые не ссылается ни одно поле БД. Это копии, уже перенесённые сигналами в
+читаемые пути, и медиа пропущенных дублей. Резервной копии медиа товаров нет, поэтому
+(с 22.10.2026):
+
+- ссылки ищутся пакетно (`apps/catalog/utils/media_references.py`): по одному запросу
+  `LIKE` на каждое поле с медиа во всех моделях (FileField, URLField и текстовые поля
+  с медийным именем — 272 поля на проде), а не по запросу на файл; путь находится в имени
+  файла, в URL CDN и в `?path=` proxy-media. Ошибка любого запроса — ничего не удаляется;
+- файлы моложе `PARSED_MEDIA_SWEEP_MIN_AGE_HOURS` (6 ч) не трогаются: их могла только что
+  скачать другая задача, ещё не записав строку товара; они удалятся следующим проходом;
+- пока у парсера есть задача `pending`/`running`, чистка пропускается (зависшая в
+  `running` задача её откладывает — тогда отменить задачу в админке);
+- в БД меньше 100 товаров (пустая или чужая база, как стек 14.06.2026) — ничего не удаляется;
+- кандидатов больше `PARSED_MEDIA_SWEEP_MAX_DELETE` (20 000) — ничего не удаляется, админу
+  приходит отчёт в Telegram. Доля от числа файлов не проверяется, как у
+  `cleanup_orphaned_media`: после переноса ничейными становятся почти все файлы прохода
+  (21.10.2026 у ilacfiyati — 2540 из 2885, из них 2518 моложе 6 ч);
+- ключи листинга считаются относительно `R2_PREFIX`: на dev чистится `dev/products/parsed/…`.
+
+Отчёт без удаления и ручной запуск с другим лимитом после проверки:
+
+```bash
+docker compose exec celeryworker poetry run python manage.py shell -c \
+  "from apps.scrapers.tasks import _sweep_parsed_orphans as s; print(s('ilacfiyati', dry_run=True))"
+docker compose exec celeryworker poetry run python manage.py shell -c \
+  "from apps.scrapers.tasks import _sweep_parsed_orphans as s; print(s('ilacfiyati', max_delete=40000))"
+```
+
+Та же пакетная проверка, тоже закрытая при сбое, защищает старое главное фото, которое
+парсер удаляет после переключения `main_image_file` на файл галереи
+(`ScraperIntegrationService._media_key_referenced`).
+
 ### Ранг медикаментов и БАДов
 
 `catalog.recompute_sort_ranks` (`services/catalog_sort_rank.py`) для
