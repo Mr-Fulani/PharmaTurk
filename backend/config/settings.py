@@ -335,9 +335,9 @@ CELERY_BEAT_SCHEDULE = {
         "args": (30,),  # хранить 30 дней
     },
     # Бэкап БД во внешний бакет (docs/DB_BACKUP.md). CELERY_TIMEZONE не задан,
-    # поэтому crontab считается в UTC: 01:15 UTC = 04:15 МСК, ночной минимум
-    # трафика, до recsys-sync-stale-nightly. Без DB_BACKUP_ENABLED задачи
-    # ничего не делают.
+    # поэтому Celery берёт TIME_ZONE = Europe/Moscow и crontab считается по МСК:
+    # 01:15 МСК — ночной минимум трафика, до recsys-sync-stale-nightly (02:15).
+    # Без DB_BACKUP_ENABLED задачи ничего не делают.
     "monitoring-database-backup": {
         "task": "apps.monitoring.tasks.run_database_backup",
         "schedule": crontab(hour=1, minute=15),

@@ -1,6 +1,7 @@
 # Технический долг Mudaroba
 
-Актуализировано: **5 сентября 2026 года**.
+Актуализировано: **22 октября 2026 года** (раздел «Инвентаризация 21 октября 2026»,
+TD-002, TD-008, TD-010).
 
 Этот файл — рабочий реестр, а не список пожеланий. Закрытым считается только
 пункт, который прошёл тесты, production deploy и короткое наблюдение после
@@ -146,9 +147,15 @@
   dry-run удалены ровно пять старейших валидных копий; семь последних и две
   неполные legacy-копии сохранены. Неиспользуемый Docker build cache также
   удалён; диск перешёл с 94–100% к 78%, свободно 7.9 GiB.
-- **Отдельный открытый риск:** копии на том же сервере защищают от неудачного
+- ~~**Отдельный открытый риск:** копии на том же сервере защищают от неудачного
   релиза, но не от потери хоста. Нужен off-host encrypted backup и периодическая
-  restore rehearsal в изолированную БД/Qdrant.
+  restore rehearsal в изолированную БД/Qdrant.~~ Закрыто для PostgreSQL 19 октября
+  2026 года (PR #102): ежедневный `pg_dump` во внешний приватный бакет R2 отдельным
+  ключом, ротация 7/4/3, еженедельная проверка читаемости копии, Telegram и
+  healthchecks.io ([DB_BACKUP.md](DB_BACKUP.md)); включено на проде 19.10.
+  Остаётся: Qdrant и медиа R2 вне сервера не копируются (TD-013), пробное полное
+  восстановление (`DB_BACKUP_TEST_RESTORE_ENABLED`) выключено — нужно свободное место
+  ≥ 2 × БД + 4 ГиБ.
 
 ### TD-003 — Связанность IlacFiyati и Akakçe для БАДов
 
@@ -180,7 +187,10 @@
 - public liveness/readiness/security smoke успешен;
 - после canary: strict application errors `0`, nginx HTTP 5xx `0`.
 
-### TD-004 — Доставка production-алертов
+### TD-010 — Доставка production-алертов
+
+(До 22.10.2026 пункт ошибочно имел номер TD-004, занятый ручным обогащением
+изображений.)
 
 - **Статус:** `[x]` базовая доставка закрыта 2026-09-04 через существующий
   административный Telegram receiver.
@@ -189,8 +199,9 @@
   раза в час и отправляет recovery. Конфигурация валидируется Django system check;
   токен не попадает в логи. Runbook: `docs/PRODUCTION_MONITORING_RUNBOOK.md`.
 - `/metrics`, JSON logging и source-offer rules остаются в коде. Внешний монитор
-  полного отказа Docker host/Internet/Redis broker и Prometheus/Grafana dashboards
-  остаются расширением P1.5, а не частью базовой доставки.
+  полного отказа Docker host/Internet/Redis broker после зависания 19.10 описан в
+  runbook (HetrixTools, подключает владелец); Prometheus/Grafana dashboards и
+  оповещения о диске и Redis (TD-014) остаются расширением P1.5.
 
 ### TD-005 — Качество source identity и накопленные ошибки offers
 
@@ -330,13 +341,15 @@ PR слишком рискованно.
 
 ### TD-008 — Мёртвые/дублирующие Celery декларации
 
-- **Статус:** `[ ]` открыто.
-- В `apps/catalog/tasks.py` остаются неиспользуемые заглушки `refresh_stock` и
-  `refresh_prices`; `backend/celery_beat_schedule.py` содержит старое отдельное
-  расписание и неверный settings module, тогда как runtime использует
-  `config/celery.py` и `config/settings.py`.
-- Удалять после проверки внешних runbooks/cron и импорта задач. До этого они не
-  включены в активный beat schedule и production не влияют.
+- **Статус:** `[~]` частично закрыто 22 октября 2026 года.
+- ~~`backend/celery_beat_schedule.py` содержит старое отдельное расписание и
+  неверный settings module~~ — удалён: нигде не импортировался (compose, Dockerfile,
+  scripts, CI), `DJANGO_SETTINGS_MODULE='backend.settings'` не существует, задачи
+  `currency.backup_rates` нет. Runtime использует `config/celery.py` и
+  `CELERY_BEAT_SCHEDULE` в `config/settings.py`; ссылки в CURRENCY-доках исправлены.
+- Остаются неиспользуемые заглушки `refresh_stock` и `refresh_prices` в
+  `apps/catalog/tasks.py` (в активный beat schedule не входят, на production не
+  влияют). Удалять после проверки внешних runbooks/cron и импорта задач.
 
 ### TD-009 — Временное исключение security advisory
 
@@ -345,6 +358,117 @@ PR слишком рискованно.
   формировании receipt запрещён. Проверять наличие исправленного upstream release
   при каждом обновлении dependency lock и удалить исключение сразу после
   безопасного upgrade.
+
+## Инвентаризация 21 октября 2026
+
+После ≈ 35 PR за 20–21.10 (аудиты парсеров, AI, памяти и диска прода). Каждый пункт
+сверен с кодом `main` 19d3a0e6.
+
+### TD-011 — Одобрение AI-лога не проверяет сдвинутые абзацы
+
+- **Статус:** `[ ]` открыто, P1.
+- Правила `paragraph_problems` / `check_paragraph_payload`
+  (`apps/ai/services/medicine_memory.py`) работают только при записи переводов
+  абзацев в память. Одобрение лога (`approve` в `apps/ai/views.py` →
+  `apply_log_to_product`) проверяет `SemanticValidator`, а в нём проверок абзацев
+  нет: лог с чужим абзацем, созданный до PR #121, применится к товару.
+- До исправления 92 ожидающих лога лекарств не одобрять
+  ([MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md](MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md)).
+
+### TD-012 — Чистка `products/parsed/` при ошибке БД удаляет файл
+
+- **Статус:** `[ ]` открыто, P1.
+- `_sweep_parsed_orphans` (`apps/scrapers/tasks.py`) после цепочки скрейпа удаляет
+  файлы без ссылок в БД. Вложенная `referenced()` глотает исключение запроса и
+  считает «ссылки нет»: при сбое БД все файлы префикса уйдут в удаление.
+- Нужно: ошибка запроса прерывает sweep без удаления; предел доли удаляемого, как
+  `ORPHANED_MEDIA_MAX_DELETE_PERCENT` у `cleanup_orphaned_media`.
+
+### TD-013 — Медиа R2 без резервной копии
+
+- **Статус:** `[ ]` открыто, P1.
+- Бэкап (TD-002, PR #102) копирует только PostgreSQL. Бакет медиа (каталог,
+  баннеры, чеки) существует в одном экземпляре; 14.06.2026 `cleanup_orphaned_media`
+  с пустой БД уже стёр каталожное медиа. Qdrant тоже не копируется вне сервера.
+- Нужна периодическая копия бакета медиа в отдельный бакет с отдельным ключом
+  (как у бэкапа БД), чтобы ни одна задача приложения не могла удалить обе копии.
+
+### TD-014 — Нет оповещений о диске и Redis
+
+- **Статус:** `[ ]` открыто, P1.
+- Watchdog (`apps/monitoring/watchdog.py`) проверяет только главную, `/api/live/` и
+  `/api/health/`. Свободное место на диске, `used_memory / maxmemory` и
+  `rdb_last_bgsave_status` брокера никто не отслеживает: инциденты 18.10 (диск
+  100 % → Redis MISCONF) и 19.10 (OOM) заметили по падению сайта. Предложение из
+  [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md) («Алерт в watchdog») не сделано.
+
+### TD-015 — Неиспользуемые зависимости backend
+
+- **Статус:** `[ ]` открыто, P2.
+- `selenium`, `python-telegram-bot` и `ikea-api` есть в `backend/pyproject.toml`,
+  но не импортируются в коде: лишний вес образа и лишние уязвимости в аудите.
+  Удалять с обновлением `poetry.lock` и полным CI.
+
+### TD-016 — Instagram: 429 и пароль в открытом виде
+
+- **Статус:** `[ ]` открыто, P2.
+- На 429 instaloader спит внутри задачи до мягкого лимита и держит воркер; ошибка
+  не превращается в «источник недоступен».
+- `ScraperConfig.scraper_password` — обычный `CharField`: пароль Instagram лежит в
+  БД открытым текстом. Входить через cookie `sessionid` в настройках парсера
+  ([INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md)), пароль не хранить или
+  шифровать.
+
+### TD-017 — ≈ 570 `except Exception` в backend
+
+- **Статус:** `[ ]` выполняется по мере правки модулей, P2.
+- 572 вхождения без миграций (568 вне тестов). Часть — намеренная граница («задача не
+  должна падать»), часть молча глотает ошибку (пример — TD-012). При правке модуля
+  сужать тип исключения или хотя бы логировать причину.
+
+### TD-018 — Нет CSP, JWT в cookies, доступных из JS
+
+- **Статус:** `[ ]` открыто, P2.
+- `access` и `refresh` пишутся через `js-cookie`
+  (`frontend/src/context/AuthContext.tsx`) без `HttpOnly`; строгого CSP нет
+  (ROADMAP P1.8). Любой XSS = кража сессии. План: CSP report-only → enforcement,
+  refresh-токен — в `HttpOnly` cookie от backend.
+
+### TD-019 — Пустая секция sitemap кэшируется Cloudflare на сутки
+
+- **Статус:** `[ ]` открыто, P2.
+- `frontend/src/pages/sitemaps/[section].tsx` не кладёт пустой XML (сбой API) во
+  внутренний кэш, но отдаёт его с `Cache-Control: public, s-maxage=86400` — Cloudflare
+  показывает поисковикам пустую секцию 24 ч. Для пустого ответа — `no-store` или
+  короткий `s-maxage`.
+
+### TD-020 — Ручной рестарт nginx при runtime resolve
+
+- **Статус:** `[ ]` открыто, P2.
+- В `nginx/default.conf` уже есть `resolver 127.0.0.11` и `server backend:8000 resolve`,
+  но регламент деплоя ([DEPLOY.md](../DEPLOY.md), [PROD_MEMORY.md](PROD_MEMORY.md))
+  по-прежнему требует `docker restart mudaroba-nginx-1` после recreate backend/frontend.
+  Проверить на проде, что nginx сам подхватывает новый IP, и убрать ручной шаг — или
+  выяснить, почему не подхватывает.
+
+### TD-021 — Мёртвый код и ассеты
+
+- **Статус:** `[ ]` открыто, P3.
+- `apps/scrapers/parsers/instagram_examples.py` нигде не импортируется;
+  `apps/scrapers/test_ilacfiyati.py` — сетевой скрипт, а не тест; `ml_service/` —
+  заглушка FastAPI; заглушки задач — TD-008.
+- В `frontend/public` ≈ 13 МБ PNG, на которые нет ссылок в коде фронтенда
+  (`about-us-hero-*.png`, `og-about-us-*.png`, `category-hero-istanbul.png`,
+  `footer-testimonials-promo.png`, `og-default.png` — рядом лежат используемые
+  webp/jpg). Перед удалением проверить, что их не указывают страницы из админки.
+
+### TD-022 — `tmp/` в репозитории
+
+- **Статус:** `[ ]` открыто, P3.
+- В Git лежат 50 файлов `tmp/service-*` (≈ 37 МБ картинок, коммит 22.08.2026); в коде
+  на них ссылок нет. Удалить из индекса и добавить `tmp/` в `.gitignore` (история
+  останется, клон легче не станет без переписывания истории — не делать без
+  согласия владельца).
 
 ## Правила закрытия
 

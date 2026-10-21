@@ -66,6 +66,12 @@
 а унаследованный `_extract_category_links` вызывает `match.group(1)`. Этот путь
 нуждается в исправлении и отдельной регрессионной проверке.
 
+> **Исправлено (октябрь 2026).** Группа захвата в `CATEGORY_PATH_RE` — PR #68
+> (17.10). С PR #94 (18.10) все три парсера берут данные из JSON API витрины
+> `/itxrest` вместо `viewPayload`, с проходом Akamai `bm-verify`; тесты — на
+> фикстурах реальных ответов `test_fixtures/inditex/`. Подробно —
+> [SCRAPERS_GUIDE.md](../SCRAPERS_GUIDE.md), раздел 6.5.0.
+
 ## Проверки
 
 Тесты запускаются из текущей рабочей копии в существующем образе
@@ -113,4 +119,5 @@ PR #36) и строгий отбор карточек IlacFiyati по блоку
 
 Не переносились и не перепроверялись в рамках переноса пункты про
 Pull&Bear/Bershka/Massimo Dutti: адаптация форматов и ошибка
-`InditexSiblingParser.CATEGORY_PATH_RE` остаются отдельной задачей.
+`InditexSiblingParser.CATEGORY_PATH_RE` остаются отдельной задачей. Обе
+закрыты позже: `CATEGORY_PATH_RE` — PR #68, переход на `/itxrest` — PR #94.

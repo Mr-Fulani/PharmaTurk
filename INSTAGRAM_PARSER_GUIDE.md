@@ -198,34 +198,46 @@ category, _ = Category.objects.get_or_create(
    - **External category name**: #books
    - **Internal category**: Книги
 
-## Автоматическая синхронизация
+## Запуск из админки и расписание
 
-### Настройка Celery задач
+### Задачи Instagram
 
-Добавьте в `backend/config/celery.py`:
+Пост или весь профиль парсится задачей **Scrapers → Задачи парсинга Instagram**
+(`InstagramScraperTask`): «Ссылка на пост» — один пост; username без ссылки и
+«Максимум постов» не меньше числа постов (до 5000) — весь профиль. Кнопка
+«Запустить» ставит Celery-задачу `run_instagram_scraper_task(instagram_task_id,
+resume=False)` (`backend/apps/scrapers/tasks.py`) с прогрессом, паузой и
+остановкой. Режимы всех парсеров — [docs/PARSER_MODES.md](docs/PARSER_MODES.md).
 
-```python
-from celery.schedules import crontab
+### Расписание
 
-app.conf.beat_schedule = {
-    'instagram-books-sync': {
-        'task': 'apps.scrapers.tasks.run_instagram_scraper',
-        'schedule': crontab(hour=2, minute=0),  # Каждый день в 2:00
-        'args': ('bookstore_istanbul', 50, 'books'),
-    },
-}
-```
+Периодического запуска Instagram нет. Если он понадобится:
+
+- запись добавляется в словарь `CELERY_BEAT_SCHEDULE` в
+  `backend/config/settings.py` (только `crontab`: состояние beat теряется при
+  каждом деплое). Присваивать `app.conf.beat_schedule = {...}` в
+  `config/celery.py` нельзя — это затрёт всё расписание проекта;
+- вызывать из beat `run_instagram_scraper_task` с id задачи напрямую не
+  получится: после первого прогона в задаче остаётся старый `task_id`, и
+  следующий запуск завершится как `superseded`. Нужна обёртка, которая, как
+  `InstagramScraperTaskAdmin._enqueue_instagram_task`, сбрасывает `task_id` и
+  выдаёт новый `run_token`, — это правка кода.
 
 ## Troubleshooting
 
 ### Ошибка аутентификации
 
-**Проблема**: `Login error: Challenge required`
+**Проблема**: профиль отдаёт 401, или задача падает с «Instagram требует
+подтвердить вход… (Checkpoint required)».
 
-**Решение**: 
-- Instagram требует двухфакторную аутентификацию
-- Используйте парсинг без аутентификации (публичные профили)
-- Или настройте сессию через браузер
+**Решение**: без входа профиль не парсится, а вход по паролю с сервера
+Instagram отправляет на проверку. Нужна сессия из браузера:
+- войдите в бот-аккаунт в браузере или приложении и подтвердите вход;
+- в конфигурации парсера Instagram (**Scrapers → Конфигурации парсеров**)
+  положите в «Cookies» `{"sessionid": "<значение cookie>"}` и заполните
+  «Логин парсера» и «Пароль парсера»: без них парсер вход не пытается
+  (`InstagramParser._ensure_authenticated`), а с `sessionid` загружает сессию
+  без входа по паролю (`InstagramParser._authenticate`).
 
 ### Rate limiting (429 ошибка)
 

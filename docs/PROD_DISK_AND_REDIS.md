@@ -21,7 +21,7 @@
 | Кэш nginx `next_image` (ответы оптимизатора `/_next/image`, с 2026-10-21) | до 0,5 ГБ | `max_size=512m`, 30 дней без обращений; как и `proxy_media`, живёт в слое контейнера nginx (см. `PROD_MEMORY.md`, «Картинки баннеров и next/image») |
 | Брошенный полный снапшот Qdrant `full-snapshot-2026-09-07-22-46-14.snapshot` в слое контейнера qdrant | 0,38 ГБ | Удалить через API Qdrant (`DELETE /snapshots/<имя>`), только после согласия |
 | Stage `mudaroba-stage-9122b27`: 4 остановленных контейнера (5 недель), тома и `~/pharmaturk-stage-9122b27` | ≈ 0,16 ГБ | `docker compose -p mudaroba-stage-9122b27 down -v` и удаление каталога, только после согласия |
-| 6 остановленных `mudaroba-migrate-run-*` | 0 Б сами, но держат образы `820bcd7…` и `bb0a7ba…` (≈ 1,9 ГБ каждый) | Появлялись из-за `backend_release.py` (`compose run` без `--rm`), исправлено в этом PR. Существующие удалить `docker rm`, после чего `prune-images.sh` сможет убрать старый образ |
+| 6 остановленных `mudaroba-migrate-run-*` | 0 Б сами, но держат образы `820bcd7…` и `bb0a7ba…` (≈ 1,9 ГБ каждый) | Появлялись из-за `backend_release.py` (`compose run` без `--rm`), исправлено в PR #88. Существующие удалить `docker rm`, после чего `prune-images.sh` сможет убрать старый образ |
 
 Выполнено 2026-10-18 с согласия владельца: удалены 6 `migrate-run-*`, образ
 backend `bb0a7ba…`, брошенный снапшот Qdrant и stage `mudaroba-stage-9122b27`
@@ -48,7 +48,10 @@ postgres/redis/qdrant.
 
 ## Redis
 
-Сейчас один `redis:7-alpine` для всего: db0 — брокер Celery (9 ключей),
+Состояние на 2026-10-18 (с 2026-10-19 кэш Django вынесен в отдельный контейнер
+`redis-cache`, у брокера и кэша по `maxmemory 128mb` — см. «Рекомендуемый
+вариант» ниже и [PROD_MEMORY.md](PROD_MEMORY.md)). Тогда был один
+`redis:7-alpine` для всего: db0 — брокер Celery (9 ключей),
 db1 — кэш Django (≈ 100 тыс. ключей, ≈ 1,8 ГБ), db2 — результаты Celery
 (≈ 5,4 тыс. ключей, TTL ≈ 15 ч). `maxmemory` не задан, политика `noeviction`,
 RDB-снимки `save 3600 1 300 100 60 10000`, `stop-writes-on-bgsave-error yes`.
@@ -58,7 +61,7 @@ RDB-снимки `save 3600 1 300 100 60 10000`, `stop-writes-on-bgsave-error ye
 на ключ). Из-за них `dump.rdb` весил 1,8 ГБ: каждый BGSAVE пишет на диск ещё
 столько же (временный файл) и делает fork процесса на 1,8 ГБ при 2,2 ГБ
 свободной памяти. Когда места не хватило, BGSAVE упал, Redis запретил запись
-(MISCONF) — и брокер, и кэш. С этого PR бэкенд байты картинок в Redis не
+(MISCONF) — и брокер, и кэш. С PR #89 бэкенд байты картинок в Redis не
 пишет (см. «Устранение причины»).
 
 Очереди Celery вытеснять нельзя: ключи брокера (списки очередей, `unacked`,
