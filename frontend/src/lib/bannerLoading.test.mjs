@@ -29,7 +29,7 @@ async function renderer(file) {
     '../lib/api': {}, './BannerCarousel.module.css': {}, '../lib/bannerLink': {}, '../lib/siteMeta': {},
   }
   class IntersectionObserver { constructor(callback, options) { observers.push({ callback, options }) } observe() {} disconnect() {} }
-  vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date, IntersectionObserver })
+  vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date, IntersectionObserver, getComputedStyle: element => ({ visibility: element.visibility }) })
   return Object.assign(props => { cursor = 0; effects.length = 0; return exports.default(props) }, { effects, observers })
 }
 function nodes(node, match) {
@@ -85,31 +85,37 @@ test('existing proxy callers retain their original image request', async () => {
   assert.equal(image.props.src, src)
   assert.equal(image.props.srcSet, undefined)
 })
-test('banner videos stay idle off screen and in thumbnails', async () => {
+test('banner videos play near the screen and never in hidden thumbnails', async () => {
   const clips = [7, 8, 9].map(id => ({ id, content_type: 'video', content_url: `https://cdn.mudaroba.com/${id}.mp4` }))
   const videoProps = position => ({ position, initialBanners: [{ id: 1, position, media_files: clips }] })
-  const players = tree => nodes(tree, node => node.type === 'video').map(video => {
+  // On a phone every thumbnail is visibility:hidden, on desktop they are visible.
+  const players = (tree, thumbnails = 'hidden') => nodes(tree, node => node.type === 'video').map((video, index) => {
     let call = null
-    video.ref({ play: () => { call = 'play'; return Promise.resolve() }, pause: () => { call = 'pause' } })
+    video.ref({ visibility: index === 0 ? 'visible' : thumbnails, play: () => { call = 'play'; return Promise.resolve() }, pause: () => { call = 'pause' } })
     return [video.props.autoPlay, video.props.preload, call]
   })
   const idle = [false, 'none', 'pause']
   const playing = [true, 'auto', 'play']
+  const preview = [false, 'none', 'play']
   const render = await renderer('../components/BannerCarouselMedia.tsx')
   let tree = render(videoProps('after_brands'))
   assert.deepEqual(players(tree), [idle, idle, idle])
+  assert.deepEqual(players(tree, 'visible'), [idle, idle, idle])
   tree.ref.current = {}
   render.effects.forEach(effect => effect())
   const near = render.observers.find(observer => observer.options.rootMargin)
   near.callback([{ isIntersecting: true }])
   tree = render(videoProps('after_brands'))
   assert.deepEqual(players(tree), [playing, idle, idle])
+  assert.deepEqual(players(tree, 'visible'), [playing, preview, preview])
   nodes(tree, n => n.props?.['aria-label'] === 'Следующее медиа')[0].props.onClick()
   tree = render(videoProps('after_brands'))
   assert.equal(nodes(tree, node => node.type === 'source')[0].props.src, 'https://cdn.mudaroba.com/8.mp4')
   assert.deepEqual(players(tree), [playing, idle, idle])
   near.callback([{ isIntersecting: false }])
-  assert.deepEqual(players(render(videoProps('after_brands'))), [idle, idle, idle])
+  tree = render(videoProps('after_brands'))
+  assert.deepEqual(players(tree), [idle, idle, idle])
+  assert.deepEqual(players(tree, 'visible'), [idle, idle, idle])
   const main = await renderer('../components/BannerCarouselMedia.tsx')
   assert.deepEqual(players(main(videoProps('main'))), [playing, idle, idle])
 })

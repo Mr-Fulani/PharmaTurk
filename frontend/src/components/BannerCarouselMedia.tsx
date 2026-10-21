@@ -338,12 +338,14 @@ export default function BannerCarousel({ position, className = '', initialBanner
         )}
         {media.content_type === 'video' && !embedUrl && fullUrl && (
           <video
-            // Играет только активный слайд рядом с экраном. Миниатюры (на мобильном
-            // они скрыты) не качают ролик: preload="metadata" у этих mp4 (moov в конце)
-            // скачивает файл почти целиком. autoPlay сам ролик не останавливает.
+            // Ролики играют, только пока блок рядом с экраном: активный слайд и видимые
+            // миниатюры (на десктопе). Скрытые CSS-ом миниатюры (на телефоне все) ролик
+            // не качают: preload="metadata" у этих mp4 (moov в конце) скачивает файл почти
+            // целиком. autoPlay сам ролик не останавливает.
             ref={(video) => {
               if (!video) return
-              if (playVideo) video.play().catch(() => {})
+              const visible = index === 0 || getComputedStyle(video).visibility !== 'hidden'
+              if (nearViewport && visible) video.play().catch(() => {})
               else video.pause()
             }}
             autoPlay={playVideo}
