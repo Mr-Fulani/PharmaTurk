@@ -2424,18 +2424,6 @@ class ScraperIntegrationService:
 
         return score
 
-    def _is_ai_enabled_for_session(
-        self,
-        session: ScrapingSession,
-        action: str,
-    ) -> bool:
-        config = session.scraper_config
-        if action == "created":
-            return bool(getattr(config, "ai_on_create_enabled", True))
-        if action == "updated":
-            return bool(getattr(config, "ai_on_update_enabled", True))
-        return True
-
     def _get_furniture_product(self, product: Product) -> "FurnitureProduct":
         """Находит или создаёт FurnitureProduct для Product с product_type='furniture'."""
         from apps.catalog.models import FurnitureProduct

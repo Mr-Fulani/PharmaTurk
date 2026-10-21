@@ -317,8 +317,6 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=5, minute=0),
         "kwargs": {"batch_size": 200},
     },
-    # refresh-stock: заглушка — отключено, доработаем после парсеров
-    # "refresh-stock": {"task": "apps.catalog.tasks.refresh_stock", "schedule": 60 * 60 * 2},
     # VAPI: отключено — не используется. Включить при работе с VAPI API.
     # "vapi-sync-products": {"task": "apps.vapi.tasks.pull_products", "schedule": 60*60*6, "args": (1, 100)},
     # "vapi-sync-categories": {"task": "apps.vapi.tasks.sync_categories_and_brands", "schedule": 60*60*24},
