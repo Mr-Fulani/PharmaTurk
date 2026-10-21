@@ -60,6 +60,20 @@ test('rotation preserves the original hero source size and priority', async () =
   assert.equal(original.fetchPriority, 'high')
   assert.equal(images.filter(i => i.props.priority).length, 1)
 })
+test('a failed slide is retried straight from the CDN before the placeholder', async () => {
+  const render = await renderer('../components/BannerCarouselMedia.tsx')
+  const hero = () => nodes(render(props('how_to_order')), node => node.type === Image)[0].props
+  assert.notEqual(hero().unoptimized, true)
+  hero().onError()
+  assert.equal(hero().src, 'https://cdn.mudaroba.com/1.webp')
+  assert.equal(hero().unoptimized, true)
+  hero().onError()
+  assert.equal(hero().src, '/fallback.svg')
+})
+test('next/image never asks the optimizer for widths above 1920', () => {
+  const { images } = require('../../next.config.js')
+  assert.equal(Math.max(...images.deviceSizes), 1920)
+})
 test('homepage proxy sources retain the asset path and contain one width parameter', async () => {
   const render = await renderer('../components/FallbackMediaImage.tsx')
   const image = render({ src: '/api/catalog/proxy-media/?path=marketing%2Fcards%2Ftest.jpg&max_width=600&w=600', alt: 'Card', sizes: '96px', responsiveProxy: true })

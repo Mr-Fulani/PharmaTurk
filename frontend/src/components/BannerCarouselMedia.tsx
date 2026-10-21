@@ -68,6 +68,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
   const [fallbackMediaIds, setFallbackMediaIds] = useState<Record<number, boolean>>({})
+  const [directMediaIds, setDirectMediaIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
   const initialMountRef = useRef(true)
@@ -285,6 +286,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
           const optimizedUrl = fullSize
             ? finalUrl
             : withListingImageMaxWidth(finalUrl, 440)
+          const isDirect = !isFallback && directMediaIds[media.id]
 
           return (
             <div className="relative h-full w-full">
@@ -292,6 +294,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 src={optimizedUrl}
                 alt={title || t('banner_image_alt', 'Banner')}
                 fill
+                unoptimized={isDirect}
                 priority={isHero}
                 fetchPriority={isHero ? 'high' : 'auto'}
                 loading={isHero ? 'eager' : 'lazy'}
@@ -307,9 +310,14 @@ export default function BannerCarousel({ position, className = '', initialBanner
                   if (isActive) setLoading(false)
                 }}
                 onError={() => {
-                  if (!isFallback) {
-                    setFallbackMediaIds(prev => ({ ...prev, [media.id]: true }))
+                  if (isFallback) return
+                  // The /_next/image optimizer runs inside Next (OOM, restart):
+                  // retry the ready-made file straight from the CDN first.
+                  if (!isDirect) {
+                    setDirectMediaIds(prev => ({ ...prev, [media.id]: true }))
+                    return
                   }
+                  setFallbackMediaIds(prev => ({ ...prev, [media.id]: true }))
                 }}
               />
             </div>
