@@ -17,6 +17,22 @@ from apps.catalog.utils.storage_paths import (
 
 logger = logging.getLogger(__name__)
 
+# CDN LC Waikiki и FLO (img-lcwaikiki.mncdn.com, floimages.mncdn.com) отвечают 422
+# на запрос без браузерного User-Agent, а ScraperConfig.user_agent по умолчанию пуст.
+DEFAULT_MEDIA_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/140.0.0.0 Safari/537.36"
+)
+
+
+def _with_default_user_agent(headers):
+    """Заголовки запроса медиа: User-Agent вызывающего сохраняется, иначе — браузерный."""
+    result = dict(headers or {})
+    if not any(str(key).lower() == "user-agent" for key in result):
+        result["User-Agent"] = DEFAULT_MEDIA_USER_AGENT
+    return result
+
 
 def _ranged_download(client, url, headers, chunk=512 * 1024, max_bytes=200 * 1024 * 1024):
     """Чанкованная загрузка через bounded Range — для CDN, которые отдают видео
@@ -87,7 +103,7 @@ def download_and_optimize_parsed_media(
         parser_name: Имя парсера (instagram, ilacabak, zara и т.д.)
         product_id: ID или external_id товара
         index: Индекс файла (0 для главного)
-        headers: Опциональные HTTP-заголовки
+        headers: Опциональные HTTP-заголовки (без User-Agent — DEFAULT_MEDIA_USER_AGENT)
         timeout: Таймаут запроса в секундах
         sub_folder: Опциональная подпапка для сохранения (например, имя аккаунта)
 
@@ -99,6 +115,7 @@ def download_and_optimize_parsed_media(
 
     try:
         parser_slug = parser_name.lower().replace(" ", "-").replace("_", "-")
+        headers = _with_default_user_agent(headers)
 
         content = None
         content_type = ""
