@@ -411,7 +411,10 @@ class FloParser(BaseScraper):
 
         return ScrapedProduct(
             name=clean_text(str(detail.get("name") or "")),
-            description=self._clean_description(detail.get("description")),
+            description=(
+                self._clean_description(detail.get("description"))
+                or self._features_description(detail)
+            ),
             price=primary["price"],
             old_price=primary.get("old_price"),
             currency="TRY",
@@ -526,6 +529,35 @@ class FloParser(BaseScraper):
             if isinstance(row, dict) and row.get("name"):
                 return clean_text(str(row["name"]))
         return ""
+
+    # Поля блока «Ürün Özellikleri» карточки FLO (живая карточка 21.10).
+    FEATURE_FIELDS = (
+        ("Marka", "manufacturer"),
+        ("Model", "model"),
+        ("Renk", "renk"),
+        ("Cinsiyet", "cinsiyet"),
+        ("Dış Materyal", "materyal"),
+        ("İç Materyal", "ic_astar_1"),
+        ("Taban", "taban"),
+        ("Saya", "saya"),
+        ("Kapama Şekli", "kapama_sekli"),
+        ("Topuk Yüksekliği", "topuk_yuksekligi"),
+        ("Üretim Yeri", "uretim_yeri"),
+    )
+
+    @classmethod
+    def _features_description(cls, detail: Dict[str, Any]) -> str:
+        """Описание из «Ürün Özellikleri», если текстового описания у FLO нет.
+
+        У части товаров FLO поле description пустое и на самом сайте — там
+        только характеристики; без них товар сохранялся без описания.
+        """
+        parts = []
+        for label, key in cls.FEATURE_FIELDS:
+            value = clean_text(str(detail.get(key) or ""))
+            if value:
+                parts.append(f"{label}: {value}")
+        return "; ".join(parts)
 
     @staticmethod
     def _clean_description(value: Any) -> str:

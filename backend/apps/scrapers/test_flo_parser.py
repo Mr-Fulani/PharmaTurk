@@ -550,3 +550,38 @@ def test_flo_without_special_price_has_no_strikethrough(monkeypatch):
 
     assert product.price == 3499.0
     assert product.old_price is None
+
+
+def test_flo_empty_source_description_is_built_from_product_features(monkeypatch):
+    # Живая карточка 21.10 (Vans Fılmore): description пустой и на сайте FLO —
+    # там только «Ürün Özellikleri»; раньше товар сохранялся без описания.
+    detail = {
+        **_detail(),
+        "description": "",
+        "manufacturer": "Vans",
+        "model": "Fılmore",
+        "renk": "Siyah",
+        "cinsiyet": "Unisex",
+        "materyal": "DERI (DANA)",
+        "ic_astar_1": "TEKSTIL",
+        "taban": "KAUCUK",
+        "colors": [],
+    }
+    parser = FloParser()
+    monkeypatch.setattr(parser, "_fetch", lambda url: _product_html(detail))
+
+    product = parser.parse_product_detail("https://www.flo.com.tr/urun/x-101792825")
+
+    assert product.description == (
+        "Marka: Vans; Model: Fılmore; Renk: Siyah; Cinsiyet: Unisex; "
+        "Dış Materyal: DERI (DANA); İç Materyal: TEKSTIL; Taban: KAUCUK"
+    )
+
+
+def test_flo_source_description_still_wins(monkeypatch):
+    parser = FloParser()
+    monkeypatch.setattr(parser, "_fetch", lambda url: _product_html({**_detail(), "colors": []}))
+
+    product = parser.parse_product_detail("https://www.flo.com.tr/urun/x-101792825")
+
+    assert product.description.startswith("Nike Court Borough Low Recraft")
