@@ -153,6 +153,7 @@ class LcwParser(BaseScraper):
         # редиректит (301) старые id цветов на другие, и ссылка листинга на
         # такой цвет иначе собирается второй карточкой той же модели.
         self._resolved_variant_urls = set()
+        self.item_errors = 0
         seen_group_ids = set()
         seen_family_keys = set()
         yielded = 0
@@ -220,7 +221,11 @@ class LcwParser(BaseScraper):
                 else:
                     product = self.parse_product_detail(product_url)
                 if not product:
-                    product = self._build_list_product(anchor, product_url, category_url)
+                    # Карточка не загрузилась. Товар из текста плитки (без фото и
+                    # размеров, с другой схемой id) потом становился дублем.
+                    self.item_errors += 1
+                    self.logger.warning("LCW: карточка не загрузилась, пропуск %s", product_url)
+                    continue
 
                 group_id = ""
                 if product and isinstance(product.attributes, dict):
@@ -429,37 +434,6 @@ class LcwParser(BaseScraper):
 
     def _is_category_url(self, url: str) -> bool:
         return self.is_lcw_category_url(url) and "/magaza/" not in url
-
-    def _build_list_product(
-        self,
-        anchor,
-        product_url: str,
-        category_url: str,
-    ) -> Optional[ScrapedProduct]:
-        anchor_text = clean_text(anchor.get_text(" ", strip=True))
-        if not anchor_text:
-            return None
-
-        price_text = self._extract_price_text(anchor_text)
-        name = anchor_text
-        if price_text:
-            name = clean_text(name.replace(price_text, ""))
-        name = self.VARIANT_COUNT_RE.sub("", name).strip()
-
-        if not name:
-            return None
-
-        return ScrapedProduct(
-            name=name,
-            price=float(normalize_price(price_text)) if price_text else None,
-            currency=extract_currency(price_text) if price_text else "TRY",
-            url=product_url,
-            images=[],
-            category=self._extract_category_name_from_url(category_url),
-            brand="",
-            external_id=f"lcw-{self._extract_product_id(product_url)}",
-            source=self.get_name(),
-        )
 
     def _parse_single_variant(self, product_url: str, html: str) -> Optional[Dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
@@ -1319,8 +1293,3 @@ class LcwParser(BaseScraper):
     def _extract_category_id(self, url: str) -> str:
         match = self.CATEGORY_PATH_RE.search(urlparse(url).path)
         return match.group(1) if match else ""
-
-    def _extract_category_name_from_url(self, category_url: str) -> str:
-        slug = urlparse(category_url).path.strip("/").split("/")[-1]
-        slug = re.sub(r"-t-\d+$", "", slug)
-        return clean_text(slug.replace("-", " "))
