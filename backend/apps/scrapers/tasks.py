@@ -1163,9 +1163,7 @@ def search_products_task(self,
             }
         
         # Формируем URL поиска (зависит от сайта)
-        if 'ilacabak' in scraper_name:
-            search_url = f"{scraper_config.base_url}/arama?q={query}"
-        elif 'zara' in scraper_name:
+        if 'zara' in scraper_name:
             search_url = f"{scraper_config.base_url}/search?searchTerm={query}"
         else:
             search_url = f"{scraper_config.base_url}/search?q={query}"
