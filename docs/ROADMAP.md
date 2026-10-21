@@ -1,7 +1,9 @@
 # Roadmap Mudaroba
 
 Обновлено: **21 августа 2026 года** после production-релиза и повторной сверки
-кода, конфигурации, документации и эксплуатационного состояния.
+кода, конфигурации, документации и эксплуатационного состояния. **22 октября
+2026 года** отмечено сделанное в сентябре–октябре (раздел «Завершено в октябре
+2026», P1.5, P1.6); остальные разделы — по сверке 21 августа.
 
 Этот документ разделяет:
 
@@ -15,7 +17,7 @@
 
 - продукт и API называются Mudaroba; `PharmaTurk` остаётся историческим именем репозитория;
 - Python 3.12.13, Django 5.2.17;
-- Node.js 22.23.2, Next.js 15.5.21;
+- Node.js 22.23.2, Next.js 15.5.28;
 - PostgreSQL 15.18, Redis 7.4.10, Qdrant 1.18.3;
 - OpenSearch исключён из кода и актуального Compose как неиспользуемый; legacy
   container остановлен, а его image/volume временно сохранены только для rollback;
@@ -164,7 +166,7 @@ path parameters, неявного поля `product_type` и конфликту�
 
 ### P1.2 SEO-аудит после обновления Next.js
 
-Повторно проверить на Next.js 15.5.21:
+Повторно проверить на Next.js 15.5.28:
 
 - только `404` API превращается в `notFound`, а timeout/5xx остаются временной ошибкой;
 - canonical/hreflang для ru без префикса и en с `/en`;
@@ -191,7 +193,11 @@ path parameters, неявного поля `product_type` и конфликту�
 Базовая доставка production-инцидентов закрыта 2026-09-04: watchdog в
 обслуживаемой Celery queue проверяет homepage/liveness/readiness, отправляет
 дедуплицированные Telegram alert/recovery и имеет operations runbook. Полный отказ
-самого хоста требует отдельного off-host synthetic monitor.
+самого хоста требует отдельного off-host synthetic monitor: после зависания
+2026-10-19 он описан в [PRODUCTION_MONITORING_RUNBOOK.md](PRODUCTION_MONITORING_RUNBOOK.md)
+(HetrixTools, проверки `/api/health/` и главной раз в минуту, Telegram). Подключает
+владелец в веб-интерфейсе провайдера; внутренний watchdog включается
+`PRODUCTION_WATCHDOG_ENABLED=true` в прод `.env`.
 
 Нужно добавить:
 
@@ -204,15 +210,17 @@ path parameters, неявного поля `product_type` и конфликту�
 ### P1.6 Тестовые и lint-gates
 
 Добавлены schema, receipt-isolation, trusted-IP throttle и критические permission
-tests. Flake8 остаётся информационным из-за большого legacy-baseline. Остаётся:
+tests. Flake8 с 2026-09-05 — блокирующий инкрементальный gate
+(`scripts/flake8_quality_gate.py`): общий baseline ограничен (`--max-total`),
+изменённые файлы не могут добавлять нарушения, новые файлы — без нарушений.
+Остаётся:
 
 - завершить permission matrix для всех API routes;
 - frontend tests visual search ошибок `413/415/429`;
 - заменить 44 оставшихся `<img>` (hooks warnings уже закрыты), снижая обязательный
   `--max-warnings 44`, и обновить deprecated ESLint 8; online audit полного и
   production-only дерева уже чист;
-- зафиксировать flake8 baseline по каталогам, запретить рост и постепенно
-  перевести проверку в обязательный gate.
+- постепенно снижать общий flake8 baseline (`--max-total` в CI).
 
 ### P1.7 Надёжность checkout/payment orchestration
 
@@ -269,8 +277,10 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
   фоново, хранить готовый объект и отдавать с ETag;
 - унифицировать оставшиеся privileged download paths (`catalog/signals.py`,
   `parser_media_handler.py`, `vk_market_sync.py`) с bounded/pinned safe fetcher;
-- на масштабе вынести broker/cache/result из логических Redis DB в физически
-  раздельные managed instances.
+- ~~вынести broker/cache/result из логических Redis DB в раздельные
+  instances~~ — сделано 2026-10-19 (PR #100): кэш Django — отдельный контейнер
+  `redis-cache` (`allkeys-lru`, 128mb), брокер и результаты Celery — `redis`
+  (`noeviction`, 128mb); managed instances — только если вырастет нагрузка.
 
 ## P3 — продуктовые улучшения
 
@@ -279,6 +289,39 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
 - автоматизированная проверка ru/en structured data;
 - quality dashboard рекомендаций и визуального поиска;
 - SLO для checkout, платежей и freshness каталога.
+
+## Завершено в октябре 2026
+
+- **Бэкап БД вне сервера** — ежедневный `pg_dump` во внешний приватный бакет R2
+  отдельным ключом, ротация 7/4/3, еженедельная проверка, Telegram (PR #102,
+  [DB_BACKUP.md](DB_BACKUP.md)).
+- **Память и Redis** — кэш Django в отдельном `redis-cache` (`allkeys-lru`), брокер
+  и результаты Celery в `redis` (`noeviction`), `mem_limit` у каждого сервиса,
+  сумма ≤ 7 ГиБ (PR #100, #101, #104, #108, [PROD_MEMORY.md](PROD_MEMORY.md));
+  байты картинок больше не пишутся в Redis (#89); проверка места перед pull и
+  очистка старых образов после деплоя (#88, [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md)).
+- **Origin и обслуживание базы** — Cloudflare Full (strict) на 443, ночная чистка
+  сессий и логов парсеров (PR #103, в main вместе с #102;
+  [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md), [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md));
+  ответы 500 не кэшируются Cloudflare (#115); Beat по crontab (МСК) вместо
+  интервалов (#106).
+- **AI-прогоны** — раздел «AI-прогоны» в админке (#93), перевод абзацев инструкций
+  через Batch API кнопками (#123), тексты не медицинских товаров правилами (#96),
+  лекарства кодом и памятью переводов (#95), отсечение сдвинутых переводов (#121,
+  #122) — [AI_RUNS_ADMIN_GUIDE.md](AI_RUNS_ADMIN_GUIDE.md), [AI_GUIDE.md](../AI_GUIDE.md).
+  Массовые прогоны запускает владелец (пилот → исправления → следующая партия).
+- **Напоминания о Списке заявки** — email и Telegram, выключены по умолчанию,
+  включаются в админке (#142, [CART_REMINDERS.md](CART_REMINDERS.md)).
+- **Режимы парсеров** — товар по ссылке, категория до конца, весь сайт / профиль
+  Instagram у всех каталожных парсеров (#134 в релизе #135,
+  [PARSER_MODES.md](PARSER_MODES.md)); Bershka/Pull&Bear/Massimo Dutti через API
+  `/itxrest` (#94); ilacabak удалён (#131); аудит парсеров —
+  [AUDIT_2026-10-20_PARSERS.md](AUDIT_2026-10-20_PARSERS.md).
+- **Каталог и SEO** — история slug и 301 со старого URL (#86), аналитика воронки
+  GA4 + Метрика (#111, [ANALYTICS_EVENTS.md](ANALYTICS_EVENTS.md)), страница бренда
+  без детоаста jsonb и N+1 (#113, #117, #118,
+  [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md)).
+- **Наблюдаемость** — внешний off-host монитор описан (см. P1.5).
 
 ## Завершено в аудите августа 2026
 

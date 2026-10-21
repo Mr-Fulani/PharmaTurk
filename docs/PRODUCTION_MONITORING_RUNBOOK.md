@@ -68,7 +68,9 @@ origin or Telegram receiver credentials.
 1. Confirm `https://mudaroba.com/api/live/` and `/api/health/` independently.
 2. If liveness fails, inspect backend container status and logs.
 3. If readiness fails with `db=false`, inspect PostgreSQL health and connection
-   exhaustion. If `cache=false`, inspect Redis and the cache logical database.
+   exhaustion. If `cache=false`, inspect the separate cache container
+   `redis-cache` (`allkeys-lru`, `maxmemory 128mb`; the Celery broker lives in
+   `redis`, see `docs/PROD_MEMORY.md`).
 4. If only the homepage fails, inspect Nginx, frontend and Cloudflare origin
    routing.
 5. Do not clear Redis, restart databases, or restore backups merely to silence

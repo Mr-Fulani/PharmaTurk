@@ -43,7 +43,7 @@
 
 ### Задачи Celery
 - [ ] Обновлен `backend/apps/catalog/tasks.py`
-- [ ] `backend/celery_beat_schedule.py` - расписание
+- [ ] Расписание — `CELERY_BEAT_SCHEDULE` в `backend/config/settings.py` (`currency-update-rates`, `currency-update-prices`; см. `CELERY_TASKS.md`)
 
 ### Документация
 - [ ] `CURRENCY_CONVERSION_PLAN.md` - план архитектуры

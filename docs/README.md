@@ -21,11 +21,11 @@
 | [AUDIT_2026-08-09.md](AUDIT_2026-08-09.md) | полный security/architecture/documentation audit, проверки и release gates | итоговый отчёт 2026-08-09 |
 | [README.md](../README.md) | продукт, архитектура, быстрый старт и security baseline | актуализирован 2026-08-21 |
 | [README-DEV.md](../README-DEV.md) | локальная разработка, тесты, seed и permissions | актуализирован 2026-08-21 |
-| [ROADMAP.md](ROADMAP.md) | текущий backlog и отделённый snapshot июня 2026 | актуализирован 2026-08-21 |
-| [TECH_DEBT.md](TECH_DEBT.md) | реестр подтверждённого открытого технического долга | актуализирован 2026-08-22 |
+| [ROADMAP.md](ROADMAP.md) | текущий backlog и отделённый snapshot июня 2026 | актуализирован 2026-08-21, сделанное в октябре — 2026-10-22 |
+| [TECH_DEBT.md](TECH_DEBT.md) | реестр подтверждённого открытого технического долга | актуализирован 2026-10-22 (раздел за октябрь 2026) |
 | [SOURCE_OFFER_CART_VERIFICATION_PLAN.md](SOURCE_OFFER_CART_VERIFICATION_PLAN.md) | рабочий план проверки цены и наличия первоисточника в корзине и checkout | активен с 2026-08-27 |
 | [PRODUCT_CARD_SOURCE_REFRESH_PLAN.md](PRODUCT_CARD_SOURCE_REFRESH_PLAN.md) | план и статус обновления цены/вариантов спарсенной карточки при открытии | активен с 2026-08-29 |
-| [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | rollout, метрики, alerting и безопасный повтор source-offer checks | актуализирован 2026-08-31 |
+| [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | rollout, метрики, alerting и безопасный повтор source-offer checks; поиск продавца БАДов (`discover_supplement_stock_offers`) | актуализирован 2026-08-31, переменные обновления карточки и поиск продавца БАДов — 2026-10-22 |
 | [PRODUCTION_MONITORING_RUNBOOK.md](PRODUCTION_MONITORING_RUNBOOK.md) | synthetic/readiness watchdog, Telegram delivery, дедупликация, внешняя проверка доступности и triage | актуализирован 2026-10-19 |
 | [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md) | что занимает диск прода, очистка образов при деплое, лимиты Redis и ротация логов | снимок 2026-10-18 |
 | [DB_BACKUP.md](DB_BACKUP.md) | ежедневный бэкап базы в отдельный бакет R2, проверка, включение и восстановление с нуля на новом сервере | 2026-10-19 |
@@ -34,12 +34,15 @@
 | [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict) с Origin Certificate на 443, закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-10-19 |
 | [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md) | под root: обновления ОС и Docker, swap, журнал systemd, перезагрузка в тихий час | 2026-10-19 |
 | [AUDIT_2026-10-19_PARSERS_CATALOG.md](AUDIT_2026-10-19_PARSERS_CATALOG.md) | почему не запускаются Instagram/UmmaLand/Akakce, товары без картинки и цены, сброс интервалов beat при деплое | отчёт 2026-10-19 |
-| [AUDIT_2026-10-20_PARSERS.md](AUDIT_2026-10-20_PARSERS.md) | живые пробы всех 13 парсеров, найденные и исправленные баги, что решить по Instagram/UmmaLand/akakce/ilacabak | отчёт 2026-10-20 |
+| [AUDIT_2026-10-20_PARSERS.md](AUDIT_2026-10-20_PARSERS.md) | живые пробы всех парсеров (на 20.10 их было 13; сейчас 11 — ilacabak удалён в #131), найденные и исправленные баги, что решить по Instagram/UmmaLand/akakce | отчёт 2026-10-20 |
 | [PARSER_MODES.md](PARSER_MODES.md) | три режима каждого парсера (товар, категория до конца, весь сайт / профиль Instagram), как запустить в админке, откуда берутся категории | 2026-10-21 |
 | [PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md) | Bright Data proxy/Web Unlocker: тарифы, бюджет, возможности и безопасное переиспользование | актуализирован 2026-08-31 |
 | [SOURCE_OFFER_CART_API.md](SOURCE_OFFER_CART_API.md) | Cart API: verification fields, issue codes, 409/503 и действия клиента | актуализирован 2026-08-27 |
-| [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | актуализирован и проверен 2026-08-21 |
-| [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) | правила SEO, backend/frontend и e-commerce | актуализирован 2026-08-09 |
+| [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | проверен 2026-08-21, актуализирован 2026-10-22 (бэкап в R2, origin 443, Redis) |
+| [scripts/release/README.md](../scripts/release/README.md) | скрипты релиза: проверка, миграции, выкладка, откат, сокращённый backend-релиз | актуализирован 2026-10-18 |
+| [MANAGEMENT_COMMANDS.md](MANAGEMENT_COMMANDS.md) | справочник management-команд, которые не описаны в тематических доках; устаревшие помечены | 2026-10-22 |
+| [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) | правила SEO, backend/frontend и e-commerce | актуализирован 2026-10-22 |
+| AUDIT_2026-10-15_SEO_GROWTH.md | аудит качества, SEO и воронки 15.10: P0 (фейковая карта в checkout, аналитика, заявка на лекарства, Rx-разметка, картинки под Disallow, сырой контент, пустые категории) закрыты к 17.10 | локальный отчёт владельца, в репозиторий не коммитится (`.gitignore`) |
 
 ## Доменная документация
 
@@ -50,7 +53,10 @@
 - [AUTO_PARTS_AI_DESIGN.md](AUTO_PARTS_AI_DESIGN.md) — дизайн домена автозапчастей: OEM-номера, применимость, обработка без LLM;
 - [HOW_TO_ORDER_PAGE.md](HOW_TO_ORDER_PAGE.md) — страница «Как заказать»: разделы, SEO, позиция баннеров `how_to_order`;
 - [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md) — скорость страницы бренда: замеры, детоаст `external_data`, частичные индексы 0217, `view=card`;
-- [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`), бренды производителей лекарств/БАДов, доменные записи прежнего типа после смены типа товара (`retire_stale_domain_records`);
+- [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`), бренды производителей лекарств/БАДов, доменные записи прежнего типа после смены типа товара (`retire_stale_domain_records`), ложные зачёркнутые цены (`clear_heuristic_old_prices`), названия LC Waikiki (`repair_lcw_names`);
+- [CATEGORY_MARKUP_INHERITANCE.md](CATEGORY_MARKUP_INHERITANCE.md) — наследование товарной наценки: бренд → категория → родитель → глобальная;
+- [brand-counts-cache.md](brand-counts-cache.md) — счётчики товаров брендов: снимок в кэше, Beat раз в 60 с;
+- [ANALYTICS_EVENTS.md](ANALYTICS_EVENTS.md) — согласие, события GA4/Метрики и цели, как проверять;
 - [HYDRATION_ERRORS_GUIDE.md](HYDRATION_ERRORS_GUIDE.md) — диагностика hydration;
 - [TZ_SEO_PERF_FIXES.md](TZ_SEO_PERF_FIXES.md) — архивное ТЗ и отчёт SEO/performance от 2026-06-12;
 - [frontend/LOCALIZATION_GUIDE.md](../frontend/LOCALIZATION_GUIDE.md) — локализация frontend;
@@ -61,6 +67,8 @@
 - [CRYPTO_PAYMENTS.md](../CRYPTO_PAYMENTS.md) — CoinRemitter и жизненный цикл криптоинвойса;
 - [notifications-and-receipts.md](notifications-and-receipts.md) — каналы уведомлений и PDF-чеки;
 - [CART_REMINDERS.md](CART_REMINDERS.md) — напоминания о неотправленном Списке заявки: включение в админке, кому и когда, отписка, журнал;
+- [FEEDBACK_TRANSLATIONS.md](FEEDBACK_TRANSLATIONS.md) — переводы отзывов и вопросов: где заполнять в админке;
+- [backend/apps/users/AUTHENTICATION.md](../backend/apps/users/AUTHENTICATION.md) — способы входа, JWT, лимиты частоты, Google/VK/Telegram;
 - [SOCIAL_AUTH_PRODUCTION.md](SOCIAL_AUTH_PRODUCTION.md) — production OAuth/social auth;
 - [DUPLICATE_MODERATION_GUIDE.md](../DUPLICATE_MODERATION_GUIDE.md) — модерация дублей.
 
@@ -73,6 +81,7 @@
 - [AI_TEMPLATES.md](../AI_TEMPLATES.md) — AI-шаблоны;
 - [AI_TEST_COMMANDS.md](../AI_TEST_COMMANDS.md) и [AI_QUICK_TEST.md](../AI_QUICK_TEST.md) — специализированные проверки;
 - [PERSONALIZED_RECOMMENDATIONS.md](PERSONALIZED_RECOMMENDATIONS.md) — что требуется до включения настоящей персонализации;
+- [ml_service/README.md](../ml_service/README.md) — заглушка отдельного ML-сервиса (не используется, backend работает с LLM/Qdrant напрямую);
 - [CELERY_TASKS.md](../CELERY_TASKS.md) — очереди и расписание Celery.
 
 AI и VAPI HTTP API являются административными и требуют staff-пользователя. Наличие документа с примером endpoint не означает публичный доступ.
@@ -81,6 +90,8 @@ AI и VAPI HTTP API являются административными и тр�
 
 - [SCRAPERS_GUIDE.md](../SCRAPERS_GUIDE.md) — общий workflow парсеров;
 - [PARSER_MODES.md](PARSER_MODES.md) — режимы «товар / категория / весь сайт» и как их запускать;
+- [MEDICINE_PARSER_CATEGORIES.md](MEDICINE_PARSER_CATEGORIES.md) — как парсер выбирает категорию медикамента;
+- [PARSER_CATALOG_AUDIT_2026-09-14.md](PARSER_CATALOG_AUDIT_2026-09-14.md) — проверка парсеров 14.09 и перенос исправлений в main 17.10;
 - [INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md) и [quickstart](../backend/INSTAGRAM_PARSER_QUICKSTART.md);
 - [PARSER_R2_GUIDE.md](../PARSER_R2_GUIDE.md) — storage для результатов парсинга;
 - [UMMALAND_PARSER_GUIDE.md](../UMMALAND_PARSER_GUIDE.md) — доменный parser guide.

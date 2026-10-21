@@ -76,12 +76,15 @@ readiness. Не оставляйте dev-пароль `pharmaturk` на публ
 `REDIS_SOCKET_TIMEOUT_SECONDS` ограничивают ожидание зависимостей, в том числе
 readiness probe. Не задавайте нулевые/неограниченные timeout в production.
 
-Redis также разделён логически: `REDIS_URL` — Celery broker (`/0`),
-`REDIS_CACHE_URL` — Django cache/throttles (`/1`), а
-`CELERY_RESULT_BACKEND_URL` — результаты задач (`/2`). Не направляйте их в одну
-DB: очистка cache иначе может удалить очередь или результаты Celery. Logical DB
-не изолируют общий лимит памяти и политику eviction; при существенной нагрузке
-broker, cache и result backend следует вынести в отдельные Redis instances.
+Redis разделён на два контейнера (PR #100): `redis` — Celery broker
+(`REDIS_URL`, `/0`) и результаты задач (`CELERY_RESULT_BACKEND_URL`, `/2`),
+`maxmemory 128mb`, `noeviction`, RDB-снимки; `redis-cache` — Django
+cache/throttles (`REDIS_CACHE_URL=redis://redis-cache:6379/0`), `maxmemory
+128mb`, `allkeys-lru`, без записи на диск. `REDIS_CACHE_URL` сервисам задаёт сам
+`docker-compose.yml` (перекрывает `.env`). Не направляйте все три URL в одну
+цель: очистка cache иначе может удалить очередь или результаты Celery
+(`validate_redis_separation` требует три разные цели). Подробности и лимиты —
+[docs/PROD_MEMORY.md](docs/PROD_MEMORY.md).
 
 Если residential proxy для парсеров выполняет TLS inspection, смонтируйте PEM
 bundle его CA read-only и задайте `SCRAPER_PROXY_CA_BUNDLE=/run/secrets/...`.

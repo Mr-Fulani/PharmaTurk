@@ -54,10 +54,13 @@ Storage — смена четырёх переменных в `.env`.
 
 | Что | Когда | Где |
 |---|---|---|
-| `run_database_backup` | каждый день 01:15 UTC (04:15 МСК) | очередь `celery`, контейнер `celeryworker` |
-| `check_database_backup` | воскресенье 01:45 UTC (04:45 МСК) | там же |
+| `run_database_backup` | каждый день 01:15 МСК | очередь `celery`, контейнер `celeryworker` |
+| `check_database_backup` | воскресенье 01:45 МСК | там же |
 
-Celery Beat считает расписание в UTC (`CELERY_TIMEZONE` не задан).
+Celery Beat считает расписание по МСК: `CELERY_TIMEZONE` не задан, и Celery
+берёт `TIME_ZONE = "Europe/Moscow"` из настроек Django. Время в имени копии —
+UTC: копия в 01:15 МСК называется `mudaroba-ГГГГММДДT2215ссZ.dump` с датой
+предыдущего дня.
 
 Ежедневная копия:
 

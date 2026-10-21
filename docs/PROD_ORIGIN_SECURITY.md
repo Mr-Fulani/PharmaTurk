@@ -67,7 +67,7 @@ openssl x509 -in nginx/tls/origin.pem -noout -subject -enddate
 
 `git status` должен остаться чистым: содержимое `nginx/tls/` в `.gitignore`.
 
-### 3. Релиз с этим PR (если ещё не задеплоен)
+### 3. Релиз с PR #103 (в main попал вместе с #102; если ещё не задеплоен)
 
 Полный `deploy.sh` пересоздаёт nginx с портом 443 и каталогом `nginx/tls`.
 Затем `docker restart mudaroba-nginx-1` и смоук. Если файлы из шага 2 уже

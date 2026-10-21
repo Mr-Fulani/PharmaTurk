@@ -181,8 +181,8 @@ frontend/nginx — релиз только полный (`deploy.sh`), `backend_
 
    ```bash
    docker update --memory 640m --memory-swap 1280m mudaroba-postgres-1
-   docker update --memory 256m --memory-swap 512m mudaroba-redis-1
-   docker update --memory 512m --memory-swap 1024m mudaroba-qdrant-1
+   docker update --memory 192m --memory-swap 384m mudaroba-redis-1
+   docker update --memory 384m --memory-swap 768m mudaroba-qdrant-1
    ```
 
 5. Проверка: `curl -s https://mudaroba.com/api/health/` → `"cache":true`;
