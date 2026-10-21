@@ -30,7 +30,7 @@
 | [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md) | что занимает диск прода, очистка образов при деплое, лимиты Redis и ротация логов | снимок 2026-10-18 |
 | [DB_BACKUP.md](DB_BACKUP.md) | ежедневный бэкап базы в отдельный бакет R2, проверка, включение и восстановление с нуля на новом сервере | 2026-10-19 |
 | [PROD_MEMORY.md](PROD_MEMORY.md) | лимиты памяти контейнеров, брокер и кэш в разных Redis, swap, применение без потери очередей | после инцидента 2026-10-19 |
-| [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md) | ночная чистка сессий Django и логов парсеров, первая чистка, VACUUM / VACUUM FULL и их блокировки | снимок 2026-10-19 |
+| [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md) | ночная чистка сессий Django и логов парсеров, первая чистка, VACUUM / VACUUM FULL и их блокировки; autovacuum таблиц товаров после массовых правок | снимок 2026-10-19, autovacuum — 2026-10-21 |
 | [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict) с Origin Certificate на 443, закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-10-19 |
 | [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md) | под root: обновления ОС и Docker, swap, журнал systemd, перезагрузка в тихий час | 2026-10-19 |
 | [AUDIT_2026-10-19_PARSERS_CATALOG.md](AUDIT_2026-10-19_PARSERS_CATALOG.md) | почему не запускаются Instagram/UmmaLand/Akakce, товары без картинки и цены, сброс интервалов beat при деплое | отчёт 2026-10-19 |
