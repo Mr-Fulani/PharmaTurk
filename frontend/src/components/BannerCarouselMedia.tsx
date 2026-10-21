@@ -64,6 +64,8 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const [expandedMediaIds, setExpandedMediaIds] = useState<Record<number, boolean>>({})
   const [firstMediaReady, setFirstMediaReady] = useState(false)
   const [inViewport, setInViewport] = useState(false)
+  // Главный баннер стоит в первом экране: его ролик не ждёт гидратации.
+  const [nearViewport, setNearViewport] = useState(position === 'main')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
@@ -120,13 +122,22 @@ export default function BannerCarousel({ position, className = '', initialBanner
     if (!container) return
     if (typeof IntersectionObserver === 'undefined') {
       setInViewport(true)
+      setNearViewport(true)
       return
     }
     const observer = new IntersectionObserver(([entry]) => {
       setInViewport(entry.isIntersecting)
     }, { threshold: 0.1 })
+    // Ролики (по 2 МБ) начинают грузиться за полэкрана до блока, а не вместе со страницей.
+    const nearObserver = new IntersectionObserver(([entry]) => {
+      setNearViewport(entry.isIntersecting)
+    }, { rootMargin: '50% 0px' })
     observer.observe(container)
-    return () => observer.disconnect()
+    nearObserver.observe(container)
+    return () => {
+      observer.disconnect()
+      nearObserver.disconnect()
+    }
   }, [loading, banners.length])
 
   // Функция для сброса и перезапуска автоматического переключения
@@ -226,6 +237,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
     const isActive = activeMediaId !== null ? media.id === activeMediaId : index === 0
     const fullUrl = media.content_url ? resolveMediaUrl(media.content_url) : ''
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl, 'ambient') : null
+    const playVideo = index === 0 && nearViewport
 
     const handleThumbnailClick = () => {
       if (index >= 1 && displayMedia.length > 1) {
@@ -334,7 +346,18 @@ export default function BannerCarousel({ position, className = '', initialBanner
         )}
         {media.content_type === 'video' && !embedUrl && fullUrl && (
           <video
-            autoPlay
+            // Ролики играют, только пока блок рядом с экраном: активный слайд и видимые
+            // миниатюры (на десктопе). Скрытые CSS-ом миниатюры (на телефоне все) ролик
+            // не качают: preload="metadata" у этих mp4 (moov в конце) скачивает файл почти
+            // целиком. autoPlay сам ролик не останавливает.
+            ref={(video) => {
+              if (!video) return
+              const visible = index === 0 || getComputedStyle(video).visibility !== 'hidden'
+              if (nearViewport && visible) video.play().catch(() => {})
+              else video.pause()
+            }}
+            autoPlay={playVideo}
+            preload={playVideo ? 'auto' : 'none'}
             loop
             muted
             playsInline
