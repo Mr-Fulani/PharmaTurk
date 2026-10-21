@@ -116,18 +116,6 @@ def refresh_product_card_source_task(product_id: int, lock_token: str) -> dict:
         service.release_lock(product_id, lock_token)
 
 
-@shared_task
-def refresh_stock() -> str:
-    """Обновляет данные о наличии товаров (заглушка)."""
-    return "stock refreshed"
-
-
-@shared_task
-def refresh_prices() -> str:
-    """Обновляет цены на товары с учетом наценок/акций (заглушка)."""
-    return "prices refreshed"
-
-
 # Задачи для системы ценообразования
 @shared_task(name='currency.update_rates')
 def update_currency_rates():

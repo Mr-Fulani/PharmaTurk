@@ -49,9 +49,8 @@
   - Пошаговая инструкция для начала работы
   - Примеры команд
 
-- ✅ **`backend/apps/scrapers/parsers/instagram_examples.py`** - примеры кода
-  - Примеры использования в Python коде
-  - Различные сценарии парсинга
+- ~~`backend/apps/scrapers/parsers/instagram_examples.py`~~ — примеры кода, удалён
+  22.10.2026 как неиспользуемый
 
 - ✅ **Обновлен `README.md`** - добавлена секция об Instagram парсере
 
@@ -64,7 +63,6 @@ PharmaTurk/
 │   │   └── scrapers/
 │   │       ├── parsers/
 │   │       │   ├── instagram.py              # Основной парсер
-│   │       │   ├── instagram_examples.py     # Примеры использования
 │   │       │   └── registry.py               # Обновлен: регистрация парсера
 │   │       └── management/
 │   │           └── commands/

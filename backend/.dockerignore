@@ -18,3 +18,5 @@ media
 staticfiles
 celerybeat-schedule
 products_db_dump.txt
+# Ручные скрипты разработчика (пишут в БД) — не для продакшн-образа
+scripts/dev
