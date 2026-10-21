@@ -173,7 +173,8 @@ DB_BACKUP_TEST_RESTORE_ENABLED=false
 
 1. Релиз с этим изменением (новый образ backend с `pg_dump`). Подходит и
    сокращённый backend-релиз (`backend_release.py`): миграций нет. После —
-   `docker restart mudaroba-nginx-1` и смоук `/api`.
+   смоук `/api` через сайт (рестарт nginx не нужен — [PROD_MEMORY.md](PROD_MEMORY.md),
+   «nginx и новые адреса контейнеров»).
 2. Проверка настроек и первая копия вручную (минута-две):
 
    ```bash
@@ -277,7 +278,6 @@ docker exec mudaroba-postgres-1 sh -c \
 docker compose -p mudaroba -f docker-compose.yml -f docker-compose.prod.yml up -d redis redis-cache qdrant
 docker compose -p mudaroba -f docker-compose.yml -f docker-compose.prod.yml --profile ops run --rm migrate
 docker compose -p mudaroba -f docker-compose.yml -f docker-compose.prod.yml up -d
-docker restart mudaroba-nginx-1
 curl -s http://localhost/api/health/
 ```
 

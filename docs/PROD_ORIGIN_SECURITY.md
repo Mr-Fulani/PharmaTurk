@@ -34,7 +34,7 @@
   308 на `https://mudaroba.com`, неизвестный Host — 444.
 
 Изменены описания nginx в Compose — релиз только полный (`deploy.sh`), после
-него `docker restart mudaroba-nginx-1` и смоук `/api` через сайт.
+него смоук `/api` через сайт.
 
 ## Включение Full (strict): пошагово
 
@@ -70,7 +70,7 @@ openssl x509 -in nginx/tls/origin.pem -noout -subject -enddate
 ### 3. Релиз с PR #103 (в main попал вместе с #102; если ещё не задеплоен)
 
 Полный `deploy.sh` пересоздаёт nginx с портом 443 и каталогом `nginx/tls`.
-Затем `docker restart mudaroba-nginx-1` и смоук. Если файлы из шага 2 уже
+Затем смоук. Если файлы из шага 2 уже
 лежат, nginx сразу поднимется с TLS.
 
 ### 4. Проверка и включение TLS в nginx

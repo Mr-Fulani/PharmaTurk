@@ -7,7 +7,7 @@ from celery import shared_task
 from django.conf import settings
 from django.core.cache import cache
 
-from . import db_backup
+from . import db_backup, resources
 from .watchdog import (
     ProbeResult,
     format_failure_notification,
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 STATE_KEY = "monitoring:production-watchdog:v1:state"
 LOCK_KEY = "monitoring:production-watchdog:v1:lock"
 BACKUP_LOCK_KEY = "monitoring:db-backup:v1:lock"
+RESOURCES_STATE_KEY = "monitoring:server-resources:v1:state"
 
 
 def _load_state() -> tuple[dict, bool]:
@@ -190,3 +191,44 @@ def run_database_backup() -> dict:
 @shared_task(name="apps.monitoring.tasks.check_database_backup", ignore_result=True)
 def check_database_backup() -> dict:
     return _run_backup_job("еженедельная проверка", _check_backup)
+
+
+@shared_task(name="apps.monitoring.tasks.check_server_resources", ignore_result=True)
+def check_server_resources() -> dict:
+    """Диск и Redis на пределе — в Telegram тем же каналом, что watchdog.
+
+    Новая проблема — сразу, та же — не чаще SERVER_RESOURCES_REPEAT_SECONDS,
+    после исправления всех — сообщение о восстановлении. Состояние в кэше; если
+    кэш недоступен, алерт не подавляется.
+    """
+    if not getattr(settings, "SERVER_RESOURCES_MONITOR_ENABLED", False):
+        return {"status": "disabled"}
+    problems = {problem.key: problem for problem in resources.collect_problems()}
+    try:
+        state = cache.get(RESOURCES_STATE_KEY) or {}
+    except Exception:  # noqa: BLE001 - Redis-кэш сам может быть причиной
+        logger.exception("server_resources_state_read_failed")
+        state = {}
+    active = set(state.get("active") or ())
+    now = time.time()
+    status = "healthy"
+    if problems:
+        due = bool(set(problems) - active) or now - float(state.get("last_alert_at") or 0) >= int(
+            settings.SERVER_RESOURCES_REPEAT_SECONDS
+        )
+        status = "problem"
+        if due and send_admin_telegram_notification(resources.format_problems(list(problems.values()))):
+            state["last_alert_at"] = now
+            status = "alerted"
+    elif active and send_admin_telegram_notification("✅ Mudaroba: диск и Redis снова в норме"):
+        status = "recovered"
+    elif active:
+        problems = {key: None for key in active}  # восстановление не доставлено — повторим
+    state["active"] = sorted(problems)
+    try:
+        cache.set(RESOURCES_STATE_KEY, state, timeout=7 * 86_400)
+    except Exception:  # noqa: BLE001
+        logger.exception("server_resources_state_write_failed")
+    if status != "healthy":
+        logger.warning("server_resources", extra={"server_resources_problems": sorted(problems)})
+    return {"status": status, "problems": sorted(problems)}

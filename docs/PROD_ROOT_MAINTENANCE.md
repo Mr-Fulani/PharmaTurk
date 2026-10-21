@@ -93,7 +93,6 @@ swapon --show                               # /swapfile 4G
 free -h                                     # Swap: 4.0Gi
 df -h /
 docker ps --format '{{.Names}} {{.Status}}' # 11 контейнеров mudaroba-*, все Up
-docker restart mudaroba-nginx-1             # обязательно: иначе возможны массовые 502
 curl -s https://mudaroba.com/api/health/    # "status":"ok", "cache":true
 docker exec mudaroba-redis-1 redis-cli LLEN celery
 ```

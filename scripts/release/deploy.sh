@@ -79,4 +79,7 @@ release_log "removing release images older than the previous release"
   --keep "$RELEASE_ID" --keep "$FRONTEND_RELEASE" \
   --keep "$PREVIOUS_RELEASE" --keep "$PREVIOUS_FRONTEND_RELEASE" || \
   release_log "WARNING: image pruning failed; the deploy itself succeeded, review with prune-images.sh"
-release_log "keep previous images and backups until the observation window closes"
+release_log "removing pre-deploy backups except the newest ${RELEASE_BACKUP_KEEP} and the current one"
+release_prune_backups_after_deploy "$BACKUP_MANIFEST" || \
+  release_log "WARNING: backup pruning failed; the deploy itself succeeded, review with prune-backups.sh"
+release_log "keep previous images and the current backup until the observation window closes"
