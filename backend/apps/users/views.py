@@ -31,11 +31,9 @@ logger = logging.getLogger(__name__)
 from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer,
     UserAddressSerializer, UserSerializer, UserPasswordChangeSerializer,
-    UserEmailVerificationSerializer, UserSessionSerializer, UserStatsSerializer,
-    SMSSendCodeSerializer, SMSVerifyCodeSerializer, SocialAuthSerializer,
+    UserEmailVerificationSerializer, UserSessionSerializer, SocialAuthSerializer,
     PublicUserProfileSerializer, DetailResponseSerializer, ErrorResponseSerializer,
     LogoutRequestSerializer, MessageResponseSerializer,
-    SMSUnavailableResponseSerializer,
     TelegramAuthRequestSerializer, TelegramWebhookRequestSerializer,
     TelegramWebhookResponseSerializer, UserAuthResponseSerializer,
 )
@@ -748,39 +746,6 @@ class UserRequestVerificationCodeView(APIView):
         return Response({'message': _('Код отправлен на ваш email')})
 
 
-class UserStatsView(APIView):
-    """
-    Статистика пользователя
-    """
-    permission_classes = [IsAuthenticated]
-    
-    @extend_schema(
-        summary="Получить статистику пользователя",
-        description="Получение статистики текущего пользователя",
-        responses={200: UserStatsSerializer}
-    )
-    def get(self, request):
-        """Получение статистики пользователя"""
-        user = request.user
-        # Рассчитываем дни с регистрации
-        days_since_registration = (timezone.now() - user.date_joined).days
-        
-        serialized_user = UserSerializer(user, context={'request': request}).data
-        
-        stats = {
-            'total_orders': serialized_user.get('total_orders', 0),
-            'total_spent': serialized_user.get('total_spent', '0'),
-            'favorite_products_count': 0,  # TODO: реализовать
-            'active_addresses_count': user.addresses.filter(is_active=True).count(),
-            'last_order_date': None,  # TODO: реализовать
-            'registration_date': user.date_joined,
-            'days_since_registration': days_since_registration
-        }
-        
-        serializer = UserStatsSerializer(stats)
-        return Response(serializer.data)
-
-
 class UserSessionsView(APIView):
     """
     Управление сессиями пользователя
@@ -950,87 +915,6 @@ class AppConfigView(APIView):
         }
         
         return Response(config)
-
-
-class SMSSendCodeView(APIView):
-    """
-    Отправка SMS кода на номер телефона.
-    TODO: Реализовать после интеграции SMS провайдера.
-    """
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    throttle_classes = VERIFICATION_THROTTLES
-    
-    @extend_schema(
-        summary="Отправить SMS код",
-        description="Отправка SMS кода на номер телефона для входа",
-        request=SMSSendCodeSerializer,
-        responses={
-            400: OpenApiResponse(
-                response=OpenApiTypes.OBJECT,
-                description="Ошибки валидации по полям",
-            ),
-            501: SMSUnavailableResponseSerializer,
-        }
-    )
-    def post(self, request):
-        """Отправка SMS кода"""
-        serializer = SMSSendCodeSerializer(data=request.data)
-        if serializer.is_valid():
-            return Response({
-                'message': _('Отправка SMS пока недоступна'),
-                'note': 'Функционал находится в разработке'
-            }, status=status.HTTP_501_NOT_IMPLEMENTED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class SMSVerifyCodeView(APIView):
-    """
-    Проверка SMS кода и вход/регистрация пользователя.
-    TODO: Реализовать после интеграции SMS провайдера.
-    """
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    throttle_classes = VERIFICATION_THROTTLES
-    
-    @extend_schema(
-        summary="Войти по SMS коду",
-        description="Проверка SMS кода и аутентификация пользователя",
-        request=SMSVerifyCodeSerializer,
-        responses={
-            400: OpenApiResponse(
-                response=OpenApiTypes.OBJECT,
-                description="Ошибки валидации по полям",
-            ),
-            501: SMSUnavailableResponseSerializer,
-        }
-    )
-    def post(self, request):
-        """Проверка SMS кода и вход"""
-        serializer = SMSVerifyCodeSerializer(data=request.data)
-        if serializer.is_valid():
-            phone_number = serializer.validated_data['phone_number']
-            code = serializer.validated_data['code']
-            
-            # TODO: Реализовать проверку кода и вход
-            # from .sms_auth import verify_sms_code
-            # success, verification = verify_sms_code(phone_number, code)
-            # if success:
-            #     # Найти или создать пользователя
-            #     user, created = User.objects.get_or_create(
-            #         phone_number=phone_number,
-            #         defaults={'email': f'{phone_number}@sms.user', 'username': phone_number}
-            #     )
-            #     # Генерируем токены и возвращаем
-            #     ...
-            
-            return Response({
-                'message': _('Вход по SMS будет доступен в ближайшее время'),
-                'note': 'Функционал находится в разработке'
-            }, status=status.HTTP_501_NOT_IMPLEMENTED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SocialAuthView(APIView):
