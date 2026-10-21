@@ -4925,6 +4925,7 @@ class BannerMediaSerializer(serializers.ModelSerializer):
 
     content_url = serializers.SerializerMethodField()
     content_mime_type = serializers.SerializerMethodField()
+    poster_url = serializers.SerializerMethodField()
     file = serializers.SerializerMethodField()  # Алиас для content_url (мобильное приложение)
     title = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
@@ -4933,15 +4934,25 @@ class BannerMediaSerializer(serializers.ModelSerializer):
     class Meta:
         model = BannerMedia
         fields = [
-            'id', 'content_type', 'content_url', 'content_mime_type', 'file', 'sort_order',
+            'id', 'content_type', 'content_url', 'content_mime_type', 'poster_url', 'file', 'sort_order',
             'link_url', 'title', 'description', 'link_text', 'created_at'
         ]
-        read_only_fields = ['id', 'content_url', 'content_mime_type', 'file', 'title', 'description', 'link_text']
+        read_only_fields = [
+            'id', 'content_url', 'content_mime_type', 'poster_url', 'file', 'title', 'description', 'link_text'
+        ]
     
     def get_content_url(self, obj):
         """Получить URL контента медиа-файла."""
+        return self._absolute_url(obj.get_content_url())
+
+    def get_poster_url(self, obj):
+        """Кадр-постер видео (атрибут poster у <video>), пустая строка — постера нет."""
+        if obj.content_type != 'video' or not obj.video_poster:
+            return ''
+        return self._absolute_url(obj.video_poster.url)
+
+    def _absolute_url(self, content_url):
         request = self.context.get('request')
-        content_url = obj.get_content_url()
         
         if not content_url:
             return ''

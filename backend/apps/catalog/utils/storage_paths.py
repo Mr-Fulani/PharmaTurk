@@ -244,6 +244,14 @@ def get_banner_video_upload_path(instance, filename):
     return f"marketing/banners/{position}/videos/{readable_name}"
 
 
+def get_banner_poster_upload_path(instance, filename):
+    banner = getattr(instance, "banner", None)
+    position = _normalize_slug(getattr(banner, "position", None), "banner")
+    title = getattr(banner, "title", None)
+    readable_name = _build_readable_filename([position, title, "poster"], filename, "banner-poster")
+    return f"marketing/banners/{position}/posters/{readable_name}"
+
+
 def get_banner_gif_upload_path(instance, filename):
     banner = getattr(instance, "banner", None)
     position = _normalize_slug(getattr(banner, "position", None), "banner")
