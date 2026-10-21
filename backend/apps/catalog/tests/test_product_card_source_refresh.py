@@ -27,7 +27,9 @@ from apps.catalog.services.product_card_source_refresh import (
     ProductCardRefreshError,
     ProductCardSourceRefreshService,
 )
+from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
 from apps.catalog.utils.product_markup import apply_product_markup
+from apps.http_errors import PaidAccessUnavailableError
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.base.offers import (
     OfferAvailability,
@@ -1037,11 +1039,55 @@ def test_paid_flo_card_skips_source_request_after_recent_successful_check(
     assert service.request_refresh(zara_product)["status"] == "pending"
     assert len(calls) == 1
 
+    # Окно по умолчанию — 24 ч (решение владельца 21.10): проверка 23 ч назад
+    # ещё свежая, 25 ч назад — нет.
     ProductSourceOffer.objects.filter(pk=flo_offer.pk).update(
-        last_successful_check_at=timezone.now() - timedelta(hours=13)
+        last_successful_check_at=timezone.now() - timedelta(hours=23)
+    )
+    assert service.request_refresh(flo_product)["status"] == "idle"
+    assert len(calls) == 1
+
+    ProductSourceOffer.objects.filter(pk=flo_offer.pk).update(
+        last_successful_check_at=timezone.now() - timedelta(hours=25)
     )
     assert service.request_refresh(flo_product)["status"] == "pending"
     assert len(calls) == 2
+
+
+@pytest.mark.django_db
+def test_paid_access_unavailable_keeps_card_and_asks_manager_for_price(
+    parsed_clothing,
+    monkeypatch,
+):
+    """Лимит Web Unlocker исчерпан или зона приостановлена.
+
+    Карточка не меняется, ошибка не повторяемая (не открывает circuit breaker
+    и не перезапрашивается через 30 с), frontend по коду показывает «цена будет
+    уточнена менеджером» и не блокирует покупку.
+    """
+    product, domain, *_ = parsed_clothing
+    service = ProductCardSourceRefreshService()
+
+    def refused(_target):
+        raise PaidAccessUnavailableError(
+            source="Bright Data Web Unlocker",
+            status_code=402,
+            url="https://api.brightdata.com/request",
+        )
+
+    monkeypatch.setattr(service, "_fetch_product", refused)
+
+    for _ in range(6):
+        result = service.run(product.pk)
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "paid_access_unavailable"
+    assert result["retryable"] is False
+    assert result["message"] == "Цена будет уточнена менеджером."
+    assert SourceOfferVerificationService().circuit_is_open("zara") is False
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    assert product.price == domain.price == Decimal("100.00")
 
 
 @pytest.mark.django_db

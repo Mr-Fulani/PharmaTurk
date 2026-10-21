@@ -252,6 +252,10 @@ class CartItem(models.Model):
             _("Автоматическая проверка не поддерживается"),
         )
         CART_CHANGED = "cart_changed", _("Корзина изменилась во время проверки")
+        MANAGER_PRICE_CONFIRMATION = (
+            "manager_price_confirmation",
+            _("Цена будет уточнена менеджером"),
+        )
 
     class StockPrecision(models.TextChoices):
         EXACT = "exact", _("Точный остаток")

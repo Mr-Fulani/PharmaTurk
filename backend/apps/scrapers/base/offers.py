@@ -12,7 +12,7 @@ from typing import Any, Callable, TypeVar
 import httpx
 import requests
 
-from apps.http_errors import ExternalAccessBlockedError
+from apps.http_errors import ExternalAccessBlockedError, PaidAccessUnavailableError
 
 
 class OfferAvailability(StrEnum):
@@ -45,6 +45,8 @@ class OfferCheckErrorCode(StrEnum):
     CIRCUIT_OPEN = "circuit_open"
     RATE_LIMITED = "rate_limited"
     IN_PROGRESS = "in_progress"
+    # Платный доступ к источнику исчерпан или приостановлен (Bright Data).
+    PAID_ACCESS_UNAVAILABLE = "paid_access_unavailable"
 
 
 @dataclass(frozen=True)
@@ -172,6 +174,15 @@ def translate_offer_check_errors(func: _F) -> _F:
             return func(*args, **kwargs)
         except OfferVerificationError:
             raise
+        except PaidAccessUnavailableError as exc:
+            # Не повторяемая ошибка: повтор до конца месяца не поможет и не
+            # должен открывать circuit breaker источника.
+            raise OfferSourceUnavailable(
+                OfferCheckErrorCode.PAID_ACCESS_UNAVAILABLE,
+                str(exc),
+                retryable=False,
+                http_status=exc.status_code or None,
+            ) from exc
         except ExternalAccessBlockedError as exc:
             raise OfferSourceUnavailable(
                 OfferCheckErrorCode.ACCESS_BLOCKED,

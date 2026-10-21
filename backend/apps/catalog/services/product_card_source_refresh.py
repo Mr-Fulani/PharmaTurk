@@ -29,8 +29,10 @@ from apps.catalog.models import PriceHistory, Product, ProductSourceOffer
 from apps.catalog.services.source_offer_verification import (
     SourceOfferVerificationService,
     manual_only_source_keys,
+    paid_freshness_seconds,
 )
 from apps.catalog.utils.old_price import source_old_price
+from apps.http_errors import PaidAccessUnavailableError
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.base.offers import OfferGone, OfferNotFound
 from apps.scrapers.models import ScraperConfig
@@ -176,6 +178,7 @@ class ProductCardSourceRefreshService:
 
     SAFE_STATUS_MESSAGES = {
         "source_unavailable": "Источник временно недоступен. Показаны последние сохранённые данные.",
+        "paid_access_unavailable": "Цена будет уточнена менеджером.",
         "source_not_found": "Товар больше недоступен у поставщика. Показаны последние сохранённые данные.",
         "rate_limited": "Источник временно ограничил запросы. Показаны последние сохранённые данные.",
         "invalid_source": "Источник товара не прошёл проверку безопасности.",
@@ -300,19 +303,6 @@ class ProductCardSourceRefreshService:
             "retryable": False,
         }
 
-    @staticmethod
-    def _freshness_seconds(parser_key: str) -> int:
-        mapping = getattr(settings, "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS", {}) or {}
-        if not isinstance(mapping, dict):
-            return 0
-        for key, value in mapping.items():
-            if str(key).strip().casefold() == parser_key:
-                try:
-                    return max(0, min(int(value), 7 * 24 * 3600))
-                except (TypeError, ValueError):
-                    return 0
-        return 0
-
     def _fresh_state(self, target: RefreshTarget) -> dict[str, Any] | None:
         """Состояние без запроса, если открытый URL недавно успешно проверен.
 
@@ -320,7 +310,7 @@ class ProductCardSourceRefreshService:
         лимитом зоны). Успешную проверку пишут обновление карточки, полный
         импорт и проверка корзины; ошибки окно не открывают.
         """
-        window = self._freshness_seconds(target.parser_key)
+        window = paid_freshness_seconds(target.parser_key)
         if not window:
             return None
         checked_at = (
@@ -1275,6 +1265,14 @@ class ProductCardSourceRefreshService:
                         scraped = self._fetch_product(target)
                     except ProductCardRefreshError:
                         raise
+                    except PaidAccessUnavailableError as exc:
+                        # Лимит Web Unlocker исчерпан или зона приостановлена:
+                        # покупка не блокируется, цену уточняет менеджер.
+                        raise ProductCardRefreshError(
+                            "paid_access_unavailable",
+                            "Paid source access is unavailable",
+                            retryable=False,
+                        ) from exc
                     except Exception as exc:
                         raise ProductCardRefreshError(
                             "source_unavailable",
