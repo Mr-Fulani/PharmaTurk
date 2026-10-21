@@ -26,7 +26,7 @@ def run_test():
     if len(sys.argv) > 1:
         target_url = sys.argv[1]
     else:
-        print("Usage: python backend/run_scraper_test.py <URL>")
+        print("Usage (из backend/): poetry run python scripts/dev/run_scraper_test.py <URL>")
         return
 
     print(f"Scraping URL: {target_url}")
