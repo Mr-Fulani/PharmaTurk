@@ -361,7 +361,7 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.recompute_sort_ranks",
         "schedule": crontab(hour=4, minute=50),
     },
-    # Одно напоминание о брошенной заявке (корзина вошедшего клиента, сутки без изменений).
+    # Напоминания о неотправленном Списке заявки; включаются в админке, без этого задача ничего не делает.
     "orders-remind-abandoned-carts": {
         "task": "orders.remind_abandoned_carts",
         "schedule": crontab(minute=20),
