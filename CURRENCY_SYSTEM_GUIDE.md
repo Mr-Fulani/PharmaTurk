@@ -107,22 +107,9 @@ results = currency_converter.convert_to_multiple_currencies(
 ```
 
 ### Использование в парсерах
-```python
-from catalog.parsers.base_currency_parser import TurkishMedicineParser
-
-parser = TurkishMedicineParser()
-
-product_data = {
-    'name': 'Аспирин',
-    'price': '45.50 ₺',
-    'old_price': '50.00 ₺',
-    'brand': 'Bayer',
-    'category': 'medicines'
-}
-
-parsed = parser.parse_product(product_data)
-# Результат содержит конвертированные цены
-```
+Отдельных «валютных» классов парсеров нет (`base_currency_parser.py` удалён
+22.10.2026 как неиспользуемый). Парсеры сохраняют цену в валюте источника,
+пересчёт делает задача `currency.update_product_prices` (см. `CELERY_TASKS.md`).
 
 ## 🔧 Админ-панель
 
@@ -285,31 +272,6 @@ class CustomCurrencyConverter(CurrencyConverter):
 ```
 
 ## 📝 Примеры использования
-
-### Парсинг турецкого сайта
-```python
-from catalog.parsers.base_currency_parser import TurkishMedicineParser
-
-parser = TurkishMedicineParser()
-
-# Данные с турецкого сайта
-raw_data = {
-    'id': '12345',
-    'name': 'İbuprofen 400mg',
-    'price': '28,90 ₺',
-    'old_price': '35,50 ₺',
-    'brand': 'Bayer',
-    'category': 'Ağrı Kesiciler',
-    'in_stock': True,
-    'images': ['https://example.com/image.jpg']
-}
-
-# Автоматическая конвертация цен
-product_data = parser.parse_product(raw_data)
-
-# Создание товара
-product = Product.objects.create(**product_data)
-```
 
 ### Массовое обновление
 ```python

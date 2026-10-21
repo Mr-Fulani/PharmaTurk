@@ -30,7 +30,6 @@
 ### Сервисы и утилиты
 - [ ] `backend/apps/catalog/services/currency_service.py` - сервис курсов
 - [ ] `backend/apps/catalog/utils/currency_converter.py` - конвертер
-- [ ] `backend/apps/catalog/parsers/base_currency_parser.py` - парсеры
 
 ### Админ-панель
 - [ ] `backend/apps/catalog/admin_currency.py` - админка валют
@@ -43,7 +42,7 @@
 
 ### Задачи Celery
 - [ ] Обновлен `backend/apps/catalog/tasks.py`
-- [ ] `backend/celery_beat_schedule.py` - расписание
+- [ ] `CELERY_BEAT_SCHEDULE` в `backend/config/settings.py` - расписание
 
 ### Документация
 - [ ] `CURRENCY_CONVERSION_PLAN.md` - план архитектуры

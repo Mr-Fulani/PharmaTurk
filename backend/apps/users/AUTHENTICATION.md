@@ -13,7 +13,7 @@
 | Google Identity Services | реализован | `POST /api/users/social-auth/` |
 | VK ID | реализован | `POST /api/users/social-auth/` |
 | Telegram Login Widget | реализован | `POST /api/users/telegram/login/` |
-| SMS-код | заглушка | `/api/users/sms/*` пока не использовать |
+| SMS-код | не реализован | заглушки `/api/users/sms/*` удалены 22.10.2026 |
 | Facebook, Yandex, Apple | не реализованы | провайдеров в `PROVIDERS` нет |
 
 Для парольного входа используется `MultiFieldAuthBackend` из

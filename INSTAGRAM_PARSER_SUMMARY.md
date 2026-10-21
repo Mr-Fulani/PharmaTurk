@@ -26,8 +26,8 @@ Instagram парсер для автоматического сбора това
 5. **`backend/INSTAGRAM_PARSER_QUICKSTART.md`** (80+ строк)
    - Быстрый старт для новых пользователей
 
-6. **`backend/apps/scrapers/parsers/instagram_examples.py`** (200+ строк)
-   - Примеры использования в коде
+6. ~~`backend/apps/scrapers/parsers/instagram_examples.py`~~ — удалён 22.10.2026
+   (примеры нигде не использовались)
 
 7. **`INSTAGRAM_PARSER_IMPLEMENTATION.md`** (300+ строк)
    - Детальный отчет о реализации
