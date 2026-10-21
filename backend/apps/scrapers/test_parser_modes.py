@@ -6,6 +6,8 @@ import pytest
 
 from apps.catalog.models import Category
 from apps.scrapers.admin import SiteScraperTaskForm
+from apps.scrapers.base.offers import MalformedOfferResponse
+from apps.scrapers.base.scraper import CategoryPageNotFoundError
 from apps.scrapers.models import CategoryMapping, ScraperConfig, ScrapingSession, SiteScraperTask
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
 from apps.scrapers.parsers.ummaland import UmmalandParser
@@ -53,13 +55,13 @@ def _site_task(**overrides):
     return SiteScraperTask.objects.create(**values), config
 
 
-def _run_chunk(task, config, *, fail_url=None, start_url=""):
+def _run_chunk(task, config, *, fail_url=None, start_url="", error=None):
     calls = []
 
     def fake_run_scraper(self, **kwargs):
         calls.append((kwargs["start_url"], kwargs.get("target_category")))
         if kwargs["start_url"] == fail_url:
-            raise RuntimeError("категория недоступна")
+            raise error or RuntimeError("категория недоступна")
         return ScrapingSession.objects.create(
             scraper_config=config, status="completed", products_found=2, products_created=2,
             start_url=kwargs["start_url"],
@@ -197,3 +199,23 @@ def test_ummaland_category_goes_to_the_end_in_chunks(monkeypatch):
     assert len(last) == 5 and parser.has_more_pages is False
     assert UmmalandParser.supports_page_chunking_for_url(url) is True
     assert UmmalandParser.supports_page_chunking_for_url("https://umma-land.com/product/b1") is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        MalformedOfferResponse("Massimo Dutti: в ответе productsArray нет карточек с цветами"),
+        CategoryPageNotFoundError("LCW: страница категории не найдена"),
+    ],
+)
+def test_empty_or_missing_category_is_skipped_without_retries(error):
+    """Проба на проде 21.10: лукбук Massimo Dutti без карточек повторялся
+    4 раза через прокси, прежде чем обход шёл к следующей категории."""
+    task, config = _site_task(site_categories=CATEGORIES)
+
+    result, calls, enqueue = _run_chunk(task, config, fail_url="https://site.test/c/dresses", error=error)
+
+    assert [url for url, _ in calls] == ["https://site.test/c/dresses"]
+    assert result["continued_with_next_category"] is True
+    assert enqueue.call_args.kwargs["kwargs"]["start_url"] == "https://site.test/c/shoes"
+    assert task.errors_count == 1
