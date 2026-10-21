@@ -17,6 +17,9 @@ const nextConfig = {
   },
   images: {
     formats: ['image/avif', 'image/webp'],
+    // Без 2048/3840 по умолчанию: картинки (баннеры — 1672 px) не шире 1920,
+    // Next их не увеличивает, а лишние ширины — те же байты и лишние прогоны оптимизатора.
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     remotePatterns: [
       {
         protocol: 'https',

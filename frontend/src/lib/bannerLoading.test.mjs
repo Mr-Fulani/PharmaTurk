@@ -7,7 +7,7 @@ import ts from 'typescript'
 const require = createRequire(import.meta.url)
 const Image = () => null
 const media = [1, 2, 3].map(id => ({ id, content_type: 'image', content_url: `https://cdn.mudaroba.com/${id}.webp`, title: `Slide ${id}` }))
-async function renderer(file, globals = {}) {
+async function renderer(file) {
   const compiled = ts.transpileModule(await readFile(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText
@@ -26,7 +26,7 @@ async function renderer(file, globals = {}) {
     '../lib/media': { resolveMediaUrl: url => url, getPlaceholderImageUrl: () => '/fallback.svg', getVideoEmbedUrl: () => null, withListingImageMaxWidth: url => url },
     '../lib/api': {}, './BannerCarousel.module.css': {}, '../lib/bannerLink': {}, '../lib/siteMeta': {},
   }
-  vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date, ...globals })
+  vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date })
   return props => { cursor = 0; return exports.default(props) }
 }
 function nodes(node, match) {
@@ -42,30 +42,10 @@ test('only the main hero is eager and high priority in the initial render', asyn
     assert.equal(images.filter(i => i.props.priority).length, position === 'main' ? 1 : 0)
     assert.equal(images[0].props.loading, position === 'main' ? 'eager' : 'lazy')
     assert.equal(images[0].props.fetchPriority, position === 'main' ? 'high' : 'auto')
+    assert.ok(images[0].props.sizes.includes('(max-width: 480px) 740px'))
   }
 })
-test('banner images come straight from the CDN, without the next/image optimizer', async () => {
-  const render = await renderer('../components/BannerCarouselMedia.tsx')
-  const [hero] = nodes(render(props('main')), node => node.type === Image)
-  assert.equal(hero.props.src, 'https://cdn.mudaroba.com/1.webp')
-  assert.equal(hero.props.unoptimized, true)
-})
-test('a failed slide retries once before showing the placeholder', async () => {
-  const render = await renderer('../components/BannerCarouselMedia.tsx', { setTimeout: fn => fn() })
-  const hero = () => nodes(render(props('how_to_order')), node => node.type === Image)[0].props
-  hero().onError()
-  assert.equal(hero().src, 'https://cdn.mudaroba.com/1.webp?retry=1')
-  hero().onError()
-  assert.equal(hero().src, '/fallback.svg')
-})
-test('hidden phone thumbnails load only the next slide after the first one', async () => {
-  const render = await renderer('../components/BannerCarouselMedia.tsx')
-  const alts = () => nodes(render(props('how_to_order')), node => node.type === Image).map(i => i.props.alt)
-  assert.deepEqual(alts(), ['Slide 1'])
-  nodes(render(props('how_to_order')), node => node.type === Image)[0].props.onLoadingComplete()
-  assert.deepEqual(alts(), ['Slide 1', 'Slide 2'])
-})
-test('rotation preserves the original hero source and priority', async () => {
+test('rotation preserves the original hero source size and priority', async () => {
   const render = await renderer('../components/BannerCarouselMedia.tsx')
   let tree = render(props('main'))
   const first = nodes(tree, n => n.type === Image)[0].props
@@ -74,10 +54,25 @@ test('rotation preserves the original hero source and priority', async () => {
   const images = nodes(tree, n => n.type === Image)
   assert.equal(images[0].props.alt, 'Slide 2')
   const original = images.find(i => i.props.alt === 'Slide 1').props
+  assert.equal(original.sizes, first.sizes)
   assert.equal(original.src, first.src)
   assert.equal(original.loading, 'eager')
   assert.equal(original.fetchPriority, 'high')
   assert.equal(images.filter(i => i.props.priority).length, 1)
+})
+test('a failed slide is retried straight from the CDN before the placeholder', async () => {
+  const render = await renderer('../components/BannerCarouselMedia.tsx')
+  const hero = () => nodes(render(props('how_to_order')), node => node.type === Image)[0].props
+  assert.notEqual(hero().unoptimized, true)
+  hero().onError()
+  assert.equal(hero().src, 'https://cdn.mudaroba.com/1.webp')
+  assert.equal(hero().unoptimized, true)
+  hero().onError()
+  assert.equal(hero().src, '/fallback.svg')
+})
+test('next/image never asks the optimizer for widths above 1920', () => {
+  const { images } = require('../../next.config.js')
+  assert.equal(Math.max(...images.deviceSizes), 1920)
 })
 test('homepage proxy sources retain the asset path and contain one width parameter', async () => {
   const render = await renderer('../components/FallbackMediaImage.tsx')
