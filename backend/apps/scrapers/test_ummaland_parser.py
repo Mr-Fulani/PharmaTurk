@@ -19,6 +19,25 @@ DISCOUNTED_CARD = """
 """
 
 
+# Блок «похожие товары» живой карточки 21.10: у карточек рекомендаций своя
+# зачёркнутая цена с тем же классом .product-old-price.
+RELATED_CARDS = """
+<section class="products container"><div class="products__output">
+<div class="card"><a class="card__link" href="https://umma-land.com/product/kniga-tetrad-siriya-niti-istorii">
+<p class="card__name"> Комплект книг "Нити истории"</p></a>
+<button class="button button--accent card__button" data-id="2741">
+<i class="product-old-price">1360 ₽</i> 1089 ₽ </button></div>
+</div></section>
+"""
+
+FULL_PRICE_CARD = """
+<html><body>
+<h1 class="product-block__heading">Настольная игра «Кто первый? 2.0»</h1>
+<div class="product-prices"><div class="product-price"> 366 ₽</div></div>
+<button class="button product-buy-button" data-id="2701"> В корзину </button>
+""" + RELATED_CARDS + "</body></html>"
+
+
 def _parser_with_pages(monkeypatch, pages):
     parser = UmmalandParser("https://umma-land.com")
     monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: pages.get(url))
@@ -114,3 +133,24 @@ def test_category_api_retries_timeout(monkeypatch):
 
     assert parser._fetch_products_from_api(16) == [{"id": 1}]
     assert len(calls) == 2 and calls[0] >= 90
+
+
+def test_book_without_discount_does_not_take_old_price_of_related_card(monkeypatch):
+    url = "https://umma-land.com/product/nastolnaya-igra-kto-pervyy-2-0"
+    parser = _parser_with_pages(monkeypatch, {url: FULL_PRICE_CARD})
+
+    product = parser.parse_product_detail(url)
+
+    assert product.price == Decimal("366")
+    assert product.old_price is None
+
+
+def test_discounted_book_keeps_its_own_old_price_next_to_related_cards(monkeypatch):
+    url = "https://umma-land.com/product/bolshaya-kniga-ramadana"
+    html = DISCOUNTED_CARD.replace("</body>", RELATED_CARDS + "</body>")
+    parser = _parser_with_pages(monkeypatch, {url: html})
+
+    product = parser.parse_product_detail(url)
+
+    assert product.price == Decimal("768")
+    assert product.old_price == Decimal("960")
