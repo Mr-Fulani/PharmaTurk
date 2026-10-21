@@ -353,6 +353,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.monitoring.tasks.check_database_backup",
         "schedule": crontab(hour=1, minute=45, day_of_week=0),
     },
+    # Копия медиа маркетинга, страниц и услуг — после бэкапа БД (crontab по
+    # Europe/Moscow, как и он) и до cleanup-orphaned-media (воскресенье 03:30).
+    "monitoring-media-backup": {
+        "task": "apps.monitoring.tasks.run_media_backup",
+        "schedule": crontab(hour=2, minute=0),
+    },
+    "monitoring-media-backup-check": {
+        "task": "apps.monitoring.tasks.check_media_backup",
+        "schedule": crontab(hour=2, minute=30, day_of_week=0),
+    },
     # Просроченные сессии Django (manage.py clearsessions) — каждую ночь.
     "users-clear-expired-sessions": {
         "task": "users.clear_expired_sessions",
@@ -1020,6 +1030,11 @@ DB_BACKUP_S3_ACCESS_KEY_ID = env("DB_BACKUP_S3_ACCESS_KEY_ID", default="")
 DB_BACKUP_S3_SECRET_ACCESS_KEY = env("DB_BACKUP_S3_SECRET_ACCESS_KEY", default="")
 DB_BACKUP_HEARTBEAT_URL = env("DB_BACKUP_HEARTBEAT_URL", default="")
 DB_BACKUP_TEST_RESTORE_ENABLED = env.bool("DB_BACKUP_TEST_RESTORE_ENABLED", default=False)
+# Ночная копия медиа маркетинга, страниц и услуг в тот же бакет под media/
+# (apps/monitoring/media_backup.py); товарные фото не копируются.
+MEDIA_BACKUP_ENABLED = env.bool("MEDIA_BACKUP_ENABLED", default=DB_BACKUP_ENABLED)
+MEDIA_BACKUP_PREFIXES = env.list("MEDIA_BACKUP_PREFIXES", default=["marketing/", "pages/", "services/"])
+MEDIA_BACKUP_KEEP_DELETED_DAYS = env.int("MEDIA_BACKUP_KEEP_DELETED_DAYS", default=30)
 validate_telegram_webhook_settings(
     debug=DEBUG,
     bot_token=TELEGRAM_BOT_TOKEN,
