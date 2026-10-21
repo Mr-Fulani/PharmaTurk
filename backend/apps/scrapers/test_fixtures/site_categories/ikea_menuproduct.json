@@ -1,0 +1,106 @@
+{
+ "headlines": [
+  {
+   "title": "En Düşük Fiyat",
+   "url": "https://www.ikea.com.tr/kampanya/en-dusuk-fiyat",
+   "isHeadline": true,
+   "shopAll": false,
+   "suggestionTitle": "",
+   "suggestionUrl": "",
+   "suggestionImage": "",
+   "imageCode": "",
+   "mappingType": "None",
+   "showOnStorePage": true,
+   "categories": [],
+   "functions": [],
+   "menuProductContentRelations": []
+  },
+  {
+   "title": "Tüm Mobilyalar",
+   "url": "https://www.ikea.com.tr/kategori/mobilyalar",
+   "isHeadline": true,
+   "shopAll": false,
+   "suggestionTitle": "",
+   "suggestionUrl": "",
+   "suggestionImage": "",
+   "imageCode": "",
+   "mappingType": "None",
+   "showOnStorePage": true,
+   "categories": [],
+   "functions": [],
+   "menuProductContentRelations": []
+  }
+ ],
+ "categories": [
+  {
+   "title": "Günlük İhtiyaçlar",
+   "url": "https://www.ikea.com.tr/kategori/gunluk-ihtiyaclar",
+   "isHeadline": false,
+   "shopAll": false,
+   "suggestionTitle": "",
+   "suggestionUrl": "",
+   "suggestionImage": "",
+   "imageCode": "https://image-ikea.mncdn.com/kategoriler/menu-suggestion/cat-gunluk-ihtiyaclar.jpg",
+   "mappingType": "Category",
+   "showOnStorePage": false,
+   "categories": [
+    {
+     "name": "Temizlik için Günlük İhtiyaçlar",
+     "url": "https://www.ikea.com.tr/kategori/temizlik-icin-gunluk-ihtiyaclar"
+    },
+    {
+     "name": "Organizasyon için Günlük İhtiyaçlar",
+     "url": "https://www.ikea.com.tr/kategori/organizasyon-icin-gunluk-ihtiyaclar"
+    }
+   ],
+   "functions": [],
+   "menuProductContentRelations": []
+  },
+  {
+   "title": "Bebek & Çocuk",
+   "url": "https://www.ikea.com.tr/kategori/bebek-ve-cocuk",
+   "isHeadline": false,
+   "shopAll": false,
+   "suggestionTitle": "Çocuk Odası Planlayıcı",
+   "suggestionUrl": "https://planner.ikea.com.tr/addon-app/space/platform/latest/TR/tr/#/room/childrens-room?target=InAppBrowser",
+   "suggestionImage": "https://image-ikea.mncdn.com/kategoriler/menu-suggestion/cat-cocuk-odasi-planlayici.jpg",
+   "imageCode": "https://image-ikea.mncdn.com/kategoriler/menu-suggestion/bebek-ve-cocuk-PH200882.jpg",
+   "mappingType": "Category",
+   "showOnStorePage": true,
+   "categories": [
+    {
+     "name": "Bebek Ürünleri",
+     "url": "https://www.ikea.com.tr/kategori/bebek-urunleri"
+    },
+    {
+     "name": "Çocuk Ürünleri",
+     "url": "https://www.ikea.com.tr/kategori/cocuk-urunleri"
+    }
+   ],
+   "functions": [],
+   "menuProductContentRelations": []
+  },
+  {
+   "title": "IKEA Yiyecek-İçecek",
+   "url": "https://www.ikea.com.tr/kategori/ikea-yiyecek-icecek",
+   "isHeadline": false,
+   "shopAll": false,
+   "suggestionImage": "",
+   "imageCode": "https://image-ikea.mncdn.com/kategoriler/menu-suggestion/ikea-lezzetleri-PH206386.jpg",
+   "mappingType": "Category",
+   "showOnStorePage": true,
+   "categories": [
+    {
+     "name": "İsveç Gıda Marketi",
+     "url": "https://www.ikea.com.tr/kategori/isvec-gida-marketi"
+    },
+    {
+     "name": "İsveç Restoranı",
+     "url": "https://www.ikea.com.tr/kategori/isvec-restorani"
+    }
+   ],
+   "functions": [],
+   "menuProductContentRelations": []
+  }
+ ]
+}

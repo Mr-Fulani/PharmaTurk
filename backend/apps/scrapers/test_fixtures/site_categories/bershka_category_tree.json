@@ -1,0 +1,150 @@
+{
+ "categories": [
+  {
+   "id": 1010193132,
+   "name": "KADıN",
+   "nameEn": "WOMEN",
+   "key": "BERSHKA_WOMAN",
+   "numberOfProducts": null,
+   "type": "",
+   "viewCategoryId": 0,
+   "sequence": 238,
+   "subcategories": [
+    {
+     "id": 1010780481,
+     "name": "DESTACADOS",
+     "nameEn": "DESTACADOS",
+     "key": "***DESTACADOS***",
+     "numberOfProducts": null,
+     "type": "14",
+     "viewCategoryId": 0,
+     "sequence": 24,
+     "subcategories": [
+      {
+       "id": 1010874639,
+       "name": "Yeni",
+       "nameEn": "New",
+       "key": "1_G_NEW_LARGO_TRANSITO",
+       "numberOfProducts": null,
+       "type": "14",
+       "viewCategoryId": 0,
+       "sequence": 15,
+       "subcategories": [
+        {
+         "id": 1010906664,
+         "name": "JUICY COUTURE X BERSHKA",
+         "nameEn": "JUICY COUTURE X BERSHKA",
+         "key": "1_T_NEW_JUICY_COUTURE_LARGO_TRANSITO",
+         "numberOfProducts": null,
+         "type": "14",
+         "viewCategoryId": 0,
+         "sequence": 1,
+         "subcategories": []
+        }
+       ]
+      },
+      {
+       "id": 1010419519,
+       "name": "ÖZEL FİYATLAR",
+       "nameEn": "Special prices",
+       "key": "1_G_PROMOCIONES",
+       "numberOfProducts": null,
+       "type": "14",
+       "viewCategoryId": 0,
+       "sequence": 23,
+       "categoryUrl": "kadin/promo-up-to-3025-n4404",
+       "categoryUrlParam": "1010419519",
+       "subcategories": []
+      }
+     ]
+    },
+    {
+     "id": 1010874670,
+     "name": "YENI KOLEKSIYON",
+     "nameEn": "NEW COLLECTION",
+     "key": "NUEVA COLECCIÓN",
+     "numberOfProducts": null,
+     "type": "14",
+     "viewCategoryId": 0,
+     "sequence": 209,
+     "subcategories": [
+      {
+       "id": 1010193212,
+       "name": "Ceket",
+       "nameEn": "Jackets",
+       "key": "1_G_CAZADORAS",
+       "numberOfProducts": null,
+       "type": "14",
+       "viewCategoryId": 0,
+       "sequence": 33,
+       "categoryUrl": "kadinlar/kiyafetler/ceketler-n4364",
+       "categoryUrlParam": "1010193212",
+       "subcategories": [
+        {
+         "id": 1010193258,
+         "name": "Blazer",
+         "nameEn": "Blazers",
+         "key": "1_G_CAZADORAS-BLAZER",
+         "numberOfProducts": null,
+         "type": "14",
+         "viewCategoryId": 0,
+         "sequence": 31,
+         "categoryUrl": "kadin/giyim/ceket-ve-kaban/blazer-n3811",
+         "subcategories": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 1010788986,
+     "name": "FOOTER",
+     "nameEn": "FOOTER",
+     "key": "BERSHKA_FOOTER",
+     "numberOfProducts": null,
+     "type": "14",
+     "viewCategoryId": 0,
+     "sequence": 237,
+     "subcategories": [
+      {
+       "id": 1010788489,
+       "name": "HEDİYE KARTı",
+       "nameEn": "GIFT CARD",
+       "key": "FOOTER_GIFTCARD",
+       "numberOfProducts": null,
+       "type": "21",
+       "viewCategoryId": 0,
+       "sequence": 233,
+       "subcategories": []
+      }
+     ]
+    },
+    {
+     "id": 1864544,
+     "name": "",
+     "nameEn": null,
+     "key": "HIDDEN_ALL_WOMEN_SUBINFORMATIVE_WEB",
+     "numberOfProducts": null,
+     "type": "41",
+     "viewCategoryId": 0,
+     "sequence": 607,
+     "subcategories": [
+      {
+       "id": 2263534,
+       "name": "PARFÜM",
+       "nameEn": "PERFUMES",
+       "key": "VISTA1-WOMEN_V_CON_STUDIO_PIECES_VIEW_ALL",
+       "numberOfProducts": null,
+       "type": "22",
+       "viewCategoryId": 2279566,
+       "sequence": 283,
+       "categoryUrl": "women/perfumes-n1987",
+       "categoryUrlParam": "2263534",
+       "subcategories": []
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

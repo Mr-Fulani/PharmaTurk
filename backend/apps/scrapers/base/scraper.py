@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -120,8 +120,15 @@ ScrapedProductDetailResult = Union[Optional[ScrapedProduct], List[ScrapedProduct
 ScraperAccessBlockedError = ExternalAccessBlockedError
 
 
+class SiteCategoriesError(RuntimeError):
+    """Источник не отдал список категорий для обхода всего сайта."""
+
+
 class BaseScraper(ABC):
     """Базовый абстрактный класс для всех парсеров."""
+
+    # Предохранитель обхода всего сайта: столько категорий отдаёт parse_categories.
+    MAX_SITE_CATEGORIES = 500
 
     # Поддерживает ли парсер постраничную авточепочку (start_page).
     # True только у парсеров с настоящей пагинацией по номеру страницы.
@@ -467,7 +474,43 @@ class BaseScraper(ABC):
         """
         # Базовая реализация - может быть переопределена
         return []
-    
+
+    def _site_categories(self, rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Итог parse_categories для обхода всего сайта.
+
+        Убирает повторы по URL, проставляет source и ограничивает длину
+        списка. Пустой список — ошибка источника, а не «на сайте нет
+        категорий»: проход всего сайта не должен завершиться успехом с нулём.
+        """
+        categories: List[Dict[str, Any]] = []
+        seen = set()
+        for row in rows:
+            url = str(row.get("url") or "")
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            categories.append(
+                {
+                    "name": str(row.get("name") or ""),
+                    "url": url,
+                    "external_id": str(row.get("external_id") or ""),
+                    "source": self.get_name(),
+                }
+            )
+        if not categories:
+            raise SiteCategoriesError(
+                f"{self.get_name()}: источник не отдал ни одной категории для обхода сайта"
+            )
+        if len(categories) > self.MAX_SITE_CATEGORIES:
+            self.logger.warning(
+                "%s: категорий %s, для обхода сайта оставлены первые %s",
+                self.get_name(),
+                len(categories),
+                self.MAX_SITE_CATEGORIES,
+            )
+            categories = categories[: self.MAX_SITE_CATEGORIES]
+        return categories
+
     def parse_brands(self) -> List[Dict[str, Any]]:
         """Парсит список брендов сайта.
         
