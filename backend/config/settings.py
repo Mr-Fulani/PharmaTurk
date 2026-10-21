@@ -295,6 +295,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.monitoring.tasks.run_production_watchdog",
         "schedule": PRODUCTION_WATCHDOG_INTERVAL_SECONDS,
     },
+    # Диск и Redis (docs/PROD_DISK_AND_REDIS.md) — каждые 10 минут; без
+    # SERVER_RESOURCES_MONITOR_ENABLED задача ничего не делает.
+    "monitoring-server-resources": {
+        "task": "apps.monitoring.tasks.check_server_resources",
+        "schedule": crontab(minute="*/10"),
+    },
     "coinremitter-outbox-dispatch": {
         "task": "apps.payments.tasks.dispatch_pending_crypto_invoice_requests",
         "schedule": COINREMITTER_OUTBOX_DISPATCH_INTERVAL_SECONDS,
@@ -991,6 +997,18 @@ PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS = env.int(
     "PRODUCTION_WATCHDOG_REQUEST_TIMEOUT_SECONDS",
     default=10,
 )
+# Диск и Redis (apps/monitoring/resources.py): включается вместе с watchdog,
+# алерт в тот же Telegram. 4 ГиБ — меньше pull-images.sh не скачивает образы.
+SERVER_RESOURCES_MONITOR_ENABLED = env.bool(
+    "SERVER_RESOURCES_MONITOR_ENABLED",
+    default=PRODUCTION_WATCHDOG_ENABLED,
+)
+SERVER_DISK_MIN_FREE_GB = env.float("SERVER_DISK_MIN_FREE_GB", default=4.0)
+# Брокер — noeviction: у maxmemory Celery перестаёт ставить задачи. Кэш —
+# allkeys-lru и держится у maxmemory, порог выше 100 % ловит только сбой вытеснения.
+REDIS_BROKER_MAX_MEMORY_PERCENT = env.float("REDIS_BROKER_MAX_MEMORY_PERCENT", default=70.0)
+REDIS_CACHE_MAX_MEMORY_PERCENT = env.float("REDIS_CACHE_MAX_MEMORY_PERCENT", default=110.0)
+SERVER_RESOURCES_REPEAT_SECONDS = env.int("SERVER_RESOURCES_REPEAT_SECONDS", default=6 * 3600)
 # Ежедневный pg_dump во внешний S3-совместимый бакет (docs/DB_BACKUP.md).
 # Отдельный бакет и отдельные ключи, не R2_* медиа.
 DB_BACKUP_ENABLED = env.bool("DB_BACKUP_ENABLED", default=False)

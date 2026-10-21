@@ -87,3 +87,16 @@ poetry run python manage.py shell --no-imports -c \
 Expected status is `healthy`. Receiver connectivity can be checked without a
 message through Telegram `getMe` and `getChat`. Failure/recovery delivery is
 covered by unit tests; do not deliberately take production dependencies down.
+
+## Disk and Redis alerts
+
+`apps.monitoring.tasks.check_server_resources` runs every ten minutes in the
+`celery` queue and uses the same Telegram receiver. It alerts when free space
+on the host disk drops below `SERVER_DISK_MIN_FREE_GB` (4 GiB), when the broker
+`redis` reaches `REDIS_BROKER_MAX_MEMORY_PERCENT` (70 %) of `maxmemory`, when the
+`redis-cache` exceeds `REDIS_CACHE_MAX_MEMORY_PERCENT` (110 %; LRU keeps it near
+100 % by design), when a Redis has no `maxmemory`, its last RDB save failed or it
+is unreachable. A new problem is sent at once, a repeated one at most every six
+hours, and one recovery message follows. It is enabled together with the
+watchdog (`SERVER_RESOURCES_MONITOR_ENABLED`). Thresholds and what to do:
+`docs/PROD_DISK_AND_REDIS.md`.
