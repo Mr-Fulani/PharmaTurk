@@ -1,9 +1,24 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models import Exists, OuterRef
+from django.http import HttpResponseNotAllowed
+from django.shortcuts import redirect
+from django.urls import path, reverse
+from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
-from .models import Cart, CartItem, Order, OrderItem, PromoCode, SourcingRequest
+from .models import (
+    Cart,
+    CartItem,
+    CartReminderLog,
+    CartReminderSettings,
+    Order,
+    OrderItem,
+    PromoCode,
+    SourcingRequest,
+)
 from .tasks import notify_order_status_changed
 
 
@@ -36,19 +51,149 @@ class CartItemInline(admin.TabularInline):
 @admin.register(Cart)
 class CartAdmin(admin.ModelAdmin):
     """Админка для корзин."""
-    list_display = ('id', 'user', 'session_key', 'currency', 'items_count', 'total_amount', 'promo_code', 'created_at')
+    list_display = ('id', 'user', 'session_key', 'currency', 'items_count', 'total_amount', 'promo_code', 'reminder_sent_at', 'created_at')
     list_filter = ('currency', 'created_at', 'promo_code')
     search_fields = ('user__email', 'session_key', 'promo_code__code')
     ordering = ('-created_at',)
-    readonly_fields = ('items_count', 'total_amount', 'created_at', 'updated_at')
+    readonly_fields = ('items_count', 'total_amount', 'reminder_sent_at', 'reminder_count', 'locale', 'created_at', 'updated_at')
+    actions = ('stop_cart_reminders',)
     
     fieldsets = (
         (None, {'fields': ('user', 'session_key', 'currency', 'promo_code')}),
         (_('Statistics'), {'fields': ('items_count', 'total_amount')}),
+        (_('Напоминания о заявке'), {'fields': ('reminder_sent_at', 'reminder_count', 'locale')}),
         (_('Timestamps'), {'fields': ('created_at', 'updated_at')}),
     )
     
     inlines = [CartItemInline]
+
+    @admin.action(description=_("Клиент связался с менеджером — не напоминать о текущем Списке"))
+    def stop_cart_reminders(self, request, queryset):
+        from .cart_reminders import MAX_STEPS
+
+        # Круг считается пройденным; если клиент снова изменит Список — напоминания начнутся заново
+        updated = queryset.filter(user__isnull=False).update(reminder_sent_at=timezone.now(), reminder_count=MAX_STEPS)
+        self.message_user(request, _("Напоминания остановлены для Списков: %(count)s") % {"count": updated})
+
+
+@admin.register(CartReminderSettings)
+class CartReminderSettingsAdmin(admin.ModelAdmin):
+    """Одна запись настроек; на её странице — кнопки «Отправить тестовое мне»."""
+
+    change_form_template = "admin/orders/cartremindersettings/change_form.html"
+    readonly_fields = ("due_now", "updated_at")
+    fieldsets = (
+        (_("Включение"), {"fields": ("enabled", "email_enabled", "telegram_enabled", "due_now")}),
+        (_("Когда напоминать"), {
+            "fields": ("first_delay_hours", "second_delay_hours", "pause_days", "max_age_days"),
+            "description": _(
+                "Не больше двух напоминаний на одно состояние Списка заявки. Клиент, отправивший "
+                "заявку или «Найдём товар» после изменения Списка, напоминаний не получает."
+            ),
+        }),
+        (_("Служебное"), {"fields": ("updated_at",), "classes": ("collapse",)}),
+    )
+
+    def has_add_permission(self, request):
+        return not CartReminderSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        obj = CartReminderSettings.load()
+        return redirect(reverse("admin:orders_cartremindersettings_change", args=[obj.pk]))
+
+    @admin.display(description=_("Подходят под напоминание сейчас"))
+    def due_now(self, obj):
+        from .cart_reminders import due_carts
+
+        if obj is None or obj.pk is None:
+            return "—"
+        count = due_carts(obj).count()
+        note = "" if obj.enabled else _(" (напоминания выключены — никому не уходит)")
+        return f"{count}{note}"
+
+    def get_urls(self):
+        custom_urls = [
+            path(
+                "send-test/",
+                self.admin_site.admin_view(self.send_test_view),
+                name="orders_cartremindersettings_send_test",
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def send_test_view(self, request):
+        """Тестовое напоминание текущему администратору: его email и Telegram, если привязан."""
+        from .cart_reminders import send_test_reminder
+
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+        locale = "en" if request.POST.get("locale") == "en" else "ru"
+        logs = send_test_reminder(request.user, locale=locale)
+        if not logs:
+            self.message_user(
+                request,
+                _("Не отправлено: у вашего аккаунта нет email и привязанного Telegram или в каталоге нет товаров с ценой."),
+                messages.WARNING,
+            )
+        for log in logs:
+            if log.status == CartReminderLog.Status.SENT:
+                self.message_user(request, _("Отправлено: %(channel)s → %(to)s") % {
+                    "channel": log.get_channel_display(), "to": log.recipient,
+                })
+            else:
+                self.message_user(request, _("Ошибка: %(channel)s → %(to)s: %(error)s") % {
+                    "channel": log.get_channel_display(), "to": log.recipient, "error": log.error,
+                }, messages.ERROR)
+        obj = CartReminderSettings.load()
+        return redirect(reverse("admin:orders_cartremindersettings_change", args=[obj.pk]))
+
+
+@admin.register(CartReminderLog)
+class CartReminderLogAdmin(admin.ModelAdmin):
+    """Журнал напоминаний: только просмотр."""
+
+    list_display = (
+        "created_at", "user", "step", "channel", "status", "recipient",
+        "items_count", "total_display", "clicked", "returned", "request_sent",
+    )
+    list_filter = ("status", "channel", "step", "created_at")
+    search_fields = ("user__email", "recipient")
+    list_select_related = ("user",)
+    date_hierarchy = "created_at"
+
+    def get_queryset(self, request):
+        # «Вернулся» — менял Список после напоминания; «Отправил заявку» — заявка после напоминания
+        return super().get_queryset(request).annotate(
+            returned_flag=Exists(Cart.objects.filter(pk=OuterRef("cart_id"), updated_at__gt=OuterRef("created_at"))),
+            request_flag=Exists(Order.objects.filter(user_id=OuterRef("user_id"), created_at__gt=OuterRef("created_at"))),
+        )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description=_("Сумма"), ordering="total")
+    def total_display(self, obj):
+        return f"{obj.total} {obj.currency}" if obj.total is not None else "—"
+
+    @admin.display(description=_("Перешёл по ссылке"), boolean=True, ordering="clicked_at")
+    def clicked(self, obj):
+        return obj.clicked_at is not None
+
+    @admin.display(description=_("Вернулся к Списку"), boolean=True)
+    def returned(self, obj):
+        return obj.returned_flag
+
+    @admin.display(description=_("Отправил заявку"), boolean=True)
+    def request_sent(self, obj):
+        return obj.request_flag
 
 
 @admin.register(CartItem)

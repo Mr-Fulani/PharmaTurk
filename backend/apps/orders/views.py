@@ -927,6 +927,8 @@ def _get_or_create_cart(request) -> Cart:
                     )
                 # Удаляем анонимную корзину
                 anonymous_cart.delete()
+                # Перенос — активность клиента: круг напоминаний о заявке начинается заново
+                _touch_cart(cart)
                 return cart
         
         if cart:
@@ -1182,6 +1184,10 @@ class CartViewSet(viewsets.ViewSet):
         if cart.currency != preferred_currency:
             cart.currency = preferred_currency
             cart.save(update_fields=['currency', 'updated_at'])
+        # Язык страницы — на нём придёт напоминание о неотправленной заявке (docs/CART_REMINDERS.md)
+        cart_locale = 'en' if (getattr(request, 'LANGUAGE_CODE', '') or '').lower().startswith('en') else 'ru'
+        if cart.locale != cart_locale:
+            Cart.objects.filter(pk=cart.pk).update(locale=cart_locale)
         cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 

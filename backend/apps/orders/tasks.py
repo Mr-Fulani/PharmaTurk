@@ -11,7 +11,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.core.mail.backends.smtp import EmailBackend
 from django.db import transaction
-from django.db.models import Exists, F, OuterRef
+from django.db.models import Exists, OuterRef
 from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.translation import gettext_lazy as _
@@ -363,6 +363,9 @@ def _send_email_via_resend(message) -> bool:
             }
             for item in attachments
         ]
+    # Например List-Unsubscribe у напоминаний о Списке заявки
+    if getattr(message, "extra_headers", None):
+        payload["headers"] = dict(message.extra_headers)
 
     base_url = (getattr(settings, "RESEND_API_URL", "") or "https://api.resend.com").rstrip("/")
     user_agent = getattr(settings, "RESEND_USER_AGENT", "") or "mudaroba/1.0"
@@ -766,42 +769,12 @@ def notify_order_status_changed(self, order_id: int) -> None:
 
 
 @app.task(name="orders.remind_abandoned_carts")
-def remind_abandoned_carts(min_hours: int = 24, max_days: int = 7, batch_size: int = 200) -> int:
-    """Одно напоминание о брошенной заявке: корзина вошедшего клиента с товарами, не менялась сутки."""
-    now = timezone.now()
-    carts = (
-        Cart.objects.filter(
-            user__isnull=False,
-            updated_at__lte=now - timedelta(hours=min_hours),
-            updated_at__gte=now - timedelta(days=max_days),
-        )
-        .filter(Exists(CartItem.objects.filter(cart_id=OuterRef("pk"))))
-        .exclude(reminder_sent_at__gte=F("updated_at"))
-        .select_related("user")
-        .order_by("updated_at")[:batch_size]
-    )
-    sent = 0
-    site = _site_url()
-    for cart in carts:
-        user = cart.user
-        count = cart.items.count()
-        locale = _user_locale(user)
-        if locale == "en":
-            text = f"🛒 You still have {count} item(s) in your request. Finish it here: {site}/en/cart"
-            subject = "Your request is waiting"
-        else:
-            text = f"🛒 В вашей заявке остались товары ({count}). Завершить оформление: {site}/cart"
-            subject = "Ваша заявка ждёт оформления"
-        delivered = False
-        if getattr(user, "telegram_notifications", False) and getattr(user, "telegram_id", ""):
-            delivered = _send_telegram_text(str(user.telegram_id).strip(), text) or delivered
-        if user.email and getattr(user, "email_notifications", True):
-            try:
-                _send_plain_email(user.email, subject, text)
-                delivered = True
-            except Exception:
-                logger.warning("Abandoned cart email failed for cart %s", cart.pk)
-        # Помечаем даже при неудаче доставки: не спамим повторами; auto_now не трогаем через update()
-        Cart.objects.filter(pk=cart.pk).update(reminder_sent_at=now)
-        sent += int(delivered)
-    return sent
+def remind_abandoned_carts(batch_size: int = 50) -> int:
+    """Напоминания о неотправленном Списке заявки (email/Telegram) по настройкам из админки.
+
+    Пока в «Напоминания о заявке: настройки» не включено — ничего не делает.
+    Отбор, частота и отписка — apps/orders/cart_reminders.py, docs/CART_REMINDERS.md.
+    """
+    from .cart_reminders import run_cart_reminders
+
+    return run_cart_reminders(batch_size=batch_size)

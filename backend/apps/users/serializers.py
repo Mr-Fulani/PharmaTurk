@@ -187,6 +187,7 @@ class UserSerializer(serializers.ModelSerializer):
             'phone_number', 'birth_date', 'is_verified',
             'language', 'currency',
             'email_notifications', 'telegram_notifications', 'push_notifications',
+            'cart_reminders_enabled',
             'telegram_username', 'telegram_bound', 'whatsapp_phone',
             'country', 'city', 'postal_code', 'address',
             'avatar', 'avatar_url', 'bio',

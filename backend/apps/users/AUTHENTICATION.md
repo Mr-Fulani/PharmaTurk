@@ -132,6 +132,10 @@ email другого аккаунта отклоняется.
    `GET /api/users/profile/telegram-bind-link` создаёт одноразовый start token,
    пользователь открывает бота, а сообщение `/start TOKEN` обрабатывает
    `POST /api/users/telegram/webhook/`.
+3. Отписка от напоминаний о Списке заявки: кнопка под напоминанием (callback
+   `cart_reminders_off`) или команда `/stop` в личном чате с ботом выключают
+   `User.cart_reminders_enabled` у аккаунта с этим `telegram_id` (см.
+   [`docs/CART_REMINDERS.md`](../../../docs/CART_REMINDERS.md)).
 
 Для обоих сценариев нужны `TELEGRAM_BOT_TOKEN` и имя бота. Webhook публичный и
 не использует CSRF, потому что Telegram его не присылает. Он принимает запросы
