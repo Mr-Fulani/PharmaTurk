@@ -12,6 +12,7 @@ import pytest
 from apps.scrapers.base.scraper import SiteCategoriesError
 from apps.scrapers.parsers.flo import FloParser
 from apps.scrapers.parsers.ikea import IkeaParser
+from apps.scrapers.parsers.zara import ZaraParser
 
 FIXTURES = Path(__file__).parent / "test_fixtures" / "site_categories"
 
@@ -135,4 +136,57 @@ def test_ikea_categories_fail_on_menu_without_sections(monkeypatch, menu):
     monkeypatch.setattr(parser.ikea_service, "fetch_product_menu", lambda: menu)
 
     with pytest.raises(SiteCategoriesError):
+        parser.parse_categories()
+
+
+# --- Zara --------------------------------------------------------------------
+
+
+def test_zara_categories_come_from_ajax_category_tree(monkeypatch):
+    parser = ZaraParser()
+    requested = []
+    monkeypatch.setattr(
+        parser,
+        "_make_ajax_request",
+        lambda url: requested.append(url) or _fixture("zara_categories.json"),
+    )
+
+    categories = parser.parse_categories()
+
+    assert requested == ["https://www.zara.com/tr/tr/categories"]
+    # CEKET и MAKYAJ: все дети скрыты — берётся redirect-ребёнок «TÜMÜNÜ GÖR»;
+    # подарочная карта, магазины и разделители — не листинги.
+    assert _pairs(categories) == [
+        (
+            "KADIN > YENİ ÜRÜNLER > THE NEW",
+            "https://www.zara.com/tr/tr/kadin-yeni-gelenler-l1180.html",
+            "1180",
+        ),
+        (
+            "KADIN > KOLEKSİYON > CEKET",
+            "https://www.zara.com/tr/tr/kadin-ceketler-l1114.html",
+            "1114",
+        ),
+        (
+            "ZARA HOME > KİTAP | DERGİ | KIRTASİYE",
+            "https://www.zara.com/tr/tr/home-kiosco-l5293.html",
+            "5293",
+        ),
+        (
+            "BEAUTY > KADIN > MAKYAJ",
+            "https://www.zara.com/tr/tr/kadin-beauty-makyaj-l4414.html",
+            "4414",
+        ),
+    ]
+    assert all(ZaraParser.is_zara_category_url(row["url"]) for row in categories)
+    assert all(ZaraParser.supports_page_chunking_for_url(row["url"]) for row in categories)
+
+
+def test_zara_categories_fail_when_tree_is_missing(monkeypatch):
+    parser = ZaraParser()
+    monkeypatch.setattr(parser, "_make_ajax_request", lambda url: None)
+    # Резервный HTML Zara без viewPayload — тоже не дерево категорий.
+    monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: "<html></html>")
+
+    with pytest.raises(SiteCategoriesError, match="Zara"):
         parser.parse_categories()
