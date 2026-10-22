@@ -350,6 +350,31 @@ _SUFFIX_START = re.compile(r"['’`][a-zçğıöşü]")  # «'un», «'in» по
 _CLOSING_START = re.compile(r"[,.;:)\]]")
 _LOWER_START = re.compile(r"[a-zçğıöşü]")
 _SENTENCE_END = re.compile(r"[.:;!?]$")
+# Предложение, разрезанное самим сайтом на строки таблицы или пункты списка
+# (перенос из PDF): «…tedaviniz doktorunuz» / «tarafından dikkatli…», «160 mg'lık
+# (bir günde 40» / «mg'lık dört enjeksiyon…», «…adı verilen ilaçlar» / «sınıfındandır.».
+# Строка продолжает предложение, если начинается со связки или глагола, а
+# предыдущая — на союз или деепричастие, с незакрытой скобкой или на число перед
+# единицей. Пункты списка («baş ağrısı» / «bulantı», «… varsa» / «… varsa») не клеятся.
+_CONTINUATION_START = re.compile(
+    r"(?:gibi|ile|ve|veya|ya da|tarafından|olarak|için|kadar|sonra|önce|dolayı|nedeniyle|halinde|"
+    r"şeklinde|durumunda|olan|olduğu|edilen|denilen|adı verilen|boyunca|birlikte|göre|arasında|"
+    r"üzerinde|altında)\b"
+)
+_CONTINUATION_END = re.compile(
+    r"(?:\b(?:ve|veya|ile|ya|için|olarak|kadar|ancak|fakat|ama|ki|ilişkin|dair|karşı|göre|olan|eden|"
+    r"edilen|diğer)|\w+(?:[ae]r[ae]k|[ıiuü]p|ken))$"
+)
+# Глагол в начале строки: «almıyorsanız», «sınıfındandır.», «kullanılabilir.»,
+# «bulundurunuz.» (не «kanseriniz varsa» — там -iniz притяжательное).
+_VERB_START = re.compile(
+    r"[a-zçğıöşü]\w*(?:yors[ae]n[ıi]z|[dt][ıiuü]r|[ıiuü]l[ıiuü]r|[ae]bil[ıiuü]r|m[ae]l[ıiuü]d[ıiuü]r)\b"
+    r"|[a-zçğıöşü]\w*[ıiuü]n[ıiuü]z(?=[.,;:]|$)"
+)
+_UNIT_START = re.compile(r"(?:mg|ml|mL|mcg|µg|g|IU|I\.U\.|kg)(?![^\W\d_])|(?:mg|ml|mL)['’]")
+_NUMBER_END = re.compile(r"(?:^|[\s(/–-])\d+(?:[.,]\d+)*$")  # «… 40», не «Vitamin B12»
+_RANGE_START = re.compile(r"[-–]\d+\s+[a-zçğıöşü]")  # «vücut ağırlığı 15» / «-30 kg arasında»
+_HEADING_START = re.compile(r"\d{1,2}\.\s")
 
 
 def _line_kind(line: str) -> str:
@@ -371,8 +396,9 @@ def _continuation_glue(paragraph: str, line: str, previous_kind: str) -> Optiona
 
     Строка со строчной буквы сама по себе ничего не значит: так же начинаются
     пункты списка побочных эффектов («baş ağrısı» / «bulantı»). Она клеится
-    только после строки, которая не может кончать фразу: ®, индекс, ссылка,
-    слово заглавными.
+    только после строки, которая не может кончать фразу (®, индекс, ссылка,
+    слово заглавными, незакрытая скобка, союз или деепричастие в конце), или
+    если сама начинается со связки («gibi», «tarafından») или глагола.
     """
     if _MARK_LINE.fullmatch(line) or _SUFFIX_START.match(line) or _CLOSING_START.match(line):
         return ""
@@ -388,6 +414,20 @@ def _continuation_glue(paragraph: str, line: str, previous_kind: str) -> Optiona
         return " "
     if _LOWER_START.match(line) and _is_caps_word(paragraph):
         return "" if len(paragraph) == 1 else " "
+    if paragraph.count("(") > paragraph.count(")") and not _HEADING_START.match(line) and (
+        _LOWER_START.match(line) or line[:1].isdigit() or _UNIT_START.match(line)
+    ):
+        return " "
+    if _NUMBER_END.search(paragraph) and _RANGE_START.match(line) and not paragraph.startswith(("-", "–")):
+        return ""
+    if _NUMBER_END.search(paragraph) and _UNIT_START.match(line):
+        return " "
+    if paragraph.endswith(","):
+        return None
+    if _LOWER_START.match(line) and (_CONTINUATION_START.match(line) or _CONTINUATION_END.search(paragraph)):
+        return " "
+    if _VERB_START.match(line):
+        return " "
     return None
 
 

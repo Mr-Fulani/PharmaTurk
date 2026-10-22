@@ -409,7 +409,36 @@ def test_numbers_in_words_lists_and_footnotes_are_not_a_mismatch():
                          "6 Prolonged prothrombin time has rarely been reported in patients taking amoxicillin.") == []
 
 
+def test_glued_units_numbers_and_footnotes_inside_words_are_not_a_mismatch():
+    # Пробел потерян исходником на границе тега.
+    assert doses_match("sulandırıldığında 70 mLve 100 mL süspansiyon", "после разведения 70 мл и 100 мл суспензии")
+    assert doses_match("PREDNOL-L20mginek sütü proteinleri içermektedir.", "PREDNOL-L 20 мг содержит белки молока.")
+    assert doses_match("Önerilen doz VORELBAN15mg'dır.", "Рекомендуемая доза — VORELBAN 15 мг.")
+    # «2x5 mg» — множитель, «1 gün» — не «1 g ün».
+    assert doses_match("10 mg (2x5mg)", "10 мг (2x5 мг)") and doses_match("1 gün", "1 день")
+    assert not doses_match("sulandırıldığında 70 mLve 100 mL süspansiyon", "после разведения 7 мл и 100 мл суспензии")
+    assert item_problems(
+        "Yüksek tansiyonda kullanılan anjiyotensin IIantagonistleri",
+        "Антагонисты ангиотензина II, применяемые при высоком давлении",
+        "Angiotensin II antagonists used for high blood pressure",
+    ) == []
+    assert item_problems(
+        "{BRAND}'i ne kadar sür8eyle kullanacağınız konusunda sorularınız varsa, doktorunuza danışınız.",
+        "Если у вас есть вопросы о том, как долго применять {BRAND}, проконсультируйтесь с врачом.",
+        "If you have questions about how long to use {BRAND}, consult your doctor.",
+    ) == []
+
+
 SHIFTED_REQUESTS = json.loads((Path(__file__).parent / "fixtures" / "medicine_paragraph_shifts.json").read_text())
+# Запросы частей 3–5, где переводы на месте, а сдвиг находился из-за словаря понятий.
+ALIGNED_REQUESTS = json.loads((Path(__file__).parent / "fixtures" / "medicine_paragraph_aligned.json").read_text())
+
+
+@pytest.mark.parametrize("request_", ALIGNED_REQUESTS, ids=[item["request"].split(",")[0] for item in ALIGNED_REQUESTS])
+def test_aligned_requests_from_parts_3_to_5_are_not_shifted(request_):
+    _, rejected = check_paragraph_payload(request_["items"], request_["answer"])
+
+    assert not any("shifted" in problems for problems in rejected.values())
 
 
 @pytest.mark.parametrize("request_", SHIFTED_REQUESTS, ids=[item["request"].split(",")[0] for item in SHIFTED_REQUESTS])
