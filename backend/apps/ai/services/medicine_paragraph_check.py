@@ -64,12 +64,13 @@ _NUMBER_WORDS = {
 # «on bin» = 10 000: составные числа частот («10 000 hastanın birinde»);
 # «ilk 3 aylık dönem» модель переводит «первый триместр», «2 kat artış» —
 # «двукратное увеличение», «trisiklik (Kimyasal yapılarında 3 halka bulunan)» —
-# «трициклические», «12 parmak bağırsağı» — «двенадцатиперстная кишка».
+# «трициклические», «12 parmak bağırsağı» — «двенадцатиперстная кишка»,
+# «24 saatte 4 tablet» — «4 таблетки в сутки».
 _NUMBER_PHRASES = {
     "tr": ((r"\bon bin\b", "10000"),),
     "ru": (
         (r"\bдесят[ьи] тысяч\b", "10000"), (r"триместр", "3"), (r"двукратн", "2"), (r"тр[её]хкратн", "3"),
-        (r"четыр[её]хкратн", "4"), (r"трицикл", "3"), (r"двенадцатиперстн|дуоден", "12"),
+        (r"четыр[её]хкратн", "4"), (r"трицикл", "3"), (r"двенадцатиперстн|дуоден", "12"), (r"\bсут(?:ки|ок)\b", "24"),
     ),
     "en": (
         (r"\bten thousand\b", "10000"), (r"trimester", "3"), (r"twofold", "2"), (r"threefold", "3"), (r"fourfold", "4"),
@@ -202,7 +203,7 @@ _CONCEPTS = {
     "diarrhea": (r"ishal", r"диаре|понос", r"diarr"),
     "constipation": (r"kabiz", r"запор", r"constipat"),
     "itching": (r"ka[sş]int", r"зуд", r"itch|prurit"),
-    "rash": (r"dokuntu|kizari|kizarik", r"сып|покраснен|высыпан|эритем", r"rash|redness|erythem"),
+    "rash": (r"dokuntu|kizari|kizarik", r"сып|покраснен|высыпан|эритем", r"\brash|redness|erythem"),  # не «trash»
     "swelling": (r"[sş]i[sş]me|[sş]i[sş]lik|odem", r"отек|отёк|опух|припух|отёч|отеч", r"swell|o?edema"),
     "dizziness": (r"ba[sş] donme|sersem|vertigo", r"головокруж", r"dizz|vertigo|lightheaded"),
     "headache": (r"ba[sş] agri", r"головн\w* бол", r"headache"),
@@ -261,7 +262,8 @@ _CONCEPTS = {
     "stroke": (r"\binme\b", r"инсульт", r"stroke"),
     "side_effect": (r"yan etki", r"побочн|нежелательн", r"side effect|adverse"),
     "package": (r"ambalaj|\bkutu|blister", r"упаков|коробк|блистер", r"pack|\bbox|blister|carton"),
-    "expiry": (r"son kullanma|miad", None, r"expir"),
+    # «son kullanım tarihi», «Son Kull. Ta.» — тоже срок годности.
+    "expiry": (r"son kullan|son kull\.|miad", None, r"expir"),
     "white": (r"beyaz", r"\bбел", r"white"),
     "red": (r"kirmizi", r"красн", r"\bred\b|\bredd"),
     "yellow": (r"\bsari\b|\bsarims", r"желт|жёлт", r"yellow"),
@@ -301,9 +303,10 @@ def concepts(text: str, lang: str) -> frozenset[str]:
 
 # ── Заголовок, частота, длина ─────────────────────────────────────────────
 
-# «2. X'İ KULLANMADAN ÖNCE…», «3. Kapağı açınız»; не «1. günde», «2. haftada», «2. aydan sonra».
+# «2. X'İ KULLANMADAN ÖNCE…», «3. Kapağı açınız»; не «1. günde», «2. haftada», «2. aydan sonra»,
+# «3. ve 4. kürler boyunca».
 _SOURCE_HEADING = re.compile(
-    r"^\s*(\d{1,2})\.\s+(?!(?:g[üu]n|hafta|ay(?:da|dan|a|ın|ını|lık|lar|ları)?\b|y[ıi]l|doz|kez|saat|basamak|tedavi|"
+    r"^\s*(\d{1,2})\.\s+(?!ve(?:ya)?\s+\d)(?!(?:g[üu]n|hafta|ay(?:da|dan|a|ın|ını|lık|lar|ları)?\b|y[ıi]l|doz|kez|saat|basamak|tedavi|"
     r"k[üu]r|seans)\w*)(?=[^\W\d_]|\{BRAND\})",
     re.IGNORECASE,
 )

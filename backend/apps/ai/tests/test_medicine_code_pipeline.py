@@ -505,6 +505,32 @@ def test_title_template_from_structured_name():
     assert build_medicine_title("X 5 MG KARISIM") is None
 
 
+def test_title_template_new_forms_thousands_and_brand_words():
+    assert build_medicine_title("MIRENA RAHIM ICI SISTEM")["ru"] == "MIRENA, внутриматочная система"
+    assert build_medicine_title("BELOC ZOK 50 MG KONTROLLU SALIMLI 20 FILM TABLET")["ru"] == (
+        "BELOC ZOK 50 мг, таблетки с контролируемым высвобождением, покрытые плёночной оболочкой, 20 шт."
+    )
+    assert build_medicine_title("NEXIUM 40 MG ENTERIK KAPLI 28 PELLET TABLET")["ru"] == (
+        "NEXIUM 40 мг, кишечнорастворимые таблетки, 28 шт."
+    )
+    assert build_medicine_title("ADENOSIN-L.M. 5 MG/ML ENJ/INF. ICIN COZ. ICEREN 2 ML 10 AMPUL")["ru"] == (
+        "ADENOSIN-L.M. 5 мг/мл, раствор для инъекций и инфузий, 2 мл, 10 ампул"
+    )
+    # «5.000 I.U.» — пять тысяч, а не «5,000 МЕ».
+    assert build_medicine_title("DEVIT-3 5.000 I.U. YUMUŞAK KAPSUL (50 KAPSUL)") == {
+        "ru": "DEVIT-3 5000 МЕ, мягкие капсулы, 50 шт.",
+        "en": "DEVIT-3 5000 IU, soft capsules, 50 pcs",
+    }
+    # Внутримышечно и внутрь сразу — шаблоном не записать.
+    assert build_medicine_title("MONOVIT D3 300.000 IU/ML I.M./ORAL COZELTI (1 AMPUL)") is None
+    # «LIKIT», «PELLET», «TEK DOZLUK» бывают частью бренда.
+    assert build_medicine_title("FORANE LIKIT 100 ML SISE")["ru"] == "FORANE LIKIT, флакон, 100 мл"
+    assert build_medicine_title("REFRESH TEK DOZLUK GOZ DAMLASI 30 FLAKON")["ru"] == (
+        "REFRESH TEK DOZLUK, глазные капли, 30 флаконов"
+    )
+    assert build_medicine_title("KREON FUR KINDER PELLET 20 G")["ru"] == "KREON FUR KINDER PELLET 20 г"
+
+
 def test_full_medicine_processing_uses_code_and_memory():
     root = Category.objects.create(name="Медицина", slug="code-medicines-root")
     category = Category.objects.create(name="Обезболивающие", slug="code-painkillers", parent=root)
@@ -1429,7 +1455,6 @@ def test_pilot3_forms_are_covered_by_title_template(source):
     [
         # «500» без единицы перед «(20 TABLET)» — то ли доза, то ли фасовка
         "KLACID MR 500 DEGISTIRILMIS SALIM TABLET (20 TABLET)",
-        "ADENOSIN-L.M. 5 MG/ML ENJ/INF. ICIN COZ. ICEREN 2 ML 10 AMPUL",
     ],
 )
 def test_ambiguous_medicine_name_is_left_to_model(source):
