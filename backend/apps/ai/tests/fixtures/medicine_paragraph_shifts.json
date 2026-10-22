@@ -1,0 +1,157 @@
+[
+ {
+  "request": "mp-9, часть №1 (21.10.2026), batch_6ad7dd28…",
+  "items": {
+   "1": "Eğer çocukluk döneminizde büyüme hormonu eksikliği nedeniyle {BRAND}",
+   "2": "tedavisi almışsanız, büyümenizin durmasının ardından büyüme hormonu düzeyiniz tekrar incelenecektir. Eğer ciddi büyüme hormonu yetersizliğiniz olduğu tespit edilirse, doktorunuz {BRAND}",
+   "3": "tedavinizin devam etmesini önerecektir.",
+   "4": "Tüm diğer hastaların, IGF-1 (insülin benzeri büyüme faktörleri) tayini ve bir büyüme hormonu uyarılma testini yaptırmaları gerekmektedir..",
+   "5": "ile teşhis ve tedavi, büyüme bozukluğu olan hastaların teşhis ve idaresinde tecrübeli bir hekim tarafından başlatılmalı ve takip edilmelidir.",
+   "6": "2. {BRAND}®'U KULLANMADAN ÖNCE DİKKAT EDİLMESİ GEREKENLER",
+   "7": "'u aşağıdaki durumlarda KULLANMAYINIZ",
+   "8": "Somatropine veya {BRAND}",
+   "9": "'un içerisindeki herhangi bir bileşene karşı alerjiniz varsa.",
+   "10": "Aktif tümörünüz (kanser) varsa. Tümör aktif olmamalı ve {BRAND}"
+  },
+  "answer": {
+   "1": {
+    "ru": "Если в детском возрасте у вас была недостаточность гормона роста, то после остановки роста уровень гормона роста будет снова проверен.",
+    "en": "If you had a growth hormone deficiency during childhood, your growth hormone level will be re-evaluated after your growth has stopped."
+   },
+   "2": {
+    "ru": "Если будет установлено, что у вас серьезная недостаточность гормона роста, ваш врач порекомендует продолжение лечения {BRAND}.",
+    "en": "If it is determined that you have a severe growth hormone deficiency, your doctor will recommend continuing treatment with {BRAND}."
+   },
+   "3": {
+    "ru": "Все остальные пациенты должны пройти тест на уровень IGF-1 (инсулиноподобные факторы роста) и тест на стимуляцию гормона роста.",
+    "en": "All other patients should undergo an IGF-1 (insulin-like growth factors) assay and a growth hormone stimulation test."
+   },
+   "4": {
+    "ru": "Диагностика и лечение должны проводиться врачом, имеющим опыт в диагностике и управлении пациентами с нарушениями роста.",
+    "en": "Diagnosis and treatment should be initiated and monitored by a physician experienced in the diagnosis and management of patients with growth disorders."
+   },
+   "5": {
+    "ru": "2. ПРЕДУПРЕЖДЕНИЯ ПРИ ИСПОЛЬЗОВАНИИ {BRAND}®",
+    "en": "2. PRECAUTIONS BEFORE USING {BRAND}®"
+   },
+   "6": {
+    "ru": "НЕ ИСПОЛЬЗУЙТЕ {BRAND} в следующих случаях",
+    "en": "DO NOT USE {BRAND} in the following situations"
+   },
+   "7": {
+    "ru": "Если у вас есть аллергия на соматропин или любой из компонентов {BRAND}.",
+    "en": "If you are allergic to somatropin or any component of {BRAND}."
+   },
+   "8": {
+    "ru": "Если у вас есть активная опухоль (рак). Опухоль не должна быть активной, и {BRAND}",
+    "en": "If you have an active tumor (cancer). The tumor must not be active, and {BRAND}"
+   }
+  }
+ },
+ {
+  "request": "mp-480, часть №3 (22.10.2026), batch_6ad9502a…",
+  "items": {
+   "1": "Perindopril, anjiyotensin dönüştürücü enzim inhibitörü (ADE) adı verilen ilaçlar",
+   "2": "sınıfındandır.",
+   "3": "{BRAND} tablet dozaj formunda, beyaz, yuvarlak, bikonveks bir tarafı düz, bir tarafı \"2\" yazılı tablet olarak geliştirilmiştir.",
+   "4": "{BRAND} yüksek kan basıncı (hipertansiyon) ve/veya kalbe giden kan akışının azalması ya da engellenmesi durumunun (stabil koroner arter hastalığı) tedavisinde kullanılmaktadır. Daha önce ayrı ayrı hem amlodipin hem perindopril tabletleri kullanan hastalar artık her iki etkin maddeyi içeren {BRAND} kullanabilir.",
+   "5": "Emziriyorsanız (bkz. Bölüm \"Hamilelik ve emzirme\"),",
+   "6": "Şeker hastalığı (diyabet) veya böbrek rahatsızlığınız varsa ve aliskiren içeren kan basıncı düşüren ilaçlar ile tedavi görüyorsanız,",
+   "7": "Kalp yetmezliği için sakubitril/valsartan ile tedavi gördüyseniz veya şu anda görüyorsanız anjiyoödem (boğaz gibi bir bölgede cilt altında hızlı şişme) riski arttığı için (bkz. \"{BRAND}'i aşağıdaki durumlarda DİKKATLİ KULLANINIZ\" ve \"Diğer ilaçlarla birlikte kullanımı\").",
+   "8": "Doktorunuz böbrek fonksiyonlarınızı, kan basıncınızı ve kandaki elektrolit seviyelerinizi (örneğin potasyum) düzenli aralıklarla kontrol edebilir. (bkz. \"{BRAND}'i aşağıdaki durumlarda KULLANMAYINIZ\")..",
+   "9": "Perindopril dahil olmak üzere ADE inhibitörleriyle tedavi edilen hastalarda anjiyoödem (nefes alma veya yutkunmada zorluğa neden olabilen yüz, ağız, dil ve dudaklarda şişme ile ciddi allerjik reaksiyonlar) rapor edilmiştir. Bu durum tedavinin herhangi bir zamanında meydana gelebilir. Bu gibi belirtiler gelişirse tedaviyi sonlandırmalı ve acilen doktorunuza başvurmalısınız (bkz. Bölüm 4).",
+   "10": "Kırmızı ya da beyaz kan hücreleri sayısının azalması, düşük hemoglobin düzeyleri, kan pulcukları (platelet) sayısının azalması gibi kan hücrelerinde değişiklikler rapor edilmiştir (bkz. Bölüm 4).."
+  },
+  "answer": {
+   "1": {
+    "ru": "Периндоприл относится к классу препаратов, называемых ингибиторами ангиотензин-превращающего фермента (АПФ).",
+    "en": "Perindopril belongs to a class of medications known as angiotensin-converting enzyme (ACE) inhibitors."
+   },
+   "2": {
+    "ru": "{BRAND} разработан в форме таблеток, белого, круглого, с одной стороны выпуклого, с другой стороны плоского, с надписью \"2\".",
+    "en": "{BRAND} is developed in tablet dosage form, white, round, with one side convex and the other side flat, marked with \"2\"."
+   },
+   "3": {
+    "ru": "{BRAND} используется для лечения высокого кровяного давления (гипертензии) и/или состояния, связанного с уменьшением или блокировкой кровотока к сердцу (стабильная стенокардия). Пациенты, ранее использовавшие отдельно амлодипин и периндоприл, теперь могут использовать {BRAND}, содержащий оба активных вещества.",
+    "en": "{BRAND} is used in the treatment of high blood pressure (hypertension) and/or a condition where blood flow to the heart is reduced or blocked (stable coronary artery disease). Patients who previously used amlodipine and perindopril tablets separately can now use {BRAND}, which contains both active substances."
+   },
+   "4": {
+    "ru": "Если вы кормите грудью (см. раздел \"Беременность и кормление\"),",
+    "en": "If you are breastfeeding (see section \"Pregnancy and breastfeeding\"),"
+   },
+   "5": {
+    "ru": "если у вас есть диабет или заболевание почек и вы получаете лечение препаратами для снижения давления, содержащими алискирен,",
+    "en": "if you have diabetes or kidney disease and are being treated with blood pressure-lowering medications containing aliskiren,"
+   },
+   "6": {
+    "ru": "если вы проходили лечение сакубитрилом/валсартаном для сердечной недостаточности или в настоящее время проходите такое лечение, риск ангиоэдемы (быстрое отекание под кожей в области, такой как горло) увеличивается (см. \"ПРИМЕНЯЙТЕ {BRAND} С ОСТОРОЖНОСТЬЮ В НИЖЕУКАЗАННЫХ СЛУЧАЯХ\" и \"Совместное применение с другими лекарственными средствами\").",
+    "en": "if you have been treated with sacubitril/valsartan for heart failure or are currently being treated, the risk of angioedema (rapid swelling under the skin in an area such as the throat) is increased (see \"USE {BRAND} WITH CAUTION IN THE FOLLOWING CASES\" and \"Use with other medications\")."
+   },
+   "7": {
+    "ru": "Ваш врач может регулярно проверять функцию ваших почек, кровяное давление и уровень электролитов в крови (например, калия). (см. \"НЕ ПРИМЕНЯЙТЕ {BRAND} В НИЖЕУКАЗАННЫХ СЛУЧАЯХ\").",
+    "en": "Your doctor may regularly check your kidney function, blood pressure, and electrolyte levels in your blood (e.g., potassium). (see \"DO NOT USE {BRAND} IN THE FOLLOWING CASES\")."
+   },
+   "8": {
+    "ru": "У пациентов, получающих лечение ингибиторами АПФ, включая периндоприл, сообщалось о случаях ангиоэдемы (серьезные аллергические реакции с отеком лица, рта, языка и губ, которые могут вызвать затруднение дыхания или глотания). Это может произойти в любое время во время лечения. Если у вас возникнут такие симптомы, вы должны прекратить лечение и немедленно обратиться к врачу (см. раздел 4).",
+    "en": "Angioedema (serious allergic reactions with swelling of the face, mouth, tongue, and lips that can cause difficulty in breathing or swallowing) has been reported in patients treated with ACE inhibitors, including perindopril. This can occur at any time during treatment. If you experience such symptoms, you should stop treatment and seek medical attention immediately (see section 4)."
+   },
+   "9": {
+    "ru": "Сообщалось о изменениях в клетках крови, таких как снижение числа красных или белых кровяных клеток, низкий уровень гемоглобина, снижение числа тромбоцитов (пластинок) (см. раздел 4).",
+    "en": "Changes in blood cells, such as a decrease in red or white blood cell counts, low hemoglobin levels, and a decrease in platelet counts, have been reported (see section 4)."
+   }
+  }
+ },
+ {
+  "request": "mp-448, часть №3 (22.10.2026), batch_6ad9502a…",
+  "items": {
+   "1": "Sarı kantaron (St. John's Wort-Hypericum perforatum, hafif ve orta şiddetteki depresyon tedavisinde kullanlır)",
+   "2": "5. GRİPİN HOT'IN SAKLANMASI",
+   "3": "plastik bir cihaz içinde bulunur. (Bakınız şekil 1)",
+   "4": "{BRAND} nazal sprey:",
+   "5": "Burun tıkanması, akıntısı veya kaşıntısı",
+   "6": "gibi alerjik belirtilerin tedavisinde kullanılır.",
+   "7": "Belirtiler mevsimsel olabilir. Bunlar çimen veya ağaçlardaki polenlerden kaynaklanır (saman nezlesi). Aynı zamanda yıl boyu da devam edebilir ve hayvan alerjileri, ev tozu akarı veya bahçe toprağından da kaynaklanabilir.",
+   "8": "Flutikazon furoata veya {BRAND}'in diğer bileşenlerinden herhangi birine karşı alerjiniz varsa (yardımcı maddeler listesine bakınız)",
+   "9": "Şiddetli karaciğer hastalığınız varsa doktorunuz dozu azaltabilir.",
+   "10": "Tiroid hastalığı, böbrek hastalığı, kalp damar hastalığı, şeker hastalığı, yüksek göz tansiyonu, katarakt, miastenia gravis(kendi bağışıklık sistemi tarafından oluşturulan antikorların neden olduğu, kaslarda güçsüzlük ile karakterize bir türk kas hastalığı), tüberküloz veya mide bağırsak hastalığınız varsa"
+  },
+  "answer": {
+   "1": {
+    "ru": "Зверобой (Hypericum perforatum) используется для лечения легкой и умеренной депрессии.",
+    "en": "St. John's Wort (Hypericum perforatum) is used in the treatment of mild to moderate depression."
+   },
+   "2": {
+    "ru": "5. ХРАНЕНИЕ {BRAND}.",
+    "en": "5. STORAGE OF {BRAND}."
+   },
+   "3": {
+    "ru": "Находится в пластиковом устройстве. (Смотрите рисунок 1)",
+    "en": "It is contained in a plastic device. (See figure 1)"
+   },
+   "4": {
+    "ru": "{BRAND} назальный спрей:",
+    "en": "{BRAND} nasal spray:"
+   },
+   "5": {
+    "ru": "Используется для лечения таких аллергических симптомов, как заложенность носа, выделения или зуд.",
+    "en": "It is used for the treatment of allergic symptoms such as nasal congestion, discharge, or itching."
+   },
+   "6": {
+    "ru": "Симптомы могут быть сезонными. Они могут возникать из-за пыльцы трав или деревьев (сенная лихорадка). Также они могут продолжаться в течение всего года и могут быть вызваны аллергией на животных, домашнюю пыль или садовую почву.",
+    "en": "Symptoms may be seasonal. They may arise from pollen from grasses or trees (hay fever). They can also persist year-round and may be caused by animal allergies, house dust mites, or garden soil."
+   },
+   "7": {
+    "ru": "Если у вас есть аллергия на флутиказон фуроат или любой другой компонент {BRAND} (см. список вспомогательных веществ),",
+    "en": "If you are allergic to fluticasone furoate or any other component of {BRAND} (see the list of excipients),"
+   },
+   "8": {
+    "ru": "Если у вас тяжелое заболевание печени, ваш врач может уменьшить дозу.",
+    "en": "If you have severe liver disease, your doctor may reduce the dose."
+   },
+   "9": {
+    "ru": "Если у вас есть заболевания щитовидной железы, почек, сердечно-сосудистой системы, диабет, повышенное внутриглазное давление, катаракта, миастения гравис (заболевание, характеризующееся слабостью мышц, вызванной антителами, вырабатываемыми собственной иммунной системой), туберкулез или заболевания желудочно-кишечного тракта.",
+    "en": "If you have thyroid disease, kidney disease, cardiovascular disease, diabetes, high intraocular pressure, cataracts, myasthenia gravis (a muscle disease characterized by weakness caused by antibodies produced by the immune system), tuberculosis, or gastrointestinal disease."
+   }
+  }
+ }
+]

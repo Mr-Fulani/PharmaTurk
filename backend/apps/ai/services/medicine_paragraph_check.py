@@ -11,6 +11,7 @@
 частота побочного эффекта, метка {BRAND} и знак в конце абзаца.
 
 - ``item_problems`` — правила для одного абзаца (входят в ``paragraph_problems``);
+- ``restore_heading`` — номер «N.» шага или раздела, который модель потеряла, ставится кодом;
 - ``request_shift`` — сдвиг внутри одного ответа модели: перевод ближе к
   соседнему исходнику, чем к своему; отбрасывается цепочка таких абзацев;
 - ``audit_sequence`` — то же для записей памяти в порядке pk (команда
@@ -35,7 +36,8 @@ _BRAND = "{BRAND}"  # medicine_memory.BRAND_TOKEN
 _NUMBER_WORDS = {
     "tr": {
         "iki": 2, "ikinci": 2, "üç": 3, "üçüncü": 3, "dört": 4, "dördüncü": 4, "beş": 5, "yedi": 7,
-        "sekiz": 8, "dokuz": 9, "on": 10, "yirmi": 20, "otuz": 30, "yüz": 100, "bin": 1000,
+        "sekiz": 8, "dokuz": 9, "on": 10, "yirmi": 20, "otuz": 30, "kırk": 40, "elli": 50, "altmış": 60,
+        "yetmiş": 70, "seksen": 80, "doksan": 90, "yüz": 100, "bin": 1000,
     },
     "ru": {
         "два": 2, "две": 2, "двух": 2, "двум": 2, "двумя": 2, "дважды": 2,
@@ -56,12 +58,16 @@ _NUMBER_WORDS = {
         "second": 2, "third": 3, "fourth": 4, "hundred": 100, "thousand": 1000,
     },
 }
-# «on bin» = 10 000: составные числа частот («10 000 hastanın birinde»).
+# «on bin» = 10 000: составные числа частот («10 000 hastanın birinde»);
+# «ilk 3 aylık dönem» модель переводит «первый триместр».
 _NUMBER_PHRASES = {
     "tr": ((r"\bon bin\b", "10000"),),
-    "ru": ((r"\bдесят[ьи] тысяч\b", "10000"),),
-    "en": ((r"\bten thousand\b", "10000"),),
+    "ru": ((r"\bдесят[ьи] тысяч\b", "10000"), (r"триместр", "3")),
+    "en": ((r"\bten thousand\b", "10000"), (r"trimester", "3")),
 }
+# «yetmiş beş» = 75: десятки и единицы словами («Yetmiş beş yaşın üzerinde» → «старше 75 лет»).
+_TENS_TR = {"on": 10, "yirmi": 20, "otuz": 30, "kırk": 40, "elli": 50, "altmış": 60, "yetmiş": 70, "seksen": 80, "doksan": 90}
+_UNITS_TR = {"bir": 1, "iki": 2, "üç": 3, "dört": 4, "beş": 5, "altı": 6, "yedi": 7, "sekiz": 8, "dokuz": 9}
 # «IV» не переводим: так пишут «внутривенно» (İ.V. → IV).
 _ROMAN = {"II": "2", "III": "3", "VI": "6", "VII": "7", "VIII": "8", "IX": "9", "XII": "12"}
 _ROMAN_RE = re.compile(r"\b(?:II|III|VI|VII|VIII|IX|XII)\b")
@@ -69,6 +75,13 @@ _FRACTIONS = str.maketrans({"½": " 1/2 ", "¼": " 1/4 ", "¾": " 3/4 ", "⅓": 
 # «1 000», «10 000 000» — пробел как разделитель тысяч (так пишет RU).
 _SPACED_THOUSANDS = re.compile(r"(?<![\d.,])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?![\d.,]?\d)")
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+# Номер сноски, приклеенный к слову: «6Amoksisilin/klavulanik asit alan…», «2Herhangi bir…»,
+# «çırpınma8 (konvülsiyon)», «uzama6»; не «B12», «D3» (после заглавной).
+_FOOTNOTE = re.compile(
+    r"(?<!\S)\d{1,2}(?=[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2})|(?<=[a-zçğıöşü)])\d{1,2}(?=[\s(]|$)"
+)
+# «2,3 veya 4 doza», «2,10 veya 20 adet» — перечисление без пробела, в переводе «2, 3 или 4».
+_COMMA_LIST = re.compile(r"(?<![\d.,])(\d+),(\d+)(?![\d.,]?\d)")
 
 
 def _lower(text: str, lang: str) -> str:
@@ -92,10 +105,20 @@ def number_words(text: str, lang: str) -> frozenset[str]:
     words = _NUMBER_WORDS[lang]
     text = str(text or "")
     found = {value for pattern, value in _NUMBER_PHRASES[lang] if re.search(pattern, _lower(text, lang))}
-    for word in re.findall(r"[^\W\d_]+", text):
+    tokens = re.findall(r"[^\W\d_]+", text)
+    for word in tokens:
         key = _lower(word, lang)
         if key in words and not (word.isupper() and len(word) > 1):
             found.add(str(words[key]))
+    if lang == "tr":
+        keys = [_lower(word, lang) for word in tokens]
+        found.update(str(_TENS_TR[a] + _UNITS_TR[b]) for a, b in zip(keys, keys[1:]) if a in _TENS_TR and b in _UNITS_TR)
+        # Слитно: «Ondört yaş» = 14.
+        found.update(
+            str(value + _UNITS_TR[key[len(tens):]])
+            for key in keys for tens, value in _TENS_TR.items()
+            if key.startswith(tens) and key[len(tens):] in _UNITS_TR
+        )
     return frozenset(found)
 
 
@@ -116,7 +139,8 @@ _CONCEPTS = {
     "allergy": (r"all?er[jg]i", r"аллерг", r"allerg"),
     "infection": (r"enfeks", r"инфекц|инфицир", r"infect"),
     "blood": (r"\bkan(?:in|i|da|daki|dan|a|am\w*)?\b(?! basinc)|kan pulcu", None, r"blood|bleed|haem|hemo|platelet"),
-    "skin": (r"\bderi|\bcilt", r"кож|дерм", r"skin|derm|cutaneous"),
+    # «derin» — «глубокий» («derin ven trombozu», «derin uyku»), а не «кожа».
+    "skin": (r"\bderi(?!n\b|nl|nd)|\bcilt", r"кож|дерм", r"skin|derm|cutaneous"),
     "intestine": (r"bagirsa|barsak", r"кишеч|кишк|кишок", None),
     "nausea": (r"bulanti", r"тошнот", r"nause"),
     "vomiting": (r"kusma|kusar", r"рвот", r"vomit"),
@@ -128,13 +152,15 @@ _CONCEPTS = {
     "dizziness": (r"ba[sş] donme|sersem|vertigo", r"головокруж", r"dizz|vertigo|lightheaded"),
     "headache": (r"ba[sş] agri", r"головн\w* бол", r"headache"),
     "fatigue": (r"yorgun|halsiz|bitkin", r"усталост|утомл|слабост|вялост", r"tired|fatigue|weak|letharg"),
-    "sleep": (r"uyku|uyu[sş]uk", None, r"sleep|insomn|drows|somnol"),
+    # «uyuşukluk» — и вялость, и онемение («numbness»), поэтому не «сон».
+    "sleep": (r"uyku", None, r"sleep|insomn|drows|somnol"),
     "depression": (r"depres", r"депрес", r"depress"),
     "cancer": (r"kanser|tumor|malign|onkolo", r"\bрак|опухол|онко|злокачеств", r"cancer|tumou?r|malignan|oncol"),
     "diabetes": (r"diyabet|[sş]eker hastal", r"диабет", r"diabet"),
     "sugar": (r"[sş]eker|glukoz", r"сахар|глюкоз", None),
     "alcohol": (r"alkol", r"алкогол|спирт", r"alcohol"),
-    "driving": (r"\barac\b|arac kullan|makine", r"транспорт|машин|механизм|автомоб|вожден", r"driv|machin|vehicle"),
+    # Не любая «makine»: «saç kurutma makineleri» — фены.
+    "driving": (r"\barac\b|makine kullan", r"транспорт|машин|механизм|автомоб|вожден", r"driv|machin|vehicle"),
     "storage": (r"sakla", r"хран", r"\bstor|\bkeep"),
     "refrigerator": (r"buzdolab", r"холодильн", r"refrigerat|fridge"),
     "freeze": (r"dondur|donmu[sş]", r"замора|морозил|заморож", r"freez|frozen"),
@@ -169,7 +195,7 @@ _CONCEPTS = {
     "antibiotic": (r"antibiyo", r"антибиот", r"antibiot"),
     "bacteria": (r"bakteri", r"бактер", r"bacter"),
     "fungal": (r"mantar", r"грибк|грибов|микоз", r"fung"),
-    "virus": (r"virus|viral", r"вирус", r"virus|viral"),
+    "virus": (r"virus|viral", r"вирус|\bвич\b|\bспид\b", r"virus|viral"),
     "asthma": (r"astim", r"астм", r"asthm"),
     "cough": (r"oksur", r"кашл|кашел|кашель", r"cough"),
     "contraception": (r"dogum kontrol|kontrasep", r"контрацеп|противозачат|рождаемост|предохран", r"contracep|birth control"),
@@ -179,7 +205,7 @@ _CONCEPTS = {
     "package": (r"ambalaj|\bkutu|blister", r"упаков|коробк|блистер", r"pack|\bbox|blister|carton"),
     "expiry": (r"son kullanma|miad", None, r"expir"),
     "white": (r"beyaz", r"\bбел", r"white"),
-    "red": (r"kirmizi", r"красн", r"\bred\b"),
+    "red": (r"kirmizi", r"красн", r"\bred\b|\bredd"),
     "yellow": (r"\bsari\b|\bsarims", r"желт|жёлт", r"yellow"),
     "pink": (r"pembe", r"розов", r"pink"),
     "orange": (r"turuncu", r"оранж", r"orange"),
@@ -192,9 +218,10 @@ _CONCEPTS = {
     "potassium": (r"potasyum", r"\bкали[йяюе]", r"potassium"),
     "calcium": (r"kalsiyum", r"кальци", r"calcium"),
     "magnesium": (r"magnezyum", r"магни", r"magnesium"),
-    "iron": (r"\bdemir", None, r"\biron\b|ferr"),
+    # Не «demirhindi» (тамаринд) и другие растения на «demir».
+    "iron": (r"\bdemir(?:\b|i\b|in\b|e\b|den\b|le\b|li\b)", None, r"\biron\b|ferr"),
     "thyroid": (r"tiroid", None, r"thyroid"),
-    "immune": (r"bagi[sş]iklik|immun", r"иммун", r"immun"),
+    "immune": (r"bagi[sş]iklik|immun", r"иммун|\bвич\b|\bспид\b", r"immun"),
 }
 _LANGS = ("tr", "ru", "en")
 _CONCEPT_RES = {
@@ -215,9 +242,10 @@ def concepts(text: str, lang: str) -> frozenset[str]:
 
 # ── Заголовок, частота, длина ─────────────────────────────────────────────
 
-# «2. X'İ KULLANMADAN ÖNCE…», «3. Kapağı açınız»; не «1. günde», «2. haftada».
+# «2. X'İ KULLANMADAN ÖNCE…», «3. Kapağı açınız»; не «1. günde», «2. haftada», «2. aydan sonra».
 _SOURCE_HEADING = re.compile(
-    r"^\s*(\d{1,2})\.\s+(?!(?:g[üu]n|hafta|ay\b|y[ıi]l|doz|kez|saat|basamak|tedavi|k[üu]r|seans)\w*)(?=[^\W\d_])",
+    r"^\s*(\d{1,2})\.\s+(?!(?:g[üu]n|hafta|ay(?:da|dan|a|ın|ını|lık|lar|ları)?\b|y[ıi]l|doz|kez|saat|basamak|tedavi|"
+    r"k[üu]r|seans)\w*)(?=[^\W\d_])",
     re.IGNORECASE,
 )
 _TRANSLATION_HEADING = re.compile(r"^\s*(\d{1,2})\s*[.)](?!\d)")
@@ -268,13 +296,25 @@ def _frequency(text: str, lang: str) -> Optional[str]:
 class Features:
     """Признаки одного текста для сравнения исходника и перевода."""
 
-    __slots__ = ("lang", "numbers", "words", "concepts", "length", "heading", "frequency", "brand", "end", "empty")
+    __slots__ = (
+        "lang", "numbers", "words", "lists", "footnotes", "concepts", "length", "heading", "frequency", "brand",
+        "end", "empty", "fragment",
+    )
 
     def __init__(self, text: str, lang: str):
         text = str(text or "").strip()
         self.lang = lang
         self.empty = not text
         self.numbers = plain_numbers(text)
+        # «2,3» — то ли 2,3, то ли перечисление 2 и 3: годится любой вариант.
+        self.lists = {
+            _normalize_number(f"{a}.{b}"): frozenset({a, b} - {"1", "0"})
+            for a, b in _COMMA_LIST.findall(text)
+        }
+        # Номер сноски модель то оставляет («7Желудочно-…»), то убирает — он необязателен.
+        self.footnotes = frozenset(_FOOTNOTE.findall(text)) - {"1", "0"} if lang == "tr" else frozenset()
+        # Обрывок предложения: начинается с суффикса после бренда или со строчной.
+        self.fragment = bool(re.match(r"['’`]|[a-zçğıöşü]", text))
         self.words = number_words(text, lang)
         self.concepts = concepts(text, lang)
         self.length = len(text)
@@ -314,7 +354,14 @@ def pair_score(source: Features, translation: Features) -> float:
 # |ln| отношения длин перевода и исходника: у 98 % верных записей — до 0,34.
 # Сглаживание гасит разброс у коротких («Gaz» → «Газообразование»), у пары
 # RU/EN оно больше: «Gastritis» против «Воспаление желудка (гастрит)» — норма.
+# Короткий перевод короткого цельного абзаца сглаживается сильнее: «İdrar
+# söktürücü ilaçlar (diüretikler)» → «Diuretics». Как раньше ловятся длинный
+# чужой перевод («Papiller nekroz» → «Храните при температуре ниже 25°C…»),
+# потеря части длинного абзаца и обрывок («'in uygulama hızını azaltacak ya da
+# size insülin uygulayacaktır.» → «или назначить вам инсулин.»).
 LENGTH_LOG_RATIO = 0.7
+SHORTER_SMOOTHING = 20
+SHORT_SOURCE = 80
 RU_EN_LENGTH_LOG_RATIO = 0.6
 
 
@@ -322,20 +369,39 @@ def _log_ratio(a: Features, b: Features, smoothing: int) -> float:
     return abs(math.log((a.length + smoothing) / (b.length + smoothing)))
 
 
-def _numbers_differ(a: Features, b: Features) -> bool:
-    """Цифра одного текста не встречается в другом ни цифрой, ни словом."""
-    return bool(a.numbers - b.numbers - b.words or b.numbers - a.numbers - a.words)
+def _length_differs(translation: Features, source: Features) -> bool:
+    gentle = (
+        8 <= translation.length < source.length <= SHORT_SOURCE and not source.fragment
+    )
+    return _log_ratio(translation, source, SHORTER_SMOOTHING if gentle else 10) > LENGTH_LOG_RATIO
+
+
+def _numbers_differ(a: Features, b: Features, optional: frozenset = frozenset()) -> bool:
+    """Цифра одного текста не встречается в другом ни цифрой, ни словом.
+
+    «2,3» без пробела в одном тексте и «2» и «3» в другом — одно и то же
+    перечисление («2,3 veya 4 doza» → «2, 3 или 4 дозы»). ``optional`` — номера
+    сносок исходника: их может не быть ни в одном из текстов.
+    """
+    a_only = set(a.numbers - b.numbers - b.words - optional)
+    b_only = set(b.numbers - a.numbers - a.words - optional)
+    for x, y, x_only, y_only in ((a, b, a_only, b_only), (b, a, b_only, a_only)):
+        for number, parts in x.lists.items():
+            if number in x_only and parts <= y.numbers | y.words:
+                x_only.discard(number)
+                y_only -= parts
+    return bool(a_only or b_only)
 
 
 def _problems(src: Features, ru: Features, en: Features) -> list[str]:
     problems = []
     if src.heading and (ru.heading != src.heading or en.heading != src.heading):
         problems.append("heading_mismatch")
-    if _numbers_differ(src, ru) or _numbers_differ(src, en):
+    if _numbers_differ(src, ru, src.footnotes) or _numbers_differ(src, en, src.footnotes):
         problems.append("number_mismatch")
-    if max(_log_ratio(ru, src, 10), _log_ratio(en, src, 10)) > LENGTH_LOG_RATIO:
+    if _length_differs(ru, src) or _length_differs(en, src):
         problems.append("length_mismatch")
-    if _numbers_differ(ru, en) or _log_ratio(ru, en, 20) > RU_EN_LENGTH_LOG_RATIO:
+    if _numbers_differ(ru, en, src.footnotes) or _log_ratio(ru, en, 20) > RU_EN_LENGTH_LOG_RATIO:
         problems.append("ru_en_mismatch")
     for translation in (ru, en):
         expected = src.concepts & _CHECKED[translation.lang]
@@ -350,6 +416,20 @@ def _problems(src: Features, ru: Features, en: Features) -> list[str]:
 def item_problems(source: str, ru: str, en: str) -> list[str]:
     """Признаки чужого перевода в одном абзаце (пустой список — расхождений нет)."""
     return _problems(Features(source, "tr"), Features(ru, "ru"), Features(en, "en"))
+
+
+def restore_heading(source: str, translation: str) -> str:
+    """Номер шага или раздела «N.», который модель не перенесла в начало перевода,
+    ставится кодом: «3. Kalan suyu … doldurunuz» → «Заполните…» → «3. Заполните…».
+    Если перевод начинается с другого числа, это не пропуск, а расхождение."""
+    match = _SOURCE_HEADING.match(str(source or ""))
+    if (
+        match and translation and not re.match(r"\s*\d", translation)
+        # «3. Bölüm» → «См. раздел 3»: ссылка на раздел, номер уже в переводе.
+        and not re.search(rf"(?:раздел\w*|пункт\w*|section|item)\s+{match.group(1)}(?!\d)", translation, re.IGNORECASE)
+    ):
+        return f"{match.group(1)}. {translation}"
+    return translation
 
 
 # ── Сдвиг в последовательности абзацев ────────────────────────────────────

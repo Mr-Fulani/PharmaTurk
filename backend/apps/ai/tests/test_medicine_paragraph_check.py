@@ -6,6 +6,7 @@
 import json
 from datetime import timedelta
 from io import StringIO
+from pathlib import Path
 
 import pytest
 from django.core.management import call_command
@@ -14,6 +15,7 @@ from django.db.models import F
 
 from apps.ai.management.commands.medicine_paragraph_audit import SUSPECT_NAMESPACE
 from apps.ai.models import AITranslationMemory
+from apps.ai.services.medicine_fact_check import doses_match
 from apps.ai.services.medicine_memory import (
     PARAGRAPH_NAMESPACE,
     check_paragraph_payload,
@@ -187,6 +189,235 @@ def test_foreign_translation_of_paragraph_is_rejected(source, ru, en, problem):
 ])
 def test_correct_translation_passes_item_rules(source, ru, en):
     assert item_problems(source, ru, en) == []
+
+
+# Верные переводы из части №3 пакета (22.10.2026), которые правила отклоняли.
+PART3_FALSE_REJECTS = [
+    pytest.param(
+        '600-1500 I.U./gün',
+        '600-1500 МЕ/день',
+        '600-1500 I.U./day',
+        id='I.U. = МЕ = IU',
+    ),
+    pytest.param(
+        "* Gerektiğinde 1.000 I.U.'ye kadar çıkılabilir.",
+        '* При необходимости можно увеличить до 1000 МЕ.',
+        '* If necessary, it can be increased up to 1,000 I.U.',
+        id='1.000 I.U. = 1000 МЕ = 1,000 I.U.',
+    ),
+    pytest.param(
+        "Başlangıç dozu nemli inhalasyon yoluyla 2,5'mg'dır. Doz 5 mg'a kadar çıkarılabilir. Tedavi günde 4 kez tekrarlanabilir.",
+        'Начальная доза при ингаляции составляет 2,5 мг. Дозу можно увеличить до 5 мг. Лечение можно повторять 4 раза в день.',
+        'The starting dose via inhalation is 2.5 mg. The dose can be increased up to 5 mg. Treatment can be repeated 4 times a day.',
+        id="2,5'mg — апостроф между числом и единицей",
+    ),
+    pytest.param(
+        "{BRAND} her ml'sinde 23 mg'dan daha az sodyum ihtiva eder. Sodyuma bağlı herhangi bir olumsuz etki beklenmez.",
+        '{BRAND} содержит менее 23 мг натрия на 1 мл. Ожидается, что негативных эффектов, связанных с натрием, не будет.',
+        '{BRAND} contains less than 23 mg of sodium per ml. No adverse effects related to sodium are expected.',
+        id='«на 1 мл» — знаменатель, а не доза',
+    ),
+    pytest.param(
+        '{BRAND}, 20 gramlık tüplerde sunulan beyaz renkli bir kremdir.',
+        '{BRAND} — это белый крем, который поставляется в тюбиках по 20 граммов.',
+        '{BRAND} is a white cream available in 20-gram tubes.',
+        id='20 gramlık = 20 граммов = 20-gram',
+    ),
+    pytest.param(
+        '{BRAND} 1 g merhemde 1 miligram triamsinolon asetonid içeren, 5 gramlık alüminyum tüplerde kullanıma sunulmaktadır.',
+        '{BRAND} выпускается в алюминиевых тюбиках по 5 граммов, содержащих 1 миллиграмм триамцинолона ацетонида в 1 грамме мази.',
+        '{BRAND} is available in 5-gram aluminum tubes containing 1 milligram of triamcinolone acetonide in 1 gram of ointment.',
+        id='1 miligram = 1 мг, «в 1 г мази» — знаменатель',
+    ),
+    pytest.param(
+        "2. aydan sonra, aşı sonrası ateş görülen bebeklere 2,5 ml (yarım ölçek)'lik bir doz uygundur.. İki ayın altındaki bebeklerde kullanılmamalıdır.",
+        'После 2-го месяца для детей с температурой после вакцинации рекомендуется доза 2,5 мл (половина мерной ложки). Не следует использовать у детей младше двух месяцев.',
+        'After the 2nd month, a dose of 2.5 ml (half a scoop) is recommended for infants with fever after vaccination. It should not be used in infants under two months.',
+        id='«2. aydan sonra» — «после 2-го месяца», а не раздел 2',
+    ),
+    pytest.param(
+        '6Amoksisilin/klavulanik asit alan hastalarda protrombin zamanında uzama nadiren bildirilmiştir. Antikoagülanlar ile birlikte reçete edildiğinde uygun şekilde izlenmesi gereklidir. İstenilen antikoagülasyon düzeyini sürdürebilmek için oral antikoagülan dozunda ayarlama yapılması gerekebilir.',
+        'У пациентов, принимающих {BRAND}, редко сообщалось о продлении протромбинового времени. При назначении вместе с антикоагулянтами необходимо соответствующее наблюдение. Для поддержания желаемого уровня антикоагуляции может потребоваться корректировка дозы перорального антикоагулянта.',
+        'In patients receiving {BRAND}, prolongation of prothrombin time has been rarely reported. When prescribed together with anticoagulants, appropriate monitoring is required. Dose adjustment of oral anticoagulants may be necessary to maintain the desired level of anticoagulation.',
+        id='сноска «6Amoksisilin»',
+    ),
+    pytest.param(
+        'Kasılma, nöbet ya da çırpınma8 (konvülsiyon) (yüksek dozda AUGMENTİN ES alan hastalarda veya böbrek sorunları olan hastalarda görülebilir)',
+        'Судороги, припадки или подергивания (конвульсии) могут наблюдаться у пациентов, принимающих высокие дозы AUGMENTIN ES или имеющих проблемы с почками.',
+        'Convulsions, seizures, or twitching (convulsions) may be observed in patients receiving high doses of AUGMENTIN ES or those with kidney issues.',
+        id='сноска «çırpınma8»',
+    ),
+    pytest.param(
+        "Hamileliğinizin ilk veya son 3 aylık döneminde iseniz {BRAND}'i kullanmayınız.",
+        'Если вы находитесь на первом или последнем триместре беременности, не используйте {BRAND}.',
+        'If you are in the first or last trimester of pregnancy, do not use {BRAND}.',
+        id='«3 aylık dönem» = «триместр»',
+    ),
+    pytest.param(
+        'Yetmiş beş yaşın üzerinde iseniz ve size STEMI olarak adlandırılan tipte bir miyokard infarktüsü (STEMI) teşhisi konulursa tedavinin başlangıcında size damar içine tek seferde ilaç verilmesi önerilmemektedir.',
+        'Если вам больше 75 лет и вам поставлен диагноз инфаркта миокарда типа STEMI, вам не рекомендуется вводить препарат внутривенно в начале лечения.',
+        'If you are over 75 years old and diagnosed with a type of myocardial infarction called STEMI, it is not recommended to administer the drug intravenously at the beginning of treatment.',
+        id='«Yetmiş beş yaş» = 75',
+    ),
+    pytest.param(
+        'Ondört yaş ve üzeri ergenler ve erişkinlerde kireçlenme (osteoartrit), eklemlerde ağrı ve şekil bozukluğu (romatoid artrit) ve sırt, boyun ve göğüs kafesi eklemlerinde sertleşme ile seyreden ağrılı ilerleyici romatizma (ankilozan spondilit) belirti ve bulgularının tedavisi ile akut guta bağlı eklem iltihabı (akut gut artrit), akut kas-iskelet sistemi ağrıları, ameliyattan sonraki ağrı (postoperatif ağrı) ve ağrılı adet görme (dismenore) tedavisinde endikedir.',
+        'Показан для лечения симптомов и признаков остеоартрита, боли в суставах и деформации (ревматоидный артрит), а также болезненной прогрессирующей ревматической болезни с жесткостью в суставах спины, шеи и грудной клетки (анкилозирующий спондилит), острого артрита, связанного с подагрой (острый подагрический артрит), острых болей в опорно-двигательном аппарате, послеоперационной боли и болезненных менструаций (дисменорея) у подростков старше 14 лет и взрослых.',
+        'Indicated for the treatment of symptoms and signs of osteoarthritis, joint pain and deformity (rheumatoid arthritis), and painful progressive rheumatism with stiffness in the joints of the back, neck, and chest (ankylosing spondylitis), acute gout-related joint inflammation (acute gout arthritis), acute musculoskeletal pain, postoperative pain, and painful menstruation (dysmenorrhea) in adolescents over 14 years and adults.',
+        id='«Ondört yaş» = 14',
+    ),
+    pytest.param(
+        "30 kg'dan hafif çocuklarda önerilen toplam dozaj 2,3 veya 4 doza bölünmüş olarak (her 12, 8 veya 6 saatte bir) 50 mg/kg/gün'dür. 30 kg ve üstündeki çocuklar için günlük doz yetişkin dozuyla aynıdır (her 12 saatte 375-750 mg).",
+        'Рекомендуемая общая доза для детей весом менее 30 кг составляет 50 мг/кг/день, разделенная на 2, 3 или 4 дозы (каждые 12, 8 или 6 часов). Для детей весом 30 кг и более суточная доза такая же, как у взрослых (375-750 мг каждые 12 часов).',
+        'The recommended total dosage for children weighing less than 30 kg is 50 mg/kg/day, divided into 2, 3, or 4 doses (every 12, 8, or 6 hours). For children weighing 30 kg and above, the daily dose is the same as the adult dose (375-750 mg every 12 hours).',
+        id='«2,3 veya 4 doza» — перечисление',
+    ),
+    pytest.param(
+        'İdrar söktürücü ilaçlar (diüretikler)',
+        'Диуретики (мочегонные препараты)',
+        'Diuretics',
+        id='короткий абзац: «Diuretics»',
+    ),
+    pytest.param(
+        'Doktorunuz tarafından başka bir şekilde tavsiye edilmediği takdirde',
+        'Если врач не назначил иначе',
+        'Unless otherwise advised by your doctor',
+        id='короткий абзац: «Если врач не назначил иначе»',
+    ),
+    pytest.param(
+        "5. MADDECASSOL'ÜN SAKLANMASI",
+        '5. ХРАНЕНИЕ {BRAND}',
+        '5. STORAGE OF {BRAND}',
+        id='модель сама заменила бренд меткой',
+    ),
+    pytest.param(
+        'www.titck.gov.tr/" sitesinde',
+        'на сайте www.titck.gov.tr/',
+        'at www.titck.gov.tr/',
+        id='адрес сайта не переводится',
+    ),
+    pytest.param(
+        'Kullanma Talimatında yer alan veya almayan herhangi bir yan etki meydana gelmesi durumunda hekiminiz, eczacınız veya hemşireniz ile konuşunuz. Ayrıca karşılaştığınız yan etkileri www.titck.gov.tr adresinde yer alan "İlaç Yan Etki Bildirimi" ikonuna tıklayarak ya da 0 800 314 00 08 numaralı yan etki bildirim hattını arayarak Türkiye Farmakovijilans Merkezi (TÜFAM)\'ne bildiriniz. Meydana gelen yan etkileri bildirerek kullanmakta olduğunuz ilacın güvenliliği hakkında daha fazla bilgi edinilmesine katkı sağlamış olacaksınız..',
+        'Если возникнут какие-либо побочные эффекты, указанные или не указанные в инструкции по применению, поговорите с вашим врачом, фармацевтом или медсестрой. Также сообщите о возникших побочных эффектах, нажав на иконку "Сообщение о побочных эффектах" на сайте www.titck.gov.tr или позвонив на горячую линию по сообщениям о побочных эффектах по номеру 0 800 314 00 08 в Турецкий центр фармаконадзора (ТÜFAM). Сообщая о возникших побочных эффектах, вы способствуете получению дополнительной информации о безопасности используемого вами препарата.',
+        'If any side effects occur, whether listed or not in the instructions for use, talk to your doctor, pharmacist, or nurse. Also report the side effects you encounter by clicking on the "Drug Side Effect Reporting" icon on the website www.titck.gov.tr or by calling the side effect reporting hotline at 0 800 314 00 08 to the Turkish Pharmacovigilance Center (TÜFAM). By reporting the side effects that occur, you will contribute to obtaining more information about the safety of the medication you are using.',
+        id='аббревиатура «ТÜFAM» с кириллической «Т»',
+    ),
+    pytest.param(
+        'Geçmişteki veya mevcut bacaklarda (derin ven trombozu) ya da akciğerde (akciğer embolisi) damarda kanın pıhtılaşması (tromboz),',
+        'Тромбоз в венах ног (глубокий венозный тромбоз) или легких (легочная эмболия) в прошлом или в настоящее время.',
+        'History or current thrombosis in the legs (deep vein thrombosis) or in the lungs (pulmonary embolism).',
+        id='«derin ven» — «глубокий», не «кожа»; «тромбоз» — про кровь',
+    ),
+    pytest.param(
+        'HİV (insan immün yetmezlik virüsü ) ilaçları (nevirapin, efavirenz, ritonavir ve nelfinavir gibi),',
+        'Препараты для лечения ВИЧ (такие как невирапин, эфавиренз, ритонавир и нельфинавир).',
+        'HIV (human immunodeficiency virus) medications (such as nevirapine, efavirenz, ritonavir, and nelfinavir).',
+        id='«ВИЧ» = вирус иммунодефицита',
+    ),
+    pytest.param(
+        'Açık alev, yanan sigara veya bazı cihazların (örneğin saç kurutma makineleri) yakınında kullanılmamalıdır.',
+        'Не следует использовать вблизи открытого огня, горящей сигареты или некоторых устройств (например, фенов).',
+        'Should not be used near open flames, burning cigarettes, or certain devices (e.g., hair dryers).',
+        id='«saç kurutma makineleri» — фены, не управление машинами',
+    ),
+    pytest.param(
+        'Uykululuk hali, hafif sersemlikten derin uykuya kadar değişen sedasyon',
+        'Сонливость, варьирующая от легкой затуманенности до глубокого сна.',
+        'Drowsiness ranging from mild dizziness to deep sleep.',
+        id='«derin uyku» — «глубокий сон»',
+    ),
+]
+
+
+@pytest.mark.parametrize("source, ru, en", PART3_FALSE_REJECTS)
+def test_correct_translation_from_part3_passes_paragraph_rules(source, ru, en):
+    assert paragraph_problems(source, ru, en) == []
+
+
+# Настоящий брак из той же части — отклоняется по-прежнему.
+@pytest.mark.parametrize("source, ru, en, problem", [
+    pytest.param(
+        '12 yaşından büyük çocuklarda ve yetişkinlerde günde 3-4 kez 1-2 ölçek kullanılır.',
+        'У детей старше 12 лет и взрослых используется по 1-2 мерной ложке 3-4 раза в день.',
+        '12 yaşından büyük çocuklarda ve yetişkinlerde günde 3-4 kez 1-2 ölçek kullanılır.',
+        'concept_mismatch',
+        id='EN остался турецким',
+    ),
+    pytest.param(
+        '{BRAND} selektif beta',
+        '{BRAND} является членом группы препаратов, называемых селективными бета-адренергическими рецепторными агонистами.',
+        '{BRAND} is a member of a group of drugs called selective beta-adrenergic receptor agonists.',
+        'length_mismatch',
+        id='обрывок, модель досочинила фразу',
+    ),
+    pytest.param(
+        'Emzirme sırasında {BRAND} kullanılabilir.. D3 vitamini anne sütüne geçer. Emzirilen çocuğa ilave D vitamini alımı bu durumda göz önünde bulundurulmalıdır.',
+        'Во время грудного вскармливания {BRAND} может быть использован. Витамин D проникает в грудное молоко. В этом случае следует учитывать дополнительный прием витамина D для грудного ребенка.',
+        '{BRAND} can be used during breastfeeding. Vitamin D passes into breast milk. Additional vitamin D intake for the breastfed child should be considered in this case.',
+        'number_mismatch',
+        id='«D3 vitamini» → «витамин D»',
+    ),
+])
+def test_real_defect_from_part3_is_still_rejected(source, ru, en, problem):
+    assert problem in paragraph_problems(source, ru, en)
+
+
+def test_doses_match_unit_spellings_separators_and_per_unit_denominator():
+    assert doses_match("600-1500 I.U./gün", "600-1500 МЕ/день") and doses_match("4000I.U./gün", "4000 IU/day")
+    assert doses_match("Gerektiğinde 1.000 I.U.'ye kadar", "до 1000 МЕ") and doses_match("1 000 I.U'yu aşan", "over 1,000 IU")
+    assert doses_match("Başlangıç dozu 2,5'mg'dır.", "Начальная доза 2,5 мг.")
+    assert doses_match("her ml'sinde 23 mg", "23 мг на 1 мл")
+    assert doses_match("1 g merhemde 1 miligram", "1 мг в 1 г мази") and doses_match("100 mikrog/mL", "100 мкг/мл")
+    assert doses_match("200 mikrogram ivermektin", "200 микрограммов ивермектина на 1 кг массы тела")
+    assert not doses_match("1.000 I.U.", "100 МЕ")
+    assert not doses_match("her ml'sinde 23 mg", "32 мг на 1 мл")
+    assert not doses_match("200 mikrogram", "20 микрограммов")
+    assert not doses_match("günde 2 g", "2 мг в день")
+
+
+def test_lost_step_number_is_restored_not_rejected():
+    source = "3. Kalan suyu (1/3) şişe üzerindeki sulandırma çizgisine kadar doldurunuz ve şişeyi yeniden çalkalayınız."
+    ru = "Долейте оставшуюся воду (1/3) до линии разведения на флаконе и снова встряхните флакон."
+    en = "Fill the remaining water (1/3) up to the dilution line on the bottle and shake the bottle again."
+
+    accepted, rejected = check_paragraph_payload({"1": source}, {"1": {"ru": ru, "en": en}})
+
+    assert rejected == {}
+    assert accepted[source] == {"ru": f"3. {ru}", "en": f"3. {en}"}
+    # Другое число в начале перевода — не пропуск номера, а расхождение.
+    _, rejected = check_paragraph_payload({"1": source}, {"1": {"ru": f"4. {ru}", "en": f"4. {en}"}})
+    assert "heading_mismatch" in rejected[source]
+    # Ссылка на раздел: номер в переводе есть, ставить его ещё раз в начало не нужно.
+    reference = "3. Bölüm"
+    accepted, _ = check_paragraph_payload({"1": reference}, {"1": {"ru": "См. раздел 3", "en": "See section 3"}})
+    assert reference not in accepted
+
+
+def test_numbers_in_words_lists_and_footnotes_are_not_a_mismatch():
+    assert item_problems(
+        "Hamileliğinizin ilk veya son 3 aylık döneminde iseniz",
+        "Если вы находитесь в первом или последнем триместре беременности",
+        "If you are in the first or last trimester of pregnancy",
+    ) == []
+    assert item_problems("Toplam doz 2,3 veya 4 doza bölünür.", "Общая доза делится на 2, 3 или 4 приёма.",
+                         "The total dose is divided into 2, 3 or 4 doses.") == []
+    assert "number_mismatch" in item_problems("Toplam doz 2,3 veya 4 doza bölünür.", "Общая доза делится на 2 или 4 приёма.",
+                                              "The total dose is divided into 2 or 4 doses.")
+    footnote = "6Amoksisilin alan hastalarda protrombin zamanında uzama nadiren bildirilmiştir."
+    assert item_problems(footnote, "У пациентов, принимающих амоксициллин, редко сообщалось об удлинении протромбинового времени.",
+                         "Prolonged prothrombin time has rarely been reported in patients taking amoxicillin.") == []
+    assert item_problems(footnote, "6 У пациентов, принимающих амоксициллин, редко сообщалось об удлинении протромбинового времени.",
+                         "6 Prolonged prothrombin time has rarely been reported in patients taking amoxicillin.") == []
+
+
+SHIFTED_REQUESTS = json.loads((Path(__file__).parent / "fixtures" / "medicine_paragraph_shifts.json").read_text())
+
+
+@pytest.mark.parametrize("request_", SHIFTED_REQUESTS, ids=[item["request"].split(",")[0] for item in SHIFTED_REQUESTS])
+def test_real_shifted_requests_from_parts_1_to_3_are_rejected_whole(request_):
+    accepted, rejected = check_paragraph_payload(request_["items"], request_["answer"])
+
+    assert accepted == {}
+    assert all("shifted" in problems for problems in rejected.values())
 
 
 def test_plain_numbers_normalize_separators_fractions_and_roman():
