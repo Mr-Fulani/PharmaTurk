@@ -7,20 +7,23 @@ import ts from 'typescript'
 const require = createRequire(import.meta.url)
 const Image = () => null
 const media = [1, 2, 3].map(id => ({ id, content_type: 'image', content_url: `https://cdn.mudaroba.com/${id}.webp`, title: `Slide ${id}` }))
-async function renderer(file) {
+async function renderer(file, { desktop = false } = {}) {
   const compiled = ts.transpileModule(await readFile(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText
   const states = []
   const effects = []
   const observers = []
+  const idle = []
   let cursor = 0
   const exports = {}
   const modules = {
     react: {
       useState(initial) { const i = cursor++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value }] },
       useRef(initial) { const i = cursor++; if (!(i in states)) states[i] = { current: initial }; return states[i] },
-      useEffect(effect) { effects.push(effect) }, useCallback: fn => fn,
+      // Как в React: эффект повторяется, только если изменились зависимости.
+      useEffect(effect, deps) { const i = cursor++; const prev = states[i]; if (!deps || !prev || deps.some((d, k) => !Object.is(d, prev[k]))) { states[i] = deps; effects.push(effect) } },
+      useCallback: fn => fn,
     },
     'react/jsx-runtime': require('react/jsx-runtime'), 'next/image': Image,
     'next/router': { useRouter: () => ({ locale: 'ru' }) },
@@ -29,8 +32,13 @@ async function renderer(file) {
     '../lib/api': {}, './BannerCarousel.module.css': {}, '../lib/bannerLink': {}, '../lib/siteMeta': {},
   }
   class IntersectionObserver { constructor(callback, options) { observers.push({ callback, options }) } observe() {} disconnect() {} }
-  vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date, IntersectionObserver, getComputedStyle: element => ({ visibility: element.visibility }) })
-  return Object.assign(props => { cursor = 0; effects.length = 0; return exports.default(props) }, { effects, observers })
+  const window = {
+    matchMedia: query => ({ matches: desktop && query === '(min-width: 769px)' }),
+    requestIdleCallback: callback => idle.push(callback), cancelIdleCallback() {},
+    addEventListener() {}, removeEventListener() {},
+  }
+  vm.runInNewContext(compiled, { exports, require: name => modules[name], URL, setInterval, clearInterval, Date, IntersectionObserver, window, document: { readyState: 'complete' }, getComputedStyle: element => ({ visibility: element.visibility }) })
+  return Object.assign(props => { cursor = 0; effects.length = 0; return exports.default(props) }, { effects, observers, idle })
 }
 function nodes(node, match) {
   if (!node || typeof node !== 'object') return []
@@ -62,6 +70,24 @@ test('rotation preserves the original hero source size and priority', async () =
   assert.equal(original.loading, 'eager')
   assert.equal(original.fetchPriority, 'high')
   assert.equal(images.filter(i => i.props.priority).length, 1)
+})
+test('desktop loads full-size files for visible thumbnails after load, phones keep small ones', async () => {
+  const slides = [...media, { id: 4, content_type: 'image', content_url: 'https://cdn.mudaroba.com/4.webp', title: 'Slide 4' }]
+  const slideProps = { position: 'main', initialBanners: [{ id: 1, position: 'main', media_files: slides }] }
+  for (const desktop of [false, true]) {
+    const render = await renderer('../components/BannerCarouselMedia.tsx', { desktop })
+    const images = () => nodes(render(slideProps), node => node.type === Image).map(image => image.props)
+    const fullSize = () => images().map(image => image.sizes.endsWith('1380px'))
+    assert.deepEqual(images().map(image => image.fetchPriority), ['high', 'auto', 'low', 'low'])
+    render.effects.forEach(effect => effect())
+    // Until the browser is idle after load the thumbnails keep their small files.
+    assert.deepEqual(fullSize(), [true, false, false, false])
+    render.idle.forEach(callback => callback())
+    fullSize()
+    render.effects.forEach(effect => effect())
+    // The fourth slide is a hidden thumbnail and stays small.
+    assert.deepEqual(fullSize(), desktop ? [true, true, true, false] : [true, false, false, false])
+  }
 })
 test('a failed slide is retried straight from the CDN before the placeholder', async () => {
   const render = await renderer('../components/BannerCarouselMedia.tsx')

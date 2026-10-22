@@ -45,6 +45,8 @@ interface BannerCarouselProps {
 }
 
 const EMPTY_BANNERS: Banner[] = []
+// Видимые миниатюры на десктопе — 2-й и 3-й элементы (BannerCarousel.module.css).
+const VISIBLE_THUMBNAILS = 2
 
 export default function BannerCarousel({ position, className = '', initialBanners = EMPTY_BANNERS }: BannerCarouselProps) {
   const router = useRouter()
@@ -67,6 +69,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const [inViewport, setInViewport] = useState(false)
   // Главный баннер стоит в первом экране: его ролик не ждёт гидратации.
   const [nearViewport, setNearViewport] = useState(position === 'main')
+  const [sharpThumbnails, setSharpThumbnails] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
@@ -140,6 +143,42 @@ export default function BannerCarousel({ position, className = '', initialBanner
       nearObserver.disconnect()
     }
   }, [loading, banners.length])
+
+  // Миниатюра — кроп широкого баннера: на десктопе картинка в ней растянута до ~700 px
+  // в ширину, и файл под 220 px выглядит размытым. Полноразмерный файл (тот же, что у
+  // слайда) берём после load, когда браузер простаивает, — канал у LCP не отнимаем.
+  // На телефоне миниатюры скрыты, на планшете мелкие — там не качаем.
+  useEffect(() => {
+    if (!window.matchMedia('(min-width: 769px)').matches) return
+    let cancel = () => {}
+    const start = () => {
+      // В Safari нет requestIdleCallback
+      if (typeof window.requestIdleCallback !== 'function') {
+        const id = setTimeout(() => setSharpThumbnails(true), 300)
+        cancel = () => clearTimeout(id)
+        return
+      }
+      const id = window.requestIdleCallback(() => setSharpThumbnails(true), { timeout: 3000 })
+      cancel = () => window.cancelIdleCallback(id)
+    }
+    if (document.readyState === 'complete') start()
+    else window.addEventListener('load', start, { once: true })
+    return () => {
+      window.removeEventListener('load', start)
+      cancel()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!sharpThumbnails || !nearViewport) return
+    const thumbnails = displayMedia.slice(1, VISIBLE_THUMBNAILS + 1)
+      .filter(media => media.content_type !== 'video' && !expandedMediaIds[media.id])
+    if (thumbnails.length === 0) return
+    setExpandedMediaIds(previous => ({
+      ...previous,
+      ...Object.fromEntries(thumbnails.map(media => [media.id, true])),
+    }))
+  }, [sharpThumbnails, nearViewport, displayMedia, expandedMediaIds])
 
   // Функция для сброса и перезапуска автоматического переключения
   const resetAutoPlay = useCallback(() => {
@@ -310,7 +349,8 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 fill
                 unoptimized={isDirect}
                 priority={isHero}
-                fetchPriority={isHero ? 'high' : 'auto'}
+                // Ближайшая миниатюра грузится раньше остальных
+                fetchPriority={isHero ? 'high' : index <= 1 ? 'auto' : 'low'}
                 loading={isHero ? 'eager' : 'lazy'}
                 // Wide artwork is cropped with object-cover. Account for its
                 // hidden width so the visible crop stays sharp on narrow screens.
