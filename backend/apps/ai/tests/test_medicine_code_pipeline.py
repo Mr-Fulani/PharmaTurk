@@ -607,7 +607,8 @@ def test_full_medicine_processing_uses_code_and_memory():
     card_prompt = [c for c in llm.calls if "медицинский редактор" in c["system_prompt"]][0]["user_prompt"]
     assert "fixed_title" in card_prompt and '"dosage_form": "' not in card_prompt.split("Данные о")[0]
     log = AIProcessingLog.objects.get(pk=log.pk)
-    assert log.generated_title == "MAJEZIK 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт."
+    # Действующее вещество — в скобках после бренда (title_with_inn).
+    assert log.generated_title == "MAJEZIK (флурбипрофен) 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт."
     translations = log.extracted_attributes["translations_data"]
     assert translations["ru"]["volume"] == "15 таблеток"
     assert translations["ru"]["active_ingredient"] == "Флурбипрофен"
