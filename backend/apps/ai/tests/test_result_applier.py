@@ -449,6 +449,20 @@ def test_medicine_ru_translation_allows_official_turkish_acronym():
     assert paragraph_problems(source, translated, english) == []
 
 
+def test_medicine_ru_translation_keeps_russian_lab_terms():
+    generator = ContentGenerator.__new__(ContentGenerator)
+    translated = (
+        "Дозировка должна контролироваться в зависимости от клинических переменных "
+        "(например, гемоглобин, ферритин и трансферрин). "
+        "После нормализации уровня гемоглобина следует продолжать лечение, "
+        "контролируя уровень ферритина в сыворотке. "
+        "Антианемический препарат принимают натощак."
+    )
+
+    assert generator._looks_turkish_transliteration(translated) is False
+    assert generator._looks_untranslated_turkish(translated) is False
+
+
 def test_medicine_ru_translation_repair_catches_cyrillic_turkish_transliteration():
     class FakeLLM:
         def generate_content(self, **_kwargs):
