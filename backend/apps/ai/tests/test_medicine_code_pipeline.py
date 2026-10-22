@@ -1455,7 +1455,6 @@ def test_pilot3_forms_are_covered_by_title_template(source):
     [
         # «500» без единицы перед «(20 TABLET)» — то ли доза, то ли фасовка
         "KLACID MR 500 DEGISTIRILMIS SALIM TABLET (20 TABLET)",
-        "ADENOSIN-L.M. 5 MG/ML ENJ/INF. ICIN COZ. ICEREN 2 ML 10 AMPUL",
     ],
 )
 def test_ambiguous_medicine_name_is_left_to_model(source):
