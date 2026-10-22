@@ -27,7 +27,7 @@ import math
 import re
 from typing import Iterable, Optional, Sequence
 
-from apps.ai.services.medicine_fact_check import _normalize_number
+from apps.ai.services.medicine_fact_check import _normalize_number, fix_ocr_digits
 
 _BRAND = "{BRAND}"  # medicine_memory.BRAND_TOKEN
 
@@ -38,6 +38,8 @@ _NUMBER_WORDS = {
         "iki": 2, "ikinci": 2, "üç": 3, "üçüncü": 3, "dört": 4, "dördüncü": 4, "beş": 5, "yedi": 7,
         "sekiz": 8, "dokuz": 9, "on": 10, "yirmi": 20, "otuz": 30, "kırk": 40, "elli": 50, "altmış": 60,
         "yetmiş": 70, "seksen": 80, "doksan": 90, "yüz": 100, "bin": 1000,
+        # «3 blisterde onar pastil» — «по 10 пастилок».
+        "ikişer": 2, "üçer": 3, "dörder": 4, "beşer": 5, "altışar": 6, "yedişer": 7, "sekizer": 8, "onar": 10,
     },
     "ru": {
         "два": 2, "две": 2, "двух": 2, "двум": 2, "двумя": 2, "дважды": 2,
@@ -50,6 +52,7 @@ _NUMBER_WORDS = {
         "третий": 3, "третьего": 3, "третьей": 3, "третье": 3, "третья": 3, "третью": 3,
         "четвертый": 4, "четвёртый": 4, "четвертого": 4, "четвёртого": 4, "четвертой": 4, "четвёртой": 4,
         "четвертая": 4, "четвёртая": 4, "четвертую": 4, "четвёртую": 4,
+        "втором": 2, "третьем": 3, "четвертом": 4, "четвёртом": 4,
         "сто": 100, "тысяча": 1000, "тысячи": 1000, "тысяч": 1000,
     },
     "en": {
@@ -59,11 +62,19 @@ _NUMBER_WORDS = {
     },
 }
 # «on bin» = 10 000: составные числа частот («10 000 hastanın birinde»);
-# «ilk 3 aylık dönem» модель переводит «первый триместр».
+# «ilk 3 aylık dönem» модель переводит «первый триместр», «2 kat artış» —
+# «двукратное увеличение», «trisiklik (Kimyasal yapılarında 3 halka bulunan)» —
+# «трициклические», «12 parmak bağırsağı» — «двенадцатиперстная кишка».
 _NUMBER_PHRASES = {
     "tr": ((r"\bon bin\b", "10000"),),
-    "ru": ((r"\bдесят[ьи] тысяч\b", "10000"), (r"триместр", "3")),
-    "en": ((r"\bten thousand\b", "10000"), (r"trimester", "3")),
+    "ru": (
+        (r"\bдесят[ьи] тысяч\b", "10000"), (r"триместр", "3"), (r"двукратн", "2"), (r"тр[её]хкратн", "3"),
+        (r"четыр[её]хкратн", "4"), (r"трицикл", "3"), (r"двенадцатиперстн|дуоден", "12"),
+    ),
+    "en": (
+        (r"\bten thousand\b", "10000"), (r"trimester", "3"), (r"twofold", "2"), (r"threefold", "3"), (r"fourfold", "4"),
+        (r"tricycl", "3"), (r"duoden", "12"),
+    ),
 }
 # «yetmiş beş» = 75: десятки и единицы словами («Yetmiş beş yaşın üzerinde» → «старше 75 лет»).
 _TENS_TR = {"on": 10, "yirmi": 20, "otuz": 30, "kırk": 40, "elli": 50, "altmış": 60, "yetmiş": 70, "seksen": 80, "doksan": 90}
@@ -76,28 +87,64 @@ _FRACTIONS = str.maketrans({"½": " 1/2 ", "¼": " 1/4 ", "¾": " 3/4 ", "⅓": 
 # «1 000», «10 000 000» — пробел как разделитель тысяч (так пишет RU).
 _SPACED_THOUSANDS = re.compile(r"(?<![\d.,])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?![\d.,]?\d)")
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
-# Номер сноски, приклеенный к слову: «6Amoksisilin/klavulanik asit alan…», «2Herhangi bir…»,
-# «çırpınma8 (konvülsiyon)», «uzama6», и внутри слова — «sür8eyle»; не «B12», «D3».
-_FOOTNOTE = re.compile(
-    r"(?<!\S)\d{1,2}(?=[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2})|(?<=[a-zçğıöşü)])\d{1,2}(?=[\s(]|$|[a-zçğıöşü])"
+# Телефон («0 800 314 00 08», «O 800 314 00 08», «800 314 00 08», «0800 314 00 08») модель
+# пишет по-разному — сравнивается одним числом с ведущим нулём.
+_PHONE = re.compile(
+    r"(?:(?<!\d)0|(?<!\w)O)[\s-]?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}(?!\d)"
+    r"|(?<![\w.,])\d{3}[\s-]\d{3}[\s-]\d{2}[\s-]\d{2}(?!\d)"
 )
-# «2,3 veya 4 doza», «2,10 veya 20 adet» — перечисление без пробела, в переводе «2, 3 или 4».
-_COMMA_LIST = re.compile(r"(?<![\d.,])(\d+),(\d+)(?![\d.,]?\d)")
+# Время: «20.00» в исходнике — «20:00» в переводе; не соотношение «1:50».
+_TIME_COLON = re.compile(r"(?<=\b\d{2}):(?=\d{2}(?!\d))")
+# Площадь: «39 cm2», «600 cm 2», «1,73 m2» — в переводе «см²», «м²».
+_SQUARE = re.compile(r"(\d\s?(?:[cс]?[mм]|mm|мм))\s?[2²](?!\d)")
+# Номер в названии препарата, которое модель заменила меткой: «ERTES72'nin» → «{BRAND}».
+_CAPS_NUMBER = re.compile(r"(?<=[A-ZÇĞİÖŞÜ]{3})\d+")
+# Номер сноски, приклеенный к слову: «6Amoksisilin/klavulanik asit alan…», «2Herhangi bir…»,
+# «çırpınma8 (konvülsiyon)», «uzama6», «nefes alma9)», внутри слова — «sür8eyle»,
+# в конце после скобки — «(anjiyonörotik ödem) 4»; не «B12», «D3».
+_FOOTNOTE = re.compile(
+    r"(?<!\S)\d{1,2}(?=[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2})|(?<=[a-zçğıöşü)])\d{1,2}(?=[\s()]|$|[a-zçğıöşü])"
+    r"|(?<=\)\s)\d{1,2}$"
+)
+# «2,3 veya 4 doza», «2,10 veya 20 adet», «FORTE,14,28 ve 56», «0.5,1.0 ve 1.5 mL» —
+# перечисление без пробела, в переводе «2, 3 или 4»; «250 500 ve 1000 mL» — без запятой.
+_COMMA_LIST = re.compile(r"(?<!\d)(?<!\d[.,])\d+(?:\.\d+)?(?:,\d+(?:\.\d+)?)+(?![\d.,]?\d)")
 
 
 def _lower(text: str, lang: str) -> str:
     return text.replace("İ", "i").replace("I", "ı").lower() if lang == "tr" else text.lower()
 
 
+def _number_text(text: str) -> str:
+    text = fix_ocr_digits(str(text or "").replace(_BRAND, " ").translate(_FRACTIONS))
+    text = _ROMAN_RE.sub(lambda m: _ROMAN[m.group(0)], text)
+    text = _PHONE.sub(lambda m: " 0" + re.sub(r"\D", "", m.group(0).replace("O", "0")).lstrip("0") + " ", text)
+    return _SQUARE.sub(r"\1", _TIME_COLON.sub(".", text))
+
+
 def plain_numbers(text: str) -> frozenset[str]:
     """Все числа абзаца цифрами в одной записи: «1.000» = «1 000» = «1,000», «2,50» = «2.5».
 
-    Римские («tip II») и дроби («½») приводятся к цифрам. Единица и ноль не
+    Римские («tip II») и дроби («½») приводятся к цифрам, «l» рядом с цифрами
+    («l0'unda») — к единице, телефон — к одной записи. Единица и ноль не
     сравниваются: «bir»/«1 из», «once»/«1 раз» модель пишет то словом, то цифрой.
     """
-    text = _ROMAN_RE.sub(lambda m: _ROMAN[m.group(0)], str(text or "").replace(_BRAND, " ").translate(_FRACTIONS))
-    text = _SPACED_THOUSANDS.sub(lambda m: re.sub(r"\s", "", m.group(0)), text)
+    text = _SPACED_THOUSANDS.sub(lambda m: re.sub(r"\s", "", m.group(0)), _number_text(text))
     return frozenset({_normalize_number(token) for token in _NUMBER.findall(text)} - {"1", "0"})
+
+
+def number_lists(text: str) -> dict[str, frozenset[str]]:
+    """Перечисления, слитые в одно число: {«2.3»: {«2», «3»}, «250500»: {«250», «500»}}.
+
+    «2,3» — то ли 2,3, то ли перечисление 2 и 3: годится любой вариант.
+    """
+    text = _number_text(text)
+    lists = {}
+    for token in _COMMA_LIST.findall(text):
+        lists[_normalize_number(token)] = frozenset(_normalize_number(part) for part in token.split(",")) - {"1", "0"}
+    for token in _SPACED_THOUSANDS.findall(text):
+        lists[re.sub(r"\s", "", token)] = frozenset(token.split()) - {"1", "0"}
+    return lists
 
 
 def number_words(text: str, lang: str) -> frozenset[str]:
@@ -139,13 +186,15 @@ _CONCEPTS = {
     "breastfeeding": (r"emzir|anne sut", r"кормл|кормящ|кормить|молок|лактац|грудью|вскармлив", r"breast|lactat|nursing"),
     "allergy": (r"all?er[jg]i", r"аллерг", r"allerg"),
     "infection": (r"enfeks", r"инфекц|инфицир", r"infect"),
-    # «kan basıncı» — давление, а не кровь: и в EN «blood pressure» не считаем.
+    # «kan basıncı» — давление, а не кровь: и в EN «blood pressure» не считаем;
+    # «kan sulandırıcı», «kan pıhtılaşmasını önleyici» — «антикоагулянт».
     "blood": (
-        r"\bkan(?:in|i|da|daki|dan|a|am\w*)?\b(?! basinc)|kan pulcu", None,
+        r"\bkan(?:in|i|da|daki|dan|a|am\w*)?\b(?! basinc| sulandir| pihtilasmasini onley)|kan pulcu", None,
         r"blood(?! pressure)|bleed|haem|hemo|platelet",
     ),
     # «derin» — «глубокий» («derin ven trombozu», «derin uyku»), а не «кожа».
-    "skin": (r"\bderi(?!n\b|nl|nd)|\bcilt", r"кож|дерм", r"skin|derm|cutaneous"),
+    # «saç derisi» — «кожа головы», «scalp»: ни кожа, ни волосы.
+    "skin": (r"(?<!sac )\bderi(?!n\b|nl|nd)|\bcilt", r"кож|дерм", r"skin|derm|cutaneous"),
     "intestine": (r"bagirsa|barsak", r"кишеч|кишк|кишок", None),
     # «kusma isteği/hissi» — позыв к рвоте, т. е. тошнота.
     "nausea": (r"bulanti|kusma (?:istegi|hissi)", r"тошнот", r"nause"),
@@ -187,14 +236,15 @@ _CONCEPTS = {
     "age": (r"\bya[sş](?:in|ind|indan|indaki|tan|taki|a\b|\b)", r"\bлет\b|возраст|\bгод(?:а|у|ом)?\b", r"\byears?\b|\baged?\b"),
     "elderly": (r"ya[sş]li", r"пожил", r"elderl"),
     "women": (r"kadin", r"женщин", r"\bwom[ae]n|female"),
-    "baby": (r"bebek|bebeg|yenidog", r"\bдет|ребен|ребён|младен|новорожд|недонош|груднич", r"bab(?:y|ies)|infant|newborn|neonat"),
+    # Не «gözbebeği» (зрачок), «tüp bebek» (ЭКО), «bebek bezi» (подгузник).
+    "baby": (r"(?<!goz)(?<!goz )(?<!tup )bebe[kg](?! bez)|yenidog", r"\bдет|ребен|ребён|младен|новорожд|недонош|груднич", r"bab(?:y|ies)|infant|newborn|neonat"),
     "adult": (r"yeti[sş]kin|eri[sş]kin", r"взросл", r"adult"),
     # «bronkospazm» → «бронхоспазм»: спазм есть и в исходнике.
     "muscle": (r"\bkas(?:\b|lar|ta\b|lara|larda|larin)|kramp|spazm", r"мышц|мышеч|судорог|спазм", r"muscl|muscul|cramp|spasm"),
     "bone": (r"\bkemik", None, r"\bbones?\b|osteo|skelet"),
     "joint": (r"\beklem", r"сустав", r"joint|arthr"),
     "seizure": (r"nobet|havale|konvulz|epilep", None, r"seizure|convuls|epilep"),
-    "hair": (r"\bsac(?:\b|lar|in|i\b)", r"волос", r"\bhair"),
+    "hair": (r"\bsac(?:\b|lar|in|i\b)(?! deri)", r"волос", r"\bhair"),
     "throat": (r"bogaz", r"горл", r"throat"),
     "nose": (r"burun|burn[iu]", r"\bнос|назал|ноздр|насморк|ринит", r"\bnos[ei]|nasal|nostril|rhin"),
     "surgery": (r"ameliyat|cerrah", r"операц|хирург", r"surg|operation"),
@@ -244,7 +294,8 @@ def concepts(text: str, lang: str) -> frozenset[str]:
     """Медицинские понятия абзаца по словарю (врач, почки, хранение, таблетка…)."""
     text = _lower(str(text or "").replace(_BRAND, " "), lang)
     if lang == "tr":
-        text = text.translate(_TR_FOLD)
+        # «döndürerek açınız» (поворачивая) после свёртки букв совпало бы с «dondur» (заморозить).
+        text = text.replace("döndür", "çevir").translate(_TR_FOLD)
     return frozenset(name for name, pattern in _CONCEPT_RES[lang] if pattern.search(text))
 
 
@@ -253,7 +304,7 @@ def concepts(text: str, lang: str) -> frozenset[str]:
 # «2. X'İ KULLANMADAN ÖNCE…», «3. Kapağı açınız»; не «1. günde», «2. haftada», «2. aydan sonra».
 _SOURCE_HEADING = re.compile(
     r"^\s*(\d{1,2})\.\s+(?!(?:g[üu]n|hafta|ay(?:da|dan|a|ın|ını|lık|lar|ları)?\b|y[ıi]l|doz|kez|saat|basamak|tedavi|"
-    r"k[üu]r|seans)\w*)(?=[^\W\d_])",
+    r"k[üu]r|seans)\w*)(?=[^\W\d_]|\{BRAND\})",
     re.IGNORECASE,
 )
 _TRANSLATION_HEADING = re.compile(r"^\s*(\d{1,2})\s*[.)](?!\d)")
@@ -263,9 +314,17 @@ _FREQUENCY_LABEL = re.compile(
     r"^\W*(çok yaygın|yaygın olmayan|yaygın|çok seyrek|seyrek|bilinmiyor)\s*(?:yan etkiler\w*)?\s*[:(]",
     re.IGNORECASE,
 )
+_FREQUENCY_ANYWHERE = re.compile(r"çok yaygın|yaygın olmayan|yaygın|çok seyrek|seyrek", re.IGNORECASE)
 _FREQUENCY_SOURCE = {
     "çok yaygın": "very_common", "yaygın olmayan": "uncommon", "yaygın": "common",
     "çok seyrek": "very_rare", "seyrek": "rare", "bilinmiyor": "unknown",
+}
+# Числа строки частоты задаёт её название: «Seyrek: 000 hastanın birinden az» (в
+# исходнике потеряно «10.») модель переводит «реже 1 из 10 000»; так же частота
+# в скобках после симптома — «(Çok seyrek (000 hastanın 1'inden az) görülebilir.)».
+_FREQUENCY_NUMBERS = {
+    "very_common": frozenset({"10"}), "common": frozenset({"10", "100"}), "uncommon": frozenset({"100", "1000"}),
+    "rare": frozenset({"1000", "10000"}), "very_rare": frozenset({"10000"}), "unknown": frozenset(),
 }
 _FREQUENCY_TRANSLATION = {
     "ru": (
@@ -305,8 +364,8 @@ class Features:
     """Признаки одного текста для сравнения исходника и перевода."""
 
     __slots__ = (
-        "lang", "numbers", "words", "lists", "footnotes", "concepts", "length", "heading", "frequency", "brand",
-        "end", "empty", "fragment",
+        "lang", "numbers", "words", "lists", "footnotes", "brand_numbers", "garbled_frequency", "concepts", "length",
+        "heading", "frequency", "brand", "end", "empty", "fragment",
     )
 
     def __init__(self, text: str, lang: str):
@@ -314,13 +373,18 @@ class Features:
         self.lang = lang
         self.empty = not text
         self.numbers = plain_numbers(text)
-        # «2,3» — то ли 2,3, то ли перечисление 2 и 3: годится любой вариант.
-        self.lists = {
-            _normalize_number(f"{a}.{b}"): frozenset({a, b} - {"1", "0"})
-            for a, b in _COMMA_LIST.findall(text)
-        }
-        # Номер сноски модель то оставляет («7Желудочно-…»), то убирает — он необязателен.
-        self.footnotes = frozenset(_FOOTNOTE.findall(text)) - {"1", "0"} if lang == "tr" else frozenset()
+        self.lists = number_lists(text)
+        # Номер сноски модель то оставляет («7Желудочно-…»), то убирает — он необязателен;
+        # как и «000» без начала числа («fakat 000 hastanın») — его не прочесть.
+        self.footnotes = self.brand_numbers = self.garbled_frequency = frozenset()
+        if lang == "tr":
+            zeros = {number for number in self.numbers if set(number) == {"0"}}
+            self.footnotes = frozenset(_FOOTNOTE.findall(text)) - {"1", "0"} | zeros
+            self.brand_numbers = frozenset(_CAPS_NUMBER.findall(text)) - {"1", "0"}
+            if zeros:
+                # «Yaygin», «YAYGİN» — та же «yaygın».
+                labels = {_FREQUENCY_SOURCE[_lower(label, lang).replace("i", "ı")] for label in _FREQUENCY_ANYWHERE.findall(text)}
+                self.garbled_frequency = frozenset().union(*(_FREQUENCY_NUMBERS[label] for label in labels))
         # Обрывок предложения: начинается с суффикса после бренда или со строчной.
         self.fragment = bool(re.match(r"['’`]|[a-zçğıöşü]", text))
         self.words = number_words(text, lang)
@@ -388,8 +452,8 @@ def _numbers_differ(a: Features, b: Features, optional: frozenset = frozenset())
     """Цифра одного текста не встречается в другом ни цифрой, ни словом.
 
     «2,3» без пробела в одном тексте и «2» и «3» в другом — одно и то же
-    перечисление («2,3 veya 4 doza» → «2, 3 или 4 дозы»). ``optional`` — номера
-    сносок исходника: их может не быть ни в одном из текстов.
+    перечисление («2,3 veya 4 doza» → «2, 3 или 4 дозы»). ``optional`` — числа,
+    которых может не быть в одном из текстов (``_optional_numbers``).
     """
     a_only = set(a.numbers - b.numbers - b.words - optional)
     b_only = set(b.numbers - a.numbers - a.words - optional)
@@ -401,11 +465,22 @@ def _numbers_differ(a: Features, b: Features, optional: frozenset = frozenset())
     return bool(a_only or b_only)
 
 
+def _optional_numbers(src: Features, translation: Features) -> frozenset:
+    """Числа, которые могут быть только в одном из текстов: сноски исходника, номер
+    в названии, которое модель заменила меткой, числа строки частоты с тем же названием."""
+    optional = src.footnotes | src.garbled_frequency
+    if translation.brand and not src.brand:
+        optional |= src.brand_numbers
+    if src.frequency and translation.frequency == src.frequency:
+        optional |= _FREQUENCY_NUMBERS[src.frequency]
+    return optional
+
+
 def _problems(src: Features, ru: Features, en: Features) -> list[str]:
     problems = []
     if src.heading and (ru.heading != src.heading or en.heading != src.heading):
         problems.append("heading_mismatch")
-    if _numbers_differ(src, ru, src.footnotes) or _numbers_differ(src, en, src.footnotes):
+    if _numbers_differ(src, ru, _optional_numbers(src, ru)) or _numbers_differ(src, en, _optional_numbers(src, en)):
         problems.append("number_mismatch")
     if _length_differs(ru, src) or _length_differs(en, src):
         problems.append("length_mismatch")
