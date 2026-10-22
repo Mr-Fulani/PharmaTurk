@@ -70,15 +70,16 @@ _TENS_TR = {"on": 10, "yirmi": 20, "otuz": 30, "kırk": 40, "elli": 50, "altmı�
 _UNITS_TR = {"bir": 1, "iki": 2, "üç": 3, "dört": 4, "beş": 5, "altı": 6, "yedi": 7, "sekiz": 8, "dokuz": 9}
 # «IV» не переводим: так пишут «внутривенно» (İ.V. → IV).
 _ROMAN = {"II": "2", "III": "3", "VI": "6", "VII": "7", "VIII": "8", "IX": "9", "XII": "12"}
-_ROMAN_RE = re.compile(r"\b(?:II|III|VI|VII|VIII|IX|XII)\b")
+# «anjiyotensin IIantagonistleri», «faktör IXartışı» — пробел потерян исходником.
+_ROMAN_RE = re.compile(r"\b(?:II|III|VI|VII|VIII|IX|XII)(?![A-ZÇĞİÖŞÜ\d])(?=\b|[a-zçğıöşü])")
 _FRACTIONS = str.maketrans({"½": " 1/2 ", "¼": " 1/4 ", "¾": " 3/4 ", "⅓": " 1/3 ", "⅔": " 2/3 "})
 # «1 000», «10 000 000» — пробел как разделитель тысяч (так пишет RU).
 _SPACED_THOUSANDS = re.compile(r"(?<![\d.,])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?![\d.,]?\d)")
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 # Номер сноски, приклеенный к слову: «6Amoksisilin/klavulanik asit alan…», «2Herhangi bir…»,
-# «çırpınma8 (konvülsiyon)», «uzama6»; не «B12», «D3» (после заглавной).
+# «çırpınma8 (konvülsiyon)», «uzama6», и внутри слова — «sür8eyle»; не «B12», «D3».
 _FOOTNOTE = re.compile(
-    r"(?<!\S)\d{1,2}(?=[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2})|(?<=[a-zçğıöşü)])\d{1,2}(?=[\s(]|$)"
+    r"(?<!\S)\d{1,2}(?=[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2})|(?<=[a-zçğıöşü)])\d{1,2}(?=[\s(]|$|[a-zçğıöşü])"
 )
 # «2,3 veya 4 doza», «2,10 veya 20 adet» — перечисление без пробела, в переводе «2, 3 или 4».
 _COMMA_LIST = re.compile(r"(?<![\d.,])(\d+),(\d+)(?![\d.,]?\d)")
@@ -138,12 +139,17 @@ _CONCEPTS = {
     "breastfeeding": (r"emzir|anne sut", r"кормл|кормящ|кормить|молок|лактац|грудью|вскармлив", r"breast|lactat|nursing"),
     "allergy": (r"all?er[jg]i", r"аллерг", r"allerg"),
     "infection": (r"enfeks", r"инфекц|инфицир", r"infect"),
-    "blood": (r"\bkan(?:in|i|da|daki|dan|a|am\w*)?\b(?! basinc)|kan pulcu", None, r"blood|bleed|haem|hemo|platelet"),
+    # «kan basıncı» — давление, а не кровь: и в EN «blood pressure» не считаем.
+    "blood": (
+        r"\bkan(?:in|i|da|daki|dan|a|am\w*)?\b(?! basinc)|kan pulcu", None,
+        r"blood(?! pressure)|bleed|haem|hemo|platelet",
+    ),
     # «derin» — «глубокий» («derin ven trombozu», «derin uyku»), а не «кожа».
     "skin": (r"\bderi(?!n\b|nl|nd)|\bcilt", r"кож|дерм", r"skin|derm|cutaneous"),
     "intestine": (r"bagirsa|barsak", r"кишеч|кишк|кишок", None),
-    "nausea": (r"bulanti", r"тошнот", r"nause"),
-    "vomiting": (r"kusma|kusar", r"рвот", r"vomit"),
+    # «kusma isteği/hissi» — позыв к рвоте, т. е. тошнота.
+    "nausea": (r"bulanti|kusma (?:istegi|hissi)", r"тошнот", r"nause"),
+    "vomiting": (r"kusma(?! (?:istegi|hissi))|kusar", r"рвот", r"vomit"),
     "diarrhea": (r"ishal", r"диаре|понос", r"diarr"),
     "constipation": (r"kabiz", r"запор", r"constipat"),
     "itching": (r"ka[sş]int", r"зуд", r"itch|prurit"),
@@ -163,7 +169,8 @@ _CONCEPTS = {
     "driving": (r"\barac\b|makine kullan", r"транспорт|машин|механизм|автомоб|вожден", r"driv|machin|vehicle"),
     "storage": (r"sakla", r"хран", r"\bstor|\bkeep"),
     "refrigerator": (r"buzdolab", r"холодильн", r"refrigerat|fridge"),
-    "freeze": (r"dondur|donmu[sş]", r"замора|морозил|заморож", r"freez|frozen"),
+    # Не «dondurma» — мороженое (но «dondurmayınız» — не замораживать).
+    "freeze": (r"dondur(?!ma(?:\b|l[ıi]))|donmu[sş]", r"замора|морозил|заморож", r"freez|frozen"),
     "light": (
         r"\bi[sş]i[kg]|gune[sş]",
         r"свет(?!л)|солн",
@@ -182,7 +189,8 @@ _CONCEPTS = {
     "women": (r"kadin", r"женщин", r"\bwom[ae]n|female"),
     "baby": (r"bebek|bebeg|yenidog", r"\bдет|ребен|ребён|младен|новорожд|недонош|груднич", r"bab(?:y|ies)|infant|newborn|neonat"),
     "adult": (r"yeti[sş]kin|eri[sş]kin", r"взросл", r"adult"),
-    "muscle": (r"\bkas(?:\b|lar|ta\b|lara|larda|larin)|kramp", r"мышц|мышеч|судорог|спазм", r"muscl|muscul|cramp|spasm"),
+    # «bronkospazm» → «бронхоспазм»: спазм есть и в исходнике.
+    "muscle": (r"\bkas(?:\b|lar|ta\b|lara|larda|larin)|kramp|spazm", r"мышц|мышеч|судорог|спазм", r"muscl|muscul|cramp|spasm"),
     "bone": (r"\bkemik", None, r"\bbones?\b|osteo|skelet"),
     "joint": (r"\beklem", r"сустав", r"joint|arthr"),
     "seizure": (r"nobet|havale|konvulz|epilep", None, r"seizure|convuls|epilep"),

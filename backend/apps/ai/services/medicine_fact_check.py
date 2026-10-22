@@ -43,6 +43,12 @@ _DOSE_RE = re.compile(
 # «на 1 мл», «на 1 кг массы тела», «1 gramında» → «per gram» — знаменатель, а не
 # доза: модель дописывает или убирает единицу («her ml'sinde 23 mg» → «23 мг на 1 мл»).
 _PER_UNIT_DOSES = {("1", "ml"), ("1", "kg"), ("1", "g")}
+# Пробел, потерянный исходником на границе строчного тега: «70 mLve 100 mL»,
+# «135 mLsu», «PREDNOL-L20mginek», «VORELBAN15mg'dır». Однобуквенная «g» не
+# берётся: «1 gün» — не «1 g ün».
+_GLUED_UNIT = re.compile(r"(\d\s?(?:mg|mcg|ml|mL))(?=[a-zçğıöşü])")
+# Не после «x»: «2x5 mg», «1x10ml» — множитель, а не слово.
+_GLUED_NUMBER = re.compile(r"(?<=[A-WYZÇĞİÖŞÜa-wyzçğıöşü])(?=\d+(?:[.,]\d+)?\s?(?:mg|mcg|ml|mL)(?![^\W\d_]))")
 # Турецкий процент пишется перед числом: «%5», в RU/EN — после: «5%».
 _PERCENT_RE = re.compile(r"%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%")
 
@@ -121,7 +127,7 @@ def _unit(raw: str) -> str:
 
 def extract_doses(text: Any) -> set[tuple[str, str]]:
     """Дозировки вида (число, единица) из текста на любом из трёх языков."""
-    text = str(text or "")
+    text = _GLUED_NUMBER.sub(" ", _GLUED_UNIT.sub(r"\1 ", str(text or "")))
     doses = {(_normalize_number(number), _unit(unit)) for number, unit in _DOSE_RE.findall(text)}
     for prefix, suffix in _PERCENT_RE.findall(text):
         doses.add((_normalize_number(prefix or suffix), "%"))

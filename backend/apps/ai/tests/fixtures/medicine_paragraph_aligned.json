@@ -1,0 +1,173 @@
+[
+ {
+  "request": "mp-89, часть №3 (22.10.2026), batch_6ad9502a…: «Bronkospazm» → «Бронхоспазм»",
+  "items": {
+   "1": "Kulak şişmesi",
+   "2": "Bronkospazm (nefes darlığı)",
+   "3": "Midede yanma",
+   "4": "Kas iskelet ağrısı",
+   "5": "Nezle",
+   "6": "Gribe benzer şikayetler",
+   "7": "Bunlar {BRAND}'in hafif yan etkileridir. Bu yan etkiler doz azaltıldığında veya tedavi kesildiğinde kaybolur.",
+   "8": "Kullanma Talimatında yer alan veya almayan herhangi bir yan etki meydana gelmesi durumunda hekiminiz, eczacınız veya hemşireniz ile konuşunuz. Ayrıca karşılaştığınız yan etkileri www.titck.gov.tr adresinde yer alan \"İlaç Yan Etki Bildirimi\" ikonuna tıklayarak ya da 0 800 314 00 08 numaralı yan etki bildirim hattını arayarak Türkiye Farmakovijilans Merkezi (TÜFAM)'ne bildiriniz. Meydana gelen yan etkileri bildirerek kullanmakta olduğunuz ilacın güvenliliği hakkında daha fazla bilgi edinilmesine katkı sağlamış olacaksınız.",
+   "9": "{BRAND} \"5-HT3 reseptör antagonistleri\" veya \"anti-emetikler\" (bulantı ve kusmayı önleyici) olarak isimlendirilen ilaç grubuna dahil olan granisetron adlı etkin maddeyi içermektedir.",
+   "10": "{BRAND} kanserin ilaç veya ışın ile tedavilerinden veya ameliyattan kaynaklanan bulantı ve kusmanın (kendini kötü ve hasta hissetme) önlenmesinde veya tedavisinde kullanılmaktadır."
+  },
+  "answer": {
+   "1": {
+    "ru": "Отек уха",
+    "en": "Ear swelling"
+   },
+   "2": {
+    "ru": "Бронхоспазм (затрудненное дыхание)",
+    "en": "Bronchospasm (shortness of breath)"
+   },
+   "3": {
+    "ru": "Жжение в желудке",
+    "en": "Burning sensation in the stomach"
+   },
+   "4": {
+    "ru": "Боль в опорно-двигательном аппарате",
+    "en": "Musculoskeletal pain"
+   },
+   "5": {
+    "ru": "Насморк",
+    "en": "Runny nose"
+   },
+   "6": {
+    "ru": "Жалобы, похожие на грипп",
+    "en": "Flu-like complaints"
+   },
+   "7": {
+    "ru": "Это легкие побочные эффекты {BRAND}. Эти побочные эффекты исчезают при снижении дозы или прекращении лечения.",
+    "en": "These are mild side effects of {BRAND}. These side effects disappear when the dose is reduced or treatment is stopped."
+   },
+   "8": {
+    "ru": "В случае возникновения любых побочных эффектов, указанных или не указанных в инструкции по применению, поговорите с вашим врачом, фармацевтом или медсестрой. Также сообщите о возникших побочных эффектах в Центр фармаконадзора Турции (TÜFAM), нажав на иконку \"Сообщение о побочных эффектах\" на сайте www.titck.gov.tr или позвонив на горячую линию по номеру 0 800 314 00 08. Сообщая о возникших побочных эффектах, вы способствуете получению дополнительной информации о безопасности используемого вами препарата.",
+    "en": "If you experience any side effects listed or not listed in the package leaflet, talk to your doctor, pharmacist, or nurse. You can also report the side effects you encounter to the Turkish Pharmacovigilance Center (TÜFAM) by clicking on the \"Adverse Drug Reaction Reporting\" icon on www.titck.gov.tr or by calling the adverse reaction reporting hotline at 0 800 314 00 08. By reporting the side effects that occur, you will contribute to obtaining more information about the safety of the medication you are using."
+   },
+   "9": {
+    "ru": "{BRAND} содержит активное вещество гранисетрон, которое относится к группе препаратов, называемых \"антагонистами рецепторов 5-HT3\" или \"противорвотными\" (предотвращающими тошноту и рвоту).",
+    "en": "{BRAND} contains the active substance granisetron, which belongs to the group of medications known as \"5-HT3 receptor antagonists\" or \"antiemetics\" (preventing nausea and vomiting)."
+   },
+   "10": {
+    "ru": "{BRAND} используется для предотвращения или лечения тошноты и рвоты, возникающих в результате лечения рака с помощью лекарств или облучения, или после операции.",
+    "en": "{BRAND} is used to prevent or treat nausea and vomiting caused by cancer treatments with medication or radiation, or after surgery."
+   }
+  }
+ },
+ {
+  "request": "mp-14, часть №4 (22.10.2026), batch_6ad96be7…: «Kusma isteği» → «Тошнота»",
+  "items": {
+   "1": "Kusma isteği",
+   "2": "Enerji artışı",
+   "3": "Bunalım",
+   "4": "Terlemede ve gözyaşı salgılanmasında artış",
+   "5": "Boşalmada gecikme, cinsel güçte azalma",
+   "6": "İntihar eğilimi",
+   "7": "İntihara teşebbüs",
+   "8": "Görsel bozukluklar",
+   "9": "Konuşma bozuklukları",
+   "10": "{BRAND}, 30 adet, şeffaf, düşük yoğunluklu polietilen tek kullanımlık flakonlar içerisinde partikül içermeyen berrak ve renksiz çözeltidir."
+  },
+  "answer": {
+   "1": {
+    "ru": "Тошнота",
+    "en": "Nausea"
+   },
+   "2": {
+    "ru": "Повышение энергии",
+    "en": "Increased energy"
+   },
+   "3": {
+    "ru": "Депрессия",
+    "en": "Depression"
+   },
+   "4": {
+    "ru": "Увеличение потоотделения и слезоотделения",
+    "en": "Increased sweating and tear production"
+   },
+   "5": {
+    "ru": "Задержка эякуляции, снижение половой функции",
+    "en": "Delayed ejaculation, decreased sexual potency"
+   },
+   "6": {
+    "ru": "Склонность к самоубийству",
+    "en": "Suicidal tendency"
+   },
+   "7": {
+    "ru": "Попытка самоубийства",
+    "en": "Suicide attempt"
+   },
+   "8": {
+    "ru": "Зрительные нарушения",
+    "en": "Visual disturbances"
+   },
+   "9": {
+    "ru": "Нарушения речи",
+    "en": "Speech disturbances"
+   },
+   "10": {
+    "ru": "{BRAND}, 30 штук, прозрачные, низкоплотные полиэтиленовые одноразовые флаконы, содержащие прозрачный и бесцветный раствор без частиц.",
+    "en": "{BRAND}, 30 pieces, transparent, low-density polyethylene single-use vials containing a particle-free clear and colorless solution."
+   }
+  }
+ },
+ {
+  "request": "mp-446, часть №5 (22.10.2026), batch_6ad96dc3…: «Düşük kan basıncı» → «Low blood pressure»",
+  "items": {
+   "1": "Bunlar hem yetişkinlerde hem de çocuklarda yaygındır. Metilprednizolon gibi ilaçları alan her 100 kişiden yaklaşık 5'i etkilenebilir.",
+   "2": "İntihar düşüncesi dahil depresyonda hissetme.",
+   "3": "Yüksek (mani) veya yukarı ve aşağı giden ruh hallerini hissetmek.",
+   "4": "Endişeli hissetme, uyku problemleri, düşünmede zorlanma, zihin karışıklığı, hafıza kaybı.",
+   "5": "Olmayan şeyleri görme veya duyma. Farklı ve korku düşünceleri, davranış değişiklikleri veya yalnız kalma hissi.",
+   "6": "Kalbinizin kanı pompalaması ile ilgili problemler (kalp yetmezliği), belirtiler ayak bileğinin şişmesi, nefes almada zorluk ve çarpıntı (kalp atış bilinci) veya düzensiz kalp atımı, düzensiz, çok yavaş veya hızlı nabız.",
+   "7": "Beyaz kan hücresi sayısında artış (lökositoz).",
+   "8": "Düşük kan basıncı.",
+   "9": "Artan kan üre düzeyleri.",
+   "10": "Ülserler, yutkunmada rahatsızlığa neden olabilen özofagusta (ağzınızla midenizi bağlayan tüp) enflamasyon veya pamukçuk."
+  },
+  "answer": {
+   "1": {
+    "ru": "Эти эффекты распространены как у взрослых, так и у детей. Примерно 5 из каждых 100 человек, принимающих такие препараты, как метилпреднизолон, могут быть затронуты.",
+    "en": "These effects are common in both adults and children. Approximately 5 out of every 100 people taking medications like methylprednisolone may be affected."
+   },
+   "2": {
+    "ru": "Чувство депрессии, включая мысли о самоубийстве.",
+    "en": "Feeling depressed, including thoughts of suicide."
+   },
+   "3": {
+    "ru": "Чувство высокой (мании) или колеблющегося настроения.",
+    "en": "Feeling high (mania) or fluctuating moods."
+   },
+   "4": {
+    "ru": "Чувство тревоги, проблемы со сном, трудности с мышлением, спутанность сознания, потеря памяти.",
+    "en": "Feeling anxious, sleep problems, difficulty thinking, confusion, memory loss."
+   },
+   "5": {
+    "ru": "Видение или слышание несуществующих вещей. Различные и пугающие мысли, изменения в поведении или чувство одиночества.",
+    "en": "Seeing or hearing things that are not there. Different and frightening thoughts, changes in behavior, or feelings of loneliness."
+   },
+   "6": {
+    "ru": "Проблемы с насосом крови вашим сердцем (сердечная недостаточность), симптомы включают отек лодыжек, затрудненное дыхание и сердцебиение (осознание сердечного ритма) или нерегулярный сердечный ритм, нерегулярный, очень медленный или быстрый пульс.",
+    "en": "Problems with your heart pumping blood (heart failure), symptoms include swelling of the ankles, difficulty breathing, and palpitations (awareness of heartbeats) or irregular heartbeat, irregular, very slow or fast pulse."
+   },
+   "7": {
+    "ru": "Увеличение количества белых кровяных клеток (лейкоцитоз).",
+    "en": "Increase in white blood cell count (leukocytosis)."
+   },
+   "8": {
+    "ru": "Низкое кровяное давление.",
+    "en": "Low blood pressure."
+   },
+   "9": {
+    "ru": "Повышенные уровни мочевины в крови.",
+    "en": "Increased blood urea levels."
+   },
+   "10": {
+    "ru": "Язвы, воспаление или кандидоз в пищеводе (трубке, соединяющей рот с желудком), что может вызывать дискомфорт при глотании.",
+    "en": "Ulcers, inflammation, or thrush in the esophagus (the tube connecting your mouth to your stomach) that may cause discomfort when swallowing."
+   }
+  }
+ }
+]

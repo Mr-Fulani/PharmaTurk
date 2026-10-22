@@ -387,6 +387,53 @@ KEPT_LINES = [
     "Ambalajında saklayınız.\n25\nderecenin altında tutunuz.",
     # Через пустую строку не клеится.
     "Somatropine veya NORDITROPIN\n\n'un içerisindeki herhangi bir bileşene karşı alerjiniz varsa.",
+    # Пункты списков и строки таблиц без знака в конце (каталог 22.10.2026).
+    "böbrek fonksiyonunda azalma veya böbrek hastalığı\nkalp hastalığı",
+    "mide ya da onikiparmak bağırsağı ülseriniz varsa veya geçirdiyseniz\nbronşiyal astımınız varsa",
+    "kortikosteroid adı verilen ilaçları kullanıyorsanız (prednisolon veya deksametazon gibi)\nkanseriniz varsa",
+    "bakteriyel enfeksiyonlar için antibiyotikler-klaritromisin gibi\nmantar enfeksiyonları için ilaçlar-posakonazol gibi",
+    "PALİGİS'in yiyecek ve içecek ile kullanılması\nPALİGİS kullanırken alkol almayınız.",
+    "Vitamin B12\nmcg",
+    "-10 ya da daha az : 0\n-11-20 : 1",
+]
+
+# Предложение, разрезанное самим сайтом на пункты списка или строки таблицы (перенос
+# из PDF): «…serebral</li><li>vazokonstriksiyon…». Примеры — из частей 3–5 Batch-перевода.
+SITE_CUT_SENTENCES = [
+    (
+        "Aşağıda belirtilen durumlardan herhangi biri sizin için söz konusuysa, tedaviniz doktorunuz\n"
+        "tarafından dikkatli bir şekilde düzenlenmelidir:",
+        "Aşağıda belirtilen durumlardan herhangi biri sizin için söz konusuysa, tedaviniz doktorunuz "
+        "tarafından dikkatli bir şekilde düzenlenmelidir:",
+    ),
+    (
+        "Mide yanması ve kusma gibi belirtilerin tedavisinde (Gastro-özofajiyal reflü hastalığının\n"
+        "semptomatik tedavisinde) önerilen tedavi dozu günde bir kez 20 mg esomeprazoldur.",
+        "Mide yanması ve kusma gibi belirtilerin tedavisinde (Gastro-özofajiyal reflü hastalığının "
+        "semptomatik tedavisinde) önerilen tedavi dozu günde bir kez 20 mg esomeprazoldur.",
+    ),
+    (
+        "Perindopril, anjiyotensin dönüştürücü enzim inhibitörü (ADE) adı verilen ilaçlar\nsınıfındandır.",
+        "Perindopril, anjiyotensin dönüştürücü enzim inhibitörü (ADE) adı verilen ilaçlar sınıfındandır.",
+    ),
+    (
+        "Eğer romatoid artritiniz varsa ve HUMIRA tedavisiyle birlikte metotreksat\n"
+        "almıyorsanız, doktorunuz haftada bir 40 mg adalimumab verebilir.",
+        "Eğer romatoid artritiniz varsa ve HUMIRA tedavisiyle birlikte metotreksat "
+        "almıyorsanız, doktorunuz haftada bir 40 mg adalimumab verebilir.",
+    ),
+    (
+        "160 mg'lık (bir günde 40\nmg'lık dört enjeksiyon ya da birbirini izleyen iki gün\n"
+        "boyunca her gün 40 mg'lık iki enjeksiyon) başlangıç dozunu takiben",
+        "160 mg'lık (bir günde 40 mg'lık dört enjeksiyon ya da birbirini izleyen iki gün "
+        "boyunca her gün 40 mg'lık iki enjeksiyon) başlangıç dozunu takiben",
+    ),
+    ("6 yaşından büyük, vücut ağırlığı 15\n-30 kg arasında çocuklar ve ergenler",
+     "6 yaşından büyük, vücut ağırlığı 15-30 kg arasında çocuklar ve ergenler"),
+    ("Bundan sonra normal doz iki haftada bir uygulanan 40\nmg'dır.",
+     "Bundan sonra normal doz iki haftada bir uygulanan 40 mg'dır."),
+    ("Gebelik ve\nemzirme", "Gebelik ve emzirme"),
+    ("Üründe bozukluk fark ederseniz ilacı\nkullanmayınız.", "Üründe bozukluk fark ederseniz ilacı kullanmayınız."),
 ]
 
 
@@ -398,6 +445,24 @@ def test_line_cut_by_inline_tag_is_glued_to_its_sentence(text, paragraph):
 @pytest.mark.parametrize("text", KEPT_LINES)
 def test_regular_lines_stay_separate_paragraphs(text):
     assert split_paragraphs(text) == re.split(r"(\n+)", text)
+
+
+@pytest.mark.parametrize("text, paragraph", SITE_CUT_SENTENCES)
+def test_sentence_cut_by_site_markup_is_glued(text, paragraph):
+    assert split_paragraphs(text) == [paragraph]
+
+
+def test_list_followed_by_its_sentence_ending_glues_only_the_ending():
+    text = (
+        "Burun tıkanması, akıntısı veya kaşıntısı\nHapşırma\nGözlerde sulanma, kaşıntı veya kızarıklık\n"
+        "gibi alerjik belirtilerin tedavisinde kullanılır."
+    )
+
+    assert split_paragraphs(text)[::2] == [
+        "Burun tıkanması, akıntısı veya kaşıntısı",
+        "Hapşırma",
+        "Gözlerde sulanma, kaşıntı veya kızarıklık gibi alerjik belirtilerin tedavisinde kullanılır.",
+    ]
 
 
 def test_glued_sentence_gets_one_memory_key_with_canonical_suffix():
