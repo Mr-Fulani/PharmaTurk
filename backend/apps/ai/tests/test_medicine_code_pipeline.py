@@ -31,6 +31,7 @@ from apps.ai.services.medicine_title import (
     looks_like_source_name,
     medicine_source_name,
     paragraph_brand,
+    title_with_inn,
 )
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidator
@@ -503,6 +504,36 @@ def test_title_template_from_structured_name():
     assert build_medicine_title("ZINCO SURUP 150 ML") == {"ru": "ZINCO, сироп, 150 мл", "en": "ZINCO, syrup, 150 ml"}
     # Незнакомое слово после бренда — шаблон не строится, название даст модель.
     assert build_medicine_title("X 5 MG KARISIM") is None
+
+
+def test_title_names_active_ingredient_without_salt():
+    title = build_medicine_title("UROMAX 0,4 MG MR DEGISTIRILMIS SALIMLI SERT KAPSUL (30 ADET)")
+    assert title_with_inn(
+        title, "UROMAX 0,4 MG MR DEGISTIRILMIS SALIMLI SERT KAPSUL (30 ADET)",
+        ("Тамсулозин гидрохлорид", "Tamsulosin hydrochloride"), "Tamsulosin Hidroklorur",
+    ) == {
+        "ru": "UROMAX (тамсулозин) 0,4 мг MR, капсулы с модифицированным высвобождением, 30 шт.",
+        "en": "UROMAX (tamsulosin) 0.4 mg MR, modified-release hard capsules, 30 pcs",
+    }
+    name = "ROLASTYM AEROSOL 160 MCG/4,5 MCG SUSPANSIYON ICEREN OLCULU DOZ INHALER (120 DOZ)"
+    assert title_with_inn(
+        build_medicine_title(name), name,
+        ("Формотерол фумарат дигидрат + Будезонид", "Formoterol fumarate dihydrate + Budesonide"),
+        "Formoterol Fumarat Dihidrat + Budezonid",
+    )["ru"] == "ROLASTYM (формотерол + будезонид) 160 мкг/4,5 мкг, суспензия для ингаляций дозированная, 120 доз"
+    # Вещество уже в бренде — не повторяем.
+    plain = build_medicine_title("IBUPROFEN 400 MG 20 TABLET")
+    assert title_with_inn(plain, "IBUPROFEN 400 MG 20 TABLET", ("Ибупрофен", "Ibuprofen"), "Ibuprofen") == plain
+
+
+def test_title_template_injection_ampoule_forms():
+    assert build_medicine_title("FUROJECT 20MG/2 ML IM/IV ENJ. COZ. ICEREN 5 AMPUL")["ru"] == (
+        "FUROJECT 20 мг/2 мл, раствор для инъекций (в/м, в/в), 5 ампул"
+    )
+    assert build_medicine_title("CALCITRON 2 MCG/ML IV ENJ. COZELTI ICEREN AMPUL(25)")["ru"] == (
+        "CALCITRON 2 мкг/мл, раствор для инъекций (в/в), 25 ампул"
+    )
+    assert build_medicine_title("FILINSEL 24MG/ML 10 ML X 3 AMPUL")["ru"] == "FILINSEL 24 мг/мл, 10 мл, 3 ампулы"
 
 
 def test_title_template_new_forms_thousands_and_brand_words():

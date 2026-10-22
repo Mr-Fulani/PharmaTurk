@@ -280,6 +280,15 @@ FORM_PHRASES = {
     "aerosol inhaler": ("аэрозоль для ингаляций", "inhalation aerosol"),
     "sise": ("флакон", "bottle"),
     "likit jel": ("жидкий гель", "liquid gel"),
+    "enjeksiyon cozelti": ("раствор для инъекций", "solution for injection"),  # «ENJ. COZ.»
+    "konsantre infuzyonluk cozelti icin toz": (
+        "порошок для приготовления концентрата для приготовления раствора для инфузий",
+        "powder for concentrate for solution for infusion",
+    ),
+    "degistirilmis salimli sert kapsul": ("капсулы с модифицированным высвобождением", "modified-release hard capsules"),
+    "suspansiyon iceren olculu doz inhaler": (
+        "суспензия для ингаляций дозированная", "pressurised inhalation suspension, metered dose"
+    ),
     "rahim ici sistem": ("внутриматочная система", "intrauterine system"),
 }
 # Флакон/ампула как форма, если та же упаковка указана и счётом («ICEREN FLAKON (1 FLAKON)»),
@@ -328,6 +337,9 @@ _SPLIT_FORM_RE = re.compile(
 def _expand_source(rest: str) -> str:
     for pattern, full in _ABBREVIATION_RES:
         rest = pattern.sub(full, rest)
+    # «10 ML X 3 AMPUL» — объём одной ампулы и их число; «AMPUL(25)» в конце — 25 ампул.
+    rest = re.sub(r"(\d+(?:[.,]\d+)?)\s*ml\s*x\s*(\d+)\s+(ampul|flakon|kartus)\b", r"\1 ml \2 \3", rest)
+    rest = re.sub(r"\b(ampul|flakon)\s+(\d+)\s*$", r"\2 \1", rest)
     rest = re.sub(r"(?<=[a-z])\s*/\s*(?=[a-z])", "/", rest)
     rest = _SPLIT_FORM_RE.sub(r"\2 \1 \3", re.sub(r"\s+", " ", rest).strip())
     return rest
@@ -335,7 +347,7 @@ def _expand_source(rest: str) -> str:
 
 # Слова форм, которые бывают и в бренде: «FORANE LIKIT», «KREON FUR KINDER PELLET»,
 # «REFRESH TEK DOZLUK» — на них бренд не обрывается.
-_BRAND_FORM_WORDS = {"likit", "pellet", "tek", "dozluk"}
+_BRAND_FORM_WORDS = {"likit", "pellet", "tek", "dozluk", "doz"}  # и «OTRIVINE DOZ AYARLI»
 FORM_WORDS = {word for phrase in FORM_PHRASES for word in phrase.split()} - _BRAND_FORM_WORDS
 _FORM_RE = re.compile(
     r"(?:" + "|".join(re.escape(p) for p in sorted(FORM_PHRASES, key=len, reverse=True)) + r")\b"
@@ -370,7 +382,7 @@ _MODIFIERS = {
 _PHRASE_MODIFIERS_RE = re.compile(r"ve cozucu(?:su)?\b")
 _PHRASE_MODIFIERS = ("с растворителем", "with solvent")
 # Слова-связки источника, которые в название не переносятся: «COZELTI ICEREN AMPUL».
-_SKIP_WORDS = {"iceren"}
+_SKIP_WORDS = {"iceren", "aerosol"}  # «AEROSOL … OLCULU DOZ INHALER» — форма названа дальше
 _PACK_RE = re.compile(r"(\d+)\s+(" + "|".join(_PACK_WORDS) + r")\b")
 
 _UNITS = {
@@ -676,3 +688,55 @@ def medicine_source_name(name: Any, external_data: Any) -> tuple[str, str]:
     if equivalent:
         return equivalent, "equivalents"
     return current, "name"
+
+
+# Соль и гидрат в конце МНН в названии не пишутся: ищут «тамсулозин», а не «тамсулозин гидрохлорид».
+_SALT_WORDS = {
+    "гидрохлорид", "дигидрохлорид", "гидробромид", "натрия", "натрий", "калия", "калий", "кальция", "кальций",
+    "магния", "магний", "ацетат", "сульфат", "бромид", "фосфат", "малеат", "мезилат", "хлорид", "тартрат",
+    "цитрат", "нитрат", "дигидрат", "моногидрат", "тригидрат", "гемигидрат", "сесквигидрат", "карбонат",
+    "пропионат", "глюконат", "фумарат", "сукцинат", "безилат", "бесилат", "тозилат", "лактат", "стеарат",
+    "hydrochloride", "dihydrochloride", "hydrobromide", "sodium", "potassium", "calcium", "magnesium", "acetate",
+    "sulfate", "sulphate", "bromide", "phosphate", "maleate", "mesylate", "mesilate", "chloride", "tartrate",
+    "citrate", "nitrate", "dihydrate", "monohydrate", "trihydrate", "hemihydrate", "sesquihydrate", "carbonate",
+    "propionate", "gluconate", "fumarate", "succinate", "besylate", "besilate", "tosylate", "lactate", "stearate",
+    "hcl",
+}
+_INN_TITLE_MAX = 45
+
+
+def _title_inn(value: str) -> str:
+    parts = []
+    for part in re.split(r"\s*\+\s*", value.strip()):
+        words = part.split()
+        while len(words) > 1 and words[-1].lower() in _SALT_WORDS:
+            words.pop()
+        if not words:
+            return ""
+        first = words[0]
+        # «Эзомепразол» → «эзомепразол»; аббревиатуры («ДНК», «D3») как есть.
+        if len(first) > 1 and first[1:2].islower():
+            words[0] = first[0].lower() + first[1:]
+        parts.append(" ".join(words))
+    return " + ".join(parts)
+
+
+def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], active_ingredient: Any = "") -> dict[str, str]:
+    """«NEXIUM 40 мг, …» → «NEXIUM (эзомепразол) 40 мг, …»: по бренду и по веществу ищут на каждом языке.
+
+    Не добавляется, если вещество уже в бренде («PARACETAMOL ATABAY»), веществ больше
+    трёх или МНН в названии вышло бы длиннее _INN_TITLE_MAX.
+    """
+    source = re.sub(r"[()]", " ", str(name or "")).strip()
+    brand = " ".join(_brand_tokens(source.split()))
+    brand_words = set(re.findall(r"[a-z]+", fold_tr(brand)))
+    inn_words = {word for word in re.findall(r"[a-z]+", fold_tr(active_ingredient)) if len(word) >= 4}
+    if not brand or brand_words & inn_words or len(re.split(r"\s*\+\s*", inn[0])) > 3:
+        return title
+    result = {}
+    for locale, value in zip(("ru", "en"), inn):
+        text = _title_inn(value)
+        if not text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand):
+            return title
+        result[locale] = f"{brand} ({text}){title[locale][len(brand):]}"
+    return result
