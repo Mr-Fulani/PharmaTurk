@@ -312,6 +312,31 @@ _SOURCE_HEADING = re.compile(
 )
 _TRANSLATION_HEADING = re.compile(r"^\s*(\d{1,2})\s*[.)](?!\d)")
 
+# «en az 30 dakika önce», «10 hastanın en az 1'inde», «en az iki kez» — нижняя граница,
+# её модель теряла («за 30 минут до еды», «у 1 из 10 пациентов»). Не «mümkün olan en az
+# doz», «en az miktarda» — это «наименьшая доза». Перевод может передать границу
+# по-разному: «не ранее чем через 3 месяца», «детям от 1 года», «один или несколько».
+_AT_LEAST = {
+    "tr": re.compile(
+        # Не «en az 36 saat geçmeden» (отрицание: «не ранее»/«менее чем через» — верно), не
+        # диапазон «en az 1'i ila 10'unda» и не испорченные частоты «en az 1'inden daha az/fazla».
+        r"\ben az\s+(?:\d|yarım|bir\b|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on\b|yirmi|otuz|kırk|elli|birkaç)"
+        r"(?![^.;]{0,30}geçmeden)(?!\S*\s*'?\s*(?:inden|ından|nden|ndan)\b)(?!\S*\s+ila\b)",
+        re.IGNORECASE,
+    ),
+    "ru": re.compile(
+        r"не менее|не меньше|по меньшей мере|по крайней мере|как минимум|минимум|хотя бы|и более|или более|"
+        r"или нескольк|≥|не реже|не короче|не ранее|не раньше|старше|\bот\s+(?:\d|одного|двух|трёх|трех)|начиная с|"
+        r"минимальн|более чем у|не ближе",
+        re.IGNORECASE,
+    ),
+    "en": re.compile(
+        r"at least|or more|one or more|or older|and older|and over|and above|no sooner|no earlier|not earlier|"
+        r"minimum|≥|no less|not less|from the age of|older than|more than \d+ in",
+        re.IGNORECASE,
+    ),
+}
+
 # Частота побочного эффекта в начале абзаца («Yaygın olmayan: 100 hastanın…»).
 _FREQUENCY_LABEL = re.compile(
     r"^\W*(çok yaygın|yaygın olmayan|yaygın|çok seyrek|seyrek|bilinmiyor)\s*(?:yan etkiler\w*)?\s*[:(]",
@@ -368,7 +393,7 @@ class Features:
 
     __slots__ = (
         "lang", "numbers", "words", "lists", "footnotes", "brand_numbers", "garbled_frequency", "concepts", "length",
-        "heading", "frequency", "brand", "end", "empty", "fragment",
+        "heading", "frequency", "brand", "end", "empty", "fragment", "at_least",
     )
 
     def __init__(self, text: str, lang: str):
@@ -398,6 +423,7 @@ class Features:
         self.frequency = _frequency(text, lang)
         self.brand = _BRAND in text
         self.end = text[-1] if text and text[-1] in ":?,;" else "."
+        self.at_least = bool(_AT_LEAST[lang].search(text))
 
 
 def pair_score(source: Features, translation: Features) -> float:
@@ -496,12 +522,32 @@ def _problems(src: Features, ru: Features, en: Features) -> list[str]:
             break
     if src.frequency and (ru.frequency != src.frequency or en.frequency != src.frequency):
         problems.append("frequency_mismatch")
+    if src.at_least and not (ru.at_least and en.at_least):
+        problems.append("at_least_mismatch")
     return problems
 
 
 def item_problems(source: str, ru: str, en: str) -> list[str]:
     """Признаки чужого перевода в одном абзаце (пустой список — расхождений нет)."""
     return _problems(Features(source, "tr"), Features(ru, "ru"), Features(en, "en"))
+
+
+# Тысячи через запятую по-английски («1 из 1,000 пациентов», «100,000 МЕ»): по-русски
+# запятая — дробная часть. Только частоты и единицы — «0,375 мг» и «1,500 мг» не трогаем.
+_RU_THOUSANDS = re.compile(
+    r"(?<![\d.,])[1-9]\d{0,2}(?:,\d{3})+(?![\d,])"
+    r"(?=\s*(?:пациент|человек|больн|случа|женщин|мужчин|дет|МЕ|ЕД|единиц))"
+    r"|(?<=из )[1-9]\d{0,2}(?:,\d{3})+(?![\d,])"
+)
+
+
+def ru_thousands(text: str) -> str:
+    """«1 из 1,000» → «1 из 1000», «10,000» → «10 000» (только частоты и единицы действия)."""
+    def number(match: re.Match) -> str:
+        digits = match.group(0).replace(",", "")
+        return digits if len(digits) <= 4 else f"{int(digits):,}".replace(",", " ")
+
+    return _RU_THOUSANDS.sub(number, str(text or ""))
 
 
 def restore_heading(source: str, translation: str) -> str:

@@ -19,7 +19,12 @@ from functools import lru_cache
 from typing import Any, Callable, Optional
 
 from apps.ai.services.medicine_fact_check import doses_match, inn_matches, is_proper_name_line
-from apps.ai.services.medicine_paragraph_check import item_problems, request_shift, restore_heading
+from apps.ai.services.medicine_paragraph_check import (
+    item_problems,
+    request_shift,
+    restore_heading,
+    ru_thousands,
+)
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.translation_memory import lookup, normalize_source_text, remember, source_hash
@@ -587,7 +592,7 @@ def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, 
     accepted, rejected = {}, {}
     for key, ru, en in zip(keys, ru_texts, en_texts):
         source = items[key]
-        ru, en = restore_heading(source, ru), restore_heading(source, en)
+        ru, en = ru_thousands(restore_heading(source, ru)), restore_heading(source, en)
         problems = paragraph_problems(source, ru, en)
         if shifted:
             problems.append("shifted")

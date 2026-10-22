@@ -22,7 +22,13 @@ from apps.ai.services.medicine_memory import (
     paragraph_problems,
     section_paragraph_problems,
 )
-from apps.ai.services.medicine_paragraph_check import audit_sequence, item_problems, plain_numbers, request_shift
+from apps.ai.services.medicine_paragraph_check import (
+    audit_sequence,
+    item_problems,
+    plain_numbers,
+    request_shift,
+    ru_thousands,
+)
 from apps.ai.services.translation_memory import lookup, remember
 
 # Раздел инструкции VISCOTEARS с верными переводами (в памяти они стояли со сдвигом).
@@ -673,6 +679,45 @@ def test_expiry_paragraphs_of_storage_section_are_not_shifted():
     # Настоящий сдвиг в том же разделе по-прежнему находится.
     assert request_shift(sources, ru[:2] + ru[3:] + ["Не выбрасывайте лекарства."],
                          en[:2] + en[3:] + ["Do not throw away medicines."])
+
+
+def test_lost_lower_bound_en_az_is_a_problem():
+    before_meals = "İlacı yemeklerden en az 30 dakika önce alınız."
+    en = "Take the medicine at least 30 minutes before meals."
+    assert "at_least_mismatch" in item_problems(before_meals, "Принимайте лекарство за 30 минут до еды.", en)
+    assert item_problems(before_meals, "Принимайте лекарство не менее чем за 30 минут до еды.", en) == []
+    assert "at_least_mismatch" in item_problems(
+        "Çok yaygın: 10 hastanın en az 1'inde görülebilir.",
+        "Очень часто: может наблюдаться как минимум у 1 из 10 пациентов.",
+        "Very common: may occur in 1 in 10 patients.",
+    )
+    # Граница передана по-другому — не брак.
+    assert item_problems(
+        "Canlı aşılar tedaviden en az 3 ay sonra uygulanmalıdır.",
+        "Живые вакцины следует вводить не ранее чем через 3 месяца после лечения.",
+        "Live vaccines should be given no sooner than 3 months after treatment.",
+    ) == []
+    assert item_problems(
+        "{BRAND} yetişkinler ve en az 1 yaşındaki çocuklar için reçete edilmiştir.",
+        "{BRAND} назначается взрослым и детям от 1 года.",
+        "{BRAND} is prescribed for adults and children aged 1 year and older.",
+    ) == []
+    # «En az doz» — наименьшая доза, а не нижняя граница.
+    assert item_problems("Mümkün olan en az dozu kullanınız.", "Используйте минимально возможную дозу.",
+                         "Use the lowest possible dose.") == []
+
+
+def test_english_thousands_separator_is_normalized_in_russian():
+    source = "Yaygın olmayan: 100 hastanın birinden az, fakat 1.000 hastanın birinden fazla görülebilir."
+    accepted, rejected = check_paragraph_payload({"1": source}, {"1": {
+        "ru": "Нечасто: может наблюдаться менее чем у 1 из 100 пациентов, но более чем у 1 из 1,000 пациентов.",
+        "en": "Uncommon: may occur in less than 1 in 100 patients, but more than 1 in 1,000 patients.",
+    }})
+    assert rejected == {}
+    assert accepted[source]["ru"].endswith("более чем у 1 из 1000 пациентов.")
+    assert accepted[source]["en"].endswith("more than 1 in 1,000 patients.")
+    # Десятичная запятая дозы остаётся: «0,375 мг», «1,500 мг».
+    assert ru_thousands("0,375 мг; 1,500 мг; 1 из 10,000; 100,000 МЕ") == "0,375 мг; 1,500 мг; 1 из 10 000; 100 000 МЕ"
 
 
 def test_day_for_24_hours_and_ordinal_list_are_not_problems():
