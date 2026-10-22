@@ -55,29 +55,24 @@
   z-index: 2;
 }
 
-/* Второй элемент - первая миниатюра справа */
+/* Две миниатюры у правого края. Место у центра (left: 52%) на десктопе
+   пустует: второй элемент - первая миниатюра (следующий баннер) */
 .slide .item:nth-child(2) {
-  left: 52%;
+  left: calc(52% + clamp(140px, 22vw, 220px));
   z-index: 10;
 }
 
-/* Третий элемент - вторая миниатюра */
+/* Третий элемент - вторая миниатюра, выступает за правый край баннера */
 .slide .item:nth-child(3) {
-  left: calc(52% + clamp(140px, 22vw, 220px));
+  left: calc(52% + clamp(280px, 44vw, 440px));
   z-index: 11;
 }
 
-/* Четвертый элемент - третья миниатюра */
-.slide .item:nth-child(4) {
-  left: calc(52% + clamp(280px, 44vw, 440px));
-  z-index: 12;
-}
-
-/* Все элементы начиная с 5-го - скрыты справа */
-.slide .item:nth-child(n + 5) {
+/* Все элементы начиная с 4-го - скрыты справа */
+.slide .item:nth-child(n + 4) {
   left: calc(52% + clamp(420px, 66vw, 660px));
   visibility: hidden;
-  z-index: 13;
+  z-index: 12;
 }
 
 /* Контент внутри элемента */
@@ -312,10 +307,13 @@
     font-size: 14px;
   }
 
-  .slide .item:nth-child(4),
-  .slide .item:nth-child(5),
-  .slide .item:nth-child(n + 6) {
-    visibility: hidden;
+  /* Баннер здесь обрезает миниатюры (overflow: hidden): лента от 52 %, как раньше */
+  .slide .item:nth-child(2) {
+    left: 52%;
+  }
+
+  .slide .item:nth-child(3) {
+    left: calc(52% + clamp(140px, 22vw, 220px));
   }
 }
 
