@@ -276,6 +276,22 @@ def _link_targets(text):
     return targets
 
 
+def _visible_text(html_body, text):
+    """Что читает клиент: без тегов с атрибутами (href, src) и без адресов — в токенах ссылок
+    случайные буквы, «buy» в них встречается."""
+    visible = re.sub(r"<[^>]+>", " ", html_body) + " " + text
+    return re.sub(r"https?://\S+", " ", visible).lower()
+
+
+def test_visible_text_ignores_link_tokens():
+    # Случай из CI: подписанный токен «…amguweeojxzbuyijko…» в ссылке
+    link = "https://mudaroba.com/api/orders/cart-reminders/go/?t=amguweeojxzbuyijko"
+    visible = _visible_text(f'<a href="{link}"><img src="{link}" alt="Send request"></a> Send request', link)
+
+    assert "buy" not in visible
+    assert "send request" in visible
+
+
 @pytest.mark.django_db
 def test_email_ru_lists_items_with_current_price_and_neutral_wording():
     cart = _cart(_user())
@@ -294,8 +310,10 @@ def test_email_ru_lists_items_with_current_price_and_neutral_wording():
     assert "https://cdn.mudaroba.com/products/magnesium.jpg" in html_body  # без proxy-image
     assert "Отправить заявку" in html_body and "Открыть Список заявки" in html_body
     assert "/api/orders/cart-reminders/unsubscribe/?t=" in html_body
+    visible = _visible_text(html_body, text)
+    assert "магний b6, 50 таблеток" in visible
     for wording in ("купить", "купите", "покупк"):
-        assert wording not in (html_body + text).lower()
+        assert wording not in visible
     targets = _link_targets(html_body)
     assert any(t.startswith(f"/product/{product.slug}?utm_source=cart_reminder&utm_medium=email") for t in targets)
     assert any(t.startswith("/checkout?") and "utm_campaign=cart_reminder_1" in t for t in targets)
@@ -315,7 +333,9 @@ def test_email_en_uses_english_texts_and_en_links():
     assert "Magnesium B6, 50 tablets" in html_body
     assert "1,500.00 $" in html_body
     assert "Send request" in html_body
-    assert "buy" not in (html_body + text).lower()
+    visible = _visible_text(html_body, text)
+    assert "send request" in visible
+    assert not re.search(r"\bbuy", visible)
     targets = _link_targets(html_body)
     assert any(t.startswith(f"/en/product/{product.slug}?") for t in targets)
     assert any(t.startswith("/en/checkout?") and "utm_campaign=cart_reminder_2" in t for t in targets)
