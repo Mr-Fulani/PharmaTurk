@@ -19,7 +19,7 @@ from functools import lru_cache
 from typing import Any, Callable, Optional
 
 from apps.ai.services.medicine_fact_check import doses_match, inn_matches, is_proper_name_line
-from apps.ai.services.medicine_paragraph_check import item_problems, request_shift
+from apps.ai.services.medicine_paragraph_check import item_problems, request_shift, restore_heading
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.translation_memory import lookup, normalize_source_text, remember, source_hash
@@ -420,19 +420,32 @@ def needs_translation(paragraph: str) -> bool:
     return len(re.findall(r"[^\W\d_]", paragraph)) >= 2
 
 
+_URL = re.compile(r"https?://\S+|www\.\S+")
+
+
 def _looks_russian(source: str, ru: str) -> bool:
+    # Адрес сайта не переводится: «www.titck.gov.tr/" sitesinde» → «на сайте www.titck.gov.tr/».
+    source = _URL.sub(" ", source)
     if len(re.findall(r"[^\W\d_]", source)) < 20:
         return True
     cyrillic = len(re.findall(r"[А-Яа-яЁё]", ru))
-    if not cyrillic or looks_untranslated_turkish(ru):
+    # Метка, ссылки и аббревиатуры заглавными («TÜFAM», в т. ч. с кириллической «Т»)
+    # остаются как есть и на язык перевода не указывают.
+    sample = " ".join(
+        word for word in _URL.sub(" ", ru.replace(BRAND_TOKEN, " ")).split() if not word.isupper()
+    )
+    if not cyrillic or looks_untranslated_turkish(sample):
         return False
     # Бренд (слово заглавными) переносится латиницей и переводить его не нужно:
     # «5. DERMOVATE'IN SAKLANMASI» → «5. Хранение DERMOVATE» — 8 кириллических букв.
+    # Если модель сама заменила бренд меткой («5. ХРАНЕНИЕ {BRAND}»), бренд —
+    # одно из слов заглавными исходника, и их не считаем.
     kept = {fold_tr(word) for word in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", ru)}
+    masked = BRAND_TOKEN in ru and BRAND_TOKEN not in source
     translatable = sum(
         len(word)
         for word in re.findall(r"[^\W\d_]+", source)
-        if not (word.isupper() and fold_tr(word) in kept)
+        if not (word.isupper() and (masked or fold_tr(word) in kept))
     )
     return cyrillic >= min(10, translatable // 2)
 
@@ -515,6 +528,7 @@ def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, 
     accepted, rejected = {}, {}
     for key, ru, en in zip(keys, ru_texts, en_texts):
         source = items[key]
+        ru, en = restore_heading(source, ru), restore_heading(source, en)
         problems = paragraph_problems(source, ru, en)
         if shifted:
             problems.append("shifted")

@@ -19,7 +19,7 @@ _UNIT_ALIASES = {
     "mcg": "mcg", "µg": "mcg", "μg": "mcg", "мкг": "mcg",
     "g": "g", "gr": "g", "г": "g",
     "ml": "ml", "мл": "ml",
-    "iu": "iu", "ui": "iu", "ме": "iu",
+    "iu": "iu", "ui": "iu", "i.u.": "iu", "i.u": "iu", "ме": "iu",
     "mmol": "mmol", "ммоль": "mmol",
     "kg": "kg", "кг": "kg",
     "%": "%",
@@ -27,12 +27,22 @@ _UNIT_ALIASES = {
 _UNIT_PATTERN = "|".join(
     sorted((re.escape(unit) for unit in _UNIT_ALIASES if unit != "%"), key=len, reverse=True)
 )
+# Миллиграммы и микрограммы словом: «1 miligram», «200 микрограммов», «100 mikrog/mL».
+_UNIT_WORDS = (
+    ("miligram", "mg"), ("milligram", "mg"), ("миллиграмм", "mg"),
+    ("mikrog", "mcg"), ("microg", "mcg"), ("микрограмм", "mcg"),
+)
+_UNIT_WORD_PATTERN = "|".join(stem for stem, _ in _UNIT_WORDS)
 # Число: с разделителем тысяч («1.000», «1 000») или десятичное («2,5»).
 _NUMBER = r"[1-9]\d{0,2}(?:[ \u00a0.,]\d{3})+|\d+(?:[.,]\d+)?"
+# «2,5'mg'dır» — апостроф между числом и единицей, «5-mg tablet» — дефис.
 _DOSE_RE = re.compile(
-    rf"(?<![\w.,])({_NUMBER})\s*({_UNIT_PATTERN})(?![^\W\d_])",
+    rf"(?<![\w.,])({_NUMBER})\s*['’-]?\s*((?:{_UNIT_WORD_PATTERN})\w*|(?:{_UNIT_PATTERN})(?![^\W\d_]))",
     re.IGNORECASE,
 )
+# «на 1 мл», «на 1 кг массы тела», «1 gramında» → «per gram» — знаменатель, а не
+# доза: модель дописывает или убирает единицу («her ml'sinde 23 mg» → «23 мг на 1 мл»).
+_PER_UNIT_DOSES = {("1", "ml"), ("1", "kg"), ("1", "g")}
 # Турецкий процент пишется перед числом: «%5», в RU/EN — после: «5%».
 _PERCENT_RE = re.compile(r"%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%")
 
@@ -104,13 +114,15 @@ def _normalize_number(raw: str) -> str:
     return value or "0"
 
 
+def _unit(raw: str) -> str:
+    raw = raw.lower()
+    return next((unit for stem, unit in _UNIT_WORDS if raw.startswith(stem)), None) or _UNIT_ALIASES[raw]
+
+
 def extract_doses(text: Any) -> set[tuple[str, str]]:
     """Дозировки вида (число, единица) из текста на любом из трёх языков."""
     text = str(text or "")
-    doses = {
-        (_normalize_number(number), _UNIT_ALIASES[unit.lower()])
-        for number, unit in _DOSE_RE.findall(text)
-    }
+    doses = {(_normalize_number(number), _unit(unit)) for number, unit in _DOSE_RE.findall(text)}
     for prefix, suffix in _PERCENT_RE.findall(text):
         doses.add((_normalize_number(prefix or suffix), "%"))
     return doses
@@ -118,7 +130,7 @@ def extract_doses(text: Any) -> set[tuple[str, str]]:
 
 def doses_match(source: Any, translation: Any) -> bool:
     """В переводе те же дозировки, что в исходнике: ничего не потеряно и не добавлено."""
-    return extract_doses(source) == extract_doses(translation)
+    return extract_doses(source) - _PER_UNIT_DOSES == extract_doses(translation) - _PER_UNIT_DOSES
 
 
 def _latin_letters(value: Any, locale: str) -> str:
