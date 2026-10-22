@@ -6,6 +6,11 @@ import { useCartStore } from '../store/cart'
 import { gtmAddToCart, type GtmEcommerceItem } from '../lib/gtm'
 import styles from './AddToCartButton.module.css'
 
+// Длительности синхронны с AddToCartButton.module.css: полёт товара (shirtFlight)
+// и показ «Добавлено» (cartExit + labelIn).
+const ADDING_ANIMATION_MS = 1600
+const SUCCESS_STATE_MS = 1800
+
 interface AddToCartButtonProps {
   productId?: number
   productType?: string
@@ -59,6 +64,7 @@ export default function AddToCartButton({
 
     setDone(false)
     setLoading(true)
+    const startedAt = Date.now()
     try {
       initCartSession()
       const body = new URLSearchParams()
@@ -141,11 +147,20 @@ export default function AddToCartButton({
         analyticsCurrency,
       )
 
+      // Быстрый ответ API обрывал полёт товара в корзину на середине: даём ему доиграть.
+      // Таймер в resetTimerRef: при размонтировании он снимается, и дальше код не идёт.
+      const remaining = ADDING_ANIMATION_MS - (Date.now() - startedAt)
+      if (remaining > 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        await new Promise<void>((resolve) => {
+          resetTimerRef.current = setTimeout(resolve, remaining)
+        })
+      }
+
       setDone(true)
       resetTimerRef.current = setTimeout(() => {
         setDone(false)
         resetTimerRef.current = null
-      }, 1450)
+      }, SUCCESS_STATE_MS)
     } catch (err: any) {
       const conflict = getCartVerificationError(err)
       const copy = getCartIssueCopy(conflict?.code)

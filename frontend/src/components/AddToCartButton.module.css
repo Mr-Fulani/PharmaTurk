@@ -255,52 +255,52 @@
 }
 
 .button[data-state='adding']::before {
-  animation: buttonBounce 1.48s both;
+  animation: buttonBounce 1.9s both;
 }
 
 .button[data-state='adding'] .label {
-  animation: labelOut 0.3s ease forwards;
+  animation: labelOut 0.4s ease forwards;
 }
 
 .button[data-state='adding'] .morph {
-  animation: surfaceDrop 0.4s ease-out both;
+  animation: surfaceDrop 0.5s ease-out both;
 }
 
 .button[data-state='adding'] .cart {
-  animation: cartReceive 0.4s cubic-bezier(0.42, 0, 1, 1) both;
+  animation: cartReceive 0.5s cubic-bezier(0.42, 0, 1, 1) both;
 }
 
 .button[data-state='adding'] .cartFill {
-  animation: fillCart 0.06s 0.9s linear forwards;
+  animation: fillCart 0.08s 1.15s linear forwards;
 }
 
 .button[data-state='adding'] .shirt {
-  animation: shirtFlight 1.25s linear both;
+  animation: shirtFlight 1.6s linear both;
 }
 
 .button[data-state='adding'] .shirt svg {
-  animation: shirtFabric 1.25s both;
+  animation: shirtFabric 1.6s both;
 }
 
 .button[data-state='adding'] .shirt svg.shirtSecondary {
   animation:
-    shirtFabric 1.25s both,
-    shirtColorReveal 1.25s linear both;
+    shirtFabric 1.6s both,
+    shirtColorReveal 1.6s linear both;
 }
 
 .button[data-state='success']::before {
-  animation: successPulse 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: successPulse 0.85s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .button[data-state='success'] .label {
   max-width: 100%;
-  animation: labelIn 0.38s 0.62s ease both;
+  animation: labelIn 0.45s 0.8s ease both;
   transform: translateX(0);
 }
 
 .button[data-state='success'] .cart {
   left: 50%;
-  animation: cartExit 0.92s ease-in-out both;
+  animation: cartExit 1.15s ease-in-out both;
 }
 
 .button[data-state='success'] .cartFill {
@@ -309,7 +309,7 @@
 }
 
 .button[data-state='success'] .cartTick {
-  animation: drawTick 0.24s 0.08s ease-out forwards;
+  animation: drawTick 0.32s 0.1s ease-out forwards;
 }
 
 @keyframes buttonBounce {
@@ -515,6 +515,7 @@
     transition-duration: 0.01ms;
   }
 
+  .button[data-state='adding']::before,
   .button[data-state='adding'] .label,
   .button[data-state='adding'] .morph,
   .button[data-state='adding'] .cart,
