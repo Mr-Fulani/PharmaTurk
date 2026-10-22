@@ -628,6 +628,68 @@ def test_glued_units_numbers_and_footnotes_inside_words_are_not_a_mismatch():
     ) == []
 
 
+# Раздел хранения MADECASSOL (22.10): три соседних абзаца о сроке годности. «son kullanım
+# tarihi» не считалось понятием «срок годности», а «trash» — «сыпью», и верный перевод
+# «Son Kull. Ta.» уходил в модерацию как сдвинутый.
+STORAGE_ROWS = [
+    ("5. MADDECASSOL'ÜN SAKLANMASI", "5. ХРАНЕНИЕ {BRAND}", "5. STORAGE OF {BRAND}"),
+    (
+        "{BRAND}'i çocukların göremeyeceği, erişemeyeceği yerlerde ve ambalajında saklayınız.",
+        "{BRAND} храните в недоступном для детей месте и в упаковке.",
+        "Keep {BRAND} out of the reach of children and in the packaging.",
+    ),
+    ("25oC altındaki oda sıcaklığında saklayınız.", "Храните при температуре ниже 25°C.", "Store below 25°C."),
+    (
+        "Son kullanma tarihiyle uyumlu olarak kullanınız.",
+        "Используйте в соответствии с датой окончания срока годности.",
+        "Use in accordance with the expiration date.",
+    ),
+    (
+        "Ambalajdaki son kullanma tarihinden sonra {BRAND}'i kullanmayınız.",
+        "Не используйте {BRAND} после срока годности, указанного на упаковке.",
+        "Do not use {BRAND} after the expiration date indicated on the packaging.",
+    ),
+    (
+        '"Son Kull. Ta.:" ibaresinden sonra yazılan rakam ayı temsil eder ve o ayın son günü son kullanım tarihidir..',
+        '"Срок годности:" цифра, написанная после этого обозначения, представляет месяц, '
+        "а последний день этого месяца является сроком годности.",
+        '"Expiry Date:" the number written after this statement represents the month, '
+        "and the last day of that month is the expiry date.",
+    ),
+    (
+        "Son kullanma tarihi geçmiş veya kullanılmayan ilaçları çöpe atmayınız! "
+        "Çevre ve Şehircilik Bakanlığınca belirlenen toplama sistemine veriniz.",
+        "Не выбрасывайте просроченные или неиспользованные лекарства в мусор! Утилизируйте их в соответствии "
+        "с системой сбора, установленной Министерством окружающей среды и городского планирования.",
+        "Do not throw away expired or unused medicines in the trash! Dispose of them according to "
+        "the collection system established by the Ministry of Environment and Urban Planning.",
+    ),
+]
+
+
+def test_expiry_paragraphs_of_storage_section_are_not_shifted():
+    sources, ru, en = (list(column) for column in zip(*STORAGE_ROWS))
+    assert request_shift(sources, ru, en) == set()
+    # Настоящий сдвиг в том же разделе по-прежнему находится.
+    assert request_shift(sources, ru[:2] + ru[3:] + ["Не выбрасывайте лекарства."],
+                         en[:2] + en[3:] + ["Do not throw away medicines."])
+
+
+def test_day_for_24_hours_and_ordinal_list_are_not_problems():
+    assert item_problems(
+        "12 yaş ve üzerindeki çocuklar ve erişkinler: 6 saat arayla 1 tablet önerilir. 24 saatte 4 tablet aşılmamalıdır.",
+        "Дети старше 12 лет и взрослые: рекомендуется 1 таблетка с интервалом 6 часов. Не следует превышать 4 таблетки в сутки.",
+        "Children over 12 years and adults: 1 tablet is recommended every 6 hours. Do not exceed 4 tablets in 24 hours.",
+    ) == []
+    assert item_problems(
+        '3. ve 4. kürler boyunca iki haftada bir kez, (daha fazla bilgi için Bölüm 3 "Tedavi kürü"ne bakınız),',
+        'Каждые две недели во время 3 и 4 курсов (для получения дополнительной информации см. Раздел 3 "Лечебный курс").',
+        'Every two weeks during the 3rd and 4th cycles (for more information, see Section 3 "Treatment cycle").',
+    ) == []
+    # «3. Kapağı açınız» — номер шага, его перевод без номера по-прежнему расходится.
+    assert "heading_mismatch" in item_problems("3. Kapağı açınız.", "Откройте крышку.", "Open the cap.")
+
+
 SHIFTED_REQUESTS = json.loads((Path(__file__).parent / "fixtures" / "medicine_paragraph_shifts.json").read_text())
 # Запросы частей 3–11, где переводы на месте, а сдвиг находился из-за словаря понятий
 # или из-за чисел исходника, распознанных из PDF с ошибками («l0», «000»).

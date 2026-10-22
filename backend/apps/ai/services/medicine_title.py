@@ -25,6 +25,10 @@ FORM_PHRASES = {
     ),
     "uzatilmis salimli tablet": ("таблетки пролонгированного высвобождения", "prolonged-release tablets"),
     "kontrollu salimli tablet": ("таблетки с контролируемым высвобождением", "controlled-release tablets"),
+    "kontrollu salimli film tablet": (
+        "таблетки с контролируемым высвобождением, покрытые плёночной оболочкой",
+        "controlled-release film-coated tablets",
+    ),
     "modifiye salimli tablet": ("таблетки с модифицированным высвобождением", "modified-release tablets"),
     "degistirilmis salimli tablet": ("таблетки с модифицированным высвобождением", "modified-release tablets"),
     "film kapli tablet": ("таблетки, покрытые плёночной оболочкой", "film-coated tablets"),
@@ -35,6 +39,7 @@ FORM_PHRASES = {
     "cigneme tableti": ("жевательные таблетки", "chewable tablets"),
     "cigneme tablet": ("жевательные таблетки", "chewable tablets"),
     "enterik kapli tablet": ("кишечнорастворимые таблетки", "gastro-resistant tablets"),
+    "enterik kapli pellet tablet": ("кишечнорастворимые таблетки", "gastro-resistant tablets"),
     "enterik tablet": ("кишечнорастворимые таблетки", "gastro-resistant tablets"),
     "gastro direncli tablet": ("кишечнорастворимые таблетки", "gastro-resistant tablets"),
     "dagilabilir tablet": ("диспергируемые таблетки", "dispersible tablets"),
@@ -62,6 +67,7 @@ FORM_PHRASES = {
     "oral cozelti": ("раствор для приёма внутрь", "oral solution"),
     "oral damla": ("капли для приёма внутрь", "oral drops"),
     "goz damlasi": ("глазные капли", "eye drops"),
+    "tek dozluk goz damlasi": ("глазные капли в однодозовых контейнерах", "single-dose eye drops"),
     "kulak damlasi": ("ушные капли", "ear drops"),
     "burun damlasi": ("назальные капли", "nasal drops"),
     "damla": ("капли", "drops"),
@@ -126,6 +132,7 @@ FORM_PHRASES = {
     "agiz ici sprey": ("спрей для полости рта", "oromucosal spray"),
     "agiz spreyi": ("спрей для полости рта", "oromucosal spray"),
     "deri spreyi": ("спрей для наружного применения", "cutaneous spray"),
+    "deri cozeltisi": ("раствор для наружного применения", "cutaneous solution"),
     "topikal sprey": ("спрей для наружного применения", "cutaneous spray"),
     "topikal cozelti": ("раствор для наружного применения", "cutaneous solution"),
     "iv infuzyon icin liyofilize toz": (
@@ -190,6 +197,7 @@ FORM_PHRASES = {
     "kartus": ("картридж", "cartridge"),
     # Пилот 20.10.2026 (AIRun 3) и разбор 13 тыс. названий: формы, на которых шаблон сдавался.
     "enjeksiyonluk/infuzyonluk cozelti": ("раствор для инъекций и инфузий", "solution for injection/infusion"),
+    "enjeksiyon/infuzyon icin cozelti": ("раствор для инъекций и инфузий", "solution for injection/infusion"),
     "enjeksiyonluk/infuzyonluk cozelti hazirlamak icin toz": (
         "порошок для приготовления раствора для инъекций и инфузий", "powder for solution for injection/infusion"
     ),
@@ -242,6 +250,9 @@ FORM_PHRASES = {
     "kullanima hazir inhalasyon tozu": ("порошок для ингаляций", "inhalation powder"),
     "kullanima hazir siringa": ("в предварительно заполненном шприце", "pre-filled syringe"),
     "nebulizasyon icin cozelti": ("раствор для ингаляций через небулайзер", "nebuliser solution"),
+    "nebulizasyon icin tek dozluk inhalasyon cozeltisi": (
+        "раствор для ингаляций через небулайзер в однодозовых контейнерах", "single-dose nebuliser solution"
+    ),
     "nebulizasyon icin inhalasyon suspansiyonu": (
         "суспензия для ингаляций через небулайзер", "nebuliser suspension"
     ),
@@ -268,6 +279,8 @@ FORM_PHRASES = {
     "mikropellet kapsul": ("капсулы с микропеллетами", "micropellet capsules"),
     "aerosol inhaler": ("аэрозоль для ингаляций", "inhalation aerosol"),
     "sise": ("флакон", "bottle"),
+    "likit jel": ("жидкий гель", "liquid gel"),
+    "rahim ici sistem": ("внутриматочная система", "intrauterine system"),
 }
 # Флакон/ампула как форма, если та же упаковка указана и счётом («ICEREN FLAKON (1 FLAKON)»),
 # не повторяется: остаётся «1 флакон».
@@ -283,11 +296,13 @@ _ABBREVIATIONS = (
     (r"(?:vials?|flk)\.?", "flakon"),
     (r"amp\.", "ampul"),
     (r"enj\.", "enjeksiyon"),
+    (r"enj(?=/)", "enjeksiyon"),  # «ENJ/INF.»
     (r"inf\.", "infuzyon"),
     (r"coz\.", "cozelti"),
     (r"sol\.?", "solusyon"),
     (r"yum\.", "yumusak"),
     (r"ent\.", "enterik"),
+    (r"i\.u\.?", "iu"),
     (r"i\.v\.?", "iv"),
     (r"i\.m\.?", "im"),
     (r"s\.c\.?", "sc"),
@@ -306,7 +321,7 @@ _ABBREVIATION_RES = tuple(
 # Форма, разорванная фасовкой: «UZATILMIS SALIMLI 30 TABLET» → «30 UZATILMIS SALIMLI TABLET».
 _SPLIT_FORM_RE = re.compile(
     r"(uzatilmis salimli|kontrollu salimli|agizda dagilan|enterik kapli|gastro direncli|film kapli|"
-    r"efervesan|cigneme|sert|yumusak|mikropellet|suda dagilabilen) (\d+) ((?:film )?(?:tablet|kapsul))\b"
+    r"efervesan|cigneme|sert|yumusak|mikropellet|suda dagilabilen) (\d+) ((?:film |pellet )?(?:tablet|kapsul))\b"
 )
 
 
@@ -318,7 +333,10 @@ def _expand_source(rest: str) -> str:
     return rest
 
 
-FORM_WORDS = {word for phrase in FORM_PHRASES for word in phrase.split()}
+# Слова форм, которые бывают и в бренде: «FORANE LIKIT», «KREON FUR KINDER PELLET»,
+# «REFRESH TEK DOZLUK» — на них бренд не обрывается.
+_BRAND_FORM_WORDS = {"likit", "pellet", "tek", "dozluk"}
+FORM_WORDS = {word for phrase in FORM_PHRASES for word in phrase.split()} - _BRAND_FORM_WORDS
 _FORM_RE = re.compile(
     r"(?:" + "|".join(re.escape(p) for p in sorted(FORM_PHRASES, key=len, reverse=True)) + r")\b"
 )
@@ -389,6 +407,9 @@ def _format_dose(match: re.Match, locale: str) -> tuple[str, str]:
     if percent:
         return f"{_num(percent, locale)}%", "strength"
     number, unit, per_number, per_unit = match.group(3, 4, 5, 6)
+    # «5.000 I.U.» — турецкий разделитель тысяч у единиц действия, не дробь.
+    if unit in ("iu", "ui", "tu", "u") and re.fullmatch(r"[1-9]\d{0,2}(?:\.\d{3})+", number):
+        number = number.replace(".", "")
     text = f"{_num(number, locale)} {_UNITS[unit][index]}"
     if per_unit:
         per = f"{_num(per_number, locale)} " if per_number else ""
@@ -559,6 +580,9 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
         form for key, form in zip(form_keys, forms) if _CONTAINER_FORMS.get(key) not in pack_units
     ]
     if not forms and not (strengths["ru"] or volumes["ru"] or grams["ru"]):
+        return None
+    # «I.M./ORAL COZELTI» — путь введения и «для приёма внутрь» вместе не записать.
+    if route and any(key.startswith("oral") for key in form_keys):
         return None
     # Граммы у мазей/кремов/гелей/порошков — масса упаковки, у прочих — дозировка.
     grams_are_volume = bool(forms) and forms[0][1].split()[-1] in _MASS_FORMS
