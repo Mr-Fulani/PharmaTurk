@@ -169,5 +169,62 @@
     "en": "Ulcers, inflammation, or thrush in the esophagus (the tube connecting your mouth to your stomach) that may cause discomfort when swallowing."
    }
   }
+ },
+ {
+  "request": "mp-216, часть №11 (22.10.2026), batch_6ad98a17…: «l0», «l00», «000» в строках частоты",
+  "items": {
+   "1": "Alkol içeren tüm jellerde olduğu gibi, {BRAND} Jel, sargı altına kullanım için uygun değildir. HIRELIX, fonoforez (ultrason tedavisi aracılığıyla haricen uygulanan ajanların ciltten geçmesini sağlayan bir tedavi yöntemi), iontoforez (elektik akımının kullanıldığı bir tedavi yöntemi) için de uygundur.",
+   "2": "{BRAND} her bir efervesan tablette 11,38 mmol (261,72) sodyum ihtiva eder. Bu durum, kontrollü sodyum diyetinde olan hastalar için göz önünde bulundurulmalıdır.",
+   "3": "Fosfomisinin serum ve idrar konsantrasyonlarını düşürebileceğinden, bulantı önleyici bir ilaç olan metoklopramid veya mide veya bağırsaklarınızdaki hareketleri arttıran diğer ilaçlar,",
+   "4": "Çok yaygın: l0 hastanın en az birinde görülebilir.",
+   "5": "Yaygın: 10 hastanın birinden az, fakat l00 hastanın birindenfazla görülebilir.",
+   "6": "Çok seyrek: l0000 hastanın birinden az görülebilir.",
+   "7": "Seyrek: 000 hastanın birinden az görülebilir.",
+   "8": "Yaygın olmayan: 100 hastanın birinden az, fakat l.000 hastanın birinden fazla görülebilir.",
+   "9": "24 saat içinde tüketilmeyen kısım atılmalıdır. Açılmamış şişeler oda sıcaklığında (15 93 - 2593) saklanmalıdır. Oral kullanım içindir, gerektiğinde tüple kullanılabilir.",
+   "10": "Seyrek: Bulantı, kusma, kabızlık, mide tahrişi, iştahsızlık ve ishal, Kalsiyum polistiren sülfonat parçalarının solunması nedeniyle akut bronşit ve/veya zatürre."
+  },
+  "answer": {
+   "1": {
+    "ru": "Как и все гели, содержащие алкоголь, {BRAND} гель не подходит для использования под повязкой. HIRELIX также подходит для фонофореза (метод лечения, позволяющий веществам, применяемым наружно, проходить через кожу с помощью ультразвуковой терапии) и ионофореза (метод лечения с использованием электрического тока).",
+    "en": "Like all gels containing alcohol, {BRAND} Gel is not suitable for use under a dressing. HIRELIX is also suitable for phonophoresis (a treatment method that allows agents applied externally to pass through the skin via ultrasound therapy) and iontophoresis (a treatment method using electric current)."
+   },
+   "2": {
+    "ru": "{BRAND} содержит 11,38 ммоль (261,72 мг) натрия в каждой шипучей таблетке. Это следует учитывать пациентам, находящимся на контролируемой натриевой диете.",
+    "en": "{BRAND} contains 11.38 mmol (261.72 mg) of sodium in each effervescent tablet. This should be considered for patients on a controlled sodium diet."
+   },
+   "3": {
+    "ru": "Поскольку фосфомицин может снижать концентрации в сыворотке и моче, следует учитывать применение противорвотного препарата метоклопрамида или других препаратов, увеличивающих перистальтику желудка или кишечника.",
+    "en": "Since fosfomycin may decrease serum and urine concentrations, the use of an antiemetic drug such as metoclopramide or other medications that increase the movement of the stomach or intestines should be considered."
+   },
+   "4": {
+    "ru": "Очень часто: может наблюдаться как минимум у 10 пациентов.",
+    "en": "Very common: may occur in at least 10 patients."
+   },
+   "5": {
+    "ru": "Часто: может наблюдаться у менее чем 1 из 10 пациентов, но более чем у 1 из 100 пациентов.",
+    "en": "Common: may occur in less than 1 in 10 patients, but more than 1 in 100 patients."
+   },
+   "6": {
+    "ru": "Очень редко: может наблюдаться менее чем у 1 из 10000 пациентов.",
+    "en": "Very rare: may occur in less than 1 in 10,000 patients."
+   },
+   "7": {
+    "ru": "Редко: может наблюдаться менее чем у 1 из 1000 пациентов.",
+    "en": "Rare: may occur in less than 1 in 1,000 patients."
+   },
+   "8": {
+    "ru": "Нечасто: может наблюдаться менее чем у 1 из 100 пациентов, но более чем у 1 из 1000 пациентов.",
+    "en": "Uncommon: may occur in less than 1 in 100 patients, but more than 1 in 1,000 patients."
+   },
+   "9": {
+    "ru": "Часть, не использованная в течение 24 часов, должна быть утилизирована. Неповрежденные флаконы должны храниться при комнатной температуре (15-25°C). Предназначен для перорального применения, при необходимости может использоваться с помощью трубки.",
+    "en": "Any portion not consumed within 24 hours should be discarded. Unopened bottles should be stored at room temperature (15-25°C). Intended for oral use, may be used with a tube if necessary."
+   },
+   "10": {
+    "ru": "Редко: тошнота, рвота, запор, раздражение желудка, потеря аппетита и диарея, острый бронхит и/или пневмония из-за вдыхания частиц полистирол-кальция.",
+    "en": "Rare: nausea, vomiting, constipation, stomach irritation, loss of appetite, and diarrhea, acute bronchitis and/or pneumonia due to inhalation of calcium polystyrene sulfonate particles."
+   }
+  }
  }
 ]

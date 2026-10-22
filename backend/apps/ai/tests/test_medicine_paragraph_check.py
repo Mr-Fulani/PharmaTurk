@@ -361,6 +361,181 @@ def test_real_defect_from_part3_is_still_rejected(source, ru, en, problem):
     assert problem in paragraph_problems(source, ru, en)
 
 
+# Ложные отказы части №11 (22.10.2026) — «хвост» ранее отклонённых абзацев: исходник
+# распознан из PDF с ошибками или пишет число не так, как перевод, а перевод верный.
+PART11_FALSE_REJECTS = [
+    pytest.param(
+        'Bu tıbbi ürün her 100 ml dozunda 15.4. mmol (354 mg) sodyum ihtiva eder. Bu durum, kontrollü sodyum diyetinde olan hastalar için göz önünde bulundurulmalıdır.',
+        'Этот медицинский продукт содержит 15.4 ммоль (354 мг) натрия в каждой дозе 100 мл. Это следует учитывать пациентам на контролируемой натриевой диете.',
+        'This medicinal product contains 15.4 mmol (354 mg) of sodium in each 100 ml dose. This should be considered for patients on a controlled sodium diet.',
+        id='лишняя точка после числа «15.4. mmol»',
+    ),
+    pytest.param(
+        'Yanlışlıkla yutulması durumunda, derhal %2-5\'lik sulu sodyum bikarbonat çözeltisi ile doktor kontrolü altında mide yıkaması yapılmalıdır. Sıvı ve elektrolit dengesi izlenmeli ve gerekli destekleyici ölçümler sağlanmalıdır. Belirtileri; baş ağrısı, mide bulantısı, kusma, ishal ve solunum depresyonudur.',
+        'В случае случайного проглатывания необходимо немедленно провести промывание желудка под контролем врача с использованием 2-5% раствора натрия бикарбоната. Необходимо следить за балансом жидкости и электролитов и обеспечить необходимые поддерживающие меры. Симптомы: головная боль, тошнота, рвота, диарея и угнетение дыхания.',
+        'In case of accidental ingestion, gastric lavage should be performed immediately under medical supervision with a 2-5% sodium bicarbonate solution. Fluid and electrolyte balance should be monitored and necessary supportive measures provided. Symptoms include headache, nausea, vomiting, diarrhea, and respiratory depression.',
+        id='диапазон процентов «%2-5» → «2-5%»',
+    ),
+    pytest.param(
+        '1. {BRAND} %1,5 GLUKOZ, 1,75 MMOL/L KALSİYUM NEDİR VE NE İÇİN KULLANILIR?',
+        '1. {BRAND} 1,5% ГЛЮКОЗА, 1,75 ММОЛ/Л КАЛЬЦИЙ: ЧТО ЭТО И ДЛЯ ЧЕГО ИСПОЛЬЗУЕТСЯ?',
+        '1. {BRAND} 1.5% GLUCOSE, 1.75 MMOL/L CALCIUM: WHAT IS IT AND WHAT IS IT USED FOR?',
+        id='«ММОЛ/Л» заглавными без «Ь»',
+    ),
+    pytest.param(
+        'Seyrek: l.000 hastanın birinden az, fakat 10.000 hastanın birinden fazla görülebilir.',
+        'Редкие: могут наблюдаться у менее чем 1 из 1000 пациентов, но более чем у 1 из 10000 пациентов.',
+        'Rare: may occur in less than 1 in 1000 patients, but more than 1 in 10000 patients.',
+        id='«l.000» — буква «l» вместо единицы',
+    ),
+    pytest.param(
+        'Seyrek : 1000 hastanın birinden az, fakat 000 hastanın birinden fazla görülebilir.',
+        'Редко: может наблюдаться у менее чем у 1 из 1000 пациентов, но более чем у 1 из 10000 пациентов.',
+        'Rare: may occur in less than 1 in 1000 patients, but more than 1 in 10000 patients.',
+        id='«000» вместо «10.000» в строке частоты',
+    ),
+    pytest.param(
+        'Göz kapaklarında, dilde veya dudaklarda şişme (Çok seyrek (000 hastanın 1\'inden az) görülebilir.)',
+        'Отек век, языка или губ (может наблюдаться очень редко (менее 1 из 10000 пациентов)).',
+        'Swelling of the eyelids, tongue, or lips (may occur very rarely (less than 1 in 10,000 patients)).',
+        id='испорченная частота в скобках после симптома',
+    ),
+    pytest.param(
+        'Kaşıntı (Yaygin olmayan: 000 hastanın 1 ila 10\'unda görülebilir.)',
+        'Зуд (нечасто: может наблюдаться у 1-10 из 1000 пациентов).',
+        'Itching (uncommon: may occur in 1 to 10 in 1,000 patients).',
+        id='частота без турецких букв «Yaygin»',
+    ),
+    pytest.param(
+        'İlk doz varış noktasına vardığınızda, her zamanki yatma saatinizde alınmalı ve maksimum 5-7 gün boyunca kullanılmalıdır. Jet-lag sonrası uyku bozukluklarının giderilmesinde olumsuz etkiye yol açmaması için, tablet(ler) saat 20.00\'den önce veya 04.00\'den sonra alınmamalıdır.',
+        'Первую дозу следует принимать в привычное время сна, когда вы достигли пункта назначения, и использовать не более 5-7 дней. Чтобы избежать негативного влияния на нарушения сна после смены часовых поясов, таблетки не следует принимать до 20:00 или после 04:00.',
+        'The first dose should be taken at your usual bedtime upon arrival at your destination and should be used for a maximum of 5-7 days. To avoid adverse effects on sleep disturbances after jet lag, the tablet(s) should not be taken before 20:00 or after 04:00.',
+        id='время «20.00» → «20:00»',
+    ),
+    pytest.param(
+        'O 800 314 00 08 numaralı yan etki bildirim hattını arayarak Türkiye Farmakovijilans Merkezi',
+        'Позвоните на номер 800 314 00 08, чтобы сообщить о побочных эффектах в Центр фармаконадзора Турции.',
+        'Call the number 800 314 00 08 to report side effects to the Turkish Pharmacovigilance Center.',
+        id='телефон «O 800 314 00 08»',
+    ),
+    pytest.param(
+        'Doktorunuz ERTES72\'nin sizin için uygun olmadığına ya da başka bir acil kontrasepsiyon yönteminin sizin için daha uygun olacağına karar verebilir.',
+        'Ваш врач может решить, что {BRAND} вам не подходит или что другой метод экстренной контрацепции будет более подходящим для вас.',
+        'Your doctor may decide that {BRAND} is not suitable for you or that another emergency contraception method would be more appropriate for you.',
+        id='название с номером модель заменила меткой',
+    ),
+    pytest.param(
+        'TARKA® FORTE,14,28 ve 56 tablet içeren blister ambalajlarda piyasaya sunulmaktadır.',
+        '{BRAND} FORTE выпускается в блистерах, содержащих 14, 28 и 56 таблеток.',
+        '{BRAND} FORTE is available in blister packs containing 14, 28, and 56 tablets.',
+        id='перечисление сразу после запятой',
+    ),
+    pytest.param(
+        'Her bir bandın yüzey alanı 39 cm2\'dir ve 36 mg oksibutinin içermektedir. Deri bandı, 24 saat içinde 3.9 mg oksibutinin salımı gerçekleştirir.',
+        'Площадь поверхности каждого пластыря составляет 39 см² и содержит 36 мг оксибутинина. Кожный пластырь обеспечивает высвобождение 3,9 мг оксибутинина в течение 24 часов.',
+        'The surface area of each patch is 39 cm² and contains 36 mg of oxybutynin. The transdermal patch releases 3.9 mg of oxybutynin over 24 hours.',
+        id='«cm2» → «см²»',
+    ),
+    pytest.param(
+        '{BRAND}\'in anne sütüne geçip geçmediği bilinmemektedir. {BRAND}, bazı annelerin sütüne geçtiği bilinen trisiklik (Kimyasal yapılarında 3 halka bulunan) antidepresanlarla yakından ilişkili olduğu için {BRAND} emziren annelerde dikkatle kullanılmalıdır.',
+        'Неизвестно, проникает ли {BRAND} в грудное молоко. Поскольку {BRAND} тесно связан с трициклическими антидепрессантами, которые известны тем, что проникают в грудное молоко, {BRAND} следует использовать с осторожностью у кормящих матерей.',
+        'It is unknown whether {BRAND} passes into breast milk. Since {BRAND} is closely related to tricyclic antidepressants, which are known to pass into breast milk, {BRAND} should be used with caution in breastfeeding mothers.',
+        id='«3 halka» — «трициклические»',
+    ),
+    pytest.param(
+        'Genellikle 6 saatte bir 250 veya 8 saatte bir 500 mg dozları yeterlidir. Mesane ve cilt enfeksiyonları gibi bazı enfeksiyonlarda 12 saatte bir 500 mg önerilir..',
+        'Обычно достаточно доз 250 мг каждые 6 часов или 500 мг каждые 8 часов. Для некоторых инфекций, таких как инфекции мочевого пузыря и кожи, рекомендуется 500 мг каждые 12 часов.',
+        'Generally, doses of 250 mg every 6 hours or 500 mg every 8 hours are sufficient. For some infections, such as bladder and skin infections, 500 mg every 12 hours is recommended.',
+        id='единица у числа перечисления дописана',
+    ),
+    pytest.param(
+        'Örneğin, eğer her gün için genel doz 14 mg/kg ise 4 kg ağırlığındaki çocuğunuza sabah ve akşam 28\'er mg (0,3 mL\'ye eşdeğer) vermelisiniz..',
+        'Например, если общая доза составляет 14 мг/кг в день, вы должны давать вашему ребенку весом 4 кг по 28 мг (эквивалентно 0,3 мл) утром и вечером.',
+        'For example, if the general dose is 14 mg/kg per day, you should give your 4 kg child 28 mg (equivalent to 0.3 mL) in the morning and 28 mg in the evening.',
+        id='«28\'er mg» — «по 28 мг»',
+    ),
+    pytest.param(
+        'Saç derisi sorunlarına yol açabilir ve var olan saç derisi sorunlarını daha da kötüleştirebilir',
+        'Может вызвать проблемы с кожей головы и усугубить существующие проблемы с кожей головы.',
+        'May cause scalp problems and worsen existing scalp issues.',
+        id='«saç derisi» — «кожа головы»',
+    ),
+    pytest.param(
+        'Eğer kan sulandırıcı ilaç alıyorsanız, uzun süreli parasetamol kullanımı yalnızca doktor gözetimi altında yapılmalıdır.',
+        'Если вы принимаете антикоагулянтные препараты, длительное использование парацетамола должно проводиться только под наблюдением врача.',
+        'If you are taking anticoagulant medications, long-term use of paracetamol should only be done under medical supervision.',
+        id='«kan sulandırıcı» — «антикоагулянт»',
+    ),
+    pytest.param(
+        '3. Şişenin koruyucu iç kapağını döndürerek açınız.. Koruyucu kapak saklanmalıdır.',
+        '3. Откройте защитную внутреннюю крышку бутылки, повернув ее. Защитная крышка должна храниться.',
+        '3. Open the protective inner cap of the bottle by turning it. The protective cap should be kept.',
+        id='«döndürerek» — не заморозка',
+    ),
+    pytest.param(
+        'Gözlerde odaklanma zorluğu, gözbebeklerin genişlemesi, yanıp sönen ışıklar, göz tansiyonunda artış, glokom, bulanık görme, parlak ışıkların etrafında haleler ve göz ağrısı',
+        'Трудности с фокусировкой, расширение зрачков, мигающие огни, повышение внутриглазного давления, глаукома, размытое зрение, ореолы вокруг ярких огней и боль в глазах.',
+        'Difficulty focusing, dilation of the pupils, flashing lights, increased intraocular pressure, glaucoma, blurred vision, halos around bright lights, and eye pain.',
+        id='«gözbebekleri» — зрачки, не младенцы',
+    ),
+    pytest.param('Helicobacter pylori enfeksiyonu', 'Инфекция Helicobacter pylori', 'Helicobacter pylori infection', id='латинское название в переводе'),
+    pytest.param('Neisseria meningitidis', 'Neisseria meningitidis', 'Neisseria meningitidis', id='латинское название без перевода'),
+    pytest.param('Göz kapaklarının şişmesi', 'Отек век', 'Swelling of the eyelids', id='короткий перевод кириллицей'),
+    pytest.param(
+        'PNH veya aHÜS olan 18 yaşından küçük çocuklarda ve ergenlerde doz uygulaması şu şekildedir:',
+        'Применение дозы для детей и подростков младше 18 лет с ПНГ или аHÜС осуществляется следующим образом:',
+        'The dosing for children and adolescents under 18 years of age with PNH or aHUS is as follows:',
+        id='аббревиатура «аHÜС» из латиницы и кириллицы',
+    ),
+]
+
+
+@pytest.mark.parametrize("source, ru, en", PART11_FALSE_REJECTS)
+def test_correct_translation_from_part11_passes_paragraph_rules(source, ru, en):
+    assert paragraph_problems(source, ru, en) == []
+
+
+@pytest.mark.parametrize("source, ru, en, problem", [
+    pytest.param(
+        'Seyrek (000 hastanın 1\'inden az, fakat 10.000 hastanın 1\'inden fazla görülebilir);',
+        'Редкие (может наблюдаться у менее чем 1 из 10000 пациентов, но более чем у 1 из 100000 пациентов);',
+        'Rare (may occur in less than 1 in 10,000 patients, but more than 1 in 100,000 patients);',
+        'number_mismatch',
+        id='частота досочинена не по названию',
+    ),
+    pytest.param(
+        'Olağan doz, 025 ila 0.035 mg/kg vücut ağırlığı/gün',
+        'Обычная доза составляет от 0,025 до 0,035 мг/кг массы тела в день',
+        'The usual dose is 0.025 to 0.035 mg/kg body weight/day',
+        'number_mismatch',
+        id='испорченную дозу модель угадала',
+    ),
+    pytest.param(
+        'Her enjeksiyon 120 g satralizumab içerir.',
+        'Каждая инъекция содержит 120 мг сатрализумаба.',
+        'Each injection contains 120 mg of satralizumab.',
+        'fact_mismatch',
+        id='то же число с другой единицей',
+    ),
+    pytest.param(
+        '{BRAND} almanız gerektiğine karar verecektir.',
+        '{BRAND} almanız gerektiğine karar verecektir.',
+        'Your doctor will decide that you need to take {BRAND}.',
+        'ru_not_russian',
+        id='RU остался турецким',
+    ),
+    pytest.param(
+        "5. DERMOVATE'IN SAKLANMASI",
+        "5. DERMOVATE'IN SAKLANMASI",
+        "5. DERMOVATE'IN SAKLANMASI",
+        'ru_not_russian',
+        id='заголовок заглавными не переведён ни на один язык',
+    ),
+])
+def test_real_defect_from_part11_is_still_rejected(source, ru, en, problem):
+    assert problem in paragraph_problems(source, ru, en)
+
+
 def test_doses_match_unit_spellings_separators_and_per_unit_denominator():
     assert doses_match("600-1500 I.U./gün", "600-1500 МЕ/день") and doses_match("4000I.U./gün", "4000 IU/day")
     assert doses_match("Gerektiğinde 1.000 I.U.'ye kadar", "до 1000 МЕ") and doses_match("1 000 I.U'yu aşan", "over 1,000 IU")
@@ -372,6 +547,30 @@ def test_doses_match_unit_spellings_separators_and_per_unit_denominator():
     assert not doses_match("her ml'sinde 23 mg", "32 мг на 1 мл")
     assert not doses_match("200 mikrogram", "20 микрограммов")
     assert not doses_match("günde 2 g", "2 мг в день")
+
+
+def test_doses_match_pdf_letters_ranges_and_implied_units():
+    assert doses_match("1000 l.U./gün", "1000 МЕ/день") and doses_match("l mmol'den (23 mg) daha az", "менее 1 ммоля (23 мг)")
+    assert doses_match("l0 mg/kg/gün", "10 мг/кг/сут") and doses_match("her flakonda1 mmol", "1 ммоль в каждом флаконе")
+    assert doses_match("günde en çok 4.5. mg", "до 4,5 мг в день") and doses_match("(örn.30 mL)", "(например, 30 мл)")
+    assert doses_match("%5,75 ila 13,8'ine", "5,75-13,8%") and doses_match("%hacim olarak 11,8", "11,8% по объему")
+    assert doses_match("yüzde 0,1 ila yüzde 0,25", "от 0,1% до 0,25%") and doses_match("1-1,25 g amino asit", "1-1,25 грамма аминокислот")
+    assert doses_match("40 kilonun altındaki çocuklar", "детей весом менее 40 кг") and doses_match("100 kilokalori", "100 ккал")
+    assert doses_match("günde 750 mg ila 1000", "от 750 мг до 1000 мг в день") and doses_match("200 mg-400 mg", "200-400 мг")
+    # То же число с другой единицей и единица у числа, которого нет в исходнике, — расхождение.
+    assert not doses_match("günde 500 mcg ve 250 mg", "500 мг и 250 мг в день")
+    assert not doses_match("günde 750 mg ila 1000", "от 750 мг до 1500 мг в день")
+
+
+def test_step_number_before_brand_is_restored():
+    source = "5. {BRAND} 7,5 MG TABLET'İN SAKLANMASI"
+
+    accepted, rejected = check_paragraph_payload(
+        {"1": source}, {"1": {"ru": "ХРАНЕНИЕ ТАБЛЕТОК {BRAND} 7,5 МГ", "en": "STORAGE OF {BRAND} 7.5 MG TABLETS"}}
+    )
+
+    assert rejected == {}
+    assert accepted[source]["ru"] == "5. ХРАНЕНИЕ ТАБЛЕТОК {BRAND} 7,5 МГ"
 
 
 def test_lost_step_number_is_restored_not_rejected():
@@ -430,12 +629,13 @@ def test_glued_units_numbers_and_footnotes_inside_words_are_not_a_mismatch():
 
 
 SHIFTED_REQUESTS = json.loads((Path(__file__).parent / "fixtures" / "medicine_paragraph_shifts.json").read_text())
-# Запросы частей 3–5, где переводы на месте, а сдвиг находился из-за словаря понятий.
+# Запросы частей 3–11, где переводы на месте, а сдвиг находился из-за словаря понятий
+# или из-за чисел исходника, распознанных из PDF с ошибками («l0», «000»).
 ALIGNED_REQUESTS = json.loads((Path(__file__).parent / "fixtures" / "medicine_paragraph_aligned.json").read_text())
 
 
 @pytest.mark.parametrize("request_", ALIGNED_REQUESTS, ids=[item["request"].split(",")[0] for item in ALIGNED_REQUESTS])
-def test_aligned_requests_from_parts_3_to_5_are_not_shifted(request_):
+def test_aligned_requests_from_parts_3_to_11_are_not_shifted(request_):
     _, rejected = check_paragraph_payload(request_["items"], request_["answer"])
 
     assert not any("shifted" in problems for problems in rejected.values())
@@ -453,6 +653,14 @@ def test_plain_numbers_normalize_separators_fractions_and_roman():
     assert plain_numbers("50.000 IU, 0,75 mg, 1 000 ml") == plain_numbers("50,000 IU, 0.75 mg, 1000 ml")
     assert plain_numbers("yaklaşık 1/2 bardak") == plain_numbers("примерно ½ стакана") == {"2"}
     assert plain_numbers("tip II") == {"2"} and plain_numbers("İ.V.") == frozenset()
+    # Распознанный PDF: «l» вместо «1», но не литр в квадрате.
+    assert plain_numbers("l.000 hastanın, l0'unda, Bl2") == {"1000", "10", "12"}
+    assert plain_numbers("5/l0 mg") == {"5", "10"} and plain_numbers("5,3 mmol2/l2") == {"5.3", "2"}
+    # Телефон в любой записи — одно число; время «20.00» = «20:00», соотношение «1:50» — не время.
+    phone = plain_numbers("0 800 314 00 08")
+    assert phone == plain_numbers("ya da0800 3l4 00 08") == plain_numbers("O 800 314 00 08") == plain_numbers("800 314 00 08")
+    assert plain_numbers("saat 20.00'den") == plain_numbers("до 20:00") and "50" in plain_numbers("в соотношении 1:50")
+    assert plain_numbers("39 cm2") == plain_numbers("39 см²") == {"39"}
 
 
 def test_request_shift_finds_answer_shifted_after_skipped_item():

@@ -463,19 +463,38 @@ def needs_translation(paragraph: str) -> bool:
 _URL = re.compile(r"https?://\S+|www\.\S+")
 
 
-def _looks_russian(source: str, ru: str) -> bool:
+def _looks_russian(source: str, ru: str, en: str = "") -> bool:
     # Адрес сайта не переводится: «www.titck.gov.tr/" sitesinde» → «на сайте www.titck.gov.tr/».
     source = _URL.sub(" ", source)
     if len(re.findall(r"[^\W\d_]", source)) < 20:
         return True
     cyrillic = len(re.findall(r"[А-Яа-яЁё]", ru))
+    # Латинские названия («Helicobacter pylori», «Neisseria meningitidis», «stay·safe»)
+    # модель оставляет как в исходнике и в RU, и в EN — это не непереведённый текст.
+    # Слово с турецкими буквами — нет: «Lösemi/Retinoik-Asit-Reseptör» модель могла не
+    # перевести в обоих языках.
+    names = {
+        word
+        for word in set(re.findall(r"[^\W\d_]+", source)) & set(re.findall(r"[^\W\d_]+", ru)) & set(re.findall(r"[^\W\d_]+", en))
+        if not re.search(r"[çğıöşüÇĞİÖŞÜ]", word)
+    }
     # Метка, ссылки и аббревиатуры заглавными («TÜFAM», в т. ч. с кириллической «Т»)
     # остаются как есть и на язык перевода не указывают.
+    # «аHÜС», «jMG» — аббревиатура, в т. ч. смешанная из латиницы и кириллицы.
     sample = " ".join(
-        word for word in _URL.sub(" ", ru.replace(BRAND_TOKEN, " ")).split() if not word.isupper()
+        word for word in _URL.sub(" ", ru.replace(BRAND_TOKEN, " ")).split()
+        if not word.isupper() and sum(char.isupper() for char in word) < 2
     )
-    if not cyrillic or looks_untranslated_turkish(sample):
+    sample = re.sub(r"[^\W\d_]+", lambda match: " " if match.group(0) in names else match.group(0), sample)
+    if looks_untranslated_turkish(sample):
         return False
+    if not cyrillic:
+        # Только латинское название, одинаковое в трёх текстах; не заголовок заглавными.
+        words = re.findall(r"[^\W\d_]+", source)
+        return all(word in names and not word.isupper() for word in words)
+    # Короткий перевод почти целиком кириллицей: «Göz kapaklarının şişmesi» → «Отек век».
+    if cyrillic and cyrillic >= 0.8 * len(re.findall(r"[^\W\d_]", sample)):
+        return True
     # Бренд (слово заглавными) переносится латиницей и переводить его не нужно:
     # «5. DERMOVATE'IN SAKLANMASI» → «5. Хранение DERMOVATE» — 8 кириллических букв.
     # Если модель сама заменила бренд меткой («5. ХРАНЕНИЕ {BRAND}»), бренд —
@@ -485,7 +504,7 @@ def _looks_russian(source: str, ru: str) -> bool:
     translatable = sum(
         len(word)
         for word in re.findall(r"[^\W\d_]+", source)
-        if not (word.isupper() and (masked or fold_tr(word) in kept))
+        if word not in names and not (word.isupper() and (masked or fold_tr(word) in kept))
     )
     return cyrillic >= min(10, translatable // 2)
 
@@ -520,7 +539,7 @@ def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
     if not doses_match(source, ru) or not doses_match(source, en):
         problems.append("fact_mismatch")
     # Фирма/адрес («Ruhsat sahibi: … A.Ş.») остаётся латиницей — это не брак.
-    if not is_proper_name_line(source) and not _looks_russian(source, ru):
+    if not is_proper_name_line(source) and not _looks_russian(source, ru, en):
         problems.append("ru_not_russian")
     if re.search(r"[А-Яа-яЁё]", en):
         problems.append("en_has_cyrillic")
