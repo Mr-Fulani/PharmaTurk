@@ -56,7 +56,12 @@ from apps.ai.services.medicine_reference import (
     meaningful_special_notes,
     neutral_prescription_text,
 )
-from apps.ai.services.medicine_title import build_medicine_title, medicine_source_name, paragraph_brand
+from apps.ai.services.medicine_title import (
+    build_medicine_title,
+    medicine_source_name,
+    paragraph_brand,
+    title_with_inn,
+)
 from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
 from apps.ai.services.result_applier import build_content_snapshot
 from apps.ai.services.rules.pipeline import (
@@ -1458,6 +1463,10 @@ class ContentGenerator:
         title = build_medicine_title(input_data.get("name"))
         if title and any(_title_has_turkish_words(value) for value in title.values()):
             title = None
+        if title and active_ingredient and "active_ingredient" in ru:
+            title = title_with_inn(
+                title, input_data.get("name"), (ru["active_ingredient"], en["active_ingredient"]), active_ingredient
+            )
         return {"ru": ru, "en": en, "title": title, "unknown": unknown, "usage": usage}
 
     def _apply_medicine_code_fields(
