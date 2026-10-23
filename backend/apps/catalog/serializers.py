@@ -10,7 +10,7 @@ from rest_framework import serializers
 
 logger = logging.getLogger(__name__)
 from .models import (
-    Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, PriceHistory,
+    Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, PriceHistory,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
@@ -419,6 +419,14 @@ class CategoryTranslationSerializer(serializers.ModelSerializer):
         fields = ['locale', 'name', 'description']
 
 
+class CategoryLandingSeoSerializer(serializers.ModelSerializer):
+    """SEO посадочной страницы категории на одном языке."""
+
+    class Meta:
+        model = CategoryTranslation
+        fields = ['locale', 'h1', 'meta_title', 'meta_description', 'seo_text']
+
+
 class BrandTranslationSerializer(serializers.ModelSerializer):
     """Сериализатор для переводов брендов."""
     
@@ -494,6 +502,7 @@ class CategorySerializer(serializers.ModelSerializer):
     gender_display = serializers.SerializerMethodField()
     translations = CategoryTranslationSerializer(many=True, read_only=True)
     ancestors = serializers.SerializerMethodField()
+    seo = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
@@ -504,9 +513,17 @@ class CategorySerializer(serializers.ModelSerializer):
             'category_type', 'category_type_slug', 'translations',
             'gender', 'gender_display', 'clothing_type', 'device_type',
             'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url',
-            'portfolio_items',
+            'portfolio_items', 'seo',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        # H1, title и SEO-текст нужны только самой странице категории
+        # (include_seo): в деревьях и товарах они раздули бы ответ.
+        if not self.context.get('include_seo'):
+            fields.pop('seo', None)
+        return fields
 
     def _batch_cache(self) -> dict:
         """Кэш батч-вычислений на время одного запроса.
@@ -760,6 +777,43 @@ class CategorySerializer(serializers.ModelSerializer):
         # Инвертируем, чтобы было от корня к текущей
         ancestors_list.reverse()
         return ancestors_list
+
+    def get_seo(self, obj):
+        """SEO посадочной страницы по языкам (переводы категории с H1/title/текстом)."""
+        if hasattr(obj, '_prefetched_objects_cache') and 'translations' in obj._prefetched_objects_cache:
+            trans_list = obj._prefetched_objects_cache['translations']
+        else:
+            trans_list = list(obj.translations.all())
+        return CategoryLandingSeoSerializer(trans_list, many=True).data
+
+
+class CategoryCollectionNameSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategoryCollectionTranslation
+        fields = ['locale', 'name']
+
+
+class CategoryCollectionTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategoryCollectionTranslation
+        fields = ['locale', 'name', 'h1', 'meta_title', 'meta_description', 'seo_text']
+
+
+class CategoryCollectionSerializer(serializers.ModelSerializer):
+    """Подборка для ссылок со страниц категорий: slug, родитель, названия."""
+
+    parent_slug = serializers.CharField(source='parent.slug', read_only=True)
+    translations = CategoryCollectionNameSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = CategoryCollection
+        fields = ['id', 'slug', 'name', 'parent_slug', 'sort_order', 'translations']
+
+
+class CategoryCollectionDetailSerializer(CategoryCollectionSerializer):
+    """Подборка для её страницы: плюс H1, title, description и SEO-текст по языкам."""
+
+    translations = CategoryCollectionTranslationSerializer(many=True, read_only=True)
 
 
 class BrandSerializer(serializers.ModelSerializer):

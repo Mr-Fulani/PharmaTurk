@@ -26,7 +26,7 @@ from .admin_variant_ai import VariantAIAdminMixin
 from .admin_media import AdminMediaHelpTextMixin, resolve_media_url, render_media_preview
 from .admin_price import PublicCatalogPriceAdminMixin
 from .models import (
-    CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
+    CategoryType, Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, CategoryIncense, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
@@ -253,11 +253,25 @@ class CategoryTypeAdmin(admin.ModelAdmin):
     categories_count.short_description = _("Количество категорий")
 
 
-class CategoryTranslationInline(nested_admin.NestedTabularInline):
+CATEGORY_LANDING_SEO_FIELDSET = (
+    _('SEO посадочной страницы'),
+    {
+        'fields': ('h1', 'meta_title', 'meta_description', 'seo_text'),
+        'classes': ('collapse',),
+        'description': _("Пустые поля — шаблон: H1 = название, title и description собирает сайт. "
+                         "SEO-текст выводится внизу страницы."),
+    },
+)
+
+
+class CategoryTranslationInline(nested_admin.NestedStackedInline):
     """Inline для редактирования переводов категорий."""
     model = CategoryTranslation
     extra = 1
-    fields = ('locale', 'name', 'description')
+    fieldsets = (
+        (None, {'fields': ('locale', 'name', 'description')}),
+        CATEGORY_LANDING_SEO_FIELDSET,
+    )
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -996,6 +1010,38 @@ class CategoryMedicinesAdmin(BaseCategoryAdmin):
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Категории для товаров медицины: антибиотики, обезболивающие и т.д.")}),
     )
+
+
+class CategoryCollectionTranslationInline(admin.StackedInline):
+    model = CategoryCollectionTranslation
+    extra = 0
+    fieldsets = (
+        (None, {'fields': ('locale', 'name')}),
+        CATEGORY_LANDING_SEO_FIELDSET,
+    )
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+@admin.register(CategoryCollection)
+class CategoryCollectionAdmin(admin.ModelAdmin):
+    """Подборки: страница /categories/<категория>/<подборка>, товары — по правилу."""
+
+    list_display = ('name', 'slug', 'parent', 'atc_prefixes', 'dosage_forms', 'is_active', 'sort_order')
+    list_filter = ('is_active',)
+    list_editable = ('is_active', 'sort_order')
+    list_select_related = ('parent',)
+    search_fields = ('name', 'slug')
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'parent', 'is_active', 'sort_order')}),
+        (_('Правило отбора товаров'), {
+            'fields': ('atc_prefixes', 'name_keywords', 'dosage_forms', 'exclude_atc_prefixes'),
+            'description': _("Товар входит в подборку, если он из категории подборки (или её потомков) и "
+                             "(код АТХ начинается с одного из префиксов ИЛИ название содержит одно из слов) "
+                             "И форма из списка И код АТХ не из исключений. Пустое поле правило не ограничивает."),
+        }),
+    )
+    inlines = [CategoryCollectionTranslationInline]
 
 
 @admin.register(CategorySupplements)

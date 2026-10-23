@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { appendSentenceIfShort, buildCategoryDescription, limitTitle, truncateAtWord } from './seoText.js'
+import { appendSentenceIfShort, buildCategoryDescription, limitTitle, splitSeoText, truncateAtWord } from './seoText.js'
 
 test('short text is returned as is with collapsed whitespace', () => {
   assert.equal(truncateAtWord('  Аспирин   500  ', 200), 'Аспирин 500')
@@ -78,3 +78,20 @@ test('category description drops a base that does not fit and keeps long manual 
   assert.equal(buildCategoryDescription({ ...parts, base: manual }), truncateAtWord(`${manual}.`, 160))
 })
 
+
+test('seo text splits into paragraphs and ## headings', () => {
+  const text = '## Что в разделе\nПервый абзац\nс переносом.\n\n\nВторой абзац.\r\n\r\n## Как заказать\nТретий.'
+  assert.deepEqual(splitSeoText(text), [
+    { kind: 'heading', text: 'Что в разделе' },
+    { kind: 'paragraph', text: 'Первый абзац с переносом.' },
+    { kind: 'paragraph', text: 'Второй абзац.' },
+    { kind: 'heading', text: 'Как заказать' },
+    { kind: 'paragraph', text: 'Третий.' },
+  ])
+})
+
+test('empty seo text gives no blocks', () => {
+  assert.deepEqual(splitSeoText(''), [])
+  assert.deepEqual(splitSeoText(null), [])
+  assert.deepEqual(splitSeoText('##   \n\n  '), [])
+})
