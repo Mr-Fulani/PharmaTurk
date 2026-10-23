@@ -77,6 +77,7 @@
 - [AI_GUIDE.md](../AI_GUIDE.md) — основной AI workflow;
 - [AI_RUNS_ADMIN_GUIDE.md](AI_RUNS_ADMIN_GUIDE.md) — пошагово: массовый AI-прогон, обслуживание и перевод абзацев инструкций (Batch API) кнопками в админке;
 - [MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md](MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md) — сдвинутые переводы в памяти абзацев инструкций: правила без LLM, цифры, `medicine_paragraph_audit` и порядок действий на проде;
+- [MEDICINE_TRANSLATION_KNOWLEDGE_BASE.md](MEDICINE_TRANSLATION_KNOWLEDGE_BASE.md) — база переводов инструкций TR/RU/EN (память, словарь веществ, стандартные фразы, глоссарий), проверка памяти агентами Haiku 23.10.2026 и как базой пользуются новые лекарства;
 - [AI_MODULE_OVERVIEW.md](../AI_MODULE_OVERVIEW.md) — состав AI-модуля;
 - [AI_TEMPLATES.md](../AI_TEMPLATES.md) — AI-шаблоны;
 - [AI_TEST_COMMANDS.md](../AI_TEST_COMMANDS.md) и [AI_QUICK_TEST.md](../AI_QUICK_TEST.md) — специализированные проверки;
