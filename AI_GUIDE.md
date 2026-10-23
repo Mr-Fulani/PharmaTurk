@@ -193,6 +193,8 @@ docker compose exec backend poetry run python manage.py medicine_paragraph_audit
 
 Уже записанную память проверяет `medicine_paragraph_audit`: те же правила плюс сдвиг относительно соседних записей (записи одного запроса стоят в памяти подряд по `pk`). `--dry-run` — только отчёт (`--report` — JSONL со всеми подозрительными записями); без него команда сначала пишет бэкап затронутых строк в `--backup` (формат `loaddata`), затем переносит их в namespace `medicine_paragraph_suspect`: память их не находит, и абзац переведётся заново при следующей обработке или `medicine_paragraph_batch submit`. Строки остаются в БД и видны в админке; ручные правки (`updated_at` позже `created_at`) не трогаются; откат — `manage.py loaddata <backup>`.
 
+Смысловые ошибки, которые эти правила не видят (чужой абзац без расхождения чисел, перевёрнутое «если не», неверный термин), 23.10.2026 искали агентами Haiku по ранжированию кодом; там же — из чего состоит переиспользуемая база TR/RU/EN (память, словарь веществ, стандартные фразы, глоссарий): [docs/MEDICINE_TRANSLATION_KNOWLEDGE_BASE.md](docs/MEDICINE_TRANSLATION_KNOWLEDGE_BASE.md).
+
 ## 4. API
 
 Все `/api/ai/...` endpoints имеют permission `IsAdminUser`: пользователь должен быть аутентифицирован и иметь `is_staff=True`. Обычный пользователь с корректным JWT получает `403`; анонимный запрос — `401`.
