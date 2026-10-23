@@ -29,10 +29,14 @@ def _medicine_slugs(**params):
 def medicines(monkeypatch):
     monkeypatch.setattr(Product, 'update_currency_prices', lambda *args, **kwargs: None)
 
-    root = Category.objects.create(name='Medicine', slug='medicines')
-    respiratory = Category.objects.create(name='Respiratory', slug='respiratory-ent', parent=root)
-    painkillers = Category.objects.create(name='Pain', slug='painkillers', parent=root)
-    other_root = Category.objects.create(name='Clearance', slug='clearance')
+    # Миграция 0024 в свежей базе уже создаёт часть slug (painkillers, cardio…)
+    def category(slug, name, parent=None):
+        return Category.objects.update_or_create(slug=slug, defaults={'name': name, 'parent': parent})[0]
+
+    root = category('medicines', 'Medicine')
+    respiratory = category('respiratory-ent', 'Respiratory', root)
+    painkillers = category('painkillers', 'Pain', root)
+    other_root = category('clearance', 'Clearance')
 
     def create(slug, category, *, name=None, atc='', form=''):
         base = Product.objects.create(
@@ -85,7 +89,9 @@ def test_category_detail_accepts_slug_instead_of_failing_with_500(medicines):
 
 @pytest.mark.django_db
 def test_category_list_returns_landing_seo_only_on_request(medicines):
-    CategoryTranslation.objects.create(category=medicines['painkillers'], locale='en', name='Pain', h1='Turkish painkillers')
+    CategoryTranslation.objects.update_or_create(
+        category=medicines['painkillers'], locale='en', defaults={'name': 'Pain', 'h1': 'Turkish painkillers'},
+    )
     client = APIClient()
     params = {'slug': 'painkillers', 'include_children': 'false'}
 
@@ -181,7 +187,12 @@ def test_landing_seo_data_migration_fills_only_empty_fields_and_is_repeatable(me
     from django.apps import apps
 
     migration = import_module('apps.catalog.migrations.0222_medicine_landing_seo_texts')
-    CategoryTranslation.objects.create(category=medicines['painkillers'], locale='ru', name='Обезболивающие', h1='Своё H1 из админки')
+    Category.objects.filter(slug='cardio').delete()  # пресет 0024 — без него проверяем пропуск
+    # В свежей базе 0222 уже заполнила пресет painkillers — имитируем правку из админки
+    CategoryTranslation.objects.update_or_create(
+        category=medicines['painkillers'], locale='ru',
+        defaults={'name': 'Обезболивающие', 'h1': 'Своё H1 из админки', 'meta_title': '', 'seo_text': ''},
+    )
     CategoryCollection.objects.create(parent=medicines['root'], name='Уже есть', slug='spreyi', dosage_forms='spray')
 
     migration.fill_landing_seo(apps, None)
@@ -199,7 +210,7 @@ def test_landing_seo_data_migration_fills_only_empty_fields_and_is_repeatable(me
     created = dict(CategoryCollection.objects.values_list('slug', 'parent__slug'))
     assert created['ot-prostudy-i-grippa'] == 'medicines'
     assert created['ot-nasmorka'] == 'respiratory-ent'
-    assert 'varikoz' not in created  # нет категории cardio в тестовой базе
+    assert 'varikoz' not in created  # категории cardio нет
     assert CategoryCollection.objects.get(slug='spreyi').name == 'Уже есть'
     cold = CategoryCollection.objects.get(slug='ot-prostudy-i-grippa')
     assert cold.translations.count() == 2
