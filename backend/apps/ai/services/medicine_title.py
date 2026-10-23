@@ -702,15 +702,31 @@ _SALT_WORDS = {
     "propionate", "gluconate", "fumarate", "succinate", "besylate", "besilate", "tosylate", "lactate", "stearate",
     "hcl",
 }
+# Катион соли стоит после вещества в родительном падеже («диклофенак натрия»), а при анионе и
+# гидрате в родительном падеже стоит само вещество («отилония бромид», «амоксициллина тригидрат»).
+_CATION_WORDS = {"натрия", "натрий", "калия", "калий", "кальция", "кальций", "магния", "магний"}
 _INN_TITLE_MAX = 45
+SEO_TITLE_MAX = 70
+
+
+def _nominative(word: str) -> str:
+    """«отилония» → «отилоний», «амиодарона» → «амиодарон»: вещество перед анионом соли."""
+    if re.search(r"[а-яё]ия$", word):
+        return word[:-1] + "й"
+    if re.search(r"[бвгдзклмнпрстфхцчшщ]а$", word):
+        return word[:-1]
+    return word
 
 
 def _title_inn(value: str) -> str:
     parts = []
     for part in re.split(r"\s*\+\s*", value.strip()):
         words = part.split()
+        stripped = []
         while len(words) > 1 and words[-1].lower() in _SALT_WORDS:
-            words.pop()
+            stripped.append(words.pop().lower())
+        if stripped and not set(stripped) & _CATION_WORDS:
+            words[-1] = _nominative(words[-1])
         if not words:
             return ""
         first = words[0]
@@ -736,7 +752,24 @@ def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], activ
     result = {}
     for locale, value in zip(("ru", "en"), inn):
         text = _title_inn(value)
-        if not text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand):
+        # «Otag (Ml)» — обрывок названия из источника вместо вещества.
+        if not text or "(" in text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand):
             return title
         result[locale] = f"{brand} ({text}){title[locale][len(brand):]}"
     return result
+
+
+def medicine_seo_title(title: str, limit: int = SEO_TITLE_MAX) -> str:
+    """SEO title из названия: с конца отбрасываются части после запятой (упаковка, объём), пока не уложится.
+
+    «SCANIX (гадодиамид) 287 мг/мл, раствор для инъекций, флакон (в/в), 20 мл» →
+    «SCANIX (гадодиамид) 287 мг/мл, раствор для инъекций, флакон (в/в)». Бренд и вещество
+    остаются всегда: модель в SEO их теряла (пилот 23.10.2026 — 32 из 50).
+    """
+    parts = str(title or "").split(", ")
+    while len(parts) > 1 and len(", ".join(parts)) > limit:
+        parts.pop()
+    text = ", ".join(parts)
+    if len(text) > limit:
+        text = text[:limit].rsplit(" ", 1)[0]
+    return text

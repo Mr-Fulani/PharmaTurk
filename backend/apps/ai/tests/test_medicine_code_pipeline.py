@@ -29,6 +29,7 @@ from apps.ai.services.medicine_title import (
     build_medicine_title,
     equivalents_source_name,
     looks_like_source_name,
+    medicine_seo_title,
     medicine_source_name,
     paragraph_brand,
     title_with_inn,
@@ -526,6 +527,35 @@ def test_title_names_active_ingredient_without_salt():
     assert title_with_inn(plain, "IBUPROFEN 400 MG 20 TABLET", ("Ибупрофен", "Ibuprofen"), "Ibuprofen") == plain
 
 
+def test_title_inn_salt_cases_and_garbage():
+    name = "SIMFLAT 40 MG/80 MG 30 FILM TABLET"
+    title = build_medicine_title(name)
+    # Перед анионом соли вещество в родительном падеже: в названии — именительный.
+    assert title_with_inn(
+        title, name, ("Отилония бромид + Симетикон", "Otilonium bromide + Simethicone"), "Otilonyum Bromur + Simetikon"
+    )["ru"].startswith("SIMFLAT (отилоний + симетикон) 40 мг/80 мг")
+    name = "KORDARON 200 MG 30 TABLET"
+    assert title_with_inn(build_medicine_title(name), name, ("Амиодарона гидрохлорид", "Amiodarone hydrochloride"), "Amiodaron")[
+        "ru"
+    ].startswith("KORDARON (амиодарон) 200 мг")
+    name = "VOLTAREN 50 MG 20 TABLET"
+    # Катион после вещества — вещество уже в именительном.
+    assert title_with_inn(build_medicine_title(name), name, ("Диклофенак натрия", "Diclofenac sodium"), "Diklofenak Sodyum")[
+        "ru"
+    ].startswith("VOLTAREN (диклофенак) 50 мг")
+    # Обрывок названия вместо вещества — название без скобок.
+    plain = build_medicine_title(name)
+    assert title_with_inn(plain, name, ("Отаг (мл)", "Otag (Ml)"), "Otag (Ml)") == plain
+
+
+def test_medicine_seo_title_drops_tail_parts_to_fit():
+    title = "SCANIX (гадодиамид) 287 мг/мл, раствор для инъекций, флакон (в/в), 20 мл"
+    assert medicine_seo_title(title) == "SCANIX (гадодиамид) 287 мг/мл, раствор для инъекций, флакон (в/в)"
+    assert medicine_seo_title("CITOL (циталопрам) 20 мг, таблетки, 28 шт.") == "CITOL (циталопрам) 20 мг, таблетки, 28 шт."
+    long = "BRAND (" + "очень длинное название вещества " * 3 + ") 10 мг, таблетки"
+    assert len(medicine_seo_title(long)) <= 70 and not medicine_seo_title(long).endswith(" ")
+
+
 def test_title_template_injection_ampoule_forms():
     assert build_medicine_title("FUROJECT 20MG/2 ML IM/IV ENJ. COZ. ICEREN 5 AMPUL")["ru"] == (
         "FUROJECT 20 мг/2 мл, раствор для инъекций (в/м, в/в), 5 ампул"
@@ -609,6 +639,8 @@ def test_full_medicine_processing_uses_code_and_memory():
     log = AIProcessingLog.objects.get(pk=log.pk)
     # Действующее вещество — в скобках после бренда (title_with_inn).
     assert log.generated_title == "MAJEZIK (флурбипрофен) 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт."
+    # SEO title — из того же названия, с веществом, а не ответ модели («MAJEZIK 100 мг таблетки»).
+    assert log.generated_seo_title == "MAJEZIK (флурбипрофен) 100 мг, таблетки, покрытые плёночной оболочкой"
     translations = log.extracted_attributes["translations_data"]
     assert translations["ru"]["volume"] == "15 таблеток"
     assert translations["ru"]["active_ingredient"] == "Флурбипрофен"

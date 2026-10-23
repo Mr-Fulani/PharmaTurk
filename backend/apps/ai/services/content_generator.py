@@ -58,6 +58,7 @@ from apps.ai.services.medicine_reference import (
 )
 from apps.ai.services.medicine_title import (
     build_medicine_title,
+    medicine_seo_title,
     medicine_source_name,
     paragraph_brand,
     title_with_inn,
@@ -1486,6 +1487,7 @@ class ContentGenerator:
             payload.update(code_fields[locale])
             if code_fields.get("title"):
                 payload["generated_title"] = code_fields["title"][locale]
+                payload["seo_title"] = medicine_seo_title(code_fields["title"][locale])
             # Только бейджи без предмета («Не применять совместно.») — особых сведений нет.
             if not has_special_notes:
                 payload.pop("special_notes", None)
