@@ -4,7 +4,7 @@ from django.urls import path, include, re_path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CategoryViewSet, BrandViewSet, ProductViewSet, FavoriteViewSet,
+    CategoryViewSet, CategoryCollectionViewSet, BrandViewSet, ProductViewSet, FavoriteViewSet,
     ClothingCategoryViewSet, ClothingProductViewSet,
     ShoeCategoryViewSet, ShoeProductViewSet,
     ElectronicsCategoryViewSet, ElectronicsProductViewSet,
@@ -34,6 +34,7 @@ from .views_yml import YMLExportView
 # Основной роутер для медикаментов (существующий)
 router = DefaultRouter(trailing_slash=False)
 router.register(r'categories', CategoryViewSet, basename='category')
+router.register(r'collections', CategoryCollectionViewSet, basename='category-collection')
 router.register(r'brands', BrandViewSet, basename='brand')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'favorites', FavoriteViewSet, basename='favorite')

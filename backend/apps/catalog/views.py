@@ -69,7 +69,7 @@ def _get_public_variant(variant_model, slug):
     )
 
 from .models import (
-    Category, Brand, Product, PriceHistory, Favorite, Author,
+    Category, CategoryCollection, Brand, Product, PriceHistory, Favorite, Author,
     ProductAttributeValue,
     ClothingProduct, ClothingVariant,
     ShoeProduct, ShoeVariant,
@@ -98,6 +98,8 @@ from .attribute_specs import (
 )
 from .serializers import (
     CategorySerializer,
+    CategoryCollectionSerializer,
+    CategoryCollectionDetailSerializer,
     BrandSerializer,
     ProductSerializer,
     ProductCardSerializer,
@@ -234,6 +236,17 @@ def _get_category_ids_with_descendants(slugs: list[str]) -> set[int]:
         all_ids.update(children)
         current_ids = children
     return all_ids
+
+
+def _collection_scope_q(collection) -> Q:
+    """Товары подборки: категория подборки с потомками и правило подборки.
+
+    Непривязанные к категории товары, как и в каталоге, видны только в корне домена.
+    """
+    scope = Q(category_id__in=_get_category_ids_with_descendants([collection.parent.slug]))
+    if collection.parent.parent_id is None:
+        scope |= Q(category_id__isnull=True)
+    return scope & collection.medicine_filter()
 
 
 class SmartSlugLookupMixin:
@@ -957,11 +970,23 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         return super().list(request, *args, **kwargs)
     
     @extend_schema(
-        summary="Получить категорию по ID",
-        description="Возвращает детальную информацию о категории"
+        summary="Получить категорию по ID или slug",
+        description="Возвращает детальную информацию о категории вместе с SEO посадочной страницы"
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    def get_object(self):
+        # Ищем среди всех активных категорий: список без параметров отдаёт только
+        # корневые. Slug в адресе (/categories/medicines) раньше уходил в поиск
+        # по pk и падал 500 (ValueError).
+        lookup = str(self.kwargs.get(self.lookup_url_kwarg or self.lookup_field, ''))
+        queryset = Category.objects.filter(is_active=True).select_related(
+            *self._CATEGORY_SELECT_RELATED
+        ).prefetch_related(*_category_prefetches())
+        obj = get_object_or_404(queryset, **{'pk' if lookup.isdigit() else 'slug': lookup})
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -971,6 +996,10 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             context['hide_counts'] = True
         if self._parse_bool(self.request.query_params.get('include_counts')) is False:
             context['hide_counts'] = True
+        # H1, title и SEO-текст посадочной страницы — карточке категории и
+        # запросу самой страницы категории (include_seo=true).
+        if getattr(self, 'action', None) == 'retrieve' or self._parse_bool(self.request.query_params.get('include_seo')):
+            context['include_seo'] = True
         return context
 
     def children(self, request, pk=None):
@@ -981,6 +1010,52 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         )
         serializer = self.get_serializer(children, many=True)
         return Response(serializer.data)
+
+
+class CategoryCollectionViewSet(viewsets.ReadOnlyModelViewSet):
+    """Подборки категорий (/categories/<категория>/<подборка> на сайте).
+
+    Список — для ссылок со страниц категорий: parent_slug (через запятую) —
+    подборки этих категорий, root_slug — категории и всех её потомков.
+    Карточка по slug — для страницы подборки, с SEO по языкам. Товары
+    подборки отдаёт /api/catalog/medicines/products?collection=<slug>.
+    """
+
+    permission_classes = [AllowAny]
+    pagination_class = StandardPagination
+    lookup_field = 'slug'
+
+    def get_queryset(self):
+        queryset = (
+            CategoryCollection.objects.filter(is_active=True, parent__is_active=True)
+            .select_related('parent')
+            .prefetch_related('translations')
+            .order_by('sort_order', 'name')
+        )
+        if self.action != 'list':
+            return queryset
+        parent_slugs = [s.strip() for s in self.request.query_params.get('parent_slug', '').split(',') if s.strip()]
+        if parent_slugs:
+            queryset = queryset.filter(parent__slug__in=parent_slugs)
+        root_slug = self.request.query_params.get('root_slug', '').strip()
+        if root_slug:
+            queryset = queryset.filter(parent_id__in=_get_category_ids_with_descendants([root_slug]))
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return CategoryCollectionDetailSerializer
+        return CategoryCollectionSerializer
+
+    @extend_schema(
+        summary="Подборки категорий",
+        parameters=[
+            OpenApiParameter(name="parent_slug", type=str, required=False, description="Slug категории (или несколько через запятую)"),
+            OpenApiParameter(name="root_slug", type=str, required=False, description="Подборки категории и её потомков"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
@@ -4739,6 +4814,17 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
                 queryset = queryset.filter(active_ingredient__regex=r'^[0-9]')
             else:
                 queryset = queryset.filter(active_ingredient__istartswith=active_ingredient_starts_with[:1])
+        collection_slug = self.request.query_params.get('collection', '').strip()
+        if collection_slug:
+            collection = (
+                CategoryCollection.objects.select_related('parent')
+                .filter(slug=collection_slug, is_active=True, parent__is_active=True)
+                .first()
+            )
+            if collection is None:
+                # Неизвестная подборка не должна отдавать весь каталог медикаментов.
+                return queryset.none()
+            queryset = queryset.filter(_collection_scope_q(collection))
         return queryset
 
     @action(detail=False, methods=['get'], url_path='active-ingredients')
@@ -4774,6 +4860,7 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
             OpenApiParameter(name="prescription_required", type=bool, required=False, description="Требуется рецепт"),
             OpenApiParameter(name="name_starts_with", type=str, required=False, description="Первая буква названия (или '0-9')"),
             OpenApiParameter(name="active_ingredient_starts_with", type=str, required=False, description="Первая буква действующего вещества (или '0-9')"),
+            OpenApiParameter(name="collection", type=str, required=False, description="Slug подборки категории"),
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
         ],
@@ -5405,6 +5492,7 @@ class SitemapProductsView(_APIView):
 
 class SitemapEntrySerializer(serializers.Serializer):
     slug = serializers.CharField()
+    parent_slug = serializers.CharField(required=False, help_text="Только для kind=collections")
     updated_at = serializers.DateTimeField(allow_null=True)
 
 
@@ -5480,6 +5568,31 @@ class SitemapEntriesView(_APIView):
                 cid = parents[cid]
         return nonempty
 
+    @staticmethod
+    def _collection_entries():
+        """Подборки, где есть товар: /categories/<parent_slug>/<slug>.
+
+        Пустая подборка — soft-404, как и пустая категория. Проверка без условия
+        на external_data (заглушки): для пустой подборки оно детоастило бы всю
+        таблицу медикаментов (DEVELOPMENT_RULES §2.9).
+        """
+        active_medicines = MedicineProduct.objects.filter(is_active=True)
+        rows = []
+        collections = (
+            CategoryCollection.objects.filter(is_active=True, parent__is_active=True)
+            .select_related('parent')
+            .order_by('id')
+        )
+        for collection in collections:
+            if not active_medicines.filter(_collection_scope_q(collection)).exists():
+                continue
+            rows.append({
+                'slug': collection.slug,
+                'parent_slug': collection.parent.slug,
+                'updated_at': collection.updated_at.isoformat() if collection.updated_at else None,
+            })
+        return {'count': len(rows), 'results': rows}
+
     @extend_schema(
         summary="Получить справочные записи для sitemap.xml",
         parameters=[
@@ -5494,6 +5607,9 @@ class SitemapEntriesView(_APIView):
     )
     def get(self, request):
         kind = request.query_params.get('kind', '').strip()
+        if kind == 'collections':
+            # Подборок единицы — одна страница без пагинации.
+            return Response(self._collection_entries())
         model_cls = self._MODEL_MAP.get(kind)
         if model_cls is None:
             return Response({'error': f'Unknown sitemap entry kind: {kind}'}, status=400)

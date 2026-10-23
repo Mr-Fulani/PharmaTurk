@@ -32,7 +32,7 @@ import {
   isCategoryInProductTree,
   selectExactCategory,
 } from '../../lib/categoryRouting'
-import { buildCategoryDescription } from '../../lib/seoText'
+import { buildCategoryDescription, truncateAtWord } from '../../lib/seoText'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios, { type AxiosRequestConfig } from 'axios'
@@ -41,6 +41,7 @@ import ProductCard from '../../components/ProductCard'
 import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection, AvailableAttribute } from '../../components/CategorySidebar'
 import Pagination from '../../components/Pagination'
 import CategoryHero from '../../components/CategoryHero'
+import CategoryLandingBlock, { type CategoryLandingLinkGroup } from '../../components/CategoryLandingBlock'
 import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
 import { ProductCardGalleryImage } from '../../components/ProductCardImageGallery'
 import { useViewMode } from '../../hooks/useViewMode'
@@ -148,6 +149,20 @@ interface Brand {
   translations?: BrandTranslation[]
 }
 
+// SEO посадочной страницы (категории или подборки) на языке запроса
+interface CategoryLandingSeo {
+  h1?: string
+  meta_title?: string
+  meta_description?: string
+  seo_text?: string
+}
+
+interface CategoryCollectionLink {
+  slug: string
+  parentSlug: string
+  name: string
+}
+
 interface CategoryPageProps {
   products: Product[]
   categories: Category[]
@@ -168,6 +183,10 @@ interface CategoryPageProps {
   initialRouteSlug?: string
   categoryType: string
   categoryTypeSlug?: string // Реальный тип категории из API (может быть кастомным)
+  landingSeo?: CategoryLandingSeo | null
+  // Страница подборки /categories/<категория>/<подборка>: та же категория, товары сужены правилом подборки
+  collection?: { slug: string; name: string } | null
+  collectionLinks?: CategoryCollectionLink[]
 }
 
 type CategoryTypeKey = string
@@ -788,7 +807,10 @@ export default function CategoryPage({
   totalPages: initialTotalPages,
   categoryType,
   initialRouteSlug,
-  categoryTypeSlug
+  categoryTypeSlug,
+  landingSeo = null,
+  collection = null,
+  collectionLinks = [],
 }: CategoryPageProps) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
@@ -799,6 +821,7 @@ export default function CategoryPage({
     normalizeSlug(routeSlugForState),
     normalizeSlug(categoryTypeSlug || categoryType),
     normalizeSlug(router.locale || i18n.language),
+    collection?.slug || '',
   ].join(':')
 
   // Сохранение и восстановление позиции скролла при возврате на страницу
@@ -1305,6 +1328,10 @@ export default function CategoryPage({
           }
         }
 
+        if (collection) {
+          params.collection = collection.slug
+        }
+
         if (categoryType === 'medicines' && letterFilter) {
           if (letterMode === 'name') {
             params.name_starts_with = letterFilter
@@ -1562,14 +1589,21 @@ export default function CategoryPage({
       label: localizedCategoryName || t('category', 'Категория')
     })
 
+    if (collection) {
+      items.push({ href: `/categories/${routeSlug}/${collection.slug}`, label: collection.name })
+    }
+
     if (brandLabel) {
       items.push({ href: router.asPath, label: brandLabel })
     }
     return items
-  }, [brandLabel, localizedCategoryName, routeSlug, router.asPath, t, currentCategory, router.locale])
+  }, [brandLabel, localizedCategoryName, routeSlug, router.asPath, t, currentCategory, router.locale, collection])
 
   const siteUrl = useMemo(() => getSiteOrigin(), [])
-  const categoryPath = useMemo(() => `/categories/${routeSlug || categoryType}`, [routeSlug, categoryType])
+  const categoryPath = useMemo(
+    () => `/categories/${routeSlug || categoryType}${collection ? `/${collection.slug}` : ''}`,
+    [routeSlug, categoryType, collection]
+  )
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
   const catalogSeo = useMemo(
     () => buildCatalogSeoState(categoryPath, router.query, currentPage, totalPages, totalCount),
@@ -1595,32 +1629,39 @@ export default function CategoryPage({
     if (Array.isArray(v)) return (v as any[]).map((x) => (typeof x === 'string' ? x : '')).join('')
     return v != null ? String(v) : ''
   }, [localizedCategoryName])
+  // Название страницы: подборка или сама категория
+  const pageName = collection?.name || titleText
+  // SEO посадочной страницы из API (по языку) важнее шаблона; мета категории
+  // в БД есть только на русском, поэтому на EN и у подборок — шаблон.
   const ogTitle = useMemo(() => {
-    if (!isDefaultLocale) return `${titleText} — ${SITE_NAME}`.trim()
+    if (landingSeo?.meta_title) return landingSeo.meta_title
+    if (!isDefaultLocale || collection) return `${pageName} — ${SITE_NAME}`.trim()
     return (currentCategory?.og_title || currentCategory?.meta_title || `${titleText} — ${SITE_NAME}`).trim()
-  }, [currentCategory, titleText, isDefaultLocale])
+  }, [currentCategory, titleText, pageName, isDefaultLocale, collection, landingSeo])
 
   const metaTitle = useMemo(() => {
-    const baseTitle = !isDefaultLocale
-      ? `${titleText} — ${SITE_NAME}`.trim()
-      : (currentCategory?.meta_title || currentCategory?.og_title || `${titleText} — ${SITE_NAME}`).trim()
+    const baseTitle = landingSeo?.meta_title || (!isDefaultLocale || collection
+      ? `${pageName} — ${SITE_NAME}`.trim()
+      : (currentCategory?.meta_title || currentCategory?.og_title || `${titleText} — ${SITE_NAME}`).trim())
     if (currentPage <= 1 || catalogSeo.hasFilters) return baseTitle
     const pageLabel = router.locale === 'en' ? `Page ${currentPage}` : `Страница ${currentPage}`
     return `${baseTitle} — ${pageLabel}`
-  }, [currentCategory, titleText, isDefaultLocale, currentPage, catalogSeo.hasFilters, router.locale])
+  }, [currentCategory, titleText, pageName, isDefaultLocale, collection, landingSeo, currentPage, catalogSeo.hasFilters, router.locale])
 
   // Описание для поиска и превью: короткие описания категорий («Кроссовки») дополняем
   // числом товаров и главными подкатегориями (buildCategoryDescription).
   const metaDescription = useMemo(() => {
-    const base = stripHtml(isDefaultLocale
+    if (landingSeo?.meta_description) return truncateAtWord(landingSeo.meta_description, 200)
+    // У подборки описание и подкатегории родителя к ней не относятся
+    const base = collection ? '' : stripHtml(isDefaultLocale
       ? (currentCategory?.meta_description || currentCategory?.og_description || localizedCategoryDescription || '')
       : (localizedCategoryDescription || ''))
-    const subcategoryNames = displaySubcategories.map((sub) =>
+    const subcategoryNames = collection ? [] : displaySubcategories.map((sub) =>
       getLocalizedCategoryName(sub.slug, sub.name, t, sub.translations, router.locale)
     )
     return buildCategoryDescription({
       base,
-      lead: t('category_meta_lead', '{{category}} из Турции с доставкой', { category: titleText || '' }),
+      lead: t('category_meta_lead', '{{category}} из Турции с доставкой', { category: pageName || '' }),
       countText: totalCount > 0
         ? t('category_meta_count', {
           count: totalCount,
@@ -1631,7 +1672,7 @@ export default function CategoryPage({
       subcategories: subcategoryNames,
       tail: t('category_meta_tail', 'Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba'),
     })
-  }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale, displaySubcategories, router.locale, totalCount])
+  }, [currentCategory, localizedCategoryDescription, pageName, t, isDefaultLocale, displaySubcategories, router.locale, totalCount, collection, landingSeo])
 
   // Превью в соцсетях и мессенджерах — то же развёрнутое описание, а не одно слово
   const ogDescription = metaDescription
@@ -1700,6 +1741,30 @@ export default function CategoryPage({
     }
   }, [currentCategory, titleText, t, siteUrl, canonicalUrl])
 
+  // Перелинковка внизу страницы: с корня — разделы и все подборки дерева,
+  // с подкатегории и подборки — подборки этой категории. Без подборок блок не нужен.
+  const landingLinkGroups = useMemo<CategoryLandingLinkGroup[]>(() => {
+    if (collectionLinks.length === 0) return []
+    const groups: CategoryLandingLinkGroup[] = []
+    if (isRootCategoryPage && !collection) {
+      groups.push({
+        title: t('category_landing_sections', 'Разделы'),
+        links: displaySubcategories.map((sub) => ({
+          href: `/categories/${sub.slug}`,
+          label: getLocalizedCategoryName(sub.slug, sub.name, t, sub.translations, router.locale),
+        })),
+      })
+    }
+    groups.push({
+      title: t('category_landing_collections', 'Подборки'),
+      links: collectionLinks.map((link) => ({
+        href: `/categories/${link.parentSlug}/${link.slug}`,
+        label: link.name,
+      })),
+    })
+    return groups
+  }, [collectionLinks, isRootCategoryPage, collection, displaySubcategories, t, router.locale])
+
   return (
     <>
       <Head>
@@ -1752,11 +1817,11 @@ export default function CategoryPage({
 
       {/* Hero Section */}
       <CategoryHero 
-        title={titleText}
-        description={localizedCategoryDescription}
+        title={landingSeo?.h1 || pageName}
+        description={collection ? null : localizedCategoryDescription}
         totalCount={totalCount}
         categorySlug={routeSlug}
-        worksHref={currentCategory?.portfolio_items && currentCategory.portfolio_items.length > 0
+        worksHref={!collection && currentCategory?.portfolio_items && currentCategory.portfolio_items.length > 0
           ? `/categories/${routeSlug}/works`
           : null}
       />
@@ -2020,6 +2085,8 @@ export default function CategoryPage({
             )}
           </div>
         </div>
+
+        <CategoryLandingBlock linkGroups={landingLinkGroups} seoText={landingSeo?.seo_text} />
       </div>
     </>
   )
@@ -2106,6 +2173,9 @@ const SSR_BRANDS_EXTRA_WAIT_MS = 300
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { slug, page = 1, brand, brand_id } = context.query
+  // Маршрут подборки categories/[slug]/[collection] переиспользует эту gSSP
+  const collectionParam = context.params?.collection
+  const collectionSlug = typeof collectionParam === 'string' ? collectionParam : null
   const pageSize = 12
   const requestLocale = context.locale || context.defaultLocale || 'ru'
 
@@ -2157,13 +2227,24 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null
     let catData: any = null
+    let collectionData: any = null
     if (routeSlug) {
-      const catApiData = await cachedCategoryApiData<any>('category-exact', 'catalog/categories', {
-        params: { slug: routeSlug, include_children: false, include_counts: false, page_size: 1 }
-      })
+      // Неизвестная подборка — 404 API, его превращает в notFound общий catch
+      const [catApiData, collectionApiData] = await Promise.all([
+        cachedCategoryApiData<any>('category-exact', 'catalog/categories', {
+          params: { slug: routeSlug, include_children: false, include_counts: false, include_seo: true, page_size: 1 }
+        }),
+        collectionSlug
+          ? cachedCategoryApiData<any>('category-collection', `catalog/collections/${encodeURIComponent(collectionSlug)}`)
+          : Promise.resolve(null),
+      ])
       const exactCategories = extractResults(catApiData)
       catData = selectExactCategory(exactCategories, routeSlug)
       if (!catData) {
+        return { notFound: true }
+      }
+      collectionData = collectionApiData
+      if (collectionSlug && normalizeSlug(collectionData?.parent_slug) !== normalizeSlug(routeSlug)) {
         return { notFound: true }
       }
       if (catData.category_type_slug) {
@@ -2251,6 +2332,19 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         .catch(() => [])
     }
 
+    // Подборки для перелинковки: с корня — все в дереве, иначе — этой категории
+    const collectionLinksPromise: Promise<any[]> = cachedCategoryApiData<any>(
+      'category-collections',
+      'catalog/collections',
+      {
+        params: normalizeSlug(routeSlug) === normalizeSlug(categoryType)
+          ? { root_slug: routeSlug, page_size: 100 }
+          : { parent_slug: routeSlug, page_size: 100 },
+      }
+    )
+      .then((data) => extractResults(data))
+      .catch(() => [])
+
     const categoriesPromise: Promise<any[]> = (() => {
       const catParams: any = {}
       if (routeSlug) {
@@ -2297,6 +2391,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       } else {
         productParams.category_slug = routeSlug
       }
+    }
+    if (collectionSlug) {
+      productParams.collection = collectionSlug
     }
     if (brandId) {
       productParams.brand_id = brandId
@@ -2532,6 +2629,23 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       compactBrandForFilter(brand as Brand & Record<string, any>)
     )
 
+    // SEO посадочной страницы только на языке запроса: без перевода — шаблон
+    const pickLandingSeo = (translations: any): CategoryLandingSeo | null => {
+      const entry: any = findCategoryTranslation(Array.isArray(translations) ? translations : [], requestLocale)
+      if (!entry) return null
+      const seo: CategoryLandingSeo = {}
+      for (const key of ['h1', 'meta_title', 'meta_description', 'seo_text'] as const) {
+        const value = typeof entry[key] === 'string' ? entry[key].trim() : ''
+        if (value) seo[key] = value
+      }
+      return Object.keys(seo).length > 0 ? seo : null
+    }
+    const localizedName = (item: any) =>
+      findCategoryTranslation(Array.isArray(item?.translations) ? item.translations : [], requestLocale)?.name || item?.name || ''
+    const collectionLinks: CategoryCollectionLink[] = (await collectionLinksPromise)
+      .filter((item: any) => item?.slug && item.slug !== collectionSlug)
+      .map((item: any) => ({ slug: item.slug, parentSlug: item.parent_slug, name: localizedName(item) }))
+
     const footerSettings = await footerSettingsPromise
     return {
       props: {
@@ -2555,6 +2669,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         categoryType,
         categoryTypeSlug: categoryTypeFromApi || null,
         initialRouteSlug: routeSlug || '',
+        landingSeo: pickLandingSeo(collectionData ? collectionData.translations : catData?.seo),
+        collection: collectionData ? { slug: collectionData.slug, name: localizedName(collectionData) } : null,
+        collectionLinks,
         ...(await serverSideTranslations(requestLocale, ['common'])),
       },
     }

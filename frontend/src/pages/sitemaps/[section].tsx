@@ -13,8 +13,8 @@ import { createStaleWhileRevalidateCache } from '../../lib/serverPublicCache'
 
 /**
  * Секционные sitemap'ы: /sitemaps/<section>.xml (rewrite в next.config.js
- * срезает .xml). Секции: static, categories, brands, services,
- * products-<домен>. Индекс — /sitemap.xml.
+ * срезает .xml). Секции: static, categories (вместе с подборками категорий),
+ * brands, services, products-<домен>. Индекс — /sitemap.xml.
  */
 
 interface SitemapTestimonial {
@@ -109,6 +109,22 @@ async function buildCategoryUrls(failures: Failures): Promise<SitemapUrl[]> {
   } catch (err) {
     failures.push('categories')
     console.error('Sitemap: Failed to fetch categories', err)
+  }
+  try {
+    // Подборки категорий (/categories/<категория>/<подборка>); пустые API не отдаёт
+    const collections = await fetchAllPages('catalog/sitemap-entries', { kind: 'collections' })
+    for (const item of collections) {
+      if (!item.slug || !item.parent_slug) continue
+      const path = `/categories/${item.parent_slug}/${item.slug}`
+      const url = buildUrl(path, path, 'daily', 0.8)
+      if (item.updated_at) {
+        url.lastmod = new Date(item.updated_at).toISOString().split('T')[0]
+      }
+      urls.push(url)
+    }
+  } catch (err) {
+    failures.push('collections')
+    console.error('Sitemap: Failed to fetch category collections', err)
   }
   return urls
 }

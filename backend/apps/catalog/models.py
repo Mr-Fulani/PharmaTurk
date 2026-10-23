@@ -601,9 +601,36 @@ class Category(models.Model):
         return _plain_text(self.og_image_url) or self._card_image_url_for_og()
 
 
-class CategoryTranslation(models.Model):
+class CategoryLandingSeoMixin(models.Model):
+    """SEO посадочной страницы каталога (категории или подборки) на одном языке.
+
+    Пустое поле — шаблон страницы: H1 = название, title и description строит фронт.
+    """
+
+    h1 = models.CharField(
+        _("Заголовок H1"), max_length=255, blank=True, default="",
+        help_text=_("Если пусто — название."),
+    )
+    meta_title = models.CharField(
+        _("SEO заголовок"), max_length=255, blank=True, default="",
+        help_text=_("До 80 символов вместе с «| Mudaroba»."),
+    )
+    meta_description = models.CharField(
+        _("SEO описание"), max_length=500, blank=True, default="",
+        help_text=_("До 200 символов."),
+    )
+    seo_text = models.TextField(
+        _("SEO-текст внизу страницы"), blank=True, default="",
+        help_text=_("Обычный текст: абзацы через пустую строку, строка с «## » — подзаголовок."),
+    )
+
+    class Meta:
+        abstract = True
+
+
+class CategoryTranslation(CategoryLandingSeoMixin, models.Model):
     """Переводы для категорий товаров."""
-    
+
     LOCALE_CHOICES = [
         ('ru', _('Русский')),
         ('en', _('Английский')),
@@ -646,6 +673,108 @@ class CategoryTranslation(models.Model):
     
     def __str__(self):
         return f"{self.category.name} ({self.get_locale_display()})"
+
+
+def _split_csv(value: str) -> list[str]:
+    return [part.strip() for part in (value or "").split(",") if part.strip()]
+
+
+class CategoryCollection(models.Model):
+    """Подборка внутри категории: страница /categories/<категория>/<подборка>.
+
+    Товары выбираются правилом по полям медикамента, а не привязкой к категории:
+    один препарат бывает и в «Обезболивающих», и в «Мазях, кремах и гелях».
+    Правило: (код АТХ начинается с одного из префиксов ИЛИ название содержит
+    одно из слов) И форма из списка И код АТХ не из исключений; пустая часть
+    правила не ограничивает. Товары берутся только из категории подборки и её
+    потомков.
+    """
+
+    parent = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name="collections",
+        verbose_name=_("Категория"),
+    )
+    name = models.CharField(_("Название"), max_length=200)
+    slug = models.SlugField(_("Slug"), max_length=200, unique=True)
+    atc_prefixes = models.CharField(
+        _("Коды АТХ"), max_length=500, blank=True, default="",
+        help_text=_("Начала кодов АТХ через запятую, например: R05X, J05AH."),
+    )
+    name_keywords = models.CharField(
+        _("Слова в названии"), max_length=500, blank=True, default="",
+        help_text=_("Части названия товара через запятую, без учёта регистра, например: PEDIATRIK, детск."),
+    )
+    dosage_forms = models.CharField(
+        _("Лекарственные формы"), max_length=200, blank=True, default="",
+        help_text=_("Значения через запятую: tablet, capsule, syrup, drops, ointment, cream, gel, "
+                    "injection, powder, spray, suppository, other. Пусто — любая форма."),
+    )
+    exclude_atc_prefixes = models.CharField(
+        _("Исключить коды АТХ"), max_length=500, blank=True, default="",
+        help_text=_("Начала кодов АТХ через запятую, которые не входят в подборку."),
+    )
+    is_active = models.BooleanField(_("Активна"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Подборка категории")
+        verbose_name_plural = _("Подборки категорий")
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        super().clean()
+        allowed_forms = {value for value, _label in DOSAGE_FORM_CHOICES}
+        unknown_forms = [form for form in _split_csv(self.dosage_forms) if form not in allowed_forms]
+        if unknown_forms:
+            raise ValidationError({"dosage_forms": _("Неизвестные формы: %s") % ", ".join(unknown_forms)})
+        if not (_split_csv(self.atc_prefixes) or _split_csv(self.name_keywords) or _split_csv(self.dosage_forms)):
+            raise ValidationError(_("Заполните коды АТХ, слова в названии или формы — иначе подборка повторит категорию."))
+
+    def medicine_filter(self) -> Q:
+        """Условие правила для MedicineProduct (без ограничения категорией)."""
+        include = Q()
+        for prefix in _split_csv(self.atc_prefixes):
+            include |= Q(atc_code__startswith=prefix.upper())
+        for word in _split_csv(self.name_keywords):
+            include |= Q(name__icontains=word)
+        condition = include
+        forms = _split_csv(self.dosage_forms)
+        if forms:
+            condition &= Q(dosage_form__in=forms)
+        for prefix in _split_csv(self.exclude_atc_prefixes):
+            condition &= ~Q(atc_code__startswith=prefix.upper())
+        return condition
+
+
+class CategoryCollectionTranslation(CategoryLandingSeoMixin, models.Model):
+    """Переводы подборки: название для крошек и ссылок плюс SEO страницы."""
+
+    collection = models.ForeignKey(
+        CategoryCollection,
+        on_delete=models.CASCADE,
+        related_name="translations",
+        verbose_name=_("Подборка"),
+    )
+    locale = models.CharField(
+        _("Язык"), max_length=10, choices=CategoryTranslation.LOCALE_CHOICES, default="ru", db_index=True,
+    )
+    name = models.CharField(_("Название"), max_length=200)
+
+    class Meta:
+        verbose_name = _("Перевод подборки")
+        verbose_name_plural = _("Переводы подборок")
+        unique_together = [["collection", "locale"]]
+        ordering = ["collection", "locale"]
+
+    def __str__(self):
+        return f"{self.collection.name} ({self.get_locale_display()})"
 
 
 class CategoryMedicines(Category):

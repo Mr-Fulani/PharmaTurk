@@ -27,6 +27,7 @@ class MudarobaAdminSite(AdminSite):
                 "CategoryAccessories",
                 "CategoryBooks",
                 "CategoryClothing",
+                "CategoryCollection",
                 "CategoryElectronics",
                 "CategoryFurniture",
                 "CategoryHeadwear",
