@@ -701,32 +701,66 @@ _SALT_WORDS = {
     "citrate", "nitrate", "dihydrate", "monohydrate", "trihydrate", "hemihydrate", "sesquihydrate", "carbonate",
     "propionate", "gluconate", "fumarate", "succinate", "besylate", "besilate", "tosylate", "lactate", "stearate",
     "hcl",
+    # Эфиры кортикостероидов и гормонов: ищут «бетаметазон», «мометазон», а не «… дипропионат».
+    "ацетонид", "дипропионат", "валерат", "бутират", "фуроат", "ацепонат", "пивалат", "энантат", "деканоат",
+    "ундеканоат", "битартрат", "гидротартрат", "малат", "acetonide", "dipropionate", "valerate", "butyrate",
+    "furoate", "aceponate", "pivalate", "enanthate", "decanoate", "undecanoate", "bitartrate", "malate",
 }
 # Катион соли стоит после вещества в родительном падеже («диклофенак натрия»), а при анионе и
 # гидрате в родительном падеже стоит само вещество («отилония бромид», «амоксициллина тригидрат»).
-_CATION_WORDS = {"натрия", "натрий", "калия", "калий", "кальция", "кальций", "магния", "магний"}
+_CATION_WORDS = {
+    "натрия", "натрий", "калия", "калий", "кальция", "кальций", "магния", "магний",
+    "sodium", "potassium", "calcium", "magnesium",
+}
+_HYDRATE_WORDS = {
+    "дигидрат", "моногидрат", "тригидрат", "гемигидрат", "сесквигидрат",
+    "dihydrate", "monohydrate", "trihydrate", "hemihydrate", "sesquihydrate",
+}
 _INN_TITLE_MAX = 45
-SEO_TITLE_MAX = 70
+
+
+# «Дорназа альфа», «эпоэтин бета» — МНН из двух слов в именительном падеже.
+_GREEK_WORDS = {"альфа", "бета", "гамма", "дельта", "омега"}
 
 
 def _nominative(word: str) -> str:
     """«отилония» → «отилоний», «амиодарона» → «амиодарон»: вещество перед анионом соли."""
+    if word.lower().endswith("аза"):  # ферменты: «дорназа», «алтеплаза»
+        return word
     if re.search(r"[а-яё]ия$", word):
         return word[:-1] + "й"
+    if word.endswith("ля"):  # «пиридоксаля фосфат» → «пиридоксаль»
+        return word[:-1] + "ь"
+    if re.search(r"[бвгдзклмнпрстфхцчшщ]ы$", word):  # «глюкозы моногидрат» → «глюкоза»
+        return word[:-1] + "а"
     if re.search(r"[бвгдзклмнпрстфхцчшщ]а$", word):
         return word[:-1]
     return word
 
 
-def _title_inn(value: str) -> str:
+def title_inn(value: str) -> str:
+    """МНН в скобках названия: без соли и гидрата, в именительном падеже, со строчной."""
     parts = []
     for part in re.split(r"\s*\+\s*", value.strip()):
         words = part.split()
         stripped = []
         while len(words) > 1 and words[-1].lower() in _SALT_WORDS:
             stripped.append(words.pop().lower())
-        if stripped and not set(stripped) & _CATION_WORDS:
+        cation = set(stripped) & _CATION_WORDS
+        anion = set(stripped) - cation - _HYDRATE_WORDS
+        # Соль целиком и есть вещество: «Карбонат кальция», «Кромогликат натрия», «Цинк, магний»,
+        # «Дигидроксиалюминия натрия карбонат».
+        if (
+            "," in part
+            or words[0].lower() in _SALT_WORDS
+            or (cation and (anion or re.search(r"(?:ат|ид|ит)$", words[-1].lower())))
+        ):
+            words = part.split()
+        elif stripped and not cation:
             words[-1] = _nominative(words[-1])
+        elif len(words) == 2 and re.fullmatch(r"[а-яё-]+", words[1]) and words[1] not in _GREEK_WORDS:
+            # Эфир или вторая часть МНН: «Кандесартана цилексетил» → «кандесартан цилексетил».
+            words[0] = _nominative(words[0])
         if not words:
             return ""
         first = words[0]
@@ -737,39 +771,27 @@ def _title_inn(value: str) -> str:
     return " + ".join(parts)
 
 
+def title_brand(name: Any) -> str:
+    """Бренд в начале названия кодом («MAJEZIK», «THERMO FUZO», «IBUPROFEN»)."""
+    return " ".join(_brand_tokens(re.sub(r"[()]", " ", str(name or "")).split()))
+
+
 def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], active_ingredient: Any = "") -> dict[str, str]:
     """«NEXIUM 40 мг, …» → «NEXIUM (эзомепразол) 40 мг, …»: по бренду и по веществу ищут на каждом языке.
 
     Не добавляется, если вещество уже в бренде («PARACETAMOL ATABAY»), веществ больше
     трёх или МНН в названии вышло бы длиннее _INN_TITLE_MAX.
     """
-    source = re.sub(r"[()]", " ", str(name or "")).strip()
-    brand = " ".join(_brand_tokens(source.split()))
+    brand = title_brand(name)
     brand_words = set(re.findall(r"[a-z]+", fold_tr(brand)))
     inn_words = {word for word in re.findall(r"[a-z]+", fold_tr(active_ingredient)) if len(word) >= 4}
     if not brand or brand_words & inn_words or len(re.split(r"\s*\+\s*", inn[0])) > 3:
         return title
     result = {}
     for locale, value in zip(("ru", "en"), inn):
-        text = _title_inn(value)
+        text = title_inn(value)
         # «Otag (Ml)» — обрывок названия из источника вместо вещества.
         if not text or "(" in text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand):
             return title
         result[locale] = f"{brand} ({text}){title[locale][len(brand):]}"
     return result
-
-
-def medicine_seo_title(title: str, limit: int = SEO_TITLE_MAX) -> str:
-    """SEO title из названия: с конца отбрасываются части после запятой (упаковка, объём), пока не уложится.
-
-    «SCANIX (гадодиамид) 287 мг/мл, раствор для инъекций, флакон (в/в), 20 мл» →
-    «SCANIX (гадодиамид) 287 мг/мл, раствор для инъекций, флакон (в/в)». Бренд и вещество
-    остаются всегда: модель в SEO их теряла (пилот 23.10.2026 — 32 из 50).
-    """
-    parts = str(title or "").split(", ")
-    while len(parts) > 1 and len(", ".join(parts)) > limit:
-        parts.pop()
-    text = ", ".join(parts)
-    if len(text) > limit:
-        text = text[:limit].rsplit(" ", 1)[0]
-    return text

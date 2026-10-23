@@ -29,11 +29,12 @@ from apps.ai.services.medicine_title import (
     build_medicine_title,
     equivalents_source_name,
     looks_like_source_name,
-    medicine_seo_title,
     medicine_source_name,
     paragraph_brand,
+    title_inn,
     title_with_inn,
 )
+from apps.ai.services.medicine_seo import BRAND_NAMESPACE
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.translation_memory import lookup, remember
@@ -527,6 +528,31 @@ def test_title_names_active_ingredient_without_salt():
     assert title_with_inn(plain, "IBUPROFEN 400 MG 20 TABLET", ("Ибупрофен", "Ibuprofen"), "Ibuprofen") == plain
 
 
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("Амоксициллина тригидрат + Калия клавуланат", "амоксициллин + калия клавуланат"),
+        ("Аторвастатин кальция тригидрат", "аторвастатин"),
+        ("Бетаметазона дипропионат", "бетаметазон"),
+        ("Кандесартана цилексетил", "кандесартан цилексетил"),
+        ("Пиридоксаля фосфат", "пиридоксаль"),
+        ("Глюкозы моногидрат", "глюкоза"),
+        # Соль и есть вещество — целиком.
+        ("Карбонат кальция", "карбонат кальция"),
+        ("Кромогликат натрия", "кромогликат натрия"),
+        ("Дигидроксиалюминия натрия карбонат", "дигидроксиалюминия натрия карбонат"),
+        ("Цинк, магний", "цинк, магний"),
+        # МНН из двух слов в именительном.
+        ("Дорназа альфа", "дорназа альфа"),
+        ("Эпоэтин бета", "эпоэтин бета"),
+        ("Formoterol fumarate dihydrate + Budesonide", "formoterol + budesonide"),
+        ("Sodium bicarbonate", "sodium bicarbonate"),
+    ],
+)
+def test_title_inn_forms(value, expected):
+    assert title_inn(value) == expected
+
+
 def test_title_inn_salt_cases_and_garbage():
     name = "SIMFLAT 40 MG/80 MG 30 FILM TABLET"
     title = build_medicine_title(name)
@@ -546,14 +572,6 @@ def test_title_inn_salt_cases_and_garbage():
     # Обрывок названия вместо вещества — название без скобок.
     plain = build_medicine_title(name)
     assert title_with_inn(plain, name, ("Отаг (мл)", "Otag (Ml)"), "Otag (Ml)") == plain
-
-
-def test_medicine_seo_title_drops_tail_parts_to_fit():
-    title = "SCANIX (гадодиамид) 287 мг/мл, раствор для инъекций, флакон (в/в), 20 мл"
-    assert medicine_seo_title(title) == "SCANIX (гадодиамид) 287 мг/мл, раствор для инъекций, флакон (в/в)"
-    assert medicine_seo_title("CITOL (циталопрам) 20 мг, таблетки, 28 шт.") == "CITOL (циталопрам) 20 мг, таблетки, 28 шт."
-    long = "BRAND (" + "очень длинное название вещества " * 3 + ") 10 мг, таблетки"
-    assert len(medicine_seo_title(long)) <= 70 and not medicine_seo_title(long).endswith(" ")
 
 
 def test_title_template_injection_ampoule_forms():
@@ -629,6 +647,7 @@ def test_full_medicine_processing_uses_code_and_memory():
         inn={"flurbiprofen": ("флурбипрофен", "flurbiprofen")},
         paragraphs={PARA_A.strip(): tuple(t.strip() for t in TRANSLATIONS[PARA_A.strip()])},
     )
+    remember(BRAND_NAMESPACE, {"MAJEZIK": {"ru": "Мажезик", "en": "MAJEZIK"}})
     generator = _generator(llm)
     generator._should_use_images_for_product = lambda _product: False
 
@@ -639,8 +658,12 @@ def test_full_medicine_processing_uses_code_and_memory():
     log = AIProcessingLog.objects.get(pk=log.pk)
     # Действующее вещество — в скобках после бренда (title_with_inn).
     assert log.generated_title == "MAJEZIK (флурбипрофен) 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт."
-    # SEO title — из того же названия, с веществом, а не ответ модели («MAJEZIK 100 мг таблетки»).
-    assert log.generated_seo_title == "MAJEZIK (флурбипрофен) 100 мг, таблетки, покрытые плёночной оболочкой"
+    # SEO — кодом из того же названия и словаря брендов, а не ответ модели («MAJEZIK 100 мг таблетки»).
+    assert log.generated_seo_title == "Мажезик (MAJEZIK, флурбипрофен) 100 мг, таблетки из Турции"
+    seo = log.extracted_attributes["seo_translations"]
+    assert seo["ru"]["meta_description"].startswith("Мажезик (MAJEZIK, флурбипрофен) 100 мг, таблетки из Турции. ")
+    assert "Отпускается по рецепту." in seo["ru"]["meta_description"]
+    assert seo["en"]["meta_title"] == "MAJEZIK (flurbiprofen) 100 mg, film-coated tablets from Turkey"
     translations = log.extracted_attributes["translations_data"]
     assert translations["ru"]["volume"] == "15 таблеток"
     assert translations["ru"]["active_ingredient"] == "Флурбипрофен"
