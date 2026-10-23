@@ -33,7 +33,8 @@ export function isCatalogPageOutOfRange(pageValue, totalCount, pageSize) {
   return requestedPage > lastPage
 }
 
-const INDEXABLE_CATEGORY_QUERY_KEYS = new Set(['slug', 'page'])
+// slug и collection — параметры маршрута (/categories/[slug]/[collection]), не фильтры
+const INDEXABLE_CATEGORY_QUERY_KEYS = new Set(['slug', 'collection', 'page'])
 
 const hasQueryValue = (value) => {
   if (Array.isArray(value)) return value.some(hasQueryValue)

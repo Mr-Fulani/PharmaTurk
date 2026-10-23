@@ -121,6 +121,25 @@ test('catalog filters are noindex and canonicalize to the clean category', () =>
   )
 })
 
+test('collection route param is not a filter: collection page is indexable and self-canonical', () => {
+  assert.deepEqual(
+    buildCatalogSeoState(
+      '/categories/medicines/ot-prostudy-i-grippa',
+      { slug: 'medicines', collection: 'ot-prostudy-i-grippa', page: '2' },
+      2,
+      3,
+      30
+    ),
+    {
+      canonicalPath: '/categories/medicines/ot-prostudy-i-grippa?page=2',
+      hasFilters: false,
+      noindex: false,
+      previousPath: '/categories/medicines/ot-prostudy-i-grippa',
+      nextPath: '/categories/medicines/ot-prostudy-i-grippa?page=3',
+    }
+  )
+})
+
 test('empty optional catalog filters do not create a noindex page', () => {
   const state = buildCatalogSeoState(
     '/categories/books',

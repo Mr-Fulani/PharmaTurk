@@ -58,3 +58,31 @@ export function buildCategoryDescription({ base, lead, countText, subcategories 
   const full = compose(true)
   return truncateAtWord(full.length <= maxLength ? full : compose(false), maxLength)
 }
+
+/**
+ * SEO-текст посадочной страницы (поле seo_text из API) → блоки для вывода:
+ * абзацы разделены пустой строкой, строка «## …» — подзаголовок. Текст обычный,
+ * без HTML: React выводит его как текст, разметку из админки не исполняет.
+ */
+export function splitSeoText(text) {
+  const blocks = []
+  const chunks = String(text || '').replace(/\r\n?/g, '\n').split(/\n\s*\n/)
+  for (const chunk of chunks) {
+    let paragraph = []
+    const flush = () => {
+      if (paragraph.length) blocks.push({ kind: 'paragraph', text: paragraph.join(' ') })
+      paragraph = []
+    }
+    for (const line of chunk.split('\n').map((value) => value.trim()).filter(Boolean)) {
+      if (/^##(\s|$)/.test(line)) {
+        flush()
+        const heading = line.slice(2).trim()
+        if (heading) blocks.push({ kind: 'heading', text: heading })
+      } else {
+        paragraph.push(line)
+      }
+    }
+    flush()
+  }
+  return blocks
+}
