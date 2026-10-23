@@ -41,7 +41,7 @@
 | [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | проверен 2026-08-21, актуализирован 2026-10-22 (бэкап в R2, origin 443, Redis) |
 | [scripts/release/README.md](../scripts/release/README.md) | скрипты релиза: проверка, миграции, выкладка, откат, сокращённый backend-релиз | актуализирован 2026-10-18 |
 | [MANAGEMENT_COMMANDS.md](MANAGEMENT_COMMANDS.md) | справочник management-команд, которые не описаны в тематических доках; устаревшие помечены | 2026-10-22 |
-| [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) | правила SEO, backend/frontend и e-commerce | актуализирован 2026-10-22 |
+| [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) | правила SEO, backend/frontend и e-commerce | актуализирован 2026-10-23 |
 | AUDIT_2026-10-15_SEO_GROWTH.md | аудит качества, SEO и воронки 15.10: P0 (фейковая карта в checkout, аналитика, заявка на лекарства, Rx-разметка, картинки под Disallow, сырой контент, пустые категории) закрыты к 17.10 | локальный отчёт владельца, в репозиторий не коммитится (`.gitignore`) |
 
 ## Доменная документация
@@ -52,6 +52,7 @@
 - [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) — безопасный backfill характеристик мебели;
 - [AUTO_PARTS_AI_DESIGN.md](AUTO_PARTS_AI_DESIGN.md) — дизайн домена автозапчастей: OEM-номера, применимость, обработка без LLM;
 - [HOW_TO_ORDER_PAGE.md](HOW_TO_ORDER_PAGE.md) — страница «Как заказать»: разделы, SEO, позиция баннеров `how_to_order`;
+- [MEDICINE_LANDING_PAGES.md](MEDICINE_LANDING_PAGES.md) — посадочные страницы медикаментов: SEO подкатегорий и корня, 17 подборок по правилам АТХ/формы, адреса, админка;
 - [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md) — скорость страницы бренда: замеры, детоаст `external_data`, частичные индексы 0217, `view=card`;
 - [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`), бренды производителей лекарств/БАДов, доменные записи прежнего типа после смены типа товара (`retire_stale_domain_records`), ложные зачёркнутые цены (`clear_heuristic_old_prices`), названия LC Waikiki (`repair_lcw_names`);
 - [CATEGORY_MARKUP_INHERITANCE.md](CATEGORY_MARKUP_INHERITANCE.md) — наследование товарной наценки: бренд → категория → родитель → глобальная;
