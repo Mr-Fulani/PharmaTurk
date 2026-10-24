@@ -141,17 +141,6 @@ export default function DotMenu({
       badge: favoritesCount,
     },
     {
-      key: 'blog',
-      label: t('menu_blog', 'Статьи'),
-      icon: (
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.5C10.5 5 8 4.5 4 4.5v13c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-13c-4 0-6.5.5-8 2z" />
-          <path strokeLinecap="round" d="M12 6.5v13" />
-        </svg>
-      ),
-      href: '/blog',
-    },
-    {
       key: 'profile',
       label: t('header_profile', 'Профиль'),
       icon: (
@@ -164,7 +153,7 @@ export default function DotMenu({
     {
       key: 'currency',
       label: t('currency', 'Валюта'),
-      icon: <CurrencyIcon code={currency} />,
+      icon: <CurrencySign code={currency} />,
       isCurrency: true,
       onClick: () => setShowCurrencyChoice((value) => !value),
     },
@@ -221,11 +210,7 @@ export default function DotMenu({
 
   const getItemOffset = (index: number) => {
     const isLastItem = index === menuItems.length - 1
-    // Ряд не помещается левее кнопки — последний пункт уходит вниз.
-    const rowOverflows = isClient && (
-      window.innerWidth < 360 || (menuCenter !== null && menuCenter.x - ITEM_GAP * menuItems.length < ITEM_SIZE / 2 + 8)
-    )
-    if (rowOverflows && isLastItem) {
+    if (isClient && window.innerWidth < 360 && isLastItem) {
       return { x: -ITEM_GAP, y: 48 }
     }
     return { x: -ITEM_GAP * (index + 1), y: 0 }
@@ -309,7 +294,7 @@ export default function DotMenu({
                   className={`${styles.currencyButton} ${currency === code ? styles.currencyButtonActive : ''}`}
                   role="menuitem"
                 >
-                  <CurrencyIcon code={code} compact />
+                  <CurrencySign code={code} compact />
                   <span>{code}</span>
                 </button>
               ))}
@@ -392,6 +377,15 @@ export function LanguageFlag({ locale }: { locale: string }) {
       </g>
       <circle cx="16" cy="16" r="15" fill="none" stroke="rgba(15, 23, 42, 0.22)" />
     </svg>
+  )
+}
+
+/** Знак валюты без флага (₽, $, €…) — в мобильном меню; цвет — как у остальных иконок. */
+export function CurrencySign({ code, compact = false }: { code: string; compact?: boolean }) {
+  return (
+    <span className={`${styles.currencySign} ${compact ? styles.currencySignCompact : ''}`} aria-hidden="true">
+      {getCurrencySymbol(code).slice(0, 1)}
+    </span>
   )
 }
 
