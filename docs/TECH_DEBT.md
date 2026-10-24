@@ -441,7 +441,7 @@ PR слишком рискованно.
 
 ### TD-016 — Instagram: 429 и пароль в открытом виде
 
-- **Статус:** `[~]` код готов 24.10.2026 (PR fix/security-td016-td018): вход только по cookie `sessionid`,
+- **Статус:** `[x]` закрыто 24.10.2026, релиз 2d5e88f (PR #176): вход только по cookie `sessionid`,
   поле «Пароль парсера» удалено, пароли стёрты миграцией `scrapers.0027`; на 429 и длинный лимит
   Instaloader — `InstagramRateLimitedError`, задача Instagram встаёт на паузу, общий `run_scraper_task`
   повторяет через 30 мин ([INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md)). Пустой столбец
@@ -462,11 +462,15 @@ PR слишком рискованно.
 
 ### TD-018 — Нет CSP, JWT в cookies, доступных из JS
 
-- **Статус:** `[~]` код готов 24.10.2026 (PR fix/security-td016-td018): refresh — HttpOnly cookie
+- **Статус:** `[~]` на проде с 24.10.2026, релиз 2d5e88f (PR #176): refresh — HttpOnly cookie
   `refresh_token` от backend (вход, Telegram, Google/VK, обновление, выход), фронт его не читает; старые
   сессии переносятся при первом заходе; CSP — `Content-Security-Policy-Report-Only` с приёмником
   `/api/csp-report/` ([SECURITY_CSP.md](SECURITY_CSP.md)). Enforce — TD-033; access (60 мин) пока в
   JS-cookie.
+- Прод 24.10.2026 без учётных данных: refresh без cookie и с мусорной cookie → 401 и удаление cookie
+  (`Path=/api/auth/`), `/api/auth/logout/` и `/api/users/logout/` → 200, неверный пароль → 400 без cookie,
+  виджеты Telegram и Google на `/auth` загружаются. Вход реальным аккаунтом, тихое обновление и выход в
+  браузере на проде — проверить владельцу (агенту вводить пароли на проде нельзя).
 - `access` и `refresh` пишутся через `js-cookie`
   (`frontend/src/context/AuthContext.tsx`) без `HttpOnly`; строгого CSP нет
   (ROADMAP P1.8). Любой XSS = кража сессии. План: CSP report-only → enforcement,
@@ -628,7 +632,10 @@ PR слишком рискованно.
 
 ### TD-033 — CSP: из Report-Only в enforce
 
-- **Статус:** `[ ]` открыто, P2. После недели отчётов `/api/csp-report/` (от релиза TD-018).
+- **Статус:** `[ ]` открыто, P2. После недели отчётов `/api/csp-report/` (с 24.10.2026, не раньше 31.10).
+- **Блокер enforce:** Telegram-виджет на `/auth` вызывает `eval` для `data-onauth` — перевести на
+  `data-auth-url` или разрешить `'unsafe-eval'` только для `/auth` ([SECURITY_CSP.md](SECURITY_CSP.md),
+  «Проверка на проде»).
 - Порядок — [SECURITY_CSP.md](SECURITY_CSP.md), «Как перейти в enforce»: разобрать лог `csp`, вручную
   пройти ключевые страницы без нарушений, сменить заголовок на `Content-Security-Policy`. Затем
   отдельно: nonce вместо `'unsafe-inline'`, access-токен не в JS-cookie.

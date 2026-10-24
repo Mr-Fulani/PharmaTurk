@@ -44,6 +44,9 @@ test('report-only CSP keeps analytics, Telegram login, CDN media and video embed
   assert.match(directive('script-src'), /https:\/\/telegram\.org/)
   assert.match(directive('script-src'), /https:\/\/static\.cloudflareinsights\.com/)
   assert.match(directive('frame-src'), /https:\/\/oauth\.telegram\.org/)
+  // Прод 24.10.2026: VK ID на /auth ходил на id.vk.ru — отчёты frame-src и connect-src.
+  assert.match(directive('frame-src'), /https:\/\/id\.vk\.ru/)
+  assert.match(directive('connect-src'), /https:\/\/id\.vk\.ru/)
   assert.match(directive('frame-src'), /https:\/\/www\.youtube-nocookie\.com/)
   assert.match(directive('media-src'), /https:\/\/cdn\.mudaroba\.com/)
   assert.match(directive('connect-src'), /https:\/\/\*\.google-analytics\.com/)
