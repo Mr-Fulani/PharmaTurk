@@ -351,3 +351,42 @@ def test_remove_by_favorite_id_deletes_exact_row_despite_product_id_collisions()
 
     assert response.status_code == status.HTTP_200_OK
     assert not Favorite.objects.filter(pk=favorite.pk).exists()
+
+
+@pytest.mark.django_db
+def test_favorites_list_query_count_does_not_grow_with_items(monkeypatch):
+    """50 лекарств в избранном: было ~1250 запросов и 8,8 с на проде (24.10.2026)."""
+    from django.contrib.auth import get_user_model
+    from django.test.utils import CaptureQueriesContext
+
+    from apps.catalog.models import Category
+
+    monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
+    user = get_user_model().objects.create_user(
+        username=f"fav-{uuid.uuid4().hex[:8]}", email=f"fav-{uuid.uuid4().hex[:8]}@example.com", password="x" * 12
+    )
+    category = Category.objects.create(name="Обезболивающие", slug=f"fav-pain-{uuid.uuid4().hex[:6]}")
+    product_ct = ContentType.objects.get_for_model(Product)
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    def add_medicines(count):
+        for _ in range(count):
+            medicine = MedicineProduct.objects.create(
+                name="FAV MED", slug=f"fav-med-{uuid.uuid4().hex}", category=category, price=10, is_active=True,
+            )
+            medicine.refresh_from_db()
+            Favorite.objects.create(user=user, content_type=product_ct, object_id=medicine.base_product_id)
+
+    def queries():
+        with CaptureQueriesContext(connection) as ctx:
+            response = client.get("/api/catalog/favorites")
+        assert response.status_code == 200
+        return len(ctx), len(response.json())
+
+    add_medicines(2)
+    few, rows_few = queries()
+    add_medicines(6)
+    many, rows_many = queries()
+    assert (rows_few, rows_many) == (2, 8)
+    assert many - few <= 2, (few, many)
