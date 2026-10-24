@@ -3568,7 +3568,14 @@ class FavoriteViewSet(viewsets.ViewSet):
             )
         else:
             favorites = Favorite.objects.none()
-        
+
+        # Связи товаров — пачкой: без этого полный ProductSerializer на 50 лекарств
+        # делал ~1250 запросов и 8,8 с (шапка запрашивает список на каждой странице).
+        favorites = list(favorites)
+        products = [favorite.product for favorite in favorites if isinstance(favorite.product, Product)]
+        ProductViewSet._prefetch_card_relations(products)
+        prefetch_related_objects(products, 'category__category_type', 'brand', 'price_info')
+
         serializer = FavoriteSerializer(favorites, many=True, context={'request': request})
         rows = _dedupe_favorites_serialized_rows(serializer.data)
         attach_review_aggregates([

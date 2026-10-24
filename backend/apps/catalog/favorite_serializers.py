@@ -91,6 +91,11 @@ class FavoriteSerializer(serializers.ModelSerializer):
 
         product = obj.product
         request = self.context.get("request")
+        # Один контекст на весь список: батч-кэши категорий и брендов (CategorySerializer)
+        # считаются раз на список, а не на товар; счётчики товаров в карточке не нужны.
+        product_context = self.context.setdefault(
+            "_favorite_product_context", {"request": request, "hide_counts": True}
+        )
 
         def _pin_base_product_fields(data: dict, base_pk: int) -> dict:
             """Keep favorite IDs aligned with the canonical Product object."""
@@ -102,53 +107,53 @@ class FavoriteSerializer(serializers.ModelSerializer):
         if isinstance(product, ClothingProduct):
             product_type = "clothing"
             product_data = ClothingProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
         elif isinstance(product, ShoeProduct):
             product_type = "shoes"
             product_data = ShoeProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
         elif isinstance(product, ElectronicsProduct):
             product_type = "electronics"
             product_data = ElectronicsProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
         elif isinstance(product, FurnitureProduct):
             product_type = "furniture"
             product_data = FurnitureProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
         elif isinstance(product, JewelryProduct):
             product_type = "jewelry"
             product_data = JewelryProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
         elif isinstance(product, BookProduct):
             product_type = "books"
             product_data = BookProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
             if product.base_product_id:
                 _pin_base_product_fields(product_data, product.base_product_id)
         elif isinstance(product, HeadwearProduct):
             product_type = "headwear"
             product_data = HeadwearProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
             if product.base_product_id:
                 _pin_base_product_fields(product_data, product.base_product_id)
         elif isinstance(product, UnderwearProduct):
             product_type = "underwear"
             product_data = UnderwearProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
             if product.base_product_id:
                 _pin_base_product_fields(product_data, product.base_product_id)
         elif isinstance(product, IslamicClothingProduct):
             product_type = "islamic_clothing"
             product_data = IslamicClothingProductSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
             if product.base_product_id:
                 _pin_base_product_fields(product_data, product.base_product_id)
@@ -189,32 +194,32 @@ class FavoriteSerializer(serializers.ModelSerializer):
                     book_item = None
             if book_item is not None:
                 product_data = BookProductSerializer(
-                    book_item, context={"request": request}
+                    book_item, context=product_context
                 ).data
                 _pin_base_product_fields(product_data, product.id)
             elif headwear_item is not None:
                 product_data = HeadwearProductSerializer(
-                    headwear_item, context={"request": request}
+                    headwear_item, context=product_context
                 ).data
                 _pin_base_product_fields(product_data, product.id)
             elif underwear_item is not None:
                 product_data = UnderwearProductSerializer(
-                    underwear_item, context={"request": request}
+                    underwear_item, context=product_context
                 ).data
                 _pin_base_product_fields(product_data, product.id)
             elif islamic_item is not None:
                 product_data = IslamicClothingProductSerializer(
-                    islamic_item, context={"request": request}
+                    islamic_item, context=product_context
                 ).data
                 _pin_base_product_fields(product_data, product.id)
             else:
                 product_data = ProductSerializer(
-                    product, context={"request": request}
+                    product, context=product_context
                 ).data
         elif isinstance(product, Service):
             product_type = "uslugi"
             product_data = ServiceSerializer(
-                product, context={"request": request}
+                product, context=product_context
             ).data
         else:
             base_product_id = getattr(product, "base_product_id", None)
