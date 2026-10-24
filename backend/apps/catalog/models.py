@@ -750,6 +750,8 @@ class CategoryCollection(models.Model):
             condition &= Q(dosage_form__in=forms)
         for prefix in _split_csv(self.exclude_atc_prefixes):
             condition &= ~Q(atc_code__startswith=prefix.upper())
+        # Запрещённые к ввозу в РФ/СНГ в подборки не попадают (TD-024).
+        condition &= Q(import_restricted_countries="")
         return condition
 
 
@@ -5233,6 +5235,16 @@ class MedicineProduct(AbstractDomainProduct):
     special_notes = models.TextField(
         _("Особые сведения"), blank=True,
         help_text=_("Дополнительные предупреждения (ОЗЕЛ БИЛГИЛЕР)."),
+    )
+    # Контроль ввоза (TD-024): по действующему веществу и справочнику контролируемых веществ
+    # (apps/catalog/controlled_substances.py), пересчитывается при сохранении.
+    import_restricted_countries = models.CharField(
+        _("Ввоз ограничен"), max_length=50, blank=True, default="", db_index=True,
+        help_text=_("Страны, куда ввоз вещества запрещён или ограничен: RU, KZ, UZ. Заполняется автоматически."),
+    )
+    import_restriction_note = models.TextField(
+        _("Ограничение ввоза: основание"), blank=True, default="",
+        help_text=_("Вещество и список по каждой стране. Заполняется автоматически."),
     )
     nfc_code = models.CharField(
         _("NFC Код"), max_length=100, blank=True,

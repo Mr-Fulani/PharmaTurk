@@ -30,6 +30,7 @@ docker exec mudaroba-backend-1 poetry run python manage.py <команда> [ф�
 | Документ | Команды |
 | --- | --- |
 | [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) | `repair_broken_media`, `assign_manufacturer_brands`, `clear_heuristic_old_prices`, `repair_lcw_names`, `retire_stale_domain_records` |
+| [CONTROLLED_SUBSTANCES.md](CONTROLLED_SUBSTANCES.md) | `refresh_import_restrictions` |
 | [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | `audit_source_offer_rollout`, `discover_supplement_stock_offers` |
 | [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) | `backfill_furniture_attributes` |
 | [AI_GUIDE.md](../AI_GUIDE.md) | `ai_enqueue`, `retry_ai_titles`, `close_resolved_ai_moderation`, `medicine_paragraph_audit`, `medicine_paragraph_batch`, `medicine_reference_coverage`, `medicine_source_names`, `translate_medicine_inn`, `medicine_refresh_code_fields`, `benchmark_ai` |

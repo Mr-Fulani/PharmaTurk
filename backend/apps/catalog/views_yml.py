@@ -142,6 +142,7 @@ class YMLExportView(APIView):
             products = (
                 Product.objects
                 .filter(category_id__in=all_cat_ids, is_active=True)
+                .exclude(medicine_item__import_restricted_countries__gt="")  # не рекламируем (TD-024)
                 .select_related("brand", "category")
                 .prefetch_related(*product_prefetches)
                 .distinct()
@@ -151,6 +152,7 @@ class YMLExportView(APIView):
             products = (
                 Product.objects
                 .filter(is_active=True)
+                .exclude(medicine_item__import_restricted_countries__gt="")  # не рекламируем (TD-024)
                 .select_related("brand", "category")
                 .prefetch_related(*product_prefetches)
                 .distinct()

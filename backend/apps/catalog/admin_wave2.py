@@ -224,6 +224,28 @@ class MedicineStubStatusFilter(admin.SimpleListFilter):
         return queryset
 
 
+class ImportRestrictionFilter(admin.SimpleListFilter):
+    """«Запрещённые к ввозу» по стране (TD-024)."""
+
+    title = _("Запрещённые к ввозу")
+    parameter_name = "import_restricted"
+
+    def lookups(self, request, model_admin):
+        from apps.catalog.controlled_substances import COUNTRY_NAMES
+
+        return [("any", _("Любая страна")), *COUNTRY_NAMES.items(), ("no", _("Не ограничен"))]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "any":
+            return queryset.exclude(import_restricted_countries="")
+        if value == "no":
+            return queryset.filter(import_restricted_countries="")
+        if value:
+            return queryset.filter(import_restricted_countries__contains=value)
+        return queryset
+
+
 @admin.register(MedicineProduct)
 class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "medicines"
@@ -239,15 +261,17 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
             'barcode', 'atc_code', 'nfc_code', 'administration_route',
             'shelf_life', 'storage_conditions',
             'sgk_status', 'sgk_equivalent_code', 'sgk_active_ingredient_code', 'sgk_public_no', 'special_notes',
+            'import_restriction_banner',
         ),
     })
     list_display = [
-        'name', 'stub_status', 'get_ai_status', 'get_media_enrichment_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
+        'name', 'import_restriction_badge', 'stub_status', 'get_ai_status', 'get_media_enrichment_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
         'prescription_required', 'price', 'old_price',
         'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        MedicineStubStatusFilter, AIStatusFilter, MediaEnrichmentStatusFilter, 'category', 'is_available', 'prescription_required',
+        ImportRestrictionFilter, MedicineStubStatusFilter, AIStatusFilter, MediaEnrichmentStatusFilter, 'category',
+        'is_available', 'prescription_required',
         'dosage_form', 'is_new', 'created_at',
     ]
     inlines = [
@@ -270,6 +294,31 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
             'verbose_name_plural': _('Аналоги (из Eşdeğeri)'),
         }),
     ]
+
+    def get_readonly_fields(self, request, obj=None):
+        return [*super().get_readonly_fields(request, obj), 'import_restriction_banner']
+
+    @admin.display(description=_('Ввоз'), ordering='import_restricted_countries')
+    def import_restriction_badge(self, obj):
+        if not obj.import_restricted_countries:
+            return ''
+        return format_html(
+            '<span title="{}" style="display:inline-block;padding:2px 6px;border-radius:6px;'
+            'background:#f8d7da;color:#842029;font-weight:700;">Запрещён к ввозу: {}</span>',
+            obj.import_restriction_note, obj.import_restricted_countries.replace(',', ', '),
+        )
+
+    @admin.display(description=_('Ограничение ввоза'))
+    def import_restriction_banner(self, obj):
+        if not obj or not obj.import_restricted_countries:
+            return _('Нет: вещество не найдено в списках контролируемых (docs/CONTROLLED_SUBSTANCES.md).')
+        return format_html(
+            '<div style="padding:10px 14px;border-radius:8px;background:#f8d7da;color:#842029;font-weight:600;">'
+            '⛔ Запрещён или ограничен к ввозу: {}<br><span style="font-weight:400;white-space:pre-line">{}</span><br>'
+            '<span style="font-weight:400">Не продвигать; заявку с доставкой в эти страны — только решением менеджера.'
+            '</span></div>',
+            obj.import_restricted_countries.replace(',', ', '), obj.import_restriction_note,
+        )
 
     @admin.display(description=_('Тип'), ordering='external_data')
     def stub_status(self, obj):
