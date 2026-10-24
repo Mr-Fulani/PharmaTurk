@@ -8,6 +8,8 @@
   - source: str — откуда взят объект (отладка): generic_product, domain_clothing, ...
   - related_links: list[{name, path}] — до 8 товаров той же категории для SSR-перелинковки
     (см. build_related_links); у услуг пустой.
+  - drug_group: {slug, name, latin} | None — страница препарата (/drugs/<slug>) для
+    медикамента, форма которого на ней есть (services/medicine_groups.py).
 
 Порядок поиска (зафиксирован; при смене — обновить тесты и комментарий):
   1) Доменные ViewSet в порядке, согласованном с urls.py. Важно: раньше generic Product
@@ -35,6 +37,8 @@ from django.http import Http404, HttpRequest
 from rest_framework.request import Request as DrfRequest
 from rest_framework.response import Response
 from rest_framework import status
+
+from apps.catalog.services.medicine_groups import group_link_for_medicine
 
 # Кэш slug → source_key (какой ViewSet отдал товар). Только положительные
 # результаты; при смене типа кэш протухает по TTL, а до того отрабатывает
@@ -382,6 +386,11 @@ def build_resolve_response(request: HttpRequest | DrfRequest, slug: str) -> Resp
             []
             if product_type == "uslugi"
             else build_related_links(str(slug_for_url), getattr(request, "LANGUAGE_CODE", "ru") or "ru")
+        ),
+        "drug_group": (
+            group_link_for_medicine(payload, getattr(request, "LANGUAGE_CODE", "ru") or "ru")
+            if product_type == "medicines"
+            else None
         ),
     }
     return Response(body, status=status.HTTP_200_OK)

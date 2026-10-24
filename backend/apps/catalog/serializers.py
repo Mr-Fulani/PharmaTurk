@@ -10,7 +10,7 @@ from rest_framework import serializers
 
 logger = logging.getLogger(__name__)
 from .models import (
-    Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, PriceHistory,
+    Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, MedicineGroup, MedicineGroupTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, PriceHistory,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
@@ -814,6 +814,29 @@ class CategoryCollectionDetailSerializer(CategoryCollectionSerializer):
     """Подборка для её страницы: плюс H1, title, description и SEO-текст по языкам."""
 
     translations = CategoryCollectionTranslationSerializer(many=True, read_only=True)
+
+
+class MedicineGroupTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MedicineGroupTranslation
+        fields = [
+            'locale', 'name', 'active_ingredient', 'indications', 'usage_summary',
+            'h1', 'meta_title', 'meta_description', 'seo_text',
+        ]
+
+
+class MedicineGroupDetailSerializer(serializers.ModelSerializer):
+    """Страница препарата: бренд латиницей, тексты по языкам; формы — /medicines/products?drug_group=."""
+
+    translations = MedicineGroupTranslationSerializer(many=True, read_only=True)
+    forms_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MedicineGroup
+        fields = ['slug', 'name', 'updated_at', 'forms_count', 'translations']
+
+    def get_forms_count(self, obj):
+        return len(self.context.get('member_ids') or [])
 
 
 class BrandSerializer(serializers.ModelSerializer):

@@ -777,6 +777,85 @@ class CategoryCollectionTranslation(CategoryLandingSeoMixin, models.Model):
         return f"{self.collection.name} ({self.get_locale_display()})"
 
 
+class MedicineGroup(models.Model):
+    """Препарат: бренд и все его формы и дозировки на странице /drugs/<slug>.
+
+    Формы выбираются правилом, а не списком: название медикамента начинается с
+    бренда (или одного из начал через запятую), за которым идёт пробел, запятая
+    или скобка. AI-название тоже начинается с бренда латиницей («MAJEZIK 100 мг,
+    таблетки»), поэтому правило работает и до, и после обработки. Препараты,
+    которые нельзя продвигать (medicine_restrictions), на страницу не попадают.
+    """
+
+    slug = models.SlugField(_("Slug"), max_length=200, unique=True)
+    name = models.CharField(_("Бренд латиницей"), max_length=200, help_text=_("Как на упаковке: MAJEZIK."))
+    name_prefixes = models.CharField(
+        _("Начала названий"), max_length=500, blank=True, default="",
+        help_text=_("Через запятую, без учёта регистра. Пусто — бренд латиницей."),
+    )
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Препарат (страница бренда)")
+        verbose_name_plural = _("Препараты (страницы брендов)")
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def prefixes(self) -> list[str]:
+        return [prefix.upper() for prefix in (_split_csv(self.name_prefixes) or [self.name])]
+
+    def matches_name(self, name: str) -> bool:
+        """То же правило, что medicine_filter, для одного названия."""
+        upper = str(name or "").strip().upper()
+        return any(
+            upper == prefix or (upper.startswith(prefix) and upper[len(prefix)] in " ,(")
+            for prefix in self.prefixes()
+        )
+
+    def medicine_filter(self) -> Q:
+        condition = Q(pk__in=[])
+        for prefix in self.prefixes():
+            condition |= Q(name__iexact=prefix)
+            for separator in (" ", ",", "("):
+                condition |= Q(name__istartswith=prefix + separator)
+        return condition
+
+
+class MedicineGroupTranslation(CategoryLandingSeoMixin, models.Model):
+    """Тексты страницы препарата на одном языке. Пустые H1/title/description — шаблон фронта."""
+
+    group = models.ForeignKey(
+        MedicineGroup, on_delete=models.CASCADE, related_name="translations", verbose_name=_("Препарат"),
+    )
+    locale = models.CharField(
+        _("Язык"), max_length=10, choices=CategoryTranslation.LOCALE_CHOICES, default="ru", db_index=True,
+    )
+    name = models.CharField(_("Название"), max_length=200, help_text=_("Кириллицей для ru: Мажезик."))
+    active_ingredient = models.CharField(_("Действующее вещество"), max_length=300, blank=True, default="")
+    indications = models.TextField(
+        _("От чего помогает"), blank=True, default="",
+        help_text=_("Кратко по инструкциям производителя. Абзацы через пустую строку."),
+    )
+    usage_summary = models.TextField(
+        _("Как применять — кратко"), blank=True, default="",
+        help_text=_("Без доз: подробности — в инструкции каждой формы. Абзацы через пустую строку."),
+    )
+
+    class Meta:
+        verbose_name = _("Перевод препарата")
+        verbose_name_plural = _("Переводы препаратов")
+        unique_together = [["group", "locale"]]
+        ordering = ["group", "locale"]
+
+    def __str__(self):
+        return f"{self.group.name} ({self.get_locale_display()})"
+
+
 class CategoryMedicines(Category):
     class Meta:
         proxy = True

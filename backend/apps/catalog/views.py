@@ -69,7 +69,7 @@ def _get_public_variant(variant_model, slug):
     )
 
 from .models import (
-    Category, CategoryCollection, Brand, Product, PriceHistory, Favorite, Author,
+    Category, CategoryCollection, MedicineGroup, Brand, Product, PriceHistory, Favorite, Author,
     ProductAttributeValue,
     ClothingProduct, ClothingVariant,
     ShoeProduct, ShoeVariant,
@@ -100,6 +100,7 @@ from .serializers import (
     CategorySerializer,
     CategoryCollectionSerializer,
     CategoryCollectionDetailSerializer,
+    MedicineGroupDetailSerializer,
     BrandSerializer,
     ProductSerializer,
     ProductCardSerializer,
@@ -1056,6 +1057,31 @@ class CategoryCollectionViewSet(viewsets.ReadOnlyModelViewSet):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class MedicineGroupViewSet(viewsets.GenericViewSet):
+    """Препарат: бренд и все его формы (/drugs/<slug> на сайте).
+
+    Только карточка по slug. 404 — и у неизвестного slug, и у препарата без форм на
+    витрине (все формы сняты или запрещены к продвижению): пустая страница — soft-404.
+    Формы отдаёт /api/catalog/medicines/products?drug_group=<slug>.
+    """
+
+    permission_classes = [AllowAny]
+    lookup_field = 'slug'
+    serializer_class = MedicineGroupDetailSerializer
+    queryset = MedicineGroup.objects.filter(is_active=True).prefetch_related('translations')
+
+    @extend_schema(summary="Препарат: бренд и тексты страницы")
+    def retrieve(self, request, *args, **kwargs):
+        from apps.catalog.services.medicine_groups import visible_member_ids
+
+        group = self.get_object()
+        member_ids = visible_member_ids(group)
+        if not member_ids:
+            raise Http404
+        serializer = self.get_serializer(group, context={**self.get_serializer_context(), 'member_ids': member_ids})
+        return Response(serializer.data)
 
 
 class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
@@ -4814,6 +4840,13 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
                 queryset = queryset.filter(active_ingredient__regex=r'^[0-9]')
             else:
                 queryset = queryset.filter(active_ingredient__istartswith=active_ingredient_starts_with[:1])
+        drug_group_slug = self.request.query_params.get('drug_group', '').strip()
+        if drug_group_slug:
+            from apps.catalog.services.medicine_groups import visible_member_ids
+
+            group = MedicineGroup.objects.filter(slug=drug_group_slug, is_active=True).first()
+            # Неизвестный препарат не должен отдавать весь каталог медикаментов.
+            queryset = queryset.filter(id__in=visible_member_ids(group)) if group else queryset.none()
         collection_slug = self.request.query_params.get('collection', '').strip()
         if collection_slug:
             collection = (
@@ -4861,6 +4894,7 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
             OpenApiParameter(name="name_starts_with", type=str, required=False, description="Первая буква названия (или '0-9')"),
             OpenApiParameter(name="active_ingredient_starts_with", type=str, required=False, description="Первая буква действующего вещества (или '0-9')"),
             OpenApiParameter(name="collection", type=str, required=False, description="Slug подборки категории"),
+            OpenApiParameter(name="drug_group", type=str, required=False, description="Slug препарата (страница /drugs/<slug>)"),
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
         ],
@@ -5593,6 +5627,18 @@ class SitemapEntriesView(_APIView):
             })
         return {'count': len(rows), 'results': rows}
 
+    @staticmethod
+    def _drug_group_entries():
+        """Препараты, у которых есть форма на витрине: /drugs/<slug>."""
+        from apps.catalog.services.medicine_groups import visible_member_ids
+
+        rows = [
+            {'slug': group.slug, 'updated_at': group.updated_at.isoformat() if group.updated_at else None}
+            for group in MedicineGroup.objects.filter(is_active=True).order_by('id')
+            if visible_member_ids(group)
+        ]
+        return {'count': len(rows), 'results': rows}
+
     @extend_schema(
         summary="Получить справочные записи для sitemap.xml",
         parameters=[
@@ -5607,6 +5653,8 @@ class SitemapEntriesView(_APIView):
     )
     def get(self, request):
         kind = request.query_params.get('kind', '').strip()
+        if kind == 'drug_groups':
+            return Response(self._drug_group_entries())
         if kind == 'collections':
             # Подборок единицы — одна страница без пагинации.
             return Response(self._collection_entries())

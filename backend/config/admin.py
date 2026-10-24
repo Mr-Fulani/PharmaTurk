@@ -42,6 +42,7 @@ class MudarobaAdminSite(AdminSite):
                 "CategoryTableware",
                 "CategoryType",
                 "CategoryUnderwear",
+                "MedicineGroup",
                 "ProductAuthor",
             }
         ),
