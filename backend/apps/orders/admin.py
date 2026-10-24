@@ -6,7 +6,7 @@ from django.http import HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
 from .models import (
@@ -269,14 +269,20 @@ class OrderItemInline(admin.TabularInline):
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Админка для заказов."""
-    list_display = ('number', 'user', 'status', 'total_amount', 'currency', 'contact_phone', 'contact_channel', 'payment_method', 'created_at')
+    list_display = (
+        'number', 'import_restriction_badge', 'user', 'status', 'total_amount', 'currency', 'contact_phone',
+        'contact_channel', 'payment_method', 'created_at',
+    )
     list_filter = ('status', 'currency', 'payment_method', 'payment_status', 'promo_code', 'created_at')
     search_fields = ('number', 'user__email', 'contact_name', 'contact_phone', 'promo_code__code')
     ordering = ('-created_at',)
-    readonly_fields = ('number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url')
+    readonly_fields = (
+        'number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url',
+        'import_restriction_banner',
+    )
     
     fieldsets = (
-        (None, {'fields': ('number', 'user', 'status')}),
+        (None, {'fields': ('number', 'import_restriction_banner', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
         (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method', 'tracking_number', 'tracking_url')}),
@@ -286,6 +292,40 @@ class OrderAdmin(admin.ModelAdmin):
     )
     
     inlines = [OrderItemInline]
+
+    @staticmethod
+    def _restricted_items(obj):
+        """Позиции с лекарствами, запрещёнными к ввозу в РФ/СНГ (TD-024): доставку решает менеджер."""
+        return [
+            item for item in obj.items.select_related('product__medicine_item')
+            if item.product_id and getattr(getattr(item.product, 'medicine_item', None), 'import_restricted_countries', '')
+        ]
+
+    @admin.display(description=_('Ввоз'))
+    def import_restriction_badge(self, obj):
+        items = self._restricted_items(obj)
+        if not items:
+            return ''
+        return format_html(
+            '<span style="padding:2px 6px;border-radius:6px;background:#f8d7da;color:#842029;font-weight:700;">'
+            '⛔ {} поз.</span>', len(items),
+        )
+
+    @admin.display(description=_('Ограничение ввоза'))
+    def import_restriction_banner(self, obj):
+        items = self._restricted_items(obj) if obj and obj.pk else []
+        if not items:
+            return '—'
+        rows = format_html_join(
+            '', '<li>{} — {}</li>',
+            ((item.product_name, item.product.medicine_item.import_restricted_countries.replace(',', ', ')) for item in items),
+        )
+        return format_html(
+            '<div style="padding:10px 14px;border-radius:8px;background:#f8d7da;color:#842029;">'
+            '<b>⛔ В заявке препараты, запрещённые или ограниченные к ввозу.</b> Проверьте страну доставки: '
+            'в страну из списка не отправлять без решения ответственного.<ul style="margin:6px 0 0 18px">{}</ul></div>',
+            rows,
+        )
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)

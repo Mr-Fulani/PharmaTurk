@@ -80,6 +80,7 @@
 - [MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md](MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md) — сдвинутые переводы в памяти абзацев инструкций: правила без LLM, цифры, `medicine_paragraph_audit` и порядок действий на проде;
 - [MEDICINE_TRANSLATION_KNOWLEDGE_BASE.md](MEDICINE_TRANSLATION_KNOWLEDGE_BASE.md) — база переводов инструкций TR/RU/EN (память, словарь веществ, стандартные фразы, глоссарий), проверка памяти агентами Haiku 23.10.2026, словари МНН и брендов и замена строк на сайте 24.10.2026 и как базой пользуются новые лекарства;
 - [SEO_MEDICINES.md](SEO_MEDICINES.md) — SEO карточек лекарств кодом: правила, из чего собирается, как менять надёжно;
+- [CONTROLLED_SUBSTANCES.md](CONTROLLED_SUBSTANCES.md) — препараты, запрещённые или ограниченные к ввозу в РФ, KZ, UZ: справочник, отметка, админка, что проверить юристу;
 - [AI_MODULE_OVERVIEW.md](../AI_MODULE_OVERVIEW.md) — состав AI-модуля;
 - [AI_TEMPLATES.md](../AI_TEMPLATES.md) — AI-шаблоны;
 - [AI_TEST_COMMANDS.md](../AI_TEST_COMMANDS.md) и [AI_QUICK_TEST.md](../AI_QUICK_TEST.md) — специализированные проверки;
