@@ -441,7 +441,11 @@ PR слишком рискованно.
 
 ### TD-016 — Instagram: 429 и пароль в открытом виде
 
-- **Статус:** `[ ]` открыто, P2.
+- **Статус:** `[~]` код готов 24.10.2026 (PR fix/security-td016-td018): вход только по cookie `sessionid`,
+  поле «Пароль парсера» удалено, пароли стёрты миграцией `scrapers.0027`; на 429 и длинный лимит
+  Instaloader — `InstagramRateLimitedError`, задача Instagram встаёт на паузу, общий `run_scraper_task`
+  повторяет через 30 мин ([INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md)). Пустой столбец
+  `scraper_password` удалить в TD-034.
 - На 429 instaloader спит внутри задачи до мягкого лимита и держит воркер; ошибка
   не превращается в «источник недоступен».
 - `ScraperConfig.scraper_password` — обычный `CharField`: пароль Instagram лежит в
@@ -458,7 +462,11 @@ PR слишком рискованно.
 
 ### TD-018 — Нет CSP, JWT в cookies, доступных из JS
 
-- **Статус:** `[ ]` открыто, P2.
+- **Статус:** `[~]` код готов 24.10.2026 (PR fix/security-td016-td018): refresh — HttpOnly cookie
+  `refresh_token` от backend (вход, Telegram, Google/VK, обновление, выход), фронт его не читает; старые
+  сессии переносятся при первом заходе; CSP — `Content-Security-Policy-Report-Only` с приёмником
+  `/api/csp-report/` ([SECURITY_CSP.md](SECURITY_CSP.md)). Enforce — TD-033; access (60 мин) пока в
+  JS-cookie.
 - `access` и `refresh` пишутся через `js-cookie`
   (`frontend/src/context/AuthContext.tsx`) без `HttpOnly`; строгого CSP нет
   (ROADMAP P1.8). Любой XSS = кража сессии. План: CSP report-only → enforcement,
@@ -617,6 +625,20 @@ PR слишком рискованно.
   партиями: пилот 50 → исправления кодом → следующая партия; запускает владелец
   ([AI_RUNS_ADMIN_GUIDE.md](AI_RUNS_ADMIN_GUIDE.md)). Пилот 5 (24.10.2026) — 50 лекарств в «Избранном»
   владельца.
+
+### TD-033 — CSP: из Report-Only в enforce
+
+- **Статус:** `[ ]` открыто, P2. После недели отчётов `/api/csp-report/` (от релиза TD-018).
+- Порядок — [SECURITY_CSP.md](SECURITY_CSP.md), «Как перейти в enforce»: разобрать лог `csp`, вручную
+  пройти ключевые страницы без нарушений, сменить заголовок на `Content-Security-Policy`. Затем
+  отдельно: nonce вместо `'unsafe-inline'`, access-токен не в JS-cookie.
+
+### TD-034 — Убрать временные мосты TD-016/TD-018
+
+- **Статус:** `[ ]` открыто, P3, не раньше 31.10.2026 (7 дней = срок жизни refresh).
+- Миграция `RemoveField`/`DROP COLUMN scraper_password` (столбец пустой, оставлен ради отката на
+  прошлый образ). Перенос старой JS-cookie `refresh` (`migrateLegacyRefreshCookie` в
+  `frontend/src/lib/api.ts`) — убрать; refresh в теле `/api/auth/jwt/refresh/` оставить для API-клиентов.
 
 ## Правила закрытия
 

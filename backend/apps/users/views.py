@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -25,6 +26,12 @@ import os
 import hmac
 from django.utils.text import slugify
 
+from .auth_cookies import (
+    auth_tokens_payload,
+    clear_refresh_cookie,
+    refresh_from_request,
+    set_refresh_cookie,
+)
 from .models import User, UserAddress, UserSession
 
 logger = logging.getLogger(__name__)
@@ -127,19 +134,18 @@ class UserRegistrationView(APIView):
             user = serializer.save()
             
             # Генерируем JWT токены
-            refresh = RefreshToken.for_user(user)
+            tokens, refresh = auth_tokens_payload(user)
             
             # Создаем сессию
             create_user_session(user, request)
             
-            return Response({
+            response = Response({
                 'user': UserSerializer(user).data,
-                'tokens': {
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh)
-                },
+                'tokens': tokens,
                 'message': _('Пользователь успешно зарегистрирован')
             }, status=status.HTTP_201_CREATED)
+            set_refresh_cookie(response, refresh)
+            return response
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -186,19 +192,18 @@ class UserLoginView(APIView):
                 )
             
             # Генерируем JWT токены
-            refresh = RefreshToken.for_user(user)
+            tokens, refresh = auth_tokens_payload(user)
             
             # Создаем сессию
             create_user_session(user, request)
             
-            return Response({
+            response = Response({
                 'user': UserSerializer(user).data,
-                'tokens': {
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh)
-                },
+                'tokens': tokens,
                 'message': _('Успешный вход')
             })
+            set_refresh_cookie(response, refresh)
+            return response
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -206,40 +211,46 @@ class UserLoginView(APIView):
 class UserLogoutView(APIView):
     """
     Выход пользователя
+
+    Работает и с истёкшим access: refresh-cookie (TD-018) нужно погасить в любом
+    случае. Только JWT — сессия админки не должна требовать CSRF для выхода с сайта.
     """
-    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTSafeAuthentication]
+    permission_classes = [AllowAny]
     
     @extend_schema(
         summary="Выход пользователя",
-        description="Выход из системы и инвалидация токенов",
+        description=(
+            "Выход из системы: refresh из HttpOnly cookie (или из тела у API-клиентов) "
+            "попадает в чёрный список, cookie удаляется."
+        ),
         request=LogoutRequestSerializer,
         responses={
             200: MessageResponseSerializer,
-            400: MessageResponseSerializer,
         }
     )
     def post(self, request):
         """Выход пользователя"""
-        try:
-            # Инвалидируем refresh токен
-            refresh_token = request.data.get('refresh')
-            if refresh_token:
-                token = RefreshToken(refresh_token)
-                token.blacklist()
-            
+        refresh_token = refresh_from_request(request)
+        if refresh_token:
+            try:
+                RefreshToken(refresh_token).blacklist()
+            except TokenError:
+                # Уже просрочен или отозван — выходить всё равно нужно.
+                pass
+
+        if request.user.is_authenticated:
             # Деактивируем сессии пользователя
             UserSession.objects.filter(
                 user=request.user,
                 is_active=True
             ).update(is_active=False)
-            
-            return Response({
-                'message': _('Успешный выход из системы')
-            })
-        except Exception as e:
-            return Response({
-                'message': _('Ошибка при выходе из системы')
-            }, status=status.HTTP_400_BAD_REQUEST)
+
+        response = Response({
+            'message': _('Успешный выход из системы')
+        })
+        clear_refresh_cookie(response)
+        return response
 
 @method_decorator(csrf_exempt, name="dispatch")
 class TelegramWebhookView(APIView):
@@ -407,19 +418,18 @@ class TelegramAuthView(APIView):
             )
         
         # Генерируем JWT токены
-        refresh = RefreshToken.for_user(user)
+        tokens, refresh = auth_tokens_payload(user)
         
         # Создаем сессию
         create_user_session(user, request)
         
-        return Response({
+        response = Response({
             'user': UserSerializer(user, context={'request': request}).data,
-            'tokens': {
-                'access': str(refresh.access_token),
-                'refresh': str(refresh)
-            },
+            'tokens': tokens,
             'message': _('Успешный вход через Telegram')
         })
+        set_refresh_cookie(response, refresh)
+        return response
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -1056,17 +1066,16 @@ class SocialAuthView(APIView):
             )
 
         # Генерируем JWT токены
-        refresh = RefreshToken.for_user(user)
+        tokens, refresh = auth_tokens_payload(user)
         create_user_session(user, request)
 
-        return Response({
+        response = Response({
             'user': UserSerializer(user, context={'request': request}).data,
-            'tokens': {
-                'access': str(refresh.access_token),
-                'refresh': str(refresh)
-            },
+            'tokens': tokens,
             'message': _(f'Успешный вход через {provider_name}')
         })
+        set_refresh_cookie(response, refresh)
+        return response
 
 
 class PublicUserProfileView(APIView):

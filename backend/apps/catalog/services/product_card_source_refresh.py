@@ -477,7 +477,6 @@ class ProductCardSourceRefreshService:
             "max_retries": retries,
             "use_proxy": bool(config and config.use_proxy),
             "username": config.scraper_username if config else "",
-            "password": config.scraper_password if config else "",
         }
         if target.parser_key == "flo" and bool(config and config.use_proxy):
             # Explicitly scopes the paid transport to this demand-driven card-open job.

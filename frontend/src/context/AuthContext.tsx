@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import Cookies from 'js-cookie'
-import api, { getSingleFlight, setPreferredCurrency } from '../lib/api'
+import api, { getSingleFlight, migrateLegacyRefreshCookie, setPreferredCurrency } from '../lib/api'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
 
@@ -30,6 +30,7 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+// Только access: refresh backend кладёт в HttpOnly cookie, JS его не видит (TD-018).
 const AUTH_COOKIE_OPTIONS = {
   sameSite: 'Lax' as const,
   path: '/',
@@ -60,7 +61,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
       return
     }
-    getSingleFlight('/users/profile').then((r) => {
+    // Сессия до TD-018 держит refresh в обычной cookie — переносим её в HttpOnly.
+    migrateLegacyRefreshCookie().then(() => getSingleFlight('/users/profile')).then((r) => {
       const profile = r.data?.[0]
       console.log('AuthContext: profile loaded:', profile ? 'success' : 'failed')
       if (profile) {
@@ -99,7 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.post('/users/login/', { email: loginValue, password })
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, AUTH_COOKIE_OPTIONS)
-      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, AUTH_COOKIE_OPTIONS)
       setUser({
         id: user.id,
         email: user.email,
@@ -124,7 +125,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.post('/users/social-auth/', { provider, access_token: token })
       const { tokens, user: userData } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, AUTH_COOKIE_OPTIONS)
-      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, AUTH_COOKIE_OPTIONS)
       setUser({
         id: userData.id,
         email: userData.email,
@@ -147,7 +147,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.post('/users/telegram/login/', telegramData)
       const { tokens, user: userData } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, AUTH_COOKIE_OPTIONS)
-      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, AUTH_COOKIE_OPTIONS)
       setUser({
         id: userData.id,
         email: userData.email,
@@ -170,7 +169,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.post('/users/register/', { email, username, password, password_confirm: password })
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, AUTH_COOKIE_OPTIONS)
-      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, AUTH_COOKIE_OPTIONS)
       setUser({
         id: user.id,
         email: user.email,
@@ -192,6 +190,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshFavoritesRef.current()
     },
     logout() {
+      // Refresh в HttpOnly cookie гасит только backend (в чёрный список + удаление cookie).
+      // Access берём до удаления: интерцептор читает cookie уже после этого вызова.
+      const access = Cookies.get('access')
+      api.post('/auth/logout/', {}, {
+        headers: access ? { Authorization: `Bearer ${access}` } : undefined,
+      }).catch(() => {})
       Cookies.remove('access', { path: '/' })
       Cookies.remove('refresh', { path: '/' })
       Cookies.remove('currency', { path: '/' })

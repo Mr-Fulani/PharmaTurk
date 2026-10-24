@@ -7,6 +7,7 @@ from django.core.cache import cache
 from apps.catalog.models import Category
 from apps.scrapers.admin import InstagramScraperTaskAdmin
 from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.parsers.instagram import InstagramRateLimitedError
 from apps.scrapers.models import (
     InstagramScraperTask,
     ScraperConfig,
@@ -95,6 +96,27 @@ def test_instagram_celery_task_completes_and_writes_final_log(monkeypatch):
     assert task.posts_processed == 2
     assert "--- Итог ---" in task.log_output
     assert "Товаров найдено: 2" in task.log_output
+
+
+@pytest.mark.django_db
+def test_instagram_rate_limit_pauses_task_instead_of_failing(monkeypatch):
+    # TD-016: 429 — «источник временно недоступен», задачу продолжают позже.
+    category = _category("ratelimit")
+    _config(category)
+    task = _task(category)
+
+    def rate_limited(*args, **kwargs):
+        raise InstagramRateLimitedError()
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", rate_limited)
+
+    result = run_instagram_scraper_task.run(task.id)
+
+    task.refresh_from_db()
+    assert result["status"] == "paused"
+    assert task.status == "paused"
+    assert "429" in task.error_message
+    assert "Пауза:" in task.log_output
 
 
 @pytest.mark.django_db

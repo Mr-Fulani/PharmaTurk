@@ -167,7 +167,6 @@ class ScraperConfigAdmin(admin.ModelAdmin):
                     "headers",
                     "cookies",
                     "scraper_username",
-                    "scraper_password",
                 ],
                 "classes": ["collapse"],
             },

@@ -1,7 +1,10 @@
 """URL-маршруты для публичного API (v1)."""
 from django.urls import path, include, re_path
 
+from apps.users.views import UserLogoutView
+
 from .views import (
+    CspReportView,
     HealthCheckView,
     JWTObtainPairView,
     JWTRefreshView,
@@ -24,6 +27,11 @@ urlpatterns = [
         JWTRefreshView.as_view(),
         name="jwt-refresh",
     ),
+    # Выход под путём refresh-cookie (Path=/api/auth/); /api/users/logout/ — для API-клиентов
+    re_path(r"^auth/logout/?$", UserLogoutView.as_view(), name="auth-logout"),
+
+    # Отчёты Content-Security-Policy-Report-Only (TD-018)
+    re_path(r"^csp-report/?$", CspReportView.as_view(), name="csp-report"),
 
     # Пользователи
     path("users/", include("apps.users.urls")),

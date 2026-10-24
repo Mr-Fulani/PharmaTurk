@@ -247,6 +247,11 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
 нарушения, затем включить enforcement без `unsafe-inline` для пользовательского
 контента.
 
+Статус 24.10.2026 (TD-018): CSP выкатывается в режиме Report-Only с приёмником
+отчётов `/api/csp-report/`, refresh JWT — HttpOnly cookie от backend
+([SECURITY_CSP.md](SECURITY_CSP.md)). Следующие шаги — enforce через неделю
+отчётов, затем nonce вместо `unsafe-inline` (TD-033).
+
 ### P1.9 Медикаменты: каталог, переводы и SEO
 
 Сделано 23–24.10.2026 — в «Завершено в октябре». Открыто:

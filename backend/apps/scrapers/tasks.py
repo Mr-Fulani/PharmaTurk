@@ -19,6 +19,7 @@ from .models import (
     ScrapingSession,
     SiteScraperTask,
 )
+from .parsers.instagram import InstagramRateLimitedError
 from .parsers.registry import get_parser
 from .services import (
     ScraperIntegrationService,
@@ -284,7 +285,6 @@ def _discover_site_categories(scraper_config: ScraperConfig) -> List[Dict[str, s
         max_retries=scraper_config.max_retries,
         use_proxy=scraper_config.use_proxy,
         username=scraper_config.scraper_username,
-        password=scraper_config.scraper_password,
     ) as parser:
         parser.delay_range = (scraper_config.delay_min, scraper_config.delay_max)
         parser.configure_request_identity(
@@ -645,6 +645,20 @@ def run_instagram_scraper_task(
             expected_task_id=celery_task_id,
         )
         return {"status": "cancelled", "message": str(exc)}
+    except InstagramRateLimitedError as exc:
+        # Источник временно недоступен: воркер не ждёт внутри задачи, а уже
+        # сохранённые посты не теряются — «Продолжить» позже.
+        InstagramScraperTask.objects.filter(id=task.id, task_id=celery_task_id).update(
+            status="paused",
+            finished_at=timezone.now(),
+            error_message=str(exc),
+        )
+        _append_instagram_task_log(
+            task.id,
+            f"Пауза: {exc}",
+            expected_task_id=celery_task_id,
+        )
+        return {"status": "paused", "message": str(exc)}
     except SoftTimeLimitExceeded:
         error_msg = (
             "Instagram-задача автоматически поставлена на паузу после достижения "
@@ -1229,7 +1243,9 @@ def run_scraper_task(
             }
         
         if not _category_content_error(e) and self.request.retries < self.max_retries:
-            raise self.retry(exc=e)
+            # 429 Instagram не пройдёт через минуту: повтор — через полчаса.
+            countdown = 1800 if isinstance(e, InstagramRateLimitedError) else None
+            raise self.retry(exc=e, countdown=countdown)
 
         if site_task and site_task.task_type == "site":
             # Весь сайт: категория, упавшая после всех повторов, не обрывает
@@ -1794,7 +1810,6 @@ def run_stub_refresh_task(
             max_retries=scraper_config.max_retries,
             use_proxy=scraper_config.use_proxy,
             username=scraper_config.scraper_username,
-            password=scraper_config.scraper_password,
         ) as parser:
             parser.delay_range = (scraper_config.delay_min, scraper_config.delay_max)
             parser.configure_request_identity(

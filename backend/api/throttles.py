@@ -94,10 +94,23 @@ class CookieConsentSustainedThrottle(TrustedProxyIPRateThrottle):
     rate = "100/day"
 
 
+class CspReportBurstThrottle(TrustedProxyIPRateThrottle):
+    """Отчёты CSP шлёт браузер сам; лимит не даёт засорить логи (TD-018)."""
+
+    scope = "csp_report_burst"
+    rate = "20/min"
+
+
+class CspReportSustainedThrottle(TrustedProxyIPRateThrottle):
+    scope = "csp_report_sustained"
+    rate = "300/day"
+
+
 LOGIN_THROTTLES = [LoginBurstThrottle, LoginSustainedThrottle]
 TOKEN_THROTTLES = [TokenBurstThrottle, TokenSustainedThrottle]
 REGISTRATION_THROTTLES = [RegistrationBurstThrottle, RegistrationSustainedThrottle]
 VERIFICATION_THROTTLES = [VerificationBurstThrottle, VerificationSustainedThrottle]
+CSP_REPORT_THROTTLES = [CspReportBurstThrottle, CspReportSustainedThrottle]
 COOKIE_CONSENT_THROTTLES = [
     CookieConsentBurstThrottle,
     CookieConsentSustainedThrottle,

@@ -918,7 +918,6 @@ class ScraperIntegrationService:
                 max_retries=scraper_config.max_retries,
                 use_proxy=scraper_config.use_proxy,
                 username=scraper_config.scraper_username,
-                password=scraper_config.scraper_password,
             ) as parser:
 
                 # Устанавливаем задержки после создания

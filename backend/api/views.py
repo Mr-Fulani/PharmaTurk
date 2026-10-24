@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 
@@ -11,8 +12,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import BaseParser, MultiPartParser
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenVerifyView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from drf_spectacular.utils import extend_schema
@@ -25,11 +28,19 @@ from apps.recommendations.services.safe_image_fetcher import (
     InvalidImageError,
     validate_image_bytes,
 )
+from apps.users.auth_cookies import (
+    REFRESH_COOKIE_NAME,
+    clear_refresh_cookie,
+    refresh_from_request,
+    set_refresh_cookie,
+)
 from .authentication import JWTSafeAuthentication
-from .throttles import LOGIN_THROTTLES, TOKEN_THROTTLES
+from .throttles import CSP_REPORT_THROTTLES, LOGIN_THROTTLES, TOKEN_THROTTLES
 
 
 logger = logging.getLogger(__name__)
+csp_logger = logging.getLogger("csp")
+CSP_REPORT_MAX_BYTES = 16 * 1024
 
 
 class HealthCheckResponseSerializer(serializers.Serializer):
@@ -70,10 +81,128 @@ class JWTObtainPairView(TokenObtainPairView):
     throttle_classes = LOGIN_THROTTLES
 
 
+class JWTRefreshRequestSerializer(serializers.Serializer):
+    refresh = serializers.CharField(
+        required=False,
+        help_text="Только для API-клиентов: браузер шлёт refresh в HttpOnly cookie.",
+    )
+
+
+class JWTRefreshResponseSerializer(serializers.Serializer):
+    access = serializers.CharField()
+    refresh = serializers.CharField(
+        required=False,
+        help_text="Только если refresh пришёл в теле запроса.",
+    )
+
+
 class JWTRefreshView(TokenRefreshView):
+    """Обновление access по refresh из HttpOnly cookie (TD-018) или из тела.
+
+    Новый refresh (ротация) всегда уходит в cookie. В теле ответа он есть, только
+    если запрос прислал refresh в теле: API-клиенты и браузеры со старой сессией,
+    где refresh ещё лежал в обычной cookie, — такой браузер переезжает на HttpOnly
+    при первом же обновлении.
+    """
+
     authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = TOKEN_THROTTLES
+
+    @extend_schema(
+        request=JWTRefreshRequestSerializer,
+        responses={200: JWTRefreshResponseSerializer},
+    )
+    def post(self, request, *args, **kwargs):
+        from_cookie = bool(request.COOKIES.get(REFRESH_COOKIE_NAME))
+        refresh = refresh_from_request(request)
+        if not refresh:
+            response = Response(
+                {"detail": "Refresh-токен не передан", "code": "token_not_valid"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            clear_refresh_cookie(response)
+            return response
+
+        serializer = self.get_serializer(data={"refresh": refresh})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except (TokenError, AuthenticationFailed):
+            response = Response(
+                {"detail": "Refresh-токен недействителен или истёк", "code": "token_not_valid"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            clear_refresh_cookie(response)
+            return response
+
+        data = dict(serializer.validated_data)
+        new_refresh = data.get("refresh") or refresh
+        if from_cookie:
+            data.pop("refresh", None)
+        response = Response(data, status=status.HTTP_200_OK)
+        set_refresh_cookie(response, new_refresh)
+        return response
+
+
+class CspReportParser(BaseParser):
+    """Браузеры шлют отчёты CSP как application/csp-report или reports+json."""
+
+    media_type = "*/*"
+
+    def parse(self, stream, media_type=None, parser_context=None):
+        raw = stream.read(CSP_REPORT_MAX_BYTES + 1) if stream else b""
+        if len(raw) > CSP_REPORT_MAX_BYTES:
+            return {}
+        try:
+            return json.loads(raw or b"{}")
+        except ValueError:
+            return {}
+
+
+def _csp_violations(payload) -> list:
+    """report-uri: {"csp-report": {...}}; Reporting API: [{"type": "csp-violation", "body": {...}}]."""
+    if isinstance(payload, dict) and isinstance(payload.get("csp-report"), dict):
+        return [payload["csp-report"]]
+    if isinstance(payload, list):
+        return [
+            item["body"]
+            for item in payload[:20]
+            if isinstance(item, dict) and isinstance(item.get("body"), dict)
+        ]
+    return []
+
+
+def _strip_query(value) -> str:
+    return str(value or "").split("?", 1)[0].split("#", 1)[0][:300]
+
+
+class CspReportView(APIView):
+    """Приёмник отчётов Content-Security-Policy-Report-Only (TD-018).
+
+    Пишет в лог ``csp`` директиву и заблокированный источник без query-строк
+    (там могут быть персональные данные). По логу решаем, когда включать enforce.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = CSP_REPORT_THROTTLES
+    parser_classes = [CspReportParser]
+
+    @extend_schema(exclude=True)
+    def post(self, request: Request) -> Response:
+        for violation in _csp_violations(request.data)[:20]:
+            csp_logger.warning(
+                "CSP violation: %s blocked %s on %s",
+                str(
+                    violation.get("effective-directive")
+                    or violation.get("effectiveDirective")
+                    or violation.get("violated-directive")
+                    or ""
+                )[:80],
+                _strip_query(violation.get("blocked-uri") or violation.get("blockedURL")),
+                _strip_query(violation.get("document-uri") or violation.get("documentURL")),
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class JWTVerifyView(TokenVerifyView):
