@@ -26,7 +26,7 @@ from .admin_variant_ai import VariantAIAdminMixin
 from .admin_media import AdminMediaHelpTextMixin, resolve_media_url, render_media_preview
 from .admin_price import PublicCatalogPriceAdminMixin
 from .models import (
-    CategoryType, Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
+    CategoryType, Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, MedicineGroup, MedicineGroupTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, CategoryIncense, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
@@ -1042,6 +1042,37 @@ class CategoryCollectionAdmin(admin.ModelAdmin):
         }),
     )
     inlines = [CategoryCollectionTranslationInline]
+
+
+class MedicineGroupTranslationInline(admin.StackedInline):
+    model = MedicineGroupTranslation
+    extra = 0
+    fieldsets = (
+        (None, {'fields': ('locale', 'name', 'active_ingredient', 'indications', 'usage_summary')}),
+        CATEGORY_LANDING_SEO_FIELDSET,
+    )
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+@admin.register(MedicineGroup)
+class MedicineGroupAdmin(admin.ModelAdmin):
+    """Препараты: страница /drugs/<slug> с формами бренда, товары — по началу названия."""
+
+    list_display = ('name', 'slug', 'name_prefixes', 'is_active', 'sort_order', 'updated_at')
+    list_filter = ('is_active',)
+    list_editable = ('is_active', 'sort_order')
+    search_fields = ('name', 'slug', 'name_prefixes')
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'is_active', 'sort_order')}),
+        (_('Правило отбора форм'), {
+            'fields': ('name_prefixes',),
+            'description': _("Форма входит в препарат, если название медикамента начинается с бренда (или одного "
+                             "из начал через запятую), а за ним пробел, запятая или скобка. Формы с отметкой «ввоз "
+                             "ограничен» (вещества, запрещённые к ввозу в РФ и СНГ) на страницу не попадают."),
+        }),
+    )
+    inlines = [MedicineGroupTranslationInline]
 
 
 @admin.register(CategorySupplements)

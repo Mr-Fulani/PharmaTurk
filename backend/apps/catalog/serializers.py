@@ -10,7 +10,7 @@ from rest_framework import serializers
 
 logger = logging.getLogger(__name__)
 from .models import (
-    Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, PriceHistory,
+    Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, MedicineGroup, MedicineGroupTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, PriceHistory,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
@@ -814,6 +814,37 @@ class CategoryCollectionDetailSerializer(CategoryCollectionSerializer):
     """Подборка для её страницы: плюс H1, title, description и SEO-текст по языкам."""
 
     translations = CategoryCollectionTranslationSerializer(many=True, read_only=True)
+
+
+class MedicineGroupTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MedicineGroupTranslation
+        fields = [
+            'locale', 'name', 'active_ingredient', 'indications', 'usage_summary',
+            'h1', 'meta_title', 'meta_description', 'seo_text',
+        ]
+
+
+class MedicineGroupDetailSerializer(serializers.ModelSerializer):
+    """Страница препарата: бренд латиницей, тексты по языкам; формы — /medicines/products?drug_group=."""
+
+    translations = MedicineGroupTranslationSerializer(many=True, read_only=True)
+    forms_count = serializers.SerializerMethodField()
+    prescription = serializers.SerializerMethodField()
+    cold_chain = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MedicineGroup
+        fields = ['slug', 'name', 'updated_at', 'forms_count', 'prescription', 'cold_chain', 'translations']
+
+    def get_forms_count(self, obj) -> int:
+        return len(self.context.get('member_ids') or [])
+
+    def get_prescription(self, obj) -> bool:
+        return bool((self.context.get('member_flags') or {}).get('prescription'))
+
+    def get_cold_chain(self, obj) -> bool:
+        return bool((self.context.get('member_flags') or {}).get('cold_chain'))
 
 
 class BrandSerializer(serializers.ModelSerializer):

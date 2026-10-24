@@ -45,6 +45,7 @@ import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
 import { limitTitle, truncateAtWord } from '../../lib/seoText'
+import { drugGroupHeading } from '../../lib/drugGroup'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
@@ -627,6 +628,15 @@ const resolveAvailableStock = (
   return null
 }
 
+// Страница препарата (/drugs/<slug>), на которой есть эта форма — из ответа resolve
+interface DrugGroupLink {
+  slug: string
+  name: string
+  latin: string
+}
+
+const drugGroupTitle = (group: DrugGroupLink) => drugGroupHeading({ name: group.name, latin: group.latin })
+
 export default function ProductPage({
   product: initialProduct,
   productType,
@@ -634,6 +644,7 @@ export default function ProductPage({
   preferredCurrency,
   favoriteSize,
   relatedLinks = [],
+  drugGroup = null,
 }: {
   product: Product | null
   productType: CategoryType
@@ -641,6 +652,7 @@ export default function ProductPage({
   preferredCurrency: string
   favoriteSize: string | null
   relatedLinks?: RelatedProductLink[]
+  drugGroup?: DrugGroupLink | null
 }) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
@@ -2231,6 +2243,15 @@ export default function ProductPage({
                     </div>
                   ))}
                 </div>
+                {drugGroup && (
+                  <Link
+                    href={`/drugs/${drugGroup.slug}`}
+                    className="mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-[var(--accent)] hover:underline"
+                  >
+                    {t('drug_group_all_forms_link', 'Все формы и дозировки: {{name}}', { name: drugGroupTitle(drugGroup) })}
+                    <span aria-hidden>→</span>
+                  </Link>
+                )}
               </div>
             )}
             {/* Блок «БАД»: карточка характеристик */}
@@ -3157,6 +3178,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         preferredCurrency: currency,
         favoriteSize: favoriteSizeFromQuery || null,
         relatedLinks: Array.isArray(body.related_links) ? body.related_links : [],
+        drugGroup: body.drug_group?.slug ? body.drug_group : null,
       },
     }
   } catch (err) {

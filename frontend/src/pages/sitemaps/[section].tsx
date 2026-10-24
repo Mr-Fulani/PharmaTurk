@@ -10,11 +10,13 @@ import {
   generateSitemapXml,
 } from '../../lib/sitemap'
 import { createStaleWhileRevalidateCache } from '../../lib/serverPublicCache'
+import { BLOG_ARTICLES } from '../../content/blog/articles'
 
 /**
  * Секционные sitemap'ы: /sitemaps/<section>.xml (rewrite в next.config.js
- * срезает .xml). Секции: static, categories (вместе с подборками категорий),
- * brands, services, products-<домен>. Индекс — /sitemap.xml.
+ * срезает .xml). Секции: static (вместе со статьями блога), categories (вместе с
+ * подборками категорий), drugs (страницы препаратов /drugs/<slug>), brands, services,
+ * products-<домен>. Индекс — /sitemap.xml.
  */
 
 interface SitemapTestimonial {
@@ -37,10 +39,16 @@ async function buildStaticUrls(today: string, failures: Failures): Promise<Sitem
     ['/delivery', '/delivery', 'monthly', 0.6],
     ['/returns', '/returns', 'monthly', 0.5],
     ['/privacy', '/privacy', 'monthly', 0.4],
+    ['/blog', '/blog', 'weekly', 0.6],
   ]
 
   for (const [enPath, ruPath, changefreq, priority] of basePages) {
     urls.push(buildUrl(enPath, ruPath, changefreq, priority))
+  }
+  for (const article of BLOG_ARTICLES) {
+    const url = buildUrl(`/blog/${article.slug}`, `/blog/${article.slug}`, 'monthly', 0.7)
+    url.lastmod = article.updatedAt
+    urls.push(url)
   }
 
   // 2. Динамические CMS-страницы (О нас, Доставка, Возврат и т.д.)
@@ -125,6 +133,27 @@ async function buildCategoryUrls(failures: Failures): Promise<SitemapUrl[]> {
   } catch (err) {
     failures.push('collections')
     console.error('Sitemap: Failed to fetch category collections', err)
+  }
+  return urls
+}
+
+async function buildDrugGroupUrls(failures: Failures): Promise<SitemapUrl[]> {
+  const urls: SitemapUrl[] = []
+  try {
+    // Страницы препаратов; без форм на витрине API их не отдаёт
+    const groups = await fetchAllPages('catalog/sitemap-entries', { kind: 'drug_groups' })
+    for (const item of groups) {
+      if (!item.slug) continue
+      const path = `/drugs/${item.slug}`
+      const url = buildUrl(path, path, 'weekly', 0.8)
+      if (item.updated_at) {
+        url.lastmod = new Date(item.updated_at).toISOString().split('T')[0]
+      }
+      urls.push(url)
+    }
+  } catch (err) {
+    failures.push('drug_groups')
+    console.error('Sitemap: Failed to fetch drug groups', err)
   }
   return urls
 }
@@ -227,7 +256,7 @@ const sectionXmlCache = createStaleWhileRevalidateCache({
 })
 
 function isKnownSection(section: string): boolean {
-  if (['static', 'categories', 'brands', 'services'].includes(section)) return true
+  if (['static', 'categories', 'drugs', 'brands', 'services'].includes(section)) return true
   return section.startsWith('products-') && SITEMAP_DOMAINS.includes(section.slice('products-'.length))
 }
 
@@ -235,6 +264,7 @@ async function buildSectionUrls(section: string, failures: Failures): Promise<Si
   const today = new Date().toISOString().split('T')[0]
   if (section === 'static') return buildStaticUrls(today, failures)
   if (section === 'categories') return buildCategoryUrls(failures)
+  if (section === 'drugs') return buildDrugGroupUrls(failures)
   if (section === 'brands') return buildBrandUrls(today, failures)
   if (section === 'services') return buildServiceUrls(today, failures)
   return buildDomainProductUrls(section.slice('products-'.length), today, failures)

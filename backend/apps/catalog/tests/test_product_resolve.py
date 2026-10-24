@@ -167,6 +167,9 @@ class TestBuildResolveResponse:
         ), patch(
             "apps.catalog.services.product_resolve.build_related_links",
             return_value=[{"name": "Other", "path": "/product/other"}],
+        ), patch(
+            "apps.catalog.services.product_resolve.group_link_for_medicine",
+            return_value={"slug": "item", "name": "Item", "latin": "ITEM"},
         ):
             resp = build_resolve_response(req, "item")
         assert resp.status_code == status.HTTP_200_OK
@@ -175,6 +178,7 @@ class TestBuildResolveResponse:
         assert resp.data["payload"] == payload
         assert resp.data["source"] == "generic_product"
         assert resp.data["related_links"] == [{"name": "Other", "path": "/product/other"}]
+        assert resp.data["drug_group"] == {"slug": "item", "name": "Item", "latin": "ITEM"}
 
 
 @pytest.mark.django_db
