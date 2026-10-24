@@ -1864,7 +1864,7 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     def get_is_bestseller(self, obj):
         return getattr(obj, 'is_bestseller', False)
 
-    def get_import_restricted_countries(self, obj):
+    def get_import_restricted_countries(self, obj) -> list[str]:
         from .controlled_substances import product_restricted_countries
 
         return product_restricted_countries(obj)
@@ -6376,7 +6376,7 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     def get_prescription_type(self, obj):
         return self._get_translation_field(obj, 'prescription_type', obj.prescription_type)
 
-    def get_import_restricted_countries(self, obj):
+    def get_import_restricted_countries(self, obj) -> list[str]:
         from .controlled_substances import country_codes
 
         return country_codes(obj.import_restricted_countries)

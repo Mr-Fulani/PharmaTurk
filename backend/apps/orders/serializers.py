@@ -930,7 +930,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         parent = getattr(variant, "product", None)
         return getattr(parent, "slug", None) or None
 
-    def get_product_import_restricted_countries(self, obj):
+    def get_product_import_restricted_countries(self, obj) -> list[str]:
         """Ввоз препарата в эти страны запрещён (TD-024): предупреждение в «Списке заявки»."""
         from apps.catalog.controlled_substances import product_restricted_countries
 
