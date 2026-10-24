@@ -613,17 +613,6 @@ export default function Header() {
               </Link>
             )}
             <Link
-              href="/blog"
-              onClick={() => setShowSuggestions(false)}
-              className={`rounded-md px-2 py-1 transition-colors duration-200 ${
-                path.startsWith('/blog')
-                  ? isDark ? 'bg-slate-800 text-white' : 'bg-red-50 text-red-700'
-                  : isDark ? 'text-slate-100 hover:bg-slate-800' : 'text-main hover:bg-red-50 hover:text-red-700'
-              }`}
-            >
-              {t('menu_blog', 'Статьи')}
-            </Link>
-            <Link
               href="/favorites"
               onClick={() => setShowSuggestions(false)}
               className={`relative inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border transition-all duration-200 hover:scale-105 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${

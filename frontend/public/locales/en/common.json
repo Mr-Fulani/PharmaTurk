@@ -1663,5 +1663,5 @@
   "import_restricted_banner": "Import of this medicine to {{countries}} is prohibited or restricted by law. We do not ship it to these countries without agreement with a manager. It can be bought for pickup in Turkey.",
   "import_restricted_cart": "Import to {{countries}} is prohibited or restricted by law. We do not ship it there without agreement with a manager.",
   "import_restricted_seo_description": "{{name}}: reference information and patient leaflet. Import to {{countries}} is prohibited or restricted by law.",
-  "menu_blog": "Articles"
+  "footer_useful_articles": "Useful articles"
 }

@@ -321,7 +321,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   <li><Link href="/privacy" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_privacy', 'Политика конфиденциальности')}</Link></li>
                 </>
               )}
-              <li><Link href="/blog" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('menu_blog', 'Статьи')}</Link></li>
+              <li><Link href="/blog" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_useful_articles', 'Полезные статьи')}</Link></li>
             </ul>
           </div>
           <div className="sm:col-span-2 lg:col-span-4 xl:col-span-1 xl:justify-self-end">
