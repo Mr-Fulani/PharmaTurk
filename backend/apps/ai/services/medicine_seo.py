@@ -69,8 +69,39 @@ def prescription_kind(prescription_en: Any) -> str:
     return "rx" if "prescription" in value else ""
 
 
+# Обрезанный по слову заголовок не кончается предлогом или союзом: «…, раствор для».
+_DANGLING = {"для", "с", "со", "в", "во", "и", "на", "по", "из", "от", "for", "with", "in", "and", "of", "from", "—"}
+
+
 def _fit(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0].rstrip(" ,—")
+    if len(text) <= limit:
+        return text
+    words = text[:limit].rsplit(" ", 1)[0].rstrip(" ,—").split(" ")
+    while len(words) > 1 and words[-1].lower() in _DANGLING:
+        words.pop()
+    return " ".join(words).rstrip(" ,—")
+
+
+def cyrillic_brand(brand: str, short: str, found: dict) -> str:
+    """Бренд названия кириллицей по словарю брендов (ключи — бренд абзацев ``short``).
+
+    «MAJEZIK» → «Мажезик». Бренд названия длиннее: «PHYSIONEAL 40» → «Физионеал 40».
+    Короче: «EXTRANEFROL» при «EXTRANEFROL PERITON DIYALIZ» («Экстранефрол Перитонеальный
+    Диализ») → «Экстранефрол». Хвост с латиницей («POLIFLEKS 1/3 POLIDEKS») кириллицей не
+    записать — пусто, бренд в SEO остаётся латиницей.
+    """
+    if found.get(brand):
+        return found[brand]["ru"]
+    entry = found.get(short) if short else None
+    if not entry:
+        return ""
+    if brand.startswith(short):
+        tail = brand[len(short):]
+        return "" if re.search(r"[A-Za-z]", tail) else entry["ru"] + tail
+    words, count = entry["ru"].split(), len(brand.split())
+    if short.startswith(brand + " ") and len(words) == len(short.split()):
+        return " ".join(words[:count])
+    return ""
 
 
 def _title_parts(title: str, brand: str, inn: str) -> tuple[str, list[str]]:
@@ -119,11 +150,19 @@ def build_medicine_seo(
         head_short = f"{name} ({brand})" if name else brand
 
         turkey, leaflet = texts["turkey"], texts["leaflet"]
-        candidates = []
-        for start in (head, head_short):
+
+        def variants(start: str) -> list[str]:
             two, one = _join(start, sep, parts[:2]), _join(start, sep, parts[:1])
-            candidates += [two + turkey + leaflet, two + turkey, one + turkey + leaflet, one + turkey]
-        seo_title = next((c for c in candidates if len(c) <= SEO_TITLE_MAX), _fit(candidates[-1], SEO_TITLE_MAX))
+            return [two + turkey + leaflet, two + turkey, one + turkey + leaflet, one + turkey]
+
+        candidates = variants(head) + variants(head_short)
+        if name:
+            # Бренд кириллицей важнее «из Турции»; не помещается и так — бренд латиницей.
+            candidates.append(_join(head_short, sep, parts[:1]))
+            candidates += variants(f"{brand} ({inn_text})" if inn_text else brand) + variants(brand)
+        seo_title = next((c for c in candidates if len(c) <= SEO_TITLE_MAX), None) or _fit(
+            " ".join([brand, ", ".join(parts[:1])]).strip(), SEO_TITLE_MAX
+        )
 
         lead = _join(head, sep, parts[:2]) + turkey + "."
         with_inn = bool(inn_text)
