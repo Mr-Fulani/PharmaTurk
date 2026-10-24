@@ -5,7 +5,10 @@
 страницы (frontend/src/lib/drugGroup.js). TYLOLHOT не создан: все его формы содержат
 псевдоэфедрин, ввоз которого в РФ и СНГ ограничен (docs/TECH_DEBT.md, TD-024).
 Формы с такими веществами у других брендов (A-FERIN, AERIUS, KATARIN) страница не
-показывает — их отсекает apps/catalog/medicine_restrictions.py.
+показывает — их отсекает apps/catalog/medicine_restrictions.py. Сами страницы этих трёх
+брендов созданы выключенными: по решению PR #165 бренды, в линейке которых есть такие формы,
+не продвигаются (docs/MEDICINE_LANDING_PAGES.md, «Ограничения текстов»). Включить —
+галочка «Активен» в админке, по решению владельца.
 """
 
 from django.db import migrations
@@ -251,7 +254,7 @@ GROUPS = [
         },
     },
     {
-        "slug": "aerius", "name": "AERIUS",
+        "slug": "aerius", "is_active": False, "name": "AERIUS",
         "ru": {
             "name": "Эриус",
             "active_ingredient": "дезлоратадин",
@@ -429,7 +432,7 @@ GROUPS = [
         },
     },
     {
-        "slug": "katarin", "name": "KATARIN",
+        "slug": "katarin", "is_active": False, "name": "KATARIN",
         "ru": {
             "name": "Катарин",
             "active_ingredient": "парацетамол + хлорфенамин + оксоламин",
@@ -458,7 +461,7 @@ GROUPS = [
         },
     },
     {
-        "slug": "a-ferin", "name": "A-FERIN",
+        "slug": "a-ferin", "is_active": False, "name": "A-FERIN",
         "ru": {
             "name": "А-ферин",
             "active_ingredient": "парацетамол; в части форм — с хлорфенамином",
@@ -521,7 +524,8 @@ def create_groups(apps, schema_editor):
     MedicineGroupTranslation = apps.get_model("catalog", "MedicineGroupTranslation")
     for order, item in enumerate(GROUPS):
         group, _ = MedicineGroup.objects.get_or_create(
-            slug=item["slug"], defaults={"name": item["name"], "sort_order": order},
+            slug=item["slug"],
+            defaults={"name": item["name"], "sort_order": order, "is_active": item.get("is_active", True)},
         )
         for locale in ("ru", "en"):
             MedicineGroupTranslation.objects.get_or_create(group=group, locale=locale, defaults=item[locale])

@@ -103,7 +103,10 @@ def test_group_rule_needs_separator_after_brand():
 @pytest.mark.django_db
 def test_drug_group_products_are_brand_forms_without_restricted(catalog):
     assert _medicine_slugs(drug_group="majezik") == {"majezik-100", "majezik-sprey", "majezik-ru"}
-    # Формы с кодеином и псевдоэфедрином на страницу препарата не попадают
+    # A-FERIN создан выключенным (в линейке есть формы с кодеином и псевдоэфедрином)
+    assert _medicine_slugs(drug_group="a-ferin") == set()
+    MedicineGroup.objects.filter(slug="a-ferin").update(is_active=True)
+    # Включённый владельцем: формы с кодеином и псевдоэфедрином на страницу не попадают
     assert _medicine_slugs(drug_group="a-ferin") == {"a-ferin-zero"}
     assert _medicine_slugs(drug_group="unknown") == set()
     MedicineGroup.objects.filter(slug="majezik").update(is_active=False)
@@ -148,8 +151,9 @@ def test_sitemap_lists_only_drug_groups_with_visible_forms(catalog):
     response = APIClient().get("/api/catalog/sitemap-entries", {"kind": "drug_groups"})
     assert response.status_code == 200
     slugs = {row["slug"] for row in response.json()["results"]}
-    assert {"majezik", "a-ferin"} <= slugs
+    assert "majezik" in slugs
     assert "tylolhot" not in slugs
+    assert "a-ferin" not in slugs  # выключен миграцией
     assert "crestor" not in slugs  # у бренда из миграции нет товаров в этой базе
 
 
@@ -162,7 +166,11 @@ def test_resolve_links_medicine_card_to_its_drug_page(catalog):
     body = client.get("/api/catalog/products/resolve/majezik-100", HTTP_ACCEPT_LANGUAGE="en").json()
     assert body["drug_group"]["name"] == "Majezik"
 
-    # Форма с кодеином на страницу препарата не ссылается
+    # Выключенный препарат и форма с кодеином на страницу не ссылаются
+    assert client.get("/api/catalog/products/resolve/a-ferin-zero").json()["drug_group"] is None
+    MedicineGroup.objects.filter(slug="a-ferin").update(is_active=True)
+    cache.clear()
+    assert client.get("/api/catalog/products/resolve/a-ferin-zero").json()["drug_group"]["slug"] == "a-ferin"
     assert client.get("/api/catalog/products/resolve/a-ferin-codeine").json()["drug_group"] is None
     assert client.get("/api/catalog/products/resolve/majezikplus").json()["drug_group"] is None
 
@@ -178,6 +186,8 @@ def test_drug_group_texts_are_complete_and_follow_seo_restrictions():
     slugs = [item["slug"] for item in group_texts.GROUPS]
     assert len(slugs) == len(set(slugs))
     assert "tylolhot" not in slugs
+    inactive = {item["slug"] for item in group_texts.GROUPS if item.get("is_active") is False}
+    assert inactive == {"a-ferin", "katarin", "aerius"}
     for item in group_texts.GROUPS:
         for locale in ("ru", "en"):
             for field in ("name", "active_ingredient", "indications", "usage_summary"):
