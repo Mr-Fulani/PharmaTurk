@@ -22,10 +22,12 @@ const CSP_REPORT_ONLY = [
   "media-src 'self' blob: https://cdn.mudaroba.com",
   "connect-src 'self' https://cdn.mudaroba.com https://*.google-analytics.com https://*.analytics.google.com" +
     ' https://*.googletagmanager.com https://*.g.doubleclick.net https://www.google.com' +
-    ' https://mc.yandex.ru https://mc.yandex.com https://accounts.google.com https://cloudflareinsights.com',
+    ' https://mc.yandex.ru https://mc.yandex.com https://accounts.google.com https://cloudflareinsights.com' +
+    // VK ID (@vkid/sdk на /auth): конфиг, статистика и окно входа.
+    ' https://id.vk.ru https://id.vk.com',
   'frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com' +
     ' https://oauth.telegram.org https://accounts.google.com https://challenges.cloudflare.com' +
-    ' https://www.googletagmanager.com',
+    ' https://www.googletagmanager.com https://id.vk.ru https://id.vk.com',
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
