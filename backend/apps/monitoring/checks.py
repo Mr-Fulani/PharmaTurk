@@ -122,10 +122,8 @@ def media_backup_configuration_check(app_configs, **kwargs):
                  "DB_BACKUP_S3_SECRET_ACCESS_KEY"):
         if not getattr(settings, name, ""):
             errors.append(Error(f"MEDIA_BACKUP_ENABLED requires {name}.", id="monitoring.E014"))
-    # Пустой префикс — весь бакет медиа (≈ 19 ГБ товарных фото), их не копируем.
+    # Пустой префикс — весь бакет медиа вместе с временными файлами парсеров и чужими окружениями.
     prefixes = [str(prefix).strip("/") for prefix in getattr(settings, "MEDIA_BACKUP_PREFIXES", [])]
-    if not prefixes or any(not prefix or prefix.split("/")[0] == "products" for prefix in prefixes):
-        errors.append(
-            Error("MEDIA_BACKUP_PREFIXES must list non-empty prefixes outside products/.", id="monitoring.E015")
-        )
+    if not prefixes or any(not prefix for prefix in prefixes):
+        errors.append(Error("MEDIA_BACKUP_PREFIXES must list non-empty prefixes.", id="monitoring.E015"))
     return errors

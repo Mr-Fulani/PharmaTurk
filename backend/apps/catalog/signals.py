@@ -1576,3 +1576,17 @@ def _connect_slug_history():
 
 
 _connect_slug_history()
+
+
+@receiver(post_save, sender=MedicineProduct, dispatch_uid="catalog_medicine_import_restrictions")
+def refresh_medicine_import_restrictions(sender, instance, raw=False, **kwargs):
+    """Отметка «ввоз ограничен» по действующему веществу (TD-024); update() — без повторного сигнала."""
+    if raw:
+        return
+    from .controlled_substances import refresh_medicine
+
+    if refresh_medicine(instance):
+        MedicineProduct.objects.filter(pk=instance.pk).update(
+            import_restricted_countries=instance.import_restricted_countries,
+            import_restriction_note=instance.import_restriction_note,
+        )

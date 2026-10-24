@@ -2296,6 +2296,9 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             models.Q(product_type='medicines') &
             models.Q(external_data__has_key='is_stub') &
             models.Q(external_data__is_stub=True)
+        ).exclude(
+            # Запрещённые к ввозу в РФ/СНГ не продвигаются (TD-024).
+            medicine_item__import_restricted_countries__gt=''
         ).select_related('category', 'brand', 'price_info').order_by('-created_at')
 
         featured_products = list(queryset[:limit])

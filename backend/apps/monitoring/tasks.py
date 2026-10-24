@@ -243,12 +243,14 @@ def check_server_resources() -> dict:
 
 
 def _media_backup_and_report() -> dict:
-    result = media_backup.backup_media()
-    if result["newly_missing"]:
+    result = media_backup.backup_media(time_budget=settings.MEDIA_BACKUP_TIME_BUDGET_SECONDS)
+    # Фото товаров пропадают штатно (перескрейп); массовое исчезновение ловит MAX_MISSING_SHARE.
+    alert = [key for key in result["newly_missing"] if not media_backup.is_quiet_missing(key)]
+    if alert:
         # Файл пропал из бакета медиа: копия хранится ограниченный срок — надо заметить.
         send_admin_telegram_notification(
-            f"⚠️ Копия медиа Mudaroba: из бакета медиа пропало {len(result['newly_missing'])} файлов: "
-            + ", ".join(result["newly_missing"][:5])
+            f"⚠️ Копия медиа Mudaroba: из бакета медиа пропало {len(alert)} файлов: "
+            + ", ".join(alert[:5])
             + f"\nКопии хранятся до {result['keep_until']}. Вернуть: manage.py restore_media_backup "
             "<путь> (docs/DB_BACKUP.md, «Копия медиа»)"
         )

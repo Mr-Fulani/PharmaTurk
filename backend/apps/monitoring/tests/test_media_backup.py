@@ -1,4 +1,4 @@
-"""Копия медиа маркетинга, страниц и услуг: только новое и изменённое, удалённое живёт 30 дней."""
+"""Копия медиа (маркетинг, страницы, услуги, фото товаров): только новое и изменённое, удалённое живёт 30 дней."""
 
 import hashlib
 import io
@@ -26,8 +26,10 @@ SETTINGS = {
     "DB_BACKUP_S3_ACCESS_KEY_ID": "backup-key",
     "DB_BACKUP_S3_SECRET_ACCESS_KEY": "backup-secret",
     "MEDIA_BACKUP_ENABLED": True,
-    "MEDIA_BACKUP_PREFIXES": ["marketing/", "pages/", "services/"],
+    "MEDIA_BACKUP_PREFIXES": ["marketing/", "pages/", "services/", "products/"],
+    "MEDIA_BACKUP_EXCLUDE_PREFIXES": ["products/parsed/"],
     "MEDIA_BACKUP_KEEP_DELETED_DAYS": 30,
+    "MEDIA_BACKUP_TIME_BUDGET_SECONDS": 1200,
 }
 
 
@@ -91,7 +93,7 @@ def buckets():
     media.put("marketing/cards/brands/bayer.webp", b"bayer")
     media.put("pages/og-home.webp", b"og")
     media.put("services/video.mp4", b"v" * (20 * 1024 * 1024), "video/mp4")
-    media.put("products/parsed/lcw/x.jpg", b"product")  # товарные фото не копируются
+    media.put("products/parsed/lcw/x.jpg", b"product")  # временный файл парсера — не копируется
     media.put("dev/marketing/banners/main.webp", b"dev")  # чужое окружение
     with override_settings(**SETTINGS):
         yield media, backup
@@ -205,7 +207,7 @@ def test_restore_returns_missing_files_and_overwrites_only_on_request(buckets):
     restore(restore_plan("marketing/cards/", media, backup), overwrite=True, source=media, target=backup)
     assert media.objects["marketing/cards/brands/bayer.webp"][0] == b"bayer"
     with pytest.raises(BackupError):
-        restore_plan("products/", media, backup)
+        restore_plan("orders/", media, backup)  # вне копируемых префиксов
 
 
 def test_restore_command_is_dry_run_by_default(buckets, capsys):
@@ -238,10 +240,72 @@ def test_task_alerts_on_failure_and_on_missing_files(send, buckets):
     assert "Копия медиа Mudaroba: ежедневная копия — сбой" in send.call_args.args[0]
 
 
-def test_configuration_check_refuses_product_photos():
-    with override_settings(**{**SETTINGS, "MEDIA_BACKUP_PREFIXES": ["marketing/", "products/"]}):
+def test_configuration_check_refuses_empty_prefix():
+    with override_settings(**{**SETTINGS, "MEDIA_BACKUP_PREFIXES": ["marketing/", ""]}):
         assert [error.id for error in media_backup_configuration_check(None)] == ["monitoring.E015"]
     with override_settings(**{**SETTINGS, "DB_BACKUP_S3_BUCKET": ""}):
         assert [error.id for error in media_backup_configuration_check(None)] == ["monitoring.E014"]
     with override_settings(**SETTINGS):
         assert media_backup_configuration_check(None) == []
+
+
+def test_product_photos_are_copied_without_parser_temp_files(buckets):
+    media, backup = buckets
+    media.put("products/medicines/majezik/main.webp", b"photo")
+
+    backup_media(media, backup, now=NOW)
+
+    assert "media/products/medicines/majezik/main.webp" in backup.objects
+    assert "media/products/parsed/lcw/x.jpg" not in backup.objects
+
+
+def test_time_budget_stops_and_next_run_continues(buckets):
+    media, backup = buckets
+    ticks = iter([0, 0, 0, 10_000, 10_000, 10_000, 10_000])  # старт, два файла — и время вышло
+
+    result = backup_media(media, backup, now=NOW, time_budget=100, clock=lambda: next(ticks))
+
+    assert result["status"] == "partial" and result["copied"] == 2 and result["remaining"] == 2
+    manifest = _manifest(backup)
+    assert "last_success_at" not in manifest and manifest["last_run_at"] == NOW.isoformat()
+    # Полной копии ещё не было — проверка тревожит; частичная после полной — нет, пока не неделя.
+    with pytest.raises(BackupError, match="не доходит до конца"):
+        verify_media_backup(backup, now=NOW + timedelta(hours=1))
+    later = NOW + timedelta(days=1)
+    result = backup_media(media, backup, now=later)
+    assert result["status"] == "ok" and result["copied"] == 2
+    assert _manifest(backup)["last_success_at"] == later.isoformat()
+    media.put("products/clothing/new.webp", b"new")
+    ticks = iter([0, 10_000, 10_000])
+    backup_media(media, backup, now=later + timedelta(days=1), time_budget=100, clock=lambda: next(ticks))
+    assert verify_media_backup(backup, now=later + timedelta(days=1, hours=1))["last_success_at"] == later.isoformat()
+    ticks = iter([0, 10_000, 10_000])
+    stale = later + timedelta(days=9)
+    backup_media(media, backup, now=stale, time_budget=100, clock=lambda: next(ticks))
+    with pytest.raises(BackupError, match="не доходит до конца"):
+        verify_media_backup(backup, now=stale + timedelta(hours=1))
+
+
+def test_manifest_is_saved_while_copying(buckets, monkeypatch):
+    media, backup = buckets
+    monkeypatch.setattr(media_backup, "MANIFEST_FLUSH_EVERY", 1)
+    saved = []
+    original = backup.put_object
+    backup.put_object = lambda **kw: (saved.append(kw["Key"]), original(**kw))
+
+    backup_media(media, backup, now=NOW)
+
+    assert saved.count(MANIFEST_KEY) == 5  # после каждого из 4 файлов и в конце
+
+
+@patch("apps.monitoring.tasks.send_admin_telegram_notification")
+def test_missing_product_photo_is_kept_quietly(send, buckets):
+    media, backup = buckets
+    media.put("products/clothing/a.webp", b"a")
+    with patch.object(media_backup, "media_client", return_value=media), \
+            patch.object(media_backup.db_backup, "s3_client", return_value=backup):
+        run_media_backup()
+        del media.objects["products/clothing/a.webp"]
+        run_media_backup()
+    send.assert_not_called()
+    assert "media/products/clothing/a.webp" in backup.objects  # копия хранится 30 дней

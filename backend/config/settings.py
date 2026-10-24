@@ -1033,7 +1033,11 @@ DB_BACKUP_TEST_RESTORE_ENABLED = env.bool("DB_BACKUP_TEST_RESTORE_ENABLED", defa
 # Ночная копия медиа маркетинга, страниц и услуг в тот же бакет под media/
 # (apps/monitoring/media_backup.py); товарные фото не копируются.
 MEDIA_BACKUP_ENABLED = env.bool("MEDIA_BACKUP_ENABLED", default=DB_BACKUP_ENABLED)
-MEDIA_BACKUP_PREFIXES = env.list("MEDIA_BACKUP_PREFIXES", default=["marketing/", "pages/", "services/"])
+# С 24.10.2026 и фото товаров (≈ 20 ГБ, TD-013); products/parsed/ — временные файлы парсеров.
+MEDIA_BACKUP_PREFIXES = env.list("MEDIA_BACKUP_PREFIXES", default=["marketing/", "pages/", "services/", "products/"])
+MEDIA_BACKUP_EXCLUDE_PREFIXES = env.list("MEDIA_BACKUP_EXCLUDE_PREFIXES", default=["products/parsed/"])
+# Ночь копии укладывается в лимит задачи (soft 25 мин): первую копию фото добирают следующие ночи.
+MEDIA_BACKUP_TIME_BUDGET_SECONDS = env.int("MEDIA_BACKUP_TIME_BUDGET_SECONDS", default=20 * 60)
 MEDIA_BACKUP_KEEP_DELETED_DAYS = env.int("MEDIA_BACKUP_KEEP_DELETED_DAYS", default=30)
 validate_telegram_webhook_settings(
     debug=DEBUG,
