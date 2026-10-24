@@ -837,13 +837,13 @@ class MedicineGroupDetailSerializer(serializers.ModelSerializer):
         model = MedicineGroup
         fields = ['slug', 'name', 'updated_at', 'forms_count', 'prescription', 'cold_chain', 'translations']
 
-    def get_forms_count(self, obj):
+    def get_forms_count(self, obj) -> int:
         return len(self.context.get('member_ids') or [])
 
-    def get_prescription(self, obj):
+    def get_prescription(self, obj) -> bool:
         return bool((self.context.get('member_flags') or {}).get('prescription'))
 
-    def get_cold_chain(self, obj):
+    def get_cold_chain(self, obj) -> bool:
         return bool((self.context.get('member_flags') or {}).get('cold_chain'))
 
 
