@@ -1663,20 +1663,21 @@ export default function ProductPage({
           dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbSchema) }}
         />
       </Head>
-      <div className="mx-auto max-w-6xl px-3 pt-3 pb-0 sm:py-3 flex items-center justify-between overflow-x-auto no-scrollbar">
-        <nav className="text-sm text-main flex flex-wrap items-center gap-2 whitespace-nowrap">
+      <div className="mx-auto max-w-6xl px-3 pt-3 pb-0 sm:py-3 flex items-center justify-between">
+        {/* Звенья переносятся целиком; звено длиннее строки (обычно название товара) обрезается многоточием — полное есть в H1 */}
+        <nav className="min-w-0 text-sm text-main flex flex-wrap items-center gap-2">
           {breadcrumbs.map((item, idx) => {
             const isLast = idx === breadcrumbs.length - 1
             return (
-              <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
+              <span key={`${item.href}-${idx}`} className="flex min-w-0 max-w-full items-center gap-2">
                 {!isLast ? (
-                  <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
+                  <Link href={item.href} className="truncate hover:text-[var(--accent)] transition-colors">
                     {item.label}
                   </Link>
                 ) : (
-                  <span className="text-main font-medium">{item.label}</span>
+                  <span className="truncate text-main font-medium">{item.label}</span>
                 )}
-                {!isLast && <span className="text-main/60">/</span>}
+                {!isLast && <span className="shrink-0 text-main/60">/</span>}
               </span>
             )
           })}
