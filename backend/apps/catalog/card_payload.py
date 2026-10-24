@@ -14,6 +14,8 @@ CARD_PRODUCT_FIELDS = (
     'is_bestseller',
     # Медикаменты: строка под названием и производитель вместо бренда «Другое»
     'active_ingredient', 'manufacturer',
+    # Ввоз запрещён (TD-024): метка «Ввоз ограничен» на карточке
+    'import_restricted_countries',
 )
 
 CARD_IMAGE_FIELDS = (

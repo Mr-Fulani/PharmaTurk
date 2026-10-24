@@ -79,6 +79,8 @@ interface ProductCardProps {
   subtitle?: string | null
   /** Короткая пометка под названием (у медикаментов — откуда и сроки доставки). */
   note?: string | null
+  /** Коды стран, куда ввоз препарата запрещён или ограничен (RU, KZ, UZ) — красная метка. */
+  importRestrictedCountries?: string[] | null
 }
 
 export default function ProductCard({
@@ -115,6 +117,7 @@ export default function ProductCard({
   isNew,
   subtitle,
   note,
+  importRestrictedCountries,
   isFeatured,
   hasManualMainImage = false,
   imageFit = 'cover'
@@ -246,6 +249,7 @@ export default function ProductCard({
     : null
   // «Новинка» ничего не говорит о препарате
   const showNewBadge = Boolean(isNew) && productType !== 'medicines'
+  const importRestricted = importRestrictedCountries?.length ? importRestrictedCountries : null
   const displaySubtitle = subtitle?.trim() || null
   const displayNote = note?.trim() || null
   const displayBrandName = brandName?.trim() || null
@@ -498,8 +502,16 @@ export default function ProductCard({
         )}
         {variantPreviewOverlay}
         
-        {(badge || isFeatured || showNewBadge || (productType === 'books' && isBestseller)) && (
+        {(badge || isFeatured || showNewBadge || (productType === 'books' && isBestseller) || importRestricted) && (
           <div className="absolute left-2 top-2 flex flex-col gap-1 z-10">
+            {importRestricted && (
+              <span
+                className="rounded-md bg-red-100/90 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-200"
+                title={t('import_restricted_hint', 'Ввоз в эти страны запрещён или ограничен законом')}
+              >
+                {t('import_restricted_badge', 'Ввоз ограничен')}: {importRestricted.join(', ')}
+              </span>
+            )}
             {badge && (
               <span className="rounded-md bg-pink-100/90 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
                 {badge}

@@ -559,6 +559,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     product_image_url = serializers.SerializerMethodField()
     product_video_url = serializers.SerializerMethodField()
     product_translations = serializers.SerializerMethodField()
+    product_import_restricted_countries = serializers.SerializerMethodField()
     chosen_size = serializers.CharField(read_only=True)
     
     # Добавляем поля из новой системы ценообразования
@@ -581,6 +582,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         model = CartItem
         fields = [
             'id', 'product', 'product_name', 'product_slug', 'product_variant_slug', 'product_parent_slug', 'product_type', 'product_image_url', 'product_video_url', 'product_translations',
+            'product_import_restricted_countries',
             'quantity', 'price', 'currency', 'old_price', 'old_price_formatted', 'chosen_size', 'created_at', 'updated_at',
             # Новые поля из системы ценообразования
             'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
@@ -927,6 +929,12 @@ class CartItemSerializer(serializers.ModelSerializer):
             return None
         parent = getattr(variant, "product", None)
         return getattr(parent, "slug", None) or None
+
+    def get_product_import_restricted_countries(self, obj) -> list[str]:
+        """Ввоз препарата в эти страны запрещён (TD-024): предупреждение в «Списке заявки»."""
+        from apps.catalog.controlled_substances import product_restricted_countries
+
+        return product_restricted_countries(obj.product)
 
     def get_product_name(self, obj):
         product = obj.product

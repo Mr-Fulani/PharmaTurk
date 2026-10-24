@@ -1653,5 +1653,14 @@
   "blog_meta_description": "Which medicines to order from Turkey, Turkish equivalents of Russian medicines, import rules and how to check that a medicine is genuine.",
   "blog_h1": "Articles on medicines from Turkey",
   "delivery_import_faq_title": "Importing medicines: questions and answers",
-  "delivery_import_article_link": "Read more in the article on importing medicines from Turkey"
+  "delivery_import_article_link": "Read more in the article on importing medicines from Turkey",
+  "and": "and",
+  "import_restricted_badge": "Import restricted",
+  "import_restricted_hint": "Import to these countries is prohibited or restricted by law",
+  "import_restricted_country_RU": "Russia",
+  "import_restricted_country_KZ": "Kazakhstan",
+  "import_restricted_country_UZ": "Uzbekistan",
+  "import_restricted_banner": "Import of this medicine to {{countries}} is prohibited or restricted by law. We do not ship it to these countries without agreement with a manager. It can be bought for pickup in Turkey.",
+  "import_restricted_cart": "Import to {{countries}} is prohibited or restricted by law. We do not ship it there without agreement with a manager.",
+  "import_restricted_seo_description": "{{name}}: reference information and patient leaflet. Import to {{countries}} is prohibited or restricted by law."
 }

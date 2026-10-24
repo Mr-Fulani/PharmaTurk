@@ -104,3 +104,24 @@ def test_order_admin_warns_about_restricted_items():
     admin = OrderAdmin(Order, AdminSite())
     assert "1 поз." in admin.import_restriction_badge(order)
     assert "PERGE 75 MG — KZ, RU" in admin.import_restriction_banner(order)
+
+
+def test_buyer_sees_restriction_in_search_catalog_card_and_cart():
+    from apps.orders.models import Cart, CartItem
+    from apps.orders.serializers import CartItemSerializer
+
+    restricted = _medicine("perge", "Pregabalin")
+    _medicine("ibufen", "Ibuprofen", atc="M01AE01")
+    client = APIClient()
+
+    search = client.get("/api/catalog/products", {"search": "e", "view": "card"}).json()["results"]
+    assert {row["slug"]: row["import_restricted_countries"] for row in search} == {"perge": ["KZ", "RU"], "ibufen": []}
+
+    cards = client.get("/api/catalog/medicines/products", {"view": "card"}).json()["results"]
+    assert {row["slug"]: row.get("import_restricted_countries") for row in cards} == {"perge": ["KZ", "RU"], "ibufen": None}
+
+    detail = client.get("/api/catalog/medicines/products/perge").json()
+    assert detail["import_restricted_countries"] == ["KZ", "RU"]
+
+    item = CartItem.objects.create(cart=Cart.objects.create(session_key="s1"), product=restricted.base_product, quantity=1, price=1)
+    assert CartItemSerializer(item, context={}).data["product_import_restricted_countries"] == ["KZ", "RU"]
