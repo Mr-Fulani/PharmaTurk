@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import Any, Optional
 
 from apps.ai.services.medicine_reference import _COUNT_UNITS, fold_tr, ru_plural
@@ -291,6 +292,32 @@ FORM_PHRASES = {
     ),
     "rahim ici sistem": ("внутриматочная система", "intrauterine system"),
 }
+# Слова форм до 24.10.2026: по ним считается бренд для метки {BRAND} в памяти абзацев
+# (paragraph_brand). Новая форма не должна менять этот бренд — иначе у лекарства меняются
+# ключи абзацев, и готовые переводы инструкции не находятся.
+_LEGACY_FORM_PHRASES = tuple(FORM_PHRASES)
+# Пилот 24.10.2026: растворы для диализа и в/в растворы в пакетах, порошки с растворителем.
+FORM_PHRASES.update({
+    "periton diyaliz cozeltisi": ("раствор для перитонеального диализа", "peritoneal dialysis solution"),
+    "periton diyaliz solusyonu": ("раствор для перитонеального диализа", "peritoneal dialysis solution"),
+    "periton diyaliz solusyon": ("раствор для перитонеального диализа", "peritoneal dialysis solution"),
+    "periton diyaliz": ("раствор для перитонеального диализа", "peritoneal dialysis solution"),
+    "periton dializ cozeltisi": ("раствор для перитонеального диализа", "peritoneal dialysis solution"),
+    "periton dializ": ("раствор для перитонеального диализа", "peritoneal dialysis solution"),
+    "hemodiyaliz/hemofiltrasyon cozeltisi": (
+        "раствор для гемодиализа и гемофильтрации", "haemodialysis and haemofiltration solution"
+    ),
+    "dengeli elektrolit cozeltisi": ("сбалансированный электролитный раствор", "balanced electrolyte solution"),
+    "dengeli elektrolit solusyonu": ("сбалансированный электролитный раствор", "balanced electrolyte solution"),
+    "dengeli elektrolit solusyon": ("сбалансированный электролитный раствор", "balanced electrolyte solution"),
+    "dengeli elektrolit": ("сбалансированный электролитный раствор", "balanced electrolyte solution"),
+    "cozeltisi": ("раствор", "solution"),
+    "solusyonu": ("раствор", "solution"),
+    "enjeksiyonluk cozelti tozu": (
+        "порошок для приготовления раствора для инъекций", "powder for solution for injection"
+    ),
+    "cozelti tozu": ("порошок для приготовления раствора", "powder for solution"),
+})
 # Флакон/ампула как форма, если та же упаковка указана и счётом («ICEREN FLAKON (1 FLAKON)»),
 # не повторяется: остаётся «1 флакон».
 _CONTAINER_FORMS = {
@@ -322,11 +349,29 @@ _ABBREVIATIONS = (
     (r"gastro[\s-]?rezistan", "gastro direncli"),
     (r"pediyatrik", "pediatrik"),
 )
-# Сокращение с точкой может стоять вплотную к слову: «ENT.TABLET», «YUM.KAPSUL».
-_ABBREVIATION_RES = tuple(
-    (re.compile(rf"(?<![a-z]){pattern}" + ("" if pattern.endswith(r"\.") else r"(?![a-z])")), f" {full} ")
-    for pattern, full in _ABBREVIATIONS
+# С 24.10.2026, только для названия (см. _LEGACY_FORM_PHRASES): опечатки источника.
+_TITLE_ABBREVIATIONS = (
+    (r"hazirlmak", "hazirlamak"),
+    (r"infizyonluk", "infuzyonluk"),
+    (r"vecozucu", "ve cozucu"),
+    (r"saattransdermal", "saat transdermal"),
+    (r"mikrogram", "mcg"),
+    (r"unite", "u"),  # ÜNİTE
+    (r"chewable", "cigneme"),
+    (r"soft\s*gel", "yumusak"),
 )
+
+
+# Сокращение с точкой может стоять вплотную к слову: «ENT.TABLET», «YUM.KAPSUL».
+def _abbreviation_res(pairs):
+    return tuple(
+        (re.compile(rf"(?<![a-z]){pattern}" + ("" if pattern.endswith(r"\.") else r"(?![a-z])")), f" {full} ")
+        for pattern, full in pairs
+    )
+
+
+_ABBREVIATION_RES = _abbreviation_res(_ABBREVIATIONS)
+_TITLE_ABBREVIATION_RES = _abbreviation_res(_TITLE_ABBREVIATIONS)
 # Форма, разорванная фасовкой: «UZATILMIS SALIMLI 30 TABLET» → «30 UZATILMIS SALIMLI TABLET».
 _SPLIT_FORM_RE = re.compile(
     r"(uzatilmis salimli|kontrollu salimli|agizda dagilan|enterik kapli|gastro direncli|film kapli|"
@@ -334,9 +379,21 @@ _SPLIT_FORM_RE = re.compile(
 )
 
 
-def _expand_source(rest: str) -> str:
-    for pattern, full in _ABBREVIATION_RES:
+def _expand_source(rest: str, legacy: bool = False) -> str:
+    """Сокращения → полные слова; ``legacy`` — как до 24.10.2026, для бренда абзацев."""
+    for pattern, full in _ABBREVIATION_RES if legacy else _ABBREVIATION_RES + _TITLE_ABBREVIATION_RES:
         rest = pattern.sub(full, rest)
+    if not legacy:
+        rest = re.sub(r"\s+", " ", rest)
+        # «ENJ. 100 ML COZELTI» — объём внутри формы; «1X30 PATCHES», «1X28PCS.» — число в упаковке.
+        rest = re.sub(r"\benjeksiyon (\d+(?:[.,]\d+)?\s*ml) cozelti\b", r"\1 enjeksiyon cozelti", rest)
+        rest = re.sub(
+            r"(?<![\d.,])1\s*[x×]\s*(\d+)\s*(pcs?\b\.?)?(?![\d.,]*\s*(?:ml|mg|gr|g)\b)",
+            lambda m: f" {m.group(1)} {'adet' if m.group(2) else ''} ",
+            rest,
+        )
+        # «30 PATCHES», «TRANSDERMAL PATCH» — пластырь; «EXELON PATCH» в бренде остаётся.
+        rest = re.sub(r"(\d+\s*|transdermal )patch(?:es|s)?\b\.?", r"\1 flaster", rest)
     # «10 ML X 3 AMPUL» — объём одной ампулы и их число; «AMPUL(25)» в конце — 25 ампул.
     rest = re.sub(r"(\d+(?:[.,]\d+)?)\s*ml\s*x\s*(\d+)\s+(ampul|flakon|kartus)\b", r"\1 ml \2 \3", rest)
     rest = re.sub(r"\b(ampul|flakon)\s+(\d+)\s*$", r"\2 \1", rest)
@@ -349,6 +406,7 @@ def _expand_source(rest: str) -> str:
 # «REFRESH TEK DOZLUK» — на них бренд не обрывается.
 _BRAND_FORM_WORDS = {"likit", "pellet", "tek", "dozluk", "doz"}  # и «OTRIVINE DOZ AYARLI»
 FORM_WORDS = {word for phrase in FORM_PHRASES for word in phrase.split()} - _BRAND_FORM_WORDS
+_LEGACY_FORM_WORDS = {word for phrase in _LEGACY_FORM_PHRASES for word in phrase.split()} - _BRAND_FORM_WORDS
 _FORM_RE = re.compile(
     r"(?:" + "|".join(re.escape(p) for p in sorted(FORM_PHRASES, key=len, reverse=True)) + r")\b"
 )
@@ -358,7 +416,7 @@ _PACK_WORDS = {
     "adet": "piece", "ampul": "ampoule", "flakon": "vial", "sase": "sachet",
     "kalem": "pen", "enjektor": "syringe", "doz": "dose", "puskurtme": "dose",
     "tup": "tube", "sise": "vial", "flaster": "patch", "kutu": "box",
-    "blister": "blister", "kartus": "cartridge",
+    "blister": "blister", "kartus": "cartridge", "poset": "sachet",
 }
 # Обозначения линейки после дозировки («200 MG CR») — сохраняются как в источнике.
 _SERIES_WORDS = {
@@ -377,12 +435,43 @@ _MODIFIERS = {
     "sekersiz": ("без сахара", "sugar-free"),
     "centikli": ("с риской", "scored"),
     "oftalmik": ("для глаз", "ophthalmic"),
+    "naneli": ("со вкусом мяты", "mint flavour"),
+    "glukozlu": ("с глюкозой", "with glucose"),
+    "dekstrozlu": ("с декстрозой", "with dextrose"),
 }
-# Уточнения из нескольких слов: «TOZ VE COZUCU» — порошок с растворителем.
-_PHRASE_MODIFIERS_RE = re.compile(r"ve cozucu(?:su)?\b")
-_PHRASE_MODIFIERS = ("с растворителем", "with solvent")
-# Слова-связки источника, которые в название не переносятся: «COZELTI ICEREN AMPUL».
-_SKIP_WORDS = {"iceren", "aerosol"}  # «AEROSOL … OLCULU DOZ INHALER» — форма названа дальше
+# Растворитель с упаковкой рядом: «+ 1 COZUCU FLAKON», «VE COZUCU ICEREN AMPUL». Число после
+# растворителя («TOZ VE COZUCU (1 FLAKON)») — фасовка, а не его упаковка.
+_SOLVENT = r"(?:(?:ve|\+)\s*)?(?:\d+\s+)?cozucu(?:su)?(?:\s+iceren)?\s+"
+# Уточнения из нескольких слов: «TOZ VE COZUCU» — порошок с растворителем; «TEKLI TORBA» — пакет.
+_PHRASE_MODIFIERS = (
+    (re.compile(_SOLVENT + r"kullanima hazir\s+(?:\d+\s+)?(?:enjektor|siringa)\b"), (
+        "с растворителем в предварительно заполненном шприце", "with solvent in pre-filled syringe"
+    )),
+    (re.compile(_SOLVENT + r"ampul\b"), ("с растворителем в ампуле", "with solvent in ampoule")),
+    (re.compile(_SOLVENT + r"flakon\b"), ("с растворителем во флаконе", "with solvent in vial")),
+    (re.compile(r"ve cozucu(?:su)?\b"), ("с растворителем", "with solvent")),
+    (re.compile(r"(?:tekli|tek) torba\b"), ("одинарный пакет", "single bag")),
+    (re.compile(r"ciftli torba\b"), ("двойной пакет", "twin bag")),
+    (re.compile(r"(?:(?:pp|pvc) )?torba\b"), ("пакет", "bag")),
+    (re.compile(r"pvc\b"), ("пакет", "bag")),
+    (re.compile(r"bal ve limon aromali\b"), ("со вкусом мёда и лимона", "honey and lemon flavour")),
+)
+# Вещество в/в раствора («%5 DEKSTROZ SUDAKI COZELTISI») → RU в родительном падеже, EN.
+_SUBSTANCES = {
+    "laktatli ringer": ("Рингер-лактата", "Ringer's lactate"),
+    "ringer laktat": ("Рингер-лактата", "Ringer's lactate"),
+    "ringer": ("Рингера", "Ringer's"),
+    "sodyum klorur": ("натрия хлорида", "sodium chloride"),
+    "dekstroz": ("декстрозы", "dextrose"),
+    "glukoz": ("глюкозы", "glucose"),
+    "mannitol": ("маннитола", "mannitol"),
+}
+_SUBSTANCE_RE = re.compile(r"(?:" + "|".join(sorted(_SUBSTANCES, key=len, reverse=True)) + r")\b")
+# Перед формой-раствором: «IZOTONIK … SOL.» → «изотонический раствор».
+_PREFIX_MODIFIERS = {"izotonik": ("изотонический", "isotonic"), "hipertonik": ("гипертонический", "hypertonic")}
+# Слова-связки источника, которые в название не переносятся: «COZELTI ICEREN AMPUL»,
+# «DEKSTROZ SUDAKI» (водный), материал пакета «PVC».
+_SKIP_WORDS = {"iceren", "aerosol", "sudaki"}  # «AEROSOL … OLCULU DOZ INHALER» — форма названа дальше
 _PACK_RE = re.compile(r"(\d+)\s+(" + "|".join(_PACK_WORDS) + r")\b")
 
 _UNITS = {
@@ -390,11 +479,11 @@ _UNITS = {
     "g": ("г", "g"), "gr": ("г", "g"), "ml": ("мл", "ml"), "l": ("л", "l"),
     "iu": ("МЕ", "IU"), "ui": ("МЕ", "IU"), "mmol": ("ммоль", "mmol"), "meq": ("мэкв", "mEq"),
     "doz": ("доза", "dose"), "puskurtme": ("доза", "dose"), "saat": ("ч", "h"), "h": ("ч", "h"),
-    "tu": ("ТЕ", "TU"), "u": ("ЕД", "U"),
+    "tu": ("ТЕ", "TU"), "u": ("ЕД", "U"), "cm2": ("см²", "cm²"),
 }
 _NUM = r"\d+(?:[.,]\d+)?"
 _UNIT = r"(?:mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq|tu|u)"
-_PER = r"(?:mg|mcg|g|ml|doz|puskurtme|saat|h|l)"
+_PER = r"(?:mg|mcg|g|ml|doz|puskurtme|saat|h|l|cm2)"
 _DOSE_RE = re.compile(
     rf"(?:%\s*({_NUM})|({_NUM})\s*%|({_NUM})\s*({_UNIT})(?:\s*/\s*({_NUM})?\s*({_PER}))?)(?![a-z])"
 )
@@ -439,28 +528,87 @@ def _pack(number: str, unit: str, locale: str) -> str:
     return f"{number} {en_forms[0] if number == '1' else en_forms[1]}"
 
 
-def is_form_word(token: Any) -> bool:
+def is_form_word(token: Any, legacy: bool = False) -> bool:
     """Слово лекарственной формы или его сокращение («SOL.», «TB», «CAPSULES») — не бренд."""
     folded = fold_tr(token)
-    expanded = _expand_source(folded).split()
-    return folded in FORM_WORDS or bool(expanded) and all(word in FORM_WORDS for word in expanded)
+    words = _LEGACY_FORM_WORDS if legacy else FORM_WORDS
+    expanded = _expand_source(folded, legacy).split()
+    return folded in words or bool(expanded) and all(word in words for word in expanded)
 
 
-def _brand_tokens(tokens: list[str]) -> list[str]:
-    """Первые слова названия — до дозировки, формы или пути введения."""
+def _brand_tokens(tokens: list[str], legacy: bool = False) -> list[str]:
+    """Первые слова названия — до дозировки, формы или пути введения.
+
+    ``legacy`` — по словарю форм до 24.10.2026: так считается бренд абзацев (paragraph_brand).
+    """
+    words = _LEGACY_FORM_WORDS if legacy else FORM_WORDS
+    # «LAFLEKS IZOTONIK SODYUM KLORUR SOLUSYONU» — вещество и «изотонический» уже не бренд;
+    # но «LAKTATLI RINGER PVC», «IZOTONIK SODYUM KLORUR BIOSEL» — с вещества начинается сам бренд.
+    folded_name = fold_tr(" ".join(tokens))
+    stop_at_substance = not legacy and not (
+        _SUBSTANCE_RE.match(folded_name) or folded_name.split(" ", 1)[0] in _PREFIX_MODIFIERS
+    )
     brand: list[str] = []
-    for token in tokens:
+    for index, token in enumerate(tokens):
         folded = fold_tr(token).strip(",;")
+        if brand and stop_at_substance and (
+            folded in _PREFIX_MODIFIERS or _SUBSTANCE_RE.match(fold_tr(" ".join(tokens[index:])))
+        ):
+            break
         if (
             folded[:1].isdigit()
             or folded.startswith("%")
-            or folded in FORM_WORDS
+            or folded in words
             # «KAYEXALAT POWDER», «RINGER BIOSEL ENJEKTABL SOL.»; «OLFREX EASY TAB» — бренд.
-            or (brand and folded != "tab" and is_form_word(folded))
+            or (brand and folded != "tab" and is_form_word(folded, legacy))
             or _ROUTE_ABBR_RE.fullmatch(folded)
         ):
             break
         brand.append(token)
+    return brand
+
+
+def _known_title_word(word: str) -> bool:
+    """Слово названия, которое разбирает шаблон (форма, единица, «GRAM», фасовка…), — не бренд."""
+    return any(
+        part in FORM_WORDS or part in _UNITS or part in _PACK_WORDS or part in _SERIES_WORDS
+        or part in _MODIFIERS or part in _SKIP_WORDS or part in _PREFIX_MODIFIERS
+        or _SUBSTANCE_RE.fullmatch(part) or _ROUTE_ABBR_RE.fullmatch(part)
+        for part in _expand_source(word).split() or [word]
+    )
+
+
+_SUBSTANCE_WORDS = {word for phrase in _SUBSTANCES for word in phrase.split()} | set(_PREFIX_MODIFIERS)
+
+
+def is_title_descriptor_word(token: Any) -> bool:
+    """Слово, которое шаблон названия переводит (форма, вещество в/в раствора, «IZOTONIK», «SETLI»), — не бренд."""
+    folded = fold_tr(token).strip(".,;")
+    return folded in _SUBSTANCE_WORDS or _known_title_word(folded)
+
+
+def _title_brand_tokens(tokens: list[str]) -> list[str]:
+    """Бренд названия: ещё и число без единицы сразу после бренда — часть названия.
+
+    «CAPD 4 STAY SAFE PERITON DIALIZ», «PHYSIONEAL 40 %3.86 GLUKOZLU …», «POLIFLEKS 1/3 POLIDEKS IV …».
+    """
+    brand = _brand_tokens(tokens)
+    extra = tokens[len(brand):]
+    if brand and len(extra) >= 2 and re.fullmatch(r"\d+(?:/\d+)?", extra[0]):
+        if re.match(r"%\d", fold_tr(extra[1])):  # «PHYSIONEAL 40 %3.86»; «FUCIDIN 2 % KREM» — дозировка
+            return brand + extra[:1]
+        count = 1
+        while (
+            count < min(len(extra), 4)
+            and re.fullmatch(r"[a-z]{3,}", fold_tr(extra[count]))
+            and not _known_title_word(fold_tr(extra[count]))
+        ):
+            count += 1
+        # Слова после числа — бренд, только если сразу за ними форма или путь введения:
+        # «… 75 MIKROGRAM 28 FILM TABLET», «… 15 KIRMIZI (30X130 ML)» — не бренд.
+        following = fold_tr(" ".join(extra[count:]))
+        if count > 1 and (_FORM_RE.match(_expand_source(following)) or _ROUTE_ABBR_RE.match(following)):
+            return brand + extra[:count]
     return brand
 
 
@@ -470,7 +618,7 @@ def paragraph_brand(name: Any, active_ingredient: Any = "") -> str:
     Пусто, если короче 3 букв или совпадает с МНН: «IBUPROFEN 400 MG» — это
     вещество, и в переводе оно должно стать «ибупрофеном», а не меткой.
     """
-    brand = " ".join(_brand_tokens(re.sub(r"[()]", " ", str(name or "")).split()))
+    brand = " ".join(_brand_tokens(re.sub(r"[()]", " ", str(name or "")).split(), legacy=True))
     words = set(re.findall(r"[a-z]+", fold_tr(brand)))
     if sum(map(len, words)) < 3:
         return ""
@@ -480,9 +628,27 @@ def paragraph_brand(name: Any, active_ingredient: Any = "") -> str:
 
 def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
     """RU/EN-название из исходного названия или None, если разобрать нельзя."""
-    source = re.sub(r"[()]", " ", str(name or "")).strip()
-    tokens = source.split()
-    brand = _brand_tokens(tokens)
+    title = _title_and_brand(str(name or ""))[0]
+    return dict(title) if title else None
+
+
+@lru_cache(maxsize=4096)
+def _title_and_brand(name: str) -> tuple[Optional[dict[str, str]], tuple[str, ...]]:
+    """Название и бренд, с которым оно собрано.
+
+    Сначала бренд по расширенному словарю (24.10.2026: обрывается и на веществе в/в
+    раствора, бывает с числом). Если так не разобрать, то по прежнему словарю: прежние
+    названия не теряются («PRIMEFLEKS RINGER 0,86 G+0,03 G…», «IZOLEKS DENGELI ELEKTROLIT BIOSEL SOL»).
+    """
+    tokens = re.sub(r"[()]", " ", name).strip().split()
+    for brand in (_title_brand_tokens(tokens), _brand_tokens(tokens, legacy=True)):
+        title = _build_title(tokens, brand)
+        if title:
+            return title, tuple(brand)
+    return None, tuple(_title_brand_tokens(tokens))
+
+
+def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]]:
     if not brand or len(brand) == len(tokens):
         return None
     rest = _expand_source(fold_tr(" ".join(tokens[len(brand):])))
@@ -499,6 +665,8 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
     forms: list[tuple[str, str]] = []
     form_keys: list[str] = []
     modifiers: list[tuple[str, str]] = []
+    substances: list[tuple[str, str]] = []
+    prefix = None
     route = None
     joiner = None
     while rest:
@@ -516,7 +684,10 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
         form_match = _FORM_RE.match(rest)
         counted = re.match(r"(\d+)\s+", rest)
         counted_form = _FORM_RE.match(rest[counted.end():]) if counted else None
-        phrase_modifier = _PHRASE_MODIFIERS_RE.match(rest)
+        phrase_modifier = next(
+            ((match, text) for regex, text in _PHRASE_MODIFIERS if (match := regex.match(rest))), None
+        )
+        substance = _SUBSTANCE_RE.match(rest)
         word = re.match(r"[a-z]+\b", rest)
         if multi:
             count, size, unit = multi.groups()
@@ -538,6 +709,9 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
             strength_joiners.append(joiner)
             rest = rest[combo.end():]
         elif dose:
+            # «%09 SODYUM KLORUR» — в источнике потеряна запятая: 9% или 0,9% — не угадываем.
+            if re.fullmatch(r"0\d+", (dose.group(1) or dose.group(2) or "")):
+                return None
             for locale in ("ru", "en"):
                 text, kind = _format_dose(dose, locale)
                 {"strength": strengths, "volume": volumes, "grams": grams}[kind][locale].append(text)
@@ -574,8 +748,14 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
             )
             rest = rest[route_match.end():]
         elif phrase_modifier:
-            modifiers.append(_PHRASE_MODIFIERS)
-            rest = rest[phrase_modifier.end():]
+            modifiers.append(phrase_modifier[1])
+            rest = rest[phrase_modifier[0].end():]
+        elif substance:
+            substances.append(_SUBSTANCES[substance.group(0)])
+            rest = rest[substance.end():]
+        elif word and word.group(0) in _PREFIX_MODIFIERS and prefix is None:
+            prefix = _PREFIX_MODIFIERS[word.group(0)]
+            rest = rest[word.end():]
         elif word and word.group(0) in _SERIES_WORDS:
             series.append(word.group(0).upper())
             rest = rest[word.end():]
@@ -591,6 +771,27 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
     forms = [
         form for key, form in zip(form_keys, forms) if _CONTAINER_FORMS.get(key) not in pack_units
     ]
+    # «EXELON PATCH … TRANSDERMAL FLASTER»: «пластырь» внутри «трансдермальный пластырь» не повторяем.
+    forms = [form for form in forms if not any(other[0].endswith(" " + form[0]) for other in forms)]
+    # «DENGELI ELEKTROLIT I.V. INFUZYONLUK COZELTI» → «сбалансированный электролитный раствор для в/в инфузий».
+    if len(forms) == 2 and forms[0][0].endswith("раствор") and forms[1][0].startswith("раствор "):
+        forms = [(forms[0][0] + forms[1][0][7:], forms[0][1] + forms[1][1][8:])]
+    # Повтор уточнения («SETSIZ … SETSIZ»); общее «с растворителем» рядом с уточнённым — лишнее.
+    modifiers = list(dict.fromkeys(modifiers))
+    if any(text[0].startswith("с растворителем ") for text in modifiers):
+        modifiers = [text for text in modifiers if text != ("с растворителем", "with solvent")]
+    if substances and grams["ru"]:
+        return None
+    # «SERUM FIZYOLOJIK IZOTONIK %0,9 10 ML», «LAKTATLI RINGER … 500 ML» — раствор без слова «раствор».
+    if (substances or prefix) and not forms:
+        forms = [("раствор", "solution")]
+    if (substances or prefix) and not forms[0][0].startswith("раствор"):
+        return None
+    # Вещества в/в раствора: одно — «раствор декстрозы»; по дозировке на каждое —
+    # «раствор декстрозы 5% и натрия хлорида 0,2%». Иначе не сопоставить — название даст модель.
+    by_substance = len(substances) > 1 or (substances and len(strengths["ru"]) > 1)
+    if by_substance and len(substances) != len(strengths["ru"]):
+        return None
     if not forms and not (strengths["ru"] or volumes["ru"] or grams["ru"]):
         return None
     # «I.M./ORAL COZELTI» — путь введения и «для приёма внутрь» вместе не записать.
@@ -616,10 +817,25 @@ def build_medicine_title(name: Any) -> Optional[dict[str, str]]:
                 strength.append(f"({value})")
             else:
                 strength.append(value)
+        if by_substance:
+            pairs = list(zip(substances, values))
+            strength = []
         head = " ".join(brand + strength + series)
         parts = [head]
         if forms:
-            parts.append(", ".join(form[index] for form in forms) + (f" ({route[index]})" if route else ""))
+            first = forms[0][index]
+            if substances:
+                names = (
+                    [f"{substance[index]} {value}" for substance, value in pairs] if by_substance
+                    else [substances[0][index]]
+                )
+                joined = (" и " if locale == "ru" else " and ").join(names)
+                # RU: «раствор маннитола для инъекций»; EN: «mannitol solution for injection».
+                first = first.replace("раствор", f"раствор {joined}", 1) if locale == "ru" else f"{joined} {first}"
+            if prefix:
+                first = f"{prefix[index]} {first}"
+            form_texts = [first] + [form[index] for form in forms[1:]]
+            parts.append(", ".join(form_texts) + (f" ({route[index]})" if route else ""))
         elif route:
             parts.append(route[index])
         parts.extend(modifier[index] for modifier in modifiers)
@@ -772,8 +988,8 @@ def title_inn(value: str) -> str:
 
 
 def title_brand(name: Any) -> str:
-    """Бренд в начале названия кодом («MAJEZIK», «THERMO FUZO», «IBUPROFEN»)."""
-    return " ".join(_brand_tokens(re.sub(r"[()]", " ", str(name or "")).split()))
+    """Бренд в начале названия кодом («MAJEZIK», «THERMO FUZO», «IBUPROFEN», «CAPD 4 STAY SAFE»)."""
+    return " ".join(_title_and_brand(str(name or ""))[1])
 
 
 def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], active_ingredient: Any = "") -> dict[str, str]:
@@ -792,6 +1008,9 @@ def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], activ
         text = title_inn(value)
         # «Otag (Ml)» — обрывок названия из источника вместо вещества.
         if not text or "(" in text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand):
+            return title
+        # «TURKFLEKS 10%, раствор декстрозы» — вещество уже в названии, в скобках не повторяем.
+        if any(word[:6].lower() in title[locale].lower() for word in re.findall(r"[^\W\d_]{5,}", text)):
             return title
         result[locale] = f"{brand} ({text}){title[locale][len(brand):]}"
     return result
