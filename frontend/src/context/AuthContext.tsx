@@ -193,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Refresh в HttpOnly cookie гасит только backend (в чёрный список + удаление cookie).
       // Access берём до удаления: интерцептор читает cookie уже после этого вызова.
       const access = Cookies.get('access')
-      api.post('/users/logout/', {}, {
+      api.post('/auth/logout/', {}, {
         headers: access ? { Authorization: `Bearer ${access}` } : undefined,
       }).catch(() => {})
       Cookies.remove('access', { path: '/' })

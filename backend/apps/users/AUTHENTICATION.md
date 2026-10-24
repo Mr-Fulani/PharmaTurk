@@ -34,7 +34,7 @@ Content-Type: application/json
 
 Успешный ответ содержит объект `user` и `tokens.access`. Refresh-токен в тело
 не попадает: backend ставит его в cookie `refresh_token` с флагами `HttpOnly`,
-`Secure` (в проде), `SameSite=Lax`, `Path=/api/`, без `Max-Age` — закрытие
+`Secure` (в проде), `SameSite=Lax`, `Path=/api/auth/`, без `Max-Age` — закрытие
 браузера означает выход, как и раньше (TD-018). JavaScript refresh не видит, XSS
 не может унести долгую сессию. Так же отвечают регистрация, вход через Telegram
 и Google/VK. В защищённых запросах access token передаётся так:
@@ -60,7 +60,8 @@ Authorization: Bearer <access-token>
 | `POST /api/users/token/verify/` | `token` | проверка токена |
 | `POST /api/auth/jwt/create/` | `username`, `password` | совместимый alias получения пары |
 | `POST /api/auth/jwt/refresh/` | пусто (refresh из cookie) или `refresh` | новый access; новый refresh — в cookie `refresh_token` (в теле — только если refresh пришёл в теле) |
-| `POST /api/users/logout/` | пусто (refresh из cookie) или `refresh`; Bearer access по желанию | blacklist refresh, удаление cookie, деактивация `UserSession`; работает и с истёкшим access |
+| `POST /api/auth/logout/` | пусто (refresh из cookie) или `refresh`; Bearer access по желанию | blacklist refresh, удаление cookie, деактивация `UserSession`; работает и с истёкшим access |
+| `POST /api/users/logout/` | то же | алиас для API-клиентов: cookie с `Path=/api/auth/` сюда не приходит, refresh — в теле |
 
 Поле `username` в JWT endpoint также проходит через `MultiFieldAuthBackend`, то
 есть фактически принимает email, username или телефон. Access token живёт 60
@@ -73,7 +74,7 @@ Authorization: Bearer <access-token>
   `Authorization` и SSR корзины/оформления. Живёт 60 минут.
 - `refresh_token` — HttpOnly cookie от backend. Фронт обновляет access запросом
   `POST /api/auth/jwt/refresh/` без тела (`frontend/src/lib/api.ts`), выход —
-  `POST /api/users/logout/`.
+  `POST /api/auth/logout/`.
 - Сессии до релиза TD-018 хранили refresh в JS-cookie `refresh`. При первом
   открытии сайта (или первом 401) фронт один раз отправляет её в теле
   `/api/auth/jwt/refresh/`, backend ставит HttpOnly cookie, JS-cookie удаляется

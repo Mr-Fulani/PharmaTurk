@@ -13,8 +13,9 @@ from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 REFRESH_COOKIE_NAME = "refresh_token"
-# Нужна только эндпоинтам /api/auth/jwt/refresh/ и /api/users/logout/.
-REFRESH_COOKIE_PATH = "/api/"
+# Нужна только /api/auth/jwt/refresh/ и /api/auth/logout/ — остальные запросы
+# API (и медиа через proxy-media) её не несут.
+REFRESH_COOKIE_PATH = "/api/auth/"
 
 
 def set_refresh_cookie(response, refresh) -> None:

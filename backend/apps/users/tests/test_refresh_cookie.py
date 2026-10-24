@@ -15,7 +15,7 @@ from apps.users.models import User
 
 REFRESH_URL = "/api/auth/jwt/refresh/"
 LOGIN_URL = "/api/users/login/"
-LOGOUT_URL = "/api/users/logout/"
+LOGOUT_URL = "/api/auth/logout/"
 TELEGRAM_URL = "/api/users/telegram/login/"
 
 

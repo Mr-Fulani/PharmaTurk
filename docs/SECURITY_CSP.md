@@ -40,7 +40,7 @@
 ### Токены входа
 
 - Refresh JWT — только в HttpOnly cookie `refresh_token` от backend
-  (`apps/users/auth_cookies.py`): `Secure` в проде, `SameSite=Lax`, `Path=/api/`,
+  (`apps/users/auth_cookies.py`): `Secure` в проде, `SameSite=Lax`, `Path=/api/auth/`,
   без `Max-Age`. JavaScript её не видит. Подробности — в
   [AUTHENTICATION.md](../backend/apps/users/AUTHENTICATION.md).
 - Access JWT (60 мин) — по-прежнему обычная cookie фронта: её читают заголовок
