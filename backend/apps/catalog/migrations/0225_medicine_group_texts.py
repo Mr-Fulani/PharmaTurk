@@ -5,7 +5,7 @@
 страницы (frontend/src/lib/drugGroup.js). TYLOLHOT не создан: все его формы содержат
 псевдоэфедрин, ввоз которого в РФ и СНГ ограничен (docs/TECH_DEBT.md, TD-024).
 Формы с такими веществами у других брендов (A-FERIN, AERIUS, KATARIN) страница не
-показывает — их отсекает apps/catalog/medicine_restrictions.py. Сами страницы этих трёх
+показывает — их отсекает отметка TD-024 (``import_restricted_countries``). Сами страницы этих трёх
 брендов созданы выключенными: по решению PR #165 бренды, в линейке которых есть такие формы,
 не продвигаются (docs/MEDICINE_LANDING_PAGES.md, «Ограничения текстов»). Включить —
 галочка «Активен» в админке, по решению владельца.
@@ -538,7 +538,7 @@ def delete_groups(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("catalog", "0223_medicine_groups"),
+        ("catalog", "0224_medicine_groups"),
     ]
 
     operations = [

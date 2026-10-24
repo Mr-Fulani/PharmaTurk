@@ -1,9 +1,10 @@
 """Страницы препаратов (/drugs/<slug>): формы бренда и ссылка на страницу с карточки.
 
 Формы — по правилу MedicineGroup.medicine_filter (начало названия), без препаратов,
-которые нельзя продвигать (medicine_restrictions). Сначала id выбираются условием
-только по названию, и лишь потом на этих строках проверяется заглушка в
-external_data: условие на jsonb по всей таблице детоастило бы дампы парсеров
+ввоз которых в РФ и СНГ запрещён или ограничен (отметка TD-024
+``import_restricted_countries``, apps/catalog/controlled_substances.py). Сначала id
+выбираются условием только по обычным полям, и лишь потом на этих строках проверяется
+заглушка в external_data: условие на jsonb по всей таблице детоастило бы дампы парсеров
 (DEVELOPMENT_RULES §2.9).
 """
 
@@ -14,8 +15,6 @@ from typing import Any, Optional
 from django.core.cache import cache
 from django.db import models
 
-from apps.catalog.medicine_restrictions import is_restricted_medicine
-
 GROUPS_CACHE_KEY = "medicine_groups:v1:active"
 GROUPS_CACHE_TTL = 300
 
@@ -25,15 +24,14 @@ def _stub_q() -> models.Q:
 
 
 def visible_member_ids(group) -> list[int]:
-    """id форм препарата на витрине: активные, не заглушки, не запрещённые к продвижению."""
+    """id форм препарата на витрине: активные, не заглушки, без отметки «ввоз ограничен»."""
     from apps.catalog.models import MedicineProduct
 
-    rows = (
-        MedicineProduct.objects.filter(is_active=True)
+    ids = list(
+        MedicineProduct.objects.filter(is_active=True, import_restricted_countries="")
         .filter(group.medicine_filter())
-        .values_list("id", "active_ingredient", "prescription_type")
+        .values_list("id", flat=True)
     )
-    ids = [pk for pk, ingredient, prescription in rows if not is_restricted_medicine(ingredient, prescription)]
     if not ids:
         return []
     stubs = set(MedicineProduct.objects.filter(id__in=ids).filter(_stub_q()).values_list("id", flat=True))
@@ -91,17 +89,18 @@ def _active_groups() -> list[dict[str, Any]]:
 def group_link_for_medicine(payload: dict[str, Any], lang: str) -> Optional[dict[str, str]]:
     """{"slug", "name", "latin"} страницы препарата для карточки медикамента или None.
 
-    Карточка препарата строгого учёта или с запрещённым к ввозу веществом на страницу
-    не ссылается: страница такую форму не показывает.
+    Карточка с отметкой «ввоз ограничен» (TD-024) на страницу не ссылается: страница
+    такую форму не показывает. Отметку читаем из базы — в payload вещество уже переведено,
+    а отметка считается по исходному турецкому.
     """
-    from apps.catalog.models import MedicineGroup
+    from apps.catalog.models import MedicineGroup, MedicineProduct
 
-    if is_restricted_medicine(payload.get("active_ingredient"), payload.get("prescription_type")):
-        return None
     name = str(payload.get("name") or "")
     for group in _active_groups():
         probe = MedicineGroup(name=group["name"], name_prefixes=",".join(group["prefixes"]))
         if probe.matches_name(name):
+            if MedicineProduct.objects.filter(slug=payload.get("slug")).exclude(import_restricted_countries="").exists():
+                return None
             return {
                 "slug": group["slug"],
                 "name": group["names"].get(lang) or group["name"],

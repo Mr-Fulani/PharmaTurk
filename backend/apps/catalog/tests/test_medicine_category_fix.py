@@ -1,4 +1,4 @@
-"""Миграция 0225: из «Антибиотиков» уходят медикаменты с кодом АТХ не J01 (LEVOTIRON)."""
+"""Миграция 0226: из «Антибиотиков» уходят медикаменты с кодом АТХ не J01 (LEVOTIRON)."""
 
 import importlib
 from decimal import Decimal
@@ -8,7 +8,7 @@ from django.apps import apps as django_apps
 
 from apps.catalog.models import Category, MedicineProduct, Product
 
-antibiotics_fix = importlib.import_module("apps.catalog.migrations.0225_fix_non_antibiotics_category")
+antibiotics_fix = importlib.import_module("apps.catalog.migrations.0226_fix_non_antibiotics_category")
 
 
 @pytest.mark.django_db

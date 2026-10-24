@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('catalog', '0222_medicine_landing_seo_texts'),
+        ('catalog', '0223_medicine_import_restrictions'),
     ]
 
     operations = [

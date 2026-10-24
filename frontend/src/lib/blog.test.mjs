@@ -16,7 +16,7 @@ const BANNED_NAMES = [
   'aerius', 'эриус', 'a-ferin', 'а-ферин', 'katarin', 'катарин', 'parol', 'broksin',
   'nurofen cold', 'pedifen cold', 'ergotamin', 'эрготамин',
 ]
-const groupSlugs = [...(await readFile(new URL('../../../backend/apps/catalog/migrations/0224_medicine_group_texts.py', import.meta.url), 'utf8'))
+const groupSlugs = [...(await readFile(new URL('../../../backend/apps/catalog/migrations/0225_medicine_group_texts.py', import.meta.url), 'utf8'))
   .matchAll(/"slug": "([a-z0-9-]+)"/g)].map((match) => match[1])
 
 test('у каждой статьи оба языка, мета в пределах длины и вопросы для FAQPage', () => {

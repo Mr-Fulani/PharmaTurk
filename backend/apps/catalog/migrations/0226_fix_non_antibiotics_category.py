@@ -38,7 +38,7 @@ def move_non_antibiotics(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("catalog", "0224_medicine_group_texts"),
+        ("catalog", "0225_medicine_group_texts"),
     ]
 
     operations = [

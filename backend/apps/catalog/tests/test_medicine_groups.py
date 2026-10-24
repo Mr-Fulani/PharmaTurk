@@ -1,6 +1,7 @@
 """Страницы препаратов (/drugs/<slug>): формы бренда, запрет продвижения, ссылка с карточки."""
 
 import importlib
+import json
 from decimal import Decimal
 
 import pytest
@@ -9,11 +10,11 @@ from django.core.cache import cache
 from rest_framework.request import Request
 from rest_framework.test import APIClient, APIRequestFactory
 
-from apps.catalog.medicine_restrictions import RESTRICTED_SUBSTANCE_STEMS, is_restricted_medicine
+from apps.catalog.controlled_substances import DATA_PATH, restrictions
 from apps.catalog.models import Category, MedicineGroup, MedicineGroupTranslation, MedicineProduct, Product
 from apps.catalog.views import MedicineProductViewSet
 
-group_texts = importlib.import_module("apps.catalog.migrations.0224_medicine_group_texts")
+group_texts = importlib.import_module("apps.catalog.migrations.0225_medicine_group_texts")
 
 
 def _medicine_slugs(**params):
@@ -27,7 +28,7 @@ def _medicine_slugs(**params):
 def catalog(monkeypatch):
     monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
     cache.clear()
-    # Данные миграции 0224: транзакционные тесты могли очистить таблицы до этого теста
+    # Данные миграции 0225: транзакционные тесты могли очистить таблицы до этого теста
     group_texts.create_groups(django_apps, None)
 
     def category(slug, name, parent=None):
@@ -41,8 +42,10 @@ def catalog(monkeypatch):
             name=name, slug=slug, product_type="medicines", category=category,
             price=Decimal("10.00"), currency="TRY", is_active=True,
         )
+        # update() обходит сигнал TD-024 — отметку «ввоз ограничен» ставим тем же расчётом
         MedicineProduct.objects.filter(base_product=base).update(
             active_ingredient=ingredient, prescription_type=prescription, atc_code=atc,
+            import_restricted_countries=restrictions(ingredient)[0],
         )
         return MedicineProduct.objects.get(base_product=base)
 
@@ -60,33 +63,18 @@ def catalog(monkeypatch):
     return {"root": root, "painkillers": painkillers, "create": create}
 
 
-@pytest.mark.parametrize("ingredient, prescription", [
-    ("Klorfeniramin Maleat + Psödoefedrin Hidroklorür", "Beyaz Reçete"),
-    ("Трипролидина гидрохлорид + Псевдоэфедрина гидрохлорид", ""),
-    ("Kodein Fosfat + Parasetamol", ""),
-    ("Fentanil", ""),
-    ("pregabalin", ""),
-    ("Dihidrokodein", ""),
-    ("Parasetamol", "Kırmızı Reçete"),
-    ("Parasetamol", "Yeşil Reçete"),
-    ("Parasetamol", "Mor Reçete"),
-    ("Parasetamol", "Turuncu Reçete"),
-    ("Parasetamol", "Controlled medicine (red prescription)"),
+@pytest.mark.parametrize("ingredient, restricted", [
+    ("Klorfeniramin Maleat + Psödoefedrin Hidroklorür", True),
+    ("Klorfeniramin Maleat + Kodein Fosfat + Parasetamol", True),
+    ("Parasetamol + Psödoefedrin Hidroklorür + Klorfeniramin", True),
+    ("Klorfeniramin Maleat + Parasetamol", False),
+    ("Flurbiprofen", False),
+    ("Desloratadin", False),
+    ("Levotiroksin Sodyum", False),
 ])
-def test_restricted_medicines_are_detected_in_turkish_russian_and_english(ingredient, prescription):
-    assert is_restricted_medicine(ingredient, prescription)
-
-
-@pytest.mark.parametrize("ingredient, prescription", [
-    ("Klorfeniramin Maleat + Parasetamol", "Beyaz Reçete"),
-    ("Flurbiprofen", "Рецептурный препарат"),
-    ("Desloratadin", "Beyaz Reçete"),
-    ("Levotiroksin Sodyum", ""),
-    ("Hidrokinon", ""),
-    ("Tiyokolsikosid + Flurbiprofen", "Takibi Zorunlu Reçete"),
-])
-def test_ordinary_medicines_are_not_restricted(ingredient, prescription):
-    assert not is_restricted_medicine(ingredient, prescription)
+def test_drug_pages_rely_on_td024_mark_for_codeine_and_pseudoephedrine(ingredient, restricted):
+    # Страницы препаратов отсекают формы по отметке TD-024 — справочник должен ловить эти вещества
+    assert bool(restrictions(ingredient)[0]) is restricted
 
 
 def test_group_rule_needs_separator_after_brand():
@@ -182,7 +170,15 @@ def _all_texts(item):
 
 def test_drug_group_texts_are_complete_and_follow_seo_restrictions():
     banned_phrases = ("без рецепта", "без назначения", "without a prescription", "without prescription", "купить")
-    stems = [stem for stem in RESTRICTED_SUBSTANCE_STEMS]
+    entries = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+    # Названия контролируемых веществ из справочника TD-024 (по первому слову, от 5 букв)
+    stems = {
+        word.lower()
+        for entry in entries
+        for name in [entry.get("inn_ru"), entry.get("inn_en"), *(entry.get("tr_keys") or [])]
+        for word in str(name or "").split()[:1]
+        if len(word) >= 5
+    }
     slugs = [item["slug"] for item in group_texts.GROUPS]
     assert len(slugs) == len(set(slugs))
     assert "tylolhot" not in slugs
