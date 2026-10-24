@@ -40,6 +40,36 @@ def visible_member_ids(group) -> list[int]:
     return [pk for pk in ids if pk not in stubs]
 
 
+def _is_prescription(kind: str) -> bool:
+    """«beyaz recete», «рецептурный препарат», «prescription medicine» — да; «recetesiz», «безрецептурный» — нет."""
+    return any(
+        word in kind and not any(negative in kind for negative in negatives)
+        for word, negatives in (
+            ("recete", ("recetesiz",)),
+            ("рецепт", ("безрецепт",)),
+            ("prescription", ("over-the-counter", "non-prescription")),
+        )
+    )
+
+
+def member_flags(ids: list[int]) -> dict[str, bool]:
+    """Пометки страницы: рецептурный ли препарат и нужна ли холодовая цепь (2–8 °C).
+
+    Рецепт — по турецкому типу рецепта источника («Beyaz Reçete» и т. п., не «Reçetesiz»).
+    Холодовая цепь — по условиям хранения источника и их переводу (needs_cold_chain).
+    """
+    from apps.ai.services.medicine_reference import fold_tr
+    from apps.ai.services.medicine_seo import needs_cold_chain
+    from apps.catalog.models import MedicineProduct, MedicineProductTranslation
+
+    rows = MedicineProduct.objects.filter(id__in=ids).values_list("prescription_type", "storage_conditions")
+    prescription = any(_is_prescription(fold_tr(kind)) for kind, _ in rows)
+    storage = [text for _, text in rows] + list(
+        MedicineProductTranslation.objects.filter(product_id__in=ids).values_list("storage_conditions", flat=True)
+    )
+    return {"prescription": prescription, "cold_chain": any(needs_cold_chain(text) for text in storage)}
+
+
 def _active_groups() -> list[dict[str, Any]]:
     groups = cache.get(GROUPS_CACHE_KEY)
     if groups is None:

@@ -119,6 +119,8 @@ def test_drug_group_detail_returns_texts_and_404_without_visible_forms(catalog):
     body = response.json()
     assert body["name"] == "MAJEZIK"
     assert body["forms_count"] == 3
+    assert body["prescription"] is True
+    assert body["cold_chain"] is False
     ru = next(t for t in body["translations"] if t["locale"] == "ru")
     assert ru["name"] == "Мажезик"
     assert ru["active_ingredient"] == "флурбипрофен"
@@ -127,6 +129,18 @@ def test_drug_group_detail_returns_texts_and_404_without_visible_forms(catalog):
     # Все формы TYLOLHOT содержат псевдоэфедрин — страницы нет
     assert client.get("/api/catalog/medicine-groups/tylolhot").status_code == 404
     assert client.get("/api/catalog/medicine-groups/unknown").status_code == 404
+
+
+@pytest.mark.django_db
+def test_drug_group_marks_cold_chain_and_otc_by_source_fields(catalog):
+    group = MedicineGroup.objects.create(slug="ozempic", name="OZEMPIC")
+    MedicineGroupTranslation.objects.create(group=group, locale="ru", name="Оземпик")
+    pen = catalog["create"]("ozempic-1", "OZEMPIC 1 MG KALEM", ingredient="Semaglutid", prescription="Reçetesiz")
+    MedicineProduct.objects.filter(pk=pen.pk).update(storage_conditions="2°C - 8°C arasında buzdolabında saklayınız.")
+
+    body = APIClient().get("/api/catalog/medicine-groups/ozempic").json()
+    assert body["cold_chain"] is True
+    assert body["prescription"] is False
 
 
 @pytest.mark.django_db

@@ -830,13 +830,21 @@ class MedicineGroupDetailSerializer(serializers.ModelSerializer):
 
     translations = MedicineGroupTranslationSerializer(many=True, read_only=True)
     forms_count = serializers.SerializerMethodField()
+    prescription = serializers.SerializerMethodField()
+    cold_chain = serializers.SerializerMethodField()
 
     class Meta:
         model = MedicineGroup
-        fields = ['slug', 'name', 'updated_at', 'forms_count', 'translations']
+        fields = ['slug', 'name', 'updated_at', 'forms_count', 'prescription', 'cold_chain', 'translations']
 
     def get_forms_count(self, obj):
         return len(self.context.get('member_ids') or [])
+
+    def get_prescription(self, obj):
+        return bool((self.context.get('member_flags') or {}).get('prescription'))
+
+    def get_cold_chain(self, obj):
+        return bool((self.context.get('member_flags') or {}).get('cold_chain'))
 
 
 class BrandSerializer(serializers.ModelSerializer):

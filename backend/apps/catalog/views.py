@@ -1074,13 +1074,14 @@ class MedicineGroupViewSet(viewsets.GenericViewSet):
 
     @extend_schema(summary="Препарат: бренд и тексты страницы")
     def retrieve(self, request, *args, **kwargs):
-        from apps.catalog.services.medicine_groups import visible_member_ids
+        from apps.catalog.services.medicine_groups import member_flags, visible_member_ids
 
         group = self.get_object()
         member_ids = visible_member_ids(group)
         if not member_ids:
             raise Http404
-        serializer = self.get_serializer(group, context={**self.get_serializer_context(), 'member_ids': member_ids})
+        context = {**self.get_serializer_context(), 'member_ids': member_ids, 'member_flags': member_flags(member_ids)}
+        serializer = self.get_serializer(group, context=context)
         return Response(serializer.data)
 
 
