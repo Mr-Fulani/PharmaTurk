@@ -122,6 +122,41 @@ def _title_parts(title: str, brand: str, inn: str) -> tuple[str, list[str]]:
     return ("," if rest.startswith(",") else ""), [part for part in rest.strip(" ,").split(", ") if part]
 
 
+def _countries(locale: str, codes: Sequence[str]) -> str:
+    """«Россию, Казахстан и Узбекистан» для «Ввоз в … ограничен»; '' — ограничений нет."""
+    names = [name for code, name in _COUNTRIES[locale].items() if code in codes]
+    return f" {_TEXTS[locale]['and']} ".join([", ".join(names[:-1]), names[-1]] if len(names) > 1 else names)
+
+
+def fallback_seo(
+    seo_title: str, title: str, locale: str, prescription: str = "", restricted_countries: Sequence[str] = ()
+) -> dict[str, str]:
+    """SEO препарата строгого учёта или запрещённого к ввозу, когда название собрала модель.
+
+    Шаблон кодом название не разобрал, и SEO — от модели: в нём бывают «из Турции», заявка и
+    доставка. Description собирается заново из названия модели и правил ``build_medicine_seo``;
+    у строгого учёта из SEO title убираются «из Турции» и «— инструкция, цена».
+    """
+    texts = _TEXTS[locale]
+    controlled = prescription == "controlled"
+    if controlled:
+        for part in (texts["leaflet"], texts["turkey"]):
+            seo_title = seo_title.replace(part, "")
+    lead = _fit(title.replace(texts["turkey"], "").rstrip(" ."), _LEAD_MAX)
+    lead += "" if controlled else texts["turkey"]
+    description = _fit(lead + ".", SEO_DESCRIPTION_MAX)
+    countries = _countries(locale, restricted_countries)
+    sentences = [
+        texts["controlled"] if controlled else texts["rx"] if prescription == "rx" else "",
+        texts["restricted"].format(countries=countries) if countries else "",
+        texts["instruction"],
+    ]
+    for sentence in sentences:
+        if sentence and len(description) + 1 + len(sentence) <= SEO_DESCRIPTION_MAX:
+            description = f"{description} {sentence}"
+    return {"seo_title": seo_title.strip(), "seo_description": description}
+
+
 def _join(head: str, sep: str, parts: list[str]) -> str:
     return f"{head}{sep} {', '.join(parts)}" if parts else head
 
@@ -154,8 +189,7 @@ def build_medicine_seo(
             texts.update(turkey="", leaflet="", order="")
         if restricted_countries:
             texts["order"] = ""
-        names = [name for code, name in _COUNTRIES[locale].items() if code in restricted_countries]
-        countries = f" {texts['and']} ".join([", ".join(names[:-1]), names[-1]] if len(names) > 1 else names)
+        countries = _countries(locale, restricted_countries)
         inn_text = inn[index] if inn else ""
         sep, parts = _title_parts(title[locale], brand, inn_text)
         name = brand_ru if locale == "ru" and brand_ru and brand_ru.lower() != brand.lower() else ""

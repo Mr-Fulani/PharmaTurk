@@ -13,10 +13,10 @@ def looks_untranslated_turkish(value: Any) -> bool:
     # Official abbreviations and brand names may legitimately retain Turkish
     # letters inside an otherwise complete RU/EN translation.  Inspect the
     # surrounding language after removing URLs and all-caps proper names such
-    # as TÜFAM, TİTCK and AUGMENTİN.
+    # as TÜFAM, TİTCK and AUGMENTİN — also half-Cyrillic ones in a RU text («ТÜFAM»).
     language_sample = re.sub(r"https?://\S+|www\.\S+", " ", text)
     language_sample = re.sub(
-        r"\b[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9._/-]{1,}\b",
+        r"\b[A-ZА-ЯЁÇĞİÖŞÜ0-9][A-ZА-ЯЁÇĞİÖŞÜ0-9._/-]{1,}\b",
         " ",
         language_sample,
     ).lower()

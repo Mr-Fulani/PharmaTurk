@@ -125,3 +125,11 @@ def test_buyer_sees_restriction_in_search_catalog_card_and_cart():
 
     item = CartItem.objects.create(cart=Cart.objects.create(session_key="s1"), product=restricted.base_product, quantity=1, price=1)
     assert CartItemSerializer(item, context={}).data["product_import_restricted_countries"] == ["KZ", "RU"]
+
+
+def test_half_cyrillic_abbreviation_is_not_untranslated_turkish():
+    from apps.catalog.product_semantics import looks_untranslated_turkish
+
+    # Пилот 6, KLOROBEN: «ТÜFAM» с кириллической «Т» в переводе инструкции.
+    assert not looks_untranslated_turkish("Сообщите в Турецкий центр фармаконадзора (ТÜFAM) по номеру 0 800 314 00 08.")
+    assert looks_untranslated_turkish("Doktorunuza danışınız.")
