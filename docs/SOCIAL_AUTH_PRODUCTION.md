@@ -196,8 +196,9 @@ access token; переданный frontend `vk_user_id` используетс�
    заданных public ID; у Telegram проверьте, что поверх иконки действительно
    загрузился кликабельный widget с заданным bot username.
 3. Выполните по одному тестовому входу Google, VK и Telegram.
-4. Проверьте, что ответ API содержит `tokens.access`, `tokens.refresh` и `user`,
-   а защищённый `GET /api/users/profile` работает с Bearer access token.
+4. Проверьте, что ответ API содержит `tokens.access` и `user`, ставит HttpOnly
+   cookie `refresh_token` (refresh в теле нет — TD-018), а защищённый
+   `GET /api/users/profile` работает с Bearer access token.
 5. Проверьте логи на ошибки провайдеров, не выводя сами credentials/tokens.
 
 Публичные `social-auth` и `telegram/login` используют login burst/sustained

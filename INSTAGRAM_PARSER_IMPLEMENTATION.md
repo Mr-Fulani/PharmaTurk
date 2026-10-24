@@ -120,8 +120,8 @@ poetry run python manage.py run_instagram_scraper --hashtag books --max-posts 50
 # Конкретный пост
 poetry run python manage.py run_instagram_scraper --post-url "https://www.instagram.com/p/ABC123/"
 
-# С аутентификацией
-poetry run python manage.py run_instagram_scraper --username bookstore --login user --password pass
+# С сессией бот-аккаунта (cookie sessionid из браузера; пароль не поддерживается — TD-016)
+poetry run python manage.py run_instagram_scraper --username bookstore --login user --sessionid '<sessionid>'
 ```
 
 ## 🔧 Интеграция с существующей системой

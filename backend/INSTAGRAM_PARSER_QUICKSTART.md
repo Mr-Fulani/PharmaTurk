@@ -85,14 +85,17 @@ poetry run python manage.py run_instagram_scraper \
   --post-url "https://www.instagram.com/p/ABC123xyz/"
 ```
 
-### С аутентификацией (для приватных профилей)
+### С сессией бот-аккаунта
+
+Пароль не поддерживается и не хранится (TD-016): нужна cookie `sessionid` из
+браузера, где выполнен вход в бот-аккаунт.
 
 ```bash
 poetry run python manage.py run_instagram_scraper \
   --username bookstore \
   --max-posts 30 \
   --login your_instagram_login \
-  --password your_instagram_password
+  --sessionid '<значение cookie sessionid>'
 ```
 
 ## Что дальше?

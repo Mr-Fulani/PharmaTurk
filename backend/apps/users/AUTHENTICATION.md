@@ -32,8 +32,12 @@ Content-Type: application/json
 }
 ```
 
-Успешный ответ содержит объект `user` и пару `tokens.access` / `tokens.refresh`.
-В защищённых запросах access token передаётся так:
+Успешный ответ содержит объект `user` и `tokens.access`. Refresh-токен в тело
+не попадает: backend ставит его в cookie `refresh_token` с флагами `HttpOnly`,
+`Secure` (в проде), `SameSite=Lax`, `Path=/api/`, без `Max-Age` — закрытие
+браузера означает выход, как и раньше (TD-018). JavaScript refresh не видит, XSS
+не может унести долгую сессию. Так же отвечают регистрация, вход через Telegram
+и Google/VK. В защищённых запросах access token передаётся так:
 
 ```http
 Authorization: Bearer <access-token>
@@ -55,13 +59,26 @@ Authorization: Bearer <access-token>
 | `POST /api/users/token/refresh/` | `refresh` | ротация refresh и новый access |
 | `POST /api/users/token/verify/` | `token` | проверка токена |
 | `POST /api/auth/jwt/create/` | `username`, `password` | совместимый alias получения пары |
-| `POST /api/auth/jwt/refresh/` | `refresh` | совместимый alias обновления |
-| `POST /api/users/logout/` | `refresh` + Bearer access | blacklist refresh и деактивация записей `UserSession` |
+| `POST /api/auth/jwt/refresh/` | пусто (refresh из cookie) или `refresh` | новый access; новый refresh — в cookie `refresh_token` (в теле — только если refresh пришёл в теле) |
+| `POST /api/users/logout/` | пусто (refresh из cookie) или `refresh`; Bearer access по желанию | blacklist refresh, удаление cookie, деактивация `UserSession`; работает и с истёкшим access |
 
 Поле `username` в JWT endpoint также проходит через `MultiFieldAuthBackend`, то
 есть фактически принимает email, username или телефон. Access token живёт 60
 минут, refresh token — 7 дней. Refresh-токены ротируются, старый токен после
 ротации попадает в blacklist.
+
+### Сайт: где лежат токены
+
+- `access` — обычная cookie фронта (`js-cookie`): её читают заголовок
+  `Authorization` и SSR корзины/оформления. Живёт 60 минут.
+- `refresh_token` — HttpOnly cookie от backend. Фронт обновляет access запросом
+  `POST /api/auth/jwt/refresh/` без тела (`frontend/src/lib/api.ts`), выход —
+  `POST /api/users/logout/`.
+- Сессии до релиза TD-018 хранили refresh в JS-cookie `refresh`. При первом
+  открытии сайта (или первом 401) фронт один раз отправляет её в теле
+  `/api/auth/jwt/refresh/`, backend ставит HttpOnly cookie, JS-cookie удаляется
+  (`migrateLegacyRefreshCookie`). Просроченная старая сессия — мягкий выход без
+  ошибок. Перенос можно убрать из кода через 7 дней после релиза (срок жизни refresh).
 
 ## Ограничение частоты запросов
 
