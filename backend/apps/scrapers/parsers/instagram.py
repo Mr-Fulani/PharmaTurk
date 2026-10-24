@@ -18,6 +18,45 @@ class InstagramSourceError(RuntimeError):
     """Instagram ответил ошибкой, которую нельзя считать пустым результатом."""
 
 
+class InstagramRateLimitedError(
+    InstagramSourceError, instaloader.exceptions.InstaloaderException
+):
+    """Instagram ограничил частоту запросов (HTTP 429): источник временно недоступен.
+
+    Instaloader на 429 и на исчерпанном собственном лимите спит минутами внутри
+    запроса и держит Celery-воркер. Здесь вместо сна — ошибка: задача встаёт на
+    паузу, а продолжить её можно позже. Наследует InstaloaderException, чтобы
+    разбор поста пробрасывал её, а не пропускал пост.
+    """
+
+    MESSAGE = (
+        "Instagram временно ограничил запросы (HTTP 429). Источник недоступен — "
+        "продолжите задачу через 30–60 минут."
+    )
+
+    def __init__(self, message: str = ""):
+        super().__init__(message or self.MESSAGE)
+
+
+class _NoSleepRateController(instaloader.RateController):
+    """RateController без долгого сна: короткие паузы — как в Instaloader, длинные и 429 — ошибка."""
+
+    MAX_WAIT_SECONDS = 30
+
+    def wait_before_query(self, query_type: str) -> None:
+        waittime = self.query_waittime(query_type, time.monotonic(), False)
+        if waittime > self.MAX_WAIT_SECONDS:
+            raise InstagramRateLimitedError(
+                "Исчерпан лимит запросов Instagram (Instaloader требует ждать "
+                f"{round(waittime / 60)} мин). Источник временно недоступен — "
+                "продолжите задачу позже."
+            )
+        super().wait_before_query(query_type)
+
+    def handle_429(self, query_type: str) -> None:
+        raise InstagramRateLimitedError()
+
+
 class InstagramParser(BaseScraper):
     """Парсер для постов Instagram.
 
@@ -56,11 +95,15 @@ class InstagramParser(BaseScraper):
         url: Optional[str] = None,
     ) -> None:
         """Не позволяет ошибкам Instaloader превращаться в успешный пустой результат."""
-        if isinstance(exc, ScraperAccessBlockedError):
+        if isinstance(exc, (ScraperAccessBlockedError, InstagramRateLimitedError)):
             raise exc
 
         status_code = self._status_code_from_exception(exc)
         source_url = url or self.base_url
+        if status_code == 429 or isinstance(
+            exc, instaloader.exceptions.TooManyRequestsException
+        ):
+            raise InstagramRateLimitedError() from exc
         if isinstance(exc, instaloader.exceptions.QueryReturnedForbiddenException):
             status_code = status_code or 403
         if status_code in (401, 403, 407):
@@ -85,15 +128,15 @@ class InstagramParser(BaseScraper):
         self,
         base_url: str = "https://www.instagram.com",
         username: Optional[str] = None,
-        password: Optional[str] = None,
         **kwargs,
     ):
         """Инициализирует Instagram-парсер.
 
         Args:
             base_url: Базовый URL Instagram (для BaseScraper).
-            username: Логин для авторизации в Instagram (опционально).
-            password: Пароль для авторизации в Instagram (опционально).
+            username: Логин бот-аккаунта — только подпись сессии в логах. Вход
+                выполняется по cookie ``sessionid`` из настроек парсера, пароль
+                не используется и не хранится (TD-016).
             **kwargs: Дополнительные параметры для BaseScraper.
         """
         super().__init__(
@@ -117,6 +160,7 @@ class InstagramParser(BaseScraper):
             post_metadata_txt_pattern="",
             max_connection_attempts=max(1, self.max_retries),
             request_timeout=float(self.timeout),
+            rate_controller=_NoSleepRateController,
         )
 
         # Instaloader использует собственную requests.Session, поэтому настройки
@@ -124,9 +168,8 @@ class InstagramParser(BaseScraper):
         # headers/cookies придут позднее через configure_request_identity().
         self._configure_loader_transport()
 
-        # Учётные данные для авторизации (опционально)
+        # Подпись сессии для логов; сам вход — по cookie sessionid.
         self.username = username
-        self.password = password
         self._authenticated = False
         self._authentication_attempted = False
         # Необязательные callbacks используются только Celery-задачей Instagram.
@@ -232,8 +275,8 @@ class InstagramParser(BaseScraper):
         self._ensure_authenticated()
 
     def _ensure_authenticated(self) -> None:
-        """Авторизуется один раз и только после применения proxy/headers/cookies."""
-        if self._authentication_attempted or not (self.username and self.password):
+        """Подключает сессию один раз и только после применения proxy/headers/cookies."""
+        if self._authentication_attempted:
             return
         self._authentication_attempted = True
         self._authenticate()
@@ -341,56 +384,34 @@ class InstagramParser(BaseScraper):
     # -----------------------------------------------------------------------
 
     def _authenticate(self) -> None:
-        """Выполняет вход в Instagram.
+        """Подключает сессию Instagram из cookie ``sessionid`` настроек парсера.
 
-        ВАЖНО: Используйте только бот-аккаунты. Авторизация личного аккаунта
-        ведёт к блокировке.
+        ВАЖНО: используйте только бот-аккаунты. Входа по паролю нет (TD-016):
+        пароль лежал бы в БД открытым текстом, а повторные входы с сервера
+        Instagram всё равно отправляет на «Checkpoint required». Сессия
+        берётся из браузера: cookie ``sessionid`` (и желательно ``csrftoken``)
+        кладутся в «Cookies» конфигурации парсера.
 
-        Если в настройках парсера есть cookie ``sessionid`` (сессия из браузера),
-        вход по паролю не выполняется: повторные входы по паролю с сервера
-        Instagram и отправляет на «Checkpoint required».
+        Instaloader.load_session не используется: он заменяет requests.Session
+        и теряет прокси и заголовки, применённые configure_request_identity.
         """
-        session_cookies = self.loader.context._session.cookies.get_dict()
-        if session_cookies.get("sessionid"):
-            self.loader.load_session(self.username, session_cookies)
-            self._authenticated = True
-            self.logger.info("Instagram: сессия @%s из cookies, без входа по паролю", self.username)
+        session = self.loader.context._session
+        session_cookies = session.cookies.get_dict()
+        if not session_cookies.get("sessionid"):
+            self.logger.info(
+                "Instagram: cookie sessionid не задан — работаем без входа "
+                "(профили часто отдают 401)."
+            )
             return
-        try:
-            self.loader.login(self.username, self.password)
-            self._authenticated = True
-            self.logger.info("Успешная авторизация для @%s", self.username)
-        except instaloader.exceptions.QueryReturnedForbiddenException as e:
-            self._raise_source_error(
-                e,
-                operation=f"авторизация @{self.username}",
-                url=self.base_url,
-            )
-        except instaloader.exceptions.LoginException as e:
-            if "checkpoint" not in str(e).lower():
-                self.logger.warning(
-                    "Ошибка авторизации для @%s: %s. Продолжаем без авторизации.",
-                    self.username,
-                    e,
-                )
-                return
-            # Тихое «продолжаем без входа» превращалось в непонятный 401 профиля.
-            raise ScraperAccessBlockedError(
-                message=(
-                    f"Instagram требует подтвердить вход аккаунта @{self.username} "
-                    "(Checkpoint required): войдите в аккаунт в браузере или приложении, "
-                    "подтвердите вход и вставьте cookie sessionid в настройки парсера Instagram."
-                ),
-                source="Instagram",
-                status_code=401,
-                url=self.base_url,
-            ) from e
-        except instaloader.exceptions.InstaloaderException as e:
-            self.logger.warning(
-                "Ошибка авторизации для @%s: %s. Продолжаем без авторизации.",
-                self.username,
-                e,
-            )
+        if session_cookies.get("csrftoken"):
+            session.headers["X-CSRFToken"] = session_cookies["csrftoken"]
+        self.loader.context.username = (
+            self.username or session_cookies.get("ds_user_id") or "sessionid"
+        )
+        self._authenticated = True
+        self.logger.info(
+            "Instagram: сессия @%s из cookie sessionid", self.loader.context.username
+        )
 
     # -----------------------------------------------------------------------
     # Парсинг профиля и хештега
@@ -419,7 +440,7 @@ class InstagramParser(BaseScraper):
                 max_posts=max_posts,
             )
             return products
-        except ScraperAccessBlockedError:
+        except (ScraperAccessBlockedError, InstagramRateLimitedError):
             raise
         except instaloader.exceptions.InstaloaderException as primary_error:
             self.logger.warning(
@@ -531,6 +552,8 @@ class InstagramParser(BaseScraper):
                 timeout=float(self.timeout),
             )
             status_code = int(getattr(response, "status_code", 0) or 0)
+            if status_code == 429:
+                raise InstagramRateLimitedError()
             if status_code in (401, 403, 407):
                 raise ScraperAccessBlockedError(
                     message=(
@@ -658,6 +681,8 @@ class InstagramParser(BaseScraper):
             return iphone_struct.get(iphone_key)
         try:
             return getattr(post, property_name)
+        except InstagramRateLimitedError:
+            raise
         except (
             instaloader.exceptions.InstaloaderException,
             AttributeError,

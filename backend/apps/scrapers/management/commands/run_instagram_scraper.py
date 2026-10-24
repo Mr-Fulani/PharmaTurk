@@ -67,9 +67,12 @@ class Command(BaseCommand):
             help="Instagram логин бот-аккаунта для авторизации (опционально)",
         )
         parser.add_argument(
-            "--password",
+            "--sessionid",
             type=str,
-            help="Instagram пароль бот-аккаунта (опционально)",
+            help=(
+                "Cookie sessionid бот-аккаунта из браузера (опционально). "
+                "Пароль не поддерживается: в БД он не хранится (TD-016)."
+            ),
         )
         # --- Режим через конфигурацию из БД ---
         parser.add_argument(
@@ -91,7 +94,7 @@ class Command(BaseCommand):
         max_posts = options.get("max_posts")
         category_slug = options.get("category", "books")
         login = options.get("login")
-        password = options.get("password")
+        sessionid = options.get("sessionid")
         config_id = options.get("config_id")
         dry_run = options.get("dry_run")
 
@@ -106,7 +109,7 @@ class Command(BaseCommand):
 
         # --- Режим --dry-run: парсим без сохранения в БД ---
         if dry_run:
-            self._handle_dry_run(username, hashtag, post_url, max_posts, login, password)
+            self._handle_dry_run(username, hashtag, post_url, max_posts, login, sessionid)
             return
 
         # --- Режим --config-id: используем конфигурацию из БД ---
@@ -129,7 +132,7 @@ class Command(BaseCommand):
             max_posts=max_posts,
             category_slug=category_slug,
             login=login,
-            password=password,
+            sessionid=sessionid,
         )
 
     # -----------------------------------------------------------------------
@@ -144,7 +147,7 @@ class Command(BaseCommand):
         max_posts=50,
         category_slug="books",
         login=None,
-        password=None,
+        sessionid=None,
     ):
         """Запускает парсинг через ScraperIntegrationService.
 
@@ -209,10 +212,11 @@ class Command(BaseCommand):
                 default_category=default_cat,
             )
 
-        # Если переданы учётные данные — временно сохраняем в конфиге
-        if login and password:
+        # Сессия из командной строки — только в памяти, в БД не сохраняется
+        if login:
             config.scraper_username = login
-            config.scraper_password = password
+        if sessionid:
+            config.cookies = {**(config.cookies or {}), "sessionid": sessionid}
 
         if target_category:
             self.stdout.write(f"Категория: {target_category.name}")
@@ -308,7 +312,7 @@ class Command(BaseCommand):
     # -----------------------------------------------------------------------
 
     def _handle_dry_run(
-        self, username, hashtag, post_url, max_posts, login, password
+        self, username, hashtag, post_url, max_posts, login, sessionid
     ):
         """Парсинг без сохранения в БД.
 
@@ -319,7 +323,9 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING("Режим DRY-RUN: товары не сохраняются в БД"))
 
-        parser = InstagramParser(username=login, password=password)
+        parser = InstagramParser(username=login)
+        if sessionid:
+            parser.configure_request_identity(cookies={"sessionid": sessionid})
         products = []
 
         try:

@@ -225,7 +225,6 @@ class SupplementStockDiscoveryService:
             max_retries=0,
             use_proxy=True,
             username=config.scraper_username or None,
-            password=config.scraper_password or None,
         )
         parser.configure_request_identity(
             user_agent=config.user_agent or None,

@@ -108,18 +108,15 @@ class ScraperConfig(models.Model):
     headers = models.JSONField(_("Дополнительные заголовки"), default=dict, blank=True)
     cookies = models.JSONField(_("Cookies"), default=dict, blank=True)
 
-    # Учетные данные парсера (если требуются)
+    # Пароль не храним (TD-016): Instagram входит по cookie sessionid из «Cookies».
     scraper_username = models.CharField(
         _("Логин парсера"),
         max_length=100,
         blank=True,
-        help_text=_("Логин для авторизации парсера на сайте (если нужно)"),
-    )
-    scraper_password = models.CharField(
-        _("Пароль парсера"),
-        max_length=100,
-        blank=True,
-        help_text=_("Пароль для авторизации парсера на сайте (если нужно)"),
+        help_text=_(
+            "Логин бот-аккаунта Instagram — только подпись сессии в логах. "
+            "Вход — по cookie sessionid в поле «Cookies», пароль не нужен."
+        ),
     )
 
     # Статистика

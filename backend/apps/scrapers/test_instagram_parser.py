@@ -10,7 +10,11 @@ from apps.http_errors import ExternalAccessBlockedError
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.management.commands.run_instagram_scraper import Command
 from apps.scrapers.models import ScraperConfig
-from apps.scrapers.parsers.instagram import InstagramParser, InstagramSourceError
+from apps.scrapers.parsers.instagram import (
+    InstagramParser,
+    InstagramRateLimitedError,
+    InstagramSourceError,
+)
 
 
 class _FeedResponse:
@@ -306,22 +310,6 @@ def test_post_connection_403_becomes_common_access_error(monkeypatch):
     assert exc_info.value.status_code == 403
 
 
-def test_login_structured_403_keeps_common_access_error(monkeypatch):
-    parser = InstagramParser(username="bot", password="secret")
-    monkeypatch.setattr(
-        parser.loader,
-        "login",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            instaloader.exceptions.QueryReturnedForbiddenException("HTTP 403")
-        ),
-    )
-
-    with pytest.raises(ExternalAccessBlockedError) as exc_info:
-        parser._ensure_authenticated()
-
-    assert exc_info.value.status_code == 403
-
-
 def test_mobile_feed_metrics_do_not_trigger_graphql():
     class _FallbackPost:
         _iphone_struct_ = {"like_count": 11, "comment_count": 7}
@@ -377,7 +365,7 @@ def test_profile_username_validation_rejects_non_profile_values(value):
 def test_cli_autocreate_resolves_category_before_using_it(monkeypatch):
     command = Command()
     category = SimpleNamespace(name="Книги")
-    config = SimpleNamespace(scraper_username="", scraper_password="")
+    config = SimpleNamespace(scraper_username="")
     session = SimpleNamespace()
     created_kwargs = {}
 
@@ -448,37 +436,130 @@ def test_cli_config_mode_rejects_root_url_without_source(monkeypatch):
             command._run_with_config(7, 1, "books")
 
 
-def test_login_checkpoint_is_reported_instead_of_silent_anonymous_run(monkeypatch):
-    # Прод 20.10.2026: «Login: Checkpoint required» — раньше парсер молча
-    # продолжал без входа и получал непонятный 401 профиля.
-    parser = InstagramParser(username="bot", password="secret")
+def test_parser_has_no_password_login(monkeypatch):
+    # TD-016: пароль не хранится и не используется — без sessionid работаем анонимно.
+    parser = InstagramParser(username="bot")
     monkeypatch.setattr(
         parser.loader,
         "login",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            instaloader.exceptions.LoginException(
-                "Login: Checkpoint required. Point your browser to /auth_platform/?apc=x"
-            )
-        ),
-    )
-
-    with pytest.raises(ExternalAccessBlockedError, match="подтвердить вход") as exc_info:
-        parser._ensure_authenticated()
-
-    assert exc_info.value.status_code == 401
-
-
-def test_configured_sessionid_cookie_is_used_instead_of_password_login(monkeypatch):
-    parser = InstagramParser(username="bot", password="secret")
-    parser.configure_request_identity(cookies={"sessionid": "browser-session", "csrftoken": "t"})
-    monkeypatch.setattr(
-        parser.loader,
-        "login",
-        lambda *args, **kwargs: pytest.fail("password login must not run with a session cookie"),
+        lambda *args, **kwargs: pytest.fail("password login must never run"),
     )
 
     parser._ensure_authenticated()
 
+    assert not parser.password
+    assert parser._authenticated is False
+    assert not parser.loader.context.is_logged_in
+
+
+def test_configured_sessionid_cookie_logs_in_and_keeps_proxy(monkeypatch):
+    monkeypatch.setattr(settings, "SCRAPER_PROXY_URL", "http://proxy.example:8080")
+    parser = InstagramParser(username="bot", use_proxy=True)
+    monkeypatch.setattr(
+        parser.loader,
+        "login",
+        lambda *args, **kwargs: pytest.fail("password login must never run"),
+    )
+    parser.configure_request_identity(cookies={"sessionid": "browser-session", "csrftoken": "t"})
+
+    session = parser.loader.context._session
     assert parser._authenticated is True
     assert parser.loader.context.is_logged_in
-    assert parser.loader.context._session.cookies.get("sessionid") == "browser-session"
+    assert parser.loader.context.username == "bot"
+    assert session.cookies.get("sessionid") == "browser-session"
+    assert session.headers["X-CSRFToken"] == "t"
+    # Instaloader.load_session заменил бы requests.Session и потерял прокси.
+    assert session.proxies["https"] == "http://proxy.example:8080"
+
+
+def test_rate_controller_raises_on_429_instead_of_sleeping(monkeypatch):
+    parser = InstagramParser()
+    monkeypatch.setattr(
+        "time.sleep",
+        lambda *args: pytest.fail("worker must not sleep on HTTP 429"),
+    )
+    controller = parser.loader.context._rate_controller
+
+    with pytest.raises(InstagramRateLimitedError, match="429"):
+        controller.handle_429("other")
+
+
+def test_rate_controller_raises_instead_of_long_proactive_wait(monkeypatch):
+    parser = InstagramParser()
+    controller = parser.loader.context._rate_controller
+    monkeypatch.setattr(controller, "query_waittime", lambda *args: 600.0)
+    monkeypatch.setattr(
+        controller,
+        "sleep",
+        lambda secs: pytest.fail("worker must not sleep for minutes"),
+    )
+
+    with pytest.raises(InstagramRateLimitedError, match="10 мин"):
+        controller.wait_before_query("other")
+
+
+def test_rate_controller_keeps_short_waits(monkeypatch):
+    parser = InstagramParser()
+    controller = parser.loader.context._rate_controller
+    slept = []
+    monkeypatch.setattr(controller, "query_waittime", lambda *args: 3.0)
+    monkeypatch.setattr(controller, "sleep", slept.append)
+
+    controller.wait_before_query("other")
+
+    assert slept == [3.0]
+
+
+def test_profile_429_does_not_hammer_mobile_feed_fallback(monkeypatch):
+    parser = InstagramParser()
+
+    def rate_limited(*args, **kwargs):
+        raise InstagramRateLimitedError()
+
+    monkeypatch.setattr(instaloader.Profile, "from_username", rate_limited)
+    monkeypatch.setattr(
+        parser,
+        "_iter_mobile_feed_posts",
+        lambda *args, **kwargs: pytest.fail("fallback must not run after 429"),
+    )
+
+    with pytest.raises(InstagramRateLimitedError):
+        parser.parse_product_list("https://www.instagram.com/business.profile/")
+
+
+def test_connection_error_with_429_becomes_rate_limit(monkeypatch):
+    # При max_connection_attempts=1 Instaloader не зовёт handle_429, а отдаёт
+    # ConnectionException с текстом ответа.
+    parser = InstagramParser()
+    monkeypatch.setattr(
+        instaloader.Post,
+        "from_shortcode",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            instaloader.exceptions.ConnectionException(
+                "JSON Query to graphql/query: 429 Too Many Requests"
+            )
+        ),
+    )
+
+    with pytest.raises(InstagramRateLimitedError):
+        parser.parse_product_detail("https://www.instagram.com/p/POST1/")
+
+
+def test_mobile_feed_429_becomes_rate_limit(monkeypatch):
+    parser = InstagramParser()
+    monkeypatch.setattr(
+        parser.loader.context._session,
+        "get",
+        lambda *args, **kwargs: _FeedResponse({}, status_code=429),
+    )
+
+    with pytest.raises(InstagramRateLimitedError):
+        list(parser._iter_mobile_feed_posts("business.profile", max_posts=1))
+
+
+@pytest.mark.django_db
+def test_scraper_config_has_no_password_field():
+    field_names = {field.name for field in ScraperConfig._meta.get_fields()}
+
+    assert "scraper_password" not in field_names
+    assert "scraper_username" in field_names
