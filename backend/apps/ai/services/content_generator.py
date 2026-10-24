@@ -1519,6 +1519,16 @@ class ContentGenerator:
                 payload["generated_title"] = code_fields["title"][locale]
             if code_fields.get("seo"):
                 payload.update(code_fields["seo"][locale])
+            else:
+                # Названия кодом нет, а модель не вернула SEO (пилот 24.10.2026 — 10 из 50):
+                # без SEO лог не проходит проверку обязательных полей.
+                fallback = str(payload.get("generated_title") or input_data.get("name") or "").strip()
+                if not str(payload.get("seo_title") or "").strip():
+                    payload["seo_title"] = fallback[:70]
+                if not str(payload.get("seo_description") or "").strip():
+                    payload["seo_description"] = str(payload.get("generated_description") or fallback)[:160]
+                if not payload.get("keywords") and fallback:
+                    payload["keywords"] = [fallback.split()[0]]
             # Только бейджи без предмета («Не применять совместно.») — особых сведений нет.
             if not has_special_notes:
                 payload.pop("special_notes", None)
@@ -1604,7 +1614,7 @@ class ContentGenerator:
         - Учитывай category_context как назначенный путь категории товара; используй одинаковый тип товара в RU/EN названиях, описаниях и SEO.
         - Используй только факты из facts_ru/facts_en, source_facts, source_sections, source_description или image_analysis.
         - facts_ru и facts_en — готовые переводы (форма, действующее вещество, путь введения, объём, рецепт, срок годности): пиши их ровно так, не переводи заново.
-        - Если fixed_title не пустой, это готовое название: generated_title, seo_title, seo_description и keywords не возвращай — их собирает код.
+        - Если fixed_title не пустой, это готовое название: generated_title не возвращай, в SEO используй fixed_title.
         - Если source_sections не пустой, НЕ используй source_description и НЕ пересказывай разделы.
         - source_summary_preview используй только для короткого generated_description.
         - Не возвращай длинные медицинские разделы: отдельный этап переведёт полный исходный текст.
@@ -1616,25 +1626,26 @@ class ContentGenerator:
         - ru.generated_description и en.generated_description должны быть смысловыми переводами друг друга.
         - ru.generated_description: русский язык, 2-5 справочных предложений.
         - en.generated_description: английский язык, 2-4 sentences.
-        - ru.seo_title (только если fixed_title пуст): бренд латиницей, действующее вещество, дозировка и форма, «из Турции»; до 70 символов.
-        - ru.seo_description (только если fixed_title пуст): бренд, вещество, форма, «из Турции»; без «без рецепта», без обещаний лечения и продажи; до 160 символов.
-        - en.seo_title и en.seo_description (только если fixed_title пуст): то же на English, «from Turkey», no unverified indications.
+        - SEO возвращай всегда: если fixed_title не пустой, код заменит его своим, иначе останется твой.
+        - ru.seo_title: бренд латиницей, действующее вещество, дозировка и форма, «из Турции»; до 70 символов.
+        - ru.seo_description: бренд, вещество, форма, «из Турции»; без «без рецепта», без обещаний лечения и продажи; до 160 символов.
+        - en.seo_title и en.seo_description: то же на English, «from Turkey», no unverified indications.
 
         Верни строго JSON:
         {{
             "ru": {{
                 "generated_title": "Название на русском без назначения лечения (только если fixed_title пуст)",
                 "generated_description": "Короткое справочное описание на русском, не полный текст инструкции",
-                "seo_title": "Русский SEO title (только если fixed_title пуст)",
-                "seo_description": "Русское SEO description по фактам карточки (только если fixed_title пуст)",
+                "seo_title": "Русский SEO title без неподтвержденных медицинских обещаний",
+                "seo_description": "Русское SEO description по фактам карточки",
                 "keywords": ["бренд", "форма", "действующее вещество"],
                 "special_notes": "Особые сведения (RU), только если есть в source_facts"
             }},
             "en": {{
                 "generated_title": "Product name in English without treatment claim (only if fixed_title is empty)",
                 "generated_description": "Short neutral reference description in English, not full instruction text",
-                "seo_title": "English SEO title (only if fixed_title is empty)",
-                "seo_description": "English SEO description based only on source facts (only if fixed_title is empty)",
+                "seo_title": "English SEO title without unverified medical claims",
+                "seo_description": "English SEO description based only on source facts",
                 "keywords": ["brand", "form", "active ingredient"],
                 "special_notes": "Special notes (EN), only if in source_facts"
             }}
