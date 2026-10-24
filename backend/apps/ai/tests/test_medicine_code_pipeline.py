@@ -574,6 +574,117 @@ def test_title_inn_salt_cases_and_garbage():
     assert title_with_inn(plain, name, ("Отаг (мл)", "Otag (Ml)"), "Otag (Ml)") == plain
 
 
+@pytest.mark.parametrize(
+    "name, ru, en",
+    [
+        # Пилот 24.10.2026: растворы для диализа, в/в растворы в пакетах, пастилки, пластыри, порошки с растворителем.
+        ("EXTRANEFROL PERITON DIYALIZ COZELTISI (2500 ML TEK TORBA)",
+         "EXTRANEFROL, раствор для перитонеального диализа, одинарный пакет, 2500 мл",
+         "EXTRANEFROL, peritoneal dialysis solution, single bag, 2500 ml"),
+        ("CAPD 4 STAY SAFE PERITON DIALIZ 1500 ML",
+         "CAPD 4 STAY SAFE, раствор для перитонеального диализа, 1500 мл",
+         "CAPD 4 STAY SAFE, peritoneal dialysis solution, 1500 ml"),
+        ("POLIFLEKS %0,9 IZOTONIK 3000 ML SOL. SETLI",
+         "POLIFLEKS 0,9%, изотонический раствор, с системой, 3000 мл",
+         "POLIFLEKS 0.9%, isotonic solution, with set, 3000 ml"),
+        ("NEOFLEKS %5 DEKSTROZ SUDAKI COZELTISI 150 ML PP TORBA SETLI",
+         "NEOFLEKS 5%, раствор декстрозы, пакет, с системой, 150 мл",
+         "NEOFLEKS 5%, dextrose solution, bag, with set, 150 ml"),
+        ("TURKFLEKS %5 DEKSTROZ %0,9 SODYUM KLORUR SUDAKI COZELTISI 1000 ML SETLI",
+         "TURKFLEKS, раствор декстрозы 5% и натрия хлорида 0,9%, с системой, 1000 мл",
+         "TURKFLEKS, dextrose 5% and sodium chloride 0.9% solution, with set, 1000 ml"),
+        ("NICORETTE COOLS 4 MG NANELI PASTIL (40 ADET)",
+         "NICORETTE COOLS 4 мг, пастилки, со вкусом мяты, 40 шт.",
+         "NICORETTE COOLS 4 mg, lozenges, mint flavour, 40 pcs"),
+        ("CLIMARA FORTE 7.8 MG /25 CM2 TRANSDERMAL FLASTER (8 ADET)",
+         "CLIMARA FORTE 7,8 мг/25 см², трансдермальный пластырь, 8 шт.",
+         "CLIMARA FORTE 7.8 mg/25 cm², transdermal patch, 8 pcs"),
+        ("EXELON PATCH 4,6 MG/24 SAAT TRANSDERMAL FLASTER",
+         "EXELON PATCH 4,6 мг/24 ч, трансдермальный пластырь", "EXELON PATCH 4.6 mg/24 h, transdermal patch"),
+        ("FLAGYL %0,5 ENJ. 100 ML COZELTI (SETSIZ)",
+         "FLAGYL 0,5%, раствор для инъекций, без системы, 100 мл",
+         "FLAGYL 0.5%, solution for injection, without set, 100 ml"),
+        ("RIVONA 500 MG/500 MG INFUZYONLUK COZELTI HAZIRLMAK ICIN TOZ (1 ADET)",
+         "RIVONA 500 мг/500 мг, порошок для приготовления раствора для инфузий, 1 шт.",
+         "RIVONA 500 mg/500 mg, powder for solution for infusion, 1 pc"),
+        ("NIMENRIX 0,5 MG IM ENJEKSIYON ICIN TOZ ICEREN 1 FLAKON VE COZUCU ICEREN KULLANIMA HAZIR 1 ENJEKTOR",
+         "NIMENRIX 0,5 мг, порошок для приготовления раствора для инъекций (в/м), "
+         "с растворителем в предварительно заполненном шприце, 1 флакон",
+         "NIMENRIX 0.5 mg, powder for solution for injection (IM), with solvent in pre-filled syringe, 1 vial"),
+        # Число после растворителя — фасовка, а не его упаковка.
+        ("ESPEROCT 500 IU ENJEKSIYONLUK COZELTI HAZIRLAMAK ICIN TOZ VE COZUCU (1 FLAKON)",
+         "ESPEROCT 500 МЕ, порошок для приготовления раствора для инъекций, с растворителем, 1 флакон",
+         "ESPEROCT 500 IU, powder for solution for injection, with solvent, 1 vial"),
+        # С вещества начинается сам бренд — как раньше.
+        ("LAKTATLI RINGER PVC 500 ML(SETLI)", "LAKTATLI RINGER PVC, с системой, 500 мл",
+         "LAKTATLI RINGER PVC, with set, 500 ml"),
+        ("L-CITRULLINE 100 GRAM POWDER", "L-CITRULLINE, порошок, 100 г", "L-CITRULLINE, powder, 100 g"),
+        # Ревью 24.10.2026: «2 %» — дозировка, а не часть бренда; единицы и фасовка по-турецки/по-английски.
+        ("FUCIDIN 2 % KREM 15 G", "FUCIDIN 2%, крем, 15 г", "FUCIDIN 2%, cream, 15 g"),
+        ("CERAZETTE 75 MIKROGRAM 28 FILM TABLET", "CERAZETTE 75 мкг, таблетки, покрытые плёночной оболочкой, 28 шт.",
+         "CERAZETTE 75 mcg, film-coated tablets, 28 pcs"),
+        ("DEKAS PLUS 60 CHEWABLE TABLETS", "DEKAS PLUS, жевательные таблетки, 60 шт.",
+         "DEKAS PLUS, chewable tablets, 60 pcs"),
+        ("PAROL HOT 12 POSET GRANUL", "PAROL HOT, гранулы, 12 саше", "PAROL HOT, granules, 12 sachets"),
+        ("AVECURIS 10 MG IV ENJEKSIYONLUK COZELTI HAZIRLAMAK ICIN TOZ VE COZUCU (1 FLAKON+1 COZUCU AMPUL)",
+         "AVECURIS 10 мг, порошок для приготовления раствора для инъекций (в/в), с растворителем в ампуле, 1 флакон",
+         "AVECURIS 10 mg, powder for solution for injection (IV), with solvent in ampoule, 1 vial"),
+        ("PRIMEFLEKS IZOMAX DENGELI ELEKTROLIT I.V. INFUZYONLUK COZELTI 1000 ML SETSIZ",
+         "PRIMEFLEKS IZOMAX, сбалансированный электролитный раствор для внутривенных инфузий, без системы, 1000 мл",
+         "PRIMEFLEKS IZOMAX, balanced electrolyte solution for intravenous infusion, without set, 1000 ml"),
+        # Не разобрать новым словарём — бренд по прежнему, название как раньше.
+        ("PRIMEFLEKS RINGER 0,86 G+0,03 G+0,033 G/100 ML I.V. INFUZYONLUK COZELTI (1000 ML-SETSIZ)",
+         "PRIMEFLEKS RINGER 0,86 г + 0,03 г + 0,033 г/100 мл, раствор для внутривенных инфузий, без системы, 1000 мл",
+         "PRIMEFLEKS RINGER 0.86 g + 0.03 g + 0.033 g/100 ml, solution for intravenous infusion, without set, 1000 ml"),
+    ],
+)
+def test_title_dialysis_infusion_lozenge_patch_solvent_forms(name, ru, en):
+    assert build_medicine_title(name) == {"ru": ru, "en": en}
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "LAFLEKS %5 DEKSTROZ %09 SODYUM KLORUR COZELTISI 1000 ML (SETSIZ)",  # «%09»: 9% или 0,9% — не угадываем
+        "PKU COOLER 15 KIRMIZI (30x130 ML)",  # «KIRMIZI» (вкус) — не бренд
+        "PRIORIX 1 SIRIGA + FLAKON",
+    ],
+)
+def test_title_not_built_from_ambiguous_source(name):
+    assert build_medicine_title(name) is None
+
+
+def test_inn_not_repeated_when_title_names_the_substance():
+    name = "TURKFLEKS %10 DEKSTROZ SUDAKI COZELTISI 1000 ML SETLI"
+    title = build_medicine_title(name)
+    assert title_with_inn(title, name, ("Декстроза", "Dextrose"), "Dekstroz") == title
+
+
+def test_validator_accepts_new_template_titles():
+    from apps.ai.services.semantic_validator import _medicine_identity_tokens, _medicine_ru_title_untranslated
+
+    for name in ("CAPD 4 STAY SAFE PERITON DIALIZ 1500 ML", "LAFLEKS IZOTONIK SODYUM KLORUR SOLUSYONU 250 ML (SETLI)"):
+        title = build_medicine_title(name)["ru"]
+        assert not _medicine_ru_title_untranslated(title, name)
+        brands = {token[6:] for token in _medicine_identity_tokens(name) if token.startswith("BRAND:")}
+        assert all(brand.lower() in title.lower() for brand in brands), brands
+
+
+@pytest.mark.parametrize(
+    "name, brand",
+    [
+        # Бренд абзацев — по словарю форм до 24.10.2026: иначе ключи памяти абзацев
+        # поменялись бы и готовые переводы инструкций не нашлись.
+        ("EXTRANEFROL PERITON DIYALIZ COZELTISI (2500 ML TEK TORBA)", "EXTRANEFROL PERITON DIYALIZ"),
+        ("EXELON PATCH 4,6 MG/24 SAAT TRANSDERMAL FLASTER", "EXELON PATCH"),
+        ("LAFLEKS IZOTONIK SODYUM KLORUR SOLUSYONU 250 ML (SETLI)", "LAFLEKS IZOTONIK SODYUM KLORUR SOLUSYONU"),
+        ("CAPD 4 STAY SAFE PERITON DIALIZ 1500 ML", "CAPD"),
+    ],
+)
+def test_paragraph_brand_keeps_legacy_form_dictionary(name, brand):
+    assert paragraph_brand(name) == brand
+
+
 def test_title_template_injection_ampoule_forms():
     assert build_medicine_title("FUROJECT 20MG/2 ML IM/IV ENJ. COZ. ICEREN 5 AMPUL")["ru"] == (
         "FUROJECT 20 мг/2 мл, раствор для инъекций (в/м, в/в), 5 ампул"
@@ -655,6 +766,9 @@ def test_full_medicine_processing_uses_code_and_memory():
 
     card_prompt = [c for c in llm.calls if "медицинский редактор" in c["system_prompt"]][0]["user_prompt"]
     assert "fixed_title" in card_prompt and '"dosage_form": "' not in card_prompt.split("Данные о")[0]
+    # Бренд — из названия, производитель (Product.brand) — отдельным полем.
+    data = json.loads(card_prompt.split("Данные о лекарственном препарате:", 1)[1])
+    assert (data["brand"], data["manufacturer"]) == ("MAJEZIK", ""), data
     log = AIProcessingLog.objects.get(pk=log.pk)
     # Действующее вещество — в скобках после бренда (title_with_inn).
     assert log.generated_title == "MAJEZIK (флурбипрофен) 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт."
@@ -1408,24 +1522,24 @@ def test_model_title_without_seo_falls_back_to_model_title():
     """Название кодом не собралось, модель не вернула SEO — лог не падает, SEO из её названия."""
     category = Category.objects.create(name="Медицина", slug="seo-fallback")
     medicine = MedicineProduct.objects.create(
-        name="POLIFLEKS %0,9 IZOTONIK 3000 ML SOL. SETSIZ", slug="seo-fallback", category=category,
+        name="QUTENZA 8% PATCH 1×1 PC. (179 MG)", slug="seo-fallback", category=category,
     )
     medicine.refresh_from_db()
     assert build_medicine_title(medicine.name) is None
     card = {
-        "ru": {"generated_title": "POLIFLEKS 0,9%, изотонический раствор, 3000 мл",
-               "generated_description": "Изотонический раствор натрия хлорида 0,9% в пакете 3000 мл."},
-        "en": {"generated_title": "POLIFLEKS 0.9%, isotonic solution, 3000 ml",
-               "generated_description": "Isotonic 0.9% sodium chloride solution in a 3000 ml bag."},
+        "ru": {"generated_title": "QUTENZA 8%, накожный пластырь, 1 шт.",
+               "generated_description": "Пластырь с капсаицином 8% для наружного применения."},
+        "en": {"generated_title": "QUTENZA 8%, cutaneous patch, 1 pc",
+               "generated_description": "Capsaicin 8% cutaneous patch."},
     }
     generator = _generator(RecordingLLM(card=card))
     generator._should_use_images_for_product = lambda _product: False
     log = generator.process_product(medicine.base_product.id, options={"analyze_images": False, "force": True})
     log = AIProcessingLog.objects.get(pk=log.pk)
     assert log.status != "failed", log.error_message
-    assert log.generated_seo_title == "POLIFLEKS 0,9%, изотонический раствор, 3000 мл"
+    assert log.generated_seo_title == "QUTENZA 8%, накожный пластырь, 1 шт."
     seo = log.extracted_attributes["seo_translations"]
-    assert seo["en"]["meta_title"] == "POLIFLEKS 0.9%, isotonic solution, 3000 ml"
+    assert seo["en"]["meta_title"] == "QUTENZA 8%, cutaneous patch, 1 pc"
 
 
 def test_meaningless_special_notes_are_not_accepted_and_rx_is_neutral():

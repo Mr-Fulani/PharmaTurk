@@ -1492,7 +1492,13 @@ class ContentGenerator:
             pair = (title_inn(ru["active_ingredient"]), title_inn(en["active_ingredient"]))
             if title["ru"].startswith(f"{brand} ({pair[0]})"):
                 inn = pair
-        brand_ru = (peek(BRAND_NAMESPACE, [brand]).get(brand) or {}).get("ru", "")
+        # Словарь брендов собран по бренду абзацев (paragraph_brand); бренд названия бывает длиннее:
+        # «PHYSIONEAL 40» → «Физионеал» + « 40».
+        short = paragraph_brand(name)
+        found = peek(BRAND_NAMESPACE, [brand, short] if short and short != brand else [brand])
+        brand_ru = (found.get(brand) or {}).get("ru", "")
+        if not brand_ru and short and brand.startswith(short) and found.get(short):
+            brand_ru = found[short]["ru"] + brand[len(short):]
         if not brand_ru and ru.get("active_ingredient") and not paragraph_brand(name, input_data.get("active_ingredient")):
             brand_ru = title_inn(ru["active_ingredient"]).capitalize()
         storage = self._build_medicine_source_sections(input_data).get("storage_conditions")
@@ -1569,7 +1575,11 @@ class ContentGenerator:
         })
         data = {
             "product_name": input_data.get("name", ""),
-            "brand": input_data.get("brand") or "Unknown",
+            # Product.brand у лекарств — производитель («Polifarma», «Bayer»): под ключом «brand»
+            # модель ставила его в название и SEO вместо торгового названия (пилот 24.10.2026).
+            "brand": title_brand(input_data.get("name")),
+            # «Другое» — бренд-заглушка, которую каталог ставит товару без бренда (catalog/signals.py).
+            "manufacturer": "" if input_data.get("brand") in (None, "", "Другое") else input_data["brand"],
             "category_context": input_data.get("category_context") or {},
             "fixed_title": code_fields.get("title") or {},
             "facts_ru": code_fields.get("ru") or {},
@@ -1615,6 +1625,7 @@ class ContentGenerator:
         - Используй только факты из facts_ru/facts_en, source_facts, source_sections, source_description или image_analysis.
         - facts_ru и facts_en — готовые переводы (форма, действующее вещество, путь введения, объём, рецепт, срок годности): пиши их ровно так, не переводи заново.
         - Если fixed_title не пустой, это готовое название: generated_title не возвращай, в SEO используй fixed_title.
+        - brand — торговое название препарата из начала product_name; manufacturer — производитель: его не пиши ни в название, ни в SEO.
         - Если source_sections не пустой, НЕ используй source_description и НЕ пересказывай разделы.
         - source_summary_preview используй только для короткого generated_description.
         - Не возвращай длинные медицинские разделы: отдельный этап переведёт полный исходный текст.

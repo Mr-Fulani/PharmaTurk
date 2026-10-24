@@ -17,8 +17,10 @@ from apps.ai.services.medicine_title import (
     FORM_PHRASES,
     TRUNCATED_TITLE_RE,
     is_form_word,
+    is_title_descriptor_word,
     medicine_source_name,
     paragraph_brand,
+    title_brand,
 )
 from apps.ai.services.rules.vocab import fold, generic_title_words
 from apps.ai.services.size_inventory import (
@@ -225,6 +227,8 @@ def _medicine_ru_title_untranslated(title: Any, source_name: Any) -> bool:
         return True
     # Бренд — слова до первой дозировки; цифра внутри бренда («B6 VIGEN», «D-3») — не дозировка.
     prefix = re.split(r"(?=(?<![\w-])\d|%)", str(source_name or ""), maxsplit=1)[0]
+    # Бренд шаблона бывает и с числом: «CAPD 4 STAY SAFE», «POLIFLEKS 1/3 POLIDEKS» (title_brand).
+    prefix += " " + title_brand(source_name)
     brand = {fold_tr(token.strip(".'-")).upper() for token in re.findall(r"[^\W_][\w.'-]*", prefix)}
     for token in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü.'-]*", text):
         word = fold_tr(token.strip(".'-")).upper()
@@ -350,7 +354,8 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
     prefix = re.split(r"(?=\d|%)", upper, maxsplit=1)[0]
     for token in re.findall(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9_-]{2,}", prefix):
         # Слова лекарственной формы («FILM TABLET») переводятся — это не бренд.
-        if token not in generic_prefix_words and not is_form_word(token):
+        # И вещества в/в раствора («IZOTONIK SODYUM KLORUR»): шаблон переводит их в форму.
+        if token not in generic_prefix_words and not is_form_word(token) and not is_title_descriptor_word(token):
             result.add(f"BRAND:{token}")
 
     unit_aliases = {
