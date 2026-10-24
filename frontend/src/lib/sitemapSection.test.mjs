@@ -26,6 +26,7 @@ function loadPage({ fetchAllPages, axiosGet = async () => ({ data: [] }) }) {
     '../../lib/urls': { getInternalApiUrl: (path) => path },
     '../../lib/sitemap': sitemap,
     '../../lib/serverPublicCache': serverPublicCache,
+    '../../content/blog/articles': { BLOG_ARTICLES: [{ slug: 'kak-proverit-tureckoe-lekarstvo', updatedAt: '2026-10-24' }] },
   }
   const exports = {}
   vm.runInNewContext(compiled, { exports, require: (name) => modules[name], console: { error() {} } })
@@ -96,4 +97,18 @@ test('после сбоя секция собирается заново, а н�
 
   assert.equal(res.statusCode, 200)
   assert.match(res.body, /parol/)
+})
+
+test('статьи блога — в секции static, страницы препаратов — в секции drugs', async () => {
+  const page = loadPage({
+    fetchAllPages: async (path, params) => (params?.kind === 'drug_groups' ? [{ slug: 'majezik', updated_at: '2026-10-24T10:00:00Z' }] : []),
+  })
+
+  const staticRes = await render(page, 'static.xml')
+  assert.match(staticRes.body, /\/blog<\/url>/)
+  assert.match(staticRes.body, /\/blog\/kak-proverit-tureckoe-lekarstvo/)
+
+  const drugsRes = await render(page, 'drugs.xml')
+  assert.equal(drugsRes.statusCode, 200)
+  assert.match(drugsRes.body, /\/drugs\/majezik/)
 })

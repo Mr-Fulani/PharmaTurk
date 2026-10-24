@@ -7,7 +7,11 @@ import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { Plane, Truck, Ship, CreditCard, ShieldCheck } from 'lucide-react'
 import { SITE_NAME, withSiteName, SITE_URL } from '../../lib/siteMeta'
-import { sanitizeRichHtml } from '../../lib/sanitizeHtml'
+import Link from 'next/link'
+import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
+import { FaqList } from '../../components/BlogArticleBody'
+import { IMPORT_ARTICLE_SLUG, IMPORT_FAQ_BY_LOCALE } from '../../content/blog/articles'
+import { buildFaqSchema } from '../../lib/blog'
 
 export default function DeliveryPage({ pageData, footerSettings }: { pageData: any; footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
     const { t } = useTranslation('common')
@@ -16,6 +20,8 @@ export default function DeliveryPage({ pageData, footerSettings }: { pageData: a
     const canonicalUrl = `${SITE_URL}${localePrefix}/delivery`
     const hasTelegram = Boolean((footerSettings.telegram_url || '').trim())
     const hasWhatsapp = Boolean((footerSettings.whatsapp_url || '').trim())
+    // Вопросы о ввозе лекарств — те же, что в статье о правилах ввоза (SEO-план, кластер 140)
+    const importFaq = IMPORT_FAQ_BY_LOCALE[locale as 'ru' | 'en'] || IMPORT_FAQ_BY_LOCALE.ru
 
     return (
         <>
@@ -36,6 +42,7 @@ export default function DeliveryPage({ pageData, footerSettings }: { pageData: a
                 <meta name="twitter:title" content={pageData?.meta_title || pageData?.title || t('delivery_title', 'Доставка и оплата')} />
                 <meta name="twitter:description" content={pageData?.meta_description || t('delivery_subtitle', 'Информация о способах доставки и оплаты')} />
                 <meta name="twitter:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.jpg'}`} />
+                <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(buildFaqSchema(importFaq)) }} />
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">
@@ -128,6 +135,14 @@ export default function DeliveryPage({ pageData, footerSettings }: { pageData: a
                                 <p className="text-sm text-main/70">{t('delivery_payment_text2', 'Все платежи надежно защищены современными 256-битными системами шифрования. Мы никогда не храним данные ваших карт на серверах.')}</p>
                             </div>
                         </div>
+                    </div>
+                    <div className="mt-16">
+                        <FaqList title={t('delivery_import_faq_title', 'Ввоз лекарств: вопросы и ответы')} faq={importFaq} />
+                        <p className="mt-3 text-sm text-main/70">
+                            <Link href={`/blog/${IMPORT_ARTICLE_SLUG}`} className="font-medium text-[var(--accent)] hover:underline">
+                                {t('delivery_import_article_link', 'Подробнее — в статье о правилах ввоза лекарств из Турции')}
+                            </Link>
+                        </p>
                     </div>
                     {(hasWhatsapp || hasTelegram) && (
                         <div className="mt-10 rounded-xl border border-gray-200 bg-white/70 p-6 text-center">

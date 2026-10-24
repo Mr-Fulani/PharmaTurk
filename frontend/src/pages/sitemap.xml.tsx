@@ -19,6 +19,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
   const sections = [
     'static',
     'categories',
+    'drugs',
     'brands',
     'services',
     ...SITEMAP_DOMAINS.map((domain) => `products-${domain}`),
