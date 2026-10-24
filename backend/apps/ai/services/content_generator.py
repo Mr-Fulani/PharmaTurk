@@ -50,7 +50,13 @@ from apps.ai.services.quality_checker import (
 )
 from apps.ai.services.medicine_fact_check import doses_match, strip_proper_name_lines
 from apps.ai.services.medicine_memory import peek, translate_active_ingredient, translate_sections_by_paragraph
-from apps.ai.services.medicine_seo import BRAND_NAMESPACE, build_medicine_seo, needs_cold_chain, prescription_kind
+from apps.ai.services.medicine_seo import (
+    BRAND_NAMESPACE,
+    build_medicine_seo,
+    cyrillic_brand,
+    needs_cold_chain,
+    prescription_kind,
+)
 from apps.ai.services.medicine_reference import (
     CODE_FIELDS,
     build_reference_translations,
@@ -1492,13 +1498,9 @@ class ContentGenerator:
             pair = (title_inn(ru["active_ingredient"]), title_inn(en["active_ingredient"]))
             if title["ru"].startswith(f"{brand} ({pair[0]})"):
                 inn = pair
-        # Словарь брендов собран по бренду абзацев (paragraph_brand); бренд названия бывает длиннее:
-        # «PHYSIONEAL 40» → «Физионеал» + « 40».
+        # Словарь брендов собран по бренду абзацев (paragraph_brand), бренд названия бывает другим.
         short = paragraph_brand(name)
-        found = peek(BRAND_NAMESPACE, [brand, short] if short and short != brand else [brand])
-        brand_ru = (found.get(brand) or {}).get("ru", "")
-        if not brand_ru and short and brand.startswith(short) and found.get(short):
-            brand_ru = found[short]["ru"] + brand[len(short):]
+        brand_ru = cyrillic_brand(brand, short, peek(BRAND_NAMESPACE, [brand, short] if short else [brand]))
         if not brand_ru and ru.get("active_ingredient") and not paragraph_brand(name, input_data.get("active_ingredient")):
             brand_ru = title_inn(ru["active_ingredient"]).capitalize()
         storage = self._build_medicine_source_sections(input_data).get("storage_conditions")

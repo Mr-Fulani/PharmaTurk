@@ -2,6 +2,7 @@ from apps.ai.services.medicine_seo import (
     SEO_DESCRIPTION_MAX,
     SEO_TITLE_MAX,
     build_medicine_seo,
+    cyrillic_brand,
     needs_cold_chain,
     prescription_kind,
 )
@@ -69,3 +70,32 @@ def test_prescription_kind_from_reference_translation():
     assert prescription_kind("controlled prescription medicine") == "controlled"
     assert prescription_kind("over-the-counter medicine") == "otc"
     assert prescription_kind("") == ""
+
+
+def test_cyrillic_brand_for_longer_and_shorter_title_brand():
+    found = {
+        "EXTRANEFROL PERITON DIYALIZ": {"ru": "Экстранефрол Перитонеальный Диализ"},
+        "PHYSIONEAL": {"ru": "Физионеал"},
+        "POLIFLEKS": {"ru": "Полифлекс"},
+    }
+    assert cyrillic_brand("EXTRANEFROL", "EXTRANEFROL PERITON DIYALIZ", found) == "Экстранефрол"
+    assert cyrillic_brand("PHYSIONEAL 40", "PHYSIONEAL", found) == "Физионеал 40"
+    # Латинский хвост кириллицей не записать — бренд в SEO латиницей.
+    assert cyrillic_brand("POLIFLEKS 1/3 POLIDEKS", "POLIFLEKS", found) == ""
+    assert cyrillic_brand("CAPD 4 STAY SAFE", "CAPD", found) == ""
+
+
+def test_long_brand_title_falls_back_without_cutting_on_preposition():
+    title = {
+        "ru": "POLIFLEKS 1/3 POLIDEKS (хлорид натрия + декстроза), раствор для внутривенных инфузий, без системы, пакет, 1000 мл",
+        "en": "POLIFLEKS 1/3 POLIDEKS (sodium chloride + dextrose), solution for intravenous infusion, without set, bag, 1000 ml",
+    }
+    seo = build_medicine_seo(title, "POLIFLEKS 1/3 POLIDEKS", "", ("хлорид натрия + декстроза", "sodium chloride + dextrose"), "rx")
+    assert seo["ru"]["seo_title"] == "POLIFLEKS 1/3 POLIDEKS, раствор для внутривенных инфузий из Турции"
+    # Бренд кириллицей важнее «из Турции»: «Экстранефрол (EXTRANEFROL), …» без «из Турции», а не латиницей.
+    title = {
+        "ru": "EXTRANEFROL, раствор для перитонеального диализа, одинарный пакет, 2500 мл",
+        "en": "EXTRANEFROL, peritoneal dialysis solution, single bag, 2500 ml",
+    }
+    seo = build_medicine_seo(title, "EXTRANEFROL", "Экстранефрол", None, "rx")
+    assert seo["ru"]["seo_title"] == "Экстранефрол (EXTRANEFROL), раствор для перитонеального диализа"
