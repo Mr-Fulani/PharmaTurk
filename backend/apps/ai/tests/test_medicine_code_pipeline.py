@@ -1404,6 +1404,30 @@ def _process(special_notes, card_notes):
     return AIProcessingLog.objects.get(pk=log.pk), facts
 
 
+def test_model_title_without_seo_falls_back_to_model_title():
+    """Название кодом не собралось, модель не вернула SEO — лог не падает, SEO из её названия."""
+    category = Category.objects.create(name="Медицина", slug="seo-fallback")
+    medicine = MedicineProduct.objects.create(
+        name="POLIFLEKS %0,9 IZOTONIK 3000 ML SOL. SETSIZ", slug="seo-fallback", category=category,
+    )
+    medicine.refresh_from_db()
+    assert build_medicine_title(medicine.name) is None
+    card = {
+        "ru": {"generated_title": "POLIFLEKS 0,9%, изотонический раствор, 3000 мл",
+               "generated_description": "Изотонический раствор натрия хлорида 0,9% в пакете 3000 мл."},
+        "en": {"generated_title": "POLIFLEKS 0.9%, isotonic solution, 3000 ml",
+               "generated_description": "Isotonic 0.9% sodium chloride solution in a 3000 ml bag."},
+    }
+    generator = _generator(RecordingLLM(card=card))
+    generator._should_use_images_for_product = lambda _product: False
+    log = generator.process_product(medicine.base_product.id, options={"analyze_images": False, "force": True})
+    log = AIProcessingLog.objects.get(pk=log.pk)
+    assert log.status != "failed", log.error_message
+    assert log.generated_seo_title == "POLIFLEKS 0,9%, изотонический раствор, 3000 мл"
+    seo = log.extracted_attributes["seo_translations"]
+    assert seo["en"]["meta_title"] == "POLIFLEKS 0.9%, isotonic solution, 3000 ml"
+
+
 def test_meaningless_special_notes_are_not_accepted_and_rx_is_neutral():
     log, facts = _process(
         "Birlikte kullanılmamalıdır. Dikkatli olunmalıdır.",
