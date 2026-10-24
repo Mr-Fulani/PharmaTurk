@@ -547,6 +547,9 @@ def test_title_names_active_ingredient_without_salt():
         ("Эпоэтин бета", "эпоэтин бета"),
         ("Formoterol fumarate dihydrate + Budesonide", "formoterol + budesonide"),
         ("Sodium bicarbonate", "sodium bicarbonate"),
+        # Пилот 6: буква — часть МНН, в именительном падеже слово перед ней.
+        ("Полимиксина B сульфат + Окситетрациклина гидрохлорид", "полимиксин B + окситетрациклин"),
+        ("Polymyxin B sulfate", "polymyxin B"),
     ],
 )
 def test_title_inn_forms(value, expected):
@@ -632,6 +635,22 @@ def test_title_inn_salt_cases_and_garbage():
         ("PRIMEFLEKS IZOMAX DENGELI ELEKTROLIT I.V. INFUZYONLUK COZELTI 1000 ML SETSIZ",
          "PRIMEFLEKS IZOMAX, сбалансированный электролитный раствор для внутривенных инфузий, без системы, 1000 мл",
          "PRIMEFLEKS IZOMAX, balanced electrolyte solution for intravenous infusion, without set, 1000 ml"),
+        # Пилот 6 (самые востребованные лекарства): пакетики, «6 PLUS», глазная мазь, «YAVAS SALIMLI»,
+        # «KAPLI TABLET», «CIG.», граммы на дозу после «/».
+        ("TYLOLHOT DAY 500 MG + 30 MG + 2 MG / 20 G TEK KULLANIMLIK ORAL COZELTI HAZIRLAMAK ICIN TOZ 12 POSET",
+         "TYLOLHOT DAY 500 мг + 30 мг + 2 мг/20 г, порошок для приготовления раствора для приёма внутрь, 12 саше",
+         "TYLOLHOT DAY 500 mg + 30 mg + 2 mg/20 g, powder for oral solution, 12 sachets"),
+        ("CALPOL 6 PLUS 250 MG/5 ML 150 ML SURUP", "CALPOL 6 PLUS 250 мг/5 мл, сироп, 150 мл",
+         "CALPOL 6 PLUS 250 mg/5 ml, syrup, 150 ml"),
+        ("THIOCILLINE 500IU/G + 5 MG/G GOZ MERHEMI", "THIOCILLINE 500 МЕ/г + 5 мг/г, глазная мазь",
+         "THIOCILLINE 500 IU/g + 5 mg/g, eye ointment"),
+        ("BRUFEN RETARD 800 MG YAVAS SALIMLI 14 FILM TABLET",
+         "BRUFEN RETARD 800 мг, таблетки пролонгированного высвобождения, покрытые плёночной оболочкой, 14 шт.",
+         "BRUFEN RETARD 800 mg, prolonged-release film-coated tablets, 14 pcs"),
+        ("DOLOREX 50 MG KAPLI TABLET", "DOLOREX 50 мг, таблетки, покрытые оболочкой", "DOLOREX 50 mg, coated tablets"),
+        ("TALCID FORTE 1 GR 24 CIG.TABLETI", "TALCID FORTE 1 г, жевательные таблетки, 24 шт.",
+         "TALCID FORTE 1 g, chewable tablets, 24 pcs"),
+        ("MADECASSOL 10 MG/1 GR 40 GR POMAD", "MADECASSOL 10 мг/1 г, мазь, 40 г", "MADECASSOL 10 mg/1 g, ointment, 40 g"),
         # Не разобрать новым словарём — бренд по прежнему, название как раньше.
         ("PRIMEFLEKS RINGER 0,86 G+0,03 G+0,033 G/100 ML I.V. INFUZYONLUK COZELTI (1000 ML-SETSIZ)",
          "PRIMEFLEKS RINGER 0,86 г + 0,03 г + 0,033 г/100 мл, раствор для внутривенных инфузий, без системы, 1000 мл",
@@ -663,7 +682,14 @@ def test_inn_not_repeated_when_title_names_the_substance():
 def test_validator_accepts_new_template_titles():
     from apps.ai.services.semantic_validator import _medicine_identity_tokens, _medicine_ru_title_untranslated
 
-    for name in ("CAPD 4 STAY SAFE PERITON DIALIZ 1500 ML", "LAFLEKS IZOTONIK SODYUM KLORUR SOLUSYONU 250 ML (SETLI)"):
+    # Пилот 6: «B» в МНН — не непереведённая латиница.
+    assert not _medicine_ru_title_untranslated(
+        "TERRAMYCIN (полимиксин B + окситетрациклин), мазь, 14,2 г", "TERRAMYCIN 14,2 GR POMAD"
+    )
+    for name in (
+        "CAPD 4 STAY SAFE PERITON DIALIZ 1500 ML", "LAFLEKS IZOTONIK SODYUM KLORUR SOLUSYONU 250 ML (SETLI)",
+        "CALPOL 6 PLUS 250 MG/5 ML 150 ML SURUP", "BRUFEN RETARD 800 MG YAVAS SALIMLI 14 FILM TABLET",
+    ):
         title = build_medicine_title(name)["ru"]
         assert not _medicine_ru_title_untranslated(title, name)
         brands = {token[6:] for token in _medicine_identity_tokens(name) if token.startswith("BRAND:")}
@@ -1540,6 +1566,33 @@ def test_model_title_without_seo_falls_back_to_model_title():
     assert log.generated_seo_title == "QUTENZA 8%, накожный пластырь, 1 шт."
     seo = log.extracted_attributes["seo_translations"]
     assert seo["en"]["meta_title"] == "QUTENZA 8%, cutaneous patch, 1 pc"
+
+
+def test_restricted_medicine_without_code_title_gets_seo_without_delivery(monkeypatch):
+    """Название собрала модель — SEO запрещённого к ввозу всё равно без заявки и доставки (пилот 6)."""
+    from apps.catalog import controlled_substances
+
+    monkeypatch.setattr(
+        controlled_substances, "_index",
+        lambda: {"psodoefedrin hidroklorur": {"inn_ru": "псевдоэфедрин", "countries": {"RU": {"list": "ПП 681"}}}},
+    )
+    generator = _generator(None)
+    input_data = {"name": "X COLD 30 MG KARISIM", "active_ingredient": "Psodoefedrin Hidroklorur",
+                  "prescription_type": "Beyaz Reçete"}
+    code_fields = generator._build_medicine_code_fields(input_data, allow_llm=False)
+    assert code_fields["title"] is None
+    content = {
+        "ru": {"generated_title": "X COLD 30 мг, смесь", "seo_title": "X COLD 30 мг из Турции",
+               "seo_description": "X COLD из Турции. Заявка менеджеру, доставка 7–21 рабочий день."},
+        "en": {"generated_title": "X COLD 30 mg, mixture", "seo_title": "X COLD 30 mg from Turkey",
+               "seo_description": "X COLD from Turkey. Send a request, delivery in 7–21 business days."},
+    }
+    generator._apply_medicine_code_fields(content, input_data, code_fields)
+    assert content["ru"]["seo_description"] == (
+        "X COLD 30 мг, смесь из Турции. Отпускается по рецепту. Ввоз в Россию ограничен. Инструкция на русском."
+    )
+    assert "delivery" not in content["en"]["seo_description"]
+    assert "Import to Russia is restricted." in content["en"]["seo_description"]
 
 
 def test_meaningless_special_notes_are_not_accepted_and_rx_is_neutral():

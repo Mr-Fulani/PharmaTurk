@@ -54,6 +54,7 @@ from apps.ai.services.medicine_seo import (
     BRAND_NAMESPACE,
     build_medicine_seo,
     cyrillic_brand,
+    fallback_seo,
     needs_cold_chain,
     prescription_kind,
 )
@@ -1520,7 +1521,11 @@ class ContentGenerator:
         code_fields: Dict[str, Any],
     ) -> None:
         """Справочные поля, МНН, название и атрибуты — из кода, поверх ответа модели."""
+        from apps.catalog.controlled_substances import country_codes, restrictions
+
         has_special_notes = bool(meaningful_special_notes(input_data.get("special_notes")))
+        prescription = prescription_kind(code_fields["en"].get("prescription_type"))
+        restricted = country_codes(restrictions(input_data.get("active_ingredient"))[0])
         for locale in ("ru", "en"):
             payload = content.get(locale)
             if not isinstance(payload, dict):
@@ -1542,6 +1547,9 @@ class ContentGenerator:
                     payload["seo_description"] = str(payload.get("generated_description") or fallback)[:160]
                 if not payload.get("keywords") and fallback:
                     payload["keywords"] = [fallback.split()[0]]
+                # Строгий учёт и запрет ввоза: SEO модели не продвигает такие препараты надёжно.
+                if prescription == "controlled" or restricted:
+                    payload.update(fallback_seo(payload["seo_title"], fallback, locale, prescription, restricted))
             # Только бейджи без предмета («Не применять совместно.») — особых сведений нет.
             if not has_special_notes:
                 payload.pop("special_notes", None)

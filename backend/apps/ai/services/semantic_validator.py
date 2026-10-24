@@ -232,7 +232,8 @@ def _medicine_ru_title_untranslated(title: Any, source_name: Any) -> bool:
     brand = {fold_tr(token.strip(".'-")).upper() for token in re.findall(r"[^\W_][\w.'-]*", prefix)}
     for token in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü.'-]*", text):
         word = fold_tr(token.strip(".'-")).upper()
-        if word in brand or word in _MEDICINE_RU_TITLE_LATIN_OK or re.search(r"\d", word):
+        # Буква — часть МНН: «полимиксин B», «витамин E».
+        if word in brand or word in _MEDICINE_RU_TITLE_LATIN_OK or re.search(r"\d", word) or len(word) == 1:
             continue
         return True
     return False

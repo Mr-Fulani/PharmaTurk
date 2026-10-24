@@ -3,6 +3,7 @@ from apps.ai.services.medicine_seo import (
     SEO_TITLE_MAX,
     build_medicine_seo,
     cyrillic_brand,
+    fallback_seo,
     needs_cold_chain,
     prescription_kind,
 )
@@ -64,6 +65,18 @@ def test_import_restricted_medicine_has_no_delivery_and_names_countries():
     )
     assert "Import to Russia and Kazakhstan is restricted." in seo["en"]["seo_description"]
     assert "delivery" not in seo["en"]["seo_description"]
+
+
+def test_fallback_seo_of_controlled_medicine_drops_turkey_and_order():
+    seo = fallback_seo(
+        "APRANAX SEMIPLUS из Турции — инструкция, цена", "APRANAX SEMIPLUS, таблетки из Турции", "ru", "controlled",
+        ["KZ", "RU", "UZ"],
+    )
+    assert seo == {
+        "seo_title": "APRANAX SEMIPLUS",
+        "seo_description": "APRANAX SEMIPLUS, таблетки. Препарат строгого учёта, отпускается по специальному рецепту. "
+        "Ввоз в Россию, Казахстан и Узбекистан ограничен.",
+    }
 
 
 def test_cold_chain_from_source_storage_text():

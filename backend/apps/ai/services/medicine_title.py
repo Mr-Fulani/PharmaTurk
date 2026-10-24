@@ -317,6 +317,17 @@ FORM_PHRASES.update({
         "порошок для приготовления раствора для инъекций", "powder for solution for injection"
     ),
     "cozelti tozu": ("порошок для приготовления раствора", "powder for solution"),
+    # Пилот 6 (24.10.2026, самые востребованные по Вордстату): формы, на которых шаблон сдавался.
+    "tek kullanimlik oral cozelti hazirlamak icin toz": (
+        "порошок для приготовления раствора для приёма внутрь", "powder for oral solution"
+    ),
+    "goz merhemi": ("глазная мазь", "eye ointment"),
+    "yavas salimli film tablet": (
+        "таблетки пролонгированного высвобождения, покрытые плёночной оболочкой",
+        "prolonged-release film-coated tablets",
+    ),
+    "yavas salimli tablet": ("таблетки пролонгированного высвобождения", "prolonged-release tablets"),
+    "kapli tablet": ("таблетки, покрытые оболочкой", "coated tablets"),
 })
 # Флакон/ампула как форма, если та же упаковка указана и счётом («ICEREN FLAKON (1 FLAKON)»),
 # не повторяется: остаётся «1 флакон».
@@ -359,6 +370,7 @@ _TITLE_ABBREVIATIONS = (
     (r"unite", "u"),  # ÜNİTE
     (r"chewable", "cigneme"),
     (r"soft\s*gel", "yumusak"),
+    (r"cig\.", "cigneme"),  # «CIG.TABLETI»
 )
 
 
@@ -375,7 +387,8 @@ _TITLE_ABBREVIATION_RES = _abbreviation_res(_TITLE_ABBREVIATIONS)
 # Форма, разорванная фасовкой: «UZATILMIS SALIMLI 30 TABLET» → «30 UZATILMIS SALIMLI TABLET».
 _SPLIT_FORM_RE = re.compile(
     r"(uzatilmis salimli|kontrollu salimli|agizda dagilan|enterik kapli|gastro direncli|film kapli|"
-    r"efervesan|cigneme|sert|yumusak|mikropellet|suda dagilabilen) (\d+) ((?:film |pellet )?(?:tablet|kapsul))\b"
+    r"efervesan|cigneme|sert|yumusak|mikropellet|suda dagilabilen|yavas salimli) (\d+) "
+    r"((?:film |pellet )?(?:tablet|kapsul))\b"
 )
 
 
@@ -594,6 +607,12 @@ def _title_brand_tokens(tokens: list[str]) -> list[str]:
     """
     brand = _brand_tokens(tokens)
     extra = tokens[len(brand):]
+    # «CALPOL 6 PLUS 250 MG/5 ML» — число и обозначение линейки перед дозировкой — бренд.
+    if (
+        brand and len(extra) >= 3 and re.fullmatch(r"\d{1,2}", extra[0])
+        and fold_tr(extra[1]) in _SERIES_WORDS and re.match(r"[\d%]", extra[2])
+    ):
+        return brand + extra[:2]
     if brand and len(extra) >= 2 and re.fullmatch(r"\d+(?:/\d+)?", extra[0]):
         if re.match(r"%\d", fold_tr(extra[1])):  # «PHYSIONEAL 40 %3.86»; «FUCIDIN 2 % KREM» — дозировка
             return brand + extra[:1]
@@ -712,12 +731,17 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
             # «%09 SODYUM KLORUR» — в источнике потеряна запятая: 9% или 0,9% — не угадываем.
             if re.fullmatch(r"0\d+", (dose.group(1) or dose.group(2) or "")):
                 return None
+            # «500 MG + 30 MG + 2 MG / 20 G» — дозировка на пакетик 20 г.
+            per_pack = joiner == "/" and bool(strengths["ru"]) and _format_dose(dose, "ru")[1] == "grams"
             for locale in ("ru", "en"):
                 text, kind = _format_dose(dose, locale)
-                {"strength": strengths, "volume": volumes, "grams": grams}[kind][locale].append(text)
-            if kind == "strength":
+                if per_pack:
+                    strengths[locale][-1] += f"/{text}"
+                else:
+                    {"strength": strengths, "volume": volumes, "grams": grams}[kind][locale].append(text)
+            if kind == "strength" and not per_pack:
                 strength_joiners.append(joiner)
-            elif kind == "grams":
+            elif kind == "grams" and not per_pack:
                 gram_joiners.append(joiner)
             rest = rest[dose.end():]
         elif form_match:
@@ -973,7 +997,9 @@ def title_inn(value: str) -> str:
         ):
             words = part.split()
         elif stripped and not cation:
-            words[-1] = _nominative(words[-1])
+            # «Полимиксина B сульфат» → «полимиксин B»: буква — часть МНН, в падеже слово перед ней.
+            last = len(words) - 2 if len(words) > 1 and re.fullmatch(r"[A-Z]", words[-1]) else len(words) - 1
+            words[last] = _nominative(words[last])
         elif len(words) == 2 and re.fullmatch(r"[а-яё-]+", words[1]) and words[1] not in _GREEK_WORDS:
             # Эфир или вторая часть МНН: «Кандесартана цилексетил» → «кандесартан цилексетил».
             words[0] = _nominative(words[0])
