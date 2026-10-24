@@ -67,6 +67,28 @@ def test_import_restricted_medicine_has_no_delivery_and_names_countries():
     assert "delivery" not in seo["en"]["seo_description"]
 
 
+def test_import_restriction_always_fits_long_lead_and_controlled():
+    # Пилот 6: у TYLOLHOT DAY и PAROL-K «Ввоз … ограничен» не помещался в 160 символов.
+    title = {
+        "ru": "TYLOLHOT DAY 500 мг + 30 мг + 2 мг/20 г, порошок для приготовления раствора для приёма внутрь, 12 саше",
+        "en": "TYLOLHOT DAY 500 mg + 30 mg + 2 mg/20 g, powder for oral solution, 12 sachets",
+    }
+    seo = build_medicine_seo(title, "TYLOLHOT DAY", "Тилолхот Дэй", None, "rx", restricted_countries=["KZ", "RU", "UZ"])
+    assert seo["ru"]["seo_description"] == (
+        "Тилолхот Дэй (TYLOLHOT DAY) 500 мг + 30 мг + 2 мг/20 г из Турции. Отпускается по рецепту. "
+        "Ввоз в Россию, Казахстан и Узбекистан ограничен."
+    )
+    title = {"ru": "PAROL-K (кодеин + парацетамол) 500 мг/10 мг, таблетки, 20 шт.",
+             "en": "PAROL-K (codeine + paracetamol) 500 mg/10 mg, tablets, 20 pcs"}
+    seo = build_medicine_seo(title, "PAROL-K", "Парол-К", ("кодеин + парацетамол", "codeine + paracetamol"),
+                             "controlled", restricted_countries=["KZ", "RU", "UZ"])
+    for locale, phrase in (("ru", "Ввоз в Россию, Казахстан и Узбекистан ограничен."),
+                           ("en", "Import to Russia, Kazakhstan and Uzbekistan is restricted.")):
+        description = seo[locale]["seo_description"]
+        assert phrase in description and len(description) <= SEO_DESCRIPTION_MAX
+        assert "строгого учёта" in seo["ru"]["seo_description"]
+
+
 def test_fallback_seo_of_controlled_medicine_drops_turkey_and_order():
     seo = fallback_seo(
         "APRANAX SEMIPLUS из Турции — инструкция, цена", "APRANAX SEMIPLUS, таблетки из Турции", "ru", "controlled",

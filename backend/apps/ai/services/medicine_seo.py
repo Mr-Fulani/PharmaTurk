@@ -144,17 +144,37 @@ def fallback_seo(
             seo_title = seo_title.replace(part, "")
     lead = _fit(title.replace(texts["turkey"], "").rstrip(" ."), _LEAD_MAX)
     lead += "" if controlled else texts["turkey"]
-    description = _fit(lead + ".", SEO_DESCRIPTION_MAX)
     countries = _countries(locale, restricted_countries)
-    sentences = [
-        texts["controlled"] if controlled else texts["rx"] if prescription == "rx" else "",
+    required = [
+        texts["controlled"] if controlled else "",
         texts["restricted"].format(countries=countries) if countries else "",
-        texts["instruction"],
     ]
-    for sentence in sentences:
-        if sentence and len(description) + 1 + len(sentence) <= SEO_DESCRIPTION_MAX:
-            description = f"{description} {sentence}"
+    description = _with_sentences(_lead([lead + "."], required), [
+        texts["controlled"] if controlled else texts["rx"] if prescription == "rx" else "",
+        required[1],
+        texts["instruction"],
+    ], required)
     return {"seo_title": seo_title.strip(), "seo_description": description}
+
+
+def _lead(leads: list[str], required: list[str]) -> str:
+    """Первое начало описания, после которого ещё помещается ``required``; иначе последнее, обрезанное."""
+    room = SEO_DESCRIPTION_MAX - sum(len(sentence) + 1 for sentence in required if sentence)
+    return next((lead for lead in leads if len(lead) <= room), None) or _fit(leads[-1].rstrip("."), room - 1) + "."
+
+
+def _with_sentences(description: str, sentences: list[str], required: list[str]) -> str:
+    """Предложения по важности, пока помещаются в SEO_DESCRIPTION_MAX; место под ``required`` — всегда."""
+    pending = [sentence for sentence in required if sentence]
+    for sentence in sentences:
+        if not sentence:
+            continue
+        if sentence in pending:
+            pending.remove(sentence)
+        reserve = sum(len(other) + 1 for other in pending)
+        if len(description) + 1 + len(sentence) + reserve <= SEO_DESCRIPTION_MAX:
+            description = f"{description} {sentence}"
+    return description
 
 
 def _join(head: str, sep: str, parts: list[str]) -> str:
@@ -213,22 +233,25 @@ def build_medicine_seo(
             " ".join([brand, ", ".join(parts[:1])]).strip(), SEO_TITLE_MAX
         )
 
-        lead = _join(head, sep, parts[:2]) + turkey + "."
-        with_inn = bool(inn_text)
-        if len(lead) > _LEAD_MAX:
-            lead, with_inn = _join(head_short, sep, parts[:2]) + turkey + ".", False
-        description = _fit(lead, SEO_DESCRIPTION_MAX)
-        sentences = [
-            texts["controlled"] if controlled else texts["rx"] if prescription == "rx" else "",
+        leads = [_join(head, sep, parts[:2]) + turkey + "."]
+        if len(leads[0]) > _LEAD_MAX:
+            leads = []
+        leads += [_join(head_short, sep, parts[:2]) + turkey + ".", _join(head_short, sep, parts[:1]) + turkey + "."]
+        # Строгий учёт и запрет ввоза помещаются всегда: начало описания при нужде короче.
+        required = [
+            texts["controlled"] if controlled else "",
             texts["restricted"].format(countries=countries) if countries else "",
+        ]
+        lead = _lead(leads, required)
+        with_inn = bool(inn_text) and lead == _join(head, sep, parts[:2]) + turkey + "."
+        description = _with_sentences(lead, [
+            texts["controlled"] if controlled else texts["rx"] if prescription == "rx" else "",
+            required[1],
             texts["cold"] if cold_chain else "",
             texts["instruction"],
             texts["order"],
             texts["inn"].format(inn=inn_text) if inn_text and not with_inn else "",
-        ]
-        for sentence in sentences:
-            if sentence and len(description) + 1 + len(sentence) <= SEO_DESCRIPTION_MAX:
-                description = f"{description} {sentence}"
+        ], required)
 
         form = next((part for part in parts if not re.search(r"\d", part)), "")
         keywords = [brand, name, inn_text, form, texts["keyword_leaflet"].format(brand=name or brand)]
