@@ -636,6 +636,8 @@ PR слишком рискованно.
 - **Блокер enforce:** Telegram-виджет на `/auth` вызывает `eval` для `data-onauth` — перевести на
   `data-auth-url` или разрешить `'unsafe-eval'` только для `/auth` ([SECURITY_CSP.md](SECURITY_CSP.md),
   «Проверка на проде»).
+- Метрика после согласия на cookie: добавить `mc.yandex.com` в `script-src`/`frame-src`; `wsync` со
+  случайного домена не разрешить (отчёты 25.10.2026, [SECURITY_CSP.md](SECURITY_CSP.md)).
 - Порядок — [SECURITY_CSP.md](SECURITY_CSP.md), «Как перейти в enforce»: разобрать лог `csp`, вручную
   пройти ключевые страницы без нарушений, сменить заголовок на `Content-Security-Policy`. Затем
   отдельно: nonce вместо `'unsafe-inline'`, access-токен не в JS-cookie.
