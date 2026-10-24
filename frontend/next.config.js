@@ -4,6 +4,40 @@
 
 /** @type {import('next').NextConfig} */
 const { i18n } = require('./next-i18next.config')
+
+// CSP пока только Report-Only (TD-018): браузер ничего не блокирует, нарушения
+// пишет в консоль и шлёт на /api/csp-report/ (лог backend «csp»). Переход в
+// enforce — отдельным шагом по docs/SECURITY_CSP.md. Политика здесь, а не в
+// отдельном файле: production-образ копирует только next.config.js.
+const CSP_REPORT_ONLY = [
+  "default-src 'self'",
+  // 'unsafe-inline': инлайн-скрипты Consent Mode, gtag, Метрики. Убрать — через nonce.
+  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://*.google-analytics.com" +
+    ' https://mc.yandex.ru https://yastatic.net https://telegram.org https://accounts.google.com' +
+    ' https://www.youtube.com https://static.cloudflareinsights.com https://challenges.cloudflare.com',
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
+  // Картинки товаров приходят с многих доменов источников — https: целиком.
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "media-src 'self' blob: https://cdn.mudaroba.com",
+  "connect-src 'self' https://cdn.mudaroba.com https://*.google-analytics.com https://*.analytics.google.com" +
+    ' https://*.googletagmanager.com https://*.g.doubleclick.net https://www.google.com' +
+    ' https://mc.yandex.ru https://mc.yandex.com https://accounts.google.com https://cloudflareinsights.com',
+  'frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com' +
+    ' https://oauth.telegram.org https://accounts.google.com https://challenges.cloudflare.com' +
+    ' https://www.googletagmanager.com',
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self' https://oauth.telegram.org",
+  "frame-ancestors 'none'",
+  'report-uri /api/csp-report/',
+].join('; ')
+
+// В dev Next нужен eval и HMR-сокеты — политика только для production-сборки.
+const securityHeaders = process.env.NODE_ENV === 'production'
+  ? [{ key: 'Content-Security-Policy-Report-Only', value: CSP_REPORT_ONLY }]
+  : []
 const nextConfig = {
   reactStrictMode: true,
   i18n,
@@ -41,6 +75,7 @@ const nextConfig = {
   },
   async headers() {
     return [
+      ...(securityHeaders.length ? [{ source: '/:path*', headers: securityHeaders }] : []),
       {
         source: '/fonts/:path*',
         headers: [

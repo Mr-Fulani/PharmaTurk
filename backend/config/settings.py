@@ -559,6 +559,8 @@ CSRF_TRUSTED_ORIGINS = env.list(
 )
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+# Refresh-токен — HttpOnly cookie (TD-018); в проде API на том же домене, это для dev :3001→:8000.
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',

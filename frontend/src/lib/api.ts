@@ -9,9 +9,11 @@ import { defaultCurrencyForLocale, resolveRequestCurrency } from './requestCurre
 
 // Создаем axios instance с базовым URL
 // На клиенте URL определяется динамически через interceptor (getClientApiBase)
+// withCredentials: HttpOnly cookie refresh_token (TD-018) ставит и читает backend;
+// в проде API на том же домене, флаг нужен для dev (:3001 → :8000).
 const api = axios.create({
   baseURL: typeof window !== 'undefined' ? getClientApiBase() : '/api',
-  withCredentials: false,
+  withCredentials: true,
 })
 
 const inFlightGetRequests = new Map<string, Promise<AxiosResponse<unknown>>>()
@@ -198,33 +200,57 @@ api.interceptors.request.use((config) => {
 
 let refreshPromise: Promise<string | null> | null = null
 
+// До TD-018 фронт хранил refresh в обычной cookie `refresh`. Её читаем только чтобы
+// один раз отдать backend: он перекладывает сессию в HttpOnly cookie, а эту мы удаляем.
+const LEGACY_REFRESH_COOKIE = 'refresh'
+
 async function refreshAccessToken(baseURL?: string): Promise<string | null> {
-  const refresh = Cookies.get('refresh')
-  if (!refresh) return null
+  const legacyRefresh = Cookies.get(LEGACY_REFRESH_COOKIE)
+  // Без access сессии нет (cookie ставятся и живут вместе) — не дёргаем refresh
+  // на каждый 401 анонима: эндпоинт ограничен по IP.
+  if (!legacyRefresh && !Cookies.get('access')) return null
 
   // Use the global axios client deliberately. Sending refresh through `api`
   // would run this response interceptor again and can deadlock on an invalid
   // refresh token while waiting for its own in-flight refresh operation.
   const response = await axios.post(
     '/auth/jwt/refresh/',
-    { refresh },
+    legacyRefresh ? { refresh: legacyRefresh } : {},
     {
       baseURL: baseURL || (typeof window !== 'undefined' ? getClientApiBase() : '/api'),
-      withCredentials: false,
+      withCredentials: true,
     },
   )
+  if (legacyRefresh) Cookies.remove(LEGACY_REFRESH_COOKIE, { path: '/' })
   const newAccess = response.data?.access
   if (!newAccess) return null
 
-  const cookieOptions = {
+  Cookies.set('access', newAccess, {
     sameSite: 'Lax' as const,
     path: '/',
     secure: process.env.NODE_ENV === 'production',
-  }
-  Cookies.set('access', newAccess, cookieOptions)
-  const newRefresh = response.data?.refresh
-  if (newRefresh) Cookies.set('refresh', newRefresh, cookieOptions)
+  })
   return newAccess
+}
+
+function refreshAccessTokenOnce(baseURL?: string): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken(baseURL).finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
+}
+
+/** Переносит сессию со старой JS-cookie refresh в HttpOnly; без неё ничего не делает. */
+export async function migrateLegacyRefreshCookie(): Promise<void> {
+  if (typeof window === 'undefined' || !Cookies.get(LEGACY_REFRESH_COOKIE)) return
+  try {
+    await refreshAccessTokenOnce()
+  } catch {
+    // Старый refresh просрочен: профиль ответит 401 и интерцептор мягко разлогинит.
+    Cookies.remove(LEGACY_REFRESH_COOKIE, { path: '/' })
+  }
 }
 
 api.interceptors.response.use(
@@ -258,20 +284,15 @@ api.interceptors.response.use(
     const isRefreshRequest = original?.url?.includes('/auth/jwt/refresh/')
     if (error?.response?.status === 401 && original && !original._retry && !isRefreshRequest) {
       original._retry = true
-      if (!refreshPromise) {
-        refreshPromise = refreshAccessToken(original.baseURL).finally(() => {
-          refreshPromise = null
-        })
-      }
       let access: string | null
       try {
-        access = await refreshPromise
+        access = await refreshAccessTokenOnce(original.baseURL)
       } catch {
         access = null
       }
       if (!access) {
         Cookies.remove('access', { path: '/' })
-        Cookies.remove('refresh', { path: '/' })
+        Cookies.remove(LEGACY_REFRESH_COOKIE, { path: '/' })
         return Promise.reject(error)
       }
       if (access) {

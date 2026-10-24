@@ -2,6 +2,7 @@
 from django.urls import path, include, re_path
 
 from .views import (
+    CspReportView,
     HealthCheckView,
     JWTObtainPairView,
     JWTRefreshView,
@@ -24,6 +25,9 @@ urlpatterns = [
         JWTRefreshView.as_view(),
         name="jwt-refresh",
     ),
+
+    # Отчёты Content-Security-Policy-Report-Only (TD-018)
+    re_path(r"^csp-report/?$", CspReportView.as_view(), name="csp-report"),
 
     # Пользователи
     path("users/", include("apps.users.urls")),

@@ -511,14 +511,14 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         return links
 
 
-class TokenPairSerializer(serializers.Serializer):
+class AuthTokensSerializer(serializers.Serializer):
+    # Refresh приходит только в HttpOnly cookie refresh_token (TD-018).
     access = serializers.CharField()
-    refresh = serializers.CharField()
 
 
 class UserAuthResponseSerializer(serializers.Serializer):
     user = UserSerializer()
-    tokens = TokenPairSerializer()
+    tokens = AuthTokensSerializer()
     message = serializers.CharField()
 
 
