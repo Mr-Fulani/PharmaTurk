@@ -8,7 +8,8 @@
 
 Лекарство с таким веществом отмечается полями ``import_restricted_countries`` и
 ``import_restriction_note``: красная плашка и фильтр в админке, не попадает в хиты,
-подборки и рекламные фиды.
+подборки и рекламные фиды. Покупателю — метка «Ввоз ограничен» на карточке, плашка на
+странице и в «Списке заявки» (поле API ``import_restricted_countries`` — список кодов стран).
 """
 
 from __future__ import annotations
@@ -50,3 +51,21 @@ def refresh_medicine(medicine) -> bool:
     changed = (medicine.import_restricted_countries, medicine.import_restriction_note) != (countries, note)
     medicine.import_restricted_countries, medicine.import_restriction_note = countries, note
     return changed
+
+
+def country_codes(value: Any) -> list[str]:
+    """«KZ,RU» → ["KZ", "RU"] (поле API ``import_restricted_countries``)."""
+    return [code for code in str(value or "").split(",") if code]
+
+
+def product_restricted_countries(product) -> list[str]:
+    """Коды стран с запретом ввоза для базового товара (только лекарства)."""
+    from django.core.exceptions import ObjectDoesNotExist
+
+    if product is None or getattr(product, "product_type", "") != "medicines":
+        return []
+    try:
+        medicine = product.medicine_item
+    except ObjectDoesNotExist:
+        return []
+    return country_codes(medicine.import_restricted_countries)

@@ -2028,9 +2028,10 @@ export default function CategoryPage({
                           (product.brand_id != null ? brandNameById.get(product.brand_id) : undefined)
                         }
                         subtitle={effectiveProductType === 'medicines' ? (product as any).active_ingredient : undefined}
-                        note={effectiveProductType === 'medicines'
+                        note={effectiveProductType === 'medicines' && !(product as any).import_restricted_countries?.length
                           ? t('medicine_card_delivery_note', 'Из Турции · 7–21 дн.')
                           : undefined}
+                        importRestrictedCountries={(product as any).import_restricted_countries}
                       />
                     )
                   })}

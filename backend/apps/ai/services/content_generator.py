@@ -1489,8 +1489,11 @@ class ContentGenerator:
         """SEO title, description и keywords — кодом из названия (medicine_seo), не моделью.
 
         Бренд кириллицей — из словаря брендов (память medicine_brand); если бренд и есть
-        вещество («IBUPROFEN 400 MG»), кириллицей пишется МНН.
+        вещество («IBUPROFEN 400 MG»), кириллицей пишется МНН. Ввоз запрещён (TD-024) —
+        без заявки и доставки.
         """
+        from apps.catalog.controlled_substances import country_codes, restrictions
+
         name = input_data.get("name")
         brand = title_brand(name)
         inn = None
@@ -1504,8 +1507,10 @@ class ContentGenerator:
         if not brand_ru and ru.get("active_ingredient") and not paragraph_brand(name, input_data.get("active_ingredient")):
             brand_ru = title_inn(ru["active_ingredient"]).capitalize()
         storage = self._build_medicine_source_sections(input_data).get("storage_conditions")
+        restricted = country_codes(restrictions(input_data.get("active_ingredient"))[0])
         return build_medicine_seo(
-            title, brand, brand_ru, inn, prescription_kind(en.get("prescription_type")), needs_cold_chain(storage)
+            title, brand, brand_ru, inn, prescription_kind(en.get("prescription_type")), needs_cold_chain(storage),
+            restricted,
         )
 
     def _apply_medicine_code_fields(

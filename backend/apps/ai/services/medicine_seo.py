@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from apps.ai.services.medicine_reference import fold_tr
 
@@ -33,6 +33,8 @@ _TEXTS = {
         "cold": "Хранение и перевозка при 2–8 °C.",
         "instruction": "Инструкция на русском.",
         "order": "Заявка менеджеру, доставка 7–21 рабочий день.",
+        "restricted": "Ввоз в {countries} ограничен.",
+        "and": "и",
         "keyword_turkey": "{brand} из Турции",
         "keyword_leaflet": "{brand} инструкция",
     },
@@ -45,9 +47,16 @@ _TEXTS = {
         "cold": "Store and ship at 2–8 °C.",
         "instruction": "Patient leaflet in English.",
         "order": "Send a request, delivery in 7–21 business days.",
+        "restricted": "Import to {countries} is restricted.",
+        "and": "and",
         "keyword_turkey": "{brand} Turkey",
         "keyword_leaflet": "{brand} leaflet",
     },
+}
+# Страны с запретом ввоза (controlled_substances) — как в предложении «Ввоз в … ограничен».
+_COUNTRIES = {
+    "ru": {"RU": "Россию", "KZ": "Казахстан", "UZ": "Узбекистан"},
+    "en": {"RU": "Russia", "KZ": "Kazakhstan", "UZ": "Uzbekistan"},
 }
 # Длинное начало описания («бренд (вещество) доза, форма из Турции.») — без вещества в скобках.
 _LEAD_MAX = 100
@@ -124,6 +133,7 @@ def build_medicine_seo(
     inn: Optional[tuple[str, str]] = None,
     prescription: str = "",
     cold_chain: bool = False,
+    restricted_countries: Sequence[str] = (),
 ) -> dict[str, dict[str, Any]]:
     """{"ru": {"seo_title", "seo_description", "keywords"}, "en": {...}} из названия товара.
 
@@ -133,7 +143,8 @@ def build_medicine_seo(
     SEO title — первый вариант, который укладывается в SEO_TITLE_MAX: с веществом и формой,
     затем короче. Description — начало и предложения по важности, пока помещаются в
     SEO_DESCRIPTION_MAX. Для препаратов строгого учёта нет «из Турции», цены, заявки и
-    доставки: их не продвигаем (SEO-план, «Ограничения»).
+    доставки: их не продвигаем (SEO-план, «Ограничения»). Препарат, ввоз которого запрещён
+    (``restricted_countries`` — коды стран, TD-024): без заявки и доставки, с «Ввоз в … ограничен».
     """
     controlled = prescription == "controlled"
     result = {}
@@ -141,6 +152,10 @@ def build_medicine_seo(
         texts = dict(_TEXTS[locale])
         if controlled:
             texts.update(turkey="", leaflet="", order="")
+        if restricted_countries:
+            texts["order"] = ""
+        names = [name for code, name in _COUNTRIES[locale].items() if code in restricted_countries]
+        countries = f" {texts['and']} ".join([", ".join(names[:-1]), names[-1]] if len(names) > 1 else names)
         inn_text = inn[index] if inn else ""
         sep, parts = _title_parts(title[locale], brand, inn_text)
         name = brand_ru if locale == "ru" and brand_ru and brand_ru.lower() != brand.lower() else ""
@@ -171,6 +186,7 @@ def build_medicine_seo(
         description = _fit(lead, SEO_DESCRIPTION_MAX)
         sentences = [
             texts["controlled"] if controlled else texts["rx"] if prescription == "rx" else "",
+            texts["restricted"].format(countries=countries) if countries else "",
             texts["cold"] if cold_chain else "",
             texts["instruction"],
             texts["order"],

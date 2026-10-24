@@ -491,6 +491,7 @@ function BrandPageContent({
                         locale={i18n.language}
                         isNew={product.is_new}
                         isFeatured={product.is_featured}
+                        importRestrictedCountries={(product as { import_restricted_countries?: string[] }).import_restricted_countries}
                         rating={product.rating}
                         reviewsCount={product.reviews_count ?? undefined}
                         brandName={localizedBrandName}

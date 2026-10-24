@@ -55,6 +55,17 @@ def test_controlled_medicine_is_not_promoted():
     assert "строгого учёта" in seo["ru"]["seo_description"]
 
 
+def test_import_restricted_medicine_has_no_delivery_and_names_countries():
+    title = {"ru": "PERGE (прегабалин) 75 мг, капсулы, 56 шт.", "en": "PERGE (pregabalin) 75 mg, capsules, 56 pcs"}
+    seo = build_medicine_seo(title, "PERGE", "Перге", ("прегабалин", "pregabalin"), "rx", restricted_countries=["KZ", "RU"])
+    assert seo["ru"]["seo_description"] == (
+        "Перге (PERGE, прегабалин) 75 мг, капсулы из Турции. Отпускается по рецепту. "
+        "Ввоз в Россию и Казахстан ограничен. Инструкция на русском."
+    )
+    assert "Import to Russia and Kazakhstan is restricted." in seo["en"]["seo_description"]
+    assert "delivery" not in seo["en"]["seo_description"]
+
+
 def test_cold_chain_from_source_storage_text():
     assert needs_cold_chain("2°C - 8°C arasında buzdolabında saklayınız.")
     assert needs_cold_chain("2 °C ile 8 °C arasında saklayınız")

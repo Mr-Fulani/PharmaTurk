@@ -1372,6 +1372,7 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     rating = serializers.SerializerMethodField()
     reviews_count = serializers.SerializerMethodField()
     is_bestseller = serializers.SerializerMethodField()
+    import_restricted_countries = serializers.SerializerMethodField()
     has_manual_main_image = serializers.BooleanField(read_only=True)
     main_video_url = serializers.SerializerMethodField()
     main_gif_url = serializers.SerializerMethodField()
@@ -1400,7 +1401,8 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'main_image_url', 'images', 'video_url', 'main_video_url', 'main_gif_url', 'has_manual_main_image',
-            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'import_restricted_countries',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -1861,6 +1863,11 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
 
     def get_is_bestseller(self, obj):
         return getattr(obj, 'is_bestseller', False)
+
+    def get_import_restricted_countries(self, obj):
+        from .controlled_substances import product_restricted_countries
+
+        return product_restricted_countries(obj)
     
     def get_price_formatted(self, obj):
         request = self.context.get('request')
@@ -2090,7 +2097,7 @@ class ProductCardSerializer(ProductSerializer):
             'created_at', 'translations',
             'rating', 'reviews_count', 'brand_id',
             'isbn', 'publisher', 'publication_date', 'pages', 'language',
-            'book_authors', 'is_bestseller',
+            'book_authors', 'is_bestseller', 'import_restricted_countries',
         ]
 
     def _card_price(self, obj, *, old=False):
@@ -6236,6 +6243,9 @@ class SimpleDomainCardSerializer(serializers.Serializer):
             value = (getattr(instance, field, "") or "").strip()
             if value:
                 data[field] = value
+        restricted = getattr(instance, "import_restricted_countries", "")
+        if restricted:
+            data["import_restricted_countries"] = restricted.split(",")
         return _apply_product_markup_to_payload(data, instance)
 
 # ─── МЕДИКАМЕНТЫ ───
@@ -6300,6 +6310,7 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     shelf_life = serializers.SerializerMethodField()
     sgk_status = serializers.SerializerMethodField()
     prescription_type = serializers.SerializerMethodField()
+    import_restricted_countries = serializers.SerializerMethodField()
 
     def _get_translation_field(self, obj, field_name, fallback_value=None):
         request = self.context.get('request')
@@ -6365,6 +6376,11 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     def get_prescription_type(self, obj):
         return self._get_translation_field(obj, 'prescription_type', obj.prescription_type)
 
+    def get_import_restricted_countries(self, obj):
+        from .controlled_substances import country_codes
+
+        return country_codes(obj.import_restricted_countries)
+
     class Meta:
         model = MedicineProduct
         fields = [
@@ -6380,7 +6396,7 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id', 'meta_title', 'meta_description', 'meta_keywords',
-            'og_title', 'og_description', 'og_image_url'
+            'og_title', 'og_description', 'og_image_url', 'import_restricted_countries',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

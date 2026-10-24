@@ -115,6 +115,7 @@ export default function SearchPage() {
                     isBaseProduct={isBaseProductType(pt)}
                     isNew={(p as { is_new?: boolean }).is_new}
                     isFeatured={(p as { is_featured?: boolean }).is_featured}
+                    importRestrictedCountries={(p as { import_restricted_countries?: string[] }).import_restricted_countries}
                     rating={p.rating}
                     reviewsCount={p.reviews_count}
                     translations={p.translations}

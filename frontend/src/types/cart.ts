@@ -35,6 +35,8 @@ export interface CartItem {
   product: number
   product_name?: string
   product_translations?: ProductTranslation[]
+  /** Коды стран, куда ввоз препарата запрещён или ограничен (RU, KZ, UZ). */
+  product_import_restricted_countries?: string[]
   product_slug?: string
   product_variant_slug?: string
   product_parent_slug?: string

@@ -124,6 +124,7 @@ export default function FavoritesPage() {
                   isBaseProduct={isBaseProduct}
                   isNew={(product as { is_new?: boolean }).is_new}
                   isFeatured={(product as { is_featured?: boolean }).is_featured}
+                  importRestrictedCountries={(product as { import_restricted_countries?: string[] }).import_restricted_countries}
                   rating={(product as { rating?: number | string | null }).rating}
                   reviewsCount={(product as { reviews_count?: number }).reviews_count}
                   translations={product.translations}

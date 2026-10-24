@@ -39,6 +39,7 @@ import {
   withListingImageMaxWidth,
 } from '../../lib/media'
 import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
+import { formatRestrictedCountries } from '../../lib/importRestriction'
 import { buildFavoriteProductHref } from '../../lib/favoriteLinks'
 import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
@@ -501,6 +502,7 @@ interface Product {
   active_ingredient?: string | null
   prescription_required?: boolean | null
   prescription_type?: string | null
+  import_restricted_countries?: string[] | null
   volume?: string | null
   origin_country?: string | null
   usage_instructions?: string | null
@@ -1420,6 +1422,8 @@ export default function ProductPage({
   const isService = productType === 'uslugi'
   const isMedicine = productType === 'medicines' || product.product_type === 'medicines'
   const isSupplement = productType === 'supplements' || product.product_type === 'supplements'
+  // Ввоз запрещён или ограничен (TD-024): плашка у цены, SEO без доставки
+  const importRestrictedCountries = isMedicine ? formatRestrictedCountries(product.import_restricted_countries, t) : ''
   const seoCategoryName = product.category
     ? getLocalizedCategoryName(product.category.slug, product.category.name, t, undefined, router.locale)
     : ''
@@ -1436,6 +1440,11 @@ export default function ProductPage({
     (
       isService
         ? t('service_page_seo_description', 'Закажите услугу {{name}} на {{site}}. Описание, стоимость и условия выполнения.', { name: displayProductName || product.name, site: SITE_NAME })
+        : importRestrictedCountries
+          ? t('import_restricted_seo_description', '{{name}}: справочная информация и инструкция. Ввоз в {{countries}} запрещён или ограничен законом.', {
+              name: displayProductName || product.name,
+              countries: importRestrictedCountries,
+            })
         : isSupplement && product.can_add_to_cart !== true
           ? t('supplement_page_seo_description', 'Справочная информация и цена {{name}} в Турции. Наличие и итоговую стоимость подтверждает консультант {{site}}.', {
               name: displayProductName || product.name,
@@ -2301,6 +2310,14 @@ export default function ProductPage({
             <div className="mt-3 text-xl font-semibold text-red-600">
               {displayPrice || t('price_on_request')}
             </div>
+            {importRestrictedCountries && (
+              <div
+                className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-800 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-200"
+                role="note"
+              >
+                ⚠️ {t('import_restricted_banner', 'Ввоз этого препарата в {{countries}} запрещён или ограничен законом. Доставку в эти страны мы не выполняем без согласования с менеджером. Купить можно при получении в Турции.', { countries: importRestrictedCountries })}
+              </div>
+            )}
             {!isSupplement && sourceRefresh?.eligible && sourceRefresh.status !== 'idle' && (
               <div
                 className={`mt-1 flex items-center gap-1.5 text-xs ${sourceRefresh.status === 'failed'

@@ -14,6 +14,7 @@ import {
 } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
+import { formatRestrictedCountries } from '../lib/importRestriction'
 import { getLocalizedProductName } from '../lib/i18n'
 import {
   getCartIssueCopy,
@@ -377,6 +378,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     item.product_translations,
                     i18n.language
                   )
+                  const restrictedCountries = formatRestrictedCountries(item.product_import_restricted_countries, t)
                   return (
                     <div
                       key={item.id}
@@ -442,6 +444,11 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                         <div className="mt-1 text-lg font-bold text-red-600">
                               {formatMoney(item.price, item.currency, i18n.language)} {item.currency}
                         </div>
+                        {restrictedCountries && (
+                          <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="note">
+                            ⚠️ {t('import_restricted_cart', 'Ввоз в {{countries}} запрещён или ограничен законом. Доставку туда мы не выполняем без согласования с менеджером.', { countries: restrictedCountries })}
+                          </p>
+                        )}
                         {(item.old_price_formatted || item.old_price) && (
                           <div className="flex items-baseline gap-2">
                             <div className="text-sm text-gray-400 line-through">
