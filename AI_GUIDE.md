@@ -187,7 +187,20 @@ docker compose exec backend poetry run python manage.py medicine_paragraph_batch
 # Аудит памяти абзацев: отчёт, затем бэкап и перенос подозрительных в medicine_paragraph_suspect
 docker compose exec backend poetry run python manage.py medicine_paragraph_audit --dry-run --report /tmp/paragraph_audit.jsonl
 docker compose exec backend poetry run python manage.py medicine_paragraph_audit --backup /tmp/paragraph_audit_backup.json
+
+# Название и SEO уже опубликованных лекарств — заново кодом, без модели (после правок шаблона/SEO/словарей)
+docker compose exec backend poetry run python manage.py medicine_refresh_code_fields                      # что изменится
+docker compose exec backend poetry run python manage.py medicine_refresh_code_fields --apply --backup /tmp/refresh-before.json
 ```
+
+`medicine_refresh_code_fields` (`apps/ai/services/medicine_refresh.py`, TD-028) берёт входные данные последнего применённого лога лекарства и пишет название и SEO, собранные текущим кодом (`_build_medicine_code_fields`; МНН и бренды — только из памяти, без модели).
+- Куда пишет:
+  - переводы RU и EN (`name`, `meta_*`, `og_*`);
+  - базовый `Product` и `MedicineProduct`: название — RU, SEO — EN, как `MedicineAIApplier`.
+- Поле меняется, только если в нём ещё лежит записанное обработкой, пусто или стоит турецкий исходник. Ручную правку после обработки команда не трогает.
+- После записи лог хранит новые значения, поэтому повторный запуск ничего не меняет.
+- Перед записью сохраняется бэкап затронутых строк (`--backup`).
+- На проде 24.10.2026: из 240 обработанных лекарств команда изменила бы 178, у 13 название кодом не собирается.
 
 Пакет идёт частями по `--part-size` абзацев (по умолчанию 5000, ≈ 500 запросов): при ошибке теряются деньги одной части. Часть — абзацы, которых нет в памяти, по лекарствам в порядке `pk` с лекарства после последней части (номер части и последнее лекарство записаны в метаданных пакета OpenAI; `--from-start` — с начала каталога) и заканчивается на границе лекарства. `submit` не отправит часть, пока предыдущая в работе (иначе те же абзацы оплатятся дважды) или пока у последней части нет в памяти больше `--max-defect` абзацев (по умолчанию 15 %): она не забрана или брак выше порога. `submit --retry <batch_id>` отправляет только абзацы этой части, которых нет в памяти; следующая часть их не повторяет. Для частей, отправленных до склейки строк (часть №1 от 21.10.2026), `--retry` не нужен — он отправил бы обрывки, которые больше не используются; их абзацы в новом виде заберёт часть с `--from-start`.
 
