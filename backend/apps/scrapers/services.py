@@ -48,6 +48,7 @@ from .parsers.lcw import LcwParser
 from .parsers.zara import ZaraParser
 from .parsers.flo import FloParser
 from .base.catalog_state import CatalogTraversalState
+from .base.listing_snapshot import ListingGuard, record_listing_snapshot
 from .base.offers import OfferGone, OfferNotFound
 from .base.scraper import (
     ScrapedProduct,
@@ -1145,6 +1146,13 @@ class ScraperIntegrationService:
                     parser.change_tracker = ListingChangeTracker(
                         parser.get_name(), site_run_token or None,
                     )
+                listing_guard = None
+                if getattr(parser, "SUPPORTS_LISTING_GUARD", False):
+                    open_all = bool(site_task_id) and SiteScraperTask.objects.filter(
+                        pk=site_task_id, open_all_cards=True,
+                    ).exists()
+                    listing_guard = ListingGuard(parser.get_name(), open_all=open_all)
+                    parser.listing_guard = listing_guard
                 try:
                     for product in parser.parse_product_list(start_url, **list_kwargs):
                         parser_limit = getattr(parser, "max_products", None)
@@ -1256,10 +1264,21 @@ class ScraperIntegrationService:
                 incremental_results["errors"] += parser_item_errors
                 if catalog_managed:
                     incremental_results["skipped"] += int(getattr(parser, "catalog_skipped", 0))
+                unchanged = listing_guard.unchanged if listing_guard is not None else 0
+                if unchanged:
+                    # Строка списка не изменилась — карточка не открывалась.
+                    incremental_results["skipped"] += unchanged
+                    self.logger.info(
+                        "%s: карточек без изменений в списке (не открывались): %s",
+                        parser.get_name(),
+                        unchanged,
+                    )
                 if getattr(parser, "REPORTS_PAGES_PROCESSED", False):
                     session.pages_processed += parser.pages_processed
-                elif incremental_results["found"]:
-                    session.pages_processed += incremental_results["found"] // 20 + 1
+                elif incremental_results["found"] or unchanged:
+                    # Чанк из одних неизменившихся строк — тоже пройденные страницы,
+                    # иначе цепочка чанков сочла бы его пустым и остановилась.
+                    session.pages_processed += (incremental_results["found"] + unchanged) // 20 + 1
                 session._has_more_pages = getattr(parser, "has_more_pages", None)
                 session._stop_reason = str(getattr(parser, "stop_reason", "") or "")
                 tracker = getattr(parser, "change_tracker", None)
@@ -1617,6 +1636,8 @@ class ScraperIntegrationService:
                 # A writer failure must be observable, but must not turn a successfully
                 # imported product into a scraper error or change the old storefront readers.
                 self._record_source_offers(session, scraped_product, product)
+                if not getattr(scraped_product, "_medicine_import_skip_reason", None):
+                    record_listing_snapshot(scraped_product, product)
 
                 # Обновляем счетчики
                 if action == "created":

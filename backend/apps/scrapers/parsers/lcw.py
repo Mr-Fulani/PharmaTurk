@@ -22,6 +22,7 @@ from ..base.offers import (
     result_from_scraped_product,
     translate_offer_check_errors,
 )
+from ..base.listing_snapshot import listing_fingerprint
 from ..base.utils import clean_text, extract_currency, normalize_price
 
 
@@ -30,6 +31,9 @@ class LcwParser(BaseScraper):
 
     # Настоящая постраничная пагинация категории через ?sayfa=N — авточепочка безопасна.
     SUPPORTS_PAGE_CHUNKING = True
+    SUPPORTS_LISTING_GUARD = True
+    # Меняется при смене состава отпечатка строки — все карточки откроются заново.
+    LISTING_FINGERPRINT_VERSION = 1
 
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
     MAX_VARIANTS_PER_PRODUCT = 24
@@ -229,6 +233,10 @@ class LcwParser(BaseScraper):
                 self.has_more_pages = False
                 break
 
+            guard = getattr(self, "listing_guard", None)
+            fingerprints = self._listing_fingerprints(soup) if guard else {}
+            if guard:
+                guard.prefetch(fingerprints)
             new_on_page = 0
             for anchor in soup.select("a[href]"):
                 href = anchor.get("href", "").strip()
@@ -236,15 +244,24 @@ class LcwParser(BaseScraper):
                     continue
 
                 product_url = urljoin(self.base_url, href)
+                option_id = self._extract_product_id(product_url)
+                fingerprint = fingerprints.get(option_id, "")
+                if product_url in seen_urls:
+                    continue
                 if (
-                    product_url in seen_urls
-                    or product_url in seen_family_urls
+                    product_url in seen_family_urls
                     or product_url in self._resolved_variant_urls
                 ):
+                    if guard:
+                        seen_urls.add(product_url)
+                        guard.remember_covered(option_id, fingerprint)
                     continue
 
                 new_on_page += 1
                 seen_urls.add(product_url)
+                if guard and fingerprint and not guard.should_open(option_id, fingerprint):
+                    # Плитка списка не изменилась: карточку и её цвета не открываем.
+                    continue
                 detail_html, final_url = self._fetch_with_final_url(product_url)
                 if final_url != product_url and final_url in self._resolved_variant_urls:
                     continue
@@ -287,6 +304,17 @@ class LcwParser(BaseScraper):
                             seen_family_urls.add(variant_url)
 
                 if product and self.validate_product(product):
+                    if guard and fingerprint:
+                        guard.attach(
+                            product,
+                            option_id,
+                            fingerprint,
+                            covers=[
+                                self._extract_product_id(str(variant.get("external_url") or ""))
+                                for variant in product.attributes.get("fashion_variants") or []
+                                if variant.get("external_url")
+                            ],
+                        )
                     yield product
                     yielded += 1
                     if self.max_products and yielded >= self.max_products:
@@ -305,6 +333,27 @@ class LcwParser(BaseScraper):
         self.last_response_url = ""
         html = self._make_request(url)
         return html, (self.last_response_url or url)
+
+    def _listing_fingerprints(self, soup: BeautifulSoup) -> Dict[str, str]:
+        """id цвета (-o-N) → отпечаток плитки списка.
+
+        В плитке видны бренд, название, цена (со скидкой, если есть) и число
+        цветов. Размеры и описание — только в карточке.
+        """
+        rows: Dict[str, str] = {}
+        for info in soup.select("a[href] .product-card-info"):
+            anchor = info.find_parent("a")
+            href = str(anchor.get("href") or "").strip() if anchor else ""
+            if not self._is_product_url(href):
+                continue
+            option_id = self._extract_product_id(urljoin(self.base_url, href))
+            rows[option_id] = listing_fingerprint(
+                {
+                    "v": self.LISTING_FINGERPRINT_VERSION,
+                    "tile": clean_text(info.get_text(" ", strip=True)),
+                }
+            )
+        return rows
 
     def _extract_listing_product_urls(self, html: str) -> Set[str]:
         """Канонические URL товаров страницы без загрузки detail."""

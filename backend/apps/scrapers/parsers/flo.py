@@ -8,7 +8,7 @@
 
 import json
 import re
-from typing import Any, Dict, Iterator, List, Optional, Set
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from django.conf import settings
@@ -22,6 +22,7 @@ from ..base.scraper import (
     SiteCategoriesError,
 )
 from ..base.catalog_state import CatalogTraversalState
+from ..base.listing_snapshot import listing_fingerprint
 from ..base.offers import (
     MalformedOfferResponse,
     OfferCheckContext,
@@ -59,6 +60,9 @@ class FloParser(BaseScraper):
     REPORTS_PAGES_PROCESSED = True
     REPORTS_NEXT_START_PAGE = True
     SUPPORTS_CATALOG_STATE = True
+    SUPPORTS_LISTING_GUARD = True
+    # Меняется при смене состава отпечатка строки — все карточки откроются заново.
+    LISTING_FINGERPRINT_VERSION = 1
 
     PRODUCT_PATH_RE = re.compile(r"/urun/[^/?#]*?-(\d{4,})(?:[/?#]|$)", re.IGNORECASE)
     PRODUCT_DETAIL_MARKER = "window.productDetail = "
@@ -286,26 +290,56 @@ class FloParser(BaseScraper):
 
             product_urls = self._extract_product_links(html)
             identities = [self._sku_from_url(url) or url for url in product_urls]
+            soup = BeautifulSoup(html, "html.parser")
             # Read pagination before yielding: a product limit can end iteration.
-            has_next = BeautifulSoup(html, "html.parser").find(
+            has_next = soup.find(
                 ["a", "link"], rel=lambda value: value and "next" in value.split()
             ) is not None
+            guard = getattr(self, "listing_guard", None)
+            fingerprints, swatch_tiles = self._listing_fingerprints(soup) if guard else ({}, {})
+            unchanged_tiles = set()
+            if guard:
+                guard.prefetch(fingerprints)
             if not product_urls or state.page_seen(identities, page):
                 self.has_more_pages = False
                 self.stop_reason = f"Страница {page} пуста или повторяет уже обработанную выдачу; каталог закончился."
                 break
             before = result_count() if result_count else yielded
             attempted = set()
+            unchanged_on_page = 0
             for product_url in product_urls:
                 sku = self._sku_from_url(product_url)
                 identity = sku or product_url
+                fingerprint = fingerprints.get(sku, "")
                 if identity in attempted or state.product_seen(identity):
                     self.catalog_skipped += 1
+                    if guard:
+                        guard.remember_covered(identity, fingerprint)
                     continue
                 attempted.add(identity)
+                if swatch_tiles.get(sku) in unchanged_tiles:
+                    # Ссылка на другой цвет внутри неизменившейся плитки: наличие
+                    # этого цвета уже входит в отпечаток плитки.
+                    self.catalog_skipped += 1
+                    continue
+                if guard and fingerprint and not guard.should_open(identity, fingerprint):
+                    # Строка списка не изменилась: карточку (и все её цвета) не открываем.
+                    unchanged_on_page += 1
+                    unchanged_tiles.add(sku)
+                    continue
 
                 product = self.parse_product_detail(product_url)
                 if product and self.validate_product(product):
+                    if guard and fingerprint:
+                        guard.attach(
+                            product,
+                            identity,
+                            fingerprint,
+                            covers=[
+                                str(variant.get("sku") or "")
+                                for variant in product.attributes.get("fashion_variants") or []
+                            ],
+                        )
                     yield product
                     yielded += 1
                     if result_count is None:
@@ -319,7 +353,8 @@ class FloParser(BaseScraper):
             self.pages_processed = pages_done
             self.next_start_page = page + 1
             after = result_count() if result_count else yielded
-            stalled = state.finish_page(identities, page, after > before)
+            # Строки без изменений — тоже новые для прохода товары, а не повтор выдачи.
+            stalled = state.finish_page(identities, page, after > before or unchanged_on_page > 0)
             if not has_next or stalled:
                 self.has_more_pages = False
                 self.stop_reason = (
@@ -335,6 +370,49 @@ class FloParser(BaseScraper):
         state.mark_product(self._sku_from_url(product.url) or product.url)
         for variant in product.attributes.get("fashion_variants") or []:
             state.mark_product(str(variant.get("sku") or ""))
+
+    def _listing_fingerprints(self, soup: BeautifulSoup) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """(sku → отпечаток плитки, sku цвета без своей плитки → sku плитки).
+
+        Отпечаток — из JSON ``data-gtm-product`` плитки: цена, цена со
+        скидкой, наличие, размеры и цвета — то, что меняется между обходами.
+        Карточку открываем, только если это изменилось. Остаток ``qty`` не
+        входит: парсер его не сохраняет. Ссылки на другие цвета внутри плитки
+        своего JSON не имеют — они относятся к плитке.
+        """
+        rows: Dict[str, str] = {}
+        swatches: Dict[str, str] = {}
+        for node in soup.select("[data-gtm-product]"):
+            try:
+                data = json.loads(node.get("data-gtm-product") or "")
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(data, dict) or not data.get("sku"):
+                continue
+            sizes = [
+                [str(option.get("option_value") or ""), bool(option.get("is_in_stock"))]
+                for option in data.get("options") or []
+                if isinstance(option, dict)
+            ]
+            colors = sorted(
+                [str(option.get("sku") or ""), bool(option.get("is_in_stock"))]
+                for option in data.get("color_options") or []
+                if isinstance(option, dict)
+            )
+            for color_sku, _ in colors:
+                swatches.setdefault(color_sku, str(data["sku"]))
+            rows[str(data["sku"])] = listing_fingerprint(
+                {
+                    "v": self.LISTING_FINGERPRINT_VERSION,
+                    "name": data.get("name"),
+                    "price": data.get("price"),
+                    "special_price": data.get("special_price"),
+                    "is_in_stock": data.get("is_in_stock"),
+                    "sizes": sizes,
+                    "colors": colors,
+                }
+            )
+        return rows, {sku: tile for sku, tile in swatches.items() if sku not in rows}
 
     def _extract_product_links(self, html: str) -> List[str]:
         links: List[str] = []

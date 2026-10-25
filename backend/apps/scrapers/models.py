@@ -742,6 +742,16 @@ class SiteScraperTask(models.Model):
         editable=False,
         help_text=_("Режим «Весь сайт»: номер категории (с нуля), которая обходится сейчас."),
     )
+    open_all_cards = models.BooleanField(
+        _("Открыть все карточки"),
+        default=False,
+        help_text=_(
+            "Выключено (обычно): карточка товара открывается, только если его строка "
+            "в списке категории (название, цена, наличие, цвета) изменилась с прошлого "
+            "обхода, товара ещё нет в базе или карточку не открывали больше месяца. "
+            "Включите после правок парсера или чтобы заново скачать все карточки."
+        ),
+    )
     stub_cursor_id = models.PositiveBigIntegerField(
         _("ID заглушки для продолжения"),
         default=0,
@@ -801,3 +811,36 @@ class SourceListingRow(models.Model):
 
     def __str__(self):
         return f"{self.parser_key}: {self.url}"
+
+
+class ListingSnapshot(models.Model):
+    """Отпечаток строки списка категории на момент последнего открытия карточки.
+
+    Точечный обход: строка списка (название, цена, наличие…) совпала с
+    отпечатком — карточку не открываем, товар в базе уже такой. Удаление
+    товара удаляет и отпечаток, поэтому пропавший из базы товар снова откроется.
+    """
+
+    parser_key = models.CharField(_("Парсер"), max_length=50)
+    identity = models.CharField(_("Строка списка"), max_length=500)
+    fingerprint = models.CharField(_("Отпечаток"), max_length=64)
+    product = models.ForeignKey(
+        "catalog.Product",
+        on_delete=models.CASCADE,
+        related_name="+",
+        verbose_name=_("Товар"),
+    )
+    card_checked_at = models.DateTimeField(_("Карточка открыта"))
+
+    class Meta:
+        verbose_name = _("Отпечаток строки списка")
+        verbose_name_plural = _("Отпечатки строк списков")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["parser_key", "identity"],
+                name="scrapers_listing_snapshot_uniq",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.parser_key}:{self.identity}"
