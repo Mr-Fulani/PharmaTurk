@@ -470,11 +470,14 @@ def _supplement_identity_tokens(value: Any, *, source: bool = False) -> set[str]
     text = str(value or "")
     facts = {token for token in _medicine_identity_tokens(text) if token.startswith("DOSE:")}
     # Фасовка: до двух слов между числом и формой («100 мягких желатиновых капсул»).
-    for number in re.findall(
+    packs = re.findall(
         r"(?<![\w.,])(\d+)\s*(?:[A-ZА-ЯЁÇĞİÖŞÜ]+\s+){0,2}"
         r"(?:ADET|TABLET\w*|KAPS[UÜ]L\w*|CAPSULES?|SA[SŞ]E|SACHETS?|ШТ\w*|ТАБЛЕТ\w*|КАПСУЛ\w*|САШЕ|ПАКЕТИК\w*)\b",
         text.upper(),
-    ):
+    )
+    # У источника фасовка — последняя: в «OMEGA 3 KAPSUL 30 kapsül» «3» — часть состава
+    # (153 названия каталога 25.10.2026); числа состава проверяет supplement_content.title_problems.
+    for number in packs[-1:] if source else packs:
         facts.add(f"PACK:{number}")
     words = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü-]{2,}", text)
     brands = words[:1] if source else words

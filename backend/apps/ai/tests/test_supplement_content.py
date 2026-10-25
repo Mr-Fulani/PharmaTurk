@@ -339,3 +339,46 @@ def test_mistranslated_glossary_word_keeps_title_out_of_the_card():
     assert payload["glossary"]["KEREVIZ"] == "сельдерей | celery"
     assert "supplement_ingredient_mistranslated" in get_moderation_reasons(log)
     assert "title" in SemanticValidator().validate_log(log).rejected_fields
+
+
+@pytest.mark.parametrize(
+    "latin, cyrillic, ok",
+    [
+        ("SOLGAR", "Солгар", True),
+        ("I-COLL", "Ай-Колл", True),
+        ("DR.WAGNER IMMUFAST COMPLEX", "Доктор Вагнер Иммуфаст Комплекс", True),
+        ("OCEAN SMART GUMMIES", "Оушен Смарт Гаммис", True),
+        ("TUSPAN", "Тусбан", False),
+        ("MIQRAND", "Миаранд", False),
+    ],
+)
+def test_cyrillic_brand_must_read_like_latin(latin, cyrillic, ok):
+    assert sc.transliteration_matches(latin, cyrillic) is ok
+
+
+def test_repeated_pack_and_piece_form_are_cut_from_product():
+    assert sc._without_piece_form("Пробиотик, 10 капсул", sc.parse_pack("X 10 kapsül"), "ru") == "Пробиотик"
+    assert sc._without_piece_form("Ресвератрол и пектин, пастилки", sc.parse_pack("X 30 pastil"), "ru") == (
+        "Ресвератрол и пектин"
+    )
+    assert sc._without_piece_form("Шипучие таблетки", sc.parse_pack("X 20 tablet"), "ru") == "пищевая добавка"
+    assert sc._without_piece_form("Масло чёрного тмина", sc.parse_pack("X 30 ml"), "ru") == "Масло чёрного тмина"
+
+
+def test_baby_food_gets_its_own_disclaimer_and_no_route():
+    assert sc.is_baby_food("SMA OPTIPRO PROBIYOTIK 3 (1-3 YAŞ) DEVAM SÜTÜ 800 g toz")
+    assert not sc.is_baby_food("SOLGAR VITAMIN D3 100 softjel")
+    html = sc.build_description(["Смесь для детей от 1 года."], "ru", baby_food=True)
+    assert html.endswith(f"<p>{sc.BABY_DISCLAIMER['ru']}</p>") and "Биологически активная" not in html
+    assert sc._facts({"name": "APTAMIL 3 TOZ 400 G TOZ", "attributes": {"administration_route": "Oral"}}) == {
+        "kind": {"ru": "детское питание", "en": "baby food"}
+    }
+    seo = sc.build_seo("APTAMIL", "Аптамил", {"ru": "Смесь 3", "en": "Formula 3"}, sc.parse_pack("X 400 g toz"), baby_food=True)
+    assert "детское питание смесь 3" in seo["ru"]["keywords"]
+
+
+def test_number_before_capsule_word_is_not_the_pack():
+    from apps.ai.services.semantic_validator import _supplement_identity_tokens
+
+    tokens = _supplement_identity_tokens("ONVITA MULTIVITAMIN & MINERALLER VE OMEGA 3 KAPSUL 30 kapsül", source=True)
+    assert {t for t in tokens if t.startswith("PACK:")} == {"PACK:30"}

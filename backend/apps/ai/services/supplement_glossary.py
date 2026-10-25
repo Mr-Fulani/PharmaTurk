@@ -99,7 +99,7 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "probiotik": ("пробиотик", "probiotic", S),
     "prebiyotik": ("пребиотик", "prebiotic", S),
     "prebiotik": ("пребиотик", "prebiotic", S),
-    "mikroorganizma": ("микроорганизмы", "microorganisms", S),
+    "mikroorganizma": ("микроорганизмы", "microorganisms", D),
     "bakteri": ("бактерии", "bacteria", S),
     "kollajen": ("коллаген", "collagen", S),
     "kolajen": ("коллаген", "collagen", S),
@@ -381,8 +381,9 @@ def _normalized(text: Any) -> str:
 
 
 def _stems(text: str) -> list[str]:
+    # Окончание отбрасывается: «мята» — «мяты», «цинк» — «цинком», «бузина» — «бузины».
     words = [w for w in re.findall(r"[a-zа-я0-9]+", _normalized(text)) if len(w) > 3]
-    return [w[: max(4, len(w) - 2)] for w in words]
+    return [w[:-1] if len(w) <= 5 else w[:-2] for w in words]
 
 
 def _alternatives(term: str) -> list[str]:

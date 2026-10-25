@@ -284,6 +284,19 @@ DISCLAIMER = {
     "Перед применением рекомендуется проконсультироваться с врачом.",
     "en": "Food supplement, not a medicinal product. Consult a doctor before use.",
 }
+# Детское питание (смеси, каши-прикорм; ≈ 180 в разделе БАДов источника) — не БАД.
+BABY_DISCLAIMER = {
+    "ru": "Грудное молоко — лучшее питание для ребёнка. Перед применением проконсультируйтесь с врачом.",
+    "en": "Breast milk is the best food for babies. Consult a doctor before use.",
+}
+_BABY_FOOD_RE = re.compile(
+    r"\b(?:aptamil|bebelac|sma|hipp|humana|similac|bebivita|milupa|nutrilon|devam sutu|bebek sutu|"
+    r"bebek mamasi|ek gida\w*|baslangic sutu)\b"
+)
+
+
+def is_baby_food(source_name: Any) -> bool:
+    return bool(_BABY_FOOD_RE.search(fold_tr(source_name)))
 
 
 def clean_paragraph(text: Any) -> str:
@@ -294,19 +307,20 @@ def clean_paragraph(text: Any) -> str:
     return " ".join(kept).strip()
 
 
-def build_description(paragraphs: Any, locale: str) -> str:
+def build_description(paragraphs: Any, locale: str, *, baby_food: bool = False) -> str:
     items = paragraphs if isinstance(paragraphs, list) else [paragraphs]
     cleaned = [clean_paragraph(item) for item in items]
     cleaned = [item for item in cleaned if item]
     if not cleaned:
         return ""
-    return "".join(f"<p>{item}</p>" for item in cleaned + [DISCLAIMER[locale]])
+    disclaimer = (BABY_DISCLAIMER if baby_food else DISCLAIMER)[locale]
+    return "".join(f"<p>{item}</p>" for item in cleaned + [disclaimer])
 
 
 def description_problems(description: Any, source: Any) -> list[str]:
     """Причины модерации описания БАДа: обещание лечения, число не из источника."""
     plain = re.sub(r"<[^>]+>", " ", str(description or ""))
-    for text in DISCLAIMER.values():
+    for text in (*DISCLAIMER.values(), *BABY_DISCLAIMER.values()):
         plain = plain.replace(text, " ")
     problems = []
     if _CLAIM_RE.search(plain):
@@ -362,6 +376,7 @@ _SEO_TEXTS = {
         "keyword_turkey": "{brand} из Турции",
         "keyword_buy": "{brand} купить",
         "supplement": "БАД",
+        "baby": "детское питание",
     },
     "en": {
         "buy": " — buy from Turkey",
@@ -371,15 +386,20 @@ _SEO_TEXTS = {
         "keyword_turkey": "{brand} Turkey",
         "keyword_buy": "buy {brand}",
         "supplement": "food supplement",
+        "baby": "baby food",
     },
 }
 
 
-def build_seo(brand: str, brand_ru: str, product: dict[str, str], pack: Optional[Pack]) -> dict[str, dict[str, Any]]:
+def build_seo(
+    brand: str, brand_ru: str, product: dict[str, str], pack: Optional[Pack], *, baby_food: bool = False
+) -> dict[str, dict[str, Any]]:
     """SEO title (≤70), description (≤160) и keywords БАДа из частей названия."""
     result = {}
     for locale in ("ru", "en"):
-        texts = _SEO_TEXTS[locale]
+        texts = dict(_SEO_TEXTS[locale])
+        if baby_food:
+            texts["supplement"] = texts["baby"]
         core = str(product.get(locale) or "").strip()
         pack_text = getattr(pack, locale, "") if pack else ""
         cyrillic = brand_ru if locale == "ru" and brand_ru and brand_ru.lower() != brand.lower() else ""
@@ -475,12 +495,12 @@ def title_problems(title_ru: Any, source_name: Any) -> list[str]:
 SYSTEM_PROMPT = """
 Ты — редактор карточек БАДов интернет-магазина Mudaroba (товары из Турции). Программа уже разобрала фасовку и сама соберёт название «{brand} {product}, {фасовка}», SEO и характеристики. Верни только поля ниже, по данным товара.
 
-1. brand — бренд или линейка: первые слова source_name ровно как в источнике (те же буквы), до первого слова о составе, форме или назначении; название продукта без перевода («CINOPAN», «IMMUFAST») — часть бренда. Примеры: «SOLGAR VITAMIN D3 1000 IU YUMUSAK KAPSUL» → «SOLGAR»; «ZADE VITAL A VITAMINI KAPSUL 500 mg» → «ZADE VITAL»; «MAGNIMORE PLUS TAKVIYE EDICI GIDA» → «MAGNIMORE PLUS»; «MEGA-FARMA BETAGLUKAN SURUP …» → «MEGA-FARMA».
+1. brand — бренд или линейка: первые слова source_name ровно как в источнике (те же буквы), до первого слова о составе, форме или назначении; название линейки или продукта, которое не переводится и не транслитерируется («CINOPAN», «SLEEPO», «DIBALANCE», «DEFENCE»), — часть бренда. Примеры: «SOLGAR VITAMIN D3 1000 IU YUMUSAK KAPSUL» → «SOLGAR»; «ZADE VITAL A VITAMINI KAPSUL 500 mg» → «ZADE VITAL»; «MAGNIMORE PLUS TAKVIYE EDICI GIDA» → «MAGNIMORE PLUS»; «MEGA-FARMA BETAGLUKAN SURUP …» → «MEGA-FARMA»; «SOVITAL SLEEPO MELATONIN …» → «SOVITAL SLEEPO»; «DR. ROJAGEN DIBALANCE TAKVIYE EDICI GIDA» → «DR. ROJAGEN DIBALANCE»; «OCEAN SMART GUMMIES DEFENCE C VITAMINI …» → «OCEAN SMART GUMMIES DEFENCE».
 В glossary — точные переводы турецких слов этого названия: переводи эти слова только так.
 
 2. brand_ru — только если brand_ru не дан во входных данных: бренд кириллицей, как его прочтёт покупатель с упаковки («SOLGAR» → «Солгар», «ZADE VITAL» → «Заде Витал»). Только кириллица, цифры и дефис.
 3. product — что это за товар, коротко, как в названии товара в магазине: остаток source_name после бренда без фасовки (количества штук, объёма или массы упаковки) по-русски / по-английски.
-   - Только вещества, названные в source_name, — ничего не добавляй. Вещества и экстракты, вкус, для кого (детям, взрослым), дозировка с единицей (мг, мкг, МЕ, г, мл, %), форма, если она жидкая или порошок (сироп, капли, спрей, порошок, масло, жидкость). Все числа из этой части названия сохрани.
+   - Только вещества, названные в source_name, — ничего не добавляй. Назначение («для иммунитета», «для сна») — только если оно написано словами в source_name. Детское питание (facts.kind) — смесь, каша и т. п., не «пищевая добавка». Вещества и экстракты, вкус, для кого (детям, взрослым), дозировка с единицей (мг, мкг, МЕ, г, мл, %), форма, если она жидкая или порошок (сироп, капли, спрей, порошок, масло, жидкость). Все числа из этой части названия сохрани.
    - Не пиши: слова бренда ещё раз; форму штучной фасовки (таблетки, капсулы, саше, пастилки, жевательные, шипучие, мягкие) — программа добавит её к количеству; «добавка», «пищевая добавка», «комплекс», если это не всё, что есть в названии кроме бренда («takviye edici gıda», «içeren» не переводятся). Если после бренда ничего, кроме них, нет — «Пищевая добавка» / «Food Supplement».
    - Без турецких слов и их транслитерации. Латиница в ru — только обозначения (D3, B12, K2, Q10, Omega-3, MSM, DHA), названия бактерий и торговые названия ингредиентов (Svetol). ru — с заглавной буквы, en — Title Case.
    - Примеры: «ZADE VITAL A VITAMINI KAPSUL 500 mg» → {"ru": "Витамин A 500 мг", "en": "Vitamin A 500 mg"}; «MEGA-FARMA BETAGLUKAN SURUP KARA MURVER EKSTRESI VE CINKO ICEREN TAKVIYE EDICI GIDA» → {"ru": "Бетаглюкан с экстрактом чёрной бузины и цинком, сироп", "en": "Beta-Glucan with Black Elderberry Extract and Zinc Syrup"}; «SOLGAR THERMOGENIC COMPLEX WITH SVETOL KAPSUL» → {"ru": "Термогенный комплекс с экстрактом зелёного кофе Svetol", "en": "Thermogenic Complex with Svetol Green Coffee Extract"}.
@@ -503,6 +523,9 @@ _PLAIN_ROUTES = {"перорально": ("внутрь", "orally"), "субли
 def _facts(input_data: dict) -> dict[str, Any]:
     attrs = input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {}
     facts: dict[str, Any] = {}
+    if is_baby_food(input_data.get("name")):
+        facts["kind"] = {"ru": "детское питание", "en": "baby food"}
+        return facts  # «принимается внутрь» у смеси — лишнее
     route = translate_reference_field("administration_route", attrs.get("administration_route"))
     if route:
         ru, en = route[0].lower(), route[1].lower()
@@ -555,6 +578,51 @@ def _known_brand_ru(source_name: str) -> str:
 
 _BRAND_RU_RE = re.compile(r"^[А-Яа-яЁё0-9][А-Яа-яЁё0-9 \-'.&+]*$")
 
+# Бренд кириллицей сверяется с латиницей по согласным: «TUSPAN» → «Тусбан» (p ≠ б) в SEO не идёт.
+_CYR_TO_LAT = {
+    "б": "b", "в": "v", "г": "g", "д": "d", "ж": "zh", "з": "z", "к": "k", "л": "l", "м": "m", "н": "n",
+    "п": "p", "р": "r", "с": "s", "т": "t", "ф": "f", "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sh",
+}
+# Латинская буква → допустимые чтения кириллицей.
+_LAT_READINGS = {
+    "c": ("k", "s", "ts", "ch", "sh"), "q": ("k",), "x": ("ks",), "w": ("v", ""), "j": ("zh", "dzh", ""),
+    "g": ("g", "zh", "dzh"), "z": ("z", "ts", "s"), "s": ("s", "z", "sh"), "h": ("h", ""), "v": ("v", "f"),
+    "k": ("k",), "y": ("",),
+}
+
+
+def _skeleton_latin(text: str) -> str:
+    text = re.sub(r"\bdr\b\.?", "doktor", fold_tr(text))
+    for pair, single in (("ph", "f"), ("th", "t"), ("ck", "k"), ("sch", "sh"), ("sh", "S"), ("ch", "C")):
+        text = text.replace(pair, single)
+    text = re.sub(r"[^a-zSC0-9]|[aeiou]", "", text)
+    return re.sub(r"(.)\1+", r"\1", text)
+
+
+def _skeleton_cyrillic(text: str) -> str:
+    text = "".join(_CYR_TO_LAT.get(ch, ch if ch.isdigit() else "") for ch in text.lower().replace("ё", "е"))
+    return re.sub(r"(.)\1+", r"\1", text)
+
+
+def transliteration_matches(latin: str, cyrillic: str) -> bool:
+    """Согласные бренда кириллицей читаются из латиницы («SOLGAR» — «Солгар», «I-COLL» — «Ай-Колл»)."""
+    source, target = _skeleton_latin(latin), _skeleton_cyrillic(cyrillic)
+    readings = {"S": ("sh",), "C": ("ch", "k", "h")}
+
+    def match(i: int, j: int, depth: int = 0) -> bool:
+        if depth > 60:
+            return False
+        if i == len(source):
+            return j == len(target)
+        letter = source[i]
+        options = readings.get(letter) or _LAT_READINGS.get(letter) or (letter,)
+        for option in options:
+            if target.startswith(option, j) and match(i + 1, j + len(option), depth + 1):
+                return True
+        return False
+
+    return match(0, 0)
+
 
 def _translated(text: Any, locale: str) -> str:
     """«Что это» на нужном языке или '' (турецкие слова, латиница вне обозначений в RU)."""
@@ -570,16 +638,31 @@ def _translated(text: Any, locale: str) -> str:
     return value
 
 
-# Признак штучной формы уже в фасовке («60 жевательных таблеток»): в конце «что это» он лишний.
+# Фасовка уже в названии: в конце «что это» лишние её повтор («Пробиотик, 10 капсул»)
+# и форма штучной фасовки («пастилки», «шипучие таблетки», «жевательные»).
 _PIECE_FORM_TAIL_RE = re.compile(
-    r"(?:,\s*|\s+)(?:жевательн\w*|шипуч\w*|мягк\w*|chewable|effervescent|soft)$", re.IGNORECASE
+    r"(?:^|,\s*|\s+)(?:жевательн\w*|шипуч\w*|мягк\w*|капсул\w*|таблет\w*|пастил\w*|саше|"
+    r"chewable|effervescent|soft|capsules?|tablets?|lozenges?|sachets?)$",
+    re.IGNORECASE,
 )
+_GENERIC_PRODUCT = {"ru": "пищевая добавка", "en": "Food Supplement"}
 
 
-def _without_piece_form(text: str, pack: Optional[Pack]) -> str:
-    if not text or pack is None or not pack.piece:
+def _without_piece_form(text: str, pack: Optional[Pack], locale: str) -> str:
+    if not text or pack is None:
         return text
-    return _PIECE_FORM_TAIL_RE.sub("", text).strip(" ,")
+    original = text
+    tail = getattr(pack, locale, "")
+    if tail and text.lower().endswith(tail.lower()):
+        text = text[: -len(tail)].rstrip(" ,")
+    while pack.piece:
+        shorter = _PIECE_FORM_TAIL_RE.sub("", text).strip(" ,")
+        if shorter == text:
+            break
+        text = shorter
+    if not text:  # «Шипучие таблетки» целиком — форма, а не состав
+        return _GENERIC_PRODUCT[locale] if original else original
+    return text
 
 
 def _ingredients(rows: Any, locale: str) -> str:
@@ -626,15 +709,16 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
     if not brand_ru and brand_ok:
         # brand_ru модели — для её бренда; если бренд взят первым словом, кириллицы нет.
         candidate = str(answer.get("brand_ru") or "").strip()
-        if _BRAND_RU_RE.match(candidate):
+        if _BRAND_RU_RE.match(candidate) and transliteration_matches(brand, candidate):
             brand_ru = candidate
             translation_memory.remember(BRAND_NAMESPACE, {brand: {"ru": brand_ru, "en": brand}}, log=log_entry)
     product_answer = answer.get("product") if isinstance(answer.get("product"), dict) else {}
     product_text = {
-        locale: _without_piece_form(_translated(product_answer.get(locale), locale), pack) for locale in ("ru", "en")
+        locale: _without_piece_form(_translated(product_answer.get(locale), locale), pack, locale)
+        for locale in ("ru", "en")
     }
     if not product_text["ru"] and not _middle(source_name, pack)[len(brand):].strip():
-        product_text = {"ru": "пищевая добавка", "en": "Food Supplement"}
+        product_text = dict(_GENERIC_PRODUCT)
 
     titles = {
         locale: assemble_title(brand, product_text[locale], getattr(pack, locale, ""), locale)
@@ -642,9 +726,12 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
         for locale in ("ru", "en")
     }
     description = answer.get("description") if isinstance(answer.get("description"), dict) else {}
-    descriptions = {locale: build_description(description.get(locale), locale) for locale in ("ru", "en")}
+    baby_food = is_baby_food(source_name)
+    descriptions = {
+        locale: build_description(description.get(locale), locale, baby_food=baby_food) for locale in ("ru", "en")
+    }
     serving = answer.get("serving") if isinstance(answer.get("serving"), dict) else {}
-    seo = build_seo(brand, brand_ru, product_text, pack)
+    seo = build_seo(brand, brand_ru, product_text, pack, baby_food=baby_food)
 
     content: dict[str, Any] = {}
     for locale in ("ru", "en"):
@@ -671,6 +758,8 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
             "brand_from_model": brand_ok,
             "brand_ru": brand_ru,
             "brand_ru_source": "memory" if known_brand_ru else ("llm" if brand_ru else ""),
+            "brand_ru_rejected": "" if brand_ru else str(answer.get("brand_ru") or "")[:80],
+            "baby_food": baby_food,
             "pack": {"ru": pack.ru, "en": pack.en} if pack else None,
             "product": product_text,
             "source_sections": sorted(sections),
