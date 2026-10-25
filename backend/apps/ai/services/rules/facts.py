@@ -37,6 +37,11 @@ _PACK_RE = re.compile(r"\b(\d+)\s*'\s*l[iıuü]\S*(?:\s+paket\S*)?", re.IGNORECA
 _CYRILLIC_SUFFIX_RE = re.compile(r"\s+-\s+[а-яё\s-]+$", re.IGNORECASE)
 # Коды вида «J5SM-TST7325»: санитайзер названий вырезает их, в модель не берём.
 _HYPHEN_CODE_RE = re.compile(r"^[A-Z0-9]{2,}-[A-Z0-9]+$", re.IGNORECASE)
+# Подзаголовок IKEA в начале описания: «<h3>PAX gardırop, beyaz</h3>».
+_IKEA_SUBTITLE_RE = re.compile(r"^\s*<h3>([^<,]+)", re.IGNORECASE)
+# Турецкие строчные буквы бренда («Altınyıldız») → латиница: иначе название
+# считается непереведённым; бренд ВЕРХНИМ регистром («İMZA») оставляем.
+_LATIN_BRAND = str.maketrans({"ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u", "Ç": "C", "Ğ": "G", "İ": "I", "Ö": "O", "Ş": "S", "Ü": "U"})
 
 
 @dataclass
@@ -122,6 +127,27 @@ def _is_model_token(token: str) -> bool:
     return bool(re.search(r"[A-Za-z0-9]", stripped))
 
 
+def _is_sku(token: str) -> bool:
+    """Артикул поставщика («LV04RF822G», «12295132», «4480»): в название не идёт."""
+    return sum(char.isdigit() for char in token.strip("()[],.;:")) >= 4
+
+
+def _drop_codes(tokens: list[str]) -> list[str]:
+    """Убирает артикулы, короткие коды цвета за ними («DM0DM22546 BDS») и проценты состава («%100»)."""
+    result: list[str] = []
+    after_sku = False
+    for token in tokens:
+        stripped = token.strip("()[],.;:")
+        # Четыре цифры после слова модели — номер модели («Emr 1830»), одни — артикул («Tişört 4480»).
+        model_number = stripped.isdigit() and len(stripped) == 4 and bool(result)
+        if "%" in stripped or (_is_sku(stripped) and not model_number) or (after_sku and len(stripped) <= 3 and stripped.upper() == stripped):
+            after_sku = True
+            continue
+        after_sku = False
+        result.append(token)
+    return result
+
+
 def _is_strong_model_token(token: str) -> bool:
     """После описательных слов допустимы только коды и ВЕРХНИЙ регистр."""
     stripped = token.strip("()[],.;:")
@@ -169,16 +195,12 @@ def parse_name(name: str, facts: ProductFacts) -> None:
         if not key or key in ("-", "–"):
             index += 1
             continue
-        for mapping, target in (
-            (vocab.KINDS, "kind"),
-            (vocab.AUDIENCE, "audience"),
-            (vocab.DESCRIPTORS, "descriptor"),
-        ):
-            length, value = _match_phrase(folded, index, mapping)
-            if length:
-                break
-        else:
-            target = None
+        # Самая длинная фраза из всех словарей: «Polo Yaka» — вырез, а не тип «поло».
+        length, value, target = 0, None, None
+        for mapping, label in ((vocab.KINDS, "kind"), (vocab.AUDIENCE, "audience"), (vocab.DESCRIPTORS, "descriptor")):
+            found, found_value = _match_phrase(folded, index, mapping)
+            if found > length:
+                length, value, target = found, found_value, label
         if target is None:
             length, value = _match_color(folded, index)
             target = "color" if length else None
@@ -210,7 +232,53 @@ def parse_name(name: str, facts: ProductFacts) -> None:
         facts.kind = specific[0]
     elif kinds:
         facts.kind = kinds[0]
-    facts.model = " ".join(model).strip(" &/+")
+    facts.model = " ".join(_drop_codes(model)).strip(" &/+")
+
+
+def _starts_vocab(folded: list[str], index: int) -> bool:
+    for mapping in (vocab.KINDS, vocab.AUDIENCE, vocab.DESCRIPTORS):
+        if _match_phrase(folded, index, mapping)[0]:
+            return True
+    return bool(_match_color(folded, index)[0]) or bool(_VOLUME_RE.match(" ".join(folded[index : index + 2])))
+
+
+def _leading_brand(name: str) -> tuple[str, str]:
+    """«TUDORS Siyah Erkek Kemer» → («TUDORS», «Siyah Erkek Kemer»).
+
+    У мультибрендового магазина (LC Waikiki продаёт Loris, AVON, NIVEA…)
+    бренд товара — слова названия до первого словарного слова.
+    """
+    tokens = _TOKEN_RE.findall(_clean_name(name))
+    folded = [vocab.fold(token) for token in tokens]
+    for index in range(len(tokens)):
+        if _starts_vocab(folded, index) or tokens[index] in ("-", "–"):
+            break
+    else:
+        return "", name
+    leading = tokens[:index]
+    words = [token for token in leading if token not in ("/", "&", "+")]
+    if not words or len(words) > 4 or not any(_match_phrase(folded, i, vocab.KINDS)[0] for i in range(index, len(tokens))):
+        return "", name
+    if any(not word[:1].isupper() or vocab.fold(word) in vocab.NOT_BRAND_WORDS for word in words):
+        return "", name
+    brand = " ".join(leading).replace("(R)", "").strip(" /&+")
+    if re.search(r"[çğıöşü]", brand):
+        brand = brand.translate(_LATIN_BRAND)
+    return brand, " ".join(tokens[index:])
+
+
+def _strip_own_line(name: str) -> str:
+    """«LCW ACCESSORIES Dark Black Edp…» → «Dark Black Edp…»: линейка магазина
+    — тот же бренд, а следующие слова (название аромата) остаются."""
+    tokens = name.split()
+    if tokens and vocab.fold(" ".join(tokens[:2])) == "lc waikiki":
+        return " ".join(tokens[2:])
+    if tokens and vocab.fold(tokens[0]) == "lcw":
+        rest = tokens[1:]
+        if rest and rest[0].isalpha() and rest[0].isupper():
+            rest = rest[1:]
+        return " ".join(rest)
+    return name
 
 
 def _variant_colors(product) -> int:
@@ -242,7 +310,13 @@ def _brand_from_description(name: str, source_text: str) -> str:
         vocab.fold(word) in mapping for word in prefix for mapping in vocabulary
     ):
         return ""
-    return " ".join(prefix).strip(" -,")
+    # «Dockers by Gerli’nin …» — турецкий притяжательный суффикс не часть бренда.
+    return re.sub(r"[’'](?:n?[iıuü]n|[iıuü]n?)$", "", " ".join(prefix)).strip(" -,")
+
+
+def _ikea_subtitle(description: Any) -> str:
+    match = _IKEA_SUBTITLE_RE.match(str(description or ""))
+    return html.unescape(match.group(1)).strip() if match else ""
 
 
 def _furniture_kind(raw_type: Any) -> Kind | None:
@@ -270,6 +344,12 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
     # FLO дописывает к турецкому названию русский цвет: «… Sneaker - Серый».
     name = _CYRILLIC_SUFFIX_RE.sub("", str(input_data.get("name") or ""))
     source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"))
+    if vocab.fold(facts.brand) in vocab.STORE_BRANDS and not _CYRILLIC_RE.search(name):
+        leading, rest = _leading_brand(name)
+        if vocab.fold(leading).startswith(vocab.STORE_OWN_LINE_PREFIXES):
+            name = _strip_own_line(name)
+        elif leading:
+            name, facts.brand = rest, leading
 
     if _CYRILLIC_RE.search(name):
         facts.russian_name = re.sub(r"\s+", " ", _PRICE_RE.sub(" ", name)).strip(" -")
@@ -280,6 +360,7 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
             for token in _TOKEN_RE.findall(facts.russian_name)
             if _is_model_token(token) and vocab.fold(token) not in brand_words and not _HYPHEN_CODE_RE.match(token)
         )
+        facts.model = " ".join(_drop_codes(facts.model.split()))
     elif product_type == "furniture":
         facts.model = name.strip()
     else:
@@ -290,7 +371,16 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
     category = getattr(product, "category", None)
     category_kind = vocab.CATEGORY_KINDS.get(getattr(category, "slug", "") or "")
     if product_type == "furniture":
-        facts.kind = _furniture_kind(attrs.get("furniture_type")) or category_kind
+        # Тип IKEA: furniture_type, иначе подзаголовок описания. Тип, которого
+        # нет в словаре, не подменяем типом категории («KOMPLEMENT tel sepet» в
+        # «Шкафах» — не гардероб): название тогда пишет LLM.
+        type_names = [
+            value
+            for value in (attrs.get("furniture_type"), _ikea_subtitle(input_data.get("raw_description") or input_data.get("description")))
+            if str(value or "").strip()
+        ]
+        kinds = [kind for kind in map(_furniture_kind, type_names) if kind]
+        facts.kind = kinds[0] if kinds else (None if type_names else category_kind)
         if not facts.has_variants and not attrs.get("furniture_variants"):
             facts.finish = vocab.translate_furniture_finish(attrs.get("color"))
     elif facts.kind is None or (facts.kind.generic and category_kind):

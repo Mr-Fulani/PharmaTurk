@@ -1671,6 +1671,8 @@ class ContentGenerator:
         - Используй только факты из facts_ru/facts_en, source_facts, source_sections, source_description или image_analysis.
         - facts_ru и facts_en — готовые переводы (форма, действующее вещество, путь введения, объём, рецепт, срок годности): пиши их ровно так, не переводи заново.
         - Если fixed_title не пустой, это готовое название: generated_title не возвращай, в SEO используй fixed_title.
+        - Если fixed_title пуст, generated_title ОБЯЗАТЕЛЕН в ru и en: бренд латиницей, дозировка, форма и фасовка
+          по-русски / по-английски, без турецких слов и без MG/ML латиницей в ru.
         - brand — торговое название препарата из начала product_name; manufacturer — производитель: его не пиши ни в название, ни в SEO.
         - Если source_sections не пустой, НЕ используй source_description и НЕ пересказывай разделы.
         - source_summary_preview используй только для короткого generated_description.

@@ -124,7 +124,7 @@ def neutral_prescription_text(text: Any) -> Any:
 _BOILERPLATE_SENTENCE_RE = re.compile(
     r"SGK|страхов|insurance|reimburs|covered by|срок\w* годност|shelf[ -]life|"
     r"произвед[её]н|производ\w*|manufactur|produced in|made in|импортн|imported|"
-    r"страна происхождения|country of origin|в Турции|in Turkey",
+    r"страна происхождения|country of origin|Турци[яи]|Turkey|Turkish",
     re.IGNORECASE,
 )
 _CLAUSE_SPLIT_RE = re.compile(r",\s+(?![^()]*\))")
@@ -149,6 +149,7 @@ def without_card_boilerplate(text: Any) -> Any:
         clauses = [c for c in _CLAUSE_SPLIT_RE.split(sentence.rstrip(".!? ")) if not _BOILERPLATE_SENTENCE_RE.search(c)]
         if clauses:
             joined = ", ".join(clauses)
+            joined = joined[:1].upper() + joined[1:]  # убрано начало предложения
             kept.append(joined + ("" if joined[-1:] in ".!?" else end))
     return " ".join(kept) if kept else text
 

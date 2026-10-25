@@ -13,6 +13,8 @@ from apps.ai.services.rules.facts import ProductFacts
 THIN_SOURCE_MAX_WORDS = 6
 META_TITLE_MAX = 70
 META_DESCRIPTION_MAX = 160
+# В названии — не больше двух описательных слов: остальные факты в описании.
+TITLE_DESCRIPTORS_MAX = 2
 # Семейства, где название без бренда/модели бессмысленно («Духи»): нужен LLM.
 _REQUIRES_IDENTITY = frozenset({"perfumery"})
 
@@ -47,6 +49,14 @@ def _identity(facts: ProductFacts) -> str:
     return " ".join(part for part in (brand, model) if part)
 
 
+def _title_descriptors(facts: ProductFacts) -> list[tuple[str, str]]:
+    """Материал важнее прочих описательных слов, порядок внутри групп сохраняется."""
+    materials = [pair for pair in facts.descriptors if pair[0].startswith("из ")]
+    others = [pair for pair in facts.descriptors if not pair[0].startswith("из ")]
+    chosen = set((materials + others)[:TITLE_DESCRIPTORS_MAX])
+    return [pair for pair in facts.descriptors if pair in chosen]
+
+
 def build_titles(facts: ProductFacts) -> dict[str, str]:
     """RU/EN-названия; отсутствующий язык — пустая строка (его дополнит LLM)."""
     if facts.product_type == "islamic_clothing":
@@ -72,7 +82,7 @@ def build_titles(facts: ProductFacts) -> dict[str, str]:
     ru_parts = [_capitalize(_ru_head(facts))]
     if identity:
         ru_parts.append(identity)
-    ru_parts.extend(ru for ru, _ in facts.descriptors)
+    ru_parts.extend(ru for ru, _ in _title_descriptors(facts))
     ru = " ".join(part for part in ru_parts if part)
 
     for amount in (facts.volume, facts.pack):
@@ -90,7 +100,7 @@ def _english_title(facts: ProductFacts, *, with_color: bool = True) -> str:
         en = f"{identity} {facts.kind.en}".strip()
         return f"{en}, {facts.finish[1]}" if facts.finish and with_color else en
     parts = [identity, facts.audience[1] if facts.audience else ""]
-    parts.extend(en for _, en in facts.descriptors)
+    parts.extend(en for _, en in _title_descriptors(facts))
     parts.append(facts.kind.en)
     en = " ".join(part for part in parts if part)
     for amount in (facts.volume, facts.pack):

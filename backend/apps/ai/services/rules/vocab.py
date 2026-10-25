@@ -98,6 +98,11 @@ COLORS: dict[str, tuple[str, str]] = {
     "kaplumbaga kabugu": ("черепаховый", "Tortoiseshell"),
     "kamuflaj": ("камуфляжный", "Camouflage"),
     "pudra": ("пудровый", "Powder pink"),
+    "tas": ("серо-бежевый", "Stone"),
+    "tas rengi": ("серо-бежевый", "Stone"),
+    "nefti": ("темно-зеленый", "Dark green"),
+    "melanj": ("меланжевый", "Melange"),
+    "gri melanj": ("серый меланжевый", "Gray melange"),
 }
 # Модификаторы оттенка: RU-префикс прилагательного, EN-слово. «yeni», «mat»,
 # «orta» оттенок не меняют и пропускаются.
@@ -166,6 +171,18 @@ AUDIENCE: dict[str, tuple[str, str]] = {
 }
 
 
+# --- Бренды мультибрендовых магазинов ---
+# Бренд каталога — магазин, а настоящий бренд стоит первым в названии
+# («Loris 50 ml Erkek Parfüm» на LC Waikiki).
+STORE_BRANDS = frozenset({"lc waikiki"})
+# Собственные линейки магазина («LCW ACCESSORIES», «LC WAIKIKI»): бренд остаётся.
+STORE_OWN_LINE_PREFIXES = ("lcw", "lc waikiki")
+# Слова с заглавной в начале названия, которые не бренд.
+NOT_BRAND_WORDS = frozenset(
+    {"yeni", "yazlik", "kislik", "klasik", "spor", "gunluk", "basic", "slim", "regular", "unisex", "set", "seti", "orijinal"}
+)
+
+
 # --- Типы товаров ---
 
 
@@ -214,6 +231,7 @@ KINDS: dict[str, Kind] = {
     "esofman alti": _k("спортивные брюки", PL, "Sweatpants"),
     "esofman takimi": _k("спортивный костюм", M, "Tracksuit"),
     "pijama takimi": _k("пижама", F, "Pajama Set"),
+    "pijama takim": _k("пижама", F, "Pajama Set"),
     "pijama": _k("пижама", F, "Pajamas"),
     "bluz": _k("блузка", F, "Blouse"),
     "tunik": _k("туника", F, "Tunic"),
@@ -225,6 +243,7 @@ KINDS: dict[str, Kind] = {
     "corap": _k("носки", PL, "Socks"),
     # обувь
     "sneaker": _k("кроссовки", PL, "Sneakers"),
+    "high sneaker": _k("высокие кроссовки", PL, "High-Top Sneakers"),
     "spor ayakkabi": _k("кроссовки", PL, "Sneakers"),
     "kosu ayakkabisi": _k("беговые кроссовки", PL, "Running Shoes"),
     "sandalet": _k("сандалии", PL, "Sandals"),
@@ -338,6 +357,75 @@ FURNITURE_KINDS: dict[str, Kind] = {
     "rayli tel sepet": _k("проволочная корзина с направляющими", F, "Wire Basket with Pull-out Rail"),
     "aski borusu": _k("штанга для одежды", F, "Clothes Rail"),
     "ayarlanabilir aski borusu": _k("регулируемая штанга для одежды", F, "Adjustable Clothes Rail"),
+    "acik dolap": _k("открытый шкаф", M, "Open Wardrobe"),
+    "dolap": _k("шкаф", M, "Cabinet"),
+    "cocuk dolabi": _k("детский шкаф", M, "Children's Wardrobe"),
+    "duvar dolabi": _k("навесной шкаф", M, "Wall Cabinet"),
+    "cocuk dolap kombinasyonu": _k("детская комбинация для хранения", F, "Children's Storage Combination"),
+    "kapakli gardirop iskeleti": _k("каркас гардероба с дверцами", M, "Wardrobe Frame with Doors"),
+    "kapakli gardirop yukseltme unitesi": _k("надставка для гардероба с дверцами", F, "Wardrobe Add-on Unit with Doors"),
+    "surgu kapak iskeleti": _k("рама раздвижной дверцы", F, "Sliding Door Frame"),
+    "surgulu raf": _k("выдвижная полка", F, "Pull-out Shelf"),
+    "bolmeli surgulu raf": _k("выдвижная полка с отделениями", F, "Pull-out Shelf with Compartments"),
+    "surgulu raf ici duzenleyici": _k("выдвижной органайзер для полки", M, "Pull-out Shelf Organiser"),
+    "raf ici bolmeli unite": _k("вставка с отделениями", F, "Shelf Insert with Compartments"),
+    "dolap ici raf": _k("полка для шкафа", F, "Cabinet Shelf"),
+    "cam raf": _k("стеклянная полка", F, "Glass Shelf"),
+    "ayakkabi rafi": _k("полка для обуви", F, "Shoe Shelf"),
+    "surgulu ayakkabi rafi": _k("выдвижная полка для обуви", F, "Pull-out Shoe Shelf"),
+    "surgulu pantolon askisi": _k("выдвижная вешалка для брюк", F, "Pull-out Trouser Hanger"),
+    "cekilebilir aski": _k("выдвижная вешалка", F, "Pull-out Hanger"),
+    "cok amacli aski": _k("многофункциональная вешалка", F, "Multi-use Hanger"),
+    "ayakli askilik": _k("напольная вешалка", F, "Clothes Stand"),
+    "asma rayi": _k("рейка для подвешивания", F, "Suspension Rail"),
+    "sepet rayi": _k("направляющие для корзины", PL, "Basket Rail"),
+    "gardirop ici sepet rayi": _k("направляющие для корзины в гардероб", PL, "Wardrobe Basket Rail"),
+    "cekmece on paneli": _k("фасад ящика", M, "Drawer Front"),
+    "on panelsiz cekmece": _k("ящик без фасада", M, "Drawer without Front"),
+    "cam panelli cekmece": _k("ящик со стеклянной панелью", M, "Drawer with Glass Front"),
+    "cekmece ortusu": _k("коврик для ящика", M, "Drawer Mat"),
+    "frenli mentese": _k("петля с плавным закрыванием", F, "Soft-closing Hinge"),
+    "cocuk sifonyeri": _k("детский комод", M, "Children's Chest of Drawers"),
+    "karyola cekmecesi": _k("ящик для кровати", M, "Bed Storage Box"),
+    "karyola kilifi": _k("чехол для кровати", M, "Bed Frame Cover"),
+    "ayarlanabilir karyola latasi": _k("регулируемое реечное дно кровати", N, "Adjustable Slatted Bed Base"),
+    "bebek karyolasi": _k("детская кроватка", F, "Cot"),
+    "besik": _k("колыбель", F, "Cradle"),
+    "bebek mobilya seti": _k("комплект детской мебели", M, "Baby Furniture Set"),
+    "yatak basi": _k("изголовье кровати", N, "Headboard"),
+    "sallanan koltuk": _k("кресло-качалка", N, "Rocking Chair"),
+    "sallanan koltuk iskeleti": _k("каркас кресла-качалки", M, "Rocking Chair Frame"),
+    "tekli koltuk kilifi": _k("чехол для кресла", M, "Armchair Cover"),
+    "tekli koltuk ve puf": _k("кресло с пуфом", N, "Armchair and Footstool"),
+    "yatar koltuk": _k("кресло-кровать", N, "Chair-Bed"),
+    "kose koltuk": _k("угловой диван", M, "Corner Sofa"),
+    "kose kanepe": _k("угловой диван", M, "Corner Sofa"),
+    "3'lu kose kanepe": _k("трехместный угловой диван", M, "3-Seat Corner Sofa"),
+    "4'lu kose kanepe": _k("четырехместный угловой диван", M, "4-Seat Corner Sofa"),
+    "5'li kose kanepe": _k("пятиместный угловой диван", M, "5-Seat Corner Sofa"),
+    "6'li kose kanepe": _k("шестиместный угловой диван", M, "6-Seat Corner Sofa"),
+    "uzanma koltuklu 5'li kose kanepe": _k("пятиместный угловой диван-реклайнер", M, "5-Seat Corner Recliner Sofa"),
+    "bazali yatakli kose kanepe": _k("угловой диван-кровать с ящиком", M, "Corner Sofa-Bed with Storage"),
+    "2'li moduler kanepe": _k("двухместный модульный диван", M, "2-Seat Modular Sofa"),
+    "4'lu moduler kanepe": _k("четырехместный модульный диван", M, "4-Seat Modular Sofa"),
+    "6'li moduler kanepe": _k("шестиместный модульный диван", M, "6-Seat Modular Sofa"),
+    "4'lu moduler kose kanepe": _k("четырехместный модульный угловой диван", M, "4-Seat Modular Corner Sofa"),
+    "3'lu yatakli kanepe": _k("трехместный диван-кровать", M, "3-Seat Sofa-Bed"),
+    "3'lu deri kanepe": _k("трехместный кожаный диван", M, "3-Seat Leather Sofa"),
+    "7'li u kanepe": _k("семиместный П-образный диван", M, "7-Seat U-Shaped Sofa"),
+    "ek kose unitesi": _k("угловая секция", F, "Corner Section"),
+    "tekli oturma unitesi": _k("одноместная секция", F, "1-Seat Section"),
+    "2'li oturma unitesi": _k("двухместная секция", F, "2-Seat Section"),
+    "ayak uzatma taburesi": _k("табурет для ног", M, "Footstool"),
+    "ayak uzatma taburesi minderi": _k("подушка для табурета для ног", F, "Footstool Cushion"),
+    "sallanan koltuk ve ayak uzatma taburesi": _k("кресло-качалка с табуретом для ног", N, "Rocking Chair and Footstool"),
+    "puf": _k("пуф", M, "Pouffe"),
+    "saklama gozlu puf": _k("пуф с отделением для хранения", M, "Pouffe with Storage"),
+    "yan sehpa": _k("приставной столик", M, "Side Table"),
+    "tepsili sehpa": _k("столик-поднос", M, "Tray Table"),
+    "mutfak adasi": _k("кухонный остров", M, "Kitchen Island"),
+    "calisma tezgahi": _k("рабочий стол", M, "Workbench"),
+    "cocuk kitapligi": _k("детский книжный шкаф", M, "Children's Bookcase"),
 }
 # «3 çekmeceli şifonyer» → «комод с 3 ящиками»
 FURNITURE_DRAWER_CHEST_RE = re.compile(r"^(\d+) cekmeceli sifonyer$")
@@ -368,7 +456,7 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "cneck": ("с круглым вырезом", "Crew Neck"),
     "yuvarlak yaka": ("с круглым вырезом", "Crew Neck"),
     "v yaka": ("с V-образным вырезом", "V-Neck"),
-    "polo yaka": ("с воротником поло", "Polo Collar"),
+    "polo yaka": ("с отложным воротником", "Polo Collar"),
     "kisa kollu": ("с коротким рукавом", "Short Sleeve"),
     "uzun kollu": ("с длинным рукавом", "Long Sleeve"),
     "kolsuz": ("без рукавов", "Sleeveless"),
@@ -408,6 +496,17 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "oval": ("овальной формы", "Oval"),
     "yuvarlak": ("круглой формы", "Round"),
     "fit": ("", ""),
+    "canlandirici": ("", ""),
+    "tanimsiz": ("", ""),
+    "cift yonlu": ("", ""),
+    "noos": ("", ""),
+    "ter karsiti": ("против пота", "Antiperspirant"),
+    "leke karsiti": ("против следов", "Anti-Marks"),
+    "cift tokali": ("с двумя пряжками", "Double-Buckle"),
+    "penye": ("из трикотажа", "Jersey"),
+    "ss": ("", ""),
+    "cn": ("", ""),
+    "pls": ("большого размера", "Plus Size"),
     "kalip": ("", ""),
     "kesim": ("", ""),
     "detayli": ("", ""),
