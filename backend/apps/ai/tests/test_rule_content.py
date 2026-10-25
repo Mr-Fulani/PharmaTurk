@@ -10,7 +10,7 @@ from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.rules import vocab
-from apps.ai.services.rules.facts import ProductFacts, clean_source_text, collect_facts, parse_name
+from apps.ai.services.rules.facts import ProductFacts, _brand_from_description, clean_source_text, collect_facts, parse_name
 from apps.ai.services.rules.pipeline import plan_rule_content
 from apps.ai.services.rules.text import build_fact_description, build_seo, build_titles, is_thin_source
 from apps.ai.services.semantic_validator import SemanticValidator
@@ -109,8 +109,8 @@ def test_composition_shoe_materials_and_furniture_finish():
         (
             "Bisiklet Yaka Kısa Kollu Baskılı Erkek Tişört",
             "clothing",
-            "Мужская футболка с круглым вырезом с коротким рукавом с принтом",
-            "Men's Crew Neck Short Sleeve Printed T-Shirt",
+            "Мужская футболка с круглым вырезом с коротким рукавом",
+            "Men's Crew Neck Short Sleeve T-Shirt",
         ),
         (
             "BOGOSS VIBRANT LEATHER & SUMMER EDP 2X100ML ( 3.4 FL.OZ )",
@@ -530,3 +530,101 @@ def test_rule_path_fails_only_when_nothing_russian_can_be_built():
     with pytest.raises(ValueError, match="ru.generated_title, ru.generated_description"):
         validate_rule_content({"ru": {}, "en": {"generated_title": "X", "generated_description": "Y"}})
     validate_rule_content({"ru": {"generated_title": "Ремень", "generated_description": "Описание"}, "en": {}})
+
+
+# --- артикулы, бренды маркетплейса, типы мебели (25.10.2026) ---
+
+
+def _titles(name, product_type, brand="", category_slug="", attrs=None, description=""):
+    product = SimpleNamespace(product_type=product_type, category=SimpleNamespace(slug=category_slug), domain_item=None)
+    facts = collect_facts(product, {"name": name, "brand": brand, "attributes": attrs or {}, "description": description})
+    return facts, build_titles(facts)
+
+
+@pytest.mark.parametrize(
+    "name, ru",
+    [
+        ("Erkek T Shirt LV04RF822G UB1", "Мужская футболка"),
+        ("Kırmızı Erkek Tişört 4974", "Мужская футболка, красная"),
+        ("238276 5FX Siyah Erkek Sneaker", "Мужские кроссовки, черные"),
+        ("Pembe Erkek Normal Logo Baskılı T-Shirt 12295132 JPRBLUFELIX SS TEE", "Мужская футболка JPRBLUFELIX с логотипом, розовая"),
+    ],
+)
+def test_supplier_codes_are_not_in_titles(name, ru):
+    product_type = "shoes" if "Sneaker" in name else "clothing"
+    assert _titles(name, product_type)[1]["ru"] == ru
+
+
+@pytest.mark.parametrize(
+    "name, category, brand, ru, en",
+    [
+        (
+            "TUDORS Siyah Erkek Kemer - S000081236-19351",
+            "belts",
+            "TUDORS",
+            "Мужской ремень TUDORS, черный",
+            "TUDORS Men's Belt, Black",
+        ),
+        (
+            "Loris 50 ml Erkek Parfüm - S000465805-26865",
+            "perfumery",
+            "Loris",
+            "Мужской парфюм Loris, 50 мл",
+            "Loris Men's Perfume, 50 ml",
+        ),
+        (
+            "Altınyıldız Classics Kahverengi Erkek Kemer - S000527512-19413",
+            "belts",
+            "Altinyildiz Classics",
+            "Мужской ремень Altinyildiz Classics, коричневый",
+            "Altinyildiz Classics Men's Belt, Brown",
+        ),
+        (
+            "LCW ACCESSORIES Dark Black Edp Erkek Parfüm 100 Ml - W53552Z8-M0T",
+            "perfumery",
+            "LC Waikiki",
+            "Мужская парфюмерная вода LC Waikiki Dark Black, 100 мл",
+            "LC Waikiki Dark Black Men's Eau de Parfum, 100 ml",
+        ),
+        (
+            "LCW ACCESSORIES Siyah Düz Erkek Kemer - W6CG82Z8-HUC",
+            "belts",
+            "LC Waikiki",
+            "Мужской ремень LC Waikiki, черный",
+            "LC Waikiki Men's Belt, Black",
+        ),
+    ],
+)
+def test_marketplace_store_brand_is_replaced_by_brand_from_name(name, category, brand, ru, en):
+    product_type = "perfumery" if category == "perfumery" else "accessories"
+    facts, titles = _titles(name, product_type, brand="LC Waikiki", category_slug=category)
+    assert facts.brand == brand
+    assert titles == {"ru": ru, "en": en}
+
+
+def test_store_own_products_keep_store_brand_and_descriptive_start_is_not_a_brand():
+    facts, titles = _titles("Bisiklet Yaka Kısa Kollu Erkek Tişört", "clothing", brand="LC Waikiki", category_slug="t-shirts")
+    assert facts.brand == "LC Waikiki"
+    assert titles["ru"] == "Мужская футболка LC Waikiki с круглым вырезом с коротким рукавом"
+    # Бренд берётся из названия только у магазина-маркетплейса.
+    assert _titles("TUDORS Siyah Erkek Kemer", "accessories", brand="Zara", category_slug="belts")[0].brand == "Zara"
+
+
+def test_polo_collar_is_a_descriptor_not_a_polo_shirt():
+    titles = _titles("Erkek Polo Yaka %100 Pamuk Tişört", "clothing", category_slug="t-shirts")[1]
+    assert titles["ru"] == "Мужская футболка с отложным воротником из хлопка"
+    assert titles["en"] == "Men's Polo Collar Cotton T-Shirt"
+
+
+def test_brand_from_description_drops_turkish_possessive_suffix():
+    assert _brand_from_description("238545 5FX Mavi Erkek Sneaker", "Dockers by Gerli’nin 238545 5FX Mavi Erkek Sneaker") == "Dockers by Gerli"
+
+
+def test_furniture_type_from_ikea_subtitle_and_unknown_type_goes_to_llm():
+    _, titles = _titles("KOMPLEMENT", "furniture", brand="IKEA", category_slug="wardrobes", description="<h3>tel sepet, beyaz</h3><p>…</p>")
+    assert titles == {"ru": "Проволочная корзина IKEA KOMPLEMENT", "en": "IKEA KOMPLEMENT Wire Basket"}
+    # Тип IKEA, которого нет в словаре, не подменяется типом категории («Гардероб»).
+    facts, titles = _titles("SKUBB", "furniture", brand="IKEA", category_slug="wardrobes", description="<h3>kılıflı kutu, beyaz</h3>")
+    assert facts.kind is None and titles == {"ru": "", "en": ""}
+    # Подзаголовка нет — тип по категории, как раньше.
+    assert _titles("LASTARE", "furniture", brand="IKEA", category_slug="wardrobes")[1]["ru"] == "Гардероб IKEA LASTARE"
