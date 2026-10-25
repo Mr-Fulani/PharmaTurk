@@ -462,6 +462,7 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "cneck": ("с круглым вырезом", "Crew Neck"),
     "yuvarlak yaka": ("с круглым вырезом", "Crew Neck"),
     "v yaka": ("с V-образным вырезом", "V-Neck"),
+    "v-neck": ("с V-образным вырезом", "V-Neck"),
     "polo yaka": ("с отложным воротником", "Polo Collar"),
     "kisa kollu": ("с коротким рукавом", "Short Sleeve"),
     "uzun kollu": ("с длинным рукавом", "Long Sleeve"),
