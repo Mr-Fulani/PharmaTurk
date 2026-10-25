@@ -382,3 +382,23 @@ def test_number_before_capsule_word_is_not_the_pack():
 
     tokens = _supplement_identity_tokens("ONVITA MULTIVITAMIN & MINERALLER VE OMEGA 3 KAPSUL 30 kapsül", source=True)
     assert {t for t in tokens if t.startswith("PACK:")} == {"PACK:30"}
+
+
+def test_pilot3_fixes_glossary_hyphen_homoglyphs_form_and_translit():
+    from apps.ai.services import supplement_glossary as glossary
+
+    assert glossary.missing_terms("OMEGA 3 BALIK YAGI", "Омега-3 из рыбьего жира", "Omega-3 Fish Oil") == []
+    assert "ari sutu" in glossary.found_terms("BEEO UP PROPOLIS-ARI SUTU HAM BAL")
+    assert sc._translated("Д-маннозa с экстрактом одуванчика", "ru") == "Д-манноза с экстрактом одуванчика"
+    assert sc._translated("Прополис-арị с мёдом", "ru") == ""
+    assert sc.form_mismatch("<p>BRUGGE — добавка в форме капсул.</p>", sc.parse_pack("BRUGGE 30 tablet"))
+    assert not sc.form_mismatch("<p>30 таблеток.</p>", sc.parse_pack("BRUGGE 30 tablet"))
+    assert sc.transliteration_matches("COXIL DUO", "Коксил Дуо")
+    assert sc.transliteration_matches("AQUAMIN", "Аквамин")
+    assert sc.transliteration_matches("SAFFNIGHT", "Саффнайт")
+    assert not sc.transliteration_matches("TUSPAN", "Тусбан")
+
+
+def test_latin_designation_from_source_is_kept_in_russian_product():
+    assert sc._translated("SAM-E", "ru", "LIFESAME SAM-E TAKVIYE EDICI GIDA SASE 30 saşe") == "SAM-E"
+    assert sc._translated("SURUP", "ru", "X SURUP 150 ml") == ""

@@ -216,7 +216,9 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "sarimsak": ("чеснок", "garlic", S),
     "yosunu": ("водоросли", "algae", S),
     "mantari": ("грибы", "mushrooms", S),
-    "tahil": ("злаки", "cereals", S),
+    "tahil": ("злаки", "cereals", D),
+    "ek gida": ("прикорм", "complementary food", D),
+    "ek gidasi": ("прикорм", "complementary food", D),
     "lepidyum": ("лепидиум (мака)", "lepidium (maca)", S),
     "pelargonium": ("пеларгония", "pelargonium", S),
     "kahve": ("кофе", "coffee", S),
@@ -351,7 +353,12 @@ _KEYS = sorted(GLOSSARY, key=lambda key: -len(key.split()))
 
 
 def _words(text: Any) -> list[str]:
-    return re.findall(r"[a-z0-9][a-z0-9\-]*", fold_tr(text))
+    """Слова названия; слово через дефис, которого нет в словаре («PROPOLIS-ARI»), делится."""
+    words = []
+    for token in re.findall(r"[a-z0-9][a-z0-9\-]*", fold_tr(text)):
+        token = token.strip("-")
+        words.extend([token] if token in GLOSSARY or "-" not in token else [p for p in token.split("-") if p])
+    return words
 
 
 def found_terms(text: Any) -> list[str]:
@@ -383,7 +390,8 @@ def _normalized(text: Any) -> str:
 def _stems(text: str) -> list[str]:
     # Окончание отбрасывается: «мята» — «мяты», «цинк» — «цинком», «бузина» — «бузины».
     words = [w for w in re.findall(r"[a-zа-я0-9]+", _normalized(text)) if len(w) > 3]
-    return [w[:-1] if len(w) <= 5 else w[:-2] for w in words]
+    # «рыбий» — «рыбьим»: у короткого слова корень — без двух последних букв, но не короче трёх.
+    return [w[: max(3, len(w) - 2)] for w in words]
 
 
 def _alternatives(term: str) -> list[str]:

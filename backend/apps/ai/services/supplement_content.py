@@ -317,6 +317,20 @@ def build_description(paragraphs: Any, locale: str, *, baby_food: bool = False) 
     return "".join(f"<p>{item}</p>" for item in cleaned + [disclaimer])
 
 
+# Штучная форма в описании должна совпадать с фасовкой: «BRUGGE … 30 tablet» — не «в форме капсул».
+_FORM_STEMS = {"capsule": ("капсул", "capsul"), "tablet": ("таблет", "tablet"), "sachet": ("саше", "sachet"),
+               "lozenge": ("пастил", "lozeng")}
+
+
+def form_mismatch(description: Any, pack: Optional[Pack]) -> bool:
+    if pack is None or pack.piece not in _FORM_STEMS:
+        return False
+    text = str(description or "").lower()
+    own = any(stem in text for stem in _FORM_STEMS[pack.piece])
+    other = any(stem in text for piece, stems in _FORM_STEMS.items() if piece != pack.piece for stem in stems)
+    return other and not own
+
+
 def description_problems(description: Any, source: Any) -> list[str]:
     """Причины модерации описания БАДа: обещание лечения, число не из источника."""
     plain = re.sub(r"<[^>]+>", " ", str(description or ""))
@@ -480,6 +494,9 @@ def log_problems(log) -> dict[str, list[str]]:
         description_problems(getattr(log, "generated_description", ""), source)
         + description_problems(en_description, source)
     ))
+    pack = parse_pack(source_name)
+    if form_mismatch(getattr(log, "generated_description", ""), pack) or form_mismatch(en_description, pack):
+        description.append("supplement_form_mismatch")
     if description:
         problems["description"] = description
     return problems
@@ -592,16 +609,17 @@ _LAT_READINGS = {
 
 
 def _skeleton_latin(text: str) -> str:
-    text = re.sub(r"\bdr\b\.?", "doktor", fold_tr(text))
-    for pair, single in (("ph", "f"), ("th", "t"), ("ck", "k"), ("sch", "sh"), ("sh", "S"), ("ch", "C")):
+    # Двойные буквы — одна (до удаления гласных: в «COXIL» «к» и «кс» — разные согласные).
+    text = re.sub(r"(.)\1+", r"\1", re.sub(r"\bdr\b\.?", "doktor", fold_tr(text)))
+    pairs = (("ph", "f"), ("th", "t"), ("ck", "k"), ("qu", "kv"), ("gh", ""), ("sch", "sh"), ("sh", "S"), ("ch", "C"))
+    for pair, single in pairs:
         text = text.replace(pair, single)
-    text = re.sub(r"[^a-zSC0-9]|[aeiou]", "", text)
-    return re.sub(r"(.)\1+", r"\1", text)
+    return re.sub(r"[^a-zSC0-9]|[aeiou]", "", text)
 
 
 def _skeleton_cyrillic(text: str) -> str:
-    text = "".join(_CYR_TO_LAT.get(ch, ch if ch.isdigit() else "") for ch in text.lower().replace("ё", "е"))
-    return re.sub(r"(.)\1+", r"\1", text)
+    text = re.sub(r"(.)\1+", r"\1", text.lower().replace("ё", "е"))
+    return "".join(_CYR_TO_LAT.get(ch, ch if ch.isdigit() else "") for ch in text)
 
 
 def transliteration_matches(latin: str, cyrillic: str) -> bool:
@@ -624,13 +642,37 @@ def transliteration_matches(latin: str, cyrillic: str) -> bool:
     return match(0, 0)
 
 
-def _translated(text: Any, locale: str) -> str:
-    """«Что это» на нужном языке или '' (турецкие слова, латиница вне обозначений в RU)."""
+# Латинская буква-двойник внутри русского слова («Д-маннозa») — опечатка модели.
+_HOMOGLYPHS = str.maketrans("aceopxyAСEHKMOPTXB", "асеорхуАСЕНКМОРТХВ")
+_MIXED_WORD_RE = re.compile(r"[A-Za-zА-Яа-яЁё]*(?:[А-Яа-яЁё][A-Za-z]|[A-Za-z][А-Яа-яЁё])[A-Za-zА-Яа-яЁё]*")
+
+
+_SOURCE_SERVICE_WORDS = frozenset({
+    "takviye", "edici", "gida", "iceren", "kapsul", "tablet", "sase", "pastil", "ve", "ile", "icin", "plus",
+})
+
+
+def _translated(text: Any, locale: str, source_name: str = "") -> str:
+    """«Что это» на нужном языке или '' (турецкие слова, латиница вне обозначений в RU).
+
+    Латиница в RU допустима, если это слова самого источника: «SAM-E», «AHCC», «NMN».
+    """
     value = re.sub(r"\s+", " ", str(text or "")).strip(" ,.")
-    if not value or looks_untranslated_turkish(value):
+    if locale == "ru":
+        value = _MIXED_WORD_RE.sub(lambda m: m.group(0).translate(_HOMOGLYPHS), value)
+    # Буквы не из кириллицы и не из ASCII-латиницы («арị») — мусор транслитерации.
+    if not value or looks_untranslated_turkish(value) or re.search(r"[^\W\dA-Za-zА-Яа-яЁё_]", value):
         return ""
     if locale == "ru":
-        latin = [w for w in re.findall(r"[A-Za-z][A-Za-z0-9\-]*", value) if not _ALLOWED_LATIN.match(w)]
+        # Турецкие слова источника (словарь и служебные: «SURUP», «KAPSUL») — не обозначения.
+        source_words = {
+            w for w in fold_tr(source_name).split()
+            if w not in supplement_glossary.GLOSSARY and w not in _SOURCE_SERVICE_WORDS
+        }
+        latin = [
+            w for w in re.findall(r"[A-Za-z][A-Za-z0-9\-]*", value)
+            if not _ALLOWED_LATIN.match(w) and fold_tr(w) not in source_words
+        ]
         if latin and not CYRILLIC_RE.search(value):
             return ""
     elif CYRILLIC_RE.search(value):
@@ -714,7 +756,7 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
             translation_memory.remember(BRAND_NAMESPACE, {brand: {"ru": brand_ru, "en": brand}}, log=log_entry)
     product_answer = answer.get("product") if isinstance(answer.get("product"), dict) else {}
     product_text = {
-        locale: _without_piece_form(_translated(product_answer.get(locale), locale), pack, locale)
+        locale: _without_piece_form(_translated(product_answer.get(locale), locale, source_name), pack, locale)
         for locale in ("ru", "en")
     }
     if not product_text["ru"] and not _middle(source_name, pack)[len(brand):].strip():
