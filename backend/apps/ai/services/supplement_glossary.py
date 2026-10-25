@@ -148,7 +148,7 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "spirulina": ("спирулина", "spirulina", S),
     "kafein": ("кофеин", "caffeine", S),
     "elektrolit": ("электролиты", "electrolytes", S),
-    "jelatin": ("желатин", "gelatin", S),
+    "jelatin": ("желатиновый", "gelatin", D),
     "keratin": ("кератин", "keratin", S),
     "elastin": ("эластин", "elastin", S),
     "pepsin": ("пепсин", "pepsin", S),
