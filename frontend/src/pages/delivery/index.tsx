@@ -5,7 +5,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
-import { Plane, Truck, Ship, CreditCard, ShieldCheck } from 'lucide-react'
+import { Plane, Truck, Ship, CreditCard, ShieldCheck, MapPin, ArrowRight } from 'lucide-react'
 import { SITE_NAME, withSiteName, SITE_URL } from '../../lib/siteMeta'
 import Link from 'next/link'
 import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
@@ -62,6 +62,21 @@ export default function DeliveryPage({ pageData, footerSettings }: { pageData: a
                             {t('delivery_subtitle', 'Информация о способах доставки и оплаты. Мы предлагаем удобные и безопасные способы получения и оплаты ваших заказов по всему миру.')}
                         </p>
                     )}
+
+                    {/* Отдельная услуга: доставка из аптек по Стамбулу (TD-035) */}
+                    <Link
+                        href="/dostavka-lekarstv-stambul"
+                        className="group mb-12 flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-5 transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md"
+                    >
+                        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
+                            <MapPin className="h-6 w-6" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                            <span className="block font-bold text-main">{t('delivery_istanbul_title', 'Вы в Стамбуле?')}</span>
+                            <span className="block text-sm text-main/70">{t('delivery_istanbul_text', 'Привезём лекарства и БАДы из аптек Стамбула в отель или по адресу.')}</span>
+                        </span>
+                        <ArrowRight className="h-5 w-5 shrink-0 text-[var(--accent)] transition-transform group-hover:translate-x-1" />
+                    </Link>
 
                     {/* Анимированный блок способов доставки */}
                     <h2 className="text-2xl font-bold text-main mb-6 text-center">{t('delivery_methods', 'Способы доставки')}</h2>
