@@ -45,23 +45,12 @@ test('дата без часового пояса', () => {
   assert.equal(formatIsoDate(null), '')
 })
 
-test('JSON-LD: Drug без Offer, рецептурность и крошки с префиксом локали', () => {
-  const [drug, breadcrumbs] = buildDrugGroupSchemas({
+test('JSON-LD: без Drug (нет Offer и рейтинга — ошибка товара в Google), крошки с префиксом локали', () => {
+  const schemas = buildDrugGroupSchemas({
     siteUrl: 'https://mudaroba.com',
     localePrefix: '/en',
-    path: '/drugs/majezik',
-    heading: 'MAJEZIK',
-    latin: 'MAJEZIK',
-    ingredient: 'flurbiprofen',
-    description: 'd',
-    prescription: true,
     breadcrumbs: [{ href: '/', label: 'Home' }, { href: '/drugs/majezik', label: 'MAJEZIK' }],
   })
-  assert.equal(drug['@type'], 'Drug')
-  assert.equal(drug.offers, undefined)
-  assert.equal(drug.alternateName, undefined)
-  assert.equal(drug.activeIngredient, 'flurbiprofen')
-  assert.equal(drug.prescriptionStatus, 'https://schema.org/PrescriptionOnly')
-  assert.equal(drug.url, 'https://mudaroba.com/en/drugs/majezik')
-  assert.deepEqual(breadcrumbs.itemListElement.map((item) => item.item), ['https://mudaroba.com/en', 'https://mudaroba.com/en/drugs/majezik'])
+  assert.deepEqual(schemas.map((schema) => schema['@type']), ['BreadcrumbList'])
+  assert.deepEqual(schemas[0].itemListElement.map((item) => item.item), ['https://mudaroba.com/en', 'https://mudaroba.com/en/drugs/majezik'])
 })
