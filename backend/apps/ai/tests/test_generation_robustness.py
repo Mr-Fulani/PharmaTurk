@@ -25,7 +25,8 @@ def _llm_result(content, **extra):
 
 def test_llm_client_reports_truncated_json_instead_of_silent_empty_dict():
     client = LLMClient.__new__(LLMClient)
-    client.model = "gpt-4o-mini"
+    client.model = client.openai_model = "gpt-4o-mini"
+    client.claude = None
     client.pricing = {"gpt-4o-mini": {"input": 0.15, "cached_input": 0.075, "output": 0.60}}
     response = SimpleNamespace(
         choices=[SimpleNamespace(finish_reason="length", message=SimpleNamespace(content='{"ru": {"generated_'))],

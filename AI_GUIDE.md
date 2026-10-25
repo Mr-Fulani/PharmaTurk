@@ -408,6 +408,9 @@ docker compose exec backend poetry run python manage.py benchmark_ai 3 --auto-ap
 ## 7. Конфигурация
 
 ```dotenv
+# Claude — основной провайдер текста (если ключ задан), OpenAI — запасной.
+ANTHROPIC_API_KEY=
+AI_ANTHROPIC_MODEL=claude-haiku-5-5
 OPENAI_API_KEY=
 AI_MODEL=gpt-4o-mini
 AI_VISION_MODEL=gpt-4o-mini
@@ -427,6 +430,13 @@ R2_PUBLIC_URL=
 ```
 
 `cost_usd` считается по `AI_CONFIG["PRICING"]` с учётом кэшированной части промпта (`tokens.cached`). Для модели без цены в таблице стоимость записывается как 0 с предупреждением в логе — при смене `AI_MODEL` добавьте её тариф.
+
+**Провайдеры (с 25.10.2026).** Если задан `ANTHROPIC_API_KEY`, текст (`LLMClient.generate_content`) генерирует Claude
+(`AI_ANTHROPIC_MODEL`, по умолчанию Claude Haiku 5.5; `apps/ai/services/claude_client.py`): без размышлений, системный промпт
+кэшируется, JSON просится словами. Ошибка API после повторов SDK, отказ модели, пустой или неразобранный JSON — тот же запрос
+уходит в OpenAI (`AI_MODEL`). Какая модель ответила — `generate_content()["model"]` и `AIProcessingLog.llm_model`.
+Картинки (`analyze_images`), эмбеддинги и пакетный перевод абзацев (OpenAI Batch API) остаются на OpenAI. Ключ меняется
+в `.env` на сервере; контейнеры читают `.env` при старте — после правки нужен recreate backend и celery.
 
 Промпты построены так, чтобы работал кэш OpenAI: статические правила и схема ответа идут первыми и одинаковы для всех товаров типа, а данные товара, RAG-контекст и инструкция категории — в конце. В схеме ответа нет конкретных примеров значений (категория, материал, размер), которые модель могла бы скопировать. Температура: лекарства 0.2, остальные 0.3.
 

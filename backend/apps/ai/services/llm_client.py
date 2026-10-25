@@ -6,6 +6,7 @@ import random
 from typing import List, Dict, Optional, Union
 from openai import OpenAI, AsyncOpenAI
 from django.conf import settings
+from apps.ai.services.claude_client import ClaudeClient, ClaudeUnavailable, claude_usage
 from django.core.cache import cache
 import logging
 
@@ -14,10 +15,15 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     """
     Унифицированный клиент для LLM операций.
-    Поддержка OpenAI и локальных моделей (через настройку).
+
+    Текст генерирует Claude, если задан ANTHROPIC_API_KEY (generate_content),
+    при его сбое — OpenAI. Картинки, эмбеддинги и Batch API — OpenAI.
     """
     def __init__(self, async_mode: bool = False):
-        self.model = settings.AI_CONFIG.get('MODEL', 'gpt-4o-mini')
+        self.openai_model = settings.AI_CONFIG.get('MODEL', 'gpt-4o-mini')
+        self.claude = ClaudeClient() if getattr(settings, "ANTHROPIC_API_KEY", "") and not async_mode else None
+        # Модель, которая отвечает по умолчанию; фактическая — в результате generate_content["model"].
+        self.model = self.claude.model if self.claude else self.openai_model
         self.vision_model = settings.AI_CONFIG.get('VISION_MODEL', 'gpt-4o-mini')
         self.embedding_model = settings.AI_CONFIG.get('EMBEDDING_MODEL', 'text-embedding-3-small')
         
@@ -129,9 +135,15 @@ class LLMClient:
                 'finish_reason': str,
                 'truncated': bool,   # ответ обрезан по max_tokens
                 'json_error': bool,  # json_mode, но ответ не разобрался как JSON
+                'model': str,        # модель, которая ответила (Claude или запасной OpenAI)
             }
         """
         start_time = time.time()
+        if self.claude:
+            try:
+                return self._generate_with_claude(system_prompt, user_prompt, json_mode, max_tokens, start_time)
+            except ClaudeUnavailable:
+                pass
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -147,7 +159,7 @@ class LLMClient:
             try:
                 if json_mode:
                     response = self.client.chat.completions.create(
-                        model=self.model,
+                        model=self.openai_model,
                         messages=messages,
                         temperature=temperature,
                         max_tokens=max_tokens,
@@ -158,7 +170,7 @@ class LLMClient:
                     json_error = not content and bool(raw_text.strip())
                 else:
                     response = self.client.chat.completions.create(
-                        model=self.model,
+                        model=self.openai_model,
                         messages=messages,
                         temperature=temperature,
                         max_tokens=max_tokens
@@ -191,7 +203,7 @@ class LLMClient:
                 attempt += 1
 
         processing_time = int((time.time() - start_time) * 1000)
-        tokens, cost = self._usage_and_cost(self.model, response.usage)
+        tokens, cost = self._usage_and_cost(self.openai_model, response.usage)
 
         finish_reason = getattr(response.choices[0], "finish_reason", None) or ""
         if finish_reason == "length":
@@ -205,8 +217,49 @@ class LLMClient:
             'finish_reason': finish_reason,
             'truncated': finish_reason == "length",
             'json_error': json_error,
+            'model': self.openai_model,
         }
-        
+
+    def _generate_with_claude(self, system_prompt, user_prompt, json_mode, max_tokens, start_time) -> Dict:
+        """Ответ Claude в формате generate_content; непригодный → ClaudeUnavailable (уйдёт в OpenAI)."""
+        raw_text, response = self.claude.create(
+            system_prompt, user_prompt, json_mode=json_mode, max_tokens=max_tokens
+        )
+        truncated = response.stop_reason == "max_tokens"
+        content = self._parse_json_response(raw_text) if json_mode else raw_text
+        if json_mode and not content:
+            logger.warning("Claude: ответ не разобрался как JSON (stop_reason=%s) — запрос уходит в OpenAI", response.stop_reason)
+            raise ClaudeUnavailable("json")
+        prompt_tokens, cached, completion_tokens = claude_usage(response.usage)
+        tokens = {
+            'prompt': prompt_tokens,
+            'completion': completion_tokens,
+            'total': prompt_tokens + completion_tokens,
+            'cached': cached,
+        }
+        price = self.pricing.get(self.claude.model)
+        cost = 0.0
+        if price is None:
+            logger.warning("No AI pricing for model %s; cost_usd recorded as 0", self.claude.model)
+        else:
+            cost = (
+                (prompt_tokens - cached) * price.get('input', 0)
+                + cached * price.get('cached_input', price.get('input', 0))
+                + completion_tokens * price.get('output', 0)
+            ) / 1_000_000
+        return {
+            'content': content,
+            'tokens': tokens,
+            'cost_usd': round(cost, 6),
+            'processing_time_ms': int((time.time() - start_time) * 1000),
+            'raw_response': response.to_dict(),
+            # «length» — как у OpenAI: по нему пайплайн узнаёт обрезанный ответ.
+            'finish_reason': "length" if truncated else (response.stop_reason or ""),
+            'truncated': truncated,
+            'json_error': False,
+            'model': self.claude.model,
+        }
+
 
     def analyze_images(
         self,

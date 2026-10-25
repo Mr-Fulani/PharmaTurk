@@ -46,6 +46,7 @@ requests = "^2.31.0"
 weasyprint = "^70.0"
 django-nested-admin = "^4.1.6"
 curl-cffi = "^0.16.0"
+anthropic = "^1.17.0"
 
 [[tool.poetry.source]]
 name = "pytorch-cpu"
