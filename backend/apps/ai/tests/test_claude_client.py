@@ -135,3 +135,15 @@ def test_openai_disabled_blocks_embeddings_and_vision(llm, settings):
         llm.get_embedding("текст")
     with pytest.raises(OpenAIDisabled):
         llm.analyze_images([{"base64": "data:image/png;base64,AA"}], "prompt")
+
+
+def test_images_go_to_claude_as_base64_blocks_before_text(llm):
+    llm.claude.client.messages.create.return_value = _claude_response('{"ru": {}}')
+
+    llm.generate_content(system_prompt="Ты редактор.", user_prompt="Товар", max_tokens=500, images=["QUJD"])
+
+    content = llm.claude.client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert content == [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "QUJD"}},
+        {"type": "text", "text": "Товар"},
+    ]

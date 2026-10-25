@@ -131,10 +131,13 @@ class LLMClient:
         temperature: float = 0.7,
         max_tokens: int = 1000,
         max_retries: int = 10,
-        initial_backoff_ms: int = 250
+        initial_backoff_ms: int = 250,
+        images: Optional[List[str]] = None,
     ) -> Dict:
         """
         Генерация текста с полным логированием.
+
+        ``images`` (JPEG base64) видит только Claude; запасной OpenAI получает один текст.
         
         Returns:
             {
@@ -152,7 +155,7 @@ class LLMClient:
         start_time = time.time()
         if self.claude:
             try:
-                return self._generate_with_claude(system_prompt, user_prompt, json_mode, max_tokens, start_time)
+                return self._generate_with_claude(system_prompt, user_prompt, json_mode, max_tokens, start_time, images)
             except ClaudeUnavailable:
                 if not getattr(settings, "AI_OPENAI_ENABLED", True):
                     raise
@@ -233,10 +236,10 @@ class LLMClient:
             'model': self.openai_model,
         }
 
-    def _generate_with_claude(self, system_prompt, user_prompt, json_mode, max_tokens, start_time) -> Dict:
+    def _generate_with_claude(self, system_prompt, user_prompt, json_mode, max_tokens, start_time, images=None) -> Dict:
         """Ответ Claude в формате generate_content; непригодный → ClaudeUnavailable (уйдёт в OpenAI)."""
         raw_text, response = self.claude.create(
-            system_prompt, user_prompt, json_mode=json_mode, max_tokens=max_tokens
+            system_prompt, user_prompt, json_mode=json_mode, max_tokens=max_tokens, images=images
         )
         truncated = response.stop_reason == "max_tokens"
         content = self._parse_json_response(raw_text) if json_mode else raw_text

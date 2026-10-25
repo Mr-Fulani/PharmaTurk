@@ -786,3 +786,47 @@ def test_llm_russian_title_starting_with_brand_gets_type_first():
 
 def test_single_letter_size_is_not_model():
     assert _titles("PC-7315 M Kahve Erkek Sandalet", "shoes", category_slug="sandals")[0].model == ""
+# --- описание по фото для «пустых» источников (AI_RULE_VISION_DESCRIPTIONS) ---
+
+
+@pytest.mark.django_db
+def test_thin_source_gets_photo_description_when_enabled(settings):
+    settings.AI_RULE_VISION_DESCRIPTIONS = True
+    product = _shoe("rule-vision-shoe", "Torex BUCKY 6FX Beyaz Erkek Sneaker")
+    content = {
+        "ru": {"generated_description": "Низкие кроссовки со шнуровкой и перфорацией на мыске. Толстая рельефная подошва."},
+        "en": {"generated_description": "Low-top lace-up sneakers with a perforated toe. Thick ridged sole."},
+    }
+    llm = SimpleNamespace(model="test-model", generate_content=Mock(return_value=_llm_result(content)))
+    generator = _generator(llm)
+    generator.media_processor = SimpleNamespace(
+        get_image_for_analysis=Mock(side_effect=lambda url, max_size: {"url": url, "base64": "data:image/jpeg;base64,QUJD"})
+    )
+    generator._get_product_image_urls = lambda product: ["https://cdn/1.jpg", "https://cdn/2.jpg", "https://cdn/3.jpg"]
+
+    log = generator.process_product(product.id, options={"analyze_images": False, "force": True})
+
+    assert llm.generate_content.call_args.kwargs["images"] == ["QUJD", "QUJD"]
+    assert '"has_variants": false' in llm.generate_content.call_args.kwargs["user_prompt"]
+    assert log.generated_description.startswith("Низкие кроссовки со шнуровкой")
+    assert log.generated_title == "Мужские кроссовки BUCKY 6FX, белые"  # название — правилами
+    rule = log.raw_llm_response["rule_content"]
+    assert rule["description_source"] == "vision" and rule["images_used"] == 2
+    assert log.input_images_urls == ["https://cdn/1.jpg", "https://cdn/2.jpg"]
+    assert not AITranslationMemory.objects.exists()  # описание по фото не в памяти переводов
+
+
+@pytest.mark.django_db
+def test_photo_description_falls_back_to_fact_template_without_images(settings):
+    settings.AI_RULE_VISION_DESCRIPTIONS = True
+    product = _shoe("rule-vision-noimg", "Torex BUCKY 6FX Beyaz Erkek Sneaker")
+    llm = SimpleNamespace(model="test-model", generate_content=Mock(side_effect=AssertionError("LLM не нужен")))
+    generator = _generator(llm)
+    generator._get_product_image_urls = lambda product: []
+
+    log = generator.process_product(product.id, options={"analyze_images": False, "force": True})
+
+    assert log.status == AIProcessingStatus.COMPLETED, get_moderation_reasons(log)
+    rule = log.raw_llm_response["rule_content"]
+    assert rule["description_source"] == "template" and rule["vision_fallback"] == "no_images"
+    assert "Верх: искусственная кожа" in log.generated_description

@@ -28,8 +28,17 @@ class ClaudeClient:
         self.model = settings.AI_CONFIG.get("ANTHROPIC_MODEL") or "claude-haiku-5-5"
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY, max_retries=4, timeout=180.0)
 
-    def create(self, system_prompt: str, user_prompt: str, *, json_mode: bool, max_tokens: int):
-        """Один запрос к Claude → (текст, ответ SDK) или ClaudeUnavailable."""
+    def create(self, system_prompt: str, user_prompt: str, *, json_mode: bool, max_tokens: int, images=None):
+        """Один запрос к Claude → (текст, ответ SDK) или ClaudeUnavailable.
+
+        ``images`` — JPEG в base64 (без префикса data:), идут перед текстом запроса.
+        """
+        content = user_prompt
+        if images:
+            content = [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}
+                for data in images
+            ] + [{"type": "text", "text": user_prompt}]
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -43,7 +52,7 @@ class ClaudeClient:
                     "text": system_prompt + (JSON_INSTRUCTION if json_mode else ""),
                     "cache_control": {"type": "ephemeral"},
                 }],
-                messages=[{"role": "user", "content": user_prompt}],
+                messages=[{"role": "user", "content": content}],
             )
         except anthropic.AuthenticationError as exc:
             logger.error("Claude: ключ ANTHROPIC_API_KEY не принят (%s) — запрос уходит в OpenAI", exc)
