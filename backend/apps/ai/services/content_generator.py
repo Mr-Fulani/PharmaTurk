@@ -5,6 +5,7 @@ import re
 import math
 from typing import Any, Dict, Optional, List
 from decimal import Decimal
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 import uuid
@@ -64,6 +65,7 @@ from apps.ai.services.medicine_reference import (
     build_reference_translations,
     meaningful_special_notes,
     neutral_prescription_text,
+    without_card_boilerplate,
 )
 from apps.ai.services.medicine_title import (
     build_medicine_title,
@@ -177,11 +179,13 @@ class ContentGenerator:
         self.variant_detector = VariantContentDetector()
         from .result_applier import AIResultApplier
         self.result_applier = AIResultApplier()
-        try:
-            self.vector_store = QdrantManager()
-        except Exception as e:
-            logger.warning(f"Qdrant not available, RAG disabled: {e}")
-            self.vector_store = None
+        # RAG ищет по эмбеддингам OpenAI: без OpenAI подсказки категорий не строятся.
+        self.vector_store = None
+        if getattr(settings, "AI_OPENAI_ENABLED", True):
+            try:
+                self.vector_store = QdrantManager()
+            except Exception as e:
+                logger.warning(f"Qdrant not available, RAG disabled: {e}")
 
     def _options_to_processing_type(self, options: Optional[Dict]) -> str:
         """По опциям ТЗ определить processing_type."""
@@ -326,7 +330,10 @@ class ContentGenerator:
                 llm_model=self.llm.model,
             )
 
-        requested_image_analysis = (options or {}).get("analyze_images", True)
+        # Анализ картинок — OpenAI Vision: при AI_OPENAI_ENABLED=false не запрашивается.
+        requested_image_analysis = (options or {}).get("analyze_images", True) and getattr(
+            settings, "AI_OPENAI_ENABLED", True
+        )
         requested_use_images = (options or {}).get("use_images", True)
         use_images = (
             requested_image_analysis
@@ -1567,6 +1574,8 @@ class ContentGenerator:
             for field in ("generated_description", "seo_title", "seo_description"):
                 if field in payload:
                     payload[field] = neutral_prescription_text(payload[field])
+            if "generated_description" in payload:
+                payload["generated_description"] = without_card_boilerplate(payload["generated_description"])
         attrs = {
             key: input_data[key]
             for key in MEDICINE_SOURCE_ATTRIBUTE_KEYS
@@ -1655,9 +1664,13 @@ class ContentGenerator:
         - Если source_sections не пустой, НЕ используй source_description и НЕ пересказывай разделы.
         - source_summary_preview используй только для короткого generated_description.
         - Не возвращай длинные медицинские разделы: отдельный этап переведёт полный исходный текст.
+        - generated_description отвечает, что это за препарат: форма, действующее вещество и дозировка, путь введения;
+          фармакологическая группа и для чего применяется — только если это прямо сказано в source_summary_preview
+          или source_sections (своими словами источника, без новых фактов).
         - Если source содержит только регистрационные/ценовые данные, описание всё равно заполни:
-          укажи форму, действующее вещество, путь введения, объем, тип рецепта и срок годности, если они есть.
-        - Не включай цену, валюту, публичные цены, скидки, "активный статус", внешний ID и технические SGK-коды в описание.
+          форма, действующее вещество, дозировка, путь введения и объём.
+        - Не включай в описание оплату SGK и страховку, срок годности, страну производства, производителя, импорт,
+          цену, валюту, скидки, "активный статус", внешний ID и технические коды: это отдельные поля карточки.
         - Не пиши, что препарат лечит конкретное заболевание, если это заболевание явно не указано в source.
         - special_notes заполняй только переводом source_facts.special_notes; тип рецепта туда не пиши.
         - ru.generated_description и en.generated_description должны быть смысловыми переводами друг друга.

@@ -21,6 +21,7 @@ from apps.ai.services.medicine_memory import (
 from apps.ai.services.medicine_reference import (
     meaningful_special_notes,
     neutral_prescription_text,
+    without_card_boilerplate,
     translate_reference_field,
     translate_volume,
 )
@@ -1596,7 +1597,7 @@ def _process(special_notes, card_notes):
     card = {
         "ru": {
             "generated_description": "MAJEZIK — таблетки, покрытые плёночной оболочкой, 100 мг. "
-            "Препарат отпускается по белому рецепту и имеет срок годности 24 месяца.",
+            "Препарат отпускается по белому рецепту.",
             "seo_title": "MAJEZIK 100 мг",
             "seo_description": "MAJEZIK 100 мг, по белому рецепту.",
             "keywords": ["MAJEZIK"],
@@ -2053,3 +2054,25 @@ def test_medicine_source_names_command_reports_and_records_equivalents():
     found.refresh_from_db()
     assert found.base_product.external_data["source_name"] == found.external_data["source_name"] == DISAVER
     assert found.base_product.name == DISAVER_RU  # name не меняется
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Пилот Claude Haiku 25.10.2026: SGK, срок годности и страна — шум, суть остаётся.
+        ("LINCAINE — спрей для местного применения, раствор 10%, объём 50 мл. Действующее вещество: лидокаин. "
+         "Производится в Турции. Оплачивается SGK. Рецептурный препарат. Срок годности: 24 месяца.",
+         "LINCAINE — спрей для местного применения, раствор 10%, объём 50 мл. Действующее вещество: лидокаин. "
+         "Рецептурный препарат."),
+        ("PREXIBAY is an oral suspension of paracetamol 120 mg/5 ml, 150 ml. Covered by SGK. "
+         "Manufactured in Turkey. Shelf life is 36 months.",
+         "PREXIBAY is an oral suspension of paracetamol 120 mg/5 ml, 150 ml."),
+        # Убирать нечего — текст как есть; дробь «2,5 мг/2,5 мл» не режется как граница предложения.
+        ("VENTOSAL (сальбутамол) — раствор для ингаляций, 2,5 мг/2,5 мл. Расширяет бронхи.",
+         "VENTOSAL (сальбутамол) — раствор для ингаляций, 2,5 мг/2,5 мл. Расширяет бронхи."),
+        # Всё описание — шум: лучше оставить, чем стереть (проверка длины отправит в модерацию).
+        ("Оплачивается SGK.", "Оплачивается SGK."),
+    ],
+)
+def test_card_description_drops_sgk_shelf_life_and_origin(text, expected):
+    assert without_card_boilerplate(text) == expected

@@ -116,3 +116,22 @@ def test_claude_client_reads_model_from_settings(settings):
     settings.AI_CONFIG = {**settings.AI_CONFIG, "ANTHROPIC_MODEL": "claude-sonnet-5-5"}
 
     assert claude_client.ClaudeClient().model == "claude-sonnet-5-5"
+
+
+def test_openai_disabled_claude_failure_is_not_sent_to_openai(llm, settings):
+    settings.AI_OPENAI_ENABLED = False
+    llm.claude.client.messages.create.return_value = _claude_response("", stop_reason="refusal")
+
+    with pytest.raises(claude_client.ClaudeUnavailable):
+        llm.generate_content(system_prompt="s", user_prompt="u")
+    llm.client.chat.completions.create.assert_not_called()
+
+
+def test_openai_disabled_blocks_embeddings_and_vision(llm, settings):
+    from apps.ai.services.llm_client import OpenAIDisabled
+
+    settings.AI_OPENAI_ENABLED = False
+    with pytest.raises(OpenAIDisabled):
+        llm.get_embedding("текст")
+    with pytest.raises(OpenAIDisabled):
+        llm.analyze_images([{"base64": "data:image/png;base64,AA"}], "prompt")

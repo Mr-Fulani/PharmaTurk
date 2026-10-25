@@ -119,6 +119,28 @@ def neutral_prescription_text(text: Any) -> Any:
     return _RX_COLOR_RE.sub(drop_color, text)
 
 
+# Справочные поля, которые в описании карточки — шум для покупателя (Haiku 25.10.2026 писал их
+# в 44 описаниях из 46): страховка SGK, срок годности, страна и производство, импорт.
+_BOILERPLATE_SENTENCE_RE = re.compile(
+    r"SGK|страхов|insurance|reimburs|covered by|срок\w* годност|shelf[ -]life|"
+    r"произвед[её]н|производ(?:ство|ится|итель)|manufactur|produced in|made in|импортн|imported|"
+    r"страна происхождения|country of origin",
+    re.IGNORECASE,
+)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZА-ЯЁ0-9«\"(])")
+
+
+def without_card_boilerplate(text: Any) -> Any:
+    """Описание карточки без предложений про SGK, срок годности, страну и производство.
+
+    Если убирать нечего или после этого ничего не остаётся — текст как есть.
+    """
+    if not isinstance(text, str) or not _BOILERPLATE_SENTENCE_RE.search(text):
+        return text
+    kept = [sentence for sentence in _SENTENCE_SPLIT_RE.split(text.strip()) if not _BOILERPLATE_SENTENCE_RE.search(sentence)]
+    return " ".join(kept) if kept else text
+
+
 # ── Особые сведения: бейджи «ÖZEL BİLGİLER» ilacfiyati. У части бейджей на
 # самом сайте нет предмета: с чем «не применять совместно», в чём «осторожность»,
 # чего «не использовать, пока не известна чувствительность» (это про транспорт).

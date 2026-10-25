@@ -982,6 +982,8 @@ AI_R2_SETTINGS = {
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 # Claude — основной провайдер генерации текста (apps.ai.services.claude_client); пусто — только OpenAI.
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# false — сайт не обращается к OpenAI совсем: нет запасного пути для текста, RAG-эмбеддингов и анализа картинок.
+AI_OPENAI_ENABLED = env.bool("AI_OPENAI_ENABLED", default=True)
 
 # CoinRemitter (crypto payments)
 COINREMITTER_API_KEY = env("COINREMITTER_API_KEY", default="")

@@ -12,6 +12,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+class OpenAIDisabled(RuntimeError):
+    """AI_OPENAI_ENABLED=false: запрос к OpenAI не отправляется."""
+
+
+def _ensure_openai_enabled(purpose: str) -> None:
+    if not getattr(settings, "AI_OPENAI_ENABLED", True):
+        raise OpenAIDisabled(f"OpenAI выключен (AI_OPENAI_ENABLED=false): {purpose} не выполняется")
+
+
 class LLMClient:
     """
     Унифицированный клиент для LLM операций.
@@ -83,6 +93,7 @@ class LLMClient:
 
     def get_embedding(self, text: str) -> List[float]:
         """Получить векторное представление текста."""
+        _ensure_openai_enabled("эмбеддинг")
         text = text[:8000]  # Лимит токенов
         
         response = self.client.embeddings.create(
@@ -143,7 +154,9 @@ class LLMClient:
             try:
                 return self._generate_with_claude(system_prompt, user_prompt, json_mode, max_tokens, start_time)
             except ClaudeUnavailable:
-                pass
+                if not getattr(settings, "AI_OPENAI_ENABLED", True):
+                    raise
+        _ensure_openai_enabled("генерация текста")
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -276,6 +289,7 @@ class LLMClient:
             images: список обработанных изображений с base64
             prompt: текстовый промпт для анализа
         """
+        _ensure_openai_enabled("анализ изображений")
         start_time = time.time()
         
         # Формируем content для API
