@@ -51,12 +51,23 @@ _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES = {
             "инъекция",
             "суппозиторий",
             "суспензия",
+            # Упаковка лекарства, а не товар медтехники «Шприцы» (партия Claude 1047, 25.10.2026).
+            "шприц",
+            "шприцы",
+            "шприца",
+            "шприцев",
+            "шприц-ручка",
+            "шприц-ручки",
         }
     ),
     "en": frozenset(
         {
             "tablet",
             "tablets",
+            "syringe",
+            "syringes",
+            "pen",
+            "pens",
             "capsule",
             "capsules",
             "syrup",
@@ -267,6 +278,7 @@ _MEDICINE_RU_TITLE_TRANSLITERATIONS = re.compile(
 _MEDICINE_RU_TITLE_LATIN_OK = frozenset({
     "IV", "IM", "SC", "SR", "XR", "MR", "CR", "XL", "LA", "ER", "EC", "ODT", "RETARD", "FORTE",
     "FORT", "PLUS", "MITE", "DEPOT", "DUO", "JUNIOR", "MAX",
+    "XA",  # «анти-Xa МЕ» у эноксапарина
 })
 
 

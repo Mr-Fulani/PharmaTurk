@@ -683,6 +683,9 @@ def test_title_inn_salt_cases_and_garbage():
         ("OMIZOL 40 MG I.V. INFUZYONLUK COZELTI HAZIRLAMAK ICIN TOZ (1 ADET)",
          "OMIZOL 40 мг, порошок для приготовления раствора для внутривенных инфузий, 1 шт.",
          "OMIZOL 40 mg, powder for solution for intravenous infusion, 1 pc"),
+        ("DIKLORON 50 MG 20 ENTERIK KAPLI FILM TABLET",
+         "DIKLORON 50 мг, кишечнорастворимые таблетки, покрытые плёночной оболочкой, 20 шт.",
+         "DIKLORON 50 mg, gastro-resistant film-coated tablets, 20 pcs"),
         # Партия 8: жевательная резинка, спрей для слизистой рта, дозированный назальный спрей,
         # небулайзер и ингаляторы, ретард-таблетки с оболочкой, микропеллеты, опечатки и дефисы источника.
         ('NICORETTE FRESHMINT 2 MG 30 NANELI SAKIZ',
@@ -2077,6 +2080,8 @@ def test_medicine_source_names_command_reports_and_records_equivalents():
         ("Рецептурный препарат, оплачивается SGK.", "Рецептурный препарат."),
         ("BUSICOD — сироп, 15 мг/5 мл. Препарат выпускается в Турции и отпускается по рецепту.",
          "BUSICOD — сироп, 15 мг/5 мл."),
+        ("FULSAC — капсулы с флуоксетином 20 мг. Упаковка содержит 16 капсул. Турция, отпускается по рецепту.",
+         "FULSAC — капсулы с флуоксетином 20 мг. Упаковка содержит 16 капсул. Отпускается по рецепту."),
         ("PREXIBAY is an oral suspension of paracetamol 120 mg/5 ml, 150 ml. Covered by SGK. "
          "Manufactured in Turkey. Shelf life is 36 months.",
          "PREXIBAY is an oral suspension of paracetamol 120 mg/5 ml, 150 ml."),

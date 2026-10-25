@@ -391,7 +391,10 @@ FORM_PHRASES.update({
         "кишечнорастворимые капсулы с микропеллетами", "gastro-resistant micropellet capsules"
     ),
     "sac losyonu": ("лосьон для кожи головы", "scalp lotion"),
-    # Партия Claude 200 (25.10.2026).
+    # Партия Claude 200 и 1047 (25.10.2026).
+    "enterik kapli film tablet": ("кишечнорастворимые таблетки, покрытые плёночной оболочкой", "gastro-resistant film-coated tablets"),
+    "agizda cozunebilir tablet": ("таблетки, диспергируемые в полости рта", "orodispersible tablets"),
+    "enjeksiyon toz": ("порошок для приготовления раствора для инъекций", "powder for solution for injection"),
     "iv infuzyonluk cozelti hazirlamak icin toz": (
         "порошок для приготовления раствора для внутривенных инфузий", "powder for solution for intravenous infusion"
     ),

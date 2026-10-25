@@ -220,6 +220,19 @@ def test_medicine_title_substance_and_turkish_percent_are_not_false_mismatches()
         "D-COLEFOR 1000 МЕ, мягкие капсулы, 100 шт.",
         "D-COLEFOR 1000 IU, soft capsules, 100 pcs",
     ) == []
+    # Партия Claude 1047: «анти-Xa» и шприцы — не брак и не категория медтехники «Шприцы».
+    Category.objects.create(name="Шприцы", slug="syringes-p8",
+                            external_data={"semantic_policy": {"aliases": {"ru": ["шприцы"], "en": ["syringes"]}}})
+    assert reasons(
+        "CLEXANE 4000 ANTI-XA IU/0,4 ML 10 KULLANIMA HAZIR ENJEKTOR",
+        "CLEXANE (эноксапарин) 4000 анти-Xa МЕ/0,4 мл, в предварительно заполненном шприце, 10 шт.",
+        "CLEXANE (enoxaparin) 4000 anti-Xa IU/0.4 ml, pre-filled syringe, 10 pcs",
+    ) == []
+    assert reasons(
+        "SIMLANDI 40 MG/0.4 ML ENJEKSIYONLUK COZELTI ICEREN KULLANIMA HAZIR ENJEKTOR (2 ENJEKTOR)",
+        "SIMLANDI (адалимумаб) 40 мг/0,4 мл, раствор для инъекций, 2 шприца",
+        "SIMLANDI (adalimumab) 40 mg/0.4 ml, solution for injection, 2 syringes",
+    ) == []
     # Вещество вне скобок и потерянная дозировка по-прежнему ловятся.
     assert "title_category_mismatch" in reasons(
         "EISEFERON 40 MG/5 ML ORAL COZELTI 10 KASIK",
