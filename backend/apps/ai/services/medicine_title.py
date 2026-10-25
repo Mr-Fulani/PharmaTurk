@@ -328,6 +328,13 @@ FORM_PHRASES.update({
     ),
     "yavas salimli tablet": ("таблетки пролонгированного высвобождения", "prolonged-release tablets"),
     "kapli tablet": ("таблетки, покрытые оболочкой", "coated tablets"),
+    # Партия 7 (25.10.2026): формы самых востребованных лекарств, на которых шаблон сдавался.
+    "deri merhemi": ("мазь для наружного применения", "ointment for cutaneous use"),
+    "infuzyon solusyonu": ("раствор для инфузий", "solution for infusion"),
+    "scalp cozelti": ("раствор для кожи головы", "scalp solution"),
+    "oral suspansiyon icin kuru toz": (
+        "порошок для приготовления суспензии для приёма внутрь", "powder for oral suspension"
+    ),
 })
 # Флакон/ампула как форма, если та же упаковка указана и счётом («ICEREN FLAKON (1 FLAKON)»),
 # не повторяется: остаётся «1 флакон».
@@ -394,6 +401,15 @@ _SPLIT_FORM_RE = re.compile(
 
 def _expand_source(rest: str, legacy: bool = False) -> str:
     """Сокращения → полные слова; ``legacy`` — как до 24.10.2026, для бренда абзацев."""
+    if not legacy:
+        # «I.M.ENJEKSIYONLUK» — путь введения вплотную к форме.
+        rest = re.sub(r"(?<![a-z])i\.m\.(?=[a-z])", " im ", rest)
+        # «KREON KAPSUL 25000 300 MG» — число единиц липазы между формой и дозой.
+        rest = re.sub(r"^(kapsul|tablet) (\d{4,6}) (?=\d)", r"\2 u \1 ", rest)
+        # «ENTERIK KAPLI 50 MG 20 TABLET» — форма, разорванная дозировкой.
+        rest = re.sub(
+            r"^(enterik kapli|film kapli) (\d+(?:[.,]\d+)?\s*mg) (\d+) (tablet)\b", r"\2 \3 \1 \4", rest
+        )
     for pattern, full in _ABBREVIATION_RES if legacy else _ABBREVIATION_RES + _TITLE_ABBREVIATION_RES:
         rest = pattern.sub(full, rest)
     if not legacy:
@@ -708,7 +724,15 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
         )
         substance = _SUBSTANCE_RE.match(rest)
         word = re.match(r"[a-z]+\b", rest)
-        if multi:
+        # «KLAMOKS BID FORT 400/57 SUSPANSIYON …» — дозировки веществ без единицы перед суспензией,
+        # порошком или сиропом (у таблеток «75/100» бывает и фасовкой — не угадываем).
+        bare_ratio = re.match(rf"({_NUM}/{_NUM})\s+(?=(?:oral )?(?:suspansiyon|surup|kuru toz|toz)\b)", rest)
+        if bare_ratio and not strengths["ru"]:
+            for locale in ("ru", "en"):
+                strengths[locale].append("/".join(_num(part, locale) for part in bare_ratio.group(1).split("/")))
+            strength_joiners.append(joiner)
+            rest = rest[bare_ratio.end():]
+        elif multi:
             count, size, unit = multi.groups()
             unit = "g" if unit == "gr" else unit
             volumes["ru"].append(f"{count} шт. по {_num(size, 'ru')} {_UNITS[unit][0]}")
@@ -822,7 +846,11 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
     if route and any(key.startswith("oral") for key in form_keys):
         return None
     # Граммы у мазей/кремов/гелей/порошков — масса упаковки, у прочих — дозировка.
-    grams_are_volume = bool(forms) and forms[0][1].split()[-1] in _MASS_FORMS
+    # «ointment for cutaneous use» — мазь, хотя последнее слово не форма; порошки — по последнему слову.
+    form_words = forms[0][1].split() if forms else []
+    grams_are_volume = bool(forms) and (
+        form_words[-1] in _MASS_FORMS or form_words[0] in {"ointment", "cream", "gel", "lotion"}
+    )
     for locale in ("ru", "en"):
         (volumes if grams_are_volume else strengths)[locale][:0] = grams[locale]
     if not grams_are_volume:

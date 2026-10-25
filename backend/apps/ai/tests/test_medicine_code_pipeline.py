@@ -651,6 +651,27 @@ def test_title_inn_salt_cases_and_garbage():
         ("TALCID FORTE 1 GR 24 CIG.TABLETI", "TALCID FORTE 1 г, жевательные таблетки, 24 шт.",
          "TALCID FORTE 1 g, chewable tablets, 24 pcs"),
         ("MADECASSOL 10 MG/1 GR 40 GR POMAD", "MADECASSOL 10 мг/1 г, мазь, 40 г", "MADECASSOL 10 mg/1 g, ointment, 40 g"),
+        # Партия 7: мазь для кожи, раствор для инфузий и для кожи головы, I.M. вплотную к форме,
+        # «ENTERIK KAPLI 50 MG 20 TABLET», «400/57» без единицы перед суспензией, «KAPSUL 25000».
+        ("THIOCILLINE 500 IU/G + 5 MG/G DERI MERHEMI 30 G",
+         "THIOCILLINE 500 МЕ/г + 5 мг/г, мазь для наружного применения, 30 г",
+         "THIOCILLINE 500 IU/g + 5 mg/g, ointment for cutaneous use, 30 g"),
+        ("PAROL 10 MG/ML INFUZYON SOLUSYONU", "PAROL 10 мг/мл, раствор для инфузий", "PAROL 10 mg/ml, solution for infusion"),
+        ("PSORCUTAN 0,05 MG/ML SCALP COZELTI", "PSORCUTAN 0,05 мг/мл, раствор для кожи головы",
+         "PSORCUTAN 0.05 mg/ml, scalp solution"),
+        ("MUSCOFLEX 4 MG/2 ML I.M.ENJEKSIYONLUK COZELTI ICEREN AMPUL (6 AMPUL)",
+         "MUSCOFLEX 4 мг/2 мл, раствор для инъекций (в/м), 6 ампул",
+         "MUSCOFLEX 4 mg/2 ml, solution for injection (IM), 6 ampoules"),
+        ("VOLTAREN ENTERIK KAPLI 50 MG 20 TABLET", "VOLTAREN 50 мг, кишечнорастворимые таблетки, 20 шт.",
+         "VOLTAREN 50 mg, gastro-resistant tablets, 20 pcs"),
+        ("KLAMOKS BID FORT 400/57 SUSPANSIYON HAZIRLAMAK ICIN KURU TOZ 140 ML",
+         "KLAMOKS BID FORT 400/57, порошок для приготовления суспензии, 140 мл",
+         "KLAMOKS BID FORT 400/57, powder for suspension, 140 ml"),
+        ("KLAMOKS ES 600/42,9 MG ORAL SUSPANSIYON ICIN KURU TOZ 100 ML",
+         "KLAMOKS ES 600/42,9 мг, порошок для приготовления суспензии для приёма внутрь, 100 мл",
+         "KLAMOKS ES 600/42.9 mg, powder for oral suspension, 100 ml"),
+        ("KREON KAPSUL 25000 300 MG 100 KAPSUL", "KREON 25000 ЕД 300 мг, капсулы, 100 шт.",
+         "KREON 25000 U 300 mg, capsules, 100 pcs"),
         # Не разобрать новым словарём — бренд по прежнему, название как раньше.
         ("PRIMEFLEKS RINGER 0,86 G+0,03 G+0,033 G/100 ML I.V. INFUZYONLUK COZELTI (1000 ML-SETSIZ)",
          "PRIMEFLEKS RINGER 0,86 г + 0,03 г + 0,033 г/100 мл, раствор для внутривенных инфузий, без системы, 1000 мл",
@@ -667,6 +688,7 @@ def test_title_dialysis_infusion_lozenge_patch_solvent_forms(name, ru, en):
         "LAFLEKS %5 DEKSTROZ %09 SODYUM KLORUR COZELTISI 1000 ML (SETSIZ)",  # «%09»: 9% или 0,9% — не угадываем
         "PKU COOLER 15 KIRMIZI (30x130 ML)",  # «KIRMIZI» (вкус) — не бренд
         "PRIORIX 1 SIRIGA + FLAKON",
+        "CATAPRESAN 75/100 TABLET",  # «75/100» у таблеток — не обязательно дозировки веществ
     ],
 )
 def test_title_not_built_from_ambiguous_source(name):
