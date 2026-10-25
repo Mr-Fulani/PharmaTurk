@@ -321,6 +321,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   <li><Link href="/privacy" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_privacy', 'Политика конфиденциальности')}</Link></li>
                 </>
               )}
+              <li><Link href="/dostavka-lekarstv-stambul" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_istanbul_delivery', 'Доставка лекарств по Стамбулу')}</Link></li>
               <li><Link href="/blog" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_useful_articles', 'Полезные статьи')}</Link></li>
             </ul>
           </div>
