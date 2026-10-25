@@ -15,6 +15,13 @@ META_TITLE_MAX = 70
 META_DESCRIPTION_MAX = 160
 # В названии — не больше двух описательных слов: остальные факты в описании.
 TITLE_DESCRIPTORS_MAX = 2
+FACT_DESCRIPTION_TAIL = {
+    "ru": "Оригинальный товар из Турции, заказ через менеджера Mudaroba.",
+    "en": "Original product from Turkey, ordered via a Mudaroba manager.",
+}
+# Турецкое в русском названии: буквы, которых нет в шведских/немецких сериях
+# (IKEA LÖNSET), и суффикс фасовки «3'lü» / транслитом «3'ЛЮ».
+TURKISH_LEFTOVER_RE = re.compile(r"[çğışÇĞİŞ]|'[lL][iıuüIİUÜ]\b|'Л[ЮИУ]\b")
 # Семейства, где название без бренда/модели бессмысленно («Духи»): нужен LLM.
 _REQUIRES_IDENTITY = frozenset({"perfumery"})
 
@@ -57,16 +64,26 @@ def _title_descriptors(facts: ProductFacts) -> list[tuple[str, str]]:
     return [pair for pair in facts.descriptors if pair in chosen]
 
 
-def build_titles(facts: ProductFacts) -> dict[str, str]:
-    """RU/EN-названия; отсутствующий язык — пустая строка (его дополнит LLM)."""
+def build_titles(facts: ProductFacts, *, ignore_untranslated: bool = False) -> dict[str, str]:
+    """RU/EN-названия; отсутствующий язык — пустая строка (его дополнит LLM).
+
+    ``ignore_untranslated`` — запасное название без непереведённых слов, когда
+    LLM-название не годится.
+    """
     if facts.product_type == "islamic_clothing":
         return {"ru": "", "en": ""}  # названия — подписи Instagram, нужен пересказ
     if facts.russian_name:
         # Название уже на русском (Zara RU, прошлый AI, ручные правки): RU
         # сохраняем, EN собираем из фактов при известном типе, иначе — LLM.
         # Цвета в RU-названии нет — не добавляем его и в EN.
-        return {"ru": facts.russian_name, "en": _english_title(facts, with_color=False) if facts.kind else ""}
-    if facts.kind is None or facts.untranslated:
+        # Бренда в русском названии нет («Кепка с вышивкой») — дописываем в конец.
+        ru = facts.russian_name
+        if TURKISH_LEFTOVER_RE.search(ru):
+            ru = ""  # «Мужские боксеры Soft Boxer 3'lü Paket» — переведёт LLM
+        elif facts.brand and vocab.fold(facts.brand) not in vocab.fold(ru):
+            ru = f"{ru} {facts.brand}"
+        return {"ru": ru, "en": _english_title(facts, with_color=False) if facts.kind else ""}
+    if facts.kind is None or (facts.untranslated and not ignore_untranslated):
         return {"ru": "", "en": ""}
     identity = _identity(facts)
     if facts.product_type in _REQUIRES_IDENTITY and not identity:
@@ -151,8 +168,8 @@ def build_fact_description(facts: ProductFacts, titles: dict[str, str]) -> dict[
     if facts.color:
         ru.append(f"Цвет: {vocab.ru_masculine(facts.color.ru)}.")
         en.append(f"Color: {facts.color.en.lower()}.")
-    ru.append("Оригинальный товар из Турции, заказ через менеджера Mudaroba.")
-    en.append("Original product from Turkey, ordered via a Mudaroba manager.")
+    ru.append(FACT_DESCRIPTION_TAIL["ru"])
+    en.append(FACT_DESCRIPTION_TAIL["en"])
     # Язык без названия пропускается (описание без типа товара бессмысленно).
     result = {}
     if titles.get("ru"):
@@ -162,36 +179,53 @@ def build_fact_description(facts: ProductFacts, titles: dict[str, str]) -> dict[
     return result
 
 
-def _first_sentence(description: str) -> str:
+def _sentences(description: str) -> list[str]:
     plain = re.sub(r"<[^>]+>", " ", str(description or ""))
     plain = re.sub(r"\s+", " ", plain).strip()
-    match = re.match(r"(.+?[.!?])(\s|$)", plain)
-    return match.group(1) if match else plain
+    return [part.strip() for part in re.findall(r"[^.!?]+[.!?]?", plain) if part.strip()]
+
+
+def _lead(description: str, title: str, locale: str) -> str:
+    """Первое предложение описания, которое не повторяет название и не служебное."""
+    base = vocab.fold(title.split(", ")[0])
+    for sentence in _sentences(description):
+        if vocab.fold(sentence).rstrip(".") == base or sentence == FACT_DESCRIPTION_TAIL[locale]:
+            continue
+        if sentence.startswith(("Цвет:", "Color:")):
+            continue  # цвет уже в названии
+        return sentence
+    return ""
+
+
+def _meta_title(title: str, long_template: str, short_template: str) -> str:
+    """Полное название с «купить…», затем без цвета, затем короткая форма без цвета."""
+    base = title.split(", ")[0]
+    for candidate in (long_template.format(title=title), long_template.format(title=base), short_template.format(title=base)):
+        if len(candidate) <= META_TITLE_MAX:
+            return candidate
+    return truncate_at_word(short_template.format(title=base), META_TITLE_MAX)
 
 
 def build_seo(facts: ProductFacts, titles: dict[str, str], descriptions: dict[str, str]) -> dict[str, dict[str, Any]]:
-    """meta_title / meta_description / keywords по шаблону сайта."""
+    """meta_title / meta_description / keywords по шаблону сайта.
+
+    Description начинается с названия в именительном падеже («Заказать
+    мужская футболка» было ошибкой), затем факт «из Турции» и первое
+    содержательное предложение описания.
+    """
     templates = {
-        "ru": ("{title} — купить с доставкой из Турции", "{title} из Турции", "Заказать {title} из Турции. {lead}"),
-        "en": ("{title} — buy with delivery from Turkey", "{title} from Turkey", "Order {title} from Turkey. {lead}"),
+        "ru": ("{title} — купить с доставкой из Турции", "{title} из Турции", "{title}. Оригинальный товар из Турции с доставкой."),
+        "en": ("{title} — buy with delivery from Turkey", "{title} from Turkey", "{title}. Original product from Turkey with delivery."),
     }
     result: dict[str, dict[str, Any]] = {}
-    for locale, (long_title, short_title, description_template) in templates.items():
+    for locale, (long_title, short_title, description_head) in templates.items():
         title = str(titles.get(locale) or "").strip()
         if not title:
             continue
-        meta_title = long_title.format(title=title)
-        if len(meta_title) > META_TITLE_MAX:
-            meta_title = short_title.format(title=title)
-        meta_title = truncate_at_word(meta_title, META_TITLE_MAX)
-        lead = _first_sentence(descriptions.get(locale) or "")
-        if vocab.fold(lead).rstrip(".") == vocab.fold(title.split(", ")[0]):
-            lead = ""
-        meta_description = truncate_at_word(
-            description_template.format(title=title, lead=lead).strip(), META_DESCRIPTION_MAX
-        )
+        lead = _lead(descriptions.get(locale) or "", title, locale)
+        meta_description = truncate_at_word(f"{description_head.format(title=title)} {lead}".strip(), META_DESCRIPTION_MAX)
         result[locale] = {
-            "seo_title": meta_title,
+            "seo_title": _meta_title(title, long_title, short_title),
             "seo_description": meta_description,
             "keywords": build_keywords(facts, locale, title),
         }

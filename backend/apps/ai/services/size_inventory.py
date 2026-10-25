@@ -45,6 +45,7 @@ _SIZE_TOKEN_RE = re.compile(
     r")(?![A-Za-zА-Яа-яЁё0-9])",
     re.IGNORECASE,
 )
+_PLUS_SIZE_RE = re.compile(r"больш\w*\s+размер\w*|plus[\s-]size|büyük\s+beden", re.IGNORECASE)
 _STOCK_URGENCY_RE = re.compile(
     r"(?:"
     r"\b(?:поспешите|успейте)\b|"
@@ -430,15 +431,17 @@ def strip_size_inventory_sentences(text: Any) -> str:
         candidate = sentence.strip()
         if not candidate:
             continue
-        has_context = bool(_SIZE_CONTEXT_RE.search(candidate))
+        # «Футболка большого размера» — тип товара, а не перечень размеров в наличии.
+        checked = _PLUS_SIZE_RE.sub(" ", candidate)
+        has_context = bool(_SIZE_CONTEXT_RE.search(checked))
         has_size_token = any(
             normalize_size_value(match.group(0), "clothing")
-            for match in _SIZE_TOKEN_RE.finditer(candidate)
+            for match in _SIZE_TOKEN_RE.finditer(checked)
         )
         inventory_wording = bool(
             re.search(
                 r"(?:в\s+наличии|остал(?:ся|ись|ось)|доступн|available|in\s+stock|размер|sizes?|beden)",
-                candidate,
+                checked,
                 re.IGNORECASE,
             )
         )

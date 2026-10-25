@@ -23,6 +23,7 @@ from apps.ai.services.medicine_title import (
     paragraph_brand,
     title_brand,
 )
+from apps.ai.services.rules.facts import supplier_code_tokens
 from apps.ai.services.rules.vocab import fold, generic_title_words
 from apps.ai.services import supplement_content
 from apps.ai.services.size_inventory import (
@@ -375,6 +376,11 @@ def _alias_specificity(value: str) -> tuple[int, int]:
     return len(normalized.split()), len(normalized)
 
 
+_TURKISH_ONLY_LETTERS_RE = re.compile(r"[ÇĞİŞçğış]")
+# «100ML» в названии Zara — объём, в RU-названии он «100 мл».
+_VOLUME_TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)?(?:ML|GR|G|CM|MM|KG)")
+
+
 def _identity_tokens(value: Any) -> set[str]:
     # Stable model/series tokens, not ordinary title words.
     result: set[str] = set()
@@ -387,7 +393,7 @@ def _identity_tokens(value: Any) -> set[str]:
             continue
         # Код «J5SM-TST7325» санитайзер вырезает из любого названия
         # (strip_price_and_codes_from_title) — требовать его нельзя.
-        if re.fullmatch(r"[A-Z0-9]{2,}-[A-Z0-9]+", upper):
+        if re.fullmatch(r"(?=[A-Z-]*\d)[A-Z0-9]{2,}-[A-Z0-9]+", upper):
             continue
         is_alphanumeric_model = any(char.isdigit() for char in token) and any(
             char.isalpha() for char in token
@@ -524,6 +530,7 @@ class CategorySemanticIndex:
                 category._state.fields_cache["parent"] = None
 
         self._ancestor_cache: dict[int, frozenset[int]] = {}
+        self._compatible_alias_cache: dict[tuple[int, str], frozenset[str]] = {}
         self._policy_cache: dict[tuple[int, str], Any] = {}
         self._alias_cache: dict[str, tuple[tuple[int, str, str], ...]] = {}
 
@@ -568,8 +575,20 @@ class CategorySemanticIndex:
             return best
 
         current_lineage_ids = self._ancestor_ids(current_id)
-        for candidate_id, alias, normalized_alias in self._aliases(locale):
-            if candidate_id in current_lineage_ids:
+        rows = self._aliases(locale)
+        # Название совместимой категории (своя линия или подраздел) не конфликт,
+        # даже если так же называется раздел другого дерева: «кроссовки» в «Обуви»
+        # — это «Обувь → Кроссовки», а не «Спорт → Кроссовки».
+        key = (current_id, locale)
+        if key not in self._compatible_alias_cache:
+            self._compatible_alias_cache[key] = frozenset(
+                normalized_alias
+                for candidate_id, _alias, normalized_alias in rows
+                if candidate_id in current_lineage_ids or current_id in self._ancestor_ids(candidate_id)
+            )
+        compatible_aliases = self._compatible_alias_cache[key]
+        for candidate_id, alias, normalized_alias in rows:
+            if candidate_id in current_lineage_ids or normalized_alias in compatible_aliases:
                 continue
             # A more specific descendant is compatible with the current kind.
             if current_id in self._ancestor_ids(candidate_id):
@@ -783,7 +802,16 @@ class SemanticValidator:
             # («TEE», «SNEAKER», «BEYAZ») — не идентичность, а бренд/модель
             # («LC WAIKIKI» → «LC Waikiki») сверяем без учёта регистра.
             generic = generic_title_words()
-            original_tokens = {token for token in original_tokens if fold(token) not in generic}
+            # Артикулы поставщика правила в название не пишут (rules/facts.py).
+            codes = supplier_code_tokens(source_name)
+            # Слово с чисто турецкими буквами («GÜNEŞ», «DİKDÖRTGEN») — не модель:
+            # класс символов _identity_tokens их режет на обрывки («GÜNE»).
+            latin_name = " ".join(word for word in str(source_name or "").split() if not _TURKISH_ONLY_LETTERS_RE.search(word))
+            original_tokens = {
+                token
+                for token in _identity_tokens(latin_name)
+                if fold(token) not in generic and token not in codes and not _VOLUME_TOKEN_RE.fullmatch(token)
+            }
             identity_tokens = lambda value: _identity_tokens(str(value or "").upper())  # noqa: E731
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
