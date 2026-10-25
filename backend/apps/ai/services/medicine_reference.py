@@ -123,21 +123,33 @@ def neutral_prescription_text(text: Any) -> Any:
 # в 44 описаниях из 46): страховка SGK, срок годности, страна и производство, импорт.
 _BOILERPLATE_SENTENCE_RE = re.compile(
     r"SGK|страхов|insurance|reimburs|covered by|срок\w* годност|shelf[ -]life|"
-    r"произвед[её]н|производ(?:ство|ится|итель)|manufactur|produced in|made in|импортн|imported|"
-    r"страна происхождения|country of origin",
+    r"произвед[её]н|производ\w*|manufactur|produced in|made in|импортн|imported|"
+    r"страна происхождения|country of origin|в Турции|in Turkey",
     re.IGNORECASE,
 )
+_CLAUSE_SPLIT_RE = re.compile(r",\s+(?![^()]*\))")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZА-ЯЁ0-9«\"(])")
 
 
 def without_card_boilerplate(text: Any) -> Any:
-    """Описание карточки без предложений про SGK, срок годности, страну и производство.
+    """Описание карточки без SGK, срока годности, страны и производства.
 
-    Если убирать нечего или после этого ничего не остаётся — текст как есть.
+    Убирается часть предложения между запятыми, где они упомянуты («…, производства X (Турция).»),
+    а если в предложении ничего не осталось — всё предложение. Если убирать нечего или
+    после этого пусто — текст как есть.
     """
     if not isinstance(text, str) or not _BOILERPLATE_SENTENCE_RE.search(text):
         return text
-    kept = [sentence for sentence in _SENTENCE_SPLIT_RE.split(text.strip()) if not _BOILERPLATE_SENTENCE_RE.search(sentence)]
+    kept = []
+    for sentence in _SENTENCE_SPLIT_RE.split(text.strip()):
+        if not _BOILERPLATE_SENTENCE_RE.search(sentence):
+            kept.append(sentence)
+            continue
+        end = sentence[-1] if sentence[-1:] in ".!?" else ""
+        clauses = [c for c in _CLAUSE_SPLIT_RE.split(sentence.rstrip(".!? ")) if not _BOILERPLATE_SENTENCE_RE.search(c)]
+        if clauses:
+            joined = ", ".join(clauses)
+            kept.append(joined + ("" if joined[-1:] in ".!?" else end))
     return " ".join(kept) if kept else text
 
 

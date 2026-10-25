@@ -391,6 +391,10 @@ FORM_PHRASES.update({
         "кишечнорастворимые капсулы с микропеллетами", "gastro-resistant micropellet capsules"
     ),
     "sac losyonu": ("лосьон для кожи головы", "scalp lotion"),
+    # Партия Claude 200 (25.10.2026).
+    "iv infuzyonluk cozelti hazirlamak icin toz": (
+        "порошок для приготовления раствора для внутривенных инфузий", "powder for solution for intravenous infusion"
+    ),
 })
 # Флакон/ампула как форма, если та же упаковка указана и счётом («ICEREN FLAKON (1 FLAKON)»),
 # не повторяется: остаётся «1 флакон».
@@ -502,6 +506,9 @@ def _expand_source(rest: str, legacy: bool = False) -> str:
         rest = re.sub(
             r"(\d+) (naneli|meyveli|centikli) (sakiz|pastil|film kapli tablet|film tablet|tablet)\b", r"\1 \3 \2", rest
         )
+        # «4000 ANTI-XA IU/0,4 ML» (эноксапарин) — единица анти-Xa; «(100 ML X 12 ADET)» — 12 флаконов по 100 мл.
+        rest = re.sub(r"\banti[- ]?xa iu\b", "axa", rest)
+        rest = re.sub(r"(\d+(?:[.,]\d+)?)\s*ml\s*x\s*(\d+)\s+adet\b", r"\1 ml \2 adet", rest)
         # «KULLANIMA HAZIR 3 KALEM» — число шприц-ручек внутри формы; «60 G/TUP» — масса тубы;
         # «COZELTI ICEREN KASIK (28 KASIK)» — однодозовые ложки; «IV INF. COZELTI ICIN FLAKON» — флакон с раствором.
         rest = re.sub(r"kullanima hazir (\d+) kalem\b", r"kullanima hazir kalem \1 kalem", rest)
@@ -602,9 +609,10 @@ _UNITS = {
     "doz": ("доза", "dose"), "puskurtme": ("доза", "dose"), "sprey": ("впрыск", "spray"),
     "saat": ("ч", "h"), "h": ("ч", "h"),
     "tu": ("ТЕ", "TU"), "u": ("ЕД", "U"), "cm2": ("см²", "cm²"),
+    "axa": ("анти-Xa МЕ", "anti-Xa IU"),  # эноксапарин: «4000 ANTI-XA IU/0,4 ML»
 }
 _NUM = r"\d+(?:[.,]\d+)?"
-_UNIT = r"(?:mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq|tu|u)"
+_UNIT = r"(?:mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq|tu|axa|u)"
 _PER = r"(?:mg|mcg|g|ml|doz|puskurtme|sprey|saat|h|l|cm2)"
 _DOSE_RE = re.compile(
     rf"(?:%\s*({_NUM})|({_NUM})\s*%|({_NUM})\s*({_UNIT})(?:\s*/\s*({_NUM})?\s*({_PER}))?)(?![a-z])"
@@ -631,7 +639,7 @@ def _format_dose(match: re.Match, locale: str) -> tuple[str, str]:
         return f"{_num(percent, locale)}%", "strength"
     number, unit, per_number, per_unit = match.group(3, 4, 5, 6)
     # «5.000 I.U.» — турецкий разделитель тысяч у единиц действия, не дробь.
-    if unit in ("iu", "ui", "tu", "u") and re.fullmatch(r"[1-9]\d{0,2}(?:\.\d{3})+", number):
+    if unit in ("iu", "ui", "tu", "u", "axa") and re.fullmatch(r"[1-9]\d{0,2}(?:\.\d{3})+", number):
         number = number.replace(".", "")
     text = f"{_num(number, locale)} {_UNITS[unit][index]}"
     if per_unit:
