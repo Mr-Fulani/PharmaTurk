@@ -82,6 +82,7 @@ from apps.ai.services.rules.pipeline import (
     run_rule_content,
     validate_rule_content,
 )
+from apps.ai.services.rules.text import truncate_at_word
 from apps.ai.services.semantic_validator import (
     SemanticValidator,
     _title_has_turkish_words,
@@ -1406,7 +1407,7 @@ class ContentGenerator:
         Ты - контент-менеджер и SEO-специалист для интернет-магазина Mudaroba.
 
         Правила:
-        1. Название товара (ru.generated_title) — ОБЯЗАТЕЛЬНО заполняй. Это главное отображаемое название: короткое, без подзаголовка и лишнего текста (например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция и инструменты»). Для книг при наличии name в image_analysis — используй его; иначе очисти product_name от подзаголовка.
+        1. Название товара (ru.generated_title) — ОБЯЗАТЕЛЬНО заполняй. Это главное отображаемое название: короткое, без подзаголовка и лишнего текста (например: «Исламские финансы», а не «Исламские финансы: концепция и инструменты»; регистр букв — как в источнике, не ЗАГЛАВНЫМИ). Для книг при наличии name в image_analysis — используй его; иначе очисти product_name от подзаголовка.
         2. Создавай название, описание и SEO в двух отдельных языковых блоках: ru — только на русском, en — только на английском. ru и en должны описывать один и тот же тип товара и одни и те же подтверждённые свойства.
         3. Описание товара — всегда на двух языках (ru и en). ru.generated_description и en.generated_description — один смысл (переводы друг друга). Исходный текст может быть на русском, английском или турецком: очисти, улучши, затем создай оба перевода. Объём каждого: от 20 до 100 слов. Если текстового описания нет или оно скудное, но есть image_analysis — пиши описание и SEO на основе изображений.
         4. Технические поля (ISBN, издательство, страницы, автор и т.д.) заполняй только если данные есть в описании или known_attributes. Не придумывай.
@@ -2206,7 +2207,7 @@ class ContentGenerator:
         - Для украшений (jewelry): обязательно извлекай в attributes: jewelry_type (ring/bracelet/necklace/earrings/pendant), material (серебро/silver, золото/gold), metal_purity из текста про пробу («925 пробы», «585», «проба 750» → metal_purity: «925» / «585» / «750»), stone_type, carat_weight, gender — по описанию или по фото.
         - Для мебели: category_context и furniture_type — канонические ограничения, а не подсказки. Не обобщай тип товара. Для category slug bed-bases используй «основание кровати» в RU и «bed base» в EN; не заменяй их просто на «кровать» / «bed». Технические факты возвращай только через разрешённые available_dynamic_attributes с отдельными value_ru и value_en.
         - Для медикаментов: ОЯЗАТЕЛЬНО переведи все технические поля из known_attributes на русский и английский. Если в raw_description или current_description есть инструкции по применению, побочные эффекты, противопоказания, показания (Ne İçin Kullanılır, Yan Etkileri, vs.) — ОБЯЗАТЕЛЬНО извлеки их, переведи на нужный язык (RU/EN) и заполни соответствующие поля (indications, usage_instructions, side_effects, contraindications, storage_conditions, administration_route, shelf_life, sgk_status, prescription_type, special_notes, origin_country) внутри объектов "ru" и "en". Например: "Subkütan" (TR) -> "Подкожно" (RU) / "Subcutaneous" (EN); "İthal" (TR) -> "Импортный" (RU) / "Imported" (EN).
-        - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
+        - Название (generated_title): только основной заголовок, без подзаголовка. Например: «Исламские финансы», а не «Исламские финансы: концепция, инструменты и инфраструктура»; не ЗАГЛАВНЫМИ буквами. Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - Для одежды и обуви: title должен быть на языке ответа и не должен содержать турецкие цвета, цену, TL/TRY, SKU или код товара.
         - SEO в "ru" пиши на русском, SEO в "en" — на английском. Не смешивай языки внутри одного языкового блока.
         - В "ru" — название, описание и SEO на русском; в "en" — название, описание и SEO на английском.
@@ -2647,16 +2648,16 @@ class ContentGenerator:
         seo_description = ru_data.get("seo_description") or en_data.get("seo_description")
         seo_keywords = ru_data.get("keywords") or en_data.get("keywords") or []
 
+        # Обрезка по слову: «…Издательство UMMAL» в мете — брак.
         if seo_title:
-            log.generated_seo_title = str(seo_title)[:70]
+            log.generated_seo_title = truncate_at_word(str(seo_title), 70)
         elif log.generated_title:
-            log.generated_seo_title = str(log.generated_title)[:70]
+            log.generated_seo_title = truncate_at_word(str(log.generated_title), 70)
         if seo_description:
-            log.generated_seo_description = str(seo_description)[:160]
+            log.generated_seo_description = truncate_at_word(str(seo_description), 160)
         elif log.generated_description:
             plain_desc = re.sub(r"<[^>]+>", " ", str(log.generated_description))
-            plain_desc = re.sub(r"\s+", " ", plain_desc).strip()
-            log.generated_seo_description = plain_desc[:160]
+            log.generated_seo_description = truncate_at_word(plain_desc, 160)
         if seo_keywords:
             log.generated_keywords = [str(k).strip() for k in seo_keywords if str(k).strip()]
 

@@ -37,6 +37,8 @@ _PACK_RE = re.compile(r"\b(\d+)\s*'\s*l[iıuü]\S*(?:\s+paket\S*)?", re.IGNORECA
 _CYRILLIC_SUFFIX_RE = re.compile(r"\s+-\s+[а-яё\s-]+$", re.IGNORECASE)
 # Коды вида «J5SM-TST7325»: санитайзер названий вырезает их, в модель не берём.
 _HYPHEN_CODE_RE = re.compile(r"^[A-Z0-9]{2,}-[A-Z0-9]+$", re.IGNORECASE)
+# Строка материала LCW: «Kumaş: Suni Deri», «Kumaş Karışımı: 100% Deri».
+_MATERIAL_LINE_RE = re.compile(r"\b(?:Kumaş(?:\s+Karışımı)?|Materyal|Malzeme)\s*:\s*(?:%?\s*\d+\s*%?\s*)?([^\W\d_]+(?:\s+[^\W\d_]+)?)", re.IGNORECASE)
 # Подзаголовок IKEA в начале описания: «<h3>PAX gardırop, beyaz</h3>».
 _IKEA_SUBTITLE_RE = re.compile(r"^\s*<h3>([^<,]+)", re.IGNORECASE)
 # Турецкие строчные буквы бренда («Altınyıldız») → латиница: иначе название
@@ -127,25 +129,38 @@ def _is_model_token(token: str) -> bool:
     return bool(re.search(r"[A-Za-z0-9]", stripped))
 
 
-def _is_sku(token: str) -> bool:
+def is_supplier_code(token: str) -> bool:
     """Артикул поставщика («LV04RF822G», «12295132», «4480»): в название не идёт."""
     return sum(char.isdigit() for char in token.strip("()[],.;:")) >= 4
 
 
-def _drop_codes(tokens: list[str]) -> list[str]:
+def drop_codes(tokens: list[str]) -> list[str]:
     """Убирает артикулы, короткие коды цвета за ними («DM0DM22546 BDS») и проценты состава («%100»)."""
     result: list[str] = []
     after_sku = False
+    previous_kept = False
     for token in tokens:
         stripped = token.strip("()[],.;:")
-        # Четыре цифры после слова модели — номер модели («Emr 1830»), одни — артикул («Tişört 4480»).
-        model_number = stripped.isdigit() and len(stripped) == 4 and bool(result)
-        if "%" in stripped or (_is_sku(stripped) and not model_number) or (after_sku and len(stripped) <= 3 and stripped.upper() == stripped):
-            after_sku = True
+        # Четыре цифры сразу за словом модели — номер модели («Emr 1830»),
+        # отдельно («Tişört 4480», «Sandalet 5003») — артикул. Пустой токен — разрыв.
+        model_number = stripped.isdigit() and len(stripped) == 4 and previous_kept
+        if not stripped or "%" in stripped or (is_supplier_code(stripped) and not model_number) or (
+            after_sku and len(stripped) <= 3 and stripped.upper() == stripped
+        ):
+            after_sku = bool(stripped)
+            previous_kept = False
             continue
         after_sku = False
+        previous_kept = True
         result.append(token)
     return result
+
+
+def supplier_code_tokens(name: str) -> set[str]:
+    """Токены названия (ВЕРХНИЙ регистр), которые правила считают артикулом и не пишут."""
+    tokens = str(name or "").split()
+    kept = {token.strip("()[],.;:").upper() for token in drop_codes(tokens)}
+    return {token.strip("()[],.;:").upper() for token in tokens} - kept
 
 
 def _is_strong_model_token(token: str) -> bool:
@@ -186,6 +201,7 @@ def parse_name(name: str, facts: ProductFacts) -> None:
     tokens = _TOKEN_RE.findall(text)
     folded = [vocab.fold(token) for token in tokens]
     brand_tokens = {vocab.fold(part) for part in facts.brand.split()} if facts.brand else set()
+    descriptive = vocab.fold(facts.brand) in vocab.DESCRIPTIVE_NAME_BRANDS
     seen_vocab = False
     model: list[str] = []
     kinds: list[Kind] = []
@@ -216,23 +232,27 @@ def parse_name(name: str, facts: ProductFacts) -> None:
         if target:
             seen_vocab = True
             index += length
+            if model and model[-1]:
+                model.append("")  # разрыв: «Barcelona Urban … Sandalet 5003»
             continue
         if key in brand_tokens or _HYPHEN_CODE_RE.match(token):
             index += 1
             continue
         if token in ("&", "/", "+") and model:
             model.append(token)
-        elif _is_strong_model_token(token) or (not seen_vocab and _is_model_token(token)):
+        elif _is_strong_model_token(token) or (not seen_vocab and not descriptive and _is_model_token(token)):
             model.append(token)
         else:
             facts.untranslated.append(token)
+            if model and model[-1]:
+                model.append("")
         index += 1
     specific = [kind for kind in kinds if not kind.generic]
     if specific:
         facts.kind = specific[0]
     elif kinds:
         facts.kind = kinds[0]
-    facts.model = " ".join(_drop_codes(model)).strip(" &/+")
+    facts.model = " ".join(drop_codes(model)).strip(" &/+")
 
 
 def _starts_vocab(folded: list[str], index: int) -> bool:
@@ -279,6 +299,21 @@ def _strip_own_line(name: str) -> str:
             rest = rest[1:]
         return " ".join(rest)
     return name
+
+
+def _source_material(source_text: str) -> str:
+    """«Kumaş: Suni Deri», «Kumaş Karışımı: 100% Deri» → канон материала аксессуара."""
+    # Склейка строк LCW: «Suni DeriDesen: Düz» → «Suni Deri Desen: Düz».
+    text = re.sub(r"(?<=[a-zçğıöşü])(?=[A-ZÇĞİÖŞÜ])", " ", source_text or "")
+    match = _MATERIAL_LINE_RE.search(text)
+    if not match:
+        return ""
+    words = vocab.fold(match.group(1)).split()
+    for length in (2, 1):
+        material = vocab.ACCESSORY_MATERIALS.get(" ".join(words[:length]))
+        if material:
+            return material
+    return ""
 
 
 def _variant_colors(product) -> int:
@@ -358,9 +393,12 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
         facts.model = " ".join(
             token
             for token in _TOKEN_RE.findall(facts.russian_name)
-            if _is_model_token(token) and vocab.fold(token) not in brand_words and not _HYPHEN_CODE_RE.match(token)
+            if _is_model_token(token)
+            and re.search(r"[A-Za-z]{2}", token)  # «(2», «3», «1» из «3 в 1» — не модель
+            and vocab.fold(token) not in brand_words
+            and not _HYPHEN_CODE_RE.match(token)
         )
-        facts.model = " ".join(_drop_codes(facts.model.split()))
+        facts.model = " ".join(drop_codes(facts.model.split()))
     elif product_type == "furniture":
         facts.model = name.strip()
     else:
@@ -391,8 +429,8 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
 
     if facts.audience is None:
         facts.audience = vocab.AUDIENCE.get(vocab.fold(attrs.get("gender")))
-    if facts.has_variants:
-        facts.color = None
+    if facts.has_variants or product_type == "perfumery":
+        facts.color = None  # у парфюма цвет — флакон, в название не идёт
     elif facts.color is None and product_type != "furniture":
         facts.color = vocab.translate_color(attrs.get("color"))
 
@@ -401,8 +439,11 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
         facts.upper = vocab.translate_shoe_material(attrs.get("material"))
         facts.lining = vocab.translate_shoe_material(attrs.get("lining"))
         facts.sole = vocab.translate_shoe_material(attrs.get("sole_material"))
-    if product_type == "accessories" and isinstance(attrs.get("material"), str):
-        material = attrs["material"].strip()
+    material = ""
+    if product_type == "accessories":
+        material = _source_material(source_text) or (attrs.get("material") if isinstance(attrs.get("material"), str) else "")
+    if material:
+        material = material.strip()
         from apps.catalog.attribute_specs import english_for_canonical_ru
 
         english = english_for_canonical_ru(material)

@@ -177,6 +177,11 @@ AUDIENCE: dict[str, tuple[str, str]] = {
 STORE_BRANDS = frozenset({"lc waikiki"})
 # Собственные линейки магазина («LCW ACCESSORIES», «LC WAIKIKI»): бренд остаётся.
 STORE_OWN_LINE_PREFIXES = ("lcw", "lc waikiki")
+# Слова линеек магазина («LCW ACCESSORIES», «LCW VISION»): в названии их заменяет бренд.
+STORE_LINE_WORDS = frozenset({"lcw", "accessories", "vision", "casual", "young", "dream"})
+# Магазины, чьи названия — описание по-турецки без модели («Teknik naylon pantolon»):
+# латинское слово до типа — не модель, а непереведённое слово (кроме кодов и ВЕРХНЕГО регистра).
+DESCRIPTIVE_NAME_BRANDS = frozenset({"zara", "bershka", "pull&bear", "massimo dutti"})
 # Слова с заглавной в начале названия, которые не бренд.
 NOT_BRAND_WORDS = frozenset(
     {"yeni", "yazlik", "kislik", "klasik", "spor", "gunluk", "basic", "slim", "regular", "unisex", "set", "seti", "orijinal"}
@@ -493,6 +498,8 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "lastikli": ("на резинке", "Elastic"),
     "kapali burun": ("с закрытым носком", "Closed-Toe"),
     "dikdortgen": ("прямоугольной формы", "Rectangular"),
+    "metal": ("из металла", "Metal"),
+    "asetat": ("из ацетата", "Acetate"),
     "oval": ("овальной формы", "Oval"),
     "yuvarlak": ("круглой формы", "Round"),
     "fit": ("", ""),
@@ -566,6 +573,20 @@ MATERIAL_PHRASES: dict[str, tuple[str, str]] = {
     "металл": ("из металла", "Metal"),
     "хлопок": ("из хлопка", "Cotton"),
     "текстиль": ("из текстиля", "Textile"),
+}
+
+# Материал аксессуара из строки источника «Kumaş: Suni Deri» / «Kumaş Karışımı: 100% Deri»
+# (fold) → канон attribute_specs. Сильнее атрибута парсера: тот ищет слово по всему тексту
+# и у ремня с металлической пряжкой находил «metal».
+ACCESSORY_MATERIALS: dict[str, str] = {
+    "suni deri": "Искусственная кожа",
+    "vegan deri": "Искусственная кожа",
+    "hakiki deri": "Натуральная кожа",
+    "gercek deri": "Натуральная кожа",
+    "deri": "Натуральная кожа",
+    "metal": "Металл",
+    "pamuk": "Хлопок",
+    "tekstil": "Текстиль",
 }
 
 # Служебные куски названий магазинов: «Kemer - Markalar - 799,00 TL».
@@ -685,8 +706,12 @@ def translate_furniture_finish(raw: str | None) -> tuple[str, str] | None:
 
 @lru_cache(maxsize=1)
 def generic_title_words() -> frozenset[str]:
-    """Однословные словарные слова (тип, цвет, пол, описание) — не бренд/модель."""
+    """Словарные слова (тип, цвет, пол, описание) и линейки магазина — не бренд/модель.
+
+    Слова из фраз тоже: «GÜNEŞ GÖZLÜĞÜ» в названии Zara — тип, а не модель.
+    """
     words = set()
     for mapping in (KINDS, COLORS, AUDIENCE, DESCRIPTORS, COLOR_MODIFIERS):
-        words.update(key for key in mapping if " " not in key)
-    return frozenset(words | COLOR_NOISE)
+        for key in mapping:
+            words.update(key.split())
+    return frozenset(words | COLOR_NOISE | STORE_LINE_WORDS)

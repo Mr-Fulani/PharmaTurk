@@ -11,7 +11,7 @@ from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.rules import vocab
 from apps.ai.services.rules.facts import ProductFacts, _brand_from_description, clean_source_text, collect_facts, parse_name
-from apps.ai.services.rules.pipeline import plan_rule_content
+from apps.ai.services.rules.pipeline import _dynamic_attributes, plan_rule_content
 from apps.ai.services.rules.text import build_fact_description, build_seo, build_titles, is_thin_source
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.size_inventory import extract_sizes_from_input, size_inventory_block_reason
@@ -20,6 +20,7 @@ from apps.catalog.models import (
     Category,
     ClothingProduct,
     MedicineProduct,
+    Product,
     ShoeProduct,
     ShoeVariant,
     ShoeVariantSize,
@@ -197,7 +198,10 @@ def test_seo_fits_limits_and_uses_site_wording():
     titles = build_titles(facts)
     seo = build_seo(facts, titles, {"ru": "Легкие кроссовки из ПВХ. Второе предложение.", "en": "Light PVC sneakers. More."})
     assert seo["ru"]["seo_title"] == "Мужские кроссовки BUCKY 6FX, белые — купить с доставкой из Турции"
-    assert seo["ru"]["seo_description"] == "Заказать Мужские кроссовки BUCKY 6FX, белые из Турции. Легкие кроссовки из ПВХ."
+    # Название в именительном падеже: «Заказать мужская футболка» было ошибкой.
+    assert seo["ru"]["seo_description"] == (
+        "Мужские кроссовки BUCKY 6FX, белые. Оригинальный товар из Турции с доставкой. Легкие кроссовки из ПВХ."
+    )
     assert seo["en"]["seo_title"].endswith("— buy with delivery from Turkey")
     assert "кроссовки BUCKY 6FX" in seo["ru"]["keywords"]
     long_title = {"ru": "Очень " * 20 + "длинное название", "en": ""}
@@ -500,7 +504,8 @@ def test_russian_name_gets_rule_english_title_and_survives_missing_en_from_llm()
 
     assert log.status == AIProcessingStatus.COMPLETED, get_moderation_reasons(log)
     prompt = llm.generate_content.call_args.kwargs["user_prompt"]
-    assert '"need_titles": []' in prompt  # EN-название — правилами
+    # EN-название просим у модели (перевод русского), без ответа — правилами.
+    assert '"need_titles": ["en"]' in prompt
     en = log.extracted_attributes["seo_translations"]["en"]
     assert en["generated_title"] == "LC Waikiki Men's Faux Leather Belt"
     assert en["generated_description"].startswith("LC Waikiki Men's Faux Leather Belt. Material: faux leather.")
@@ -628,3 +633,119 @@ def test_furniture_type_from_ikea_subtitle_and_unknown_type_goes_to_llm():
     assert facts.kind is None and titles == {"ru": "", "en": ""}
     # Подзаголовка нет — тип по категории, как раньше.
     assert _titles("LASTARE", "furniture", brand="IKEA", category_slug="wardrobes")[1]["ru"] == "Гардероб IKEA LASTARE"
+
+
+def test_seo_title_drops_color_before_short_form_and_skips_title_in_lead():
+    titles = {"ru": "Мужские солнцезащитные очки Zara прямоугольной формы, коричневые", "en": ""}
+    description = {"ru": "Мужские солнцезащитные очки Zara прямоугольной формы. Цвет: коричневый. Оправа из ацетата."}
+    seo = build_seo(_facts("DİKDÖRTGEN GÜNEŞ GÖZLÜĞÜ", "accessories"), titles, description)["ru"]
+    assert seo["seo_title"] == "Мужские солнцезащитные очки Zara прямоугольной формы из Турции"
+    assert seo["seo_description"].endswith("с доставкой. Оправа из ацетата.")
+
+
+def test_accessory_material_from_source_line_beats_parser_attribute():
+    product = SimpleNamespace(product_type="accessories", category=SimpleNamespace(slug="belts"), domain_item=None, id=1)
+    source = (
+        "Siyah Erkek kemer, dokulu bir tasarıma sahiptir. Ayarlanabilir yapısı ve metal tokası ile kullanım kolaylığı sağlar. "
+        "Ürün İçeriği ve Özellikleri Kumaş: Suni DeriDesen: Düz"
+    )
+    data = {"name": "LCW ACCESSORIES Siyah Düz Erkek Kemer - S6BV14Z8-CVL", "brand": "LC Waikiki", "description": source,
+            "attributes": {"material": "Металл", "accessory_type": "belts", "gender": "men"}}
+    facts = collect_facts(product, data)
+    assert build_titles(facts)["ru"] == "Мужской ремень LC Waikiki из искусственной кожи, черный"
+    rows = {row["slug"]: (row["value_ru"], row["value_en"]) for row in _dynamic_attributes(product, data, facts)}
+    assert rows["material"] == ("Искусственная кожа", "Faux Leather")
+    assert rows["accessory-type"] == ("Ремень", "Belt")
+
+
+@pytest.mark.django_db
+def test_source_codes_and_type_words_are_not_required_title_identity():
+    category = Category.objects.create(name="Аксессуары", slug="rule-acc")
+    for name, title in (
+        ("Erkek T Shirt LV04RF822G UB1", "Мужская футболка"),
+        ("DİKDÖRTGEN GÜNEŞ GÖZLÜĞÜ", "Солнцезащитные очки Zara прямоугольной формы"),
+        ("LCW ACCESSORIES Siyah Düz Erkek Kemer - W6AQ42Z8-HUC", "Мужской ремень LC Waikiki, черный"),
+    ):
+        product = SimpleNamespace(name=name, product_type="accessories", category=category, domain_item=None)
+        report = SemanticValidator().validate(product, generated_titles={"ru": title}, dynamic_attributes=[])
+        assert "title_identity_lost" not in report.reasons, name
+
+
+@pytest.mark.django_db
+def test_llm_title_with_turkish_word_falls_back_to_rule_title_without_it():
+    product = _shoe("rule-title-turkish", RICH_SOURCE)
+    product.name = "Barcelona Urban Haki Erkek Bilekli Günlük Sandalet 5003"
+    product.save()
+    content = {
+        "ru": {"generated_title": "Мужские сандалии Barcelona Urban Bilekli 5003", "generated_description": "Описание " * 25},
+        "en": {"generated_title": "Barcelona Urban LV04RF822G Men's Sandals", "generated_description": "Description " * 25},
+    }
+    llm = SimpleNamespace(model="test-model", generate_content=Mock(return_value=_llm_result(content)))
+
+    log = _generator(llm).process_product(product.id, options={"analyze_images": False, "force": True})
+
+    # RU от модели с непереведённым «Bilekli» заменено названием правилами, из EN убран артикул.
+    assert log.generated_title == "Мужские сандалии Barcelona Urban, цвета хаки"
+    en = log.extracted_attributes["seo_translations"]["en"]["generated_title"]
+    assert en == "Barcelona Urban Men's Sandals"
+    assert log.raw_llm_response["rule_content"]["title_sources"] == {"ru": "rules", "en": "llm"}
+
+
+def _perfume(slug, name, description, brand="AVON"):
+    category = Category.objects.get_or_create(slug="perfumery", defaults={"name": "Парфюмерия"})[0]
+    brand_obj = Brand.objects.get_or_create(name=brand, defaults={"slug": f"{slug}-brand"})[0]
+    return Product.objects.create(
+        name=name, slug=slug, product_type="perfumery", category=category, brand=brand_obj, description=description,
+        external_data={"attributes": {"color": "Bronz", "gender": "men"}},
+    )
+
+
+PERFUME_SOURCE = (
+    "Elite Gentleman Quest Erkek Parfüm 75 ml. Üst nota zencefil, orta nota kahve yağı esansı, "
+    "alt nota sedir ağacı. Baharatlı ve odunsu bir koku."
+)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("fragrance, expected", [("Elite Gentleman Quest", "Мужской парфюм AVON Elite Gentleman Quest, 75 мл"), ("Black Opium", "Мужской парфюм AVON, 75 мл")])
+def test_perfume_title_gets_fragrance_name_only_when_it_is_in_source(fragrance, expected):
+    product = _perfume(f"rule-perfume-{fragrance[:5].lower()}", "AVON 75 ml Erkek Parfüm - S000433876-10231", PERFUME_SOURCE)
+    content = {
+        "ru": {"generated_description": "Пряный древесный аромат: имбирь, кофе, кедр. " * 3},
+        "en": {"generated_description": "Spicy woody scent: ginger, coffee, cedar. " * 3},
+        "fragrance_name": fragrance,
+    }
+    llm = SimpleNamespace(model="test-model", generate_content=Mock(return_value=_llm_result(content)))
+
+    log = _generator(llm).process_product(product.id, options={"analyze_images": False, "force": True})
+
+    assert '"fragrance_name"' in llm.generate_content.call_args.kwargs["user_prompt"]
+    # Цвет флакона («Bronz») в название парфюма не идёт; выдуманное название аромата — тоже.
+    assert log.generated_title == expected
+
+
+def test_descriptive_store_names_do_not_turn_turkish_words_into_model():
+    facts, titles = _titles("Teknik naylon pantolon", "clothing", brand="Bershka", category_slug="trousers")
+    assert facts.model == "" and "Teknik" in facts.untranslated
+    assert titles == {"ru": "", "en": ""}
+    assert build_titles(facts, ignore_untranslated=True)["ru"] == "Брюки Bershka"
+    assert _titles("STWD logolu boxy tişört", "clothing", brand="Pull&Bear", category_slug="t-shirts")[0].model == "STWD"
+
+
+@pytest.mark.django_db
+def test_kind_of_own_subcategory_is_not_a_conflict_even_if_other_tree_has_it():
+    shoes = Category.objects.create(name="Обувь", slug="rule-shoes-root")
+    Category.objects.create(name="Кроссовки", slug="rule-sneakers", parent=shoes)
+    sports = Category.objects.create(name="Спорт", slug="rule-sports")
+    Category.objects.create(name="Кроссовки", slug="rule-sports-sneakers", parent=sports)
+    product = SimpleNamespace(name="GALAXY RUN Beyaz Erkek Koşu Ayakkabısı", product_type="shoes", category=shoes, domain_item=None)
+    report = SemanticValidator().validate(product, generated_titles={"ru": "Мужские кроссовки Adidas GALAXY RUN"}, dynamic_attributes=[])
+    assert "title_category_mismatch" not in report.reasons
+
+
+def test_russian_name_keeps_text_adds_brand_and_turkish_leftovers_go_to_llm():
+    assert _titles("Кепка с вышивкой", "headwear", brand="Zara", category_slug="hw-caps")[1]["ru"] == "Кепка с вышивкой Zara"
+    facts, titles = _titles("Мужские боксеры Soft Boxer 3'lü Paket", "underwear", brand="Zara", category_slug="uw-mens-underwear")
+    assert titles["ru"] == ""
+    assert facts.model == "Soft Boxer Paket"
+    assert _titles("Мужские боксеры 3 в 1", "underwear", brand="Zara", category_slug="uw-mens-underwear")[0].model == ""
