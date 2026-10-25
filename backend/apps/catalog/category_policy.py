@@ -30,6 +30,23 @@ CATEGORY_POLICY_OVERRIDES: dict[str, dict[str, Any]] = {
     "wardrobes": {
         "aliases": {"ru": ("шифоньер", "гардероб", "платяной шкаф"), "en": ("wardrobe",)},
     },
+    # Название раздела во множественном числе («Диваны-кровати») не совпадает с
+    # названием товара («Диван-кровать HAMMARN»), и «кровать» давала конфликт с «Кроватями».
+    "sofa-beds": {
+        "aliases": {"ru": ("диван-кровать",), "en": ("sofa-bed", "sofa bed")},
+    },
+    "sofas": {
+        "aliases": {"ru": ("диван",), "en": ("sofa",)},
+    },
+    "armchairs": {
+        "aliases": {"ru": ("кресло",), "en": ("armchair",)},
+    },
+    "day-beds": {
+        "aliases": {"ru": ("кушетка",), "en": ("day-bed", "daybed")},
+    },
+    "coffee-tables": {
+        "aliases": {"ru": ("журнальный столик",), "en": ("coffee table",)},
+    },
 }
 
 

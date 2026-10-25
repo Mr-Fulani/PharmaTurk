@@ -794,3 +794,18 @@ def test_russian_one_letter_words_survive_code_cleanup():
     title = "Угловой диван-кровать IKEA BÅRSLÖV с ящиком для хранения в чехле и пуфом"
     assert " ".join(drop_codes(title.split())) == title
     assert drop_codes(["Sandalet", "M", "Kahve"]) == ["Sandalet", "Kahve"]
+
+
+@pytest.mark.django_db
+def test_singular_furniture_kind_matches_own_plural_category():
+    living = Category.objects.create(name="Гостиная", slug="rule-living")
+    sofa_beds = Category.objects.create(name="Диваны-кровати", slug="sofa-beds", parent=living)
+    Category.objects.create(name="Кровати", slug="beds", parent=living)
+    Category.objects.create(name="Диваны", slug="sofas", parent=living)
+    product = SimpleNamespace(name="HAMMARN", product_type="furniture", category=sofa_beds, domain_item=None)
+    report = SemanticValidator().validate(
+        product,
+        generated_titles={"ru": "Двухместный диван-кровать IKEA HAMMARN", "en": "IKEA HAMMARN 2-Seat Sofa-Bed"},
+        dynamic_attributes=[],
+    )
+    assert "title_category_mismatch" not in report.reasons
