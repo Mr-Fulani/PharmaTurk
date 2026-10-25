@@ -549,9 +549,12 @@ class ContentGenerator:
         log_entry.raw_llm_response = generation_result
         log_entry.tokens_used = generation_result["tokens"]
         log_entry.cost_usd = generation_result["cost_usd"]
+        # Claude мог не ответить — тогда отвечал запасной OpenAI.
+        if generation_result.get("model"):
+            log_entry.llm_model = generation_result["model"]
         log_entry.processing_time_ms = generation_result["processing_time_ms"]
         log_entry.save(update_fields=[
-            "raw_llm_response", "tokens_used", "cost_usd", "processing_time_ms"
+            "raw_llm_response", "tokens_used", "cost_usd", "llm_model", "processing_time_ms"
         ])
 
     # Расширения URL, которые не отправляем в Vision (видео; GIF оставляем — это изображение)
