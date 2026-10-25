@@ -10,6 +10,7 @@ from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.ai.services.medicine_reference import dosage_form_labels
 from apps.ai.services.medicine_title import looks_like_source_name
 from apps.ai.services.ownership import SOURCE_NAME_KEY, remember_source_name
+from apps.ai.services.rules.facts import RULE_PRODUCT_TYPES
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.size_inventory import apply_size_inventory
 
@@ -85,7 +86,9 @@ def _make_unique_slug_for_domain(name: str, model_class, current_pk: Optional[in
 
 
 # Шаблон названия строится из турецкого оригинала: лекарства и БАДы (supplement_content).
-SOURCE_NAME_PRODUCT_TYPES = ("medicines", "supplements")
+# Не медицинские типы правил тоже: без оригинала повторная обработка брала AI-название
+# за исходное и сохраняла его как есть, ошибки названия «застывали» (волна 1, 26.10.2026).
+SOURCE_NAME_PRODUCT_TYPES = ("medicines", "supplements", *sorted(RULE_PRODUCT_TYPES))
 
 
 def _remember_name_before_ai_title(item, name: Optional[str] = None) -> bool:

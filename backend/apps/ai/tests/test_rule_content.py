@@ -809,3 +809,25 @@ def test_singular_furniture_kind_matches_own_plural_category():
         dynamic_attributes=[],
     )
     assert "title_category_mismatch" not in report.reasons
+
+
+@pytest.mark.django_db
+def test_turkish_source_name_is_kept_and_used_on_reprocessing():
+    """Волна 1 (26.10.2026): повторная обработка брала прошлое AI-название за исходное."""
+    product = _shoe("rule-source-name", "Torex BUCKY 6FX Beyaz Erkek Sneaker")
+    llm = SimpleNamespace(model="test-model", generate_content=Mock(side_effect=AssertionError("LLM не нужен")))
+    generator = _generator(llm)
+
+    log = generator.process_product(product.id, options={"analyze_images": False, "force": True})
+    generator.apply_log_to_product(log)
+    product.refresh_from_db()
+    assert product.name == "Мужские кроссовки BUCKY 6FX, белые"
+    assert product.external_data["source_name"] == "BUCKY 6FX Beyaz Erkek Sneaker"
+
+    product.name = "Испорченное название"
+    product.save(update_fields=["name"])
+    content = {"ru": {"generated_description": "Кроссовки. " * 20}, "en": {"generated_description": "Sneakers. " * 20}}
+    generator.llm = SimpleNamespace(model="test-model", generate_content=Mock(return_value=_llm_result(content)))
+    again = generator.process_product(product.id, options={"analyze_images": False, "force": True})
+    assert again.generated_title == "Мужские кроссовки BUCKY 6FX, белые"
+    assert '"product_name": "BUCKY 6FX Beyaz Erkek Sneaker"' in generator.llm.generate_content.call_args.kwargs["user_prompt"]

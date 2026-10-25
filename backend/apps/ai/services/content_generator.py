@@ -75,8 +75,9 @@ from apps.ai.services.medicine_title import (
     title_inn,
     title_with_inn,
 )
-from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY
+from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY, SOURCE_NAME_KEY
 from apps.ai.services.result_applier import build_content_snapshot
+from apps.ai.services.rules.facts import RULE_PRODUCT_TYPES
 from apps.ai.services.rules.pipeline import (
     plan_rule_content,
     run_rule_content,
@@ -680,6 +681,11 @@ class ContentGenerator:
             data["name"] = medicine_source_name(product.name, product.external_data)[0]
         elif product.product_type == "supplements":
             data["name"] = supplement_source_name(product)
+        elif product.product_type in RULE_PRODUCT_TYPES:
+            # Правила разбирают турецкий оригинал, а не прошлое AI-название (result_applier).
+            source_name = (product.external_data or {}).get(SOURCE_NAME_KEY)
+            if source_name:
+                data["name"] = source_name
 
         variant_context = self._collect_variant_context(product)
         if variant_context:
