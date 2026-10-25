@@ -6,6 +6,9 @@
 3. Весь сайт — тип задачи «Весь сайт»: парсер сам находит категории
    (parse_categories) и обходит их по очереди. У Instagram третий режим —
    весь профиль (задача Instagram с username).
+
+У IlacFiyati есть ещё тип «Только изменения» (docs/PARSER_MODES.md): листинги
+по строкам и sitemap, карточка открывается только при отличии строки.
 """
 
 PARSER_MODES = {
@@ -14,6 +17,10 @@ PARSER_MODES = {
         "product": "https://ilacfiyati.com/ilaclar/majezik-100-mg-15-film-tablet",
         "category": "https://ilacfiyati.com/takviye-edici-gida/bagisiklik-destek-urunleri",
         "site": "лекарства (/ilaclar) и БАДы (/takviye-edici-gida) целиком",
+        "note": (
+            "Регулярное обновление — тип «Только изменения»: открываются только новые "
+            "карточки и те, чья строка в листинге изменилась; «Весь сайт» — раз в месяц."
+        ),
     },
     "zara": {
         "label": "Zara",

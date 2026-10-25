@@ -596,6 +596,7 @@ class SiteScraperTask(models.Model):
     TASK_TYPE_CHOICES = [
         ("catalog", _("Товар или категория по ссылке")),
         ("site", _("Весь сайт (все категории)")),
+        ("changes", _("Только изменения (IlacFiyati)")),
         ("stub_refresh", _("Обновление заглушек")),
     ]
 
@@ -771,3 +772,32 @@ class SiteScraperTask(models.Model):
         if self.started_at and self.finished_at:
             return self.finished_at - self.started_at
         return None
+
+
+class SourceListingRow(models.Model):
+    """Последний увиденный вид товара в листинге источника (режим «Только изменения»).
+
+    Отпечаток строки листинга (название, штрихкод, цена, статус, рецепт) сравнивается
+    при следующем проходе: карточку открываем только при отличии. ``run_token`` —
+    проход, который видел строку последним: так sitemap-этап того же прохода знает,
+    что товар уже проверен.
+    """
+
+    parser_key = models.CharField(_("Парсер"), max_length=50)
+    url = models.CharField(_("Ссылка товара"), max_length=500)
+    fingerprint = models.CharField(_("Отпечаток строки"), max_length=64, blank=True)
+    source_status = models.CharField(_("Статус у источника"), max_length=20, blank=True)
+    run_token = models.UUIDField(_("ID прохода"), null=True, blank=True)
+    seen_at = models.DateTimeField(_("Видели"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Строка листинга источника")
+        verbose_name_plural = _("Строки листинга источника")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["parser_key", "url"], name="scrapers_listing_row_parser_url_uniq"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.parser_key}: {self.url}"
