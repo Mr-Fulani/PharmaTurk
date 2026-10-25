@@ -413,3 +413,10 @@ def test_prompt_declares_structured_size_contract(monkeypatch):
     assert "ТОЛЬКО в attributes.sizes" in prompt
     assert "не повторяй их в title, generated_description, SEO или OG" in prompt
     assert "Не включай в описание/SEO временный остаток" in prompt
+
+
+def test_plus_size_product_kind_is_not_size_inventory():
+    from apps.ai.services.size_inventory import strip_size_inventory_sentences
+
+    text = "Мужская футболка Jack Jones большого размера. Оригинальный товар из Турции. В наличии размеры S, M, L."
+    assert strip_size_inventory_sentences(text) == "Мужская футболка Jack Jones большого размера. Оригинальный товар из Турции."

@@ -39,6 +39,7 @@ _CYRILLIC_SUFFIX_RE = re.compile(r"\s+-\s+[а-яё\s-]+$", re.IGNORECASE)
 _HYPHEN_CODE_RE = re.compile(r"^[A-Z0-9]{2,}-[A-Z0-9]+$", re.IGNORECASE)
 # Строка материала LCW: «Kumaş: Suni Deri», «Kumaş Karışımı: 100% Deri».
 _MATERIAL_LINE_RE = re.compile(r"\b(?:Kumaş(?:\s+Karışımı)?|Materyal|Malzeme)\s*:\s*(?:%?\s*\d+\s*%?\s*)?([^\W\d_]+(?:\s+[^\W\d_]+)?)", re.IGNORECASE)
+_DIMENSIONS_RE = re.compile(r"\d+(?:[.,]\d+)?(?:[x×]\d+(?:[.,]\d+)?)+", re.IGNORECASE)
 # Подзаголовок IKEA в начале описания: «<h3>PAX gardırop, beyaz</h3>».
 _IKEA_SUBTITLE_RE = re.compile(r"^\s*<h3>([^<,]+)", re.IGNORECASE)
 # Турецкие строчные буквы бренда («Altınyıldız») → латиница: иначе название
@@ -130,8 +131,12 @@ def _is_model_token(token: str) -> bool:
 
 
 def is_supplier_code(token: str) -> bool:
-    """Артикул поставщика («LV04RF822G», «12295132», «4480»): в название не идёт."""
-    return sum(char.isdigit() for char in token.strip("()[],.;:")) >= 4
+    """Артикул поставщика («LV04RF822G», «12295132», «4480»): в название не идёт.
+
+    Габариты «13x10x6» — не артикул.
+    """
+    stripped = token.strip("()[],.;:")
+    return sum(char.isdigit() for char in stripped) >= 4 and not _DIMENSIONS_RE.fullmatch(stripped)
 
 
 def drop_codes(tokens: list[str]) -> list[str]:

@@ -750,3 +750,11 @@ def test_russian_name_keeps_text_adds_brand_and_turkish_leftovers_go_to_llm():
     assert titles["ru"] == ""
     assert facts.model == "Soft Boxer Paket"
     assert _titles("Мужские боксеры 3 в 1", "underwear", brand="Zara", category_slug="uw-mens-underwear")[0].model == ""
+
+
+def test_zip_and_turquoise_words_and_dimensions():
+    titles = _titles("Turkuaz Fermuar Detaylı Erkek Tişört 4489", "clothing", category_slug="t-shirts")[1]
+    assert titles["ru"] == "Мужская футболка с молнией, бирюзовая"
+    from apps.ai.services.rules.facts import is_supplier_code
+
+    assert not is_supplier_code("13x10x6") and is_supplier_code("12295132")

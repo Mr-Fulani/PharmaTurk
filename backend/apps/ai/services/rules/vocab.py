@@ -98,6 +98,7 @@ COLORS: dict[str, tuple[str, str]] = {
     "kaplumbaga kabugu": ("черепаховый", "Tortoiseshell"),
     "kamuflaj": ("камуфляжный", "Camouflage"),
     "pudra": ("пудровый", "Powder pink"),
+    "turkuaz": ("бирюзовый", "Turquoise"),
     "tas": ("серо-бежевый", "Stone"),
     "tas rengi": ("серо-бежевый", "Stone"),
     "nefti": ("темно-зеленый", "Dark green"),
@@ -506,6 +507,9 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "canlandirici": ("", ""),
     "tanimsiz": ("", ""),
     "nemlendirici": ("с увлажняющим эффектом", "Moisturizing"),
+    "fermuar detayli": ("с молнией", "Zip Detail"),
+    "fermuarli": ("с молнией", "Zip"),
+    "yirtik detayli": ("с потертостями", "Distressed"),
     "karisik": ("", ""),  # «Karışık» — набор цветов: цвет в название не пишем
     "asorti": ("", ""),
     "cift yonlu": ("", ""),
