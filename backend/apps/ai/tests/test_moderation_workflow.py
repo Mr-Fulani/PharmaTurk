@@ -1033,3 +1033,326 @@ def test_admin_exposes_only_unambiguous_bulk_actions():
         "rerun_ai_full",
         "rerun_ai_description_only",
     )
+
+
+# --- Тупики модерации: решения модератора снимают блок только явным действием ---
+
+
+def _medicine_form_data(log, **changes):
+    initial_form = AIProcessingLogForm(instance=log)
+    data = _bound_admin_form_data(log)
+    for field_name in MEDICINE_EDITOR_FORM_FIELDS:
+        data[field_name] = initial_form.fields[field_name].initial or ""
+    data.update(changes)
+    return data
+
+
+def _save_form(log, data):
+    form = AIProcessingLogForm(data=data, instance=log)
+    assert form.is_valid(), form.errors
+    saved = form.save(commit=False)
+    saved.save()
+    return saved
+
+
+def _lost_identity_title_log(medicine):
+    """Название без бренда: проверка отклоняет его (title_identity_lost)."""
+    return _reviewable_log(
+        medicine.base_product,
+        status=AIProcessingStatus.MODERATION,
+        generated_title="Препарат 10 мг, таблетки",
+        generated_description=(
+            "Краткое точное описание препарата содержит действующее вещество форму выпуска "
+            "дозировку количество таблеток способ приема и сведения изготовителя"
+        ),
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_title": "Препарат 10 мг, таблетки"},
+                "en": {"generated_title": "Medicine 10 mg tablets"},
+            },
+        },
+    )
+
+
+def test_moderator_reviewed_title_is_applied_and_closes_review():
+    medicine = MedicineProduct.objects.create(name="TESTMED 10 MG TABLET", slug="moderation-title-reviewed")
+    medicine.refresh_from_db()
+    log = _lost_identity_title_log(medicine)
+    AIModerationQueue.objects.create(log_entry=log, reason="title_identity_lost", priority=3)
+    report = SemanticValidator().validate_log(log)
+    assert "title" in report.rejected_fields
+    assert "title_identity_lost" in report.reasons
+
+    # Без решения модератора повторное применение снова оставляет запись на модерации.
+    _generator().apply_log_to_product(log)
+    log.refresh_from_db()
+    medicine.refresh_from_db()
+    assert log.status == AIProcessingStatus.MODERATION
+    assert medicine.name == "TESTMED 10 MG TABLET"
+    assert AIProcessingLogForm(instance=log).fields["title_reviewed"].initial is False
+
+    saved = _save_form(log, _medicine_form_data(log, title_reviewed="on"))
+    review = saved.extracted_attributes["moderator_title_review"]
+    assert (review["ru"], review["en"]) == ("Препарат 10 мг, таблетки", "Medicine 10 mg tablets")
+    assert AIProcessingLogForm(instance=saved).fields["title_reviewed"].initial is True
+    report = SemanticValidator().validate_log(saved)
+    assert "title" not in report.rejected_fields
+    assert report.moderator_reviewed_fields == {"title"}
+
+    _generator().apply_log_to_product(saved)
+
+    saved.refresh_from_db()
+    medicine.refresh_from_db()
+    assert saved.status == AIProcessingStatus.APPROVED
+    assert saved.application_status == AIApplicationStatus.APPLIED
+    assert saved.application_report["moderator_reviewed_fields"] == ["title"]
+    assert medicine.name == "Препарат 10 мг, таблетки"
+    assert medicine.translations.get(locale="en").name == "Medicine 10 mg tablets"
+    assert not AIModerationQueue.objects.filter(log_entry=saved, resolved_at__isnull=True).exists()
+
+
+def test_title_review_is_bound_to_the_reviewed_text():
+    medicine = MedicineProduct.objects.create(name="TESTMED 10 MG TABLET", slug="moderation-title-review-bound")
+    medicine.refresh_from_db()
+    log = _lost_identity_title_log(medicine)
+    saved = _save_form(log, _medicine_form_data(log, title_reviewed="on"))
+    assert "title" not in SemanticValidator().validate_log(saved).rejected_fields
+
+    # Новое название (повтор AI или правка) снова проходит все проверки.
+    saved.generated_title = "Другой препарат 10 мг, таблетки"
+    saved.save(update_fields=["generated_title"])
+    report = SemanticValidator().validate_log(saved)
+    assert "title" in report.rejected_fields
+    assert "title" not in report.moderator_reviewed_fields
+
+    # Снятая галочка убирает решение.
+    saved.generated_title = "Препарат 10 мг, таблетки"
+    saved.save(update_fields=["generated_title"])
+    unticked = _save_form(saved, _medicine_form_data(saved))
+    assert "moderator_title_review" not in unticked.extracted_attributes
+    assert "title" in SemanticValidator().validate_log(unticked).rejected_fields
+
+
+def test_title_review_marks_preview_and_overview():
+    medicine = MedicineProduct.objects.create(name="TESTMED 10 MG TABLET", slug="moderation-title-preview")
+    medicine.refresh_from_db()
+    log = _lost_identity_title_log(medicine)
+    admin_view = AIProcessingLogAdmin(AIProcessingLog, AdminSite())
+
+    overview = admin_view.workflow_overview(log)
+    assert "Как снять блокировку" in overview
+    assert "Название проверено модератором" in overview
+    title_rows = [row for row in build_change_preview(log) if row.label == "Название"]
+    assert title_rows and all(row.decision == "blocked" for row in title_rows)
+
+    saved = _save_form(log, _medicine_form_data(log, title_reviewed="on"))
+    title_rows = [row for row in build_change_preview(saved) if row.label == "Название"]
+    assert all(row.decision == "apply" for row in title_rows)
+    assert all("Проверено модератором" in row.reason for row in title_rows)
+
+
+def test_truncated_medicine_title_is_blocked_in_preview():
+    medicine = MedicineProduct.objects.create(name="MOUNJARO 7,5 MG", slug="moderation-title-truncated-preview")
+    medicine.refresh_from_db()
+    log = _lost_identity_title_log(medicine)
+    log.generated_title = "MOUNJARO 7"
+    log.save(update_fields=["generated_title"])
+
+    report = SemanticValidator().validate_log(log)
+    assert "title_truncated" in report.reasons
+    title_rows = [row for row in build_change_preview(log, semantic_report=report) if row.section == "Контент RU" and row.label == "Название"]
+    assert title_rows[0].decision == "blocked"
+    assert "обрезано" in title_rows[0].reason
+
+
+def test_reviewed_paragraphs_are_applied_without_edits():
+    medicine = _medicine_with_storage("moderation-reviewed-paragraphs-as-is")
+    log = _storage_log(medicine, shifted=True)
+    assert "storage_conditions" in SemanticValidator().validate_log(log).paragraph_findings
+    shifted_ru = log.extracted_attributes["translations_data"]["ru"]["storage_conditions"]
+
+    saved = _save_form(log, _medicine_form_data(log, medicine_storage_conditions_decision="reviewed"))
+
+    report = SemanticValidator().validate_log(saved)
+    assert report.paragraph_findings == {}
+    assert "medicine_translation:storage_conditions" not in report.rejected_fields
+    assert report.moderator_reviewed_fields == {"medicine_translation:storage_conditions"}
+    rows = [row for row in build_change_preview(saved, semantic_report=report) if row.label == "Условия хранения"]
+    assert rows and all(row.decision == "apply" for row in rows)
+
+    _generator().apply_log_to_product(saved)
+
+    saved.refresh_from_db()
+    medicine.refresh_from_db()
+    assert saved.status == AIProcessingStatus.APPROVED
+    assert saved.application_status == AIApplicationStatus.APPLIED
+    assert medicine.translations.get(locale="ru").storage_conditions == shifted_ru
+    assert saved.application_report["moderator_reviewed_fields"] == ["medicine_translation:storage_conditions"]
+
+
+def test_reviewed_paragraph_decision_is_bound_to_the_reviewed_text():
+    medicine = _medicine_with_storage("moderation-reviewed-paragraphs-bound")
+    log = _storage_log(medicine, shifted=True)
+    saved = _save_form(log, _medicine_form_data(log, medicine_storage_conditions_decision="reviewed"))
+    attrs = dict(saved.extracted_attributes)
+    translations = dict(attrs["translations_data"])
+    translations["ru"] = {"storage_conditions": translations["ru"]["storage_conditions"] + "\nНовый абзац."}
+    attrs["translations_data"] = translations
+    saved.extracted_attributes = attrs
+    saved.save(update_fields=["extracted_attributes"])
+
+    assert "storage_conditions" in SemanticValidator().validate_log(saved).paragraph_findings
+
+
+def test_reviewed_decision_requires_both_locales():
+    medicine = _medicine_with_storage("moderation-reviewed-needs-locales")
+    log = _storage_log(medicine, shifted=True)
+    data = _medicine_form_data(
+        log,
+        medicine_storage_conditions_decision="reviewed",
+        medicine_storage_conditions_en="",
+    )
+
+    form = AIProcessingLogForm(data=data, instance=log)
+
+    assert not form.is_valid()
+    assert "требует заполненных RU и EN" in str(form.errors["medicine_storage_conditions_decision"])
+
+
+def test_reviewed_decision_unblocks_fact_mismatch_and_incomplete_sections():
+    medicine = MedicineProduct.objects.create(name="TESTMED 10 MG TABLET", slug="moderation-reviewed-fact-mismatch")
+    medicine.refresh_from_db()
+    ru_text = "Принимать по 1 таблетке 2 раза в день."
+    en_text = "Take 1 tablet twice a day."
+    log = _reviewable_log(
+        medicine.base_product,
+        status=AIProcessingStatus.MODERATION,
+        generated_title="TESTMED 10 мг, таблетки",
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_title": "TESTMED 10 мг, таблетки"},
+                "en": {"generated_title": "TESTMED 10 mg tablets"},
+            },
+            "translations_data": {
+                "ru": {"usage_instructions": ru_text, "indications": "Показания RU."},
+                "en": {"usage_instructions": en_text, "indications": "Indications EN."},
+            },
+            "medicine_translation_quality": {
+                "usage_instructions": {"source_length": 40, "complete": False, "fact_mismatch": True},
+                "indications": {"source_length": 900, "complete": False},
+            },
+        },
+    )
+    report = SemanticValidator().validate_log(log)
+    assert {"medicine_fact_mismatch", "incomplete_medicine_translation"} <= set(report.reasons)
+
+    saved = _save_form(
+        log,
+        _medicine_form_data(
+            log,
+            medicine_usage_instructions_decision="reviewed",
+            medicine_indications_decision="reviewed",
+        ),
+    )
+    _generator().apply_log_to_product(saved)
+
+    saved.refresh_from_db()
+    medicine.refresh_from_db()
+    assert saved.status == AIProcessingStatus.APPROVED
+    assert medicine.translations.get(locale="ru").usage_instructions == ru_text
+    assert medicine.translations.get(locale="en").indications == "Indications EN."
+
+
+def test_unblock_actions_name_the_moderator_decision():
+    from apps.ai.services.moderation import get_unblock_actions
+
+    actions = get_unblock_actions(
+        ["title_identity_lost", "medicine_paragraph_mismatch", "category_change_suggested"],
+        ["title", "medicine_translation:storage_conditions"],
+    )
+
+    assert any("«Название проверено модератором»" in action for action in actions)
+    assert any("условия хранения" in action and "как есть" in action for action in actions)
+    assert any("«Предложенная категория»" in action for action in actions)
+    assert get_unblock_actions([], []) == []
+
+
+def test_bulk_apply_message_explains_how_to_unblock(django_user_model):
+    medicine = MedicineProduct.objects.create(name="TESTMED 10 MG TABLET", slug="moderation-bulk-unblock-message")
+    medicine.refresh_from_db()
+    log = _lost_identity_title_log(medicine)
+    request = SimpleNamespace(user=django_user_model.objects.create_user(username="bulk-mod", password="x"))
+    admin_view = AIProcessingLogAdmin(AIProcessingLog, AdminSite())
+
+    with (
+        patch("apps.ai.services.content_generator.ContentGenerator", return_value=_generator()),
+        patch("apps.ai.admin.messages") as admin_messages,
+    ):
+        admin_view.apply_to_product(request, AIProcessingLog.objects.filter(pk=log.pk))
+
+    warning = admin_messages.warning.call_args[0][1]
+    assert f"#{log.id}" in warning
+    assert "«Название проверено модератором»" in warning
+
+
+def test_applying_newer_log_closes_older_duplicates_of_the_same_product():
+    accessory = AccessoryProduct.objects.create(name="MODEL-101 ремень", slug="moderation-duplicates-closed")
+    accessory.refresh_from_db()
+    product = accessory.base_product
+    old_log = _reviewable_log(product, status=AIProcessingStatus.MODERATION, moderation_notes="заметка")
+    old_queue = AIModerationQueue.objects.create(log_entry=old_log, reason="title_identity_lost")
+    other_type = _reviewable_log(product, processing_type="categorization_only", status=AIProcessingStatus.MODERATION)
+    new_log = _reviewable_log(product)
+
+    _generator().apply_log_to_product(new_log)
+
+    old_log.refresh_from_db()
+    old_queue.refresh_from_db()
+    other_type.refresh_from_db()
+    assert old_log.status == AIProcessingStatus.REJECTED
+    assert old_log.moderation_notes == f"заметка\nЗакрыто автоматически: заменено более новой обработкой #{new_log.pk}."
+    assert old_queue.resolved_at is not None
+    # Полная обработка заменяет и логи другого типа.
+    assert other_type.status == AIProcessingStatus.REJECTED
+
+
+def test_applying_older_or_partial_log_keeps_other_results():
+    accessory = AccessoryProduct.objects.create(name="MODEL-101 ремень", slug="moderation-duplicates-kept")
+    accessory.refresh_from_db()
+    product = accessory.base_product
+    category_log = _reviewable_log(product, processing_type="categorization_only", status=AIProcessingStatus.MODERATION)
+    old_log = _reviewable_log(product, processing_type="description_only")
+    newer_log = _reviewable_log(product, status=AIProcessingStatus.MODERATION)
+
+    _generator().apply_log_to_product(old_log)
+
+    category_log.refresh_from_db()
+    newer_log.refresh_from_db()
+    assert category_log.status == AIProcessingStatus.MODERATION
+    assert newer_log.status == AIProcessingStatus.MODERATION
+
+
+def test_close_resolved_moderation_closes_existing_duplicates():
+    from apps.ai.services.bulk_ops import close_resolved_moderation
+
+    medicine = MedicineProduct.objects.create(name="TESTMED 10 MG TABLET", slug="moderation-existing-duplicates")
+    medicine.refresh_from_db()
+    old_log = _lost_identity_title_log(medicine)
+    AIModerationQueue.objects.create(log_entry=old_log, reason="title_identity_lost")
+    new_log = _lost_identity_title_log(medicine)
+    new_queue = AIModerationQueue.objects.create(log_entry=new_log, reason="title_identity_lost")
+
+    preview = close_resolved_moderation(dry_run=True)
+    old_log.refresh_from_db()
+    assert preview["closed"] == 1 and old_log.status == AIProcessingStatus.MODERATION
+
+    with patch("apps.ai.services.bulk_ops.ContentGenerator", return_value=_generator()):
+        result = close_resolved_moderation()
+
+    old_log.refresh_from_db()
+    new_log.refresh_from_db()
+    new_queue.refresh_from_db()
+    assert result["closed"] == 1
+    assert old_log.status == AIProcessingStatus.REJECTED
+    assert new_log.status == AIProcessingStatus.MODERATION
+    assert new_queue.resolved_at is None

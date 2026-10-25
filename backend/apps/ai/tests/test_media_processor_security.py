@@ -179,6 +179,7 @@ def _generator_for_orchestration(monkeypatch):
     generator._validate_generated_content = Mock()
     generator._parse_and_save_results = Mock()
     generator._check_needs_moderation = Mock(return_value=False)
+    generator._close_superseded_logs = Mock()
 
     product = SimpleNamespace(id=7, product_type="books", category=None)
     log_entry = SimpleNamespace(

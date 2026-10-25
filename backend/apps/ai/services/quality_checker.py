@@ -3,7 +3,9 @@
 import re
 from typing import List
 
-from apps.ai.models import AIProcessingLog, AIModerationQueue
+from django.utils import timezone
+
+from apps.ai.models import AIProcessingLog, AIModerationQueue, AIProcessingStatus
 from apps.ai.services.semantic_validator import SemanticValidationReport, SemanticValidator
 
 
@@ -95,3 +97,33 @@ def create_moderation_task(
             update_fields.append("resolved_at")
         if update_fields:
             task.save(update_fields=update_fields)
+
+
+def close_superseded_logs(log: AIProcessingLog) -> List[int]:
+    """Закрыть более старые непроверенные логи товара, которые заменил ``log``.
+
+    Иначе в модерации висят два результата одного товара, а применение
+    старого перезаписало бы карточку устаревшим текстом. Полная обработка
+    заменяет логи любого типа, частичная — только своего.
+    """
+    older = AIProcessingLog.objects.filter(
+        product_id=log.product_id,
+        pk__lt=log.pk,
+        status__in=(AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION),
+    )
+    if log.processing_type != "full":
+        older = older.filter(processing_type=log.processing_type)
+    closed_at = timezone.now()
+    note = f"Закрыто автоматически: заменено более новой обработкой #{log.pk}."
+    closed = []
+    for old_log in older:
+        old_log.status = AIProcessingStatus.REJECTED
+        old_log.moderation_date = closed_at
+        old_log.moderation_notes = "\n".join(filter(None, [old_log.moderation_notes, note]))
+        old_log.save(update_fields=["status", "moderation_date", "moderation_notes", "updated_at"])
+        closed.append(old_log.pk)
+    if closed:
+        AIModerationQueue.objects.filter(log_entry_id__in=closed, resolved_at__isnull=True).update(
+            resolved_at=closed_at
+        )
+    return closed

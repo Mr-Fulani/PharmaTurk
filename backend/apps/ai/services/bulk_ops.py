@@ -17,7 +17,7 @@ from django.db.models import Avg, Exists, OuterRef, Q
 from apps.ai.models import AIModerationQueue, AIProcessingLog, AIProcessingStatus
 from apps.ai.services.content_generator import SUPPLEMENT_TITLE_RETRY_REASONS, ContentGenerator
 from apps.ai.services.ownership import SOURCE_CHANGED_KEY
-from apps.ai.services.quality_checker import get_moderation_reasons
+from apps.ai.services.quality_checker import close_superseded_logs, get_moderation_reasons
 from apps.ai.tasks import ACTIVE_AI_LOG_STATUSES
 from apps.catalog.models import Category, Product
 
@@ -189,18 +189,47 @@ def retry_supplement_titles(*, limit, dry_run=False, report=_silent):
     return {"selected": selected, "fixed": fixed, "failed": failed, "cost_usd": cost}
 
 
+def _newer_result(log):
+    """Более новый результат того же товара, который заменяет ``log`` (close_superseded_logs)."""
+    return (
+        AIProcessingLog.objects.filter(
+            product_id=log.product_id,
+            pk__gt=log.pk,
+            status__in=(AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION, AIProcessingStatus.APPROVED),
+        )
+        .filter(Q(processing_type=log.processing_type) | Q(processing_type="full"))
+        .order_by("-pk")
+        .first()
+    )
+
+
 def close_resolved_moderation(*, product_types=(), limit=0, dry_run=False, report=_silent):
     """Закрыть записи модерации без оставшихся причин (см. close_resolved_ai_moderation).
 
-    Возвращает ``{"closed", "kept", "failed"}``; при dry_run ``closed`` —
-    сколько будет закрыто.
+    Устаревшие дубли — записи, у товара которых есть более новый результат, —
+    закрываются без применения. Возвращает ``{"closed", "kept", "failed"}``;
+    при dry_run ``closed`` — сколько будет закрыто.
     """
     generator = None if dry_run else ContentGenerator()
     closed = kept = failed = 0
+    closed_ids = set()
     for task in _open_moderation(product_types).iterator():
         if limit and closed >= limit:
             break
         log = task.log_entry
+        if log.id in closed_ids:
+            continue
+        newer = _newer_result(log)
+        if newer is not None:
+            if dry_run:
+                closed += 1
+                report(f"закрыть устаревший дубль: лог {log.id}, товар {log.product_id} — есть лог {newer.id}")
+                continue
+            ids = close_superseded_logs(newer)
+            closed_ids.update(ids)
+            closed += len(ids)
+            report(f"закрыт устаревший дубль: лог(и) {', '.join(map(str, ids))}, товар {log.product_id} — есть лог {newer.id}")
+            continue
         if get_moderation_reasons(log):
             kept += 1
             continue
