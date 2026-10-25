@@ -231,7 +231,8 @@ def get_incomplete_medicine_field_messages(
             else ""
         )
         advice = (
-            " Исправьте эти абзацы RU и EN в форме лога, оставьте текущий раздел товара "
+            " Исправьте эти абзацы RU и EN в форме лога; если перевод верный, выберите "
+            "«Проверено — применить RU и EN как есть»; либо оставьте текущий раздел товара "
             "или перезапустите AI."
             if field_name in paragraph_findings
             else ""
@@ -241,6 +242,52 @@ def get_incomplete_medicine_field_messages(
             f"{preserved_text}{advice}"
         )
     return messages
+
+
+def get_unblock_actions(
+    reasons: list[str] | set[str] | tuple[str, ...],
+    rejected_fields: list[str] | set[str] | tuple[str, ...],
+) -> list[str]:
+    """Что сделать модератору, чтобы снять каждую оставшуюся блокировку."""
+    reasons = set(reasons or ())
+    rejected = set(rejected_fields or ())
+    actions = []
+    if "title" in rejected:
+        actions.append(
+            "Название: исправьте «Название (RU)» и «Заголовок (EN)» либо, если название "
+            "верное, отметьте «Название проверено модератором» и снова нажмите "
+            "«Сохранить и применить»."
+        )
+    medicine_fields = sorted(
+        field_name.split(":", 1)[1]
+        for field_name in rejected
+        if field_name.startswith("medicine_translation:")
+    )
+    if medicine_fields:
+        labels = ", ".join(
+            MEDICINE_TRANSLATION_FIELD_LABELS.get(field_name, field_name).removesuffix(" RU/EN")
+            for field_name in medicine_fields
+        )
+        actions.append(
+            f"Медицинские разделы ({labels}): исправьте RU/EN в форме лога или, если перевод "
+            "верный, выберите действие «Проверено — применить RU и EN как есть»; "
+            "чтобы оставить раздел товара прежним — «Не менять этот раздел товара»."
+        )
+    if "category_change_suggested" in reasons:
+        actions.append(
+            "Категория: AI предлагает другую. Если текущая категория товара верна, очистите "
+            "поле «Предложенная категория» в логе; если нет — смените категорию в карточке товара."
+        )
+    if "untranslated_attribute" in reasons:
+        actions.append(
+            "Атрибуты: переведите или удалите непереведённое значение в блоке "
+            "«Извлечённые атрибуты (JSON)»."
+        )
+    if "sizes" in rejected:
+        actions.append(
+            "Размеры: очистите поле «Доступные размеры» и укажите размеры в вариантах товара вручную."
+        )
+    return actions
 
 
 @dataclass(frozen=True)
@@ -435,6 +482,7 @@ def _medicine_rows(
     attrs: dict[str, Any],
     translations: dict[str, Any],
     paragraph_findings: dict[str, list[dict[str, Any]]],
+    reviewed_fields: set[str] = frozenset(),
 ) -> None:
     if getattr(target, "_domain_product_type", "") != "medicines":
         return
@@ -502,7 +550,10 @@ def _medicine_rows(
                     "AI не создал этот язык"
                 )
             details = quality.get(field) if isinstance(quality, dict) else None
-            if isinstance(details, dict) and not preserved_reason:
+            reviewed = f"medicine_translation:{field}" in reviewed_fields
+            if reviewed and not preserved_reason:
+                quality_note = "Проверено модератором — применится как есть"
+            elif isinstance(details, dict) and not preserved_reason:
                 quality_note = (
                     f"Источник: {details.get('source_length', 0)} симв.; "
                     f"RU: {details.get('ru_length', 0)}; EN: {details.get('en_length', 0)}"
@@ -514,6 +565,7 @@ def _medicine_rows(
             if (
                 locale == "ru"
                 and not preserved_reason
+                and not reviewed
                 and looks_untranslated_turkish(strip_proper_name_lines(proposed))
             ):
                 blocked_reason = "Поле содержит непереведённый турецкий текст"
@@ -557,15 +609,19 @@ def build_change_preview(
     }
     semantic_report = semantic_report or SemanticValidator().validate_log(log)
     rejected = semantic_report.rejected_fields
-    title_reason_code = next(
-        (
-            reason
-            for reason in semantic_report.reasons
-            if reason in {"title_category_mismatch", "title_identity_lost", "title_untranslated"}
-        ),
-        "",
-    )
-    title_reason = MODERATION_REASON_LABELS.get(title_reason_code, title_reason_code)
+    title_reason = ""
+    title_note = ""
+    if "title" in rejected:
+        title_reason_code = next(
+            (reason for reason in semantic_report.reasons if reason.startswith("title_")),
+            "",
+        )
+        title_reason = (
+            MODERATION_REASON_LABELS.get(title_reason_code, title_reason_code)
+            or "Название не прошло проверку"
+        )
+    elif "title" in semantic_report.moderator_reviewed_fields:
+        title_note = "Проверено модератором — применится как есть"
     clean_size_prose = (
         strip_size_inventory_sentences
         if supports_size_inventory(product_type)
@@ -608,6 +664,7 @@ def build_change_preview(
         getattr(ru, "name", None) or getattr(target, "name", None) or product.name,
         seo_ru.get("generated_title") or log.generated_title,
         blocked_reason=title_reason,
+        note=title_note,
     )
     _row(
         rows,
@@ -623,6 +680,7 @@ def build_change_preview(
         getattr(en, "name", None),
         seo_en.get("generated_title") or log.generated_title,
         blocked_reason=title_reason,
+        note=title_note,
     )
     _row(
         rows,
@@ -714,7 +772,14 @@ def build_change_preview(
 
     _book_rows(rows, target, attrs)
     _jewelry_rows(rows, target, attrs)
-    _medicine_rows(rows, target, attrs, translations, semantic_report.paragraph_findings)
+    _medicine_rows(
+        rows,
+        target,
+        attrs,
+        translations,
+        semantic_report.paragraph_findings,
+        semantic_report.moderator_reviewed_fields,
+    )
     return rows
 
 

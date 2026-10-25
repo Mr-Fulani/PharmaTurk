@@ -104,6 +104,8 @@ class SemanticValidationReport:
     canonical_product_kind: str = ""
     # Поле лекарства → абзацы с признаками чужого перевода (medicine_paragraph_findings).
     paragraph_findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    # Поля, проверку которых снял модератор («title», «medicine_translation:<поле>»).
+    moderator_reviewed_fields: set[str] = field(default_factory=set)
 
     @property
     def needs_moderation(self) -> bool:
@@ -121,14 +123,59 @@ _MEDICINE_SOURCE_TABS = {
 }
 
 
+def _clean_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def moderator_reviewed_title(log, attrs: dict[str, Any]) -> bool:
+    """Модератор подтвердил именно текущие RU/EN-названия лога.
+
+    Отметка хранит проверенный текст (``moderator_title_review``): новое
+    название от AI или правка после отметки снова проходят все проверки.
+    """
+    review = attrs.get("moderator_title_review")
+    if not isinstance(review, dict):
+        return False
+    translations = attrs.get("seo_translations") if isinstance(attrs.get("seo_translations"), dict) else {}
+    en_title = (translations.get("en") or {}).get("generated_title") if isinstance(translations.get("en"), dict) else ""
+    ru_title = _clean_text(getattr(log, "generated_title", ""))
+    return bool(ru_title) and (
+        _clean_text(review.get("ru")) == ru_title and _clean_text(review.get("en")) == _clean_text(en_title)
+    )
+
+
+def moderator_reviewed_medicine_fields(attrs: dict[str, Any]) -> set[str]:
+    """Разделы лекарства с решением «Проверено — применить как есть».
+
+    Решение действует, пока RU/EN раздела совпадают с текстом, который видел
+    модератор (``medicine_moderator_overrides``).
+    """
+    decisions = attrs.get("medicine_moderator_decisions")
+    overrides = attrs.get("medicine_moderator_overrides")
+    translations = attrs.get("translations_data")
+    if not isinstance(decisions, dict) or not isinstance(overrides, dict) or not isinstance(translations, dict):
+        return set()
+    ru_data = translations.get("ru") if isinstance(translations.get("ru"), dict) else {}
+    en_data = translations.get("en") if isinstance(translations.get("en"), dict) else {}
+    reviewed = set()
+    for field_name, decision in decisions.items():
+        override = overrides.get(field_name)
+        if decision != "reviewed" or not isinstance(override, dict):
+            continue
+        ru, en = _clean_text(ru_data.get(field_name)), _clean_text(en_data.get(field_name))
+        if ru and en and _clean_text(override.get("ru")) == ru and _clean_text(override.get("en")) == en:
+            reviewed.add(field_name)
+    return reviewed
+
+
 def medicine_paragraph_findings(log, attrs: dict[str, Any] | None = None) -> dict[str, list[dict[str, Any]]]:
     """Клинические разделы лога лекарства, где перевод абзацев похож на чужой.
 
     Перевод сверяется с исходником, из которого он сделан (``input_data`` лога),
     теми же правилами, что и абзацы в памяти (``section_paragraph_problems``).
     Не проверяются: раздел без исходника в логе (перевод сделан не по абзацам),
-    раздел, который модератор решил не менять, и текст, исправленный
-    модератором в форме лога (``paragraphs_reviewed``).
+    раздел, который модератор решил не менять или принял как есть, и текст,
+    исправленный модератором в форме лога (``paragraphs_reviewed``).
     """
     if attrs is None:
         attrs = getattr(log, "extracted_attributes", None)
@@ -145,6 +192,7 @@ def medicine_paragraph_findings(log, attrs: dict[str, Any] | None = None) -> dic
     decisions = attrs.get("medicine_moderator_decisions")
     decisions = decisions if isinstance(decisions, dict) else {}
     brand = paragraph_brand(input_data.get("name"), input_data.get("active_ingredient"))
+    reviewed = moderator_reviewed_medicine_fields(attrs)
     findings = {}
     for field_name, tab in _MEDICINE_SOURCE_TABS.items():
         payload = tabs.get(tab)
@@ -155,6 +203,7 @@ def medicine_paragraph_findings(log, attrs: dict[str, Any] | None = None) -> dic
             not source
             or not (ru.strip() or en.strip())
             or decisions.get(field_name) == "keep_current"
+            or field_name in reviewed
             or details.get("paragraphs_reviewed")
         ):
             continue
@@ -584,9 +633,14 @@ class SemanticValidator:
         translations = (
             attrs.get("seo_translations") if isinstance(attrs.get("seo_translations"), dict) else {}
         )
+        # Название, подтверждённое модератором, проверки не проходят: решение
+        # принял человек. Любое новое название проверяется снова.
+        title_reviewed = moderator_reviewed_title(log, attrs)
         report = self.validate(
             product,
-            generated_titles={
+            generated_titles={}
+            if title_reviewed
+            else {
                 "ru": getattr(log, "generated_title", ""),
                 "en": (translations.get("en") or {}).get("generated_title", ""),
             },
@@ -594,6 +648,8 @@ class SemanticValidator:
             sizes=attrs.get("sizes") or [],
             extracted_attributes=attrs,
         )
+        if title_reviewed:
+            report.moderator_reviewed_fields.add("title")
         # Заданную категорию AI не меняет (она определяет наценку): другое
         # предложение — повод для модератора, а не для авто-применения.
         # Предложение родительской (более общей) категории — не повод для
@@ -610,6 +666,10 @@ class SemanticValidator:
         # Сдвинутые переводы абзацев (у 92 логов 20.10.2026) проверки полноты не
         # видят: раздел «полный», но абзацы — от соседних. Такой раздел не применяется.
         if product_type == "medicines":
+            report.moderator_reviewed_fields.update(
+                f"medicine_translation:{field_name}"
+                for field_name in moderator_reviewed_medicine_fields(attrs)
+            )
             report.paragraph_findings = medicine_paragraph_findings(log, attrs)
             for field_name in report.paragraph_findings:
                 report.rejected_fields.add(f"medicine_translation:{field_name}")
@@ -768,7 +828,8 @@ class SemanticValidator:
 
         if product_type == "medicines":
             moderator_decisions = attrs.get("medicine_moderator_decisions")
-            kept_current_fields = {
+            # Разделы «Не менять» и «Проверено — как есть» решил модератор.
+            moderator_decided_fields = {
                 field_name
                 for field_name, decision in (
                     moderator_decisions.items()
@@ -776,11 +837,11 @@ class SemanticValidator:
                     else ()
                 )
                 if decision == "keep_current"
-            }
+            } | moderator_reviewed_medicine_fields(attrs)
             quality = attrs.get("medicine_translation_quality")
             if isinstance(quality, dict):
                 for field_name, details in quality.items():
-                    if field_name in kept_current_fields:
+                    if field_name in moderator_decided_fields:
                         continue
                     if isinstance(details, dict) and not details.get("complete", False):
                         report.rejected_fields.add(f"medicine_translation:{field_name}")
@@ -797,7 +858,7 @@ class SemanticValidator:
                 else {}
             )
             for field_name, value in ru_data.items():
-                if field_name in kept_current_fields:
+                if field_name in moderator_decided_fields:
                     continue
                 if looks_untranslated_turkish(strip_proper_name_lines(value)):
                     report.rejected_fields.add(f"medicine_translation:{field_name}")
