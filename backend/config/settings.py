@@ -984,6 +984,9 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 # false — сайт не обращается к OpenAI совсем: нет запасного пути для текста, RAG-эмбеддингов и анализа картинок.
 AI_OPENAI_ENABLED = env.bool("AI_OPENAI_ENABLED", default=True)
+# true — карточке одежды/обуви/аксессуаров с «пустым» текстом источника описание пишет
+# Claude по 1–2 фото и фактам (≈ $0.0003 за товар) вместо шаблона из фактов.
+AI_RULE_VISION_DESCRIPTIONS = env.bool("AI_RULE_VISION_DESCRIPTIONS", default=False)
 
 # CoinRemitter (crypto payments)
 COINREMITTER_API_KEY = env("COINREMITTER_API_KEY", default="")

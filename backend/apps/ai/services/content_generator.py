@@ -409,7 +409,12 @@ class ContentGenerator:
                     )
                 elif rule_plan is not None:
                     generation_result = run_rule_content(
-                        product, rule_plan, collected_input, self.llm, log_entry
+                        product,
+                        rule_plan,
+                        collected_input,
+                        self.llm,
+                        log_entry,
+                        images=self._rule_images(product, log_entry) if rule_plan.wants_images else None,
                     )
                 else:
                     system_prompt = (
@@ -596,6 +601,19 @@ class ContentGenerator:
         if input_data.get("product_type") != "books" or not isinstance(ru, dict) or not re.search(r"[а-яё]", name, re.IGNORECASE):
             return
         ru["generated_title"] = re.sub(r"\s+-\s+", " — ", name)
+
+    def _rule_images(self, product: Product, log_entry: AIProcessingLog) -> List[str]:
+        """1–2 фото товара (JPEG base64 до 768 px) для описания по фото в правилах."""
+        images = []
+        for url in self._get_product_image_urls(product)[:4]:
+            processed = self.media_processor.get_image_for_analysis(url, max_size=(768, 768))
+            if processed.get("base64"):
+                images.append(processed)
+            if len(images) == 2:
+                break
+        log_entry.input_images_urls = [image["url"] for image in images]
+        log_entry.save(update_fields=["input_images_urls"])
+        return [image["base64"].split(",", 1)[1] for image in images]
 
     def _get_product_image_urls(self, product: Product) -> List[str]:
         """
