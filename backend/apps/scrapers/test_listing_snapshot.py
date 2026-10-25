@@ -545,3 +545,21 @@ def test_measuring_guard_never_opens_beyond_sample_and_counts_changes():
     assert guard.sampled == 1
     assert guard.would_open == 2
     assert guard.rows == {"a": "fp-a", "b": "fp-b2", "c": "fp-c"}
+
+
+@pytest.mark.django_db
+def test_chunk_of_only_unchanged_rows_still_counts_as_progress(monkeypatch):
+    # Без пройденных страниц run_scraper_task счёл бы чанк пустым и оборвал цепочку.
+    _run_category(monkeypatch, _ListingParser([("a", "fp-a"), ("b", "fp-b")]))
+    service = ScraperIntegrationService()
+    monkeypatch.setattr(service, "_process_scraped_products", lambda session, products: pytest.fail())
+    session = SimpleNamespace(
+        max_pages=1, pages_processed=0, errors_count=0, id=None, save=lambda: None,
+        products_found=0, products_created=0, products_updated=0, products_skipped=0,
+    )
+    _, results = service._run_parser_scraping(
+        _ListingParser([("a", "fp-a"), ("b", "fp-b")]), session, "https://fakeshop.test/category",
+    )
+    assert results["found"] == 0
+    assert results["skipped"] == 2
+    assert session.pages_processed == 1

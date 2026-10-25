@@ -1264,18 +1264,21 @@ class ScraperIntegrationService:
                 incremental_results["errors"] += parser_item_errors
                 if catalog_managed:
                     incremental_results["skipped"] += int(getattr(parser, "catalog_skipped", 0))
-                if listing_guard is not None and listing_guard.unchanged:
+                unchanged = listing_guard.unchanged if listing_guard is not None else 0
+                if unchanged:
                     # Строка списка не изменилась — карточка не открывалась.
-                    incremental_results["skipped"] += listing_guard.unchanged
+                    incremental_results["skipped"] += unchanged
                     self.logger.info(
                         "%s: карточек без изменений в списке (не открывались): %s",
                         parser.get_name(),
-                        listing_guard.unchanged,
+                        unchanged,
                     )
                 if getattr(parser, "REPORTS_PAGES_PROCESSED", False):
                     session.pages_processed += parser.pages_processed
-                elif incremental_results["found"]:
-                    session.pages_processed += incremental_results["found"] // 20 + 1
+                elif incremental_results["found"] or unchanged:
+                    # Чанк из одних неизменившихся строк — тоже пройденные страницы,
+                    # иначе цепочка чанков сочла бы его пустым и остановилась.
+                    session.pages_processed += (incremental_results["found"] + unchanged) // 20 + 1
                 session._has_more_pages = getattr(parser, "has_more_pages", None)
                 session._stop_reason = str(getattr(parser, "stop_reason", "") or "")
                 tracker = getattr(parser, "change_tracker", None)
