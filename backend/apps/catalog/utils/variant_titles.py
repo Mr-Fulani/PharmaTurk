@@ -6,7 +6,8 @@ def strip_price_and_codes_from_title(title: str) -> str:
     if not title:
         return ""
     cleaned = str(title)
-    cleaned = re.sub(r"\b[A-Z0-9]{2,}-[A-Z0-9]+\b", "", cleaned, flags=re.IGNORECASE)
+    # Код — слово через дефис с цифрой («J5SM-TST7325»); «Sofa-Bed», «Slip-Ons», «SPIDER-MAN» — нет.
+    cleaned = re.sub(r"\b(?=[A-Z-]*\d)[A-Z0-9]{2,}-[A-Z0-9]+\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b\d+[.,]\d+\s*(TL|TRY|USD|EUR|RUB|KZT|USDT)\b", "", cleaned, flags=re.IGNORECASE)
     # Цена без валюты («349,00»). Дозировки и размеры («2,5 MG», «0,5 мл», «1,5 м»)
     # не трогаем: у них одна цифра после запятой или единица измерения следом.
@@ -84,6 +85,6 @@ def should_replace_variant_title(current_title: str, parent_title: str, raw_colo
         return True
     if re.search(r"\b\d+[.,]?\d*\s*(tl|try|usd|eur|rub|kzt|usdt)\b", current, flags=re.IGNORECASE):
         return True
-    if re.search(r"\b[A-Z0-9]{2,}-[A-Z0-9]+\b", current, flags=re.IGNORECASE):
+    if re.search(r"\b(?=[A-Z-]*\d)[A-Z0-9]{2,}-[A-Z0-9]+\b", current, flags=re.IGNORECASE):
         return True
     return False

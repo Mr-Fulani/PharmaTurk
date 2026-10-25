@@ -393,7 +393,7 @@ def _identity_tokens(value: Any) -> set[str]:
             continue
         # Код «J5SM-TST7325» санитайзер вырезает из любого названия
         # (strip_price_and_codes_from_title) — требовать его нельзя.
-        if re.fullmatch(r"[A-Z0-9]{2,}-[A-Z0-9]+", upper):
+        if re.fullmatch(r"(?=[A-Z-]*\d)[A-Z0-9]{2,}-[A-Z0-9]+", upper):
             continue
         is_alphanumeric_model = any(char.isdigit() for char in token) and any(
             char.isalpha() for char in token

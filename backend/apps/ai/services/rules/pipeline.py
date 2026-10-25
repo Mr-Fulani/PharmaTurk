@@ -39,6 +39,8 @@ _TITLE_FALLBACK_REASONS = frozenset({"title_untranslated", "title_category_misma
 # Буквы, которых нет ни в русском, ни в английском: турецкое слово в названии.
 _TURKISH_LETTERS_RE = re.compile(r"[çğışÇĞİŞ]")
 _CYRILLIC_LETTERS_RE = re.compile(r"[а-яё]", re.IGNORECASE)
+# Латиница (бренд/модель) в начале RU-названия, затем русский тип со строчной.
+_BRAND_FIRST_RE = re.compile(r"^((?:[^\sа-яёА-ЯЁ]+\s+)+)([а-яё][^,]*)(,.*)?$")
 
 SYSTEM_PROMPT = """
 Ты — редактор-переводчик карточек интернет-магазина Mudaroba (товары из Турции).
@@ -179,6 +181,12 @@ def _checked_llm_title(title: str, facts: ProductFacts, locale: str) -> str:
         return ""
     if bool(_CYRILLIC_LETTERS_RE.search(clean)) != (locale == "ru"):
         return ""  # RU без кириллицы («IKEA VIMLE 3-Seat») или EN с кириллицей
+    if locale == "ru":
+        # «IKEA KOMPLEMENT угловые петли, серые» → «Угловые петли IKEA KOMPLEMENT, серые»: тип первым.
+        match = _BRAND_FIRST_RE.match(clean)
+        if match:
+            identity, phrase, tail = match.group(1).strip(), match.group(2).strip(), match.group(3)
+            clean = f"{phrase[:1].upper()}{phrase[1:]} {identity}{tail or ''}"
     return clean
 
 

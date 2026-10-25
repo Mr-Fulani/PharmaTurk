@@ -36,7 +36,7 @@ _TOKEN_RE = re.compile(r"[^\s]+")
 _PACK_RE = re.compile(r"\b(\d+)\s*'\s*l[iıuü]\S*(?:\s+paket\S*)?", re.IGNORECASE)
 _CYRILLIC_SUFFIX_RE = re.compile(r"\s+-\s+[а-яё\s-]+$", re.IGNORECASE)
 # Коды вида «J5SM-TST7325»: санитайзер названий вырезает их, в модель не берём.
-_HYPHEN_CODE_RE = re.compile(r"^[A-Z0-9]{2,}-[A-Z0-9]+$", re.IGNORECASE)
+_HYPHEN_CODE_RE = re.compile(r"^(?=[A-Z-]*\d)[A-Z0-9]{2,}-[A-Z0-9]+$", re.IGNORECASE)
 # Строка материала LCW: «Kumaş: Suni Deri», «Kumaş Karışımı: 100% Deri».
 _MATERIAL_LINE_RE = re.compile(r"\b(?:Kumaş(?:\s+Karışımı)?|Materyal|Malzeme)\s*:\s*(?:%?\s*\d+\s*%?\s*)?([^\W\d_]+(?:\s+[^\W\d_]+)?)", re.IGNORECASE)
 _DIMENSIONS_RE = re.compile(r"\d+(?:[.,]\d+)?(?:[x×]\d+(?:[.,]\d+)?)+", re.IGNORECASE)
@@ -149,7 +149,8 @@ def drop_codes(tokens: list[str]) -> list[str]:
         # Четыре цифры сразу за словом модели — номер модели («Emr 1830»),
         # отдельно («Tişört 4480», «Sandalet 5003») — артикул. Пустой токен — разрыв.
         model_number = stripped.isdigit() and len(stripped) == 4 and previous_kept
-        if not stripped or "%" in stripped or (is_supplier_code(stripped) and not model_number) or (
+        single_letter = len(stripped) == 1 and stripped.isalpha()  # размер «M» в «PC-7315 M Kahve»
+        if not stripped or single_letter or "%" in stripped or (is_supplier_code(stripped) and not model_number) or (
             after_sku and len(stripped) <= 3 and stripped.upper() == stripped
         ):
             after_sku = bool(stripped)

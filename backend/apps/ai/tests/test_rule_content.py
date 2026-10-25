@@ -758,3 +758,29 @@ def test_zip_and_turquoise_words_and_dimensions():
     from apps.ai.services.rules.facts import is_supplier_code
 
     assert not is_supplier_code("13x10x6") and is_supplier_code("12295132")
+
+
+def test_hyphenated_words_without_digits_are_not_codes():
+    from apps.catalog.utils.variant_titles import strip_price_and_codes_from_title
+
+    assert strip_price_and_codes_from_title("GLENN 5FX Men's Slip-Ons") == "GLENN 5FX Men's Slip-Ons"
+    assert strip_price_and_codes_from_title("IKEA VIMLE 3-Seat Sofa-Bed") == "IKEA VIMLE 3-Seat Sofa-Bed"
+    assert strip_price_and_codes_from_title("Bisiklet Yaka T-Shirt J5SM-TST7325") == "Bisiklet Yaka T-Shirt"
+    facts, titles = _titles("SPIDER-MAN reglan kısa kollu t-shirt", "clothing", brand="Bershka", category_slug="t-shirts")
+    assert facts.model == "SPIDER-MAN"
+
+
+def test_llm_russian_title_starting_with_brand_gets_type_first():
+    from apps.ai.services.rules.pipeline import _checked_llm_title
+
+    facts = ProductFacts(product_type="furniture")
+    assert _checked_llm_title("IKEA KOMPLEMENT угловые петли с доводчиком, серые", facts, "ru") == (
+        "Угловые петли с доводчиком IKEA KOMPLEMENT, серые"
+    )
+    assert _checked_llm_title("Pull&Bear бомбер с мехом", facts, "ru") == "Бомбер с мехом Pull&Bear"
+    assert _checked_llm_title("Сабо Frozen Elsa Classic детские", facts, "ru") == "Сабо Frozen Elsa Classic детские"
+    assert _checked_llm_title("IKEA VIMLE 3-Seat Sofa-Bed", facts, "ru") == ""
+
+
+def test_single_letter_size_is_not_model():
+    assert _titles("PC-7315 M Kahve Erkek Sandalet", "shoes", category_slug="sandals")[0].model == ""
