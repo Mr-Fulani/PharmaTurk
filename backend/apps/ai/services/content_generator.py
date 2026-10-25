@@ -45,6 +45,7 @@ from apps.ai.services.variant_detector import VariantContentDetector
 from apps.ai.services.vector_store import QdrantManager
 from apps.ai.services.quality_checker import (
     check_needs_moderation,
+    close_superseded_logs,
     create_moderation_task,
     get_moderation_reasons,
 )
@@ -79,7 +80,11 @@ from apps.ai.services.rules.pipeline import (
     run_rule_content,
     validate_rule_content,
 )
-from apps.ai.services.semantic_validator import SemanticValidator, _title_has_turkish_words
+from apps.ai.services.semantic_validator import (
+    SemanticValidator,
+    _title_has_turkish_words,
+    moderator_reviewed_medicine_fields,
+)
 from apps.ai.services.size_inventory import (
     extract_sizes_from_input,
     merge_confirmed_sizes,
@@ -521,10 +526,13 @@ class ContentGenerator:
                     log_entry.status = AIProcessingStatus.MODERATION
                     log_entry.save()
                     self._create_moderation_task(log_entry)
+                    close_superseded_logs(log_entry)
                     return log_entry
                 log_entry.status = AIProcessingStatus.COMPLETED
 
             log_entry.save()
+            if log_entry.status == AIProcessingStatus.COMPLETED:
+                close_superseded_logs(log_entry)
             return log_entry
 
         except Exception as e:
@@ -2835,6 +2843,7 @@ class ContentGenerator:
                     "semantic_reasons": semantic_report.reasons,
                     "rejected_fields": sorted(semantic_report.rejected_fields),
                     "moderator_kept_fields": moderator_kept_fields,
+                    "moderator_reviewed_fields": sorted(semantic_report.moderator_reviewed_fields),
                     "moderator_preserved_locales": moderator_preserved_locales,
                     "applied_at": applied_at.isoformat(),
                 }
@@ -2864,6 +2873,7 @@ class ContentGenerator:
                     ]
                 )
                 self._clear_source_changed_flag(log.product_id)
+                close_superseded_logs(log)
                 if is_partial:
                     self._create_moderation_task(log, reasons=semantic_report.reasons)
                 else:
@@ -2952,6 +2962,7 @@ class ContentGenerator:
         fallback_keywords = seo_en.get('meta_keywords') or log.generated_keywords
 
         rejected_fields = rejected_fields or set()
+        reviewed_medicine_fields = moderator_reviewed_medicine_fields(attrs)
         ai_data = {
             'generated_title': (log.generated_title or '').strip() or None,
             'generated_description': clean_size_prose(log.generated_description),
@@ -2988,8 +2999,13 @@ class ContentGenerator:
                         or seo_ru.get('meta_description')
                         or log.generated_seo_description
                     ),
+                    # Раздел, принятый модератором как есть, не фильтруется.
                     **{
-                        k: ("" if self._looks_untranslated_turkish(v) else v)
+                        k: (
+                            ""
+                            if k not in reviewed_medicine_fields and self._looks_untranslated_turkish(v)
+                            else v
+                        )
                         for k, v in attrs.get('translations_data', {}).get('ru', {}).items()
                     }
                 },

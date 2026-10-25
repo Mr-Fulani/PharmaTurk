@@ -3,6 +3,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
+from django.utils import timezone
 from django.utils.html import format_html, escape
 from django.utils.safestring import mark_safe
 from django.urls import path, reverse, NoReverseMatch
@@ -24,10 +25,14 @@ from .services.moderation import (
     get_incomplete_medicine_field_messages,
     get_moderation_reason_labels,
     get_rejected_field_labels,
+    get_unblock_actions,
     get_workflow_title,
     reject_log,
 )
-from .services.semantic_validator import medicine_paragraph_findings
+from .services.semantic_validator import (
+    medicine_paragraph_findings,
+    moderator_reviewed_title,
+)
 from .services.size_inventory import (
     merge_confirmed_sizes,
     parse_moderator_size_list,
@@ -74,6 +79,8 @@ MEDICINE_CLINICAL_FIELDS = frozenset(
 MEDICINE_LONG_TEXT_FIELDS = MEDICINE_CLINICAL_FIELDS | {"special_notes"}
 MEDICINE_EDITOR_DECISIONS = (
     ("apply", "Применить RU и EN из формы"),
+    # Снимает автоматические проверки раздела, пока RU/EN не изменятся.
+    ("reviewed", "Проверено — применить RU и EN как есть"),
     (
         "merge_current",
         "Применить новое; отсутствующий язык сохранить из товара",
@@ -233,8 +240,8 @@ def _paragraph_findings_help(findings, limit=5):
         lines.append("…")
     lines.append(
         "Исправьте эти абзацы в RU и EN и сохраните — исправленный текст применится "
-        "без этой проверки; либо выберите «Не менять этот раздел товара», либо "
-        "перезапустите AI."
+        "без этой проверки. Если перевод верный, выберите «Проверено — применить RU и EN "
+        "как есть». Либо выберите «Не менять этот раздел товара», либо перезапустите AI."
     )
     return " ".join(lines)
 
@@ -264,6 +271,16 @@ MEDICINE_DETAIL_EDITOR_ROWS = tuple(
 
 class AIProcessingLogForm(forms.ModelForm):
     """Форма с полями EN/OG и атрибутами украшений; всё хранится в extracted_attributes и применяется к товару."""
+    title_reviewed = forms.BooleanField(
+        required=False,
+        label="Название проверено модератором",
+        help_text=(
+            "Отметьте, если автоматическая проверка ошибочно отклонила название RU/EN "
+            "или вы исправили его вручную: название применится как есть. Отметка "
+            "относится к текущему тексту — после его изменения или новой обработки AI "
+            "название снова проверяется."
+        ),
+    )
     generated_en_title = forms.CharField(
         max_length=255,
         required=False,
@@ -391,6 +408,7 @@ class AIProcessingLogForm(forms.ModelForm):
         self._medicine_initial_values = {}
         self._medicine_fallback_values = {}
         if self.instance and self.instance.pk:
+            self.fields["title_reviewed"].initial = moderator_reviewed_title(self.instance, attrs)
             seo_translations = attrs.get("seo_translations") or {}
             seo_en = seo_translations.get("en") or attrs.get("seo_en") or {}
             self.fields["generated_en_title"].initial = seo_en.get("generated_title") or ""
@@ -506,7 +524,8 @@ class AIProcessingLogForm(forms.ModelForm):
                         "Сейчас заблокировано: AI-результат неполный; источник "
                         f"{details.get('source_length', 0)} симв., "
                         f"RU {details.get('ru_length', 0)}, EN {details.get('en_length', 0)}. "
-                        "Заполните недостающий язык либо сохраните его текущее значение товара."
+                        "Заполните недостающий язык либо сохраните его текущее значение товара. "
+                        "Если RU и EN верные, выберите «Проверено — применить RU и EN как есть»."
                     )
                     self.fields[ru_field].help_text = warning
                     self.fields[en_field].help_text = warning
@@ -535,6 +554,24 @@ class AIProcessingLogForm(forms.ModelForm):
         else:
             for field_name in MEDICINE_EDITOR_FORM_FIELDS:
                 self.fields.pop(field_name, None)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        for medicine_field in MEDICINE_EDITOR_FIELDS:
+            decision_field = _medicine_editor_field_name(medicine_field, "decision")
+            if cleaned_data.get(decision_field) != "reviewed":
+                continue
+            if not all(
+                str(cleaned_data.get(_medicine_editor_field_name(medicine_field, locale)) or "").strip()
+                for locale in ("ru", "en")
+            ):
+                self.add_error(
+                    decision_field,
+                    "«Проверено — применить как есть» требует заполненных RU и EN. Заполните "
+                    "недостающий язык или выберите «Применить новое; отсутствующий язык "
+                    "сохранить из товара».",
+                )
+        return cleaned_data
 
     def save(self, commit=True):
         obj = super().save(commit=commit)
@@ -567,6 +604,26 @@ class AIProcessingLogForm(forms.ModelForm):
             seo_translations["en"] = seo_en
             attrs["seo_translations"] = seo_translations
             attrs["seo_en"] = seo_en
+            if "title_reviewed" in self.cleaned_data:
+                if self.cleaned_data["title_reviewed"]:
+                    # Отметка хранит проверенный текст (moderator_reviewed_title).
+                    reviewed_titles = {
+                        "ru": (obj.generated_title or "").strip(),
+                        "en": str(seo_en.get("generated_title") or "").strip(),
+                    }
+                    previous = attrs.get("moderator_title_review")
+                    if not (
+                        isinstance(previous, dict)
+                        and {locale: previous.get(locale) for locale in ("ru", "en")} == reviewed_titles
+                    ):
+                        moderator = getattr(self, "moderator", None)
+                        attrs["moderator_title_review"] = {
+                            **reviewed_titles,
+                            "reviewed_by": getattr(moderator, "username", "") or "",
+                            "reviewed_at": timezone.now().isoformat(),
+                        }
+                else:
+                    attrs.pop("moderator_title_review", None)
             product_type = getattr(getattr(obj, "product", None), "product_type", None)
             if "inventory_sizes" in self.cleaned_data and supports_size_inventory(product_type):
                 moderator_sizes = parse_moderator_size_list(
@@ -849,6 +906,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "generated_title",
+                    "title_reviewed",
                     "generated_description",
                 ),
                 "description": "Можно исправить предложение AI перед применением.",
@@ -895,6 +953,8 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     "Исправьте языковые версии до применения. Если AI пропустил RU или EN, "
                     "форма подставит подходящее текущее значение товара и предложит сохранить "
                     "его вместе с новым переводом. После сохранения проверка будет пересчитана. "
+                    "Если проверка ошибочно отклонила верный перевод, выберите действие "
+                    "«Проверено — применить RU и EN как есть». "
                     "Этот блок отображается только для лекарств."
                 ),
             },
@@ -1003,6 +1063,11 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         ),
     )
 
+    def save_form(self, request, form, change):
+        # Кто отметил «Название проверено» — для истории в extracted_attributes.
+        form.moderator = request.user
+        return super().save_form(request, form, change)
+
     def get_fieldsets(self, request, obj=None):
         fieldsets = list(super().get_fieldsets(request, obj))
         product_type = getattr(getattr(obj, "product", None), "product_type", None)
@@ -1042,9 +1107,14 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         }
         foreground, background, border = colors.get(tone, colors["neutral"])
         reasons = []
+        actions = []
         if obj.status in (AIProcessingStatus.COMPLETED, AIProcessingStatus.MODERATION):
             try:
                 semantic_report = self._semantic_report(obj)
+                actions = get_unblock_actions(
+                    semantic_report.reasons,
+                    semantic_report.rejected_fields,
+                )
                 reasons = get_moderation_reason_labels(
                     obj,
                     semantic_report=semantic_report,
@@ -1078,6 +1148,13 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             reason_html = (
                 '<ul style="margin:8px 0 0 18px;">'
                 + "".join(f"<li>{escape(reason)}</li>" for reason in reasons)
+                + "</ul>"
+            )
+        if actions:
+            reason_html += (
+                '<div style="margin-top:8px;font-weight:700;">Как снять блокировку:</div>'
+                '<ul style="margin:4px 0 0 18px;">'
+                + "".join(f"<li>{escape(action)}</li>" for action in actions)
                 + "</ul>"
             )
         application_label = APPLICATION_LABELS.get(
@@ -1363,6 +1440,10 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 )
                 if obj.application_status == AIApplicationStatus.PARTIAL:
                     rejected = (obj.application_report or {}).get("rejected_fields") or []
+                    actions = get_unblock_actions(
+                        (obj.application_report or {}).get("semantic_reasons") or [],
+                        rejected,
+                    )
                     rejected_labels = ", ".join(get_rejected_field_labels(rejected))
                     updated = bool((obj.application_report or {}).get("product_updated"))
                     applied_message = (
@@ -1384,9 +1465,8 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                         f"Лог #{obj.id}: {applied_message} "
                         f"Не перенесены: {rejected_labels or 'поля, требующие проверки'}. "
                         f"{detail_message} "
-                        "Запись остаётся на модерации; отдельное предварительное "
-                        "одобрение не требуется. Исправьте недостающий язык или выберите "
-                        "сохранение текущего языка товара.",
+                        "Запись остаётся на модерации. Что сделать: "
+                        + (" ".join(actions) or "исправьте перечисленные поля в форме лога.")
                     )
                 else:
                     kept_fields = (obj.application_report or {}).get(
@@ -1418,6 +1498,15 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                         preserved_note = (
                             " Сохранены существующие языковые версии товара: "
                             + "; ".join(preserved_parts)
+                            + "."
+                        )
+                    reviewed_fields = (obj.application_report or {}).get(
+                        "moderator_reviewed_fields"
+                    ) or []
+                    if reviewed_fields:
+                        kept_note += (
+                            " Применены как проверенные модератором: "
+                            + ", ".join(get_rejected_field_labels(reviewed_fields))
                             + "."
                         )
                     updated = bool((obj.application_report or {}).get("product_updated"))
@@ -1546,6 +1635,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         applied = 0
         partial = 0
         partial_details = []
+        partial_actions = []
         auto_preserved_details = []
         skipped = 0
         for log in queryset:
@@ -1592,6 +1682,12 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                         f"#{log.id} — {labels or 'поля, требующие проверки'}"
                         + (f": {detail}" if detail else "")
                     )
+                    for action in get_unblock_actions(
+                        (log.application_report or {}).get("semantic_reasons") or [],
+                        rejected,
+                    ):
+                        if action not in partial_actions:
+                            partial_actions.append(action)
                 else:
                     applied += 1
             except Exception as e:
@@ -1621,8 +1717,11 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                 request,
                 f"Не полностью обработано AI-логов: {partial}. {visible_details}. "
                 "Если товар не изменён, это указано в самом логе. Записи остаются на "
-                "модерации только до решения по перечисленным полям."
-                f"{preserved_note}",
+                "модерации только до решения по перечисленным полям. Массовое действие "
+                "применяет только то, что прошло проверку; решения модератора принимаются "
+                "в форме лога. Что сделать: "
+                + (" ".join(partial_actions) or "откройте лог и исправьте перечисленные поля.")
+                + preserved_note,
             )
         if skipped:
             messages.info(request, f"Пропущено логов с неподходящим статусом: {skipped}.")
