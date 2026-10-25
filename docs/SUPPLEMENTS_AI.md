@@ -102,6 +102,22 @@
 если он турецкий → `input_data["name"]` самого раннего лога. Применение нового лога пишет
 оригинал в `external_data["source_name"]`.
 
+## Массовый прогон 25–26.10.2026
+
+Все 7 883 БАДа (в том числе 248 обработанных прежней генерацией), Claude Haiku 5.5, 4 процесса в
+отдельном контейнере (`mudaroba-aibatch-sup-mass`, код релиза ac8722e), перед прогоном — снимок полей
+всех БАДов (`~/sup-pilot/out/backup_supplements_2026-10-25.json`, откат — `sup_restore.py`).
+
+| итог | шт. | доля |
+|---|---|---|
+| применено к карточке | 7 428 | 94,2 % (7 409 + 19 при повторе ошибок) |
+| на модерации | 440 | 5,6 % |
+| ошибка (нет RU-названия или описания) | 15 | 0,2 % — исправлено (латинское имя линейки «BP+ CONTROL», «N.NERGY», «5-HTP» и слово «BOOST» в бренде), повтор после деплоя |
+
+Стоимость — $1,32 по `usage` (≈ $0,00017 за товар). Причины модерации: `title_category_mismatch` 134,
+`supplement_title_number_lost` 110, `supplement_ingredient_mistranslated` 84, `supplement_unsourced_number` 75,
+`title_identity_lost` 64, `title_untranslated` 11, `supplement_form_mismatch` 4, `suspicious_price` 4.
+
 ## Как менять
 
 - Новое турецкое слово — строка в `GLOSSARY` (`supplement_glossary.py`): `"kereviz": ("сельдерей",

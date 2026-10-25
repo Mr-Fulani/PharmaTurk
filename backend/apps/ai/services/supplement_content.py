@@ -299,17 +299,26 @@ def is_baby_food(source_name: Any) -> bool:
     return bool(_BABY_FOOD_RE.search(fold_tr(source_name)))
 
 
-def clean_paragraph(text: Any) -> str:
+def _without_source_words(sentence: str, source_name: str) -> str:
+    """Предложение без латинских слов названия: «BOOST», «BP+ CONTROL» — бренд, а не обещание."""
+    words = set(re.findall(r"[a-z0-9]+", fold_tr(source_name)))
+    return re.sub(r"[A-Za-z][A-Za-z0-9]*", lambda m: "" if fold_tr(m.group(0)) in words else m.group(0), sentence)
+
+
+def clean_paragraph(text: Any, source_name: str = "") -> str:
     """Абзац без предложений с обещаниями, справочными полями и рассуждениями о данных."""
     plain = re.sub(r"<[^>]+>", " ", str(text or ""))
     plain = re.sub(r"\s+", " ", plain).strip()
-    kept = [s for s in _SENTENCE_RE.split(plain) if s and not any(r.search(s) for r in _DROP_RES)]
+    kept = [
+        s for s in _SENTENCE_RE.split(plain)
+        if s and not any(r.search(_without_source_words(s, source_name)) for r in _DROP_RES)
+    ]
     return " ".join(kept).strip()
 
 
-def build_description(paragraphs: Any, locale: str, *, baby_food: bool = False) -> str:
+def build_description(paragraphs: Any, locale: str, *, baby_food: bool = False, source_name: str = "") -> str:
     items = paragraphs if isinstance(paragraphs, list) else [paragraphs]
-    cleaned = [clean_paragraph(item) for item in items]
+    cleaned = [clean_paragraph(item, source_name) for item in items]
     cleaned = [item for item in cleaned if item]
     if not cleaned:
         return ""
@@ -337,7 +346,7 @@ def description_problems(description: Any, source: Any) -> list[str]:
     for text in (*DISCLAIMER.values(), *BABY_DISCLAIMER.values()):
         plain = plain.replace(text, " ")
     problems = []
-    if _CLAIM_RE.search(plain):
+    if _CLAIM_RE.search(_without_source_words(plain, str(source or ""))):
         problems.append("supplement_health_claim")
     if unsourced_numbers(plain, source):
         problems.append("supplement_unsourced_number")
@@ -665,13 +674,14 @@ def _translated(text: Any, locale: str, source_name: str = "") -> str:
         return ""
     if locale == "ru":
         # Турецкие слова источника (словарь и служебные: «SURUP», «KAPSUL») — не обозначения.
+        # Слова сравниваются без знаков: «BP+ CONTROL», «N.NERGY», «5-HTP» источника — те же слова.
         source_words = {
-            w for w in fold_tr(source_name).split()
+            w for w in re.findall(r"[a-z0-9]+", fold_tr(source_name))
             if w not in supplement_glossary.GLOSSARY and w not in _SOURCE_SERVICE_WORDS
         }
         latin = [
             w for w in re.findall(r"[A-Za-z][A-Za-z0-9\-]*", value)
-            if not _ALLOWED_LATIN.match(w) and fold_tr(w) not in source_words
+            if not _ALLOWED_LATIN.match(w) and not set(re.findall(r"[a-z0-9]+", fold_tr(w))) <= source_words
         ]
         if latin and not CYRILLIC_RE.search(value):
             return ""
@@ -770,7 +780,8 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
     description = answer.get("description") if isinstance(answer.get("description"), dict) else {}
     baby_food = is_baby_food(source_name)
     descriptions = {
-        locale: build_description(description.get(locale), locale, baby_food=baby_food) for locale in ("ru", "en")
+        locale: build_description(description.get(locale), locale, baby_food=baby_food, source_name=source_name)
+        for locale in ("ru", "en")
     }
     serving = answer.get("serving") if isinstance(answer.get("serving"), dict) else {}
     seo = build_seo(brand, brand_ru, product_text, pack, baby_food=baby_food)
