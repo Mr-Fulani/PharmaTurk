@@ -526,13 +526,13 @@ class ContentGenerator:
                     log_entry.status = AIProcessingStatus.MODERATION
                     log_entry.save()
                     self._create_moderation_task(log_entry)
-                    close_superseded_logs(log_entry)
+                    self._close_superseded_logs(log_entry)
                     return log_entry
                 log_entry.status = AIProcessingStatus.COMPLETED
 
             log_entry.save()
             if log_entry.status == AIProcessingStatus.COMPLETED:
-                close_superseded_logs(log_entry)
+                self._close_superseded_logs(log_entry)
             return log_entry
 
         except Exception as e:
@@ -2713,6 +2713,9 @@ class ContentGenerator:
     ) -> None:
         create_moderation_task(log, reasons=reasons)
 
+    def _close_superseded_logs(self, log: AIProcessingLog) -> None:
+        close_superseded_logs(log)
+
     def _log_has_applicable_content(self, log: AIProcessingLog) -> bool:
         """Проверяет, есть ли в логе реальный результат для авто-применения."""
         attrs = log.extracted_attributes if isinstance(log.extracted_attributes, dict) else {}
@@ -2873,7 +2876,7 @@ class ContentGenerator:
                     ]
                 )
                 self._clear_source_changed_flag(log.product_id)
-                close_superseded_logs(log)
+                self._close_superseded_logs(log)
                 if is_partial:
                     self._create_moderation_task(log, reasons=semantic_report.reasons)
                 else:
