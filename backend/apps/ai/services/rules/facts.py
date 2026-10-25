@@ -149,7 +149,8 @@ def drop_codes(tokens: list[str]) -> list[str]:
         # Четыре цифры сразу за словом модели — номер модели («Emr 1830»),
         # отдельно («Tişört 4480», «Sandalet 5003») — артикул. Пустой токен — разрыв.
         model_number = stripped.isdigit() and len(stripped) == 4 and previous_kept
-        single_letter = len(stripped) == 1 and stripped.isalpha()  # размер «M» в «PC-7315 M Kahve»
+        # Размер «M» в «PC-7315 M Kahve». Только латиница: русские «с», «в», «и» в LLM-названии — слова.
+        single_letter = len(stripped) == 1 and stripped.isascii() and stripped.isalpha()
         if not stripped or single_letter or "%" in stripped or (is_supplier_code(stripped) and not model_number) or (
             after_sku and len(stripped) <= 3 and stripped.upper() == stripped
         ):
