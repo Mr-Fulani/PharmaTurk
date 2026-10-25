@@ -60,22 +60,13 @@ export function joinSentencesWithin(sentences, maxLength) {
 }
 
 /**
- * JSON-LD страницы препарата: Drug (без Offer — сайт лекарства не продаёт, как у карточек,
- * см. canPublishSchemaOffer) и BreadcrumbList.
+ * JSON-LD страницы препарата: BreadcrumbList. Drug не выводится: без Offer, отзывов и рейтинга
+ * Google считает его товаром с ошибкой (как 222 карточки лекарств, 25.10.2026), а цену в разметку
+ * лекарств не ставим (см. canPublishSchemaOffer, shouldPublishProductSchema).
  */
-export function buildDrugGroupSchemas({ siteUrl, localePrefix, path, heading, latin, ingredient, description, prescription, breadcrumbs }) {
+export function buildDrugGroupSchemas({ siteUrl, localePrefix, breadcrumbs }) {
   const base = `${siteUrl}${localePrefix}`
   return [
-    {
-      '@context': 'https://schema.org',
-      '@type': 'Drug',
-      name: heading,
-      ...(latin && latin !== heading ? { alternateName: latin } : {}),
-      ...(ingredient ? { activeIngredient: ingredient } : {}),
-      description,
-      url: `${base}${path}`,
-      ...(prescription ? { prescriptionStatus: 'https://schema.org/PrescriptionOnly' } : {}),
-    },
     {
       '@context': 'https://schema.org',
       '@type': 'BreadcrumbList',

@@ -23,8 +23,8 @@ SEO карточек лекарств — [SEO_MEDICINES.md](SEO_MEDICINES.md). 
 
 Title и description строит шаблон (`pages/drugs/[slug].tsx`), если поля перевода пусты:
 «Мажезик (MAJEZIK) — флурбипрофен: формы, цена, инструкция»; длинное вещество не помещается —
-«…: формы, цена, инструкция» без него. JSON-LD — `Drug` (без `Offer`, как у карточек лекарств) и
-`BreadcrumbList`. Страницы — в sitemap-секции `drugs` (`/sitemaps/drugs.xml`).
+«…: формы, цена, инструкция» без него. JSON-LD — только
+`BreadcrumbList`: `Drug` без `Offer` и рейтинга Google считает ошибкой товара (с 25.10.2026 не выводится). Страницы — в sitemap-секции `drugs` (`/sitemaps/drugs.xml`).
 
 ### Какие формы входят
 

@@ -32,6 +32,14 @@ export function canPublishSchemaOffer({ price, isMedicine, isSupplement, canAddT
   return true
 }
 
+// Google требует у Product (и Drug — его подтипа) хотя бы offers, review или aggregateRating:
+// без них 222 лекарства в Search Console были «недопустимым значением» (25.10.2026). Цену в
+// разметку лекарств не ставим (решение владельца), поэтому такую разметку не выводим вовсе.
+export function shouldPublishProductSchema({ type, hasOffer, hasRating }) {
+  if (type !== 'Product' && type !== 'Drug') return true
+  return Boolean(hasOffer || hasRating)
+}
+
 // Google: sku не длиннее 50 символов и без пробелов. Короткий slug не трогаем, чтобы не
 // менять идентификатор уже проиндексированных товаров; длинный заменяем на тип + id.
 export function resolveSchemaSku({ slug, productType, id }) {

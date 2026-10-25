@@ -11,6 +11,7 @@ import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components
 import {
   SCHEMA_RETURN_POLICY,
   canPublishSchemaOffer,
+  shouldPublishProductSchema,
   resolveSchemaAvailability,
   resolveSchemaSku,
   sourceRefreshBlocksPurchase,
@@ -1652,11 +1653,17 @@ export default function ProductPage({
         <meta name="twitter:title" content={metaTitle} />
         <meta name="twitter:description" content={metaDescription} />
         <meta name="twitter:image" content={ogImage} />
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: safeJsonLd(productSchema) }}
-        />
+        {shouldPublishProductSchema({
+          type: productSchema['@type'],
+          hasOffer: Boolean(productSchema.offers),
+          hasRating: hasRatingForSchema,
+        }) && (
+          <script
+            type="application/ld+json"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: safeJsonLd(productSchema) }}
+          />
+        )}
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger

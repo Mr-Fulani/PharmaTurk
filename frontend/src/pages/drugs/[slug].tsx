@@ -80,17 +80,7 @@ export default function DrugGroupPage({ group, forms }: DrugGroupPageProps) {
         title={metaTitle}
         description={metaDescription}
         canonical={path}
-        structuredData={buildDrugGroupSchemas({
-          siteUrl: SITE_URL,
-          localePrefix,
-          path,
-          heading,
-          latin: group.name,
-          ingredient,
-          description: metaDescription,
-          prescription: group.prescription,
-          breadcrumbs,
-        })}
+        structuredData={buildDrugGroupSchemas({ siteUrl: SITE_URL, localePrefix, breadcrumbs })}
       />
       <DrugGroupView
         group={group}

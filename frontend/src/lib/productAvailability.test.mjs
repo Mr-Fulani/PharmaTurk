@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   canPublishSchemaOffer,
+  shouldPublishProductSchema,
   resolveSchemaAvailability,
   resolveSchemaSku,
   sourceRefreshBlocksPurchase,
@@ -88,4 +89,14 @@ test('other card refresh failures still block purchase', () => {
   }
   assert.equal(sourceRefreshBlocksPurchase({ status: 'idle' }), false)
   assert.equal(sourceRefreshBlocksPurchase(null), false)
+})
+
+test('product schema without offer or rating is not published for Product and Drug', () => {
+  assert.equal(shouldPublishProductSchema({ type: 'Drug', hasOffer: false, hasRating: false }), false)
+  assert.equal(shouldPublishProductSchema({ type: 'Product', hasOffer: false, hasRating: false }), false)
+  assert.equal(shouldPublishProductSchema({ type: 'Drug', hasOffer: false, hasRating: true }), true)
+  assert.equal(shouldPublishProductSchema({ type: 'Product', hasOffer: true, hasRating: false }), true)
+  // Book и Service — не сниппет товара Google: выводятся как раньше.
+  assert.equal(shouldPublishProductSchema({ type: 'Book', hasOffer: false, hasRating: false }), true)
+  assert.equal(shouldPublishProductSchema({ type: 'Service', hasOffer: false, hasRating: false }), true)
 })
