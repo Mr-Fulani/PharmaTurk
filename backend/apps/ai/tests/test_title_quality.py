@@ -121,3 +121,16 @@ def test_attributes_without_spec_for_product_type_are_dropped_before_moderation(
     )
 
     assert kept == []
+
+
+def test_russian_book_name_is_kept_as_ru_title():
+    from apps.ai.services.content_generator import ContentGenerator
+
+    content = {"ru": {"generated_title": "Самоделки Рамадана"}, "en": {"generated_title": "Ramadan Crafts"}}
+    ContentGenerator._keep_russian_book_title(content, {"name": "Самоделки Рамадана. Выпуск 2", "product_type": "books"})
+    assert content["ru"]["generated_title"] == "Самоделки Рамадана. Выпуск 2"
+    assert content["en"]["generated_title"] == "Ramadan Crafts"
+
+    turkish = {"ru": {"generated_title": "Исламские финансы"}}
+    ContentGenerator._keep_russian_book_title(turkish, {"name": "İslami Finans", "product_type": "books"})
+    assert turkish["ru"]["generated_title"] == "Исламские финансы"

@@ -492,6 +492,7 @@ class ContentGenerator:
                     self._apply_medicine_fact_checks(content, input_data, source_sections)
                     generation_result["content"] = content
                 elif not is_supplement:
+                    self._keep_russian_book_title(content, collected_input)
                     content, title_retry = self._retry_supplement_title(product, content)
                     if title_retry:
                         self._merge_generation_usage(generation_result, title_retry, "title_retry")
@@ -582,6 +583,19 @@ class ContentGenerator:
             return False
         path = url.split("?")[0].lower()
         return path.endswith(self._VIDEO_EXTENSIONS)
+
+    @staticmethod
+    def _keep_russian_book_title(content: Dict, input_data: Dict) -> None:
+        """Книга с русским названием источника (UmmaLand): RU-название не переписываем.
+
+        Модель по правилу «без подзаголовка» резала смысл: «Самоделки Рамадана. Выпуск 2» →
+        «Самоделки Рамадана», «Пророческие истории Юнус» → «Юнус» (пилот 25.10.2026).
+        """
+        name = str(input_data.get("name") or "").strip()
+        ru = content.get("ru") if isinstance(content, dict) else None
+        if input_data.get("product_type") != "books" or not isinstance(ru, dict) or not re.search(r"[а-яё]", name, re.IGNORECASE):
+            return
+        ru["generated_title"] = re.sub(r"\s+-\s+", " — ", name)
 
     def _get_product_image_urls(self, product: Product) -> List[str]:
         """
