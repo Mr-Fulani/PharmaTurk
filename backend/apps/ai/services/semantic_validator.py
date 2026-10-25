@@ -24,6 +24,7 @@ from apps.ai.services.medicine_title import (
     title_brand,
 )
 from apps.ai.services.rules.vocab import fold, generic_title_words
+from apps.ai.services import supplement_content
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
     size_inventory_block_reason,
@@ -683,6 +684,15 @@ class SemanticValidator:
             and suggested_category_id not in _ancestor_ids(current_category)
         ):
             report.reasons.append("category_change_suggested")
+        # БАД: число из названия источника пропало в названии, в описании — число
+        # не из источника или обещание лечения. Такое поле не применяется.
+        if product_type == "supplements":
+            for field_name, reasons in supplement_content.log_problems(log).items():
+                if field_name == "title" and title_reviewed:
+                    continue
+                report.rejected_fields.add(field_name)
+                report.reasons.extend(reasons)
+            report.reasons = list(dict.fromkeys(report.reasons))
         # Сдвинутые переводы абзацев (у 92 логов 20.10.2026) проверки полноты не
         # видят: раздел «полный», но абзацы — от соседних. Такой раздел не применяется.
         if product_type == "medicines":
@@ -748,8 +758,11 @@ class SemanticValidator:
         )
         original_tokens = identity_tokens(source_name)
         if product_type == "supplements":
+            # После применения AI name — RU-название: сверяем с турецким оригиналом.
             identity_tokens = _supplement_identity_tokens
-            original_tokens = _supplement_identity_tokens(getattr(product, "name", ""), source=True)
+            original_tokens = _supplement_identity_tokens(
+                supplement_content.supplement_source_name(product), source=True
+            )
         elif product_type != "medicines":
             # Турецкие названия часто целиком в ВЕРХНЕМ регистре: общие слова
             # («TEE», «SNEAKER», «BEYAZ») — не идентичность, а бренд/модель

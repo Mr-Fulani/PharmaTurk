@@ -93,6 +93,7 @@ from apps.ai.services.size_inventory import (
     strip_size_inventory_sentences,
     supports_size_inventory,
 )
+from apps.ai.services.supplement_content import run_supplement_content, supplement_source_name
 
 logger = logging.getLogger(__name__)
 
@@ -385,6 +386,10 @@ class ContentGenerator:
                     not log_entry.image_analysis,
                 )
                 is_medicine = getattr(product, "product_type", None) == "medicines"
+                # БАД: название, SEO и состав собирает код, модель — бренд, «что это» и описание.
+                is_supplement = getattr(product, "product_type", None) == "supplements" and processing_type in (
+                    "full", "description_only"
+                )
                 code_fields = (
                     self._build_medicine_code_fields(collected_input, product_id=product_id)
                     if is_medicine
@@ -394,10 +399,14 @@ class ContentGenerator:
                 # LLM только переводит описание (см. apps/ai/services/rules).
                 rule_plan = (
                     None
-                    if is_medicine
+                    if is_medicine or is_supplement
                     else plan_rule_content(product, collected_input, processing_type)
                 )
-                if rule_plan is not None:
+                if is_supplement:
+                    generation_result = run_supplement_content(
+                        product, collected_input, self.llm, log_entry
+                    )
+                elif rule_plan is not None:
                     generation_result = run_rule_content(
                         product, rule_plan, collected_input, self.llm, log_entry
                     )
@@ -481,7 +490,7 @@ class ContentGenerator:
                         )
                     self._apply_medicine_fact_checks(content, input_data, source_sections)
                     generation_result["content"] = content
-                else:
+                elif not is_supplement:
                     content, title_retry = self._retry_supplement_title(product, content)
                     if title_retry:
                         self._merge_generation_usage(generation_result, title_retry, "title_retry")
@@ -489,7 +498,7 @@ class ContentGenerator:
                 self._save_generation_usage(log_entry, generation_result)
 
                 # Парсинг результатов
-                if rule_plan is not None:
+                if rule_plan is not None or is_supplement:
                     validate_rule_content(content)
                 else:
                     self._validate_generated_content(content, processing_type)
@@ -654,6 +663,8 @@ class ContentGenerator:
             # Шаблон названия, промпт и бренд абзацев — по турецкому оригиналу:
             # name после применения AI переведён, у старых товаров ещё и обрезан.
             data["name"] = medicine_source_name(product.name, product.external_data)[0]
+        elif product.product_type == "supplements":
+            data["name"] = supplement_source_name(product)
 
         variant_context = self._collect_variant_context(product)
         if variant_context:
@@ -2440,9 +2451,9 @@ class ContentGenerator:
         if product_type == "books":
             s = re.split(r",(?!\d)", s)[0].strip()
 
-        # 3. Убираем служебные хвосты цен/валют/артикулов. Лекарства — кроме: бренд
-        # с дефисом («DEVIT-3», «CALIRA-MET») и «film-coated» похожи на артикул.
-        if product_type != "medicines":
+        # 3. Убираем служебные хвосты цен/валют/артикулов. Лекарства и БАДы — кроме: бренд
+        # с дефисом («DEVIT-3», «MEGA-FARMA») и «film-coated» похожи на артикул.
+        if product_type not in ("medicines", "supplements"):
             s = self._strip_price_and_codes_from_title(s)
 
         s_str = str(s)
@@ -2588,7 +2599,7 @@ class ContentGenerator:
                         bucket[field],
                         remove_sizes=remove_sizes,
                     )
-            if bucket.get("generated_title") and input_data.get("product_type") != "medicines":
+            if bucket.get("generated_title") and input_data.get("product_type") not in ("medicines", "supplements"):
                 bucket["generated_title"] = self._strip_price_and_codes_from_title(bucket["generated_title"])
 
         had_attributes = isinstance(content.get("attributes"), dict)
@@ -2679,7 +2690,8 @@ class ContentGenerator:
             'indications', 'usage_instructions', 'side_effects', 
             'contraindications', 'storage_conditions', 'administration_route',
             'shelf_life', 'sgk_status', 'prescription_type', 'special_notes',
-            'origin_country', 'dosage_form', 'active_ingredient', 'volume'
+            'origin_country', 'dosage_form', 'active_ingredient', 'volume',
+            'serving_size',
         ]
         trans_data = {'ru': {}, 'en': {}}
         for field in trans_fields:
@@ -3043,6 +3055,15 @@ class ContentGenerator:
             }
         }
 
+        if product_type == "supplements":
+            # Турецкий оригинал из входа лога: у БАДов, обработанных до 25.10.2026,
+            # name уже переведён, и иначе оригинал хранится только в старых логах.
+            ai_data["source_name"] = (log.input_data or {}).get("name")
+        if "description" in rejected_fields:
+            # Описание БАДа с числом не из источника или обещанием лечения (supplement_content).
+            ai_data["generated_description"] = None
+            ai_data["translations"]["ru"].pop("description", None)
+            ai_data["translations"]["en"].pop("description", None)
         if "title" in rejected_fields:
             ai_data["generated_title"] = None
             ai_data["translations"]["ru"].pop("name", None)

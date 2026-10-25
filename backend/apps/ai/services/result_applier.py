@@ -84,17 +84,24 @@ def _make_unique_slug_for_domain(name: str, model_class, current_pk: Optional[in
     return slug
 
 
-def _remember_name_before_ai_title(item) -> bool:
-    """Перед первым AI-названием лекарства запоминает турецкий оригинал из name.
+# Шаблон названия строится из турецкого оригинала: лекарства и БАДы (supplement_content).
+SOURCE_NAME_PRODUCT_TYPES = ("medicines", "supplements")
 
-    Название, уже переведённое или обрезанное прежней обработкой, не
-    запоминается: шаблон из него не строится (medicine_title.medicine_source_name).
+
+def _remember_name_before_ai_title(item, name: Optional[str] = None) -> bool:
+    """Перед первым AI-названием лекарства или БАДа запоминает турецкий оригинал.
+
+    ``name`` — оригинал из входа лога (БАД, чьё name уже переведено прежней
+    обработкой), иначе берётся name товара. Название, уже переведённое или
+    обрезанное прежней обработкой, не запоминается: шаблон из него не строится
+    (medicine_title.medicine_source_name).
     """
+    name = name or item.name
     external = item.external_data if isinstance(item.external_data, dict) else {}
-    if external.get(SOURCE_NAME_KEY) or not looks_like_source_name(item.name):
+    if external.get(SOURCE_NAME_KEY) or not looks_like_source_name(name):
         return False
     item.external_data = external
-    return remember_source_name(external, item.name)
+    return remember_source_name(external, name)
 
 
 class BaseAIApplier:
@@ -633,6 +640,40 @@ class MedicineAIApplier(BaseAIApplier):
         return updated
 
 
+class SupplementAIApplier(BaseAIApplier):
+    """БАД: кроме названия, описания и SEO — «Состав» и «Порция» в переводах (собирает код)."""
+
+    _TRANSLATION_FIELDS = (("active_ingredient", 500), ("serving_size", 200))
+
+    def apply_translations(self, target: Any, translations_data: Dict[str, Any]) -> bool:
+        if not hasattr(target, "translations"):
+            return False
+        updated = super().apply_translations(target, translations_data)
+        for locale, data in translations_data.items():
+            if not isinstance(data, dict):
+                continue
+            values = {
+                field: str(data.get(field) or "").strip()[:limit]
+                for field, limit in self._TRANSLATION_FIELDS
+                if str(data.get(field) or "").strip()
+            }
+            if not values:
+                continue
+            trans = target.translations.filter(locale=locale).first() or target.translations.model(
+                product=target, locale=locale
+            )
+            changed = False
+            for field, value in values.items():
+                current = getattr(trans, field, None)
+                if current != value and self._may_overwrite(current, "translations", locale, field):
+                    setattr(trans, field, value)
+                    changed = True
+            if changed:
+                trans.save()
+                updated = True
+        return updated
+
+
 class AIResultApplier:
     """Сервис-диспетчер для применения результатов AI."""
     
@@ -640,6 +681,7 @@ class AIResultApplier:
         "books": BookAIApplier,
         "jewelry": JewelryAIApplier,
         "medicines": MedicineAIApplier,
+        "supplements": SupplementAIApplier,
     }
     
     _site_handlers = {
@@ -704,7 +746,9 @@ class AIResultApplier:
             new_title = "" if "title" in rejected_fields else (ai_data.get("generated_title") or "").strip()
             if new_title and target is not None:
                 update_fields = ["name"]
-                if product_type == "medicines" and _remember_name_before_ai_title(target):
+                if product_type in SOURCE_NAME_PRODUCT_TYPES and _remember_name_before_ai_title(
+                    target, ai_data.get("source_name")
+                ):
                     update_fields.append("external_data")
                 # Slug не меняем: старые URL товара должны продолжать открываться.
                 target.name = new_title[:500]
@@ -718,7 +762,9 @@ class AIResultApplier:
                 target.save(update_fields=update_fields)
             elif new_title:
                 update_fields = ["name"]
-                if product_type == "medicines" and _remember_name_before_ai_title(product):
+                if product_type in SOURCE_NAME_PRODUCT_TYPES and _remember_name_before_ai_title(
+                    product, ai_data.get("source_name")
+                ):
                     update_fields.append("external_data")
                 product.name = new_title[:500]
                 product.save(update_fields=update_fields)
