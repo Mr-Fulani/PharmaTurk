@@ -129,7 +129,7 @@ class ScraperConfigAdmin(admin.ModelAdmin):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     fieldsets = [
-        ("Основная информация", {"fields": ["name", "parser_class", "base_url", "description", "default_category", "default_brand"]}),
+        ("Основная информация", {"fields": ["name", "parser_class", "base_url", "description", "default_category", "default_brand", "is_multibrand"]}),
         ("Статус и настройки", {"fields": ["status", "is_enabled", "priority"]}),
         (
             "Параметры парсинга",

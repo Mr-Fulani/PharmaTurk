@@ -83,6 +83,7 @@ from apps.catalog.utils.parser_media_handler import (
     parsed_media_fingerprint,
     source_url_fingerprint,
 )
+from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG, ensure_brand_category
 from apps.catalog.utils.old_price import source_old_price
 import datetime
 
@@ -210,6 +211,53 @@ def _make_unique_brand_slug(name: str) -> str:
         slug = f"{base_slug}-{counter}"
         counter += 1
     return slug
+
+
+# Служебные значения вместо бренда на страницах магазинов: бренд из них не создаётся.
+_PLACEHOLDER_BRAND_NAMES = frozenset({
+    "другое", "other", "others", "diğer", "diger", "marka", "markasız", "markasiz",
+    "brand", "no brand", "nobrand", "unbranded", "generic", "unknown", "bilinmiyor",
+    "yok", "none", "null", "undefined", "n/a", "na", "-",
+})
+
+
+def clean_scraped_brand_name(raw) -> str:
+    """Название бренда со страницы или "", если там пусто или служебное значение."""
+    name = " ".join(str(raw or "").split())
+    if (
+        len(name) < 2
+        or len(name) > 100
+        or name.casefold() in _PLACEHOLDER_BRAND_NAMES
+        or name.isdigit()
+        or "://" in name
+    ):
+        return ""
+    return name
+
+
+def get_or_create_scraped_brand(raw, product_type: Optional[str] = None):
+    """Бренд каталога для названия со страницы: существующий или новый.
+
+    Бренду добавляется раздел товара — по нему строится фильтр брендов
+    в категории. Для пустых и служебных названий возвращает None.
+    """
+    from apps.catalog.models import Brand
+
+    name = clean_scraped_brand_name(raw)
+    if not name:
+        return None
+    category_slug = (product_type or "").replace("_", "-")
+    brand = Brand.objects.filter(name__iexact=name).exclude(slug=OTHER_BRAND_SLUG).order_by("pk").first()
+    if brand is None:
+        return Brand.objects.create(
+            name=name,
+            slug=_make_unique_brand_slug(name),
+            category_slugs=[category_slug] if category_slug else [],
+            primary_category_slug=category_slug,
+        )
+    if ensure_brand_category(brand, category_slug):
+        brand.save(update_fields=["category_slugs", "primary_category_slug", "updated_at"])
+    return brand
 
 
 class ScraperIntegrationService:
@@ -1831,11 +1879,18 @@ class ScraperIntegrationService:
         Устанавливает бренд товара.
         Приоритет:
         1. Бренд конкретной задачи
-        2. scraper_config.default_brand — бренд по умолчанию из конфигурации
-        3. scraped_product.brand — бренд, найденный парсером на странице
+        2. Магазин одного бренда: scraper_config.default_brand, затем бренд со страницы
+        3. Мультибрендовый магазин (is_multibrand): бренд со страницы, затем default_brand
         """
         override_brand = getattr(session, "_override_brand", None)
-        brand = override_brand or session.scraper_config.default_brand
+        config = session.scraper_config
+        page_brand = clean_scraped_brand_name(scraped_product.brand)
+        if override_brand:
+            brand = override_brand
+        elif config.is_multibrand and page_brand:
+            brand = None
+        else:
+            brand = config.default_brand
 
         if brand:
             scraped_product.brand = brand.name
@@ -3794,22 +3849,19 @@ class ScraperIntegrationService:
                 updated = True
 
         # Явный бренд задачи авторитетен и заменяет текущее значение. Обычный
-        # бренд конфигурации/парсера по-прежнему только дозаполняет пустое поле,
-        # чтобы повторный парсинг не стирал ручную правку.
+        # бренд конфигурации/парсера заполняет только пустое поле или заглушку
+        # «Другое», чтобы повторный парсинг не стирал ручной выбор бренда.
         brand_override = getattr(scraped_product, "_brand_override", None)
         if brand_override and existing_product.brand_id != brand_override.pk:
             existing_product.brand = brand_override
             updated = True
-        elif scraped_product.brand:
-            from apps.catalog.models import Brand
-            brand_name = scraped_product.brand.strip()
-            if not existing_product.brand:
-                brand = Brand.objects.filter(name__iexact=brand_name).first()
-                if not brand:
-                    brand = Brand.objects.create(
-                        name=brand_name,
-                        slug=_make_unique_brand_slug(brand_name),
-                    )
+        elif (
+            scraped_product.brand
+            and existing_product.product_type not in BRAND_CLEAR_PRODUCT_TYPES
+            and (not existing_product.brand_id or existing_product.brand.slug == OTHER_BRAND_SLUG)
+        ):
+            brand = get_or_create_scraped_brand(scraped_product.brand, existing_product.product_type)
+            if brand and existing_product.brand_id != brand.pk:
                 existing_product.brand = brand
                 updated = True
 
@@ -4900,6 +4952,13 @@ class ScraperIntegrationService:
             _, resolved_product_type = resolve_category_and_product_type(scraped_product.category)
         prepared_attrs = self._prepare_scraped_attributes(scraped_product, resolved_product_type)
 
+        # Новый бренд со страницы создаётся заранее: нормализатор только ищет
+        # существующий, и без этого товар получал заглушку «Другое».
+        brand_name = None
+        if scraped_product.brand and resolved_product_type not in BRAND_CLEAR_PRODUCT_TYPES:
+            brand = get_or_create_scraped_brand(scraped_product.brand, resolved_product_type)
+            brand_name = brand.name if brand else None
+
         product_data = ProductData(
             id=scraped_product.external_id,
             name=scraped_product.name,
@@ -4908,7 +4967,7 @@ class ScraperIntegrationService:
             old_price=getattr(scraped_product, "old_price", None),
             currency=scraped_product.currency,
             category=scraped_product.category,
-            brand=scraped_product.brand,
+            brand=brand_name,
             images=scraped_product.images,
             url=scraped_product.url,
             availability=scraped_product.is_available,
