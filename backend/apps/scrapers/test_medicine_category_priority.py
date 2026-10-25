@@ -570,3 +570,41 @@ def test_new_supplement_by_url_is_created_as_supplement(supplement_catalog):
     assert product.product_type == "supplements"
     assert product.category == supplement_catalog["supplements"]
     assert not MedicineProduct.objects.filter(base_product=product).exists()
+
+
+def test_supplement_task_with_supplements_root_keeps_existing_subcategory(supplement_catalog):
+    # Задачи ilacfiyati с категорией «БАДы» (корень) возвращали разложенные по
+    # подкатегориям БАДы в корень через _category_override.
+    existing = Product.objects.create(
+        name="Solgar Vitamin C", slug="solgar-vitamin-c-1000", product_type="supplements",
+        category=supplement_catalog["vitamins"], price=900, currency="TRY",
+        external_id="solgar-vitamin-c-1000-mg-100-tablet", external_url=SUPPLEMENT_URL,
+        external_data={"source": "ilacfiyati"},
+    )
+    service = ScraperIntegrationService()
+    run = real_session(supplement_catalog, target="supplements")
+    run.start_url = "https://ilacfiyati.com/takviye-edici-gida"
+
+    result = service._process_scraped_products(run, [supplement_scraped()])
+
+    existing.refresh_from_db()
+    assert result["updated"] == 1
+    assert existing.category == supplement_catalog["vitamins"]
+    assert existing.price == 950
+
+
+def test_new_supplement_gets_subcategory_by_source_name(supplement_catalog):
+    vitamins, _ = Category.objects.update_or_create(
+        slug="vitamins", defaults={"name": "vitamins", "parent": supplement_catalog["supplements"],
+                                   "category_type": supplement_catalog["supplements"].category_type,
+                                   "is_active": True},
+    )
+    service = ScraperIntegrationService()
+    run = real_session(supplement_catalog, target="supplements")
+
+    result = service._process_scraped_products(run, [supplement_scraped()])
+
+    assert result["created"] == 1
+    product = Product.objects.get(external_id="solgar-vitamin-c-1000-mg-100-tablet")
+    assert product.product_type == "supplements"
+    assert product.category == vitamins
