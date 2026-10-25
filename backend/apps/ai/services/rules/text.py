@@ -20,8 +20,8 @@ FACT_DESCRIPTION_TAIL = {
     "en": "Original product from Turkey, ordered via a Mudaroba manager.",
 }
 # Турецкое в русском названии: буквы, которых нет в шведских/немецких сериях
-# (IKEA LÖNSET), и суффикс фасовки «3'lü».
-_TURKISH_LETTERS_RE = re.compile(r"[çğışÇĞİŞ]|'[lL][iıuüIİUÜ]\b")
+# (IKEA LÖNSET), и суффикс фасовки «3'lü» / транслитом «3'ЛЮ».
+TURKISH_LEFTOVER_RE = re.compile(r"[çğışÇĞİŞ]|'[lL][iıuüIİUÜ]\b|'Л[ЮИУ]\b")
 # Семейства, где название без бренда/модели бессмысленно («Духи»): нужен LLM.
 _REQUIRES_IDENTITY = frozenset({"perfumery"})
 
@@ -78,7 +78,7 @@ def build_titles(facts: ProductFacts, *, ignore_untranslated: bool = False) -> d
         # Цвета в RU-названии нет — не добавляем его и в EN.
         # Бренда в русском названии нет («Кепка с вышивкой») — дописываем в конец.
         ru = facts.russian_name
-        if _TURKISH_LETTERS_RE.search(ru):
+        if TURKISH_LEFTOVER_RE.search(ru):
             ru = ""  # «Мужские боксеры Soft Boxer 3'lü Paket» — переведёт LLM
         elif facts.brand and vocab.fold(facts.brand) not in vocab.fold(ru):
             ru = f"{ru} {facts.brand}"

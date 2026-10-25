@@ -749,6 +749,7 @@ def test_russian_name_keeps_text_adds_brand_and_turkish_leftovers_go_to_llm():
     facts, titles = _titles("Мужские боксеры Soft Boxer 3'lü Paket", "underwear", brand="Zara", category_slug="uw-mens-underwear")
     assert titles["ru"] == ""
     assert facts.model == "Soft Boxer Paket"
+    assert _titles("Мужские боксеры SOFT BOXER 3'ЛЮ ПАКЕТ", "underwear", brand="Zara", category_slug="uw-mens-underwear")[1]["ru"] == ""
     assert _titles("Мужские боксеры 3 в 1", "underwear", brand="Zara", category_slug="uw-mens-underwear")[0].model == ""
 
 
@@ -780,6 +781,7 @@ def test_llm_russian_title_starting_with_brand_gets_type_first():
     assert _checked_llm_title("Pull&Bear бомбер с мехом", facts, "ru") == "Бомбер с мехом Pull&Bear"
     assert _checked_llm_title("Сабо Frozen Elsa Classic детские", facts, "ru") == "Сабо Frozen Elsa Classic детские"
     assert _checked_llm_title("IKEA VIMLE 3-Seat Sofa-Bed", facts, "ru") == ""
+    assert _checked_llm_title("Мужские боксеры Zara Soft Boxer 3'lü Paket", facts, "ru") == ""
 
 
 def test_single_letter_size_is_not_model():

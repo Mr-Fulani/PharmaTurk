@@ -24,6 +24,7 @@ from apps.ai.services.rules.facts import (
     drop_codes,
 )
 from apps.ai.services.rules.text import (
+    TURKISH_LEFTOVER_RE,
     build_fact_description,
     build_seo,
     build_titles,
@@ -177,7 +178,11 @@ def _checked_llm_title(title: str, facts: ProductFacts, locale: str) -> str:
     """LLM-название с турецким словом или не на своём языке отбрасывается (вернётся название правилами)."""
     clean = re.sub(r"\s+", " ", title).strip(" ,")
     words = {vocab.fold(word.strip("()[],.;:")) for word in clean.split()}
-    if _TURKISH_LETTERS_RE.search(clean) or words.intersection(vocab.fold(word) for word in facts.untranslated):
+    if (
+        _TURKISH_LETTERS_RE.search(clean)
+        or TURKISH_LEFTOVER_RE.search(clean)
+        or words.intersection(vocab.fold(word) for word in facts.untranslated)
+    ):
         return ""
     if bool(_CYRILLIC_LETTERS_RE.search(clean)) != (locale == "ru"):
         return ""  # RU без кириллицы («IKEA VIMLE 3-Seat») или EN с кириллицей
