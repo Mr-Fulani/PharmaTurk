@@ -33,6 +33,7 @@ from ..base.offers import (
     result_from_scraped_product,
     translate_offer_check_errors,
 )
+from ..base.listing_snapshot import listing_fingerprint
 from ..base.utils import clean_text
 from .inditex_categories import resolve_inditex_category_slugs
 
@@ -41,6 +42,9 @@ class ZaraParser(BaseScraper):
     """Парсер турецкой версии Zara на основе серверного JSON payload."""
 
     SUPPORTS_PAGE_CHUNKING = True
+    SUPPORTS_LISTING_GUARD = True
+    # Меняется при смене состава отпечатка строки — все карточки откроются заново.
+    LISTING_FINGERPRINT_VERSION = 1
 
     PRODUCT_PATH_RE = re.compile(r"-p(\d+)\.html(?:$|[?#])", re.IGNORECASE)
     CATEGORY_PATH_RE = re.compile(r"-l(\d+)\.html(?:$|[?#])", re.IGNORECASE)
@@ -471,6 +475,11 @@ class ZaraParser(BaseScraper):
                 )
 
             components = self._extract_category_components(payload, page)
+            guard = getattr(self, "listing_guard", None)
+            if guard:
+                guard.prefetch(
+                    self._component_identity(component, "") for component in components
+                )
             new_on_page = 0
             for component in components:
                 product_url = self._build_product_url(component, category_url)
@@ -479,6 +488,10 @@ class ZaraParser(BaseScraper):
                     continue
                 seen_products.add(identity)
                 new_on_page += 1
+                fingerprint = self._listing_fingerprint(component) if guard else ""
+                if guard and not guard.should_open(identity, fingerprint):
+                    # Строка списка не изменилась: карточку не открываем.
+                    continue
 
                 try:
                     product = self.parse_product_detail(product_url)
@@ -489,6 +502,9 @@ class ZaraParser(BaseScraper):
                     continue
                 if product is None:
                     product = self._build_list_fallback(component, product_url, payload)
+                elif guard:
+                    # Товар из списка (карточка не загрузилась) не помечаем: откроем снова.
+                    guard.attach(product, identity, fingerprint)
                 if product and self.validate_product(product):
                     yield product
                     yielded += 1
@@ -711,6 +727,37 @@ class ZaraParser(BaseScraper):
                 query="",
                 fragment="",
             )
+        )
+
+    def _listing_fingerprint(self, component: Dict[str, Any]) -> str:
+        """Отпечаток строки списка: название, цены и наличие по цветам.
+
+        Наличие по размерам видно только в карточке — оно обновится при
+        изменении наличия цвета или в плановом полном обновлении.
+        """
+        detail = component.get("detail") if isinstance(component.get("detail"), dict) else {}
+        colors = sorted(
+            (
+                [
+                    str(color.get("id") or color.get("productId") or ""),
+                    color.get("price"),
+                    color.get("oldPrice"),
+                    str(color.get("availability") or ""),
+                ]
+                for color in detail.get("colors") or []
+                if isinstance(color, dict)
+            ),
+            key=lambda row: row[0],
+        )
+        return listing_fingerprint(
+            {
+                "v": self.LISTING_FINGERPRINT_VERSION,
+                "name": component.get("name"),
+                "price": component.get("price"),
+                "old_price": component.get("oldPrice"),
+                "availability": component.get("availability"),
+                "colors": colors,
+            }
         )
 
     @staticmethod

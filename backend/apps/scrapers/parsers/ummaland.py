@@ -20,6 +20,7 @@ from ..base.offers import (
     result_from_scraped_product,
     translate_offer_check_errors,
 )
+from ..base.listing_snapshot import listing_fingerprint
 from ..base.utils import clean_text, normalize_price, extract_currency
 
 
@@ -32,6 +33,9 @@ class UmmalandParser(BaseScraper):
     # Вся категория приходит одним ответом API; «страница» чанка — 20 товаров.
     SUPPORTS_PAGE_CHUNKING = True
     PAGE_SIZE = 20
+    SUPPORTS_LISTING_GUARD = True
+    # Меняется при смене состава отпечатка строки — все карточки откроются заново.
+    LISTING_FINGERPRINT_VERSION = 1
     # Витринные подборки повторяют товары обычных разделов.
     SHOWCASE_CATEGORY_SLUGS = frozenset({"new", "popular", "special", "uncategorized"})
 
@@ -130,11 +134,22 @@ class UmmalandParser(BaseScraper):
                 self.logger.info(f"Ограничено до {self.max_products} товаров")
 
             # 3. Обрабатываем каждый товар (парсим детальную страницу)
+            guard = getattr(self, "listing_guard", None)
+            if guard:
+                guard.prefetch(str(item.get("id") or "") for item in api_products)
             for item in api_products:
                 try:
                     # Базовые данные из API
                     api_product = self._parse_api_item(item)
                     if not api_product or not api_product.url:
+                        continue
+                    identity = str(item.get("id") or "")
+                    # Строка API целиком: название, цена, наличие, метка, фото, рейтинг.
+                    fingerprint = listing_fingerprint(
+                        {"v": self.LISTING_FINGERPRINT_VERSION, "item": item}
+                    )
+                    if guard and not guard.should_open(identity, fingerprint):
+                        # Строка API не изменилась: страницу книги не открываем.
                         continue
                         
                     self.logger.info(f"Парсинг деталей товара: {api_product.name}")
@@ -176,6 +191,8 @@ class UmmalandParser(BaseScraper):
                         api_product.stock_quantity = 3 if api_product.is_available else 0
                         
                         if self.validate_product(api_product):
+                            if guard:
+                                guard.attach(api_product, identity, fingerprint)
                             yield api_product
                             
                 except (ScraperAccessBlockedError, SoftTimeLimitExceeded):

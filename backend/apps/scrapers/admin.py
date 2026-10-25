@@ -409,6 +409,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     "max_pages",
                     "max_products",
                     "max_images_per_product",
+                    "open_all_cards",
                     "modes_help",
                 ],
                 "description": (
@@ -422,6 +423,9 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     "Тип «Только изменения» (IlacFiyati) обновляет каталог без полного обхода: "
                     "открывает только новые карточки и те, чья строка в листинге изменилась, "
                     "и снимает с продажи пропавшие; ссылка не нужна. "
+                    "У FLO, Zara, LC Waikiki, IKEA и UmmaLand обход точечный: карточка "
+                    "открывается, только если строка товара в списке категории изменилась; "
+                    "«Открыть все карточки» отключает это. "
                     "Примеры ссылок — в таблице ниже."
                 ),
             },

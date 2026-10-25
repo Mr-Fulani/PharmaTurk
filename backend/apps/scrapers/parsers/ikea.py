@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
 from ..base.scraper import BaseScraper, ScrapedProduct, SiteCategoriesError
+from ..base.listing_snapshot import listing_fingerprint
 from ..base.utils import clean_text
 from ..base.offers import (
     OfferCheckContext,
@@ -20,6 +21,9 @@ class IkeaParser(BaseScraper):
 
     SUPPORTS_PAGE_CHUNKING = True
     REPORTS_PAGES_PROCESSED = True
+    SUPPORTS_LISTING_GUARD = True
+    # Меняется при смене состава отпечатка строки — все карточки откроются заново.
+    LISTING_FINGERPRINT_VERSION = 1
     MAX_PAGES_PER_CHUNK = 1
     API_PAGE_SIZE = 40
 
@@ -113,14 +117,31 @@ class IkeaParser(BaseScraper):
                 self.has_more_pages = False
                 break
 
+            guard = getattr(self, "listing_guard", None)
+            fingerprints = {}
+            if guard:
+                for item in brief_results:
+                    code = self.ikea_service._clean_spr_code(item.get("sprCode") or item.get("id"))
+                    if code:
+                        fingerprints[code] = self._listing_fingerprint(item)
+                guard.prefetch(fingerprints)
             item_codes = []
             page_codes: set[str] = set()
             for item in brief_results:
                 code = item.get("sprCode") or item.get("id")
                 clean_code = self.ikea_service._clean_spr_code(code)
-                if clean_code and clean_code not in seen_spr and clean_code not in page_codes:
-                    item_codes.append(clean_code)
-                    page_codes.add(clean_code)
+                if not clean_code or clean_code in page_codes:
+                    continue
+                page_codes.add(clean_code)
+                if clean_code in seen_spr:
+                    if guard:
+                        # Цвет уже загружен вместе с другой строкой этого прохода.
+                        guard.remember_covered(clean_code, fingerprints.get(clean_code, ""))
+                    continue
+                if guard and not guard.should_open(clean_code, fingerprints[clean_code]):
+                    # Строка поиска не изменилась: карточку и её цвета не запрашиваем.
+                    continue
+                item_codes.append(clean_code)
 
             self.logger.info(
                 "IKEA API: страница %s, найдено %s артикулов для детальной обработки",
@@ -145,6 +166,16 @@ class IkeaParser(BaseScraper):
                     canonical_spr=row_code,
                 )
                 scraped.attributes["ikea_source_category_slug"] = category_slug
+                if guard and row_code in fingerprints:
+                    guard.attach(
+                        scraped,
+                        row_code,
+                        fingerprints[row_code],
+                        covers=[
+                            self.ikea_service._clean_spr_code(raw.get("sprCode") or raw.get("id"))
+                            for raw in variant_details
+                        ],
+                    )
                 yield scraped
                 yielded += 1
                 if yielded >= final_limit:
@@ -153,6 +184,33 @@ class IkeaParser(BaseScraper):
             if len(brief_results) < self.API_PAGE_SIZE:
                 self.has_more_pages = False
                 break
+
+    def _listing_fingerprint(self, item: Dict[str, Any]) -> str:
+        """Отпечаток краткой строки поиска API: название, цена, скидка, наличие, фото.
+
+        Точный остаток (stockCount) есть только в карточке — он обновится при
+        смене статуса наличия или в плановом полном обновлении.
+        """
+        return listing_fingerprint(
+            {
+                "v": self.LISTING_FINGERPRINT_VERSION,
+                "title": item.get("title"),
+                "subtitle": item.get("subTitle"),
+                "color": item.get("unitColorName"),
+                "price": item.get("price"),
+                "family_price": item.get("familyPrice"),
+                "has_discount": item.get("hasDiscount"),
+                "discount_text": item.get("discountText"),
+                "is_sellable": item.get("isSellable"),
+                "stock_status": item.get("stockStatus"),
+                "color_variants": item.get("colorVariantCount"),
+                "images": [
+                    image.get("code")
+                    for image in item.get("images") or []
+                    if isinstance(image, dict)
+                ],
+            }
+        )
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
         """Парсит карточку товара; несколько цветов — одна позиция каталога, варианты в attributes."""

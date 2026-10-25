@@ -45,6 +45,9 @@ class InditexSiblingParser(ZaraParser):
     LANGUAGE_ID = -43
     # Сколько карточек запрашивается одним productsArray (= одна «страница» чанка).
     API_PAGE_SIZE = 12
+    # Карточки не открываются: productsArray отдаёт товар целиком, по 12 за
+    # запрос. Пропуск строк по отпечатку здесь запросов не экономит.
+    SUPPORTS_LISTING_GUARD = False
     # Категория здесь — один запрос списка id, поэтому предел выше общего:
     # у Massimo Dutti ~500 публичных узлов (фильтры по цвету, ткани, лукбуки).
     MAX_SITE_CATEGORIES = 800
