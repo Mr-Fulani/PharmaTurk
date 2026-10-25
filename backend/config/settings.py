@@ -743,6 +743,9 @@ PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO = env.float(
 SCRAPER_PRICE_REFRESH_DISABLED_SOURCES = env.list(
     "SCRAPER_PRICE_REFRESH_DISABLED_SOURCES", default=["instagram"]
 )
+# true — режим «Только изменения» не снимает пропавшие товары сам, а помечает их
+# кандидатами (external_data["gone_candidate"]); снимает `review_gone_candidates --apply`.
+SCRAPER_GONE_REQUIRES_REVIEW = env.bool("SCRAPER_GONE_REQUIRES_REVIEW", default=False)
 # Fresh successful offer rows may override availability in public detail/YML
 # output. Kept separate from cart enforcement and disabled for staged rollout.
 SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(

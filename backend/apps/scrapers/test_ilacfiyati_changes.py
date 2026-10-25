@@ -368,3 +368,46 @@ def test_changes_task_discovers_change_sources(monkeypatch):
     task = SimpleNamespace(id=1, task_type="changes", site_categories=[], site_category_index=0)
     assert tasks._site_category_url(task, SimpleNamespace()) == "https://ilacfiyati.com/ilaclar"
     assert calls == ["parse_change_sources"]
+
+
+@pytest.mark.django_db
+def test_gone_requires_review_marks_candidate_and_command_applies(settings):
+    from django.core.management import call_command
+
+    from apps.catalog.models import Product
+    from apps.scrapers.listing_changes import GONE_CANDIDATE_KEY, ListingChangeTracker
+
+    settings.SCRAPER_GONE_REQUIRES_REVIEW = True
+    product = _product()
+    tracker = ListingChangeTracker("ilacfiyati", uuid.uuid4())
+
+    assert tracker.decide([_row(status="PASIF")]) == {THERMO: GONE}
+    product = Product.objects.get(pk=product.pk)
+    # Владелец проверяет список до снятия: товар в продаже, только пометка.
+    assert product.is_available is True
+    assert product.external_data[GONE_CANDIDATE_KEY]["reason"] == "inactive"
+
+    call_command("review_gone_candidates")  # отчёт ничего не меняет
+    assert Product.objects.get(pk=product.pk).is_available is True
+
+    call_command("review_gone_candidates", "--apply", "--ids", str(product.pk))
+    product = Product.objects.get(pk=product.pk)
+    assert product.is_available is False
+    assert GONE_CANDIDATE_KEY not in product.external_data
+
+
+@pytest.mark.django_db
+def test_review_gone_candidates_clear_keeps_product_on_sale(settings):
+    from django.core.management import call_command
+
+    from apps.catalog.models import Product
+    from apps.scrapers.listing_changes import GONE_CANDIDATE_KEY, ListingChangeTracker
+
+    settings.SCRAPER_GONE_REQUIRES_REVIEW = True
+    product = _product()
+    ListingChangeTracker("ilacfiyati", uuid.uuid4()).decide([_row(status="PASIF")])
+
+    call_command("review_gone_candidates", "--clear", "--ids", str(product.pk))
+    product = Product.objects.get(pk=product.pk)
+    assert product.is_available is True
+    assert GONE_CANDIDATE_KEY not in product.external_data
