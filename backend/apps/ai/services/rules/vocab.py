@@ -505,6 +505,9 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "fit": ("", ""),
     "canlandirici": ("", ""),
     "tanimsiz": ("", ""),
+    "nemlendirici": ("с увлажняющим эффектом", "Moisturizing"),
+    "karisik": ("", ""),  # «Karışık» — набор цветов: цвет в название не пишем
+    "asorti": ("", ""),
     "cift yonlu": ("", ""),
     "noos": ("", ""),
     "ter karsiti": ("против пота", "Antiperspirant"),

@@ -665,6 +665,7 @@ def test_source_codes_and_type_words_are_not_required_title_identity():
         ("Erkek T Shirt LV04RF822G UB1", "Мужская футболка"),
         ("DİKDÖRTGEN GÜNEŞ GÖZLÜĞÜ", "Солнцезащитные очки Zara прямоугольной формы"),
         ("LCW ACCESSORIES Siyah Düz Erkek Kemer - W6AQ42Z8-HUC", "Мужской ремень LC Waikiki, черный"),
+        ("AMBER MELT EDT 100ML (3.4 FL.OZ)", "Туалетная вода Zara AMBER MELT, 100 мл"),
     ):
         product = SimpleNamespace(name=name, product_type="accessories", category=category, domain_item=None)
         report = SemanticValidator().validate(product, generated_titles={"ru": title}, dynamic_attributes=[])

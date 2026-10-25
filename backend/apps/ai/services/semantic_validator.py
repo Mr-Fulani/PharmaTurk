@@ -377,6 +377,8 @@ def _alias_specificity(value: str) -> tuple[int, int]:
 
 
 _TURKISH_ONLY_LETTERS_RE = re.compile(r"[ÇĞİŞçğış]")
+# «100ML» в названии Zara — объём, в RU-названии он «100 мл».
+_VOLUME_TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)?(?:ML|GR|G|CM|MM|KG)")
 
 
 def _identity_tokens(value: Any) -> set[str]:
@@ -806,7 +808,9 @@ class SemanticValidator:
             # класс символов _identity_tokens их режет на обрывки («GÜNE»).
             latin_name = " ".join(word for word in str(source_name or "").split() if not _TURKISH_ONLY_LETTERS_RE.search(word))
             original_tokens = {
-                token for token in _identity_tokens(latin_name) if fold(token) not in generic and token not in codes
+                token
+                for token in _identity_tokens(latin_name)
+                if fold(token) not in generic and token not in codes and not _VOLUME_TOKEN_RE.fullmatch(token)
             }
             identity_tokens = lambda value: _identity_tokens(str(value or "").upper())  # noqa: E731
         for locale, title in generated_titles.items():
