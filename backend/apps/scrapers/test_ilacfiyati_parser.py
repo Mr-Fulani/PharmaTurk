@@ -771,3 +771,52 @@ def test_ilacfiyati_price_fallback_skips_analog_prices(monkeypatch):
     )
 
     assert str(product.price) == "48.90"
+
+
+def test_ilacfiyati_supplement_page_keeps_description_ingredients_and_portion(monkeypatch):
+    """Разделы страницы БАДа — описание, назначение, состав с дозами — сохраняются в source_tabs.
+
+    До 25.10.2026 они не читались, и у всех БАДов каталога вместо описания были
+    только строки «İlaç Bilgileri». Фрагмент настоящей страницы (архив 2026-08-11).
+    """
+    from pathlib import Path
+
+    html = (
+        Path(__file__).parent / "test_fixtures" / "ilacfiyati_supplement" / "evobiyotik.html"
+    ).read_text(encoding="utf-8")
+    product_url = (
+        "https://ilacfiyati.com/takviye-edici-gida/"
+        "evobiyotik-probiotic-prebiotic-mikroorganizma-iceren-takviye-edici-gida-30-kapsul"
+    )
+    requested = []
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    monkeypatch.setattr(parser, "_make_request", lambda url: requested.append(url) or html)
+
+    product = parser.parse_product_detail(product_url, include_analogs=False)
+
+    assert requested == [product_url]  # все разделы — в аккордеоне той же страницы
+    tabs = product.attributes["source_tabs"]
+    assert "Kullanım Bilgisi" in tabs["product_info"]["text"]
+    assert "Günde 1 kapsül tok karına alınması tavsiye edilir." in tabs["product_info"]["text"]
+    assert "Sağlık Beyanları" in tabs["product_info"]["text"]
+    assert tabs["supplement_indications"]["text"].startswith("Bu takviye edici gıda, beş farklı probiyotik")
+    ingredients = tabs["ingredients"]["text"]
+    assert "Lactobacillus acidophilus\n1x109kob" in ingredients
+    assert "İnülin\n50 mg" in ingredients
+    assert tabs["ingredients"]["title"] == "Ürün İçeriği"
+    assert product.attributes["dosage_form_raw"] == "Kapsül"
+    assert "Ürün Bilgisi:\nEVOBİYOTİK, 5 milyar probiyotik" in product.description
+
+
+def test_ilacfiyati_medicine_page_has_no_supplement_sections(monkeypatch):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    html = """
+        <html><body><h1 class="page-title">PAROL 500 MG TABLET (20 TABLET)</h1>
+        <div id="medicineAccordion"><div id="content-ozet"><p>Özet metni.</p></div></div>
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+
+    product = parser.parse_product_detail("https://ilacfiyati.com/ilaclar/parol-500-mg-tablet", include_analogs=False)
+
+    assert set(product.attributes["source_tabs"]) == {"summary"}

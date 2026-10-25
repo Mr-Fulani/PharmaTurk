@@ -119,6 +119,17 @@ class IlacFiyatiParser(BaseScraper):
         "usage_instructions": "content-nasil-kullanilir",
         "side_effects": "content-yan-etkileri",
         "storage_conditions": "content-saklanmasi",
+        "product_info": "content-urun-bilgisi",
+        "supplement_indications": "content-kullanim-alani-endikasyon",
+        "ingredients": "content-icerik",
+    }
+
+    # Разделы страницы БАДа (шаблон с 2026-08): описание товара, назначение и таблица
+    # состава с дозами. Отдельных URL у них нет — только в аккордеоне страницы.
+    SUPPLEMENT_TABS = {
+        "product_info": "Ürün Bilgisi",
+        "supplement_indications": "Kullanım Alanı (Endikasyon)",
+        "ingredients": "Ürün İçeriği",
     }
 
     NOISE_MARKERS = (
@@ -461,6 +472,13 @@ class IlacFiyatiParser(BaseScraper):
                 raise
             except Exception as e:
                 self.logger.warning(f"Не удалось получить вкладку {tab['path']} для {product_url}: {e}")
+        # До 25.10.2026 разделы БАДа не сохранялись: у 7 883 БАДов каталога вместо
+        # описания были только строки «İlaç Bilgileri» (цена, штрихкод, SGK, фирма).
+        if main_soup is not None and main_soup.select_one("#medicineAccordion"):
+            for key, title in self.SUPPLEMENT_TABS.items():
+                text = self._extract_tab_text(main_soup, key)
+                if text:
+                    tabs[key] = {"title": title, "url": base_url, "text": text}
         return tabs
 
     @staticmethod
@@ -946,6 +964,9 @@ class IlacFiyatiParser(BaseScraper):
                 attributes["source_tabs"] = detail_tabs
                 description_tab_order = (
                     "summary",
+                    "product_info",
+                    "supplement_indications",
+                    "ingredients",
                     "indications",
                     "before_use_warnings",
                     "usage_instructions",
