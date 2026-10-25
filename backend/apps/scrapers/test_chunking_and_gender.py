@@ -564,7 +564,7 @@ def test_task_brand_override_has_priority_over_config_brand():
     product = ScrapedProduct(name="Товар", brand="Parsed Brand")
     session = SimpleNamespace(
         _override_brand=task_brand,
-        scraper_config=SimpleNamespace(default_brand=config_brand),
+        scraper_config=SimpleNamespace(default_brand=config_brand, is_multibrand=False),
     )
 
     service._apply_brand_mapping(session, product)
@@ -644,7 +644,7 @@ def test_config_brand_is_used_when_task_brand_is_empty():
     product = ScrapedProduct(name="Товар", brand="Parsed Brand")
     session = SimpleNamespace(
         _override_brand=None,
-        scraper_config=SimpleNamespace(default_brand=config_brand),
+        scraper_config=SimpleNamespace(default_brand=config_brand, is_multibrand=False),
     )
 
     service._apply_brand_mapping(session, product)
