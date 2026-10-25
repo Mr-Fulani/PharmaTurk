@@ -27,6 +27,13 @@ STANDALONE_PRICE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# «Etkin Madde» без вещества: ÖTAG — лечебное питание (Özel Tıbbi Amaçlı Gıda),
+# «Homeopatic» — признак препарата. На карточке это показывалось как вещество (TD-027).
+ACTIVE_INGREDIENT_PLACEHOLDER_RE = re.compile(r"(?:OTAG(?:\s*\(\w+\))?|HOMEOPATIC)")
+# Источник хранит «Etkin Madde» в 255 символах: длинный состав обрезан посреди
+# слова («… + Vitamin C (Askorbik Asit) + Vitami»).
+ACTIVE_INGREDIENT_SOURCE_LIMIT = 255
+
 
 class IlacFiyatiSourceError(RuntimeError):
     """Источник вернул пустую или неожиданную страницу вместо данных лекарства."""
@@ -880,7 +887,10 @@ class IlacFiyatiParser(BaseScraper):
                     if 'kodu' not in key_norm:
                         # Действующее вещество
                         if 'active_ingredient' not in attributes:
-                            attributes['active_ingredient'] = val
+                            if len(val) >= ACTIVE_INGREDIENT_SOURCE_LIMIT and ' + ' in val:
+                                val = val.rsplit(' + ', 1)[0].strip()
+                            if not ACTIVE_INGREDIENT_PLACEHOLDER_RE.fullmatch(self._normalize_tr_key(val)):
+                                attributes['active_ingredient'] = val
                 elif 're\u00e7ete' in key_norm or 'recete' in key_norm:
                     attributes['prescription_type'] = val
                     attributes['prescription_required'] = (
