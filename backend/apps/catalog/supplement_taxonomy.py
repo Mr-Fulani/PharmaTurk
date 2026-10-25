@@ -21,6 +21,7 @@ from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.supplement_content import is_baby_food
 
 ROOT_SLUG = "supplements"
+# Решение владельца 26.10.2026: дубль «Омега/рыбий жир» (omega-fish-oil) выключен.
 OMEGA_SLUG = "omega-fatty-acids"
 
 
