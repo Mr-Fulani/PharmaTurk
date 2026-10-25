@@ -401,6 +401,41 @@ def test_ilacfiyati_parser_reads_eur_price_from_current_card_layout(monkeypatch)
     assert product.price_unpublished is False
 
 
+def _active_ingredient_from_card(monkeypatch, value):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    html = f"""
+        <html><body>
+        <h1 class="page-title">SMA PREMATURE 32X70 ML</h1>
+        <div class="info-card">
+          <p class="info-card__label">Etkin Madde</p>
+          <p class="info-card__value">{value}</p>
+        </div>
+        </body></html>
+    """
+    monkeypatch.setattr(parser, "_make_request", lambda _url: html)
+    product = parser.parse_product_detail(
+        "https://ilacfiyati.com/ilaclar/sma-premature-32x70-ml",
+        include_detail_tabs=False,
+        include_analogs=False,
+    )
+    return product.attributes.get("active_ingredient")
+
+
+@pytest.mark.parametrize("value", ["ÖTAG (ML)", "Otag (G)", "Homeopatic"])
+def test_ilacfiyati_parser_skips_active_ingredient_placeholders(monkeypatch, value):
+    assert _active_ingredient_from_card(monkeypatch, value) is None
+
+
+def test_ilacfiyati_parser_drops_component_cut_by_source_limit(monkeypatch):
+    parts = [f"Vitamin {n:03d}" for n in range(1, 21)]  # по 14 символов с « + »: 19-й начинается с 252-го
+    value = " + ".join(parts)[:255]
+
+    assert value.endswith(" + Vit")
+    kept = " + ".join(parts[:18])
+    assert _active_ingredient_from_card(monkeypatch, value) == kept
+    assert _active_ingredient_from_card(monkeypatch, "Metformin + Vitamin C") == "Metformin + Vitamin C"
+
+
 def test_ilacfiyati_parser_reads_supplement_retail_price_card(monkeypatch):
     """БАДы: цена в карточке «Perakende Satış Fiyatı», а название с EUROTABS
     стоит раньше в JSON-LD — его цифры не должны склеиться в цену (было 1010030)."""
