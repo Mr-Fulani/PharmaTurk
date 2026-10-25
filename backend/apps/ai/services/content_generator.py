@@ -1674,8 +1674,8 @@ class ContentGenerator:
         - Не пиши, что препарат лечит конкретное заболевание, если это заболевание явно не указано в source.
         - special_notes заполняй только переводом source_facts.special_notes; тип рецепта туда не пиши.
         - ru.generated_description и en.generated_description должны быть смысловыми переводами друг друга.
-        - ru.generated_description: русский язык, 2-5 справочных предложений.
-        - en.generated_description: английский язык, 2-4 sentences.
+        - ru.generated_description: русский язык, 2-5 справочных предложений, не меньше 25 слов.
+        - en.generated_description: английский язык, 2-4 sentences, at least 25 words.
         - SEO возвращай всегда: если fixed_title не пустой, код заменит его своим, иначе останется твой.
         - ru.seo_title: бренд латиницей, действующее вещество, дозировка и форма, «из Турции»; до 70 символов.
         - ru.seo_description: бренд, вещество, форма, «из Турции»; без «без рецепта», без обещаний лечения и продажи; до 160 символов.

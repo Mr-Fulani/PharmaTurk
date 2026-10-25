@@ -673,6 +673,16 @@ def test_title_inn_salt_cases_and_garbage():
          "KLAMOKS ES 600/42.9 mg, powder for oral suspension, 100 ml"),
         ("KREON KAPSUL 25000 300 MG 100 KAPSUL", "KREON 25000 ЕД 300 мг, капсулы, 100 шт.",
          "KREON 25000 U 300 mg, capsules, 100 pcs"),
+        # Партия Claude 200: эноксапарин в анти-Xa МЕ, «100 ML X 12 ADET», «I.V. … HAZIRLAMAK ICIN TOZ».
+        ("CLEXANE 4000 ANTI-XA IU/0,4 ML 10 KULLANIMA HAZIR ENJEKTOR",
+         "CLEXANE 4000 анти-Xa МЕ/0,4 мл, в предварительно заполненном шприце, 10 шт.",
+         "CLEXANE 4000 anti-Xa IU/0.4 ml, pre-filled syringe, 10 pcs"),
+        ("PARTERAL 10 MG/ML IV INFUZYONLUK COZELTI (100 ML X 12 ADET)",
+         "PARTERAL 10 мг/мл, раствор для внутривенных инфузий, 100 мл, 12 шт.",
+         "PARTERAL 10 mg/ml, solution for intravenous infusion, 100 ml, 12 pcs"),
+        ("OMIZOL 40 MG I.V. INFUZYONLUK COZELTI HAZIRLAMAK ICIN TOZ (1 ADET)",
+         "OMIZOL 40 мг, порошок для приготовления раствора для внутривенных инфузий, 1 шт.",
+         "OMIZOL 40 mg, powder for solution for intravenous infusion, 1 pc"),
         # Партия 8: жевательная резинка, спрей для слизистой рта, дозированный назальный спрей,
         # небулайзер и ингаляторы, ретард-таблетки с оболочкой, микропеллеты, опечатки и дефисы источника.
         ('NICORETTE FRESHMINT 2 MG 30 NANELI SAKIZ',
@@ -2064,9 +2074,16 @@ def test_medicine_source_names_command_reports_and_records_equivalents():
          "Производится в Турции. Оплачивается SGK. Рецептурный препарат. Срок годности: 24 месяца.",
          "LINCAINE — спрей для местного применения, раствор 10%, объём 50 мл. Действующее вещество: лидокаин. "
          "Рецептурный препарат."),
+        ("Рецептурный препарат, оплачивается SGK.", "Рецептурный препарат."),
+        ("BUSICOD — сироп, 15 мг/5 мл. Препарат выпускается в Турции и отпускается по рецепту.",
+         "BUSICOD — сироп, 15 мг/5 мл."),
         ("PREXIBAY is an oral suspension of paracetamol 120 mg/5 ml, 150 ml. Covered by SGK. "
          "Manufactured in Turkey. Shelf life is 36 months.",
          "PREXIBAY is an oral suspension of paracetamol 120 mg/5 ml, 150 ml."),
+        # Партия Claude 25.10.2026: производитель в родительном падеже.
+        ("MINOPAR — таблетки с парацетамолом 500 мг, 30 шт., производства Берат Беран Илач (Турция). "
+         "Применяется перорально.",
+         "MINOPAR — таблетки с парацетамолом 500 мг, 30 шт. Применяется перорально."),
         # Убирать нечего — текст как есть; дробь «2,5 мг/2,5 мл» не режется как граница предложения.
         ("VENTOSAL (сальбутамол) — раствор для ингаляций, 2,5 мг/2,5 мл. Расширяет бронхи.",
          "VENTOSAL (сальбутамол) — раствор для ингаляций, 2,5 мг/2,5 мл. Расширяет бронхи."),
