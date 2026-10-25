@@ -117,7 +117,9 @@ class TrafficCounter:
 
         def counted_requests(session, request, *args, **kwargs):
             response = requests_send(session, request, *args, **kwargs)
-            counter._count(request.url, response, None)
+            # requests распаковывает тело сам; сжатый размер — из Content-Length.
+            length = response.headers.get("Content-Length")
+            counter._count(request.url, response, int(length) if str(length).isdigit() else None)
             return response
 
         httpx.Client.send = counted_httpx

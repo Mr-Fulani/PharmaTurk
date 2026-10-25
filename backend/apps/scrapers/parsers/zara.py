@@ -503,7 +503,8 @@ class ZaraParser(BaseScraper):
                 if product is None:
                     product = self._build_list_fallback(component, product_url, payload)
                 elif guard:
-                    # Товар из списка (карточка не загрузилась) не помечаем: откроем снова.
+                    # Только товар из карточки: собранный из списка (карточка не
+                    # загрузилась) не помечаем — в следующий обход откроем снова.
                     guard.attach(product, identity, fingerprint)
                 if product and self.validate_product(product):
                     yield product
