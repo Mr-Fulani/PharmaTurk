@@ -26,16 +26,30 @@ def url_key(url: str) -> str:
     return urlparse(url or "").path.rstrip("/")
 
 
-def mark_products_gone(product_ids: Iterable[int], *, parser_key: str, reason: str) -> int:
+GONE_CANDIDATE_KEY = "gone_candidate"
+
+
+def mark_products_gone(
+    product_ids: Iterable[int], *, parser_key: str, reason: str, review=None,
+) -> int:
     """Снимает товары с продажи так же, как проверка карточки при 404.
 
     Товар и его доменная запись — «нет в наличии», предложения источника —
     OUT_OF_STOCK с кодом причины. Ничего не удаляется: следующий успешный разбор
     карточки вернёт наличие.
+
+    При ``SCRAPER_GONE_REQUIRES_REVIEW`` (или ``review=True``) товар только
+    помечается кандидатом — снимает его ``review_gone_candidates --apply``.
     """
+    from django.conf import settings
+
     from apps.catalog.models import Product, ProductSourceOffer
 
     now = timezone.now()
+    if review is None:
+        review = getattr(settings, "SCRAPER_GONE_REQUIRES_REVIEW", False)
+    if review:
+        return _mark_gone_candidates(product_ids, parser_key=parser_key, reason=reason, now=now)
     products = list(Product.objects.filter(pk__in=list(product_ids), is_available=True))
     for product in products:
         domain = product.domain_item
@@ -55,6 +69,21 @@ def mark_products_gone(product_ids: Iterable[int], *, parser_key: str, reason: s
     if ids:
         logger.info("%s: сняты с продажи (%s): %s", parser_key, reason, ids)
     return len(ids)
+
+
+def _mark_gone_candidates(product_ids: Iterable[int], *, parser_key: str, reason: str, now) -> int:
+    """Пометка «источник убрал товар» без снятия с продажи — на проверку человеком."""
+    from apps.catalog.models import Product
+
+    marked = []
+    for product in Product.objects.filter(pk__in=list(product_ids), is_available=True):
+        data = product.external_data if isinstance(product.external_data, dict) else {}
+        data[GONE_CANDIDATE_KEY] = {"parser": parser_key, "reason": reason, "at": now.isoformat()}
+        Product.objects.filter(pk=product.pk).update(external_data=data)
+        marked.append(product.pk)
+    if marked:
+        logger.info("%s: кандидаты на снятие с продажи (%s): %s", parser_key, reason, marked)
+    return len(marked)
 
 
 class ListingChangeTracker:
