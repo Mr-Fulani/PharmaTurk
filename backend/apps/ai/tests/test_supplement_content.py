@@ -402,3 +402,17 @@ def test_pilot3_fixes_glossary_hyphen_homoglyphs_form_and_translit():
 def test_latin_designation_from_source_is_kept_in_russian_product():
     assert sc._translated("SAM-E", "ru", "LIFESAME SAM-E TAKVIYE EDICI GIDA SASE 30 saşe") == "SAM-E"
     assert sc._translated("SURUP", "ru", "X SURUP 150 ml") == ""
+
+
+def test_latin_product_line_and_brand_words_are_not_rejected():
+    """Массовый прогон 26.10.2026: 15 БАДов без названия или описания из-за слов бренда."""
+    source = "SWISS BORK BP+ CONTROL TAKVIYE EDICI GIDA 60 kapsül"
+    assert sc._translated("BP+ Control", "ru", source) == "BP+ Control"
+    assert sc._translated("5-HTP", "ru", "NATUWELL 5-HTP ICEREN TAKVIYE EDICI GIDA 30 kapsül") == "5-HTP"
+    assert sc._translated("N.NERGY", "ru", "ACTIVE STIX N.NERGY 20 saşe") == "N.NERGY"
+    booster = "BIOXCIN BEAUTY BOOSTER TAKVIYE EDICI GIDA TABLET 60 tablet"
+    assert sc.clean_paragraph("BIOXCIN BEAUTY BOOSTER — добавка в таблетках.", booster) == (
+        "BIOXCIN BEAUTY BOOSTER — добавка в таблетках."
+    )
+    assert sc.clean_paragraph("BIOXCIN поддерживает здоровье волос.", booster) == ""
+    assert sc.description_problems("<p>BIOXCIN BEAUTY BOOSTER в таблетках.</p>", booster) == []
