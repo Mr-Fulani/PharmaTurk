@@ -525,3 +525,23 @@ def test_service_open_all_cards_task_reopens_everything(monkeypatch):
     parser = _ListingParser([("a", "fp-a")])
     _run_category(monkeypatch, parser, site_task=task)
     assert parser.opened == ["a"]
+
+
+# --- замер «только посмотреть» ----------------------------------------------------
+
+
+def test_measuring_guard_never_opens_beyond_sample_and_counts_changes():
+    from apps.scrapers.management.commands.measure_listing_changes import MeasuringGuard
+
+    guard = MeasuringGuard("flo", previous={"a": "fp-a", "b": "fp-b"}, sample_cards=1)
+    decisions = [
+        guard.should_open("a", "fp-a"),
+        guard.should_open("b", "fp-b2"),
+        guard.should_open("c", "fp-c"),
+        guard.should_open("c", "fp-c"),
+    ]
+
+    assert decisions == [True, False, False, False]
+    assert guard.sampled == 1
+    assert guard.would_open == 2
+    assert guard.rows == {"a": "fp-a", "b": "fp-b2", "c": "fp-c"}
