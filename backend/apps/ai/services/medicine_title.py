@@ -540,7 +540,7 @@ _SERIES_WORDS = {
     "plus", "mite", "depot", "duo", "junior", "max",
 }
 # Уточнения после формы → RU/EN.
-_MODIFIERS = {
+MODIFIERS = {
     "setli": ("с системой", "with set"),
     "setsiz": ("без системы", "without set"),
     "pediatrik": ("детский", "paediatric"),
@@ -694,7 +694,7 @@ def _known_title_word(word: str) -> bool:
     """Слово названия, которое разбирает шаблон (форма, единица, «GRAM», фасовка…), — не бренд."""
     return any(
         part in FORM_WORDS or part in _UNITS or part in _PACK_WORDS or part in _SERIES_WORDS
-        or part in _MODIFIERS or part in _SKIP_WORDS or part in _PREFIX_MODIFIERS
+        or part in MODIFIERS or part in _SKIP_WORDS or part in _PREFIX_MODIFIERS
         or _SUBSTANCE_RE.fullmatch(part) or _ROUTE_ABBR_RE.fullmatch(part)
         for part in _expand_source(word).split() or [word]
     )
@@ -904,8 +904,8 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
         elif word and word.group(0) in _SERIES_WORDS:
             series.append(word.group(0).upper())
             rest = rest[word.end():]
-        elif word and word.group(0) in _MODIFIERS:
-            modifiers.append(_MODIFIERS[word.group(0)])
+        elif word and word.group(0) in MODIFIERS:
+            modifiers.append(MODIFIERS[word.group(0)])
             rest = rest[word.end():]
         elif word and word.group(0) in _SKIP_WORDS:
             rest = rest[word.end():]

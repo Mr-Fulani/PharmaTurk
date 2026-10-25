@@ -182,6 +182,57 @@ def test_medicine_identity_allows_localized_form_but_preserves_brand_dose_and_pa
     assert "title_category_mismatch" in wrong_kind.reasons
 
 
+def test_medicine_title_substance_and_turkish_percent_are_not_false_mismatches():
+    """Партия 8 (25.10.2026): вещество в скобках и «с калием» — не категория БАДов;
+    «137 %2.27» — процент относится к 2,27; «D-COLEFOR-1000-IU-…» — бренд без дефиса."""
+    category = Category.objects.create(name="Медицина партия 8", slug="medicines-p8")
+    Category.objects.create(
+        name="Железо",
+        slug="iron-p8",
+        external_data={"semantic_policy": {"aliases": {"ru": ["железо"], "en": ["iron", "potassium"]}}},
+    )
+    validator = SemanticValidator()
+
+    def reasons(name, ru, en):
+        medicine = MedicineProduct.objects.create(name=name, slug=f"p8-{abs(hash(name))}", category=category)
+        medicine.refresh_from_db()
+        return validator.validate(
+            medicine.base_product, generated_titles={"ru": ru, "en": en}, dynamic_attributes=[]
+        ).reasons
+
+    assert reasons(
+        "INFERJECT 500 MG/10 ML ИНЪЕКЦИЯ/ИНФУЗИЯ",
+        "INFERJECT (железо) 500 мг/10 мл, раствор для инъекций и инфузий",
+        "INFERJECT (iron) 500 mg/10 ml, solution for injection/infusion",
+    ) == []
+    assert reasons(
+        "MULTIBIC 2 MMOL/L POTASYUMLU 4500 ML HEMOFILTRASYON SOLUSYONU",
+        "MULTIBIC 2 ммоль/л, раствор для гемофильтрации, с калием, 4500 мл",
+        "MULTIBIC 2 mmol/l, haemofiltration solution, with potassium, 4500 ml",
+    ) == []
+    assert reasons(
+        "DIANEFROL 137 %2.27 GLUKOZ ICEREN PERITON DIYALIZ COZELTISI 2000 ML. TEKLI TORBA",
+        "DIANEFROL 137 2,27%, раствор глюкозы для перитонеального диализа, одинарный пакет, 2000 мл",
+        "DIANEFROL 137 2.27%, glucose peritoneal dialysis solution, single bag, 2000 ml",
+    ) == []
+    assert reasons(
+        "D-COLEFOR-1000-IU-YUMUSAK-KAPSUL (100)",
+        "D-COLEFOR 1000 МЕ, мягкие капсулы, 100 шт.",
+        "D-COLEFOR 1000 IU, soft capsules, 100 pcs",
+    ) == []
+    # Вещество вне скобок и потерянная дозировка по-прежнему ловятся.
+    assert "title_category_mismatch" in reasons(
+        "EISEFERON 40 MG/5 ML ORAL COZELTI 10 KASIK",
+        "EISEFERON железо 40 мг/5 мл, раствор для приёма внутрь, 10 доз",
+        "EISEFERON iron 40 mg/5 ml, oral solution, 10 doses",
+    )
+    assert "title_identity_lost" in reasons(
+        "DIANEFROL 137 %1.36 GLUKOZ ICEREN PERITON DIYALIZ COZELTISI 2000 ML",
+        "DIANEFROL 137 2,27%, раствор глюкозы для перитонеального диализа, 2000 мл",
+        "DIANEFROL 137 2.27%, glucose peritoneal dialysis solution, 2000 ml",
+    )
+
+
 def test_medicine_translation_quality_and_turkish_ru_fields_require_moderation():
     category = Category.objects.create(name="Медицина quality", slug="medicines-quality")
     medicine = MedicineProduct.objects.create(

@@ -15,6 +15,7 @@ from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.medicine_title import (
     CYRILLIC_RE,
     FORM_PHRASES,
+    MODIFIERS,
     TRUNCATED_TITLE_RE,
     is_form_word,
     is_title_descriptor_word,
@@ -311,6 +312,17 @@ def _without_medicine_forms(title_text: str, locale: str) -> str:
     return title_text
 
 
+def _medicine_category_text(title: Any, locale: str) -> str:
+    """Название лекарства для сверки с категориями: без формы, вещества в скобках и уточнений.
+
+    «INFERJECT (железо) …», «MULTIBIC …, with potassium» — вещество, а не категория БАДов «Железо»/«Калий».
+    """
+    text = _without_medicine_forms(_normalized(re.sub(r"\([^)]*\)", " ", str(title or ""))), locale)
+    for modifier_text in _MEDICINE_MODIFIER_TEXTS[locale]:
+        text = re.sub(rf"(?:^|\s){re.escape(modifier_text)}(?=$|\s)", " ", text)
+    return text
+
+
 def _title_has_turkish_words(title: Any) -> bool:
     text = str(title or "")
     return bool(_TURKISH_TITLE_WORDS.search(text) or _TURKISH_TITLE_TRANSLITERATIONS.search(text))
@@ -326,6 +338,12 @@ _MEDICINE_FORM_TEXTS = {
     locale: sorted(
         {_normalized(labels[index]) for labels in FORM_PHRASES.values()}, key=len, reverse=True
     )
+    for index, locale in enumerate(("ru", "en"))
+}
+
+
+_MEDICINE_MODIFIER_TEXTS = {
+    locale: sorted({_normalized(labels[index]) for labels in MODIFIERS.values()}, key=len, reverse=True)
     for index, locale in enumerate(("ru", "en"))
 }
 
@@ -403,6 +421,7 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
     }
     prefix = re.split(r"(?=\d|%)", upper, maxsplit=1)[0]
     for token in re.findall(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9_-]{2,}", prefix):
+        token = token.rstrip("-_")  # «D-COLEFOR-1000-IU-…» — дефис перед дозировкой не часть бренда
         # Слова лекарственной формы («FILM TABLET») переводятся — это не бренд.
         # И вещества в/в раствора («IZOTONIK SODYUM KLORUR»): шаблон переводит их в форму.
         if token not in generic_prefix_words and not is_form_word(token) and not is_title_descriptor_word(token):
@@ -427,7 +446,8 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
     ):
         number = match.group(1).replace(",", ".")
         result.add(f"DOSE:{number}:{unit_aliases[match.group(2)]}")
-    for match in re.finditer(r"%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%", upper):
+    # «DIANEFROL 137 %2.27» — турецкая запись «%2.27» относится к числу после знака.
+    for match in re.finditer(r"%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%(?!\s*\d)", upper):
         number = (match.group(1) or match.group(2)).replace(",", ".")
         result.add(f"DOSE:{number}:%")
     pack_match = re.search(
@@ -775,7 +795,7 @@ class SemanticValidator:
             conflicting_match = (
                 self._longest_conflicting_category_match(
                     category,
-                    _without_medicine_forms(title_text, locale)
+                    _medicine_category_text(title, locale)
                     if product_type == "medicines"
                     else title_text,
                     locale,
