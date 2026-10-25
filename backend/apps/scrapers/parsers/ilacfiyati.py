@@ -1,21 +1,32 @@
 """Парсер для сайта ilacfiyati.com (лекарства и добавки)."""
 
+import gzip
+import html as html_lib
 import logging
 import re
+import time
 from typing import Dict, List, Optional, Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup, CData, NavigableString, Tag
 from celery.exceptions import SoftTimeLimitExceeded
 
+from apps.http_errors import raise_for_blocked_status
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.catalog_state import CatalogTraversalState
+from ..base.listing_changes import OPEN, ListingRow
 from ..base.utils import clean_text, normalize_price
 
 ILACFIYATI_PRICE_CURRENCIES = frozenset({"TRY", "USD", "EUR"})
 
 # Метка цены: у лекарств «İlaç Fiyatı», у БАДов «Perakende Satış Fiyatı».
 ILACFIYATI_PRICE_LABELS = frozenset({"ILAC FIYATI", "PERAKENDE SATIS FIYATI"})
+
+# Все активные товары сайта одним файлом (lastmod у всех — время генерации,
+# поэтому он годится только как список адресов).
+ILACFIYATI_SITEMAP_URL = "https://ilacfiyati.com/sitemap.xml.gz"
+# Меньше — значит, sitemap оборван или подменён: по нему нельзя искать пропавшие.
+ILACFIYATI_SITEMAP_MIN_PRODUCTS = 1000
 
 # Фолбэк без метки: сумма вплотную к отдельному знаку/коду валюты. Подстрока
 # валюты внутри слова («EUROTABS», «TLC») ценой не считается — иначе цифры из
@@ -40,6 +51,10 @@ class IlacFiyatiParser(BaseScraper):
     REPORTS_PAGES_PROCESSED = True
     REPORTS_NEXT_START_PAGE = True
     SUPPORTS_CATALOG_STATE = True
+    # Режим «Только изменения»: ListingChangeTracker подставляет сервис.
+    change_tracker = None
+    # Карточек за один шаг sitemap-этапа — как строк на странице листинга.
+    SITEMAP_BATCH_SIZE = 12
 
     # These category slugs share the same two-segment URL shape as products.
     # Verified against the source's supplement category navigation, 2026-09-14.
@@ -165,9 +180,17 @@ class IlacFiyatiParser(BaseScraper):
             and path_parts[1] in cls.SUPPLEMENT_CATEGORY_SLUGS
         )
 
+    @staticmethod
+    def is_sitemap_url(url: str) -> bool:
+        parsed = urlparse(url or "")
+        return (
+            parsed.hostname in ("ilacfiyati.com", "www.ilacfiyati.com")
+            and parsed.path == urlparse(ILACFIYATI_SITEMAP_URL).path
+        )
+
     @classmethod
     def is_category_url(cls, url: str) -> bool:
-        return cls.is_ilacfiyati_listing_url(url)
+        return cls.is_ilacfiyati_listing_url(url) or cls.is_sitemap_url(url)
 
     @classmethod
     def is_product_url(cls, url: str) -> bool:
@@ -183,8 +206,8 @@ class IlacFiyatiParser(BaseScraper):
 
     @classmethod
     def supports_page_chunking_for_url(cls, url: str) -> bool:
-        """Авточепочка по ?pg= — для корневых каталогов и разделов БАДов."""
-        return cls.is_ilacfiyati_listing_url(url)
+        """Авточепочка по ?pg= — для корневых каталогов и разделов БАДов (и sitemap-этапа)."""
+        return cls.is_ilacfiyati_listing_url(url) or cls.is_sitemap_url(url)
 
     def _listing_results_root(self, soup: BeautifulSoup):
         """Блок «Arama Sonuçları» листинга или ``None``, если его нет."""
@@ -212,6 +235,87 @@ class IlacFiyatiParser(BaseScraper):
             {"name": "БАДы", "url": f"{origin}/takviye-edici-gida",
              "external_id": "takviye-edici-gida", "source": self.get_name()},
         ]
+
+    def parse_change_sources(self) -> List[Dict[str, Any]]:
+        """«Только изменения»: оба листинга по строкам, затем sitemap — новые и пропавшие."""
+        return self.parse_categories() + [
+            {"name": "Новые и пропавшие (sitemap)", "url": ILACFIYATI_SITEMAP_URL,
+             "external_id": "sitemap", "source": self.get_name()},
+        ]
+
+    def parse_listing_rows(self, html: str) -> Optional[List[ListingRow]]:
+        """Строки блока «Arama Sonuçları»; ``None`` — блока нет (вёрстка/защита)."""
+        root = self._listing_results_root(BeautifulSoup(html, "html.parser"))
+        if root is None:
+            return None
+        rows: List[ListingRow] = []
+        seen = set()
+        for card in root.select("div.card.h-100"):
+            link = card.select_one("a.fw-bold[href]") or card.select_one("a[href]")
+            if link is None:
+                continue
+            url = self._canonical_product_url(urljoin(self.base_url, link.get("href", "")))
+            if not self.is_product_url(url) or url in seen:
+                continue
+            seen.add(url)
+            status = card.select_one(".badge.position-absolute.end-0")
+            barcode = price_text = prescription = ""
+            for span in card.select("span"):
+                key = self._normalize_tr_key(span.get_text(" ", strip=True))
+                if key == "BARKOD" and not barcode:
+                    value = span.find_next_sibling("span")
+                    barcode = clean_text(value.get_text(" ", strip=True)) if value else ""
+                elif "badge" in (span.get("class") or []) and "RECETE" in key and not prescription:
+                    prescription = clean_text(span.get_text(" ", strip=True))
+            for label in card.select("div"):
+                if self._normalize_tr_key(label.get_text(" ", strip=True)) in ILACFIYATI_PRICE_LABELS:
+                    value = label.find_next_sibling("div")
+                    price_text = clean_text(value.get_text(" ", strip=True)) if value else ""
+                    break
+            rows.append(ListingRow(
+                url=url,
+                name=clean_text(link.get("title") or link.get_text(" ", strip=True)),
+                barcode=barcode,
+                price=normalize_price(price_text),
+                price_text=price_text,
+                status=self._normalize_tr_key(status.get_text(" ", strip=True)) if status else "",
+                prescription=prescription,
+            ))
+        return rows
+
+    def fetch_sitemap_product_urls(self, sitemap_url: str = ILACFIYATI_SITEMAP_URL) -> List[str]:
+        """Ссылки карточек из sitemap (лекарства и БАДы), один запрос."""
+        response = self.client.get(sitemap_url)
+        raise_for_blocked_status(
+            status_code=response.status_code, url=sitemap_url, source=self.get_name(),
+        )
+        response.raise_for_status()
+        content = response.content
+        if content[:2] == b"\x1f\x8b":
+            content = gzip.decompress(content)
+        urls = []
+        seen = set()
+        for loc in re.findall(r"<loc>\s*(.*?)\s*</loc>", content.decode("utf-8", "replace")):
+            url = self._canonical_product_url(html_lib.unescape(loc))
+            if self.is_product_url(url) and url not in seen:
+                seen.add(url)
+                urls.append(url)
+        if len(urls) < ILACFIYATI_SITEMAP_MIN_PRODUCTS:
+            raise IlacFiyatiSourceError(
+                f"IlacFiyati: в sitemap только {len(urls)} карточек — файл оборван или "
+                "подменён, пропавшие товары по нему не ищем"
+            )
+        return urls
+
+    def _card_is_inactive(self, soup: BeautifulSoup) -> bool:
+        """Карточка показывает «İlaç Durumu: Pasif» — препарат снят с рынка."""
+        for label in soup.select(".info-card__label"):
+            if label.find_parent(class_="medicine-item"):
+                continue
+            if self._normalize_tr_key(label.get_text(" ", strip=True)) == "ILAC DURUMU":
+                value = label.parent.select_one(".info-card__value")
+                return bool(value) and self._normalize_tr_key(value.get_text(" ", strip=True)) == "PASIF"
+        return False
 
     @staticmethod
     def _inside_analog_block(node) -> bool:
@@ -249,7 +353,10 @@ class IlacFiyatiParser(BaseScraper):
         return urls
 
     def mark_catalog_product(self, product):
-        self.catalog_state.mark_product(self._canonical_product_url(product.url))
+        url = self._canonical_product_url(product.url)
+        self.catalog_state.mark_product(url)
+        if self.change_tracker is not None:
+            self.change_tracker.remember_saved(url)
 
     @staticmethod
     def _listing_has_next_page(html: str, category_url: str, page: int) -> Optional[bool]:
@@ -570,6 +677,11 @@ class IlacFiyatiParser(BaseScraper):
             self.stop_reason = "Достигнут лимит товаров."
             return
 
+        tracker = self.change_tracker
+        if self.is_sitemap_url(category_url):
+            yield from self._parse_sitemap_changes(category_url, max_pages, start_page)
+            return
+
         if page > 1:
             previous_url = self._listing_page_url(category_url, page - 1)
             previous_html = self._make_request(previous_url)
@@ -592,7 +704,11 @@ class IlacFiyatiParser(BaseScraper):
                         f"IlacFiyati вернул пустую страницу каталога: {url}"
                     )
 
-                product_urls = self._extract_listing_product_urls(html)
+                rows = self.parse_listing_rows(html) if tracker is not None else None
+                if rows is not None:
+                    product_urls = [row.url for row in rows]
+                else:
+                    product_urls = self._extract_listing_product_urls(html)
 
                 if not product_urls and self._listing_results_root(
                     BeautifulSoup(html, "html.parser")
@@ -628,8 +744,11 @@ class IlacFiyatiParser(BaseScraper):
                     break
 
                 before = result_count() if result_count else count
+                # «Только изменения»: карточку открываем, только если строка
+                # листинга отличается от запомненной (или товара у нас нет).
+                decisions = tracker.decide(rows) if tracker is not None else {}
                 for product_url in product_urls:
-                    if state.product_seen(product_url):
+                    if decisions.get(product_url, OPEN) != OPEN or state.product_seen(product_url):
                         self.catalog_skipped += 1
                         continue
 
@@ -662,7 +781,10 @@ class IlacFiyatiParser(BaseScraper):
                 self.pages_processed = pages_parsed
                 previous_page_urls = product_urls
                 after = result_count() if result_count else count
-                stalled = state.finish_page(product_urls, page, after > before)
+                # В режиме изменений страница без открытых карточек — норма, а не застой.
+                stalled = state.finish_page(
+                    product_urls, page, after > before or tracker is not None,
+                )
                 has_next = self._listing_has_next_page(html, category_url, page)
                 page += 1
                 self.next_start_page = page
@@ -681,6 +803,73 @@ class IlacFiyatiParser(BaseScraper):
         except Exception:
             self.logger.exception("Ошибка при парсинге списка товаров IlacFiyati")
             raise
+
+    def _parse_sitemap_changes(self, sitemap_url: str, max_pages: int, start_page: int):
+        """Sitemap-этап «Только изменений»: карточки, которых листинг не показал.
+
+        Открываем ссылки sitemap, не увиденные листингом в этом проходе (новые и
+        те, до кого листинг не достаёт: у /ilaclar он отдаёт только 1000 страниц).
+        Наши товары в продаже, которых нет ни в sitemap, ни в листинге, проверяем:
+        404 или «İlaç Durumu: Pasif» — снимаем с продажи, иначе сохраняем как
+        обычно. «Страница» здесь — SITEMAP_BATCH_SIZE ссылок; список считается
+        заново в каждом чанке, проверенные ссылки из него уже выпали.
+        """
+        tracker = self.change_tracker
+        if tracker is None:
+            raise IlacFiyatiSourceError(
+                "Sitemap IlacFiyati обходится только в режиме «Только изменения»"
+            )
+        self.next_start_page = start_page
+        to_open, to_check = tracker.sitemap_work(
+            self.fetch_sitemap_product_urls(sitemap_url), self.is_product_url,
+            self._canonical_product_url,
+        )
+        work = [(url, False) for url in to_open] + [(url, True) for url in to_check]
+        limit = max(1, max_pages) * self.SITEMAP_BATCH_SIZE
+        count = 0
+        for url, check_gone in work[:limit]:
+            # До запроса: упавшая карточка не вернётся в список этого прохода.
+            tracker.mark_seen([url])
+            detail = self._changes_card(url, check_gone=check_gone)
+            if detail is None:
+                continue
+            count += 1
+            yield detail
+            if self.max_products is not None and count >= self.max_products:
+                self.has_more_pages = False
+                self.stop_reason = "Достигнут лимит товаров."
+                return
+        handled = min(len(work), limit)
+        self.pages_processed = -(-handled // self.SITEMAP_BATCH_SIZE)
+        self.has_more_pages = len(work) > limit
+        self.stop_reason = (
+            f"Sitemap: открыто новых/непоказанных {len(to_open)}, "
+            f"проверено пропавших {len(to_check)}; в этом чанке {handled}."
+        )
+
+    def _changes_card(self, url: str, *, check_gone: bool) -> Optional[ScrapedProduct]:
+        try:
+            html = None
+            if check_gone:
+                try:
+                    html = self._make_offer_request(url)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code in (404, 410):
+                        self.change_tracker.mark_url_gone(url, reason="not_found")
+                        return None
+                    raise
+                finally:
+                    time.sleep(self.delay_range[0])
+                if self._card_is_inactive(BeautifulSoup(html, "html.parser")):
+                    self.change_tracker.mark_url_gone(url, reason="inactive")
+                    return None
+            return self.parse_product_detail(url, html=html)
+        except (SoftTimeLimitExceeded, ScraperAccessBlockedError):
+            raise
+        except (IlacFiyatiSourceError, httpx.HTTPError) as exc:
+            self.item_errors += 1
+            self.logger.error("IlacFiyati: карточка %s пропущена: %s", url, exc)
+            return None
 
     def parse_market_snapshot(self, product_url: str) -> ScrapedProduct:
         """Получает только справочную цену и эквиваленты одной карточки.
@@ -767,14 +956,17 @@ class IlacFiyatiParser(BaseScraper):
         include_analogs: bool = True,
         tolerate_analog_errors: bool = False,
         preserve_transport_errors: bool = False,
+        html: Optional[str] = None,
     ) -> ScrapedProduct:
         """
         Парсит детальную страницу товара.
         Извлекает название, цену и характеристики.
+        ``html`` — уже скачанная страница карточки (второй запрос не нужен).
         """
         try:
             self.logger.info(f"Парсинг деталей товара: {product_url}")
-            html = self._make_request(product_url)
+            if html is None:
+                html = self._make_request(product_url)
             if not html:
                 raise IlacFiyatiSourceError(
                     f"IlacFiyati вернул пустую карточку: {product_url}"

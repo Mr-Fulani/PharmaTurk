@@ -350,6 +350,9 @@ class SiteScraperTaskForm(forms.ModelForm):
                 "start_url",
                 "Вставьте ссылку на товар или категорию — или выберите тип «Весь сайт».",
             )
+        config = data.get("scraper_config")
+        if data.get("task_type") == "changes" and config and config.parser_class != "ilacfiyati":
+            self.add_error("task_type", "Режим «Только изменения» есть только у IlacFiyati.")
         return data
 
 
@@ -416,6 +419,9 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     "и обойдёт их по очереди; без «Целевой категории» товары раскладываются по "
                     "«Сопоставлениям категорий» конфигурации или автоматически. "
                     "Тип «Обновление заглушек» дополняет товары-заглушки аналогов (ссылка не нужна). "
+                    "Тип «Только изменения» (IlacFiyati) обновляет каталог без полного обхода: "
+                    "открывает только новые карточки и те, чья строка в листинге изменилась, "
+                    "и снимает с продажи пропавшие; ссылка не нужна. "
                     "Примеры ссылок — в таблице ниже."
                 ),
             },
@@ -574,9 +580,9 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             body,
         )
 
-    @admin.display(description="Весь сайт: прогресс")
+    @admin.display(description="Весь сайт / изменения: прогресс")
     def site_progress(self, obj):
-        if getattr(obj, "task_type", "") != "site":
+        if getattr(obj, "task_type", "") not in ("site", "changes"):
             return "—"
         categories = obj.site_categories if isinstance(obj.site_categories, list) else []
         if not categories:

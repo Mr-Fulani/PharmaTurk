@@ -275,7 +275,13 @@ def _pause_site_task(site_task_id: int, message: str) -> None:
 SITE_CATEGORY_LIMIT = 1000
 
 
-def _discover_site_categories(scraper_config: ScraperConfig) -> List[Dict[str, str]]:
+# «Только изменения» обходит этапы так же, как «Весь сайт» — категории.
+SITE_TRAVERSAL_TASK_TYPES = ("site", "changes")
+
+
+def _discover_site_categories(
+    scraper_config: ScraperConfig, source_method: str = "parse_categories",
+) -> List[Dict[str, str]]:
     parser_class = get_parser(scraper_config.parser_class)
     if not parser_class:
         raise ValueError(f"Парсер {scraper_config.parser_class} не найден")
@@ -292,7 +298,12 @@ def _discover_site_categories(scraper_config: ScraperConfig) -> List[Dict[str, s
             headers=scraper_config.headers,
             cookies=scraper_config.cookies,
         )
-        rows = parser.parse_categories() or []
+        discover = getattr(parser, source_method, None)
+        if not callable(discover):
+            raise RuntimeError(
+                f"{scraper_config.name}: режим «Только изменения» есть только у IlacFiyati"
+            )
+        rows = discover() or []
     categories: List[Dict[str, str]] = []
     seen = set()
     for row in rows:
@@ -315,7 +326,10 @@ def _site_category_url(site_task: SiteScraperTask, scraper_config: ScraperConfig
     """URL категории, которую режим «Весь сайт» обходит сейчас (None — категорий больше нет)."""
     categories = site_task.site_categories if isinstance(site_task.site_categories, list) else []
     if not categories:
-        categories = _discover_site_categories(scraper_config)
+        categories = _discover_site_categories(
+            scraper_config,
+            "parse_change_sources" if site_task.task_type == "changes" else "parse_categories",
+        )
         SiteScraperTask.objects.filter(id=site_task.id).update(
             site_categories=categories, site_category_index=0,
         )
@@ -845,7 +859,7 @@ def run_scraper_task(
                 target_category = site_task.target_subcategory
             elif site_task.target_category_id:
                 target_category = site_task.target_category
-            if site_task.task_type == "site":
+            if site_task.task_type in SITE_TRAVERSAL_TASK_TYPES:
                 category_url = _site_category_url(site_task, scraper_config)
                 if category_url is None:
                     SiteScraperTask.objects.filter(id=site_task.id).update(
@@ -862,7 +876,8 @@ def run_scraper_task(
                 log_lines[1] = f"URL: {category_url}"
                 log_lines.insert(
                     1,
-                    f"Весь сайт: категория {position + 1}/{len(site_task.site_categories)} — {category_name}",
+                    f"{'Только изменения: этап' if site_task.task_type == 'changes' else 'Весь сайт: категория'} "
+                    f"{position + 1}/{len(site_task.site_categories)} — {category_name}",
                 )
                 if target_category is None:
                     # Без целевой категории в задаче: сопоставление категорий
@@ -893,6 +908,7 @@ def run_scraper_task(
             total_analog_errors=total_analog_errors,
             celery_task_id=self.request.id,
             site_run_token=site_run_token,
+            changes_only=bool(site_task and site_task.task_type == "changes"),
         )
         session_analogs_found = int(getattr(session, "analogs_found", 0) or 0)
         session_analog_links_saved = int(getattr(session, "analog_links_saved", 0) or 0)
@@ -1091,7 +1107,7 @@ def run_scraper_task(
                     f"Следующий чанк со стр.{next_start_page}"
                 )
             elif (
-                site_task.task_type == "site"
+                site_task.task_type in SITE_TRAVERSAL_TASK_TYPES
                 and site_task.status != "cancelled"
                 and new_total < effective_max
                 and _start_next_site_category(
@@ -1247,7 +1263,7 @@ def run_scraper_task(
             countdown = 1800 if isinstance(e, InstagramRateLimitedError) else None
             raise self.retry(exc=e, countdown=countdown)
 
-        if site_task and site_task.task_type == "site":
+        if site_task and site_task.task_type in SITE_TRAVERSAL_TASK_TYPES:
             # Весь сайт: категория, упавшая после всех повторов, не обрывает
             # обход остальных — ошибка остаётся в задаче, идём к следующей.
             site_task.refresh_from_db()

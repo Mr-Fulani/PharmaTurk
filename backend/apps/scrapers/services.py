@@ -863,6 +863,7 @@ class ScraperIntegrationService:
         total_posts_processed: int = 0,
         total_errors_count: int = 0,
         site_run_token: Optional[str] = None,
+        changes_only: bool = False,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -955,6 +956,7 @@ class ScraperIntegrationService:
                     total_posts_processed=total_posts_processed,
                     total_errors_count=total_errors_count,
                     site_run_token=site_run_token,
+                    changes_only=changes_only,
                 )
 
                 # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
@@ -1052,6 +1054,7 @@ class ScraperIntegrationService:
         total_posts_processed: int = 0,
         total_errors_count: int = 0,
         site_run_token: Optional[str] = None,
+        changes_only: bool = False,
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -1134,6 +1137,14 @@ class ScraperIntegrationService:
                         _catalog_scope(site_task_id, site_run_token, start_url)
                     )
                     parser.catalog_result_count = lambda: incremental_results["found"]
+                if changes_only:
+                    # «Только изменения»: парсер открывает лишь карточки, строка
+                    # листинга которых отличается от запомненной (apps/scrapers/listing_changes.py).
+                    from .listing_changes import ListingChangeTracker
+
+                    parser.change_tracker = ListingChangeTracker(
+                        parser.get_name(), site_run_token or None,
+                    )
                 try:
                     for product in parser.parse_product_list(start_url, **list_kwargs):
                         parser_limit = getattr(parser, "max_products", None)
@@ -1251,6 +1262,13 @@ class ScraperIntegrationService:
                     session.pages_processed += incremental_results["found"] // 20 + 1
                 session._has_more_pages = getattr(parser, "has_more_pages", None)
                 session._stop_reason = str(getattr(parser, "stop_reason", "") or "")
+                tracker = getattr(parser, "change_tracker", None)
+                if tracker is not None and tracker.counts:
+                    session._stop_reason = (
+                        f"{session._stop_reason} Строк листинга: без изменений "
+                        f"{tracker.counts['skip']}, открыто {tracker.counts['open']}, "
+                        f"снято с продажи {tracker.counts['gone']}."
+                    ).strip()
                 session._reports_next_start_page = bool(
                     getattr(parser, "REPORTS_NEXT_START_PAGE", False)
                 )
