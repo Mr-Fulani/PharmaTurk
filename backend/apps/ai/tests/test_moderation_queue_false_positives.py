@@ -244,3 +244,25 @@ def test_supplement_thousands_with_space_match_source():
     assert title_problems("OSENDE Коллаген 10 000 Плюс, жидкость, 30 туб по 40 мл",
                           "OSENDE COLLAGEN 10.000 PLUS TAKVIYE EDICI GIDA 30x40 ml tüp") == []
     assert title_problems("NAME 30 капсул", "NAME 500 mg 30 kapsül") == ["supplement_title_number_lost"]
+
+
+def test_cycle2_vitamin_ve_flavour_short_description_and_address():
+    """Разбор очереди 27.10.2026 (сессия проверки парсеров)."""
+    from apps.ai.services.medicine_fact_check import is_proper_name_line
+    from apps.ai.services.semantic_validator import _medicine_flavour_lost
+    from apps.ai.services.supplement_content import vitamin_e_misread
+
+    source = "ZINCO-C VITAMIN VE MINERAL ICEREN SIVI TAKVIYE EDICI GIDA 100 ml"
+    assert vitamin_e_misread(source, "ZINCO-C Витамин E и минералы, жидкая форма, 100 мл")
+    assert not vitamin_e_misread(source, "ZINCO-C Витамины и минералы, жидкость, 100 мл")
+    assert not vitamin_e_misread("X C VE E VITAMINI 30 tablet", "X Витамины C и E, 30 таблеток")
+    assert missing_terms("NATURE RUSEYM YAGI KAPSUL", "Розовое масло", "Rose Oil") == ["ruseym yagi"]
+    assert missing_terms("GOODDAY TIBBI NANE VE FRENK KIMYONU", "Мята перечная и хрен", "Peppermint and Horseradish") == [
+        "frenk kimyonu"
+    ]
+
+    assert _medicine_flavour_lost("FORTINI 1,0 Multi Fibre, ванильный вкус, 200 мл", "FORTINI 1,0 MULTI FIBRE 200 ML MUZ AROMALI")
+    assert not _medicine_flavour_lost("FORTINI 1,0 Multi Fibre, банановый вкус, 200 мл", "FORTINI 1,0 MULTI FIBRE 200 ML MUZ AROMALI")
+    assert not _medicine_flavour_lost("BENEFORT 250 мг", "BENEFORT 250 MG")
+
+    assert is_proper_name_line("(34010) Topkapı - İSTANBUL")

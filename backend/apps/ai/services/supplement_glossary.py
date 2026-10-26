@@ -32,6 +32,18 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "arisutu": ("маточное молочко", "royal jelly", S),
     "uzum cekirdegi": ("виноградные косточки", "grape seed", S),
     "kabak cekirdegi": ("тыквенные семечки", "pumpkin seed", S),
+    # «VITAMIN VE MINERAL»: «ve» — союз «и», а не «витамин E» (10 БАДов на сайте, 27.10.2026).
+    "vitamin ve mineral": ("витамины и минералы", "vitamins and minerals", D),
+    "vitamin ve mineraller": ("витамины и минералы", "vitamins and minerals", D),
+    "vitaminler ve mineraller": ("витамины и минералы", "vitamins and minerals", D),
+    # Разбор очереди 27.10.2026: модель переводила «розовое масло», «хрен», «тимьян», «эвкалипт».
+    "ruseym yagi": ("масло зародышей пшеницы", "wheat germ oil", S),
+    "bugday ruseymi": ("зародыши пшеницы", "wheat germ", S),
+    "ruseym": ("зародыши пшеницы", "wheat germ", S),
+    "frenk kimyonu": ("тмин", "caraway", S),
+    "yabanturpu": ("хрен", "horseradish", S),
+    "yaban turpu": ("хрен", "horseradish", S),
+    "ekinezyali": ("с эхинацеей / эхинацея", "with echinacea / echinacea", S),
     # «SAKIZ KABAGI», «BAL KABAGI» — кабачок и тыква, а не мастика и мёд (очередь 26.10.2026).
     "sakiz kabagi": ("кабачок", "zucchini / courgette", S),
     "bal kabagi": ("тыква", "pumpkin", S),
