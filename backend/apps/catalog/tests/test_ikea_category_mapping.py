@@ -37,6 +37,39 @@ def test_resolve_legacy_ikea_furniture_type(furniture_type, expected_slug):
     assert match.category_slug == expected_slug
 
 
+@pytest.mark.parametrize(
+    ("pid", "source", "category_url", "function_name", "expected_slug"),
+    [
+        # Очередь модерации 27.10.2026: общий раздел запуска стоял раньше точного типа.
+        (13822, "karyolalar", "kategori/karyola-latasi", "karyola latası", "bed-bases"),
+        (13887, "karyolalar", "kategori/karyola-latasi", "ayarlanabilir karyola latası", "bed-bases"),
+        (14015, "gardiroplar", "kategori/smastad-kombinasyonlar", "ranza", "bunk-beds"),
+        (14363, "gardiroplar", "kategori/smastad-kombinasyonlar", "çocuk şifonyeri", "kids-dressers"),
+        (9430, "koltuklar", "kategori/vimle-koltuk-takimlari", "2'li yataklı kanepe", "sofa-beds"),
+        (10470, "koltuklar", "kategori/vimle-koltuk-takimlari", "bazalı yataklı köşe kanepe", "sofa-beds"),
+        (386, "koltuklar", "kategori/kivik-koltuk-takimlari", "yataklı tekli koltuk", "sofa-beds"),
+        (13549, "koltuklar", "kategori/sallanan-koltuklar", "sallanan koltuk iskeleti", "rocking-armchairs"),
+        (13428, "sifonyerler", "kategori/vihals-depolama-sistemleri", "dolap kombinasyonu", "storage-cabinets"),
+        # Реклайнер остаётся креслом, а не уходит в игровые кресла по категории API.
+        (13489, "koltuklar", "kategori/oyuncu-koltuklari", "yatar koltuk", "armchairs"),
+        # Без точного типа общий раздел по-прежнему решает.
+        (14138, "karyolalar", "kategori/cift-kisilik-karyolalar", "çift kişilik karyola", "beds"),
+        (14392, "gardiroplar", "kategori/pax-tum-parcalar", "sürgülü raf içi düzenleyici", "wardrobes"),
+    ],
+)
+def test_exact_ikea_type_beats_broad_source_section(
+    pid, source, category_url, function_name, expected_slug
+):
+    match = resolve_ikea_category(
+        source_category_slug=source,
+        raw_category={"url": category_url, "name": category_url.split("/")[-1]},
+        raw_function={"url": "fonksiyon/x", "name": function_name},
+        furniture_type=function_name,
+    )
+
+    assert match.category_slug == expected_slug, pid
+
+
 @pytest.mark.django_db
 def test_manual_subcategory_has_priority_over_ikea_mapping():
     root = Category.objects.create(name="Мебель", slug="furniture")
