@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
@@ -104,6 +105,9 @@ _NON_KIND_CATEGORY_ALIASES = {
             # «жидкая форма», «классические пастилки» у БАДов — не спортивная форма и не бельё
             # (очередь модерации 26.10.2026).
             "форма", "классические", "классический", "классическая",
+            # Подкатегории-аудитории и признаки («Буркини для девочек», «ортопедические
+            # шлепанцы», «воротник из искусственного меха») — очередь модерации 27.10.2026.
+            "для девочек", "для мальчиков", "ортопедические", "из искусственного меха",
         }
     ),
     "en": frozenset(
@@ -114,6 +118,9 @@ _NON_KIND_CATEGORY_ALIASES = {
             "children", "children s", "childrens", "storage", "light", "suspension", "gaming", "accessories",
             # «Classic Lozenges», «Medium-Chain Triglycerides» (очередь модерации 26.10.2026).
             "classic", "medium",
+            # «Sports Belt», «Jewelry Box» — не корни «Спорттовары»/«Украшения»,
+            # «Orthopedic Slippers» — не стельки (очередь модерации 27.10.2026).
+            "sports", "jewelry", "orthopedic",
         }
     ),
 }
@@ -439,6 +446,14 @@ def _contains_phrase(text: str, phrase: str) -> bool:
     )
 
 
+_KIND_TAIL_RE = re.compile(r"\s(?:с|со|with|для|for|из)\s")
+
+
+def _kind_text(title_text: str) -> str:
+    """Нормализованное название до « с / with / для / for / из »: дальше — детали, а не тип."""
+    return _KIND_TAIL_RE.split(title_text, maxsplit=1)[0]
+
+
 def _alias_specificity(value: str) -> tuple[int, int]:
     """Prefer multi-word product kinds; character length only breaks ties."""
     normalized = _normalized(value)
@@ -446,8 +461,16 @@ def _alias_specificity(value: str) -> tuple[int, int]:
 
 
 _TURKISH_ONLY_LETTERS_RE = re.compile(r"[ÇĞİŞçğış]")
-# «100ML» в названии Zara — объём, в RU-названии он «100 мл».
-_VOLUME_TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)?(?:ML|GR|G|CM|MM|KG)")
+# «100ML» в названии Zara — объём, в RU-названии он «100 мл»; «2X100», «3X30ML» —
+# набор флаконов («2 × 100 мл»).
+_VOLUME_TOKEN_RE = re.compile(r"(?:\d+X)?\d+(?:[.,]\d+)?(?:ML|GR|G|CM|MM|KG)|\d+X\d+(?:[.,]\d+)?")
+
+
+def _without_marks(token: str) -> str:
+    """«UTSÅDD» → «UTSADD»: диакритика не меняет модель."""
+    return "".join(
+        char for char in unicodedata.normalize("NFKD", token) if not unicodedata.combining(char)
+    )
 
 
 def _identity_tokens(value: Any) -> set[str]:
@@ -651,29 +674,30 @@ class CategorySemanticIndex:
         locale: str,
         own_match_words: int,
     ) -> str:
-        best = self._configured_override_match(
-            current_category,
-            title_text,
-            locale,
-            own_match_words,
-        )
         current_id = getattr(current_category, "pk", None)
         if current_id is None:
-            return best
+            return self._configured_override_match(
+                current_category,
+                title_text,
+                locale,
+                own_match_words,
+            )
 
         current_lineage_ids = self._ancestor_ids(current_id)
         rows = self._aliases(locale)
         # Название совместимой категории (своя линия или подраздел) не конфликт,
         # даже если так же называется раздел другого дерева: «кроссовки» в «Обуви»
         # — это «Обувь → Кроссовки», а не «Спорт → Кроссовки».
-        key = (current_id, locale)
-        if key not in self._compatible_alias_cache:
-            self._compatible_alias_cache[key] = frozenset(
-                normalized_alias
-                for candidate_id, _alias, normalized_alias in rows
-                if candidate_id in current_lineage_ids or current_id in self._ancestor_ids(candidate_id)
-            )
-        compatible_aliases = self._compatible_alias_cache[key]
+        compatible_aliases = self._compatible_aliases(current_id, locale)
+        # Алиасы из CATEGORY_POLICY_OVERRIDES тоже: «гардероб» в корне «Мебель» —
+        # это «Мебель → Шкафы-купе и гардеробы» (очередь модерации 27.10.2026).
+        best = self._configured_override_match(
+            current_category,
+            title_text,
+            locale,
+            own_match_words,
+            compatible_aliases,
+        )
         current_root = self._root_slug(current_id)
         for candidate_id, alias, normalized_alias in rows:
             if candidate_id in current_lineage_ids or normalized_alias in compatible_aliases:
@@ -691,6 +715,28 @@ class CategorySemanticIndex:
             if _contains_phrase(title_text, alias):
                 best = normalized_alias
         return best
+
+    def _compatible_aliases(self, category_id: int, locale: str) -> frozenset[str]:
+        key = (category_id, locale)
+        if key not in self._compatible_alias_cache:
+            lineage_ids = self._ancestor_ids(category_id)
+            self._compatible_alias_cache[key] = frozenset(
+                normalized_alias
+                for candidate_id, _alias, normalized_alias in self._aliases(locale)
+                if candidate_id in lineage_ids or category_id in self._ancestor_ids(candidate_id)
+            )
+        return self._compatible_alias_cache[key]
+
+    def own_line_aliases(self, category: Any, locale: str) -> tuple[str, ...]:
+        """Алиасы самой категории и её подразделов: «Трусы-боксеры» — свои для «Мужского белья»."""
+        category_id = getattr(category, "pk", None)
+        if category_id not in self._categories:
+            return ()
+        return tuple(
+            normalized_alias
+            for candidate_id, _alias, normalized_alias in self._aliases(locale)
+            if category_id in self._ancestor_ids(candidate_id)
+        )
 
     def _ancestor_ids(self, category_id: int) -> frozenset[int]:
         if category_id in self._ancestor_cache:
@@ -746,6 +792,7 @@ class CategorySemanticIndex:
         title_text: str,
         locale: str,
         own_match_words: int,
+        compatible_aliases: frozenset[str] = frozenset(),
     ) -> str:
         best = ""
         current_slug = getattr(current_category, "slug", "")
@@ -754,6 +801,8 @@ class CategorySemanticIndex:
                 continue
             for alias in (config.get("aliases") or {}).get(locale, ()):
                 normalized_alias = _normalized(alias)
+                if normalized_alias in compatible_aliases:
+                    continue
                 candidate_words, _candidate_length = _alias_specificity(normalized_alias)
                 if own_match_words and candidate_words <= own_match_words:
                     continue
@@ -904,12 +953,19 @@ class SemanticValidator:
             # Слово с чисто турецкими буквами («GÜNEŞ», «DİKDÖRTGEN») — не модель:
             # класс символов _identity_tokens их режет на обрывки («GÜNE»).
             latin_name = " ".join(word for word in str(source_name or "").split() if not _TURKISH_ONLY_LETTERS_RE.search(word))
+            # Цвета через «/» («Beyaz/lacivert») — общие слова, а не модель «PLATSA/SMÅSTAD».
             original_tokens = {
-                token
+                _without_marks(token)
                 for token in _identity_tokens(latin_name)
-                if fold(token) not in generic and token not in codes and not _VOLUME_TOKEN_RE.fullmatch(token)
+                if fold(token) not in generic
+                and token not in codes
+                and not _VOLUME_TOKEN_RE.fullmatch(token)
+                and not ("/" in token and all(fold(part) in generic for part in token.split("/") if part))
             }
-            identity_tokens = lambda value: _identity_tokens(str(value or "").upper())  # noqa: E731
+            # «UTSADD» в источнике и «UTSÅDD» в названии (и наоборот) — одна модель.
+            identity_tokens = lambda value: {  # noqa: E731
+                _without_marks(token) for token in _identity_tokens(str(value or "").upper())
+            }
         for locale, title in generated_titles.items():
             if not str(title or "").strip():
                 continue
@@ -936,6 +992,12 @@ class SemanticValidator:
                 break
             title_text = _normalized(title)
             own_aliases = policy.aliases.get(locale, ()) if policy is not None else ()
+            if product_type not in _DOSAGE_FORM_PRODUCT_TYPES:
+                # Тип товара — в начале названия: «органайзер для полки», «диван с
+                # пружинным блоком», «Storage Combination with Glass Doors».
+                title_text = _kind_text(title_text)
+                if self.category_index is not None and policy is not None:
+                    own_aliases = (*own_aliases, *self.category_index.own_line_aliases(category, locale))
             matching_own_aliases = [
                 _normalized(alias)
                 for alias in own_aliases
@@ -964,6 +1026,14 @@ class SemanticValidator:
                     conflicting_match in _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES.get(locale, frozenset())
                     or _alias_in_source(conflicting_match, source_name, locale)
                 )
+            ):
+                conflicting_match = ""
+            # Слово из названия источника (аромат «OUD VIBRANT LEATHER» — не категория «Уд»)
+            # модель не придумала. Лекарства и БАДы сверяются выше, со своими словарями.
+            if (
+                product_type not in _DOSAGE_FORM_PRODUCT_TYPES
+                and conflicting_match
+                and _contains_phrase(_normalized(fold_tr(source_name)), conflicting_match)
             ):
                 conflicting_match = ""
             if conflicting_match:
@@ -1061,6 +1131,7 @@ class SemanticValidator:
         from apps.catalog.models import Category
 
         current_lineage_ids = set()
+        current_lineage_slugs = set()
         current_root = ""
         node = current_category
         while node is not None:
@@ -1068,13 +1139,14 @@ class SemanticValidator:
             if node_pk is not None:
                 current_lineage_ids.add(node_pk)
             current_root = getattr(node, "slug", "")
+            current_lineage_slugs.add(current_root)
             node = getattr(node, "parent", None)
 
         best = ""
         # Configured semantic kinds also participate when the corresponding
         # catalog category has not been created in this particular database.
         for canonical_kind, config in CATEGORY_POLICY_OVERRIDES.items():
-            if canonical_kind == current_category.slug:
+            if canonical_kind in current_lineage_slugs:
                 continue
             for alias in (config.get("aliases") or {}).get(locale, ()):
                 normalized_alias = _normalized(alias)
