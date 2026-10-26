@@ -191,6 +191,8 @@ def test_nonmedical_titles_from_the_queue_pass(catalog, pid, slug, product_type,
         (14015, "wardrobes", "furniture", "SMÅSTAD", "Двухъярусная кровать IKEA SMÅSTAD, белая", "IKEA SMÅSTAD Bunk Bed, White"),
         (13822, "beds", "furniture", "LURÖY", "Реечное дно кровати IKEA LURÖY, береза", "IKEA LURÖY Slatted Bed Base, Birch"),
         (14363, "wardrobes", "furniture", "PLATSA/SMÅSTAD", "Детский комод IKEA PLATSA/SMÅSTAD", "IKEA PLATSA/SMÅSTAD Chest of Drawers"),
+        # name применённого товара — уже RU-название AI: «из источника» оно себя не оправдывает.
+        (13694, "bed-bases", "furniture", "Кровать TONSTAD", "Кровать TONSTAD", "TONSTAD Bed Base"),
     ],
 )
 def test_real_category_errors_from_the_queue_stay(catalog, pid, slug, product_type, name, ru, en):

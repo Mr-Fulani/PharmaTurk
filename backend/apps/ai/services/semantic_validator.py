@@ -1028,11 +1028,14 @@ class SemanticValidator:
                 )
             ):
                 conflicting_match = ""
-            # Слово из названия источника (аромат «OUD VIBRANT LEATHER» — не категория «Уд»)
-            # модель не придумала. Лекарства и БАДы сверяются выше, со своими словарями.
+            # Латинское слово из названия источника (аромат «OUD VIBRANT LEATHER» — не
+            # категория «Уд») модель не придумала. Только латиница: у применённого товара
+            # name — уже RU-название AI, и «Кровать TONSTAD» не может оправдать само себя.
+            # Лекарства и БАДы сверяются выше, со своими словарями.
             if (
                 product_type not in _DOSAGE_FORM_PRODUCT_TYPES
                 and conflicting_match
+                and not CYRILLIC_RE.search(conflicting_match)
                 and _contains_phrase(_normalized(fold_tr(source_name)), conflicting_match)
             ):
                 conflicting_match = ""
