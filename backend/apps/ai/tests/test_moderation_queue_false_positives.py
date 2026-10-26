@@ -15,10 +15,18 @@ from apps.catalog.models import Category, MedicineProduct, Product
 pytestmark = pytest.mark.django_db
 
 
+def _category(name, slug, parent=None, en=None):
+    # В базе CI разделы «medicines», «supplements», «vitamins» и др. уже созданы миграциями.
+    category, _ = Category.objects.update_or_create(slug=slug, defaults={"name": name, "parent": parent})
+    if en:
+        category.translations.update_or_create(locale="en", defaults={"name": en})
+    return category
+
+
 @pytest.fixture
 def catalog():
-    medicines = Category.objects.create(name="Медицина", slug="medicines")
-    supplements = Category.objects.create(name="БАДы", slug="supplements")
+    medicines = _category("Медицина", "medicines")
+    supplements = _category("БАДы", "supplements")
     for name, slug, en in (
         ("Витамины", "vitamins", "Vitamins"),
         ("Минералы", "minerals", "Minerals"),
@@ -26,16 +34,11 @@ def catalog():
         ("Витамин D", "vitamin-d-q", "Vitamin D"),
         ("Протеин", "protein-q", "Protein"),
     ):
-        category = Category.objects.create(name=name, slug=slug, parent=supplements)
-        category.translations.create(locale="en", name=en)
-    electronics = Category.objects.create(name="Электроника", slug="electronics")
-    Category.objects.create(name="Компактные камеры", slug="compact-cameras", parent=electronics).translations.create(
-        locale="en", name="Compact"
-    )
-    underwear = Category.objects.create(name="Бельё", slug="underwear")
-    Category.objects.create(name="Термобельё", slug="uw-thermal-heavy", parent=underwear).translations.create(
-        locale="en", name="Heavy"
-    )
+        _category(name, slug, supplements, en)
+    electronics = _category("Электроника", "electronics")
+    _category("Компактные камеры", "compact-cameras", electronics, "Compact")
+    underwear = _category("Бельё", "underwear")
+    _category("Термобельё", "uw-thermal-heavy", underwear, "Heavy")
     return {"medicines": medicines, "minerals": Category.objects.get(slug="minerals")}
 
 
