@@ -176,6 +176,101 @@ def meaningful_special_notes(value: Any) -> str:
     )
 
 
+# Бейджи ilacfiyati — конечный набор фраз (логи 24–26.10.2026: 45 разных предложений, частые —
+# ниже). Переводятся кодом: модель оставляла турецкий текст рядом с переводом («Ek izlemeye
+# tabi ilaç! — Препарат подлежит…», «(Alternatif Geri Ödeme Kapsamındadır)») — 46 логов в
+# модерации 26.10.2026. Ключ — fold_tr без знаков; {n} — число, {unit} — срок, {gen} — срок
+# после «не менее» (_NOTE_UNITS: винительный, родительный единственного и множественного).
+_NOTE_UNITS = {
+    "saat": (("час", "часа", "часов"), ("часа", "часов"), ("hour", "hours")),
+    "gun": (("день", "дня", "дней"), ("дня", "дней"), ("day", "days")),
+    "hafta": (("неделю", "недели", "недель"), ("недели", "недель"), ("week", "weeks")),
+    "ay": (("месяц", "месяца", "месяцев"), ("месяца", "месяцев"), ("month", "months")),
+}
+_N, _U = r"(?P<n>\d+)", r"(?P<unit>saat|gun|hafta|ay)"
+SPECIAL_NOTE_PHRASES = (
+    (r"tedavi suresince emzirmemesi onerilir kullanilmamalidir",
+     "Кормить грудью во время лечения не рекомендуется.", "Breastfeeding is not recommended during treatment."),
+    (r"ek izlemeye tabi ilac", "Препарат подлежит дополнительному мониторингу.",
+     "This medicine is subject to additional monitoring."),
+    (r"dikkatli kullanilmalidir", "Применять с осторожностью.", "Use with caution."),
+    (r"yuksek riskli ilac", "Препарат высокого риска.", "High-risk medicine."),
+    (r"laktasyon doneminde kullanilmamalidir", "Не применять в период грудного вскармливания.",
+     "Do not use while breastfeeding."),
+    (r"arac ve makine kullanilmamalidir", "Не управлять транспортными средствами и механизмами.",
+     "Do not drive or operate machinery."),
+    (r"laktasyon doneminde kullanim bilgisi icin kub e bakiniz",
+     "О применении в период грудного вскармливания — в общей характеристике препарата.",
+     "For use while breastfeeding, see the Summary of Product Characteristics."),
+    (r"kullanilmadan once doktora danisilmasi gerekmektedir",
+     "Перед применением необходимо проконсультироваться с врачом.", "Consult a doctor before use."),
+    (r"zorunlu olmadikca kullanilmamalidir", "Не применять без крайней необходимости.",
+     "Do not use unless clearly necessary."),
+    (r"arac veya makine kullanilmadan once gorme bulanikligi duzelinceye kadar beklenmelidir",
+     "Перед управлением транспортом и механизмами дождитесь, пока пройдёт нечёткость зрения.",
+     "Wait until blurred vision clears before driving or operating machinery."),
+    (r"kullanmadan once calkalayiniz", "Перед применением взболтать.", "Shake before use."),
+    (r"alternatif geri odeme kapsamindadir", "Входит в альтернативную схему возмещения SGK.",
+     "Covered by the SGK alternative reimbursement scheme."),
+    (r"hastanelerce temini zorunlu kemoterapi ilaci",
+     "Химиотерапевтический препарат, поставляется только через больницы.",
+     "Chemotherapy medicine supplied only through hospitals."),
+    (r"bu mustahzar kontrollu dagitim kapsamindadir", "Препарат отпускается в рамках контролируемого распространения.",
+     "This medicine is subject to controlled distribution."),
+    (r"vucuttan atilmasina kadar gecen 2 3 gun emzirmeye ara verilmelidir",
+     "Прервать грудное вскармливание на 2–3 дня, пока препарат не выведется из организма.",
+     "Stop breastfeeding for 2–3 days until the medicine is eliminated from the body."),
+    (rf"uygulamadan sonra {_N} {_U} sureyle emzirilmemelidir",
+     "Не кормить грудью {n} {unit} после введения.", "Do not breastfeed for {n} {unit} after administration."),
+    (rf"tedavi suresince ve son dozdan sonraki {_N} {_U} suresince emzirmemelidir",
+     "Не кормить грудью во время лечения и {n} {unit} после последней дозы.",
+     "Do not breastfeed during treatment and for {n} {unit} after the last dose."),
+    (rf"tedavi sirasinda ve tedaviden sonraki en az {_N} {_U} boyunca emzirilmemelidir",
+     "Не кормить грудью во время лечения и не менее {n} {gen} после него.",
+     "Do not breastfeed during treatment and for at least {n} {unit} afterwards."),
+    (rf"tedavi sirasinda ve tedaviden sonraki {_N} {_U} (?:boyunca|suresince) emzirilmemelidir",
+     "Не кормить грудью во время лечения и {n} {unit} после него.",
+     "Do not breastfeed during treatment and for {n} {unit} afterwards."),
+    (rf"tedavi sirasinda ve tedavinin bitmesinden sonraki {_N} {_U} boyunca emzirilmemelidir",
+     "Не кормить грудью во время лечения и {n} {unit} после его окончания.",
+     "Do not breastfeed during treatment and for {n} {unit} after it ends."),
+    (rf"ilac kullanirken ve ilac kesildikten sonra en az {_N} {_U} boyunca alkol alinmamalidir",
+     "Не употреблять алкоголь во время лечения и не менее {n} {gen} после отмены препарата.",
+     "Do not drink alcohol during treatment and for at least {n} {unit} after stopping it."),
+    (rf"ilac aldiktan sonra en az {_N} {_U} gecmeden emzirilmemelidir",
+     "Не кормить грудью не менее {n} {gen} после приёма.",
+     "Do not breastfeed for at least {n} {unit} after taking the medicine."),
+)
+_SPECIAL_NOTE_RES = tuple((re.compile(pattern + r"\b\s*"), ru, en) for pattern, ru, en in SPECIAL_NOTE_PHRASES)
+
+
+def translate_special_notes(value: Any) -> Optional[tuple[str, str]]:
+    """(RU, EN) особых сведений по словарю бейджей или None, если есть незнакомая фраза."""
+    text = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", fold_tr(meaningful_special_notes(value)))).strip()
+    ru: list[str] = []
+    en: list[str] = []
+    while text:
+        for pattern, note_ru, note_en in _SPECIAL_NOTE_RES:
+            match = pattern.match(text)
+            if match:
+                break
+        else:
+            return None
+        values = match.groupdict()
+        if values.get("n"):
+            number = values["n"]
+            ru_forms, gen_forms, en_forms = _NOTE_UNITS[values["unit"]]
+            single = ru_plural(number, "one", "few", "many") == "one"
+            note_ru = note_ru.format(
+                n=number, unit=ru_plural(number, *ru_forms), gen=gen_forms[0] if single else gen_forms[1]
+            )
+            note_en = note_en.format(n=number, unit=en_forms[0] if number == "1" else en_forms[1])
+        ru.append(note_ru)
+        en.append(note_en)
+        text = text[match.end():]
+    return (" ".join(ru), " ".join(en)) if ru else None
+
+
 SGK_STATUSES = {
     "bedeliodenir": ("оплачивается SGK", "covered by SGK"),
     "bedeliodenmez": ("не оплачивается SGK", "not covered by SGK"),
@@ -527,4 +622,8 @@ def build_reference_translations(input_data: dict) -> tuple[dict, dict, dict]:
             ru[field], en[field] = found
         else:
             unknown[field] = str(value)
+    # Особые сведения модель тоже переводит; известные бейджи кодом заменяют её перевод.
+    notes = translate_special_notes(input_data.get("special_notes"))
+    if notes:
+        ru["special_notes"], en["special_notes"] = notes
     return ru, en, unknown

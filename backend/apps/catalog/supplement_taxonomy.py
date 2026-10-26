@@ -125,3 +125,60 @@ def supplement_category_slug(source_name: Any, brand: Any = "") -> Optional[str]
         if match and (best is None or match.start() < best[0]):
             best = (match.start(), slug)
     return best[1] if best else None
+
+
+# ── Запасной путь: RU-название карточки ─────────────────────────────────────
+# 2 940 БАДов (26.10.2026) остались в корне: турецкое название — бренд без состава
+# («MAXBIOTIC CIGNEME TABLETI», «VITELEGANS MAGNIVIT») или источника нет («Фолиевая кислота
+# ANEVITA»). RU-название, собранное AI-карточкой и прошедшее проверки, называет вещество
+# («MAXBIOTIC Пробиотик», «VITELEGANS MAGNIVIT Магниевая добавка») — те же группы по-русски.
+def _ru(*words: str) -> re.Pattern:
+    return re.compile(r"(?<![а-яёa-z0-9])(?:" + "|".join(words) + r")", re.IGNORECASE)
+
+
+RU_PRIORITY_RULES: tuple[tuple[str, re.Pattern], ...] = (
+    ("kids-supplements", _ru(r"для детей", r"детск\w* (?:витамин|сироп|жеват|мармелад|пастил)")),
+    ("probiotics", _ru(r"пробиот", r"лактобакт", r"бифидо", r"сахаромицет")),
+    ("collagen", _ru(r"коллаген")),
+    (OMEGA_SLUG, _ru(r"омега", r"рыбий жир", r"рыбьего жира", r"крилев", r"печени трески")),
+)
+RU_POSITION_RULES: tuple[tuple[Optional[str], re.Pattern], ...] = (
+    ("vitamins", _ru(r"витамин", r"мультивитамин", r"фолиев", r"фолат", r"метилфолат", r"биотин", r"кобаламин",
+                     r"холекальциферол", r"менахинон")),
+    ("minerals", _ru(r"магни", r"цинк", r"желез", r"кальци", r"селен", r"йод", r"хром", r"кали[йяю]", r"минерал")),
+    ("immunity", _ru(r"иммун", r"прополис", r"эхинаце", r"бузин", r"бета-?глюкан", r"пеларгони", r"молозив",
+                     r"лактоферрин", r"кверцетин", r"антиоксидант", r"ресвератрол", r"глутатион", r"астаксантин")),
+    ("energy-vitality", _ru(r"коэнзим", r"q10", r"женьшен", r"гуаран", r"кофеин", r"маточное молочко", r"энерги",
+                            r"таурин", r"родиол", r"мака(?![а-я])")),
+    ("digestive-health", _ru(r"пищеварен", r"фермент", r"клетчатк", r"пребиот", r"инулин", r"псиллиум", r"лактаз",
+                             r"симетикон")),
+    ("protein-amino", _ru(r"протеин", r"аминокислот", r"l-[а-яa-z]", r"карнитин", r"глутамин", r"аргинин", r"лизин",
+                          r"теанин", r"цистеин", r"глицин")),
+    ("sports-nutrition", _ru(r"креатин", r"bcaa", r"изотони", r"спортивн")),
+    ("herbal-supplements", _ru(r"экстракт", r"трав", r"растител", r"куркум", r"имбир", r"чеснок", r"гинкго",
+                               r"ашваганд", r"чернушк", r"расторопш", r"артишок", r"шиповник", r"крапив", r"мелисс",
+                               r"ромашк", r"шалфе", r"фенхел", r"хлорелл", r"спирулин", r"клюкв", r"моринг",
+                               r"шиладжит", r"берберин", r"валериан", r"пассифлор", r"зел[её]н\w* ча")),
+    # Как у турецких правил: суставы, сон и детское питание остаются в корне.
+    (None, _ru(r"глюкозамин", r"хондроитин", r"msm", r"мсм", r"мелатонин", r"смесь", r"детского питания",
+               r"печенье", r"каша")),
+)
+
+
+def supplement_category_slug_ru(name_ru: Any, brand: Any = "") -> Optional[str]:
+    """Slug подкатегории по RU-названию карточки или None (запасной путь для нераспознанных)."""
+    text = str(name_ru or "")
+    if not re.search(r"[а-яё]", text, re.IGNORECASE):
+        return None
+    if brand and text.upper().startswith(str(brand).upper()):
+        text = text[len(str(brand)):]
+    blocked = RU_POSITION_RULES[-1][1].search(text)
+    for slug, pattern in RU_PRIORITY_RULES:
+        if pattern.search(text) and not blocked:
+            return slug
+    best = None
+    for slug, pattern in RU_POSITION_RULES:
+        match = pattern.search(text)
+        if match and (best is None or match.start() < best[0]):
+            best = (match.start(), slug)
+    return best[1] if best else None

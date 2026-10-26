@@ -6,7 +6,11 @@ import pytest
 from django.core.management import CommandError, call_command
 
 from apps.catalog.models import Category, CategoryType, Product, SupplementProduct
-from apps.catalog.supplement_taxonomy import SUBCATEGORY_SLUGS, supplement_category_slug
+from apps.catalog.supplement_taxonomy import (
+    SUBCATEGORY_SLUGS,
+    supplement_category_slug,
+    supplement_category_slug_ru,
+)
 from apps.catalog.utils.product_markup import get_effective_product_markup
 
 
@@ -33,6 +37,23 @@ from apps.catalog.utils.product_markup import get_effective_product_markup
 ])
 def test_subcategory_by_source_name(name, slug):
     assert supplement_category_slug(name) == slug
+
+
+@pytest.mark.parametrize("name, brand, slug", [
+    # Очередь 26.10.2026: турецкое название — только бренд, вещество называет RU-название карточки.
+    ("MAXBIOTIC Пробиотик, 14 жевательных таблеток", "MAXBIOTIC", "probiotics"),
+    ("VITELEGANS MAGNIVIT Магниевая добавка, 30 таблеток", "VITELEGANS", "minerals"),
+    ("Фолиевая кислота ANEVITA 90 таблеток", "", "vitamins"),
+    ("SOLGAR Коэнзим Q10 100 мг, 30 капсул", "SOLGAR", "energy-vitality"),
+    ("PROBAC Пробиотик для детей, 20 саше", "PROBAC", "kids-supplements"),
+    # Как у турецких правил: сон, суставы и детское питание — в корне.
+    ("HAVER Мелатонин 3 мг, 60 таблеток", "HAVER", None),
+    ("FRISOLAC GOLD Сухая молочная смесь для детей, порошок, 400 г", "FRISOLAC", None),
+    ("SUITENDO, пищевая добавка, 30 капсул", "SUITENDO", None),
+    ("SUITENDO KAPSUL 30 kapsül", "SUITENDO", None),  # не RU — не запасной путь
+])
+def test_subcategory_by_russian_card_name(name, brand, slug):
+    assert supplement_category_slug_ru(name, brand) == slug
 
 
 def test_brand_prefix_is_not_a_substance():

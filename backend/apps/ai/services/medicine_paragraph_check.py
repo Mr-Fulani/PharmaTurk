@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Iterable, Optional, Sequence
+from difflib import SequenceMatcher
+from typing import Callable, Iterable, Optional, Sequence
 
 from apps.ai.services.medicine_fact_check import _normalize_number, fix_ocr_digits
 
@@ -318,10 +319,11 @@ _TRANSLATION_HEADING = re.compile(r"^\s*(\d{1,2})\s*[.)](?!\d)")
 # по-разному: «не ранее чем через 3 месяца», «детям от 1 года», «один или несколько».
 _AT_LEAST = {
     "tr": re.compile(
-        # Не «en az 36 saat geçmeden» (отрицание: «не ранее»/«менее чем через» — верно), не
-        # диапазон «en az 1'i ila 10'unda» и не испорченные частоты «en az 1'inden daha az/fazla».
+        # Не «en az 36 saat geçmeden», «en az 2 hafta geçmemişse» (отрицание: «не ранее»/«менее чем
+        # через» — верно), не диапазон «en az 1'i ila 10'unda» и не испорченные частоты
+        # «en az 1'inden daha az/fazla».
         r"\ben az\s+(?:\d|yarım|bir\b|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on\b|yirmi|otuz|kırk|elli|birkaç)"
-        r"(?![^.;]{0,30}geçmeden)(?!\S*\s*'?\s*(?:inden|ından|nden|ndan)\b)(?!\S*\s+ila\b)",
+        r"(?![^.;]{0,30}geç(?:meden|memiş))(?!\S*\s*'?\s*(?:inden|ından|nden|ndan)\b)(?!\S*\s+ila\b)",
         re.IGNORECASE,
     ),
     "ru": re.compile(
@@ -577,12 +579,17 @@ SELF_MIN_SCORE = -2.0
 _NEIGHBOURS = (1, 2, -1)
 
 
-def _evidence(rows: Sequence[tuple[Features, Features, Features]], index: int) -> int:
+def _evidence(
+    rows: Sequence[tuple[Features, Features, Features]],
+    index: int,
+    owner: Optional[Callable[[int], bool]] = None,
+) -> int:
     """+1 — перевод записи index от соседнего абзаца, −1 — от своего, 0 — не ясно.
 
     Сосед годится в «хозяева» перевода, только если его собственный перевод
     подходит ему не лучше: два почти одинаковых абзаца подряд («Aksiyal
     spondiloartrit…» и «-Radyografik olmayan aksiyal spondiloartrit…») — не сдвиг.
+    ``owner(j)`` — дополнительное условие для соседа j (``section_shift``).
     """
     source, ru, en = rows[index]
     if ru.empty or en.empty:
@@ -596,7 +603,7 @@ def _evidence(rows: Sequence[tuple[Features, Features, Features]], index: int) -
         other, other_ru, other_en = rows[j]
         scores = (pair_score(other, ru), pair_score(other, en))
         neighbours.append(scores)
-        if sum(scores) >= pair_score(other, other_ru) + pair_score(other, other_en):
+        if sum(scores) >= pair_score(other, other_ru) + pair_score(other, other_en) and (owner is None or owner(j)):
             candidates.append(scores)
     if candidates and (
         max(ru_score + en_score for ru_score, en_score in candidates) - own > SHIFT_MARGIN
@@ -639,6 +646,55 @@ def request_shift(sources: Sequence[str], ru: Sequence[str], en: Sequence[str]) 
     evidence = [_evidence(rows, index) for index in range(len(rows))]
     spread = spread_shift(evidence, back=len(rows), forward=len(rows))
     return {index for index, shifted in enumerate(spread) if shifted}
+
+
+# Раздел лога собран из записей памяти, переведённых разными запросами: цепочки сдвига
+# у него нет, а соседние пункты списков похожи друг на друга («Kaygı,» / «Güçsüzlük,»,
+# «1 adet 1 mg tablet» / «2 adet 1 mg tablet») — request_shift на таких разделах давал
+# ложный сдвиг. Чужой перевод записи памяти — почти копия перевода соседнего абзаца при
+# непохожих исходниках («Blisterin … son kullanma tarihinden önce» → текст соседа «Если вы
+# заметили повреждения…»). Очередь модерации 26.10.2026: 320 лекарств со сдвигом, настоящих
+# чужих переводов — 4; короткие пункты из одного-двух слов — синонимы («Слабость» у
+# «Halsizlik» и «Kuvvetsizlik»), а не чужой перевод.
+SECTION_COPY_MIN = 0.6
+SECTION_COPY_GAP = 0.3
+SECTION_COPY_WORDS = 3
+
+
+def _similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, str(a or ""), str(b or "")).ratio()
+
+
+def section_shift(sources: Sequence[str], ru: Sequence[str], en: Sequence[str]) -> set[int]:
+    """Индексы абзацев раздела лога, перевод которых — перевод соседнего абзаца.
+
+    Как ``request_shift``, но одиночный признак — сдвиг, только если перевод почти
+    совпадает с собственным переводом соседа (``SECTION_COPY_MIN``) заметно сильнее, чем
+    совпадают исходники (``SECTION_COPY_GAP``). Два признака подряд — цепочка сдвинутого
+    ответа модели (логи до 21.10.2026); на соседей без признака сдвиг не распространяется.
+    """
+    rows = [(Features(s, "tr"), Features(r, "ru"), Features(e, "en")) for s, r, e in zip(sources, ru, en)]
+    evidence = [_evidence(rows, index) for index in range(len(rows))]
+    chain = {
+        index
+        for index, value in enumerate(evidence)
+        if value == 1 and 1 in evidence[max(0, index - 1):index] + evidence[index + 1:index + 2]
+    }
+
+    def owner(index: int) -> Callable[[int], bool]:
+        def copied_from(j: int) -> bool:
+            copy = max(_similarity(ru[index], ru[j]), _similarity(en[index], en[j]))
+            return copy >= SECTION_COPY_MIN and copy - _similarity(sources[index], sources[j]) >= SECTION_COPY_GAP
+
+        return copied_from
+
+    return chain | {
+        index
+        for index, value in enumerate(evidence)
+        if value == 1
+        and len(str(ru[index]).split()) >= SECTION_COPY_WORDS
+        and _evidence(rows, index, owner(index)) == 1
+    }
 
 
 def audit_sequence(rows: Iterable[tuple[str, str, str]]) -> list[list[str]]:

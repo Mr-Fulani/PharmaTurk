@@ -1710,9 +1710,11 @@ def test_special_notes_with_subject_are_kept():
     )
 
     assert facts["source_facts"]["special_notes"] == "Laktasyon döneminde kullanılmamalıdır."
+    # Известный бейдж переводит код (translate_special_notes), а не модель.
     assert log.extracted_attributes["translations_data"]["ru"]["special_notes"] == (
-        "Не применять в период лактации."
+        "Не применять в период грудного вскармливания."
     )
+    assert log.extracted_attributes["translations_data"]["en"]["special_notes"] == "Do not use while breastfeeding."
 
 
 def test_medicine_without_category_is_still_validated():

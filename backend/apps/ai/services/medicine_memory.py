@@ -24,6 +24,7 @@ from apps.ai.services.medicine_paragraph_check import (
     request_shift,
     restore_heading,
     ru_thousands,
+    section_shift,
 )
 from apps.catalog.product_semantics import looks_untranslated_turkish
 from apps.ai.services.medicine_reference import fold_tr
@@ -752,8 +753,9 @@ def section_paragraph_problems(source: str, ru: str, en: str, brand: str = "") -
     Раздел собран ``translate_sections_by_paragraph`` из переводов абзацев в
     порядке исходника, поэтому абзацы сопоставляются по строкам. Проверка —
     та же, что перед записью в память (``paragraph_problems``), плюс сдвиг по
-    соседним абзацам (``request_shift``): логи, переведённые до 21.10.2026,
-    содержат сдвинутые ответы модели (docs/MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md).
+    соседним абзацам (``section_shift``): логи, переведённые до 21.10.2026,
+    содержат сдвинутые ответы модели (docs/MEDICINE_PARAGRAPH_SHIFT_2026-10-20.md),
+    а запись памяти бывает переводом соседнего абзаца.
     До 21.10.2026 исходник делился по строкам без склейки обрывков — подходит
     любое деление, у которого число абзацев совпадает с RU и EN; иначе сверить
     нельзя: [{"number": 0, "problems": ["paragraph_count_mismatch"]}]. Абзацы
@@ -775,8 +777,15 @@ def section_paragraph_problems(source: str, ru: str, en: str, brand: str = "") -
     keys = [normalize_paragraph(row["source"], brand) for row in rows]
     ru_texts = [row["ru"].replace(brand, BRAND_TOKEN) if brand else row["ru"] for row in rows]
     en_texts = [row["en"].replace(brand, BRAND_TOKEN) if brand else row["en"] for row in rows]
+    # Бренд вплотную к слову («fazlaCOLEDAN-D3 kullandıysanız», «MONOVİT B12NEDİR») и с турецкой
+    # «İ» («LUCRİN DEPOT») метку не получал, и цифры бренда считались потерянными (очередь 26.10.2026).
+    if brand:
+        glued = re.compile("".join("[Iİıi]" if char in "Iİıi" else re.escape(char) for char in brand), re.IGNORECASE)
+        keys = [glued.sub(BRAND_TOKEN, key) for key in keys]
+        ru_texts = [glued.sub(BRAND_TOKEN, text) for text in ru_texts]
+        en_texts = [glued.sub(BRAND_TOKEN, text) for text in en_texts]
     for row, key, ru_text, en_text in zip(rows, keys, ru_texts, en_texts):
         row["problems"] = paragraph_problems(key, ru_text, en_text)
-    for index in request_shift(keys, ru_texts, en_texts):
+    for index in section_shift(keys, ru_texts, en_texts):
         rows[index]["problems"].append("shifted")
     return [row for row in rows if row["problems"]]
