@@ -99,10 +99,17 @@ _NON_KIND_CATEGORY_ALIASES = {
             "женские", "женская", "женский", "женское", "для женщин",
             "детские", "детская", "детский", "детское", "для детей",
             "унисекс", "кожа", "натуральная кожа", "кожаные",
+            # Общие слова названий разделов других каталогов (волна 1 мебели, 26.10.2026).
+            "аксессуары",
         }
     ),
     "en": frozenset(
-        {"men", "men s", "mens", "man", "women", "women s", "womens", "woman", "kids", "unisex", "leather"}
+        {
+            "men", "men s", "mens", "man", "women", "women s", "womens", "woman", "kids", "unisex", "leather",
+            # «Children's Wardrobe» — не детские ходунки, «Storage System» — не накопители ПК,
+            # «Light Grey» — не термобельё, «Suspension Rail» — не подвеска автомобиля.
+            "children", "children s", "childrens", "storage", "light", "suspension", "gaming", "accessories",
+        }
     ),
 }
 
