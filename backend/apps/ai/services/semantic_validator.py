@@ -307,6 +307,15 @@ _MEDICINE_RU_TITLE_LATIN_OK = frozenset({
 })
 
 
+# Единицы источника: в RU-названии они пишутся по-русски («мг», «МЕ», «ТЕ»), латиницей — брак.
+# Английские слова формы и фасовки в названиях импортных лекарств — тоже переводятся.
+_MEDICINE_SOURCE_UNIT_WORDS = frozenset({
+    "MG", "MCG", "MKG", "ML", "G", "GR", "IU", "UI", "TU", "TSU", "MIU", "MMOL", "MEQ", "MCI", "U", "L", "ADET",
+    "OZ", "TUP", "INJECTION", "SUSPENSION", "DROPS", "CREAM", "EYE", "EAR", "SYRUP", "KIT", "SACHET", "SACHETS",
+    "SPRAY", "GEL", "PATCH", "PATCHES", "AMPOULE", "AMPOULES", "BOTTLE", "PEN", "PENS", "FOR", "AND", "WITH",
+})
+
+
 def _medicine_ru_title_untranslated(title: Any, source_name: Any) -> bool:
     """В RU-названии лекарства осталась латиница не из бренда (MG, ML, TU) или транслитерация."""
     text = str(title or "")
@@ -317,6 +326,15 @@ def _medicine_ru_title_untranslated(title: Any, source_name: Any) -> bool:
     # Бренд шаблона бывает и с числом: «CAPD 4 STAY SAFE», «POLIFLEKS 1/3 POLIDEKS» (title_brand).
     prefix += " " + title_brand(source_name)
     brand = {fold_tr(token.strip(".'-")).upper() for token in re.findall(r"[^\W_][\w.'-]*", prefix)}
+    # Часть бренда после цифры («MILUPA UCD 2 PRIMA», «ENSURE 2 CAL», «HUMAN ALBUMIN %20 BEHRING»): латинское
+    # слово источника, кроме единиц, слов формы и турецких слов (очередь модерации 26.10.2026).
+    brand |= {
+        word
+        for word in (fold_tr(token.strip(".'-")).upper() for token in re.findall(r"[^\W\d_][\w'-]*", str(source_name or "")))
+        if word not in _MEDICINE_SOURCE_UNIT_WORDS
+        and not is_form_word(word)
+        and not _title_has_turkish_words(word)
+    }
     for token in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü.'-]*", text):
         word = fold_tr(token.strip(".'-")).upper()
         # Буква — часть МНН: «полимиксин B», «витамин E»; римское число — «фактор VIII», «IX».
@@ -488,6 +506,7 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
         "İÇEREN",
         "SETLI",
         "SETSIZ",
+        "USP",  # «DILAUDID TABLETS, USP 4 MG» — отметка фармакопеи, не бренд
     }
     prefix = re.split(r"(?=\d|%)", upper, maxsplit=1)[0]
     for token in re.findall(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9_-]{2,}", prefix):
@@ -521,6 +540,9 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
     ):
         number = match.group(1).replace(",", ".")
         result.add(f"DOSE:{number}:{unit_aliases[match.group(2)]}")
+    # Миллионы единиц: «3 MIU» = «3 млн МЕ»; «3 МЕ» в названии — ошибка в миллион раз (пилот 27.10.2026).
+    for match in re.finditer(r"(\d+(?:[.,]\d+)?)\s*(?:MIU|M\.I\.U\.?|МЛН\.?\s*МЕ|MLN\.?\s*IU|MILLION\s+IU)(?!\w)", upper):
+        result.add(f"DOSE:{match.group(1).replace(',', '.')}:MIU")
     # «DIANEFROL 137 %2.27» — турецкая запись «%2.27» относится к числу после знака;
     # «10% 100 МГ» — русская: знак вплотную к числу перед ним (очередь 26.10.2026).
     for match in re.finditer(

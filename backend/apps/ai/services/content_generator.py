@@ -71,6 +71,7 @@ from apps.ai.services.medicine_title import (
     build_medicine_title,
     medicine_source_name,
     paragraph_brand,
+    ru_title_units,
     title_brand,
     title_inn,
     title_with_inn,
@@ -1585,6 +1586,8 @@ class ContentGenerator:
             payload.update(code_fields[locale])
             if code_fields.get("title"):
                 payload["generated_title"] = code_fields["title"][locale]
+            elif locale == "ru" and payload.get("generated_title"):
+                payload["generated_title"] = ru_title_units(payload["generated_title"])
             if code_fields.get("seo"):
                 payload.update(code_fields["seo"][locale])
             else:

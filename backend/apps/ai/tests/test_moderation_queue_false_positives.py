@@ -203,3 +203,44 @@ def test_supplement_title_keeps_formula_stage_and_dose(source, brand, product, e
     pack = parse_pack(source)
     title_brand, text = _restore_lost_numbers(brand, {"ru": product, "en": "x"}, pack, source, is_baby_food(source))
     assert (title_brand, text["ru"]) == (expected_brand, expected_ru)
+
+
+def test_million_units_are_kept_in_medicine_title(catalog):
+    """Пилот 27.10.2026: «ROVAMYCINE 3 MIU» модель записала как «3 МЕ» — ошибка в миллион раз."""
+    from apps.ai.services.medicine_title import build_medicine_title
+
+    name = "ROVAMYCINE 3 MIU 10 FILM KAPLI TABLET"
+    title = build_medicine_title(name)
+    assert title["ru"].startswith("ROVAMYCINE 3 млн МЕ, таблетки, покрытые плёночной оболочкой")
+    assert title["en"].startswith("ROVAMYCINE 3 MIU")
+    assert "title_identity_lost" in _medicine_reasons(
+        catalog["medicines"], name, "ROVAMYCINE 3 МЕ, таблетки, покрытые плёночной оболочкой, 10 шт.",
+        "ROVAMYCINE 3 IU, film-coated tablets, 10 pcs",
+    )
+    assert _medicine_reasons(catalog["medicines"], name, title["ru"], title["en"]) == []
+
+
+def test_medicine_ru_title_units_and_brand_after_digits(catalog):
+    from apps.ai.services.medicine_title import ru_title_units
+
+    assert ru_title_units("CLUSTOID 10000 TU/ML суспензия для инъекций") == "CLUSTOID 10000 ТЕ/мл суспензия для инъекций"
+    assert ru_title_units("SPRAMAX 1.5 MIU таблетки") == "SPRAMAX 1.5 млн МЕ таблетки"
+    # Часть бренда после цифры — не брак; латинская единица и английская форма — брак.
+    assert _medicine_reasons(
+        catalog["medicines"], "MILUPA UCD 2 PRIMA (500 G)", "MILUPA UCD 2 PRIMA, 500 г", "MILUPA UCD 2 PRIMA, 500 g"
+    ) == []
+    assert "title_untranslated" in _medicine_reasons(
+        catalog["medicines"], "CLUSTOID 10000 TU/ML ENJEKSIYONLUK SUSPANSIYON (BETULA)",
+        "CLUSTOID 10000 TU/мл, суспензия для инъекций (Betula)", "CLUSTOID 10000 TU/ml suspension for injection (Betula)",
+    )
+    assert "title_untranslated" in _medicine_reasons(
+        catalog["medicines"], "MELPHALAN 50 MG 1 INJECTION", "MELPHALAN 50 мг 1 INJECTION", "MELPHALAN 50 mg 1 injection"
+    )
+
+
+def test_supplement_thousands_with_space_match_source():
+    from apps.ai.services.supplement_content import title_problems
+
+    assert title_problems("OSENDE Коллаген 10 000 Плюс, жидкость, 30 туб по 40 мл",
+                          "OSENDE COLLAGEN 10.000 PLUS TAKVIYE EDICI GIDA 30x40 ml tüp") == []
+    assert title_problems("NAME 30 капсул", "NAME 500 mg 30 kapsül") == ["supplement_title_number_lost"]

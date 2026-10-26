@@ -609,13 +609,15 @@ _UNITS = {
     "mg": ("мг", "mg"), "mcg": ("мкг", "mcg"), "mkg": ("мкг", "mcg"), "µg": ("мкг", "mcg"),
     "g": ("г", "g"), "gr": ("г", "g"), "ml": ("мл", "ml"), "l": ("л", "l"),
     "iu": ("МЕ", "IU"), "ui": ("МЕ", "IU"), "mmol": ("ммоль", "mmol"), "meq": ("мэкв", "mEq"),
+    # «ROVAMYCINE 3 MIU» — 3 млн МЕ; модель писала «3 МЕ» (пилот очереди 27.10.2026).
+    "miu": ("млн МЕ", "MIU"),
     "doz": ("доза", "dose"), "puskurtme": ("доза", "dose"), "sprey": ("впрыск", "spray"),
     "saat": ("ч", "h"), "h": ("ч", "h"),
     "tu": ("ТЕ", "TU"), "u": ("ЕД", "U"), "cm2": ("см²", "cm²"),
     "axa": ("анти-Xa МЕ", "anti-Xa IU"),  # эноксапарин: «4000 ANTI-XA IU/0,4 ML»
 }
 _NUM = r"\d+(?:[.,]\d+)?"
-_UNIT = r"(?:mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq|tu|axa|u)"
+_UNIT = r"(?:miu|mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq|tu|axa|u)"
 _PER = r"(?:mg|mcg|g|ml|doz|puskurtme|sprey|saat|h|l|cm2)"
 _DOSE_RE = re.compile(
     rf"(?:%\s*({_NUM})|({_NUM})\s*%|({_NUM})\s*({_UNIT})(?:\s*/\s*({_NUM})?\s*({_PER}))?)(?![a-z])"
@@ -1147,6 +1149,22 @@ def title_inn(value: str) -> str:
             words[0] = first[0].lower() + first[1:]
         parts.append(" ".join(words))
     return " + ".join(parts)
+
+
+# Единица латиницей в RU-названии от модели («CLUSTOID 10000 TU/ML», «VERQUVO 5 MG»): по-русски
+# «ТЕ/мл», «мг». «ME» латиницей — те же «МЕ» (очередь модерации 26.10.2026: ≈ 60 названий).
+_RU_TITLE_UNITS = {
+    "MIU": "млн МЕ", "MG": "мг", "MCG": "мкг", "ML": "мл", "IU": "МЕ", "I.U.": "МЕ", "UI": "МЕ",
+    "ME": "МЕ", "TU": "ТЕ", "GR": "г", "G": "г",
+}
+_RU_TITLE_UNIT_RE = re.compile(
+    r"(?:(?<=\d)|(?<=\d )|(?<=/))(MIU|MCG|MG|ML|I\.U\.|IU|UI|ME|TU|GR|G)(?![A-Za-zА-Яа-яЁё.])", re.IGNORECASE
+)
+
+
+def ru_title_units(title: Any) -> str:
+    """RU-название лекарства с единицами по-русски: «10000 TU/ML» → «10000 ТЕ/мл»."""
+    return _RU_TITLE_UNIT_RE.sub(lambda m: _RU_TITLE_UNITS[m.group(1).upper()], str(title or ""))
 
 
 def title_brand(name: Any) -> str:
