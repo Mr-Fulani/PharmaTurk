@@ -61,6 +61,10 @@ class LcwParser(BaseScraper):
     PRICE_RE = re.compile(r"(\d[\d.]*,\d{2}\s*(?:TL|₺))", re.IGNORECASE)
     VARIANT_COUNT_RE = re.compile(r"\s+\+\d+\s*$")
     SIZE_SPLIT_RE = re.compile(r"\s{2,}|\n+")
+    # new SingleSizeProduct(optionId, sku, sizeId, 'M', порядок, остаток, …)
+    SINGLE_SIZE_PRODUCT_RE = re.compile(
+        r"new\s+SingleSizeProduct\(\s*(\d+)\s*,\s*\d+\s*,\s*\d+\s*,\s*'([^']*)'\s*,\s*(-?\d+)\s*,\s*(-?\d+)"
+    )
     SKIP_IMAGE_HINTS = (
         "logo",
         "icon",
@@ -548,8 +552,12 @@ class LcwParser(BaseScraper):
         attributes = self._extract_attributes(page_text)
         og_image_url = self._extract_og_image_url(soup)
         color = self._extract_color(page_text)
-        sizes = self._extract_sizes(soup, page_text)
+        product_id = self._extract_product_id(product_url)
+        script_sizes = self._extract_sizes_from_scripts(soup, product_id)
+        sizes = script_sizes or self._extract_sizes(soup, page_text)
         is_available = "tukendi" not in page_text.lower() and "tükendi" not in page_text.lower()
+        if script_sizes:
+            is_available = is_available and any(row["is_available"] for row in script_sizes)
         group_sku = self._extract_group_sku(page_text, sku)
         images = self._extract_images(soup, name, sku=sku or group_sku or "")
         if og_image_url:
@@ -572,7 +580,7 @@ class LcwParser(BaseScraper):
             "color": color,
             "sizes": sizes,
             "is_available": is_available,
-            "product_id": self._extract_product_id(product_url),
+            "product_id": product_id,
         }
 
     def _variant_payload_from_parsed(self, parsed: Dict[str, Any], *, sort_order: int) -> Dict[str, Any]:
@@ -861,10 +869,14 @@ class LcwParser(BaseScraper):
             return attributes
 
         block = match.group(1)
-        for line in [clean_text(part) for part in block.splitlines()]:
+        lines = [clean_text(part) for part in block.splitlines()]
+        for index, line in enumerate(lines):
             if ":" not in line:
                 continue
             key, value = [clean_text(part) for part in line.split(":", 1)]
+            if key and not value and index + 1 < len(lines) and ":" not in lines[index + 1]:
+                # С октября 2026 «Cinsiyet:» и «Erkek» — отдельные строки.
+                value = lines[index + 1]
             if not key or not value:
                 continue
             if key.lower() in {"marka", "satıcı"}:
@@ -995,7 +1007,9 @@ class LcwParser(BaseScraper):
 
     def _extract_color(self, page_text: str) -> str:
         match = re.search(
-            r"Renk\s*:\s*(.+?)(?:Renk seçenekleri|Beden:|TÜKENDİ|TUKENDI|Ürün Açıklaması|Sepete Ekle|$)",
+            # С октября 2026 за цветом идут «+ 25 Renk» и кнопка «BEDEN SEÇ»
+            # или сразу список размеров — каждая часть на своей строке.
+            r"Renk\s*:\s*(.+?)(?:\n|Renk seçenekleri|Beden:|Beden Seç|TÜKENDİ|TUKENDI|Ürün Açıklaması|Sepete Ekle|$)",
             page_text,
             re.IGNORECASE | re.DOTALL,
         )
@@ -1003,6 +1017,42 @@ class LcwParser(BaseScraper):
             return ""
         color = clean_text(match.group(1))
         return re.sub(r"\s*/\s*[A-Z0-9.-]+\s*$", "", color).strip()
+
+    def _extract_sizes_from_scripts(self, soup: BeautifulSoup, product_id: str) -> List[Dict[str, Any]]:
+        """Размеры с остатком из скрипта страницы: ``var products = [new SingleSizeProduct(…)]``.
+
+        С октября 2026 у многоцветных карточек список размеров открывается
+        модалкой («BEDEN SEÇ»), а у одноцветных в вёрстке нет признака
+        «нет в наличии»; остаток размера есть только в этом скрипте.
+        """
+        rows = []
+        for script in soup.find_all("script"):
+            text = script.string or script.get_text() or ""
+            if "SingleSizeProduct(" not in text:
+                continue
+            for match in self.SINGLE_SIZE_PRODUCT_RE.finditer(text):
+                option_id, size, order, stock = match.groups()
+                if product_id and option_id != product_id:
+                    continue
+                size = clean_text(size)
+                if size:
+                    rows.append((int(order), size, int(stock)))
+        sizes: List[Dict[str, Any]] = []
+        seen = set()
+        for _, size, stock in sorted(rows, key=lambda row: row[0]):
+            if size in seen:
+                continue
+            seen.add(size)
+            available = stock > 0
+            sizes.append(
+                {
+                    "size": size,
+                    "is_available": available,
+                    "stock_quantity": self.DEFAULT_ASSUMED_STOCK_QUANTITY if available else 0,
+                    "sort_order": len(sizes),
+                }
+            )
+        return sizes
 
     def _extract_sizes(self, soup: BeautifulSoup, page_text: str) -> List[Dict[str, Any]]:
         soup_sizes = self._extract_sizes_from_soup(soup)
