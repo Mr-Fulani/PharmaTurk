@@ -51,6 +51,7 @@ from .base.catalog_state import CatalogTraversalState
 from .base.listing_snapshot import ListingGuard, record_listing_snapshot
 from .base.offers import OfferGone, OfferNotFound
 from .base.scraper import (
+    CategoryPageNotFoundError,
     ScrapedProduct,
     ScraperAccessBlockedError,
     _json_safe_scraped_value,
@@ -1058,6 +1059,20 @@ class ScraperIntegrationService:
             session.status = "failed"
             session.finished_at = timezone.now()
             session.error_message = f"Страница снята у источника (HTTP 404/410), парсер исправен: {e}"
+            session.save()
+            self._update_scraper_stats(
+                scraper_config, session, success=False, source_item_gone=True,
+            )
+            raise
+
+        except CategoryPageNotFoundError as e:
+            # Неверная ссылка раздела (404, нет ?celement=) — ошибка адреса в
+            # задаче, а не поломка парсера. «Ошибка» в конфигурации выключила бы
+            # проверку цены при открытии карточки и в корзине у всего источника.
+            self.logger.info("Парсер %s: раздел не найден: %s", scraper_config.name, e)
+            session.status = "failed"
+            session.finished_at = timezone.now()
+            session.error_message = str(e)
             session.save()
             self._update_scraper_stats(
                 scraper_config, session, success=False, source_item_gone=True,

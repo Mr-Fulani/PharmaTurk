@@ -19,7 +19,12 @@ from celery.exceptions import SoftTimeLimitExceeded
 from curl_cffi import requests as curl_requests
 
 from ..base.offers import MalformedOfferResponse, OfferGone, OfferNotFound
-from ..base.scraper import ScrapedProduct, ScraperAccessBlockedError, SiteCategoriesError
+from ..base.scraper import (
+    CategoryPageNotFoundError,
+    ScrapedProduct,
+    ScraperAccessBlockedError,
+    SiteCategoriesError,
+)
 from ..base.utils import clean_text
 from .inditex_categories import resolve_inditex_category_slugs
 from .zara import ZaraParser
@@ -298,7 +303,12 @@ class InditexSiblingParser(ZaraParser):
         celement = dict(parse_qsl(urlparse(url).query)).get("celement", "")
         if celement.isdigit():
             return celement
-        html = self._fetch_text(url, accept=HTML_ACCEPT) or ""
+        try:
+            html = self._fetch_text(url, accept=HTML_ACCEPT) or ""
+        except (OfferNotFound, OfferGone):
+            # Pull&Bear отдаёт 404 на ссылку раздела без ?celement= — это не
+            # «товар снят», а адрес без id категории (подсказка ниже).
+            return ""
         for pattern in self.CATEGORY_ID_HTML_RES:
             match = pattern.search(html)
             if match:
@@ -314,12 +324,13 @@ class InditexSiblingParser(ZaraParser):
         start_page: int = 1,
     ) -> Iterator[ScrapedProduct]:
         self.has_more_pages = True
+        self.stop_reason = ""
         category_id = self._category_id_from_url(category_url)
         if not category_id:
             self.has_more_pages = False
             # Ссылки меню вида «…-n3294.html» без ?celement= сайт отдаёт
             # 301 сам на себя, id категории из них не достать.
-            raise MalformedOfferResponse(
+            raise CategoryPageNotFoundError(
                 f"{self.SOURCE_LABEL}: не удалось определить id категории на {category_url}. "
                 "Откройте категорию на сайте и вставьте адрес целиком, вместе с ?celement=…"
             )
@@ -343,6 +354,14 @@ class InditexSiblingParser(ZaraParser):
                 if str(value).isdigit()
             )
         )
+        if not product_ids:
+            # Раздел-витрина (например, «ERKEK > PARFÜM» у Massimo Dutti): API
+            # отвечает пустым списком, товары лежат в подразделах. Для «Всего
+            # сайта» это законный конец раздела; в журнале задачи — причина.
+            self.stop_reason = (
+                f"{self.SOURCE_LABEL}: в разделе нет товаров — выберите подраздел "
+                "(у разделов-витрин товары лежат в подразделах)."
+            )
 
         yielded = 0
         page = max(1, start_page)
@@ -534,16 +553,22 @@ class InditexSiblingParser(ZaraParser):
             old_price = self._normalize_price_value(size.get("oldPrice"))
             if old_price is not None:
                 old_prices.append(old_price)
-            sizes.append(
-                {
-                    "size": clean_text(str(size.get("name"))),
-                    "is_available": available,
-                    "stock_quantity": self.DEFAULT_ASSUMED_STOCK_QUANTITY if available else 0,
-                    "sort_order": index,
-                    "sku": str(size.get("partnumber") or size.get("sku") or ""),
-                    "availability": visibility.lower(),
-                }
-            )
+            row = {
+                "size": clean_text(str(size.get("name"))),
+                "is_available": available,
+                "stock_quantity": self.DEFAULT_ASSUMED_STOCK_QUANTITY if available else 0,
+                "sort_order": index,
+                "sku": str(size.get("partnumber") or size.get("sku") or ""),
+                "availability": visibility.lower(),
+            }
+            # Обувь Massimo Dutti: в одном цвете две серии артикулов с теми же
+            # номерами размеров («39» в наличии и «39» распродан). Размер один —
+            # в наличии, если есть хоть в одной серии (и с её артикулом).
+            same = next((item for item in sizes if item["size"] == row["size"]), None)
+            if same is None:
+                sizes.append(row)
+            elif available and not same["is_available"]:
+                same.update({key: row[key] for key in ("is_available", "stock_quantity", "sku", "availability")})
         is_available = any(row["is_available"] for row in sizes)
         color_name = clean_text(str(color.get("name") or ""))
         return {

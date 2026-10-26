@@ -130,6 +130,8 @@ def test_inditex_empty_category_is_a_legit_end(monkeypatch):
 
     assert list(parser.parse_product_list(BERSHKA_CATEGORY, max_pages=1)) == []
     assert parser.has_more_pages is False
+    # Раздел-витрина (MD «ERKEK > PARFÜM» 26.10.2026): в журнале задачи — причина.
+    assert "выберите подраздел" in parser.stop_reason
 
 
 def test_inditex_products_array_failure_is_an_error(monkeypatch):

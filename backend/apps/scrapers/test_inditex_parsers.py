@@ -6,7 +6,7 @@ from curl_cffi import requests as curl_requests
 
 from apps.catalog.models import Category
 from apps.scrapers.base.offers import OfferGone
-from apps.scrapers.base.scraper import ScraperAccessBlockedError
+from apps.scrapers.base.scraper import CategoryPageNotFoundError, ScraperAccessBlockedError
 from apps.scrapers.models import ScraperConfig, ScrapingSession
 from apps.scrapers.parsers import inditex
 from apps.scrapers.parsers.bershka import BershkaParser
@@ -419,3 +419,42 @@ def test_inditex_source_description_still_wins(monkeypatch):
     )
 
     assert product.description == "STWD logolu, bisiklet yaka, kısa kollu, %100 pamuklu, boxy kesim tişört."
+
+
+def test_duplicate_size_names_merge_into_one_available_size(monkeypatch):
+    """Обувь Massimo Dutti 26.10.2026 (l12701451): в одном цвете две серии
+    артикулов — «39» SHOW и «39» SOLD_OUT. На сайте один размер «39» в наличии."""
+    detail = json.loads(_fixture("bershka_product_detail.json"))
+    color = detail["bundleProductSummaries"][0]["detail"]["colors"][0]
+    first_xs = dict(color["sizes"][0])  # XS SOLD_OUT
+    color["sizes"].insert(1, {**first_xs, "visibilityValue": "SHOW", "partnumber": "SECOND-SERIES-XS"})
+    color["sizes"].append({**color["sizes"][2], "visibilityValue": "SOLD_OUT", "partnumber": "SECOND-SERIES-S"})
+    parser = _parser(
+        BershkaParser,
+        _routes(**{"/product/228309045/detail": [(200, json.dumps(detail))]}),
+        monkeypatch,
+    )
+
+    product = parser.parse_product_detail(
+        "https://www.bershka.com/tr/tisort-c0p228309045.html?colorId=403"
+    )
+
+    sizes = product.attributes["fashion_variants"][0]["sizes"]
+    assert [(row["size"], row["is_available"]) for row in sizes] == [
+        ("XS", True), ("S", True), ("M", True), ("L", False), ("XL", False),
+    ]
+    assert sizes[0]["sku"] == "SECOND-SERIES-XS"
+
+
+def test_pullandbear_section_link_without_celement_asks_for_full_link(monkeypatch):
+    """Pull&Bear отвечает 404 на «…/kargo-n6603.html» без ?celement=: это не
+    «страница снята у источника», а ссылка без id раздела."""
+    url = "https://www.pullandbear.com/tr/kadin/giyim/pantolonlar/kargo-n6603.html"
+    parser = _parser(
+        PullAndBearParser,
+        _routes(**{"kargo-n6603.html": [(404, "<html>404</html>")]}),
+        monkeypatch,
+    )
+
+    with pytest.raises(CategoryPageNotFoundError, match="celement"):
+        list(parser.parse_product_list(url, max_pages=1))
