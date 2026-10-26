@@ -519,6 +519,9 @@ def log_problems(log) -> dict[str, list[str]]:
 def title_problems(title_ru: Any, source_name: Any) -> list[str]:
     """Число из названия источника пропало в RU-названии («OMEGA 1000», «B12», «6-12 AY»)."""
     lost = _numbers(source_name) - _numbers(title_ru)
+    # «10.000» источника по-русски — «10 000» (пилот 27.10.2026).
+    spaced = re.sub(r"\s", " ", str(title_ru or ""))
+    lost = {n for n in lost if not (n.isdigit() and len(n) > 3 and f"{int(n):,}".replace(",", " ") in spaced)}
     return ["supplement_title_number_lost"] if lost else []
 
 
