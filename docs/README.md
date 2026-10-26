@@ -36,6 +36,7 @@
 | [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md) | под root: обновления ОС и Docker, swap, журнал systemd, перезагрузка в тихий час | 2026-10-19 |
 | [AUDIT_2026-10-19_PARSERS_CATALOG.md](AUDIT_2026-10-19_PARSERS_CATALOG.md) | почему не запускаются Instagram/UmmaLand/Akakce, товары без картинки и цены, сброс интервалов beat при деплое | отчёт 2026-10-19 |
 | [AUDIT_2026-10-20_PARSERS.md](AUDIT_2026-10-20_PARSERS.md) | живые пробы всех парсеров (на 20.10 их было 13; сейчас 11 — ilacabak удалён в #131), найденные и исправленные баги, что решить по Instagram/UmmaLand/akakce | отчёт 2026-10-20 |
+| [AUDIT_2026-10-26_PARSERS.md](AUDIT_2026-10-26_PARSERS.md) | проверка всех парсеров (категории + карточки с цветами/размерами): таблица «парсер → что проверено → итог», сбой БАДов у ilacfiyati, исправления LCW/Inditex/Akakçe | отчёт 2026-10-26 |
 | [PARSER_MODES.md](PARSER_MODES.md) | три режима каждого парсера (товар, категория до конца, весь сайт / профиль Instagram), как запустить в админке, откуда берутся категории | 2026-10-21 |
 | [PAID_WEB_ACCESS_SERVICES.md](PAID_WEB_ACCESS_SERVICES.md) | Bright Data proxy/Web Unlocker: тарифы, бюджет, возможности и безопасное переиспользование | актуализирован 2026-08-31 |
 | [SOURCE_OFFER_CART_API.md](SOURCE_OFFER_CART_API.md) | Cart API: verification fields, issue codes, 409/503 и действия клиента | актуализирован 2026-08-27 |
