@@ -219,3 +219,30 @@ def test_request_discovery_releases_lock_when_publish_fails(supplement, monkeypa
     retried = service.request_discovery(supplement)
     assert retried.status == "queued"
     assert retried.task_id == "retry-task"
+
+
+@pytest.mark.django_db
+def test_discovery_searches_by_turkish_source_name_after_ai_rename(supplement, monkeypatch):
+    """26.10.2026 на проде: поиск шёл по AI-названию «MOORE Витамин D3 1000 МЕ,
+    капли, 20 мл» — Akakçe ничего не находит, ни один БАД с русским названием
+    не получал складского предложения."""
+    base = supplement.base_product
+    base.external_data = {"source_name": base.name}
+    base.save(update_fields=["external_data"])
+    SupplementProduct.objects.filter(pk=supplement.pk).update(name="IMUPLUS 7/24, сироп, 150 мл")
+    Product.objects.filter(pk=base.pk).update(name="IMUPLUS 7/24, сироп, 150 мл")
+    supplement.refresh_from_db()
+    queries = []
+
+    def search(_parser, query, max_results=50):
+        queries.append(query)
+        return [_candidate()]
+
+    monkeypatch.setattr(AkakceParser, "search_products", search)
+    monkeypatch.setattr(AkakceParser, "inspect_offer", lambda *_args, **_kwargs: _snapshot())
+
+    result = SupplementStockDiscoveryService().discover(supplement)
+
+    assert queries == ["IMUPLUS 7/24 150 ML SURUP"]
+    assert result.status == "created"
+    assert result.offer.parser_config["expected_name"] == "IMUPLUS 7/24 150 ML SURUP"
