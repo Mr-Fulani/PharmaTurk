@@ -1,4 +1,5 @@
-"""БАДы из корня «БАДы» — по подкатегориям по турецкому названию (dry-run по умолчанию).
+"""БАДы из корня «БАДы» — по подкатегориям по турецкому названию, иначе по RU-названию карточки
+(dry-run по умолчанию).
 
 Правило — ``apps.catalog.supplement_taxonomy``; нераспознанные товары остаются в
 корне. Цена не меняется: подкатегория без своей наценки наследует наценку корня,
@@ -17,7 +18,12 @@ from django.utils import timezone
 
 from apps.ai.services.supplement_content import is_baby_food, supplement_source_name
 from apps.catalog.models import Category, Product, SupplementProduct
-from apps.catalog.supplement_taxonomy import ROOT_SLUG, SUBCATEGORY_SLUGS, supplement_category_slug
+from apps.catalog.supplement_taxonomy import (
+    ROOT_SLUG,
+    SUBCATEGORY_SLUGS,
+    supplement_category_slug,
+    supplement_category_slug_ru,
+)
 from apps.catalog.utils.product_markup import get_category_markup
 
 EXAMPLES = 5
@@ -68,7 +74,8 @@ class Command(BaseCommand):
         for product in queryset.iterator(chunk_size=1000):
             source_name = supplement_source_name(product)
             brand = product.brand.name if product.brand_id else ""
-            slug = supplement_category_slug(source_name, brand)
+            # Турецкое название ничего не говорит — по RU-названию карточки (supplement_category_slug_ru).
+            slug = supplement_category_slug(source_name, brand) or supplement_category_slug_ru(product.name, brand)
             rows.append((product.pk, domain_ids.get(product.pk), slug, source_name))
 
         with open(report_path, "w", newline="", encoding="utf-8") as handle:

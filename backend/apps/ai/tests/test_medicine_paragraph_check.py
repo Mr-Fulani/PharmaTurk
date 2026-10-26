@@ -702,6 +702,12 @@ def test_lost_lower_bound_en_az_is_a_problem():
         "{BRAND} назначается взрослым и детям от 1 года.",
         "{BRAND} is prescribed for adults and children aged 1 year and older.",
     ) == []
+    # «en az 2 hafta geçmemişse» — отрицание: «прошло менее 2 недель» верно.
+    assert item_problems(
+        "{BRAND} kullanıyorsanız veya son aldığınız dozun üzerinden en az 2 hafta geçmemişse bebeğinizi emzirmeyiniz.",
+        "Если вы принимаете {BRAND} или если с момента последней дозы прошло менее 2 недель, не кормите грудью.",
+        "If you are taking {BRAND} or if less than 2 weeks have passed since your last dose, do not breastfeed.",
+    ) == []
     # «En az doz» — наименьшая доза, а не нижняя граница.
     assert item_problems("Mümkün olan en az dozu kullanınız.", "Используйте минимально возможную дозу.",
                          "Use the lowest possible dose.") == []
@@ -845,6 +851,70 @@ def test_section_check_passes_correct_translation_and_finds_shifted_paragraphs()
     assert {item["number"] for item in findings} >= {6, 7, 8, 9, 10}
     assert all("shifted" in item["problems"] for item in findings if 6 <= item["number"] <= 9)
     assert findings[0]["source"] in SOURCES and findings[0]["ru"] in shifted_ru
+
+
+def test_section_check_ignores_similar_list_items_and_finds_copied_neighbour_translation():
+    """Очередь модерации 26.10.2026: раздел из записей памяти — похожие пункты списка не сдвиг,
+    а запись, переведённая текстом соседнего абзаца, — сдвиг (настоящие 4 из 320)."""
+    similar = (
+        "{BRAND} aldıktan sonraki 2 saat aşağıda belirtilen ürünleri almayınız:\n"
+        "-Peynir, tereyağı, yoğurt veya dondurma gibi süt ürünleri\n"
+        "-Süt veya dondurmalı süt, süt, yoğurt ve krema içeren içecekler\n"
+        "-Mide yanması ve hazımsızlık tedavisinde kullanılan antiasidler"
+    )
+    similar_ru = (
+        "В течение 2 часов после приема {BRAND} не принимайте указанные ниже продукты:\n"
+        "-Молочные продукты, такие как сыр, сливочное масло, йогурт или мороженое\n"
+        "-Напитки, содержащие молоко или молочное мороженое, молоко, йогурт и сливки\n"
+        "-Антациды, используемые для лечения изжоги и диспепсии"
+    )
+    similar_en = (
+        "Do not take the products listed below for 2 hours after taking {BRAND}:\n"
+        "-Dairy products such as cheese, butter, yogurt, or ice cream\n"
+        "-Drinks containing milk or milk-based ice cream, milk, yogurt, and cream\n"
+        "-Antacids used for the treatment of heartburn and indigestion"
+    )
+    assert section_paragraph_problems(similar, similar_ru, similar_en) == []
+
+    storage = (
+        "{BRAND}'i çocukların göremeyeceği, erişemeyeceği yerlerde ve ambalajında saklayınız.\n"
+        "25°C altındaki oda sıcaklığında saklayınız.\n"
+        "Son kullanma tarihi ile uyumlu olarak kullanınız.\n"
+        "Blisterin veya ambalajın üzerinde belirtilen son kullanma tarihinden önce {BRAND} kullanınız.\n"
+        "Eğer üründe ve/veya ambalajında bozukluklar fark ederseniz {BRAND} film kaplı tableti kullanmayınız."
+    )
+    storage_ru = (
+        "Храните {BRAND} в недоступном для детей месте и в упаковке.\n"
+        "Храните при комнатной температуре ниже 25°C.\n"
+        "Используйте в соответствии с датой окончания срока годности.\n"
+        "Если вы заметили повреждения на продукте и/или упаковке, не используйте {BRAND} таблетки в пленочной оболочке.\n"
+        "Если вы заметили повреждения на продукте и/или упаковке, не используйте таблетку {BRAND} с пленочной оболочкой."
+    )
+    storage_en = (
+        "Keep {BRAND} out of the sight and reach of children and in its packaging.\n"
+        "Store at room temperature below 25°C.\n"
+        "Use in accordance with the expiration date.\n"
+        "If you notice any damage to the product and/or packaging, do not use {BRAND} film-coated tablets.\n"
+        "If you notice any damage to the product and/or packaging, do not use the {BRAND} film-coated tablet."
+    )
+    findings = section_paragraph_problems(storage, storage_ru, storage_en)
+    assert [(item["number"], item["problems"]) for item in findings] == [(4, ["shifted"])]
+
+
+def test_section_check_masks_brand_glued_to_word_and_with_turkish_dotted_i():
+    source = "Kullanmanız gerekenden daha fazlaCOLEDAN-D3 kullandıysanız\n1. MONOVİT B12NEDİR VE NE İÇİN KULLANILIR?"
+    assert section_paragraph_problems(
+        source.split("\n")[0],
+        "Если вы использовали COLEDAN-D3 больше, чем необходимо",
+        "If you have used COLEDAN-D3 more than you need",
+        brand="COLEDAN-D3",
+    ) == []
+    assert section_paragraph_problems(
+        source.split("\n")[1],
+        "1. ЧТО ТАКОЕ MONOVIT B12 И ДЛЯ ЧЕГО ОНО ИСПОЛЬЗУЕТСЯ?",
+        "1. WHAT IS MONOVIT B12 AND WHAT IS IT USED FOR?",
+        brand="MONOVIT B12",
+    ) == []
 
 
 def test_section_check_aligns_both_paragraph_splits_and_reports_unaligned_section():

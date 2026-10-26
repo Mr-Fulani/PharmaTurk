@@ -25,7 +25,7 @@ from apps.ai.services.medicine_title import (
 )
 from apps.ai.services.rules.facts import supplier_code_tokens
 from apps.ai.services.rules.vocab import fold, generic_title_words
-from apps.ai.services import supplement_content
+from apps.ai.services import supplement_content, supplement_glossary
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
     size_inventory_block_reason,
@@ -101,6 +101,9 @@ _NON_KIND_CATEGORY_ALIASES = {
             "унисекс", "кожа", "натуральная кожа", "кожаные",
             # Общие слова названий разделов других каталогов (волна 1 мебели, 26.10.2026).
             "аксессуары",
+            # «жидкая форма», «классические пастилки» у БАДов — не спортивная форма и не бельё
+            # (очередь модерации 26.10.2026).
+            "форма", "классические", "классический", "классическая",
         }
     ),
     "en": frozenset(
@@ -109,6 +112,8 @@ _NON_KIND_CATEGORY_ALIASES = {
             # «Children's Wardrobe» — не детские ходунки, «Storage System» — не накопители ПК,
             # «Light Grey» — не термобельё, «Suspension Rail» — не подвеска автомобиля.
             "children", "children s", "childrens", "storage", "light", "suspension", "gaming", "accessories",
+            # «Classic Lozenges», «Medium-Chain Triglycerides» (очередь модерации 26.10.2026).
+            "classic", "medium",
         }
     ),
 }
@@ -116,6 +121,9 @@ _NON_KIND_CATEGORY_ALIASES = {
 # Категории услуг описывают работы, а не товары: их алиасы («Gas» у газовых
 # варочных панелей) не должны конфликтовать с названиями товаров.
 _SERVICE_ROOT_SLUGS = frozenset({"uslugi"})
+# Подкатегории БАДов делят товары по веществам (supplement_taxonomy): вещество соседней
+# подкатегории в названии — состав, а не другой товар («Кальций и витамин D» в «Минералах»).
+_INGREDIENT_ROOT_SLUGS = frozenset({"supplements"})
 
 
 @dataclass
@@ -251,9 +259,17 @@ _TURKISH_TITLE_WORDS = re.compile(
     # Фарма и БАДы: формы, фасовка и служебные слова источника.
     r"kapsül|kapsul|şurup|surup|merhem|damla|damlası|damlasi|suspansiyon|süspansiyon|"
     r"giderici|saşe|sase|şişe|sise|efervesan|çiğneme|cigneme|tableti|kapsülü|ağız|agiz|"
-    r"sprey|spreyi|losyon|içeren|iceren|ekstresi|yağı|yagi|balık|balik)\b",
+    r"sprey|spreyi|losyon|içeren|iceren|ekstresi|yağı|yagi|balık|balik|"
+    # Вкус лечебного питания (_TURKISH_FLAVOUR_WORDS): «FORTINI … CILEK AROMALI».
+    r"aromal[iı]|aromas[iı]z|[cç]ilek|vanilya|[cç]ikolata|kahve|portakal|ahududu|muz|meyve)\b",
     re.IGNORECASE,
 )
+# Вкус лечебного питания («FORTINI COMPACT … CILEK AROMALI», «ENSURE … VANILYA AROMALI»)
+# переводится («со вкусом клубники») и не входит в бренд (очередь модерации 26.10.2026).
+_TURKISH_FLAVOUR_WORDS = frozenset({
+    "AROMALI", "AROMASIZ", "CILEK", "ÇILEK", "VANILYA", "CIKOLATA", "ÇIKOLATA", "KAHVE",
+    "PORTAKAL", "AHUDUDU", "MUZ", "MEYVE", "TROPIK",
+})
 _TURKISH_TITLE_TRANSLITERATIONS = re.compile(
     r"(эркек|кадын|кадин|чоджук|чочук|айаккаб|аяккаб|тишорт|гёмлек|гомлек|пантолон|"
     r"элбисе|такви|эдиджи|гыда|ортофед|"
@@ -279,8 +295,8 @@ _MEDICINE_RU_TITLE_TRANSLITERATIONS = re.compile(
     r"узатил|салимл|топикал|(?<![а-яё])серт(?![а-яё])|(?<![а-яё])орол|(?<![а-яё])тб(?![а-яё])|"
     r"(?<![а-яё])энтерик|капли[\s-]+таблет|"
     # AIRun 3, лог 1036: «%8 АМИНОКИСЛОТ ИВ ИНФУЗИЯ 500 МЛ (СЕТ)» — «ИВ», «СЕТ» и
-    # турецкая запись процента «%8» (по-русски «8%»).
-    r"(?<![а-яё])ив(?![а-яё])|(?<![а-яё])сет(?![а-яё])|%\s*\d)",
+    # турецкая запись процента «%8» (по-русски «8%»; «1% 1%» и «10% 100 мг» — русская).
+    r"(?<![а-яё])ив(?![а-яё])|(?<![а-яё])сет(?![а-яё])|(?<![\d.,])%\s*\d)",
     re.IGNORECASE,
 )
 # Латиница в RU-названии лекарства допустима только в бренде источника и в этих обозначениях.
@@ -303,8 +319,14 @@ def _medicine_ru_title_untranslated(title: Any, source_name: Any) -> bool:
     brand = {fold_tr(token.strip(".'-")).upper() for token in re.findall(r"[^\W_][\w.'-]*", prefix)}
     for token in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü.'-]*", text):
         word = fold_tr(token.strip(".'-")).upper()
-        # Буква — часть МНН: «полимиксин B», «витамин E».
-        if word in brand or word in _MEDICINE_RU_TITLE_LATIN_OK or re.search(r"\d", word) or len(word) == 1:
+        # Буква — часть МНН: «полимиксин B», «витамин E»; римское число — «фактор VIII», «IX».
+        if (
+            word in brand
+            or word in _MEDICINE_RU_TITLE_LATIN_OK
+            or re.search(r"\d", word)
+            or len(word) == 1
+            or re.fullmatch(r"[IVX]{2,5}", word)
+        ):
             continue
         return True
     return False
@@ -342,6 +364,28 @@ def _medicine_category_text(title: Any, locale: str) -> str:
     for modifier_text in _MEDICINE_MODIFIER_TEXTS[locale]:
         text = re.sub(rf"(?:^|\s){re.escape(modifier_text)}(?=$|\s)", " ", text)
     return text
+
+
+def _alias_in_source(alias: str, source_name: Any, locale: str) -> bool:
+    """Слово чужой категории взято из названия источника, а не придумано моделью.
+
+    Латиницей как есть («CALCIUM FOLINATE», «SPINAL HEAVY», «FORTINI COMPACT», «TEA TREE»)
+    или переводом турецкого слова по словарю БАДов и форм лекарств («KALSIYUM» → «кальций»,
+    «GOZ VE KULAK DAMLASI» → «ушные капли»). Очередь модерации 26.10.2026: 173 лекарства и
+    БАДа с верным названием ждали модерации из-за таких слов. Вещество не из источника
+    («EISEFERON железо …») по-прежнему конфликт.
+    """
+    folded = fold_tr(source_name)
+    if _contains_phrase(_normalized(folded), alias):
+        return True
+    index = 0 if locale == "ru" else 1
+    texts = [supplement_glossary.GLOSSARY[key][index] for key in supplement_glossary.found_terms(folded)]
+    texts += [
+        labels[index]
+        for phrase, labels in FORM_PHRASES.items()
+        if re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", folded)
+    ]
+    return any(_contains_phrase(_normalized(text), alias) for text in texts)
 
 
 def _title_has_turkish_words(title: Any) -> bool:
@@ -450,7 +494,12 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
         token = token.rstrip("-_")  # «D-COLEFOR-1000-IU-…» — дефис перед дозировкой не часть бренда
         # Слова лекарственной формы («FILM TABLET») переводятся — это не бренд.
         # И вещества в/в раствора («IZOTONIK SODYUM KLORUR»): шаблон переводит их в форму.
-        if token not in generic_prefix_words and not is_form_word(token) and not is_title_descriptor_word(token):
+        if (
+            token not in generic_prefix_words
+            and token not in _TURKISH_FLAVOUR_WORDS
+            and not is_form_word(token)
+            and not is_title_descriptor_word(token)
+        ):
             result.add(f"BRAND:{token}")
 
     unit_aliases = {
@@ -472,15 +521,19 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
     ):
         number = match.group(1).replace(",", ".")
         result.add(f"DOSE:{number}:{unit_aliases[match.group(2)]}")
-    # «DIANEFROL 137 %2.27» — турецкая запись «%2.27» относится к числу после знака.
-    for match in re.finditer(r"%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%(?!\s*\d)", upper):
-        number = (match.group(1) or match.group(2)).replace(",", ".")
+    # «DIANEFROL 137 %2.27» — турецкая запись «%2.27» относится к числу после знака;
+    # «10% 100 МГ» — русская: знак вплотную к числу перед ним (очередь 26.10.2026).
+    for match in re.finditer(
+        r"(\d+(?:[.,]\d+)?)%|(?<![\d.,])%\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%(?!\s*\d)", upper
+    ):
+        number = (match.group(1) or match.group(2) or match.group(3)).replace(",", ".")
         result.add(f"DOSE:{number}:%")
     pack_match = re.search(
         r"(?:\(|\b)(\d+)\s*(?:ADET|TABLET|TABLETS|KAPSUL|KAPSÜL|CAPSULES?|ШТ|ШТУК|ТАБЛЕТ(?:ОК|КИ)?|КАПСУЛ(?:А|Ы)?)\b",
         upper,
     )
-    if pack_match:
+    # «1 ADET», «(1 FLAKON)» — одна упаковка; название пишет её без числа («туба 5 г», «флакон»).
+    if pack_match and pack_match.group(1) != "1":
         result.add(f"PACK:{pack_match.group(1)}")
     return result
 
@@ -504,8 +557,13 @@ def _supplement_identity_tokens(value: Any, *, source: bool = False) -> set[str]
     # (153 названия каталога 25.10.2026); числа состава проверяет supplement_content.title_problems.
     for number in packs[-1:] if source else packs:
         facts.add(f"PACK:{number}")
-    words = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü-]{2,}", text)
+    word_re = r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-z0-9ÇĞİÖŞÜçğıöşü-]{2,}"
+    words = re.findall(word_re, text)
     brands = words[:1] if source else words
+    # Бренд источника — первое слово; короткое или с точкой («HP BIOTIN», «NN KARADUT»,
+    # «DR.US OMEGA 3») так не выделить — второе слово уже состав, его переводят.
+    if source and not re.fullmatch(word_re, (text.split() or [""])[0]):
+        brands = []
     return facts | {f"BRAND:{word.upper()}" for word in brands}
 
 
@@ -594,8 +652,11 @@ class CategorySemanticIndex:
                 if candidate_id in current_lineage_ids or current_id in self._ancestor_ids(candidate_id)
             )
         compatible_aliases = self._compatible_alias_cache[key]
+        current_root = self._root_slug(current_id)
         for candidate_id, alias, normalized_alias in rows:
             if candidate_id in current_lineage_ids or normalized_alias in compatible_aliases:
+                continue
+            if current_root in _INGREDIENT_ROOT_SLUGS and self._root_slug(candidate_id) == current_root:
                 continue
             # A more specific descendant is compatible with the current kind.
             if current_id in self._ancestor_ids(candidate_id):
@@ -623,6 +684,14 @@ class CategorySemanticIndex:
         frozen = frozenset(result)
         self._ancestor_cache[category_id] = frozen
         return frozen
+
+    def _root_slug(self, category_id: int) -> str:
+        current = self._categories.get(category_id)
+        guard = 0
+        while current is not None and getattr(current, "parent_id", None) in self._categories and guard < 20:
+            current = self._categories[current.parent_id]
+            guard += 1
+        return getattr(current, "slug", "") if current is not None else ""
 
     def _is_service_category(self, category_id: int) -> bool:
         return any(
@@ -801,9 +870,8 @@ class SemanticValidator:
         if product_type == "supplements":
             # После применения AI name — RU-название: сверяем с турецким оригиналом.
             identity_tokens = _supplement_identity_tokens
-            original_tokens = _supplement_identity_tokens(
-                supplement_content.supplement_source_name(product), source=True
-            )
+            source_name = supplement_content.supplement_source_name(product)
+            original_tokens = _supplement_identity_tokens(source_name, source=True)
         elif product_type != "medicines":
             # Турецкие названия часто целиком в ВЕРХНЕМ регистре: общие слова
             # («TEE», «SNEAKER», «BEYAZ») — не идентичность, а бренд/модель
@@ -870,7 +938,10 @@ class SemanticValidator:
             if (
                 product_type in _DOSAGE_FORM_PRODUCT_TYPES
                 and conflicting_match
-                in _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES.get(locale, frozenset())
+                and (
+                    conflicting_match in _MEDICINE_DOSAGE_FORM_CATEGORY_ALIASES.get(locale, frozenset())
+                    or _alias_in_source(conflicting_match, source_name, locale)
+                )
             ):
                 conflicting_match = ""
             if conflicting_match:
@@ -968,11 +1039,13 @@ class SemanticValidator:
         from apps.catalog.models import Category
 
         current_lineage_ids = set()
+        current_root = ""
         node = current_category
         while node is not None:
             node_pk = getattr(node, "pk", None)
             if node_pk is not None:
                 current_lineage_ids.add(node_pk)
+            current_root = getattr(node, "slug", "")
             node = getattr(node, "parent", None)
 
         best = ""
@@ -1014,11 +1087,12 @@ class SemanticValidator:
                 ancestor = ancestor.parent
             if is_descendant:
                 continue
-            node, is_service = candidate, False
+            node, is_service, candidate_root = candidate, False, ""
             while node is not None:
                 is_service = is_service or node.slug in _SERVICE_ROOT_SLUGS
+                candidate_root = node.slug
                 node = node.parent
-            if is_service:
+            if is_service or (current_root in _INGREDIENT_ROOT_SLUGS and candidate_root == current_root):
                 continue
             candidate_policy = build_category_policy(candidate)
             if candidate_policy is None:

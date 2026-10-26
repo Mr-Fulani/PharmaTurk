@@ -245,10 +245,15 @@ def _numbers(text: Any) -> set[str]:
     return result
 
 
+# Обозначение вещества — не число из состава: модель поясняет «биотин (витамин B7)»,
+# «метилкобаламин — форма витамина B12», «коэнзим Q10», «омега-3» (очередь модерации 26.10.2026).
+_DESIGNATION_RE = re.compile(r"(?<![\w-])(?:[A-ZА-Я]{1,2}-?\d{1,2}|(?i:омега|omega|ω)-?\s?\d)(?![\w.,]?\d)")
+
+
 def unsourced_numbers(text: Any, source: Any) -> list[str]:
-    """Числа текста, которых нет в источнике (0 и 1 не сравниваются)."""
+    """Числа текста, которых нет в источнике (0 и 1 и обозначения веществ не сравниваются)."""
     allowed = _numbers(source)
-    return sorted(_numbers(text) - allowed)
+    return sorted(_numbers(_DESIGNATION_RE.sub(" ", str(text or ""))) - allowed)
 
 
 # ── Описание ─────────────────────────────────────────────────────────────────
@@ -736,6 +741,39 @@ def _empty_usage() -> dict[str, Any]:
     return {"tokens": {"prompt": 0, "completion": 0, "total": 0, "cached": 0}, "cost_usd": 0.0}
 
 
+# Доза на штуку перед фасовкой: «PROMEGA KAPSUL 1000 mg 30 kapsül», «OROFLOR SASE 250 mg 10 saşe».
+_DOSE_BEFORE_PACK_RE = re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)?)\s*(mg|mcg|µg|iu)\s*$")
+_DOSE_UNITS = {"mg": ("мг", "mg"), "mcg": ("мкг", "mcg"), "µg": ("мкг", "mcg"), "iu": ("МЕ", "IU")}
+
+
+def _restore_lost_numbers(
+    brand: str, product_text: dict[str, str], pack: Optional[Pack], source_name: str, baby_food: bool
+) -> tuple[str, dict[str, str]]:
+    """Числа источника, которые модель выбросила из «что это», — кодом (очередь модерации 26.10.2026:
+    111 названий с ``supplement_title_number_lost``).
+
+    Ступень детской смеси идёт за брендом («HIPP 2 ORGANIK DEVAM SUTU», «BEBIVITA DEVAM SUTU 2»
+    → «HIPP 2 …»); доза на штуку перед фасовкой («KAPSUL 1000 mg 30 kapsül») — в конец «что это».
+    """
+    title = " ".join([brand, product_text.get("ru") or "", getattr(pack, "ru", "") if pack else ""])
+    lost = _numbers(source_name) - _numbers(title)
+    if not lost:
+        return brand, product_text
+    middle = _middle(source_name, pack)
+    stage = re.findall(r"(?<![\d.,+/-])([2-5])(?![\d.,]|\s*(?:mg|g|gr|ml|x|ay|yas)\b)", fold_tr(middle))
+    if baby_food and len(stage) == 1 and stage[0] in lost and not re.search(r"\d", brand):
+        brand = f"{brand} {stage[0]}"
+    dose = _DOSE_BEFORE_PACK_RE.search(fold_tr(middle))
+    if dose and _numbers(dose.group(1)) <= lost:
+        ru_unit, en_unit = _DOSE_UNITS[dose.group(2)]
+        number = dose.group(1)
+        product_text = {
+            "ru": f"{product_text['ru']} {number.replace('.', ',')} {ru_unit}".strip() if product_text.get("ru") else "",
+            "en": f"{product_text['en']} {number.replace(',', '.')} {en_unit}".strip() if product_text.get("en") else "",
+        }
+    return brand, product_text
+
+
 def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> dict[str, Any]:
     """Результат в форме ``LLMClient.generate_content`` для общего пути сохранения."""
     started = time.time()
@@ -772,19 +810,20 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
     if not product_text["ru"] and not _middle(source_name, pack)[len(brand):].strip():
         product_text = dict(_GENERIC_PRODUCT)
 
+    baby_food = is_baby_food(source_name)
+    title_brand, product_text = _restore_lost_numbers(brand, product_text, pack, source_name, baby_food)
     titles = {
-        locale: assemble_title(brand, product_text[locale], getattr(pack, locale, ""), locale)
+        locale: assemble_title(title_brand, product_text[locale], getattr(pack, locale, ""), locale)
         if product_text[locale] else ""
         for locale in ("ru", "en")
     }
     description = answer.get("description") if isinstance(answer.get("description"), dict) else {}
-    baby_food = is_baby_food(source_name)
     descriptions = {
         locale: build_description(description.get(locale), locale, baby_food=baby_food, source_name=source_name)
         for locale in ("ru", "en")
     }
     serving = answer.get("serving") if isinstance(answer.get("serving"), dict) else {}
-    seo = build_seo(brand, brand_ru, product_text, pack, baby_food=baby_food)
+    seo = build_seo(title_brand, brand_ru, product_text, pack, baby_food=baby_food)
 
     content: dict[str, Any] = {}
     for locale in ("ru", "en"):
