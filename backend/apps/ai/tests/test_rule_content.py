@@ -831,3 +831,20 @@ def test_turkish_source_name_is_kept_and_used_on_reprocessing():
     again = generator.process_product(product.id, options={"analyze_images": False, "force": True})
     assert again.generated_title == "Мужские кроссовки BUCKY 6FX, белые"
     assert '"product_name": "BUCKY 6FX Beyaz Erkek Sneaker"' in generator.llm.generate_content.call_args.kwargs["user_prompt"]
+
+
+@pytest.mark.django_db
+def test_generic_words_of_other_catalogs_are_not_furniture_conflicts():
+    furniture = Category.objects.create(name="Мебель", slug="rule-furniture-root")
+    wardrobes = Category.objects.create(name="Шкафы", slug="wardrobes", parent=furniture)
+    medical = Category.objects.create(name="Медтехника", slug="rule-medical")
+    Category.objects.create(name="Ходунки детские", slug="rule-children-walkers", parent=medical)
+    walkers = Category.objects.get(slug="rule-children-walkers")
+    walkers.translations.create(locale="en", name="Children's")
+    pc = Category.objects.create(name="Компьютеры", slug="rule-pc")
+    storage = Category.objects.create(name="Накопители", slug="rule-pc-storage", parent=pc)
+    storage.translations.create(locale="en", name="Storage")
+    product = SimpleNamespace(name="PLATSA", product_type="furniture", category=wardrobes, domain_item=None)
+    for title in ("Children's Wardrobe IKEA PLATSA", "IKEA PLATSA Storage System, Light Grey"):
+        report = SemanticValidator().validate(product, generated_titles={"en": title}, dynamic_attributes=[])
+        assert "title_category_mismatch" not in report.reasons, title
