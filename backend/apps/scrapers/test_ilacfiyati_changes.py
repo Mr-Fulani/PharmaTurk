@@ -114,6 +114,10 @@ def test_sitemap_keeps_only_product_cards(monkeypatch):
     content = _sitemap([
         THERMO, THERMO + "/yan-etkileri", "https://ilacfiyati.com/ilaclar",
         "https://ilacfiyati.com/takviye-edici-gida/probiyotikler", ANEVITA,
+        # Разделы лекарств — тот же вид адреса, что у карточки (26.10.2026:
+        # из них создано 105 «лекарств» «37 Binden Fazla İlaç…», цена 5000).
+        "https://ilacfiyati.com/ilaclar/akne-ilaclari",
+        "https://ilacfiyati.com/ilaclar/agri-kesici-ates-dusuruculer",
         "https://ilacfiyati.com/blog/yazi", "https://ilacfiyati.com/ilaclar/a-b-c?x=1&amp;y=2",
     ])
     monkeypatch.setattr(parser.client, "get", lambda url: httpx.Response(
@@ -123,6 +127,20 @@ def test_sitemap_keeps_only_product_cards(monkeypatch):
     assert parser.fetch_sitemap_product_urls() == [
         THERMO, ANEVITA, "https://ilacfiyati.com/ilaclar/a-b-c",
     ]
+
+
+def test_section_page_at_card_address_is_an_error_not_a_medicine():
+    """Страница раздела /ilaclar/akne-ilaclari: H1 «37 Binden Fazla İlaç…» и
+    листинг «Arama Sonuçları» — не карточка; раздела нет в sitemap-фильтре
+    (новый раздел у источника) — разбор всё равно не создаёт «лекарство»."""
+    html = LISTING_HTML.replace(
+        "<html><body>",
+        "<html><body><h1>37 Binden Fazla İlaç, Takviye Edici Gıda ve Kozmetik Ürün Bilgisi</h1>",
+        1,
+    )
+
+    with pytest.raises(IlacFiyatiSourceError, match="страница раздела"):
+        _parser().parse_product_detail("https://ilacfiyati.com/ilaclar/yeni-bolum", html=html)
 
 
 def test_truncated_sitemap_is_an_error_not_mass_removal(monkeypatch):
