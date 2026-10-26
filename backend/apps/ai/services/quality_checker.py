@@ -1,5 +1,6 @@
 """Единая проверка качества результата AI и создание задач модерации."""
 
+import json
 import re
 from typing import List
 
@@ -36,6 +37,14 @@ def get_moderation_reasons(
         except (TypeError, ValueError):
             pass
 
+    # Испорченный символ «�» в ответе модели (пилот 27.10.2026: «MENOPUR 75 М�МЕ» применилось).
+    if "\ufffd" in json.dumps(
+        [getattr(log, field, None) for field in ("generated_title", "generated_description", "extracted_attributes")],
+        ensure_ascii=False,
+        default=str,
+    ):
+        reasons.append("garbled_text")
+
     # Подозрительные слова в описании
     desc = (log.generated_description or "").lower()
     if re.search(r"\b(реплика|копия|fake|подделка|replica|copy)\b", desc, re.IGNORECASE):
@@ -55,6 +64,14 @@ def get_moderation_reasons(
         # Узкий запрос пересказывает источник без «воды»: короткий исходник даёт
         # короткое описание. Порог ловит только пустой/сломанный ответ.
         minimum_description_words = 10
+    tabs = (input_data.get("attributes") or {}).get("source_tabs") if isinstance(input_data.get("attributes"), dict) else None
+    if product_type == "medicines" and not any(
+        str((tab.get("text") if isinstance(tab, dict) else tab) or "").strip()
+        for tab in (tabs.values() if isinstance(tabs, dict) else ())
+    ):
+        # У источника нет инструкции: описание — из справочных фактов (форма, путь введения,
+        # рецепт), 8–11 слов; так у 95 из 110 лекарств очереди 27.10.2026.
+        minimum_description_words = 6
     if not from_facts and (
         len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE))
         < minimum_description_words

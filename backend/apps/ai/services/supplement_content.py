@@ -500,7 +500,9 @@ def log_problems(log) -> dict[str, list[str]]:
     brand = str((rule_content.get("supplement") or {}).get("brand") or "")
     en_title = (seo.get("en") or {}).get("generated_title") if isinstance(seo.get("en"), dict) else ""
     middle = _middle(source_name, parse_pack(source_name))[len(brand):]
-    if supplement_glossary.missing_terms(middle, getattr(log, "generated_title", ""), en_title):
+    if supplement_glossary.missing_terms(middle, getattr(log, "generated_title", ""), en_title) or vitamin_e_misread(
+        source_name, getattr(log, "generated_title", "")
+    ):
         title.append("supplement_ingredient_mistranslated")
     if title:
         problems["title"] = title
@@ -514,6 +516,22 @@ def log_problems(log) -> dict[str, list[str]]:
     if description:
         problems["description"] = description
     return problems
+
+
+# «VITAMIN VE MINERAL»: «ve» — союз «и»; модель читала «витамин E и минералы» (10 БАДов, 27.10.2026).
+_VITAMIN_VE_RE = re.compile(r"\bvitamin\w*\s+ve\b")
+_VITAMIN_E_SOURCE_RE = re.compile(r"\b(?:e vitamini|vitamin e)\b")
+_VITAMIN_E_TITLE_RE = re.compile(r"витамин\w*\s+[EЕ](?!\w)", re.IGNORECASE)  # E латиницей или кириллицей
+
+
+def vitamin_e_misread(source_name: Any, title_ru: Any) -> bool:
+    """В RU-названии «витамин E», а в источнике «VITAMIN VE …» без витамина E."""
+    source = fold_tr(source_name)
+    return bool(
+        _VITAMIN_VE_RE.search(source)
+        and not _VITAMIN_E_SOURCE_RE.search(source)
+        and _VITAMIN_E_TITLE_RE.search(str(title_ru or ""))
+    )
 
 
 def title_problems(title_ru: Any, source_name: Any) -> list[str]:

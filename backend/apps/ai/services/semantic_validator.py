@@ -366,6 +366,26 @@ def _medicine_title_problem(title: Any, source_name: Any) -> str:
     return ""
 
 
+# Вкус лечебного питания: TR-слово источника → основа RU-перевода. Модель путала вкусы:
+# FORTINI «MUZ» (банан) → «ваниль», FORTIMEL ENERGY «MUZ» → «мята» (очередь 27.10.2026).
+_MEDICINE_FLAVOURS = {
+    "muz": "банан", "cilek": "клубни", "vanilya": "ванил", "cikolata": "шоколад", "kahve": "коф",
+    "portakal": "апельсин", "ahududu": "малин", "kayisi": "абрикос", "limon": "лимон", "nane": "мят",
+}
+
+
+def _medicine_flavour_lost(title: Any, source_name: Any) -> str:
+    """«title_identity_lost», если вкус источника («MUZ AROMALI») в RU-названии назван иначе."""
+    source = fold_tr(source_name)
+    if "aromal" not in source:
+        return ""
+    text = str(title or "").lower().replace("ё", "е")
+    for word, stem in _MEDICINE_FLAVOURS.items():
+        if re.search(rf"(?<![a-z]){word}(?![a-z])", source) and stem not in text and word not in fold_tr(title):
+            return "title_identity_lost"
+    return ""
+
+
 def _without_medicine_forms(title_text: str, locale: str) -> str:
     """Название без лекарственной формы: «gastro-resistant tablets» — не категория «gastro»."""
     for form_text in _MEDICINE_FORM_TEXTS[locale]:
@@ -915,6 +935,7 @@ class SemanticValidator:
                 continue
             medicine_problem = (
                 _medicine_title_problem(title, source_name)
+                or (_medicine_flavour_lost(title, source_name) if locale == "ru" else "")
                 if product_type == "medicines"
                 else ""
             )

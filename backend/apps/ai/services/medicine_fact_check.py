@@ -107,7 +107,9 @@ _PROPER_NAME_LINE = re.compile(
     r"\b(?:a\.\s?s\.?|ltd\.?|sti\.?|tic\.|san\.|gmbh|s\.p\.a\.?|inc\.?|limited|mah\.|mahallesi|"
     r"cad\.|caddesi|cd\.|sok\.|sokak|sk\.|bulvari|blv\.|plaza|osb|organize sanayi|faks|fax|e-?posta|"
     r"posta kodu|ag|srl|llc|corp|pvt|s\.a\.|b\.v\.|n\.v\.|pharma|pharmaceuticals?|laborator\w*)(?=\W|$)|"
-    r"\b(?:no|kat|tel)\s*:"
+    r"\b(?:no|kat|tel)\s*:|"
+    # Почтовый индекс адреса фирмы: «(34010) Topkapı - İSTANBUL» (очередь 27.10.2026).
+    r"\(\d{5}\)"
 )
 
 
