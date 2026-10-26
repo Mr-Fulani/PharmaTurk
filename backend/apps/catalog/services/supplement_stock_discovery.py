@@ -234,14 +234,27 @@ class SupplementStockDiscoveryService:
         return parser
 
     @staticmethod
+    def _search_name(supplement: SupplementProduct) -> str:
+        """Турецкое название для поиска на Akakçe.
+
+        AI пишет в name русское название («MOORE Витамин D3 1000 МЕ, капли»):
+        по нему турецкий магазин не находит ничего, а сверка названий
+        отклоняет любой кандидат. Оригинал источника хранится отдельно.
+        """
+        from apps.ai.services.supplement_content import supplement_source_name
+
+        base = supplement.base_product
+        return (supplement_source_name(base) if base is not None else "") or supplement.name
+
+    @staticmethod
     def _rank_candidate(
-        supplement: SupplementProduct,
+        expected_name: str,
         candidates: list[AkakceSearchCandidate],
     ) -> tuple[AkakceSearchCandidate, Decimal] | None:
         ranked = [
             (candidate, score)
             for candidate in candidates
-            if (score := akakce_product_match_score(supplement.name, candidate.name)) is not None
+            if (score := akakce_product_match_score(expected_name, candidate.name)) is not None
         ]
         ranked.sort(key=lambda row: (-row[1], row[0].external_id))
         if not ranked:
@@ -300,6 +313,7 @@ class SupplementStockDiscoveryService:
     def _persist_offer(
         *,
         supplement: SupplementProduct,
+        expected_name: str,
         config: ScraperConfig,
         candidate: AkakceSearchCandidate,
         snapshot: AkakceProductSnapshot,
@@ -316,7 +330,7 @@ class SupplementStockDiscoveryService:
             "parser_config": {
                 "parser_class": SOURCE_KEY,
                 "scraper_config_id": config.pk,
-                "expected_name": supplement.name,
+                "expected_name": expected_name,
                 "matched_name": snapshot.name,
                 "mapping_method": "on_demand_title_identity_v1",
             },
@@ -425,9 +439,10 @@ class SupplementStockDiscoveryService:
                         "Akakce source is busy with other requests",
                         retryable=True,
                     )
+                expected_name = self._search_name(supplement)
                 with self._parser(config) as parser:
-                    candidates = parser.search_products(supplement.name, max_results=5)
-                    ranked = self._rank_candidate(supplement, candidates)
+                    candidates = parser.search_products(expected_name, max_results=5)
+                    ranked = self._rank_candidate(expected_name, candidates)
                     if ranked is None:
                         if persist:
                             self._remember_negative(
@@ -440,7 +455,7 @@ class SupplementStockDiscoveryService:
                     context = OfferCheckContext(
                         canonical_url=candidate.url,
                         external_product_id=candidate.external_id,
-                        parser_config={"expected_name": supplement.name},
+                        parser_config={"expected_name": expected_name},
                     )
                     snapshot = parser.inspect_offer(context)
         except OfferVerificationError as exc:
@@ -464,6 +479,7 @@ class SupplementStockDiscoveryService:
             )
         offer = self._persist_offer(
             supplement=supplement,
+            expected_name=expected_name,
             config=config,
             candidate=candidate,
             snapshot=snapshot,
