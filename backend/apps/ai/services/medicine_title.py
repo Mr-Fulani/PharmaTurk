@@ -1162,9 +1162,17 @@ _RU_TITLE_UNIT_RE = re.compile(
 )
 
 
-def ru_title_units(title: Any) -> str:
-    """RU-название лекарства с единицами по-русски: «10000 TU/ML» → «10000 ТЕ/мл»."""
-    return _RU_TITLE_UNIT_RE.sub(lambda m: _RU_TITLE_UNITS[m.group(1).upper()], str(title or ""))
+def ru_title_units(title: Any, source_name: Any = "") -> str:
+    """RU-название лекарства с единицами по-русски: «10000 TU/ML» → «10000 ТЕ/мл».
+
+    «MIU» источника модель пишет «МЕ»/«МЕД» (FILGRASTIM «48 MIU» → «48 МЕД», пилот 27.10.2026) —
+    у того же числа единица становится «млн МЕ».
+    """
+    text = _RU_TITLE_UNIT_RE.sub(lambda m: _RU_TITLE_UNITS[m.group(1).upper()], str(title or ""))
+    for number in re.findall(r"(\d+(?:[.,]\d+)?)\s*M\.?I\.?U\b", str(source_name or ""), re.IGNORECASE):
+        variants = "|".join(re.escape(v) for v in {number, number.replace(".", ","), number.replace(",", ".")})
+        text = re.sub(rf"(?<![\d.,])({variants})\s*(?:МЕД|МЕ|ЕД)(?![А-Яа-яЁё])", r"\1 млн МЕ", text)
+    return text
 
 
 def title_brand(name: Any) -> str:

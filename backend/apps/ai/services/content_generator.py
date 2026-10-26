@@ -1587,7 +1587,7 @@ class ContentGenerator:
             if code_fields.get("title"):
                 payload["generated_title"] = code_fields["title"][locale]
             elif locale == "ru" and payload.get("generated_title"):
-                payload["generated_title"] = ru_title_units(payload["generated_title"])
+                payload["generated_title"] = ru_title_units(payload["generated_title"], input_data.get("name"))
             if code_fields.get("seo"):
                 payload.update(code_fields["seo"][locale])
             else:

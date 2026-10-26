@@ -1,5 +1,6 @@
 """Единая проверка качества результата AI и создание задач модерации."""
 
+import json
 import re
 from typing import List
 
@@ -35,6 +36,14 @@ def get_moderation_reasons(
                 reasons.append("suspicious_price")
         except (TypeError, ValueError):
             pass
+
+    # Испорченный символ «�» в ответе модели (пилот 27.10.2026: «MENOPUR 75 М�МЕ» применилось).
+    if "\ufffd" in json.dumps(
+        [getattr(log, field, None) for field in ("generated_title", "generated_description", "extracted_attributes")],
+        ensure_ascii=False,
+        default=str,
+    ):
+        reasons.append("garbled_text")
 
     # Подозрительные слова в описании
     desc = (log.generated_description or "").lower()

@@ -266,3 +266,24 @@ def test_cycle2_vitamin_ve_flavour_short_description_and_address():
     assert not _medicine_flavour_lost("BENEFORT 250 мг", "BENEFORT 250 MG")
 
     assert is_proper_name_line("(34010) Topkapı - İSTANBUL")
+
+
+def test_garbled_replacement_character_blocks_the_log():
+    """Пилот 27.10.2026: «MENOPUR 75 М�МЕ …» прошло проверки и применилось."""
+    from apps.ai.services.quality_checker import get_moderation_reasons
+
+    product = Product.objects.create(name="MENOPUR 75 IU", slug="mq-menopur", product_type="supplements")
+    log = AIProcessingLog.objects.create(
+        product=product, processing_type="full", input_data={},
+        generated_title="MENOPUR 75 М�МЕ порошок", generated_description="Описание " * 30,
+    )
+    assert "garbled_text" in get_moderation_reasons(log)
+
+
+def test_million_units_written_as_me_are_fixed_by_code():
+    from apps.ai.services.medicine_title import ru_title_units
+
+    source = "FILGRASTIM-TURGUT 48 MIU/0.5 ML IV INFUZYON/SC ENJEKSIYON ICIN COZELTI"
+    assert ru_title_units("FILGRASTIM-TURGUT 48 МЕД/0,5 мл, раствор", source) == "FILGRASTIM-TURGUT 48 млн МЕ/0,5 мл, раствор"
+    assert ru_title_units("SPRAMAX 1,5 МЕ таблетки", "SPRAMAX 1.5 MIU FILM KAPLI TABLET") == "SPRAMAX 1,5 млн МЕ таблетки"
+    assert ru_title_units("X 48 млн МЕ", source) == "X 48 млн МЕ"
