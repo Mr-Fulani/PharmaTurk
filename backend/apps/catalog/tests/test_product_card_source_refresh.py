@@ -1158,3 +1158,141 @@ def test_source_refresh_api_is_noop_for_manual_product():
         "status": "not_eligible",
         "retryable": False,
     }
+
+
+def _brand_config(product, *, is_multibrand, default_brand=None):
+    from apps.scrapers.models import ScraperConfig
+
+    return ScraperConfig.objects.create(
+        default_category=product.category,
+        name=f"brand-fill-{uuid4().hex}",
+        parser_class="zara",
+        base_url="https://www.zara.com",
+        status="active",
+        is_enabled=True,
+        is_multibrand=is_multibrand,
+        default_brand=default_brand,
+    )
+
+
+def _refresh_with_page_brand(product, monkeypatch, page_brand):
+    service = ProductCardSourceRefreshService()
+    scraped = _scraped()
+    scraped.brand = page_brand
+    monkeypatch.setattr(service, "_fetch_product", lambda target: scraped)
+    enqueued = []
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_brand_product_counts_task.delay",
+        lambda: enqueued.append(True),
+    )
+    return service.run(product.pk), enqueued
+
+
+@pytest.mark.django_db
+def test_multibrand_refresh_replaces_other_brand_with_page_brand(
+    parsed_clothing, monkeypatch, django_capture_on_commit_callbacks
+):
+    product, domain, _black, _red = parsed_clothing
+    _brand_config(product, is_multibrand=True)
+    assert product.brand.slug == "other"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        result, enqueued = _refresh_with_page_brand(product, monkeypatch, "Lumberjack")
+
+    assert result["status"] == "succeeded"
+    assert result["changes"]["brand_filled"] is True
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    assert product.brand.name == "Lumberjack"
+    assert domain.brand_id == product.brand_id
+    # Новый бренд виден в фильтре брендов раздела товара.
+    assert "clothing" in product.brand.category_slugs
+    assert product.name == "Curated product name"
+    assert product.description == "Manually curated description"
+    assert enqueued == [True]
+
+
+@pytest.mark.django_db
+def test_refresh_keeps_manual_brand(parsed_clothing, monkeypatch):
+    from apps.catalog.models import Brand
+
+    product, domain, _black, _red = parsed_clothing
+    manual = Brand.objects.create(name="Manual Brand", slug=f"manual-{uuid4().hex}")
+    Product.objects.filter(pk=product.pk).update(brand=manual)
+    ClothingProduct.objects.filter(pk=domain.pk).update(brand=manual)
+    _brand_config(product, is_multibrand=True)
+
+    result, enqueued = _refresh_with_page_brand(product, monkeypatch, "Lumberjack")
+
+    assert result["status"] == "succeeded"
+    assert result["changes"]["brand_filled"] is False
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    assert product.brand_id == domain.brand_id == manual.pk
+    assert not Brand.objects.filter(name="Lumberjack").exists()
+    assert enqueued == []
+
+
+@pytest.mark.django_db
+def test_refresh_fills_brand_of_ai_product_without_touching_ai_texts(parsed_clothing, monkeypatch):
+    from apps.ai.models import AIApplicationStatus, AIProcessingLog
+
+    product, _domain, _black, _red = parsed_clothing
+    Product.objects.filter(pk=product.pk).update(
+        name="AI название",
+        description="AI описание",
+        meta_title="AI SEO заголовок",
+        meta_description="AI SEO описание",
+    )
+    AIProcessingLog.objects.create(
+        product=product,
+        processing_type="full",
+        input_data={},
+        application_status=AIApplicationStatus.APPLIED,
+    )
+    _brand_config(product, is_multibrand=True)
+
+    result, _enqueued = _refresh_with_page_brand(product, monkeypatch, "Lumberjack")
+
+    assert result["status"] == "succeeded"
+    product.refresh_from_db()
+    assert product.brand.name == "Lumberjack"
+    assert product.name == "AI название"
+    assert product.description == "AI описание"
+    assert product.meta_title == "AI SEO заголовок"
+    assert product.meta_description == "AI SEO описание"
+    # AI-пайплайн не запускается: новых записей обработки нет.
+    assert AIProcessingLog.objects.filter(product=product).count() == 1
+
+
+@pytest.mark.django_db
+def test_single_brand_store_fills_only_config_brand(parsed_clothing, monkeypatch):
+    from apps.catalog.models import Brand
+
+    product, domain, _black, _red = parsed_clothing
+    zara = Brand.objects.create(name="Zara", slug=f"zara-{uuid4().hex}")
+    _brand_config(product, is_multibrand=False, default_brand=zara)
+
+    result, _enqueued = _refresh_with_page_brand(product, monkeypatch, "Zara Home Basic")
+
+    assert result["status"] == "succeeded"
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    assert product.brand_id == domain.brand_id == zara.pk
+    assert not Brand.objects.filter(name="Zara Home Basic").exists()
+
+
+@pytest.mark.django_db
+def test_single_brand_store_without_config_brand_keeps_other(parsed_clothing, monkeypatch):
+    from apps.catalog.models import Brand
+
+    product, _domain, _black, _red = parsed_clothing
+    _brand_config(product, is_multibrand=False)
+
+    result, _enqueued = _refresh_with_page_brand(product, monkeypatch, "Some Page Brand")
+
+    assert result["status"] == "succeeded"
+    assert result["changes"]["brand_filled"] is False
+    product.refresh_from_db()
+    assert product.brand.slug == "other"
+    assert not Brand.objects.filter(name="Some Page Brand").exists()
