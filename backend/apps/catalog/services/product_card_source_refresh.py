@@ -23,6 +23,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.catalog.models import PriceHistory, Product, ProductSourceOffer
@@ -31,13 +32,18 @@ from apps.catalog.services.source_offer_verification import (
     manual_only_source_keys,
     paid_freshness_seconds,
 )
+from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG
 from apps.catalog.utils.old_price import source_old_price
 from apps.http_errors import PaidAccessUnavailableError
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.base.offers import OfferGone, OfferNotFound
 from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.registry import get_parser
-from apps.scrapers.services import ScraperIntegrationService
+from apps.scrapers.services import (
+    BRAND_CLEAR_PRODUCT_TYPES,
+    ScraperIntegrationService,
+    get_or_create_scraped_brand,
+)
 from apps.scrapers.source_offers import (
     SourceOfferSnapshot,
     build_source_offer_snapshots,
@@ -161,6 +167,15 @@ def _currency(value: Any) -> str:
     if not re.fullmatch(r"[A-Z]{3,5}", code):
         return ""
     return code
+
+
+def _enqueue_brand_counts_refresh() -> None:
+    try:
+        from apps.catalog.tasks import refresh_brand_product_counts_task
+
+        refresh_brand_product_counts_task.delay()
+    except Exception:  # счётчики обновит Beat через минуту
+        logger.warning("brand_counts_refresh_enqueue_failed", exc_info=True)
 
 
 def _variant_old_price(spec: dict[str, Any], price: Decimal) -> dict[str, Decimal | None]:
@@ -1112,6 +1127,38 @@ class ProductCardSourceRefreshService:
             values["stock_quantity"] = stock
         domain.__class__.objects.filter(pk=domain.pk).update(**values)
 
+    @staticmethod
+    def _fill_missing_brand(
+        product: Product,
+        scraped: ScrapedProduct,
+        config: ScraperConfig | None,
+    ):
+        """Бренд для пустого/«Другое» по правилу повторного парсинга, иначе None.
+
+        Мультибрендовый магазин (FLO) — бренд страницы, затем бренд настроек;
+        магазин одного бренда — только бренд настроек. Ручной бренд, название,
+        описание, SEO и AI-тексты не меняются, AI-пайплайн не запускается.
+        """
+        if config is None or product.product_type in BRAND_CLEAR_PRODUCT_TYPES:
+            return None
+        if product.brand_id and product.brand.slug != OTHER_BRAND_SLUG:
+            return None
+        brand = None
+        if config.is_multibrand:
+            brand = get_or_create_scraped_brand(scraped.brand, product.product_type)
+        brand = brand or config.default_brand
+        if brand is None or brand.slug == OTHER_BRAND_SLUG:
+            return None
+        domain = product.domain_item
+        if domain is not product:
+            domain.__class__.objects.filter(pk=domain.pk).filter(
+                Q(brand__isnull=True) | Q(brand__slug=OTHER_BRAND_SLUG)
+            ).update(brand=brand)
+        # Счётчики брендов в фильтрах пересчитает фоновая задача (её же Beat
+        # запускает раз в минуту) — после фиксации транзакции.
+        transaction.on_commit(_enqueue_brand_counts_refresh)
+        return brand
+
     @transaction.atomic
     def _reconcile(
         self,
@@ -1152,11 +1199,12 @@ class ProductCardSourceRefreshService:
         # in ProductSourceOffer for cart/checkout, while the base card receives
         # only aggregate price/availability.
 
+        config = self._scraper_config(target.offer)
         if not offers_already_persisted:
             record_scraped_product_offers(
                 product=product,
                 scraped_product=scraped,
-                scraper_config=self._scraper_config(target.offer),
+                scraper_config=config,
                 deactivate_missing=False,
                 skip_variant_summaries_with_saved_sizes=True,
             )
@@ -1169,6 +1217,7 @@ class ProductCardSourceRefreshService:
             stock=stock,
         )
 
+        brand = self._fill_missing_brand(product, scraped, config)
         price_changed = product.price != price or product.currency != currency
         synced_at = timezone.now()
         # Inventory refresh must not emit Product post_save signals.  Those
@@ -1183,6 +1232,7 @@ class ProductCardSourceRefreshService:
             availability_status="in_stock" if available else "out_of_stock",
             last_synced_at=synced_at,
             updated_at=synced_at,
+            **({"brand": brand} if brand else {}),
         )
         if price_changed:
             PriceHistory.objects.create(
@@ -1196,6 +1246,7 @@ class ProductCardSourceRefreshService:
             "offers_observed": len(snapshots),
             "price_changed": price_changed,
             "available": available,
+            "brand_filled": bool(brand),
         }
 
     def run(self, product_id: int) -> dict[str, Any]:
