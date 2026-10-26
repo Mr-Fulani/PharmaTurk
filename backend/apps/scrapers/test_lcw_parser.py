@@ -713,3 +713,81 @@ def test_missing_category_page_is_an_error_not_an_empty_success(monkeypatch):
 
     with pytest.raises(CategoryPageNotFoundError, match="erkek-kemer-t-1092"):
         list(parser.parse_product_list("https://www.lcw.com/erkek-kemer-t-1092"))
+
+
+# Фрагмент живой карточки 26.10.2026 (/regular-fit-ince-kumas-tisort-03-beyaz-o-5271243):
+# цвет «Renk:» с «+ 25 Renk» и «BEDEN SEÇ» отдельными строками, размеры только
+# в скрипте SingleSizeProduct (XS с остатком 0), характеристики «ключ:» и
+# значение — разными узлами.
+LCW_DETAIL_2026_10_HTML = """
+<html>
+  <head>
+    <meta property="og:title" content="Tişört - LC WAIKIKI - 359,99 TL" />
+    <title>LCWAIKIKI Classic Beyaz Penye Düz Standart &amp; Regular Kısa Kollu Erkek Tişört - W63566Z8-Q6K | LCW</title>
+  </head>
+  <body>
+    <div class="product-detail">
+      <div>LCWAIKIKI Classic</div>
+      <h1>Regular Fit İnce Kumaş Tişört /03</h1>
+      <div>359,99 TL</div>
+      <div>Renk:</div>
+      <div>Buxe Beyazı / W63566Z8</div>
+      <div>+</div>
+      <div>25 Renk</div>
+      <button>BEDEN SEÇ</button>
+      <div>Ürün Açıklaması</div>
+      <div>: W63566Z8-Q6K - Beyaz</div>
+      <div>Ürün İçeriği ve Özellikleri</div>
+      <div><span>Ana Kumaş:</span><span>%100 Pamuk</span></div>
+      <div><span>Marka:</span><span>LCWAIKIKI Classic</span></div>
+      <div><span>Cinsiyet:</span><span>Erkek</span></div>
+      <div><span>Kalıp:</span><span>Standart &amp; Regular</span></div>
+      <div>İmalatçı / İthalatçı / Yetkili Temsilci: LC Waikiki</div>
+    </div>
+    <script>
+      var products = [new SingleSizeProduct(5271243, 21792651, 13948, '4XL', 33, 245, '359,99', '399,59', '359,99', 'TL', '22790484','True'),new SingleSizeProduct(5271243, 20385779, 13945, 'XS', 9, 0, '359,99', '399,59', '359,99', 'TL', '20263424','True'),new SingleSizeProduct(5271243, 20385778, 13544, 'XL', 23, 489, '359,99', '399,59', '359,99', 'TL', '20263423','True'),new SingleSizeProduct(5271243, 20385777, 13543, 'S', 11, 58, '359,99', '399,59', '359,99', 'TL', '20263422','True'),new SingleSizeProduct(4320515, 1, 13543, 'S', 11, 0, '359,99', '399,59', '359,99', 'TL', '1','True')];
+    </script>
+  </body>
+</html>
+"""
+
+
+def test_2026_10_detail_reads_color_sizes_stock_and_attributes():
+    parser = LcwParser()
+
+    parsed = parser._parse_single_variant(
+        "https://www.lcw.com/regular-fit-ince-kumas-tisort-03-beyaz-o-5271243",
+        LCW_DETAIL_2026_10_HTML,
+    )
+
+    assert parsed["color"] == "Buxe Beyazı"
+    # Порядок — по позиции размера в скрипте; строка чужого цвета (4320515) не берётся.
+    assert [(row["size"], row["is_available"]) for row in parsed["sizes"]] == [
+        ("XS", False),
+        ("S", True),
+        ("XL", True),
+        ("4XL", True),
+    ]
+    assert parsed["is_available"] is True
+    assert parsed["attributes"]["cinsiyet"] == "Erkek"
+    assert parsed["attributes"]["ana_kumaş"] == "%100 Pamuk"
+
+
+def test_2026_10_detail_all_sizes_out_of_stock_marks_color_unavailable():
+    parser = LcwParser()
+    html = LCW_DETAIL_2026_10_HTML.replace(", 245, ", ", 0, ").replace(
+        ", 489, ", ", 0, "
+    ).replace(", 58, ", ", 0, ")
+
+    parsed = parser._parse_single_variant(
+        "https://www.lcw.com/regular-fit-ince-kumas-tisort-03-beyaz-o-5271243", html
+    )
+
+    assert parsed["sizes"] and not any(row["is_available"] for row in parsed["sizes"])
+    assert parsed["is_available"] is False
+
+
+def test_2026_10_color_before_inline_size_list():
+    parser = LcwParser()
+
+    assert parser._extract_color("Renk:\nEkru / W6DU02Z8\nBeden Seç\n24\n26\nBedenini Keşfet") == "Ekru"
