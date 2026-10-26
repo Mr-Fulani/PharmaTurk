@@ -83,6 +83,55 @@ class IlacFiyatiParser(BaseScraper):
         "solunum-yolu-sagligi", "goz-sagligi", "uriner-sistem-sagligi", "beslenme-urunleri",
     })
 
+    # Разделы лекарств (ATC) — тоже /ilaclar/<slug>, как карточки. Список —
+    # записи sitemap с priority 0.6 на 26.10.2026: проход «Только изменения»
+    # открывал их как карточки и создал 105 «лекарств» «37 Binden Fazla İlaç…».
+    MEDICINE_CATEGORY_SLUGS = frozenset({
+        "agiz-sagligi-ilaclari", "agri-kesici-ates-dusuruculer", "akne-ilaclari",
+        "allerjenler", "anabolik-ilaclar", "anemi-kansizlik-ilaclari", "anestezi-ilaclari",
+        "antibakteriyel-antibiyotik-ilaclar", "antienflamatuar-ve-antiromatikler",
+        "antiepileptik-ilaclar", "antifibrinolitikler", "antihelmintik-ilaclar",
+        "antimikobakteriyel-ilaclar", "antimikotik-ilaclar",
+        "antineoplastik-ve-immunomodulator-ajanlar", "antiprotozoal-ilaclar",
+        "antipruritik-ilaclar", "antipsoriatik-ilaclar",
+        "antiseptik-ve-dezenfektan-ilaclar", "antitrombotikler", "asilar",
+        "bagisiklik-serumlari-ve-antikorlar", "beta-bloke-edici-ajanlar", "bogaz",
+        "bulanti-ve-kusmada-kullanilan-ilaclar", "burunla-ilgili-ilaclar",
+        "cesitli-ilaclar", "cinsiyet-hormonlari-ve-genital-sistem",
+        "dermatolojik-antibiyotik-ve-kemoterapotik-ilaclar", "dermatolojik-ilaclar",
+        "dermatolojik-kortikosteroidler", "dermatolojik-mantar-tedavisi",
+        "diger-dermatolojik-ilaclar", "diger-jinekolojik-ilaclar",
+        "diger-kas-iskelet-sistemi-ilaclari",
+        "diger-sindirim-sistemi-ve-metabolizma-ilaclari", "diger-sinir-sistemi-ilaclari",
+        "diger-solunum-sistemi-ilaclari", "diger-tum-terapotik-ilaclar", "diuretik-ilaclar",
+        "diyabet-ilaclari", "duyu-organlari", "ektoparazit-ilaclari", "endokrin-sistem",
+        "endokrin-terapi-ilaclari", "enfeksiyona-karsi-kullanilan-ilaclar",
+        "gastrointestinal-fonksiyonel-hastaliklar", "genel-besin-ilaclari",
+        "goz-ve-kulak-ilaclari", "goze-uygulanan-ilaclar", "gut-hastaligi-ilaclari",
+        "hematolojik-ajanlar", "hipofiz-ve-hipotalamus-hormonlari-ve-analoglari",
+        "ilacli-pansumanlar", "immunostimulanlar", "immunsupresif-ajanlar",
+        "ishal-ilaclari-barsak-antienflamatuar-ve-antienfektifleri",
+        "jinekolojik-antiinfektif-ve-antiseptikler", "kabizlik-ilaclari",
+        "kalp-damar-sistemi", "kalp-ilaclari", "kalsiyum-kanal-blokerleri",
+        "kalsiyum-metabolizmasi", "kan-basincini-duzenleyen-ilaclar",
+        "kan-ve-kan-yapici-organlar", "kan-ve-perfuzyon-solusyonlari", "kanser-ilaclari",
+        "kas-gevseticiler", "kas-iskelet-sistemi", "kemik", "kontrast-medya",
+        "kulak-hastaliklari", "lipid-metabolizmasi-ilaclari", "mide-ilaclari", "mineraller",
+        "obezite-tedavisi", "pankreas", "parazit-ve-bocek-ilaclari", "parkinson-ilaclari",
+        "periferik-vazodilatorler", "psikoanaleptikler",
+        "psikoleptikler-psikolojik-ilaclar", "radyofarmasotik-ilaclar",
+        "safra-kesesi-ve-karaciger", "sindirim-sistemi-ve-metabolizma",
+        "sindirimi-kolaylastiran-ilaclar", "sinir-sistemi", "sistemik-antihistaminikler",
+        "sistemik-antiviral-ilaclar", "sistemik-kortikosteroidler",
+        "soguk-alginligi-ve-oksuruk-ilaclari", "solunum-sistemi",
+        "solunum-sisteminde-tikanma-astim-ilaclari", "tani-ajanlari",
+        "tedavi-edici-olmayan-diger-tum-urunler", "terapotik-radyofarmasotik-ilaclar",
+        "tiroid-ilaclari", "tonikler", "urogenital-sistem-ve-cinsiyet-hormonlari",
+        "urolojik-ilaclar", "vazoprotektifler", "vitamin-ilaclari",
+        "vucut-yuzeyine-uygulanan-kas-eklem-agrisi-ilaclari", "yara-ulser-tedavisi",
+        "yuksek-tansiyon-ilaclari", "yumustatici-ve-koruyucu-ilaclar",
+    })
+
     DETAIL_TABS = {
         "ilac_bilgileri": {
             "path": "ilac-bilgileri",
@@ -220,6 +269,7 @@ class IlacFiyatiParser(BaseScraper):
             len(parts) >= 2
             and parts[0] in ("ilaclar", "takviye-edici-gida")
             and not (parts[0] == "takviye-edici-gida" and parts[1] in cls.SUPPLEMENT_CATEGORY_SLUGS)
+            and not (parts[0] == "ilaclar" and parts[1] in cls.MEDICINE_CATEGORY_SLUGS)
         )
 
     @classmethod
@@ -998,6 +1048,14 @@ class IlacFiyatiParser(BaseScraper):
                 )
 
             soup = BeautifulSoup(html, 'html.parser')
+            if self._listing_results_root(soup) is not None and not soup.select_one(
+                "#medicineAccordion, .info-card__label"
+            ):
+                # Страница раздела (листинг «Arama Sonuçları») по адресу карточки:
+                # её H1 «37 Binden Fazla İlaç…» стал бы названием «лекарства».
+                raise IlacFiyatiSourceError(
+                    f"IlacFiyati: {product_url} — страница раздела, а не карточка товара"
+                )
             
             # 1. Название товара
             name = ""
