@@ -7,7 +7,7 @@ from django.conf import settings
 
 from apps.catalog.medicine_taxonomy import propose_medicine_category
 from apps.catalog.models import Category, MedicineProduct
-from apps.catalog.supplement_taxonomy import supplement_category_slug
+from apps.catalog.supplement_taxonomy import supplement_category_slug, supplement_substance_slug
 
 
 class MedicineCategoryConflict(Exception):
@@ -119,8 +119,8 @@ def prepare_medicine_category_mapping(session, scraped):
         # из конфигурации делал его лекарством — существующий БАД пропускался
         # (конфликт типа), новый создавался лекарством. Категорию уже
         # сохранённого БАДа не трогаем — и задача с корнем «БАДы» не возвращает
-        # в корень разложенные по подкатегориям: новый БАД получает подкатегорию
-        # по названию (supplement_taxonomy), иначе корень.
+        # в корень разложенные по подкатегориям: новый БАД получает раздел
+        # и вещество по названию (supplement_taxonomy), иначе раздел или корень.
         supplements = Category.objects.filter(
             slug="supplements", parent__isnull=True, is_active=True,
         ).first()
@@ -130,7 +130,11 @@ def prepare_medicine_category_mapping(session, scraped):
             subcategory = slug and Category.objects.filter(
                 slug=slug, parent=supplements, is_active=True,
             ).first()
-            scraped.category = (subcategory or supplements).slug
+            substance = subcategory and supplement_substance_slug(slug, scraped.name, brand=scraped.brand)
+            leaf = substance and Category.objects.filter(
+                slug=substance, parent=subcategory, is_active=True,
+            ).first()
+            scraped.category = (leaf or subcategory or supplements).slug
             return True
     if not category or category.slug != "medicines" or category.parent_id is not None:
         return False

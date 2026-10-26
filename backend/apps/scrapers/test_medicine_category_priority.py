@@ -608,3 +608,23 @@ def test_new_supplement_gets_subcategory_by_source_name(supplement_catalog):
     product = Product.objects.get(external_id="solgar-vitamin-c-1000-mg-100-tablet")
     assert product.product_type == "supplements"
     assert product.category == vitamins
+
+
+def test_new_supplement_gets_substance_subcategory_by_source_name(supplement_catalog):
+    kind = supplement_catalog["supplements"].category_type
+    vitamins, _ = Category.objects.update_or_create(
+        slug="vitamins", defaults={"name": "vitamins", "parent": supplement_catalog["supplements"],
+                                   "category_type": kind, "is_active": True},
+    )
+    vitamin_c, _ = Category.objects.update_or_create(
+        slug="vitamin-c", defaults={"name": "Витамин C", "parent": vitamins, "category_type": kind,
+                                    "is_active": True},
+    )
+    service = ScraperIntegrationService()
+    run = real_session(supplement_catalog, target="supplements")
+
+    result = service._process_scraped_products(run, [supplement_scraped()])
+
+    assert result["created"] == 1
+    product = Product.objects.get(external_id="solgar-vitamin-c-1000-mg-100-tablet")
+    assert product.category == vitamin_c

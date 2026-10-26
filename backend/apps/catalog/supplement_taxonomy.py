@@ -182,3 +182,148 @@ def supplement_category_slug_ru(name_ru: Any, brand: Any = "") -> Optional[str]:
         if match and (best is None or match.start() < best[0]):
             best = (match.start(), slug)
     return best[1] if best else None
+
+
+# ── Третий уровень: вещество внутри раздела ─────────────────────────────────
+# Решение владельца 27.10.2026: из 42 подкатегорий seed оставлены 23, в которые
+# по названию надёжно ложится заметное число товаров; остальные 19 выключены
+# (RETIRED_SUBCATEGORY_SLUGS). Товар уходит в подкатегорию, только если в названии
+# ровно одно вещество раздела: «Кальций, магний и цинк» остаётся в «Минералах».
+_VITAMIN_B = (
+    _re(r"b\d{1,2}", r"vitamin b ?\d{0,2}", r"b ?komple[kx]\w*", r"b ?comple\w*", r"b vitamin\w*", r"biotin", r"folik asit",
+        r"folic acid", r"folat\w*", r"metilfolat", r"metilkobalamin", r"methylcobalamin", r"kobalamin",
+        r"niasin", r"tiamin"),
+    _ru(r"витамин\w* (?:группы )?b(?![а-яёa-z])", r"b\d{1,2}(?![0-9])", r"биотин", r"фолиев", r"фолат", r"метилфолат",
+        r"кобаламин"),
+)
+_VITAMIN_C = (
+    _re(r"c vitamin\w*", r"vitamin ?c", r"vit c", r"ester ?c", r"askorbik asit", r"ascorbic acid"),
+    _ru(r"витамин\w* c(?![а-яёa-z])", r"аскорбин"),
+)
+_VITAMIN_D = (
+    # «E VITAMIN D-ALPHA TOCOPHEROL» — витамин E, а не D.
+    _re(r"d3", r"d3 ?k2", r"d vitamin\w*", r"vitamin d3?(?! ?-? ?alfa| ?-? ?alpha)", r"vit d3?",
+        r"kolekalsiferol", r"cholecalciferol"),
+    _ru(r"витамин\w* [dд]3?(?![а-яёa-z])", r"d3", r"холекальциферол"),
+)
+_VITAMIN_E = (
+    _re(r"(?<!sam-)(?<!sam )e vitamin\w*", r"vitamin e", r"tokoferol\w*", r"tocopherol\w*"),
+    _ru(r"витамин\w* e(?![а-яёa-z])", r"токоферол"),
+)
+_MULTIVITAMIN = (
+    _re(r"multi ?vit\w*", r"multi(?:men|fem)"),
+    _ru(r"мультивитамин", r"витаминн\w* комплекс", r"комплекс витаминов"),
+)
+_OMEGA_3 = (_re(r"omega ?-?3\w*", r"epa", r"dha"), _ru(r"омега-?\s?3"))
+_FISH_OIL = (
+    _re(r"balik yag\w*", r"fish oil", r"morina\w*", r"cod liver"),
+    _ru(r"рыб\w* жир", r"печени трески"),
+)
+
+# Правило со slug None — другое вещество: товар с ним считается комплексом.
+SUBSTANCE_RULES: dict[str, tuple[tuple[Optional[str], tuple[re.Pattern, re.Pattern]], ...]] = {
+    "vitamins": (
+        ("vitamin-b", _VITAMIN_B),
+        ("vitamin-c", _VITAMIN_C),
+        ("vitamin-d", _VITAMIN_D),
+        ("vitamin-e", _VITAMIN_E),
+        ("multivitamins", _MULTIVITAMIN),
+    ),
+    "minerals": (
+        ("calcium", (_re(r"kalsiyum\w*", r"calcium"), _ru(r"кальци"))),
+        ("magnesium", (_re(r"magnezyum\w*", r"magnesium"), _ru(r"магни"))),
+        ("zinc", (_re(r"cinko\w*", r"zinc"), _ru(r"цинк"))),
+        # «DEMİR DİKENİ» — якорцы, «DEMİRHİNDİ» — тамаринд, «IRON MAN» — название,
+        # «щитовидной железы» — не железо.
+        ("iron", (_re(r"demir(?! ?dikeni|hindi)\w*", r"iron(?! man)", r"ferro\w*", r"ferrik"),
+                  _ru(r"желез(?:о|а|ом|у)(?![а-яё])"))),
+        ("selenium", (_re(r"selenyum\w*", r"selenium"), _ru(r"селен"))),
+    ),
+    "immunity": (
+        # Целым словом: бренды «IMUNEKS», «IMUNOL» — не состав («IMUNEKS VITAMIN D3»).
+        ("immune-complexes", (_re(r"imm?un(?:e|o|ity)?", r"bagisiklik\w*"), _ru(r"иммун"))),
+        ("antioxidants", (
+            _re(r"antioksidan\w*", r"antioxidant\w*", r"resveratrol", r"glutatyon", r"glutathione",
+                r"astaksantin", r"astaxanthin", r"kuersetin", r"quercetin", r"lipoik asit", r"lipoic acid"),
+            _ru(r"антиоксидант", r"ресвератрол", r"глутатион", r"астаксантин", r"кверцетин", r"липоев"),
+        )),
+        ("vitamin-c-complexes", _VITAMIN_C),
+    ),
+    "digestive-health": (
+        ("prebiotics", (
+            _re(r"prebi[yo]oti\w*", r"inulin", r"lif", r"fiber", r"fibre", r"psyllium", r"karniyarik otu"),
+            _ru(r"пребиот", r"инулин", r"клетчатк", r"псиллиум"),
+        )),
+        ("digestive-enzymes", (
+            _re(r"enzim\w*", r"enzyme\w*", r"laktaz", r"lactase", r"bromelain", r"papain", r"pepsin",
+                r"pankreatin"),
+            _ru(r"фермент", r"лактаз", r"бромелайн", r"папаин"),
+        )),
+        # Пробиотик с инулином — пробиотический комплекс, а не пребиотик: остаётся в разделе.
+        (None, (_re(r"probi[yo]oti\w*", r"probiotic\w*"), _ru(r"пробиот"))),
+    ),
+    "energy-vitality": (
+        ("coq10", (
+            _re(r"koenzim q ?10", r"co-?enzyme q ?10", r"q ?10", r"coq\s?-?10", r"ubikinol", r"ubiquinol"),
+            _ru(r"коэнзим", r"q10", r"убихинол"),
+        )),
+        ("ginseng", (_re(r"ginseng", r"zinseng"), _ru(r"женьшен"))),
+    ),
+    OMEGA_SLUG: (
+        ("omega-3", _OMEGA_3),
+        ("fish-oil", _FISH_OIL),
+    ),
+    "herbal-supplements": (
+        ("turmeric", (_re(r"zerdecal\w*", r"kurkumin\w*", r"turmeric", r"curcumin\w*"), _ru(r"куркум"))),
+    ),
+    "kids-supplements": (
+        ("kids-multivitamins", _MULTIVITAMIN),
+        ("vitamin-d-kids", _VITAMIN_D),
+        ("omega-kids", (_re(r"omega\w*", r"balik yag\w*", r"fish oil", r"dha", r"morina\w*"),
+                        _ru(r"омега", r"рыб\w* жир"))),
+    ),
+}
+# Подкатегория, которая забирает товар и при нескольких совпадениях: мультивитамины
+# называют отдельные витамины, рыбий жир — омегу-3.
+_SUBSTANCE_WINNERS = {"vitamins": "multivitamins", "kids-supplements": "kids-multivitamins",
+                      OMEGA_SLUG: "fish-oil"}
+# «VITAMIN VE MINERAL» без названия витамина — комплекс; RU-название тут не помогает.
+_VITAMINS_WORD = _re(r"vitamin\w*")
+_SINGLE_VITAMINS = frozenset({"vitamin-b", "vitamin-c", "vitamin-d", "vitamin-e"})
+
+# Подкатегории seed, выключенные 27.10.2026: пустые или почти пустые (калий 1, витамин A 4),
+# дубли разделов «Пробиотики» и «Протеин/аминокислоты», ненадёжные по названию
+# («энергетические комплексы» ловят бренд SWISS ENERGY), всё «Спортивное питание» (8 товаров).
+RETIRED_SUBCATEGORY_SLUGS = (
+    "vitamin-a", "prenatal-vitamins", "potassium", "probiotics-immune", "probiotics-digestive",
+    "heartburn-relief", "taurine", "energy-complexes", "omega-6", "omega-9", "ashwagandha", "echinacea",
+    "garlic", "herbal-blends", "protein", "amino-acids", "bcaa", "creatine", "mass-gainers",
+)
+
+
+def supplement_substance_slug(
+    parent_slug: str, source_name: Any, name_ru: Any = "", brand: Any = ""
+) -> Optional[str]:
+    """Slug подкатегории 3-го уровня внутри раздела ``parent_slug`` или None (товар остаётся в разделе).
+
+    Сначала турецкое название источника; RU-название карточки — только если турецкое не называет
+    вещество («VITAMIN VE MINERAL» карточка переводит как «Витамины E и минералы»).
+    Бренд в начале названия не учитывается.
+    """
+    rules = SUBSTANCE_RULES.get(parent_slug)
+    if not rules:
+        return None
+    text = fold_tr(source_name)
+    prefix = fold_tr(brand)
+    if prefix and text.startswith(prefix + " "):
+        text = text[len(prefix) + 1:]
+    hits = {slug for slug, (pattern, _) in rules if text and pattern.search(text)}
+    if not hits and not _VITAMINS_WORD.search(text):
+        text_ru = str(name_ru or "")
+        if brand and text_ru.upper().startswith(str(brand).upper()):
+            text_ru = text_ru[len(str(brand)):]
+        hits = {slug for slug, (_, pattern_ru) in rules if text_ru and pattern_ru.search(text_ru)}
+    winner = _SUBSTANCE_WINNERS.get(parent_slug)
+    if winner in hits or (parent_slug == "vitamins" and len(hits & _SINGLE_VITAMINS) >= 3):
+        return winner
+    return hits.pop() if len(hits) == 1 else None  # {None} — только другое вещество

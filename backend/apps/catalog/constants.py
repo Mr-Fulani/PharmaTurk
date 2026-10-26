@@ -1226,7 +1226,9 @@ JEWELRY_SUBCATEGORIES = [
     ),
 ]
 
-# БАДы: L2 с L3 подкатегориями
+# БАДы: L2 с L3 подкатегориями. L3 — вещество (supplement_taxonomy.SUBSTANCE_RULES);
+# 19 подкатегорий, в которые по названию почти ничего не ложится, убраны 27.10.2026
+# (RETIRED_SUBCATEGORY_SLUGS, выключаются командой assign_supplement_subcategories).
 SUPPLEMENTS_SUBCATEGORIES = [
     (
         "Витамины",
@@ -1235,13 +1237,11 @@ SUPPLEMENTS_SUBCATEGORIES = [
         "Витаминные комплексы",
         "Vitamin supplements",
         [
-            ("Витамин A", "Vitamin A", "vitamin-a", "Витамин A", "Vitamin A"),
             ("Витамин B", "Vitamin B Complex", "vitamin-b", "Комплекс витаминов B", "Vitamin B complex"),
             ("Витамин C", "Vitamin C", "vitamin-c", "Витамин C", "Vitamin C"),
             ("Витамин D", "Vitamin D", "vitamin-d", "Витамин D", "Vitamin D"),
             ("Витамин E", "Vitamin E", "vitamin-e", "Витамин E", "Vitamin E"),
             ("Мультивитамины", "Multivitamins", "multivitamins", "Мультивитамины", "Multivitamins"),
-            ("Пренатальные витамины", "Prenatal Vitamins", "prenatal-vitamins", "Пренатальные витамины", "Prenatal vitamins"),
         ],
     ),
     (
@@ -1256,7 +1256,6 @@ SUPPLEMENTS_SUBCATEGORIES = [
             ("Цинк", "Zinc", "zinc", "Цинк", "Zinc"),
             ("Железо", "Iron", "iron", "Железо", "Iron"),
             ("Селен", "Selenium", "selenium", "Селен", "Selenium"),
-            ("Калий", "Potassium", "potassium", "Калий", "Potassium"),
         ],
     ),
     (
@@ -1267,7 +1266,6 @@ SUPPLEMENTS_SUBCATEGORIES = [
         "Immune support",
         [
             ("Иммунные комплексы", "Immune Complexes", "immune-complexes", "Иммунные комплексы", "Immune complexes"),
-            ("Пробиотики для иммунитета", "Probiotics", "probiotics-immune", "Пробиотики для иммунитета", "Probiotics for immunity"),
             ("Антиоксиданты", "Antioxidants", "antioxidants", "Антиоксиданты", "Antioxidants"),
             ("Витамин C комплексы", "Vitamin C Complexes", "vitamin-c-complexes", "Комплексы витамина C", "Vitamin C complexes"),
         ],
@@ -1279,10 +1277,8 @@ SUPPLEMENTS_SUBCATEGORIES = [
         "Здоровье пищеварения",
         "Digestive health",
         [
-            ("Пробиотики", "Probiotics", "probiotics-digestive", "Пробиотики для пищеварения", "Digestive probiotics"),
             ("Пребиотики", "Prebiotics", "prebiotics", "Пребиотики", "Prebiotics"),
             ("Ферменты", "Digestive Enzymes", "digestive-enzymes", "Пищеварительные ферменты", "Digestive enzymes"),
-            ("Средства от изжоги", "Heartburn Relief", "heartburn-relief", "Средства от изжоги", "Heartburn relief"),
         ],
     ),
     (
@@ -1294,8 +1290,6 @@ SUPPLEMENTS_SUBCATEGORIES = [
         [
             ("Коэнзим Q10", "Coenzyme Q10", "coq10", "Коэнзим Q10", "Coenzyme Q10"),
             ("Женьшень", "Ginseng Supplements", "ginseng", "Женьшень", "Ginseng supplements"),
-            ("Таурин", "Taurine", "taurine", "Таурин", "Taurine"),
-            ("Энергетические комплексы", "Energy Complexes", "energy-complexes", "Энергетические комплексы", "Energy complexes"),
         ],
     ),
     (
@@ -1304,13 +1298,7 @@ SUPPLEMENTS_SUBCATEGORIES = [
         "sports-nutrition",
         "Спортивное питание",
         "Sports nutrition",
-        [
-            ("Протеин", "Protein", "protein", "Протеин", "Protein"),
-            ("Аминокислоты", "Amino Acids", "amino-acids", "Аминокислоты", "Amino acids"),
-            ("BCAA", "BCAA", "bcaa", "BCAA", "BCAA"),
-            ("Креатин", "Creatine", "creatine", "Креатин", "Creatine"),
-            ("Гейнеры", "Mass Gainers", "mass-gainers", "Гейнеры", "Mass gainers"),
-        ],
+        [],
     ),
     (
         "Омега и жирные кислоты",
@@ -1321,8 +1309,6 @@ SUPPLEMENTS_SUBCATEGORIES = [
         [
             ("Омега-3", "Omega-3", "omega-3", "Омега-3", "Omega-3"),
             ("Рыбий жир", "Fish Oil", "fish-oil", "Рыбий жир", "Fish oil"),
-            ("Омега-6", "Omega-6", "omega-6", "Омега-6", "Omega-6"),
-            ("Омега-9", "Omega-9", "omega-9", "Омега-9", "Omega-9"),
         ],
     ),
     (
@@ -1332,11 +1318,7 @@ SUPPLEMENTS_SUBCATEGORIES = [
         "Травяные добавки",
         "Herbal supplements",
         [
-            ("Ашваганда", "Ashwagandha", "ashwagandha", "Ашваганда", "Ashwagandha"),
             ("Куркума", "Turmeric", "turmeric", "Куркума", "Turmeric"),
-            ("Эхинацея", "Echinacea", "echinacea", "Эхинацея", "Echinacea"),
-            ("Чеснок", "Garlic Supplements", "garlic", "Чеснок", "Garlic supplements"),
-            ("Растительные комплексы", "Herbal Blends", "herbal-blends", "Растительные комплексы", "Herbal blends"),
         ],
     ),
     (
