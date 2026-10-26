@@ -79,3 +79,32 @@ def test_failure_records_error():
     assert config.status == "error"
     assert config.last_error_message == "timed out"
     assert config.last_error_at is not None
+
+
+@pytest.mark.django_db
+def test_wrong_category_link_does_not_switch_config_to_error(monkeypatch):
+    """Ссылка раздела без ?celement= или 404 раздела — ошибка адреса задачи.
+    «Ошибка» в конфигурации выключила бы проверку цены при открытии карточки
+    и в корзине у всех товаров источника (они берут только status=active)."""
+    from apps.scrapers.base.scraper import CategoryPageNotFoundError
+
+    config = _config(
+        status="active", last_error_message="", last_error_at=None,
+        parser_class="pullandbear", base_url="https://www.pullandbear.com/tr/",
+    )
+
+    def fail(*args, **kwargs):
+        raise CategoryPageNotFoundError("Pull&Bear: не удалось определить id категории")
+
+    monkeypatch.setattr(ScraperIntegrationService, "_run_parser_scraping", fail)
+
+    with pytest.raises(CategoryPageNotFoundError):
+        ScraperIntegrationService().run_scraper(
+            config, start_url="https://www.pullandbear.com/tr/kadin/giyim/pantolonlar/kargo-n6603.html",
+        )
+
+    config.refresh_from_db()
+    assert config.status == "active"
+    session = ScrapingSession.objects.filter(scraper_config=config).latest("id")
+    assert session.status == "failed"
+    assert "id категории" in session.error_message

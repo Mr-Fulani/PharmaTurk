@@ -38,8 +38,9 @@ PARSER_MODES = {
     "pullandbear": {
         "label": "Pull&Bear",
         "product": "https://www.pullandbear.com/tr/<название>-l03233901?pelement=752040619",
-        "category": "https://www.pullandbear.com/tr/erkek/<раздел>-n6323",
+        "category": "https://www.pullandbear.com/tr/kadin/giyim/pantolonlar/kargo-n6603.html?celement=1030475974",
         "site": "дерево категорий магазина (API)",
+        "note": "Ссылку категории вставлять целиком, вместе с ?celement=…",
     },
     "massimodutti": {
         "label": "Massimo Dutti",
