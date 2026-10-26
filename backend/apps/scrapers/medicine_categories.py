@@ -7,6 +7,7 @@ from django.conf import settings
 
 from apps.catalog.medicine_taxonomy import propose_medicine_category
 from apps.catalog.models import Category, MedicineProduct
+from apps.catalog.supplement_taxonomy import supplement_category_slug
 
 
 class MedicineCategoryConflict(Exception):
@@ -112,18 +113,24 @@ def prepare_medicine_category_mapping(session, scraped):
         return False
     category = session.target_category or session.scraper_config.default_category
     if _is_supplement_url(scraped.url) and (
-        not category or (category.slug == "medicines" and category.parent_id is None)
+        not category or (category.slug in ("medicines", "supplements") and category.parent_id is None)
     ):
         # БАД по прямой ссылке без своей категории в задаче: корень «Медицина»
         # из конфигурации делал его лекарством — существующий БАД пропускался
         # (конфликт типа), новый создавался лекарством. Категорию уже
-        # сохранённого БАДа не трогаем: "supplements" лишь задаёт тип новому.
+        # сохранённого БАДа не трогаем — и задача с корнем «БАДы» не возвращает
+        # в корень разложенные по подкатегориям: новый БАД получает подкатегорию
+        # по названию (supplement_taxonomy), иначе корень.
         supplements = Category.objects.filter(
             slug="supplements", parent__isnull=True, is_active=True,
         ).first()
         if supplements is not None:
             scraped.__dict__.pop("_category_override", None)
-            scraped.category = supplements.slug
+            slug = supplement_category_slug(scraped.name, scraped.brand)
+            subcategory = slug and Category.objects.filter(
+                slug=slug, parent=supplements, is_active=True,
+            ).first()
+            scraped.category = (subcategory or supplements).slug
             return True
     if not category or category.slug != "medicines" or category.parent_id is not None:
         return False
