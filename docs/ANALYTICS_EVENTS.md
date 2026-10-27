@@ -57,7 +57,7 @@
 | `add_to_wishlist` | `store/favorites.ts` после успешного добавления (все кнопки избранного) | item_id, название, тип, цена, валюта | `add_to_wishlist` |
 | `begin_checkout` | `checkout.tsx`, после загрузки непустой корзины | позиции, сумма, валюта корзины | `begin_checkout` |
 | `generate_lead` | заявка из корзины (`checkout.tsx`, после создания заказа) | `lead_source=order`, value, currency, transaction_id = номер заявки, payment_method | `generate_lead` + `order_request` (доход по цели: `order_price`, `currency`) |
-| `generate_lead` | заявка на подбор `SourcingRequestForm` | `lead_source=sourcing`, placement: home / category / search / how_to_order | `generate_lead` + `sourcing_request` |
+| `generate_lead` | заявка на подбор `SourcingRequestForm` | `lead_source=sourcing`, placement: home / category / search / how_to_order / product_out_of_stock (карточка «нет в наличии», кнопка «Найти такой же или похожий») | `generate_lead` + `sourcing_request` |
 | `search` | `search.tsx` | search_term | `search` (параметр `query`) |
 | `contact_click` | любая ссылка WhatsApp / Telegram / телефон / email / VK на сайте — общий обработчик `handleContactLinkClick` в `_app.tsx` | contact_channel; placement: `widget` (плавающий виджет), `footer`, иначе `page` (страницу даёт page_location) | `click_whatsapp`, `click_telegram`, `click_phone`, `click_email`, `click_vk` (параметр `placement`) |
 

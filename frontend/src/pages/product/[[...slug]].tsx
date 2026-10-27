@@ -1,6 +1,7 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import axios from 'axios'
 import api, { getSingleFlight } from '../../lib/api'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
@@ -53,6 +54,9 @@ import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } fr
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
 import { gtmViewItem } from '../../lib/gtm'
 import { ArrowRightIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline'
+
+// Форма «Найдём товар» нужна только на карточке «нет в наличии» и только после клика
+const SourcingRequestForm = dynamic(() => import('../../components/SourcingRequestForm'), { ssr: false })
 
 type CategoryType = string
 
@@ -1316,6 +1320,10 @@ export default function ProductPage({
       setActiveMediaType(freshVideoUrl ? 'video' : 'image')
     }
   }, [buildGallerySource, product, selectedVariant, router.asPath])
+
+  // Товара нет в наличии: форма «Найдём товар» раскрывается по кнопке
+  const [showOosSourcing, setShowOosSourcing] = useState(false)
+  useEffect(() => { setShowOosSourcing(false) }, [product?.slug])
 
   // GA4: просмотр карточки — первый шаг воронки view_item → add_to_cart → begin_checkout → generate_lead.
   // Хук стоит до раннего return; данные события заполняются ниже, при рендере карточки.
@@ -2756,9 +2764,28 @@ export default function ProductPage({
                   </>
                 ) : (
                   maxAvailable === 0 ? (
-                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
-                    {t('out_of_stock', 'Нет в наличии')}
-                  </div>
+                  <>
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                      {t('out_of_stock', 'Нет в наличии')}
+                    </div>
+                    {/* Не тупик: менеджер найдёт этот товар у других продавцов или похожий */}
+                    {showOosSourcing ? (
+                      <SourcingRequestForm
+                        placement="product_out_of_stock"
+                        initialComment={`${displayProductName || product.name} — ${canonicalUrl}`}
+                        title={t('oos_sourcing_title', 'Найдём этот товар или похожий')}
+                        subtitle={t('oos_sourcing_subtitle', 'Менеджер поищет у других продавцов в Турции и назовёт цену с доставкой. Бесплатно и ни к чему не обязывает.')}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowOosSourcing(true)}
+                        className="w-full rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-strong)]"
+                      >
+                        {t('oos_sourcing_button', 'Найти такой же или похожий')}
+                      </button>
+                    )}
+                  </>
                   ) : (
                   <>
                     <AddToCartButton
