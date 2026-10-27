@@ -56,6 +56,11 @@ IKEA_CATEGORY_ALIASES = {
     "bedroom-furniture-sets": "bedroom-sets", "yatak-odasi-mobilya-takimlari": "bedroom-sets",
     "dining-tables": "dining-tables", "yemek-masalari": "dining-tables",
     "kitchen-tables": "kitchen-tables", "mutfak-masalari": "kitchen-tables",
+    # Кухонные острова и рабочие столы-тележки IKEA (TORNVIKEN, VADHOLMA, RIMFORSA,
+    # BROR) лежали в корне «Мебель» — 27.10.2026.
+    "mutfak-adalari": "kitchen-tables", "mutfak-adasi": "kitchen-tables",
+    "rafli-mutfak-adasi": "kitchen-tables", "mutfak-adasi-rafi": "kitchen-tables",
+    "calisma-tezgahi": "kitchen-tables",
     "dining-room-chairs": "dining-chairs", "yemek-odasi-sandalyeleri": "dining-chairs",
     "table-chair-sets": "dining-sets", "masa-sandalye-takimlari": "dining-sets",
     "bar-tables": "bar-tables", "bar-masalari": "bar-tables",
@@ -75,6 +80,8 @@ IKEA_CATEGORY_ALIASES = {
     "kids-desks": "kids-desks", "cocuk-calisma-masalari": "kids-desks",
     "kids-chairs": "kids-chairs", "cocuk-sandalyeleri": "kids-chairs",
     "kids-wardrobes": "kids-wardrobes", "cocuk-dolap-ve-gardiroplari": "kids-wardrobes",
+    # Из общего раздела «Gardıroplar» детский гардероб PLATSA/SMÅSTAD шёл во взрослые «Шкафы».
+    "cocuk-gardirobu": "kids-wardrobes",
     "kids-dressers": "kids-dressers", "cocuk-sifonyerleri-ve-komodinleri": "kids-dressers",
     "cocuk-sifonyeri": "kids-dressers",
     "kids-bookcases": "kids-bookcases", "cocuk-kitapliklari": "kids-bookcases",
@@ -85,6 +92,8 @@ IKEA_CATEGORY_ALIASES = {
     "open-shelving-units": "open-shelving", "acik-raf-uniteleri": "open-shelving",
     "shoe-cabinets": "shoe-cabinets", "ayakkabiliklar": "shoe-cabinets",
     "coat-racks": "coat-racks", "portmanto-ve-vestiyer": "coat-racks",
+    # Напольная вешалка (EKRAR и др.) из «Gardıroplar».
+    "ayakli-askilik": "coat-racks",
     "room-divider-solutions": "room-dividers", "oda-ayirici-cozumler": "room-dividers",
     "bathroom-cabinets": "bathroom-cabinets", "banyo-dolaplari": "bathroom-cabinets",
     "bathroom-tall-cabinets": "bathroom-tall-cabinets", "banyo-boy-dolaplari": "bathroom-tall-cabinets",
