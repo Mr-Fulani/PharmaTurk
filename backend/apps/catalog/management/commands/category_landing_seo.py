@@ -29,6 +29,7 @@ class Command(BaseCommand):
         generate.add_argument("--roots", default="", help="Корни целиком через запятую (supplements,clothing…).")
         generate.add_argument("--include-filled", action="store_true", help="Не пропускать разделы с SEO-текстом.")
         generate.add_argument("--limit", type=int, default=0, help="Не больше N разделов (пилот).")
+        generate.add_argument("--min-products", type=int, default=1, help="Пропускать разделы, где товаров меньше.")
         generate.add_argument("--out", required=True, help="Куда записать JSON черновика.")
         generate.add_argument(
             "--model", default="",
@@ -52,7 +53,9 @@ class Command(BaseCommand):
         slugs, roots = _csv(options["slugs"]), _csv(options["roots"])
         if not slugs and not roots:
             raise CommandError("Укажите --slugs или --roots.")
-        categories = select_categories(slugs=slugs, roots=roots, include_filled=options["include_filled"])
+        categories = select_categories(
+            slugs=slugs, roots=roots, include_filled=options["include_filled"], min_products=options["min_products"],
+        )
         if options["limit"]:
             categories = categories[: options["limit"]]
         if not categories:

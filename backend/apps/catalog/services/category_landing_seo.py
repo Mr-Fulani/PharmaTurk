@@ -38,6 +38,8 @@ Mudaroba — витрина товаров из Турции для русско
 Пиши ТОЛЬКО на основе этих фактов и правил выше. Нельзя придумывать бренды, материалы, страны производства,
 сроки, цены, размеры, скидки, гарантии, характеристики товаров, назначение моделей («для холодной погоды»).
 Пол и возраст («мужские», «женские», «детские») — только если они есть в названиях примеров товаров.
+Не описывай устройство сайта («раздел входит в категорию…», «подразделов нет», «все модели на одной
+странице») и не пиши о том, чего в фактах нет («для кого товар — уточняйте в карточке»): просто пропусти.
 Бренд из фактов — это просто бренд: не пиши, турецкий он или нет (U.S. Polo Assn., Lumberjack — не турецкие,
 хотя продаются в Турции). Бренды в фактах — от самых частых; в тексте назови 3–6 из них, не весь список.
 
@@ -114,11 +116,12 @@ def _translation_names(category):
     return names.get("ru") or category.name, names.get("en") or ""
 
 
-def select_categories(*, slugs=None, roots=None, include_filled=False):
+def select_categories(*, slugs=None, roots=None, include_filled=False, min_products=1):
     """Активные непустые разделы для текстов, без медикаментов и услуг.
 
     slugs — ровно эти разделы; roots — корни целиком (сам корень и все потомки).
     Раздел, у которого уже есть русский SEO-текст, пропускается без include_filled.
+    min_products — порог товаров в разделе с потомками: текст про пару товаров — тонкая страница.
     """
     categories = list(Category.objects.filter(is_active=True).prefetch_related("translations"))
     by_id = {c.id: c for c in categories}
@@ -126,9 +129,9 @@ def select_categories(*, slugs=None, roots=None, include_filled=False):
     for c in categories:
         if c.parent_id:
             children_by_parent.setdefault(c.parent_id, []).append(c.id)
-    with_products = set(
+    product_counts = dict(
         Product.objects.filter(is_active=True).exclude(category_id__isnull=True)
-        .values_list("category_id", flat=True).distinct()
+        .values("category_id").annotate(n=Count("id")).values_list("category_id", "n")
     )
 
     wanted_slugs = set(slugs or [])
@@ -144,7 +147,7 @@ def select_categories(*, slugs=None, roots=None, include_filled=False):
             continue
         if not wanted_slugs and not wanted_roots:
             continue
-        if not with_products.intersection(_subtree_ids(category, children_by_parent)):
+        if sum(product_counts.get(cid, 0) for cid in _subtree_ids(category, children_by_parent)) < max(min_products, 1):
             continue
         ru = next((t for t in category.translations.all() if t.locale == "ru"), None)
         if ru is not None and ru.seo_text and not include_filled:
@@ -223,7 +226,8 @@ _EN_FORBIDDEN = re.compile(
 # и фасовка с единицей («1000 МЕ», «600 mg», «120 таблеток») не задевает.
 _BIG_NUMBER = re.compile(
     r"(?<![\w.,-])(?:\d{1,3}(?:[ \u00a0]\d{3})+|\d{3,})(?!\w)"
-    r"(?![ \u00a0]?(?:МЕ|IU|мкг|mcg|мг|mg|мл|ml|г\b|g\b|шт|капсул|таблет|саше|tablet|capsule|softgel|sachet))"
+    # единица может стоять после перечня: «50, 100 и 150 мл»
+    r"(?!(?:\s*(?:,|и|или|and|or)\s*\d+)*[ \u00a0]?(?:МЕ|IU|мкг|mcg|мг|mg|мл|ml|г\b|g\b|шт|капсул|таблет|саше|tablet|capsule|softgel|sachet))"
 )
 _CYRILLIC = re.compile(r"[а-яё]", re.IGNORECASE)
 

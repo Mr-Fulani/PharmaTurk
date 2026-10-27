@@ -87,7 +87,7 @@ def test_looping_answer_is_flagged():
 
 def test_ordinary_words_and_dosages_are_not_flagged():
     texts = _texts(
-        ru__meta_description="Витамин D3 1000 МЕ и 400 МЕ из Турции: капли, спреи, таблетки по 120 штук. Состав лучше сверить с этикеткой.",
+        ru__meta_description="Витамин D3 1000 МЕ из Турции: капли, спреи, таблетки по 120 штук, флаконы 50, 100 и 150 мл. Состав сверьте.",
         en__meta_description="Vitamin D3 1000 IU drops from Turkey, sold in pharmacies and health food stores. Pick the form that suits you best.",
     )
     assert validate_texts(texts) == []
@@ -122,6 +122,10 @@ def test_select_skips_medicines_empty_and_filled_categories(catalog):
     assert {"supplements", "lsv-vitamins", "lsv-vitamin-b"} <= selected
     assert "lsv-empty" not in selected
     assert "lsv-cardio" not in selected
+
+    # В витаминах B три товара: порог 4 их отсекает, порог 3 — нет.
+    assert "lsv-vitamin-b" not in {c.slug for c in select_categories(roots=["supplements"], min_products=4)}
+    assert "lsv-vitamin-b" in {c.slug for c in select_categories(roots=["supplements"], min_products=3)}
 
     CategoryTranslation.objects.create(category=catalog.vitamin_b, locale="ru", name="Витамин B", seo_text="Текст")
     assert "lsv-vitamin-b" not in {c.slug for c in select_categories(slugs=["lsv-vitamin-b"])}
