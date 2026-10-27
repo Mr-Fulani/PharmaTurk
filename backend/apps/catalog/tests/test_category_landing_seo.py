@@ -117,6 +117,7 @@ def test_ordinary_words_and_dosages_are_not_flagged():
         ({"en__seo_text": BODY_EN + "\n\n## Brands\n\nPopular brands of shoes. " + BODY_EN}, "запрещено «Popular»"),
         ({"ru__seo_text": BODY_RU + "\n\n## ЧЕРНОВИК БЕЗ СКРИПТА_КОНЕЦ ЧЕРНОВИК БЕЗ СКРИПТА_КОНЕЦ"}, "запрещено «ЧЕРНОВИК»"),
         ({"ru__meta_title": "Кровати IKEA из Турции — купить в Mudaroba | Mudaroba"}, "«Mudaroba» дважды"),
+        ({"ru__seo_text": BODY_RU + "\n\n## Как выбрать\n\nПрочитайте состав на упаковке. " + BODY_RU}, "запрещено «на упаковке»"),
         ({"ru__meta_description": "Лучшие витамины группы B из Турции: капсулы и таблетки Solgar и Venatura, заявка менеджеру с доставкой."}, "запрещено «Лучшие»"),
         ({"en__meta_description": "B vitamins from Turkey at 2500 per pack: capsules and tablets by Solgar and Venatura, request to a manager."}, "число «2500»"),
     ],
