@@ -2547,7 +2547,20 @@ class ClothingVariantSerializer(serializers.ModelSerializer):
                 preferred_currency,
                 apply_margin=True,
             )
+            # Старая цена — в той же валюте и с той же наценкой, что и цена:
+            # иначе карточка зачёркивает лиры под видом рублей (976 «RUB» под 1 442 RUB)
+            raw_old_price = data.get('old_price')
+            old_price_with_margin = None
+            if raw_old_price is not None:
+                _, _, old_price_with_margin = currency_converter.convert_price(
+                    Decimal(str(raw_old_price)),
+                    raw_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
             data['price'] = str(price_with_margin)
+            if old_price_with_margin is not None:
+                data['old_price'] = str(old_price_with_margin)
             data['currency'] = preferred_currency
         except Exception:
             data['currency'] = raw_currency
@@ -3412,7 +3425,20 @@ class ShoeVariantSerializer(serializers.ModelSerializer):
                 preferred_currency,
                 apply_margin=True,
             )
+            # Старая цена — в той же валюте и с той же наценкой, что и цена:
+            # иначе карточка зачёркивает лиры под видом рублей (976 «RUB» под 1 442 RUB)
+            raw_old_price = data.get('old_price')
+            old_price_with_margin = None
+            if raw_old_price is not None:
+                _, _, old_price_with_margin = currency_converter.convert_price(
+                    Decimal(str(raw_old_price)),
+                    raw_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
             data['price'] = str(price_with_margin)
+            if old_price_with_margin is not None:
+                data['old_price'] = str(old_price_with_margin)
             data['currency'] = preferred_currency
         except Exception:
             data['currency'] = raw_currency
