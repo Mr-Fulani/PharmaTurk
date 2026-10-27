@@ -118,6 +118,27 @@ def test_claude_client_reads_model_from_settings(settings):
     assert claude_client.ClaudeClient().model == "claude-sonnet-5-5"
 
 
+def test_schema_answer_and_sonnet_thinking(settings):
+    settings.ANTHROPIC_API_KEY = "k"
+    settings.AI_CONFIG = {**settings.AI_CONFIG, "ANTHROPIC_MODEL": "claude-haiku-5-5"}
+    schema = {"type": "object", "properties": {}, "additionalProperties": False}
+
+    for model, thinking in (("claude-haiku-5-5", {"type": "disabled"}), ("claude-sonnet-5-5", {"type": "adaptive"})):
+        client = claude_client.ClaudeClient(model=model)
+        client.client = SimpleNamespace(messages=SimpleNamespace(create=Mock(return_value=_claude_response("{}"))))
+        client.create("Ты редактор.", "Раздел", json_mode=True, max_tokens=1000, output_schema=schema, effort="medium")
+
+        kwargs = client.client.messages.create.call_args.kwargs
+        assert kwargs["model"] == model
+        # Sonnet 5.5 отвечает 400 на выключенные размышления.
+        assert kwargs["thinking"] == thinking
+        assert kwargs["output_config"] == {
+            "format": {"type": "json_schema", "schema": schema}, "effort": "medium",
+        }
+        # JSON задан схемой — инструкция словами не нужна.
+        assert claude_client.JSON_INSTRUCTION not in kwargs["system"][0]["text"]
+
+
 def test_openai_disabled_claude_failure_is_not_sent_to_openai(llm, settings):
     settings.AI_OPENAI_ENABLED = False
     llm.claude.client.messages.create.return_value = _claude_response("", stop_reason="refusal")
