@@ -1698,7 +1698,9 @@ export default function ProductPage({
               <div className="flex md:hidden overflow-x-auto snap-x snap-mandatory gap-4 pb-2 -mx-6 px-6 hide-scrollbar flex-shrink-0">
                 {gallerySource.length > 0 ? gallerySource.map((img, imageIndex) => {
                   const isVideoItem = (img as GalleryItem).isVideo === true
-                  const resolvedUrl = resolveMediaUrl(img.image_url)
+                  // Слайдер только на телефоне: 800 px (потолок proxy-media) хватает на ширину
+                  // экрана, оригинал мебели/одежды весит до 300+ КБ и тормозит LCP.
+                  const resolvedUrl = withListingImageMaxWidth(resolveMediaUrl(img.image_url), 800)
                   const thumbKey = `mobile-${String(img.id)}`
                   return (
                     <div key={thumbKey} className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
