@@ -104,6 +104,16 @@ COLORS: dict[str, tuple[str, str]] = {
     "nefti": ("темно-зеленый", "Dark green"),
     "melanj": ("меланжевый", "Melange"),
     "gri melanj": ("серый меланжевый", "Gray melange"),
+    # FLO 27.10.2026: цвета, которые правила принимали за модель («Discovery Expedition Hardal»).
+    "hardal": ("горчичный", "Mustard"),
+    "mint": ("мятный", "Mint"),
+    "saks": ("голубой", "Saxe blue"),
+    "saks mavi": ("голубой", "Saxe blue"),
+    "saks mavisi": ("голубой", "Saxe blue"),
+    "petrol": ("=цвета петроль", "Petrol"),
+    "petrol mavisi": ("=цвета петроль", "Petrol blue"),
+    "petrol yesili": ("=цвета петроль", "Petrol green"),
+    "renkli": ("разноцветный", "Multicolor"),
 }
 # Модификаторы оттенка: RU-префикс прилагательного, EN-слово. «yeni», «mat»,
 # «orta» оттенок не меняют и пропускаются.
@@ -168,6 +178,7 @@ AUDIENCE: dict[str, tuple[str, str]] = {
     "cocuk": ("детский", "Kids'"),
     "erkek cocuk": ("детский", "Boys'"),
     "kiz cocuk": ("детский", "Girls'"),
+    "bebek": ("детский", "Kids'"),
     "unisex": ("=унисекс", "Unisex"),
 }
 
@@ -538,6 +549,9 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "taban": ("", ""),
     "tabanli": ("", ""),
     "doktor tavsiyeli": ("", ""),
+    "dr. tavsiyeli": ("", ""),
+    "d.r tavsiyeli": ("", ""),
+    "topuk jelli": ("", ""),
     "poplin": ("из поплина", "Poplin"),
     "kombin": ("", ""),
     "cesitli": ("", ""),
