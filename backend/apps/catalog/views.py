@@ -218,6 +218,42 @@ def _canonicalize_attribute_value(slug: str, value: str | None) -> str:
     return canonicalize_dynamic_attribute_value(str(slug or "").strip().lower(), value)
 
 
+EMPTY_FURNITURE_CATEGORIES_CACHE_KEY = "catalog:empty-furniture-category-ids:v1"
+EMPTY_FURNITURE_CATEGORIES_TTL = 300
+
+
+def _empty_furniture_category_ids() -> frozenset[int]:
+    """Разделы мебели без активных товаров во всём поддереве (решение владельца 27.10.2026).
+
+    Дерево мебели повторяет разделы IKEA, а товары есть пока в 20 из 73: пустые
+    «Ванная», «Офисная мебель» и т. п. не показываются в списках категорий.
+    Раздел появляется сам, когда в нём (или в его подразделе) есть товар; кэш —
+    EMPTY_FURNITURE_CATEGORIES_TTL секунд. Корень «Мебель» не скрывается.
+    """
+    cached = cache.get(EMPTY_FURNITURE_CATEGORIES_CACHE_KEY)
+    if cached is not None:
+        return frozenset(cached)
+    furniture_ids = _get_category_ids_with_descendants(["furniture"])
+    parents = dict(Category.objects.filter(id__in=furniture_ids).values_list("id", "parent_id"))
+    totals = dict.fromkeys(parents, 0)
+    rows = (
+        Product.objects.filter(is_active=True, category_id__in=furniture_ids)
+        .values("category_id")
+        .annotate(cnt=Count("id"))
+        .values_list("category_id", "cnt")
+    )
+    for category_id, count in rows:
+        node = category_id
+        while node in totals:
+            totals[node] += count
+            node = parents.get(node)
+    empty = frozenset(
+        category_id for category_id, total in totals.items() if total == 0 and parents.get(category_id) is not None
+    )
+    cache.set(EMPTY_FURNITURE_CATEGORIES_CACHE_KEY, list(empty), EMPTY_FURNITURE_CATEGORIES_TTL)
+    return empty
+
+
 def _get_category_ids_with_descendants(slugs: list[str]) -> set[int]:
     """Возвращает set ID категорий по slug, включая все дочерние (подкатегории)."""
     if not slugs:
@@ -910,6 +946,18 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             *_category_prefetches()
         ).order_by('sort_order', 'name')
 
+        # Фильтр по slug (или category_slug)
+        slug_list = self._parse_slug_list('slug') or self._parse_slug_list('category_slug')
+
+        # Пустые разделы мебели в списках не показываются; запрошенный по slug
+        # раздел отдаётся всегда — страница категории не ломается.
+        hidden_ids = _empty_furniture_category_ids()
+        if hidden_ids:
+            requested_ids = set(
+                Category.objects.filter(slug__in=slug_list).values_list('id', flat=True)
+            ) if slug_list else set()
+            base_qs = base_qs.exclude(id__in=hidden_ids - requested_ids)
+
         # Явный запрос "все категории"
         if self._parse_bool(self.request.query_params.get('all')) is True:
             return base_qs
@@ -918,8 +966,6 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         parent_ids = self._parse_int_list('parent_id')
         parent_slugs = self._parse_slug_list('parent_slug')
 
-        # Фильтр по slug (или category_slug)
-        slug_list = self._parse_slug_list('slug') or self._parse_slug_list('category_slug')
         include_children = self._parse_bool(self.request.query_params.get('include_children'))
         if include_children is None:
             include_children = True  # по умолчанию берём детей, если указан slug
@@ -1006,7 +1052,9 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        children = Category.objects.filter(parent=category, is_active=True).select_related(*self._CATEGORY_SELECT_RELATED).prefetch_related(
+        children = Category.objects.filter(parent=category, is_active=True).exclude(
+            id__in=_empty_furniture_category_ids()
+        ).select_related(*self._CATEGORY_SELECT_RELATED).prefetch_related(
             *_category_prefetches()
         )
         serializer = self.get_serializer(children, many=True)
