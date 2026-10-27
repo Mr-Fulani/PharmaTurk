@@ -10,6 +10,17 @@ from apps.ai.models import AIProcessingLog, AIModerationQueue, AIProcessingStatu
 from apps.ai.services.semantic_validator import SemanticValidationReport, SemanticValidator
 
 
+# Вкладки ilacfiyati с текстом инструкции (без «equivalents», «sgk_equivalents», «ilac_bilgileri»).
+_INSTRUCTION_TABS = (
+    "summary", "indications", "before_use_warnings", "usage_instructions", "side_effects", "storage_conditions",
+)
+_MIXED_SCRIPT_WORD = re.compile(r"\b[^\W\d_]*(?:[A-Za-z][А-Яа-яЁё]|[А-Яа-яЁё][A-Za-z])[^\W\d_]*\b")
+_META_DESCRIPTION = re.compile(
+    r"исходн\w* данн|в данных|не указан|см\.\s*(?:данные|в инструкции|инструкцию)|подробн\w* сведения",
+    re.IGNORECASE,
+)
+
+
 def get_moderation_reasons(
     log: AIProcessingLog,
     *,
@@ -44,6 +55,9 @@ def get_moderation_reasons(
         default=str,
     ):
         reasons.append("garbled_text")
+    # Слово из букв двух алфавитов: «Рufинамид» (очередь модерации 27.10.2026) — тот же сбой ответа.
+    elif _MIXED_SCRIPT_WORD.search(log.generated_description or ""):
+        reasons.append("garbled_text")
 
     # Подозрительные слова в описании
     desc = (log.generated_description or "").lower()
@@ -65,13 +79,19 @@ def get_moderation_reasons(
         # короткое описание. Порог ловит только пустой/сломанный ответ.
         minimum_description_words = 10
     tabs = (input_data.get("attributes") or {}).get("source_tabs") if isinstance(input_data.get("attributes"), dict) else None
+    tabs = tabs if isinstance(tabs, dict) else {}
     if product_type == "medicines" and not any(
-        str((tab.get("text") if isinstance(tab, dict) else tab) or "").strip()
-        for tab in (tabs.values() if isinstance(tabs, dict) else ())
+        str((tabs.get(key).get("text") if isinstance(tabs.get(key), dict) else tabs.get(key)) or "").strip()
+        for key in _INSTRUCTION_TABS
     ):
         # У источника нет инструкции: описание — из справочных фактов (форма, путь введения,
-        # рецепт), 8–11 слов; так у 95 из 110 лекарств очереди 27.10.2026.
+        # рецепт), 8–11 слов; так у 95 из 110 лекарств очереди 27.10.2026. Вкладки аналогов
+        # и «İlaç bilgileri» — не инструкция (42 из 46 «коротких» в очереди 27.10.2026).
         minimum_description_words = 6
+    if product_type == "medicines" and _META_DESCRIPTION.search(log.generated_description or ""):
+        # «Лекарственная форма … в исходных данных не указаны», «см. в инструкции» — рассуждение
+        # модели о данных вместо описания.
+        reasons.append("description_meta_text")
     if not from_facts and (
         len(re.findall(r"\b\w+\b", log.generated_description or "", re.UNICODE))
         < minimum_description_words

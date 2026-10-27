@@ -21,6 +21,8 @@ _UNIT_ALIASES = {
     "ml": "ml", "мл": "ml",
     # «1000 l.U./gün» — «l» вместо «I» в распознанном PDF.
     "iu": "iu", "ui": "iu", "i.u.": "iu", "i.u": "iu", "l.u.": "iu", "ме": "iu",
+    # «1000 U./gün» — «ünite», в переводе «МЕ» (очередь модерации 27.10.2026).
+    "u.": "iu",
     "mmol": "mmol", "ммоль": "mmol",
     "kg": "kg", "кг": "kg",
     "%": "%",
@@ -55,7 +57,27 @@ _DOSE_RE = re.compile(
 # «1 ila l0'unda», «Bl2», «0 800 3l4 00 08», «l mmol'den», «5/l0 mg»; не литр в квадрате — «mmol2/l2».
 _OCR_ONE = re.compile(
     r"(?<![a-zçğıöşü/])l(?=[.,]?\d|\s(?:mmol|mg|mcg|ml)\b)|(?<=/)l(?=[.,]?\d)(?!2(?!\d))|(?<=\d)l(?=\d)"
+    r"|(?<=%)l(?![a-zçğıöşü])"  # «Yaygın yan etkiler (%l'den fazla)»
 )
+# Другие опечатки распознанного PDF (очередь модерации 27.10.2026): «0.,6 ml», «%0.,9» — запятая;
+# «10. 000 hastanın» — тысячи; «1 buçuk-3 saatte» — 1,5; «390 C üzeri ateş» — 39 °C (градус прочитан
+# нулём); «200 Lig deksmedetomidin» — мкг (µg), «220 mİ», «5 Ll'lik» — мл.
+_OCR_FIXES = (
+    (re.compile(r"(?<=\d)\.,(?=\d)"), ","),
+    (re.compile(r"(?<=\d)\.\s(?=000(?!\d))"), "."),
+    (re.compile(r"(?<=\d) buçuk\b", re.IGNORECASE), ",5"),
+    (re.compile(r"\b(3[5-9]|4[0-2])0(?=\s?C\b)|\b([1-4]\d)0(?=C\b)"), lambda m: m.group(1) or m.group(2)),
+    (re.compile(r"(?<=\d)(\s?)Lig\b"), r"\1mcg"),
+    (re.compile(r"(?<=\d)(\s?)(?:mİ|mI|Ll)(?![^\W\d_])"), r"\1ml"),
+    # «25-35 m g/kg», «1 mm ol», «Vitamin Bı2», «406, 5 mg» и «12, 42 mg'a» — пробел внутри дроби.
+    (re.compile(r"(?<=\d )m g\b"), "mg"),
+    (re.compile(r"(?<=\d )mm ol\b"), "mmol"),
+    (re.compile(r"(?<=[A-Z])ı(?=\d)"), "1"),
+    (re.compile(r"(?<=\d), (?=\d{1,2}\s?(?:mg|mcg|ml|mL|g)\b)"), ","),
+)
+# «%0,3 mg/ml», «PROFENID %2,5 MG» — знак процента перед дозой с единицей: в переводе пишут
+# одно из двух («0,3 мг/мл» или «2,5%»).
+_PERCENT_DOSE_RE = re.compile(rf"%\s*({_NUMBER})\s*({_UNIT_PATTERN})(?![^\W\d_])", re.IGNORECASE)
 # «на 1 мл», «на 1 кг массы тела», «1 gramında» → «per gram» — знаменатель, а не
 # доза: модель дописывает или убирает единицу («her ml'sinde 23 mg» → «23 мг на 1 мл»).
 _PER_UNIT_DOSES = {("1", "ml"), ("1", "kg"), ("1", "g")}
@@ -64,7 +86,8 @@ _PER_UNIT_DOSES = {("1", "ml"), ("1", "kg"), ("1", "g")}
 # берётся: «1 gün» — не «1 g ün».
 _GLUED_UNIT = re.compile(r"(\d\s?(?:mg|mcg|ml|mL))(?=[a-zçğıöşü])")
 # Не после «x»: «2x5 mg», «1x10ml» — множитель, а не слово.
-_GLUED_NUMBER = re.compile(r"(?<=[A-WYZÇĞİÖŞÜa-wyzçğıöşü])(?=\d+(?:[.,]\d+)?\s?(?:mg|mcg|ml|mL|mmol)(?![^\W\d_]))")
+# Только пробел, не перевод строки: «Vitamin B6\nmg\n0.10» — ячейки таблицы PEDIASURE, а не «B 6 mg».
+_GLUED_NUMBER = re.compile(r"(?<=[A-WYZÇĞİÖŞÜa-wyzçğıöşü])(?=\d+(?:[.,]\d+)?[ \u00a0]?(?:mg|mcg|ml|mL|mmol)(?![^\W\d_]))")
 # Турецкий процент пишется перед числом: «%5», «yüzde 5», «%hacim olarak 11,8»,
 # в RU/EN — после: «5%»; диапазон — «%2-5», «%5,75 ila 13,8» и «2-5%», «от 5,75 до 13,8%».
 _PERCENT_RE = re.compile(r"(?:%|\byüzde\s)\s*(?:hacim\s+olarak\s+)?(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*%")
@@ -129,9 +152,32 @@ def is_proper_name_line(text: Any) -> bool:
     )
 
 
+# Строка — только топоним адреса фирмы: «Bağcılar», «Başakşehir/İstanbul», «Karabağlar - İzmir»;
+# одиночная буква или маркер списка источника («ğ», «ç) Пемфигус…»), материал блистера «Alü/Alü»
+# (очередь модерации 27.10.2026: 14 разделов «не переведено» из-за таких строк).
+_PLACE_LINE = re.compile(r"[A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s*[/-]\s*[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)*\s*[/-]?")
+_SOURCE_LIST_MARKER = re.compile(r"^\s*[a-zçğıöşü]\)\s*")
+_BLISTER_MATERIAL = re.compile(r"\bAlü\s*/\s*Alü\b|\bAlü\b")
+
+
 def strip_proper_name_lines(text: Any) -> str:
     """Текст без строк с фирмами/адресами — для проверки языка перевода."""
-    return "\n".join(line for line in str(text or "").splitlines() if not is_proper_name_line(line))
+    lines, previous = [], ""
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        # Одно слово без «/» — топоним, только если строкой выше подпись («Место производства:»):
+        # иначе это может быть непереведённый пункт списка («Bulantı»).
+        place = (
+            len(stripped) <= 40
+            and _PLACE_LINE.fullmatch(stripped)
+            and (re.search(r"[/-]", stripped) or previous.endswith(":"))
+        )
+        if stripped:
+            previous = stripped
+        if is_proper_name_line(line) or place or len(re.findall(r"[^\W\d_]", stripped)) <= 1:
+            continue
+        lines.append(_BLISTER_MATERIAL.sub(" ", _SOURCE_LIST_MARKER.sub("", line)))
+    return "\n".join(lines)
 
 
 def _normalize_number(raw: str) -> str:
@@ -150,8 +196,12 @@ def _unit(raw: str) -> str:
 
 
 def fix_ocr_digits(text: Any) -> str:
-    """«l» вместо «1» рядом с цифрами: «l0'unda» → «10'unda», «Bl2» → «B12»."""
-    return _OCR_ONE.sub("1", str(text or ""))
+    """Опечатки распознанного PDF в числах: «l» вместо «1» рядом с цифрами («l0'unda» → «10'unda»,
+    «Bl2» → «B12»), «0.,6», «10. 000», «200 Lig» (``_OCR_FIXES``)."""
+    text = _OCR_ONE.sub("1", str(text or ""))
+    for pattern, replacement in _OCR_FIXES:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def extract_doses(text: Any) -> set[tuple[str, str]]:
@@ -187,6 +237,10 @@ def doses_match(source: Any, translation: Any) -> bool:
     source_doses = extract_doses(source) - _PER_UNIT_DOSES
     translated_doses = extract_doses(translation) - _PER_UNIT_DOSES
     missing, extra = source_doses - translated_doses, translated_doses - source_doses
+    for number, unit in _PERCENT_DOSE_RE.findall(fix_ocr_digits(source)):
+        pair = {(_normalize_number(number), "%"), (_normalize_number(number), _unit(unit))}
+        if pair & translated_doses:
+            missing -= pair
     if {number for number, _ in missing} & {number for number, _ in extra}:
         return False
     translated_numbers, source_numbers = _numbers(translation), _numbers(source)
