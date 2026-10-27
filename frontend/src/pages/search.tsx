@@ -16,7 +16,9 @@ export default function SearchPage() {
   const router = useRouter()
   const q = ((router.query.query || router.query.q || '') as string).trim()
   const [items, setItems] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
+  // С запросом в URL страница сразу (и в SSR) в состоянии загрузки: иначе первым
+  // кадром мелькает «Товары не найдены».
+  const [loading, setLoading] = useState(Boolean(q))
   const [error, setError] = useState<string | null>(null)
   const { t, i18n } = useTranslation('common')
 
@@ -81,7 +83,9 @@ export default function SearchPage() {
         <div className="mt-8">
           <VisualSearch />
         </div>
-        <section id="search-results" className="scroll-mt-24">
+        {/* С запросом блок не ниже экрана: пока идёт поиск и когда ничего не нашлось,
+            подвал остаётся за краем экрана и не прыгает (CLS) */}
+        <section id="search-results" className={`scroll-mt-24${q ? ' min-h-screen' : ''}`}>
           {error ? <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">{error}</div> : null}
           {loading ? <div className="mt-6">{t('search_loading', 'Загрузка…')}</div> : items.length === 0 ? (
             <div className="mt-6">
