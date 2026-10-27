@@ -295,8 +295,10 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
 
 ### P2.6 Потоковые выгрузки и privileged ingestion
 
-- YML feed сейчас строит XML целиком и создаёт риск памяти/N+1; генерировать его
-  фоново, хранить готовый объект и отдавать с ETag;
+- ~~YML feed сейчас строит XML целиком и создаёт риск памяти/N+1; генерировать его
+  фоново, хранить готовый объект и отдавать с ETag~~ — сделано 2026-10-27:
+  `catalog.generate_yml_feeds` каждые 6 ч, готовые файлы с ETag, подкатегории
+  потоком ([VK_YML_FEED.md](VK_YML_FEED.md));
 - унифицировать оставшиеся privileged download paths (`catalog/signals.py`,
   `parser_media_handler.py`, `vk_market_sync.py`) с bounded/pinned safe fetcher;
 - ~~вынести broker/cache/result из логических Redis DB в раздельные

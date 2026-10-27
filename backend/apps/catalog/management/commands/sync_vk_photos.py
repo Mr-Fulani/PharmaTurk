@@ -29,6 +29,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.catalog.models import Product
 from apps.catalog.services.vk_market_sync import VKMarketSync
+from apps.catalog.views import _get_category_ids_with_descendants
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +138,7 @@ class Command(BaseCommand):
             type=str,
             default=None,
             metavar="SLUG",
-            help="Синхронизировать только товары определенной категории (по slug).",
+            help="Синхронизировать только товары категории (по slug) и её подкатегорий.",
         )
         parser.add_argument(
             "--dry-run",
@@ -182,6 +183,12 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(self.style.WARNING("⚡ DRY-RUN режим — реальной загрузки не будет"))
+
+        category_ids: set[int] = set()
+        if target_category:
+            category_ids = _get_category_ids_with_descendants([target_category])
+            if not category_ids:
+                raise CommandError(f"Категория {target_category!r} не найдена или выключена")
 
         sync = VKMarketSync(token=token, group_id=group_id)
 
@@ -247,7 +254,7 @@ class Command(BaseCommand):
                 prod_query = Product.objects.select_related("brand", "category", "category__parent")
                 if target_category:
                     # Фильтр по категории (включая дочерние)
-                    prod = prod_query.get(id=prod_id, category__slug=target_category)
+                    prod = prod_query.get(id=prod_id, category_id__in=category_ids)
                 else:
                     prod = prod_query.get(id=prod_id)
             except Product.DoesNotExist:

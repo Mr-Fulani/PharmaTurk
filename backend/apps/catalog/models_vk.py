@@ -70,3 +70,31 @@ class VKCategoryMapping(models.Model):
 
     def __str__(self) -> str:
         return f"{self.product_type} → {self.vk_category_path}"
+
+
+class YMLFeedSnapshot(models.Model):
+    """
+    Готовый файл YML-фида: полный каталог (пустой slug) или корневая категория.
+
+    Собирает задача catalog.generate_yml_feeds, эндпоинт фида отдаёт файл как есть.
+    """
+
+    category_slug = models.CharField(
+        _("Slug категории"),
+        max_length=200,
+        unique=True,
+        blank=True,
+        help_text=_("Пусто — полный каталог."),
+    )
+    file = models.FileField(_("Файл фида"), upload_to="feeds/yml/", max_length=300, blank=True)
+    generated_at = models.DateTimeField(_("Собран"), null=True, blank=True)
+    offers_count = models.PositiveIntegerField(_("Офферов"), default=0)
+    size_bytes = models.PositiveBigIntegerField(_("Размер, байт"), default=0)
+
+    class Meta:
+        verbose_name = _("Готовый YML-фид")
+        verbose_name_plural = _("Готовые YML-фиды")
+        ordering = ["category_slug"]
+
+    def __str__(self) -> str:
+        return self.category_slug or "catalog"

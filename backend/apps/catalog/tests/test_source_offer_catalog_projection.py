@@ -13,7 +13,7 @@ from apps.catalog.serializers import _LocalizedSeoMethodsMixin
 from apps.catalog.services.source_offer_catalog_projection import (
     resolve_source_offer_catalog_availability,
 )
-from apps.catalog.views_yml import YMLExportView
+from apps.catalog.services.yml_feed import create_offer
 
 
 class ProjectionProbeSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
@@ -200,7 +200,7 @@ def test_yml_uses_same_supplier_availability_projection():
     product = Product.objects.prefetch_related("source_offers").get(pk=product.pk)
     offers = ET.Element("offers")
 
-    YMLExportView()._create_offer(
+    create_offer(
         offers,
         product,
         "https://mudaroba.com",

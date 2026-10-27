@@ -378,6 +378,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.recompute_sort_ranks",
         "schedule": crontab(hour=4, minute=50),
     },
+    # YML-фиды для ВК Маркета/Яндекса (docs/VK_YML_FEED.md): готовые файлы каждые 6 часов,
+    # 00:35 / 06:35 (после пересчёта цен в 05:00) / 12:35 / 18:35 МСК.
+    "catalog-generate-yml-feeds": {
+        "task": "catalog.generate_yml_feeds",
+        "schedule": crontab(hour="*/6", minute=35),
+    },
     # Напоминания о неотправленном Списке заявки; включаются в админке, без этого задача ничего не делает.
     "orders-remind-abandoned-carts": {
         "task": "orders.remind_abandoned_carts",
