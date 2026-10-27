@@ -230,3 +230,12 @@ a:hover {
 .navigation-progress-bar {
   animation: navigation-progress-slide 1.05s ease-in-out infinite;
 }
+
+/* Липкая панель «В заявку» на телефоне (MobileStickyBuyBar): виджет связи поднимается над ней */
+.contact-widget {
+  transition: translate 0.2s ease;
+}
+
+html[data-sticky-buy-bar='on'] .contact-widget {
+  translate: 0 -72px;
+}
