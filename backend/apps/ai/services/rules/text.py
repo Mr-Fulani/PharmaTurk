@@ -51,7 +51,8 @@ def _ru_head(facts: ProductFacts) -> str:
 
 def _identity(facts: ProductFacts) -> str:
     brand, model = facts.brand.strip(), facts.model.strip()
-    if brand and vocab.fold(brand) in vocab.fold(model):
+    # «Only&Sons» в каталоге и «Only & Sons» в названии — один бренд, не дважды.
+    if brand and re.sub(r"[\W_]+", "", vocab.fold(brand)) in re.sub(r"[\W_]+", "", vocab.fold(model)):
         return model
     return " ".join(part for part in (brand, model) if part)
 

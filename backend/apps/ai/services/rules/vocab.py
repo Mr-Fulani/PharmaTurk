@@ -104,6 +104,19 @@ COLORS: dict[str, tuple[str, str]] = {
     "nefti": ("темно-зеленый", "Dark green"),
     "melanj": ("меланжевый", "Melange"),
     "gri melanj": ("серый меланжевый", "Gray melange"),
+    # FLO 27.10.2026: цвета, которые правила принимали за модель («Discovery Expedition Hardal»).
+    "hardal": ("горчичный", "Mustard"),
+    "mint": ("мятный", "Mint"),
+    "saks": ("голубой", "Saxe blue"),
+    "saks mavi": ("голубой", "Saxe blue"),
+    "saks mavisi": ("голубой", "Saxe blue"),
+    "petrol": ("=цвета петроль", "Petrol"),
+    "petrol mavisi": ("=цвета петроль", "Petrol blue"),
+    "petrol yesili": ("=цвета петроль", "Petrol green"),
+    "renkli": ("разноцветный", "Multicolor"),
+    "acik haki": ("=светло-хаки", "Light khaki"),
+    "koyu haki": ("=темно-хаки", "Dark khaki"),
+    "nil yesili": ("светло-зеленый", "Nile green"),
 }
 # Модификаторы оттенка: RU-префикс прилагательного, EN-слово. «yeni», «mat»,
 # «orta» оттенок не меняют и пропускаются.
@@ -168,6 +181,7 @@ AUDIENCE: dict[str, tuple[str, str]] = {
     "cocuk": ("детский", "Kids'"),
     "erkek cocuk": ("детский", "Boys'"),
     "kiz cocuk": ("детский", "Girls'"),
+    "bebek": ("детский", "Kids'"),
     "unisex": ("=унисекс", "Unisex"),
 }
 
@@ -476,6 +490,11 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "logo baskili": ("с логотипом", "Logo"),
     "logolu": ("с логотипом", "Logo"),
     "desenli": ("с узором", "Patterned"),
+    # «Polo Yaka Çapa Desenli» без словаря уходило в LLM, и та писала «с круглым вырезом в рубчик».
+    "capa desenli": ("с принтом якорей", "Anchor Print"),
+    "yelken desenli": ("с принтом парусников", "Sailboat Print"),
+    "marin desenli": ("в морском стиле", "Nautical Print"),
+    "agac desenli": ("с принтом деревьев", "Tree Print"),
     "cizgili": ("в полоску", "Striped"),
     "kapusonlu": ("с капюшоном", "Hooded"),
     "nakisli": ("с вышивкой", "Embroidered"),
@@ -538,6 +557,9 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "taban": ("", ""),
     "tabanli": ("", ""),
     "doktor tavsiyeli": ("", ""),
+    "dr. tavsiyeli": ("", ""),
+    "d.r tavsiyeli": ("", ""),
+    "topuk jelli": ("", ""),
     "poplin": ("из поплина", "Poplin"),
     "kombin": ("", ""),
     "cesitli": ("", ""),
@@ -578,6 +600,24 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "model": ("", ""),
     "yeni": ("", ""),
 }
+
+# Турецкие слова словарей, которые LLM копирует в название как есть («Мужские сандалии
+# Siyah Lastikli», «Kum Nubuk»): в названии правилами их нет, значит, это брак (партия FLO 27.10.2026).
+# Слова, совпадающие с английскими («Basic», «Logo», «Polo»), не считаются.
+_ENGLISH_VOCAB_WORDS = frozenset(
+    {
+        "bandana", "basic", "boxer", "clog", "cn", "cneck", "comfort", "deodorant", "edc", "edp", "edt",
+        "fit", "graphic", "hoodie", "indigo", "jean", "jeans", "kids", "loafer", "logo", "men", "metal",
+        "mint", "model", "noos", "normal", "oval", "oversize", "parfum", "petrol", "pls", "polo", "poplin", "relaxed",
+        "sandal", "slip", "sneaker", "ss", "stick", "sweatshirt", "tee", "tshirt", "unisex", "women",
+    }
+)
+TURKISH_TITLE_WORDS = frozenset(
+    key
+    for mapping in (COLORS, DESCRIPTORS, AUDIENCE, KINDS)
+    for key in mapping
+    if " " not in key and "-" not in key and key not in _ENGLISH_VOCAB_WORDS
+)
 
 # Канонический материал аксессуара (RU из attribute_specs) → фраза названия.
 MATERIAL_PHRASES: dict[str, tuple[str, str]] = {

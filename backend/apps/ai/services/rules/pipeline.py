@@ -178,10 +178,14 @@ def _checked_llm_title(title: str, facts: ProductFacts, locale: str) -> str:
     """LLM-название с турецким словом или не на своём языке отбрасывается (вернётся название правилами)."""
     clean = re.sub(r"\s+", " ", title).strip(" ,")
     words = {vocab.fold(word.strip("()[],.;:")) for word in clean.split()}
+    identity = set(vocab.fold(f"{facts.brand} {facts.model}").split())
     if (
         _TURKISH_LETTERS_RE.search(clean)
         or TURKISH_LEFTOVER_RE.search(clean)
         or words.intersection(vocab.fold(word) for word in facts.untranslated)
+        or (words - identity) & vocab.TURKISH_TITLE_WORDS
+        # Имя магазина из промпта вместо бренда («футболка Mudaroba в полоску»).
+        or "mudaroba" in words - identity
     ):
         return ""
     if bool(_CYRILLIC_LETTERS_RE.search(clean)) != (locale == "ru"):

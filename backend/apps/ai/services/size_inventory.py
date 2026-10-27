@@ -9,6 +9,7 @@ unrelated category or guess a variant association.
 
 from __future__ import annotations
 
+import html
 import json
 import re
 from typing import Any, Iterable
@@ -142,11 +143,24 @@ def _structured_sizes(value: Any) -> list[str]:
     return []
 
 
+# Описания FLO — HTML, экранированный дважды: «size» из «font-size» и числа из
+# «data-start="67"» давали 12 из 30 модераций партии FLO 27.10.2026.
+_BLOCK_TAG_RE = re.compile(r"</?(?:p|div|br|li|ul|ol|tr|td|h[1-6])\b[^>]*>", re.IGNORECASE)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _plain_text(value: str) -> str:
+    text = value
+    for _ in range(2):
+        text = html.unescape(text)
+    return _TAG_RE.sub(" ", _BLOCK_TAG_RE.sub("\n", text))
+
+
 def _source_texts(input_data: dict[str, Any]) -> Iterable[str]:
     for key in ("name", "description", "raw_description"):
         value = input_data.get(key)
         if value:
-            yield str(value)
+            yield _plain_text(str(value))
     for key in ("attributes", "source_attributes"):
         value = input_data.get(key)
         if not value:
@@ -359,13 +373,14 @@ def size_inventory_block_reason(
 
 def variant_size_identities(target: Any) -> set[str]:
     try:
-        return {
-            size_identity(value)
-            for value in target.variants.values_list("sizes__size", flat=True)
-            if value
-        }
+        values = [value for value in target.variants.values_list("sizes__size", flat=True) if value]
     except Exception:
         return set()
+    identities = {size_identity(value) for value in values}
+    # «10(43)» у вариантов FLO — US(EU): из текста приходит «43».
+    for value in values:
+        identities.update(size_identity(eu) for eu in re.findall(r"\((\d{2}(?:[.,]\d)?)\)", str(value)))
+    return identities
 
 
 def current_product_sizes(target: Any) -> list[str]:
