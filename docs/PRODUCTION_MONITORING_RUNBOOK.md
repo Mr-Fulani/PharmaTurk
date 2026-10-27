@@ -73,7 +73,14 @@ origin or Telegram receiver credentials.
    `redis`, see `docs/PROD_MEMORY.md`).
 4. If only the homepage fails, inspect Nginx, frontend and Cloudflare origin
    routing.
-5. Do not clear Redis, restart databases, or restore backups merely to silence
+5. Sporadic 500s on SSR pages (`/product/*`, `/brand/*`) with `socket hang up` /
+   `read ECONNRESET` in frontend logs mean SSR reused a keep-alive socket that
+   gunicorn had already closed (gunicorn drops idle keep-alive after 2 s and
+   recycles workers by `--max-requests`; Node 22 keeps idle sockets for 5 s).
+   Since 2026-10-28 `frontend/src/instrumentation.ts` turns keep-alive off for
+   the Node `http` global agent, so every SSR request opens a fresh connection.
+   If these errors come back, check that the file is still in the build.
+6. Do not clear Redis, restart databases, or restore backups merely to silence
    an alert. Diagnose first and use the release rollback procedure for a bad
    application revision.
 
