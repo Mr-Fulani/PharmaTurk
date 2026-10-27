@@ -22,43 +22,75 @@ TITLE_SUFFIX = " | Mudaroba"
 # Разделы с ручными текстами (миграция 0222) и услуги Стамбула — не трогаем.
 EXCLUDED_ROOTS = {"medicines", "uslugi"}
 
+# Корни разделов, где менеджер в заявке уточняет ещё размер и цвет.
+SIZE_COLOR_ROOTS = {"clothing", "shoes", "underwear", "headwear", "islamic-clothing"}
+
 # Корни разделов, где у товара есть сроки доставки на сайте (карточки БАДов: 7–21 рабочий день).
 DELIVERY_DAYS_ROOTS = {"supplements"}
 
 SYSTEM_PROMPT = """Ты пишешь SEO-тексты посадочных страниц разделов интернет-витрины Mudaroba (mudaroba.com).
 Mudaroba — витрина товаров из Турции для русскоязычных покупателей. Оплаты на сайте нет: покупатель
-добавляет товары в «Список заявки» и отправляет его, менеджер проверяет наличие (и размер, цвет),
-рассчитывает стоимость вместе с доставкой и согласует детали; оплата — только после согласованного расчёта.
+добавляет товары в «Список заявки» и отправляет его, менеджер проверяет то, что указано в факте
+"manager_checks", рассчитывает стоимость вместе с доставкой и согласует детали; оплата — только после
+согласованного расчёта.
 
 Тебе дают факты раздела: название, родительские разделы, подразделы, бренды и примеры товаров из каталога.
 Пиши ТОЛЬКО на основе этих фактов и правил выше. Нельзя придумывать бренды, материалы, страны производства,
-сроки, цены, размеры, скидки, гарантии, характеристики товаров.
+сроки, цены, размеры, скидки, гарантии, характеристики товаров, назначение моделей («для холодной погоды»).
+Пол и возраст («мужские», «женские», «детские») — только если они есть в названиях примеров товаров.
+Бренд из фактов — это просто бренд: не пиши, турецкий он или нет (U.S. Polo Assn., Lumberjack — не турецкие,
+хотя продаются в Турции). Бренды в фактах — от самых частых; в тексте назови 3–6 из них, не весь список.
 
-Что нужно вернуть — JSON {"ru": {...}, "en": {...}}, в каждом языке четыре поля:
+Что нужно вернуть — два языка, "ru" и "en", в каждом четыре поля:
 - "h1": заголовок страницы, 25–70 символов, естественная фраза с главным запросом раздела
-  (например «Турецкие витамины группы B», «Кроссовки из Турции»). Не копия title.
+  (например «Турецкие витамины группы B», «Кроссовки из Турции»). H1 и title — РАЗНЫЕ формулировки:
+  H1 «Кроссовки из Турции: Nike, Adidas, Puma», title «Купить кроссовки Nike и Adidas из Турции | Mudaroba».
 - "meta_title": 35–70 символов ВМЕСТЕ с окончанием « | Mudaroba» (оно обязательно в конце).
   Главный запрос + «из Турции» (EN: «from Turkey»), можно 1–2 бренда или вида товаров из фактов.
 - "meta_description": 120–190 символов. Что есть в разделе (виды товаров, 2–3 бренда из фактов)
   и как заказать (заявка, менеджер рассчитает стоимость с доставкой). Без чисел товаров и цен.
-- "seo_text": 180–320 слов. Обычный текст: абзацы через пустую строку, 2–3 подзаголовка строкой
-  с «## » в начале. Содержание: что собрано в разделе и его подразделах, какие бренды и формы/виды
+- "seo_text": 180–320 слов. Обычный текст: абзацы через пустую строку, 2–3 подзаголовка — отдельной
+  строкой, которая начинается с «## » (например «## Как выбрать»; без «## » подзаголовок не распознается). Содержание: что собрано в разделе и его подразделах, какие бренды и формы/виды
   товаров есть (только из фактов), как выбрать (практично: форма выпуска, состав на упаковке, размер —
   уточнить у менеджера), как оформить заказ. Пиши для людей: конкретно, без воды, без повторов
-  ключевой фразы в каждом предложении (главный запрос — 2–4 раза на весь текст).
+  ключевой фразы в каждом предложении (главный запрос — 2–4 раза на весь текст). Без пустых фраз
+  вроде «каталог удобно просматривать», «вы быстро найдёте подходящий вариант», «без лишних хлопот».
+  Не больше трёх подзаголовков. Последний раздел — «Как оформить заказ», после него ничего не пиши:
+  ни итоговой фразы, ни повторного призыва.
 
 Запрещено (в обоих языках):
+- оценки брендов и товаров: «проверенные», «популярные», «узнаваемый дизайн», «часто выбирают»;
+  ссылки на отзывы покупателей;
+- обещать действия менеджера сверх правил выше (только: проверит "manager_checks", рассчитает стоимость
+  с доставкой, согласует детали) — не «подберёт альтернативу», не «подскажет», не «поможет выбрать»;
 - количество товаров, цены, валюты, проценты скидок; любые числа, кроме тех, что есть в названиях
   (D3, B12, Q10, Омега-3) и в разрешённом сроке доставки;
 - «лучший», «№1», «самые низкие цены», «скидки», «акция», «бесплатно», «гарантия», «гарантируем»;
 - обещания про здоровье: лечит, вылечивает, исцеляет, предотвращает болезни, укрепляет иммунитет,
   «эффективный», «безопасный»; БАД не лекарство — в разделах БАДов одной фразой напомни, что это
   не лекарственное средство и перед приёмом стоит посоветоваться со специалистом;
+- советы по дозировке и приёму, в том числе детям; менеджер не подбирает дозу — он проверяет наличие
+  и считает стоимость. Дозировки из названий товаров (400 МЕ) можно упоминать как факт ассортимента;
 - слова «лечение», «лечить» в любом виде (в том числе в оговорках), «без рецепта»;
 - сроки доставки, если их нет в фактах; названия магазинов-источников (только бренды из фактов).
 
 Английская версия — не дословный перевод, а естественный текст для англоязычного покупателя
-с теми же фактами и правилами; без кириллицы."""
+с теми же фактами и правилами; без кириллицы. В русском тексте кавычки — «ёлочки»."""
+
+
+_LOCALE_SCHEMA = {
+    "type": "object",
+    "properties": {field: {"type": "string"} for field in SEO_FIELDS},
+    "required": list(SEO_FIELDS),
+    "additionalProperties": False,
+}
+# Ответ модели — строго по схеме (structured outputs): пилот 27.10.2026 без неё дал битый JSON у 3 из 5.
+OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {locale: _LOCALE_SCHEMA for locale in LOCALES},
+    "required": list(LOCALES),
+    "additionalProperties": False,
+}
 
 
 def _subtree_ids(category, children_by_parent):
@@ -169,6 +201,7 @@ def collect_facts(category):
         "product_examples": examples,
         "is_supplements": root == "supplements",
         "delivery": "доставка 7–21 рабочий день" if root in DELIVERY_DAYS_ROOTS else "",
+        "manager_checks": "наличие, размер и цвет" if root in SIZE_COLOR_ROOTS else "наличие",
     }
 
 
@@ -177,18 +210,32 @@ def build_user_prompt(facts):
 
 
 _RU_FORBIDDEN = re.compile(
-    r"леч|исцел|гарант|лучш|№\s*1|скидк|акци[яи]|бесплатн|дешев|дёшев|без рецепта|"
+    r"леч|исцел|гарант|лучш(?:ий|ая|ее|ие|их|ими?|ую|ей|его|ему)\b|самы[йе] низк|проверенн|популярн|отзыв|хлопот|подбер[её]т|поможет выбрать|черновик|доработк|для ознакомления|№\s*1|скидк|акци[яи]|бесплатн|дешев|дёшев|без рецепта|"
     r"иммунитет укрепл|укрепля\w* иммун|эффективн|безопасн|₽|руб\.|\bруб\b|\bлир|\bTL\b|\$",
     re.IGNORECASE,
 )
 _EN_FORBIDDEN = re.compile(
-    r"\bcur(e|es|ing)\b|\btreat|\bheal|guarant|\bbest\b|cheapest|discount|free (shipping|delivery)|for free|free of charge|"
+    r"\bcur(e|es|ing)\b|\btreat|\bheal(s|ed|ing)?\b|guarant|\bpopular|\btrusted|\breviews?\b|hassle|\bdraft\b|placeholder|\bthe best\b|\bbest[- ](price|quality|choice|seller)|cheapest|discount|free (shipping|delivery)|for free|free of charge|"
     r"no prescription|without (a )?prescription|effective|\bsafe\b|₽|\brub\b|\bTL\b|\$|boost\w* immun",
     re.IGNORECASE,
 )
-# Счётчики товаров и цены: числа от трёх цифр («1 371», «2500»); «7–21» и Q10, D3 не задевает.
-_BIG_NUMBER = re.compile(r"(?<![\w.,-])(?:\d{1,3}(?:[ \u00a0]\d{3})+|\d{3,})(?!\w)")
+# Счётчики товаров и цены: числа от трёх цифр («1 371», «2500»); «7–21», Q10, D3, дозировки
+# и фасовка с единицей («1000 МЕ», «600 mg», «120 таблеток») не задевает.
+_BIG_NUMBER = re.compile(
+    r"(?<![\w.,-])(?:\d{1,3}(?:[ \u00a0]\d{3})+|\d{3,})(?!\w)"
+    r"(?![ \u00a0]?(?:МЕ|IU|мкг|mcg|мг|mg|мл|ml|г\b|g\b|шт|капсул|таблет|саше|tablet|capsule|softgel|sachet))"
+)
 _CYRILLIC = re.compile(r"[а-яё]", re.IGNORECASE)
+
+
+def _repeated_phrase(text):
+    """Фраза из трёх слов, которая встречается 4+ раз, — модель зациклилась (пилот 6: «ЧЕРНОВИК…» ×8)."""
+    words = re.findall(r"\w+", text.lower())
+    counts = {}
+    for i in range(len(words) - 2):
+        key = " ".join(words[i:i + 3])
+        counts[key] = counts.get(key, 0) + 1
+    return next((key for key, count in counts.items() if count >= 4), None)
 
 
 def validate_texts(texts):
@@ -218,6 +265,11 @@ def validate_texts(texts):
         text = values.get("seo_text") or ""
         if h1 and not 15 <= len(h1) <= 80:
             problems.append(f"{locale}.h1: {len(h1)} символов")
+        if title.count("Mudaroba") > 1:
+            problems.append(f"{locale}.meta_title: «Mudaroba» дважды")
+        repeated = _repeated_phrase(text)
+        if repeated:
+            problems.append(f"{locale}.seo_text: повтор «{repeated}»")
         if title and (not title.endswith(TITLE_SUFFIX) or len(title) > 80):
             problems.append(f"{locale}.meta_title: {len(title)} символов или без «{TITLE_SUFFIX.strip()}»")
         if description and not 100 <= len(description) <= 200:
@@ -225,29 +277,57 @@ def validate_texts(texts):
         words = len(text.split())
         if text and not 140 <= words <= 420:
             problems.append(f"{locale}.seo_text: {words} слов")
-        if text and "## " not in text:
+        headings = sum(1 for line in text.splitlines() if line.startswith("## "))
+        if text and not headings:
             problems.append(f"{locale}.seo_text: нет подзаголовков")
+        if headings > 3:
+            problems.append(f"{locale}.seo_text: {headings} подзаголовков")
         if h1 and title and h1.strip().lower() == title.removesuffix(TITLE_SUFFIX).strip().lower():
             problems.append(f"{locale}: h1 совпадает с title")
     return problems
 
 
 def generate_texts(facts, client):
-    """Один запрос к Claude → (тексты, usage). client — apps.ai.services.claude_client.ClaudeClient."""
-    raw, response = client.create(SYSTEM_PROMPT, build_user_prompt(facts), json_mode=True, max_tokens=2500)
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else ""
-        text = text.rsplit("```", 1)[0]
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        data = {}
+    """Один запрос к Claude → (тексты, usage, сырой ответ). client — apps.ai.services.claude_client.ClaudeClient."""
+    raw, response = client.create(
+        SYSTEM_PROMPT, build_user_prompt(facts), json_mode=True, max_tokens=2500, output_schema=OUTPUT_SCHEMA,
+    )
+    data = _parse_json_object(raw)
     texts = {
         locale: {field: str((data.get(locale) or {}).get(field) or "").strip() for field in SEO_FIELDS}
         for locale in LOCALES
     }
-    return texts, response.usage
+    return texts, response.usage, raw
+
+
+def _parse_json_object(raw):
+    """JSON-объект ответа: без обёртки ```, ключи языков без регистра; не разобрался — {}."""
+    text = (raw or "").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return {}
+    try:
+        data = json.loads(text[start:end + 1])
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(key).strip().lower(): value for key, value in data.items()}
+
+
+def generate_checked(facts, client, attempts=2):
+    """Тексты с проверкой; при замечаниях — ещё попытка (пилот: модель изредка ломает формат title).
+
+    → (тексты, замечания, сырой ответ последней попытки, [usage каждой попытки]).
+    """
+    usages = []
+    for _ in range(attempts):
+        texts, usage, raw = generate_texts(facts, client)
+        usages.append(usage)
+        problems = validate_texts(texts)
+        if not problems:
+            break
+    return texts, problems, raw, usages
 
 
 def apply_texts(entries, *, overwrite=False, dry_run=False):

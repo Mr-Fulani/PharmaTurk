@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from apps.catalog.services.category_landing_seo import (
     apply_texts,
     collect_facts,
-    generate_texts,
+    generate_checked,
     select_categories,
     validate_texts,
 )
@@ -61,18 +61,22 @@ class Command(BaseCommand):
         entries, tokens_in, tokens_out = [], 0, 0
         for category in categories:
             facts = collect_facts(category)
-            texts, usage = generate_texts(facts, client)
-            used_in, _, used_out = claude_usage(usage)
-            tokens_in += used_in
-            tokens_out += used_out
-            problems = validate_texts(texts)
-            entries.append({
+            texts, problems, raw, usages = generate_checked(facts, client)
+            for usage in usages:
+                used_in, _, used_out = claude_usage(usage)
+                tokens_in += used_in
+                tokens_out += used_out
+            entry = {
                 "slug": category.slug,
                 "name_en": facts["name_en"],
                 "facts": facts,
                 "texts": texts,
                 "problems": problems,
-            })
+            }
+            if problems:
+                # Сырой ответ — чтобы разобрать сбой формата без повторного платного запроса.
+                entry["raw"] = raw
+            entries.append(entry)
             status = "ок" if not problems else "; ".join(problems)
             self.stdout.write(f"{category.slug}: {status}")
 

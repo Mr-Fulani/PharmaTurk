@@ -12,13 +12,17 @@ from apps.catalog.models import Brand, Category, CategoryTranslation, Product
 from apps.catalog.services.category_landing_seo import (
     apply_texts,
     collect_facts,
+    generate_checked,
     generate_texts,
     select_categories,
     validate_texts,
 )
 
-BODY_RU = " ".join(["Раздел собран из товаров турецких брендов, состав указан на упаковке."] * 9)
-BODY_EN = " ".join(["The section brings together products of Turkish brands, see the label."] * 9)
+# Текст без повторов: проверка ловит фразу из трёх слов, встреченную 4+ раз.
+_RU_SYLLABLES = ["ба", "ве", "ги", "до", "ку", "ле", "ми", "но", "пу", "ро"]
+_EN_SYLLABLES = ["ba", "ve", "gi", "do", "ku", "le", "mi", "no", "pu", "ro"]
+BODY_RU = " ".join(a + b + "н" for a in _RU_SYLLABLES for b in _RU_SYLLABLES[:9]) + "."
+BODY_EN = " ".join(a + b + "n" for a in _EN_SYLLABLES for b in _EN_SYLLABLES[:9]) + "."
 
 
 def _texts(**overrides):
@@ -76,6 +80,19 @@ def test_valid_texts_have_no_problems():
     assert validate_texts(_texts()) == []
 
 
+def test_looping_answer_is_flagged():
+    looped = BODY_EN + "\n\n## Notes\n\n" + " ".join(["end of the draft text"] * 4)
+    assert any("повтор" in problem for problem in validate_texts(_texts(en__seo_text=looped)))
+
+
+def test_ordinary_words_and_dosages_are_not_flagged():
+    texts = _texts(
+        ru__meta_description="Витамин D3 1000 МЕ и 400 МЕ из Турции: капли, спреи, таблетки по 120 штук. Состав лучше сверить с этикеткой.",
+        en__meta_description="Vitamin D3 1000 IU drops from Turkey, sold in pharmacies and health food stores. Pick the form that suits you best.",
+    )
+    assert validate_texts(texts) == []
+
+
 @pytest.mark.parametrize(
     "override, expected",
     [
@@ -83,8 +100,15 @@ def test_valid_texts_have_no_problems():
         ({"ru__meta_description": "В разделе 1 371 товар из Турции: витамины группы B брендов Solgar и Venatura, заявка менеджеру."}, "число"),
         ({"ru__meta_title": "Витамины B из Турции — Mudaroba"}, "ru.meta_title"),
         ({"en__h1": "Витамины B from Turkey"}, "en.h1: кириллица"),
-        ({"en__meta_description": "The best B vitamins from Turkey: capsules and tablets by Solgar and Venatura with delivery on request."}, "запрещено «best»"),
+        ({"en__meta_description": "The best B vitamins from Turkey: capsules and tablets by Solgar and Venatura with delivery on request."}, "запрещено «The best»"),
         ({"ru__seo_text": BODY_RU}, "нет подзаголовков"),
+        ({"ru__seo_text": "\n\n".join(f"## Часть {i}\n\n{BODY_RU[:300]}" for i in range(4))}, "4 подзаголовков"),
+        ({"ru__seo_text": BODY_RU + "\n\n## Бренды\n\nПроверенные бренды обуви. " + BODY_RU}, "запрещено «Проверенн»"),
+        ({"en__seo_text": BODY_EN + "\n\n## Brands\n\nPopular brands of shoes. " + BODY_EN}, "запрещено «Popular»"),
+        ({"ru__seo_text": BODY_RU + "\n\n## ЧЕРНОВИК БЕЗ СКРИПТА_КОНЕЦ ЧЕРНОВИК БЕЗ СКРИПТА_КОНЕЦ"}, "запрещено «ЧЕРНОВИК»"),
+        ({"ru__meta_title": "Кровати IKEA из Турции — купить в Mudaroba | Mudaroba"}, "«Mudaroba» дважды"),
+        ({"ru__meta_description": "Лучшие витамины группы B из Турции: капсулы и таблетки Solgar и Venatura, заявка менеджеру с доставкой."}, "запрещено «Лучшие»"),
+        ({"en__meta_description": "B vitamins from Turkey at 2500 per pack: capsules and tablets by Solgar and Venatura, request to a manager."}, "число «2500»"),
     ],
 )
 def test_validation_flags_promises_counts_and_format(override, expected):
@@ -113,17 +137,36 @@ def test_facts_contain_only_nonempty_sections_and_real_brands(catalog):
     assert "Витамин B комплекс 0" in facts["product_examples"]
     assert facts["is_supplements"] is True
     assert facts["delivery"] == "доставка 7–21 рабочий день"
+    assert facts["manager_checks"] == "наличие"
 
 
-def test_generate_parses_fenced_json():
+def test_generate_parses_json_with_text_around_and_upper_case_locales():
     class FakeClient:
-        def create(self, system_prompt, user_prompt, *, json_mode, max_tokens):
+        def create(self, system_prompt, user_prompt, *, json_mode, max_tokens, output_schema=None):
             assert "Solgar" in user_prompt and json_mode
-            return "```json\n" + json.dumps(_texts(), ensure_ascii=False) + "\n```", SimpleNamespace(usage="u")
+            assert output_schema["required"] == ["ru", "en"]
+            payload = {key.upper(): value for key, value in _texts().items()}
+            return "Вот ответ:\n```json\n" + json.dumps(payload, ensure_ascii=False) + "\n```", SimpleNamespace(usage="u")
 
-    texts, usage = generate_texts({"brands": ["Solgar"]}, FakeClient())
+    texts, usage, raw = generate_texts({"brands": ["Solgar"]}, FakeClient())
     assert texts == _texts()
     assert usage == "u"
+    assert raw.startswith("Вот ответ")
+
+
+def test_generate_checked_retries_once_after_problems():
+    answers = [_texts(ru__meta_title="Кровати IKEA из Турции — купить в Mudaroba"), _texts()]
+
+    class FakeClient:
+        calls = 0
+
+        def create(self, *args, **kwargs):
+            FakeClient.calls += 1
+            return json.dumps(answers.pop(0), ensure_ascii=False), SimpleNamespace(usage=FakeClient.calls)
+
+    texts, problems, _, usages = generate_checked({}, FakeClient())
+    assert problems == [] and texts == _texts()
+    assert usages == [1, 2]
 
 
 @pytest.mark.django_db

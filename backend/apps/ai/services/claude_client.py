@@ -28,8 +28,15 @@ class ClaudeClient:
         self.model = settings.AI_CONFIG.get("ANTHROPIC_MODEL") or "claude-haiku-5-5"
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY, max_retries=4, timeout=180.0)
 
-    def create(self, system_prompt: str, user_prompt: str, *, json_mode: bool, max_tokens: int):
-        """Один запрос к Claude → (текст, ответ SDK) или ClaudeUnavailable."""
+    def create(self, system_prompt: str, user_prompt: str, *, json_mode: bool, max_tokens: int, output_schema=None):
+        """Один запрос к Claude → (текст, ответ SDK) или ClaudeUnavailable.
+
+        output_schema — JSON-схема ответа (structured outputs): API отдаёт только валидный JSON
+        этой формы. Без неё JSON просим словами, и Haiku изредка теряет скобку в длинном ответе.
+        """
+        extra = {}
+        if output_schema is not None:
+            extra["output_config"] = {"format": {"type": "json_schema", "schema": output_schema}}
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -40,10 +47,11 @@ class ClaudeClient:
                 # Системный промпт одинаков у всех товаров партии — кэшируется (чтение в 10 раз дешевле).
                 system=[{
                     "type": "text",
-                    "text": system_prompt + (JSON_INSTRUCTION if json_mode else ""),
+                    "text": system_prompt + (JSON_INSTRUCTION if json_mode and output_schema is None else ""),
                     "cache_control": {"type": "ephemeral"},
                 }],
                 messages=[{"role": "user", "content": user_prompt}],
+                **extra,
             )
         except anthropic.AuthenticationError as exc:
             logger.error("Claude: ключ ANTHROPIC_API_KEY не принят (%s) — запрос уходит в OpenAI", exc)
