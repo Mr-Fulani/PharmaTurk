@@ -173,3 +173,90 @@ def test_whatsapp_phone_number_is_accepted_as_contact(request_state):
 
     assert response.status_code == 201, response.data
     assert Order.objects.get().contact_username == "+79990001122"
+
+
+@pytest.fixture
+def guest_cart(settings):
+    settings.ORDER_ONLINE_PAYMENTS_ENABLED = False
+    product = Product.objects.create(
+        name="Guest Product",
+        slug="guest-product",
+        price=Decimal("100.00"),
+        currency="RUB",
+        stock_quantity=10,
+    )
+    cart = Cart.objects.create(user=None, session_key="guest-cart-session", currency="RUB")
+    return CartItem.objects.create(
+        cart=cart,
+        product=product,
+        quantity=1,
+        price=Decimal("100.00"),
+        currency="RUB",
+    )
+
+
+def _post_as_guest(item, payload, session_key="guest-cart-session"):
+    request = APIRequestFactory().post(
+        "/api/orders/orders/create-from-cart/",
+        payload,
+        format="json",
+        HTTP_X_CART_SESSION=session_key,
+    )
+    view = OrderViewSet.as_view({"post": "create_from_cart"})
+    with patch(
+        "apps.orders.views.CartSerializer",
+        return_value=_cart_serializer(item.id),
+    ), patch("apps.orders.views._create_crypto_invoice") as create_invoice:
+        response = view(request)
+    create_invoice.assert_not_called()
+    return response
+
+
+@pytest.mark.django_db(transaction=True)
+def test_guest_sends_request_from_own_cart_without_account(guest_cart):
+    response = _post_as_guest(guest_cart, _payload(contact_email=""))
+
+    assert response.status_code == 201, response.data
+    order = Order.objects.get()
+    assert order.user is None
+    assert order.contact_name == "Request Test"
+    assert order.contact_phone == "+905550000001"
+    assert order.payment_method == "manager"
+    assert order.status == Order.OrderStatus.NEW
+
+
+@pytest.mark.django_db(transaction=True)
+def test_guest_without_cart_session_gets_empty_cart(guest_cart):
+    response = _post_as_guest(guest_cart, _payload(), session_key="someone-else")
+
+    assert response.status_code == 400
+    assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_guest_needs_name_and_phone(guest_cart):
+    response = _post_as_guest(guest_cart, _payload(contact_name="", contact_phone=""))
+
+    assert response.status_code == 400
+    assert "contact_name" in response.data
+    assert "contact_phone" in response.data
+    assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_guest_cannot_use_saved_address_ids(guest_cart):
+    response = _post_as_guest(guest_cart, _payload(shipping_address=1, shipping_address_text="Москва, Тверская 1"))
+
+    assert response.status_code == 201, response.data
+    order = Order.objects.get()
+    assert order.shipping_address is None
+    assert order.shipping_address_text == "Москва, Тверская 1"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_guest_honeypot_does_not_create_order(guest_cart):
+    response = _post_as_guest(guest_cart, _payload(website="http://spam.example"))
+
+    assert response.status_code == 201
+    assert Order.objects.count() == 0
+    assert CartItem.objects.filter(pk=guest_cart.pk).exists()

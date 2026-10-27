@@ -81,6 +81,8 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
   const [loading, setLoading] = useState(Boolean(number))
   const [error, setError] = useState<string | null>(null)
   const [isAuthError, setIsAuthError] = useState(false)
+  // Заявку отправил гость: заказ ему не показать (нужен вход), но заявка принята
+  const [guestRequestSent, setGuestRequestSent] = useState(false)
   const [sendEmail, setSendEmail] = useState('')
   const [sendState, setSendState] = useState<SendState>('idle')
   const [sendMessage, setSendMessage] = useState('')
@@ -110,6 +112,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
       setLoading(true)
       setError(null)
       setIsAuthError(false)
+      setGuestRequestSent(false)
       try {
         const currencyConfig = orderCurrency ? { headers: { 'X-Currency': orderCurrency } } : undefined
         const orderRes = await getSingleFlight(`/orders/orders/by-number/${number}`, currencyConfig)
@@ -120,6 +123,11 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
         if (!active) return
         const status = err?.response?.status
         const detail = err?.response?.data?.detail || t('order_success_send_error')
+        if (status === 401 && !ONLINE_PAYMENTS_ENABLED) {
+          setGuestRequestSent(true)
+          setLoading(false)
+          return
+        }
         setIsAuthError(status === 401)
         setError(status === 401 ? t('order_success_login_required', 'Войдите в аккаунт, чтобы увидеть заказ') : detail)
       }
@@ -210,6 +218,30 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
             </div>
           )}
 
+          {guestRequestSent && (
+            <div className="mt-6 rounded-3xl border border-violet-100 bg-white p-8 text-center shadow-xl shadow-violet-100/60 sm:p-10">
+              <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{t('order_request_heading', 'Заявка отправлена!')}</h1>
+              <p className="mx-auto mt-3 max-w-xl text-base text-gray-600">{t('order_request_lead', { number })}</p>
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
+                <Link
+                  href="/"
+                  className="rounded-full bg-violet-600 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 hover:bg-violet-700"
+                >
+                  {t('order_success_actions_continue')}
+                </Link>
+                <Link
+                  href="/auth?next=/profile"
+                  className="rounded-full border border-violet-200 px-5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50"
+                >
+                  {t('order_guest_register', 'Создать аккаунт')}
+                </Link>
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                {t('order_guest_register_hint', 'По желанию: с аккаунтом следующие заявки и их статусы будут в профиле.')}
+              </p>
+            </div>
+          )}
+
           {loading && number && (
             <div className="mt-6 rounded-3xl border border-violet-100 bg-white p-10 text-center shadow-xl shadow-violet-100/60">
               <p className="text-base text-gray-500">{t('order_success_loading')}</p>
@@ -244,7 +276,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
             </div>
           )}
 
-          {!loading && number && (
+          {!loading && number && !guestRequestSent && (
             <div className="mt-8 grid gap-8 lg:grid-cols-[1.15fr,0.85fr]">
               <section className="rounded-3xl border border-violet-100 bg-white/90 p-8 shadow-2xl shadow-violet-100/70 backdrop-blur">
                 <div className="flex items-start gap-4">

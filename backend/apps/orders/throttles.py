@@ -30,11 +30,14 @@ class CartMutationSustainedThrottle(TrustedUserOrProxyIPRateThrottle):
     rate = "1000/day"
 
 
-class CheckoutBurstThrottle(UserRateThrottle):
+# Заявку отправляют и гости: их считаем по доверенному IP, вошедших — по аккаунту
+class CheckoutBurstThrottle(TrustedUserOrProxyIPRateThrottle):
+    scope = "checkout_burst"
     rate = "5/min"
 
 
-class CheckoutSustainedThrottle(UserRateThrottle):
+class CheckoutSustainedThrottle(TrustedUserOrProxyIPRateThrottle):
+    scope = "checkout_sustained"
     rate = "30/day"
 
 

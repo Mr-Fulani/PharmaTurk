@@ -1614,6 +1614,13 @@ class OrderViewSet(viewsets.ViewSet):
     # SessionAuthentication вызывает CSRF-ошибки для POST — используем только JWT
     authentication_classes = [JWTSafeAuthentication]
 
+    def get_permissions(self):
+        # Заявку из Списка можно отправить без регистрации — как «Найдём товар».
+        # Гость видит только свою корзину (по X-Cart-Session), остальное — для вошедших.
+        if self.action == 'create_from_cart':
+            return [AllowAny()]
+        return super().get_permissions()
+
     def _get_order_for_user(self, user, number: str) -> Order:
         try:
             return (
@@ -1776,14 +1783,23 @@ class OrderViewSet(viewsets.ViewSet):
     )
     def create_from_cart(self, request):
         """Создание заказа из текущей корзины.
-        Требует аутентификацию. Примеры запросов в Swagger.
+        Гость — по своей корзине (X-Cart-Session), криптооплата — только вошедшим. Примеры в Swagger.
         """
+        if str(request.data.get('website') or '').strip():
+            # Бот заполнил поле-ловушку (как в «Найдём товар»): отвечаем как обычно, заказ не создаём
+            return Response({'detail': 'ok'}, status=status.HTTP_201_CREATED)
         serializer = CreateOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         payment_method = (
             serializer.validated_data.get("payment_method") or ""
         ).strip().lower()
         is_crypto = payment_method == "crypto"
+        if is_crypto and not request.user.is_authenticated:
+            # Счёт криптооплаты привязан к аккаунту (повтор по Idempotency-Key, страница оплаты)
+            return Response(
+                {"detail": _("Для оплаты криптовалютой войдите в аккаунт")},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
         idempotency_key = ""
         if is_crypto:
             idempotency_key = _crypto_idempotency_hash(
@@ -1959,6 +1975,7 @@ class OrderViewSet(viewsets.ViewSet):
         discount = 0
         promo_code = None
         consume_promo = False
+        customer = request.user if request.user.is_authenticated else None
 
         # Проверка и применение промокода из корзины или из запроса
         promo_code_value = serializer.validated_data.get('promo_code') or (cart.promo_code.code if cart.promo_code else None)
@@ -1968,7 +1985,7 @@ class OrderViewSet(viewsets.ViewSet):
                     code__iexact=promo_code_value
                 )
                 # Проверка валидности промокода
-                is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal), cart_currency=order_currency)
+                is_valid, error = promo_code.is_valid(user=customer, cart_total=float(subtotal), cart_currency=order_currency)
                 if is_valid:
                     discount = promo_code.calculate_discount(float(subtotal), currency=order_currency)
                     consume_promo = True
@@ -1994,7 +2011,7 @@ class OrderViewSet(viewsets.ViewSet):
             promo_code.save(update_fields=['used_count'])
 
         order = Order.objects.create(
-            user=request.user,
+            user=customer,
             number=number,
             subtotal_amount=subtotal,
             shipping_amount=shipping,
@@ -2016,9 +2033,9 @@ class OrderViewSet(viewsets.ViewSet):
         # Адрес доставки
         shipping_address_text = (serializer.validated_data.get('shipping_address_text') or '').strip()
         shipping_address_id = serializer.validated_data.get('shipping_address')
-        if shipping_address_id:
+        if shipping_address_id and customer:
             try:
-                addr = UserAddress.objects.get(id=shipping_address_id, user=request.user)
+                addr = UserAddress.objects.get(id=shipping_address_id, user=customer)
                 order.shipping_address = addr
                 if not shipping_address_text:
                     address_parts = [addr.country, addr.city, f"{addr.street} {addr.house}"]
