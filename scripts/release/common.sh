@@ -87,9 +87,54 @@ release_require_free_space() {
   local available_kib
   available_kib="$(release_free_kib "$path")"
   if (( available_kib < min_gib * 1024 * 1024 )); then
-    release_die "only $(( available_kib / 1024 / 1024 )) GiB free on ${path}, at least ${min_gib} GiB required; review old release images with prune-images.sh and 'docker system df' before retrying"
+    release_die "only $(( available_kib / 1024 / 1024 )) GiB free on ${path}, at least ${min_gib} GiB required; run prepare-disk.sh --apply and review 'docker system df' before retrying"
   fi
   release_log "free space on ${path}: $(( available_kib / 1024 / 1024 )) GiB (required ${min_gib} GiB)"
+}
+
+release_format_gib() {
+  awk -v kib="$1" 'BEGIN { printf "%.1f", kib / 1024 / 1024 }'
+}
+
+# Размер будущей копии перед деплоем = размер последней валидной копии
+# (без копий — 2 ГиБ). 26–27.10.2026 релизы падали уже после бэкапа ≈ 1,6 ГБ:
+# на образы оставалось 3 ГиБ из нужных 4.
+release_backup_estimate_kib() {
+  local backup_root="$1"
+  local manifest newest=""
+  for manifest in "$backup_root"/[0-9]*T[0-9]*Z_*/release.manifest; do
+    [[ -f "$manifest" ]] && newest="$(dirname "$manifest")"
+  done
+  if [[ -n "$newest" ]]; then
+    du -sk "$newest" | awk '{ print $1 }'
+  else
+    printf '%s\n' $(( 2 * 1024 * 1024 ))
+  fi
+}
+
+# Место на весь релиз до первого изменения: копия перед деплоем плюс
+# MUDAROBA_MIN_FREE_GIB (4) под образы, которые потом требует pull-images.sh.
+release_require_release_space() {
+  local backup_root="$1"
+  local docker_root="$2"
+  local min_kib backup_kib backup_free docker_free required
+  min_kib=$(( ${MUDAROBA_MIN_FREE_GIB:-4} * 1024 * 1024 ))
+  backup_kib="$(release_backup_estimate_kib "$backup_root")"
+  backup_free="$(release_free_kib "$backup_root")"
+  docker_free="$(release_free_kib "$docker_root")"
+  if [[ "$(df -Pk "$backup_root" | awk 'NR == 2 { print $1 }')" = \
+        "$(df -Pk "$docker_root" | awk 'NR == 2 { print $1 }')" ]]; then
+    required=$(( backup_kib + min_kib ))
+    (( backup_free >= required )) || \
+      release_die "only $(release_format_gib "$backup_free") GiB free, the release needs $(release_format_gib "$required") GiB (backup $(release_format_gib "$backup_kib") + images $(release_format_gib "$min_kib")); run prepare-disk.sh --apply and review 'docker system df' before retrying"
+  else
+    required="$backup_kib"
+    (( backup_free >= backup_kib )) || \
+      release_die "only $(release_format_gib "$backup_free") GiB free on ${backup_root}, the backup needs $(release_format_gib "$backup_kib") GiB"
+    (( docker_free >= min_kib )) || \
+      release_die "only $(release_format_gib "$docker_free") GiB free on ${docker_root}, images need $(release_format_gib "$min_kib") GiB; run prepare-disk.sh --apply"
+  fi
+  release_log "free space for the release: $(release_format_gib "$backup_free") GiB (required $(release_format_gib "$required") GiB)"
 }
 
 release_sha256() {
@@ -129,9 +174,10 @@ release_verify_backup_manifest() {
   [[ "$(release_sha256 "$qdrant_snapshot")" = "$qdrant_expected" ]] || release_die "Qdrant snapshot checksum mismatch"
 }
 
-# После успешного релиза: копии перед деплоем (≈ 690 МБ каждая) копились вручную
-# и дважды заполнили диск. Остаются три новейшие валидные и текущая — из манифеста.
-RELEASE_BACKUP_KEEP=3
+# После успешного релиза: копии перед деплоем (≈ 1,6 ГБ каждая) копились вручную
+# и дважды заполнили диск. Остаются две новейшие валидные и текущая — из манифеста
+# (ежедневная копия базы вне сервера — DB_BACKUP.md).
+RELEASE_BACKUP_KEEP=2
 
 release_prune_backups_after_deploy() {
   local manifest="$1"

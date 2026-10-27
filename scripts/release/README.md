@@ -54,10 +54,16 @@ external platform:
 Manual backup retention defaults to dry-run. Review the exact candidates before
 using the destructive mode. Keep the current pre-deploy backup protected until
 its observation and rollback window closes. After a successful deploy and smoke
-check, `deploy.sh` itself runs `prune-backups.sh --keep 3 --apply` with the
+check, `deploy.sh` itself runs `prune-backups.sh --keep 2 --apply` with the
 backup from `--backup-manifest` protected (`release_prune_backups_after_deploy`
-in `common.sh`): the three newest valid backups and the current one stay. A
-pruning failure is reported but does not fail the completed deploy.
+in `common.sh`): the two newest valid backups and the current one stay (a daily
+off-host database copy exists, see `docs/DB_BACKUP.md`). A pruning failure is
+reported but does not fail the completed deploy.
+
+Before the backup `create-backup.sh` also checks that the disk has room for the
+whole release: the size of the newest backup plus `MUDAROBA_MIN_FREE_GIB` (4)
+for the images `pull-images.sh` needs. It fails before writing anything instead
+of after a ≈ 1.6 GB backup.
 The validator accepts both current backup names and the historical
 `manifest.env`/`env.production` layout, but never treats incomplete directories
 or loose files as deletion candidates:
@@ -87,6 +93,41 @@ PG_RESTORE_CONTAINER=mudaroba-postgres-1 \
   --previous-release PREVIOUS_FULL_GIT_SHA \
   --output /secure/backups/release.manifest
 ```
+
+### Disk preparation before `git merge`
+
+Run `prepare-disk.sh` on the host first, while Git and containers are still on
+the previous release, so a lack of space stops the release before anything
+changes:
+
+```bash
+./scripts/release/prepare-disk.sh \
+  --project-name mudaroba \
+  --release-id NEW_FULL_GIT_SHA \
+  --previous-release PREVIOUS_FULL_GIT_SHA \
+  --backup-root /home/deploy/backups/pharmaturk \
+  --apply
+```
+
+Without `--apply` it only lists what it would remove. With `--apply` it removes
+stopped helper containers (`mudaroba-once-*`, `mudaroba-aibatch-*` and Compose
+one-offs `mudaroba-<service>-run-*`; application containers such as
+`mudaroba-celerybeat-1` are never touched, even when stopped), release images of
+every SHA except the new and previous ones (`prune-images.sh`; images used by any
+remaining container stay) and pre-deploy backups except the newest two
+(`prune-backups.sh`). Then it runs the same space check as `create-backup.sh` and
+exits non-zero if the release still does not fit. Removed images can be pulled
+again from GHCR. The full host sequence is:
+
+```text
+prepare-disk.sh --apply → git merge --ff-only NEW → create-backup.sh
+  → pull-images.sh → deploy.sh
+```
+
+If a release still fails after `git merge`, Git is ahead of the containers.
+Free space and rerun the same sequence (`prepare-disk.sh` and
+`create-backup.sh` do not depend on the checked-out SHA), or return Git with
+`git reset --keep PREVIOUS_FULL_GIT_SHA`.
 
 ## 3. Staging, then production
 
