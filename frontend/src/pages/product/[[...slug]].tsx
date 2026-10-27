@@ -1715,7 +1715,9 @@ export default function ProductPage({
               <div className="flex md:hidden overflow-x-auto snap-x snap-mandatory gap-4 pb-2 -mx-6 px-6 hide-scrollbar flex-shrink-0">
                 {gallerySource.length > 0 ? gallerySource.map((img, imageIndex) => {
                   const isVideoItem = (img as GalleryItem).isVideo === true
-                  const resolvedUrl = resolveMediaUrl(img.image_url)
+                  // Слайдер только на телефоне: 800 px (потолок proxy-media) хватает на ширину
+                  // экрана, оригинал мебели/одежды весит до 300+ КБ и тормозит LCP.
+                  const resolvedUrl = withListingImageMaxWidth(resolveMediaUrl(img.image_url), 800)
                   const thumbKey = `mobile-${String(img.id)}`
                   return (
                     <div key={thumbKey} className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
@@ -1735,11 +1737,12 @@ export default function ProductPage({
                           }
                           const prodAny = product as any
                           const productFallbackImage = prodAny.main_image_url || prodAny.main_image || prodAny.image_url
+                          // Постер качается сразу, даже у слайда за экраном — тоже 800 px.
                           const videoPoster =
                             (img.image_url && !isVideoUrl(img.image_url)
-                              ? resolveMediaUrl(img.image_url)
+                              ? withListingImageMaxWidth(resolveMediaUrl(img.image_url), 800)
                               : null) ||
-                            (productFallbackImage ? resolveMediaUrl(productFallbackImage) : null) ||
+                            (productFallbackImage ? withListingImageMaxWidth(resolveMediaUrl(productFallbackImage), 800) : null) ||
                             undefined
                           return (
                             <video
@@ -1947,20 +1950,26 @@ export default function ProductPage({
                         aria-hidden
                       />
                     )}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={activeImage}
-                      alt={displayProductName || product.name}
-                      loading="eager"
-                      fetchPriority="high"
-                      className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
-                      decoding="async"
-                      onLoad={() => setMainImageLoading(false)}
-                      onError={(e) => {
-                        setMainImageLoading(false)
-                        applyImageFallback(e.currentTarget)
-                      }}
-                    />
+                    {/* Блок скрыт на телефоне (display:none), но eager-картинку браузер всё равно
+                        качает с высоким приоритетом — отнимая канал у LCP-фото слайдера. До md
+                        вместо неё пустой gif. */}
+                    <picture>
+                      <source media="(max-width: 767px)" srcSet="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={activeImage}
+                        alt={displayProductName || product.name}
+                        loading="eager"
+                        fetchPriority="high"
+                        className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
+                        decoding="async"
+                        onLoad={() => setMainImageLoading(false)}
+                        onError={(e) => {
+                          setMainImageLoading(false)
+                          applyImageFallback(e.currentTarget)
+                        }}
+                      />
+                    </picture>
                     {/* Иконки в углу главного изображения: избранное + шаринг */}
                     <div
                       className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
