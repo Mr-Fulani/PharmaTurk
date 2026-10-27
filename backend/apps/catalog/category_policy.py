@@ -24,6 +24,13 @@ CATEGORY_POLICY_OVERRIDES: dict[str, dict[str, Any]] = {
             "en": ("bed base", "slatted bed base"),
         },
     },
+    # Кровать с подъёмным основанием и ящиками (IKEA «bazalar») — это кровать.
+    "storage-beds": {
+        "aliases": {
+            "ru": ("кровать", "кровать с ящиками", "кровать с подъемным механизмом"),
+            "en": ("bed", "storage bed", "bed with storage"),
+        },
+    },
     "bunk-beds": {
         "aliases": {"ru": ("двухъярусная кровать",), "en": ("bunk bed",)},
     },

@@ -37,6 +37,7 @@ def catalog():
     for name, slug, parent, en in (
         ("Кровати", "beds", bedroom, "Beds"),
         ("Основания кроватей", "bed-bases", bedroom, "Bed Bases"),
+        ("Кровати с хранением", "storage-beds", bedroom, "Storage Beds"),
         ("Кушетки", "day-beds", bedroom, "Day Beds"),
         ("Матрасы", "mattresses", bedroom, "Mattresses"),
         ("Комоды", "dressers", bedroom, "Dressers"),
@@ -281,3 +282,17 @@ def test_size_list_next_to_measurements_is_still_found():
         {"description": "Bedenler: S, M, L. Ürün boyu 70 cm, beden 42 için."}, "clothing"
     )
     assert [row["size"] for row in rows] == ["S", "M", "L", "42"]
+
+
+@pytest.mark.parametrize(
+    "pid, name, ru, en",
+    [
+        (13689, "Кровать MALM с подъемным механизмом", "Кровать MALM с подъемным механизмом", "MALM Bed with Storage"),
+        (13692, "Односпальная кровать MALM", "Односпальная кровать IKEA MALM с подъёмным механизмом", "IKEA MALM Single Storage Bed"),
+        (13694, "TONSTAD/LINDBÅDEN", "Двуспальная кровать с ящиками IKEA TONSTAD/LINDBÅDEN", "IKEA TONSTAD/LINDBÅDEN Double Bed with Storage"),
+    ],
+)
+def test_ikea_bazalar_beds_pass_in_storage_beds(catalog, pid, name, ru, en):
+    """IKEA «bazalar» переносятся в «Кровати с ящиками» (решение владельца 27.10.2026):
+    там «кровать» — своё название, а не конфликт с «Кроватями»."""
+    assert "title_category_mismatch" not in _reasons(catalog, "storage-beds", name, ru, en, "furniture"), pid

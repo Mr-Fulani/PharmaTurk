@@ -52,6 +52,9 @@ def test_resolve_legacy_ikea_furniture_type(furniture_type, expected_slug):
         (13428, "sifonyerler", "kategori/vihals-depolama-sistemleri", "dolap kombinasyonu", "storage-cabinets"),
         # Реклайнер остаётся креслом, а не уходит в игровые кресла по категории API.
         (13489, "koltuklar", "kategori/oyuncu-koltuklari", "yatar koltuk", "armchairs"),
+        # «Bazalar» — кровати с подъёмным основанием: решение владельца 27.10.2026.
+        (13688, "bazalar", "kategori/cift-kisilik-bazalar", "çift kişilik baza", "storage-beds"),
+        (13692, "bazalar", "kategori/tek-kisilik-bazalar", "tek kişilik baza", "storage-beds"),
         # Без точного типа общий раздел по-прежнему решает.
         (14138, "karyolalar", "kategori/cift-kisilik-karyolalar", "çift kişilik karyola", "beds"),
         (14392, "gardiroplar", "kategori/pax-tum-parcalar", "sürgülü raf içi düzenleyici", "wardrobes"),
