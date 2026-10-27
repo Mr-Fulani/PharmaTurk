@@ -89,6 +89,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [paymentMethod, setPaymentMethod] = useState(ONLINE_PAYMENTS_ENABLED ? 'cod' : 'manager')
   const [contactChannel, setContactChannel] = useState('')
   const [contactUsername, setContactUsername] = useState('')
+  const [website, setWebsite] = useState('') // поле-ловушка для ботов
   const usernameChannel = isUsernameChannel(contactChannel)
   const emailRequired = contactChannel === 'email'
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<CheckoutField, string>>>({})
@@ -285,6 +286,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     setOrderButtonState('processing')
     try {
       const body = new URLSearchParams()
+      if (website) body.set('website', website)
       body.set('contact_name', contactName)
       body.set('contact_phone', contactPhone)
       if (contactEmail) body.set('contact_email', contactEmail)
@@ -528,6 +530,18 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </div>
                 </div>
               )}
+
+              {/* Поле-ловушка: скрыто от людей, боты его заполняют */}
+              <input
+                type="text"
+                name="website"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                className="hidden"
+              />
 
               {/* Контактная информация */}
               <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">

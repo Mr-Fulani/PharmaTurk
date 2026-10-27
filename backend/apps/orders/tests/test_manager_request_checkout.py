@@ -251,3 +251,12 @@ def test_guest_cannot_use_saved_address_ids(guest_cart):
     order = Order.objects.get()
     assert order.shipping_address is None
     assert order.shipping_address_text == "Москва, Тверская 1"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_guest_honeypot_does_not_create_order(guest_cart):
+    response = _post_as_guest(guest_cart, _payload(website="http://spam.example"))
+
+    assert response.status_code == 201
+    assert Order.objects.count() == 0
+    assert CartItem.objects.filter(pk=guest_cart.pk).exists()

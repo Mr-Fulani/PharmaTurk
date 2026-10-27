@@ -403,6 +403,8 @@
   "order_request_page_title": "Request sent",
   "order_request_heading": "Request sent!",
   "order_request_lead": "Request #{{number}} has been received. A manager will contact you via the chosen channel, confirm availability and the final amount, and agree on a payment method.",
+  "order_guest_register": "Create an account",
+  "order_guest_register_hint": "Optional: with an account, your next requests and their status will be in your profile.",
   "order_request_total": "Estimated total",
   "payment_manager": "Agreed with manager",
   "receipt_print_title": "Order receipt #",

@@ -1785,6 +1785,9 @@ class OrderViewSet(viewsets.ViewSet):
         """Создание заказа из текущей корзины.
         Гость — по своей корзине (X-Cart-Session), криптооплата — только вошедшим. Примеры в Swagger.
         """
+        if str(request.data.get('website') or '').strip():
+            # Бот заполнил поле-ловушку (как в «Найдём товар»): отвечаем как обычно, заказ не создаём
+            return Response({'detail': 'ok'}, status=status.HTTP_201_CREATED)
         serializer = CreateOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         payment_method = (

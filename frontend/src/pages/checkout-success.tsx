@@ -229,7 +229,16 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                 >
                   {t('order_success_actions_continue')}
                 </Link>
+                <Link
+                  href="/auth?next=/profile"
+                  className="rounded-full border border-violet-200 px-5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50"
+                >
+                  {t('order_guest_register', 'Создать аккаунт')}
+                </Link>
               </div>
+              <p className="mt-3 text-xs text-gray-500">
+                {t('order_guest_register_hint', 'По желанию: с аккаунтом следующие заявки и их статусы будут в профиле.')}
+              </p>
             </div>
           )}
 
