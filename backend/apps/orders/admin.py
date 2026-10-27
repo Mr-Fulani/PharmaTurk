@@ -137,7 +137,11 @@ class CartReminderSettingsAdmin(admin.ModelAdmin):
         if not logs:
             self.message_user(
                 request,
-                _("Не отправлено: у вашего аккаунта нет email и привязанного Telegram или в каталоге нет товаров с ценой."),
+                _(
+                    "Не отправлено: каналы с галочкой («Отправлять на email», «Отправлять в Telegram») "
+                    "недоступны вашему аккаунту — нет email или привязанного Telegram — либо обе галочки сняты, "
+                    "или в каталоге нет товаров с ценой."
+                ),
                 messages.WARNING,
             )
         for log in logs:

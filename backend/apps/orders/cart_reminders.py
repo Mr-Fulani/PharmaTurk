@@ -553,14 +553,20 @@ def _send_telegram(chat_id: str, content: dict, log: CartReminderLog) -> str:
         # Текст исключения может содержать адрес с токеном бота
         return type(exc).__name__
     if not resp.ok:
-        return f"HTTP {resp.status_code}: {resp.text[:200]}"
+        error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+        if resp.status_code == 403 or "chat not found" in resp.text:
+            # Бот пишет только тем, кто открыл его и нажал Start (или не заблокировал).
+            bot = getattr(settings, "TELEGRAM_BOT_USERNAME", "") or "бота сайта"
+            return f"бот не может написать: откройте @{bot.lstrip('@')} в Telegram и нажмите Start. {error}"
+        return error
     return ""
 
 
 def send_reminder(user, step: int, conf: CartReminderSettings | None, *, cart=None, items=None, currency=None, locale=None) -> list[CartReminderLog]:
     """Отправляет одно напоминание во все доступные каналы клиента; каждая попытка — строка журнала.
 
-    conf=None — тестовая отправка администратору: каналы не зависят от настроек и подтверждения email.
+    conf=None — тестовая отправка администратору: галочки каналов из настроек учитываются,
+    а включение напоминаний и подтверждение email — нет.
     """
     if items is None:
         items = _cart_items(cart)
@@ -569,19 +575,20 @@ def send_reminder(user, step: int, conf: CartReminderSettings | None, *, cart=No
     locale = normalize_locale(locale or getattr(cart, "locale", ""))
     content = build_reminder_content(user, items, currency or getattr(cart, "currency", "RUB"), locale)
     is_test = conf is None
+    channels = conf or CartReminderSettings.load()
 
     logs = []
     email = (user.email or "").strip()
-    email_ok = (
+    email_ok = channels.email_enabled and (
         (is_test and email and not email.lower().endswith(PLACEHOLDER_EMAIL_SUFFIX))
-        or (not is_test and conf.email_enabled and has_confirmed_email(user))
+        or (not is_test and has_confirmed_email(user))
     )
     if email_ok:
         log = _new_log(user, cart, step, CartReminderLog.Channel.EMAIL, email, content)
         _finish_log(log, _send_email(user, email, content, log))
         logs.append(log)
 
-    telegram_ok = (is_test or conf.telegram_enabled) and has_telegram(user)
+    telegram_ok = channels.telegram_enabled and has_telegram(user)
     if telegram_ok:
         chat_id = str(user.telegram_id).strip()
         recipient = f"@{user.telegram_username}" if user.telegram_username else chat_id
