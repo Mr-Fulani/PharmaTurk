@@ -297,3 +297,34 @@ def test_supplement_category_words_from_source():
 def test_supplement_glossary_variants():
     assert missing_terms("AHCC SHIITAKE MANTARI ICEREN", "Экстракт шиитаке", "Shiitake Extract") == []
     assert missing_terms("ALINOX DEMIR SULFAT", "Сульфат железа", "Ferrous Sulfate") == []
+
+
+def test_cocoa_flavour_and_millicurie():
+    """Пилот круга 3: «PEDIASURE KAKAOLU, 220 мл» применилось с турецким словом, «50 mCi» латиницей."""
+    from apps.ai.services.medicine_title import ru_title_units
+    from apps.ai.services.semantic_validator import _medicine_flavour_lost, _title_has_turkish_words
+
+    assert build_medicine_title("PEDIASURE KAKAOLU 220 ML")["ru"] == "PEDIASURE, со вкусом какао, 220 мл"
+    assert _title_has_turkish_words("PEDIASURE KAKAOLU, 220 мл")
+    assert _medicine_flavour_lost("ENSURE PLUS FIBER, со вкусом ванили, 200 мл", "ENSURE PLUS FIBER KAKAOLU 200 ML")
+    assert ru_title_units("Y-90 CITRATE THERAPEUTIC 50 mCi") == "Y-90 CITRATE THERAPEUTIC 50 мКи"
+
+
+@pytest.mark.django_db
+def test_medicine_description_with_foreign_flavour_or_cut_off_is_blocked():
+    """Пилот круга 3: у ENSURE COMPACT «MUZ» описание «…с ванильным и банановым вкусом...» применилось."""
+    from apps.ai.services.quality_checker import get_moderation_reasons
+    from apps.catalog.models import Product
+
+    product = Product.objects.create(name="ENSURE COMPACT MUZ AROMALI 4x125 ML", slug="mq3-ensure", product_type="medicines")
+
+    def reasons(description):
+        log = AIProcessingLog.objects.create(
+            product=product, processing_type="full", generated_title="ENSURE COMPACT, со вкусом банана, 4 шт. по 125 мл",
+            generated_description=description, input_data={"name": "ENSURE COMPACT MUZ AROMALI 4x125 ML"},
+        )
+        return get_moderation_reasons(log)
+
+    assert "garbled_text" in reasons("ENSURE COMPACT — оральный питательный раствор с ванильным и банановым вкусом...")
+    assert "garbled_text" in reasons("ENSURE COMPACT — питательный раствор с ванильным вкусом, 4 шт. по 125 мл.")
+    assert "garbled_text" not in reasons("ENSURE COMPACT — питательный раствор со вкусом банана, 4 шт. по 125 мл.")
