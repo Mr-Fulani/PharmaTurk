@@ -1147,13 +1147,15 @@ class SemanticValidator:
             ):
                 conflicting_match = ""
             # «Jeans» из бренда «Tommy Jeans» — не раздел «Джинсы» (8 из 30 модераций партии FLO 27.10.2026).
-            brand_name = getattr(getattr(product, "brand", None), "name", "")
+            # Бренд читается только при конфликте: иначе лишний запрос на каждый товар аудита.
             if (
                 product_type not in _DOSAGE_FORM_PRODUCT_TYPES
                 and conflicting_match
-                and brand_name
                 and not CYRILLIC_RE.search(conflicting_match)
-                and _contains_phrase(_normalized(fold_tr(brand_name)), conflicting_match)
+                and _contains_phrase(
+                    _normalized(fold_tr(getattr(getattr(product, "brand", None), "name", ""))),
+                    conflicting_match,
+                )
             ):
                 conflicting_match = ""
             if conflicting_match:
