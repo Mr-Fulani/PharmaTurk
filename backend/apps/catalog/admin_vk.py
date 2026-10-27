@@ -18,24 +18,37 @@ FULL_FEED_URL = f"{SITE_URL}/api/catalog/export/yml/catalog.yml"
 CHANGELIST = "admin:catalog_vkcategorymapping_changelist"
 
 
-def feed_url(category_slug: str = "") -> str:
-    return f"{FULL_FEED_URL}?category={category_slug}" if category_slug else FULL_FEED_URL
+def feed_url(category_slug: str = "", part: int | None = None) -> str:
+    params = []
+    if category_slug:
+        params.append(f"category={category_slug}")
+    if part:
+        params.append(f"part={part}")
+    return f"{FULL_FEED_URL}?{'&'.join(params)}" if params else FULL_FEED_URL
 
 
 def _feed_rows() -> list[dict]:
-    """Строки панели фидов: раздел, ссылка, когда собран, сколько офферов."""
+    """Строки панели фидов: по строке на каждую часть раздела — ссылка, когда собран, сколько офферов."""
     keys = prepared_feed_keys()
     names = dict(Category.objects.filter(slug__in=keys).values_list("slug", "name"))
-    snapshots = {s.category_slug: s for s in YMLFeedSnapshot.objects.filter(category_slug__in=keys)}
-    return [
-        {
-            "slug": key,
-            "name": names.get(key) or "Полный каталог",
-            "url": feed_url(key),
-            "snapshot": snapshots.get(key),
-        }
-        for key in keys
-    ]
+    by_key: dict[str, list] = {}
+    for snapshot in YMLFeedSnapshot.objects.filter(category_slug__in=keys).order_by("part"):
+        by_key.setdefault(snapshot.category_slug, []).append(snapshot)
+
+    rows = []
+    for key in keys:
+        name = names.get(key) or "Полный каталог"
+        parts = by_key.get(key) or [None]
+        for index, snapshot in enumerate(parts):
+            multipart = len(parts) > 1
+            rows.append({
+                "slug": key,
+                "name": f"{name} — часть {index + 1} из {len(parts)}" if multipart else name,
+                "url": feed_url(key, index + 1 if multipart else None),
+                "snapshot": snapshot,
+                "first": index == 0,
+            })
+    return rows
 
 
 @admin.register(VKCategoryMapping)
@@ -46,10 +59,11 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
     Кнопки пересборки фидов и синхронизации фото ставят фоновые задачи Celery.
     """
     change_list_template = "admin/catalog/vkcategorymapping/change_list.html"
-    list_display = ("product_type_display", "vk_category_path", "feed_url_link", "updated_at")
+    list_display = ("product_type_display", "gender", "vk_category_path", "feed_url_link", "updated_at")
     list_display_links = ("product_type_display",)
+    list_filter = ("gender",)
     search_fields = ("product_type", "vk_category_path")
-    ordering = ("product_type",)
+    ordering = ("product_type", "gender")
 
     # ------------------------------------------------------------------
     # Кастомные URL: пересборка фидов и синхронизация фото
@@ -154,11 +168,10 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {
-            "fields": ("product_type", "vk_category_path", "feed_url_readonly"),
+            "fields": ("product_type", "gender", "vk_category_path", "feed_url_readonly"),
             "description": _(
-                "Укажите тип товара и соответствующий путь категории маркетплейса. "
-                "Путь задаётся через ' > ', например: "
-                "'Одежда, обувь и аксессуары > Мужская одежда > Головные уборы > Кепки и бейсболки'"
+                "Укажите тип товара, пол и путь категории ВК. Запись «Любой пол» — для товаров "
+                "без пола и унисекс. Путь задаётся через ' > ', например: 'Гардероб > Женщинам > Обувь'"
             ),
         }),
         (_("Примечания"), {
@@ -181,5 +194,5 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         if obj:
-            return ("product_type", "updated_at", "feed_url_readonly")
+            return ("product_type", "gender", "updated_at", "feed_url_readonly")
         return ("updated_at", "feed_url_readonly")

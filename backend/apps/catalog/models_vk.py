@@ -8,16 +8,15 @@ from django.utils.translation import gettext_lazy as _
 
 class VKCategoryMapping(models.Model):
     """
-    Маппинг product_type → путь категории ВК Маркета.
+    Маппинг (product_type, пол) → путь категории ВК Маркета.
 
     Управляется через Django Admin — без изменений кода при добавлении новых типов.
+    Названия — из дерева категорий ВК (market.getCategories), см. docs/VK_YML_FEED.md.
 
     Пример vk_category_path:
-      'Одежда, обувь и аксессуары > Мужская одежда > Головные уборы > Кепки и бейсболки'
-      'Электроника > Смартфоны и гаджеты'
-      'Здоровье > Витамины и БАД'
-      'Мебель и интерьер > Мебель'
-      'Запчасти и автотовары'
+      'Гардероб > Женщинам > Обувь'
+      'Дом и дача > Мебель'
+      'Витамины, БАДы и пищевые добавки'
     """
 
     PRODUCT_TYPE_CHOICES = [
@@ -41,19 +40,36 @@ class VKCategoryMapping(models.Model):
         ("islamic_clothing",  "Исламская одежда"),
     ]
 
+    GENDER_CHOICES = [
+        ("", "Любой пол"),
+        ("men", "Мужское"),
+        ("women", "Женское"),
+        ("kids", "Детское"),
+    ]
+
     product_type = models.CharField(
         _("Тип товара (product_type)"),
         max_length=60,
-        unique=True,
         choices=PRODUCT_TYPE_CHOICES,
         help_text=_("Значение product_type товара (из поля Product.product_type)."),
+    )
+    gender = models.CharField(
+        _("Пол"),
+        max_length=10,
+        blank=True,
+        default="",
+        choices=GENDER_CHOICES,
+        help_text=_(
+            "Пол товара (товар или его категория). «Любой пол» — для товаров без пола, "
+            "унисекс и типов, где ВК не делит по полу."
+        ),
     )
     vk_category_path = models.CharField(
         _("Путь категории ВК"),
         max_length=500,
         help_text=_(
             "Полный путь категории через ' > '. "
-            "Пример: 'Здоровье > Витамины и БАД'"
+            "Пример: 'Дом и дача > Мебель'"
         ),
     )
     notes = models.TextField(
@@ -66,26 +82,31 @@ class VKCategoryMapping(models.Model):
     class Meta:
         verbose_name = _("Маппинг категории ВК")
         verbose_name_plural = _("Маппинги категорий ВК")
-        ordering = ["product_type"]
+        ordering = ["product_type", "gender"]
+        constraints = [
+            models.UniqueConstraint(fields=["product_type", "gender"], name="catalog_vk_mapping_type_gender_uniq"),
+        ]
 
     def __str__(self) -> str:
-        return f"{self.product_type} → {self.vk_category_path}"
+        suffix = f" ({self.gender})" if self.gender else ""
+        return f"{self.product_type}{suffix} → {self.vk_category_path}"
 
 
 class YMLFeedSnapshot(models.Model):
     """
     Готовый файл YML-фида: полный каталог (пустой slug) или корневая категория.
 
-    Собирает задача catalog.generate_yml_feeds, эндпоинт фида отдаёт файл как есть.
+    Фид больше лимита ВК делится на части (part = 1, 2, …). Собирает задача
+    catalog.generate_yml_feeds, эндпоинт фида отдаёт файл как есть.
     """
 
     category_slug = models.CharField(
         _("Slug категории"),
         max_length=200,
-        unique=True,
         blank=True,
         help_text=_("Пусто — полный каталог."),
     )
+    part = models.PositiveSmallIntegerField(_("Часть"), default=1)
     file = models.FileField(_("Файл фида"), upload_to="feeds/yml/", max_length=300, blank=True)
     generated_at = models.DateTimeField(_("Собран"), null=True, blank=True)
     offers_count = models.PositiveIntegerField(_("Офферов"), default=0)
@@ -94,7 +115,10 @@ class YMLFeedSnapshot(models.Model):
     class Meta:
         verbose_name = _("Готовый YML-фид")
         verbose_name_plural = _("Готовые YML-фиды")
-        ordering = ["category_slug"]
+        ordering = ["category_slug", "part"]
+        constraints = [
+            models.UniqueConstraint(fields=["category_slug", "part"], name="catalog_yml_feed_slug_part_uniq"),
+        ]
 
     def __str__(self) -> str:
-        return self.category_slug or "catalog"
+        return f"{self.category_slug or 'catalog'} #{self.part}"

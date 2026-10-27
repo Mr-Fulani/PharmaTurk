@@ -7,11 +7,14 @@ YML-фид (Yandex Market Language) для ВК Маркета и Яндекс.�
 на каждый товар.
 
 Полный каталог и корневые категории собирает задача ``catalog.generate_yml_feeds``
-в файлы хранилища (``YMLFeedSnapshot``) — эндпоинт отдаёт готовый файл.
-Подкатегории эндпоинт отдаёт потоком на лету (``iter_yml_feed``).
+в файлы хранилища (``YMLFeedSnapshot``) — эндпоинт отдаёт готовый файл. Фид больше
+лимитов ВК (8 МБ / 15 000 товаров) делится на части ``?part=N``.
+Подкатегории эндпоинт отдаёт потоком на лету (``iter_yml_feed``), без деления.
+Лекарства в фиды не попадают (решение владельца, ``BLOCKED_PRODUCT_TYPES``).
 
 Особенности фида:
-- Категории ВК берутся из таблицы VKCategoryMapping (Admin → Маппинги категорий ВК).
+- Категории ВК берутся из таблицы VKCategoryMapping по типу товара и полу
+  (Admin → Маппинги категорий ВК).
 - Характеристики товара (цвет, размер, материал) вписываются в описание,
   а НЕ в отдельные <param> — это предотвращает «мусор» в названии в ВК.
 - group_id намеренно отключён: с ним ВК автоматически дописывает атрибуты к названию.
@@ -38,40 +41,59 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 500
 
-# Fallback-маппинг если в БД для product_type ещё нет записи.
-# Обновляйте этот словарь ТОЛЬКО если не хотите использовать Admin.
-# Предпочтительный способ — Admin → Маппинги категорий ВК.
+# Лимиты импорта YML в ВК (vk.com/faq21697): файл до 8 МБ и до 15 000 товаров.
+# Больший фид делится на части; запас к 8 МБ — на расхождение МБ/MiB у ВК.
+MAX_PART_BYTES = 7_500_000
+MAX_PART_OFFERS = 15_000
+
+# Решение владельца 27.10.2026: лекарства не выкладываем ни в один фид
+# (ни раздел, ни полный каталог), пока он не разрешит. БАДы и медтехника — можно.
+BLOCKED_PRODUCT_TYPES = ("medicines",)
+BLOCKED_ROOT_SLUGS = ("medicines",)
+
+# Запасной маппинг, если в БД нет записи для (product_type, пол) и (product_type, «любой»).
+# Те же пути, что ставит миграция 0229; предпочтительный способ — Admin → Маппинги категорий ВК.
 _FALLBACK_VK_MAP = {
-    "clothing":          "Одежда, обувь и аксессуары > Мужская одежда",
-    "shoes":             "Одежда, обувь и аксессуары > Мужская обувь",
-    "jewelry":           "Одежда, обувь и аксессуары > Украшения",
-    "electronics":       "Электроника",
-    "furniture":         "Мебель и интерьер > Мебель",
-    "books":             "Книги",
-    "perfumery":         "Красота и здоровье > Парфюмерия",
-    "medicines":         "Красота и здоровье > Лекарственные препараты",
-    "supplements":       "Красота и здоровье > Витамины, БАДы",
-    "medical_equipment": "Красота и здоровье > Медицинская техника и оборудование",
-    "tableware":         "Товары для дома > Посуда и кухня",
-    "accessories":       "Одежда, обувь и аксессуары > Аксессуары",
-    "incense":           "Красота и здоровье > Ароматерапия",
-    "sports":            "Спорт и отдых",
-    "auto_parts":        "Запчасти и автотовары",
-    "headwear":          "Одежда, обувь и аксессуары > Мужская одежда > Аксессуары > Головные уборы > Кепки и бейсболки",
-    "underwear":         "Одежда, обувь и аксессуары > Нижнее бельё",
-    "islamic_clothing":  "Одежда, обувь и аксессуары > Мужская одежда",
+    "clothing":          "Гардероб > Женщинам",
+    "shoes":             "Гардероб > Мужчинам > Обувь",
+    "jewelry":           "Гардероб > Женщинам > Аксессуары",
+    "electronics":       "Смартфоны и гаджеты",
+    "furniture":         "Дом и дача > Мебель",
+    "books":             "Книги и журналы",
+    "perfumery":         "Парфюмерия",
+    "supplements":       "Витамины, БАДы и пищевые добавки",
+    "medical_equipment": "Медицинские изделия и расходные материалы",
+    "tableware":         "Дом и дача > Посуда и товары для кухни",
+    "accessories":       "Гардероб > Женщинам > Аксессуары",
+    "incense":           "Ароматерапия",
+    "sports":            "Спортивная одежда",
+    "auto_parts":        "Запчасти",
+    "headwear":          "Гардероб > Мужчинам > Аксессуары",
+    "underwear":         "Гардероб > Женщинам",
+    "islamic_clothing":  "Гардероб > Женщинам",
 }
 
+FEED_GENDERS = ("men", "women", "kids")
 
-def load_vk_mapping() -> dict[str, str]:
+
+def load_vk_mapping() -> dict[tuple[str, str], str]:
     """
-    Загружает маппинг из БД и объединяет с fallback.
-    Записи из БД имеют приоритет над fallback.
+    Маппинг (product_type, пол) → путь категории ВК: записи БД поверх fallback.
+    Пол "" — запись для товаров без пола и унисекс.
     """
-    mapping = dict(_FALLBACK_VK_MAP)
+    mapping = {(product_type, ""): path for product_type, path in _FALLBACK_VK_MAP.items()}
     for m in VKCategoryMapping.objects.all():
-        mapping[m.product_type] = m.vk_category_path
+        mapping[(m.product_type, m.gender or "")] = m.vk_category_path
     return mapping
+
+
+def vk_category_path(vk_map, product_type: str, gender: str, category_name: str) -> str:
+    product_type = (product_type or "other").lower()
+    return (
+        vk_map.get((product_type, gender or ""))
+        or vk_map.get((product_type, ""))
+        or f"Товары > {category_name}"
+    )
 
 
 def feed_site_url() -> str:
@@ -84,10 +106,24 @@ def root_category_slug(product_type: str) -> str:
     return (product_type or "").replace("_", "-")
 
 
+def _blocked_category_ids() -> set[int]:
+    from ..views import _get_category_ids_with_descendants
+
+    return _get_category_ids_with_descendants(list(BLOCKED_ROOT_SLUGS))
+
+
+def is_blocked_feed_key(category_slug: str) -> bool:
+    """Фид раздела отключён (лекарства и их подкатегории)."""
+    if not category_slug:
+        return False
+    return Category.objects.filter(slug=category_slug, id__in=_blocked_category_ids()).exists()
+
+
 def prepared_feed_keys() -> list[str]:
     """Фиды, которые собираются заранее: активные корневые категории и полный каталог ("")."""
     roots = list(
         Category.objects.filter(parent__isnull=True, is_active=True)
+        .exclude(slug__in=BLOCKED_ROOT_SLUGS)
         .order_by("sort_order", "name")
         .values_list("slug", flat=True)
     )
@@ -97,7 +133,11 @@ def prepared_feed_keys() -> list[str]:
 def is_prepared_feed_key(category_slug: str) -> bool:
     if not category_slug:
         return True
-    return Category.objects.filter(slug=category_slug, parent__isnull=True, is_active=True).exists()
+    return (
+        Category.objects.filter(slug=category_slug, parent__isnull=True, is_active=True)
+        .exclude(slug__in=BLOCKED_ROOT_SLUGS)
+        .exists()
+    )
 
 
 # ----------------------------------------------------------------------
@@ -182,17 +222,20 @@ def _feed_scope(category_slug: str):
     ):
         product_prefetches.append("source_offers")
 
+    blocked_ids = _blocked_category_ids()
     products = (
         Product.objects
         .filter(is_active=True)
         .exclude(medicine_item__import_restricted_countries__gt="")  # не рекламируем (TD-024)
+        .exclude(product_type__in=BLOCKED_PRODUCT_TYPES)
+        .exclude(category_id__in=blocked_ids)
         .select_related("brand", "category", "price_info")
         .prefetch_related(*product_prefetches)
         .distinct()
     )
 
     if not category_slug:
-        return Category.objects.filter(is_active=True), products
+        return Category.objects.filter(is_active=True).exclude(id__in=blocked_ids), products
 
     all_cat_ids = _get_category_ids_with_descendants([category_slug])
 
@@ -238,26 +281,22 @@ def _xml(el) -> str:
     return ET.tostring(el, encoding="unicode")
 
 
-def iter_yml_feed(category_slug: str = "", site_url: str | None = None) -> Iterator[str]:
-    """
-    Фид по кускам строк. Пустой slug — полный каталог; slug категории — она и её потомки.
-    """
-    site_url = (site_url or feed_site_url()).rstrip("/")
-    vk_map = load_vk_mapping()
-    cats, products = _feed_scope(category_slug)
+FEED_TAIL = "</offers></shop></yml_catalog>"
 
+
+def _feed_head(cats) -> str:
+    """Всё до первого <offer>: магазин, валюта, дерево категорий."""
     date = timezone.now().replace(microsecond=0).isoformat()
-    yield "<?xml version='1.0' encoding='utf-8'?>\n"
-    yield f'<yml_catalog date="{date}"><shop>'
+    pieces = ["<?xml version='1.0' encoding='utf-8'?>\n", f'<yml_catalog date="{date}"><shop>']
 
     for tag, text in (("name", "Mudaroba"), ("company", "Mudaroba"), ("url", "https://mudaroba.com/")):
         el = ET.Element(tag)
         el.text = text
-        yield _xml(el)
+        pieces.append(_xml(el))
 
     currencies = ET.Element("currencies")
     ET.SubElement(currencies, "currency", id="RUB", rate="1")
-    yield _xml(currencies)
+    pieces.append(_xml(currencies))
 
     # Дерево категорий
     categories_el = ET.Element("categories")
@@ -266,21 +305,82 @@ def iter_yml_feed(category_slug: str = "", site_url: str | None = None) -> Itera
         if cat.parent_id:
             cat_el.set("parentId", str(cat.parent_id))
         cat_el.text = cat.name
-    yield _xml(categories_el)
+    pieces.append(_xml(categories_el))
+    pieces.append("<offers>")
+    return "".join(pieces)
 
-    yield "<offers>"
+
+class _GenderResolver:
+    """
+    Пол товара для категории ВК — как фильтр «Пол» на сайте: поле товара,
+    затем пол категории или её родителей, затем пол по названию/slug категории.
+    """
+
+    def __init__(self):
+        self._categories = {
+            row[0]: row[1:]
+            for row in Category.objects.values_list("id", "parent_id", "gender", "slug", "name")
+        }
+        self._cache: dict[int, str] = {}
+
+    def category_gender(self, category_id) -> str:
+        from ..views import _infer_gender_values_from_text
+
+        if category_id in self._cache:
+            return self._cache[category_id]
+        gender, node, seen = "", category_id, set()
+        while node and node not in seen and not gender:
+            seen.add(node)
+            parent_id, own_gender, slug, name = self._categories.get(node, (None, "", "", ""))
+            inferred = _infer_gender_values_from_text(slug, name) - {"unisex"}
+            gender = own_gender or (inferred.pop() if len(inferred) == 1 else "")
+            node = parent_id
+        self._cache[category_id] = gender or ""
+        return self._cache[category_id]
+
+    def product_gender(self, prod, domain_item) -> str:
+        gender = (
+            getattr(prod, "gender", "")
+            or getattr(domain_item, "gender", "")
+            or self.category_gender(prod.category_id)
+        )
+        return gender if gender in FEED_GENDERS else ""
+
+
+def _iter_offers(products, site_url: str) -> Iterator[str]:
+    """<offer> по одному, в порядке id товара."""
+    vk_map = load_vk_mapping()
+    genders = _GenderResolver()
     exported_ids: set[str] = set()  # защита от дублей
     for batch in _iter_product_batches(products):
-        offers_el = ET.Element("offers")
         for prod in batch:
-            _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids)
-        yield "".join(_xml(offer) for offer in offers_el)
-    yield "</offers></shop></yml_catalog>"
+            offers_el = ET.Element("offers")
+            _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids, genders)
+            for offer in offers_el:
+                yield _xml(offer)
 
 
-def _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids: set[str]) -> None:
+def iter_yml_feed(category_slug: str = "", site_url: str | None = None) -> Iterator[str]:
+    """
+    Фид по кускам строк. Пустой slug — полный каталог; slug категории — она и её потомки.
+    Без деления на части — для подкатегорий, которые отдаются на лету.
+    """
+    site_url = (site_url or feed_site_url()).rstrip("/")
+    cats, products = _feed_scope(category_slug)
+    yield _feed_head(cats)
+    buffer: list[str] = []
+    for offer in _iter_offers(products, site_url):
+        buffer.append(offer)
+        if len(buffer) >= 200:
+            yield "".join(buffer)
+            buffer.clear()
+    yield "".join(buffer) + FEED_TAIL
+
+
+def _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids: set[str], genders) -> None:
     domain_item = getattr(prod, "yml_domain_item", prod)
     variants = list(getattr(domain_item, "yml_active_variants", None) or [])
+    gender = genders.product_gender(prod, domain_item)
 
     if not variants:
         oid = str(prod.id)
@@ -291,6 +391,7 @@ def _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids: set[str
             offers_el, prod, site_url, vk_map,
             domain_item=domain_item,
             has_variants=False,
+            gender=gender,
         )
         add_params_to_description(offer, prod, domain_item)
         return
@@ -308,6 +409,7 @@ def _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids: set[str
             offer_id=offer_id,
             variant=variant,
             has_variants=True,
+            gender=gender,
         )
         add_params_to_description(offer, prod, domain_item, variant)
 
@@ -329,7 +431,7 @@ def _variant_price_rub(variant):
 
 
 def create_offer(parent, prod, site_url, vk_map,
-                 domain_item=None, offer_id=None, variant=None, has_variants=False):
+                 domain_item=None, offer_id=None, variant=None, has_variants=False, gender=""):
     """
     Строит элемент <offer> с правильным порядком тегов.
 
@@ -382,13 +484,10 @@ def create_offer(parent, prod, site_url, vk_map,
     if prod.category_id:
         ET.SubElement(offer, "categoryId").text = str(prod.category_id)
 
-    # 5. Категория ВК (из Admin-маппинга или fallback)
-    p_type_raw = (prod.product_type or "other").lower()
-    market_cat = vk_map.get(
-        p_type_raw,
-        f"Товары > {cat_name}",
+    # 5. Категория ВК (из Admin-маппинга по типу и полу или fallback)
+    ET.SubElement(offer, "market_category").text = vk_category_path(
+        vk_map, prod.product_type, gender, cat_name
     )
-    ET.SubElement(offer, "market_category").text = market_cat
 
     # 6. Изображения
     # Стратегия: максимум картинок для каждого offer без дублей.
@@ -532,44 +631,91 @@ def add_params_to_description(offer, prod, domain_item, variant=None):
 # Готовые файлы фида
 # ----------------------------------------------------------------------
 
-def generate_feed_file(category_slug: str = "") -> YMLFeedSnapshot:
+def _write_parts(category_slug: str) -> list[tuple]:
     """
-    Собирает фид во временный файл, кладёт в хранилище и переключает YMLFeedSnapshot.
+    Пишет фид во временные файлы частями не больше MAX_PART_BYTES и MAX_PART_OFFERS.
 
-    Старый файл удаляется только после того, как запись указывает на новый, —
-    в любой момент эндпоинт отдаёт целый фид.
+    Каждая часть — целый YML с тем же деревом категорий. Возвращает
+    [(файл, офферов, байт), …]; файлы закрывает вызывающий.
+    """
+    cats, products = _feed_scope(category_slug)
+    head = _feed_head(cats).encode("utf-8")
+    tail = FEED_TAIL.encode("utf-8")
+    parts: list[list] = []
+
+    def start_part():
+        fh = tempfile.TemporaryFile()
+        fh.write(head)
+        parts.append([fh, 0, len(head)])
+        return parts[-1]
+
+    current = start_part()
+    for offer in _iter_offers(products, feed_site_url()):
+        data = offer.encode("utf-8")
+        full = current[1] >= MAX_PART_OFFERS or current[2] + len(data) + len(tail) > MAX_PART_BYTES
+        if current[1] and full:
+            current[0].write(tail)
+            current[2] += len(tail)
+            current = start_part()
+        current[0].write(data)
+        current[1] += 1
+        current[2] += len(data)
+    current[0].write(tail)
+    current[2] += len(tail)
+    return [tuple(part) for part in parts]
+
+
+def _delete_snapshot(snapshot: YMLFeedSnapshot) -> None:
+    if snapshot.file:
+        snapshot.file.storage.delete(snapshot.file.name)
+    snapshot.delete()
+
+
+def generate_feed_files(category_slug: str = "") -> list[YMLFeedSnapshot]:
+    """
+    Собирает фид раздела (частями), кладёт файлы в хранилище и переключает YMLFeedSnapshot.
+
+    Старый файл части удаляется только после того, как запись указывает на новый, —
+    в любой момент эндпоинт отдаёт целый фид. Лишние части прежней сборки удаляются.
     """
     started = timezone.now()
-    offers_count = 0
-    with tempfile.TemporaryFile() as fh:
-        for chunk in iter_yml_feed(category_slug):
-            offers_count += chunk.count("<offer ")
-            fh.write(chunk.encode("utf-8"))
-        size_bytes = fh.tell()
-        fh.seek(0)
+    stamp = started.strftime("%Y%m%d-%H%M%S")
+    name = category_slug or "catalog"
+    parts = _write_parts(category_slug)
+    snapshots = []
+    try:
+        for number, (fh, offers_count, size_bytes) in enumerate(parts, start=1):
+            fh.seek(0)
+            snapshot, _ = YMLFeedSnapshot.objects.get_or_create(category_slug=category_slug, part=number)
+            old_name = snapshot.file.name if snapshot.file else ""
+            snapshot.file.save(f"{name}-{stamp}-{number}.xml", File(fh, name=f"{name}.xml"), save=False)
+            snapshot.generated_at = started
+            snapshot.offers_count = offers_count
+            snapshot.size_bytes = size_bytes
+            snapshot.save()
+            if old_name and old_name != snapshot.file.name:
+                snapshot.file.storage.delete(old_name)
+            snapshots.append(snapshot)
+    finally:
+        for fh, _, _ in parts:
+            fh.close()
 
-        snapshot, _ = YMLFeedSnapshot.objects.get_or_create(category_slug=category_slug)
-        old_name = snapshot.file.name if snapshot.file else ""
-        stamp = started.strftime("%Y%m%d-%H%M%S")
-        snapshot.file.save(
-            f"{category_slug or 'catalog'}-{stamp}.xml",
-            File(fh, name=f"{category_slug or 'catalog'}.xml"),
-            save=False,
-        )
-
-    snapshot.generated_at = started
-    snapshot.offers_count = offers_count
-    snapshot.size_bytes = size_bytes
-    snapshot.save()
-
-    if old_name and old_name != snapshot.file.name:
-        snapshot.file.storage.delete(old_name)
+    for stale in YMLFeedSnapshot.objects.filter(category_slug=category_slug, part__gt=len(parts)):
+        _delete_snapshot(stale)
     logger.info(
-        "YML-фид %s: %s офферов, %s байт за %.1f с",
-        category_slug or "catalog", offers_count, size_bytes,
-        (timezone.now() - started).total_seconds(),
+        "YML-фид %s: %s частей, %s офферов, %s байт за %.1f с",
+        name, len(snapshots), sum(s.offers_count for s in snapshots),
+        sum(s.size_bytes for s in snapshots), (timezone.now() - started).total_seconds(),
     )
-    return snapshot
+    return snapshots
+
+
+def remove_unlisted_feeds(keys: list[str]) -> int:
+    """Удаляет готовые фиды разделов, которых больше нет в списке (выключены или заблокированы)."""
+    stale = list(YMLFeedSnapshot.objects.exclude(category_slug__in=keys))
+    for snapshot in stale:
+        _delete_snapshot(snapshot)
+    return len(stale)
 
 
 def iter_snapshot_file(snapshot: YMLFeedSnapshot, chunk_size: int = 64 * 1024) -> Iterator[bytes]:

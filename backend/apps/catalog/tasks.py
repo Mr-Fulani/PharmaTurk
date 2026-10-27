@@ -721,20 +721,25 @@ def recompute_sort_ranks() -> dict:
 
 @shared_task(name="catalog.generate_yml_feeds", soft_time_limit=60 * 50, time_limit=60 * 55)
 def generate_yml_feeds() -> dict:
-    """Собирает готовые YML-фиды: корневые категории, затем полный каталог (docs/VK_YML_FEED.md)."""
+    """Собирает готовые YML-фиды частями: корневые категории, затем полный каталог (docs/VK_YML_FEED.md)."""
     from celery.exceptions import SoftTimeLimitExceeded
     from django.core.cache import cache
 
-    from apps.catalog.services.yml_feed import generate_feed_file, prepared_feed_keys
+    from apps.catalog.services.yml_feed import generate_feed_files, prepared_feed_keys, remove_unlisted_feeds
 
     lock_key = "catalog:yml-feeds:generate-lock"
     if not cache.add(lock_key, True, timeout=60 * 55):
         return {"status": "already_running"}
     results = {}
     try:
-        for key in prepared_feed_keys():
+        keys = prepared_feed_keys()
+        # Разделы, которые выключили или заблокировали (лекарства), больше не отдаём.
+        removed = remove_unlisted_feeds(keys)
+        if removed:
+            results["removed_parts"] = removed
+        for key in keys:
             try:
-                results[key or "catalog"] = generate_feed_file(key).offers_count
+                results[key or "catalog"] = [part.offers_count for part in generate_feed_files(key)]
             except SoftTimeLimitExceeded:
                 raise
             except Exception:
