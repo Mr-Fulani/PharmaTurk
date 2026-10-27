@@ -516,8 +516,51 @@ export default function Header() {
                 animate={{ width: isMobileMenuOpen ? 0 : 'auto', opacity: isMobileMenuOpen ? 0 : 1 }}
                 transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2, ease: 'easeOut' }}
                 aria-hidden={isMobileMenuOpen}
-                className={`flex flex-shrink-0 items-center ${isMobileMenuOpen ? 'invisible pointer-events-none' : 'visible pointer-events-auto'}`}
+                className={`flex flex-shrink-0 items-center gap-1 ${isMobileMenuOpen ? 'invisible pointer-events-none' : 'visible pointer-events-auto'}`}
               >
+                {/* Поиск и Список заявки на телефоне — всегда на виду, не только в меню из точек */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLogoExpanded(false)
+                    setShowCurrencyMenu(false)
+                    setIsMobileSearchOpen(true)
+                  }}
+                  aria-label={t('search_open', 'Открыть поиск')}
+                  title={t('search_open', 'Открыть поиск')}
+                  className={`inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${isDark ? 'text-slate-100' : 'text-main'}`}
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m16 16 5 5" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <Link
+                  href="/cart"
+                  onClick={() => setShowSuggestions(false)}
+                  aria-label={t('menu_cart', 'Корзина')}
+                  title={t('menu_cart', 'Корзина')}
+                  className={`relative mr-1 inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
+                    path.startsWith('/cart')
+                      ? isDark ? 'bg-slate-800 text-white' : 'bg-red-50 text-red-700'
+                      : isDark ? 'text-slate-100' : 'text-main'
+                  }`}
+                >
+                  <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h15l-1.5 9h-12z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 6 5 3H3" />
+                    <circle cx="9" cy="20" r="1" />
+                    <circle cx="18" cy="20" r="1" />
+                  </svg>
+                  {isClient && itemsCount > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white shadow-sm"
+                    >
+                      {itemsCount > 99 ? '99+' : itemsCount}
+                    </span>
+                  )}
+                </Link>
                 {user ? (
                   <AnimatedLogoutButton
                     onLogout={() => { setShowSuggestions(false); logout() }}
