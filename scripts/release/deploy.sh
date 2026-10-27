@@ -64,7 +64,19 @@ release_compose_prod stop \
 release_log "ensuring existing state services are running without recreating containers or volumes"
 release_compose_prod up -d --no-recreate postgres redis redis-cache qdrant
 release_log "applying committed migrations exactly once"
+# Сайт уже остановлен: если миграция упадёт, поднимаем прошлый релиз, иначе прод
+# остаётся лежать (27.10.2026: ~4 минуты простоя). Миграции в проекте только добавляют,
+# прошлый код работает поверх частично применённой схемы.
+restart_previous_release() {
+  release_log "ERROR: migrations failed; restarting the previous release ${PREVIOUS_RELEASE}"
+  export IMAGE_TAG="$PREVIOUS_FRONTEND_RELEASE" BACKEND_IMAGE_TAG="$PREVIOUS_RELEASE"
+  release_compose_prod up -d --no-build --no-deps --wait --wait-timeout 180 \
+    backend frontend celeryworker celery_ai celery_recsys celerybeat nginx || \
+    release_log "ERROR: the previous release did not start; start it manually"
+}
+trap restart_previous_release ERR
 release_compose_prod --profile ops run --rm --no-deps migrate migrate --noinput
+trap - ERR
 release_log "starting one consistent release without rebuilding or automatic migrations"
 release_compose_prod up -d --no-build --no-deps --wait --wait-timeout 180 \
   backend frontend celeryworker celery_ai celery_recsys celerybeat nginx

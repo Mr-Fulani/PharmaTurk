@@ -92,16 +92,15 @@ def restore_april_rows(apps, schema_editor):
 
 def reset_feed_snapshots(apps, schema_editor):
     """
-    Прежние готовые фиды собраны с лекарствами и без деления на части — удаляем.
+    Прежние готовые фиды собраны с лекарствами и без деления на части — удаляем записи.
     Первый же запрос фида после деплоя ответит 503 и запустит новую сборку.
-    """
-    from django.core.files.storage import default_storage
 
+    Файлы в хранилище (R2) миграция не трогает: у контейнера миграций на проде нет
+    выхода в интернет, и удаление по сети уронило релиз 27.10.2026. Старые файлы
+    ``feeds/yml/`` остаются (несколько десятков МБ), сайт их больше не отдаёт.
+    """
     YMLFeedSnapshot = apps.get_model("catalog", "YMLFeedSnapshot")
-    for snapshot in YMLFeedSnapshot.objects.all():
-        if snapshot.file:
-            default_storage.delete(snapshot.file.name)
-        snapshot.delete()
+    YMLFeedSnapshot.objects.all().delete()
 
 
 class Migration(migrations.Migration):
