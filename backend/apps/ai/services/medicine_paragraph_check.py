@@ -95,8 +95,12 @@ _PHONE = re.compile(
     r"(?:(?<!\d)0|(?<!\w)O)[\s-]?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}(?!\d)"
     r"|(?<![\w.,])\d{3}[\s-]\d{3}[\s-]\d{2}[\s-]\d{2}(?!\d)"
 )
-# Время: «20.00» в исходнике — «20:00» в переводе; не соотношение «1:50».
-_TIME_COLON = re.compile(r"(?<=\b\d{2}):(?=\d{2}(?!\d))")
+# Время: «20.00», «8.00'de», «0400'den» в исходнике — «20:00», «8:00», «04:00», «4:00 a.m.» в переводе
+# (очередь модерации 27.10.2026); час — без ведущего нуля. Не соотношение «1:50», не «1000'de 1».
+_TIME = re.compile(
+    r"(?<![\d.,:])(\d{2}|\d(?=:00))[:](\d{2})(?!\d)|(?<![\d.,])(\d{1,2})\.([0-5]\d)(?=['’]\s*[dt][ae]n?\b)"
+    r"|(?<![\d.,])0(\d)([0-5]\d)(?=['’]\s*[dt][ae]n?\b)"
+)
 # Площадь: «39 cm2», «600 cm 2», «1,73 m2» — в переводе «см²», «м²».
 _SQUARE = re.compile(r"(\d\s?(?:[cс]?[mм]|mm|мм))\s?[2²](?!\d)")
 # Номер в названии препарата, которое модель заменила меткой: «ERTES72'nin» → «{BRAND}».
@@ -121,7 +125,8 @@ def _number_text(text: str) -> str:
     text = fix_ocr_digits(str(text or "").replace(_BRAND, " ").translate(_FRACTIONS))
     text = _ROMAN_RE.sub(lambda m: _ROMAN[m.group(0)], text)
     text = _PHONE.sub(lambda m: " 0" + re.sub(r"\D", "", m.group(0).replace("O", "0")).lstrip("0") + " ", text)
-    return _SQUARE.sub(r"\1", _TIME_COLON.sub(".", text))
+    text = _TIME.sub(lambda m: "{}.{}".format(int(next(g for g in m.groups()[::2] if g)), next(g for g in m.groups()[1::2] if g)), text)
+    return _SQUARE.sub(r"\1", text)
 
 
 def plain_numbers(text: str) -> frozenset[str]:
@@ -307,8 +312,10 @@ def concepts(text: str, lang: str) -> frozenset[str]:
 # «2. X'İ KULLANMADAN ÖNCE…», «3. Kapağı açınız»; не «1. günde», «2. haftada», «2. aydan sonra»,
 # «3. ve 4. kürler boyunca».
 _SOURCE_HEADING = re.compile(
+    # «4. bölümde listelenen…», «bölüme bakınız» — ссылка на раздел, а не заголовок (очередь 27.10.2026);
+    # «3. Bölüm» без окончания — заголовок.
     r"^\s*(\d{1,2})\.\s+(?!ve(?:ya)?\s+\d)(?!(?:g[üu]n|hafta|ay(?:da|dan|a|ın|ını|lık|lar|ları)?\b|y[ıi]l|doz|kez|saat|basamak|tedavi|"
-    r"k[üu]r|seans)\w*)(?=[^\W\d_]|\{BRAND\})",
+    r"k[üu]r|seans|b[öo]l[üu]m(?=[a-zçğıöşü]))\w*)(?=[^\W\d_]|\{BRAND\})",
     re.IGNORECASE,
 )
 _TRANSLATION_HEADING = re.compile(r"^\s*(\d{1,2})\s*[.)](?!\d)")
@@ -323,7 +330,9 @@ _AT_LEAST = {
         # через» — верно), не диапазон «en az 1'i ila 10'unda» и не испорченные частоты
         # «en az 1'inden daha az/fazla».
         r"\ben az\s+(?:\d|yarım|bir\b|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on\b|yirmi|otuz|kırk|elli|birkaç)"
-        r"(?![^.;]{0,30}geç(?:meden|memiş))(?!\S*\s*'?\s*(?:inden|ından|nden|ndan)\b)(?!\S*\s+ila\b)",
+        r"(?![^.;]{0,30}geç(?:meden|memiş))(?!\S*\s*'?\s*(?:inden|ından|nden|ndan)\b)(?!\S*\s+ila\b)"
+        # Диапазон частоты «En az 10 kişide birinden fazla, fakat 100 kişide birden az» (очередь 27.10.2026).
+        r"(?![^.;]{0,50}\bfakat\b)",
         re.IGNORECASE,
     ),
     "ru": re.compile(
@@ -334,14 +343,17 @@ _AT_LEAST = {
     ),
     "en": re.compile(
         r"at least|or more|one or more|or older|and older|and over|and above|no sooner|no earlier|not earlier|"
-        r"minimum|≥|no less|not less|from the age of|older than|more than \d+ in",
+        r"minimum|≥|no less|not less|from the age of|older than|more than \d+ in|\bany (?:one )?of (?:these|the following)\b",
         re.IGNORECASE,
     ),
 }
 
 # Частота побочного эффекта в начале абзаца («Yaygın olmayan: 100 hastanın…»).
+# Скобка — только с частотой внутри: «Seyrek (görülme sıklığı <1/1.000)»; «Yaygın (sistemik) etkili
+# kortikosteroid» — «системный», а не строка частоты (очередь модерации 27.10.2026).
 _FREQUENCY_LABEL = re.compile(
-    r"^\W*(çok yaygın|yaygın olmayan|yaygın|çok seyrek|seyrek|bilinmiyor)\s*(?:yan etkiler\w*)?\s*[:(]",
+    r"^\W*(çok yaygın|yaygın olmayan|yaygın|çok seyrek|seyrek|bilinmiyor)\s*(?:yan etkiler\w*)?\s*"
+    r"(?::|\((?=[^)]*(?:\d|görül|sıklı|kişi|hasta)))",
     re.IGNORECASE,
 )
 _FREQUENCY_ANYWHERE = re.compile(r"çok yaygın|yaygın olmayan|yaygın|çok seyrek|seyrek", re.IGNORECASE)
@@ -359,9 +371,10 @@ _FREQUENCY_NUMBERS = {
 _FREQUENCY_TRANSLATION = {
     "ru": (
         ("unknown", r"неизвестн|не известн"),
-        ("very_common", r"очень (?:част|распростран)"),
+        # «частота» — не «часто»: «Редкие (частота <1/1000)» (очередь модерации 27.10.2026).
+        ("very_common", r"очень (?:част(?!от)|распростран)"),
         ("uncommon", r"нечаст|не част|необычн|нераспростран"),
-        ("common", r"част|распростран"),
+        ("common", r"част(?!от)|распростран"),
         ("very_rare", r"очень редк"),
         ("rare", r"редк"),
     ),
@@ -384,10 +397,14 @@ def _frequency(text: str, lang: str) -> Optional[str]:
         label = _FREQUENCY_LABEL.match(_lower(text, lang))
         return _FREQUENCY_SOURCE[label.group(1)] if label else None
     head = text.lower()[:60]
-    for name, pattern in _FREQUENCY_TRANSLATION[lang]:
-        if re.search(pattern, head):
-            return name
-    return None
+    # Название частоты — первое в строке: «Редко: некроз (… в редких случаях распространяющийся …)»
+    # — «редко», а не «распространённые»; при одном начале — более точное («очень редко», «нечасто»).
+    found = [
+        (match.start(), index, name)
+        for index, (name, pattern) in enumerate(_FREQUENCY_TRANSLATION[lang])
+        if (match := re.search(pattern, head))
+    ]
+    return min(found)[2] if found else None
 
 
 class Features:

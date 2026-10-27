@@ -98,7 +98,7 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     # ── Минералы ──
     "cinko": ("цинк", "zinc", S),
     "magnezyum": ("магний", "magnesium", S),
-    "demir": ("железо", "iron", S),
+    "demir": ("железо", "iron / ferrous", S),  # «DEMIR SULFAT» — «Ferrous Sulfate»
     "kalsiyum": ("кальций", "calcium", S),
     "selenyum": ("селен", "selenium / seleno", S),
     "iyot": ("йод", "iodine", S),
@@ -187,6 +187,9 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "zencefilli": ("с имбирём", "with ginger / ginger", S),
     "kekik": ("тимьян (чабрец) / душица", "thyme / oregano", S),
     "nane": ("мята", "mint", S),
+    # Очередь модерации 27.10.2026: «peppermint» в названии считался чужим разделом.
+    "tibbi nane": ("мята перечная", "peppermint", S),
+    "nane suyu": ("мятная вода", "peppermint water / mint water", S),
     "rezene": ("фенхель", "fennel", S),
     "anason": ("анис", "anise", S),
     "tarcin": ("корица", "cinnamon", S),
@@ -211,6 +214,9 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "feslegen": ("базилик", "basil", S),
     "ardic": ("можжевельник / можжевеловый", "juniper", S),
     "okaliptus": ("эвкалипт", "eucalyptus", S),
+    "okaliptuslu": ("с эвкалиптом / эвкалипт", "with eucalyptus / eucalyptus", S),
+    "okoliptus": ("эвкалипт", "eucalyptus", S),  # опечатка источника
+    "mira": ("мирра", "myrrh", S),
     "lavanta": ("лаванда", "lavender", S),
     "safran": ("шафран", "saffron", S),
     "aspir": ("сафлор", "safflower", S),
@@ -230,7 +236,7 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "hashas": ("мак", "poppy", S),
     "sarimsak": ("чеснок", "garlic", S),
     "yosunu": ("водоросли / исландский мох", "algae / moss", S),
-    "mantari": ("грибы", "mushrooms", S),
+    "mantari": ("грибы", "mushrooms", D),  # «шиитаке» — гриб, «Экстракт шиитаке» без «грибы» верно
     "tahil": ("злаки", "cereals", D),
     "ek gida": ("прикорм", "complementary food", D),
     "ek gidasi": ("прикорм", "complementary food", D),
@@ -327,6 +333,8 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "vitaminli": ("с витамином", "with vitamin", D),
     "mineraller": ("минералы", "minerals", D),
     "aminoasit": ("аминокислоты", "amino acids", S),
+    "aminoasitler": ("аминокислоты", "amino acids", S),
+    "enerji": ("для энергии / энергия", "energy", D),
     "asit": ("кислота", "acid", D),
     "asitleri": ("кислоты", "acids", D),
     "sitrat": ("цитрат", "citrate", D),

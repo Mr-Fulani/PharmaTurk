@@ -5,12 +5,13 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Any, Iterable
 
 from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 from apps.catalog.category_policy import CATEGORY_POLICY_OVERRIDES, build_category_policy
 from apps.catalog.product_semantics import looks_untranslated_turkish
-from apps.ai.services.medicine_fact_check import strip_proper_name_lines
+from apps.ai.services.medicine_fact_check import _SALT_WORDS_TR, _latin_letters, strip_proper_name_lines
 from apps.ai.services.medicine_memory import section_paragraph_problems
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.medicine_title import (
@@ -275,7 +276,7 @@ _TURKISH_TITLE_WORDS = re.compile(
 # переводится («со вкусом клубники») и не входит в бренд (очередь модерации 26.10.2026).
 _TURKISH_FLAVOUR_WORDS = frozenset({
     "AROMALI", "AROMASIZ", "CILEK", "ÇILEK", "VANILYA", "CIKOLATA", "ÇIKOLATA", "KAHVE",
-    "PORTAKAL", "AHUDUDU", "MUZ", "MEYVE", "TROPIK",
+    "PORTAKAL", "AHUDUDU", "MUZ", "MEYVE", "TROPIK", "KAYISI",
 })
 _TURKISH_TITLE_TRANSLITERATIONS = re.compile(
     r"(эркек|кадын|кадин|чоджук|чочук|айаккаб|аяккаб|тишорт|гёмлек|гомлек|пантолон|"
@@ -303,7 +304,8 @@ _MEDICINE_RU_TITLE_TRANSLITERATIONS = re.compile(
     r"(?<![а-яё])энтерик|капли[\s-]+таблет|"
     # AIRun 3, лог 1036: «%8 АМИНОКИСЛОТ ИВ ИНФУЗИЯ 500 МЛ (СЕТ)» — «ИВ», «СЕТ» и
     # турецкая запись процента «%8» (по-русски «8%»; «1% 1%» и «10% 100 мг» — русская).
-    r"(?<![а-яё])ив(?![а-яё])|(?<![а-яё])сет(?![а-яё])|(?<![\d.,])%\s*\d)",
+    # «2,1 % 1x(24x450 мл)» — знак после числа с пробелом, тоже русская запись (очередь 27.10.2026).
+    r"(?<![а-яё])ив(?![а-яё])|(?<![а-яё])сет(?![а-яё])|(?<![\d.,])(?<![\d.,]\s)%\s*\d)",
     re.IGNORECASE,
 )
 # Латиница в RU-названии лекарства допустима только в бренде источника и в этих обозначениях.
@@ -317,7 +319,8 @@ _MEDICINE_RU_TITLE_LATIN_OK = frozenset({
 # Единицы источника: в RU-названии они пишутся по-русски («мг», «МЕ», «ТЕ»), латиницей — брак.
 # Английские слова формы и фасовки в названиях импортных лекарств — тоже переводятся.
 _MEDICINE_SOURCE_UNIT_WORDS = frozenset({
-    "MG", "MCG", "MKG", "ML", "G", "GR", "IU", "UI", "TU", "TSU", "MIU", "MMOL", "MEQ", "MCI", "U", "L", "ADET",
+    # «TSU» аллергенов (ROXSIT 1000 TSU/ML) по-русски не пишется — остаётся латиницей.
+    "MG", "MCG", "MKG", "ML", "G", "GR", "IU", "UI", "TU", "MIU", "MMOL", "MEQ", "MCI", "U", "L", "ADET",
     "OZ", "TUP", "INJECTION", "SUSPENSION", "DROPS", "CREAM", "EYE", "EAR", "SYRUP", "KIT", "SACHET", "SACHETS",
     "SPRAY", "GEL", "PATCH", "PATCHES", "AMPOULE", "AMPOULES", "BOTTLE", "PEN", "PENS", "FOR", "AND", "WITH",
 })
@@ -430,7 +433,28 @@ def _alias_in_source(alias: str, source_name: Any, locale: str) -> bool:
         for phrase, labels in FORM_PHRASES.items()
         if re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", folded)
     ]
-    return any(_contains_phrase(_normalized(text), alias) for text in texts)
+    if any(_contains_phrase(_normalized(text), alias) for text in texts):
+        return True
+    # Другая форма того же слова: «эвкалиптовое масло» — OKALIPTUS (эвкалипт), «tea tree oil» —
+    # TEA TREE, «Damask Rose Oil» — ROSA DAMASCENA (очередь модерации 27.10.2026: 15 БАДов).
+    words = [word for word in _normalized(alias).split() if len(word) > 3 and word not in _ALIAS_DESCRIPTOR_WORDS]
+    known = [word for text in [folded, *texts] for word in _normalized(text).split() if len(word) > 3]
+    return bool(words) and all(any(_same_stem(word, other) for other in known) for word in words)
+
+
+# Слова сочетания, которые сами по себе не указывают на раздел: «масло чайного дерева».
+_ALIAS_DESCRIPTOR_WORDS = frozenset({
+    "масло", "масла", "экстракт", "вода", "порошок", "extract", "water", "powder", "leaf", "листья",
+})
+
+
+def _same_stem(word: str, other: str) -> bool:
+    """Одно слово в другой форме: основа (без двух последних букв) одного — начало или часть другого."""
+    stem, other_stem = word[: max(3, len(word) - 2)], other[: max(3, len(other) - 2)]
+    return (
+        word.startswith(other_stem) or other.startswith(stem)
+        or (len(other_stem) >= 5 and other_stem in word) or (len(stem) >= 5 and stem in other)
+    )
 
 
 def _title_has_turkish_words(title: Any) -> bool:
@@ -594,13 +618,61 @@ def _medicine_identity_tokens(value: Any) -> set[str]:
         number = (match.group(1) or match.group(2) or match.group(3)).replace(",", ".")
         result.add(f"DOSE:{number}:%")
     pack_match = re.search(
-        r"(?:\(|\b)(\d+)\s*(?:ADET|TABLET|TABLETS|KAPSUL|KAPSÜL|CAPSULES?|ШТ|ШТУК|ТАБЛЕТ(?:ОК|КИ)?|КАПСУЛ(?:А|Ы)?)\b",
+        r"(?:\(|\b)(\d+)\s*(?:ADET|TABLET|TABLETS|KAPSUL|KAPSÜL|CAPSULES?|ШТ|ШТУК|ТАБЛЕТ(?:ОК|КИ)?|КАПСУЛ(?:А|Ы)?|"
+        r"УПАКОВ(?:КА|КИ|ОК))\b",
         upper,
     )
     # «1 ADET», «(1 FLAKON)» — одна упаковка; название пишет её без числа («туба 5 г», «флакон»).
     if pack_match and pack_match.group(1) != "1":
         result.add(f"PACK:{pack_match.group(1)}")
     return result
+
+
+# Слова, которые шаблон оставляет в бренде (title_brand), но это описание товара — модель
+# их переводит: «OPILOX TIRNAK CILASI SETI» — лак для ногтей, «BRAIN-SPECT RADYOFARMASOTIK
+# HAZIRLAMA KITI», «VAXORAL YETISKINLER ICIN», «ZOSTER VACCINE RECOMBINANT, ADJUVANTED»
+# (очередь модерации 27.10.2026: 47 из 76 «потерянных брендов» — такие слова).
+_MEDICINE_TITLE_DESCRIPTOR_WORDS = frozenset({
+    "TIRNAK", "CILASI", "SETI", "RADYOFARMASOTIK", "HAZIRLAMA", "KITI", "KARDIYAK", "PERFUZYON",
+    "YETISKINLER", "BAGIRSAK", "TEMIZLEME", "ZOSTER", "VACCINE", "RECOMBINANT", "ADJUVANTED",
+    "KUADIVALAN", "HUMAN", "TIP", "INJEELE", "INJECTION", "KAYISI", "GRANULES", "PWDR", "FOR",
+})
+
+
+def _medicine_identity_lost(source_name: Any, title: Any) -> set[str]:
+    """Что из бренда, дозировок и фасовки источника потеряно в RU-названии лекарства.
+
+    Бренд — как его выделяет шаблон названия (``title_brand``): слова формы после бренда
+    («ENJ.», «SUS.», «INJECTION», «GRANULES») и описания (``_MEDICINE_TITLE_DESCRIPTOR_WORDS``),
+    турецкие соли («MAGNEZYUM SULFAT») модель переводит. Слово бренда сохранено, если оно
+    есть в названии латиницей или кириллицей («NORADRENALIN» — «Норадреналин», «DEKSTRAN» —
+    «Декстран»). «%2,5 MG» источника — «2,5%» или «2,5 мг»: знак или единица лишние.
+    """
+    source_tokens = _medicine_identity_tokens(source_name)
+    brand = {
+        token[6:]
+        for token in _medicine_identity_tokens(title_brand(source_name))
+        if token.startswith("BRAND:")
+        and fold_tr(token[6:]).upper() not in _MEDICINE_TITLE_DESCRIPTOR_WORDS
+        and not _SALT_WORDS_TR.fullmatch(fold_tr(token[6:]))
+    }
+    lost = {token for token in source_tokens - _medicine_identity_tokens(title) if not token.startswith("BRAND:")}
+    words = set()
+    for word in re.findall(r"[^\W\d_][\w-]*", str(title or "")):
+        # «x» латиницы кириллицей — «кс»: «ELEXACAFTOR» — «элексакафтор».
+        words.update(_latin_letters(part, "ru").replace("x", "ks") for part in [word, *word.split("-")])
+    for token in brand:
+        letters = _latin_letters(token, "tr").replace("x", "ks")
+        if letters and not any(
+            word.startswith(letters) or SequenceMatcher(None, letters, word).ratio() >= 0.8 for word in words if word
+        ):
+            lost.add(f"BRAND:{token}")
+    upper = str(source_name or "").upper()
+    for number, unit in re.findall(r"%\s*(\d+(?:[.,]\d+)?)\s*(MG|ML|G)\b", upper):
+        pair = {f"DOSE:{number.replace(',', '.')}:%", f"DOSE:{number.replace(',', '.')}:{unit}"}
+        if pair - lost:
+            lost -= pair
+    return lost
 
 
 def _supplement_identity_tokens(value: Any, *, source: bool = False) -> set[str]:
@@ -1064,10 +1136,10 @@ class SemanticValidator:
                 report.rejected_fields.add("title")
                 report.reasons.append("title_category_mismatch")
                 break
-            if (
-                locale == "ru"
-                and original_tokens
-                and not original_tokens.issubset(identity_tokens(title))
+            if locale == "ru" and (
+                _medicine_identity_lost(source_name, title)
+                if product_type == "medicines"
+                else original_tokens and not original_tokens.issubset(identity_tokens(title))
             ):
                 report.rejected_fields.add("title")
                 report.reasons.append("title_identity_lost")
@@ -1127,10 +1199,23 @@ class SemanticValidator:
                 and isinstance(translations_data.get("ru"), dict)
                 else {}
             )
+            # Бренд с турецкими буквами в переводе («ASAZıN», «ÎPRABÜL» при IPRABUL) — имя, а не турецкий
+            # текст (очередь модерации 27.10.2026).
+            brand_words = {
+                word for word in re.findall(r"[a-z0-9]+", fold_tr(paragraph_brand(source_name))) if len(word) >= 3
+            }
+
+            def without_brand(value: Any) -> str:
+                return re.sub(
+                    r"[^\W\d_]+",
+                    lambda match: " " if fold_tr(_without_marks(match.group(0))) in brand_words else match.group(0),
+                    str(value or ""),
+                )
+
             for field_name, value in ru_data.items():
                 if field_name in moderator_decided_fields:
                     continue
-                if looks_untranslated_turkish(strip_proper_name_lines(value)):
+                if looks_untranslated_turkish(strip_proper_name_lines(without_brand(value))):
                     report.rejected_fields.add(f"medicine_translation:{field_name}")
                     report.reasons.append("untranslated_medicine_field")
 

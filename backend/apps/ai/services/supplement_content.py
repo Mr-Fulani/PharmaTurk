@@ -166,16 +166,56 @@ def parse_pack(name: Any) -> Optional[Pack]:
             en = f"{pieces_en} × {_number_en(size)} {volume_en}"
             return Pack(ru, en, source, piece=container)
         ru, en = f"{_number_ru(count)} {volume_ru}", f"{_number_en(count)} {volume_en}"
-        return Pack(ru, en, source, form_ru=form[0] if form else "", form_en=form[1] if form else "")
+        pack = Pack(ru, en, source, form_ru=form[0] if form else "", form_en=form[1] if form else "")
+        return _with_leading_pack(pack, original, folded, match.start())
     unit = _PIECE_WORDS.get(head)
     if unit is None:
         return None
-    if size:
-        return None  # «20x2 tablet» в источнике не встречается — не угадываем
     prefix = folded[: match.start()]
     modifier = _modifier(f"{prefix} {unit_text}", unit)
+    if size:
+        # «2x120 kapsül», «3x15 draje» — несколько упаковок (очередь модерации 27.10.2026).
+        ru, en = _pieces(size, unit, modifier)
+        return Pack(f"{_number_ru(count)} уп. по {ru}", f"{_number_en(count)} × {en}", source, piece=unit)
     ru, en = _pieces(count, unit, modifier)
-    return Pack(ru, en, source, piece=unit)
+    return _with_leading_pack(Pack(ru, en, source, piece=unit), original, folded, match.start())
+
+
+# Фасовка из двух частей (очередь модерации 27.10.2026: 20 названий без числа источника): вторая
+# штучная фасовка («60 kapsül + 30 saşe», «60 tablet x 30 kapsül»), масса или объём штуки или
+# упаковки («10 g 14 saşe», «25 ml x 14 flakon», «42 g 60 tablet»), число доз спрея («255 puf 20 ml»).
+_LEADING_PIECES_RE = re.compile(rf"(?<![\d.,])({_NUMBER})\s*([a-z]+)\s*[+x]\s*$")
+_LEADING_AMOUNT_RE = re.compile(rf"(?<![\d.,/])({_NUMBER})\s*(g|gr|ml)\s*(x\s*)?$")
+_LEADING_DOSES_RE = re.compile(r"(?<![\d.,/])(\d+)\s*(?:puf|puff|doz)\s*$")
+# Масса у таблеток и капсул — всей упаковки («42 g 60 tablet»), у саше и флаконов — одной штуки.
+_WHOLE_PACK_PIECES = frozenset({"capsule", "tablet", "lozenge", "gummy", "piece"})
+
+
+def _with_leading_pack(pack: Pack, original: str, folded: str, start: int) -> Pack:
+    prefix = folded[:start].rstrip()
+
+    def covered(match: re.Match) -> str:
+        return " ".join(original.split()[-len(folded[match.start():].split()):])
+
+    if pack.piece:
+        match = _LEADING_PIECES_RE.search(prefix)
+        if match and _PIECE_WORDS.get(match.group(2)) not in (None, "piece"):
+            ru, en = _pieces(match.group(1), _PIECE_WORDS[match.group(2)])
+            return Pack(f"{ru} + {pack.ru}", f"{en} + {pack.en}", covered(match), piece=pack.piece)
+        match = _LEADING_AMOUNT_RE.search(prefix)
+        if match:
+            unit_ru, unit_en = _VOLUME_WORDS[match.group(2)]
+            amount_ru = f"{_number_ru(match.group(1))} {unit_ru}"
+            amount_en = f"{_number_en(match.group(1))} {unit_en}"
+            if match.group(3) or pack.piece not in _WHOLE_PACK_PIECES:
+                return Pack(f"{pack.ru} по {amount_ru}", f"{pack.en} × {amount_en}", covered(match), piece=pack.piece)
+            return Pack(f"{pack.ru}, {amount_ru}", f"{pack.en}, {amount_en}", covered(match), piece=pack.piece)
+        return pack
+    match = _LEADING_DOSES_RE.search(prefix)
+    if match:
+        ru, en = _pieces(match.group(1), "dose")
+        return Pack(f"{pack.ru}, {ru}", f"{pack.en}, {en}", covered(match), form_ru=pack.form_ru, form_en=pack.form_en)
+    return pack
 
 
 # ── Исходные данные ──────────────────────────────────────────────────────────
@@ -230,8 +270,15 @@ _NUMBER_RE = re.compile(r"(?<![\d.,])\d+(?:[.,]\d+)*")
 _POWER_RE = re.compile(r"(\d)\s*[x×]\s*10(\d{1,2})(?!\d)", re.IGNORECASE)
 
 
-def _numbers(text: Any) -> set[str]:
+# «62 500 МЕ», «10 000» — тысячи через пробел (так пишет RU): одно число (очередь 27.10.2026).
+_SPACED_THOUSANDS_RE = re.compile(r"(?<![\d.,])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?![\d.,]?\d)")
+
+
+def _numbers(text: Any, spaced_thousands: bool = False) -> set[str]:
+    """``spaced_thousands`` — для текстов модели: в источнике «3 500 gr» — ступень 3 и 500 г."""
     text = _POWER_RE.sub(r"\1 x 10 \2", str(text or ""))
+    if spaced_thousands:
+        text = _SPACED_THOUSANDS_RE.sub(lambda m: re.sub(r"\s", "", m.group(0)), text)
     result = set()
     for raw in _NUMBER_RE.findall(text):
         value = raw.replace(",", ".")
@@ -253,7 +300,7 @@ _DESIGNATION_RE = re.compile(r"(?<![\w-])(?:[A-ZА-Я]{1,2}-?\d{1,2}|(?i:оме�
 def unsourced_numbers(text: Any, source: Any) -> list[str]:
     """Числа текста, которых нет в источнике (0 и 1 и обозначения веществ не сравниваются)."""
     allowed = _numbers(source)
-    return sorted(_numbers(_DESIGNATION_RE.sub(" ", str(text or ""))) - allowed)
+    return sorted(_numbers(_DESIGNATION_RE.sub(" ", str(text or "")), spaced_thousands=True) - allowed)
 
 
 # ── Описание ─────────────────────────────────────────────────────────────────
@@ -295,7 +342,7 @@ BABY_DISCLAIMER = {
     "en": "Breast milk is the best food for babies. Consult a doctor before use.",
 }
 _BABY_FOOD_RE = re.compile(
-    r"\b(?:aptamil|bebelac|sma|hipp|humana|similac|bebivita|milupa|nutrilon|devam sutu|bebek sutu|"
+    r"\b(?:aptamil|bebelac|sma|hipp|humana|similac|bebivita|milupa|nutrilon|evolvia|friso|devam sutu|bebek sutu|"
     r"bebek mamasi|ek gida\w*|baslangic sutu)\b"
 )
 
@@ -534,9 +581,17 @@ def vitamin_e_misread(source_name: Any, title_ru: Any) -> bool:
     )
 
 
+# Числа-обозначения в названии источника, которые в RU пишут иначе (очередь модерации 27.10.2026):
+# «P-5-P (VITAMIN B6)» — пиридоксаль-5-фосфат, «+2 DEMIR» — двухвалентное железо, «TIP1 VE TIP2
+# KOLLAJEN» — «коллаген типов I и II», «MENAKUINON-7» — K2, опечатка «GI9DA».
+_SOURCE_DESIGNATION_RE = re.compile(
+    r"\bp-?5-?p\b|\+\s?2(?=\s+demir)|(?<=demir\s)\+\s?2\b|\btip\s?[12]\b|\bmenakuinon-?7\b|(?<=[a-z])\d(?=[a-z])"
+)
+
+
 def title_problems(title_ru: Any, source_name: Any) -> list[str]:
     """Число из названия источника пропало в RU-названии («OMEGA 1000», «B12», «6-12 AY»)."""
-    lost = _numbers(source_name) - _numbers(title_ru)
+    lost = _numbers(_SOURCE_DESIGNATION_RE.sub(" ", fold_tr(source_name))) - _numbers(title_ru, spaced_thousands=True)
     # «10.000» источника по-русски — «10 000» (пилот 27.10.2026).
     spaced = re.sub(r"\s", " ", str(title_ru or ""))
     lost = {n for n in lost if not (n.isdigit() and len(n) > 3 and f"{int(n):,}".replace(",", " ") in spaced)}
@@ -600,6 +655,11 @@ def _user_prompt(source_name: str, brand_ru: str, pack: Optional[Pack], input_da
     return "Данные о товаре (недоверенные):\n" + json.dumps(payload, ensure_ascii=False)
 
 
+_BRAND_FORM_WORDS = frozenset({
+    "sase", "cigneme", "tablet", "tableti", "kapsul", "efervesan", "pastil", "surup", "damla", "sprey", "toz",
+})
+
+
 def _brand(answer: Any, source_name: str) -> tuple[str, bool]:
     """Бренд модели, если он — начало названия источника; иначе первое слово названия."""
     words = source_name.split()
@@ -608,6 +668,10 @@ def _brand(answer: Any, source_name: str) -> tuple[str, bool]:
     def key(word: str) -> str:
         return fold_tr(word).strip(",;:")
 
+    # Слово формы в конце бренда модели («PROMENK SASE», «GYNOLAC CIGNEME») — не бренд: в названии
+    # оставалось турецкое «SASE» (очередь модерации 27.10.2026).
+    while len(candidate) > 1 and key(candidate[-1]) in _BRAND_FORM_WORDS:
+        candidate = candidate[:-1]
     if candidate and len(candidate) < len(words) and [key(w) for w in words[: len(candidate)]] == [
         key(w) for w in candidate
     ]:
@@ -781,9 +845,28 @@ def _restore_lost_numbers(
     if not lost:
         return brand, product_text
     middle = _middle(source_name, pack)
-    stage = re.findall(r"(?<![\d.,+/-])([2-5])(?![\d.,]|\s*(?:mg|g|gr|ml|x|ay|yas)\b)", fold_tr(middle))
+    # Не возраст «2-3 YAS», «9-12 AY»: число диапазона — не ступень.
+    stage = re.findall(r"(?<![\d.,+/-])([2-5])(?![\d.,]|-\d|\s*(?:mg|g|gr|ml|x|ay|yas)\b)", fold_tr(middle))
     if baby_food and len(stage) == 1 and stage[0] in lost and not re.search(r"\d", brand):
         brand = f"{brand} {stage[0]}"
+    # Число линейки сразу за брендом: «ELENATAL 2 KAPSUL», «OMEPRO 3322 OMEGA 3», «ONVITA 3/2/1»
+    # (очередь модерации 27.10.2026) — часть бренда.
+    after = middle[len(brand):].split()
+    if (
+        after and re.fullmatch(r"\d[\d/.,]*\+?", after[0]) and _numbers(after[0]) and _numbers(after[0]) <= lost
+        and not (len(after) > 1 and re.fullmatch(r"(?:mg|mcg|g|gr|ml|iu|x|ay|yas)\b.*", fold_tr(after[1])))
+        and middle.startswith(brand)
+    ):
+        brand = f"{brand} {after[0]}"
+    # Возраст детской смеси: «9-12 AY», «2-3 YAS» → «для детей 9–12 месяцев», «2–3 лет».
+    age = re.search(r"(?<![\d.,])(\d{1,2})\s*-\s*(\d{1,2})\s*(ay|yas)\b", fold_tr(middle))
+    if baby_food and age and {age.group(1), age.group(2)} & lost and product_text.get("ru"):
+        months = age.group(3) == "ay"
+        product_text = {
+            "ru": f"{product_text['ru']} для детей {age.group(1)}–{age.group(2)} {'месяцев' if months else 'лет'}",
+            "en": f"{product_text['en']} for {age.group(1)}–{age.group(2)} {'months' if months else 'years'}"
+            if product_text.get("en") else "",
+        }
     dose = _DOSE_BEFORE_PACK_RE.search(fold_tr(middle))
     if dose and _numbers(dose.group(1)) <= lost:
         ru_unit, en_unit = _DOSE_UNITS[dose.group(2)]

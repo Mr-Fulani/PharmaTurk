@@ -1916,13 +1916,20 @@ class ContentGenerator:
         if not isinstance(attrs, dict):
             return
         quality = attrs.setdefault("medicine_translation_quality", {})
+        # Бренд с числом подставлен в перевод вместо метки {BRAND} («GLUKOFEN RET.850 MG»,
+        # «NUMETA PED G16»): его числа — не дозировки раздела (очередь модерации 27.10.2026).
+        brand = paragraph_brand(input_data.get("name"), input_data.get("active_ingredient"))
+
+        def without_brand(text: Any) -> str:
+            return re.sub(re.escape(brand), " ", str(text or ""), flags=re.IGNORECASE) if brand else str(text or "")
+
         # Справочные поля, МНН и объём заполняет код — их не сверяем.
         for field, source_text in (source_sections or {}).items():
             mismatched = [
                 locale
                 for locale in ("ru", "en")
                 if translations[locale].get(field)
-                and not doses_match(source_text, translations[locale][field])
+                and not doses_match(without_brand(source_text), without_brand(translations[locale][field]))
             ]
             if mismatched and isinstance(quality.get(field), dict):
                 quality[field].update({"complete": False, "fact_mismatch": mismatched})

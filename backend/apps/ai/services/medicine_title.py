@@ -586,7 +586,20 @@ _PHRASE_MODIFIERS = (
     (re.compile(r"(?:(?:pp|pvc) )?torba\b"), ("пакет", "bag")),
     (re.compile(r"pvc\b"), ("пакет", "bag")),
     (re.compile(r"bal ve limon aromali\b"), ("со вкусом мёда и лимона", "honey and lemon flavour")),
+    *(
+        (re.compile(rf"{word}(?: aromali)?\b"), (f"со вкусом {ru}", f"{en} flavour"))
+        for word, (ru, en) in (
+            ("muz", ("банана", "banana")), ("cilek", ("клубники", "strawberry")), ("vanilya", ("ванили", "vanilla")),
+            ("cikolata", ("шоколада", "chocolate")), ("kahve", ("кофе", "coffee")),
+            ("portakal", ("апельсина", "orange")), ("ahududu", ("малины", "raspberry")),
+            ("kayisi", ("абрикоса", "apricot")),
+        )
+    ),
+    (re.compile(r"aromasiz\b"), ("без вкуса", "unflavoured")),
 )
+# Вкус лечебного питания — не бренд: «PEDIASURE CILEK AROMALI 220 ML» → «PEDIASURE, со вкусом
+# клубники, 220 мл» (шаблон оставлял «CILEK AROMALI» в бренде; очередь модерации 27.10.2026).
+_FLAVOUR_WORDS = frozenset({"muz", "cilek", "vanilya", "cikolata", "kahve", "portakal", "ahududu", "kayisi", "aromasiz"})
 # Вещество в/в раствора («%5 DEKSTROZ SUDAKI COZELTISI») → RU в родительном падеже, EN.
 _SUBSTANCES = {
     "laktatli ringer": ("Рингер-лактата", "Ringer's lactate"),
@@ -689,6 +702,8 @@ def _brand_tokens(tokens: list[str], legacy: bool = False) -> list[str]:
         if brand and stop_at_substance and (
             folded in _PREFIX_MODIFIERS or _SUBSTANCE_RE.match(fold_tr(" ".join(tokens[index:])))
         ):
+            break
+        if brand and not legacy and folded in _FLAVOUR_WORDS:
             break
         if (
             folded[:1].isdigit()

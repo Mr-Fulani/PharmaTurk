@@ -15,10 +15,11 @@ import hashlib
 import json
 import logging
 import re
+from difflib import SequenceMatcher
 from functools import lru_cache
 from typing import Any, Callable, Optional
 
-from apps.ai.services.medicine_fact_check import doses_match, inn_matches, is_proper_name_line
+from apps.ai.services.medicine_fact_check import _latin_letters, doses_match, inn_matches, is_proper_name_line
 from apps.ai.services.medicine_paragraph_check import (
     item_problems,
     request_shift,
@@ -784,6 +785,16 @@ def section_paragraph_problems(source: str, ru: str, en: str, brand: str = "") -
         keys = [glued.sub(BRAND_TOKEN, key) for key in keys]
         ru_texts = [glued.sub(BRAND_TOKEN, text) for text in ru_texts]
         en_texts = [glued.sub(BRAND_TOKEN, text) for text in en_texts]
+        # Бренд кириллицей («ИЗОПТИНÒ», «МИКЛАСТ», «ИНФЛАКОРТом») — тоже бренд: так переводили записи
+        # памяти до метки {BRAND} (очередь модерации 27.10.2026: 20 разделов «потеряна метка»).
+        letters = _latin_letters(brand, "tr")
+        if " " not in brand.strip() and len(letters) >= 4:
+            def cyrillic_brand(match: re.Match) -> str:
+                word = _latin_letters(match.group(0), "ru")
+                close = word.startswith(letters) or SequenceMatcher(None, letters, word).ratio() >= 0.8
+                return BRAND_TOKEN if close else match.group(0)
+
+            ru_texts = [re.sub(r"[А-ЯЁа-яё][\w-]*", cyrillic_brand, text) for text in ru_texts]
     for row, key, ru_text, en_text in zip(rows, keys, ru_texts, en_texts):
         row["problems"] = paragraph_problems(key, ru_text, en_text)
     for index in section_shift(keys, ru_texts, en_texts):
