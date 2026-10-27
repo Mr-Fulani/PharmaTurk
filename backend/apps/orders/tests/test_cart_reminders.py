@@ -562,6 +562,54 @@ def test_admin_test_send_goes_to_current_admin(settings):
 
 
 @pytest.mark.django_db
+def test_test_send_respects_channel_checkboxes(settings):
+    """Тест «себе» идёт только в каналы с галочкой (владелец, 27.10.2026: письмо уходило при снятой)."""
+    from apps.orders.cart_reminders import send_test_reminder
+
+    settings.TELEGRAM_BOT_TOKEN = "t"
+    conf = CartReminderSettings.load()
+    conf.email_enabled = False
+    conf.save()
+    admin_user = _user(is_staff=True, telegram_id="711", telegram_notifications=True)
+    _cart(admin_user)
+
+    with patch("apps.orders.tasks._send_email_with_ipv4_fallback") as send_email, \
+            patch("apps.orders.cart_reminders.requests.post", return_value=TG_OK) as tg_post:
+        logs = send_test_reminder(admin_user)
+
+    send_email.assert_not_called()
+    tg_post.assert_called_once()
+    assert [log.channel for log in logs] == [CartReminderLog.Channel.TELEGRAM]
+
+    conf.telegram_enabled = False
+    conf.save()
+    assert send_test_reminder(admin_user) == []
+
+
+@pytest.mark.django_db
+def test_telegram_chat_not_found_explains_start(settings):
+    from apps.orders.cart_reminders import send_test_reminder
+
+    settings.TELEGRAM_BOT_TOKEN = "t"
+    settings.TELEGRAM_BOT_USERNAME = "mudaroba_bot"
+    conf = CartReminderSettings.load()
+    conf.email_enabled = False
+    conf.save()
+    admin_user = _user(is_staff=True, telegram_id="712", telegram_notifications=True)
+    _cart(admin_user)
+    not_found = SimpleNamespace(
+        ok=False, status_code=400, text='{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}'
+    )
+
+    with patch("apps.orders.cart_reminders.requests.post", return_value=not_found):
+        (log,) = send_test_reminder(admin_user)
+
+    assert log.status == CartReminderLog.Status.FAILED
+    assert "откройте @mudaroba_bot в Telegram и нажмите Start" in log.error
+    assert "chat not found" in log.error
+
+
+@pytest.mark.django_db
 def test_admin_action_marks_client_contacted(conf, rf):
     from django.contrib.admin.sites import AdminSite
     from django.contrib.messages.storage.fallback import FallbackStorage

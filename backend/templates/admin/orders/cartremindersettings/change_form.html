@@ -7,7 +7,7 @@
     style="margin:0 0 1em;padding:12px;border:1px solid var(--border-color, #d1d5db);border-radius:6px;">
     {% csrf_token %}
     <p style="margin:0 0 8px;">
-      {% translate "Тестовое напоминание приходит вам — на email аккаунта и в Telegram, если он привязан. В нём ваш Список заявки, а если он пуст — три свежих товара. Работает и при выключенных напоминаниях; запись появится в журнале." %}
+      {% translate "Тестовое напоминание приходит вам — в каналы с галочкой ниже: на email аккаунта и в Telegram, если он привязан (бот пишет только тем, кто открыл его и нажал Start). В нём ваш Список заявки, а если он пуст — три свежих товара. Работает и при выключенных напоминаниях; запись появится в журнале." %}
     </p>
     <button type="submit" name="locale" value="ru" class="button default">{% translate "Отправить тестовое мне (рус.)" %}</button>
     <button type="submit" name="locale" value="en" class="button">{% translate "Send test to me (English)" %}</button>
