@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
 import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerification'
+import { isSoldOutCartError } from '../lib/cartStock'
 import { useCartStore } from '../store/cart'
 import { isBaseProductType } from '../lib/product'
 import { gtmAddToCart, type GtmEcommerceItem } from '../lib/gtm'
@@ -18,6 +19,8 @@ interface BuyNowButtonProps {
   /** Товар для аналитики (как в view_item карточки): название, тип, цена */
   analyticsItem?: GtmEcommerceItem
   analyticsCurrency?: string
+  /** Товар закончился у поставщика: карточка переключается в «Нет в наличии» вместо окна с ошибкой */
+  onSoldOut?: () => void
 }
 
 /**
@@ -34,6 +37,7 @@ export default function BuyNowButton({
   quantity = 1,
   analyticsItem,
   analyticsCurrency,
+  onSoldOut,
 }: BuyNowButtonProps) {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -81,6 +85,10 @@ export default function BuyNowButton({
       )
       router.push('/cart')
     } catch (err: any) {
+      if (onSoldOut && isSoldOutCartError(err)) {
+        onSoldOut()
+        return
+      }
       const conflict = getCartVerificationError(err)
       const copy = getCartIssueCopy(conflict?.code)
       const detail = conflict?.code
