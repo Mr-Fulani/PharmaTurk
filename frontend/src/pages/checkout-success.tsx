@@ -276,7 +276,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
             </div>
           )}
 
-          {!loading && number && (
+          {!loading && number && !guestRequestSent && (
             <div className="mt-8 grid gap-8 lg:grid-cols-[1.15fr,0.85fr]">
               <section className="rounded-3xl border border-violet-100 bg-white/90 p-8 shadow-2xl shadow-violet-100/70 backdrop-blur">
                 <div className="flex items-start gap-4">
