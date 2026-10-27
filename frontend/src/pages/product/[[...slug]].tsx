@@ -1932,20 +1932,26 @@ export default function ProductPage({
                         aria-hidden
                       />
                     )}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={activeImage}
-                      alt={displayProductName || product.name}
-                      loading="eager"
-                      fetchPriority="high"
-                      className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
-                      decoding="async"
-                      onLoad={() => setMainImageLoading(false)}
-                      onError={(e) => {
-                        setMainImageLoading(false)
-                        applyImageFallback(e.currentTarget)
-                      }}
-                    />
+                    {/* Блок скрыт на телефоне (display:none), но eager-картинку браузер всё равно
+                        качает с высоким приоритетом — отнимая канал у LCP-фото слайдера. До md
+                        вместо неё пустой gif. */}
+                    <picture>
+                      <source media="(max-width: 767px)" srcSet="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={activeImage}
+                        alt={displayProductName || product.name}
+                        loading="eager"
+                        fetchPriority="high"
+                        className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
+                        decoding="async"
+                        onLoad={() => setMainImageLoading(false)}
+                        onError={(e) => {
+                          setMainImageLoading(false)
+                          applyImageFallback(e.currentTarget)
+                        }}
+                      />
+                    </picture>
                     {/* Иконки в углу главного изображения: избранное + шаринг */}
                     <div
                       className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
