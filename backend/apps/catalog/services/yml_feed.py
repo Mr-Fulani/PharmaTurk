@@ -15,7 +15,9 @@ YML-фид (Yandex Market Language) для ВК Маркета и Яндекс.�
 Особенности фида:
 - Категории ВК берутся из таблицы VKCategoryMapping по типу товара и полу
   (Admin → Маппинги категорий ВК).
-- Характеристики товара (материал, вес, страна…) вписываются в описание.
+- Описание — обычным текстом (HTML из карточки снимается), характеристики (материал,
+  вес, страна…) — в описании, без кодов поставщика; в конце — ссылка на карточку
+  сайта (utm для ВК).
 - Варианты (решение владельца 27.10.2026): у каждого варианта group_id = id товара,
   цвет (и размер) — в названии и в <param name="Цвет">/<param name="Размер">.
   ВК принимает не больше двух свойств, поэтому других <param> нет.
@@ -24,6 +26,7 @@ YML-фид (Yandex Market Language) для ВК Маркета и Яндекс.�
 from __future__ import annotations
 
 import logging
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from decimal import Decimal
@@ -75,6 +78,12 @@ _FALLBACK_VK_MAP = {
 }
 
 FEED_GENDERS = ("men", "women", "kids")
+
+MAX_DESCRIPTION_CHARS = 3000
+VK_LINK_UTM = "utm_source=vk&utm_medium=market"
+_CYRILLIC_RE = re.compile(r"[а-яё]", re.IGNORECASE)
+# Характеристики с кодами поставщика: «Артикул», «Код товара», «Штрихкод», «SKU»…
+_SUPPLIER_CODE_RE = re.compile(r"артикул|код|штрих|sku|barcode|gtin|mpn", re.IGNORECASE)
 
 
 def load_vk_mapping() -> dict[tuple[str, str], str]:
@@ -577,9 +586,9 @@ def create_offer(parent, prod, site_url, vk_map,
     # по нему ВК должен узнавать уже загруженный товар при повторном импорте.
     ET.SubElement(offer, "vendorCode").text = oid
 
-    # 11. Описание — сохраняем место для характеристик (добавятся в add_params_to_description)
+    # 11. Описание — характеристики и ссылку на сайт допишет add_params_to_description
     desc_el = ET.SubElement(offer, "description")
-    desc_el.text = (prod.description or prod.name or "")[:3000]
+    desc_el.text = (html_to_text(prod.description) or prod.name or "")[:MAX_DESCRIPTION_CHARS]
 
     # 12. Свойства варианта — по ним ВК различает варианты в группе
     for param_name, value in variant_options:
@@ -588,12 +597,24 @@ def create_offer(parent, prod, site_url, vk_map,
     return offer
 
 
+def _feed_color(raw_color: str) -> str:
+    """
+    Цвет по-русски по словарю сайта. Непереведённый цвет («Kum», «Vizon») не выводим:
+    лучше без цвета, чем турецкое слово в названии и свойствах ВК.
+    """
+    from ..utils.tr_vocab import translate_turkish_color
+
+    raw_color = (raw_color or "").strip()
+    translated = translate_turkish_color(raw_color, "ru")
+    if translated:
+        return translated
+    return raw_color if _CYRILLIC_RE.search(raw_color) else ""
+
+
 def _variant_options(variant) -> list[tuple[str, str]]:
     """[("Цвет", "Хаки"), ("Размер", "42")] — цвет по-русски, как на сайте."""
-    from ..utils.variant_titles import translate_common_color
-
     options = []
-    color = translate_common_color(getattr(variant, "color", "") or "", "ru")
+    color = _feed_color(getattr(variant, "color", "") or "")
     if color:
         options.append(("Цвет", color))
     size = str(getattr(variant, "size", "") or "").strip()
@@ -613,6 +634,26 @@ def _offer_name(base_name: str, variant_options: list[tuple[str, str]]) -> str:
         suffix = ", " + ", ".join(extras)
         name = name[: 150 - len(suffix)].rstrip(" ,") + suffix
     return name[:150]
+
+
+_HTML_LINE_BREAK_RE = re.compile(r"<br\s*/?>|</?(?:p|div|h[1-6]|tr|ul|ol)(?:\s[^>]*)?>", re.IGNORECASE)
+_HTML_LIST_ITEM_RE = re.compile(r"<li(?:\s[^>]*)?>", re.IGNORECASE)
+# Только похожее на тег: «5 < 7 > 3» в тексте не трогаем.
+_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^<>]*>")
+
+
+def html_to_text(value: str | None) -> str:
+    """
+    Описание с HTML (<p>, <br>, <li>…) → обычный текст для ВК: абзацы — переносами,
+    пункты списка — «• », сущности (&nbsp;, &amp;) — символами. ВК теги не рендерит.
+    """
+    import html
+
+    text = _HTML_LINE_BREAK_RE.sub("\n", value or "")
+    text = _HTML_LIST_ITEM_RE.sub("\n• ", text)
+    text = html.unescape(_HTML_TAG_RE.sub("", text)).replace("\xa0", " ")
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 def _translated_key_name(key_obj) -> str:
@@ -647,8 +688,7 @@ def add_params_to_description(offer, prod, domain_item, variant=None):
         color = dict(_variant_options(variant)).get("Цвет")
         if color:
             specs.append(f"Цвет: {color}")
-        if getattr(variant, "sku", ""):
-            specs.append(f"Артикул: {variant.sku}")
+        # Артикул поставщика (variant.sku) не показываем: наш артикул — <vendorCode>.
 
     # Динамические атрибуты из domain_item
     if domain_item and hasattr(domain_item, "dynamic_attributes"):
@@ -657,14 +697,20 @@ def add_params_to_description(offer, prod, domain_item, variant=None):
             # Всегда берём русское название ключа — независимо от языка сервера
             attr_name = _translated_key_name(attr.attribute_key)
             attr_value = attr.value_ru or attr.value
+            if _SUPPLIER_CODE_RE.search(attr_name or ""):
+                continue  # коды поставщика — внутренние
             if attr_name and attr_value and attr_name not in seen:
                 specs.append(f"{attr_name}: {attr_value}")
                 seen.add(attr_name)
 
-    if specs:
-        current_desc = desc_el.text or ""
-        extra = "\n\nХарактеристики:\n" + "\n".join(f"• {s}" for s in specs)
-        desc_el.text = (current_desc + extra)[:3000]
+    specs_text = "\n\nХарактеристики:\n" + "\n".join(f"• {s}" for s in specs) if specs else ""
+
+    # Ссылка на карточку: ВК не показывает <url> из фида, поэтому — в конце описания.
+    # При лимите сокращается сам текст, затем характеристики; ссылка остаётся целой.
+    link = f"\n\nПодробнее и заявка: {offer.findtext('url')}?{VK_LINK_UTM}"
+    specs_text = specs_text[: MAX_DESCRIPTION_CHARS - len(link)]
+    body = (desc_el.text or "")[: MAX_DESCRIPTION_CHARS - len(link) - len(specs_text)].rstrip()
+    desc_el.text = body + specs_text + link
 
 
 # ----------------------------------------------------------------------

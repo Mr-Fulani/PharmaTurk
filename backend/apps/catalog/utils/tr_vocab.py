@@ -4,7 +4,8 @@ import re
 
 
 def normalize_ascii_text(value: str | None) -> str:
-    text = str(value or "").strip().lower()
+    # «İ» до lower(): иначе Python даёт «i» + комбинируемую точку и «SİYAH» не находится.
+    text = str(value or "").strip().replace("İ", "i").lower().replace("\u0307", "")
     if not text:
         return ""
     replacements = str.maketrans({
@@ -43,6 +44,28 @@ TR_COLOR_DICTIONARY: dict[str, dict[str, str]] = {
     "yesil": {"ru": "Зеленый", "en": "Green"},
     "yeşil": {"ru": "Зеленый", "en": "Green"},
     "haki": {"ru": "Хаки", "en": "Khaki"},
+    # Цвета из фидов ВК 27.10.2026, которые оставались по-турецки.
+    "cok renkli": {"ru": "Разноцветный", "en": "Multicolor"},
+    "cesitli": {"ru": "Ассорти", "en": "Assorted"},
+    "taba": {"ru": "Табачный", "en": "Tan"},
+    "kum": {"ru": "Песочный", "en": "Sand"},
+    "vizon": {"ru": "Норковый", "en": "Mink"},
+    "acik mavi": {"ru": "Голубой", "en": "Light blue"},
+    "indigo": {"ru": "Индиго", "en": "Indigo"},
+    "acik indigo": {"ru": "Светлый индиго", "en": "Light indigo"},
+    "koyu indigo": {"ru": "Темный индиго", "en": "Dark indigo"},
+    "petrol": {"ru": "Петроль", "en": "Petrol"},
+    "koyu petrol": {"ru": "Темный петроль", "en": "Dark petrol"},
+    "kiremit": {"ru": "Терракотовый", "en": "Terracotta"},
+    "murdum": {"ru": "Сливовый", "en": "Plum"},
+    "komur": {"ru": "Угольный", "en": "Charcoal"},
+    "gece mavisi": {"ru": "Темно-синий", "en": "Midnight blue"},
+    "inci grisi": {"ru": "Жемчужно-серый", "en": "Pearl gray"},
+    "fistik yesili": {"ru": "Фисташковый", "en": "Pistachio"},
+    "kahve": {"ru": "Коричневый", "en": "Brown"},
+    "deve tuyu": {"ru": "Верблюжий", "en": "Camel"},
+    "kamuflaj": {"ru": "Камуфляж", "en": "Camouflage"},
+    # «Taş» (камень) нет: content_generator ищет ключи подстрокой, «tas» задел бы «Fantastic».
 }
 
 
