@@ -3,9 +3,12 @@
 @tailwind utilities;
 
 /* Подключение локального шрифта InkVerse (OFL) + веб-импорт Poppins как fallback */
+/* InkVerse-v2.woff2 — подмножество InkVerse.woff2 без хинтинга (62 → 31 КБ): латиница
+   с турецкими буквами, кириллица, знаки препинания и валют (fontTools.subset, см.
+   docs/PERFORMANCE_CWV_2026-10.md). Новое имя — потому что /fonts/ кэшируется как immutable. */
 @font-face {
   font-family: 'InkVerse';
-  src: url('/fonts/InkVerse.woff2') format('woff2'), url('/fonts/InkVerse.otf') format('opentype');
+  src: url('/fonts/InkVerse-v2.woff2') format('woff2'), url('/fonts/InkVerse.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;

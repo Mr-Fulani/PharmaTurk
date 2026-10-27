@@ -31,7 +31,7 @@ class MyDocument extends Document<MyDocumentProps> {
           {/* Основной шрифт: без предзагрузки он приходил после первой отрисовки, и
               подмена системного шрифта сдвигала вёрстку (CLS 0,13–0,31 на разделах
               и карточках). Путь совпадает с @font-face в globals.css. */}
-          <link rel="preload" href="/fonts/InkVerse.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+          <link rel="preload" href="/fonts/InkVerse-v2.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
 
           {/* Базовые мета-теги. og:url/og:type/canonical/hreflang задаются постранично — здесь не дублировать */}
           <meta httpEquiv="Content-Language" content={locale} />
