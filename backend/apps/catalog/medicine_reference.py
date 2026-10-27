@@ -63,13 +63,23 @@ def build_medicine_reference_payload(product, request, limit):
             "results": [],
         }
 
-    analogs = (
+    # В одном запросе Postgres проверял дешёвое по оценке условие на заглушку
+    # раньше OR-фильтра — детоаст дампов парсера у всех ~12 тыс. лекарств,
+    # 3–18 с на ответ. Сначала id подходящих строк (external_data не читается),
+    # заглушки отсекаются только среди них.
+    candidate_ids = list(
         MedicineProduct.objects.filter(query, is_active=True)
+        .exclude(pk=product.pk)
+        .order_by()
+        .values_list("pk", flat=True)
+    )
+    analogs = (
+        MedicineProduct.objects.filter(pk__in=candidate_ids)
         .exclude(
             models.Q(external_data__has_key="is_stub")
             & models.Q(external_data__is_stub=True)
         )
-        .exclude(pk=product.pk)
+        .defer("external_data")
         .select_related("brand", "category")
         .prefetch_related("gallery_images")
         .order_by("-is_available", "price")[:limit]

@@ -596,6 +596,47 @@ def test_analog_api_returns_unresolved_source_reference(medicine):
     assert result["source_reference_currency"] == "TRY"
 
 
+@pytest.mark.django_db
+def test_analog_api_skips_stubs_without_scanning_external_data(medicine):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    def analog_medicine(slug, external_data):
+        base = Product.objects.create(
+            name=slug.upper(),
+            slug=slug,
+            product_type="medicines",
+            category=medicine.base_product.category,
+            price=Decimal("50.00"),
+            currency="TRY",
+        )
+        item = MedicineProduct.objects.get(base_product=base)
+        MedicineProduct.objects.filter(pk=item.pk).update(
+            active_ingredient="Acetylsalicylic acid",
+            external_data=external_data,
+        )
+        return item
+
+    analog = analog_medicine("aspirin-analog", {"source": "ilacfiyati"})
+    analog_medicine("aspirin-stub", {"is_stub": True})
+    client = APIClient()
+    url = reverse("medicine-product-analogs", kwargs={"slug": medicine.slug})
+
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get(url, {"limit": 10, "currency": "TRY"})
+
+    assert response.status_code == 200
+    assert [row["slug"] for row in response.data["results"]] == [analog.slug]
+    # OR-фильтр по всем лекарствам не должен касаться external_data — иначе
+    # Postgres детоастит дампы парсера у каждой строки таблицы.
+    candidate_sql = [
+        q["sql"] for q in queries.captured_queries
+        if "UPPER" in q["sql"] and "active_ingredient" in q["sql"]
+    ]
+    assert candidate_sql
+    assert all("external_data" not in sql for sql in candidate_sql)
+
+
 def test_market_check_endpoint_uses_trusted_ip_post_throttles():
     action = MedicineProductViewSet.market_check
     assert action.kwargs["throttle_classes"] == MEDICINE_MARKET_CHECK_THROTTLES
