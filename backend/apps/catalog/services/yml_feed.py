@@ -438,7 +438,7 @@ def create_offer(parent, prod, site_url, vk_map,
     Порядок (согласно спецификации YML):
     url > price > currencyId > categoryId > market_category >
     picture(s) > video > store > pickup > delivery >
-    name > vendor > description
+    name > vendor > vendorCode > description
     """
     oid = offer_id or str(prod.id)
     is_available = prod.is_available
@@ -572,6 +572,10 @@ def create_offer(parent, prod, site_url, vk_map,
     # 10. Бренд
     if prod.brand:
         ET.SubElement(offer, "vendor").text = prod.brand.name
+
+    # 10a. Артикул = id оффера («538» или «538v1»): не меняется между сборками,
+    # по нему ВК должен узнавать уже загруженный товар при повторном импорте.
+    ET.SubElement(offer, "vendorCode").text = oid
 
     # 11. Описание — сохраняем место для характеристик (добавятся в add_params_to_description)
     desc_el = ET.SubElement(offer, "description")

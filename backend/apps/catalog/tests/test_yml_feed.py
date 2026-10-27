@@ -129,6 +129,7 @@ def test_feed_builds_one_offer_per_variant_with_rub_prices_and_specs(rub_rate):
     assert pictures[0].startswith("https://mudaroba.example/media/v")
     assert "https://cdn.example/gallery.jpg" in pictures
     assert first.attrib["group_id"] == str(product.id)
+    assert first.findtext("vendorCode") == first.attrib["id"]
     assert first.findtext("name") == f"{product.name}, {variants[0].color[:1].lower()}{variants[0].color[1:]}, 42"
     assert [(p.attrib["name"], p.text) for p in first.findall("param")] == [
         ("Цвет", variants[0].color),
@@ -156,6 +157,22 @@ def test_variant_color_is_translated_and_products_without_variants_have_no_group
     assert "group_id" not in plain_offer.attrib
     assert plain_offer.findtext("name") == plain.name
     assert plain_offer.findall("param") == []
+    assert plain_offer.findtext("vendorCode") == str(plain.id)
+
+
+@pytest.mark.django_db
+def test_vendor_code_is_stable_between_builds(rub_rate):
+    root_cat = _category("shoes")
+    _shoe(root_cat, variants=2, with_attribute=False)
+
+    first = _offers(_parse(yml_feed.iter_yml_feed(root_cat.slug)))
+    second = _offers(_parse(yml_feed.iter_yml_feed(root_cat.slug)))
+
+    assert [o.findtext("vendorCode") for o in first] == [o.findtext("vendorCode") for o in second]
+    assert [o.findtext("vendorCode") for o in first] == [o.attrib["id"] for o in first]
+    tags = [child.tag for child in first[0]]
+    # Порядок YML: name > vendor > vendorCode > description.
+    assert tags.index("name") < tags.index("vendorCode") < tags.index("description")
 
 
 def test_offer_name_skips_color_already_in_name_and_fits_limit():
