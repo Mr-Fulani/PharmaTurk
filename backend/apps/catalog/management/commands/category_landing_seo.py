@@ -30,6 +30,10 @@ class Command(BaseCommand):
         generate.add_argument("--include-filled", action="store_true", help="Не пропускать разделы с SEO-текстом.")
         generate.add_argument("--limit", type=int, default=0, help="Не больше N разделов (пилот).")
         generate.add_argument("--out", required=True, help="Куда записать JSON черновика.")
+        generate.add_argument(
+            "--model", default="",
+            help="Модель Claude (по умолчанию AI_ANTHROPIC_MODEL). Тексты разделов 27.10.2026 — claude-sonnet-5-5.",
+        )
 
         apply = sub.add_parser("apply", help="Записать черновик в CategoryTranslation.")
         apply.add_argument("--file", required=True, help="JSON от generate.")
@@ -57,7 +61,7 @@ class Command(BaseCommand):
 
         from apps.ai.services.claude_client import ClaudeClient, claude_usage
 
-        client = ClaudeClient()
+        client = ClaudeClient(model=options["model"] or None)
         entries, tokens_in, tokens_out = [], 0, 0
         for category in categories:
             facts = collect_facts(category)

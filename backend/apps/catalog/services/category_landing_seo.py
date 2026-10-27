@@ -290,7 +290,8 @@ def validate_texts(texts):
 def generate_texts(facts, client):
     """Один запрос к Claude → (тексты, usage, сырой ответ). client — apps.ai.services.claude_client.ClaudeClient."""
     raw, response = client.create(
-        SYSTEM_PROMPT, build_user_prompt(facts), json_mode=True, max_tokens=2500, output_schema=OUTPUT_SCHEMA,
+        SYSTEM_PROMPT, build_user_prompt(facts), json_mode=True, max_tokens=6000,
+        output_schema=OUTPUT_SCHEMA, effort="medium",
     )
     data = _parse_json_object(raw)
     texts = {

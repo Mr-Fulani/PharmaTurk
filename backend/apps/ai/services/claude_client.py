@@ -24,26 +24,33 @@ class ClaudeUnavailable(Exception):
 
 
 class ClaudeClient:
-    def __init__(self):
-        self.model = settings.AI_CONFIG.get("ANTHROPIC_MODEL") or "claude-haiku-5-5"
+    def __init__(self, model=None):
+        self.model = model or settings.AI_CONFIG.get("ANTHROPIC_MODEL") or "claude-haiku-5-5"
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY, max_retries=4, timeout=180.0)
 
-    def create(self, system_prompt: str, user_prompt: str, *, json_mode: bool, max_tokens: int, output_schema=None):
+    def create(
+        self, system_prompt: str, user_prompt: str, *, json_mode: bool, max_tokens: int, output_schema=None, effort=None,
+    ):
         """Один запрос к Claude → (текст, ответ SDK) или ClaudeUnavailable.
 
         output_schema — JSON-схема ответа (structured outputs): API отдаёт только валидный JSON
         этой формы. Без неё JSON просим словами, и Haiku изредка теряет скобку в длинном ответе.
         """
-        extra = {}
+        output_config = {}
         if output_schema is not None:
-            extra["output_config"] = {"format": {"type": "json_schema", "schema": output_schema}}
+            output_config["format"] = {"type": "json_schema", "schema": output_schema}
+        if effort:
+            output_config["effort"] = effort
+        extra = {"output_config": output_config} if output_config else {}
+        # Карточка — пересказ фактов источника: Haiku пишет без размышлений, весь лимит — ответу.
+        # Sonnet 5.5 выключенные размышления не принимает (400) — у него адаптивные, глубина — effort.
+        thinking = {"type": "disabled"} if "haiku" in self.model else {"type": "adaptive"}
         try:
             response = self.client.messages.create(
                 model=self.model,
                 # Токенизатор Claude длиннее на русском тексте; оплачивается только написанное.
                 max_tokens=min(max(max_tokens * 2, 2000), 16000),
-                # Карточка — пересказ фактов источника: размышления не нужны, весь лимит — ответу.
-                thinking={"type": "disabled"},
+                thinking=thinking,
                 # Системный промпт одинаков у всех товаров партии — кэшируется (чтение в 10 раз дешевле).
                 system=[{
                     "type": "text",

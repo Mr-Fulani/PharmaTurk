@@ -142,7 +142,7 @@ def test_facts_contain_only_nonempty_sections_and_real_brands(catalog):
 
 def test_generate_parses_json_with_text_around_and_upper_case_locales():
     class FakeClient:
-        def create(self, system_prompt, user_prompt, *, json_mode, max_tokens, output_schema=None):
+        def create(self, system_prompt, user_prompt, *, json_mode, max_tokens, output_schema=None, effort=None):
             assert "Solgar" in user_prompt and json_mode
             assert output_schema["required"] == ["ru", "en"]
             payload = {key.upper(): value for key, value in _texts().items()}
