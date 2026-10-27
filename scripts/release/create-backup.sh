@@ -56,6 +56,9 @@ available_kb="$(df -Pk "$BACKUP_ROOT" | awk 'NR == 2 {print $4}')"
 required_kb="$((MINIMUM_FREE_GB * 1024 * 1024))"
 [[ "$available_kb" =~ ^[0-9]+$ && "$available_kb" -ge "$required_kb" ]] || \
   release_die "backup filesystem has less than ${MINIMUM_FREE_GB} GiB free"
+docker_root="$(docker info --format '{{ .DockerRootDir }}')" || \
+  release_die "cannot determine Docker data root"
+release_require_release_space "$BACKUP_ROOT" "$docker_root"
 
 export DEPLOY_PROJECT_NAME="$PROJECT_NAME"
 postgres_container="$(release_compose_prod ps -q postgres)"
