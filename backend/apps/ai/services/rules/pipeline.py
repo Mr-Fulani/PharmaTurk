@@ -252,6 +252,32 @@ def _empty_usage() -> dict[str, Any]:
     return {"tokens": {"prompt": 0, "completion": 0, "total": 0, "cached": 0}, "cost_usd": 0.0}
 
 
+def _add_usage(result: dict[str, Any], extra: dict[str, Any]) -> None:
+    tokens = dict(result.get("tokens") or {})
+    for key, value in (extra.get("tokens") or {}).items():
+        tokens[key] = (tokens.get(key) or 0) + (value or 0)
+    result["tokens"] = tokens
+    result["cost_usd"] = float(result.get("cost_usd") or 0) + float(extra.get("cost_usd") or 0)
+
+
+def _description_text(payload: dict[str, Any], locale: str) -> str:
+    bucket = payload.get(locale) if isinstance(payload.get(locale), dict) else {}
+    text = re.sub(r"<[^>]+>", " ", str(bucket.get("generated_description") or ""))
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _cut_off_ru_description(payload: dict[str, Any]) -> bool:
+    """RU-описание оборвано: пусто, кончается на «...» или намного короче EN.
+
+    Очередь модерации 27.10.2026: «<p>Пятиместный... </p>», «<p>Двуспальная кровать из
+    массива... </p>» при полном EN в 600 символов.
+    """
+    ru, en = _description_text(payload, "ru"), _description_text(payload, "en")
+    if not en:
+        return False
+    return not ru or ru.endswith(("...", "…")) or (len(en) >= 200 and len(ru) < len(en) / 2)
+
+
 def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, log_entry=None) -> dict[str, Any]:
     """Результат в форме ``LLMClient.generate_content`` для общего пути сохранения."""
     started = time.time()
@@ -260,17 +286,29 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
     llm_titles: dict[str, str] = {}
     descriptions = dict(plan.descriptions)
     if plan.needs_llm:
-        llm_result = llm.generate_content(
-            system_prompt=SYSTEM_PROMPT,
-            user_prompt=_user_prompt(product, plan, input_data),
-            max_tokens=LLM_MAX_TOKENS,
-            temperature=0.3,
-        )
+        request = {
+            "system_prompt": SYSTEM_PROMPT,
+            "user_prompt": _user_prompt(product, plan, input_data),
+            "max_tokens": LLM_MAX_TOKENS,
+            "temperature": 0.3,
+        }
+        llm_result = llm.generate_content(**request)
         result.update(llm_result)
         if llm_result.get("truncated") or llm_result.get("json_error"):
             result["content"] = {}
             return result
         payload = llm_result.get("content") if isinstance(llm_result.get("content"), dict) else {}
+        # Оборванное RU-описание («<p>Пятиместный... </p>» при полном EN) — один повтор
+        # запроса; если и он оборван, RU — описание из фактов, в память не попадает.
+        if plan.description_source == "llm" and _cut_off_ru_description(payload):
+            retry = llm.generate_content(**request)
+            _add_usage(result, retry)
+            retry_payload = retry.get("content") if isinstance(retry.get("content"), dict) else {}
+            if not (retry.get("truncated") or retry.get("json_error")) and not _cut_off_ru_description(retry_payload):
+                payload = retry_payload
+            else:
+                ru_bucket = payload.get("ru") if isinstance(payload.get("ru"), dict) else {}
+                payload = {**payload, "ru": {**ru_bucket, "generated_description": ""}}
         for locale in ("ru", "en"):
             bucket = payload.get(locale) if isinstance(payload.get(locale), dict) else {}
             if locale in plan.missing_titles and str(bucket.get("generated_title") or "").strip():

@@ -11,11 +11,27 @@ from apps.catalog.attribute_specs import get_dynamic_attribute_spec
 # Data, not validator branches. New category semantics are added here or in
 # Category.external_data["semantic_policy"] without changing the engine.
 CATEGORY_POLICY_OVERRIDES: dict[str, dict[str, Any]] = {
+    # Названия разделов во множественном числе («Основания кроватей», «Двухъярусные
+    # кровати») не совпадают с названием товара, и «кровати» давало конфликт с
+    # «Кроватями» (очередь модерации 27.10.2026). Просто «кровать» основанию не своя:
+    # реечное дно не должно называться кроватью (test_bed_base_title_cannot_be_reduced_to_bed).
     "bed-bases": {
         "aliases": {
-            "ru": ("основание кровати", "кроватное основание", "реечное основание"),
+            "ru": (
+                "основание кровати", "кроватное основание", "реечное основание",
+                "реечное дно кровати", "реечное дно",
+            ),
             "en": ("bed base", "slatted bed base"),
         },
+    },
+    "bunk-beds": {
+        "aliases": {"ru": ("двухъярусная кровать",), "en": ("bunk bed",)},
+    },
+    "kids-dressers": {
+        "aliases": {"ru": ("детский комод",), "en": ("chest of drawers",)},
+    },
+    "kids-wardrobes": {
+        "aliases": {"ru": ("детский гардероб",), "en": ("wardrobe",)},
     },
     "beds": {
         "aliases": {"ru": ("кровать",), "en": ("bed", "bed frame")},
@@ -37,8 +53,12 @@ CATEGORY_POLICY_OVERRIDES: dict[str, dict[str, Any]] = {
     "sofa-beds": {
         "aliases": {"ru": ("диван-кровать",), "en": ("sofa-bed", "sofa bed")},
     },
+    # Гостевая и выдвижная кровати IKEA лежат в «Кушетках» («VIHALS Under-Sofa Bed»).
     "day-beds": {
-        "aliases": {"ru": ("кушетка",), "en": ("day-bed", "daybed")},
+        "aliases": {
+            "ru": ("кушетка", "кровать"),
+            "en": ("day-bed", "daybed", "bed", "under-sofa bed"),
+        },
     },
     "coffee-tables": {
         "aliases": {"ru": ("журнальный столик",), "en": ("coffee table",)},

@@ -164,10 +164,15 @@ def drop_codes(tokens: list[str]) -> list[str]:
 
 
 def supplier_code_tokens(name: str) -> set[str]:
-    """Токены названия (ВЕРХНИЙ регистр), которые правила считают артикулом и не пишут."""
+    """Токены названия (ВЕРХНИЙ регистр), которые правила считают артикулом и не пишут.
+
+    Артикул с точкой («408048.M5FX») возвращается и частями: проверка идентичности
+    делит токены по точке, и без этого «M5FX» требовался в названии.
+    """
     tokens = str(name or "").split()
     kept = {token.strip("()[],.;:").upper() for token in drop_codes(tokens)}
-    return {token.strip("()[],.;:").upper() for token in tokens} - kept
+    codes = {token.strip("()[],.;:").upper() for token in tokens} - kept
+    return codes | {part for code in codes if "." in code for part in code.split(".") if part}
 
 
 def _is_strong_model_token(token: str) -> bool:

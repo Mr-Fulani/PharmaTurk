@@ -163,10 +163,20 @@ def _source_texts(input_data: dict[str, Any]) -> Iterable[str]:
         yield json.dumps(value, ensure_ascii=False)
 
 
+# Мерки и размер манекена («Manken Bilgisi Uzunluk 188 cm … Manken M beden ürün giyiyor»,
+# «на манекене ростом 1.89 м … носит размер L») — не размеры товара: из-за них
+# 6 логов очереди 27.10.2026 ждали модерации с ambiguous_variant_sizes.
+_MANNEQUIN_RE = re.compile(r"manken|манекен|ростом", re.IGNORECASE)
+_MEASUREMENT_RE = re.compile(
+    r"\d+(?:[.,]\d+)?\s*(?:cm|см|mm|мм|kg|кг|м)(?![A-Za-zА-Яа-яЁё])", re.IGNORECASE
+)
+
+
 def _context_segments(text: str) -> Iterable[tuple[str, bool]]:
     for sentence in re.split(r"(?<=[.!?])\s+|\n+|#+", str(text or "")):
-        if not sentence or not _SIZE_CONTEXT_RE.search(sentence):
+        if not sentence or not _SIZE_CONTEXT_RE.search(sentence) or _MANNEQUIN_RE.search(sentence):
             continue
+        sentence = _MEASUREMENT_RE.sub(" ", sentence)
         if _NEGATIVE_SIZE_RE.search(sentence):
             # Negative inventory claims must not make rows unavailable: that
             # decision is too destructive without a dedicated stock feed.

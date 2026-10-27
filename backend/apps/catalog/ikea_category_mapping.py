@@ -31,6 +31,9 @@ IKEA_CATEGORY_ALIASES = {
     "modular-sofas": "modular-sofas", "moduler-kanepeler": "modular-sofas",
     "armchairs": "armchairs", "koltuklar": "armchairs", "berjerler": "armchairs",
     "rocking-chairs": "rocking-armchairs", "sallanan-sandalyeler": "rocking-armchairs",
+    "sallanan-koltuklar": "rocking-armchairs", "sallanan-koltuk-iskeleti": "rocking-armchairs",
+    # Реклайнер — кресло: без этого «yatar koltuk» из «Oyuncu Koltukları» ушёл бы в игровые.
+    "yatar-koltuk": "armchairs",
     "pouffes": "pouffes", "puflar": "pouffes",
     "coffee-and-side-tables": "coffee-tables", "sehpalar": "coffee-tables", "orta-sehpalar": "coffee-tables",
     "tv-units": "tv-stands", "tv-uniteleri": "tv-stands",
@@ -63,14 +66,16 @@ IKEA_CATEGORY_ALIASES = {
     "gaming-desks": "gaming-desks", "oyuncu-masalari": "gaming-desks",
     "gaming-chairs": "gaming-chairs", "oyuncu-koltuklari": "gaming-chairs",
     "kids-beds": "kids-beds", "cocuk-karyolalari": "kids-beds",
-    "bunk-beds": "bunk-beds", "ranzalar": "bunk-beds",
+    "bunk-beds": "bunk-beds", "ranzalar": "bunk-beds", "ranza": "bunk-beds",
     "kids-desks": "kids-desks", "cocuk-calisma-masalari": "kids-desks",
     "kids-chairs": "kids-chairs", "cocuk-sandalyeleri": "kids-chairs",
     "kids-wardrobes": "kids-wardrobes", "cocuk-dolap-ve-gardiroplari": "kids-wardrobes",
     "kids-dressers": "kids-dressers", "cocuk-sifonyerleri-ve-komodinleri": "kids-dressers",
+    "cocuk-sifonyeri": "kids-dressers",
     "kids-bookcases": "kids-bookcases", "cocuk-kitapliklari": "kids-bookcases",
     "toy-storage": "toy-storage", "oyuncak-dolaplari": "toy-storage",
     "cabinets": "storage-cabinets", "dolaplar": "storage-cabinets",
+    "dolap-kombinasyonu": "storage-cabinets",
     "shelves": "shelves", "raflar": "shelves",
     "open-shelving-units": "open-shelving", "acik-raf-uniteleri": "open-shelving",
     "shoe-cabinets": "shoe-cabinets", "ayakkabiliklar": "shoe-cabinets",
@@ -97,6 +102,15 @@ CANONICAL_FURNITURE_CATEGORY_SLUGS = frozenset(IKEA_CATEGORY_ALIASES.values())
 LEGACY_FURNITURE_CATEGORY_ALIASES = {
     "wall-units": "tv-stands",
 }
+
+# Общие разделы IKEA, из которых запускают скачивание: в «Koltuklar» лежат и
+# диваны-кровати, в «Karyolalar» — реечные днища, в «Gardıroplar» — двухъярусные
+# кровати и детские комоды SMÅSTAD. Такой раздел уступает точному типу товара
+# (function, furniture_type) и категории товара из API. До 27.10.2026 он
+# проверялся первым, и 53 товара очереди модерации стояли в чужой категории.
+BROAD_IKEA_SECTIONS = frozenset({
+    "koltuklar", "karyolalar", "gardiroplar", "gardiroplar-ve-dolaplar", "sifonyerler",
+})
 
 
 def _dict_values(value: Any) -> Iterable[Any]:
@@ -127,16 +141,26 @@ def resolve_ikea_category(
         (source_category_slug, "slug категории запуска IKEA"),
         (category_slug_from_url(external_url), "URL категории IKEA"),
     ]
-    candidates.extend((value, "category из API IKEA") for value in _dict_values(raw_category))
+    # Точный тип товара (function) важнее категории API: реклайнер «yatar koltuk»
+    # IKEA кладёт и в «Oyuncu Koltukları», но это кресло, а не игровое кресло.
     candidates.extend((value, "function из API IKEA") for value in _dict_values(raw_function))
     candidates.append((furniture_type, "тип мебели IKEA"))
+    candidates.extend((value, "category из API IKEA") for value in _dict_values(raw_category))
 
+    broad_section_match = None
     for value, reason in candidates:
         normalized = _normalize(value)
         target = IKEA_CATEGORY_ALIASES.get(normalized)
-        if target:
+        if target and normalized in BROAD_IKEA_SECTIONS:
+            broad_section_match = broad_section_match or IkeaCategoryMatch(target, reason)
+        elif target:
             return IkeaCategoryMatch(target, reason)
 
+    type_match = _furniture_type_match(furniture_type)
+    return type_match or broad_section_match
+
+
+def _furniture_type_match(furniture_type: str) -> IkeaCategoryMatch | None:
     # Старые карточки IKEA часто сохранили только конкретный турецкий function,
     # например ``2'li yataklı kanepe``. Используем лишь однозначные сочетания.
     function_text = _normalize(furniture_type)

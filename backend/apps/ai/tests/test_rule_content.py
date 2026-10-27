@@ -517,6 +517,47 @@ def test_russian_name_gets_rule_english_title_and_survives_missing_en_from_llm()
 
 
 @pytest.mark.django_db
+def test_cut_off_russian_description_is_requested_again():
+    # 13530 (очередь модерации 27.10.2026): RU «<p>Пятиместный... </p>» при полном EN
+    # ушёл в модерацию и в память переводов.
+    product = _shoe("rule-cut-ru", RICH_SOURCE)
+    en = "<p>Classic PVC sneakers that are durable and light, easy to combine with any outfit all day long.</p>" * 3
+    ru = "<p>Классические кроссовки из ПВХ: прочные и лёгкие, легко сочетаются с любой одеждой весь день.</p>" * 3
+    llm = SimpleNamespace(
+        model="test-model",
+        generate_content=Mock(
+            side_effect=[
+                _llm_result({"ru": {"generated_description": "<p>Пятиместный... </p>"}, "en": {"generated_description": en}}),
+                _llm_result({"ru": {"generated_description": ru}, "en": {"generated_description": en}}),
+            ]
+        ),
+    )
+
+    log = _generator(llm).process_product(product.id, options={"analyze_images": False, "force": True})
+
+    assert llm.generate_content.call_count == 2
+    assert log.generated_description == ru
+    assert float(log.cost_usd) == pytest.approx(0.00048)
+    assert AITranslationMemory.objects.get().ru_text == ru
+
+
+@pytest.mark.django_db
+def test_twice_cut_off_russian_description_falls_back_to_facts_and_is_not_remembered():
+    # 14138: «<p>Двуспальная кровать из массива... </p>» — и при повторе.
+    product = _shoe("rule-cut-ru-twice", RICH_SOURCE)
+    en = "<p>Classic PVC sneakers that are durable and light, easy to combine with any outfit all day long.</p>" * 3
+    cut = _llm_result({"ru": {"generated_description": "<p>Классические кроссовки…</p>"}, "en": {"generated_description": en}})
+    llm = SimpleNamespace(model="test-model", generate_content=Mock(side_effect=[cut, cut]))
+
+    log = _generator(llm).process_product(product.id, options={"analyze_images": False, "force": True})
+
+    assert llm.generate_content.call_count == 2
+    assert "…" not in log.generated_description
+    assert log.raw_llm_response["rule_content"]["description_fallback"] == ["ru"]
+    assert not AITranslationMemory.objects.exists()
+
+
+@pytest.mark.django_db
 def test_empty_llm_answer_falls_back_to_fact_descriptions_instead_of_failing():
     product = _russian_belt("rule-ru-belt-empty")
     llm = SimpleNamespace(model="test-model", generate_content=Mock(return_value=_llm_result({"ru": {}, "en": {}})))

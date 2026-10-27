@@ -180,6 +180,9 @@ STORE_BRANDS = frozenset({"lc waikiki"})
 STORE_OWN_LINE_PREFIXES = ("lcw", "lc waikiki")
 # Слова линеек магазина («LCW ACCESSORIES», «LCW VISION»): в названии их заменяет бренд.
 STORE_LINE_WORDS = frozenset({"lcw", "accessories", "vision", "casual", "young", "dream"})
+# Общие слова названий Zara в ВЕРХНЕМ регистре, которых нет в словарях: «3'LÜ PAKET» —
+# «3 шт.», «BOMBER CEKET» — «бомбер». Не модель (очередь модерации 27.10.2026).
+GENERIC_NAME_WORDS = frozenset({"paket", "bomber"})
 # Магазины, чьи названия — описание по-турецки без модели («Teknik naylon pantolon»):
 # латинское слово до типа — не модель, а непереведённое слово (кроме кодов и ВЕРХНЕГО регистра).
 DESCRIPTIVE_NAME_BRANDS = frozenset({"zara", "bershka", "pull&bear", "massimo dutti"})
@@ -403,7 +406,9 @@ FURNITURE_KINDS: dict[str, Kind] = {
     "sallanan koltuk iskeleti": _k("каркас кресла-качалки", M, "Rocking Chair Frame"),
     "tekli koltuk kilifi": _k("чехол для кресла", M, "Armchair Cover"),
     "tekli koltuk ve puf": _k("кресло с пуфом", N, "Armchair and Footstool"),
-    "yatar koltuk": _k("кресло-кровать", N, "Chair-Bed"),
+    # Реклайнер (кресло с откидной спинкой), не кресло-кровать: «Кресло-кровать IKEA
+    # EKOLSUND» в «Креслах» давало конфликт с «Кроватями» (очередь модерации 27.10.2026).
+    "yatar koltuk": _k("кресло-реклайнер", N, "Recliner Armchair"),
     "kose koltuk": _k("угловой диван", M, "Corner Sofa"),
     "kose kanepe": _k("угловой диван", M, "Corner Sofa"),
     "3'lu kose kanepe": _k("трехместный угловой диван", M, "3-Seat Corner Sofa"),
@@ -722,4 +727,4 @@ def generic_title_words() -> frozenset[str]:
     for mapping in (KINDS, COLORS, AUDIENCE, DESCRIPTORS, COLOR_MODIFIERS):
         for key in mapping:
             words.update(key.split())
-    return frozenset(words | COLOR_NOISE | STORE_LINE_WORDS)
+    return frozenset(words | COLOR_NOISE | STORE_LINE_WORDS | GENERIC_NAME_WORDS)
