@@ -66,12 +66,17 @@ def catalog(monkeypatch):
     medicines = category("medicines", "Медикаменты")
     cardio = category("lsv-cardio", "Сердце", medicines)
     solgar = Brand.objects.create(name="Solgar", slug="lsv-solgar")
+    other = Brand.objects.create(name="Другое", slug="lsv-other")
     venatura = Brand.objects.create(name="Venatura", slug="lsv-venatura")
     for index, brand in enumerate([solgar, solgar, venatura]):
         Product.objects.create(
             name=f"Витамин B комплекс {index}", slug=f"lsv-b-{index}", category=vitamin_b,
             product_type="supplements", brand=brand, price=Decimal("1"),
         )
+    Product.objects.create(
+        name="Витамин B без бренда", slug="lsv-b-other", category=vitamin_b,
+        product_type="supplements", brand=other, price=Decimal("1"),
+    )
     Product.objects.create(name="Кардио", slug="lsv-cardio-1", category=cardio, price=Decimal("1"))
     return SimpleNamespace(supplements=supplements, vitamins=vitamins, vitamin_b=vitamin_b, empty=empty, cardio=cardio)
 
@@ -83,6 +88,11 @@ def test_valid_texts_have_no_problems():
 def test_looping_answer_is_flagged():
     looped = BODY_EN + "\n\n## Notes\n\n" + " ".join(["end of the draft text"] * 4)
     assert any("повтор" in problem for problem in validate_texts(_texts(en__seo_text=looped)))
+
+
+def test_term_repeated_across_text_is_not_a_loop():
+    text = BODY_EN + "\n\n## Formats\n\n" + " ".join(f"{word} eau de parfum." for word in BODY_EN.split()[:6])
+    assert not any("повтор" in problem for problem in validate_texts(_texts(en__seo_text=text)))
 
 
 def test_ordinary_words_and_dosages_are_not_flagged():
@@ -123,9 +133,9 @@ def test_select_skips_medicines_empty_and_filled_categories(catalog):
     assert "lsv-empty" not in selected
     assert "lsv-cardio" not in selected
 
-    # В витаминах B три товара: порог 4 их отсекает, порог 3 — нет.
-    assert "lsv-vitamin-b" not in {c.slug for c in select_categories(roots=["supplements"], min_products=4)}
-    assert "lsv-vitamin-b" in {c.slug for c in select_categories(roots=["supplements"], min_products=3)}
+    # В витаминах B четыре товара: порог 5 их отсекает, порог 4 — нет.
+    assert "lsv-vitamin-b" not in {c.slug for c in select_categories(roots=["supplements"], min_products=5)}
+    assert "lsv-vitamin-b" in {c.slug for c in select_categories(roots=["supplements"], min_products=4)}
 
     CategoryTranslation.objects.create(category=catalog.vitamin_b, locale="ru", name="Витамин B", seo_text="Текст")
     assert "lsv-vitamin-b" not in {c.slug for c in select_categories(slugs=["lsv-vitamin-b"])}

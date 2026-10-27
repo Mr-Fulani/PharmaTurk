@@ -22,6 +22,9 @@ TITLE_SUFFIX = " | Mudaroba"
 # Разделы с ручными текстами (миграция 0222) и услуги Стамбула — не трогаем.
 EXCLUDED_ROOTS = {"medicines", "uslugi"}
 
+# Служебные «бренды» парсеров: в тексте вышло бы «бренд указан как „Другое“» (полный прогон 27.10.2026).
+PLACEHOLDER_BRANDS = {"другое", "other", "diğer", "diger"}
+
 # Корни разделов, где менеджер в заявке уточняет ещё размер и цвет.
 SIZE_COLOR_ROOTS = {"clothing", "shoes", "underwear", "headwear", "islamic-clothing"}
 
@@ -182,8 +185,9 @@ def collect_facts(category):
     brands = [
         row["brand__name"]
         for row in products.exclude(brand__isnull=True)
-        .values("brand__name").annotate(n=Count("id")).order_by("-n", "brand__name")[:12]
-    ]
+        .values("brand__name").annotate(n=Count("id")).order_by("-n", "brand__name")[:20]
+        if row["brand__name"].strip().lower() not in PLACEHOLDER_BRANDS
+    ][:12]
     examples = []
     for name in products.order_by("-is_featured", "-id").values_list("name", flat=True)[:300]:
         name = (name or "").strip()
@@ -233,13 +237,17 @@ _CYRILLIC = re.compile(r"[а-яё]", re.IGNORECASE)
 
 
 def _repeated_phrase(text):
-    """Фраза из трёх слов, которая встречается 4+ раз, — модель зациклилась (пилот 6: «ЧЕРНОВИК…» ×8)."""
+    """Фраза до шести слов три раза подряд — модель зациклилась (пилот 6: «ЧЕРНОВИК…» ×8).
+
+    Повторы вразбивку («eau de parfum» в тексте о парфюмерии) — нормальная речь.
+    """
     words = re.findall(r"\w+", text.lower())
-    counts = {}
-    for i in range(len(words) - 2):
-        key = " ".join(words[i:i + 3])
-        counts[key] = counts.get(key, 0) + 1
-    return next((key for key, count in counts.items() if count >= 4), None)
+    for size in range(1, 7):
+        for i in range(len(words) - 3 * size + 1):
+            chunk = words[i:i + size]
+            if chunk == words[i + size:i + 2 * size] == words[i + 2 * size:i + 3 * size]:
+                return " ".join(chunk)
+    return None
 
 
 def validate_texts(texts):
