@@ -220,6 +220,42 @@ def test_description_ends_with_product_link_within_limit(rub_rate):
     assert offer.findtext("url") == f"https://mudaroba.example/product/shoes/{product.slug}"
 
 
+HELLY_HANSEN_DESCRIPTION = (
+    "<p>Поло Helly Hansen:&nbsp;ткань TACTEL&reg;, быстросохнущая; планка с пуговицами.</p>"
+    "<p>Состав: верх — 100% полиамид.</p><ul><li>Уход: деликатная стирка</li>"
+    "<li>Защита UPF&nbsp;50+</li></ul>Размеры &amp; посадка<br/>Regular Fit"
+)
+
+
+def test_html_to_text_turns_markup_into_plain_lines():
+    assert yml_feed.html_to_text(HELLY_HANSEN_DESCRIPTION) == (
+        "Поло Helly Hansen: ткань TACTEL®, быстросохнущая; планка с пуговицами.\n\n"
+        "Состав: верх — 100% полиамид.\n\n"
+        "• Уход: деликатная стирка\n"
+        "• Защита UPF 50+\n"
+        "Размеры & посадка\n"
+        "Regular Fit"
+    )
+    assert yml_feed.html_to_text("Без разметки, 5 < 7 > 3") == "Без разметки, 5 < 7 > 3"
+    assert yml_feed.html_to_text(None) == ""
+
+
+@pytest.mark.django_db
+def test_feed_description_has_no_html_and_keeps_link(rub_rate):
+    root_cat = _category("shoes")
+    product = _shoe(root_cat, variants=0, with_attribute=False)
+    Product.objects.filter(pk=product.pk).update(description=HELLY_HANSEN_DESCRIPTION * 60)
+
+    [offer] = _offers(_parse(yml_feed.iter_yml_feed(root_cat.slug)))
+
+    description = offer.findtext("description")
+    assert "<" not in description and "&nbsp;" not in description and "&amp;" not in description
+    assert description.startswith("Поло Helly Hansen: ткань TACTEL®")
+    assert "• Уход: деликатная стирка" in description
+    assert description.endswith(f"/product/shoes/{product.slug}?utm_source=vk&utm_medium=market")
+    assert len(description) <= yml_feed.MAX_DESCRIPTION_CHARS
+
+
 def test_offer_name_skips_color_already_in_name_and_fits_limit():
     assert yml_feed._offer_name("Кепка хаки", [("Цвет", "Хаки")]) == "Кепка хаки"
     long_name = yml_feed._offer_name("К" * 160, [("Цвет", "Серый"), ("Размер", "M")])

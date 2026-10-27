@@ -15,8 +15,9 @@ YML-фид (Yandex Market Language) для ВК Маркета и Яндекс.�
 Особенности фида:
 - Категории ВК берутся из таблицы VKCategoryMapping по типу товара и полу
   (Admin → Маппинги категорий ВК).
-- Характеристики товара (материал, вес, страна…) вписываются в описание, без
-  кодов поставщика; в конце описания — ссылка на карточку сайта (utm для ВК).
+- Описание — обычным текстом (HTML из карточки снимается), характеристики (материал,
+  вес, страна…) — в описании, без кодов поставщика; в конце — ссылка на карточку
+  сайта (utm для ВК).
 - Варианты (решение владельца 27.10.2026): у каждого варианта group_id = id товара,
   цвет (и размер) — в названии и в <param name="Цвет">/<param name="Размер">.
   ВК принимает не больше двух свойств, поэтому других <param> нет.
@@ -587,7 +588,7 @@ def create_offer(parent, prod, site_url, vk_map,
 
     # 11. Описание — характеристики и ссылку на сайт допишет add_params_to_description
     desc_el = ET.SubElement(offer, "description")
-    desc_el.text = (prod.description or prod.name or "")[:MAX_DESCRIPTION_CHARS]
+    desc_el.text = (html_to_text(prod.description) or prod.name or "")[:MAX_DESCRIPTION_CHARS]
 
     # 12. Свойства варианта — по ним ВК различает варианты в группе
     for param_name, value in variant_options:
@@ -633,6 +634,26 @@ def _offer_name(base_name: str, variant_options: list[tuple[str, str]]) -> str:
         suffix = ", " + ", ".join(extras)
         name = name[: 150 - len(suffix)].rstrip(" ,") + suffix
     return name[:150]
+
+
+_HTML_LINE_BREAK_RE = re.compile(r"<br\s*/?>|</?(?:p|div|h[1-6]|tr|ul|ol)(?:\s[^>]*)?>", re.IGNORECASE)
+_HTML_LIST_ITEM_RE = re.compile(r"<li(?:\s[^>]*)?>", re.IGNORECASE)
+# Только похожее на тег: «5 < 7 > 3» в тексте не трогаем.
+_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^<>]*>")
+
+
+def html_to_text(value: str | None) -> str:
+    """
+    Описание с HTML (<p>, <br>, <li>…) → обычный текст для ВК: абзацы — переносами,
+    пункты списка — «• », сущности (&nbsp;, &amp;) — символами. ВК теги не рендерит.
+    """
+    import html
+
+    text = _HTML_LINE_BREAK_RE.sub("\n", value or "")
+    text = _HTML_LIST_ITEM_RE.sub("\n• ", text)
+    text = html.unescape(_HTML_TAG_RE.sub("", text)).replace("\xa0", " ")
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 def _translated_key_name(key_obj) -> str:
