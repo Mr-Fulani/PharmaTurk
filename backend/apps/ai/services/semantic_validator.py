@@ -1084,7 +1084,8 @@ class SemanticValidator:
             }
             # «UTSADD» в источнике и «UTSÅDD» в названии (и наоборот) — одна модель.
             identity_tokens = lambda value: {  # noqa: E731
-                _without_marks(token) for token in _identity_tokens(str(value or "").upper())
+                # Метки снимаются до разбиения: иначе «İnci» → «NCI» и «INCI» источника потерян.
+                _without_marks(token) for token in _identity_tokens(_without_marks(str(value or "").upper()))
             }
         for locale, title in generated_titles.items():
             if not str(title or "").strip():

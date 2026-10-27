@@ -206,9 +206,24 @@ def _match_color(folded: list[str], start: int):
     return 0, None
 
 
+def _strip_brand(text: str, brand: str) -> str:
+    """«Us. Polo Assn. Erkek Tişört» при бренде «U.S. Polo Assn.» → «Erkek Tişört».
+
+    Бренд в названии пишут с другими точками и пробелами; его слова иначе разбираются
+    как словарные («Polo» — тип «поло», 20802 в партии FLO 27.10.2026).
+    """
+    letters = re.sub(r"[\W_]+", "", vocab.fold(brand))
+    if len(letters) < 3 or not letters.isascii():
+        return text
+    pattern = r"(?<![^\W_])" + r"[\W_]*".join(map(re.escape, letters)) + r"\.?(?![^\W_])"
+    return re.sub(r"\s+", " ", re.sub(pattern, " ", text, flags=re.IGNORECASE)).strip()
+
+
 def parse_name(name: str, facts: ProductFacts) -> None:
     """Разбор турецкого названия на тип, пол, описательные слова, цвет и модель."""
     text, volume = _extract_volume(_clean_name(name))
+    if facts.brand:
+        text = _strip_brand(text, facts.brand)
     if volume:
         facts.volume = volume
     pack = _PACK_RE.search(text)

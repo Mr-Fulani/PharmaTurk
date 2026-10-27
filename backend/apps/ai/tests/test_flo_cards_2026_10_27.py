@@ -56,10 +56,16 @@ def _titles(name, product_type, brand=""):
             19001, "Only & Sons Erkek T Shirt 22022532 AÇIK HAKİ", "clothing", "Only & Sons",
             "Мужская футболка Only & Sons, светло-хаки", "Only & Sons Men's T-Shirt, Light khaki",
         ),
-        # Бренд каталога «Only&Sons» без пробелов — не дважды («футболка Only&Sons Only & Sons»).
+        # Бренд каталога «Only&Sons» без пробелов — не дважды («футболка Only&Sons Only & Sons»):
+        # бренд в названии с другими пробелами и точками вырезается, пишется бренд каталога.
         (
             19001, "Only & Sons Erkek T Shirt 22022532 AÇIK HAKİ", "clothing", "Only&Sons",
-            "Мужская футболка Only & Sons, светло-хаки", "Only & Sons Men's T-Shirt, Light khaki",
+            "Мужская футболка Only&Sons, светло-хаки", "Only&Sons Men's T-Shirt, Light khaki",
+        ),
+        # «Us. Polo Assn.» при бренде «U.S. Polo Assn.»: «Polo» из бренда — не тип «поло».
+        (
+            20802, "Us. Polo Assn. Erkek Tişört", "clothing", "U.S. Polo Assn.",
+            "Мужская футболка U.S. Polo Assn.", "U.S. Polo Assn. Men's T-Shirt",
         ),
         # «® |» и «Taba-Erkek» (цвет и пол через дефис) — правила не собирали название.
         (
@@ -197,3 +203,24 @@ def test_apparel_title_with_turkish_vocab_word_goes_to_moderation():
 
     assert "title_untranslated" in reasons("Crocband Krem 11016", "Мужские шлёпанцы Crocs Crocband Krem", crocs)
     assert "title_untranslated" not in reasons("Mavi Erkek Sandalet", "Мужские сандалии Mavi", mavi)
+
+
+@pytest.mark.django_db
+def test_dotted_capital_i_brand_keeps_identity():
+    # 10663, 10918 и ещё 3: «İnci» в названии против «INCI» источника — title_identity_lost.
+    shoes, _ = Category.objects.update_or_create(slug="shoes", defaults={"name": "Обувь", "is_active": True})
+    sneakers, _ = Category.objects.update_or_create(
+        slug="sneakers", defaults={"name": "Кроссовки", "parent": shoes, "is_active": True}
+    )
+    brand = Brand.objects.create(name="İnci", slug="inci")
+    product = Product.objects.create(
+        name="INCI KARVEN 6FX Beyaz Erkek Spor Ayakkabı", slug="inci-karven", product_type="shoes",
+        category=sneakers, brand=brand,
+    )
+    reasons = SemanticValidator().validate(
+        product,
+        generated_titles={"ru": "Мужские кроссовки İnci KARVEN 6FX, белые", "en": "İnci KARVEN 6FX Men's Sneakers, White"},
+        dynamic_attributes=[],
+    ).reasons
+
+    assert "title_identity_lost" not in reasons
