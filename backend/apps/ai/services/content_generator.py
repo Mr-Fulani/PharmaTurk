@@ -977,8 +977,14 @@ class ContentGenerator:
             domain = getattr(product, "domain_item", None)
             variants_manager = getattr(domain, "variants", None) if domain is not None else None
             if variants_manager is not None:
+                # У SportsVariant нет is_active и sort_order (обработка спорттоваров
+                # падала с FieldError — бриджи для плавания, 27.10.2026).
+                variant_fields = {field.name for field in variants_manager.model._meta.get_fields()}
+                variants_qs = variants_manager.all()
+                if "is_active" in variant_fields:
+                    variants_qs = variants_qs.filter(is_active=True)
                 active_variants = list(
-                    variants_manager.filter(is_active=True).order_by("sort_order", "id")[:12]
+                    variants_qs.order_by(*(("sort_order", "id") if "sort_order" in variant_fields else ("id",)))[:12]
                 )
                 if active_variants:
                     variant_specs = []
