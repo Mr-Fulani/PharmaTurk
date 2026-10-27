@@ -28,8 +28,8 @@ import {
 import { shouldShowGenderFilter } from '../../lib/brandCatalog'
 import {
   buildCatalogSeoState,
+  buildCategoryLandingLinkGroups,
   isCatalogPageOutOfRange,
-  isCategoryInProductTree,
   selectExactCategory,
 } from '../../lib/categoryRouting'
 import { buildCategoryDescription, truncateAtWord } from '../../lib/seoText'
@@ -122,6 +122,7 @@ interface Category {
   card_media_url?: string | null
   children_count: number
   product_count?: number
+  products_count?: number
   parent?: number | null
   sort_order?: number
   gender?: string
@@ -737,6 +738,7 @@ const compactCategoryForListing = (
     : undefined,
   card_media_url: includeDetails ? (category.card_media_url || undefined) : undefined,
   product_count: category.product_count,
+  products_count: category.products_count,
   parent: category.parent,
   sort_order: category.sort_order,
   translations: Array.isArray(category.translations)
@@ -1741,29 +1743,22 @@ export default function CategoryPage({
     }
   }, [currentCategory, titleText, t, siteUrl, canonicalUrl])
 
-  // Перелинковка внизу страницы: с корня — разделы и все подборки дерева,
-  // с подкатегории и подборки — подборки этой категории. Без подборок блок не нужен.
-  const landingLinkGroups = useMemo<CategoryLandingLinkGroup[]>(() => {
-    if (collectionLinks.length === 0) return []
-    const groups: CategoryLandingLinkGroup[] = []
-    if (isRootCategoryPage && !collection) {
-      groups.push({
-        title: t('category_landing_sections', 'Разделы'),
-        links: displaySubcategories.map((sub) => ({
-          href: `/categories/${sub.slug}`,
-          label: getLocalizedCategoryName(sub.slug, sub.name, t, sub.translations, router.locale),
-        })),
-      })
-    }
-    groups.push({
-      title: t('category_landing_collections', 'Подборки'),
-      links: collectionLinks.map((link) => ({
-        href: `/categories/${link.parentSlug}/${link.slug}`,
-        label: link.name,
-      })),
-    })
-    return groups
-  }, [collectionLinks, isRootCategoryPage, collection, displaySubcategories, t, router.locale])
+  // Перелинковка внизу страницы: разделы — дочерние категории (buildCategoryLandingLinkGroups),
+  // подборки — с корня все подборки дерева, с подкатегории и подборки — подборки этой категории.
+  const landingLinkGroups = useMemo<CategoryLandingLinkGroup[]>(() => buildCategoryLandingLinkGroups({
+    sections: displaySubcategories.map((sub) => ({
+      href: `/categories/${sub.slug}`,
+      label: getLocalizedCategoryName(sub.slug, sub.name, t, sub.translations, router.locale),
+      productsCount: sub.products_count,
+    })),
+    collections: collectionLinks.map((link) => ({
+      href: `/categories/${link.parentSlug}/${link.slug}`,
+      label: link.name,
+    })),
+    isCollectionPage: Boolean(collection),
+    sectionsTitle: t('category_landing_sections', 'Разделы'),
+    collectionsTitle: t('category_landing_collections', 'Подборки'),
+  }), [collectionLinks, collection, displaySubcategories, t, router.locale])
 
   return (
     <>
@@ -2087,7 +2082,8 @@ export default function CategoryPage({
           </div>
         </div>
 
-        <CategoryLandingBlock linkGroups={landingLinkGroups} seoText={landingSeo?.seo_text} />
+        {/* SEO-текст — только на первой странице: ?page=N — срез того же списка */}
+        <CategoryLandingBlock linkGroups={landingLinkGroups} seoText={currentPage <= 1 ? landingSeo?.seo_text : ''} />
       </div>
     </>
   )
@@ -2257,54 +2253,6 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     // Используем тип из API, если есть, иначе угадываем из слага
     let categoryType: CategoryTypeKey = categoryTypeFromApi as CategoryTypeKey || resolveCategoryTypeFromSlug(routeSlug)
-
-    const normalizedRoute = normalizeSlug(routeSlug || '')
-    // Дефолтная локаль (ru) живёт без префикса: /ru/... отдаёт 404
-    const localePrefix = context.locale && context.locale !== context.defaultLocale ? `/${context.locale}` : ''
-    const categoryTreeContext = {
-      categoryType: categoryTypeFromApi,
-      inferredType: categoryType,
-      routeSlug,
-      ancestors: catData?.ancestors,
-    }
-    const isShoeCategory = isCategoryInProductTree(categoryTreeContext, 'shoes')
-    if (routeSlug && normalizedRoute !== 'shoes' && isShoeCategory) {
-      const query = new URLSearchParams()
-      if (catData?.gender) {
-        query.set('gender', normalizeSlug(catData.gender))
-      }
-      query.set('subcategory_slug', normalizedRoute)
-      const brandIdValue = Array.isArray(brand_id) ? brand_id[0] : brand_id
-      if (brandIdValue) {
-        query.set('brand_id', String(brandIdValue))
-      }
-      return {
-        redirect: {
-          destination: `${localePrefix}/categories/shoes${query.toString() ? `?${query.toString()}` : ''}`,
-          permanent: false
-        }
-      }
-    }
-
-    const isFurnitureCategory = isCategoryInProductTree(categoryTreeContext, 'furniture')
-    if (routeSlug && normalizedRoute !== 'furniture' && isFurnitureCategory) {
-      const query = new URLSearchParams()
-      query.set('subcategory_slug', normalizedRoute)
-      const brandIdValue = Array.isArray(brand_id) ? brand_id[0] : brand_id
-      if (brandIdValue) {
-        query.set('brand_id', String(brandIdValue))
-      }
-      const brandValue = Array.isArray(brand) ? brand[0] : brand
-      if (brandValue) {
-        query.set('brand', String(brandValue))
-      }
-      return {
-        redirect: {
-          destination: `${localePrefix}/categories/furniture${query.toString() ? `?${query.toString()}` : ''}`,
-          permanent: false
-        }
-      }
-    }
 
     const brandSlug = Array.isArray(brand) ? brand[0] : brand
     const brandId = Array.isArray(brand_id) ? brand_id[0] : brand_id

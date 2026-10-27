@@ -33,9 +33,9 @@ def test_sitemap_entries_returns_all_active_categories_without_full_serializer(m
         slug=f"sitemap-hidden-{suffix}",
         is_active=False,
     )
-    # Товары только в дочерней категории и в shoes: родитель непустой через потомка
+    # Товары только в дочерней категории и в подразделе обуви: родитель непустой через потомка
     Product.objects.create(name="Tab", slug=f"sitemap-tab-{suffix}", category=child, price=Decimal("1"))
-    Product.objects.create(name="Shoe", slug=f"sitemap-shoe-{suffix}", category=shoes, price=Decimal("1"))
+    Product.objects.create(name="Shoe", slug=f"sitemap-shoe-{suffix}", category=sneakers, price=Decimal("1"))
 
     response = APIClient().get(
         "/api/catalog/sitemap-entries",
@@ -44,8 +44,8 @@ def test_sitemap_entries_returns_all_active_categories_without_full_serializer(m
 
     assert response.status_code == 200
     slugs = {row["slug"] for row in response.data["results"]}
-    assert {root.slug, child.slug, shoes.slug}.issubset(slugs)
-    assert sneakers.slug not in slugs
+    # С 27.10.2026 подразделы обуви и мебели — свои страницы, а не редирект на фильтр корня
+    assert {root.slug, child.slug, shoes.slug, sneakers.slug}.issubset(slugs)
     assert hidden.slug not in slugs
     assert response.data["count"] >= len(response.data["results"])
     assert set(response.data["results"][0]) == {"slug", "updated_at"}

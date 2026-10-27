@@ -1,20 +1,28 @@
 const normalizeCategorySlug = (value) =>
   (value || '').toString().trim().toLowerCase().replace(/_/g, '-')
 
-export function isCategoryInProductTree({ categoryType, inferredType, routeSlug, ancestors }, targetType) {
-  const target = normalizeCategorySlug(targetType)
-  if (!target) return false
-
-  const candidates = [categoryType, inferredType, routeSlug]
-  for (const ancestor of ancestors || []) candidates.push(ancestor?.slug)
-
-  return candidates.some((value) => normalizeCategorySlug(value) === target)
-}
-
 export function selectExactCategory(items, routeSlug) {
   const target = normalizeCategorySlug(routeSlug)
   if (!target || !Array.isArray(items)) return null
   return items.find((item) => normalizeCategorySlug(item?.slug) === target) || null
+}
+
+/**
+ * Ссылки внизу страницы каталога (CategoryLandingBlock). «Разделы» — дочерние
+ * категории любой категории: боковая панель фильтрует кнопками, а не ссылками,
+ * и до 27.10.2026 разделы выводились только у корня с подборками — подразделы
+ * БАДов, одежды, обуви и мебели поисковик находил лишь в sitemap. У подборки
+ * разделов нет: её товары отобраны правилом, а не деревом.
+ */
+export function buildCategoryLandingLinkGroups({ sections, collections, isCollectionPage, sectionsTitle, collectionsTitle }) {
+  const groups = []
+  // Пустой раздел — noindex, ссылка на него только тратит обход. Счёт неизвестен — ссылку оставляем.
+  const sectionLinks = sections
+    .filter((section) => section.productsCount !== 0)
+    .map(({ href, label }) => ({ href, label }))
+  if (!isCollectionPage && sectionLinks.length > 0) groups.push({ title: sectionsTitle, links: sectionLinks })
+  if (collections.length > 0) groups.push({ title: collectionsTitle, links: collections })
+  return groups
 }
 
 export function isCatalogPageOutOfRange(pageValue, totalCount, pageSize) {

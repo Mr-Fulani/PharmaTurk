@@ -5605,37 +5605,6 @@ class SitemapEntriesView(_APIView):
     }
 
     @staticmethod
-    def _redirecting_category_ids():
-        """Category routes that redirect into a root catalogue filter.
-
-        Shoe and furniture descendants are represented by query filters on their
-        root pages. Putting their redirecting aliases into sitemap.xml wastes crawl
-        budget and conflicts with the clean canonical URL.
-        """
-        rows = list(
-            Category.objects.filter(is_active=True).values(
-                'id', 'parent_id', 'slug', 'category_type__slug'
-            )
-        )
-        by_id = {row['id']: row for row in rows}
-        redirected = set()
-        for row in rows:
-            route_slug = str(row['slug'] or '').replace('_', '-').lower()
-            if route_slug in {'shoes', 'furniture'}:
-                continue
-            current = row
-            seen = set()
-            while current and current['id'] not in seen:
-                seen.add(current['id'])
-                current_slug = str(current['slug'] or '').replace('_', '-').lower()
-                type_slug = str(current['category_type__slug'] or '').replace('_', '-').lower()
-                if current_slug in {'shoes', 'furniture'} or type_slug in {'shoes', 'furniture'}:
-                    redirected.add(row['id'])
-                    break
-                current = by_id.get(current['parent_id'])
-        return redirected
-
-    @staticmethod
     def _nonempty_category_ids():
         """Категории, где есть публичный товар или услуга (в самой категории или потомках).
 
@@ -5730,7 +5699,6 @@ class SitemapEntriesView(_APIView):
 
         qs = model_cls.objects.filter(is_active=True)
         if kind == 'categories':
-            qs = qs.exclude(id__in=self._redirecting_category_ids())
             qs = qs.filter(id__in=self._nonempty_category_ids())
         qs = (
             qs

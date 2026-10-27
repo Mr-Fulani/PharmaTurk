@@ -219,15 +219,6 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
     })
     .slice(0, 14)
 
-  const handleBrandClick = (brand: Brand) => {
-    router.push(`/brand/${brand.slug}`)
-  }
-
-  const handleCategoryClick = (category: CategoryCard & { displaySlug?: string }) => {
-    const slugForRoute = category.displaySlug || mapCategoryToRouteSlug(category.slug)
-    router.push(`/categories/${slugForRoute}`)
-  }
-
   const siteUrl = getSiteOrigin()
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
   const canonicalUrl = `${siteUrl}${localePrefix || '/'}`
@@ -378,9 +369,9 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
                 const mediaUrl = brand.card_media_url || brand.logo
                 const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
                 return (
-                  <div
+                  <Link
                     key={brand.id}
-                    onClick={() => handleBrandClick(brand)}
+                    href={`/brand/${brand.slug}`}
                     className="relative shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-gray-900 group"
                   >
                     {renderMedia(withListingImageMaxWidth(mediaUrl || '', 300) || placeholderUrl, brand.name, placeholderUrl, '96px')}
@@ -405,7 +396,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
                         )}
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
 
@@ -435,9 +426,9 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
                 const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
                 const cardHeight = brandTileHeights[idx % brandTileHeights.length]
                 return (
-                  <div
+                  <Link
                     key={brand.id}
-                    onClick={() => handleBrandClick(brand)}
+                    href={`/brand/${brand.slug}`}
                     style={{ height: cardHeight }}
                     className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
                   >
@@ -464,7 +455,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
                         </h3>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
             </Masonry>
@@ -498,9 +489,9 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
                 const mediaUrl = category.card_media_url
                 const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
                 return (
-                  <div
+                  <Link
                     key={category.id}
-                    onClick={() => handleCategoryClick(category)}
+                    href={`/categories/${category.displaySlug}`}
                     style={{ height: cardHeight }}
                     className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
                   >
@@ -525,7 +516,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
                         )}
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
             </Masonry>
