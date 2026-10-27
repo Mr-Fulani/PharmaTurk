@@ -136,7 +136,9 @@ both new and previous SHA-labelled images and the validated backup manifest. It
 prints the migration plan, stops Nginx/web/workers for a controlled maintenance
 window, starts data services without deleting volumes, applies committed
 migrations once, starts all application services on one SHA with automatic
-migrations disabled, and runs public HTTPS smoke checks. Existing PostgreSQL,
+migrations disabled, and runs public HTTPS smoke checks. If the migration step
+fails, it restarts the previous release's application services before exiting
+(the site no longer stays down; schema changes already applied are kept). Existing PostgreSQL,
 Redis, and Qdrant containers are never recreated by the deploy script; state
 service upgrades are a separate, explicitly planned maintenance operation.
 Migration one-shots and application startup disable implicit dependency

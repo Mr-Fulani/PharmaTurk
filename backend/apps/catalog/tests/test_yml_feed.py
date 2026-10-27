@@ -500,3 +500,24 @@ def test_sync_vk_photos_category_includes_subcategories(settings, monkeypatch):
     output = out.getvalue()
     assert f"[{in_child.id}]" in output
     assert f"[{elsewhere.id}]" not in output
+
+
+@pytest.mark.django_db
+def test_feed_reset_migration_does_not_touch_storage(monkeypatch):
+    """Релиз 27.10.2026 упал: миграция 0229 удаляла файлы фидов в R2, а у контейнера
+    миграций на проде нет выхода в интернет. Миграция чистит только записи."""
+    import importlib
+
+    from django.apps import apps as django_apps
+    from django.core.files.storage import default_storage
+
+    migration = importlib.import_module("apps.catalog.migrations.0229_vk_category_paths")
+    YMLFeedSnapshot.objects.create(category_slug="headwear", part=1, file="feeds/yml/headwear-old.xml")
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("миграция не должна обращаться к хранилищу")
+
+    monkeypatch.setattr(default_storage, "delete", no_network)
+    migration.reset_feed_snapshots(django_apps, None)
+
+    assert not YMLFeedSnapshot.objects.exists()
