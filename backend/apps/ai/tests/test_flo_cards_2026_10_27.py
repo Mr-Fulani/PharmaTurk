@@ -56,6 +56,11 @@ def _titles(name, product_type, brand=""):
             19001, "Only & Sons Erkek T Shirt 22022532 AÇIK HAKİ", "clothing", "Only & Sons",
             "Мужская футболка Only & Sons, светло-хаки", "Only & Sons Men's T-Shirt, Light khaki",
         ),
+        # Бренд каталога «Only&Sons» без пробелов — не дважды («футболка Only&Sons Only & Sons»).
+        (
+            19001, "Only & Sons Erkek T Shirt 22022532 AÇIK HAKİ", "clothing", "Only&Sons",
+            "Мужская футболка Only & Sons, светло-хаки", "Only & Sons Men's T-Shirt, Light khaki",
+        ),
         # «® |» и «Taba-Erkek» (цвет и пол через дефис) — правила не собирали название.
         (
             11241, "® | PC-5112-3892 Taba-Erkek Sandalet", "shoes", "Pierre Cardin",
