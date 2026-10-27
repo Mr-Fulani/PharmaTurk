@@ -561,7 +561,6 @@ def test_admin_test_send_goes_to_current_admin(settings):
     assert journal.status_code == 200
 
 
-
 @pytest.mark.django_db
 def test_test_send_respects_channel_checkboxes(settings):
     """Тест «себе» идёт только в каналы с галочкой (владелец, 27.10.2026: письмо уходило при снятой)."""
@@ -608,6 +607,7 @@ def test_telegram_chat_not_found_explains_start(settings):
     assert log.status == CartReminderLog.Status.FAILED
     assert "откройте @mudaroba_bot в Telegram и нажмите Start" in log.error
     assert "chat not found" in log.error
+
 
 @pytest.mark.django_db
 def test_admin_action_marks_client_contacted(conf, rf):
