@@ -71,6 +71,7 @@ def _get_public_variant(variant_model, slug):
 from .models import (
     Category, CategoryCollection, MedicineGroup, Brand, Product, PriceHistory, Favorite, Author,
     ProductAttributeValue,
+    GlobalAttributeKey,
     ClothingProduct, ClothingVariant,
     ShoeProduct, ShoeVariant,
     ElectronicsProduct,
@@ -695,24 +696,32 @@ class FacetedModelViewSetMixin:
         if '-' in lang:
             lang = lang.split('-')[0]
         use_ru = lang.startswith('ru')
-        qs = ProductAttributeValue.objects.filter(
+        # Уникальные пары «ключ — значение» считает БД: у мебели ~2 тыс. товаров по
+        # десятку атрибутов, и объект на каждую строку стоил ~0,5 с на ответ.
+        rows = ProductAttributeValue.objects.filter(
             content_type=ct,
             object_id__in=product_ids,
-        ).select_related('attribute_key').order_by('attribute_key__sort_order', 'attribute_key__slug')
+        ).order_by().values_list(
+            'attribute_key_id', 'attribute_key__slug', 'value', 'value_ru', 'value_en'
+        ).distinct()
         grouped: dict[str, set[str]] = {}
-        key_names: dict[str, str] = {}
-        for pav in qs:
-            key_slug = pav.attribute_key.slug if pav.attribute_key else ''
+        key_ids: dict[str, int] = {}
+        for key_id, key_slug, value, value_ru, value_en in rows:
             if not key_slug:
                 continue
             if not is_facet_attribute_allowed(model_product_type, key_slug):
                 continue
             if key_slug not in grouped:
                 grouped[key_slug] = set()
-                key_names[key_slug] = pav.attribute_key.name if pav.attribute_key else key_slug
-            val = (pav.value_ru or pav.value) if use_ru else (pav.value_en or pav.value)
+                key_ids[key_slug] = key_id
+            val = (value_ru or value) if use_ru else (value_en or value)
             if val:
                 grouped[key_slug].add(_canonicalize_attribute_value(key_slug, val))
+        keys_by_id = GlobalAttributeKey.objects.prefetch_related('translations').in_bulk(key_ids.values())
+        key_names = {
+            key_slug: keys_by_id[key_id].name if key_id in keys_by_id else key_slug
+            for key_slug, key_id in key_ids.items()
+        }
         result = []
         for key_slug in sorted(grouped.keys()):
             values = sorted(value for value in grouped[key_slug] if value)

@@ -120,3 +120,62 @@ def test_available_attributes_excludes_single_value_and_non_facet_dynamic_attrib
             "values": ["Кожа", "Ткань"],
         }
     ]
+
+
+@pytest.mark.django_db
+def test_available_attributes_query_count_does_not_grow_with_products():
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    from apps.catalog.views import FacetedModelViewSetMixin
+
+    category_type, _ = CategoryType.objects.get_or_create(slug="accessories", defaults={"name": "Accessories"})
+    category = Category.objects.create(
+        name="Аксессуары",
+        slug="test-accessories-facets-count",
+        description="Аксессуары",
+        category_type=category_type,
+    )
+    key_material, _ = GlobalAttributeKey.objects.get_or_create(slug="material")
+    GlobalAttributeKeyTranslation.objects.get_or_create(key_obj=key_material, locale="ru", defaults={"name": "Материал"})
+    content_type = ContentType.objects.get_for_model(AccessoryProduct)
+    products = []
+    for index in range(6):
+        product = AccessoryProduct.objects.create(
+            name=f"Аксессуар {index}",
+            slug=f"test-accessory-count-{index}",
+            description="Товар",
+            category=category,
+            price=100,
+            currency="TRY",
+            is_active=True,
+        )
+        ProductAttributeValue.objects.create(
+            content_type=content_type,
+            object_id=product.id,
+            attribute_key=key_material,
+            value="Кожа" if index % 2 else "Ткань",
+            value_ru="Кожа" if index % 2 else "Ткань",
+        )
+        products.append(product)
+
+    class _FacetView(FacetedModelViewSetMixin):
+        pass
+
+    view = _FacetView()
+    view.request = _build_request()
+
+    def run(items):
+        with translation.override("ru"), CaptureQueriesContext(connection) as queries:
+            available = view._calculate_available_attributes(
+                AccessoryProduct.objects.filter(pk__in=[p.pk for p in items]).order_by("pk")
+            )
+        return available, len(queries.captured_queries)
+
+    few, few_queries = run(products[:2])
+    many, many_queries = run(products)
+
+    expected = [{"key": "material", "name": "Материал", "values": ["Кожа", "Ткань"]}]
+    assert few == expected
+    assert many == expected
+    assert many_queries == few_queries
