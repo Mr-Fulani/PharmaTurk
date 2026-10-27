@@ -26,7 +26,7 @@ from apps.ai.services.medicine_title import (
     title_brand,
 )
 from apps.ai.services.rules.facts import supplier_code_tokens
-from apps.ai.services.rules.vocab import fold, generic_title_words
+from apps.ai.services.rules.vocab import TURKISH_TITLE_WORDS, fold, generic_title_words
 from apps.ai.services import supplement_content, supplement_glossary
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
@@ -474,6 +474,20 @@ def _same_stem(word: str, other: str) -> bool:
 def _title_has_turkish_words(title: Any) -> bool:
     text = str(title or "")
     return bool(_TURKISH_TITLE_WORDS.search(text) or _TURKISH_TITLE_TRANSLITERATIONS.search(text))
+
+
+# Одежда, обувь и аксессуары: LLM-название с турецким словом словаря без турецких букв
+# («Мужские шлёпанцы Crocs Crocband Krem», «сандалии Siyah Lastikli») — партия FLO 27.10.2026.
+_APPAREL_TITLE_TYPES = frozenset({"clothing", "shoes", "underwear", "headwear", "islamic_clothing", "accessories"})
+
+
+def _apparel_title_turkish_words(title: Any, product) -> bool:
+    words = {fold(word.strip("()[],.;:")) for word in str(title or "").split()} & TURKISH_TITLE_WORDS
+    if not words:
+        return False
+    # Бренд читается только здесь: «Mavi» — бренд, а не цвет.
+    brand = getattr(getattr(product, "brand", None), "name", "")
+    return bool(words - set(fold(brand).split()))
 
 
 def _normalized(value: Any) -> str:
@@ -1086,6 +1100,8 @@ class SemanticValidator:
                 report.reasons.append(medicine_problem)
                 break
             if _title_has_turkish_words(title) or (
+                product_type in _APPAREL_TITLE_TYPES and _apparel_title_turkish_words(title, product)
+            ) or (
                 locale == "ru"
                 and product_type == "supplements"
                 and _SUPPLEMENT_RU_TITLE_LATIN_UNITS.search(str(title))

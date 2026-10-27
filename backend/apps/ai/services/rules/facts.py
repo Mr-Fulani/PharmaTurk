@@ -104,8 +104,13 @@ def clean_source_text(value: Any) -> str:
     return text.strip(" -")
 
 
+# «PC-5112-3892 Taba-Erkek Sandalet», «Vizon-Erkek»: цвет и пол слитно через дефис.
+_HYPHEN_AUDIENCE_RE = re.compile(r"(?<=[^\W\d_])-(?=(?:erkek|kad[iı]n|unisex|[cç]ocuk)\b)", re.IGNORECASE)
+
+
 def _clean_name(name: str) -> str:
     text = vocab.TITLE_NOISE_RE.sub(" ", str(name or ""))
+    text = _HYPHEN_AUDIENCE_RE.sub(" ", text)
     text = _PRICE_RE.sub(" ", text)
     text = re.sub(r"\s+-\s*$|^\s*-\s+", " ", text)
     text = re.sub(r"\s+-\s+-?\s*", " - ", text)
@@ -220,7 +225,8 @@ def parse_name(name: str, facts: ProductFacts) -> None:
     index = 0
     while index < len(tokens):
         token, key = tokens[index], folded[index].strip("()[],.;:")
-        if not key or key in ("-", "–"):
+        # «® | PC-5112-3892 Taba-Erkek Sandalet»: знаки без букв и цифр — не слова названия.
+        if not key or key in ("-", "–") or (not re.search(r"\w", key) and token not in ("&", "/", "+")):
             index += 1
             continue
         # Самая длинная фраза из всех словарей: «Polo Yaka» — вырез, а не тип «поло».

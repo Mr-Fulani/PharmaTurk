@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.ai.services.rules.facts import ProductFacts, parse_name
+from apps.ai.services.rules.pipeline import _checked_llm_title
 from apps.ai.services.rules.text import build_titles
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.size_inventory import extract_sizes_from_input, variant_size_identities
@@ -45,6 +46,11 @@ def _titles(name, product_type, brand=""):
         (
             11359, "Aryan D.r Tavsiyeli Ortapedik Erkek Sandalet", "shoes", "ARYAN",
             "Мужские сандалии ARYAN с ортопедической стелькой", "ARYAN Men's Orthopedic Sandals",
+        ),
+        # «® |» и «Taba-Erkek» (цвет и пол через дефис) — правила не собирали название.
+        (
+            11241, "® | PC-5112-3892 Taba-Erkek Sandalet", "shoes", "Pierre Cardin",
+            "Мужские сандалии Pierre Cardin, рыжие", "Pierre Cardin Men's Sandals, Tan",
         ),
         (
             11329, "Ayakkabiburada 033 Topuk Jelli Hakiki Deri Erkek Sandalet Ayakkabı", "shoes", "",
@@ -127,3 +133,53 @@ def test_brand_word_is_not_category_conflict():
     assert "title_category_mismatch" not in reasons(brand)
     # Без бренда «Jeans» в названии — по-прежнему конфликт с «Джинсами».
     assert "title_category_mismatch" in reasons(None)
+
+
+@pytest.mark.parametrize(
+    "pid, title, locale",
+    [
+        (11203, "Мужские сандалии Siyah Lastikli из натуральной кожи", "ru"),
+        (11358, "Мужские сандалии Kum Nubuk", "ru"),
+        (11358, "Kum Nubuck Genuine Leather Men's Sandals 1405", "en"),
+        (11164, "Мужские сандалии Pierre Cardin Taba", "ru"),
+        # Имя магазина из промпта вместо бренда.
+        (20323, "Мужская спортивная футболка Mudaroba в полоску из полиэстера", "ru"),
+    ],
+)
+def test_llm_title_with_turkish_vocab_word_is_rejected(pid, title, locale):
+    assert _checked_llm_title(title, ProductFacts(product_type="shoes"), locale) == "", pid
+
+
+@pytest.mark.parametrize(
+    "title, locale, brand",
+    [
+        ("Мужская футболка Buratti с воротником-поло", "ru", ""),
+        ("Men's Basic Crew Neck T-Shirt 5-Pack, Cotton", "en", ""),
+        ("Jack & Jones Men's Logo Polo T-Shirt", "en", "Jack & Jones"),
+        ("Мужская футболка Mavi с принтом", "ru", "Mavi"),  # бренд, а не цвет
+    ],
+)
+def test_llm_title_with_english_words_is_kept(title, locale, brand):
+    facts = ProductFacts(product_type="clothing", brand=brand)
+
+    assert _checked_llm_title(title, facts, locale) == title
+
+
+@pytest.mark.django_db
+def test_apparel_title_with_turkish_vocab_word_goes_to_moderation():
+    # 11226: правилам не из чего собрать название, LLM-вариант «Crocband Krem» уходил на сайт.
+    shoes, _ = Category.objects.update_or_create(slug="shoes", defaults={"name": "Обувь", "is_active": True})
+    sandals, _ = Category.objects.update_or_create(
+        slug="sandals", defaults={"name": "Сандалии", "parent": shoes, "is_active": True}
+    )
+    crocs = Brand.objects.create(name="Crocs", slug="crocs")
+    mavi = Brand.objects.create(name="Mavi", slug="mavi")
+
+    def reasons(name, ru, brand):
+        product = Product.objects.create(
+            name=name, slug=f"krem-{brand.pk}", product_type="shoes", category=sandals, brand=brand
+        )
+        return SemanticValidator().validate(product, generated_titles={"ru": ru}, dynamic_attributes=[]).reasons
+
+    assert "title_untranslated" in reasons("Crocband Krem 11016", "Мужские шлёпанцы Crocs Crocband Krem", crocs)
+    assert "title_untranslated" not in reasons("Mavi Erkek Sandalet", "Мужские сандалии Mavi", mavi)

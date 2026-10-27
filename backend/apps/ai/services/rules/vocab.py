@@ -593,6 +593,24 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "yeni": ("", ""),
 }
 
+# Турецкие слова словарей, которые LLM копирует в название как есть («Мужские сандалии
+# Siyah Lastikli», «Kum Nubuk»): в названии правилами их нет, значит, это брак (партия FLO 27.10.2026).
+# Слова, совпадающие с английскими («Basic», «Logo», «Polo»), не считаются.
+_ENGLISH_VOCAB_WORDS = frozenset(
+    {
+        "bandana", "basic", "boxer", "clog", "cn", "cneck", "comfort", "deodorant", "edc", "edp", "edt",
+        "fit", "graphic", "hoodie", "indigo", "jean", "jeans", "kids", "loafer", "logo", "men", "metal",
+        "mint", "model", "noos", "normal", "oval", "oversize", "parfum", "petrol", "pls", "polo", "poplin", "relaxed",
+        "sandal", "slip", "sneaker", "ss", "stick", "sweatshirt", "tee", "tshirt", "unisex", "women",
+    }
+)
+TURKISH_TITLE_WORDS = frozenset(
+    key
+    for mapping in (COLORS, DESCRIPTORS, AUDIENCE, KINDS)
+    for key in mapping
+    if " " not in key and "-" not in key and key not in _ENGLISH_VOCAB_WORDS
+)
+
 # Канонический материал аксессуара (RU из attribute_specs) → фраза названия.
 MATERIAL_PHRASES: dict[str, tuple[str, str]] = {
     "натуральная кожа": ("из натуральной кожи", "Genuine Leather"),
