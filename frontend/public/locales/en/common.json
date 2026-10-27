@@ -140,6 +140,8 @@
   "remove": "Remove",
   "checkout_page_title": "Send request",
   "checkout_title": "Send request",
+  "checkout_guest_hint": "No sign-up needed: leave your name and phone — a manager will contact you and confirm the price.",
+  "checkout_guest_login": "Sign in to track the status in your profile",
   "checkout_recipient_name": "Recipient name",
   "checkout_phone": "Phone",
   "checkout_email_optional": "Email (optional)",

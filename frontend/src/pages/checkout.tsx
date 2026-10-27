@@ -404,14 +404,6 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     }
   }
 
-  useEffect(() => {
-    console.log('CheckoutPage useEffect: authLoading =', authLoading, 'user =', user ? 'authenticated' : 'not authenticated')
-    if (!authLoading && !user) {
-      console.log('Redirecting to auth page due to no user')
-      router.push('/auth?next=/checkout')
-    }
-  }, [user, authLoading, router])
-
   const hasBlockingIssues = Boolean(
     cart?.has_blocking_issues || cart?.items.some(isBlockingCartItem),
   )
@@ -444,6 +436,14 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">{t('checkout_title', 'Оформление заказа')}</h1>
+          {!authLoading && !user && (
+            <p className="mt-2 text-sm text-gray-600">
+              {t('checkout_guest_hint', 'Регистрация не нужна: оставьте имя и телефон — менеджер свяжется и подтвердит цену.')}{' '}
+              <Link href="/auth?next=/checkout" className="font-medium text-[var(--accent-strong)] underline">
+                {t('checkout_guest_login', 'Войти, чтобы видеть статус в профиле')}
+              </Link>
+            </p>
+          )}
         </div>
 
         {hasBlockingIssues && (

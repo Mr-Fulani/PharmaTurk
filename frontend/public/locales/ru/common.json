@@ -139,6 +139,8 @@
   "remove": "Удалить",
   "checkout_page_title": "Оформление заявки",
   "checkout_title": "Оформление заявки",
+  "checkout_guest_hint": "Регистрация не нужна: оставьте имя и телефон — менеджер свяжется и подтвердит цену.",
+  "checkout_guest_login": "Войти, чтобы видеть статус в профиле",
   "checkout_recipient_name": "Имя получателя",
   "checkout_phone": "Телефон",
   "checkout_email_optional": "Email (необязательно)",
