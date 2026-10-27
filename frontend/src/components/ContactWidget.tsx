@@ -400,7 +400,7 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
       <div
         ref={containerRef}
         data-analytics-placement="widget"
-        className="fixed z-[90]"
+        className="contact-widget fixed z-[90]"
         style={{
           width: WIDGET_SIZE,
           height: WIDGET_SIZE,

@@ -114,6 +114,8 @@
   "order_via_telegram": "Order via Telegram",
   "adding": "Adding...",
   "added": "Added",
+  "added_go_to_request": "Added — go to request",
+  "go_to_request": "Go to request",
   "search_results": "Search results",
   "search_for": "For query",
   "email": "Email",

@@ -25,6 +25,8 @@ interface AddToCartButtonProps {
   /** Товар для аналитики (как в view_item карточки): название, тип, цена */
   analyticsItem?: GtmEcommerceItem
   analyticsCurrency?: string
+  /** Вызывается после успешного добавления (когда показывается «Добавлено») */
+  onAdded?: () => void
 }
 
 export default function AddToCartButton({
@@ -40,6 +42,7 @@ export default function AddToCartButton({
   price,
   analyticsItem,
   analyticsCurrency,
+  onAdded,
 }: AddToCartButtonProps) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -157,6 +160,7 @@ export default function AddToCartButton({
       }
 
       setDone(true)
+      onAdded?.()
       resetTimerRef.current = setTimeout(() => {
         setDone(false)
         resetTimerRef.current = null

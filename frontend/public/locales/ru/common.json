@@ -113,6 +113,8 @@
   "order_via_telegram": "Заказать через Telegram",
   "adding": "Добавляем...",
   "added": "Добавлено",
+  "added_go_to_request": "Добавлено — оформить заявку",
+  "go_to_request": "Оформить заявку",
   "search_results": "Результаты поиска",
   "search_for": "По запросу",
   "email": "Email",

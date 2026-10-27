@@ -18,6 +18,8 @@ import {
   sourceRefreshNeedsManagerPrice,
 } from '../../lib/productAvailability'
 import BuyNowButton from '../../components/BuyNowButton'
+import MobileStickyBuyBar from '../../components/MobileStickyBuyBar'
+import { stickyBuyBarMode } from '../../lib/stickyBuyBar'
 import SecurityAndService from '../../components/SecurityAndService'
 import ServiceAttributes from '../../components/ServiceAttributes'
 import FavoriteButton from '../../components/FavoriteButton'
@@ -1325,6 +1327,13 @@ export default function ProductPage({
     if (viewItemRef.current) gtmViewItem(...viewItemRef.current)
   }, [product?.slug])
 
+  // Липкая панель «цена + В заявку» на телефоне и ссылка «Оформить заявку» после добавления
+  const actionBlockRef = useRef<HTMLDivElement>(null)
+  const sizePickerRef = useRef<HTMLDivElement>(null)
+  const [addedToCart, setAddedToCart] = useState(false)
+  useEffect(() => { setAddedToCart(false) }, [product?.slug])
+  const markAddedToCart = useCallback(() => setAddedToCart(true), [])
+
   if (!product) {
     return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
   }
@@ -2576,7 +2585,7 @@ export default function ProductPage({
                   </div>
                 )}
                 {sizesForColor.length > 0 && (
-                  <div className="flex flex-col gap-2">
+                  <div ref={sizePickerRef} className="flex scroll-mt-24 flex-col gap-2">
                     <span
                       className="text-sm font-semibold"
                       style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
@@ -2679,7 +2688,7 @@ export default function ProductPage({
             )}
 
             {/* Кнопки действий */}
-            <div className="mt-4 flex flex-col gap-3">
+            <div ref={actionBlockRef} className="mt-4 flex flex-col gap-3">
               {isService ? (
                 <>
                   {/* Для услуг — связь через мессенджеры, а не корзина */}
@@ -2734,6 +2743,7 @@ export default function ProductPage({
                       label={t('add_to_cart', 'В заявку')}
                       analyticsItem={analyticsItem}
                       analyticsCurrency={analyticsCurrency}
+                      onAdded={markAddedToCart}
                     />
                     <Link
                       href="/how-to-order-medicines"
@@ -2774,6 +2784,7 @@ export default function ProductPage({
                       label={t('add_to_cart', 'В корзину')}
                       analyticsItem={analyticsItem}
                       analyticsCurrency={analyticsCurrency}
+                      onAdded={markAddedToCart}
                     />
                     <BuyNowButton
                       productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
@@ -2789,6 +2800,16 @@ export default function ProductPage({
                   </>
                   )
                 )
+              )}
+
+              {addedToCart && !isService && (
+                <Link
+                  href="/cart"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--accent)] px-4 py-3 text-sm font-semibold text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent-soft)]"
+                >
+                  {t('added_go_to_request', 'Добавлено — оформить заявку')}
+                  <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+                </Link>
               )}
 
               {isSupplement && (
@@ -3072,6 +3093,32 @@ export default function ProductPage({
 
         <RelatedProductLinks links={relatedLinks} />
       </main >
+      <MobileStickyBuyBar
+        actionRef={actionBlockRef}
+        sizeRef={sizePickerRef}
+        mode={stickyBuyBarMode({
+          isService,
+          outOfStock: !isMedicine && maxAvailable === 0,
+          sizeRequired: !isMedicine && !isBaseProduct && sizeRequired,
+          sizeSelected: Boolean(selectedSize),
+          added: addedToCart,
+        })}
+        price={displayTotalPrice}
+        addButton={
+          <AddToCartButton
+            productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
+            productType={productType}
+            productSlug={cartProductSlug}
+            {...(!isMedicine && { size: selectedSize, requireSize: !isBaseProduct && sizeRequired })}
+            quantity={quantity}
+            className="w-full"
+            label={t('add_to_cart', 'В заявку')}
+            analyticsItem={analyticsItem}
+            analyticsCurrency={analyticsCurrency}
+            onAdded={markAddedToCart}
+          />
+        }
+      />
     </>
   )
 }
