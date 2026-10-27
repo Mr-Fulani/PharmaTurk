@@ -592,14 +592,17 @@ _PHRASE_MODIFIERS = (
             ("muz", ("банана", "banana")), ("cilek", ("клубники", "strawberry")), ("vanilya", ("ванили", "vanilla")),
             ("cikolata", ("шоколада", "chocolate")), ("kahve", ("кофе", "coffee")),
             ("portakal", ("апельсина", "orange")), ("ahududu", ("малины", "raspberry")),
-            ("kayisi", ("абрикоса", "apricot")),
+            ("kayisi", ("абрикоса", "apricot")), ("kakaolu", ("какао", "cocoa")),
         )
     ),
     (re.compile(r"aromasiz\b"), ("без вкуса", "unflavoured")),
 )
 # Вкус лечебного питания — не бренд: «PEDIASURE CILEK AROMALI 220 ML» → «PEDIASURE, со вкусом
 # клубники, 220 мл» (шаблон оставлял «CILEK AROMALI» в бренде; очередь модерации 27.10.2026).
-_FLAVOUR_WORDS = frozenset({"muz", "cilek", "vanilya", "cikolata", "kahve", "portakal", "ahududu", "kayisi", "aromasiz"})
+# «PEDIASURE KAKAOLU» — «с какао» (пилот круга 3 27.10.2026: на сайте 4 названия с «KAKAOLU»).
+_FLAVOUR_WORDS = frozenset({
+    "muz", "cilek", "vanilya", "cikolata", "kahve", "portakal", "ahududu", "kayisi", "kakaolu", "aromasiz",
+})
 # Вещество в/в раствора («%5 DEKSTROZ SUDAKI COZELTISI») → RU в родительном падеже, EN.
 _SUBSTANCES = {
     "laktatli ringer": ("Рингер-лактата", "Ringer's lactate"),
@@ -1170,10 +1173,10 @@ def title_inn(value: str) -> str:
 # «ТЕ/мл», «мг». «ME» латиницей — те же «МЕ» (очередь модерации 26.10.2026: ≈ 60 названий).
 _RU_TITLE_UNITS = {
     "MIU": "млн МЕ", "MG": "мг", "MCG": "мкг", "ML": "мл", "IU": "МЕ", "I.U.": "МЕ", "UI": "МЕ",
-    "ME": "МЕ", "TU": "ТЕ", "GR": "г", "G": "г",
+    "ME": "МЕ", "TU": "ТЕ", "GR": "г", "G": "г", "MCI": "мКи",  # «Y-90 CITRATE 50 mCi» — милликюри
 }
 _RU_TITLE_UNIT_RE = re.compile(
-    r"(?:(?<=\d)|(?<=\d )|(?<=/))(MIU|MCG|MG|ML|I\.U\.|IU|UI|ME|TU|GR|G)(?![A-Za-zА-Яа-яЁё.])", re.IGNORECASE
+    r"(?:(?<=\d)|(?<=\d )|(?<=/))(MIU|MCG|MCI|MG|ML|I\.U\.|IU|UI|ME|TU|GR|G)(?![A-Za-zА-Яа-яЁё.])", re.IGNORECASE
 )
 
 

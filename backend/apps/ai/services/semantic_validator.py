@@ -269,14 +269,14 @@ _TURKISH_TITLE_WORDS = re.compile(
     r"giderici|saşe|sase|şişe|sise|efervesan|çiğneme|cigneme|tableti|kapsülü|ağız|agiz|"
     r"sprey|spreyi|losyon|içeren|iceren|ekstresi|yağı|yagi|balık|balik|"
     # Вкус лечебного питания (_TURKISH_FLAVOUR_WORDS): «FORTINI … CILEK AROMALI».
-    r"aromal[iı]|aromas[iı]z|[cç]ilek|vanilya|[cç]ikolata|kahve|portakal|ahududu|muz|meyve)\b",
+    r"aromal[iı]|aromas[iı]z|[cç]ilek|vanilya|[cç]ikolata|kahve|portakal|ahududu|muz|meyve|kakaolu)\b",
     re.IGNORECASE,
 )
 # Вкус лечебного питания («FORTINI COMPACT … CILEK AROMALI», «ENSURE … VANILYA AROMALI»)
 # переводится («со вкусом клубники») и не входит в бренд (очередь модерации 26.10.2026).
 _TURKISH_FLAVOUR_WORDS = frozenset({
     "AROMALI", "AROMASIZ", "CILEK", "ÇILEK", "VANILYA", "CIKOLATA", "ÇIKOLATA", "KAHVE",
-    "PORTAKAL", "AHUDUDU", "MUZ", "MEYVE", "TROPIK", "KAYISI",
+    "PORTAKAL", "AHUDUDU", "MUZ", "MEYVE", "TROPIK", "KAYISI", "KAKAOLU",
 })
 _TURKISH_TITLE_TRANSLITERATIONS = re.compile(
     r"(эркек|кадын|кадин|чоджук|чочук|айаккаб|аяккаб|тишорт|гёмлек|гомлек|пантолон|"
@@ -381,19 +381,33 @@ def _medicine_title_problem(title: Any, source_name: Any) -> str:
 _MEDICINE_FLAVOURS = {
     "muz": "банан", "cilek": "клубни", "vanilya": "ванил", "cikolata": "шоколад", "kahve": "коф",
     "portakal": "апельсин", "ahududu": "малин", "kayisi": "абрикос", "limon": "лимон", "nane": "мят",
+    "kakaolu": "какао",
 }
 
 
 def _medicine_flavour_lost(title: Any, source_name: Any) -> str:
     """«title_identity_lost», если вкус источника («MUZ AROMALI») в RU-названии назван иначе."""
     source = fold_tr(source_name)
-    if "aromal" not in source:
+    if "aromal" not in source and "kakaolu" not in source:
         return ""
     text = str(title or "").lower().replace("ё", "е")
     for word, stem in _MEDICINE_FLAVOURS.items():
         if re.search(rf"(?<![a-z]){word}(?![a-z])", source) and stem not in text and word not in fold_tr(title):
             return "title_identity_lost"
     return ""
+
+
+def medicine_foreign_flavour(text: Any, source_name: Any) -> bool:
+    """В тексте назван вкус, которого нет в источнике со вкусом: ENSURE COMPACT «MUZ» (банан) — описание
+    «с ванильным и банановым вкусом» (пилот круга 3, 27.10.2026)."""
+    source = fold_tr(source_name)
+    if "aromal" not in source and "kakaolu" not in source:
+        return False
+    value = str(text or "").lower().replace("ё", "е")
+    return any(
+        stem in value and not re.search(rf"(?<![a-z]){word}(?![a-z])", source)
+        for word, stem in _MEDICINE_FLAVOURS.items()
+    )
 
 
 def _without_medicine_forms(title_text: str, locale: str) -> str:

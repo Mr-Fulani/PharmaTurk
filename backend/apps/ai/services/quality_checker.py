@@ -7,7 +7,7 @@ from typing import List
 from django.utils import timezone
 
 from apps.ai.models import AIProcessingLog, AIModerationQueue, AIProcessingStatus
-from apps.ai.services.semantic_validator import SemanticValidationReport, SemanticValidator
+from apps.ai.services.semantic_validator import SemanticValidationReport, SemanticValidator, medicine_foreign_flavour
 
 
 # Вкладки ilacfiyati с текстом инструкции (без «equivalents», «sgk_equivalents», «ilac_bilgileri»).
@@ -88,6 +88,12 @@ def get_moderation_reasons(
         # рецепт), 8–11 слов; так у 95 из 110 лекарств очереди 27.10.2026. Вкладки аналогов
         # и «İlaç bilgileri» — не инструкция (42 из 46 «коротких» в очереди 27.10.2026).
         minimum_description_words = 6
+    if product_type == "medicines" and (
+        re.search(r"\.\.\.|…", log.generated_description or "")
+        or medicine_foreign_flavour(log.generated_description, input_data.get("name"))
+    ):
+        # Оборванный ответ («…вкусом...») или вкус не из источника (пилот круга 3, 27.10.2026).
+        reasons.append("garbled_text")
     if product_type == "medicines" and _META_DESCRIPTION.search(log.generated_description or ""):
         # «Лекарственная форма … в исходных данных не указаны», «см. в инструкции» — рассуждение
         # модели о данных вместо описания.
