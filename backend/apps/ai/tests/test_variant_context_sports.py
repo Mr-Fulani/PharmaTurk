@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from apps.ai.services.content_generator import ContentGenerator
+from apps.ai.services.variant_detector import VariantContentDetector
 from apps.catalog.models import Category, Product, SportsProduct, SportsVariant
 
 
@@ -25,6 +26,7 @@ def test_sports_variants_feed_context_without_is_active_field():
     SportsVariant.objects.create(product=sports, color="Синий", size="L", price=Decimal("1000"))
 
     generator = ContentGenerator.__new__(ContentGenerator)
+    generator.variant_detector = VariantContentDetector()
     context = generator._collect_variant_context(Product.objects.get(pk=base.pk))
 
     assert context is not None
