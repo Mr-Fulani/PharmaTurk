@@ -5,9 +5,12 @@ YML-экспорт товаров для ВК Маркета и Яндекс.М�
 Параметры:
   ?category=<slug>  — фильтр по слагу категории (и всем её потомкам)
   (без параметра)   — полный каталог
+  ?part=<N>         — часть готового фида (по умолчанию 1); фид больше лимитов ВК
+                      (8 МБ / 15 000 товаров) делится на части
 
 Полный каталог и корневые категории отдаются готовым файлом, который собирает
 задача catalog.generate_yml_feeds; подкатегории — потоком на лету.
+Лекарства и их подкатегории не отдаются (решение владельца 27.10.2026) — 404.
 Сборка фида — apps/catalog/services/yml_feed.py.
 Категории ВК настраиваются через Django Admin → Маппинги категорий ВК.
 """
@@ -21,7 +24,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from .models_vk import YMLFeedSnapshot
-from .services.yml_feed import is_prepared_feed_key, iter_snapshot_file, iter_yml_feed
+from .services.yml_feed import is_blocked_feed_key, is_prepared_feed_key, iter_snapshot_file, iter_yml_feed
 from .throttles import YMLExportThrottle, YMLFeedFileThrottle
 
 GENERATION_REQUEST_LOCK = "yml_feeds_generation_requested"
@@ -51,19 +54,37 @@ class YMLExportView(APIView):
                 type=str,
                 required=False,
                 description="Slug категории; экспорт включает её потомков",
-            )
+            ),
+            OpenApiParameter(
+                name="part",
+                type=int,
+                required=False,
+                description="Часть готового фида раздела, с 1",
+            ),
         ],
         responses={(200, "application/xml"): OpenApiTypes.BINARY},
     )
     def get(self, request, *args, **kwargs):
         category_slug = self._category_slug()
+        if is_blocked_feed_key(category_slug):
+            return HttpResponse(
+                "Фид этого раздела отключён.\n", status=404, content_type="text/plain; charset=utf-8"
+            )
         if not is_prepared_feed_key(category_slug):
             return StreamingHttpResponse(
                 iter_yml_feed(category_slug),
                 content_type="application/xml",
             )
 
-        snapshot = YMLFeedSnapshot.objects.filter(category_slug=category_slug).first()
+        try:
+            part = max(int(request.query_params.get("part") or 1), 1)
+        except ValueError:
+            part = 1
+        snapshot = YMLFeedSnapshot.objects.filter(category_slug=category_slug, part=part).first()
+        if snapshot is None and part > 1 and YMLFeedSnapshot.objects.filter(category_slug=category_slug).exists():
+            return HttpResponse(
+                "Такой части фида нет.\n", status=404, content_type="text/plain; charset=utf-8"
+            )
         if snapshot is None or not snapshot.file or snapshot.generated_at is None:
             # Фид ещё не собирался (например, сразу после деплоя) — просим собрать.
             if cache.add(GENERATION_REQUEST_LOCK, True, 600):

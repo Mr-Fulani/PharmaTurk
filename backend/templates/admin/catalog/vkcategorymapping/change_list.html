@@ -17,7 +17,9 @@
     </h3>
     <p style="margin: 0 0 14px; color: #78909c; font-size: 12px; line-height: 1.5;">
         Фиды собираются в фоне каждые 6 часов (00:35, 06:35, 12:35, 18:35 МСК) и отдаются готовым файлом.
-        Ссылку раздела вставляйте в настройки импорта ВК / Яндекса.
+        Ссылку раздела вставляйте в настройки импорта ВК / Яндекса. Раздел больше лимита ВК
+        (8 МБ или 15 000 товаров) делится на части — каждая часть подключается отдельной ссылкой.
+        Лекарства в фиды не выкладываются (решение владельца).
     </p>
 
     <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px;">
@@ -44,6 +46,7 @@
                     {% if feed.snapshot.generated_at %}{{ feed.snapshot.offers_count }} ({{ feed.snapshot.size_bytes|filesizeformat }}){% else %}—{% endif %}
                 </td>
                 <td style="padding: 6px 8px;">
+                    {% if feed.first %}
                     <form method="post" action="{% if feed.slug %}sync-photos/{{ feed.slug }}/{% else %}sync-photos/{% endif %}" style="margin: 0;"
                           onsubmit="return confirm('Загрузить фото в ВК Маркет: {{ feed.name|escapejs }}?\n\nЗапустится в фоне, итог придёт в Telegram.');">
                         {% csrf_token %}
@@ -58,6 +61,7 @@
                             cursor: pointer;
                         ">📤 Синхронизировать</button>
                     </form>
+                    {% endif %}
                 </td>
             </tr>
         {% endfor %}

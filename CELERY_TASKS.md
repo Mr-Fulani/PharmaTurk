@@ -40,7 +40,7 @@ Beat только публикует задачи. Для исполнения �
 | `cleanup-orphaned-media` | `catalog.cleanup_orphaned_media` | воскресенье `03:30` | `celery` | Удаляет безопасно определённые orphaned media; при превышении лимита — только отчёт в Telegram. |
 | `catalog-expire-new-badges` | `catalog.expire_new_badges` | ежедневно `03:40` | `celery` | Снимает «Новинку» (`is_new`) с товаров, добавленных раньше `NEW_BADGE_DAYS` дней назад (по умолчанию 30). |
 | `catalog-recompute-sort-ranks` | `catalog.recompute_sort_ranks` | ежедневно `04:50` | `celery` | Пересчитывает `sort_rank` медикаментов и БАДов — порядок «Популярные» (по умолчанию) на их страницах. |
-| `catalog-generate-yml-feeds` | `catalog.generate_yml_feeds` | каждые 6 часов: `00:35`, `06:35`, `12:35`, `18:35` | `celery` | Собирает готовые YML-фиды (корневые категории, затем полный каталог) в файлы `feeds/yml/` хранилища; эндпоинт фида отдаёт их как есть. `docs/VK_YML_FEED.md`. |
+| `catalog-generate-yml-feeds` | `catalog.generate_yml_feeds` | каждые 6 часов: `00:35`, `06:35`, `12:35`, `18:35` | `celery` | Собирает готовые YML-фиды (корневые категории, затем полный каталог) частями до 7,5 МБ / 15 000 офферов в файлы `feeds/yml/` хранилища; лекарства не выгружаются; эндпоинт фида отдаёт их как есть. `docs/VK_YML_FEED.md`. |
 | `payments-expire-crypto-invoices` | `apps.payments.tasks.expire_pending_crypto_payments` | каждые 10 минут | `celery` | Помечает просроченные pending crypto invoices как `expired`. |
 | `monitoring-server-resources` | `apps.monitoring.tasks.check_server_resources` | каждые 10 минут | `celery` | Свободное место на диске, память и снимки обоих Redis; алерт и «в норме» в Telegram, повтор не чаще раза в 6 ч (`docs/PROD_DISK_AND_REDIS.md`). |
 | `ai-cleanup-old-logs` | `apps.ai.tasks.cleanup_old_ai_logs` | воскресенье `04:40` | `ai` | Удаляет `completed`/`approved` AI-логи старше 30 дней. |
@@ -209,9 +209,11 @@ docker compose exec celeryworker poetry run python manage.py shell -c \
 ### YML-фиды для ВК Маркета и Яндекса
 
 `catalog.generate_yml_feeds` собирает фид каждой активной корневой категории и
-полного каталога потоком во временный файл, кладёт в хранилище (`feeds/yml/`,
-на проде — R2) и переключает запись `YMLFeedSnapshot`; прежний файл удаляется
-после переключения. Ошибка одного раздела не останавливает остальные, прежний
+полного каталога потоком во временные файлы частями до 7,5 МБ / 15 000 офферов
+(лимиты ВК), кладёт в хранилище (`feeds/yml/`, на проде — R2) и переключает записи
+`YMLFeedSnapshot` (раздел + часть); прежний файл удаляется после переключения,
+лишние части прежней сборки и фиды выключенных или заблокированных разделов
+(лекарства) — тоже. Ошибка одного раздела не останавливает остальные, прежний
 файл раздела остаётся в силе. Повторный запуск во время сборки возвращает
 `already_running`. Без готового файла эндпоинт отвечает 503 и сам ставит сборку.
 `catalog.sync_vk_photos` (без расписания) — фото в ВК по кнопке в админке, итог
