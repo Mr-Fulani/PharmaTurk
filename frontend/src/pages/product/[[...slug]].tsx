@@ -971,7 +971,12 @@ export default function ProductPage({
     sourceRefresh?.status === 'failed' &&
     sourceRefresh.error_code === 'source_not_found'
   )
-  const maxAvailable = sourceRefreshFailed
+  // «В заявку» ответило «закончилось»: карточка показывала сохранённое наличие, а у поставщика
+  // товара уже нет (сверка ещё шла). Вместо окна с ошибкой — «Нет в наличии» и «Найти такой же».
+  const [soldOutOnAdd, setSoldOutOnAdd] = useState(false)
+  useEffect(() => { setSoldOutOnAdd(false) }, [product?.slug, selectedVariant?.slug, selectedSize])
+  const markSoldOut = useCallback(() => setSoldOutOnAdd(true), [])
+  const maxAvailable = sourceRefreshFailed || soldOutOnAdd
     ? 0
     : product && !supplementAvailabilityDoesNotCapQuantity
       ? resolveAvailableStock(product, selectedVariant, selectedSize)
@@ -2786,6 +2791,11 @@ export default function ProductPage({
                   <>
                     <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
                       {t('out_of_stock', 'Нет в наличии')}
+                      {soldOutOnAdd && (
+                        <span className="mt-1 block text-sm font-normal">
+                          {t('sold_out_on_add', 'Пока вы смотрели, товар закончился у продавца. Найдём такой же или похожий.')}
+                        </span>
+                      )}
                     </div>
                     {/* Не тупик: менеджер найдёт этот товар у других продавцов или похожий */}
                     {showOosSourcing ? (
@@ -2821,6 +2831,7 @@ export default function ProductPage({
                       analyticsItem={analyticsItem}
                       analyticsCurrency={analyticsCurrency}
                       onAdded={markAddedToCart}
+                      onSoldOut={markSoldOut}
                     />
                     <BuyNowButton
                       productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
@@ -2832,6 +2843,7 @@ export default function ProductPage({
                       className="w-full"
                       analyticsItem={analyticsItem}
                       analyticsCurrency={analyticsCurrency}
+                      onSoldOut={markSoldOut}
                     />
                   </>
                   )
@@ -3152,6 +3164,7 @@ export default function ProductPage({
             analyticsItem={analyticsItem}
             analyticsCurrency={analyticsCurrency}
             onAdded={markAddedToCart}
+            {...(!isMedicine && { onSoldOut: markSoldOut })}
           />
         }
       />

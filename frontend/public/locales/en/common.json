@@ -1551,6 +1551,7 @@
   "analog_saving_percent": "Save -{{percent}}%",
   "in_stock": "In stock",
   "out_of_stock": "Out of stock",
+  "sold_out_on_add": "This item sold out at the seller while you were viewing it. We'll find the same or a similar one.",
   "oos_sourcing_button": "Find this or a similar item",
   "oos_sourcing_title": "We'll find this item or a similar one",
   "oos_sourcing_subtitle": "A manager will check other sellers in Turkey and quote the price with delivery. Free, no obligation.",

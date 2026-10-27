@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
 import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerification'
+import { isSoldOutCartError } from '../lib/cartStock'
 import { useCartStore } from '../store/cart'
 import { gtmAddToCart, type GtmEcommerceItem } from '../lib/gtm'
 import styles from './AddToCartButton.module.css'
@@ -27,6 +28,8 @@ interface AddToCartButtonProps {
   analyticsCurrency?: string
   /** Вызывается после успешного добавления (когда показывается «Добавлено») */
   onAdded?: () => void
+  /** Товар закончился у поставщика: карточка переключается в «Нет в наличии» вместо окна с ошибкой */
+  onSoldOut?: () => void
 }
 
 export default function AddToCartButton({
@@ -43,6 +46,7 @@ export default function AddToCartButton({
   analyticsItem,
   analyticsCurrency,
   onAdded,
+  onSoldOut,
 }: AddToCartButtonProps) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -166,6 +170,10 @@ export default function AddToCartButton({
         resetTimerRef.current = null
       }, SUCCESS_STATE_MS)
     } catch (err: any) {
+      if (onSoldOut && isSoldOutCartError(err)) {
+        onSoldOut()
+        return
+      }
       const conflict = getCartVerificationError(err)
       const copy = getCartIssueCopy(conflict?.code)
       const detail = conflict?.code
