@@ -47,6 +47,15 @@ def _titles(name, product_type, brand=""):
             11359, "Aryan D.r Tavsiyeli Ortapedik Erkek Sandalet", "shoes", "ARYAN",
             "Мужские сандалии ARYAN с ортопедической стелькой", "ARYAN Men's Orthopedic Sandals",
         ),
+        # Принт без словаря уходил в LLM: «с круглым вырезом в вертикальный рубчик» у поло.
+        (
+            20132, "Erkek Polo Yaka Çapa Desenli %100 Pamuk Tişört", "clothing", "",
+            "Мужская футболка с отложным воротником из хлопка", "Men's Polo Collar Cotton T-Shirt",
+        ),
+        (
+            19001, "Only & Sons Erkek T Shirt 22022532 AÇIK HAKİ", "clothing", "Only & Sons",
+            "Мужская футболка Only & Sons, светло-хаки", "Only & Sons Men's T-Shirt, Light khaki",
+        ),
         # «® |» и «Taba-Erkek» (цвет и пол через дефис) — правила не собирали название.
         (
             11241, "® | PC-5112-3892 Taba-Erkek Sandalet", "shoes", "Pierre Cardin",

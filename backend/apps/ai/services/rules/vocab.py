@@ -114,6 +114,9 @@ COLORS: dict[str, tuple[str, str]] = {
     "petrol mavisi": ("=цвета петроль", "Petrol blue"),
     "petrol yesili": ("=цвета петроль", "Petrol green"),
     "renkli": ("разноцветный", "Multicolor"),
+    "acik haki": ("=светло-хаки", "Light khaki"),
+    "koyu haki": ("=темно-хаки", "Dark khaki"),
+    "nil yesili": ("светло-зеленый", "Nile green"),
 }
 # Модификаторы оттенка: RU-префикс прилагательного, EN-слово. «yeni», «mat»,
 # «orta» оттенок не меняют и пропускаются.
@@ -487,6 +490,11 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "logo baskili": ("с логотипом", "Logo"),
     "logolu": ("с логотипом", "Logo"),
     "desenli": ("с узором", "Patterned"),
+    # «Polo Yaka Çapa Desenli» без словаря уходило в LLM, и та писала «с круглым вырезом в рубчик».
+    "capa desenli": ("с принтом якорей", "Anchor Print"),
+    "yelken desenli": ("с принтом парусников", "Sailboat Print"),
+    "marin desenli": ("в морском стиле", "Nautical Print"),
+    "agac desenli": ("с принтом деревьев", "Tree Print"),
     "cizgili": ("в полоску", "Striped"),
     "kapusonlu": ("с капюшоном", "Hooded"),
     "nakisli": ("с вышивкой", "Embroidered"),
