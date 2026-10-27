@@ -8,6 +8,13 @@ class YMLExportThrottle(TrustedProxyIPRateThrottle):
     rate = "2/min"
 
 
+class YMLFeedFileThrottle(TrustedProxyIPRateThrottle):
+    """Готовый файл фида: ВК/Яндекс и админка могут брать несколько разделов подряд."""
+
+    scope = "catalog_yml_feed_file"
+    rate = "30/min"
+
+
 class _MarketCheckPostThrottle(TrustedProxyIPRateThrottle):
     """Throttle only the mutating intent request; bounded polling stays readable."""
 

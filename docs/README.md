@@ -71,6 +71,7 @@
 - [CRYPTO_PAYMENTS.md](../CRYPTO_PAYMENTS.md) — CoinRemitter и жизненный цикл криптоинвойса;
 - [notifications-and-receipts.md](notifications-and-receipts.md) — каналы уведомлений и PDF-чеки;
 - [CART_REMINDERS.md](CART_REMINDERS.md) — напоминания о неотправленном Списке заявки: включение в админке, кому и когда, отписка, журнал;
+- [VK_YML_FEED.md](VK_YML_FEED.md) — YML-фид для ВК/Яндекса: фоновая сборка, ссылки разделов, фото в ВК, лимиты ВК и категории;
 - [FEEDBACK_TRANSLATIONS.md](FEEDBACK_TRANSLATIONS.md) — переводы отзывов и вопросов: где заполнять в админке;
 - [backend/apps/users/AUTHENTICATION.md](../backend/apps/users/AUTHENTICATION.md) — способы входа, JWT, лимиты частоты, Google/VK/Telegram;
 - [SOCIAL_AUTH_PRODUCTION.md](SOCIAL_AUTH_PRODUCTION.md) — production OAuth/social auth;

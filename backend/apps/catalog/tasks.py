@@ -294,6 +294,7 @@ _PROTECTED_STORAGE_PREFIXES = (
     "temp/",
     "avatars/",  # аватарки пользователей (users.User.avatar)
     "testimonials/",  # аватарки авторов отзывов (feedback.Testimonial.author_avatar)
+    "feeds/",  # готовые YML-фиды (YMLFeedSnapshot); старые файлы удаляет сама сборка
 )
 
 # Известные корневые директории медиа
@@ -716,3 +717,52 @@ def recompute_sort_ranks() -> dict:
     updated = {model._domain_product_type: recompute(model) for model in ranked_models()}
     logger.info("recompute_sort_ranks: updated %s", updated)
     return updated
+
+
+@shared_task(name="catalog.generate_yml_feeds", soft_time_limit=60 * 50, time_limit=60 * 55)
+def generate_yml_feeds() -> dict:
+    """Собирает готовые YML-фиды: корневые категории, затем полный каталог (docs/VK_YML_FEED.md)."""
+    from celery.exceptions import SoftTimeLimitExceeded
+    from django.core.cache import cache
+
+    from apps.catalog.services.yml_feed import generate_feed_file, prepared_feed_keys
+
+    lock_key = "catalog:yml-feeds:generate-lock"
+    if not cache.add(lock_key, True, timeout=60 * 55):
+        return {"status": "already_running"}
+    results = {}
+    try:
+        for key in prepared_feed_keys():
+            try:
+                results[key or "catalog"] = generate_feed_file(key).offers_count
+            except SoftTimeLimitExceeded:
+                raise
+            except Exception:
+                # Прежний файл остаётся в силе, остальные разделы собираем.
+                logger.exception("generate_yml_feeds: фид %s не собран", key or "catalog")
+                results[key or "catalog"] = "error"
+    finally:
+        cache.delete(lock_key)
+    logger.info("generate_yml_feeds: %s", results)
+    return results
+
+
+@shared_task(name="catalog.sync_vk_photos", soft_time_limit=60 * 50, time_limit=60 * 55)
+def sync_vk_photos_task(category_slug: str | None = None) -> str:
+    """Фото и видео товаров в ВК Маркет (команда sync_vk_photos); итог — в Telegram админу."""
+    import io
+
+    from django.core.management.base import CommandError
+
+    from apps.monitoring.watchdog import send_admin_telegram_notification
+
+    label = f"раздел «{category_slug}»" if category_slug else "все разделы"
+    out = io.StringIO()
+    try:
+        call_command("sync_vk_photos", category=category_slug, stdout=out)
+        lines = [line for line in out.getvalue().splitlines() if line.strip()]
+        summary = lines[-1].strip() if lines else "нет вывода"
+    except CommandError as e:
+        summary = f"ошибка: {e}"
+    send_admin_telegram_notification(f"📸 Фото в ВК Маркет, {label}: {summary}")
+    return summary
