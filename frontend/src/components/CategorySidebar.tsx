@@ -111,6 +111,10 @@ const FRAGRANCE_TYPE_LABEL_KEYS: Record<string, { key: string; fallback: string 
   body_mist: { key: 'fragrance_type_body_mist', fallback: 'Парфюмированный мист' },
 }
 
+// У лекарств и БАДов сотни брендов-производителей: полный список — тысячи
+// DOM-узлов и долгая гидрация на телефоне. Остальные — по кнопке.
+const BRANDS_INITIAL_VISIBLE = 50
+
 const toggleArrayValue = <T,>(arr: T[], value: T): T[] =>
   arr.includes(value) ? arr.filter((item) => item !== value) : [...arr, value]
 
@@ -223,6 +227,7 @@ export default function CategorySidebar({
     bookFilters: true
   })
   const [expandedTreeItems, setExpandedTreeItems] = useState<Record<string, boolean>>({})
+  const [showAllBrands, setShowAllBrands] = useState(false)
 
   useEffect(() => {
     if (onFilterChangeRef.current) {
@@ -977,7 +982,10 @@ export default function CategorySidebar({
               </button>
               {expandedSections.brands && (
                 <div className="lg:space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                  {brands.map((brand) => (
+                  {(showAllBrands
+                    ? brands
+                    : brands.filter((brand, index) => index < BRANDS_INITIAL_VISIBLE || filters.brands.includes(brand.id))
+                  ).map((brand) => (
                     <label key={brand.id} className="flex min-h-11 lg:min-h-0 items-center space-x-2 cursor-pointer group">
                       <input
                         type="checkbox"
@@ -995,6 +1003,15 @@ export default function CategorySidebar({
                       )}
                     </label>
                   ))}
+                  {!showAllBrands && brands.length > BRANDS_INITIAL_VISIBLE && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllBrands(true)}
+                      className="min-h-11 lg:min-h-0 text-sm text-[var(--accent)] hover:underline"
+                    >
+                      {t('sidebar_show_all_brands', 'Показать все бренды')} ({brands.length})
+                    </button>
+                  )}
                 </div>
               )}
             </div>
