@@ -15,9 +15,10 @@ YML-фид (Yandex Market Language) для ВК Маркета и Яндекс.�
 Особенности фида:
 - Категории ВК берутся из таблицы VKCategoryMapping по типу товара и полу
   (Admin → Маппинги категорий ВК).
-- Характеристики товара (цвет, размер, материал) вписываются в описание,
-  а НЕ в отдельные <param> — это предотвращает «мусор» в названии в ВК.
-- group_id намеренно отключён: с ним ВК автоматически дописывает атрибуты к названию.
+- Характеристики товара (материал, вес, страна…) вписываются в описание.
+- Варианты (решение владельца 27.10.2026): у каждого варианта group_id = id товара,
+  цвет (и размер) — в названии и в <param name="Цвет">/<param name="Размер">.
+  ВК принимает не больше двух свойств, поэтому других <param> нет.
 - Медиа: все изображения из галереи (ProductImage) и первое видео.
 """
 from __future__ import annotations
@@ -396,8 +397,7 @@ def _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids: set[str
         add_params_to_description(offer, prod, domain_item)
         return
 
-    # Намеренно БЕЗ group_id — с ним ВК дописывает атрибуты в название.
-    # Каждый вариант — отдельный offer с ТОЛЬКО своими изображениями.
+    # Каждый вариант — отдельный offer с group_id товара и ТОЛЬКО своими изображениями.
     for variant in variants:
         offer_id = f"{prod.id}v{variant.id}"
         if offer_id in exported_ids:
@@ -460,6 +460,9 @@ def create_offer(parent, prod, site_url, vk_map,
         id=oid,
         available="true" if is_available else "false",
     )
+    if variant:
+        # Все варианты товара — одна группа: ВК/Яндекс объединяют их в карточку с вариантами.
+        offer.set("group_id", str(prod.id))
 
     # 1. URL
     p_type = (prod.product_type or "other").lower().replace("_", "-")
@@ -562,8 +565,9 @@ def create_offer(parent, prod, site_url, vk_map,
     ET.SubElement(offer, "pickup").text = "true"
     ET.SubElement(offer, "delivery").text = "true"
 
-    # 9. Название — ТОЛЬКО название, без атрибутов
-    ET.SubElement(offer, "name").text = (prod.name or "")[:150]
+    # 9. Название; у варианта — с цветом и размером («Кепка LC WAIKIKI, хаки»)
+    variant_options = _variant_options(variant) if variant else []
+    ET.SubElement(offer, "name").text = _offer_name(prod.name or "", variant_options)
 
     # 10. Бренд
     if prod.brand:
@@ -573,7 +577,38 @@ def create_offer(parent, prod, site_url, vk_map,
     desc_el = ET.SubElement(offer, "description")
     desc_el.text = (prod.description or prod.name or "")[:3000]
 
+    # 12. Свойства варианта — по ним ВК различает варианты в группе
+    for param_name, value in variant_options:
+        ET.SubElement(offer, "param", name=param_name).text = value
+
     return offer
+
+
+def _variant_options(variant) -> list[tuple[str, str]]:
+    """[("Цвет", "Хаки"), ("Размер", "42")] — цвет по-русски, как на сайте."""
+    from ..utils.variant_titles import translate_common_color
+
+    options = []
+    color = translate_common_color(getattr(variant, "color", "") or "", "ru")
+    if color:
+        options.append(("Цвет", color))
+    size = str(getattr(variant, "size", "") or "").strip()
+    if size:
+        options.append(("Размер", size))
+    return options
+
+
+def _offer_name(base_name: str, variant_options: list[tuple[str, str]]) -> str:
+    name = base_name.strip()
+    extras = []
+    for param_name, value in variant_options:
+        if value.lower() in name.lower():
+            continue
+        extras.append(value[:1].lower() + value[1:] if param_name == "Цвет" else value)
+    if extras:
+        suffix = ", " + ", ".join(extras)
+        name = name[: 150 - len(suffix)].rstrip(" ,") + suffix
+    return name[:150]
 
 
 def _translated_key_name(key_obj) -> str:
@@ -584,8 +619,8 @@ def _translated_key_name(key_obj) -> str:
 
 def add_params_to_description(offer, prod, domain_item, variant=None):
     """
-    Вместо тегов <param> (которые ВК дописывает в название) —
-    добавляем характеристики прямо в конец описания в читаемом виде.
+    Характеристики — в конец описания в читаемом виде: ВК принимает не больше
+    двух <param>, их занимают свойства варианта (цвет, размер).
     """
     desc_el = offer.find("description")
     if desc_el is None:
@@ -605,8 +640,9 @@ def add_params_to_description(offer, prod, domain_item, variant=None):
     if variant:
         if getattr(variant, "size", ""):
             specs.append(f"Размер: {variant.size}")
-        if getattr(variant, "color", ""):
-            specs.append(f"Цвет: {variant.color}")
+        color = dict(_variant_options(variant)).get("Цвет")
+        if color:
+            specs.append(f"Цвет: {color}")
         if getattr(variant, "sku", ""):
             specs.append(f"Артикул: {variant.sku}")
 

@@ -94,6 +94,15 @@ def _shoe(category, *, variants=2, with_attribute=True):
     return domain.base_product
 
 
+def _apply_vk_paths_migration():
+    """Пути из миграции 0229: транзакционные тесты других модулей очищают таблицы."""
+    import importlib
+
+    from django.apps import apps as django_apps
+
+    importlib.import_module("apps.catalog.migrations.0229_vk_category_paths").set_paths(django_apps, None)
+
+
 def _parse(chunks):
     return ET.fromstring("".join(chunks).encode("utf-8"))
 
@@ -119,10 +128,41 @@ def test_feed_builds_one_offer_per_variant_with_rub_prices_and_specs(rub_rate):
     pictures = [p.text for p in first.findall("picture")]
     assert pictures[0].startswith("https://mudaroba.example/media/v")
     assert "https://cdn.example/gallery.jpg" in pictures
+    assert first.attrib["group_id"] == str(product.id)
+    assert first.findtext("name") == f"{product.name}, {variants[0].color[:1].lower()}{variants[0].color[1:]}, 42"
+    assert [(p.attrib["name"], p.text) for p in first.findall("param")] == [
+        ("Цвет", variants[0].color),
+        ("Размер", "42"),
+    ]
     description = first.findtext("description")
     assert f"Цвет: {variants[0].color}" in description
     assert "Материал: Кожа" in description
     assert first.findtext("url") == f"https://mudaroba.example/product/shoes/{product.slug}"
+
+
+@pytest.mark.django_db
+def test_variant_color_is_translated_and_products_without_variants_have_no_group(rub_rate):
+    root_cat = _category("shoes")
+    with_variant = _shoe(root_cat, variants=1, with_attribute=False)
+    ShoeVariant.objects.filter(product__base_product=with_variant).update(color="Haki", size="")
+    plain = _shoe(root_cat, variants=0, with_attribute=False)
+
+    offers = {o.attrib["id"].split("v")[0]: o for o in _offers(_parse(yml_feed.iter_yml_feed(root_cat.slug)))}
+
+    variant_offer = offers[str(with_variant.id)]
+    assert variant_offer.findtext("name") == f"{with_variant.name}, хаки"
+    assert [(p.attrib["name"], p.text) for p in variant_offer.findall("param")] == [("Цвет", "Хаки")]
+    plain_offer = offers[str(plain.id)]
+    assert "group_id" not in plain_offer.attrib
+    assert plain_offer.findtext("name") == plain.name
+    assert plain_offer.findall("param") == []
+
+
+def test_offer_name_skips_color_already_in_name_and_fits_limit():
+    assert yml_feed._offer_name("Кепка хаки", [("Цвет", "Хаки")]) == "Кепка хаки"
+    long_name = yml_feed._offer_name("К" * 160, [("Цвет", "Серый"), ("Размер", "M")])
+    assert len(long_name) == 150
+    assert long_name.endswith(", серый, M")
 
 
 @pytest.mark.django_db
@@ -280,6 +320,7 @@ def test_task_removes_feeds_of_blocked_sections(rub_rate, feed_storage):
 
 @pytest.mark.django_db
 def test_vk_category_follows_product_and_category_gender(rub_rate):
+    _apply_vk_paths_migration()
     women = Category.objects.create(name="Обувь", slug=f"shoes-w-{uuid4().hex[:8]}", gender="women")
     by_name = Category.objects.create(name="Мужская обувь", slug=f"shoes-m-{uuid4().hex[:8]}")
     plain = _category("shoes")
@@ -305,6 +346,7 @@ def test_vk_category_follows_product_and_category_gender(rub_rate):
 def test_vk_mapping_migration_paths():
     from apps.catalog.models_vk import VKCategoryMapping
 
+    _apply_vk_paths_migration()
     rows = {(m.product_type, m.gender): m.vk_category_path for m in VKCategoryMapping.objects.all()}
 
     assert rows[("furniture", "")] == "Дом и дача > Мебель"
