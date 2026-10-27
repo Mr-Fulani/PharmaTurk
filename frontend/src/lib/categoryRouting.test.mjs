@@ -3,42 +3,10 @@ import assert from 'node:assert/strict'
 
 import {
   buildCatalogSeoState,
+  buildCategoryLandingLinkGroups,
   isCatalogPageOutOfRange,
-  isCategoryInProductTree,
   selectExactCategory,
 } from './categoryRouting.js'
-
-test('eyewear remains in accessories and is not treated as shoes', () => {
-  const category = {
-    categoryType: 'accessories',
-    inferredType: 'eyewear',
-    routeSlug: 'eyewear',
-    ancestors: [{ slug: 'accessories' }],
-  }
-
-  assert.equal(isCategoryInProductTree(category, 'shoes'), false)
-})
-
-test('legacy shoe subcategory is recognized through its ancestor', () => {
-  const category = {
-    categoryType: null,
-    inferredType: 'sneakers',
-    routeSlug: 'sneakers',
-    ancestors: [{ slug: 'shoes' }],
-  }
-
-  assert.equal(isCategoryInProductTree(category, 'shoes'), true)
-})
-
-test('nested furniture category is recognized through its category type', () => {
-  assert.equal(
-    isCategoryInProductTree(
-      { categoryType: 'furniture', inferredType: 'tables', routeSlug: 'tables', ancestors: [] },
-      'furniture'
-    ),
-    true
-  )
-})
 
 test('exact category is selected even when descendants are returned first', () => {
   const categories = [
@@ -48,32 +16,6 @@ test('exact category is selected even when descendants are returned first', () =
   ]
 
   assert.deepEqual(selectExactCategory(categories, 'eyewear'), categories[2])
-})
-
-test('gendered categories from other product trees are never classified as shoes', () => {
-  const categories = [
-    ['mens-sunglasses', 'accessories', ['accessories', 'eyewear', 'sunglasses']],
-    ['kids-beds', 'furniture', ['furniture', 'kids-furniture']],
-    ['mens-fragrances', 'perfumery', ['perfumery', 'fragrances']],
-    ['uw-mens-underwear', 'underwear', ['underwear']],
-    ['hw-children-headwear', 'headwear', ['headwear']],
-    ['kids-supplements', 'supplements', ['supplements']],
-    ['children-wheelchairs', 'medical-equipment', ['medical-equipment', 'rehabilitation-equipment']],
-    ['mens-jewelry', 'jewelry', ['jewelry']],
-    ['islamic-outerwear-women', 'islamic-clothing', ['islamic-clothing']],
-    ['svc-children-furniture', 'uslugi', ['uslugi', 'svc-furniture-appliance']],
-    ['body-parts', 'auto-parts', ['auto-parts']],
-  ]
-
-  for (const [routeSlug, categoryType, ancestorSlugs] of categories) {
-    const context = {
-      categoryType,
-      inferredType: categoryType,
-      routeSlug,
-      ancestors: ancestorSlugs.map((slug) => ({ slug })),
-    }
-    assert.equal(isCategoryInProductTree(context, 'shoes'), false, routeSlug)
-  }
 })
 
 test('catalog pagination keeps the first empty page but rejects pages after the end', () => {
@@ -167,4 +109,38 @@ test('empty category (no products) is noindex but stays canonical to itself', ()
 
 test('category with products stays indexable when count is passed', () => {
   assert.equal(buildCatalogSeoState('/categories/medicines', { slug: 'medicines' }, 1, 3, 30).noindex, false)
+})
+
+test('landing block links sections of any category, without empty ones', () => {
+  const groups = buildCategoryLandingLinkGroups({
+    sections: [
+      { href: '/categories/sneakers', label: 'Кроссовки', productsCount: 378 },
+      { href: '/categories/boots', label: 'Ботинки', productsCount: 0 },
+      { href: '/categories/sandals', label: 'Сандалии' },
+    ],
+    collections: [],
+    isCollectionPage: false,
+    sectionsTitle: 'Разделы',
+    collectionsTitle: 'Подборки',
+  })
+
+  assert.deepEqual(groups, [{
+    title: 'Разделы',
+    links: [
+      { href: '/categories/sneakers', label: 'Кроссовки' },
+      { href: '/categories/sandals', label: 'Сандалии' },
+    ],
+  }])
+})
+
+test('collection page links only collections', () => {
+  const groups = buildCategoryLandingLinkGroups({
+    sections: [{ href: '/categories/cardio', label: 'Сердце', productsCount: 5 }],
+    collections: [{ href: '/categories/medicines/kapli', label: 'Капли' }],
+    isCollectionPage: true,
+    sectionsTitle: 'Разделы',
+    collectionsTitle: 'Подборки',
+  })
+
+  assert.deepEqual(groups, [{ title: 'Подборки', links: [{ href: '/categories/medicines/kapli', label: 'Капли' }] }])
 })
