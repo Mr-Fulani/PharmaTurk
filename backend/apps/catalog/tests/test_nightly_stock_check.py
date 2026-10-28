@@ -420,3 +420,102 @@ def test_night_report_is_plain_and_sent_once(nightly_settings):
     assert "LC Waikiki: проверено 100 из 300 (весь каталог — примерно за 3 ночи)" in text
     assert "Закончились: 40" in text
     assert "Нет у продавца: 3" in text
+
+
+# --- признак «товара нет» на настоящих парсерах ------------------------------------------
+
+
+def _real_target(monkeypatch, parser_class, url, routes):
+    """Настоящий парсер, сеть подменена: routes — путь → (статус, тело, Location)."""
+    import httpx
+
+    from apps.catalog.services.product_card_source_refresh import RefreshTarget
+
+    def handler(request):
+        status, body, location = routes.get(request.url.path, (404, "<html>yok</html>", None))
+        headers = {"Location": location} if location else {}
+        return httpx.Response(status, text=body, headers=headers)
+
+    class Mocked(parser_class):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+            self.delay_range = (0, 0)
+
+    host = urlparse(url).hostname
+    monkeypatch.setattr(
+        "apps.catalog.services.product_card_source_refresh.get_parser",
+        lambda value: Mocked if host in str(value) or value == parser_class(base_url=f"https://{host}").get_name() else None,
+    )
+    offer = ProductSourceOffer(
+        parser_key=parser_class(base_url=f"https://{host}").get_name(), canonical_url=url,
+        source_domain=host,
+    )
+    product = Product(pk=1, name="x", product_type="clothing")
+    return RefreshTarget(product=product, offer=offer, parser_class=Mocked)
+
+
+def _fetch(target):
+    """Запрос и проверка ответа — как в service.run, без записи в БД."""
+    service = NightlyStockCheckService()
+    service._scraper_config = lambda offer: None
+    scraped = service._fetch_product(target)
+    service._validated_snapshots(target, scraped)
+    return scraped
+
+
+@pytest.mark.django_db
+def test_lcw_removed_product_redirected_to_home_is_gone(monkeypatch):
+    from apps.scrapers.parsers.lcw import LcwParser
+
+    url = "https://www.lcw.com/kadin-elbise-siyah-o-9999999"
+    target = _real_target(monkeypatch, LcwParser, url, {
+        "/kadin-elbise-siyah-o-9999999": (301, "", "https://www.lcw.com/"),
+        "/": (200, "<html><body><h1>LC Waikiki Anasayfa</h1></body></html>", None),
+    })
+
+    with pytest.raises(ProductCardRefreshError) as error:
+        _fetch(target)
+
+    assert error.value.code == "source_not_found"
+
+
+@pytest.mark.django_db
+def test_lcw_sold_out_page_is_out_of_stock_not_gone(monkeypatch):
+    from apps.scrapers.parsers.lcw import LcwParser
+    from apps.scrapers.test_lcw_parser import LCW_DETAIL_2026_10_HTML
+
+    path = "/regular-fit-ince-kumas-tisort-03-beyaz-o-5271243"
+    sold_out = LCW_DETAIL_2026_10_HTML.replace(", 245, ", ", 0, ").replace(", 489, ", ", 0, ").replace(", 58, ", ", 0, ")
+    target = _real_target(monkeypatch, LcwParser, f"https://www.lcw.com{path}", {path: (200, sold_out, None)})
+
+    scraped = _fetch(target)
+
+    variants = scraped.attributes["fashion_variants"]
+    assert variants and not any(variant["is_available"] for variant in variants)
+
+
+@pytest.mark.django_db
+def test_lcw_temporary_error_is_not_gone(monkeypatch):
+    from apps.scrapers.parsers.lcw import LcwParser
+
+    path = "/kadin-elbise-siyah-o-9999999"
+    target = _real_target(monkeypatch, LcwParser, f"https://www.lcw.com{path}", {path: (503, "busy", None)})
+
+    with pytest.raises(Exception) as error:
+        _fetch(target)
+
+    assert getattr(error.value, "code", "") != "source_not_found"
+
+
+@pytest.mark.django_db
+def test_ummaland_404_is_gone(monkeypatch):
+    from apps.scrapers.parsers.ummaland import UmmalandParser
+
+    url = "https://ummaland.com/product/udalennaya-kniga/"
+    target = _real_target(monkeypatch, UmmalandParser, url, {})
+
+    with pytest.raises(ProductCardRefreshError) as error:
+        _fetch(target)
+
+    assert error.value.code == "source_not_found"

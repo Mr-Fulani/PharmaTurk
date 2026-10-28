@@ -22,7 +22,9 @@ import time
 import uuid
 from datetime import datetime
 from typing import Any, Callable
+from urllib.parse import urlparse
 
+import httpx
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
@@ -35,6 +37,9 @@ from apps.catalog.services.product_card_source_refresh import (
     ProductCardSourceRefreshService,
     RefreshTarget,
 )
+from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
+from apps.http_errors import PaidAccessUnavailableError
+from apps.scrapers.base.offers import OfferGone, OfferNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +196,79 @@ class NightlyStockCheckService(ProductCardSourceRefreshService):
             raise ProductCardRefreshError(
                 "paid_access_unavailable", "Source requires a paid proxy", retryable=False
             )
-        return super()._fetch_product(target)
+        try:
+            return super()._fetch_product(target)
+        except ProductCardRefreshError as exc:
+            if exc.code != "source_unavailable":
+                raise
+            failure = exc
+        except PaidAccessUnavailableError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — ниже уточняем, пропал ли товар
+            failure = exc
+        # Полный парсер прячет пропажу в «карточки нет»: _make_request на 404 делает break,
+        # UmmaLand глушит ошибки, LCW с пропавшего товара редиректит на главную (200).
+        if self._source_says_gone(target):
+            raise ProductCardRefreshError(
+                "source_not_found", "Supplier product was not found", retryable=False
+            ) from failure
+        raise failure
+
+    def _validated_snapshots(self, target: RefreshTarget, scraped):
+        try:
+            return super()._validated_snapshots(target, scraped)
+        except ProductCardRefreshError as exc:
+            # LCW «разбирает» и главную, куда увёл пропавший товар: ответ без цены и
+            # вариантов не проходит проверку. Это пропажа, если продавец так и говорит.
+            if exc.code in ("invalid_payload", "identity_mismatch", "invalid_source") and self._source_says_gone(target):
+                raise ProductCardRefreshError(
+                    "source_not_found", "Supplier product was not found", retryable=False
+                ) from exc
+            raise
+
+    def _probe_parser(self, target: RefreshTarget):
+        config = self._scraper_config(target.offer)
+        parser = target.parser_class(
+            base_url=config.base_url if config else f"https://{urlparse(target.offer.canonical_url).netloc}",
+            timeout=self._request_timeout(target.parser_key),
+            max_retries=0,
+            use_proxy=False,
+            username=config.scraper_username if config else "",
+        )
+        if config is not None:
+            parser.configure_request_identity(
+                user_agent=config.user_agent, headers=config.headers, cookies=config.cookies,
+            )
+        return parser
+
+    def _source_says_gone(self, target: RefreshTarget) -> bool:
+        """Товара у продавца точно нет: 404/410 или редирект со страницы товара на не-товар.
+
+        Таймаут, 403/429/5xx, непонятная страница — «не знаем», не пропажа.
+        """
+        url = target.offer.canonical_url
+        try:
+            with self._probe_parser(target) as parser:
+                # Сначала сама страница: 404/410 или редирект на главную/категорию (так делает LCW).
+                try:
+                    _html, final_url = parser._make_offer_request(url, include_final_url=True)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code in (404, 410):
+                        return True
+                else:
+                    if _redirected_off_product(parser, url, final_url):
+                        return True
+                # Страница на месте — спросить лёгкую проверку источника (IKEA — артикул в API).
+                try:
+                    parser.check_offer(SourceOfferVerificationService._context(target.offer))
+                except (OfferNotFound, OfferGone):
+                    return True
+                except Exception:  # noqa: BLE001 — не уверены — не пропажа
+                    return False
+                return False
+        except Exception:  # noqa: BLE001 — сеть, блокировка: не уверены — не пропажа
+            logger.info("nightly_stock_gone_probe_failed", exc_info=True, extra={"url": url})
+            return False
 
     def _on_source_not_found(self, target: RefreshTarget) -> dict[str, int]:
         other_url = (
@@ -210,6 +287,21 @@ class NightlyStockCheckService(ProductCardSourceRefreshService):
         if getattr(settings, "SCRAPER_GONE_REQUIRES_REVIEW", False):
             return changes
         return {**self._mark_source_url_unavailable(target), **changes}
+
+
+def _redirected_off_product(parser, requested_url: str, final_url: str) -> bool:
+    """Продавец увёл со страницы товара туда, где товара нет (главная, категория)."""
+    requested = (urlparse(requested_url).path or "/").rstrip("/")
+    final = (urlparse(final_url).path or "/").rstrip("/")
+    if final == requested:
+        return False
+    if not final:
+        return True
+    for name in ("_is_product_url", "is_product_url", "is_lcw_product_url", "is_ikea_product_url"):
+        check = getattr(parser, name, None)
+        if callable(check):
+            return not check(final_url)
+    return False
 
 
 def _reset_night(state: StockCheckSourceState, night) -> None:
