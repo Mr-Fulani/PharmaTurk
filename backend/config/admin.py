@@ -61,8 +61,11 @@ class MudarobaAdminSite(AdminSite):
         ),
         "Источники и проверки": frozenset(
             {
+                "ProductDeletionLog",
                 "ProductMarketCheck",
                 "ProductSourceOffer",
+                "StaleProductCandidate",
+                "StockCheckSourceState",
                 "VKCategoryMapping",
             }
         ),

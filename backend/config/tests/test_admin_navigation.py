@@ -44,6 +44,7 @@ def test_main_index_groups_media_and_catalog_without_changing_model_links():
     medicine = _model("MedicineProduct", "Товары — Медикаменты")
     category = _model("CategoryMedicines", "Категории — Медицина")
     source_offer = _model("ProductSourceOffer", "Предложения источников")
+    stale = _model("StaleProductCandidate", "Неактуальные товары")
 
     source_apps = [
         _app(
@@ -54,6 +55,7 @@ def test_main_index_groups_media_and_catalog_without_changing_model_links():
             product_image,
             moderation,
             source_offer,
+            stale,
         ),
         _app("marketing", "Маркетинг", banner_media),
     ]
@@ -70,7 +72,7 @@ def test_main_index_groups_media_and_catalog_without_changing_model_links():
     ]
     assert models["Товары каталога"] == ["MedicineProduct"]
     assert models["Категории и справочники"] == ["CategoryMedicines"]
-    assert models["Источники и проверки"] == ["ProductSourceOffer"]
+    assert models["Источники и проверки"] == ["ProductSourceOffer", "StaleProductCandidate"]
     assert product_image["admin_url"] == "/admin/test/productimage/"
     assert moderation["perms"] == {"view": True}
 
