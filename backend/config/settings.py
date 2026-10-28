@@ -803,6 +803,10 @@ STALE_PRODUCT_DELETE_AFTER_HIDDEN_DAYS = env.int("STALE_PRODUCT_DELETE_AFTER_HID
 STALE_PRODUCT_MAX_PER_ACTION = env.int("STALE_PRODUCT_MAX_PER_ACTION", default=200)
 STALE_PRODUCT_MAX_SOURCE_PERCENT = env.int("STALE_PRODUCT_MAX_SOURCE_PERCENT", default=10)
 STALE_PRODUCT_MIN_CATALOG_PRODUCTS = env.int("STALE_PRODUCT_MIN_CATALOG_PRODUCTS", default=1000)
+# Не больше MAX_PER_DAY окончательных удалений за сутки (вместе с прошлыми действиями).
+STALE_PRODUCT_MAX_PER_DAY = env.int("STALE_PRODUCT_MAX_PER_DAY", default=400)
+# Задача удаления: soft/hard limit 100/110 минут; перепроверки — не дольше бюджета, затем файлы.
+STALE_PRODUCT_DELETE_BUDGET_SECONDS = env.int("STALE_PRODUCT_DELETE_BUDGET_SECONDS", default=75 * 60)
 # Fresh successful offer rows may override availability in public detail/YML
 # output. Kept separate from cart enforcement and disabled for staged rollout.
 SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(

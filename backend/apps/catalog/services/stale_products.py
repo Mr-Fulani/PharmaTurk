@@ -29,6 +29,7 @@ from django.core import serializers
 from django.core.cache import cache
 from django.db import models, router, transaction
 from django.db.models import Q
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.deletion import Collector
 from django.utils import timezone
 
@@ -42,6 +43,8 @@ logger = logging.getLogger(__name__)
 MEDIA_DELETE_LOCK_KEY = "catalog:media-delete:v1"
 # Ключ хранилища товара в любом месте значения: в имени файла, URL CDN, ?path= proxy-media.
 _PRODUCT_KEY = re.compile(r"products/[^?#&\s\"'<>]*")
+# Символы, на которых регулярка обрывает ключ: такие ключи ищутся точным вхождением.
+_KEY_STOP = re.compile(r"[?#&\s\"'<>]")
 # Как у cleanup_orphaned_media: эти префиксы не удаляются никогда.
 _PROTECTED_PREFIXES = ("products/original/", "products/processed/", "products/thumbs/")
 _GONE_CHECK_MAX_AGE = timedelta(days=3)
@@ -82,21 +85,31 @@ def media_delete_lock(timeout: int) -> Iterator[bool]:
 # --- защита ------------------------------------------------------------------------------
 
 
-def _domain_keys(products: Iterable[Product]) -> dict[int, tuple[type, int]]:
-    keys = {}
-    for product in products:
-        domain = product.domain_item
-        if domain is not product:
-            keys[product.pk] = (domain.__class__, domain.pk)
-    return keys
+def domain_records(product: Product) -> list[models.Model]:
+    """Все доменные записи товара — и текущего типа, и снятые после смены типа.
+
+    Их все удаляет сигнал pre_delete товара (``signals.delete_domain_before_generic_product``).
+    """
+    from apps.catalog.signals import _PRODUCT_DOMAIN_ONE_TO_ONE_RELS
+
+    records = []
+    for name in _PRODUCT_DOMAIN_ONE_TO_ONE_RELS:
+        try:
+            record = getattr(product, name)
+        except ObjectDoesNotExist:
+            continue
+        if record is not None:
+            records.append(record)
+    return records
 
 
 def protection_reasons(products: Iterable[Product]) -> dict[int, list[str]]:
     """Почему товар можно только скрыть, но не удалять: заявки, Список заявки, избранное, ручные правки."""
-    from django.contrib.admin.models import CHANGE, LogEntry
+    from django.contrib.admin.models import ADDITION, CHANGE, LogEntry
     from django.contrib.contenttypes.models import ContentType
 
     from apps.catalog.models import Favorite
+    from apps.feedback.models import ProductQuestion, ProductReview
     from apps.orders.models import CartItem, OrderItem
 
     products = list(products)
@@ -107,10 +120,17 @@ def protection_reasons(products: Iterable[Product]) -> dict[int, list[str]]:
     for product_id in CartItem.objects.filter(product_id__in=ids).values_list("product_id", flat=True).distinct():
         reasons[product_id].append("в Списке заявки покупателя")
 
-    # Избранное и журнал админки ссылаются и на Product, и на доменную карточку.
+    # Избранное, журнал админки, отзывы ссылаются и на Product, и на доменные карточки.
     targets = {(ContentType.objects.get_for_model(Product).pk, pk): pk for pk in ids}
-    for product_id, (model, domain_pk) in _domain_keys(products).items():
-        targets[(ContentType.objects.get_for_model(model).pk, domain_pk)] = product_id
+    slugs = {product.slug: product.pk for product in products if product.slug}
+    for product in products:
+        for record in domain_records(product):
+            targets[(ContentType.objects.get_for_model(type(record)).pk, record.pk)] = product.pk
+            if getattr(record, "slug", ""):
+                slugs.setdefault(record.slug, product.pk)
+    for model, reason in ((ProductReview, "есть отзывы"), (ProductQuestion, "есть вопросы покупателей")):
+        for slug in model.objects.filter(product_slug__in=list(slugs)).values_list("product_slug", flat=True).distinct():
+            reasons[slugs[slug]].append(reason)
     by_type: dict[int, list[int]] = defaultdict(list)
     for content_type_id, object_id in targets:
         by_type[content_type_id].append(object_id)
@@ -122,9 +142,9 @@ def protection_reasons(products: Iterable[Product]) -> dict[int, list[str]]:
         for object_id in LogEntry.objects.filter(
             content_type_id=content_type_id,
             object_id__in=[str(pk) for pk in object_ids],
-            action_flag=CHANGE,
+            action_flag__in=(ADDITION, CHANGE),
         ).values_list("object_id", flat=True).distinct():
-            reason = "правили вручную в админке"
+            reason = "создавали или правили вручную в админке"
             product_id = targets[(content_type_id, int(object_id))]
             if reason not in reasons[product_id]:
                 reasons[product_id].append(reason)
@@ -192,11 +212,11 @@ def plan_action(candidates: Iterable[StaleProductCandidate], action: str, *, now
         else:
             plan.eligible.append(candidate)
     if plan.eligible:
-        plan.refusal = _limits_refusal(plan.eligible)
+        plan.refusal = _limits_refusal(plan.eligible, action)
     return plan
 
 
-def _limits_refusal(eligible: list[StaleProductCandidate]) -> str:
+def _limits_refusal(eligible: list[StaleProductCandidate], action: str = "hide") -> str:
     total = Product.objects.count()
     minimum = _setting_int("STALE_PRODUCT_MIN_CATALOG_PRODUCTS", 1000, minimum=0, maximum=10_000_000)
     if total < minimum:
@@ -205,6 +225,14 @@ def _limits_refusal(eligible: list[StaleProductCandidate]) -> str:
     per_action = _setting_int("STALE_PRODUCT_MAX_PER_ACTION", 200, minimum=1, maximum=10_000)
     if len(eligible) > per_action:
         return f"Выбрано {len(eligible)} товаров — за одно действие можно не больше {per_action}. Снимите часть галочек."
+    if action == "delete":
+        per_day = _setting_int("STALE_PRODUCT_MAX_PER_DAY", 400, minimum=1, maximum=100_000)
+        today = ProductDeletionLog.objects.filter(created_at__gte=timezone.now() - timedelta(days=1)).count()
+        if today + len(eligible) > per_day:
+            return (
+                f"За сутки уже удалено {today}, с этими будет {today + len(eligible)} — больше {per_day} "
+                "в сутки нельзя. Продолжите завтра."
+            )
     percent = _setting_int("STALE_PRODUCT_MAX_SOURCE_PERCENT", 10, minimum=1, maximum=100)
     for parser_key, count in Counter(candidate.parser_key for candidate in eligible).items():
         catalog = _source_catalog_size(parser_key)
@@ -274,12 +302,10 @@ def keep_candidates(candidate_ids: Iterable[int], user=None) -> int:
 def collect_objects(product: Product) -> list[models.Model]:
     """Все строки, которые удалит ``product.delete()``, в порядке восстановления (родители раньше).
 
-    Доменную карточку удаляет сигнал pre_delete товара — её дерево собирается отдельно.
+    Доменные записи (все, не только текущего типа) удаляет сигнал pre_delete товара —
+    их деревья собираются отдельно.
     """
-    roots = [product]
-    domain = product.domain_item
-    if domain is not product:
-        roots.append(domain)
+    roots = [product, *domain_records(product)]
     ordered: list[models.Model] = []
     for root in roots:
         collector = Collector(using=router.db_for_write(type(root)))
@@ -296,15 +322,39 @@ def collect_objects(product: Product) -> list[models.Model]:
     return ordered
 
 
+def shadow_products(objects: Iterable[models.Model], product_id: int) -> list[int]:
+    """Другие товары, которые удалит каскад: теневые товары вариантов одежды/обуви.
+
+    Удаление ``ClothingVariant``/``ShoeVariant`` удаляет Product с
+    ``external_data.source_variant_id/slug`` этого варианта (``models._cleanup_variant_products``).
+    """
+    from apps.catalog.models import ClothingVariant, ShoeVariant
+
+    query = Q()
+    for obj in objects:
+        if isinstance(obj, (ClothingVariant, ShoeVariant)):
+            query |= Q(external_data__source_variant_id=obj.pk) | Q(external_data__source_variant_slug=obj.slug)
+    if not query:
+        return []
+    return list(Product.objects.filter(query).exclude(pk=product_id).values_list("pk", flat=True)[:20])
+
+
 def _value_text(value: Any) -> str:
     return str(getattr(value, "name", value) or "")
 
 
-def _value_keys(text: str) -> list[str]:
-    """Все ключи ``products/…`` в значении поля, включая URL и ?path=."""
+def _value_keys(text: str, odd_keys: Iterable[str] = ()) -> list[str]:
+    """Все ключи ``products/…`` в значении поля, включая URL и ?path=.
+
+    ``odd_keys`` — ключи с пробелом, ``&``, ``#``…: регулярка их обрезала бы, ищем точным вхождением.
+    """
     if "products/" not in text:
         return []
-    return _PRODUCT_KEY.findall(text) + _PRODUCT_KEY.findall(unquote(text))
+    decoded = unquote(text)
+    found = _PRODUCT_KEY.findall(text) + _PRODUCT_KEY.findall(decoded)
+    for key in odd_keys:
+        found += [key] * (text.count(key) + decoded.count(key))
+    return found
 
 
 def _own_key(model_field: models.Field, value: Any) -> str:
@@ -338,15 +388,17 @@ def _media_fields_by_model() -> dict[type, list[models.Field]]:
 def product_media(objects: Iterable[models.Model]) -> tuple[set[str], Counter]:
     """Файлы товара (наш R2, ``products/…``) и сколько раз сами строки товара на них ссылаются."""
     fields = _media_fields_by_model()
-    own: set[str] = set()
+    objects = list(objects)
+    values = [
+        (model_field, getattr(obj, model_field.attname, None))
+        for obj in objects
+        for model_field in fields.get(type(obj)._meta.concrete_model, [])
+    ]
+    own = {key for key in (_own_key(model_field, value) for model_field, value in values) if key}
+    odd = [key for key in own if _KEY_STOP.search(key)]
     counts: Counter = Counter()
-    for obj in objects:
-        for model_field in fields.get(type(obj)._meta.concrete_model, []):
-            value = getattr(obj, model_field.attname, None)
-            key = _own_key(model_field, value)
-            if key:
-                own.add(key)
-            counts.update(_value_keys(_value_text(value)))
+    for _model_field, value in values:
+        counts.update(key for key in _value_keys(_value_text(value), odd) if key in own)
     return own, counts
 
 
@@ -355,6 +407,7 @@ def reference_counts(keys: set[str]) -> Counter:
     counts: Counter = Counter()
     if not keys:
         return counts
+    odd = [key for key in keys if _KEY_STOP.search(key)]
     for model, name in media_reference_fields():
         try:
             values = (
@@ -363,7 +416,7 @@ def reference_counts(keys: set[str]) -> Counter:
                 .iterator(chunk_size=2000)
             )
             for value in values:
-                for key in _value_keys(_value_text(value)):
+                for key in _value_keys(_value_text(value), odd):
                     if key in keys:
                         counts[key] += 1
         except Exception as exc:  # noqa: BLE001 — не знаем, кто ссылается, — не удаляем
@@ -524,18 +577,55 @@ def recheck_at_source(candidate: StaleProductCandidate) -> str:
     return "present"
 
 
+class _Skip(Exception):
+    """Товар не удаляется; текст — причина для отчёта."""
+
+
+def _deletion_blocker(candidate: StaleProductCandidate, product: Product, objects, *, now=None) -> str:
+    """Почему товар нельзя удалить прямо сейчас ('' — можно). Проверяется заново под блокировкой строк."""
+    now = now or timezone.now()
+    if candidate.status != StaleProductCandidate.Status.HIDDEN:
+        return f"статус изменился: «{candidate.get_status_display()}»"
+    if product.is_active:
+        return "товар снова на сайте"
+    if candidate.hidden_at is None or candidate.hidden_at > now - timedelta(days=delete_after_hidden_days()):
+        return "скрыт недавно"
+    protected = protection_reasons([product]).get(product.pk)
+    if protected:
+        return "только скрыть: " + ", ".join(protected)
+    shadows = shadow_products(objects, product.pk)
+    if shadows:
+        return f"удаление задело бы другие товары (теневые варианты: {', '.join(map(str, shadows[:5]))})"
+    return ""
+
+
 def _delete_one(candidate: StaleProductCandidate, user, gateway: MediaGateway) -> ProductDeletionLog:
     from apps.catalog.signals import storage_deletes_suppressed
 
-    product = candidate.product
-    objects = collect_objects(product)
+    objects = collect_objects(candidate.product)
+    reason = _deletion_blocker(candidate, candidate.product, objects)
+    if reason:
+        raise _Skip(reason)
     keys, _ = product_media(objects)
     files = []
     for key in sorted(keys):
         size = gateway.backup(key)  # исключение — товар не удаляется
         files.append({"path": key, "size": size, "state": "backed_up" if size is not None else "missing"})
-    backup = zlib.compress(serializers.serialize("json", objects).encode(), 6)
     with transaction.atomic():
+        # Перепроверка у продавца и копия заняли время: за это товар могли «Оставить»,
+        # вернуть на сайт или поправить. Решение — по строкам под блокировкой.
+        candidate = (
+            StaleProductCandidate.objects.select_for_update().filter(pk=candidate.pk).first()
+        )
+        if candidate is None:
+            raise _Skip("пометка уже снята")
+        product = Product.objects.select_for_update().get(pk=candidate.product_id)
+        objects = collect_objects(product)
+        reason = _deletion_blocker(candidate, product, objects)
+        if reason:
+            raise _Skip(reason)
+        if not product_media(objects)[0] <= keys:
+            raise _Skip("у товара появились новые файлы — запустите удаление ещё раз")
         log = ProductDeletionLog.objects.create(
             deleted_by=user,
             product_id=product.pk,
@@ -545,12 +635,12 @@ def _delete_one(candidate: StaleProductCandidate, user, gateway: MediaGateway) -
             source_url=candidate.source_url,
             first_seen_at=candidate.first_seen_at,
             hidden_at=candidate.hidden_at,
-            rows_backup=backup,
+            rows_backup=zlib.compress(serializers.serialize("json", objects).encode(), 6),
             objects_count=len(objects),
             files=files,
         )
         with storage_deletes_suppressed():
-            Product.objects.get(pk=product.pk).delete()
+            product.delete()
     return log
 
 
@@ -589,10 +679,14 @@ def delete_candidates(
     *,
     gateway: MediaGateway | None = None,
     recheck: Callable[[StaleProductCandidate], str] = recheck_at_source,
+    clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     """Шаг 2: удалить скрытых давно кандидатов вместе с файлами. Запускает Celery-задача из админки."""
     gateway = gateway or MediaGateway()
-    with media_delete_lock(3 * 3600) as acquired:
+    # Задача: soft/hard limit 100/110 минут. Перепроверки и удаление строк — не дольше
+    # бюджета, остаток времени — на одну проверку ссылок и удаление файлов.
+    budget = _setting_int("STALE_PRODUCT_DELETE_BUDGET_SECONDS", 75 * 60, minimum=60, maximum=95 * 60)
+    with media_delete_lock(2 * 3600) as acquired:
         if not acquired:
             return {"status": "busy"}
         candidates = list(StaleProductCandidate.objects.filter(pk__in=list(candidate_ids)).select_related("product"))
@@ -601,25 +695,37 @@ def delete_candidates(
             raise StaleProductsRefused(plan.refusal)
         gateway.check_ready()
         result: dict[str, Any] = {"status": "completed", "deleted": [], "returned": [], "skipped": []}
-        logs = []
-        for candidate in plan.eligible:
-            verdict = recheck(candidate)
-            if verdict == "present":
-                candidate.status = StaleProductCandidate.Status.RETURNED
-                candidate.save(update_fields=["status", "updated_at"])
-                result["returned"].append(candidate.product.name)
-                continue
-            if verdict != "gone":
-                result["skipped"].append((candidate.product.name, "не удалось проверить у продавца"))
-                continue
-            try:
-                logs.append(_delete_one(candidate, user, gateway))
-            except Exception as exc:  # noqa: BLE001 — один товар не останавливает остальные
-                logger.exception("stale_product_delete_failed", extra={"product_id": candidate.product_id})
-                result["skipped"].append((candidate.product.name, f"ошибка: {type(exc).__name__}"))
-                continue
-            result["deleted"].append(candidate.product.name)
-        result["files_error"] = _delete_unreferenced_files(logs, gateway) if logs else ""
+        logs: list[ProductDeletionLog] = []
+        deadline = clock() + budget
+        try:
+            for index, candidate in enumerate(plan.eligible):
+                if clock() >= deadline:
+                    left = len(plan.eligible) - index
+                    result["skipped"].append((f"ещё {left} товаров", "не успели за один запуск — запустите удаление ещё раз"))
+                    break
+                verdict = recheck(candidate)
+                if verdict == "present":
+                    StaleProductCandidate.objects.filter(
+                        pk=candidate.pk, status=StaleProductCandidate.Status.HIDDEN
+                    ).update(status=StaleProductCandidate.Status.RETURNED, updated_at=timezone.now())
+                    result["returned"].append(candidate.product.name)
+                    continue
+                if verdict != "gone":
+                    result["skipped"].append((candidate.product.name, "не удалось проверить у продавца"))
+                    continue
+                try:
+                    logs.append(_delete_one(candidate, user, gateway))
+                except _Skip as skip:
+                    result["skipped"].append((candidate.product.name, str(skip)))
+                    continue
+                except Exception as exc:  # noqa: BLE001 — один товар не останавливает остальные
+                    logger.exception("stale_product_delete_failed", extra={"product_id": candidate.product_id})
+                    result["skipped"].append((candidate.product.name, f"ошибка: {type(exc).__name__}"))
+                    continue
+                result["deleted"].append(candidate.product.name)
+        finally:
+            # Строки уже удалены — файлы удаляются и при обрыве цикла.
+            result["files_error"] = _delete_unreferenced_files(logs, gateway) if logs else ""
         result["files_deleted"] = sum(log.files_deleted for log in logs)
         result["bytes_freed"] = sum(log.bytes_freed for log in logs)
         result["shared_kept"] = sum(1 for log in logs for item in log.files if item["state"] == "shared")
@@ -664,9 +770,11 @@ def restore_deletion(log: ProductDeletionLog, user=None, *, gateway: MediaGatewa
             # Иначе cleanup_orphaned_media мог бы удалить только что возвращённые файлы.
             raise StaleProductsRefused("Сейчас идёт удаление файлов — повторите через час.")
         # Сначала файлы: сигналы картинок, не найдя файла, скачали бы его заново по ссылке продавца.
+        # Все, у кого есть копия: и не удалённые (общие, сбой удаления) могла уже убрать
+        # cleanup_orphaned_media. Файл на месте — restore его не трогает.
         failed = []
         for item in log.files:
-            if item.get("state") != "deleted":
+            if item.get("state") == "missing":
                 continue
             try:
                 gateway.restore(item["path"])

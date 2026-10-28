@@ -53,6 +53,17 @@ class StockCheckSourceStateAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
+class OwnerActionsMixin:
+    """Действия «скрыть / удалить / оставить / восстановить» — только суперпользователю.
+
+    Обычный сотрудник с правом просмотра видит списки, но действий не получает:
+    Django убирает их из меню и отклоняет POST с ними.
+    """
+
+    def has_owner_permission(self, request):
+        return bool(request.user and request.user.is_active and request.user.is_superuser)
+
+
 def _confirm_page(request, *, title, action, ids, intro, rows, excluded, refusal, totals, confirm_label):
     return TemplateResponse(request, CONFIRM_TEMPLATE, {
         **admin.site.each_context(request),
@@ -69,7 +80,7 @@ def _confirm_page(request, *, title, action, ids, intro, rows, excluded, refusal
 
 
 @admin.register(StaleProductCandidate)
-class StaleProductCandidateAdmin(admin.ModelAdmin):
+class StaleProductCandidateAdmin(OwnerActionsMixin, admin.ModelAdmin):
     """Товары, которых больше нет у продавца. Ничего не удаляется автоматически.
 
     Шаг 1 — «Скрыть с сайта» (обратимо), шаг 2 — «Удалить окончательно» через
@@ -170,7 +181,7 @@ class StaleProductCandidateAdmin(admin.ModelAdmin):
     def _excluded(plan):
         return [{"name": candidate.product.name, "reason": reason} for candidate, reason in plan.excluded]
 
-    @admin.action(description="Скрыть с сайта (обратимо)")
+    @admin.action(description="Скрыть с сайта (обратимо)", permissions=["owner"])
     def hide_selected(self, request, queryset):
         from .services.stale_products import StaleProductsRefused, hide_candidates, plan_action
 
@@ -207,7 +218,7 @@ class StaleProductCandidateAdmin(admin.ModelAdmin):
             confirm_label=f"Да, скрыть {len(plan.eligible)}",
         )
 
-    @admin.action(description="Удалить окончательно вместе с файлами")
+    @admin.action(description="Удалить окончательно вместе с файлами", permissions=["owner"])
     def delete_selected_forever(self, request, queryset):
         from .services.stale_products import plan_action
         from .tasks import delete_stale_products_task
@@ -250,7 +261,7 @@ class StaleProductCandidateAdmin(admin.ModelAdmin):
             confirm_label=f"Да, удалить {len(plan.eligible)} навсегда",
         )
 
-    @admin.action(description="Оставить, не удалять (вернуть на сайт)")
+    @admin.action(description="Оставить, не удалять (вернуть на сайт)", permissions=["owner"])
     def keep_selected(self, request, queryset):
         from .services.stale_products import keep_candidates
 
@@ -259,7 +270,7 @@ class StaleProductCandidateAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductDeletionLog)
-class ProductDeletionLogAdmin(admin.ModelAdmin):
+class ProductDeletionLogAdmin(OwnerActionsMixin, admin.ModelAdmin):
     """Что удалено, кем и когда; восстановление из копии."""
 
     list_display = ("created_at", "product", "source", "files_deleted", "freed", "status", "deleted_by")
@@ -299,7 +310,7 @@ class ProductDeletionLogAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-    @admin.action(description="Восстановить товар и файлы")
+    @admin.action(description="Восстановить товар и файлы", permissions=["owner"])
     def restore_selected(self, request, queryset):
         from .services.stale_products import StaleProductsRefused, restore_deletion
 

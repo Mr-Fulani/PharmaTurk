@@ -155,7 +155,10 @@ def delete_stale_products_task(self, candidate_ids: list[int], user_id: int | No
     )
     from apps.monitoring.watchdog import send_admin_telegram_notification
 
-    user = get_user_model().objects.filter(pk=user_id).first() if user_id else None
+    user = get_user_model().objects.filter(pk=user_id, is_active=True, is_superuser=True).first() if user_id else None
+    if user is None:
+        # Ставит только действие админки суперпользователя (admin_stock.OwnerActionsMixin).
+        return {"status": "refused", "reason": "not_owner"}
     try:
         result = delete_candidates(candidate_ids, user)
     except StaleProductsRefused as exc:
