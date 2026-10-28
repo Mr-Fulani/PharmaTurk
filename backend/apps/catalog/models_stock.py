@@ -70,6 +70,11 @@ class StaleProductCandidate(models.Model):
     last_gone_at = models.DateTimeField(_("Последняя проверка: нет"))
     gone_checks = models.PositiveIntegerField(_("Проверок подряд: нет"), default=1)
     hidden_at = models.DateTimeField(_("Скрыт с сайта"), null=True, blank=True)
+    # Оценка для страницы удаления; считается ночью (stale_products.refresh_media_stats).
+    files_total = models.PositiveIntegerField(_("Файлов у товара"), null=True, blank=True)
+    files_to_free = models.PositiveIntegerField(_("Файлов удалится"), null=True, blank=True)
+    bytes_to_free = models.BigIntegerField(_("Байт освободится"), null=True, blank=True)
+    media_stats_at = models.DateTimeField(_("Файлы посчитаны"), null=True, blank=True)
     status_changed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -87,3 +92,56 @@ class StaleProductCandidate(models.Model):
 
     def __str__(self):
         return f"{self.parser_key}: {self.product_id}"
+
+
+class ProductDeletionLog(models.Model):
+    """Журнал окончательного удаления: копия строк БД и список файлов для восстановления.
+
+    Файлы перед удалением копируются в бакет бэкапов (``media/<ключ>``) и хранятся там
+    MEDIA_BACKUP_KEEP_DELETED_DAYS дней (docs/STALE_PRODUCTS.md).
+    """
+
+    class Status(models.TextChoices):
+        DELETED = "deleted", _("Удалён")
+        RESTORED = "restored", _("Восстановлен")
+
+    created_at = models.DateTimeField(_("Удалён"), auto_now_add=True, db_index=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Кто удалил"),
+    )
+    product_id = models.BigIntegerField(_("ID товара"), db_index=True)
+    product_name = models.CharField(_("Товар"), max_length=500)
+    product_type = models.CharField(_("Тип"), max_length=50, blank=True)
+    parser_key = models.CharField(_("Источник"), max_length=50, blank=True)
+    source_url = models.URLField(_("Ссылка у продавца"), max_length=2000, blank=True)
+    first_seen_at = models.DateTimeField(_("Нет у продавца с"), null=True, blank=True)
+    hidden_at = models.DateTimeField(_("Скрыт с сайта"), null=True, blank=True)
+    status = models.CharField(_("Статус"), max_length=20, choices=Status.choices, default=Status.DELETED)
+    rows_backup = models.BinaryField(_("Копия строк БД (zlib, JSON)"), editable=False)
+    objects_count = models.PositiveIntegerField(_("Строк в копии"), default=0)
+    files = models.JSONField(_("Файлы"), default=list, blank=True)
+    files_deleted = models.PositiveIntegerField(_("Файлов удалено"), default=0)
+    bytes_freed = models.BigIntegerField(_("Байт освобождено"), default=0)
+    note = models.TextField(_("Примечание"), blank=True)
+    restored_at = models.DateTimeField(_("Восстановлен"), null=True, blank=True)
+    restored_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Кто восстановил"),
+    )
+
+    class Meta:
+        verbose_name = _("Удалённый товар (журнал)")
+        verbose_name_plural = _("Журнал удалений товаров")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.product_id}: {self.product_name}"
