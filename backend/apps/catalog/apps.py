@@ -12,4 +12,5 @@ class CatalogConfig(AppConfig):
         import apps.catalog.signals  # noqa: F401
         import apps.catalog.admin_perfumery  # noqa: F401
         import apps.catalog.admin_vk  # noqa: F401  — маппинг категорий ВК
+        import apps.catalog.admin_stock  # noqa: F401  — ночная сверка наличия
 

@@ -398,6 +398,18 @@ CELERY_BEAT_SCHEDULE = {
             "batch_size": ANONYMOUS_CART_CLEANUP_BATCH_SIZE,
         },
     },
+    # Ночная сверка наличия у продавцов (docs/NIGHTLY_STOCK_CHECK.md): пачки по ≤ 8 минут
+    # раз в 10 минут, работают только в окне NIGHTLY_STOCK_CHECK_START–END (01:00–06:30 МСК);
+    # 05:xx пропускается — в 05:00 пересчёт цен. Итог владельцу в Telegram в 06:45.
+    # Без NIGHTLY_STOCK_CHECK_ENABLED ничего не делают.
+    "catalog-nightly-stock-check": {
+        "task": "catalog.nightly_stock_check",
+        "schedule": crontab(hour="1-4,6", minute="*/10"),
+    },
+    "catalog-nightly-stock-check-report": {
+        "task": "catalog.nightly_stock_check_report",
+        "schedule": crontab(hour=6, minute=45),
+    },
     # Поиск кандидатов в дубликаты товаров — раз в неделю, с уведомлением админа
     "scrapers-weekly-duplicate-candidates": {
         "task": "apps.scrapers.tasks.find_and_merge_duplicates",
@@ -752,6 +764,31 @@ SCRAPER_PRICE_REFRESH_DISABLED_SOURCES = env.list(
 # true — режим «Только изменения» не снимает пропавшие товары сам, а помечает их
 # кандидатами (external_data["gone_candidate"]); снимает `review_gone_candidates --apply`.
 SCRAPER_GONE_REQUIRES_REVIEW = env.bool("SCRAPER_GONE_REQUIRES_REVIEW", default=False)
+# Ночная сверка наличия у продавцов (docs/NIGHTLY_STOCK_CHECK.md). Платные источники
+# (прокси Bright Data) из NIGHTLY_STOCK_CHECK_PAID_SOURCES не сверяются, даже если указаны.
+NIGHTLY_STOCK_CHECK_ENABLED = env.bool("NIGHTLY_STOCK_CHECK_ENABLED", default=False)
+NIGHTLY_STOCK_CHECK_SOURCES = env.list(
+    "NIGHTLY_STOCK_CHECK_SOURCES", default=["lcw", "ikea", "ummaland"]
+)
+NIGHTLY_STOCK_CHECK_PAID_SOURCES = env.list(
+    "NIGHTLY_STOCK_CHECK_PAID_SOURCES",
+    default=["flo", "zara", "bershka", "pullandbear", "massimodutti", "akakce", "instagram", "ilacfiyati"],
+)
+# Тихие часы по TIME_ZONE (МСК = Турция); Beat запускает пачки 01:00–04:50 и 06:00–06:50.
+NIGHTLY_STOCK_CHECK_START = env("NIGHTLY_STOCK_CHECK_START", default="01:00")
+NIGHTLY_STOCK_CHECK_END = env("NIGHTLY_STOCK_CHECK_END", default="06:30")
+# Карточек в минуту на сайт; {"default": 6, "lcw": 6}. Карточка LCW — несколько запросов (цвета).
+NIGHTLY_STOCK_CHECK_RATE_PER_MINUTE = env.json(
+    "NIGHTLY_STOCK_CHECK_RATE_PER_MINUTE", default={"default": 6}
+)
+NIGHTLY_STOCK_CHECK_BATCH_SECONDS = env.int("NIGHTLY_STOCK_CHECK_BATCH_SECONDS", default=480)
+NIGHTLY_STOCK_CHECK_MAX_CONSECUTIVE_ERRORS = env.int(
+    "NIGHTLY_STOCK_CHECK_MAX_CONSECUTIVE_ERRORS", default=10
+)
+# Пропало или закончилось больше этой доли проверенных «в наличии» (не раньше MIN_SAMPLE
+# проверок) — пауза источника и тревога: похоже на сбой парсера.
+NIGHTLY_STOCK_CHECK_MAX_LOSS_SHARE = env.float("NIGHTLY_STOCK_CHECK_MAX_LOSS_SHARE", default=0.75)
+NIGHTLY_STOCK_CHECK_MIN_SAMPLE = env.int("NIGHTLY_STOCK_CHECK_MIN_SAMPLE", default=30)
 # Fresh successful offer rows may override availability in public detail/YML
 # output. Kept separate from cart enforcement and disabled for staged rollout.
 SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(

@@ -48,6 +48,8 @@ Beat только публикует задачи. Для исполнения �
 | `cleanup-temp-images` | `apps.recommendations.tasks.cleanup_temp_images` | каждый час | `recsys` | Удаляет файлы старше часа из storage-префикса `temp/`. |
 | `monitoring-media-backup` | `apps.monitoring.tasks.run_media_backup` | ежедневно `02:00` | `celery` | Копия `marketing/`, `pages/`, `services/` бакета медиа в бакет бэкапов (`media/`): только новое и изменённое, пропавшие файлы хранятся 30 дней; при `MEDIA_BACKUP_ENABLED` (= `DB_BACKUP_ENABLED`). `docs/DB_BACKUP.md`, «Копия медиа». |
 | `monitoring-media-backup-check` | `apps.monitoring.tasks.check_media_backup` | воскресенье `02:30` | `celery` | Копия медиа свежая (не старше 26 ч) и полная по манифесту; Telegram при сбое. |
+| `catalog-nightly-stock-check` | `catalog.nightly_stock_check` | каждые 10 минут `01:00`–`04:50` и `06:00`–`06:20` (05:xx — пересчёт цен) | `celery` | Пачка ночной сверки наличия у бесплатных источников (LCW, IKEA, UmmaLand), ≤ 8 минут; только при `NIGHTLY_STOCK_CHECK_ENABLED=true`. `docs/NIGHTLY_STOCK_CHECK.md`. |
+| `catalog-nightly-stock-check-report` | `catalog.nightly_stock_check_report` | ежедневно `06:45` | `celery` | Итог ночной сверки владельцу в Telegram: сколько проверено, закончилось, вернулось, пропало у продавца. |
 
 ### Обогащение медиа лекарств
 
@@ -102,6 +104,16 @@ provider idempotency key, любой неоднозначный результа
 проверки выполняются только по пользовательскому событию: при открытии карточки
 товара и один раз при открытии корзины. Добавление/изменение строки и checkout
 используют сохранённый snapshot без сетевого обращения к поставщику.
+
+### Ночная сверка наличия
+
+`catalog.nightly_stock_check` (с 28.10.2026) — единственная плановая проверка у
+продавцов: товары «в наличии» бесплатных источников открываются тем же путём, что
+и карточка при открытии (цена, наличие, цвета и размеры). Платные источники (FLO,
+Zara/Inditex, Akakçe) не сверяются. Пачка занимает один слот `celeryworker` до
+8 минут из каждых 10, вторая пачка не стартует, пока идёт первая (блокировка в
+кэше). Пропавший у продавца товар становится кандидатом «Неактуальные товары», а
+не удаляется. Устройство, предохранители и включение — `docs/NIGHTLY_STOCK_CHECK.md`.
 
 ### Очистка скраперных данных
 

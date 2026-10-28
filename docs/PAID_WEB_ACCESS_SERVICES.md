@@ -124,6 +124,10 @@ acknowledge и checkout используют сохранённый snapshot и 
 Фоновая задача `catalog.refresh_source_offers` не зарегистрирована и не присутствует
 в `CELERY_BEAT_SCHEDULE`. Полный импорт FLO также не включает Web Unlocker только
 из-за environment flag. Это защищает free tier от незаметного batch-расхода.
+Ночная сверка наличия ([NIGHTLY_STOCK_CHECK.md](NIGHTLY_STOCK_CHECK.md)) платные
+источники не открывает: FLO, Zara/Inditex и Akakçe стоят в `NIGHTLY_STOCK_CHECK_PAID_SOURCES`,
+а настройки парсера с прокси останавливают источник до запроса. Там же — оценка
+стоимости, если владелец решит их включить.
 
 ### Расход зоны `flo_unlocker` (сверка кода 2026-10-21)
 
