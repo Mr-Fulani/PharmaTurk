@@ -48,7 +48,7 @@ Beat только публикует задачи. Для исполнения �
 | `cleanup-temp-images` | `apps.recommendations.tasks.cleanup_temp_images` | каждый час | `recsys` | Удаляет файлы старше часа из storage-префикса `temp/`. |
 | `monitoring-media-backup` | `apps.monitoring.tasks.run_media_backup` | ежедневно `02:00` | `celery` | Копия `marketing/`, `pages/`, `services/` бакета медиа в бакет бэкапов (`media/`): только новое и изменённое, пропавшие файлы хранятся 30 дней; при `MEDIA_BACKUP_ENABLED` (= `DB_BACKUP_ENABLED`). `docs/DB_BACKUP.md`, «Копия медиа». |
 | `monitoring-media-backup-check` | `apps.monitoring.tasks.check_media_backup` | воскресенье `02:30` | `celery` | Копия медиа свежая (не старше 26 ч) и полная по манифесту; Telegram при сбое. |
-| `catalog-nightly-stock-check` | `catalog.nightly_stock_check` | каждые 10 минут с `01:00` до `06:50` (работает до `06:30`) | `celery` | Пачка ночной сверки наличия у бесплатных источников (LCW, IKEA, UmmaLand), ≤ 8 минут; только при `NIGHTLY_STOCK_CHECK_ENABLED=true`. `docs/NIGHTLY_STOCK_CHECK.md`. |
+| `catalog-nightly-stock-check` | `catalog.nightly_stock_check` | каждые 10 минут `01:00`–`04:50` и `06:00`–`06:20` (05:xx — пересчёт цен) | `celery` | Пачка ночной сверки наличия у бесплатных источников (LCW, IKEA, UmmaLand), ≤ 8 минут; только при `NIGHTLY_STOCK_CHECK_ENABLED=true`. `docs/NIGHTLY_STOCK_CHECK.md`. |
 | `catalog-nightly-stock-check-report` | `catalog.nightly_stock_check_report` | ежедневно `06:45` | `celery` | Итог ночной сверки владельцу в Telegram: сколько проверено, закончилось, вернулось, пропало у продавца. |
 
 ### Обогащение медиа лекарств

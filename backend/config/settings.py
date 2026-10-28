@@ -400,10 +400,11 @@ CELERY_BEAT_SCHEDULE = {
     },
     # Ночная сверка наличия у продавцов (docs/NIGHTLY_STOCK_CHECK.md): пачки по ≤ 8 минут
     # раз в 10 минут, работают только в окне NIGHTLY_STOCK_CHECK_START–END (01:00–06:30 МСК);
-    # итог владельцу в Telegram в 06:45. Без NIGHTLY_STOCK_CHECK_ENABLED ничего не делают.
+    # 05:xx пропускается — в 05:00 пересчёт цен. Итог владельцу в Telegram в 06:45.
+    # Без NIGHTLY_STOCK_CHECK_ENABLED ничего не делают.
     "catalog-nightly-stock-check": {
         "task": "catalog.nightly_stock_check",
-        "schedule": crontab(hour="1-6", minute="*/10"),
+        "schedule": crontab(hour="1-4,6", minute="*/10"),
     },
     "catalog-nightly-stock-check-report": {
         "task": "catalog.nightly_stock_check_report",
@@ -773,7 +774,7 @@ NIGHTLY_STOCK_CHECK_PAID_SOURCES = env.list(
     "NIGHTLY_STOCK_CHECK_PAID_SOURCES",
     default=["flo", "zara", "bershka", "pullandbear", "massimodutti", "akakce", "instagram", "ilacfiyati"],
 )
-# Тихие часы по TIME_ZONE (МСК = Турция); Beat запускает пачки с 01:00 до 06:50.
+# Тихие часы по TIME_ZONE (МСК = Турция); Beat запускает пачки 01:00–04:50 и 06:00–06:50.
 NIGHTLY_STOCK_CHECK_START = env("NIGHTLY_STOCK_CHECK_START", default="01:00")
 NIGHTLY_STOCK_CHECK_END = env("NIGHTLY_STOCK_CHECK_END", default="06:30")
 # Карточек в минуту на сайт; {"default": 6, "lcw": 6}. Карточка LCW — несколько запросов (цвета).
