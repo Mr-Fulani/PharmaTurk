@@ -1,0 +1,65 @@
+{% extends "admin/base_site.html" %}
+{# Подтверждение действий «Неактуальные товары» и «Журнал удалений» (apps/catalog/admin_stock.py). #}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .stale-note { max-width: 900px; line-height: 1.5; }
+  .stale-refusal { background: #fdecea; border: 1px solid #e0a7a1; color: #8a1f11; padding: 12px 16px; margin: 12px 0; font-weight: 600; max-width: 900px; }
+  .stale-totals { font-size: 15px; font-weight: 600; margin: 16px 0; }
+  .stale-table { margin: 8px 0 20px; max-width: 1100px; }
+  .stale-table td, .stale-table th { padding: 6px 10px; }
+  .stale-buttons { margin-top: 20px; display: flex; gap: 16px; align-items: center; }
+  .stale-danger { background: #ba2121 !important; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Начало</a>
+  &rsaquo; <a href="{% url 'admin:app_list' 'catalog' %}">Каталог</a>
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="stale-note">
+  {% for line in intro %}<p>{{ line }}</p>{% endfor %}
+</div>
+
+{% if refusal %}<div class="stale-refusal">Действие запрещено предохранителем: {{ refusal }}</div>{% endif %}
+
+{% if rows %}
+<h2>Будут затронуты ({{ rows|length }})</h2>
+<table class="stale-table">
+  <thead><tr><th>Товар</th><th>Источник</th><th></th></tr></thead>
+  <tbody>
+  {% for row in rows %}<tr><td>{{ row.name }}</td><td>{{ row.source }}</td><td>{{ row.info }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if excluded %}
+<h2>Не будут затронуты ({{ excluded|length }})</h2>
+<table class="stale-table">
+  <thead><tr><th>Товар</th><th>Почему</th></tr></thead>
+  <tbody>
+  {% for row in excluded %}<tr><td>{{ row.name }}</td><td>{{ row.reason }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if totals %}<p class="stale-totals">{{ totals }}</p>{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="{{ action }}">
+  <input type="hidden" name="confirm" value="yes">
+  {% for pk in ids %}<input type="hidden" name="_selected_action" value="{{ pk }}">{% endfor %}
+  <div class="stale-buttons">
+    {% if rows and not refusal %}
+      <input type="submit" value="{{ confirm_label }}" class="default{% if action == 'delete_selected_forever' %} stale-danger{% endif %}">
+    {% endif %}
+    <a href="javascript:history.back()">Отмена, вернуться к списку</a>
+  </div>
+</form>
+{% endblock %}

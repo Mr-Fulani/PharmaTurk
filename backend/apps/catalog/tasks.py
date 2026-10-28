@@ -137,6 +137,55 @@ def nightly_stock_check_report_task() -> dict:
     return send_night_report()
 
 
+@shared_task(
+    bind=True,
+    name="catalog.delete_stale_products",
+    soft_time_limit=100 * 60,
+    time_limit=110 * 60,
+    max_retries=8,
+)
+def delete_stale_products_task(self, candidate_ids: list[int], user_id: int | None = None) -> dict:
+    """Окончательное удаление неактуальных товаров по решению в админке (docs/STALE_PRODUCTS.md)."""
+    from django.contrib.auth import get_user_model
+
+    from apps.catalog.services.stale_products import (
+        StaleProductsRefused,
+        delete_candidates,
+        deletion_report,
+    )
+    from apps.monitoring.watchdog import send_admin_telegram_notification
+
+    user = get_user_model().objects.filter(pk=user_id, is_active=True, is_superuser=True).first() if user_id else None
+    if user is None:
+        # Ставит только действие админки суперпользователя (admin_stock.OwnerActionsMixin).
+        return {"status": "refused", "reason": "not_owner"}
+    try:
+        result = delete_candidates(candidate_ids, user)
+    except StaleProductsRefused as exc:
+        send_admin_telegram_notification(f"🗑 Удаление неактуальных товаров отменено: {exc}")
+        return {"status": "refused", "reason": str(exc)}
+    if result["status"] == "busy":
+        # Идёт cleanup_orphaned_media или другое удаление — повтор через 15 минут.
+        raise self.retry(countdown=15 * 60)
+    send_admin_telegram_notification(deletion_report(result))
+    return result
+
+
+@shared_task(name="catalog.stale_products_media_stats", soft_time_limit=20 * 60, time_limit=25 * 60)
+def stale_products_media_stats_task() -> dict:
+    """Сколько файлов и МБ освободит удаление кандидатов — для страницы «Неактуальные товары»."""
+    from django.conf import settings
+
+    from apps.catalog.models_stock import StaleProductCandidate
+    from apps.catalog.services.stale_products import refresh_media_stats
+
+    if not getattr(settings, "USE_R2", False):
+        return {"status": "skipped", "reason": "no_r2"}
+    if not StaleProductCandidate.objects.exists():
+        return {"status": "skipped", "reason": "no_candidates"}
+    return refresh_media_stats()
+
+
 # Задачи для системы ценообразования
 @shared_task(name='currency.update_rates')
 def update_currency_rates():
@@ -389,6 +438,19 @@ def cleanup_orphaned_media(dry_run=False, max_delete=None, max_delete_percent=No
         logger.info("cleanup_orphaned_media skipped: DEBUG=True. (Prevents local celery from wiping shared media across developers using the same R2 prefix)")
         return {"status": "skipped", "message": "Disabled in DEBUG mode"}
 
+    # Одно удаление файлов за раз: удаление неактуальных товаров и их восстановление
+    # держат ту же блокировку (services/stale_products.py).
+    from apps.catalog.services.stale_products import media_delete_lock
+
+    with media_delete_lock(60 * 60) as acquired:
+        if not acquired:
+            logger.warning("cleanup_orphaned_media skipped: идёт удаление или восстановление товаров")
+            return {"status": "skipped", "reason": "media_delete_busy", "deleted": 0}
+        return _cleanup_orphaned_media(dry_run, max_delete, max_delete_percent)
+
+
+def _cleanup_orphaned_media(dry_run, max_delete, max_delete_percent):
+    from django.conf import settings
     import numpy as np
     from django.core.files.storage import default_storage
 

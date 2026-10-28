@@ -410,6 +410,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.nightly_stock_check_report",
         "schedule": crontab(hour=6, minute=45),
     },
+    # Файлы и МБ неактуальных товаров для страницы удаления (docs/STALE_PRODUCTS.md).
+    "catalog-stale-products-media-stats": {
+        "task": "catalog.stale_products_media_stats",
+        "schedule": crontab(hour=6, minute=55),
+    },
     # Поиск кандидатов в дубликаты товаров — раз в неделю, с уведомлением админа
     "scrapers-weekly-duplicate-candidates": {
         "task": "apps.scrapers.tasks.find_and_merge_duplicates",
@@ -789,6 +794,19 @@ NIGHTLY_STOCK_CHECK_MAX_CONSECUTIVE_ERRORS = env.int(
 # проверок) — пауза источника и тревога: похоже на сбой парсера.
 NIGHTLY_STOCK_CHECK_MAX_LOSS_SHARE = env.float("NIGHTLY_STOCK_CHECK_MAX_LOSS_SHARE", default=0.75)
 NIGHTLY_STOCK_CHECK_MIN_SAMPLE = env.int("NIGHTLY_STOCK_CHECK_MIN_SAMPLE", default=30)
+# Удаление неактуальных товаров из админки (docs/STALE_PRODUCTS.md): скрыть можно, когда
+# товара нет у продавца MIN_DAYS дней подряд; удалить — через DELETE_AFTER_HIDDEN_DAYS после
+# скрытия. За одно действие — не больше MAX_PER_ACTION товаров и MAX_SOURCE_PERCENT % каталога
+# источника; при меньше MIN_CATALOG_PRODUCTS товаров в базе действие запрещено.
+STALE_PRODUCT_MIN_DAYS = env.int("STALE_PRODUCT_MIN_DAYS", default=7)
+STALE_PRODUCT_DELETE_AFTER_HIDDEN_DAYS = env.int("STALE_PRODUCT_DELETE_AFTER_HIDDEN_DAYS", default=14)
+STALE_PRODUCT_MAX_PER_ACTION = env.int("STALE_PRODUCT_MAX_PER_ACTION", default=200)
+STALE_PRODUCT_MAX_SOURCE_PERCENT = env.int("STALE_PRODUCT_MAX_SOURCE_PERCENT", default=10)
+STALE_PRODUCT_MIN_CATALOG_PRODUCTS = env.int("STALE_PRODUCT_MIN_CATALOG_PRODUCTS", default=1000)
+# Не больше MAX_PER_DAY окончательных удалений за сутки (вместе с прошлыми действиями).
+STALE_PRODUCT_MAX_PER_DAY = env.int("STALE_PRODUCT_MAX_PER_DAY", default=400)
+# Задача удаления: soft/hard limit 100/110 минут; перепроверки — не дольше бюджета, затем файлы.
+STALE_PRODUCT_DELETE_BUDGET_SECONDS = env.int("STALE_PRODUCT_DELETE_BUDGET_SECONDS", default=75 * 60)
 # Fresh successful offer rows may override availability in public detail/YML
 # output. Kept separate from cart enforcement and disabled for staged rollout.
 SOURCE_OFFER_CATALOG_PROJECTION_ENABLED = env.bool(

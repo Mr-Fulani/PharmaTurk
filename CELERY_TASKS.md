@@ -50,6 +50,7 @@ Beat только публикует задачи. Для исполнения �
 | `monitoring-media-backup-check` | `apps.monitoring.tasks.check_media_backup` | воскресенье `02:30` | `celery` | Копия медиа свежая (не старше 26 ч) и полная по манифесту; Telegram при сбое. |
 | `catalog-nightly-stock-check` | `catalog.nightly_stock_check` | каждые 10 минут `01:00`–`04:50` и `06:00`–`06:20` (05:xx — пересчёт цен) | `celery` | Пачка ночной сверки наличия у бесплатных источников (LCW, IKEA, UmmaLand), ≤ 8 минут; только при `NIGHTLY_STOCK_CHECK_ENABLED=true`. `docs/NIGHTLY_STOCK_CHECK.md`. |
 | `catalog-nightly-stock-check-report` | `catalog.nightly_stock_check_report` | ежедневно `06:45` | `celery` | Итог ночной сверки владельцу в Telegram: сколько проверено, закончилось, вернулось, пропало у продавца. |
+| `catalog-stale-products-media-stats` | `catalog.stale_products_media_stats` | ежедневно `06:55` | `celery` | Для «Неактуальных товаров» — сколько файлов и МБ освободит удаление (общие файлы не в счёт); только с R2 и при наличии кандидатов. `docs/STALE_PRODUCTS.md`. |
 
 ### Обогащение медиа лекарств
 
@@ -115,6 +116,10 @@ Zara/Inditex, Akakçe) не сверяются. Пачка занимает од
 кэше). Пропавший у продавца товар становится кандидатом «Неактуальные товары», а
 не удаляется. Устройство, предохранители и включение — `docs/NIGHTLY_STOCK_CHECK.md`.
 
+`catalog.delete_stale_products` в Beat нет: её ставит только действие «Удалить
+окончательно» в админке «Неактуальные товары» (soft/hard limit 100/110 минут, повтор
+через 15 минут, пока идёт `cleanup_orphaned_media`). `docs/STALE_PRODUCTS.md`.
+
 ### Очистка скраперных данных
 
 `cleanup_old_sessions(30)` удаляет `ScrapedProductLog`, затем `ScrapingSession` старше cutoff пачками (`batch_size`, по умолчанию 1000, допустимо 1..10000), каждая пачка — отдельная транзакция. Это реальное удаление данных, поэтому изменение retention требует отдельного решения по аудиту и резервному копированию. Первая чистка накопленного и `VACUUM` — `docs/PROD_DB_MAINTENANCE.md`.
@@ -155,6 +160,10 @@ docker compose exec backend poetry run python manage.py shell -c \
 ### Очистка orphaned media
 
 `catalog.cleanup_orphaned_media`:
+
+- одновременно с удалением или восстановлением неактуальных товаров не идёт (общая
+  блокировка `catalog:media-delete:v1`): застав их, пропускает запуск —
+  `{"status": "skipped", "reason": "media_delete_busy"}` (`docs/STALE_PRODUCTS.md`);
 
 - раз в неделю, воскресенье `03:30`: тихий час и не вместе с `recsys-sync-stale-nightly` (02:15);
 - в `DEBUG=True` пропускает выполнение;

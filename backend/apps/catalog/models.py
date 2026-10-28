@@ -7560,4 +7560,4 @@ class IslamicClothingVariantImage(models.Model):
 
 # Ночная сверка наличия и неактуальные товары: модели в отдельном модуле, регистрируются здесь,
 # чтобы обратная связь Product.stale_candidate была известна до первых запросов.
-from .models_stock import StaleProductCandidate, StockCheckSourceState  # noqa: E402,F401
+from .models_stock import ProductDeletionLog, StaleProductCandidate, StockCheckSourceState  # noqa: E402,F401

@@ -1,5 +1,7 @@
 """Сигналы для каскадного удаления медиа-файлов из хранилища (R2/локальное) и автоскачивания из URL."""
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 
 from django.core.exceptions import ObjectDoesNotExist
@@ -209,7 +211,24 @@ def _delete_storage_key_if_unreferenced(path: str, storage=None):
         logger.warning("Failed to delete storage object %s: %s", normalized, exc)
 
 
+# Удаление неактуальных товаров (services/stale_products.py) удаляет файлы само: после
+# копии в бэкап и проверки ссылок, закрытой при сбое. На это время сигналы файлы не трогают.
+_storage_deletes_suppressed = ContextVar("catalog_storage_deletes_suppressed", default=False)
+
+
+@contextmanager
+def storage_deletes_suppressed():
+    token = _storage_deletes_suppressed.set(True)
+    try:
+        yield
+    finally:
+        _storage_deletes_suppressed.reset(token)
+
+
 def _schedule_storage_delete(path: str, storage=None):
+    if _storage_deletes_suppressed.get():
+        return
+
     def callback():
         _delete_storage_key_if_unreferenced(path, storage=storage)
 
@@ -1260,7 +1279,7 @@ def remember_product_type_before_save(sender, instance, update_fields=None, **kw
 
 
 @receiver(post_save, sender=Product)
-def ensure_domain_product_for_base_product(sender, instance, **kwargs):
+def ensure_domain_product_for_base_product(sender, instance, raw=False, **kwargs):
     """
     При сохранении Product (скрапер, импорт, админка) создаём запись в доменной
     модели (PerfumeryProduct, MedicineProduct и т.д.), если её ещё нет, чтобы
@@ -1270,6 +1289,9 @@ def ensure_domain_product_for_base_product(sender, instance, **kwargs):
     новый тип их поддерживает) переносятся в новую, а прежняя снимается с
     публикации без выключения самого Product.
     """
+    if raw:
+        # Восстановление из копии (журнал удалений, loaddata): доменная карточка придёт из той же копии.
+        return
     from .domain_sync import ensure_domain_product_for_base, retire_stale_domain_records
     ensure_domain_product_for_base(instance)
     previous_type = getattr(instance, "_product_type_before_save", None)
@@ -1305,13 +1327,14 @@ def sync_downloaded_video_to_book_product(sender, instance, **kwargs):
 
 
 @receiver(post_save, sender=Product)
-def ensure_product_price_info(sender, instance, **kwargs):
+def ensure_product_price_info(sender, instance, raw=False, **kwargs):
     """
     После сохранения Product создаём/обновляем запись ProductPrice (конвертация
     по валютам с маржой), чтобы невариативные товары отображались корректно
     при смене валюты на фронте и были в разделе «💰 Валюты — Цены товаров».
+    При восстановлении из копии (raw) ProductPrice придёт из той же копии.
     """
-    if instance.price is None or not instance.currency:
+    if raw or instance.price is None or not instance.currency:
         return
     try:
         instance.update_currency_prices()

@@ -150,6 +150,10 @@ docker-compose за nginx и Cloudflare.
    `MediaReferenceCheckError` ничего не удаляет; `except: continue` в проверке ссылок
    запрещён. Массовое удаление — с потолком числа файлов и отчётом админу при превышении
    (`cleanup_orphaned_media`, чистка `products/parsed/` — `CELERY_TASKS.md`).
+   Товары вместе с файлами удаляются только через «Неактуальные товары» в админке
+   ([STALE_PRODUCTS.md](STALE_PRODUCTS.md)): файл сначала копируется в бакет бэкапов,
+   сигналы удаления файлов на это время выключены (`storage_deletes_suppressed`), удаление
+   файлов и `cleanup_orphaned_media` держат одну блокировку.
 
 ## 4. Фронтенд (Next.js)
 
