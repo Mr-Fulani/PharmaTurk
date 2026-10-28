@@ -2,11 +2,13 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
-from apps.catalog.models import Category, CategoryType, MedicineProduct, Product
+from apps.catalog.brand_counts import CACHE_KEY as BRAND_COUNTS_CACHE_KEY
+from apps.catalog.models import Brand, Category, CategoryType, MedicineProduct, Product
 
 
 @pytest.mark.django_db
@@ -178,3 +180,25 @@ def test_sitemap_entries_skip_categories_without_public_products(monkeypatch):
     assert filled.slug in slugs
     assert empty.slug not in slugs
     assert stub_only.slug not in slugs
+
+
+@pytest.mark.django_db
+def test_sitemap_entries_skip_thin_brands(monkeypatch):
+    """Бренд без товаров и с 1–2 товарами — noindex на странице, в sitemap не попадает."""
+    monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
+    cache.delete(BRAND_COUNTS_CACHE_KEY)
+    suffix = uuid4().hex[:10]
+    brands = {total: Brand.objects.create(name=f"Brand {total} {suffix}", slug=f"sm-brand-{total}-{suffix}") for total in (0, 2, 3)}
+    for total, brand in brands.items():
+        for index in range(total):
+            Product.objects.create(
+                name=f"P {total}-{index}", slug=f"sm-brand-product-{total}-{index}-{suffix}", brand=brand, price=Decimal("1"),
+            )
+
+    response = APIClient().get("/api/catalog/sitemap-entries", {"kind": "brands", "page_size": 500})
+
+    assert response.status_code == 200
+    slugs = {row["slug"] for row in response.data["results"]}
+    assert brands[3].slug in slugs
+    assert brands[2].slug not in slugs
+    assert brands[0].slug not in slugs

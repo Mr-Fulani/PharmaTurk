@@ -799,6 +799,8 @@
   "category_landing_collections": "Collections",
   "medicine_card_delivery_note": "From Turkey · 7–21 days",
   "brand_meta_description_suffix": "{{brand}} from Turkey with delivery{{categories}}. Current prices, original products, ordering via a Mudaroba manager.",
+  "brand_meta_title": "{{brand}} from Turkey{{categories}}",
+  "brand_title_medicines": "medicines",
   "pagination_page_label": "Page {{page}}",
   "products_count": "products",
   "services_count": "services",

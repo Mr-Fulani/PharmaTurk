@@ -48,3 +48,28 @@ export function shouldShowGenderFilter(categorySlugs) {
     GENDER_RELEVANT_CATEGORY_SLUGS.has(String(slug || '').trim().toLowerCase().replace(/_/g, '-'))
   )
 }
+
+// Бренд с одним-двумя товарами — тонкая страница: в Search Console 27.10.2026 из 1 000
+// примеров «Просканирована, но пока не проиндексирована» 431 — страницы брендов, в основном
+// производители лекарств с парой позиций. Порог общий с sitemap (BRAND_SITEMAP_MIN_PRODUCTS).
+export const BRAND_MIN_INDEXABLE_PRODUCTS = 3
+
+export function isThinBrand(totalCount) {
+  return (Number(totalCount) || 0) < BRAND_MIN_INDEXABLE_PRODUCTS
+}
+
+// Два главных раздела бренда для title: «Sanofi из Турции: лекарства, БАДы».
+// Корень лекарств называется «Медицина» — в заголовке пишем «лекарства» (medicinesLabel).
+// Название со строчной, кроме аббревиатур вроде «БАДы».
+export function brandTitleCategories(categories, locale, medicinesLabel) {
+  return [...(categories || [])]
+    .sort((a, b) => (b.product_count || 0) - (a.product_count || 0))
+    .slice(0, 2)
+    .map((category) => {
+      if (String(category.slug || '').toLowerCase() === 'medicines') return medicinesLabel
+      const name = category.translations?.find((tr) => tr.locale === locale)?.name || category.name || ''
+      return /[A-ZА-ЯЁ]/.test(name.slice(1)) ? name : name.charAt(0).toLowerCase() + name.slice(1)
+    })
+    .filter(Boolean)
+    .join(', ')
+}

@@ -12,7 +12,14 @@ import Pagination from '../../components/Pagination'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { buildProductUrl, getSiteOrigin } from '../../lib/urls'
 import { buildCatalogPageQuery, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
-import { buildBrandProductsParams, brandProductsRequestKey, brandDescriptionText, shouldShowGenderFilter } from '../../lib/brandCatalog'
+import {
+  buildBrandProductsParams,
+  brandProductsRequestKey,
+  brandDescriptionText,
+  brandTitleCategories,
+  isThinBrand,
+  shouldShowGenderFilter,
+} from '../../lib/brandCatalog'
 import { ProductTranslation, BrandTranslation, getLocalizedBrandDescription, getLocalizedBrandName } from '../../lib/i18n'
 import { getSingleFlight } from '../../lib/api'
 import { useViewMode } from '../../hooks/useViewMode'
@@ -21,7 +28,7 @@ import { gtmProductItem } from '../../lib/gtm'
 import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
 import { defaultCurrencyForLocale } from '../../lib/requestCurrency'
 import { buildCatalogSeoState } from '../../lib/categoryRouting'
-import { appendSentenceIfShort, truncateAtWord } from '../../lib/seoText'
+import { appendSentenceIfShort, limitTitle, truncateAtWord } from '../../lib/seoText'
 import { safeJsonLd } from '../../lib/sanitizeHtml'
 
 interface Product {
@@ -276,11 +283,17 @@ function BrandPageContent({
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
   // Как у категорий: ?page=N — self-canonical, фильтры/сортировка — noindex с canonical на чистый URL
   const catalogSeo = buildCatalogSeoState(brandPath, router.query, currentPage, totalPages, totalCount)
+  // Бренд с 1–2 товарами — тонкая страница: noindex, follow (вне sitemap тоже)
+  const noindex = catalogSeo.noindex || isThinBrand(totalCount)
   const canonicalUrl = `${siteUrl}${localePrefix}${catalogSeo.canonicalPath}`
   const pageLabel = currentPage > 1 && !catalogSeo.hasFilters
     ? ` — ${t('pagination_page_label', 'Страница {{page}}', { page: currentPage })}`
     : ''
-  const metaTitle = `${localizedBrandName}${pageLabel} — Mudaroba`
+  const titleCategories = brandTitleCategories(categories, router.locale, t('brand_title_medicines', 'лекарства'))
+  const metaTitle = limitTitle(`${t('brand_meta_title', '{{brand}} из Турции{{categories}}', {
+    brand: localizedBrandName,
+    categories: titleCategories ? `: ${titleCategories}` : '',
+  })}${pageLabel} — Mudaroba`, 80)
   // Описания брендов короткие («Немецкий спортивный бренд.») — дополняем категориями и доставкой
   const brandCategoryNames = [...categories]
     .sort((a, b) => (b.product_count || 0) - (a.product_count || 0))
@@ -317,9 +330,9 @@ function BrandPageContent({
       <Head>
         <title>{metaTitle}</title>
         <meta name="description" content={metaDescription} />
-        {catalogSeo.noindex && <meta name="robots" content="noindex, follow" />}
+        {noindex && <meta name="robots" content="noindex, follow" />}
         <link rel="canonical" href={canonicalUrl} />
-        {!catalogSeo.noindex && (
+        {!noindex && (
           <>
             <link rel="alternate" hrefLang="ru" href={`${siteUrl}${catalogSeo.canonicalPath}`} />
             <link rel="alternate" hrefLang="en" href={`${siteUrl}/en${catalogSeo.canonicalPath}`} />

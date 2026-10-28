@@ -5603,6 +5603,10 @@ class SitemapEntriesResponseSerializer(serializers.Serializer):
     results = SitemapEntrySerializer(many=True)
 
 
+# Порог общий с фронтом (lib/brandCatalog.js, BRAND_MIN_INDEXABLE_PRODUCTS).
+BRAND_SITEMAP_MIN_PRODUCTS = 3
+
+
 class SitemapEntriesView(_APIView):
     """Compact category/brand/service rows used only by sectional sitemaps."""
 
@@ -5707,6 +5711,16 @@ class SitemapEntriesView(_APIView):
             page_size = 500
 
         qs = model_cls.objects.filter(is_active=True)
+        if kind == 'brands':
+            # Бренд без товаров отдаёт noindex, с 1–2 товарами — тонкая страница (тоже noindex,
+            # isThinBrand на фронте): в sitemap их не ставим. До 28.10.2026 тут были все 950
+            # брендов, 107 из них пустые, ещё 190 — с 1–2 товарами.
+            from .brand_counts import get_brand_product_counts
+
+            counts = get_brand_product_counts()
+            qs = qs.filter(id__in=[
+                brand_id for brand_id, total in counts.items() if total >= BRAND_SITEMAP_MIN_PRODUCTS
+            ])
         if kind == 'categories':
             qs = qs.filter(id__in=self._nonempty_category_ids())
         qs = (
