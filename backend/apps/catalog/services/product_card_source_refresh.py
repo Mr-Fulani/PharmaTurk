@@ -984,6 +984,14 @@ class ProductCardSourceRefreshService:
                 counts["variants_updated"] += 1
         return counts
 
+    def _on_source_not_found(self, target: RefreshTarget) -> dict[str, int]:
+        """Что делать, когда источник окончательно не нашёл открытый URL.
+
+        Карточка снимает этот URL с продажи; ночная сверка переопределяет
+        (``nightly_stock_check``): пропавший товар сначала становится кандидатом.
+        """
+        return self._mark_source_url_unavailable(target)
+
     @transaction.atomic
     def _mark_source_url_unavailable(self, target: RefreshTarget) -> dict[str, int]:
         """Persist conclusive removal for only the opened supplier URL.
@@ -1373,7 +1381,7 @@ class ProductCardSourceRefreshService:
             unavailable_changes: dict[str, int] | None = None
             if exc.code == "source_not_found":
                 try:
-                    unavailable_changes = self._mark_source_url_unavailable(target)
+                    unavailable_changes = self._on_source_not_found(target)
                 except Exception:
                     logger.exception(
                         "product_card_source_unavailable_persist_failed",

@@ -116,6 +116,27 @@ def refresh_product_card_source_task(product_id: int, lock_token: str) -> dict:
         service.release_lock(product_id, lock_token)
 
 
+@shared_task(
+    name="catalog.nightly_stock_check",
+    soft_time_limit=60 * 11,
+    time_limit=60 * 12,
+    expires=60 * 9,
+)
+def nightly_stock_check_task() -> dict:
+    """Пачка ночной сверки наличия (docs/NIGHTLY_STOCK_CHECK.md); Beat — раз в 10 минут ночью."""
+    from apps.catalog.services.nightly_stock_check import run_nightly_batch
+
+    return run_nightly_batch()
+
+
+@shared_task(name="catalog.nightly_stock_check_report", soft_time_limit=120, time_limit=180)
+def nightly_stock_check_report_task() -> dict:
+    """Итог ночной сверки владельцу в Telegram."""
+    from apps.catalog.services.nightly_stock_check import send_night_report
+
+    return send_night_report()
+
+
 # Задачи для системы ценообразования
 @shared_task(name='currency.update_rates')
 def update_currency_rates():

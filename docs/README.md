@@ -24,6 +24,7 @@
 | [ROADMAP.md](ROADMAP.md) | текущий backlog и отделённый snapshot июня 2026 | актуализирован 2026-08-21, сделанное в октябре — 2026-10-22 |
 | [TECH_DEBT.md](TECH_DEBT.md) | реестр подтверждённого открытого технического долга | актуализирован 2026-10-22 (раздел за октябрь 2026) |
 | [SOURCE_OFFER_CART_VERIFICATION_PLAN.md](SOURCE_OFFER_CART_VERIFICATION_PLAN.md) | рабочий план проверки цены и наличия первоисточника в корзине и checkout | активен с 2026-08-27 |
+| [NIGHTLY_STOCK_CHECK.md](NIGHTLY_STOCK_CHECK.md) | ночная сверка наличия у бесплатных продавцов (LCW, IKEA, UmmaLand), предохранители, кандидаты «нет у продавца», оценка стоимости FLO/Zara | 2026-10-28 |
 | [PRODUCT_CARD_SOURCE_REFRESH_PLAN.md](PRODUCT_CARD_SOURCE_REFRESH_PLAN.md) | план и статус обновления цены/вариантов спарсенной карточки при открытии | активен с 2026-08-29 |
 | [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | rollout, метрики, alerting и безопасный повтор source-offer checks; поиск продавца БАДов (`discover_supplement_stock_offers`) | актуализирован 2026-08-31, переменные обновления карточки и поиск продавца БАДов — 2026-10-22 |
 | [PRODUCTION_MONITORING_RUNBOOK.md](PRODUCTION_MONITORING_RUNBOOK.md) | synthetic/readiness watchdog, Telegram delivery, дедупликация, внешняя проверка доступности и triage | актуализирован 2026-10-19 |
