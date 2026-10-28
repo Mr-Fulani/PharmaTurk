@@ -11,6 +11,8 @@ import MedicinePriceCheck from '../../components/MedicinePriceCheck'
 import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components/SupplementPurchasePanel'
 import {
   SCHEMA_RETURN_POLICY,
+  buildSchemaImages,
+  buildSchemaShippingDetails,
   canPublishSchemaOffer,
   shouldPublishProductSchema,
   resolveSchemaAvailability,
@@ -654,6 +656,7 @@ export default function ProductPage({
   favoriteSize,
   relatedLinks = [],
   drugGroup = null,
+  shippingRates = null,
 }: {
   product: Product | null
   productType: CategoryType
@@ -662,6 +665,7 @@ export default function ProductPage({
   favoriteSize: string | null
   relatedLinks?: RelatedProductLink[]
   drugGroup?: DrugGroupLink | null
+  shippingRates?: Record<string, string> | null
 }) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
@@ -1505,10 +1509,20 @@ export default function ProductPage({
     ''
   ).trim()
   const rawOgImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || getPlaceholderImageUrl()
-  const resolvedOgImage = resolveMediaUrl(rawOgImage)
-  const ogImage = resolvedOgImage.startsWith('http://') || resolvedOgImage.startsWith('https://')
-    ? resolvedOgImage
-    : `${siteUrl}${resolvedOgImage.startsWith('/') ? resolvedOgImage : `/${resolvedOgImage}`}`
+  const toAbsoluteMediaUrl = (value: string) => {
+    const resolved = resolveMediaUrl(value)
+    return resolved.startsWith('http://') || resolved.startsWith('https://')
+      ? resolved
+      : `${siteUrl}${resolved.startsWith('/') ? resolved : `/${resolved}`}`
+  }
+  const ogImage = toAbsoluteMediaUrl(rawOgImage)
+  // Все фото галереи — для Merchant Center («изображения на предложение»), главное первым
+  const schemaImages = buildSchemaImages([
+    ogImage,
+    ...gallerySource
+      .filter((img) => !img.isVideo && normalizeMediaValue(img.image_url))
+      .map((img) => toAbsoluteMediaUrl(normalizeMediaValue(img.image_url) as string)),
+  ])
   const availability = resolveSchemaAvailability({
     availabilityStatus: product.availability_status,
     isAvailable: product.is_available,
@@ -1539,7 +1553,7 @@ export default function ProductPage({
     '@type': productType === 'books' ? 'Book' : productType === 'uslugi' ? 'Service' : isMedicine ? 'Drug' : 'Product',
     name: displayProductName || product.name,
     description: metaDescription,
-    image: ogImage,
+    image: schemaImages,
     ...(productType === 'books' && product.isbn && { isbn: product.isbn }),
     ...(productType === 'books' && product.book_authors?.length
       ? { author: product.book_authors.map((a) => ({ '@type': 'Person', name: a.author?.full_name })) }
@@ -1574,6 +1588,7 @@ export default function ProductPage({
         ...(productType !== 'uslugi' && {
           itemCondition: 'https://schema.org/NewCondition',
           hasMerchantReturnPolicy: SCHEMA_RETURN_POLICY,
+          shippingDetails: buildSchemaShippingDetails(shippingRates, currencyForSchema || 'USD'),
         }),
       }
       : undefined,
@@ -2850,6 +2865,13 @@ export default function ProductPage({
                 )
               )}
 
+              {/* Сроки и цена доставки — как в разметке Offer (shipping_rates есть у всего, кроме мебели, лекарств и услуг) */}
+              {shippingRates && !isService && (
+                <p className="text-xs leading-relaxed text-main opacity-75">
+                  {t('product_delivery_note', 'Доставка из Турции: 7–14 дней, от 5 $. Точную сумму подтвердит менеджер')}
+                </p>
+              )}
+
               {addedToCart && !isService && (
                 <Link
                   href="/cart"
@@ -3300,6 +3322,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         favoriteSize: favoriteSizeFromQuery || null,
         relatedLinks: Array.isArray(body.related_links) ? body.related_links : [],
         drugGroup: body.drug_group?.slug ? body.drug_group : null,
+        shippingRates: body.shipping_rates && typeof body.shipping_rates === 'object' ? body.shipping_rates : null,
       },
     }
   } catch (err) {

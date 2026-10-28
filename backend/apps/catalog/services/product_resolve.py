@@ -10,6 +10,8 @@
     (см. build_related_links); у услуг пустой.
   - drug_group: {slug, name, latin} | None — страница препарата (/drugs/<slug>) для
     медикамента, форма которого на ней есть (services/medicine_groups.py).
+  - shipping_rates: {валюта: сумма} | None — доставка 5 USD в валютах цены для
+    OfferShippingDetails (см. build_shipping_rates); у мебели, лекарств и услуг None.
 
 Порядок поиска (зафиксирован; при смене — обновить тесты и комментарий):
   1) Доменные ViewSet в порядке, согласованном с urls.py. Важно: раньше generic Product
@@ -30,6 +32,7 @@ Query-параметры пробрасываются через исходны�
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from django.core.cache import cache
@@ -367,6 +370,32 @@ def build_related_links(slug: str, lang: str, limit: int = RELATED_LINKS_LIMIT) 
     ]
 
 
+# Доставка в разметке Offer (решение владельца 28.10.2026): 7–14 дней, 5 $. Мебель
+# считает менеджер, у лекарств нет Offer, у услуг доставки нет. Google требует валюту
+# доставки как у цены, а цена на странице — в валюте посетителя: отдаём сумму во всех
+# валютах сайта по курсу без наценки.
+SHIPPING_FLAT_USD = Decimal("5")
+SHIPPING_CURRENCIES = ("RUB", "USD", "EUR", "TRY", "KZT")
+NO_FLAT_SHIPPING_TYPES = {"furniture", "medicines", "uslugi"}
+
+
+def build_shipping_rates(product_type: str) -> dict[str, str] | None:
+    if product_type in NO_FLAT_SHIPPING_TYPES:
+        return None
+    from apps.catalog.utils.currency_converter import currency_converter
+
+    rates = {}
+    for currency in SHIPPING_CURRENCIES:
+        try:
+            _, converted, _ = currency_converter.convert_price(
+                SHIPPING_FLAT_USD, "USD", currency, apply_margin=False,
+            )
+        except Exception:  # нет курса — без доставки в этой валюте, разметка её пропустит
+            continue
+        rates[currency] = str(Decimal(converted).quantize(Decimal("0.01")))
+    return rates or None
+
+
 def build_resolve_response(request: HttpRequest | DrfRequest, slug: str) -> Response:
     resolved = resolve_product_payload(request, slug)
     if resolved is None:
@@ -392,5 +421,6 @@ def build_resolve_response(request: HttpRequest | DrfRequest, slug: str) -> Resp
             if product_type == "medicines"
             else None
         ),
+        "shipping_rates": build_shipping_rates(product_type),
     }
     return Response(body, status=status.HTTP_200_OK)

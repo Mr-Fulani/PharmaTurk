@@ -632,3 +632,26 @@ def test_auto_part_serializer_exposes_active_variant_contract(monkeypatch):
     assert data["active_variant_currency"] == "RUB"
     assert data["active_variant_stock_quantity"] == 4
     assert data["variants"][0]["slug"] == f"auto-part-variant-{first_variant.pk}"
+
+
+def test_shipping_rates_flat_five_usd_in_site_currencies_except_furniture():
+    """Доставка 5 $ в валюте цены Offer; без курса валюта пропускается; у мебели — None."""
+    from decimal import Decimal
+
+    from apps.catalog.services.product_resolve import build_shipping_rates
+    from apps.catalog.utils.currency_converter import currency_converter
+
+    rates = {"USD": Decimal("1"), "RUB": Decimal("80.5")}
+
+    def fake_convert(amount, from_currency, to_currency, apply_margin=True):
+        assert apply_margin is False
+        if to_currency not in rates:
+            raise ValueError("no rate")
+        converted = amount * rates[to_currency]
+        return amount, converted, converted
+
+    with patch.object(currency_converter, "convert_price", side_effect=fake_convert):
+        assert build_shipping_rates("shoes") == {"RUB": "402.50", "USD": "5.00"}
+        assert build_shipping_rates("furniture") is None
+        assert build_shipping_rates("medicines") is None
+        assert build_shipping_rates("uslugi") is None

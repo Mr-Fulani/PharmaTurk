@@ -48,11 +48,41 @@ export function resolveSchemaSku({ slug, productType, id }) {
   return `${productType}-${id}`
 }
 
+// Страны доставки в разметке и Merchant Center (решение владельца 28.10.2026):
+// Казахстан, Узбекистан, Азербайджан, Турция, ОАЭ, США и страны ЕС.
+const EU_COUNTRIES = [
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE',
+  'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+]
+export const SCHEMA_SHIPPING_COUNTRIES = ['KZ', 'UZ', 'AZ', 'TR', 'AE', 'US', ...EU_COUNTRIES]
+
+// Доставка 7–14 дней (сборка заказа 1–2 дня + в пути 6–12), 5 $ в валюте цены Offer:
+// Google требует ту же валюту, что у price. Суммы по валютам — из resolve
+// (shipping_rates, по курсу сайта); у мебели, лекарств и услуг их нет — без доставки.
+export function buildSchemaShippingDetails(shippingRates, currency) {
+  const value = shippingRates?.[String(currency || '').toUpperCase()]
+  if (!value) return undefined
+  const days = (minValue, maxValue) => ({ '@type': 'QuantitativeValue', minValue, maxValue, unitCode: 'DAY' })
+  return {
+    '@type': 'OfferShippingDetails',
+    shippingRate: { '@type': 'MonetaryAmount', value: Number(value), currency: String(currency).toUpperCase() },
+    shippingDestination: SCHEMA_SHIPPING_COUNTRIES.map((addressCountry) => ({ '@type': 'DefinedRegion', addressCountry })),
+    deliveryTime: { '@type': 'ShippingDeliveryTime', handlingTime: days(1, 2), transitTime: days(6, 12) },
+  }
+}
+
+// Все фото товара для Merchant Center (поле «изображения на предложение»): главное первым,
+// без повторов, не больше 10.
+export function buildSchemaImages(urls, max = 10) {
+  return [...new Set((urls || []).filter(Boolean))].slice(0, max)
+}
+
 // Условия страницы /returns: 14 дней с момента получения, возврат почтой, обратную
 // доставку оплачивает покупатель (магазин берёт её на себя только при браке).
+// Страны — прежние и все страны доставки.
 export const SCHEMA_RETURN_POLICY = {
   '@type': 'MerchantReturnPolicy',
-  applicableCountry: ['RU', 'BY', 'GE', 'TR', 'GB', 'US'],
+  applicableCountry: [...new Set(['RU', 'BY', 'GE', 'TR', 'GB', 'US', ...SCHEMA_SHIPPING_COUNTRIES])],
   returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
   merchantReturnDays: 14,
   returnMethod: 'https://schema.org/ReturnByMail',
