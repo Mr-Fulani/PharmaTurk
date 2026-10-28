@@ -747,6 +747,8 @@
   "category_landing_collections": "Подборки",
   "medicine_card_delivery_note": "Из Турции · 7–21 дн.",
   "brand_meta_description_suffix": "{{brand}} из Турции с доставкой{{categories}}. Актуальные цены, оригинальные товары, заказ через менеджера Mudaroba.",
+  "brand_meta_title": "{{brand}} из Турции{{categories}}",
+  "brand_title_medicines": "лекарства",
   "pagination_page_label": "Страница {{page}}",
   "products_count": "товаров",
   "services_count": "услуг",

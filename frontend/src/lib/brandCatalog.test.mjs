@@ -5,6 +5,8 @@ import {
   buildBrandProductsParams,
   brandProductsRequestKey,
   brandDescriptionText,
+  brandTitleCategories,
+  isThinBrand,
   shouldShowGenderFilter,
 } from './brandCatalog.js'
 
@@ -89,4 +91,23 @@ test('brand description text tolerates brands without description', () => {
   assert.equal(brandDescriptionText(null), '')
   assert.equal(brandDescriptionText(undefined), '')
   assert.equal(brandDescriptionText('<p>Немецкий</p>бренд'), ' Немецкий бренд')
+})
+
+test('brand with one or two products is thin, three is enough', () => {
+  assert.equal(isThinBrand(0), true)
+  assert.equal(isThinBrand(2), true)
+  assert.equal(isThinBrand(3), false)
+  assert.equal(isThinBrand(undefined), true)
+})
+
+test('brand title names two main sections, medicines as a plain word', () => {
+  const categories = [
+    { slug: 'supplements', name: 'БАДы', product_count: 29, translations: [{ locale: 'en', name: 'Supplements' }] },
+    { slug: 'medicines', name: 'Медицина', product_count: 212, translations: [{ locale: 'en', name: 'Medicine' }] },
+    { slug: 'perfumery', name: 'Парфюмерия', product_count: 3 },
+  ]
+  assert.equal(brandTitleCategories(categories, 'ru', 'лекарства'), 'лекарства, БАДы')
+  assert.equal(brandTitleCategories(categories, 'en', 'medicines'), 'medicines, supplements')
+  assert.equal(brandTitleCategories([{ slug: 'furniture', name: 'Мебель', product_count: 5 }], 'ru', 'лекарства'), 'мебель')
+  assert.equal(brandTitleCategories([], 'ru', 'лекарства'), '')
 })
