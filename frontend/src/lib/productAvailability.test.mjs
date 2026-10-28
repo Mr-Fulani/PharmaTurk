@@ -8,6 +8,10 @@ import {
   resolveSchemaSku,
   sourceRefreshBlocksPurchase,
   sourceRefreshNeedsManagerPrice,
+  SCHEMA_RETURN_POLICY,
+  SCHEMA_SHIPPING_COUNTRIES,
+  buildSchemaImages,
+  buildSchemaShippingDetails,
 } from './productAvailability.js'
 
 test('supplier-projected out of stock wins over stale variant availability', () => {
@@ -99,4 +103,29 @@ test('product schema without offer or rating is not published for Product and Dr
   // Book и Service — не сниппет товара Google: выводятся как раньше.
   assert.equal(shouldPublishProductSchema({ type: 'Book', hasOffer: false, hasRating: false }), true)
   assert.equal(shouldPublishProductSchema({ type: 'Service', hasOffer: false, hasRating: false }), true)
+})
+
+test('shipping details: 5 $ in the offer currency, 7–14 days, owner countries', () => {
+  const details = buildSchemaShippingDetails({ RUB: '402.50', USD: '5.00' }, 'rub')
+  assert.deepEqual(details.shippingRate, { '@type': 'MonetaryAmount', value: 402.5, currency: 'RUB' })
+  const { handlingTime, transitTime } = details.deliveryTime
+  assert.equal(handlingTime.minValue + transitTime.minValue, 7)
+  assert.equal(handlingTime.maxValue + transitTime.maxValue, 14)
+  const countries = details.shippingDestination.map((region) => region.addressCountry)
+  for (const code of ['KZ', 'UZ', 'AZ', 'DE', 'TR', 'AE', 'US', 'FR']) assert.ok(countries.includes(code), code)
+  assert.ok(!countries.includes('RU'))
+})
+
+test('no shipping details without a rate in the offer currency (furniture, missing rate)', () => {
+  assert.equal(buildSchemaShippingDetails(null, 'USD'), undefined)
+  assert.equal(buildSchemaShippingDetails({ USD: '5.00' }, 'KZT'), undefined)
+})
+
+test('return policy covers every shipping country', () => {
+  for (const code of SCHEMA_SHIPPING_COUNTRIES) assert.ok(SCHEMA_RETURN_POLICY.applicableCountry.includes(code), code)
+})
+
+test('schema images: main first, unique, at most 10', () => {
+  assert.deepEqual(buildSchemaImages(['a', 'b', 'a', '', null, 'c']), ['a', 'b', 'c'])
+  assert.equal(buildSchemaImages(Array.from({ length: 15 }, (_, i) => `img${i}`)).length, 10)
 })

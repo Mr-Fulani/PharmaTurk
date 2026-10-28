@@ -28,7 +28,7 @@ PLACEHOLDER_BRANDS = {"другое", "other", "diğer", "diger"}
 # Корни разделов, где менеджер в заявке уточняет ещё размер и цвет.
 SIZE_COLOR_ROOTS = {"clothing", "shoes", "underwear", "headwear", "islamic-clothing"}
 
-# Корни разделов, где у товара есть сроки доставки на сайте (карточки БАДов: 7–21 рабочий день).
+# Корни разделов, где у товара есть сроки доставки на сайте (БАДы: 7–14 дней, решение владельца 28.10.2026).
 DELIVERY_DAYS_ROOTS = {"supplements"}
 
 SYSTEM_PROMPT = """Ты пишешь SEO-тексты посадочных страниц разделов интернет-витрины Mudaroba (mudaroba.com).
@@ -211,7 +211,7 @@ def collect_facts(category):
         "brands": brands,
         "product_examples": examples,
         "is_supplements": root == "supplements",
-        "delivery": "доставка 7–21 рабочий день" if root in DELIVERY_DAYS_ROOTS else "",
+        "delivery": "доставка 7–14 дней" if root in DELIVERY_DAYS_ROOTS else "",
         "manager_checks": "наличие, размер и цвет" if root in SIZE_COLOR_ROOTS else "наличие",
     }
 
