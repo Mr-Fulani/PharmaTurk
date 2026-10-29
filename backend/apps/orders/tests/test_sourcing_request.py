@@ -91,6 +91,27 @@ def test_email_channel_requires_email():
 
 
 @pytest.mark.django_db(transaction=True)
+def test_phone_is_optional_with_messenger_username():
+    response = APIClient().post(URL, _payload(contact_phone=""), format="multipart")
+
+    assert response.status_code == 201, response.data
+    req = SourcingRequest.objects.get()
+    assert req.contact_phone == ""
+    assert req.contact_username == "anna_test"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("channel", ["telegram", "phone"])
+def test_phone_is_required_without_username(channel):
+    response = APIClient().post(
+        URL, _payload(contact_phone="", contact_channel=channel, contact_username=""), format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert "contact_phone" in response.data
+
+
+@pytest.mark.django_db(transaction=True)
 def test_honeypot_is_silently_ignored(_no_notifications):
     response = APIClient().post(URL, _payload(website="http://spam.example"), format="multipart")
 
@@ -135,6 +156,28 @@ def test_telegram_notification_contains_contacts(settings):
     assert "WhatsApp: @anna.wa" in text
     assert "Анна\\_\\*" in text
     assert post.call_args.args[0].endswith("sendMessage")
+
+
+@pytest.mark.django_db
+def test_telegram_notification_without_phone(settings):
+    from types import SimpleNamespace
+
+    from apps.orders.tasks import notify_sourcing_request_telegram
+
+    settings.TELEGRAM_BOT_TOKEN = "token"
+    settings.TELEGRAM_CHAT_ID = "admin-chat"
+    req = SourcingRequest.objects.create(
+        source_url="https://example.com/item_1",
+        contact_name="Анна",
+        contact_channel="telegram",
+        contact_username="anna_tg",
+    )
+    with patch("apps.orders.tasks.requests.post", return_value=SimpleNamespace(ok=True, status_code=200)) as post:
+        notify_sourcing_request_telegram.run(req.pk)
+
+    text = post.call_args.kwargs["json"]["text"]
+    assert "Телефон" not in text
+    assert "Telegram: @anna\\_tg" in text
 
 
 @pytest.mark.django_db(transaction=True)

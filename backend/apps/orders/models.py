@@ -713,7 +713,8 @@ class SourcingRequest(models.Model):
     quantity = models.PositiveIntegerField(_("Количество"), default=1)
 
     contact_name = models.CharField(_("Имя"), max_length=150)
-    contact_phone = models.CharField(_("Телефон"), max_length=32)
+    # Необязателен, если клиент оставил ник в Telegram/WhatsApp (проверка в сериализаторе)
+    contact_phone = models.CharField(_("Телефон"), max_length=32, blank=True)
     contact_email = models.EmailField(_("Email"), blank=True)
     contact_channel = models.CharField(
         _("Предпочтительный канал связи"), max_length=16, choices=CONTACT_CHANNEL_CHOICES, blank=True,

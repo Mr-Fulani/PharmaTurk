@@ -637,7 +637,8 @@ def notify_sourcing_request_telegram(self, request_id: int) -> None:
         lines.append(f"Комментарий: {md(req.comment)}")
     lines.append(f"Количество: {req.quantity}")
     lines.append(f"Клиент: {md(req.contact_name)}")
-    lines.append(f"Телефон: {md(req.contact_phone)}")
+    if req.contact_phone:
+        lines.append(f"Телефон: {md(req.contact_phone)}")
     if req.contact_email:
         lines.append(f"Email: {md(req.contact_email)}")
     channel_info = translate_method(req.contact_channel, CONTACT_CHANNEL_TRANSLATIONS, "ru")

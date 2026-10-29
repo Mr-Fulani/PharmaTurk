@@ -1,4 +1,5 @@
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import Link from 'next/link'
 import { GetServerSideProps } from 'next'
 import { useRouter } from 'next/router'
@@ -34,6 +35,8 @@ import SEO from '../components/SEO'
 import IstanbulDeliveryMap from '../components/IstanbulDeliveryMap'
 import { FaqList } from '../components/BlogArticleBody'
 import {
+  ISTANBUL_COURIER_IMAGE,
+  ISTANBUL_DELIVERY_OG_IMAGE,
   ISTANBUL_DELIVERY_PATH,
   buildIstanbulDeliverySchemas,
   istanbulDeliveryContent,
@@ -213,6 +216,7 @@ export default function IstanbulDeliveryPage({ contacts }: { contacts: Contacts 
         title={content.metaTitle}
         description={content.metaDescription}
         canonical={ISTANBUL_DELIVERY_PATH}
+        ogImage={`${SITE_URL}${ISTANBUL_DELIVERY_OG_IMAGE}`}
         structuredData={buildIstanbulDeliverySchemas({ siteUrl: SITE_URL, localePrefix, content, siteName: SITE_NAME })}
       />
       <main className="min-h-screen overflow-x-hidden bg-page text-main">
@@ -305,6 +309,18 @@ export default function IstanbulDeliveryPage({ contacts }: { contacts: Contacts 
                 )
               })}
             </ol>
+            <Reveal className="mx-auto mt-8 max-w-3xl">
+              <figure className="overflow-hidden rounded-3xl border border-[var(--border)] shadow-sm">
+                <Image
+                  src={ISTANBUL_COURIER_IMAGE.src}
+                  width={ISTANBUL_COURIER_IMAGE.width}
+                  height={ISTANBUL_COURIER_IMAGE.height}
+                  alt={content.courierAlt}
+                  sizes="(min-width: 768px) 768px, 100vw"
+                  className="h-auto w-full"
+                />
+              </figure>
+            </Reveal>
           </section>
 
           {/* Карта */}

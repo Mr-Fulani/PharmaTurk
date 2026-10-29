@@ -2118,6 +2118,11 @@ class SourcingRequestCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = validate_contact_fields(super().validate(attrs))
+        # Ник остаётся только у канала Telegram/WhatsApp — с ним номер можно не давать
+        if not (attrs.get('contact_phone') or '').strip() and not attrs.get('contact_username'):
+            raise serializers.ValidationError(
+                {'contact_phone': _("Укажите телефон или ник в Telegram/WhatsApp.")}
+            )
         if not attrs.get('source_url') and not attrs.get('image'):
             raise serializers.ValidationError(
                 {'source_url': _("Добавьте ссылку на товар или фото.")}

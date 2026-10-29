@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- Курьер в каске на мопеде с аптечным боксом на фоне Стамбула. Исходник для
+       istanbul-courier.webp и og-istanbul-delivery.jpg (sharp: .webp quality 85, .jpg quality 88). -->
+  <rect width="1200" height="630" fill="#fdf3e6"/>
+  <circle cx="1030" cy="130" r="64" fill="#ffd9a0" opacity="0.7"/>
+
+  <!-- Силуэт города: Галатская башня, мечеть с минаретами -->
+  <g fill="#f1dfc8">
+    <rect x="150" y="300" width="64" height="250"/>
+    <rect x="140" y="292" width="84" height="16" rx="4"/>
+    <path d="M144 292 L182 210 L220 292 Z"/>
+    <rect x="240" y="420" width="120" height="130"/>
+    <path d="M250 420 A50 50 0 0 1 350 420 Z"/>
+    <rect x="860" y="250" width="14" height="300"/>
+    <path d="M856 250 L867 196 L878 250 Z"/>
+    <rect x="1120" y="250" width="14" height="300"/>
+    <path d="M1116 250 L1127 196 L1138 250 Z"/>
+    <rect x="900" y="420" width="200" height="130"/>
+    <path d="M920 420 A80 80 0 0 1 1080 420 Z"/>
+    <rect x="996" y="326" width="8" height="18"/>
+    <path d="M884 450 A36 36 0 0 1 940 450 Z"/>
+    <path d="M1060 450 A36 36 0 0 1 1116 450 Z"/>
+  </g>
+
+  <!-- Дорога -->
+  <rect y="548" width="1200" height="82" fill="#e9d8c7"/>
+  <g stroke="#fffdfa" stroke-width="8" stroke-linecap="round" stroke-dasharray="48 40">
+    <line x1="20" y1="592" x2="1180" y2="592"/>
+  </g>
+  <ellipse cx="620" cy="550" rx="270" ry="10" fill="#2f2217" opacity="0.1"/>
+
+  <!-- Линии движения -->
+  <g stroke="#9db3fb" stroke-width="10" stroke-linecap="round">
+    <line x1="232" y1="330" x2="320" y2="330"/>
+    <line x1="200" y1="388" x2="330" y2="388"/>
+    <line x1="250" y1="446" x2="350" y2="446"/>
+  </g>
+
+  <!-- Капсулы -->
+  <g transform="rotate(-28 300 220)">
+    <rect x="270" y="204" width="64" height="30" rx="15" fill="#fffdfa" stroke="#4371f7" stroke-width="4"/>
+    <path d="M302 204 H319 A15 15 0 0 1 319 234 H302 Z" fill="#4371f7"/>
+  </g>
+  <g transform="rotate(22 760 150)">
+    <rect x="736" y="138" width="50" height="24" rx="12" fill="#fffdfa" stroke="#f28c28" stroke-width="4"/>
+    <path d="M761 138 H774 A12 12 0 0 1 774 162 H761 Z" fill="#f28c28"/>
+  </g>
+
+  <!-- Колёса -->
+  <g>
+    <circle cx="470" cy="500" r="48" fill="#2f2217"/>
+    <circle cx="470" cy="500" r="26" fill="#d9dde6"/>
+    <circle cx="470" cy="500" r="9" fill="#5b6475"/>
+    <circle cx="790" cy="500" r="48" fill="#2f2217"/>
+    <circle cx="790" cy="500" r="26" fill="#d9dde6"/>
+    <circle cx="790" cy="500" r="9" fill="#5b6475"/>
+  </g>
+
+  <!-- Вилка и руль -->
+  <line x1="738" y1="318" x2="790" y2="500" stroke="#5b6475" stroke-width="12" stroke-linecap="round"/>
+
+  <!-- Багажник и аптечный бокс -->
+  <line x1="384" y1="384" x2="420" y2="444" stroke="#5b6475" stroke-width="8" stroke-linecap="round"/>
+  <rect x="354" y="376" width="130" height="12" rx="6" fill="#5b6475"/>
+  <rect x="356" y="262" width="126" height="116" rx="16" fill="#ffffff" stroke="#e1cdb8" stroke-width="5"/>
+  <rect x="356" y="262" width="126" height="22" rx="11" fill="#4371f7"/>
+  <rect x="405" y="298" width="28" height="64" rx="5" fill="#22a35a"/>
+  <rect x="387" y="316" width="64" height="28" rx="5" fill="#22a35a"/>
+
+  <!-- Корпус мопеда -->
+  <path d="M392 478 C392 432 430 400 500 398 L584 398 C604 398 614 412 610 432 L600 470 C598 481 590 488 579 488 L404 488 C397 488 392 484 392 478 Z" fill="#4371f7"/>
+  <path d="M430 470 C440 444 470 432 510 432" stroke="#9db3fb" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M574 466 L702 466 L714 490 L574 490 Z" fill="#365bd4"/>
+  <path d="M690 472 C700 420 708 362 718 316 L746 316 C740 370 732 430 724 490 Z" fill="#4371f7"/>
+  <path d="M746 458 C760 430 822 430 838 460 L828 466 C812 446 768 446 756 466 Z" fill="#365bd4"/>
+  <circle cx="374" cy="452" r="9" fill="#f28c28"/>
+  <path d="M440 398 C440 382 456 374 480 374 L572 374 C592 374 600 384 598 398 Z" fill="#2f2217"/>
+
+  <!-- Курьер: нога -->
+  <path d="M532 372 L640 384" stroke="#2f3a56" stroke-width="36" stroke-linecap="round"/>
+  <path d="M640 384 L664 458" stroke="#2f3a56" stroke-width="32" stroke-linecap="round"/>
+  <ellipse cx="676" cy="466" rx="28" ry="13" fill="#2f2217"/>
+
+  <!-- Куртка -->
+  <path d="M510 380 C502 320 518 268 560 244 L606 248 C632 270 628 324 604 380 Z" fill="#f28c28"/>
+  <path d="M520 316 L612 322" stroke="#fffdfa" stroke-width="9" stroke-linecap="round" opacity="0.9"/>
+  <rect x="566" y="226" width="26" height="24" rx="8" fill="#e8b48a"/>
+
+  <!-- Рука к рулю -->
+  <path d="M596 266 L654 304 L706 300" stroke="#f28c28" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <line x1="700" y1="300" x2="764" y2="292" stroke="#2f2217" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="712" cy="299" r="14" fill="#2f2217"/>
+  <circle cx="772" cy="318" r="15" fill="#ffe08a" stroke="#365bd4" stroke-width="5"/>
+
+  <!-- Каска с визором -->
+  <circle cx="584" cy="200" r="48" fill="#ffffff" stroke="#e1cdb8" stroke-width="4"/>
+  <path d="M542 178 C556 150 600 142 628 166" stroke="#4371f7" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <path d="M598 192 C620 186 638 196 634 220 C622 230 604 228 594 218 Z" fill="#1f2a44"/>
+  <path d="M606 198 C614 196 622 198 626 204" stroke="#9db3fb" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M548 222 C552 236 566 244 584 246" stroke="#5b6475" stroke-width="5" fill="none" stroke-linecap="round"/>
+</svg>
