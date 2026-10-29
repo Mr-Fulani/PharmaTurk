@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import {
+  ISTANBUL_COURIER_IMAGE,
   ISTANBUL_DELIVERY,
+  ISTANBUL_DELIVERY_OG_IMAGE,
   ISTANBUL_DELIVERY_PATH,
   buildIstanbulDeliverySchemas,
   istanbulDeliveryContent,
@@ -49,6 +51,30 @@ test('schemas: Service in Istanbul, FAQPage matches visible questions, breadcrum
   assert.equal(service.url, `https://mudaroba.com/en${ISTANBUL_DELIVERY_PATH}`)
   assert.deepEqual(faq.mainEntity.map((item) => item.name), content.faq.map((item) => item.q))
   assert.equal(breadcrumbs.itemListElement.at(-1).item, `https://mudaroba.com/en${ISTANBUL_DELIVERY_PATH}`)
+})
+
+test('western districts are on the page, in the description and in the schema', () => {
+  for (const [locale, names] of [['ru', ['Бейликдюзю', 'Эсеньюрт', 'Башакшехир']], ['en', ['Beylikdüzü', 'Esenyurt', 'Başakşehir']]]) {
+    const content = ISTANBUL_DELIVERY[locale]
+    const [service] = buildIstanbulDeliverySchemas({ siteUrl: 'https://mudaroba.com', localePrefix: '', content, siteName: 'Mudaroba' })
+    const places = service.areaServed.containsPlace.map((place) => place.name)
+    for (const name of names) {
+      assert.ok(Object.values(content.districts).includes(name), name)
+      assert.match(content.metaDescription, new RegExp(name))
+      assert.ok(places.includes(name), name)
+    }
+  }
+})
+
+test('courier illustration: files exist, schema image and og image', () => {
+  for (const src of [ISTANBUL_COURIER_IMAGE.src, ISTANBUL_DELIVERY_OG_IMAGE, '/istanbul-courier.svg']) {
+    assert.ok(readFileSync(new URL(`../../public${src}`, import.meta.url)).length > 1000, src)
+  }
+  const [service] = buildIstanbulDeliverySchemas({
+    siteUrl: 'https://mudaroba.com', localePrefix: '', content: ISTANBUL_DELIVERY.ru, siteName: 'Mudaroba',
+  })
+  assert.equal(service.image.url, `https://mudaroba.com${ISTANBUL_COURIER_IMAGE.src}`)
+  assert.match(service.image.caption, /Курьер/)
 })
 
 test('the page is in the static sitemap', () => {

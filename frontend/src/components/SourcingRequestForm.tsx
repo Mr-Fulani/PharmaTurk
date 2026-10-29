@@ -99,6 +99,9 @@ export default function SourcingRequestForm({ placement, initialComment = '', ti
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  // С ником в Telegram/WhatsApp номер можно не давать: менеджер напишет в мессенджер
+  const phoneOptional = isUsernameChannel(channel) && Boolean(username.trim())
+
   const validate = (): FieldErrors => {
     const next: FieldErrors = {}
     const url = sourceUrl.trim()
@@ -109,7 +112,9 @@ export default function SourcingRequestForm({ placement, initialComment = '', ti
     }
     if (!name.trim()) next.contact_name = t('field_required', 'Заполните это поле')
     const phoneDigits = phone.replace(/[\s()-]/g, '')
-    if (!phoneDigits) next.contact_phone = t('field_required', 'Заполните это поле')
+    if (!phoneDigits) {
+      if (!phoneOptional) next.contact_phone = t('sourcing_phone_or_username', 'Укажите телефон или ник в Telegram/WhatsApp')
+    }
     else if (!PHONE_DIGITS_RE.test(phoneDigits)) next.contact_phone = t('phone_invalid', 'Укажите номер в формате +79991234567')
     if (!channel) next.contact_channel = t('checkout_contact_channel_required', 'Выберите, как с вами связаться')
     if (channel === 'email' && !email.trim()) {
@@ -318,7 +323,9 @@ export default function SourcingRequestForm({ placement, initialComment = '', ti
               {errorText('contact_name')}
             </label>
             <label className="block">
-              <span className={labelClass}>{t('checkout_phone', 'Телефон')} *</span>
+              <span className={labelClass}>
+                {phoneOptional ? t('checkout_phone_optional', 'Телефон (необязательно)') : `${t('checkout_phone', 'Телефон')} *`}
+              </span>
               <input
                 type="tel"
                 value={phone}
@@ -328,7 +335,11 @@ export default function SourcingRequestForm({ placement, initialComment = '', ti
                 aria-invalid={errors.contact_phone ? true : undefined}
                 className={fieldClass('contact_phone')}
               />
-              {errorText('contact_phone')}
+              {errorText('contact_phone') || (!phoneOptional && (
+                <span className="mt-1 block text-xs text-gray-500">
+                  {t('sourcing_phone_hint', 'Не хотите оставлять номер? Выберите Telegram или WhatsApp и укажите ник.')}
+                </span>
+              ))}
             </label>
 
             <label className="block">
@@ -363,7 +374,7 @@ export default function SourcingRequestForm({ placement, initialComment = '', ti
                 channel={channel}
                 onChannelChange={(value) => { setChannel(value); clearError('contact_channel', 'contact_email') }}
                 username={username}
-                onUsernameChange={(value) => { setUsername(value); clearError('contact_username') }}
+                onUsernameChange={(value) => { setUsername(value); clearError('contact_username', 'contact_phone') }}
                 error={errors.contact_channel || errors.contact_username}
                 inputClassName={fieldClass('contact_username')}
               />

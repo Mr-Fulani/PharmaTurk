@@ -3,6 +3,9 @@
 // ночная доставка), на странице не обещаются: их называет менеджер при расчёте.
 
 export const ISTANBUL_DELIVERY_PATH = '/dostavka-lekarstv-stambul'
+// Иллюстрация курьера (исходник — public/istanbul-courier.svg) и её копия для соцсетей
+export const ISTANBUL_COURIER_IMAGE = { src: '/istanbul-courier.webp', width: 1200, height: 630 }
+export const ISTANBUL_DELIVERY_OG_IMAGE = '/og-istanbul-delivery.jpg'
 
 // Ограниченные вещества из справочника TD-024 (docs/CONTROLLED_SUBSTANCES.md), которые чаще
 // всего спрашивают, и статья о нём.
@@ -12,7 +15,7 @@ export const ISTANBUL_DELIVERY = {
   ru: {
     metaTitle: 'Доставка лекарств по Стамбулу в отель и на дом',
     metaDescription:
-      'Привезём лекарства и БАДы из аптек Стамбула в отель, квартиру или офис. Менеджер на русском найдёт препарат и назовёт цену и срок до покупки.',
+      'Привезём лекарства и БАДы из аптек Стамбула в отель или домой — от Султанахмета до Бейликдюзю, Эсеньюрта и Башакшехира. Цену и срок назовём до покупки.',
     breadcrumb: 'Доставка лекарств по Стамбулу',
     h1: 'Доставка лекарств в Стамбуле — в отель и по адресу',
     lead:
@@ -79,6 +82,7 @@ export const ISTANBUL_DELIVERY = {
     restrictedText:
       'Препараты строгого учёта (наркотические и психотропные — красный и зелёный рецепт) и препараты с веществами из нашего списка ограниченных: кодеин, прегабалин, трамадол, псевдоэфедрин и другие.',
     restrictedLink: { href: RULES_ARTICLE, label: 'Подробнее о списке' },
+    courierAlt: 'Курьер в шлеме на мопеде везёт лекарства из аптеки по Стамбулу',
     stepsTitle: 'Как заказать — 4 шага',
     steps: [
       { icon: 'message', title: 'Напишите нам', text: 'В WhatsApp, Telegram или через форму: название, фото упаковки или рецепт, адрес или название отеля.' },
@@ -88,7 +92,7 @@ export const ISTANBUL_DELIVERY = {
     ],
     mapTitle: 'Доставляем по всему Стамбулу',
     mapText:
-      'Европейская и азиатская сторона — от Султанахмета и Таксима до Кадыкёя и Аташехира. Срок зависит от района и наличия препарата: менеджер назовёт его сразу, до покупки.',
+      'Европейская и азиатская сторона — от Султанахмета и Таксима до Бейликдюзю, Эсеньюрта и Башакшехира, Кадыкёя и Аташехира. Срок зависит от района и наличия препарата: менеджер назовёт его сразу, до покупки.',
     mapLegend: { pharmacy: 'Аптека', destination: 'Отель или адрес', route: 'Маршрут курьера' },
     map: {
       europe: 'Европейская сторона',
@@ -107,6 +111,9 @@ export const ISTANBUL_DELIVERY = {
       sultanahmet: 'Султанахмет',
       fatih: 'Фатих',
       bakirkoy: 'Бакыркёй',
+      basaksehir: 'Башакшехир',
+      esenyurt: 'Эсеньюрт',
+      beylikduzu: 'Бейликдюзю',
       uskudar: 'Ускюдар',
       kadikoy: 'Кадыкёй',
       atasehir: 'Аташехир',
@@ -132,6 +139,7 @@ export const ISTANBUL_DELIVERY = {
       { q: 'Как быстро привезёте лекарство?', a: 'Срок зависит от района, наличия препарата в ближайших аптеках и времени суток. Его называем сразу при расчёте, до покупки.' },
       { q: 'Можно ли заказать рецептурное лекарство?', a: 'В Турции часть препаратов отпускается только по рецепту. Пришлите название и рецепт врача — менеджер скажет, можно ли купить препарат, срок и стоимость.' },
       { q: 'Какие препараты вы не доставляете?', a: 'Препараты строгого учёта (наркотические и психотропные — красный и зелёный рецепт) и препараты с веществами из нашего списка ограниченных: кодеин, прегабалин, трамадол, псевдоэфедрин и другие.' },
+      { q: 'Доставляете в Бейликдюзю, Эсеньюрт и Башакшехир?', a: 'Да. Привозим не только в исторический центр, но и в западные районы европейской стороны — Бейликдюзю, Эсеньюрт, Башакшехир, Бакыркёй. Срок и цену доставки в ваш район менеджер назовёт до покупки.' },
       { q: 'Привезёте лекарство в отель? Что указать?', a: 'Да. Укажите название отеля, номер комнаты и имя гостя. Заказ можно оставить на ресепшене.' },
       { q: 'Я не знаю, как лекарство называется в Турции', a: 'Пришлите фото упаковки, название из вашей страны или действующее вещество — подберём турецкий препарат с тем же веществом и дозировкой. Замену согласуйте с лечащим врачом.' },
       { q: 'Как оплатить заказ?', a: 'Способ оплаты менеджер согласует при расчёте. Оплачиваете только согласованную сумму.' },
@@ -147,7 +155,7 @@ export const ISTANBUL_DELIVERY = {
   en: {
     metaTitle: 'Medicine delivery in Istanbul to your hotel or home',
     metaDescription:
-      'We deliver medicines and supplements from Istanbul pharmacies to your hotel, flat or office. A manager finds the product and confirms price and time first.',
+      'Medicines and supplements from Istanbul pharmacies to your hotel or home — from Sultanahmet to Beylikdüzü, Esenyurt and Başakşehir. Price and time up front.',
     breadcrumb: 'Medicine delivery in Istanbul',
     h1: 'Medicine delivery in Istanbul — to your hotel or address',
     lead:
@@ -214,6 +222,7 @@ export const ISTANBUL_DELIVERY = {
     restrictedText:
       'Controlled medicines (narcotic and psychotropic — red and green prescriptions) and medicines with substances from our restricted list: codeine, pregabalin, tramadol, pseudoephedrine and others.',
     restrictedLink: { href: RULES_ARTICLE, label: 'More about the list' },
+    courierAlt: 'A courier in a helmet on a moped delivering medicines from a pharmacy across Istanbul',
     stepsTitle: 'How to order — 4 steps',
     steps: [
       { icon: 'message', title: 'Message us', text: 'On WhatsApp, Telegram or via the form: the name, a package photo or a prescription, your address or hotel.' },
@@ -223,7 +232,7 @@ export const ISTANBUL_DELIVERY = {
     ],
     mapTitle: 'We deliver across Istanbul',
     mapText:
-      'European and Asian side — from Sultanahmet and Taksim to Kadıköy and Ataşehir. Time depends on the district and availability: a manager tells you right away, before purchase.',
+      'European and Asian side — from Sultanahmet and Taksim to Beylikdüzü, Esenyurt and Başakşehir, Kadıköy and Ataşehir. Time depends on the district and availability: a manager tells you right away, before purchase.',
     mapLegend: { pharmacy: 'Pharmacy', destination: 'Hotel or address', route: 'Courier route' },
     map: {
       europe: 'European side',
@@ -242,6 +251,9 @@ export const ISTANBUL_DELIVERY = {
       sultanahmet: 'Sultanahmet',
       fatih: 'Fatih',
       bakirkoy: 'Bakırköy',
+      basaksehir: 'Başakşehir',
+      esenyurt: 'Esenyurt',
+      beylikduzu: 'Beylikdüzü',
       uskudar: 'Üsküdar',
       kadikoy: 'Kadıköy',
       atasehir: 'Ataşehir',
@@ -267,6 +279,7 @@ export const ISTANBUL_DELIVERY = {
       { q: 'How fast will you deliver?', a: 'It depends on the district, availability in nearby pharmacies and the time of day. We tell you right away, before purchase.' },
       { q: 'Can I order a prescription medicine?', a: 'In Turkey some medicines are sold only on prescription. Send the name and your doctor’s prescription — a manager tells you whether it can be bought, the time and the price.' },
       { q: 'Which medicines do you not deliver?', a: 'Controlled medicines (narcotic and psychotropic — red and green prescriptions) and medicines with substances from our restricted list: codeine, pregabalin, tramadol, pseudoephedrine and others.' },
+      { q: 'Do you deliver to Beylikdüzü, Esenyurt and Başakşehir?', a: 'Yes. We deliver not only to the historic centre but also to the western districts of the European side — Beylikdüzü, Esenyurt, Başakşehir, Bakırköy. A manager confirms the time and delivery price for your district before purchase.' },
       { q: 'Can you deliver to my hotel? What should I give you?', a: 'Yes. Give the hotel name, room number and guest name. The order can be left at the reception.' },
       { q: 'I do not know the Turkish name of my medicine', a: 'Send a photo of the package, the name used in your country or the active ingredient — we find the Turkish product with the same ingredient and strength. Agree any replacement with your doctor.' },
       { q: 'How do I pay?', a: 'A manager agrees the payment method when pricing the order. You pay only the agreed amount.' },
@@ -286,7 +299,7 @@ export function istanbulDeliveryContent(locale) {
   return ISTANBUL_DELIVERY[locale] || ISTANBUL_DELIVERY.ru
 }
 
-/** JSON-LD: Service с районом обслуживания, FAQPage по видимым вопросам, BreadcrumbList. */
+/** JSON-LD: Service с районами обслуживания и иллюстрацией, FAQPage по видимым вопросам, BreadcrumbList. */
 export function buildIstanbulDeliverySchemas({ siteUrl, localePrefix, content, siteName }) {
   const pageUrl = `${siteUrl}${localePrefix}${ISTANBUL_DELIVERY_PATH}`
   return [
@@ -297,7 +310,19 @@ export function buildIstanbulDeliverySchemas({ siteUrl, localePrefix, content, s
       serviceType: 'Medicine delivery',
       description: content.metaDescription,
       url: pageUrl,
-      areaServed: { '@type': 'City', name: 'Istanbul', containedInPlace: { '@type': 'Country', name: 'Türkiye' } },
+      image: {
+        '@type': 'ImageObject',
+        url: `${siteUrl}${ISTANBUL_COURIER_IMAGE.src}`,
+        width: ISTANBUL_COURIER_IMAGE.width,
+        height: ISTANBUL_COURIER_IMAGE.height,
+        caption: content.courierAlt,
+      },
+      areaServed: {
+        '@type': 'City',
+        name: 'Istanbul',
+        containedInPlace: { '@type': 'Country', name: 'Türkiye' },
+        containsPlace: Object.values(content.districts).map((name) => ({ '@type': 'Place', name })),
+      },
       availableLanguage: ['ru', 'en'],
       provider: { '@type': 'Organization', name: siteName, url: siteUrl },
     },

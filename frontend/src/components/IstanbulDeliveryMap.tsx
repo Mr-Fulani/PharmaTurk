@@ -7,7 +7,9 @@ type MapTexts = {
 }
 
 // Схема, а не карта: берега и районы расставлены условно, чтобы было видно обе стороны города.
-const DISTRICTS: Array<[key: string, x: number, y: number, side: 'eu' | 'as']> = [
+// Подпись — слева от точки на европейской стороне и справа на азиатской; у крайних западных
+// районов справа, иначе она уходит за край схемы.
+const DISTRICTS: Array<[key: string, x: number, y: number, side: 'eu' | 'as', labelRight?: boolean]> = [
   ['sariyer', 292, 82, 'eu'],
   ['sisli', 246, 196, 'eu'],
   ['besiktas', 306, 214, 'eu'],
@@ -15,7 +17,10 @@ const DISTRICTS: Array<[key: string, x: number, y: number, side: 'eu' | 'as']> =
   ['beyoglu', 300, 256, 'eu'],
   ['fatih', 236, 292, 'eu'],
   ['sultanahmet', 290, 304, 'eu'],
-  ['bakirkoy', 120, 316, 'eu'],
+  ['bakirkoy', 176, 322, 'eu'],
+  ['basaksehir', 128, 196, 'eu'],
+  ['esenyurt', 52, 232, 'eu', true],
+  ['beylikduzu', 34, 300, 'eu', true],
   ['uskudar', 356, 262, 'as'],
   ['kadikoy', 352, 316, 'as'],
   ['atasehir', 432, 290, 'as'],
@@ -85,7 +90,7 @@ export default function IstanbulDeliveryMap({ texts }: { texts: MapTexts }) {
         )}
 
         {/* Районы */}
-        {DISTRICTS.map(([key, x, y, side], index) => {
+        {DISTRICTS.map(([key, x, y, side, labelRight = side === 'as'], index) => {
           const isPharmacy = key === 'taksim'
           const isDestination = key === 'sultanahmet'
           const accent = isPharmacy || isDestination
@@ -112,11 +117,11 @@ export default function IstanbulDeliveryMap({ texts }: { texts: MapTexts }) {
                 strokeWidth="2"
               />
               <text
-                x={side === 'eu' ? x - 10 : x + 10}
+                x={labelRight ? x + 10 : x - 10}
                 y={y + 4}
                 fontSize="15"
                 fontWeight={accent ? 700 : 500}
-                textAnchor={side === 'eu' ? 'end' : 'start'}
+                textAnchor={labelRight ? 'start' : 'end'}
                 {...labelProps}
               >
                 {texts.districts[key]}
