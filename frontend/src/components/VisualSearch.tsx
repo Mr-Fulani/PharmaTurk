@@ -7,6 +7,7 @@ import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
 import { ProductCardGalleryImage } from './ProductCardImageGallery'
+import { onPendingVisualFile, takePendingVisualFile } from '../lib/pendingVisualSearch'
 
 const UPLOAD_TEMP_ENABLED = true // set true when /api/upload/temp/ exists
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -60,6 +61,7 @@ export default function VisualSearch() {
   const [error, setError] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
   const activeRequest = useRef<AbortController | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => () => activeRequest.current?.abort(), [])
 
@@ -116,8 +118,7 @@ export default function VisualSearch() {
     setSearching(false)
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const searchByFile = async (file: File | undefined) => {
     if (!file) {
       cancelActiveSearch()
       setError(t('select_image', 'Выберите изображение'))
@@ -157,6 +158,27 @@ export default function VisualSearch() {
     }
   }
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => searchByFile(e.target.files?.[0])
+
+  // Фото из значка камеры в шапке: при переходе на /search или уже на этой странице.
+  // Запуск через setTimeout — в StrictMode эффект монтируется дважды, поиск идёт один раз.
+  const searchByFileRef = useRef(searchByFile)
+  searchByFileRef.current = searchByFile
+  useEffect(() => {
+    const runPending = () => {
+      const file = takePendingVisualFile()
+      if (!file) return
+      rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      void searchByFileRef.current(file)
+    }
+    const timer = window.setTimeout(runPending, 0)
+    onPendingVisualFile(runPending)
+    return () => {
+      window.clearTimeout(timer)
+      onPendingVisualFile(null)
+    }
+  }, [])
+
   const handleUrlSearch = async (url: string) => {
     if (!url.trim()) return
     const controller = beginSearch()
@@ -170,7 +192,7 @@ export default function VisualSearch() {
   }
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-6 bg-white dark:bg-gray-800">
+    <div ref={rootRef} className="scroll-mt-24 border border-gray-200 dark:border-gray-700 rounded-lg p-6 bg-white dark:bg-gray-800">
       <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
         {t('visual_search', 'Поиск по фото')}
       </h3>

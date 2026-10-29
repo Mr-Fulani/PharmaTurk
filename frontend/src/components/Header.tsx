@@ -17,6 +17,8 @@ import { buildProductIdentityKey } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { resolveMediaUrl } from '../lib/media'
 import { defaultCurrencyForLocale } from '../lib/requestCurrency'
+import { setPendingVisualFile } from '../lib/pendingVisualSearch'
+import { CameraIcon } from '@heroicons/react/24/outline'
 
 const loadMotionFeatures = () => import('../lib/motionFeatures').then((mod) => mod.default)
 
@@ -43,6 +45,7 @@ export default function Header() {
   const searchRef = useRef<HTMLDivElement>(null)
   const mobileSearchRef = useRef<HTMLDivElement>(null)
   const mobileSearchInputRef = useRef<HTMLInputElement>(null)
+  const photoSearchInputRef = useRef<HTMLInputElement>(null)
   const currencyRef = useRef<HTMLDivElement>(null)
   const mobileCurrencyRef = useRef<HTMLDivElement>(null)
   const logoRef = useRef<HTMLAnchorElement>(null)
@@ -367,6 +370,23 @@ export default function Header() {
               </m.div>
             </m.div>
           </Link>
+          <input
+            ref={photoSearchInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              setShowSuggestions(false)
+              setIsMobileSearchOpen(false)
+              setPendingVisualFile(file)
+              if (router.pathname !== '/search') router.push('/search')
+            }}
+          />
           <div className="hidden flex-1 items-center gap-3 md:flex">
             <div ref={searchRef} className="relative flex w-full max-w-xl items-center">
               <input
@@ -377,6 +397,15 @@ export default function Header() {
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setShowSuggestions(false); goSearch() } }}
                 className={`w-full rounded-l-lg border px-3 py-2 text-base md:text-sm outline-none transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500' : 'border-gray-300 bg-white text-gray-900 focus:border-gray-400'}`}
               />
+              <button
+                type="button"
+                onClick={() => photoSearchInputRef.current?.click()}
+                aria-label={t('search_by_photo', 'Найти по фото')}
+                title={t('search_by_photo', 'Найти по фото')}
+                className={`flex items-center self-stretch border border-l-0 px-2.5 transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white' : 'border-gray-300 bg-white text-gray-500 hover:bg-red-50 hover:text-red-700'}`}
+              >
+                <CameraIcon aria-hidden className="h-5 w-5" strokeWidth={1.8} />
+              </button>
               <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`rounded-r-lg border border-l-0 px-3 py-2 text-sm transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:border-slate-500' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:text-red-700 hover:font-medium'}`}>{t('search_button', 'Поиск')}</button>
               {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
                 <div className={`absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border shadow-lg ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
@@ -438,11 +467,23 @@ export default function Header() {
                       e.currentTarget.blur()
                     }
                   }}
-                  className={`h-10 min-w-0 w-full rounded-l-lg border py-2 pl-3 pr-9 text-sm outline-none transition-colors duration-200 ${isDark
+                  className={`h-10 min-w-0 w-full rounded-l-lg border py-2 pl-3 pr-[4.5rem] text-sm outline-none transition-colors duration-200 ${isDark
                     ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500'
                     : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-gray-400'
                   }`}
                 />
+                <button
+                  type="button"
+                  onClick={() => photoSearchInputRef.current?.click()}
+                  aria-label={t('search_by_photo', 'Найти по фото')}
+                  title={t('search_by_photo', 'Найти по фото')}
+                  className={`absolute right-[4.5rem] top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full transition-colors ${isDark
+                    ? 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                    : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'
+                  }`}
+                >
+                  <CameraIcon aria-hidden className="h-5 w-5" strokeWidth={1.8} />
+                </button>
                 <button
                   type="button"
                   onClick={() => {

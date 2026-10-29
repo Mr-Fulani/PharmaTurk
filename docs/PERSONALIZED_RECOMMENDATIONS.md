@@ -51,6 +51,11 @@ if (basedOn === 'trending') return null
 
 ### Поиск по фото
 
+На сайте вход — значок камеры в строке поиска шапки (`Header.tsx`, на телефоне —
+в раскрытом поле) и блок `VisualSearch` на `/search`. Выбранное в шапке фото
+передаётся блоку в памяти вкладки (`lib/pendingVisualSearch.ts`), страница
+открывает `/search` и сразу запускает поиск.
+
 POST `/api/recommendations/search_by_image/` проверяет картинку в вебе
 (`fetch_search_image`: SSRF-защита, формат, размеры), а вектор CLIP считает
 `celery_recsys` — задача `encode_search_image` в отдельной очереди
