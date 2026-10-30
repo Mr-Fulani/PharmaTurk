@@ -58,6 +58,11 @@ def apply_product_markup(amount, product):
     if amount is None:
         return None
     margin, _ = get_effective_product_markup(product)
+    return apply_markup_percent(amount, margin)
+
+
+def apply_markup_percent(amount, margin):
+    """Цена с наценкой margin %; без наценки — исходная сумма."""
     value = Decimal(str(amount))
     if margin <= 0:
         return value

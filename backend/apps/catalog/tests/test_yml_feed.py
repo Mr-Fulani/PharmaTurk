@@ -2,6 +2,7 @@
 import io
 import xml.etree.ElementTree as ET
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -11,6 +12,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
+from apps.catalog.currency_models import GlobalCurrencySettings
 from apps.catalog.models import (
     Category,
     GlobalAttributeKey,
@@ -53,6 +55,10 @@ def rub_rate(monkeypatch):
         return amount, converted, converted * Decimal("1.1")
 
     monkeypatch.setattr(currency_converter, "convert_price", convert)
+    # Глобальная товарная наценка по умолчанию не мешает считать цены в тестах.
+    monkeypatch.setattr(
+        GlobalCurrencySettings, "load", lambda: SimpleNamespace(default_margin_percentage=Decimal("0"))
+    )
 
 
 def _category(slug, parent=None):
@@ -154,6 +160,19 @@ def test_unavailable_products_and_variants_stay_out_of_feed(rub_rate):
 
     assert [o.attrib["id"] for o in offers] == [f"{product.id}v{first.id}"]
     assert offers[0].attrib["available"] == "true"
+
+
+@pytest.mark.django_db
+def test_price_includes_product_markup_like_the_site(rub_rate):
+    parent = _category("shoes")
+    Category.objects.filter(pk=parent.pk).update(margin_percent=Decimal("25"))
+    child = _category("sneakers", parent=parent)
+    _shoe(child, variants=1)
+
+    offers = _offers(_parse(yml_feed.iter_yml_feed(parent.slug)))
+
+    # 200 TRY → ×3 → +10 % пары = 660 → +25 % наценки категории-родителя.
+    assert offers[0].findtext("price") == "825"
 
 
 @pytest.mark.django_db
