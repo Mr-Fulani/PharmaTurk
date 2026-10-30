@@ -30,6 +30,7 @@ import re
 import tempfile
 import xml.etree.ElementTree as ET
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Iterator
 
 from django.conf import settings
@@ -39,6 +40,7 @@ from django.utils import timezone
 
 from ..models import Category, Product
 from ..models_vk import VKCategoryMapping, YMLFeedSnapshot
+from ..utils.product_markup import apply_markup_percent, get_effective_product_markup
 from .source_offer_catalog_projection import resolve_source_offer_catalog_availability
 
 logger = logging.getLogger(__name__)
@@ -358,15 +360,35 @@ class _GenderResolver:
         return gender if gender in FEED_GENDERS else ""
 
 
+class _MarkupResolver:
+    """
+    Товарная наценка, как на сайте: бренд → категория → глобальная.
+    Наценка категории считается один раз на сборку — иначе запрос родителей на каждый товар.
+    """
+
+    def __init__(self):
+        self._by_category: dict = {}
+
+    def price_with_markup(self, amount, prod):
+        brand_margin = getattr(prod.brand, "margin_percent", None) if prod.brand else None
+        if brand_margin is not None and Decimal(str(brand_margin)) > 0:
+            return apply_markup_percent(amount, Decimal(str(brand_margin)))
+        if prod.category_id not in self._by_category:
+            without_brand = SimpleNamespace(brand=None, category=prod.category)
+            self._by_category[prod.category_id] = get_effective_product_markup(without_brand)[0]
+        return apply_markup_percent(amount, self._by_category[prod.category_id])
+
+
 def _iter_offers(products, site_url: str) -> Iterator[str]:
     """<offer> по одному, в порядке id товара."""
     vk_map = load_vk_mapping()
     genders = _GenderResolver()
+    markups = _MarkupResolver()
     exported_ids: set[str] = set()  # защита от дублей
     for batch in _iter_product_batches(products):
         for prod in batch:
             offers_el = ET.Element("offers")
-            _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids, genders)
+            _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids, genders, markups)
             for offer in offers_el:
                 # Закончившийся вариант или товар, снятый сверкой поставщика, — тоже не выгружаем
                 if offer.get("available") == "false":
@@ -391,7 +413,9 @@ def iter_yml_feed(category_slug: str = "", site_url: str | None = None) -> Itera
     yield "".join(buffer) + FEED_TAIL
 
 
-def _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids: set[str], genders) -> None:
+def _add_product_offers(
+    offers_el, prod, site_url, vk_map, exported_ids: set[str], genders, markups,
+) -> None:
     domain_item = getattr(prod, "yml_domain_item", prod)
     variants = list(getattr(domain_item, "yml_active_variants", None) or [])
     gender = genders.product_gender(prod, domain_item)
@@ -406,6 +430,7 @@ def _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids: set[str
             domain_item=domain_item,
             has_variants=False,
             gender=gender,
+            markups=markups,
         )
         add_params_to_description(offer, prod, domain_item)
         return
@@ -423,6 +448,7 @@ def _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids: set[str
             variant=variant,
             has_variants=True,
             gender=gender,
+            markups=markups,
         )
         add_params_to_description(offer, prod, domain_item, variant)
 
@@ -444,7 +470,8 @@ def _variant_price_rub(variant):
 
 
 def create_offer(parent, prod, site_url, vk_map,
-                 domain_item=None, offer_id=None, variant=None, has_variants=False, gender=""):
+                 domain_item=None, offer_id=None, variant=None, has_variants=False, gender="",
+                 markups=None):
     """
     Строит элемент <offer> с правильным порядком тегов.
 
@@ -484,6 +511,8 @@ def create_offer(parent, prod, site_url, vk_map,
     # 2. Цена
     v_price = _variant_price_rub(variant) if variant else None
     raw_price = v_price or prod.get_price_in_currency("RUB") or prod.price or 0
+    # Сайт показывает цену с товарной наценкой поверх наценки валютной пары — в фиде та же цена.
+    raw_price = (markups or _MarkupResolver()).price_with_markup(raw_price, prod)
     price_dec = Decimal(str(raw_price)).quantize(Decimal("0.01"))
     price_str = (
         str(int(price_dec))
