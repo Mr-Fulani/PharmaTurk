@@ -235,7 +235,8 @@ def _feed_scope(category_slug: str):
     blocked_ids = _blocked_category_ids()
     products = (
         Product.objects
-        .filter(is_active=True)
+        # «Нет в наличии» в фид не идёт: ВК показывает такие карточки с плашкой (владелец, 30.10.2026)
+        .filter(is_active=True, is_available=True)
         .exclude(medicine_item__import_restricted_countries__gt="")  # не рекламируем (TD-024)
         .exclude(product_type__in=BLOCKED_PRODUCT_TYPES)
         .exclude(category_id__in=blocked_ids)
@@ -367,6 +368,9 @@ def _iter_offers(products, site_url: str) -> Iterator[str]:
             offers_el = ET.Element("offers")
             _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids, genders)
             for offer in offers_el:
+                # Закончившийся вариант или товар, снятый сверкой поставщика, — тоже не выгружаем
+                if offer.get("available") == "false":
+                    continue
                 yield _xml(offer)
 
 

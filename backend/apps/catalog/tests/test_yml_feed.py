@@ -142,6 +142,21 @@ def test_feed_builds_one_offer_per_variant_with_rub_prices_and_specs(rub_rate):
 
 
 @pytest.mark.django_db
+def test_unavailable_products_and_variants_stay_out_of_feed(rub_rate):
+    root_cat = _category("shoes")
+    product = _shoe(root_cat, variants=2)
+    sold_out = _shoe(root_cat, variants=1)
+    Product.objects.filter(pk=sold_out.pk).update(is_available=False)
+    first, second = product.shoe_item.variants.order_by("id")
+    ShoeVariant.objects.filter(pk=second.pk).update(is_available=False)
+
+    offers = _offers(_parse(yml_feed.iter_yml_feed(root_cat.slug)))
+
+    assert [o.attrib["id"] for o in offers] == [f"{product.id}v{first.id}"]
+    assert offers[0].attrib["available"] == "true"
+
+
+@pytest.mark.django_db
 def test_variant_color_is_translated_and_products_without_variants_have_no_group(rub_rate):
     root_cat = _category("shoes")
     with_variant = _shoe(root_cat, variants=1, with_attribute=False)
