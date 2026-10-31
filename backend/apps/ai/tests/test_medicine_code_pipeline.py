@@ -2099,3 +2099,10 @@ def test_medicine_source_names_command_reports_and_records_equivalents():
 )
 def test_card_description_drops_sgk_shelf_life_and_origin(text, expected):
     assert without_card_boilerplate(text) == expected
+
+
+def test_word_of_two_alphabets_is_not_a_translation():
+    source = "HIV proteaz inhibitörleri (amprenavir, sakinavir gibi) kullanıyorsanız,"
+    en = "if you are taking HIV protease inhibitors (such as amprenavir, saquinavir),"
+    assert "mixed_alphabet" in paragraph_problems(source, "если вы принимаете ингибиторы протеазы ВИЧ (амprenавир, саквинавир),", en)
+    assert "mixed_alphabet" not in paragraph_problems(source, "если вы принимаете ингибиторы протеазы ВИЧ (ампренавир, саквинавир),", en)
