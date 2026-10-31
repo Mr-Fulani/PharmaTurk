@@ -1609,6 +1609,7 @@ class ProductMarketCheckAdmin(admin.ModelAdmin):
 @admin.register(ProductImage)
 class ProductImageAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
     """Админка для изображений товаров."""
+    autocomplete_fields = ('product',)
     list_display = (
         'product',
         'image_url',
@@ -1646,6 +1647,7 @@ class ProductImageAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
 @admin.register(PriceHistory)
 class PriceHistoryAdmin(admin.ModelAdmin):
     """Админка для истории цен."""
+    autocomplete_fields = ('product',)
     list_display = ('product', 'price', 'currency', 'source', 'recorded_at')
     list_filter = ('currency', 'source', 'recorded_at')
     search_fields = ('product__name',)
@@ -3460,8 +3462,6 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
             )
 
         if lower_url.endswith(("mp4", "mov", "webm", "m4v")):
-    autocomplete_fields = ('product',)
-    autocomplete_fields = ('product',)
             return format_html(
                 '<video src="{}" style="max-width: 180px; max-height: 100px;" muted loop playsinline></video>',
                 url,

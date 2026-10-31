@@ -1516,6 +1516,7 @@ class BrandMappingAdmin(admin.ModelAdmin):
 @admin.register(ScrapedProductLog)
 class ScrapedProductLogAdmin(admin.ModelAdmin):
     """Админ для логов товаров."""
+    autocomplete_fields = ['product']
 
     list_display = ["product_name", "action_badge", "session", "external_id", "created_at"]
     list_filter = ["action", "session__scraper_config", "created_at"]
@@ -2178,7 +2179,6 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             )
 
     def cancel_task_view(self, request, task_id):
-    autocomplete_fields = ['product']
         try:
             task = InstagramScraperTask.objects.get(id=task_id)
             self._cancel_task(task)
