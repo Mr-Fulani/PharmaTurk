@@ -224,12 +224,14 @@ class ListingChangeTracker:
 
     def sitemap_work(
         self, sitemap_urls: Iterable[str], is_product_url, canonical_url=lambda url: url,
+        *, check_missing: bool = True,
     ) -> tuple:
         """Что осталось проверить после листинга: (открыть карточку, проверить пропажу).
 
         Открыть — ссылки sitemap, которых листинг в этом проходе не показал: новые
         товары и те, до кого листинг не достаёт. Проверить — наши товары в
-        продаже, которых нет ни в sitemap, ни в листинге этого прохода.
+        продаже, которых нет ни в sitemap, ни в листинге этого прохода; полный
+        обход пропажи не ищет (``check_missing=False``).
         """
         from apps.catalog.models import Product
 
@@ -239,6 +241,8 @@ class ListingChangeTracker:
             sitemap_keys.setdefault(url_key(url), url)
         to_open = sorted(url for key, url in sitemap_keys.items() if key not in seen)
         to_check = []
+        if not check_missing:
+            return to_open, to_check
         rows = Product.objects.filter(
             external_data__source=self.parser_key, is_available=True,
         ).values_list("external_url", "external_data__is_stub")

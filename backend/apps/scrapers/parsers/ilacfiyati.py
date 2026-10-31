@@ -60,6 +60,8 @@ class IlacFiyatiParser(BaseScraper):
     SUPPORTS_CATALOG_STATE = True
     # Режим «Только изменения»: ListingChangeTracker подставляет сервис.
     change_tracker = None
+    # «Весь сайт»: тот же трекер запоминает показанные листингом ссылки, карточки решает обход.
+    site_pass_tracker = None
     # Карточек за один шаг sitemap-этапа — как строк на странице листинга.
     SITEMAP_BATCH_SIZE = 12
 
@@ -308,6 +310,13 @@ class IlacFiyatiParser(BaseScraper):
         """«Только изменения»: оба листинга по строкам, затем sitemap — новые и пропавшие."""
         return self.parse_categories() + [
             {"name": "Новые и пропавшие (sitemap)", "url": ILACFIYATI_SITEMAP_URL,
+             "external_id": "sitemap", "source": self.get_name()},
+        ]
+
+    def parse_site_sources(self) -> List[Dict[str, Any]]:
+        """«Весь сайт»: оба листинга, затем sitemap — карточки, до которых листинг не достаёт."""
+        return self.parse_categories() + [
+            {"name": "Вне листинга (sitemap)", "url": ILACFIYATI_SITEMAP_URL,
              "external_id": "sitemap", "source": self.get_name()},
         ]
 
@@ -818,6 +827,9 @@ class IlacFiyatiParser(BaseScraper):
                     self.has_more_pages = False
                     break
 
+                if self.site_pass_tracker is not None:
+                    self.site_pass_tracker.mark_seen(product_urls)
+
                 before = result_count() if result_count else count
                 # «Только изменения»: карточку открываем, только если строка
                 # листинга отличается от запомненной (или товара у нас нет).
@@ -880,24 +892,24 @@ class IlacFiyatiParser(BaseScraper):
             raise
 
     def _parse_sitemap_changes(self, sitemap_url: str, max_pages: int, start_page: int):
-        """Sitemap-этап «Только изменений»: карточки, которых листинг не показал.
+        """Sitemap-этап «Только изменений» и «Весь сайт»: карточки, которых листинг не показал.
 
         Открываем ссылки sitemap, не увиденные листингом в этом проходе (новые и
         те, до кого листинг не достаёт: у /ilaclar он отдаёт только 1000 страниц).
-        Наши товары в продаже, которых нет ни в sitemap, ни в листинге, проверяем:
-        404 или «İlaç Durumu: Pasif» — снимаем с продажи, иначе сохраняем как
-        обычно. «Страница» здесь — SITEMAP_BATCH_SIZE ссылок; список считается
-        заново в каждом чанке, проверенные ссылки из него уже выпали.
+        В «Только изменения» наши товары в продаже, которых нет ни в sitemap, ни в
+        листинге, ещё и проверяем: 404 или «İlaç Durumu: Pasif» — снимаем с продажи,
+        иначе сохраняем как обычно. «Страница» здесь — SITEMAP_BATCH_SIZE ссылок;
+        список считается заново в каждом чанке, проверенные ссылки из него уже выпали.
         """
-        tracker = self.change_tracker
+        tracker = self.change_tracker or self.site_pass_tracker
         if tracker is None:
             raise IlacFiyatiSourceError(
-                "Sitemap IlacFiyati обходится только в режиме «Только изменения»"
+                "Sitemap IlacFiyati обходится только в режимах «Весь сайт» и «Только изменения»"
             )
         self.next_start_page = start_page
         to_open, to_check = tracker.sitemap_work(
             self.fetch_sitemap_product_urls(sitemap_url), self.is_product_url,
-            self._canonical_product_url,
+            self._canonical_product_url, check_missing=self.change_tracker is not None,
         )
         work = [(url, False) for url in to_open] + [(url, True) for url in to_check]
         limit = max(1, max_pages) * self.SITEMAP_BATCH_SIZE

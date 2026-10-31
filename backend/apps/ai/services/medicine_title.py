@@ -398,13 +398,202 @@ FORM_PHRASES.update({
     "iv infuzyonluk cozelti hazirlamak icin toz": (
         "порошок для приготовления раствора для внутривенных инфузий", "powder for solution for intravenous infusion"
     ),
+    # TD-029 (31.10.2026): формы, на которых шаблон сдавался по всему каталогу.
+    "injection": ("для инъекций", "for injection"),
+    "vajinal yumusak kapsul": ("вагинальные мягкие капсулы", "soft vaginal capsules"),
+    "ovul": ("вагинальные суппозитории", "pessaries"),
+    "rektal suspansiyon": ("ректальная суспензия", "rectal suspension"),
+    "rektal cozelti": ("раствор для ректального введения", "rectal solution"),
+    "lavman": ("клизма", "enema"),
+    "uzatilmis salimli sert kapsul": ("капсулы пролонгированного высвобождения", "prolonged-release hard capsules"),
+    "degistirilmis salimli kapsul": ("капсулы с модифицированным высвобождением", "modified-release capsules"),
+    "enterik sert kapsul": ("кишечнорастворимые капсулы", "gastro-resistant capsules"),
+    "uzun etkili film tablet": (
+        "таблетки пролонгированного действия, покрытые плёночной оболочкой", "prolonged-release film-coated tablets"
+    ),
+    "uzun etkili tablet": ("таблетки пролонгированного действия", "prolonged-release tablets"),
+    "goz ve kulak damlasi": ("глазные и ушные капли", "eye and ear drops"),
+    "oral granul": ("гранулы для приёма внутрь", "oral granules"),
+    "suspansiyon hazirlamak icin granul": ("гранулы для приготовления суспензии", "granules for suspension"),
+    "oral suspansiyon hazirlamak icin granul": (
+        "гранулы для приготовления суспензии для приёма внутрь", "granules for oral suspension"
+    ),
+    "surup hazirlamak icin kuru toz": ("порошок для приготовления сиропа", "powder for syrup"),
+    "inhalasyon icin toz iceren blister": ("порошок для ингаляций в блистерах", "inhalation powder in blisters"),
+    "aerosol inhalasyonu suspansiyon": ("аэрозоль для ингаляций, суспензия", "pressurised inhalation suspension"),
+    "basincli inhalasyon suspansiyon": ("суспензия для ингаляций под давлением", "pressurised inhalation suspension"),
+    "inhalasyon icin olculu dozlu aerosol": ("дозированный аэрозоль для ингаляций", "metered-dose inhalation aerosol"),
+    "cozelti iceren inhalasyon aerosolu": ("аэрозоль для ингаляций, раствор", "pressurised inhalation solution"),
+    "inhalasyon tozu bolunmus dozlu": ("порошок для ингаляций дозированный", "inhalation powder, pre-dispensed"),
+    "nebulizasyon cozeltisi": ("раствор для ингаляций через небулайзер", "nebuliser solution"),
+    "nebulizasyon icin tek dozluk inhalasyon suspansiyonu": (
+        "суспензия для ингаляций через небулайзер в однодозовых контейнерах", "single-dose nebuliser suspension"
+    ),
+    "topikal jel": ("гель для наружного применения", "cutaneous gel"),
+    "deri kremi": ("крем для наружного применения", "cream for cutaneous use"),
+    "tirnak cilasi": ("лак для ногтей", "medicated nail lacquer"),
+    "tirnak cilasi seti": ("набор лака для ногтей", "medicated nail lacquer set"),
+    "agizda dagilabilir tablet": ("таблетки, диспергируемые в полости рта", "orodispersible tablets"),
+    "cozunebilir tablet": ("растворимые таблетки", "soluble tablets"),
+    "cignenebilir/cozunebilir tablet": ("жевательные растворимые таблетки", "chewable/soluble tablets"),
+    "film kapli modifiye salim tablet": (
+        "таблетки с модифицированным высвобождением, покрытые плёночной оболочкой",
+        "modified-release film-coated tablets",
+    ),
+    "uzatilmis salim tablet": ("таблетки пролонгированного высвобождения", "prolonged-release tablets"),
+    "inhalasyon icin kapsul": ("капсулы с порошком для ингаляций", "inhalation powder, hard capsules"),
+    "burun spreyi suspansiyonu": ("назальный спрей, суспензия", "nasal spray, suspension"),
+    "burun spreyi, suspansiyon": ("назальный спрей, суспензия", "nasal spray, suspension"),
+    "oral liyofilizat": ("лиофилизат для приёма внутрь", "oral lyophilisate"),
+    "oral suspansiyon icin granul": (
+        "гранулы для приготовления суспензии для приёма внутрь", "granules for oral suspension"
+    ),
+    "infuzyonluk ve oral cozelti": ("раствор для инфузий и приёма внутрь", "solution for infusion and oral use"),
+    "infuzyonluk ve oral cozelti hazirlamak icin toz": (
+        "порошок для приготовления раствора для инфузий и приёма внутрь", "powder for solution for infusion and oral use"
+    ),
+    "infuzyonluk ve oral cozelti hazirlamak icin liyofilize toz": (
+        "лиофилизат для приготовления раствора для инфузий и приёма внутрь", "powder for solution for infusion and oral use"
+    ),
+    "kullanima hazir dolu enjeksiyon kalemi icinde enjeksiyonluk cozelti": (
+        "раствор для инъекций в шприц-ручке", "solution for injection in pre-filled pen"
+    ),
+    "enjeksiyonluk uzatilmis salimli suspansiyon": (
+        "суспензия пролонгированного высвобождения для инъекций", "prolonged-release suspension for injection"
+    ),
+    "enjeksiyon icin uzun salimli suspansiyon": (
+        "суспензия пролонгированного высвобождения для инъекций", "prolonged-release suspension for injection"
+    ),
+    "uzatilmis salimli sc enjeksiyonluk cozelti": (
+        "раствор пролонгированного высвобождения для подкожных инъекций", "prolonged-release solution for subcutaneous injection"
+    ),
+    "elektrolit iv infuzyon icin cozelti": (
+        "раствор электролитов для внутривенных инфузий", "electrolyte solution for intravenous infusion"
+    ),
+    "intratekal infuzyonluk cozelti": ("раствор для интратекальных инфузий", "solution for intrathecal infusion"),
+    "intratrakeal suspansiyon": ("суспензия для эндотрахеального введения", "endotracheal suspension"),
+    "dental kartus": ("стоматологический картридж", "dental cartridge"),
+    "uc bolmeli": (
+        "раствор аминокислот, раствор глюкозы и липидная эмульсия для инфузий",
+        "amino acid and glucose solutions with lipid emulsion for infusion",
+    ),
+    "uc bolmeli elektrolitli": (
+        "раствор аминокислот с электролитами, раствор глюкозы и липидная эмульсия для инфузий",
+        "amino acid solution with electrolytes, glucose solution and lipid emulsion for infusion",
+    ),
+    "kullanima hazir dolu enjektor": ("в предварительно заполненном шприце", "pre-filled syringe"),
+    "kullanima hazir siringada enjeksiyonluk cozelti": (
+        "раствор для инъекций в предварительно заполненном шприце", "solution for injection in pre-filled syringe"
+    ),
+    "enjektor": ("в шприце", "in syringe"),
+    "oto enjektor": ("автоинъектор", "auto-injector"),
+    "basincli inhalasyon, suspansiyon": ("суспензия для ингаляций под давлением", "pressurised inhalation suspension"),
+    "inhalasyon icin": ("для ингаляций", "for inhalation"),
+    "iv infuzyon/sc enjeksiyon icin cozelti": (
+        "раствор для в/в инфузий и п/к инъекций", "solution for IV infusion/SC injection"
+    ),
+    "suspansiyon hazirlamak icin toz": ("порошок для приготовления суспензии", "powder for suspension"),
+    "suspansiyon icin kuru toz": ("порошок для приготовления суспензии", "powder for suspension"),
+    "uzatilmis salimli kapli tablet": (
+        "таблетки пролонгированного высвобождения, покрытые оболочкой", "prolonged-release coated tablets"
+    ),
+    "uzatilmis salimli granul": ("гранулы пролонгированного высвобождения", "prolonged-release granules"),
+    "yavas salimli kapsul": ("капсулы пролонгированного высвобождения", "prolonged-release capsules"),
+    "goz damlasi suspansiyonu": ("глазные капли, суспензия", "eye drops, suspension"),
+    "goz damlasi, suspansiyon": ("глазные капли, суспензия", "eye drops, suspension"),
+    "goz damlasi, cozelti": ("глазные капли, раствор", "eye drops, solution"),
+    "intravitreal enjeksiyonluk cozelti": ("раствор для интравитреального введения", "solution for intravitreal injection"),
+    "intravitreal enjeksiyon icin cozelti": ("раствор для интравитреального введения", "solution for intravitreal injection"),
+    "intrakameral enjeksiyonluk cozelti tozu": (
+        "порошок для приготовления раствора для внутрикамерного введения", "powder for solution for intracameral injection"
+    ),
+    "infuzyon konsantresi": ("концентрат для приготовления раствора для инфузий", "concentrate for solution for infusion"),
 })
+# Форма «для инъекций/инфузий» — турецкие варианты записи одной и той же формы.
+_FORM_PURPOSES = {
+    "iv infuzyonluk": ("для внутривенных инфузий", "for intravenous infusion"),
+    "iv infuzyon icin": ("для внутривенных инфузий", "for intravenous infusion"),
+    "iv infuzyon": ("для внутривенных инфузий", "for intravenous infusion"),
+    "enjeksiyonluk": ("для инъекций", "for injection"),
+    "enjeksiyon icin": ("для инъекций", "for injection"),
+    "enjeksiyon": ("для инъекций", "for injection"),
+    "enjektabl": ("для инъекций", "for injection"),
+    "infuzyonluk": ("для инфузий", "for infusion"),
+    "infuzyon icin": ("для инфузий", "for infusion"),
+    "infuzyon": ("для инфузий", "for infusion"),
+    "perfuzyon icin": ("для инфузий", "for infusion"),
+    "enjeksiyonluk/infuzyonluk": ("для инъекций и инфузий", "for injection/infusion"),
+    "infuzyonluk/enjeksiyonluk": ("для инъекций и инфузий", "for injection/infusion"),
+    "enjeksiyon/infuzyon icin": ("для инъекций и инфузий", "for injection/infusion"),
+    "enjeksiyon ve infuzyon icin": ("для инъекций и инфузий", "for injection/infusion"),
+    "enjeksiyonluk veya infuzyonluk": ("для инъекций и инфузий", "for injection/infusion"),
+}
+_FORM_PREPARE = ("icin", "hazirlamak icin", "hazirlamada kullanilacak")
+for _purpose, (_ru, _en) in _FORM_PURPOSES.items():
+    # «IV INFUZYON COZELTISI» без порошка разбирается как раньше: форма + путь введения.
+    _iv = _purpose.startswith("iv ")
+    for _word in ("cozelti", "cozeltisi", "solusyon", "solusyonu"):
+        if not _iv:
+            FORM_PHRASES.setdefault(f"{_purpose} {_word}", (f"раствор {_ru}", f"solution {_en}"))
+            FORM_PHRASES.setdefault(f"{_purpose} konsantre {_word}", (
+                f"концентрат для приготовления раствора {_ru}", f"concentrate for solution {_en}"
+            ))
+            FORM_PHRASES.setdefault(f"konsantre {_purpose} {_word}", (
+                f"концентрат для приготовления раствора {_ru}", f"concentrate for solution {_en}"
+            ))
+        FORM_PHRASES.setdefault(f"konsantre {_purpose} {_word} hazirlamak icin liyofilize toz", (
+            f"лиофилизат для приготовления концентрата для приготовления раствора {_ru}",
+            f"powder for concentrate for solution {_en}",
+        ))
+        for _prepare in _FORM_PREPARE:
+            FORM_PHRASES.setdefault(f"{_purpose} {_word} {_prepare} konsantre", (
+                f"концентрат для приготовления раствора {_ru}", f"concentrate for solution {_en}"
+            ))
+            for _powder in ("toz", "kuru toz"):
+                FORM_PHRASES.setdefault(f"{_purpose} {_word} {_prepare} {_powder}", (
+                    f"порошок для приготовления раствора {_ru}", f"powder for solution {_en}"
+                ))
+            FORM_PHRASES.setdefault(f"{_purpose} {_word} {_prepare} liyofilize toz", (
+                f"лиофилизат для приготовления раствора {_ru}", f"powder for solution {_en}"
+            ))
+            FORM_PHRASES.setdefault(f"{_purpose} {_word} {_prepare} konsantre icin toz", (
+                f"порошок для приготовления концентрата для приготовления раствора {_ru}",
+                f"powder for concentrate for solution {_en}",
+            ))
+        FORM_PHRASES.setdefault(f"{_purpose} {_word} konsantresi", (
+            f"концентрат для приготовления раствора {_ru}", f"concentrate for solution {_en}"
+        ))
+        FORM_PHRASES.setdefault(f"{_purpose} {_word} konsantresi icin toz", (
+            f"порошок для приготовления концентрата для приготовления раствора {_ru}",
+            f"powder for concentrate for solution {_en}",
+        ))
+    for _word in ("suspansiyon", "suspansiyonu"):
+        if not _iv:
+            FORM_PHRASES.setdefault(f"{_purpose} {_word}", (f"суспензия {_ru}", f"suspension {_en}"))
+        for _prepare in _FORM_PREPARE:
+            FORM_PHRASES.setdefault(f"{_purpose} {_word} {_prepare} toz", (
+                f"порошок для приготовления суспензии {_ru}", f"powder for suspension {_en}"
+            ))
+            FORM_PHRASES.setdefault(f"{_purpose} {_word} {_prepare} liyofilize toz", (
+                f"лиофилизат для приготовления суспензии {_ru}", f"powder for suspension {_en}"
+            ))
+    FORM_PHRASES.setdefault(f"{_purpose} liyofilize toz", (
+        f"лиофилизат для приготовления раствора {_ru}", f"powder for solution {_en}"
+    ))
+    FORM_PHRASES.setdefault(f"{_purpose} toz", (
+        f"порошок для приготовления раствора {_ru}", f"powder for solution {_en}"
+    ))
+    FORM_PHRASES.setdefault(f"{_purpose} konsantre cozelti icin toz", (
+        f"порошок для приготовления концентрата для приготовления раствора {_ru}",
+        f"powder for concentrate for solution {_en}",
+    ))
 # Флакон/ампула как форма, если та же упаковка указана и счётом («ICEREN FLAKON (1 FLAKON)»),
 # не повторяется: остаётся «1 флакон».
 _CONTAINER_FORMS = {
     "ampul": "ampoule", "flakon": "vial", "sise": "vial", "kartus": "cartridge",
     "kullanima hazir kalem": "pen", "kullanima hazir enjektor": "syringe",
     "kullanima hazir siringa": "syringe", "dolu enjektor": "syringe",
+    "kullanima hazir dolu enjektor": "syringe", "enjektor": "syringe",
 }
 # Сокращения и английские слова источника → полная турецкая запись (после fold_tr).
 _ABBREVIATIONS = (
@@ -458,6 +647,68 @@ _TITLE_ABBREVIATIONS = (
     (r"infuzyoluk", "infuzyonluk"),
     (r"irrrigasyon", "irrigasyon"),
     (r"salinimli", "salimli"),
+    # TD-029 (31.10.2026): опечатки источника и английские/немецкие названия импортных препаратов.
+    (r"inj\.", "enjeksiyon"),
+    (r"susp\.?", "suspansiyon"),
+    (r"oft\.", "oftalmik"),
+    (r"kon\.", "konsantre"),
+    (r"enjeksiyonlukcozelti", "enjeksiyonluk cozelti"),
+    (r"enjekiyonluk", "enjeksiyonluk"),
+    (r"ivinfuzyonluk", "iv infuzyonluk"),
+    (r"cozeltiiceren", "cozelti iceren"),
+    (r"cozeli", "cozelti"),
+    (r"sertkapsul", "sert kapsul"),
+    (r"kapll", "kapli"),
+    (r"cozleti", "cozelti"),
+    (r"liy\.", "liyofilize"),
+    (r"perf\.", "perfuzyon"),
+    (r"kullanilacakkonsantre", "kullanilacak konsantre"),
+    (r"enjkesiyonluk", "enjeksiyonluk"),
+    (r"cc", "ml"),
+    (r"suppozituar", "supozituar"),
+    (r"salimlisuspansiyon", "salimli suspansiyon"),
+    (r"ft", "film tablet"),
+    (r"st\.", "adet"),
+    (r"aersolu", "aerosolu"),
+    (r"supozituvar", "supozituar"),
+    (r"pomat", "pomad"),
+    (r"glikoz", "glukoz"),
+    (r"capsul", "kapsul"),
+    (r"vanilla", "vanilya"),
+    (r"film ?tabletten", "film tablet"),
+    (r"tabletten", "tablet"),
+    (r"hartkapseln", "kapsul"),
+    (r"cream", "krem"),
+    (r"ointment", "merhem"),
+    (r"suspension", "suspansiyon"),
+    (r"syrup", "surup"),
+    (r"eye drops", "goz damlasi"),
+    (r"nasal spray", "nazal sprey"),
+    (r"ampoules?|ampules?|ampullen", "ampul"),
+    (r"sachettes|sachets?|sacht|packets?", "sase"),
+    (r"bottle", "sise"),
+)
+# Английские названия форм целиком — до разворота отдельных слов.
+_ENGLISH_FORMS = (
+    (r"powder and (?:solvent|diluent) for solution for injection", "enjeksiyonluk cozelti icin toz ve cozucu"),
+    (r"powder and (?:solvent|diluent) for suspension for injection",
+     "enjeksiyonluk suspansiyon hazirlamak icin toz ve cozucu"),
+    (r"powder for concentrate for solution for infusion", "konsantre infuzyonluk cozelti icin toz"),
+    (r"powder for solution for (?:infusion/injection|injection/infusion)",
+     "enjeksiyonluk/infuzyonluk cozelti hazirlamak icin toz"),
+    (r"powder for solution for infusion", "infuzyonluk cozelti icin toz"),
+    (r"powder for solution for injection", "enjeksiyonluk cozelti icin toz"),
+    (r"powder for injection", "enjeksiyon icin toz"),
+    (r"powder for oral solution", "oral cozelti hazirlamak icin toz"),
+    (r"powder for oral suspension", "oral suspansiyon icin toz"),
+    (r"powder for suspension", "suspansiyon icin toz"),
+    (r"powder for solution", "cozelti tozu"),
+    (r"solution for injection in pre-filled syringe", "enjeksiyonluk cozelti kullanima hazir enjektor"),
+    (r"solution for (?:injection|enjection)", "enjeksiyonluk cozelti"),
+    (r"solution for infusion", "infuzyonluk cozelti"),
+    (r"injection/infusion", "enjeksiyonluk/infuzyonluk cozelti"),
+    (r"for injection", "injection"),
+    (r"prolonged release", "uzatilmis salimli"),
 )
 
 
@@ -469,13 +720,15 @@ def _abbreviation_res(pairs):
     )
 
 
+_ENGLISH_FORM_RES = tuple((re.compile(rf"(?<![a-z]){en}(?![a-z])"), tr) for en, tr in _ENGLISH_FORMS)
 _ABBREVIATION_RES = _abbreviation_res(_ABBREVIATIONS)
 _TITLE_ABBREVIATION_RES = _abbreviation_res(_TITLE_ABBREVIATIONS)
 # Форма, разорванная фасовкой: «UZATILMIS SALIMLI 30 TABLET» → «30 UZATILMIS SALIMLI TABLET».
 _SPLIT_FORM_RE = re.compile(
     r"(uzatilmis salimli|kontrollu salimli|agizda dagilan|enterik kapli|gastro direncli|film kapli|"
-    r"efervesan|cigneme|sert|yumusak|mikropellet|suda dagilabilen|yavas salimli) (\d+) "
-    r"((?:film (?:kapli )?|pellet )?(?:tablet|kapsul))\b"
+    r"efervesan|cigneme|sert|yumusak|mikropellet|suda dagilabilen|yavas salimli|degistirilmis salimli|"
+    r"uzun etkili|yumusak jelatin|cozunebilir) (\d+) "
+    r"((?:film (?:kapli )?|pellet |sert )?(?:tablet|kapsul))\b"
 )
 
 
@@ -490,8 +743,22 @@ def _expand_source(rest: str, legacy: bool = False) -> str:
         rest = re.sub(
             r"^(enterik kapli|film kapli) (\d+(?:[.,]\d+)?\s*mg) (\d+) (tablet)\b", r"\2 \3 \1 \4", rest
         )
-        # «30TABLET» — фасовка вплотную к форме.
-        rest = re.sub(r"(\d)(tablet|kapsul)\b", r"\1 \2", rest)
+        for pattern, turkish in _ENGLISH_FORM_RES:
+            rest = pattern.sub(turkish, rest)
+        # «ENJ. SOL.ICEREN» — сокращение вплотную к слову; «.ENJ.SOL.» — точка перед сокращением.
+        rest = re.sub(r"(?<![a-z])sol\.(?=[a-z])", " solusyon ", rest)
+        rest = re.sub(r"(?<![a-z\d])\.(?=enj)", " ", rest)
+        # «KUL.HAZIR ENJEKTOR», «1 KULL. HAZ. ENJEKTOR», «ICEREN HAZIR KALEM» — до разворота «HAZ.».
+        rest = re.sub(r"\bkull?\.\s*haz(?:ir\b|\.)\s*(?:enj\.$)?", lambda m: (
+            " kullanima hazir enjektor " if m.group(0).endswith("enj.") else " kullanima hazir "
+        ), rest)
+        rest = re.sub(r"(?<!kullanima )\bhazir kalem\b", "kullanima hazir kalem", rest)
+        # «4.500.000 IU» — разделители тысяч у единиц действия.
+        rest = re.sub(r"(\d{1,3})\.(\d{3})\.(\d{3})(?=\s*iu\b)", r"\1\2\3", rest)
+        # «30TABLET», «(1FLAKON)» — фасовка вплотную к форме.
+        rest = re.sub(r"(\d)(tablet|kapsul|flakon|ampul|adet)\b", r"\1 \2", rest)
+        # «1,25 MMOL / 1 KALSIYUM» — единица «л», записанная цифрой.
+        rest = re.sub(r"mmol\s*/\s*1\b", "mmol/l", rest)
     for pattern, full in _ABBREVIATION_RES if legacy else _ABBREVIATION_RES + _TITLE_ABBREVIATION_RES:
         rest = pattern.sub(full, rest)
     if not legacy:
@@ -511,11 +778,38 @@ def _expand_source(rest: str, legacy: bool = False) -> str:
         )
         # «4000 ANTI-XA IU/0,4 ML» (эноксапарин) — единица анти-Xa; «(100 ML X 12 ADET)» — 12 флаконов по 100 мл.
         rest = re.sub(r"\banti[- ]?xa iu\b", "axa", rest)
-        rest = re.sub(r"(\d+(?:[.,]\d+)?)\s*ml\s*x\s*(\d+)\s+adet\b", r"\1 ml \2 adet", rest)
+        rest = re.sub(r"(\d+(?:[.,]\d+)?)\s*ml\s*x\s*(\d+)\s+(adet|sise)\b", r"\1 ml \2 \3", rest)
         # «KULLANIMA HAZIR 3 KALEM» — число шприц-ручек внутри формы; «60 G/TUP» — масса тубы;
         # «COZELTI ICEREN KASIK (28 KASIK)» — однодозовые ложки; «IV INF. COZELTI ICIN FLAKON» — флакон с раствором.
         rest = re.sub(r"kullanima hazir (\d+) kalem\b", r"kullanima hazir kalem \1 kalem", rest)
-        rest = re.sub(r"(\d+(?:[.,]\d+)?\s*g)\s*/\s*tup\b", r"\1", rest)
+        rest = re.sub(
+            r"(?<!cozucu iceren )kullanima hazir (\d+) (enjektor|siringa)\b", r"kullanima hazir \2 \1 \2", rest
+        )
+        # Форма, разбитая словами-связками и запятой с пробелом (TD-029).
+        rest = re.sub(r"\s+,", ",", rest)
+        rest = re.sub(r"\binfuzyon icin enjeksiyonluk cozelti\b", "infuzyon icin cozelti", rest)
+        rest = re.sub(r"\b((?:sc|iv|im|rektal)(?:/(?:sc|iv|im|rektal))*) (?:uygulama|kullanim) icin\b", r"\1", rest)
+        rest = re.sub(r"\b(cozelti) icin (kullanima hazir)\b", r"\1 iceren \2", rest)
+        rest = re.sub(r"\binhalasyon icin (\d+) kapsul\b", r"inhalasyon icin kapsul \1 adet", rest)
+        rest = re.sub(
+            r"(?:(?:iv )?(?:infuzyon icin|infuzyonluk) )?(elektrolitli )?amino ?asit cozeltisi, glukoz cozeltisi,? "
+            r"(?:ve )?lipid emulsiyonu\b",
+            lambda m: "uc bolmeli elektrolitli" if m.group(1) else "uc bolmeli", rest,
+        )
+        rest = re.sub(r"\bcam sise\b|\bpe sise\b", "sise", rest)
+        rest = re.sub(r"\bblister (\d+ doz)\b", r"\1", rest)
+        rest = re.sub(r"\bmcg doz\b", "mcg/doz", rest)
+        rest = re.sub(r"\bvajinal (\d+) ovul\b", r"\1 vajinal ovul", rest)
+        rest = re.sub(r"\bcozunur (\d+) cigneme tableti\b", r"\1 cignenebilir/cozunebilir tablet", rest)
+        rest = re.sub(r"\b(\d+) (xr|sr|mr|cr) (tablet|kapsul)\b", r"\2 \1 \3", rest)
+        rest = re.sub(r"\bpellet iceren (\d+) kapsul\b", r"\1 kapsul", rest)
+        rest = re.sub(r"\btek kullanimlik toz\b", "toz", rest)
+        rest = re.sub(r"\biceren toz ve cozucu\b", "ve cozucu", rest)
+        rest = re.sub(r"\bdivitab (?=film)", "", rest)
+        rest = re.sub(r"\b(\d+) (uzatilmis salimli \1)\b", r"\2", rest)
+        rest = re.sub(r"\b(im|iv)((?:/(?:im|iv))*) rektal\b", r"\1\2/rektal", rest)
+        rest = re.sub(r"(\d+(?:[.,]\d+)?\s*g)\s*/?\s*tup\b", r"\1", rest)
+        rest = re.sub(r"/\s*kutu\b", "", rest)
         rest = re.sub(r"\biceren kasik\b", "", rest)
         rest = re.sub(r"\binfuzyon cozelti icin flakon\b", "infuzyonluk cozelti", rest)
         # «YUMUSAK KAPSUL (100)» — число без единицы после формы — фасовка.
@@ -530,7 +824,8 @@ def _expand_source(rest: str, legacy: bool = False) -> str:
 
 # Слова форм, которые бывают и в бренде: «FORANE LIKIT», «KREON FUR KINDER PELLET»,
 # «REFRESH TEK DOZLUK» — на них бренд не обрывается.
-_BRAND_FORM_WORDS = {"likit", "pellet", "tek", "dozluk", "doz"}  # и «OTRIVINE DOZ AYARLI»
+# «INJECTION», «LAVMAN» после бренда до дозировки остаются в названии, как раньше («MICROLAX LAVMAN 10 GR»).
+_BRAND_FORM_WORDS = {"likit", "pellet", "tek", "dozluk", "doz", "injection", "lavman"}  # и «OTRIVINE DOZ AYARLI»
 FORM_WORDS = {word for phrase in FORM_PHRASES for word in phrase.split()} - _BRAND_FORM_WORDS
 _LEGACY_FORM_WORDS = {word for phrase in _LEGACY_FORM_PHRASES for word in phrase.split()} - _BRAND_FORM_WORDS
 _FORM_RE = re.compile(
@@ -541,13 +836,13 @@ _FORM_RE = re.compile(
 _PACK_WORDS = {
     "adet": "piece", "ampul": "ampoule", "flakon": "vial", "sase": "sachet",
     "kalem": "pen", "enjektor": "syringe", "doz": "dose", "puskurtme": "dose",
-    "tup": "tube", "sise": "vial", "flaster": "patch", "kutu": "box",
+    "tup": "tube", "sise": "vial", "flaster": "patch", "kutu": "box", "siringa": "syringe",
     "blister": "blister", "kartus": "cartridge", "poset": "sachet", "kasik": "dose",
 }
 # Обозначения линейки после дозировки («200 MG CR») — сохраняются как в источнике.
 _SERIES_WORDS = {
     "sr", "xr", "mr", "cr", "xl", "la", "er", "ec", "odt", "retard", "forte", "fort",
-    "plus", "mite", "depot", "duo", "junior", "max",
+    "plus", "mite", "depot", "duo", "junior", "max", "capsair", "discair", "diskus",
 }
 # Уточнения после формы → RU/EN.
 MODIFIERS = {
@@ -566,6 +861,7 @@ MODIFIERS = {
     "dekstrozlu": ("с декстрозой", "with dextrose"),
     "meyveli": ("с фруктовым вкусом", "fruit flavour"),
     "potasyumlu": ("с калием", "with potassium"),
+    "mentollu": ("с ментолом", "with menthol"),
 }
 # Растворитель с упаковкой рядом: «+ 1 COZUCU FLAKON», «VE COZUCU ICEREN AMPUL». Число после
 # растворителя («TOZ VE COZUCU (1 FLAKON)») — фасовка, а не его упаковка.
@@ -583,7 +879,9 @@ _PHRASE_MODIFIERS = (
     (re.compile(r"mini kapakli\b"), ("с мини-крышкой", "with mini cap")),
     (re.compile(r"(?:pp )?sise-setli\b"), ("флакон с системой", "bottle with set")),
     (re.compile(r"tek dozluk\b"), ("в однодозовых контейнерах", "in single-dose containers")),
-    (re.compile(r"(?:(?:pp|pvc) )?torba\b"), ("пакет", "bag")),
+    (re.compile(r"(?:1 |(?:pp|pvc|biofin) )?torba\b"), ("пакет", "bag")),
+    (re.compile(r"\d+ cozucu\b"), ("с растворителем", "with solvent")),
+    (re.compile(r"tedaviye baslama paketi\b"), ("стартовая упаковка", "treatment initiation pack")),
     (re.compile(r"pvc\b"), ("пакет", "bag")),
     (re.compile(r"bal ve limon aromali\b"), ("со вкусом мёда и лимона", "honey and lemon flavour")),
     *(
@@ -592,7 +890,9 @@ _PHRASE_MODIFIERS = (
             ("muz", ("банана", "banana")), ("cilek", ("клубники", "strawberry")), ("vanilya", ("ванили", "vanilla")),
             ("cikolata", ("шоколада", "chocolate")), ("kahve", ("кофе", "coffee")),
             ("portakal", ("апельсина", "orange")), ("ahududu", ("малины", "raspberry")),
-            ("kayisi", ("абрикоса", "apricot")), ("kakaolu", ("какао", "cocoa")),
+            ("kayisi", ("абрикоса", "apricot")), ("kakaolu", ("какао", "cocoa")), ("limon", ("лимона", "lemon")),
+            ("kirmizi meyveler(?:i)?", ("красных фруктов", "red fruits")),
+            ("orman meyveler(?:i)?", ("лесных ягод", "forest fruits")),
         )
     ),
     (re.compile(r"aromasiz\b"), ("без вкуса", "unflavoured")),
@@ -602,6 +902,7 @@ _PHRASE_MODIFIERS = (
 # «PEDIASURE KAKAOLU» — «с какао» (пилот круга 3 27.10.2026: на сайте 4 названия с «KAKAOLU»).
 _FLAVOUR_WORDS = frozenset({
     "muz", "cilek", "vanilya", "cikolata", "kahve", "portakal", "ahududu", "kayisi", "kakaolu", "aromasiz",
+    "limon", "orman", "kirmizi",
 })
 # Вещество в/в раствора («%5 DEKSTROZ SUDAKI COZELTISI») → RU в родительном падеже, EN.
 _SUBSTANCES = {
@@ -612,6 +913,10 @@ _SUBSTANCES = {
     "dekstroz": ("декстрозы", "dextrose"),
     "glukoz": ("глюкозы", "glucose"),
     "mannitol": ("маннитола", "mannitol"),
+    # Растворы для диализа с ммоль/л (TD-029): «1,75 MMOL/L KALSIYUM», «1.2 MMOL/L FOSFATLI».
+    "kalsiyum": ("кальция", "calcium"),
+    "fosfatli": ("фосфата", "phosphate"),
+    "amino asit": ("аминокислот", "amino acids"),
 }
 _SUBSTANCE_RE = re.compile(r"(?:" + "|".join(sorted(_SUBSTANCES, key=len, reverse=True)) + r")\b")
 # Перед формой-раствором: «IZOTONIK … SOL.» → «изотонический раствор».
@@ -631,9 +936,11 @@ _UNITS = {
     "saat": ("ч", "h"), "h": ("ч", "h"),
     "tu": ("ТЕ", "TU"), "u": ("ЕД", "U"), "cm2": ("см²", "cm²"),
     "axa": ("анти-Xa МЕ", "anti-Xa IU"),  # эноксапарин: «4000 ANTI-XA IU/0,4 ML»
+    "kcal": ("ккал", "kcal"),  # лечебное питание: «VITAL 1,5 KCAL»
+    "mgi": ("мг йода", "mg iodine"),  # контраст: «350 MGI/ML»
 }
 _NUM = r"\d+(?:[.,]\d+)?"
-_UNIT = r"(?:miu|mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq|tu|axa|u)"
+_UNIT = r"(?:miu|mgi|mg|mcg|mkg|µg|gr|g|ml|iu|ui|mmol|meq|tu|axa|kcal|u)"
 _PER = r"(?:mg|mcg|g|ml|doz|puskurtme|sprey|saat|h|l|cm2)"
 _DOSE_RE = re.compile(
     rf"(?:%\s*({_NUM})|({_NUM})\s*%|({_NUM})\s*({_UNIT})(?:\s*/\s*({_NUM})?\s*({_PER}))?)(?![a-z])"
@@ -643,9 +950,13 @@ _MULTI_RE = re.compile(rf"(\d+)\s*x\s*({_NUM})\s*(ml|g|gr)\b")
 _COMBO_DOSE_RE = re.compile(rf"({_NUM}(?:\s*/\s*{_NUM})+)\s*({_UNIT})(?![a-z])")
 # Разделитель перед следующей дозировкой: «1 MG/ML + 50 MG/ML», «200 MG VE 50 MG», «250MG/1MG».
 _JOINER_RE = re.compile(r"\s*(\+|/|ve(?=\s+[\d%]))\s*")
-_ROUTE_ABBR_RE = re.compile(r"(im|iv|sc)(?:\s*/\s*(im|iv|sc))*\b")
+_ROUTE_ABBR_RE = re.compile(r"(im|iv|sc|ia)(?:\s*[/,]\s*(im|iv|sc|ia|rektal|intratekal))*\b")
+_LEGACY_ROUTE_ABBR_RE = re.compile(r"(im|iv|sc)(?:\s*/\s*(im|iv|sc))*\b")
 _MASS_FORMS = {"cream", "ointment", "gel", "lotion", "powder", "granules", "shampoo"}
-_ROUTE_ABBR = {"im": ("в/м", "IM"), "iv": ("в/в", "IV"), "sc": ("п/к", "SC")}
+_ROUTE_ABBR = {
+    "im": ("в/м", "IM"), "iv": ("в/в", "IV"), "sc": ("п/к", "SC"), "ia": ("в/а", "IA"),
+    "rektal": ("ректально", "rectal"), "intratekal": ("интратекально", "intrathecal"),
+}
 
 
 def _num(value: str, locale: str) -> str:
@@ -657,6 +968,8 @@ def _format_dose(match: re.Match, locale: str) -> tuple[str, str]:
     index = 0 if locale == "ru" else 1
     percent = match.group(1) or match.group(2)
     if percent:
+        if re.fullmatch(r"0\d", percent):
+            percent = f"0,{percent[1]}"
         return f"{_num(percent, locale)}%", "strength"
     number, unit, per_number, per_unit = match.group(3, 4, 5, 6)
     # «5.000 I.U.» — турецкий разделитель тысяч у единиц действия, не дробь.
@@ -714,7 +1027,7 @@ def _brand_tokens(tokens: list[str], legacy: bool = False) -> list[str]:
             or folded in words
             # «KAYEXALAT POWDER», «RINGER BIOSEL ENJEKTABL SOL.»; «OLFREX EASY TAB» — бренд.
             or (brand and folded != "tab" and is_form_word(folded, legacy))
-            or _ROUTE_ABBR_RE.fullmatch(folded)
+            or (_LEGACY_ROUTE_ABBR_RE if legacy else _ROUTE_ABBR_RE).fullmatch(folded)
         ):
             break
         brand.append(token)
@@ -740,6 +1053,9 @@ def is_title_descriptor_word(token: Any) -> bool:
     return folded in _SUBSTANCE_WORDS or _known_title_word(folded)
 
 
+_NUTRITION_PACK_RE = re.compile(rf"{_NUM}\s*(?:g|gr|ml)\b")
+
+
 def _title_brand_tokens(tokens: list[str]) -> list[str]:
     """Бренд названия: ещё и число без единицы сразу после бренда — часть названия.
 
@@ -753,20 +1069,34 @@ def _title_brand_tokens(tokens: list[str]) -> list[str]:
         and fold_tr(extra[1]) in _SERIES_WORDS and re.match(r"[\d%]", extra[2])
     ):
         return brand + extra[:2]
-    if brand and len(extra) >= 2 and re.fullmatch(r"\d+(?:/\d+)?", extra[0]):
+    if brand and len(extra) >= 2 and re.fullmatch(r"\d+(?:[.,/]\d+)?", extra[0]):
         if re.match(r"%\d", fold_tr(extra[1])):  # «PHYSIONEAL 40 %3.86»; «FUCIDIN 2 % KREM» — дозировка
+            return brand + extra[:1]
+        # Лечебное питание: «RESOURCE 2.0 VANILYA AROMALI 200 ML», «MILUPA GA 1 (500 G)» — число линейки.
+        if fold_tr(extra[1]) in _FLAVOUR_WORDS or _NUTRITION_PACK_RE.fullmatch(fold_tr(" ".join(extra[1:]))):
+            return brand + extra[:1]
+        # «POLIFLEKS IZOLEN-S PH 7.4 ELEKTROLIT…» — кислотность раствора; «IZOMIX 1/3 ENJEKTABL SOL» — название.
+        if fold_tr(brand[-1]) == "ph" or (
+            re.fullmatch(r"1/\d", extra[0]) and _FORM_RE.match(_expand_source(fold_tr(" ".join(extra[1:]))))
+        ):
             return brand + extra[:1]
         count = 1
         while (
             count < min(len(extra), 4)
             and re.fullmatch(r"[a-z]{3,}", fold_tr(extra[count]))
             and not _known_title_word(fold_tr(extra[count]))
+            and fold_tr(extra[count]) not in _FLAVOUR_WORDS
         ):
             count += 1
-        # Слова после числа — бренд, только если сразу за ними форма или путь введения:
-        # «… 75 MIKROGRAM 28 FILM TABLET», «… 15 KIRMIZI (30X130 ML)» — не бренд.
+        # Слова после числа — бренд, только если сразу за ними форма, путь введения, вкус или масса
+        # лечебного питания: «… 75 MIKROGRAM 28 FILM TABLET», «… 15 KIRMIZI (30X130 ML)» — не бренд.
         following = fold_tr(" ".join(extra[count:]))
-        if count > 1 and (_FORM_RE.match(_expand_source(following)) or _ROUTE_ABBR_RE.match(following)):
+        if count > 1 and (
+            _FORM_RE.match(_expand_source(following))
+            or _ROUTE_ABBR_RE.match(following)
+            or following.split(" ", 1)[0] in _FLAVOUR_WORDS
+            or _NUTRITION_PACK_RE.match(following)
+        ):
             return brand + extra[:count]
     return brand
 
@@ -803,7 +1133,7 @@ def _title_and_brand(name: str) -> tuple[Optional[dict[str, str]], tuple[str, ..
     hyphenated = re.search(r"-(\d+-(?:IU|MG|MCG)-\S*)", name, re.IGNORECASE)
     if hyphenated:
         name = name[:hyphenated.start()] + " " + hyphenated.group(1).replace("-", " ") + name[hyphenated.end():]
-    tokens = re.sub(r"[()]", " ", name).strip().split()
+    tokens = [token for token in re.sub(r"[()]", " ", name).strip().split() if token != ","]
     for brand in (_title_brand_tokens(tokens), _brand_tokens(tokens, legacy=True)):
         title = _build_title(tokens, brand)
         if title:
@@ -812,7 +1142,10 @@ def _title_and_brand(name: str) -> tuple[Optional[dict[str, str]], tuple[str, ..
 
 
 def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]]:
-    if not brand or len(brand) == len(tokens):
+    # «FLEBOGAMMA% 10 DIF», «VENIDARA% 5 KREM»: знак оторван от числа — название даст модель.
+    if not brand or len(brand) == len(tokens) or any(
+        token.endswith("%") and following[:1].isdigit() for token, following in zip(brand, tokens[1:])
+    ):
         return None
     rest = _expand_source(fold_tr(" ".join(tokens[len(brand):])))
 
@@ -880,8 +1213,10 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
             strength_joiners.append(joiner)
             rest = rest[combo.end():]
         elif dose:
-            # «%09 SODYUM KLORUR» — в источнике потеряна запятая: 9% или 0,9% — не угадываем.
-            if re.fullmatch(r"0\d+", (dose.group(1) or dose.group(2) or "")):
+            # «%09 SODYUM KLORUR», «TEMETEX %01» — в источнике потеряна запятая. Ведущий ноль бывает
+            # только у дроби: 0,9%; «%005» (0,05% или 0,5%) — не угадываем.
+            percent = dose.group(1) or dose.group(2) or ""
+            if re.fullmatch(r"0\d{2,}", percent):
                 return None
             # «500 MG + 30 MG + 2 MG / 20 G» — дозировка на пакетик 20 г.
             per_pack = joiner == "/" and bool(strengths["ru"]) and _format_dose(dose, "ru")[1] == "grams"
@@ -917,7 +1252,7 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
             rest = rest[counted.end() + counted_form.end():]
         elif _ROUTE_ABBR_RE.match(rest) and route is None:
             route_match = _ROUTE_ABBR_RE.match(rest)
-            codes = re.findall(r"im|iv|sc", route_match.group(0))
+            codes = re.findall(r"im|iv|sc|ia|rektal|intratekal", route_match.group(0))
             route = (
                 ", ".join(_ROUTE_ABBR[c][0] for c in codes),
                 "/".join(_ROUTE_ABBR[c][1] for c in codes),
@@ -968,7 +1303,7 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
     by_substance = len(substances) > 1 or (substances and len(strengths["ru"]) > 1)
     if by_substance and len(substances) != len(strengths["ru"]):
         return None
-    if not forms and not (strengths["ru"] or volumes["ru"] or grams["ru"]):
+    if not forms and not (strengths["ru"] or volumes["ru"] or grams["ru"] or modifiers or pack_units):
         return None
     # «I.M./ORAL COZELTI» — путь введения и «для приёма внутрь» вместе не записать.
     if route and any(key.startswith("oral") for key in form_keys):
@@ -1000,7 +1335,7 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
         if by_substance:
             pairs = list(zip(substances, values))
             strength = []
-        head = " ".join(brand + strength + series)
+        head = " ".join(brand + strength + list(dict.fromkeys(series)))
         parts = [head]
         if forms:
             first = forms[0][index]

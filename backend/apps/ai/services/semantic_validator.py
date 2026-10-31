@@ -381,7 +381,7 @@ def _medicine_title_problem(title: Any, source_name: Any) -> str:
 _MEDICINE_FLAVOURS = {
     "muz": "банан", "cilek": "клубни", "vanilya": "ванил", "cikolata": "шоколад", "kahve": "коф",
     "portakal": "апельсин", "ahududu": "малин", "kayisi": "абрикос", "limon": "лимон", "nane": "мят",
-    "kakaolu": "какао",
+    "kakaolu": "какао", "orman meyveleri": "лесн", "kirmizi meyveler": "красных фрукт",
 }
 
 
@@ -676,7 +676,8 @@ def _medicine_identity_lost(source_name: Any, title: Any) -> set[str]:
     есть в названии латиницей или кириллицей («NORADRENALIN» — «Норадреналин», «DEKSTRAN» —
     «Декстран»). «%2,5 MG» источника — «2,5%» или «2,5 мг»: знак или единица лишние.
     """
-    source_tokens = _medicine_identity_tokens(source_name)
+    # «TEMETEX %01», «%09 SODYUM KLORUR» — запятая потеряна в источнике, шаблон пишет 0,1% и 0,9%.
+    source_tokens = _medicine_identity_tokens(re.sub(r"%\s*0(\d)(?![\d.,])", r"%0,\1", str(source_name or "")))
     brand = {
         token[6:]
         for token in _medicine_identity_tokens(title_brand(source_name))
