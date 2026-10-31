@@ -131,3 +131,22 @@ class YMLFeedSnapshot(models.Model):
 
     def __str__(self) -> str:
         return f"{self.category_slug or 'catalog'} #{self.part}"
+
+
+class YMLFeedPicture(models.Model):
+    """
+    Проверенное фото фида. Файл есть только у маленьких: в фид идёт он вместо исходного.
+
+    Заполняет задача catalog.prepare_feed_pictures (services/yml_feed_pictures.py).
+    """
+
+    source_key = models.CharField(_("Хэш исходной ссылки"), max_length=64, unique=True)
+    file = models.FileField(_("Копия"), upload_to="feeds/pictures/", max_length=300, blank=True)
+    checked_at = models.DateTimeField(_("Проверено"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Фото YML-фида")
+        verbose_name_plural = _("Фото YML-фидов")
+
+    def __str__(self) -> str:
+        return self.source_key

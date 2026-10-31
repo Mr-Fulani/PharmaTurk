@@ -6,10 +6,12 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+import requests
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from PIL import Image as PILImage
 from rest_framework.test import APIClient
 
 from apps.catalog.currency_models import GlobalCurrencySettings
@@ -25,8 +27,8 @@ from apps.catalog.models import (
     SportsProduct,
     SportsVariant,
 )
-from apps.catalog.models_vk import YMLFeedSnapshot
-from apps.catalog.services import yml_feed
+from apps.catalog.models_vk import YMLFeedPicture, YMLFeedSnapshot
+from apps.catalog.services import yml_feed, yml_feed_pictures
 
 FEED_URL = "/api/catalog/export/yml/catalog.yml"
 
@@ -297,9 +299,9 @@ def test_offer_name_skips_color_already_in_name_and_fits_limit():
     long_name = yml_feed._offer_name("К" * 160, [("Цвет", "Серый"), ("Размер", "M")])
     assert len(long_name) == yml_feed.MAX_NAME_CHARS
     assert long_name.endswith(", серый, M")
-    words = yml_feed._offer_name("Коллаген, витамин C " * 10, [])
+    words = yml_feed._offer_name("Коллаген, " * 20, [])
     assert len(words) <= yml_feed.MAX_NAME_CHARS
-    assert words.endswith("витамин")
+    assert words.endswith("Коллаген")
 
 
 @pytest.mark.django_db
@@ -719,3 +721,75 @@ def test_feed_reset_migration_does_not_touch_storage(monkeypatch):
     migration.reset_feed_snapshots(django_apps, None)
 
     assert not YMLFeedSnapshot.objects.exists()
+
+
+def _png(width, height):
+    output = io.BytesIO()
+    PILImage.new("RGB", (width, height), "red").save(output, "PNG")
+    return output.getvalue()
+
+
+def _serve_pictures(monkeypatch, pictures):
+    calls = []
+
+    def fake_get(url, headers, timeout):
+        calls.append(url)
+        if isinstance(pictures[url], Exception):
+            raise pictures[url]
+        return SimpleNamespace(content=pictures[url], raise_for_status=lambda: None)
+
+    monkeypatch.setattr(yml_feed_pictures.requests, "get", fake_get)
+    return calls
+
+
+def test_padded_copy_is_white_square_with_whole_picture():
+    with PILImage.open(io.BytesIO(yml_feed_pictures.padded_copy(_png(368, 250)))) as copy:
+        assert copy.format == "JPEG"
+        assert copy.size == (800, 800)
+        assert min(copy.getpixel((5, 5))) > 250  # поле сверху
+        assert copy.getpixel((5, 400))[0] > 200 and copy.getpixel((5, 400))[1] < 60  # фото от края до края
+
+
+@pytest.mark.django_db
+def test_prepare_copies_only_small_pictures_and_checks_each_link_once(monkeypatch):
+    small, large = "https://cdn.example/small.jpg", "https://cdn.example/large.jpg"
+    calls = _serve_pictures(monkeypatch, {small: _png(368, 250), large: _png(1000, 400)})
+
+    result = yml_feed_pictures.prepare_feed_pictures([small, large, small])
+
+    assert result == {"checked": 2, "copied": 1, "failed": 0}
+    copies = yml_feed_pictures.load_picture_copies()
+    assert list(copies) == [yml_feed_pictures.picture_key(small)]
+    assert "feeds/pictures/" in copies[yml_feed_pictures.picture_key(small)]
+
+    calls.clear()
+    assert yml_feed_pictures.prepare_feed_pictures([small, large])["checked"] == 0
+    assert calls == []
+
+
+@pytest.mark.django_db
+def test_prepare_retries_failed_link_next_time(monkeypatch):
+    url = "https://cdn.example/flaky.jpg"
+    _serve_pictures(monkeypatch, {url: requests.ConnectionError("нет сети")})
+    assert yml_feed_pictures.prepare_feed_pictures([url]) == {"checked": 0, "copied": 0, "failed": 1}
+    assert not YMLFeedPicture.objects.exists()
+
+    _serve_pictures(monkeypatch, {url: _png(100, 100)})
+    assert yml_feed_pictures.prepare_feed_pictures([url])["copied"] == 1
+
+
+@pytest.mark.django_db
+def test_feed_uses_copy_instead_of_small_picture(rub_rate, monkeypatch):
+    root_cat = _category("shoes")
+    product = _shoe(root_cat, variants=0)
+    url = "https://cdn.example/gallery.jpg"
+    _serve_pictures(monkeypatch, {url: _png(368, 250)})
+
+    assert url in list(yml_feed.iter_feed_picture_urls())
+    yml_feed_pictures.prepare_feed_pictures(yml_feed.iter_feed_picture_urls())
+
+    offer = _offers(_parse(yml_feed.iter_yml_feed(root_cat.slug)))[0]
+    assert offer.get("id") == str(product.id)
+    pictures = [picture.text for picture in offer.findall("picture")]
+    assert url not in pictures
+    assert any("feeds/pictures/" in picture for picture in pictures)

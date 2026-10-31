@@ -42,6 +42,7 @@ from ..models import Category, Product
 from ..models_vk import VKCategoryMapping, YMLFeedSnapshot
 from ..utils.product_markup import apply_markup_percent, get_effective_product_markup
 from .source_offer_catalog_projection import resolve_source_offer_catalog_availability
+from .yml_feed_pictures import load_picture_copies, picture_key
 
 logger = logging.getLogger(__name__)
 
@@ -383,8 +384,9 @@ class _MarkupResolver:
         return apply_markup_percent(amount, self._by_category[prod.category_id])
 
 
-def _iter_offers(products, site_url: str) -> Iterator[str]:
+def _iter_offers(products, site_url: str, use_picture_copies: bool = True) -> Iterator[str]:
     """<offer> по одному, в порядке id товара."""
+    picture_copies = load_picture_copies() if use_picture_copies else {}
     vk_map = load_vk_mapping()
     genders = _GenderResolver()
     markups = _MarkupResolver()
@@ -397,6 +399,9 @@ def _iter_offers(products, site_url: str) -> Iterator[str]:
                 # Закончившийся вариант или товар, снятый сверкой поставщика, — тоже не выгружаем
                 if offer.get("available") == "false":
                     continue
+                if picture_copies:
+                    for picture in offer.findall("picture"):
+                        picture.text = picture_copies.get(picture_key(picture.text), picture.text)
                 yield _xml(offer)
 
 
@@ -405,6 +410,14 @@ def iter_feed_offers() -> Iterator[ET.Element]:
     _, products = _feed_scope("")
     for offer in _iter_offers(products, feed_site_url()):
         yield ET.fromstring(offer)
+
+
+def iter_feed_picture_urls() -> Iterator[str]:
+    """Исходные ссылки всех фото полного каталога."""
+    _, products = _feed_scope("")
+    for offer in _iter_offers(products, feed_site_url(), use_picture_copies=False):
+        for picture in ET.fromstring(offer).findall("picture"):
+            yield picture.text
 
 
 def iter_yml_feed(category_slug: str = "", site_url: str | None = None) -> Iterator[str]:
