@@ -75,11 +75,9 @@ Authorization: Bearer <access-token>
 - `refresh_token` — HttpOnly cookie от backend. Фронт обновляет access запросом
   `POST /api/auth/jwt/refresh/` без тела (`frontend/src/lib/api.ts`), выход —
   `POST /api/auth/logout/`.
-- Сессии до релиза TD-018 хранили refresh в JS-cookie `refresh`. При первом
-  открытии сайта (или первом 401) фронт один раз отправляет её в теле
-  `/api/auth/jwt/refresh/`, backend ставит HttpOnly cookie, JS-cookie удаляется
-  (`migrateLegacyRefreshCookie`). Просроченная старая сессия — мягкий выход без
-  ошибок. Перенос можно убрать из кода через 7 дней после релиза (срок жизни refresh).
+- API-клиенты могут передавать refresh в теле `/api/auth/jwt/refresh/`; сайт этого
+  не делает. Перенос старой JS-cookie `refresh` убран 31.10.2026 (TD-034), когда истёк
+  срок жизни таких сессий.
 
 ## Ограничение частоты запросов
 
