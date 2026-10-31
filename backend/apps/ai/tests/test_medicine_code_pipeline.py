@@ -2106,3 +2106,11 @@ def test_word_of_two_alphabets_is_not_a_translation():
     en = "if you are taking HIV protease inhibitors (such as amprenavir, saquinavir),"
     assert "mixed_alphabet" in paragraph_problems(source, "если вы принимаете ингибиторы протеазы ВИЧ (амprenавир, саквинавир),", en)
     assert "mixed_alphabet" not in paragraph_problems(source, "если вы принимаете ингибиторы протеазы ВИЧ (ампренавир, саквинавир),", en)
+
+
+def test_brand_token_without_token_in_source_is_rejected():
+    problems = paragraph_problems("3. RECTUS NASIL KULLANILIR?", "3. КАК ПРИМЕНЯТЬ {BRAND}?", "3. HOW TO USE {BRAND}?")
+    assert "brand_token_extra" in problems
+    assert "brand_token_extra" not in paragraph_problems(
+        "3. RECTUS NASIL KULLANILIR?", "3. КАК ПРИМЕНЯТЬ RECTUS?", "3. HOW TO USE RECTUS?"
+    )

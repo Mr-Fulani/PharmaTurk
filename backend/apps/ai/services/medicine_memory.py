@@ -563,6 +563,10 @@ def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
         problems.append("too_short")
     if BRAND_TOKEN in source and (BRAND_TOKEN not in ru or BRAND_TOKEN not in en):
         problems.append("brand_token_missing")
+    # Бренд в исходнике не закрыт меткой («3. RECTUS NASIL KULLANILIR?» у RECTUS ENEMA): метка в переводе
+    # подставила бы другое название (пилот TD-026, 31.10.2026).
+    if BRAND_TOKEN not in source and (BRAND_TOKEN in ru or BRAND_TOKEN in en):
+        problems.append("brand_token_extra")
     # Чужой перевод: номер заголовка, числа, длина, RU≠EN, понятия, частота.
     problems.extend(item_problems(source, ru, en))
     return problems
