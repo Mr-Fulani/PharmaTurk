@@ -56,10 +56,10 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
     """
     Управление маппингом типов товаров → категории маркетплейсов.
     В колонке «Ссылка на фид» — готовая ссылка для ВК/Яндекс.Маркет.
-    Кнопки пересборки фидов и синхронизации фото ставят фоновые задачи Celery.
+    Кнопки пересборки фидов, синхронизации фото и каталога ставят фоновые задачи Celery.
     """
     change_list_template = "admin/catalog/vkcategorymapping/change_list.html"
-    list_display = ("product_type_display", "gender", "vk_category_path", "feed_url_link", "updated_at")
+    list_display = ("product_type_display", "gender", "vk_category_path", "vk_category_id", "feed_url_link", "updated_at")
     list_display_links = ("product_type_display",)
     list_filter = ("gender",)
     search_fields = ("product_type", "vk_category_path")
@@ -86,6 +86,16 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
                 "generate-feeds/",
                 self.admin_site.admin_view(self.generate_feeds_view),
                 name="catalog_vk_generate_feeds",
+            ),
+            path(
+                "sync-catalog/report/",
+                self.admin_site.admin_view(self.catalog_report_view),
+                name="catalog_vk_catalog_report",
+            ),
+            path(
+                "sync-catalog/apply/",
+                self.admin_site.admin_view(self.catalog_apply_view),
+                name="catalog_vk_catalog_apply",
             ),
         ]
         return custom + urls
@@ -137,6 +147,28 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
             messages.success(request, "✅ Пересборка фидов запущена в фоне — обновите страницу через несколько минут.")
         return redirect(CHANGELIST)
 
+    def catalog_report_view(self, request):
+        """Отчёт синхронизации каталога: ВК только читается, итог приходит в Telegram."""
+        from apps.catalog.tasks import sync_vk_catalog_task
+
+        if request.method == "POST":
+            sync_vk_catalog_task.delay()
+            messages.success(request, "✅ Отчёт собирается в фоне. В ВК ничего не меняется, итог придёт в Telegram.")
+        return redirect(CHANGELIST)
+
+    def catalog_apply_view(self, request):
+        """Настоящая синхронизация каталога: меняет публичную витрину ВК, только суперпользователь."""
+        from apps.catalog.tasks import sync_vk_catalog_task
+
+        if request.method != "POST":
+            return redirect(CHANGELIST)
+        if not request.user.is_superuser:
+            messages.error(request, "❌ Запускать синхронизацию каталога ВК может только суперпользователь.")
+            return redirect(CHANGELIST)
+        sync_vk_catalog_task.delay(apply=True)
+        messages.success(request, "✅ Синхронизация каталога ВК запущена в фоне. Итог придёт в Telegram.")
+        return redirect(CHANGELIST)
+
     # ------------------------------------------------------------------
     # Контекст для шаблона (список категорий + ссылки)
     # ------------------------------------------------------------------
@@ -144,6 +176,7 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         extra_context["feeds"] = _feed_rows()
+        extra_context["can_apply_vk_catalog"] = request.user.is_superuser
         return super().changelist_view(request, extra_context=extra_context)
 
     # ------------------------------------------------------------------
@@ -168,7 +201,7 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {
-            "fields": ("product_type", "gender", "vk_category_path", "feed_url_readonly"),
+            "fields": ("product_type", "gender", "vk_category_path", "vk_category_id", "feed_url_readonly"),
             "description": _(
                 "Укажите тип товара, пол и путь категории ВК. Запись «Любой пол» — для товаров "
                 "без пола и унисекс. Путь задаётся через ' > ', например: 'Гардероб > Женщинам > Обувь'"
