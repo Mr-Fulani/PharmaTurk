@@ -915,6 +915,7 @@ class ScraperIntegrationService:
         total_errors_count: int = 0,
         site_run_token: Optional[str] = None,
         changes_only: bool = False,
+        full_site_pass: bool = False,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -1008,6 +1009,7 @@ class ScraperIntegrationService:
                     total_errors_count=total_errors_count,
                     site_run_token=site_run_token,
                     changes_only=changes_only,
+                    full_site_pass=full_site_pass,
                 )
 
                 # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
@@ -1120,6 +1122,7 @@ class ScraperIntegrationService:
         total_errors_count: int = 0,
         site_run_token: Optional[str] = None,
         changes_only: bool = False,
+        full_site_pass: bool = False,
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -1208,6 +1211,13 @@ class ScraperIntegrationService:
                     from .listing_changes import ListingChangeTracker
 
                     parser.change_tracker = ListingChangeTracker(
+                        parser.get_name(), site_run_token or None,
+                    )
+                elif full_site_pass and hasattr(parser, "site_pass_tracker"):
+                    # «Весь сайт»: sitemap-этап откроет только то, чего листинг не показал.
+                    from .listing_changes import ListingChangeTracker
+
+                    parser.site_pass_tracker = ListingChangeTracker(
                         parser.get_name(), site_run_token or None,
                     )
                 listing_guard = None

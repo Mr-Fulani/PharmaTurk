@@ -328,7 +328,7 @@ def _site_category_url(site_task: SiteScraperTask, scraper_config: ScraperConfig
     if not categories:
         categories = _discover_site_categories(
             scraper_config,
-            "parse_change_sources" if site_task.task_type == "changes" else "parse_categories",
+            "parse_change_sources" if site_task.task_type == "changes" else "parse_site_sources",
         )
         SiteScraperTask.objects.filter(id=site_task.id).update(
             site_categories=categories, site_category_index=0,
@@ -909,6 +909,7 @@ def run_scraper_task(
             celery_task_id=self.request.id,
             site_run_token=site_run_token,
             changes_only=bool(site_task and site_task.task_type == "changes"),
+            full_site_pass=bool(site_task and site_task.task_type == "site"),
         )
         session_analogs_found = int(getattr(session, "analogs_found", 0) or 0)
         session_analog_links_saved = int(getattr(session, "analog_links_saved", 0) or 0)
