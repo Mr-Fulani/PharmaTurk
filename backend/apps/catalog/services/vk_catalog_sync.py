@@ -201,6 +201,8 @@ def _category_ids() -> dict[str, int]:
 
 def _iter_offers(skus: set[str] | None = None) -> Iterator[FeedOffer]:
     """Офферы фида. С skus — только эти: фид читается потоком, план держит только артикулы."""
+    if skus is not None and not skus:
+        return
     remaining = None if skus is None else set(skus)
     for element in iter_feed_offers():
         offer = FeedOffer.from_element(element)
