@@ -196,8 +196,8 @@ class FakeTracker:
     def mark_seen(self, urls):
         self.seen.extend(urls)
 
-    def sitemap_work(self, urls, is_product_url, canonical_url):
-        return self.to_open, self.to_check
+    def sitemap_work(self, urls, is_product_url, canonical_url, *, check_missing=True):
+        return self.to_open, self.to_check if check_missing else []
 
     def mark_url_gone(self, url, *, reason):
         self.gone.append((url, reason))
@@ -269,6 +269,45 @@ def test_changes_sitemap_stage_opens_new_and_checks_missing(monkeypatch):
     assert tracker.gone[-1] == (pasif, "inactive")
     assert opened == [(THERMO, None), (still_active, "<html>aktif</html>")]
     assert [product.url for product in second] == [still_active]
+    assert parser.has_more_pages is False
+
+
+def test_site_pass_sitemap_is_a_stage_after_both_listings():
+    sources = _parser().parse_site_sources()
+    assert [row["url"] for row in sources] == [
+        "https://ilacfiyati.com/ilaclar", "https://ilacfiyati.com/takviye-edici-gida",
+        ILACFIYATI_SITEMAP_URL,
+    ]
+    # Для обхода листингов (проба, старый путь) категории — только два корня.
+    assert len(_parser().parse_categories()) == 2
+
+
+def test_site_pass_listing_opens_every_card_and_remembers_what_it_showed(monkeypatch):
+    parser = _parser()
+    parser.site_pass_tracker = FakeTracker()
+    monkeypatch.setattr(parser, "_make_request", lambda url: LISTING_HTML)
+    monkeypatch.setattr(parser, "parse_product_detail", lambda url: ScrapedProduct(
+        name="Drug", url=url, source="ilacfiyati",
+    ))
+    products = list(parser.parse_product_list("https://ilacfiyati.com/ilaclar", max_pages=1))
+    # Полный обход открывает карточки как раньше, трекер карточками не управляет.
+    assert {product.url for product in products} == set(parser.site_pass_tracker.seen)
+    assert {THERMO, ANEVITA} <= set(parser.site_pass_tracker.seen)
+    assert parser.site_pass_tracker.saved == []
+
+
+def test_site_pass_sitemap_opens_unseen_and_never_removes_from_sale(monkeypatch):
+    parser = _parser()
+    tracker = FakeTracker(to_open=[THERMO], to_check=[ANEVITA])
+    parser.site_pass_tracker = tracker
+    monkeypatch.setattr(parser, "fetch_sitemap_product_urls", lambda url: [THERMO])
+    monkeypatch.setattr(parser, "_make_offer_request", lambda url: pytest.fail("проверка пропажи"))
+    monkeypatch.setattr(parser, "parse_product_detail", lambda url, html=None: ScrapedProduct(
+        name="Drug", url=url, source="ilacfiyati",
+    ))
+    products = list(parser.parse_product_list(ILACFIYATI_SITEMAP_URL, max_pages=1))
+    assert [product.url for product in products] == [THERMO]
+    assert tracker.gone == []
     assert parser.has_more_pages is False
 
 
@@ -370,7 +409,10 @@ def test_tracker_sitemap_work_lists_unseen_and_missing():
 # --- задача ---------------------------------------------------------------------
 
 
-def test_changes_task_discovers_change_sources(monkeypatch):
+@pytest.mark.parametrize("task_type, method", [
+    ("changes", "parse_change_sources"), ("site", "parse_site_sources"),
+])
+def test_traversal_task_discovers_its_sources(monkeypatch, task_type, method):
     from apps.scrapers import tasks
 
     calls = []
@@ -383,9 +425,9 @@ def test_changes_task_discovers_change_sources(monkeypatch):
     monkeypatch.setattr(tasks.SiteScraperTask.objects, "filter", lambda **kw: SimpleNamespace(
         update=lambda **values: None,
     ))
-    task = SimpleNamespace(id=1, task_type="changes", site_categories=[], site_category_index=0)
+    task = SimpleNamespace(id=1, task_type=task_type, site_categories=[], site_category_index=0)
     assert tasks._site_category_url(task, SimpleNamespace()) == "https://ilacfiyati.com/ilaclar"
-    assert calls == ["parse_change_sources"]
+    assert calls == [method]
 
 
 @pytest.mark.django_db

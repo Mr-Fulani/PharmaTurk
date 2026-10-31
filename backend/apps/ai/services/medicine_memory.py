@@ -66,7 +66,9 @@ PARAGRAPH_SYSTEM_PROMPT = (
     "каждую дозировку, число, единицу, предупреждение и название препарата. Метку {BRAND} "
     "(название препарата) переноси в оба перевода ровно как есть: не переводи, не склоняй, "
     "не убирай. Русский — "
-    "естественный перевод, а не кириллическая транслитерация турецкого. Терминология: "
+    "естественный перевод, а не кириллическая транслитерация турецкого. Вещества — "
+    "международными названиями: в RU целиком кириллицей (ампренавир), в EN по-английски "
+    "(quinupristin, а не турецкое kinupristin). Терминология: "
     "oblong = продолговатые, yaygın olmayan = нечастые, uzatılmış salımlı tablet = таблетки "
     "пролонгированного высвобождения, kısıtlanmış beyaz reçete = ограниченный белый рецепт, "
     "ek izlemeye tabi ilaç = препарат под дополнительным наблюдением. Ответ — строго JSON."
@@ -538,6 +540,9 @@ def translate_requisites(line: str) -> tuple[str, str]:
     return ru, en
 
 
+MIXED_ALPHABET_RE = re.compile(r"[а-яё][a-z]|[a-z][а-яё]")
+
+
 def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
     """Пустой список — перевод абзаца годится в память и в карточку."""
     problems = []
@@ -550,6 +555,10 @@ def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
         problems.append("ru_not_russian")
     if re.search(r"[А-Яа-яЁё]", en):
         problems.append("en_has_cyrillic")
+    # «амprenавир»: модель сорвалась на латиницу посреди слова (пилот TD-026, 31.10.2026).
+    # Заглавные не считаются: аббревиатуры источника «ТÜFAM», «аHÜС» остаются как есть.
+    if MIXED_ALPHABET_RE.search(ru):
+        problems.append("mixed_alphabet")
     if len(source) >= 200 and min(len(ru), len(en)) / len(source) < 0.5:
         problems.append("too_short")
     if BRAND_TOKEN in source and (BRAND_TOKEN not in ru or BRAND_TOKEN not in en):
@@ -596,6 +605,11 @@ def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, 
         source = items[key]
         ru, en = ru_thousands(restore_heading(source, ru)), restore_heading(source, en)
         problems = paragraph_problems(source, ru, en)
+        # Запись без метки в ключе общая для всех товаров, а метка в переводе подставит бренд карточки вместо
+        # названия из исходника («JUNİFEN» в инструкции IBU-BABY, пилот TD-026, 31.10.2026). Только для ответа
+        # модели: в карточке бренд заменён меткой и в переводе, это не брак (section_paragraph_problems).
+        if BRAND_TOKEN not in source and (BRAND_TOKEN in ru or BRAND_TOKEN in en):
+            problems.append("brand_token_extra")
         if shifted:
             problems.append("shifted")
         if problems:

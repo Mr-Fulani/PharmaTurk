@@ -479,6 +479,10 @@ class BaseScraper(ABC):
         # Базовая реализация - может быть переопределена
         return []
 
+    def parse_site_sources(self) -> List[Dict[str, Any]]:
+        """Этапы режима «Весь сайт»: категории и то, что парсеру нужно обойти после них."""
+        return self.parse_categories()
+
     def _site_categories(self, rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Итог parse_categories для обхода всего сайта.
 

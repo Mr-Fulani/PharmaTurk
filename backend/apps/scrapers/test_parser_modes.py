@@ -43,6 +43,8 @@ class _SiteParser:
     def parse_categories(self):
         return list(self.categories)
 
+    parse_site_sources = parse_categories
+
 
 def _site_task(**overrides):
     category, _ = Category.objects.get_or_create(slug="modes-root", defaults={"name": "Корень"})

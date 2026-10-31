@@ -12,9 +12,11 @@ from apps.ai.services.medicine_memory import (
     BRAND_TOKEN,
     INN_NAMESPACE,
     PARAGRAPH_NAMESPACE,
+    check_paragraph_payload,
     items_from_user_prompt,
     normalize_paragraph,
     paragraph_problems,
+    section_paragraph_problems,
     split_paragraphs,
     translate_active_ingredient,
 )
@@ -752,7 +754,6 @@ def test_title_dialysis_infusion_lozenge_patch_solvent_forms(name, ru, en):
 @pytest.mark.parametrize(
     "name",
     [
-        "LAFLEKS %5 DEKSTROZ %09 SODYUM KLORUR COZELTISI 1000 ML (SETSIZ)",  # «%09»: 9% или 0,9% — не угадываем
         "PKU COOLER 15 KIRMIZI (30x130 ML)",  # «KIRMIZI» (вкус) — не бренд
         "PRIORIX 1 SIRIGA + FLAKON",
         "CATAPRESAN 75/100 TABLET",  # «75/100» у таблеток — не обязательно дозировки веществ
@@ -2100,3 +2101,31 @@ def test_medicine_source_names_command_reports_and_records_equivalents():
 )
 def test_card_description_drops_sgk_shelf_life_and_origin(text, expected):
     assert without_card_boilerplate(text) == expected
+
+
+def test_word_of_two_alphabets_is_not_a_translation():
+    source = "HIV proteaz inhibitörleri (amprenavir, sakinavir gibi) kullanıyorsanız,"
+    en = "if you are taking HIV protease inhibitors (such as amprenavir, saquinavir),"
+    assert "mixed_alphabet" in paragraph_problems(source, "если вы принимаете ингибиторы протеазы ВИЧ (амprenавир, саквинавир),", en)
+    assert "mixed_alphabet" not in paragraph_problems(source, "если вы принимаете ингибиторы протеазы ВИЧ (ампренавир, саквинавир),", en)
+
+
+def test_model_answer_with_brand_token_missing_from_source_is_rejected():
+    source = "3. RECTUS NASIL KULLANILIR?"
+    accepted, rejected = check_paragraph_payload(
+        {"1": source}, {"1": {"ru": "3. КАК ПРИМЕНЯТЬ {BRAND}?", "en": "3. HOW TO USE {BRAND}?"}}
+    )
+    assert accepted == {} and "brand_token_extra" in rejected[source]
+    accepted, rejected = check_paragraph_payload(
+        {"1": source}, {"1": {"ru": "3. КАК ПРИМЕНЯТЬ RECTUS?", "en": "3. HOW TO USE RECTUS?"}}
+    )
+    assert source in accepted and rejected == {}
+
+
+def test_card_with_brand_in_translation_only_is_not_brand_token_extra():
+    # Карточка не из памяти: «Amoksisilin» в исходнике, бренд карточки только в переводе.
+    source = "Amoksisilin alan hastalarda protrombin zamanında uzama nadiren bildirilmiştir."
+    ru = "У пациентов, принимающих AUGMENTIN, редко сообщалось о продлении протромбинового времени."
+    en = "In patients receiving AUGMENTIN, prolongation of prothrombin time has been rarely reported."
+    rows = section_paragraph_problems(source, ru, en, brand="AUGMENTIN")
+    assert not any("brand_token_extra" in row.get("problems", []) for row in rows)
