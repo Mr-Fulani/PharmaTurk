@@ -429,3 +429,153 @@ def test_review_gone_candidates_clear_keeps_product_on_sale(settings):
     product = Product.objects.get(pk=product.pk)
     assert product.is_available is True
     assert GONE_CANDIDATE_KEY not in product.external_data
+
+
+# --- карточка Pasif: разбор и сохранение --------------------------------------
+
+PASIF_PAGE = PASIF_CARD_HTML.replace(
+    "<html><body>", '<html><body><h1 class="page-title">IZOTONIK 1000 ML</h1>', 1,
+)
+
+
+def _card(html=PASIF_PAGE):
+    return _parser().parse_product_detail(
+        IZOTONIK, html=html, include_detail_tabs=False, include_analogs=False,
+    )
+
+
+def _medicine(*, is_available=True, **external):
+    from apps.catalog.models import MedicineProduct
+
+    medicine = MedicineProduct.objects.create(
+        name="IZOTONIK 1000 ML",
+        slug=f"m-{uuid.uuid4().hex[:8]}",
+        external_id=IZOTONIK.rsplit("/", 1)[-1],
+        external_url=IZOTONIK,
+        external_data={"source": "ilacfiyati", **external},
+        price=Decimal("10"),
+        currency="TRY",
+        is_available=is_available,
+    )
+    medicine.refresh_from_db()
+    return medicine, medicine.base_product
+
+
+def _save(card, product):
+    from apps.scrapers.services import ScraperIntegrationService
+
+    ScraperIntegrationService()._update_existing_product(None, card, product)
+    product.refresh_from_db()
+
+
+def test_pasif_card_is_parsed_as_unavailable():
+    card = _card()
+    assert card.is_available is False and card.source_inactive is True
+
+    active = _card(PASIF_PAGE.replace("Pasif", "Aktif"))
+    assert active.is_available is True and active.source_inactive is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("review", [True, False])
+def test_pasif_card_does_not_return_removed_product_to_sale(settings, review):
+    from apps.scrapers.listing_changes import GONE_CANDIDATE_KEY
+
+    settings.SCRAPER_GONE_REQUIRES_REVIEW = review
+    medicine, product = _medicine(is_available=False)
+
+    _save(_card(), product)
+
+    medicine.refresh_from_db()
+    assert product.is_available is False and medicine.is_available is False
+    assert GONE_CANDIDATE_KEY not in product.external_data
+
+
+@pytest.mark.django_db
+def test_pasif_card_of_product_on_sale_goes_to_review(settings):
+    from apps.scrapers.listing_changes import GONE_CANDIDATE_KEY
+
+    settings.SCRAPER_GONE_REQUIRES_REVIEW = True
+    medicine, product = _medicine()
+
+    _save(_card(), product)
+
+    medicine.refresh_from_db()
+    # Снимает только review_gone_candidates --apply; разбор ставит пометку.
+    assert product.is_available is True and medicine.is_available is True
+    assert product.external_data[GONE_CANDIDATE_KEY]["reason"] == "inactive"
+    assert product.external_data[GONE_CANDIDATE_KEY]["parser"] == "ilacfiyati"
+    assert "attributes" in product.external_data  # пометка не затёрла сохранённое
+
+
+@pytest.mark.django_db
+def test_pasif_card_without_review_removes_product_like_listing(settings):
+    settings.SCRAPER_GONE_REQUIRES_REVIEW = False
+    medicine, product = _medicine()
+
+    _save(_card(), product)
+
+    medicine.refresh_from_db()
+    assert product.is_available is False and medicine.is_available is False
+
+
+@pytest.mark.django_db
+def test_aktif_card_still_returns_product_to_sale():
+    _medicine_row, product = _medicine(is_available=False)
+
+    _save(_card(PASIF_PAGE.replace("Pasif", "Aktif")), product)
+
+    assert product.is_available is True
+
+
+@pytest.mark.django_db
+def test_new_pasif_card_is_created_off_sale(monkeypatch):
+    from apps.scrapers.services import ScraperIntegrationService, scraping_in_progress_context
+
+    service = ScraperIntegrationService()
+    monkeypatch.setattr(service, "_update_product_attributes", lambda *args, **kwargs: False)
+
+    with scraping_in_progress_context():
+        _action, product = service._create_new_product(None, _card())
+
+    product.refresh_from_db()
+    assert product.is_available is False
+
+
+@pytest.mark.django_db
+def test_pasif_card_does_not_put_analog_stub_on_sale(settings):
+    """Заглушка аналога скрыта с витрины: разбор превращает её в обычную карточку,
+    в продаже её не было — снимать на проверку нечего."""
+    from apps.scrapers.listing_changes import GONE_CANDIDATE_KEY
+
+    settings.SCRAPER_GONE_REQUIRES_REVIEW = True
+    medicine, product = _medicine(is_stub=True)
+
+    _save(_card(), product)
+
+    medicine.refresh_from_db()
+    assert product.is_available is False and medicine.is_available is False
+    assert not product.external_data.get("is_stub")
+    assert GONE_CANDIDATE_KEY not in product.external_data
+
+
+def test_changes_sitemap_pasif_card_is_not_saved(monkeypatch):
+    """Ссылка sitemap, которую листинг не показал: пассивный товар не заводим."""
+    parser = _parser()
+    parser.change_tracker = FakeTracker()
+    monkeypatch.setattr(parser, "_make_request", lambda url: PASIF_PAGE)
+
+    assert parser._changes_card(THERMO, check_gone=False) is None
+    assert parser.change_tracker.gone == [(THERMO, "inactive")]
+
+
+@pytest.mark.django_db
+def test_tracker_mark_url_gone_skips_stub(settings):
+    from apps.scrapers.listing_changes import GONE_CANDIDATE_KEY, ListingChangeTracker
+
+    settings.SCRAPER_GONE_REQUIRES_REVIEW = True
+    stub = _product(is_stub=True)
+
+    assert ListingChangeTracker("ilacfiyati", uuid.uuid4()).mark_url_gone(THERMO, reason="inactive") == 0
+    stub.refresh_from_db()
+    assert stub.is_available is True and GONE_CANDIDATE_KEY not in stub.external_data
