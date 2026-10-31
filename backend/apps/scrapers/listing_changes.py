@@ -259,6 +259,6 @@ class ListingChangeTracker:
         if self.dry_run:
             return 0
         product = self._products([url]).get(url_key(url))
-        if product is None:
-            return 0
+        if product is None or product["external_data__is_stub"] is True:
+            return 0  # заглушка аналога скрыта с витрины, как и в listing_decision
         return mark_products_gone([product["pk"]], parser_key=self.parser_key, reason=reason)

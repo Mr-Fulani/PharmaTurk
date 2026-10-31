@@ -938,7 +938,13 @@ class IlacFiyatiParser(BaseScraper):
                 if self._card_is_inactive(BeautifulSoup(html, "html.parser")):
                     self.change_tracker.mark_url_gone(url, reason="inactive")
                     return None
-            return self.parse_product_detail(url, html=html)
+            detail = self.parse_product_detail(url, html=html)
+            if not detail.is_available:
+                # Ссылка sitemap без строки листинга: пассивные товары, которых
+                # у нас нет, не заводим — как и строку PASİF.
+                self.change_tracker.mark_url_gone(url, reason="inactive")
+                return None
+            return detail
         except (SoftTimeLimitExceeded, ScraperAccessBlockedError):
             raise
         except (IlacFiyatiSourceError, httpx.HTTPError) as exc:
@@ -1341,6 +1347,7 @@ class IlacFiyatiParser(BaseScraper):
             
             self.logger.info(f"Товар {name}: найдено аналогов {len(unique_analogs)}")
 
+            source_inactive = self._card_is_inactive(soup)
             product = ScrapedProduct(
                 name=name,
                 description=description,
@@ -1353,7 +1360,8 @@ class IlacFiyatiParser(BaseScraper):
                 # Storefront policy: unknown quantity does not disable a card.
                 # Do not invent units. SourceOffer independently keeps reference
                 # catalogue observations UNKNOWN, not verified supplier stock.
-                is_available=True,
+                # «Pasif» — другое: источник сказал, что препарат снят с рынка.
+                is_available=not source_inactive,
                 stock_quantity=None,
                 source=self.get_name(),
                 attributes=attributes,
@@ -1363,6 +1371,9 @@ class IlacFiyatiParser(BaseScraper):
             # но не должна попадать в атрибуты/БД самого препарата.
             product.analog_fetch_errors = analog_fetch_errors
             product.price_unpublished = price_unpublished
+            # Товар в продаже разбор сам не снимает: сервис проводит его через
+            # mark_products_gone (SCRAPER_GONE_REQUIRES_REVIEW).
+            product.source_inactive = source_inactive
             return product
 
         except SoftTimeLimitExceeded:
