@@ -384,6 +384,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.generate_yml_feeds",
         "schedule": crontab(hour="*/6", minute=35),
     },
+    # Сверка каталога ВК с фидом после утреннего пересчёта цен; без VK_SYNC_ENABLED задача ничего не делает.
+    "catalog-sync-vk-catalog": {
+        "task": "catalog.sync_vk_catalog",
+        "schedule": crontab(hour=7, minute=15),
+        "kwargs": {"apply": True, "scheduled": True},
+    },
     # Напоминания о неотправленном Списке заявки; включаются в админке, без этого задача ничего не делает.
     "orders-remind-abandoned-carts": {
         "task": "orders.remind_abandoned_carts",
@@ -1136,6 +1142,11 @@ VK_GROUP_ID = env.int("VK_GROUP_ID", default=0)
 # Пользовательский токен (нужен для market.get):
 # https://oauth.vk.com/authorize?client_id=APP_ID&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=market,photos,video,offline&response_type=token&v=5.131
 VK_USER_TOKEN = env("VK_USER_TOKEN", default="")
+# Сверка каталога ВК с фидом (docs/VK_YML_FEED.md). Без VK_SYNC_ENABLED задача по
+# расписанию ничего не делает; на отчёт и кнопку в админке настройка не влияет.
+VK_SYNC_ENABLED = env.bool("VK_SYNC_ENABLED", default=False)
+# Если на удаление попадает большая доля каталога ВК, запуск останавливается.
+VK_SYNC_MAX_DELETE_SHARE = env.float("VK_SYNC_MAX_DELETE_SHARE", default=0.3)
 
 # Increase data upload fields because admin uses filter_horizontal for thousands of categories
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000

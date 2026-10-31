@@ -396,6 +396,13 @@ def _iter_offers(products, site_url: str) -> Iterator[str]:
                 yield _xml(offer)
 
 
+def iter_feed_offers() -> Iterator[ET.Element]:
+    """Офферы полного каталога разобранными элементами — ровно те, что идут в фид."""
+    _, products = _feed_scope("")
+    for offer in _iter_offers(products, feed_site_url()):
+        yield ET.fromstring(offer)
+
+
 def iter_yml_feed(category_slug: str = "", site_url: str | None = None) -> Iterator[str]:
     """
     Фид по кускам строк. Пустой slug — полный каталог; slug категории — она и её потомки.

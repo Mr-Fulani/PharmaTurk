@@ -72,6 +72,15 @@ class VKCategoryMapping(models.Model):
             "Пример: 'Дом и дача > Мебель'"
         ),
     )
+    vk_category_id = models.PositiveIntegerField(
+        _("ID категории ВК"),
+        null=True,
+        blank=True,
+        help_text=_(
+            "Нужен, чтобы добавлять товары через API (market.add). Пусто — новые товары "
+            "этой категории не добавляются, в отчёте синхронизации они указаны отдельно."
+        ),
+    )
     notes = models.TextField(
         _("Примечания"),
         blank=True,
