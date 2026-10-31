@@ -563,10 +563,6 @@ def paragraph_problems(source: str, ru: str, en: str) -> list[str]:
         problems.append("too_short")
     if BRAND_TOKEN in source and (BRAND_TOKEN not in ru or BRAND_TOKEN not in en):
         problems.append("brand_token_missing")
-    # Бренд в исходнике не закрыт меткой («3. RECTUS NASIL KULLANILIR?» у RECTUS ENEMA): метка в переводе
-    # подставила бы другое название (пилот TD-026, 31.10.2026).
-    if BRAND_TOKEN not in source and (BRAND_TOKEN in ru or BRAND_TOKEN in en):
-        problems.append("brand_token_extra")
     # Чужой перевод: номер заголовка, числа, длина, RU≠EN, понятия, частота.
     problems.extend(item_problems(source, ru, en))
     return problems
@@ -609,6 +605,11 @@ def check_paragraph_payload(items: dict[str, str], payload: Any) -> tuple[dict, 
         source = items[key]
         ru, en = ru_thousands(restore_heading(source, ru)), restore_heading(source, en)
         problems = paragraph_problems(source, ru, en)
+        # Запись без метки в ключе общая для всех товаров, а метка в переводе подставит бренд карточки вместо
+        # названия из исходника («JUNİFEN» в инструкции IBU-BABY, пилот TD-026, 31.10.2026). Только для ответа
+        # модели: в карточке бренд заменён меткой и в переводе, это не брак (section_paragraph_problems).
+        if BRAND_TOKEN not in source and (BRAND_TOKEN in ru or BRAND_TOKEN in en):
+            problems.append("brand_token_extra")
         if shifted:
             problems.append("shifted")
         if problems:

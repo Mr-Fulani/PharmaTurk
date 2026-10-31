@@ -12,9 +12,11 @@ from apps.ai.services.medicine_memory import (
     BRAND_TOKEN,
     INN_NAMESPACE,
     PARAGRAPH_NAMESPACE,
+    check_paragraph_payload,
     items_from_user_prompt,
     normalize_paragraph,
     paragraph_problems,
+    section_paragraph_problems,
     split_paragraphs,
     translate_active_ingredient,
 )
@@ -2108,9 +2110,22 @@ def test_word_of_two_alphabets_is_not_a_translation():
     assert "mixed_alphabet" not in paragraph_problems(source, "если вы принимаете ингибиторы протеазы ВИЧ (ампренавир, саквинавир),", en)
 
 
-def test_brand_token_without_token_in_source_is_rejected():
-    problems = paragraph_problems("3. RECTUS NASIL KULLANILIR?", "3. КАК ПРИМЕНЯТЬ {BRAND}?", "3. HOW TO USE {BRAND}?")
-    assert "brand_token_extra" in problems
-    assert "brand_token_extra" not in paragraph_problems(
-        "3. RECTUS NASIL KULLANILIR?", "3. КАК ПРИМЕНЯТЬ RECTUS?", "3. HOW TO USE RECTUS?"
+def test_model_answer_with_brand_token_missing_from_source_is_rejected():
+    source = "3. RECTUS NASIL KULLANILIR?"
+    accepted, rejected = check_paragraph_payload(
+        {"1": source}, {"1": {"ru": "3. КАК ПРИМЕНЯТЬ {BRAND}?", "en": "3. HOW TO USE {BRAND}?"}}
     )
+    assert accepted == {} and "brand_token_extra" in rejected[source]
+    accepted, rejected = check_paragraph_payload(
+        {"1": source}, {"1": {"ru": "3. КАК ПРИМЕНЯТЬ RECTUS?", "en": "3. HOW TO USE RECTUS?"}}
+    )
+    assert source in accepted and rejected == {}
+
+
+def test_card_with_brand_in_translation_only_is_not_brand_token_extra():
+    # Карточка не из памяти: «Amoksisilin» в исходнике, бренд карточки только в переводе.
+    source = "Amoksisilin alan hastalarda protrombin zamanında uzama nadiren bildirilmiştir."
+    ru = "У пациентов, принимающих AUGMENTIN, редко сообщалось о продлении протромбинового времени."
+    en = "In patients receiving AUGMENTIN, prolongation of prothrombin time has been rarely reported."
+    rows = section_paragraph_problems(source, ru, en, brand="AUGMENTIN")
+    assert not any("brand_token_extra" in row.get("problems", []) for row in rows)
