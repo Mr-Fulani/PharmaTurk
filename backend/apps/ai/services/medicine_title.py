@@ -1142,8 +1142,10 @@ def _title_and_brand(name: str) -> tuple[Optional[dict[str, str]], tuple[str, ..
 
 
 def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]]:
-    # «FLEBOGAMMA% 10 DIF»: знак «%» в бренде RU-название не проходит проверку — название даст модель.
-    if not brand or len(brand) == len(tokens) or any(token.endswith("%") for token in brand):
+    # «FLEBOGAMMA% 10 DIF», «VENIDARA% 5 KREM»: знак оторван от числа — название даст модель.
+    if not brand or len(brand) == len(tokens) or any(
+        token.endswith("%") and following[:1].isdigit() for token, following in zip(brand, tokens[1:])
+    ):
         return None
     rest = _expand_source(fold_tr(" ".join(tokens[len(brand):])))
 

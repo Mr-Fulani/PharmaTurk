@@ -139,6 +139,7 @@ def test_new_titles(source, ru, en):
         "с растворителем в предварительно заполненном шприце, 1 флакон",
     ),
     ("TANFLEX %0,15 ORAL SPREY, COZELTI", "TANFLEX 0,15%, спрей для полости рта, раствор"),
+    ("MCT OIL% MEGEMAX 1000 ML", "MCT OIL% MEGEMAX, 1000 мл"),  # «%» внутри бренда, а не перед числом
 ])
 def test_titles_built_before_stay_the_same(source, ru):
     assert build_medicine_title(source)["ru"] == ru
