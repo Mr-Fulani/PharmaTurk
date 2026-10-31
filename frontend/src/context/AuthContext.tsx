@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import Cookies from 'js-cookie'
-import api, { getSingleFlight, migrateLegacyRefreshCookie, setPreferredCurrency } from '../lib/api'
+import api, { getSingleFlight, setPreferredCurrency } from '../lib/api'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
 
@@ -61,8 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
       return
     }
-    // Сессия до TD-018 держит refresh в обычной cookie — переносим её в HttpOnly.
-    migrateLegacyRefreshCookie().then(() => getSingleFlight('/users/profile')).then((r) => {
+    getSingleFlight('/users/profile').then((r) => {
       const profile = r.data?.[0]
       console.log('AuthContext: profile loaded:', profile ? 'success' : 'failed')
       if (profile) {

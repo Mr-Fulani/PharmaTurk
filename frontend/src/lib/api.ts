@@ -200,28 +200,22 @@ api.interceptors.request.use((config) => {
 
 let refreshPromise: Promise<string | null> | null = null
 
-// До TD-018 фронт хранил refresh в обычной cookie `refresh`. Её читаем только чтобы
-// один раз отдать backend: он перекладывает сессию в HttpOnly cookie, а эту мы удаляем.
-const LEGACY_REFRESH_COOKIE = 'refresh'
-
 async function refreshAccessToken(baseURL?: string): Promise<string | null> {
-  const legacyRefresh = Cookies.get(LEGACY_REFRESH_COOKIE)
   // Без access сессии нет (cookie ставятся и живут вместе) — не дёргаем refresh
   // на каждый 401 анонима: эндпоинт ограничен по IP.
-  if (!legacyRefresh && !Cookies.get('access')) return null
+  if (!Cookies.get('access')) return null
 
   // Use the global axios client deliberately. Sending refresh through `api`
   // would run this response interceptor again and can deadlock on an invalid
   // refresh token while waiting for its own in-flight refresh operation.
   const response = await axios.post(
     '/auth/jwt/refresh/',
-    legacyRefresh ? { refresh: legacyRefresh } : {},
+    {},
     {
       baseURL: baseURL || (typeof window !== 'undefined' ? getClientApiBase() : '/api'),
       withCredentials: true,
     },
   )
-  if (legacyRefresh) Cookies.remove(LEGACY_REFRESH_COOKIE, { path: '/' })
   const newAccess = response.data?.access
   if (!newAccess) return null
 
@@ -240,17 +234,6 @@ function refreshAccessTokenOnce(baseURL?: string): Promise<string | null> {
     })
   }
   return refreshPromise
-}
-
-/** Переносит сессию со старой JS-cookie refresh в HttpOnly; без неё ничего не делает. */
-export async function migrateLegacyRefreshCookie(): Promise<void> {
-  if (typeof window === 'undefined' || !Cookies.get(LEGACY_REFRESH_COOKIE)) return
-  try {
-    await refreshAccessTokenOnce()
-  } catch {
-    // Старый refresh просрочен: профиль ответит 401 и интерцептор мягко разлогинит.
-    Cookies.remove(LEGACY_REFRESH_COOKIE, { path: '/' })
-  }
 }
 
 api.interceptors.response.use(
@@ -292,7 +275,6 @@ api.interceptors.response.use(
       }
       if (!access) {
         Cookies.remove('access', { path: '/' })
-        Cookies.remove(LEGACY_REFRESH_COOKIE, { path: '/' })
         return Promise.reject(error)
       }
       if (access) {
