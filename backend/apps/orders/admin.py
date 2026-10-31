@@ -24,6 +24,8 @@ from .tasks import notify_order_status_changed
 
 class CartItemInline(admin.TabularInline):
     """Инлайн для позиций корзины."""
+    # Без поиска по вводу каждая строка строит список из всего каталога (504 и 2 ГБ памяти).
+    autocomplete_fields = ("product",)
 
     model = CartItem
     extra = 0
@@ -51,6 +53,7 @@ class CartItemInline(admin.TabularInline):
 @admin.register(Cart)
 class CartAdmin(admin.ModelAdmin):
     """Админка для корзин."""
+    autocomplete_fields = ('user', 'promo_code')
     list_display = ('id', 'user', 'session_key', 'currency', 'items_count', 'total_amount', 'promo_code', 'reminder_sent_at', 'created_at')
     list_filter = ('currency', 'created_at', 'promo_code')
     search_fields = ('user__email', 'session_key', 'promo_code__code')
@@ -203,6 +206,7 @@ class CartReminderLogAdmin(admin.ModelAdmin):
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
     """Админка для позиций корзины."""
+    autocomplete_fields = ("cart", "product")
 
     list_display = (
         "cart",
@@ -342,6 +346,7 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
     """Админка для позиций заказа."""
+    autocomplete_fields = ('product',)
     list_display = (
         'order',
         'product',

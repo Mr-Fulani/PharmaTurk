@@ -50,6 +50,7 @@ from .parsers.flo import FloParser
 from .base.catalog_state import CatalogTraversalState
 from .base.listing_snapshot import ListingGuard, record_listing_snapshot
 from .base.offers import OfferGone, OfferNotFound
+from .listing_changes import mark_products_gone
 from .base.scraper import (
     CategoryPageNotFoundError,
     ScrapedProduct,
@@ -3756,6 +3757,8 @@ class ScraperIntegrationService:
         """
         updated = False
         content_changed = False
+        remove_from_sale = False
+        gone_review = None
         prepared_attrs = self._prepare_scraped_attributes(scraped_product, existing_product.product_type)
         should_repair_ilacfiyati_external_id = self._should_repair_ilacfiyati_external_id(
             existing_product,
@@ -3863,7 +3866,14 @@ class ScraperIntegrationService:
                         updated = True
 
             # Обновляем наличие
-            if scraped_product.is_available != existing_product.is_available:
+            if getattr(scraped_product, "source_inactive", False):
+                # Карточка «Pasif»: снятое не возвращаем, а товар в продаже снимает
+                # только mark_products_gone (на проде — пометка на проверку). Заглушка
+                # аналога скрыта с витрины: в продаже её не было, проверять нечего.
+                remove_from_sale = existing_product.is_available
+                if (existing_product.external_data or {}).get("is_stub"):
+                    gone_review = False
+            elif scraped_product.is_available != existing_product.is_available:
                 existing_product.is_available = scraped_product.is_available
                 updated = True
                 
@@ -4141,6 +4151,14 @@ class ScraperIntegrationService:
                     self.logger.error(
                         f"Ошибка при обновлении авторов для товара {existing_product.id}: {e}"
                 )
+
+        if remove_from_sale:
+            # Последним шагом: save() доменной записи пишет её наличие обратно в Product.
+            mark_products_gone(
+                [existing_product.pk], parser_key=scraped_product.source,
+                reason="inactive", review=gone_review,
+            )
+            existing_product.refresh_from_db(fields=["is_available", "external_data"])
 
         return ("updated" if content_changed else "skipped"), existing_product
 

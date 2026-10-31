@@ -27,10 +27,13 @@ test('SEO lengths: title up to 60 chars before the site name, description up to 
   }
 })
 
-test('unconfirmed terms are not promised: no fixed delivery time, price or payment method', () => {
+test('only confirmed terms are promised: same day from 1000 TRY, no minutes or payment method', () => {
   const text = JSON.stringify(ISTANBUL_DELIVERY)
   assert.doesNotMatch(text, /\d+\s*(минут|minutes|мин\.|min)\b/i)
-  assert.doesNotMatch(text, /(₺|TL|лир|\$)\s*\d|\d\s*(₺|TL|лир)/i)
+  assert.doesNotMatch(text, /(₺|TL|\$)\s*\d|\d\s*(₺|TL)/i)
+  assert.deepEqual([...new Set(text.match(/[\d,]+ (?:лир|TRY)/g))].sort(), ['1,000 TRY', '1000 лир'])
+  assert.match(ISTANBUL_DELIVERY.ru.metaDescription, /В течение дня, от 1000 лир/)
+  assert.match(ISTANBUL_DELIVERY.en.metaDescription, /Same day, from 1,000 TRY/)
   assert.doesNotMatch(text, /наличн|cash|24\/7|круглосуточно/i)
 })
 

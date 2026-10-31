@@ -82,10 +82,43 @@
         ">🔄 Пересобрать фиды сейчас</button>
     </form>
 
+    <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+        <form method="post" action="sync-catalog/report/" style="margin: 0;">
+            {% csrf_token %}
+            <button type="submit" style="
+                background: rgba(255,255,255,0.12);
+                color: #fff;
+                border: none;
+                padding: 8px 18px;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+            ">📋 Каталог ВК: только отчёт</button>
+        </form>
+        {% if can_apply_vk_catalog %}
+        <form method="post" action="sync-catalog/apply/" style="margin: 0;"
+              onsubmit="return confirm('Изменить каталог ВК: добавить, обновить и удалить товары по фиду?\n\nЭто публичная витрина. Сначала посмотрите отчёт. Итог придёт в Telegram.');">
+            {% csrf_token %}
+            <button type="submit" style="
+                background: rgba(198,40,40,0.85);
+                color: #fff;
+                border: none;
+                padding: 8px 18px;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+            ">🛍 Синхронизировать каталог ВК</button>
+        </form>
+        {% endif %}
+    </div>
+
     <p style="margin: 14px 0 0; color: #78909c; font-size: 12px; line-height: 1.5;">
         ℹ️ Подкатегорию можно выгрузить ссылкой <code>?category=&lt;slug подкатегории&gt;</code> — она собирается на лету.
         «Синхронизировать» загружает фото и видео наших товаров в уже импортированные товары ВК (по ID из фида);
         нужен <code>VK_USER_TOKEN</code> в .env. Меняет публичную витрину ВК.
+        «Каталог ВК: только отчёт» показывает в Telegram, что будет добавлено, обновлено и удалено, и ничего не меняет.
     </p>
 </div>
 

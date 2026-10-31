@@ -854,3 +854,22 @@ def sync_vk_photos_task(category_slug: str | None = None) -> str:
         summary = f"ошибка: {e}"
     send_admin_telegram_notification(f"📸 Фото в ВК Маркет, {label}: {summary}")
     return summary
+
+
+# Лимит меньше visibility_timeout брокера (3 часа), иначе задачу доставят повторно.
+@shared_task(name="catalog.sync_vk_catalog", soft_time_limit=60 * 150, time_limit=60 * 155)
+def sync_vk_catalog_task(apply: bool = False, scheduled: bool = False) -> str:
+    """
+    Сверка каталога ВК с фидом (docs/VK_YML_FEED.md); итог — в Telegram админу.
+    Запуск по расписанию ничего не делает, пока VK_SYNC_ENABLED выключен.
+    """
+    from django.conf import settings
+
+    from apps.catalog.services.vk_catalog_sync import TELEGRAM_LIMIT, run_catalog_sync
+    from apps.monitoring.watchdog import send_admin_telegram_notification
+
+    if scheduled and not settings.VK_SYNC_ENABLED:
+        return "выключено: VK_SYNC_ENABLED=false"
+    report = run_catalog_sync(apply=apply)
+    send_admin_telegram_notification(report.text()[:TELEGRAM_LIMIT])
+    return report.stop_reason or report.summary()
