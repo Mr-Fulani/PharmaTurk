@@ -27,6 +27,8 @@ class CartItemInline(admin.TabularInline):
 
     model = CartItem
     extra = 0
+    # Без поиска по вводу каждая строка строит список из всего каталога (504 и 2 ГБ памяти).
+    autocomplete_fields = ("product",)
     readonly_fields = (
         "price",
         "currency",
@@ -55,6 +57,7 @@ class CartAdmin(admin.ModelAdmin):
     list_filter = ('currency', 'created_at', 'promo_code')
     search_fields = ('user__email', 'session_key', 'promo_code__code')
     ordering = ('-created_at',)
+    autocomplete_fields = ('user', 'promo_code')
     readonly_fields = ('items_count', 'total_amount', 'reminder_sent_at', 'reminder_count', 'locale', 'created_at', 'updated_at')
     actions = ('stop_cart_reminders',)
     
@@ -219,6 +222,7 @@ class CartItemAdmin(admin.ModelAdmin):
     list_filter = ("verification_status", "currency", "source_checked_at", "created_at")
     search_fields = ("cart__user__email", "product__name")
     ordering = ("-created_at",)
+    autocomplete_fields = ("cart", "product")
     readonly_fields = (
         "price",
         "currency",
@@ -453,6 +457,7 @@ class SourcingRequestAdmin(admin.ModelAdmin):
 
     @admin.display(description=_('Превью'))
     def image_preview(self, obj):
+    autocomplete_fields = ('product',)
         if not obj.image:
             return '—'
         return format_html('<img src="{}" style="max-height:240px;max-width:320px" />', obj.image.url)

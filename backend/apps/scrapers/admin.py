@@ -2178,6 +2178,7 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             )
 
     def cancel_task_view(self, request, task_id):
+    autocomplete_fields = ['product']
         try:
             task = InstagramScraperTask.objects.get(id=task_id)
             self._cancel_task(task)

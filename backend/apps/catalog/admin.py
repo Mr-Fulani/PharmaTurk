@@ -3460,6 +3460,8 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
             )
 
         if lower_url.endswith(("mp4", "mov", "webm", "m4v")):
+    autocomplete_fields = ('product',)
+    autocomplete_fields = ('product',)
             return format_html(
                 '<video src="{}" style="max-width: 180px; max-height: 100px;" muted loop playsinline></video>',
                 url,
