@@ -5,17 +5,19 @@
 /** @type {import('next').NextConfig} */
 const { i18n } = require('./next-i18next.config')
 
-// CSP пока только Report-Only (TD-018): браузер ничего не блокирует, нарушения
+// CSP пока только Report-Only (TD-018, TD-033): браузер ничего не блокирует, нарушения
 // пишет в консоль и шлёт на /api/csp-report/ (лог backend «csp»). Переход в
 // enforce — отдельным шагом по docs/SECURITY_CSP.md. Политика здесь, а не в
 // отдельном файле: production-образ копирует только next.config.js.
-const CSP_REPORT_ONLY = [
+const buildCsp = ({ scriptExtra = '' } = {}) => [
   "default-src 'self'",
   // 'unsafe-inline': инлайн-скрипты Consent Mode, gtag, Метрики. Убрать — через nonce.
-  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://*.google-analytics.com" +
-    ' https://mc.yandex.ru https://yastatic.net https://telegram.org https://accounts.google.com' +
-    ' https://www.youtube.com https://static.cloudflareinsights.com https://challenges.cloudflare.com',
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
+  `script-src 'self' 'unsafe-inline'${scriptExtra} https://www.googletagmanager.com https://*.google-analytics.com` +
+    ' https://mc.yandex.ru https://mc.yandex.com https://yastatic.net https://telegram.org' +
+    ' https://accounts.google.com https://www.youtube.com https://static.cloudflareinsights.com' +
+    ' https://challenges.cloudflare.com',
+  // www.gstatic.com — стили встроенного в браузер Google-переводчика страницы.
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com https://www.gstatic.com",
   // Картинки товаров приходят с многих доменов источников — https: целиком.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https://fonts.gstatic.com",
@@ -27,7 +29,8 @@ const CSP_REPORT_ONLY = [
     ' https://id.vk.ru https://id.vk.com',
   'frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com' +
     ' https://oauth.telegram.org https://accounts.google.com https://challenges.cloudflare.com' +
-    ' https://www.googletagmanager.com https://id.vk.ru https://id.vk.com',
+    ' https://www.googletagmanager.com https://id.vk.ru https://id.vk.com' +
+    ' https://mc.yandex.ru https://mc.yandex.com',
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
@@ -38,7 +41,12 @@ const CSP_REPORT_ONLY = [
 
 // В dev Next нужен eval и HMR-сокеты — политика только для production-сборки.
 const securityHeaders = process.env.NODE_ENV === 'production'
-  ? [{ key: 'Content-Security-Policy-Report-Only', value: CSP_REPORT_ONLY }]
+  ? [{ key: 'Content-Security-Policy-Report-Only', value: buildCsp() }]
+  : []
+// Виджет Telegram на /auth выполняет data-onauth через eval. Правило идёт после общего
+// и заменяет заголовок только на страницах входа.
+const authSecurityHeaders = process.env.NODE_ENV === 'production'
+  ? [{ key: 'Content-Security-Policy-Report-Only', value: buildCsp({ scriptExtra: " 'unsafe-eval'" }) }]
   : []
 const nextConfig = {
   reactStrictMode: true,
@@ -78,6 +86,7 @@ const nextConfig = {
   async headers() {
     return [
       ...(securityHeaders.length ? [{ source: '/:path*', headers: securityHeaders }] : []),
+      ...(authSecurityHeaders.length ? [{ source: '/auth/:path*', headers: authSecurityHeaders }] : []),
       {
         source: '/fonts/:path*',
         headers: [

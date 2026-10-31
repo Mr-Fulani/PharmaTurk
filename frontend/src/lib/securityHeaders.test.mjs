@@ -56,6 +56,28 @@ test('report-only CSP keeps analytics, Telegram login, CDN media and video embed
   assert.ok(!csp.includes('upgrade-insecure-requests'))
 })
 
+test('eval is allowed only on auth pages for the Telegram widget (TD-033)', async () => {
+  const rules = await headersFor('production')
+  const directive = (csp) => csp.split('; ').find((part) => part.startsWith('script-src '))
+  const authRule = rules.find((item) => item.source === '/auth/:path*')
+  const authCsp = authRule.headers.find((header) => header.key === 'Content-Security-Policy-Report-Only').value
+
+  assert.doesNotMatch(directive(cspValue(rules)), /unsafe-eval/)
+  assert.match(directive(authCsp), /'unsafe-eval'/)
+  // Правило входа должно идти после общего: Next применяет последнее значение заголовка.
+  assert.ok(rules.findIndex((item) => item.source === '/:path*') < rules.indexOf(authRule))
+})
+
+test('reports from 30-31.10.2026 are covered: Metrika mirror and browser translator', async () => {
+  const csp = cspValue(await headersFor('production'))
+  const directive = (name) => csp.split('; ').find((part) => part.startsWith(`${name} `)) || ''
+
+  assert.match(directive('script-src'), /https:\/\/mc\.yandex\.com/)
+  assert.match(directive('frame-src'), /https:\/\/mc\.yandex\.ru/)
+  assert.match(directive('frame-src'), /https:\/\/mc\.yandex\.com/)
+  assert.match(directive('style-src'), /https:\/\/www\.gstatic\.com/)
+})
+
 test('dev server gets no CSP (Next dev needs eval and HMR sockets)', async () => {
   assert.equal(cspValue(await headersFor('development')), undefined)
 })
