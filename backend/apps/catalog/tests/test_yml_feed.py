@@ -22,6 +22,8 @@ from apps.catalog.models import (
     ShoeProduct,
     ShoeProductImage,
     ShoeVariant,
+    SportsProduct,
+    SportsVariant,
 )
 from apps.catalog.models_vk import YMLFeedSnapshot
 from apps.catalog.services import yml_feed
@@ -293,8 +295,30 @@ def test_feed_description_has_no_html_and_keeps_link(rub_rate):
 def test_offer_name_skips_color_already_in_name_and_fits_limit():
     assert yml_feed._offer_name("Кепка хаки", [("Цвет", "Хаки")]) == "Кепка хаки"
     long_name = yml_feed._offer_name("К" * 160, [("Цвет", "Серый"), ("Размер", "M")])
-    assert len(long_name) == 150
+    assert len(long_name) == yml_feed.MAX_NAME_CHARS
     assert long_name.endswith(", серый, M")
+    words = yml_feed._offer_name("Коллаген, витамин C " * 10, [])
+    assert len(words) <= yml_feed.MAX_NAME_CHARS
+    assert words.endswith("витамин")
+
+
+@pytest.mark.django_db
+def test_feed_builds_domain_whose_variants_have_no_is_active(rub_rate):
+    domain = SportsProduct.objects.create(
+        name="Гантель",
+        slug=f"sports-{uuid4().hex}",
+        category=_category("sports"),
+        price=Decimal("100.00"),
+        currency="TRY",
+        is_available=True,
+    )
+    domain.refresh_from_db()
+    SportsVariant.objects.create(product=domain, size="M", price=Decimal("200.00"))
+
+    offers = _offers(_parse(yml_feed.iter_yml_feed()))
+
+    assert len(offers) == 1
+    assert offers[0].get("group_id") == str(domain.base_product_id)
 
 
 @pytest.mark.django_db

@@ -82,6 +82,7 @@ _FALLBACK_VK_MAP = {
 FEED_GENDERS = ("men", "women", "kids")
 
 MAX_DESCRIPTION_CHARS = 3000
+MAX_NAME_CHARS = 100  # ВК отклоняет товар с названием длиннее
 VK_LINK_UTM = "utm_source=vk&utm_medium=market"
 _CYRILLIC_RE = re.compile(r"[а-яё]", re.IGNORECASE)
 # Характеристики с кодами поставщика: «Артикул», «Код товара», «Штрихкод», «SKU»…
@@ -180,7 +181,10 @@ def _domain_queryset(model):
         prefetches.append("images")
     if _has_relation(model, "variants"):
         variant_model = model._meta.get_field("variants").related_model
-        variants = variant_model.objects.filter(is_active=True)
+        variants = variant_model.objects.all()
+        # У вариантов спорттоваров и автозапчастей такого поля нет.
+        if _has_relation(variant_model, "is_active"):
+            variants = variants.filter(is_active=True)
         if _has_relation(variant_model, "images"):
             variants = variants.prefetch_related("images")
         prefetches.append(Prefetch("variants", queryset=variants, to_attr="yml_active_variants"))
@@ -670,10 +674,12 @@ def _offer_name(base_name: str, variant_options: list[tuple[str, str]]) -> str:
         if value.lower() in name.lower():
             continue
         extras.append(value[:1].lower() + value[1:] if param_name == "Цвет" else value)
-    if extras:
-        suffix = ", " + ", ".join(extras)
-        name = name[: 150 - len(suffix)].rstrip(" ,") + suffix
-    return name[:150]
+    suffix = ", " + ", ".join(extras) if extras else ""
+    limit = MAX_NAME_CHARS - len(suffix)
+    if len(name) > limit:
+        cut = name[:limit]
+        name = (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip(" ,")
+    return (name + suffix)[:MAX_NAME_CHARS]
 
 
 _HTML_LINE_BREAK_RE = re.compile(r"<br\s*/?>|</?(?:p|div|h[1-6]|tr|ul|ol)(?:\s[^>]*)?>", re.IGNORECASE)
