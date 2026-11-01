@@ -1,3 +1,4 @@
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import quote
 
@@ -33,6 +34,8 @@ from .cart_source_verification import CartSourceOfferPolicy
 from .contacts import validate_contact_fields
 from .models import CONTACT_CHANNEL_CHOICES, Cart, CartItem, Order, OrderItem, PromoCode, SourcingRequest
 
+logger = logging.getLogger(__name__)
+
 VARIANT_MODEL_MAP = {
     'clothing': ClothingVariant,
     'shoes': ShoeVariant,
@@ -45,6 +48,18 @@ VARIANT_MODEL_MAP = {
     'underwear': UnderwearVariant,
     'islamic_clothing': IslamicClothingVariant,
 }
+
+
+def _log_fallback(place: str, target, exc: Exception) -> None:
+    """Запасная ветка: покупатель получает прежний ответ, причина остаётся в журнале."""
+    logger.warning(
+        "Orders fallback %s for %s %s: %s: %s",
+        place,
+        type(target).__name__,
+        getattr(target, "pk", None),
+        type(exc).__name__,
+        exc,
+    )
 
 
 def _resolve_media_url(value, request):
@@ -103,7 +118,7 @@ def _serialize_translations_qs(translations):
         return []
     try:
         items = translations.all()
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return []
     return [
         {
@@ -348,7 +363,8 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         else:
             # Если ProductVariantPrice не найден, используем обычную цену варианта
             variant_price_with_margin = getattr(variant, 'price', None)
-    except Exception as e:
+    except Exception as exc:
+        _log_fallback("variant_price", variant, exc)
         # В случае ошибки используем обычную цену варианта
         variant_price_with_margin = getattr(variant, 'price', None)
     
@@ -711,8 +727,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                             if file_url:
                                 return _resolve_media_url(file_url, request) or file_url
                             return _resolve_media_url(v_first.image_url, request)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.image_base_product", product, exc)
 
         # Фолбэк: пробуем подтянуть изображение из варианта по сохранённым external_data
         ext = getattr(product, "external_data", {}) or {}
@@ -798,8 +814,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                             if file_url:
                                 return file_url
                             return _resolve_media_url(v_first.image_url, request)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.image_first_variant", product, exc)
 
         # Фолбэк: medicine, supplement, medical_equipment, books — domain_item с gallery_images
         try:
@@ -821,8 +837,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                             return _resolve_media_url(file_url, request) or file_url
                         if getattr(first, "image_url", None):
                             return _resolve_media_url(first.image_url, request)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.image_domain", product, exc)
 
         return None
 
@@ -925,7 +941,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                 .select_related("product")
                 .first()
             )
-        except Exception:
+        except Exception as exc:
+            _log_fallback("cart_item.parent_slug", product, exc)
             return None
         parent = getattr(variant, "product", None)
         return getattr(parent, "slug", None) or None
@@ -1016,7 +1033,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                 "price_with_margin": price_with_margin,
                 "is_base_price": target_currency == from_currency,
             }
-        except Exception:
+        except Exception as exc:
+            _log_fallback("cart_item.jewelry_price", product, exc)
             return None
 
     def _get_base_price(self, obj):
@@ -1035,8 +1053,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                         candidate = data.get("converted_price")
                     if candidate is not None:
                         return candidate, currency.upper()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.base_price", obj, exc)
         return base_price, base_currency
 
     def _get_live_currency_data(self, obj, target_currency):
@@ -1064,8 +1082,8 @@ class CartItemSerializer(serializers.ModelSerializer):
             data = self._get_live_currency_data(obj, preferred_currency)
             if data:
                 return data["price_with_margin"]
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.live_price", obj, exc)
 
         # Fallback: конвертируем из obj.price (валюта позиции или продукта)
         from_currency = (obj.currency or getattr(obj.product, 'currency', None) or 'RUB').upper()
@@ -1077,8 +1095,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                 apply_margin=True,
             )
             return price
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.saved_price_conversion", obj, exc)
         return obj.price
 
     def get_price(self, obj):
@@ -1111,7 +1129,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                     apply_margin=False,
                 )
                 return converted
-            except Exception:
+            except Exception as exc:
+                _log_fallback("cart_item.observed_price_conversion", obj, exc)
                 return saved_price
         return apply_product_markup(self._get_price_without_product_markup(obj), obj.product)
 
@@ -1161,7 +1180,8 @@ class CartItemSerializer(serializers.ModelSerializer):
             from apps.catalog.utils.product_markup import apply_product_markup
 
             return apply_product_markup(price_with_margin, product)
-        except Exception:
+        except Exception as exc:
+            _log_fallback("cart_item.old_price", obj, exc)
             return old_price
 
     def get_old_price_formatted(self, obj):
@@ -1196,8 +1216,8 @@ class CartItemSerializer(serializers.ModelSerializer):
         try:
             data = self._get_live_currency_data(obj, "RUB")
             return data.get("converted_price") if data else None
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.converted_price_rub", obj, exc)
         return None
     
     def get_converted_price_usd(self, obj):
@@ -1205,8 +1225,8 @@ class CartItemSerializer(serializers.ModelSerializer):
         try:
             data = self._get_live_currency_data(obj, "USD")
             return data.get("converted_price") if data else None
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.converted_price_usd", obj, exc)
         return None
     
     def get_final_price_rub(self, obj):
@@ -1216,8 +1236,8 @@ class CartItemSerializer(serializers.ModelSerializer):
 
             data = self._get_live_currency_data(obj, "RUB")
             return apply_product_markup(data["price_with_margin"], obj.product) if data else None
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.final_price_rub", obj, exc)
         return None
     
     def get_final_price_usd(self, obj):
@@ -1227,8 +1247,8 @@ class CartItemSerializer(serializers.ModelSerializer):
 
             data = self._get_live_currency_data(obj, "USD")
             return apply_product_markup(data["price_with_margin"], obj.product) if data else None
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.final_price_usd", obj, exc)
         return None
     
     def get_margin_percent_applied(self, obj):
@@ -1239,8 +1259,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                 base_currency,
                 self._get_preferred_currency(self.context.get("request")),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("cart_item.margin_percent", obj, exc)
         return 0
     
     def get_prices_in_currencies(self, obj):
@@ -1256,7 +1276,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                         data["price_with_margin"], obj.product
                     )
                     prices[currency] = data
-            except Exception:
+            except Exception as exc:
+                _log_fallback("cart_item.prices_in_currencies", obj, exc)
                 continue
         return prices
 
@@ -1379,7 +1400,8 @@ class CartSerializer(serializers.ModelSerializer):
             try:
                 price = item_serializer.get_price(item)
                 total += Decimal(str(price or 0)) * item.quantity
-            except Exception:
+            except Exception as exc:
+                _log_fallback("cart.total_amount", item, exc)
                 total += Decimal(str(item.price or 0)) * item.quantity
 
         return float(total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
@@ -1403,12 +1425,14 @@ class CartSerializer(serializers.ModelSerializer):
 
         try:
             total_dec = Decimal(str(self.get_total_amount(obj)))
-        except Exception:
+        except Exception as exc:
+            _log_fallback("cart.final_amount_total", obj, exc)
             total_dec = Decimal('0')
 
         try:
             discount_dec = Decimal(str(self.get_discount_amount(obj)))
-        except Exception:
+        except Exception as exc:
+            _log_fallback("cart.final_amount_discount", obj, exc)
             discount_dec = Decimal('0')
 
         return float((total_dec - discount_dec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
@@ -1452,7 +1476,8 @@ class CartSerializer(serializers.ModelSerializer):
                 apply_margin=False,
             )
             return float(Decimal(str(converted)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-        except Exception:
+        except Exception as exc:
+            _log_fallback("cart.free_shipping_threshold", obj, exc)
             return float(raw)
 
     def get_shipping_options(self, obj):
@@ -1501,7 +1526,8 @@ class CartSerializer(serializers.ModelSerializer):
                     apply_margin=False
                 )
                 return float(converted)
-            except Exception:
+            except Exception as exc:
+                _log_fallback("cart.shipping_cost_conversion", obj, exc)
                 return float(cost)
 
         for item in obj.items.all():
@@ -1575,8 +1601,8 @@ class CartSerializer(serializers.ModelSerializer):
                         method: max(0.0, cost - free_shipping_eligible_costs[method])
                         for method, cost in shipping_costs.items()
                     }
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_fallback("cart.free_shipping", obj, exc)
 
         return {
             'air': float(round(shipping_costs['air'], 2)),
@@ -1813,7 +1839,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
         try:
             amount = Decimal(str(obj.price))
             return self._convert_money(amount, order_currency, preferred_currency)
-        except Exception:
+        except Exception as exc:
+            _log_fallback("order_item.price", obj, exc)
             return obj.price
 
     def get_total(self, obj):
@@ -1823,7 +1850,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
         try:
             amount = Decimal(str(obj.total))
             return self._convert_money(amount, order_currency, preferred_currency)
-        except Exception:
+        except Exception as exc:
+            _log_fallback("order_item.total", obj, exc)
             return obj.total
 
     def get_product_translations(self, obj):
@@ -1867,8 +1895,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
             first_img = product.images.first()
             if first_img:
                 return first_img.image_url
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_fallback("order_item.image", product, exc)
         
         return None
 
@@ -2001,7 +2029,8 @@ class OrderSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
         try:
             return self._convert_money(Decimal(str(obj.subtotal_amount)), obj.currency, preferred_currency)
-        except Exception:
+        except Exception as exc:
+            _log_fallback("order.subtotal_amount", obj, exc)
             return obj.subtotal_amount
 
     def get_shipping_amount(self, obj):
@@ -2009,7 +2038,8 @@ class OrderSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
         try:
             return self._convert_money(Decimal(str(obj.shipping_amount)), obj.currency, preferred_currency)
-        except Exception:
+        except Exception as exc:
+            _log_fallback("order.shipping_amount", obj, exc)
             return obj.shipping_amount
 
     def get_discount_amount(self, obj):
@@ -2017,7 +2047,8 @@ class OrderSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
         try:
             return self._convert_money(Decimal(str(obj.discount_amount)), obj.currency, preferred_currency)
-        except Exception:
+        except Exception as exc:
+            _log_fallback("order.discount_amount", obj, exc)
             return obj.discount_amount
 
     def get_total_amount(self, obj):
@@ -2025,7 +2056,8 @@ class OrderSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
         try:
             return self._convert_money(Decimal(str(obj.total_amount)), obj.currency, preferred_currency)
-        except Exception:
+        except Exception as exc:
+            _log_fallback("order.total_amount", obj, exc)
             return obj.total_amount
 
     def get_fields(self):
@@ -2101,14 +2133,18 @@ class SourcingRequestCreateSerializer(serializers.ModelSerializer):
 
         from django.core.files.base import ContentFile
 
-        from apps.recommendations.services.safe_image_fetcher import MAX_IMAGE_BYTES, validate_image_bytes
+        from apps.recommendations.services.safe_image_fetcher import (
+            MAX_IMAGE_BYTES,
+            ImageFetchError,
+            validate_image_bytes,
+        )
 
         try:
             validated = validate_image_bytes(
                 value.read(MAX_IMAGE_BYTES + 1),
                 expected_content_type=getattr(value, 'content_type', None),
             )
-        except Exception:
+        except (ImageFetchError, OSError, ValueError):
             raise serializers.ValidationError(_("Не удалось прочитать изображение. Загрузите JPG, PNG или WebP."))
         image = validated.image.convert('RGB')
         image.thumbnail((1600, 1600))

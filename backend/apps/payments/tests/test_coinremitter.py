@@ -309,3 +309,35 @@ class TestCreateInvoice:
 
         assert result is not None
         assert result["expires_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# некорректные суммы в ответе провайдера
+# ---------------------------------------------------------------------------
+
+class TestCreateInvoiceBadAmounts:
+    @patch("apps.payments.providers.coinremitter._get_config")
+    @patch("requests.post")
+    def test_bad_amounts_are_logged_and_fall_back(self, mock_post, mock_config, caplog):
+        from apps.payments.providers.coinremitter import create_invoice
+
+        mock_config.return_value = {"api_key": "k", "api_password": "p", "coin": "USDTTRC20"}
+        response = MagicMock()
+        response.json.return_value = {
+            "success": True,
+            "data": {
+                "coin_symbol": "TCN",
+                "total_amount": {"TCN": "bad-total"},
+                "amount": "bad-amount",
+                "usd_amount": "bad-usd",
+            },
+        }
+        mock_post.return_value = response
+
+        with caplog.at_level("WARNING", logger="apps.payments.providers.coinremitter"):
+            result = create_invoice(Decimal("12.50"), "USD", "ORD-1", "https://example.com/hook")
+
+        assert result["amount"] == Decimal("0")
+        assert result["amount_usd"] == Decimal("12.50")
+        for value in ("bad-total", "bad-amount", "bad-usd"):
+            assert value in caplog.text

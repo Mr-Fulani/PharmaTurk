@@ -350,6 +350,17 @@ class TestCryptoWebhookView(CryptoPaymentFixtureMixin, TestCase):
         assert response.json() == {"ok": True}
         mock_get_invoice.assert_not_called()
 
+    def test_broken_body_is_answered_like_ping_and_logged(self):
+        with self.assertLogs("apps.payments.views", "WARNING") as logs:
+            response = self.client.post(
+                WEBHOOK_URL,
+                data="{broken",
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ParseError", logs.output[0])
+
     def test_validation_ping_without_invoice_id_returns_200(self):
         response = self.post_webhook({})
         assert response.status_code == 200

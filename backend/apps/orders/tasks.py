@@ -176,9 +176,10 @@ class IPv4EmailBackend(EmailBackend):
             if last_error:
                 raise last_error
             return False
-        except Exception:
+        except Exception as exc:
             if not self.fail_silently:
                 raise
+            logger.warning("IPv4 SMTP connection to %s failed: %s", self.host, type(exc).__name__)
             return False
 
 
@@ -654,8 +655,11 @@ def notify_sourcing_request_telegram(self, request_id: int) -> None:
         try:
             with req.image.open("rb") as fh:
                 photo = fh.read(10 * 1024 * 1024)
-        except Exception:
-            logger.warning("Sourcing request %s: cannot read photo for Telegram", req.pk)
+        except Exception as exc:
+            logger.warning(
+                "Sourcing request %s: cannot read photo for Telegram: %s",
+                req.pk, type(exc).__name__,
+            )
     if photo:
         resp = requests.post(
             base_url + "sendPhoto",

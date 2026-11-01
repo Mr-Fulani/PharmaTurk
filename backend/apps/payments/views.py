@@ -71,7 +71,10 @@ def _parse_webhook_payload(request: Request) -> dict:
             data = data.dict()
         elif not isinstance(data, dict):
             data = {}
-    except Exception:
+    except Exception as exc:
+        # Пустой payload дальше примется за проверочный POST и получит 200,
+        # повторного вызова не будет, поэтому причину пишем в журнал.
+        logger.warning("Crypto webhook: body not parsed: %s", type(exc).__name__)
         data = {}
     return data
 
