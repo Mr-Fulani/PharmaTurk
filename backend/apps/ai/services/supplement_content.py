@@ -96,8 +96,9 @@ _VOLUME_FORMS = {
 _NUMBER = r"\d+(?:[.,]\d+)?"
 _PACK_RE = re.compile(
     rf"(?<![\d.,])(?P<count>{_NUMBER})\s*(?:x\s*(?P<size>{_NUMBER})\s*)?"
-    r"(?P<unit>cignenebilir jel(?: form)?|jel form|cigneme tableti?|efervesan tablet|stick sase|[a-z]+)"
-    rf"(?P<tail>(?:\s*/?\s*{_CONTAINERS}\b)*)\s*$"
+    # «60 Böğürtlen Aromalı Çiğnenebilir Jel Form» — вкус между числом и формой; «20 poşet+1 araç» — набор.
+    r"(?P<unit>(?:[a-z]+ ){0,2}cignenebilir jel(?: form)?|jel form|cigneme tableti?|efervesan tablet|stick sase|[a-z]+)"
+    rf"(?P<tail>(?:\s*/?\s*{_CONTAINERS}\b)*)(?:\s*\+\s*\d+\s*arac)?\s*$"
 )
 
 
@@ -149,7 +150,7 @@ def parse_pack(name: Any) -> Optional[Pack]:
     tail_words = re.findall(r"[a-z]+", match.group("tail"))
     # Слова названия, которые заняла фасовка (fold_tr сохраняет деление на слова).
     source = " ".join(original.split()[-len(folded[match.start():].split()):])
-    if unit_text in ("cignenebilir jel", "cignenebilir jel form", "jel form"):
+    if unit_text.endswith(("cignenebilir jel", "cignenebilir jel form", "jel form")):
         ru, en = _pieces(count, "gummy")
         return Pack(ru, en, source, piece="gummy")
     # «efervesan tablet», «cigneme tableti», «stick sase»: единица — последнее слово,
@@ -383,12 +384,19 @@ _FORM_STEMS = {"capsule": ("капсул", "capsul"), "tablet": ("таблет",
                "lozenge": ("пастил", "lozeng")}
 
 
-def form_mismatch(description: Any, pack: Optional[Pack]) -> bool:
+def form_mismatch(description: Any, pack: Optional[Pack], source_name: Any = "") -> bool:
     if pack is None or pack.piece not in _FORM_STEMS:
         return False
+    # «TERAPAS NANE LIMON PASTIL 24 tablet»: источник сам называет форму, «пастилки» — не чужая форма.
+    source_forms = {_PIECE_WORDS[word] for word in re.findall(r"[a-z]+", fold_tr(source_name)) if word in _PIECE_WORDS}
     text = str(description or "").lower()
     own = any(stem in text for stem in _FORM_STEMS[pack.piece])
-    other = any(stem in text for piece, stems in _FORM_STEMS.items() if piece != pack.piece for stem in stems)
+    other = any(
+        stem in text
+        for piece, stems in _FORM_STEMS.items()
+        if piece != pack.piece and piece not in source_forms
+        for stem in stems
+    )
     return other and not own
 
 
@@ -558,7 +566,9 @@ def log_problems(log) -> dict[str, list[str]]:
         + description_problems(en_description, source)
     ))
     pack = parse_pack(source_name)
-    if form_mismatch(getattr(log, "generated_description", ""), pack) or form_mismatch(en_description, pack):
+    if form_mismatch(getattr(log, "generated_description", ""), pack, source_name) or form_mismatch(
+        en_description, pack, source_name
+    ):
         description.append("supplement_form_mismatch")
     if description:
         problems["description"] = description

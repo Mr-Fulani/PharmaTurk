@@ -36,7 +36,7 @@ _TOKEN_RE = re.compile(r"[^\s]+")
 _PACK_RE = re.compile(r"\b(\d+)\s*'\s*l[iıuü]\S*(?:\s+paket\S*)?", re.IGNORECASE)
 _CYRILLIC_SUFFIX_RE = re.compile(r"\s+-\s+[а-яё\s-]+$", re.IGNORECASE)
 # Коды вида «J5SM-TST7325»: санитайзер названий вырезает их, в модель не берём.
-_HYPHEN_CODE_RE = re.compile(r"^(?=[A-Z-]*\d)[A-Z0-9]{2,}-[A-Z0-9]+$", re.IGNORECASE)
+_HYPHEN_CODE_RE = re.compile(r"^(?=[A-Z-]*\d)[A-Z0-9]{2,}(?:-[A-Z0-9]+)+$", re.IGNORECASE)
 # Строка материала LCW: «Kumaş: Suni Deri», «Kumaş Karışımı: 100% Deri».
 _MATERIAL_LINE_RE = re.compile(r"\b(?:Kumaş(?:\s+Karışımı)?|Materyal|Malzeme)\s*:\s*(?:%?\s*\d+\s*%?\s*)?([^\W\d_]+(?:\s+[^\W\d_]+)?)", re.IGNORECASE)
 _DIMENSIONS_RE = re.compile(r"\d+(?:[.,]\d+)?(?:[x×]\d+(?:[.,]\d+)?)+", re.IGNORECASE)
@@ -136,12 +136,14 @@ def _is_model_token(token: str) -> bool:
 
 
 def is_supplier_code(token: str) -> bool:
-    """Артикул поставщика («LV04RF822G», «12295132», «4480»): в название не идёт.
+    """Артикул поставщика («LV04RF822G», «12295132», «4480», «Tb0a6vdpenx1»): в название не идёт.
 
     Габариты «13x10x6» — не артикул.
     """
     stripped = token.strip("()[],.;:")
-    return sum(char.isdigit() for char in stripped) >= 4 and not _DIMENSIONS_RE.fullmatch(stripped)
+    digits = sum(char.isdigit() for char in stripped)
+    long_code = digits >= 3 and len(stripped) >= 12 and stripped.isalnum()
+    return (digits >= 4 or long_code) and not _DIMENSIONS_RE.fullmatch(stripped)
 
 
 def drop_codes(tokens: list[str]) -> list[str]:

@@ -122,6 +122,8 @@ _NON_KIND_CATEGORY_ALIASES = {
             # «Sports Belt», «Jewelry Box» — не корни «Спорттовары»/«Украшения»,
             # «Orthopedic Slippers» — не стельки (очередь модерации 27.10.2026).
             "sports", "jewelry", "orthopedic",
+            # «Activated Charcoal» у сорбента — не угли для благовоний (очередь модерации 01.11.2026).
+            "charcoal",
         }
     ),
 }
@@ -535,6 +537,8 @@ def _alias_specificity(value: str) -> tuple[int, int]:
 _TURKISH_ONLY_LETTERS_RE = re.compile(r"[ÇĞİŞçğış]")
 # «100ML» в названии Zara — объём, в RU-названии он «100 мл»; «2X100», «3X30ML» —
 # набор флаконов («2 × 100 мл»).
+# Обрывок артикула: «Мужская футболка -SHIRT1 из хлопка» (старый санитайзер резал «BASIC-T-SHIRT1»).
+_CODE_SCRAP_RE = re.compile(r"(?:^|\s)-[A-Za-z0-9]*\d")
 _VOLUME_TOKEN_RE = re.compile(r"(?:\d+X)?\d+(?:[.,]\d+)?(?:ML|GR|G|CM|MM|KG)|\d+X\d+(?:[.,]\d+)?")
 
 
@@ -557,7 +561,7 @@ def _identity_tokens(value: Any) -> set[str]:
             continue
         # Код «J5SM-TST7325» санитайзер вырезает из любого названия
         # (strip_price_and_codes_from_title) — требовать его нельзя.
-        if re.fullmatch(r"(?=[A-Z-]*\d)[A-Z0-9]{2,}-[A-Z0-9]+", upper):
+        if re.fullmatch(r"(?=[A-Z-]*\d)[A-Z0-9]{2,}(?:-[A-Z0-9]+)+", upper):
             continue
         is_alphanumeric_model = any(char.isdigit() for char in token) and any(
             char.isalpha() for char in token
@@ -1100,6 +1104,10 @@ class SemanticValidator:
             if medicine_problem:
                 report.rejected_fields.add("title")
                 report.reasons.append(medicine_problem)
+                break
+            if product_type in _APPAREL_TITLE_TYPES and _CODE_SCRAP_RE.search(str(title)):
+                report.rejected_fields.add("title")
+                report.reasons.append("title_code_scrap")
                 break
             if _title_has_turkish_words(title) or (
                 product_type in _APPAREL_TITLE_TYPES and _apparel_title_turkish_words(title, product)
