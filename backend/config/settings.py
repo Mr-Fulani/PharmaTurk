@@ -378,6 +378,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.recompute_sort_ranks",
         "schedule": crontab(hour=4, minute=50),
     },
+    # Копии маленьких фото для фидов, чтобы сборка в 00:35 их взяла (docs/VK_YML_FEED.md).
+    "catalog-prepare-feed-pictures": {
+        "task": "catalog.prepare_feed_pictures",
+        "schedule": crontab(hour=23, minute=50),
+    },
     # YML-фиды для ВК Маркета/Яндекса (docs/VK_YML_FEED.md): готовые файлы каждые 6 часов,
     # 00:35 / 06:35 (после пересчёта цен в 05:00) / 12:35 / 18:35 МСК.
     "catalog-generate-yml-feeds": {

@@ -835,6 +835,15 @@ def generate_yml_feeds() -> dict:
     return results
 
 
+@shared_task(name="catalog.prepare_feed_pictures", soft_time_limit=60 * 50, time_limit=60 * 55)
+def prepare_feed_pictures_task() -> dict:
+    """Копии маленьких фото для фидов; проверенные ссылки не трогает, прерванный запуск продолжит следующий."""
+    from apps.catalog.services.yml_feed import iter_feed_picture_urls
+    from apps.catalog.services.yml_feed_pictures import prepare_feed_pictures
+
+    return prepare_feed_pictures(iter_feed_picture_urls())
+
+
 @shared_task(name="catalog.sync_vk_photos", soft_time_limit=60 * 50, time_limit=60 * 55)
 def sync_vk_photos_task(category_slug: str | None = None) -> str:
     """Фото и видео товаров в ВК Маркет (команда sync_vk_photos); итог — в Telegram админу."""
