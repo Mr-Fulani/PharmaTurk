@@ -14,6 +14,8 @@ from django.utils import timezone
 from apps.catalog.models import AccessoryProduct, ClothingVariant, Product, ProductImage, ProductSourceOffer
 from apps.catalog.models_stock import ProductDeletionLog, StaleProductCandidate
 from apps.catalog.services import stale_products
+from apps.catalog.services.nightly_stock_check import NightlyStockCheckService
+from apps.catalog.services.product_card_source_refresh import ProductCardRefreshError
 from apps.catalog.services.stale_products import (
     StaleProductsRefused,
     delete_candidates,
@@ -256,6 +258,48 @@ def test_unconfirmed_recheck_does_not_delete():
 
     assert Product.objects.filter(pk=candidate.product_id).exists()
     assert result["skipped"] == [(candidate.product.name, "не удалось проверить у продавца")]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "seller_answers, verdict, opened",
+    [
+        ({}, "gone", 2),
+        ({"second": "present"}, "present", 2),
+        ({"first": "present"}, "present", 1),
+        ({"second": "source_unavailable"}, "error", 2),
+    ],
+)
+def test_recheck_before_delete_opens_every_colour_url(monkeypatch, seller_answers, verdict, opened):
+    product = _product(1)
+    first_url = product.external_url
+    second_url = "https://www.lcw.com/urun-1-kirmizi-o-2"
+    ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="lcw",
+        canonical_url=second_url,
+        source_domain="www.lcw.com",
+        external_product_id="lcw-1",
+        variant_key="red",
+        source_price=Decimal("100.00"),
+        source_currency="TRY",
+    )
+    candidate = _candidate(product, hidden_days=20)
+    names = {first_url: "first", second_url: "second"}
+    calls = []
+
+    def seller(_service, target):
+        calls.append(target.offer.canonical_url)
+        answer = seller_answers.get(names[target.offer.canonical_url], "source_not_found")
+        if answer == "present":
+            return object()
+        raise ProductCardRefreshError(answer, "seller", retryable=False)
+
+    monkeypatch.setattr(NightlyStockCheckService, "_fetch_product", seller)
+    monkeypatch.setattr(stale_products.time, "sleep", lambda seconds: None)
+
+    assert stale_products.recheck_at_source(candidate) == verdict
+    assert len(calls) == opened
 
 
 @pytest.mark.django_db
