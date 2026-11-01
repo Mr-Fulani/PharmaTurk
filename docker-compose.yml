@@ -87,7 +87,7 @@ services:
       - staticfiles:/app/staticfiles
       - huggingface_cache:/home/app/.cache/huggingface
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
-    mem_limit: 2g
+    mem_limit: 1920m
     networks: [edge, data]
 
   frontend:
@@ -143,7 +143,7 @@ services:
     # --max-memory-per-child (КиБ): процесс, разросшийся после задачи (Pillow,
     # большие ответы поставщиков), заменяется свежим вместо роста до OOM.
     command: bash -c "poetry run celery -A config worker -Q celery --loglevel=info --concurrency=2 --max-memory-per-child=400000"
-    mem_limit: 640m
+    mem_limit: 768m
     networks: [data, egress]
 
   celery_ai:
