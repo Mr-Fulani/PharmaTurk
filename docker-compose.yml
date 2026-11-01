@@ -87,7 +87,7 @@ services:
       - staticfiles:/app/staticfiles
       - huggingface_cache:/home/app/.cache/huggingface
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
-    mem_limit: 2g
+    mem_limit: 1920m
     networks: [edge, data]
 
   frontend:
