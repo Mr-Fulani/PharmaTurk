@@ -1468,10 +1468,27 @@ class BaseProductProxyAdmin(CategoryTypeFilterMixin, BaseProductAdmin):
         return new_fieldsets
 
 
+class SoldOutAtSourceFilter(SimpleListFilter):
+    """Список по ссылке из ночного отчёта: то же число, что в Telegram (docs/NIGHTLY_STOCK_CHECK.md)."""
+
+    title = _("Ночная сверка")
+    parameter_name = "sold_out"
+
+    def lookups(self, request, model_admin):
+        return (("nightly", _("Закончились у продавца")),)
+
+    def queryset(self, request, queryset):
+        if self.value() == "nightly":
+            from apps.catalog.services.nightly_stock_check import sold_out_products
+
+            return queryset.filter(pk__in=sold_out_products().values("pk"))
+        return queryset
+
+
 @admin.register(Product)
 class ProductAdmin(BaseProductAdmin):
     """Базовые товары (Product). Все типы; здесь же можно удалить «осиротевшие» записи (например после удаления книги)."""
-    pass
+    list_filter = (SoldOutAtSourceFilter,) + BaseProductAdmin.list_filter
 
 
 def _source_offer_stale_cutoff():

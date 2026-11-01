@@ -124,6 +124,21 @@ def checkable_products(parser_key: str):
     )
 
 
+def sold_out_products():
+    """Закончились у продавцов сверки: страница на месте, товар на сайте с пометкой «нет в наличии»."""
+    return (
+        Product.objects.filter(
+            is_active=True,
+            is_available=False,
+            source_offers__parser_key__in=nightly_sources(),
+            source_offers__is_active=True,
+            stale_candidate__isnull=True,
+        )
+        .exclude(product_type="medicines")
+        .distinct()
+    )
+
+
 def source_scrape_running(parser_key: str) -> bool:
     """Идёт обход этого источника парсером — два обхода одного сайта сразу не нужны."""
     from apps.scrapers.models import SiteScraperTask
@@ -518,13 +533,17 @@ def waiting_list_url() -> str:
     return f"{settings.SITE_URL}{path}?status__exact={StaleProductCandidate.Status.CANDIDATE}"
 
 
+def sold_out_list_url() -> str:
+    """Прямая ссылка на тех, кого считает ``sold_out_products``."""
+    return f"{settings.SITE_URL}{reverse('admin:catalog_product_changelist')}?sold_out=nightly"
+
+
 def build_night_report(night=None) -> str:
     """Итог ночи простыми словами для владельца."""
     from apps.catalog.services.stale_products import plan_action
 
     night = night or timezone.localdate()
     lines = [f"🌙 Ночная сверка наличия {night:%d.%m}"]
-    colours = 0
     for state in StockCheckSourceState.objects.filter(parser_key__in=nightly_sources()).order_by("parser_key"):
         title = SOURCE_TITLES.get(state.parser_key, state.parser_key)
         if state.paused_reason:
@@ -546,7 +565,6 @@ def build_night_report(night=None) -> str:
         if stats.get("new_candidates"):
             line += f" Новых неактуальных: {stats['new_candidates']}."
         if stats.get("gone_colours"):
-            colours += stats["gone_colours"]
             line += (
                 f" Пропал один цвет из нескольких: {stats['gone_colours']} "
                 "(товар остаётся на сайте с другими цветами)."
@@ -563,8 +581,14 @@ def build_night_report(night=None) -> str:
             f"Неактуальные товары — ждут вашего решения: {len(waiting)} (скрыть уже можно: {ready}). "
             f"Без вас ничего не удаляется.\nОткрыть список: {waiting_list_url()}"
         )
-    elif colours:
+    else:
         lines.append("Неактуальных товаров нет, решать ничего не нужно.")
+    sold_out = sold_out_products().count()
+    if sold_out:
+        lines.append(
+            f"Нет в наличии у этих продавцов: {sold_out}. Это не неактуальные: страницы товаров на месте, "
+            f"товары остаются на сайте с пометкой «нет в наличии», решение не нужно.\nПосмотреть: {sold_out_list_url()}"
+        )
     return "\n".join(lines)
 
 

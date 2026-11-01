@@ -452,6 +452,23 @@ def test_missing_colour_is_not_reported_as_a_stale_product(nightly_settings, mon
 
 
 @pytest.mark.django_db
+def test_sold_out_products_are_not_called_stale_in_report():
+    _lcw_product(1, available=False)
+    _lcw_product(2, available=True)
+    StockCheckSourceState.objects.create(
+        parser_key="lcw", night=timezone.localdate(), catalog_size=1,
+        stats={"checked": 1, "became_unavailable": 1},
+    )
+
+    text = nightly.build_night_report()
+
+    assert "Закончились: 1" in text
+    assert "Неактуальных товаров нет, решать ничего не нужно." in text
+    assert "Нет в наличии у этих продавцов: 1. Это не неактуальные" in text
+    assert "/admin/catalog/product/?sold_out=nightly" in text
+
+
+@pytest.mark.django_db
 def test_whole_product_gone_is_counted_as_new_stale_product(monkeypatch):
     product = _lcw_product()
     service = NightlyStockCheckService()

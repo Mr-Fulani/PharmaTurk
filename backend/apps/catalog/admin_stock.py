@@ -120,6 +120,7 @@ class StaleProductCandidateAdmin(OwnerActionsMixin, admin.ModelAdmin):
         return source_title(obj.parser_key)
 
     def changelist_view(self, request, extra_context=None):
+        from .services.nightly_stock_check import sold_out_list_url, sold_out_products
         from .services.stale_products import delete_after_hidden_days, min_gone_days
 
         counts = dict(
@@ -133,6 +134,8 @@ class StaleProductCandidateAdmin(OwnerActionsMixin, admin.ModelAdmin):
                 for value, label in StaleProductCandidate.Status.choices
             ],
             "total_candidates": sum(counts.values()),
+            "sold_out_count": sold_out_products().count(),
+            "sold_out_url": sold_out_list_url(),
             "min_gone_days": min_gone_days(),
             "delete_after_hidden_days": delete_after_hidden_days(),
         })

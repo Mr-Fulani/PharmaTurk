@@ -466,6 +466,33 @@ def test_telegram_number_equals_list_behind_its_link(admin_client_logged, settin
 
 
 @pytest.mark.django_db
+def test_sold_out_number_equals_list_behind_its_link(admin_client_logged, settings):
+    from apps.catalog.services.nightly_stock_check import build_night_report
+
+    settings.NIGHTLY_STOCK_CHECK_SOURCES = ["lcw"]
+    settings.NIGHTLY_STOCK_CHECK_PAID_SOURCES = []
+    settings.SITE_URL = "https://mudaroba.example"
+    sold_out = [_product(1), _product(2)]
+    Product.objects.filter(pk__in=[item.pk for item in sold_out]).update(is_available=False)
+    in_stock = _product(3)
+    stale = _product(4)
+    Product.objects.filter(pk=stale.pk).update(is_available=False)
+    _candidate(stale)
+    other_source = _product(5)
+    Product.objects.filter(pk=other_source.pk).update(is_available=False)
+    other_source.source_offers.update(parser_key="flo")
+
+    text = build_night_report()
+
+    number = int(re.search(r"Нет в наличии у этих продавцов: (\d+)", text).group(1))
+    url = re.search(r"Посмотреть: (\S+)", text).group(1)
+    assert number == 2
+    page = admin_client_logged.get(url.removeprefix("https://mudaroba.example"))
+    assert page.context["cl"].result_count == number
+    assert in_stock.pk not in [row.pk for row in page.context["cl"].result_list]
+
+
+@pytest.mark.django_db
 def test_list_explains_itself_and_shows_reason_and_dates(admin_client_logged):
     candidate = _candidate(_product(1), gone_days=10)
     candidate.gone_checks = 4
@@ -481,10 +508,15 @@ def test_list_explains_itself_and_shows_reason_and_dates(admin_client_logged):
 
 
 @pytest.mark.django_db
-def test_empty_list_says_nothing_is_needed(admin_client_logged):
+def test_empty_list_says_nothing_is_needed(admin_client_logged, settings):
+    settings.NIGHTLY_STOCK_CHECK_SOURCES = ["lcw"]
+    settings.NIGHTLY_STOCK_CHECK_PAID_SOURCES = []
+    Product.objects.filter(pk=_product(1).pk).update(is_available=False)
+
     text = admin_client_logged.get("/admin/catalog/staleproductcandidate/").content.decode()
 
     assert "Сейчас список пуст, решать ничего не нужно." in text
+    assert "«Закончились» в отчёте — это другое." in text and "посмотреть их (1)" in text
 
 
 @pytest.mark.django_db
