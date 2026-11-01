@@ -7,6 +7,7 @@ import pytest
 from django.http import QueryDict
 from rest_framework.test import APIClient
 
+from apps.catalog import listing_filters
 from apps.catalog import views as catalog_views
 from apps.catalog.currency_models import ProductPrice
 from apps.catalog.models import Category, ClothingProduct, Product
@@ -105,6 +106,11 @@ def stub_converter(monkeypatch):
         ),
     )
     return rates
+
+
+def test_views_keep_their_filter_names_for_the_extracted_contract():
+    assert catalog_views._apply_price_filter is listing_filters.apply_price_filter
+    assert catalog_views._apply_availability_filter is listing_filters.apply_availability_filter
 
 
 @pytest.mark.django_db

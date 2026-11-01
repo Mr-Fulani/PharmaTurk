@@ -245,7 +245,7 @@ TD-019…TD-023 по релизам 22–24.10; контроль запрещё�
 - **Статус:** `[ ]` выполняется небольшими вертикальными срезами.
 - `backend/apps/catalog/serializers.py` — около 8 тыс. строк;
 - `backend/apps/catalog/models.py` — около 7 тыс. строк;
-- `backend/apps/catalog/views.py` — около 5.4 тыс. строк;
+- `backend/apps/catalog/views.py` — около 5.6 тыс. строк;
 - `frontend/src/pages/product/[[...slug]].tsx` — около 3 тыс. строк;
 - `backend/apps/orders/views.py` — более 2 тыс. строк.
 
@@ -294,6 +294,19 @@ PR слишком рискованно.
   idempotency, CSRF boundary, публичную валюту и независимость справочной цены
   от продажного наличия. Модели, миграции, parser flow и supplier I/O не
   меняются.
+- **Срез 7 — фильтры цены и наличия в списках:** разбор `min_price`/`max_price`,
+  выбор цены для сравнения по валюте и фильтры `in_stock`/`is_available`/
+  `availability_status` вынесены из `views.py` в
+  `backend/apps/catalog/listing_filters.py`. Код перенесён дословно, старые
+  приватные имена в `views.py` остались точными alias; `test_listing_filters.py`
+  сначала прошёл на старом коде и защищает все ветки, включая две недоработки,
+  сохранённые намеренно: `min_price=abc` даёт ошибку 500 (`_parse_decimal` не
+  ловит `InvalidOperation`), а `min_price=0` без `max_price` не фильтрует список,
+  хотя в паре с `max_price` работает. Модели, миграции, parser flow и формат API
+  не меняются.
+- **Осталось:** product resolution (`SmartSlugLookupMixin`, карточки в
+  `serializers.py`), прокси медиа и sitemap в `views.py`, доменные сериализаторы,
+  страница товара на фронте, `orders/views.py`.
 
 ### TD-007 — Неполные quality gates
 
