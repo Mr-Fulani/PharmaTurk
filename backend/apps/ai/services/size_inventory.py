@@ -38,12 +38,12 @@ _PRICE_BOUNDARY_RE = re.compile(
     re.IGNORECASE,
 )
 _SIZE_TOKEN_RE = re.compile(
-    r"(?<![A-Za-zА-Яа-яЁё0-9])(?:"
+    r"(?<![A-Za-zА-Яа-яЁёÇĞİÖŞÜçğıöşü0-9])(?:"
     r"one[\s-]?size|tek[\s-]?beden|standard|"
     r"[2-9]xl|x{1,4}[sml]|[sml]|"
     r"\d{2,3}[a-h]|"
     r"\d{1,3}(?:[.,]\d)?(?:\s*[-–—/]\s*\d{1,3}(?:[.,]\d)?)?"
-    r")(?![A-Za-zА-Яа-яЁё0-9])",
+    r")(?![A-Za-zА-Яа-яЁёÇĞİÖŞÜçğıöşü0-9])",
     re.IGNORECASE,
 )
 _PLUS_SIZE_RE = re.compile(r"больш\w*\s+размер\w*|plus[\s-]size|büyük\s+beden", re.IGNORECASE)
@@ -156,6 +156,15 @@ def _plain_text(value: str) -> str:
     return _TAG_RE.sub(" ", _BLOCK_TAG_RE.sub("\n", text))
 
 
+def _parser_sizes(input_data: dict[str, Any]) -> list[str]:
+    for key in ("attributes", "source_attributes"):
+        value = input_data.get(key)
+        sizes = _structured_sizes(value.get("sizes")) if isinstance(value, dict) else []
+        if sizes:
+            return sizes
+    return []
+
+
 def _source_texts(input_data: dict[str, Any]) -> Iterable[str]:
     for key in ("name", "description", "raw_description"):
         value = input_data.get(key)
@@ -166,9 +175,6 @@ def _source_texts(input_data: dict[str, Any]) -> Iterable[str]:
         if not value:
             continue
         if isinstance(value, dict):
-            sizes = _structured_sizes(value.get("sizes"))
-            if sizes:
-                yield "Sizes: " + ", ".join(sizes)
             value = {
                 attr_key: attr_value
                 for attr_key, attr_value in value.items()
@@ -223,7 +229,11 @@ def extract_sizes_from_input(
 
     result: list[dict[str, Any]] = []
     identities: set[str] = set()
-    for text in _source_texts(data):
+    # Список парсера точнее свободного текста: «Modelin giydiği beden: M», «Ağırlık: 130 gr (M beden)»
+    # и турецкое «size» («вам») давали лишние размеры (6 записей очереди 01.11.2026).
+    parser_sizes = _parser_sizes(data)
+    texts = ["Sizes: " + ", ".join(parser_sizes)] if parser_sizes else _source_texts(data)
+    for text in texts:
         for segment, explicit_available in _context_segments(text):
             for match in _SIZE_TOKEN_RE.finditer(segment):
                 display = normalize_size_value(match.group(0), normalized_type)
@@ -452,7 +462,9 @@ def strip_size_inventory_sentences(text: Any) -> str:
     if not source:
         return ""
     kept: list[str] = []
-    for sentence in re.split(r"(?<=[.!?])\s+|\n+", source):
+    # «…текстиль.</p><p>Размер большой…</p>» без пробела — иначе одно «предложение» и факт теряется
+    # вместе с </p> (FORELLI, очередь модерации 01.11.2026).
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+|(?<=</p>)", source):
         candidate = sentence.strip()
         if not candidate:
             continue
@@ -475,4 +487,7 @@ def strip_size_inventory_sentences(text: Any) -> str:
         if _STOCK_URGENCY_RE.search(candidate):
             continue
         kept.append(candidate)
-    return re.sub(r"\s{2,}", " ", " ".join(kept)).strip()
+    result = re.sub(r"\s{2,}", " ", " ".join(kept)).strip().replace("</p> <p", "</p><p")
+    if len(re.findall(r"<p\b", result)) > result.count("</p>"):
+        result += "</p>"
+    return result
