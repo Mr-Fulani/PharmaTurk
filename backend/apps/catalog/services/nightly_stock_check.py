@@ -56,6 +56,8 @@ STAT_KEYS = (
     "new_candidates",
     "errors",
     "rejected",
+    "error_streak",
+    "error_streak_start_pk",
 )
 
 
@@ -366,6 +368,17 @@ def _record(state: StockCheckSourceState, product_id: int, before: tuple, result
     return outcome
 
 
+def _track_error_streak(stats: dict, outcome: str, cursor_before: int) -> int:
+    """Серия временных ошибок подряд за ночь: хранится в stats, поэтому идёт через пачки."""
+    if outcome != "retryable":
+        stats["error_streak"] = 0
+        return 0
+    if not stats["error_streak"]:
+        stats["error_streak_start_pk"] = cursor_before
+    stats["error_streak"] += 1
+    return stats["error_streak"]
+
+
 def _loss_tripped(stats: dict) -> bool:
     """Слишком много товаров пропало за ночь — похоже на сбой парсера, а не на продавца."""
     sample = _setting_int("NIGHTLY_STOCK_CHECK_MIN_SAMPLE", 30, minimum=5, maximum=10000)
@@ -441,7 +454,6 @@ def _run_batch(sources, *, now, budget, clock, sleep, service) -> dict[str, Any]
             states[key] = state
             queues[key] = []
     next_at = {key: clock() for key in states}
-    consecutive = {key: 0 for key in states}
     while states and clock() + reserve < deadline:
         key = min(states, key=next_at.get)
         state = states[key]
@@ -453,9 +465,11 @@ def _run_batch(sources, *, now, budget, clock, sleep, service) -> dict[str, Any]
         if not queues[key]:
             queues[key] = _next_product_ids(key, state.cursor_pk)
             if not queues[key]:
-                # Весь каталог источника проверен: следующая ночь начнёт сначала.
+                # Каталог источника пройден: следующая ночь начнёт сначала. Если он
+                # кончился на серии ошибок, проверенным до конца он не считается.
                 state.cursor_pk = 0
-                state.last_full_cycle_at = timezone.now()
+                if not state.stats.get("error_streak"):
+                    state.last_full_cycle_at = timezone.now()
                 state.stats["stopped"] = "cycle_done"
                 state.save(update_fields=["cursor_pk", "last_full_cycle_at", "stats", "updated_at"])
                 summary["sources"][key] = "cycle_done"
@@ -469,9 +483,9 @@ def _run_batch(sources, *, now, budget, clock, sleep, service) -> dict[str, Any]
             continue
         result = service.run(product_id)
         outcome = _record(state, product_id, before, result)
+        streak = _track_error_streak(state.stats, outcome, state.cursor_pk)
         state.cursor_pk = product_id
         next_at[key] = max(started + 60.0 / source_rate_per_minute(key), clock())
-        consecutive[key] = consecutive[key] + 1 if outcome == "retryable" else 0
         if outcome == "paid_access_unavailable":
             _pause(state, "Источник требует платный прокси — ночная сверка его не открывает.", timezone.now())
             summary["sources"][key] = "paused"
@@ -483,8 +497,10 @@ def _run_batch(sources, *, now, budget, clock, sleep, service) -> dict[str, Any]
                 timezone.now(),
             )
             summary["sources"][key] = "paused"
-        elif consecutive[key] >= max_errors:
+        elif streak >= max_errors:
             # Сайт не отвечает или ограничил запросы — до следующей ночи его не трогаем.
+            # Товары этой серии не проверены: следующая ночь начнёт с них.
+            state.cursor_pk = state.stats["error_streak_start_pk"]
             state.stats["stopped"] = "source_errors"
             state.save(update_fields=["stats", "cursor_pk", "updated_at"])
             summary["sources"][key] = "source_errors"
