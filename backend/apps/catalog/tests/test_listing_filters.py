@@ -275,6 +275,30 @@ def test_other_currencies_skip_final_price_column(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("currency", "column"),
+    [
+        ("USD", "usd_price_with_margin"),
+        ("RUB", "rub_price_with_margin"),
+        ("KZT", "kzt_price_with_margin"),
+        ("EUR", "eur_price_with_margin"),
+        ("TRY", "try_price_with_margin"),
+    ],
+)
+def test_each_currency_reads_its_own_snapshot_column(frozen_price_snapshots, currency, column):
+    product = make_product("one-column")
+    ProductPrice.objects.create(product=product, **{column: Decimal("20")})
+
+    for requested in ("USD", "RUB", "KZT", "EUR", "TRY"):
+        result = catalog_views._apply_price_filter(
+            Product.objects.all(),
+            make_request("min_price=15&max_price=25", {"X-Currency": requested}),
+        )
+
+        assert slugs(result) == ({"one-column"} if requested == currency else set())
+
+
+@pytest.mark.django_db
 def test_product_with_unsupported_currency_uses_base_price(snapshot_products):
     result = catalog_views._apply_price_filter(
         Product.objects.all(),
