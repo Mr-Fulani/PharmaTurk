@@ -78,6 +78,11 @@ def test_size_sentence_does_not_take_previous_paragraph_with_it():
     )
 
 
+def test_paragraphs_without_sizes_stay_byte_for_byte():
+    text = "<p>Первый абзац о кроссовках.</p><p>Второй абзац о подошве.</p>"
+    assert strip_size_inventory_sentences(text) == text
+
+
 def test_size_sentence_at_paragraph_end_keeps_closing_tag():
     # Лог 30648 (Jack Wolfskin).
     text = "<p>Футболка из хлопка. Мягкая и удобная. Вес 130 г (размер M). Длина в размере L — 74 см.</p>"

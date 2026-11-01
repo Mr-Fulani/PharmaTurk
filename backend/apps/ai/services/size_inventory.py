@@ -487,7 +487,7 @@ def strip_size_inventory_sentences(text: Any) -> str:
         if _STOCK_URGENCY_RE.search(candidate):
             continue
         kept.append(candidate)
-    result = re.sub(r"\s{2,}", " ", " ".join(kept)).strip()
+    result = re.sub(r"\s{2,}", " ", " ".join(kept)).strip().replace("</p> <p", "</p><p")
     if len(re.findall(r"<p\b", result)) > result.count("</p>"):
         result += "</p>"
     return result
