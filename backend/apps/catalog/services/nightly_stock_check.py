@@ -28,6 +28,7 @@ import httpx
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.catalog.models import Product
@@ -53,6 +54,7 @@ STAT_KEYS = (
     "became_available",
     "price_changed",
     "gone",
+    "gone_colours",
     "new_candidates",
     "errors",
     "rejected",
@@ -278,7 +280,7 @@ class NightlyStockCheckService(ProductCardSourceRefreshService):
         )
         if other_url:
             # Пропал один цвет из нескольких: снимаем только его, как карточка.
-            return self._mark_source_url_unavailable(target)
+            return {**self._mark_source_url_unavailable(target), "colour_gone": 1}
         changes = {"new_candidate": int(
             mark_stale_candidate(
                 target.product, parser_key=target.parser_key, source_url=target.offer.canonical_url
@@ -342,8 +344,12 @@ def _record(state: StockCheckSourceState, product_id: int, before: tuple, result
         clear_stale_candidate(product_id)
     elif code == "source_not_found":
         outcome = "gone"
-        stats["gone"] += 1
-        stats["new_candidates"] += int(changes.get("new_candidate", 0))
+        if changes.get("colour_gone"):
+            # Товар остаётся на сайте с другими цветами: в «Неактуальные товары» он не попадает.
+            stats["gone_colours"] += 1
+        else:
+            stats["gone"] += 1
+            stats["new_candidates"] += int(changes.get("new_candidate", 0))
     elif code in RETRYABLE_CODES:
         stats["errors"] += 1
         return "retryable"
@@ -506,10 +512,19 @@ def _plural_nights(count: int) -> str:
     return "ночей"
 
 
+def waiting_list_url() -> str:
+    """Прямая ссылка на тех, кого считает отчёт (``StaleProductCandidate.waiting_decision``)."""
+    path = reverse("admin:catalog_staleproductcandidate_changelist")
+    return f"{settings.SITE_URL}{path}?status__exact={StaleProductCandidate.Status.CANDIDATE}"
+
+
 def build_night_report(night=None) -> str:
     """Итог ночи простыми словами для владельца."""
+    from apps.catalog.services.stale_products import plan_action
+
     night = night or timezone.localdate()
     lines = [f"🌙 Ночная сверка наличия {night:%d.%m}"]
+    colours = 0
     for state in StockCheckSourceState.objects.filter(parser_key__in=nightly_sources()).order_by("parser_key"):
         title = SOURCE_TITLES.get(state.parser_key, state.parser_key)
         if state.paused_reason:
@@ -528,16 +543,28 @@ def build_night_report(night=None) -> str:
             f". Закончились: {stats.get('became_unavailable', 0)}, снова в наличии: "
             f"{stats.get('became_available', 0)}, цена изменилась: {stats.get('price_changed', 0)}."
         )
-        if stats.get("gone"):
-            line += f" Нет у продавца: {stats['gone']} (новых {stats.get('new_candidates', 0)})."
+        if stats.get("new_candidates"):
+            line += f" Новых неактуальных: {stats['new_candidates']}."
+        if stats.get("gone_colours"):
+            colours += stats["gone_colours"]
+            line += (
+                f" Пропал один цвет из нескольких: {stats['gone_colours']} "
+                "(товар остаётся на сайте с другими цветами)."
+            )
         if stats.get("errors") or stats.get("rejected"):
             line += f" Не удалось проверить: {stats.get('errors', 0) + stats.get('rejected', 0)}."
         if stats.get("stopped") == "source_errors":
             line += " Сайт перестал отвечать — остановились до следующей ночи."
         lines.append(line)
-    waiting = StaleProductCandidate.objects.filter(status=StaleProductCandidate.Status.CANDIDATE).count()
+    waiting = StaleProductCandidate.waiting_decision().select_related("product")
     if waiting:
-        lines.append(f"Товаров, которых нет у продавца: {waiting} — админка «Неактуальные товары».")
+        ready = len(plan_action(waiting, "hide").eligible)
+        lines.append(
+            f"Неактуальные товары — ждут вашего решения: {len(waiting)} (скрыть уже можно: {ready}). "
+            f"Без вас ничего не удаляется.\nОткрыть список: {waiting_list_url()}"
+        )
+    elif colours:
+        lines.append("Неактуальных товаров нет, решать ничего не нужно.")
     return "\n".join(lines)
 
 

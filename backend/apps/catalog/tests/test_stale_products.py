@@ -1,4 +1,5 @@
 """Удаление неактуальных товаров: только по решению владельца и за предохранителями."""
+import re
 from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
@@ -431,6 +432,110 @@ def test_admin_pages_render(admin_client_logged):
         "/admin/catalog/stockchecksourcestate/",
     ):
         assert admin_client_logged.get(url).status_code == 200
+
+
+def _report_link_and_number(settings):
+    """Число и ссылка из отчёта в Telegram, как их видит владелец."""
+    from apps.catalog.services.nightly_stock_check import build_night_report
+
+    settings.NIGHTLY_STOCK_CHECK_SOURCES = ["lcw"]
+    settings.NIGHTLY_STOCK_CHECK_PAID_SOURCES = []
+    settings.SITE_URL = "https://mudaroba.example"
+    text = build_night_report()
+    number = int(re.search(r"ждут вашего решения: (\d+)", text).group(1))
+    url = re.search(r"Открыть список: (\S+)", text).group(1)
+    return text, number, url
+
+
+@pytest.mark.django_db
+def test_telegram_number_equals_list_behind_its_link(admin_client_logged, settings):
+    # В таблице есть все статусы: в отчёт и по ссылке попадают одни и те же товары.
+    waiting = [_candidate(_product(1)).pk, _candidate(_product(2), gone_days=2).pk]
+    _candidate(_product(3), hidden_days=2)
+    _candidate(_product(4), status=StaleProductCandidate.Status.DISMISSED)
+    _candidate(_product(5), status=StaleProductCandidate.Status.RETURNED)
+
+    text, number, url = _report_link_and_number(settings)
+
+    assert number == 2
+    assert "скрыть уже можно: 1" in text
+    assert url.startswith("https://mudaroba.example/admin/catalog/staleproductcandidate/?")
+    page = admin_client_logged.get(url.removeprefix("https://mudaroba.example"))
+    assert page.context["cl"].result_count == number
+    assert sorted(row.pk for row in page.context["cl"].result_list) == sorted(waiting)
+
+
+@pytest.mark.django_db
+def test_list_explains_itself_and_shows_reason_and_dates(admin_client_logged):
+    candidate = _candidate(_product(1), gone_days=10)
+    candidate.gone_checks = 4
+    candidate.save(update_fields=["gone_checks"])
+
+    text = admin_client_logged.get("/admin/catalog/staleproductcandidate/").content.decode()
+
+    assert "Что это." in text and "Что можно сделать." in text
+    assert "страница товара пропала у продавца; подтверждено проверок: 4" in text
+    assert f"{timezone.localtime(candidate.first_seen_at):%d.%m}" in text
+    assert "Нет у продавца: 1" in text  # счётчик по статусам со ссылкой
+    assert "Сейчас список пуст" not in text
+
+
+@pytest.mark.django_db
+def test_empty_list_says_nothing_is_needed(admin_client_logged):
+    text = admin_client_logged.get("/admin/catalog/staleproductcandidate/").content.decode()
+
+    assert "Сейчас список пуст, решать ничего не нужно." in text
+
+
+@pytest.mark.django_db
+def test_report_and_opening_list_change_nothing(admin_client_logged, settings):
+    _catalog(20)
+    candidate = _candidate(_product(1), gone_days=30)
+    hidden = _candidate(_product(2), hidden_days=30)
+
+    _, _, url = _report_link_and_number(settings)
+    admin_client_logged.get(url.removeprefix("https://mudaroba.example"))
+
+    candidate.refresh_from_db()
+    hidden.refresh_from_db()
+    assert candidate.status == StaleProductCandidate.Status.CANDIDATE
+    assert hidden.status == StaleProductCandidate.Status.HIDDEN
+    assert Product.objects.filter(pk=candidate.product_id, is_active=True).exists()
+    assert Product.objects.filter(pk=hidden.product_id).exists()
+    assert not ProductDeletionLog.objects.exists()
+
+
+@pytest.mark.django_db
+def test_delete_is_refused_for_not_hidden_candidate_even_when_confirmed(admin_client_logged, monkeypatch):
+    # Предохранитель: удалить можно только скрытый, срок «нет у продавца» этого не заменяет.
+    _catalog(20)
+    candidate = _candidate(_product(1), gone_days=60)
+    queued = []
+    monkeypatch.setattr("apps.catalog.tasks.delete_stale_products_task.delay", lambda *args: queued.append(args))
+
+    admin_client_logged.post(
+        "/admin/catalog/staleproductcandidate/",
+        {"action": "delete_selected_forever", "_selected_action": [candidate.pk], "confirm": "yes"},
+    )
+
+    assert queued == []
+    assert Product.objects.filter(pk=candidate.product_id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_without_confirmation_only_shows_the_page(admin_client_logged, monkeypatch):
+    _catalog(20)
+    ready = _candidate(_product(1), hidden_days=20)
+    queued = []
+    monkeypatch.setattr("apps.catalog.tasks.delete_stale_products_task.delay", lambda *args: queued.append(args))
+
+    page = admin_client_logged.post(
+        "/admin/catalog/staleproductcandidate/",
+        {"action": "delete_selected_forever", "_selected_action": [ready.pk]},
+    )
+
+    assert "Да, удалить 1 навсегда" in page.content.decode()
+    assert queued == []
 
 
 # --- повторная проверка под блокировкой, бюджет, другие товары -----------------------------
