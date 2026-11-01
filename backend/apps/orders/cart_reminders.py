@@ -396,7 +396,8 @@ def _manager_url() -> str:
         from apps.settings.models import FooterSettings
 
         footer = FooterSettings.objects.first()
-    except Exception:
+    except Exception as exc:
+        logger.warning("Cart reminder: footer settings unavailable: %s: %s", type(exc).__name__, exc)
         footer = None
     if footer is None:
         return ""

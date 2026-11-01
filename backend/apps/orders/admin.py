@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
@@ -20,6 +22,8 @@ from .models import (
     SourcingRequest,
 )
 from .tasks import notify_order_status_changed
+
+logger = logging.getLogger(__name__)
 
 
 class CartItemInline(admin.TabularInline):
@@ -420,7 +424,11 @@ class PromoCodeAdmin(admin.ModelAdmin):
                 if max_discount is not None:
                     parts.append(f"max: {max_discount:.2f} {cur}")
                 lines.append(' / '.join(parts))
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Promo code %s: amounts in %s unavailable: %s: %s",
+                    obj.pk, cur, type(exc).__name__, exc,
+                )
                 continue
 
         return "\n".join(lines) if lines else ""

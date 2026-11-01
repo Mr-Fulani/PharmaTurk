@@ -490,8 +490,11 @@ def _get_product_price_for_currency(product, currency: str):
                     base_price = data.get("converted_price")
                 base_currency = code.upper()
                 break
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Product %s: stored prices unavailable: %s: %s",
+            getattr(product, "pk", None), type(exc).__name__, exc,
+        )
 
     if base_price is not None:
         try:
@@ -502,11 +505,19 @@ def _get_product_price_for_currency(product, currency: str):
                 apply_margin=True,
             )
             return apply_product_markup(price_with_margin, product)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Product %s: price not converted %s to %s: %s: %s",
+                getattr(product, "pk", None), base_currency, currency, type(exc).__name__, exc,
+            )
             return apply_product_markup(base_price, product)
     try:
         return apply_product_markup(0, product)
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "Product %s: markup failed, price is 0: %s: %s",
+            getattr(product, "pk", None), type(exc).__name__, exc,
+        )
         return Decimal('0')
 
 
