@@ -459,6 +459,27 @@ def test_medicines_are_never_exported(rub_rate, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_books_are_never_exported(rub_rate, monkeypatch):
+    from apps.catalog import tasks
+
+    monkeypatch.setattr(tasks.generate_yml_feeds, "delay", lambda: None)
+    root, _ = Category.objects.get_or_create(slug="books", defaults={"name": "Книги"})
+    Category.objects.filter(pk=root.pk).update(is_active=True, parent=None)
+    child = _category("novels-yml", parent=root)
+    book = Product.objects.create(
+        name="Book", slug=f"book-{uuid4().hex}", product_type="books", category=child, is_active=True
+    )
+    client = APIClient()
+
+    full_ids = {o.attrib["id"] for o in _offers(_parse(yml_feed.iter_yml_feed("")))}
+
+    assert str(book.id) not in full_ids
+    assert "books" not in yml_feed.prepared_feed_keys()
+    assert client.get(FEED_URL, {"category": "books"}).status_code == 404
+    assert client.get(FEED_URL, {"category": child.slug}).status_code == 404
+
+
+@pytest.mark.django_db
 def test_task_removes_feeds_of_blocked_sections(rub_rate, feed_storage):
     from django.core.files.base import ContentFile
 

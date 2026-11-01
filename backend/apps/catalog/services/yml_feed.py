@@ -10,7 +10,7 @@ YML-фид (Yandex Market Language) для ВК Маркета и Яндекс.�
 в файлы хранилища (``YMLFeedSnapshot``) — эндпоинт отдаёт готовый файл. Фид больше
 лимитов ВК (8 МБ / 15 000 товаров) делится на части ``?part=N``.
 Подкатегории эндпоинт отдаёт потоком на лету (``iter_yml_feed``), без деления.
-Лекарства в фиды не попадают (решение владельца, ``BLOCKED_PRODUCT_TYPES``).
+Лекарства и книги в фиды не попадают (решение владельца, ``BLOCKED_PRODUCT_TYPES``).
 
 Особенности фида:
 - Категории ВК берутся из таблицы VKCategoryMapping по типу товара и полу
@@ -55,8 +55,9 @@ MAX_PART_OFFERS = 15_000
 
 # Решение владельца 27.10.2026: лекарства не выкладываем ни в один фид
 # (ни раздел, ни полный каталог), пока он не разрешит. БАДы и медтехника — можно.
-BLOCKED_PRODUCT_TYPES = ("medicines",)
-BLOCKED_ROOT_SLUGS = ("medicines",)
+# Решение владельца 01.11.2026: книги тоже (фото umma-land.com часто недоступны).
+BLOCKED_PRODUCT_TYPES = ("medicines", "books")
+BLOCKED_ROOT_SLUGS = ("medicines", "books")
 
 # Запасной маппинг, если в БД нет записи для (product_type, пол) и (product_type, «любой»).
 # Те же пути, что ставит миграция 0229; предпочтительный способ — Admin → Маппинги категорий ВК.
@@ -127,7 +128,7 @@ def _blocked_category_ids() -> set[int]:
 
 
 def is_blocked_feed_key(category_slug: str) -> bool:
-    """Фид раздела отключён (лекарства и их подкатегории)."""
+    """Фид раздела отключён (лекарства, книги и их подкатегории)."""
     if not category_slug:
         return False
     return Category.objects.filter(slug=category_slug, id__in=_blocked_category_ids()).exists()
