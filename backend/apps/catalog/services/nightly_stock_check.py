@@ -5,8 +5,8 @@
 обновление карточки при открытии (``ProductCardSourceRefreshService``): цена,
 наличие, цвета и размеры, предложения источника. Тексты, медиа и SEO не меняются.
 
-Только бесплатные источники. Пропавший у продавца товар (страница 404) не
-снимается с продажи разом, а становится кандидатом ``StaleProductCandidate`` —
+Только бесплатные источники. Пропавший у продавца товар (404 на всех его ссылках)
+не снимается с продажи разом, а становится кандидатом ``StaleProductCandidate`` —
 удаляет его только владелец в админке.
 
 Предохранители: окно тихих часов, лимит карточек в минуту на сайт, одна пачка за
@@ -47,6 +47,8 @@ logger = logging.getLogger(__name__)
 BATCH_LOCK_KEY = "nightly-stock-check:batch:v1"
 # Временные сбои: сайт не ответил, лимит запросов, внутренняя ошибка.
 RETRYABLE_CODES = frozenset({"source_unavailable", "rate_limited", "internal_error"})
+# Метка на предложении: продавец окончательно не нашёл эту ссылку.
+GONE_ERROR_CODES = ("not_found", "gone")
 STAT_KEYS = (
     "checked",
     "lost",
@@ -287,14 +289,36 @@ class NightlyStockCheckService(ProductCardSourceRefreshService):
             logger.info("nightly_stock_gone_probe_failed", exc_info=True, extra={"url": url})
             return False
 
-    def _on_source_not_found(self, target: RefreshTarget) -> dict[str, int]:
-        other_url = (
-            target.product.source_offers.filter(is_active=True)
-            .exclude(parser_key=target.parser_key, canonical_url=target.offer.canonical_url)
-            .exists()
+    def _offers_in_check_order(self, offers):
+        # Сначала ссылки без метки «пропала». Отмечены все — самая давно проверенная:
+        # так за несколько ночей подтверждается каждая и вернувшийся цвет снимает кандидата.
+        def order(offer):
+            if offer.last_error_code not in GONE_ERROR_CODES:
+                return (0, 0.0)
+            return (1, offer.last_checked_at.timestamp() if offer.last_checked_at else 0.0)
+
+        return sorted(offers, key=order)
+
+    def _other_url_offers(self, product: Product, target: RefreshTarget):
+        return super()._other_url_offers(product, target).exclude(last_error_code__in=GONE_ERROR_CODES)
+
+    @staticmethod
+    def _note_url_gone(target: RefreshTarget) -> None:
+        """Метка «ссылка пропала» без снятия с продажи: наличие то же, карточка и корзина её не видят."""
+        now = timezone.now()
+        target.product.source_offers.filter(
+            is_active=True, parser_key=target.parser_key, canonical_url=target.offer.canonical_url
+        ).update(
+            last_checked_at=now,
+            last_error_code="not_found",
+            last_error_message="Supplier product URL was not found",
+            updated_at=now,
         )
-        if other_url:
+
+    def _on_source_not_found(self, target: RefreshTarget) -> dict[str, int]:
+        if self._other_url_offers(target.product, target).exists():
             # Пропал один цвет из нескольких: снимаем только его, как карточка.
+            # С меткой следующая проверка откроет следующую ссылку товара.
             return {**self._mark_source_url_unavailable(target), "colour_gone": 1}
         changes = {"new_candidate": int(
             mark_stale_candidate(
@@ -302,6 +326,7 @@ class NightlyStockCheckService(ProductCardSourceRefreshService):
             )
         )}
         if getattr(settings, "SCRAPER_GONE_REQUIRES_REVIEW", False):
+            self._note_url_gone(target)
             return changes
         return {**self._mark_source_url_unavailable(target), **changes}
 

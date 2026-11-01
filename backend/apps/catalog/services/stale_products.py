@@ -33,7 +33,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.deletion import Collector
 from django.utils import timezone
 
-from apps.catalog.models import Product
+from apps.catalog.models import Product, ProductSourceOffer
 from apps.catalog.models_stock import SOURCE_TITLES, ProductDeletionLog, StaleProductCandidate
 from apps.catalog.utils.media_references import MediaReferenceCheckError, media_reference_fields
 
@@ -546,16 +546,27 @@ def refresh_media_stats(*, limit: int = 300, gateway: MediaGateway | None = None
 
 
 def recheck_at_source(candidate: StaleProductCandidate) -> str:
-    """Проверка у продавца прямо перед удалением: ``gone``, ``present`` или ``error``."""
+    """Проверка всех ссылок товара прямо перед удалением: ``gone``, только если пропали все."""
+    urls: dict[str, ProductSourceOffer] = {}
+    for offer in candidate.product.source_offers.filter(
+        is_active=True, parser_key=candidate.parser_key
+    ).order_by("priority", "pk"):
+        urls.setdefault(offer.canonical_url, offer)
+    if not urls:
+        return "error"
+    for offer in urls.values():
+        verdict = _recheck_url(candidate.product, offer)
+        if verdict != "gone":
+            return verdict
+    return "gone"
+
+
+def _recheck_url(product: Product, offer: ProductSourceOffer) -> str:
+    """Одна ссылка товара у продавца: ``gone``, ``present`` или ``error``."""
     from apps.catalog.services.nightly_stock_check import NightlyStockCheckService, source_rate_per_minute
     from apps.catalog.services.product_card_source_refresh import ProductCardRefreshError, RefreshTarget
     from apps.catalog.services.source_offer_verification import SourceOfferVerificationService
 
-    product = candidate.product
-    offers = product.source_offers.filter(is_active=True, parser_key=candidate.parser_key)
-    offer = offers.filter(canonical_url=candidate.source_url).first() or offers.order_by("priority", "pk").first()
-    if offer is None:
-        return "error"
     verifier = SourceOfferVerificationService()
     parser_class = verifier._trusted_parser_class(offer)
     if parser_class is None:
