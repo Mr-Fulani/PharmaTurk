@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import admin, messages
+from django.db.models import Count
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils import timezone
@@ -11,6 +12,7 @@ from django.utils.html import format_html
 from .models_stock import SOURCE_TITLES, ProductDeletionLog, StaleProductCandidate, StockCheckSourceState
 
 CONFIRM_TEMPLATE = "admin/catalog/stale_products_confirm.html"
+REASON_TITLES = {"not_found": "страница товара пропала у продавца"}
 
 
 def source_title(parser_key: str) -> str:
@@ -87,8 +89,10 @@ class StaleProductCandidateAdmin(OwnerActionsMixin, admin.ModelAdmin):
     STALE_PRODUCT_DELETE_AFTER_HIDDEN_DAYS дней. Каждый шаг — со страницей подтверждения.
     """
 
+    change_list_template = "admin/catalog/stale_products_change_list.html"
     list_display = (
-        "product_link", "source", "status", "gone_since", "protection", "files_to_free_column", "next_step", "source_link",
+        "product_link", "source", "status", "reason_column", "gone_since", "protection", "files_to_free_column",
+        "next_step", "source_link",
     )
     list_filter = ("status", "parser_key")
     search_fields = ("product__name", "source_url")
@@ -115,7 +119,33 @@ class StaleProductCandidateAdmin(OwnerActionsMixin, admin.ModelAdmin):
     def source(self, obj):
         return source_title(obj.parser_key)
 
-    @admin.display(description="Нет у продавца", ordering="first_seen_at")
+    def changelist_view(self, request, extra_context=None):
+        from .services.nightly_stock_check import sold_out_list_url, sold_out_products
+        from .services.stale_products import delete_after_hidden_days, min_gone_days
+
+        counts = dict(
+            StaleProductCandidate.objects.order_by().values_list("status").annotate(total=Count("pk"))
+        )
+        base = reverse("admin:catalog_staleproductcandidate_changelist")
+        return super().changelist_view(request, {
+            **(extra_context or {}),
+            "status_links": [
+                {"label": label, "count": counts.get(value, 0), "url": f"{base}?status__exact={value}"}
+                for value, label in StaleProductCandidate.Status.choices
+            ],
+            "total_candidates": sum(counts.values()),
+            "sold_out_count": sold_out_products().count(),
+            "sold_out_url": sold_out_list_url(),
+            "min_gone_days": min_gone_days(),
+            "delete_after_hidden_days": delete_after_hidden_days(),
+        })
+
+    @admin.display(description="Почему в списке")
+    def reason_column(self, obj):
+        reason = REASON_TITLES.get(obj.reason, obj.reason)
+        return f"{reason}; подтверждено проверок: {obj.gone_checks}, последняя {timezone.localtime(obj.last_gone_at):%d.%m}"
+
+    @admin.display(description="Когда пропал", ordering="first_seen_at")
     def gone_since(self, obj):
         days = (timezone.now() - obj.first_seen_at).days
         return f"{days} дн. (с {timezone.localtime(obj.first_seen_at):%d.%m})"
