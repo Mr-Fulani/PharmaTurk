@@ -382,6 +382,80 @@ def test_consecutive_source_errors_stop_source_until_next_night():
 
 
 @pytest.mark.django_db
+def test_error_streak_continues_across_batches_of_one_night():
+    # Таймаут на карточку длинный: за пачку серия не доходит до порога (ночь 01.11.2026:
+    # 64 ошибки UmmaLand за 67 минут вместо остановки на 10-й).
+    products = [_lcw_product(index) for index in range(1, 8)]
+    clock = FakeClock()
+
+    first = FakeService(clock, error="source_unavailable")
+    run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=first)
+    assert len(first.calls) == 2
+    state = StockCheckSourceState.objects.get(parser_key="lcw")
+    assert "stopped" not in state.stats
+
+    second = FakeService(clock, error="source_unavailable")
+    result = run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=second)
+
+    assert second.calls == [products[2].pk]
+    assert result["sources"]["lcw"] == "source_errors"
+
+
+@pytest.mark.django_db
+def test_success_between_batches_breaks_error_streak():
+    products = [_lcw_product(index) for index in range(1, 8)]
+    clock = FakeClock()
+
+    failing = FakeService(clock, error="source_unavailable")
+    run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=failing)
+    working = FakeService(clock)
+    run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=working)
+    failing_again = FakeService(clock, error="source_unavailable")
+    run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=failing_again)
+
+    state = StockCheckSourceState.objects.get(parser_key="lcw")
+    assert "stopped" not in state.stats
+    assert state.cursor_pk == products[5].pk
+
+
+@pytest.mark.django_db
+def test_products_of_error_streak_are_checked_next_night():
+    products = [_lcw_product(index) for index in range(1, 7)]
+    clock = FakeClock()
+
+    working = FakeService(clock)
+    run_nightly_batch(now=_night(), budget_seconds=100, clock=clock, sleep=clock.sleep, service=working)
+    assert working.calls == [products[0].pk]
+    failing = FakeService(clock, error="source_unavailable")
+    run_nightly_batch(now=_night(), budget_seconds=3000, clock=clock, sleep=clock.sleep, service=failing)
+    assert len(failing.calls) == 3
+    state = StockCheckSourceState.objects.get(parser_key="lcw")
+    assert state.cursor_pk == products[0].pk
+
+    next_night = FakeService(clock)
+    run_nightly_batch(
+        now=timezone.make_aware(datetime(2026, 10, 30, 2, 0)),
+        budget_seconds=3000, clock=clock, sleep=clock.sleep, service=next_night,
+    )
+    assert next_night.calls == [p.pk for p in products[1:]]
+
+
+@pytest.mark.django_db
+def test_catalog_ended_on_errors_is_not_a_full_cycle():
+    for index in range(1, 3):
+        _lcw_product(index)
+    clock = FakeClock()
+    service = FakeService(clock, error="source_unavailable")
+
+    run_nightly_batch(now=_night(), budget_seconds=3000, clock=clock, sleep=clock.sleep, service=service)
+
+    state = StockCheckSourceState.objects.get(parser_key="lcw")
+    assert len(service.calls) == 2
+    assert state.cursor_pk == 0
+    assert state.last_full_cycle_at is None
+
+
+@pytest.mark.django_db
 def test_source_is_skipped_while_its_scraper_runs():
     _lcw_product()
     config = _lcw_config()
