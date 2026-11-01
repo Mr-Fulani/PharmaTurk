@@ -244,6 +244,10 @@ class ProductCardSourceRefreshService:
             maximum=30.0,
         )
 
+    def _offers_in_check_order(self, offers):
+        """В каком порядке пробовать ссылки товара: карточка берёт первую по приоритету."""
+        return offers
+
     def _target(self, product: Product) -> RefreshTarget | None:
         if not self.enabled() or not product.pk or not product.is_active:
             return None
@@ -266,7 +270,7 @@ class ProductCardSourceRefreshService:
             )
             .order_by("priority", "id")
         )
-        for offer in offers:
+        for offer in self._offers_in_check_order(offers):
             parser_class = verifier._trusted_parser_class(offer)
             if parser_class is not None and (
                 offer.parser_key not in SINGLE_OFFER_REFRESH_SOURCES
@@ -992,6 +996,13 @@ class ProductCardSourceRefreshService:
         """
         return self._mark_source_url_unavailable(target)
 
+    def _other_url_offers(self, product: Product, target: RefreshTarget):
+        """Предложения товара с другими ссылками: есть такие — пропажа открытой не снимает товар."""
+        return product.source_offers.filter(is_active=True).exclude(
+            parser_key=target.parser_key,
+            canonical_url=target.offer.canonical_url,
+        )
+
     @transaction.atomic
     def _mark_source_url_unavailable(self, target: RefreshTarget) -> dict[str, int]:
         """Persist conclusive removal for only the opened supplier URL.
@@ -1059,16 +1070,8 @@ class ProductCardSourceRefreshService:
                     variants=active_variants,
                 )
 
-        other_active_offer_exists = (
-            product.source_offers.filter(is_active=True)
-            .exclude(
-                parser_key=target.parser_key,
-                canonical_url=target.offer.canonical_url,
-            )
-            .exists()
-        )
         product_updated = 0
-        if offers_updated and not other_active_offer_exists:
+        if offers_updated and not self._other_url_offers(product, target).exists():
             product_updated = Product.objects.filter(pk=product.pk).update(
                 is_available=False,
                 stock_quantity=0,
