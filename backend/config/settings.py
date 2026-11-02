@@ -421,6 +421,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.nightly_stock_check_report",
         "schedule": crontab(hour=6, minute=45),
     },
+    # IndexNow (docs/INDEXNOW.md): новые, изменённые и снятые страницы товаров — Bing и
+    # Яндексу, раз в час. Без INDEXNOW_ENABLED ничего не делает.
+    "catalog-indexnow-submit": {
+        "task": "catalog.indexnow_submit",
+        "schedule": crontab(minute=45),
+    },
     # Файлы и МБ неактуальных товаров для страницы удаления (docs/STALE_PRODUCTS.md).
     "catalog-stale-products-media-stats": {
         "task": "catalog.stale_products_media_stats",
@@ -805,6 +811,11 @@ NIGHTLY_STOCK_CHECK_MAX_CONSECUTIVE_ERRORS = env.int(
 # проверок) — пауза источника и тревога: похоже на сбой парсера.
 NIGHTLY_STOCK_CHECK_MAX_LOSS_SHARE = env.float("NIGHTLY_STOCK_CHECK_MAX_LOSS_SHARE", default=0.75)
 NIGHTLY_STOCK_CHECK_MIN_SAMPLE = env.int("NIGHTLY_STOCK_CHECK_MIN_SAMPLE", default=30)
+# IndexNow (docs/INDEXNOW.md). Ключ публичный: тот же лежит в frontend/public/<ключ>.txt,
+# при смене ключа менять оба. Предел — URL в сутки (RU и EN-страница товара — два URL).
+INDEXNOW_ENABLED = env.bool("INDEXNOW_ENABLED", default=False)
+INDEXNOW_KEY = env("INDEXNOW_KEY", default="4fccd8201e121b6208b4c72fea513b6a")
+INDEXNOW_DAILY_URL_LIMIT = env.int("INDEXNOW_DAILY_URL_LIMIT", default=10000)
 # Удаление неактуальных товаров из админки (docs/STALE_PRODUCTS.md): скрыть можно, когда
 # товара нет у продавца MIN_DAYS дней подряд; удалить — через DELETE_AFTER_HIDDEN_DAYS после
 # скрытия. За одно действие — не больше MAX_PER_ACTION товаров и MAX_SOURCE_PERCENT % каталога
