@@ -22,6 +22,8 @@ from apps.catalog.utils.r2_utils import get_r2_client
 logger = logging.getLogger(__name__)
 
 MAX_RECEIPT_PDF_BYTES = 5 * 1024 * 1024
+# Паузы удваиваются от 30 с: всего около получаса, короткий сбой Telegram переживается
+TELEGRAM_MAX_RETRIES = 6
 
 from .models import Cart, CartItem, Order
 from .services import (
@@ -465,6 +467,24 @@ def send_order_receipt_task(
     return True
 
 
+class TelegramTemporaryError(Exception):
+    """Telegram не принял сообщение, но повтор может помочь: сеть, 429, 5xx.
+
+    В тексте нет адреса запроса: в нём токен бота, а исключение попадает в журнал Celery.
+    """
+
+
+def _post_telegram(bot_token: str, method: str, **kwargs):
+    """POST в Bot API. Ответ 4xx возвращает вызывающему: повтор его не исправит."""
+    try:
+        resp = requests.post(f"https://api.telegram.org/bot{bot_token}/{method}", **kwargs)
+    except requests.RequestException as exc:
+        raise TelegramTemporaryError(type(exc).__name__) from None
+    if resp.status_code == 429 or resp.status_code >= 500:
+        raise TelegramTemporaryError(f"HTTP {resp.status_code}")
+    return resp
+
+
 def _tg_markdown_escape(value) -> str:
     """Пользовательский ввод не должен ломать parse_mode=Markdown."""
     text = str(value or "-")
@@ -473,12 +493,20 @@ def _tg_markdown_escape(value) -> str:
     return text
 
 
-@app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=3)
-def notify_new_order_telegram(self, _email_result=None, order_id: int = None, locale: str = 'ru') -> None:
+@app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=TELEGRAM_MAX_RETRIES)
+def notify_new_order_telegram(
+    self,
+    _email_result=None,
+    order_id: int = None,
+    locale: str = 'ru',
+    customer_notified: bool = False,
+) -> None:
     """Уведомляет (Telegram) о создании нового заказа.
     Может запускаться как Celery link после send_order_receipt_task — тогда первым аргументом
     приходит результат предыдущей задачи (_email_result), который игнорируется.
     PDF чека читается напрямую из доверенного R2 bucket либо генерируется заново.
+    При временном сбое Telegram повторяется только сообщение менеджеру: покупателю задача
+    пишет один раз (customer_notified), иначе после обрыва связи он получил бы дубль.
     """
     if order_id is None:
         logger.warning("notify_new_order_telegram: order_id not provided")
@@ -523,26 +551,22 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
         if not chat_id:
             logger.warning("Telegram chat_id is missing, skipping notification")
             return
-        try:
-            base_url = f"https://api.telegram.org/bot{bot_token}/"
-            if document:
-                files = {"document": (filename, document, "application/pdf")}
-                data = {"chat_id": chat_id, "caption": text, "parse_mode": "Markdown"}
-                resp = requests.post(base_url + "sendDocument", data=data, files=files, timeout=20)
-            else:
-                json_data = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
-                resp = requests.post(base_url + "sendMessage", json=json_data, timeout=10)
+        if document:
+            files = {"document": (filename, document, "application/pdf")}
+            data = {"chat_id": chat_id, "caption": text, "parse_mode": "Markdown"}
+            resp = _post_telegram(bot_token, "sendDocument", data=data, files=files, timeout=20)
+        else:
+            json_data = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+            resp = _post_telegram(bot_token, "sendMessage", json=json_data, timeout=10)
 
-            if not resp.ok:
-                logger.warning(
-                    "Telegram notification failed for order %s: HTTP %s",
-                    order.number,
-                    resp.status_code,
-                )
-            else:
-                logger.info("Telegram notification sent for order %s", order.number)
-        except requests.RequestException:
-            logger.warning("Telegram send error for order %s", order.number)
+        if not resp.ok:
+            logger.warning(
+                "Telegram notification failed for order %s: HTTP %s",
+                order.number,
+                resp.status_code,
+            )
+        else:
+            logger.info("Telegram notification sent for order %s", order.number)
 
     from .services import (
         CONTACT_CHANNEL_TRANSLATIONS,
@@ -556,6 +580,7 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
     is_request = order.payment_method == "manager"
 
     filename = get_receipt_filename(order)
+    admin_error = None
 
     # Уведомление админу
     if admin_chat_id:
@@ -579,10 +604,14 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
             admin_text += f"\n{channel_info}: {_md(handle)}"
         if order.comment:
             admin_text += f"\nКомментарий: {_md(order.comment)}"
-        _send_tg(admin_chat_id, admin_text, document=pdf_bytes, filename=filename)
+        try:
+            _send_tg(admin_chat_id, admin_text, document=pdf_bytes, filename=filename)
+        except TelegramTemporaryError as exc:
+            logger.warning("Telegram send error for order %s: %s", order.number, exc)
+            admin_error = exc
 
     # Уведомление покупателю
-    if user_chat_id and user_chat_id != admin_chat_id:
+    if user_chat_id and user_chat_id != admin_chat_id and not customer_notified:
         delivery_info_user = translate_method(order.shipping_method, SHIPPING_METHOD_TRANSLATIONS, locale)
 
         if is_ru:
@@ -609,10 +638,27 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
                     else "We are already assembling it!"
                 )
             )
-        _send_tg(user_chat_id, user_text, document=pdf_bytes, filename=filename)
+        try:
+            _send_tg(user_chat_id, user_text, document=pdf_bytes, filename=filename)
+        except TelegramTemporaryError as exc:
+            logger.warning("Telegram send error for order %s (customer): %s", order.number, exc)
+
+    if admin_error:
+        raise self.retry(
+            exc=admin_error,
+            args=(),
+            kwargs={"order_id": order_id, "locale": locale, "customer_notified": True},
+            countdown=30 * 2 ** self.request.retries,
+        )
 
 
-@app.task(bind=True, autoretry_for=(requests.RequestException,), retry_backoff=30, max_retries=3)
+@app.task(
+    bind=True,
+    autoretry_for=(TelegramTemporaryError,),
+    retry_backoff=30,
+    retry_jitter=False,
+    max_retries=TELEGRAM_MAX_RETRIES,
+)
 def notify_sourcing_request_telegram(self, request_id: int) -> None:
     """Уведомляет менеджера (TELEGRAM_CHAT_ID) о заявке «Найдём товар по ссылке или фото»."""
     from .models import SourcingRequest
@@ -649,7 +695,6 @@ def notify_sourcing_request_telegram(self, request_id: int) -> None:
         lines.append(f"{channel_info}: {md(req.contact_username if is_phone else '@' + req.contact_username)}")
     text = "\n".join(lines)
 
-    base_url = f"https://api.telegram.org/bot{bot_token}/"
     photo = b""
     if req.image:
         try:
@@ -661,15 +706,17 @@ def notify_sourcing_request_telegram(self, request_id: int) -> None:
                 req.pk, type(exc).__name__,
             )
     if photo:
-        resp = requests.post(
-            base_url + "sendPhoto",
+        resp = _post_telegram(
+            bot_token,
+            "sendPhoto",
             data={"chat_id": chat_id, "caption": text[:1024], "parse_mode": "Markdown"},
             files={"photo": ("photo.jpg", photo, "image/jpeg")},
             timeout=20,
         )
     else:
-        resp = requests.post(
-            base_url + "sendMessage",
+        resp = _post_telegram(
+            bot_token,
+            "sendMessage",
             json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
             timeout=15,
         )
