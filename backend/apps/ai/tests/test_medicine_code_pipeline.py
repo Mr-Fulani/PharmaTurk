@@ -535,6 +535,9 @@ def test_title_names_active_ingredient_without_salt():
         "ru": "RISPERDAL CONSTA (рисперидон) 25 мг, суспензия пролонгированного высвобождения для инъекций (в/м)",
         "en": "RISPERDAL CONSTA (risperidone) 25 mg, prolonged-release suspension for injection (IM)",
     }
+    # Бренд — само вещество в другой записи: «CYTARABINE (цитарабин)» было бы повтором.
+    plain = build_medicine_title("CYTARABINE 100 MG 10 AMPUL")
+    assert title_with_inn(plain, "CYTARABINE 100 MG 10 AMPUL", ("Цитарабин", "Cytarabine"), "Sitarabin") == plain
 
 
 @pytest.mark.parametrize(
