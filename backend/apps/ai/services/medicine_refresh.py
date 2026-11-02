@@ -67,11 +67,11 @@ _INGREDIENT_COMMON = frozenset({
 })
 # Русские слова, которые описанием не считаются: «60 доз», «30 шт.», «100 мкг».
 _NOT_DESCRIPTION = frozenset({"доз", "мкг", "мкл"})
-# Число штук: «30 шт.», «10 ампул», «60 доз», «30 pcs»; в источнике — «(30 ADET)», «28 FILM TABLET»
+# Число штук: «30 шт.», «10 ампул», «60 доз», «1 pc», «6 × 10 ml»; в источнике — «(30 ADET)», «28 FILM TABLET»
 # (пилот PR #287: PEKUTIN «таблетки, 30 шт.» → без 30 шт.). Пропало — название остаётся.
 _PACK_RE = re.compile(
-    r"(\d+)\s*(?:шт|ампул|флакон|доз|саше|пакет|шприц|картридж|таблет|капсул|пастил|суппозит|овул|туб|"
-    r"pcs|ampoule|vial|dose|sachet|syringe|cartridge|tablet|capsule|lozenge|suppositor|ovule)",
+    r"(\d+)\s*(?:шт|ампул|флакон|доз|саше|пакет|шприц|картридж|таблет|капсул|пастил|суппозит|овул|туб|×|"
+    r"pcs?\b|ampoule|vial|dose|sachet|syringe|cartridge|tablet|capsule|lozenge|suppositor|ovule)",
     re.IGNORECASE,
 )
 _SOURCE_PACK_RE = re.compile(

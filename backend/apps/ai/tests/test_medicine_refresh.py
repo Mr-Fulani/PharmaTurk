@@ -153,6 +153,8 @@ def test_refresh_without_apply_changes_nothing(capsys):
         ("name", "ru", "DIAKSI 5 мг/2,5 мл раствор для ректального введения, 5 шт.",
          "DIAKSI 5 мг/2,5 мл, раствор для ректального введения", ["фасовка"]),
         ("name", "ru", "SEPTIX 5 мг/1 мг лимонные пастилки (20 пастилок)", "SEPTIX 5 мг/1 мг, пастилки, со вкусом лимона, 20 шт.", []),
+        ("name", "en", "MOLTEK FDG solution for intravenous injection, 1 vial", "MOLTEK FDG, solution for injection, vial (IV), 1 pc", []),
+        ("name", "en", "IC-GREEN 25 mg, 6 ampoules of 10 ml", "IC-GREEN 25 mg, ampoules, 6 × 10 ml", []),
     ],
 )
 def test_worse_reasons(field, locale, old, new, reasons):
