@@ -137,6 +137,14 @@ def nightly_stock_check_report_task() -> dict:
     return send_night_report()
 
 
+@shared_task(name="catalog.indexnow_submit", soft_time_limit=600, time_limit=660, expires=50 * 60)
+def indexnow_submit_task() -> dict:
+    """Новые, изменённые и снятые страницы товаров — в IndexNow (docs/INDEXNOW.md)."""
+    from apps.catalog.services.indexnow import submit_changed_products
+
+    return submit_changed_products()
+
+
 @shared_task(
     bind=True,
     name="catalog.delete_stale_products",

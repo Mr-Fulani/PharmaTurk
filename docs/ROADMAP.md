@@ -308,6 +308,8 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
 
 ## P3 — продуктовые улучшения
 
+- IndexNow для Bing и Яндекса — код готов 02.11.2026 ([INDEXNOW.md](INDEXNOW.md)),
+  после релиза с миграцией `catalog/0234` включает владелец (`INDEXNOW_ENABLED=true`);
 - Google Merchant feed поверх уже существующего YML-контракта;
 - Core Web Vitals/CrUX и Search Console monitoring;
 - автоматизированная проверка ru/en structured data;
