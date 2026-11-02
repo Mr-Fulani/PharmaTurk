@@ -11,7 +11,9 @@ import AnimatedPasswordInput from '../../components/AnimatedPasswordInput'
 
 const TELEGRAM_BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
-const VK_APP_ID = process.env.NEXT_PUBLIC_VK_APP_ID
+// ВК заблокировал приложение: профиль бизнеса не подтверждён. Вернуть true после подтверждения.
+const VK_LOGIN_ENABLED = false
+const VK_APP_ID: string | undefined = VK_LOGIN_ENABLED ? process.env.NEXT_PUBLIC_VK_APP_ID : undefined
 const SOCIAL_LOGIN_ENABLED = Boolean(TELEGRAM_BOT_USERNAME || GOOGLE_CLIENT_ID || VK_APP_ID)
 
 // ─── Утилита: редирект после входа ──────────────────────────────────────────

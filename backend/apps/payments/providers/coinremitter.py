@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone as py_tz
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import requests
@@ -175,20 +175,31 @@ def create_invoice(
     if isinstance(total_amount_obj, dict) and coin_symbol and coin_symbol in total_amount_obj:
         try:
             amount_crypto = Decimal(str(total_amount_obj[coin_symbol]))
-        except Exception:
-            pass
+        except (InvalidOperation, TypeError, ValueError):
+            logger.warning(
+                "CoinRemitter: invalid total_amount %r for invoice %s",
+                total_amount_obj[coin_symbol], invoice_id_short or invoice_id_long,
+            )
     if amount_crypto == Decimal("0"):
         amount_str = inner.get("amount") or "0"
         try:
             amount_crypto = Decimal(str(amount_str))
-        except Exception:
+        except (InvalidOperation, TypeError, ValueError):
+            logger.warning(
+                "CoinRemitter: invalid amount %r for invoice %s, using 0",
+                amount_str, invoice_id_short or invoice_id_long,
+            )
             amount_crypto = Decimal("0")
 
     # -- Сумма в USD ----------------------------------------------------------
     usd_str = inner.get("usd_amount") or "0"
     try:
         amount_usd = Decimal(str(usd_str))
-    except Exception:
+    except (InvalidOperation, TypeError, ValueError):
+        logger.warning(
+            "CoinRemitter: invalid usd_amount %r for invoice %s",
+            usd_str, invoice_id_short or invoice_id_long,
+        )
         amount_usd = Decimal(str(amount_fiat))
     if amount_usd == Decimal("0"):
         amount_usd = Decimal(str(amount_fiat))

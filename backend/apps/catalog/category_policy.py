@@ -31,6 +31,11 @@ CATEGORY_POLICY_OVERRIDES: dict[str, dict[str, Any]] = {
             "en": ("bed", "storage bed", "bed with storage"),
         },
     },
+    # «terlik» правила переводят как «шлепанцы» / «Slippers»; RU — подраздел «Сандалий», EN
+    # совпадал с домашними тапочками (очередь модерации 01.11.2026).
+    "sandals": {
+        "aliases": {"en": ("slippers",)},
+    },
     "bunk-beds": {
         "aliases": {"ru": ("двухъярусная кровать",), "en": ("bunk bed",)},
     },

@@ -80,6 +80,7 @@ class RulePlan:
     memory_namespace: str
     title_sources: dict[str, str] = field(default_factory=dict)
     memory_hit: dict[str, Any] | None = None
+    thin_source: bool = False
 
     @property
     def missing_titles(self) -> list[str]:
@@ -127,7 +128,8 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     descriptions: dict[str, str] = {}
     description_source = "llm"
     memory_hit = None
-    if is_thin_source(source_text, str(input_data.get("name") or ""), facts):
+    thin_source = is_thin_source(source_text, str(input_data.get("name") or ""), facts)
+    if thin_source:
         descriptions = build_fact_description(facts, titles)
         if len(descriptions) == 2:
             description_source = "template"
@@ -153,6 +155,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
         memory_namespace=namespace,
         title_sources=title_sources,
         memory_hit=memory_hit,
+        thin_source=thin_source,
     )
 
 
@@ -339,6 +342,13 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
                 if plan.title_sources.get(locale) == "rules" and with_name.get(locale):
                     titles[locale] = with_name[locale]
             result["fragrance_name"] = fragrance
+        # Бедный источник, а модель вызвана ради названия: её пересказ — «Блестящая и прочная.»
+        # (17 коротких описаний очереди 01.11.2026). Описание — из фактов, как без вызова модели.
+        if plan.thin_source and plan.description_source == "llm":
+            from_facts = build_fact_description(plan.facts, titles)
+            if len(from_facts) == 2:
+                descriptions = from_facts
+                plan.description_source = "template"
         # Модель иногда возвращает один язык: недостающий — описание из фактов,
         # лог не падает целиком. Неполный перевод в память не кладём.
         fallback = build_fact_description(plan.facts, titles) if plan.description_source == "llm" else {}

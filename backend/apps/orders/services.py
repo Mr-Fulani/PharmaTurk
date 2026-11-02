@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 from decimal import Decimal
 from typing import Any, Dict, List
 
@@ -24,6 +25,8 @@ from apps.catalog.models import (
 from apps.users.models import UserAddress
 
 from .models import Order
+
+logger = logging.getLogger(__name__)
 
 
 SHIPPING_METHOD_TRANSLATIONS = {
@@ -135,7 +138,7 @@ def _serialize_translations_qs(translations) -> List[Dict[str, Any]]:
         return []
     try:
         items = translations.all()
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return []
     return [
         {
@@ -235,8 +238,11 @@ def build_order_receipt_payload(order: Order, locale: str = 'ru') -> Dict[str, A
                 seller["phone"] = fs.phone
             if getattr(fs, "email", ""):
                 seller["email"] = fs.email
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Receipt for order %s: footer contacts unavailable: %s: %s",
+            order.number, type(exc).__name__, exc,
+        )
 
     customer = {
         "name": order.contact_name,
@@ -376,9 +382,6 @@ def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | N
     """Генерирует PDF-версию чека и сохраняет её в Cloudflare R2 (или ином S3-хранилище).
     Возвращает (URL чека на CDN, сырые байты PDF).
     """
-    import logging
-    logger = logging.getLogger(__name__)
-
     try:
         if not settings.R2_CONFIG.get("endpoint_url") or not settings.R2_CONFIG.get("bucket_name"):
             return None, None

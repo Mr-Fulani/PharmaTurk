@@ -88,6 +88,7 @@ COLORS: dict[str, tuple[str, str]] = {
     "sari": ("желтый", "Yellow"),
     "yesil": ("зеленый", "Green"),
     "yag yesili": ("оливковый", "Olive"),
+    "elma yesili": ("яблочно-зеленый", "Apple green"),
     "haki": ("=цвета хаки", "Khaki"),
     "indigo": ("=цвета индиго", "Indigo"),
     "altin": ("золотистый", "Gold"),
