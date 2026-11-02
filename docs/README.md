@@ -61,7 +61,7 @@
 - [MEDICINE_DRUG_PAGES_AND_BLOG.md](MEDICINE_DRUG_PAGES_AND_BLOG.md) — страницы препаратов `/drugs/<slug>` (бренд и все формы), блог, отчёт по товарам со спросом, микроразметка;
 - [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md) — скорость страницы бренда: замеры, детоаст `external_data`, частичные индексы 0217, `view=card`;
 - [PERFORMANCE_CWV_2026-10.md](PERFORMANCE_CWV_2026-10.md) — Core Web Vitals на телефоне: как мерить (PageSpeed, локальный A/B с прокси `/api`), замеры до/после, что отвергли, что осталось;
-- [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`), бренды производителей лекарств/БАДов, бренды FLO вместо «Другое» (`repair_flo_brands`), доменные записи прежнего типа после смены типа товара (`retire_stale_domain_records`), ложные зачёркнутые цены (`clear_heuristic_old_prices`), названия LC Waikiki (`repair_lcw_names`);
+- [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`), бренды производителей лекарств/БАДов, бренды FLO вместо «Другое» (`repair_flo_brands`), доменные записи прежнего типа после смены типа товара (`retire_stale_domain_records`), эфирные масла PHYTOIL из БАДов в «Эфирные масла» (`move_essential_oils_from_supplements`), ложные зачёркнутые цены (`clear_heuristic_old_prices`), названия LC Waikiki (`repair_lcw_names`);
 - [CATEGORY_MARKUP_INHERITANCE.md](CATEGORY_MARKUP_INHERITANCE.md) — наследование товарной наценки: бренд → категория → родитель → глобальная;
 - [brand-counts-cache.md](brand-counts-cache.md) — счётчики товаров брендов: снимок в кэше, Beat раз в 60 с;
 - [ANALYTICS_EVENTS.md](ANALYTICS_EVENTS.md) — согласие, события GA4/Метрики и цели, как проверять;

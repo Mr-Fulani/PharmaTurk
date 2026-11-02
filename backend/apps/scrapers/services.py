@@ -189,6 +189,20 @@ _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
 }
 
 
+def _category_changes_domain(product: Product, category: Category) -> bool:
+    """Категория задачи другого типа у существующего товара — смена типа, а не категории.
+
+    Тип от категории задачи не меняется (кроме лекарств, signals.auto_set_product_type_from_category):
+    перенесённое в «Эфирные масла» масло задача с разделом БАДов вернула бы в БАДы
+    с типом incense. Смена типа — отдельным шагом (move_essential_oils_from_supplements).
+    """
+    current = str(product.product_type or "").replace("-", "_")
+    target = _resolve_product_type(category)
+    # Категория без типа даёт slug корня («existing-category-root») — это не другой тип.
+    known = dict(Product.PRODUCT_TYPE_CHOICES)
+    return bool(current and current != "medicines" and target in known and target != current)
+
+
 def _make_unique_brand_slug(name: str) -> str:
     """Генерирует уникальный slug для бренда по его имени."""
     from django.utils.text import slugify as _slugify
@@ -1933,7 +1947,7 @@ class ScraperIntegrationService:
         changed_fields = []
         category = getattr(scraped_product, "_category_override", None)
         brand = getattr(scraped_product, "_brand_override", None)
-        if category and product.category_id != category.pk:
+        if category and product.category_id != category.pk and not _category_changes_domain(product, category):
             product.category = category
             changed_fields.append("category")
         if brand and product.brand_id != brand.pk:
@@ -3982,7 +3996,11 @@ class ScraperIntegrationService:
                 )
                 existing_product.category = medicine_category
                 updated = True
-        elif category_override and existing_product.category_id != category_override.pk:
+        elif (
+            category_override
+            and existing_product.category_id != category_override.pk
+            and not _category_changes_domain(existing_product, category_override)
+        ):
             existing_product.category = category_override
             updated = True
         elif scraped_product.category:

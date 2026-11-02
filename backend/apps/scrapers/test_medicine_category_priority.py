@@ -628,3 +628,59 @@ def test_new_supplement_gets_substance_subcategory_by_source_name(supplement_cat
     assert result["created"] == 1
     product = Product.objects.get(external_id="solgar-vitamin-c-1000-mg-100-tablet")
     assert product.category == vitamin_c
+
+
+OIL_URL = "https://ilacfiyati.com/takviye-edici-gida/phytoil-eucalyptus-10-ml"
+
+
+@pytest.fixture
+def oil_catalog(supplement_catalog):
+    kind, _ = CategoryType.objects.get_or_create(slug="incense", defaults={"name": "Incense"})
+    incense, _ = Category.objects.update_or_create(
+        slug="incense", defaults={"name": "Благовония", "category_type": kind, "parent": None, "is_active": True},
+    )
+    oils, _ = Category.objects.update_or_create(
+        slug="essential-oils", defaults={"name": "Эфирные масла", "parent": incense, "is_active": True},
+    )
+    single, _ = Category.objects.update_or_create(
+        slug="single-essential-oils", defaults={"name": "Одиночные масла", "parent": oils, "is_active": True},
+    )
+    eucalyptus, _ = Category.objects.update_or_create(
+        slug="eucalyptus-oil", defaults={"name": "Эвкалиптовое", "parent": single, "is_active": True},
+    )
+    return {**supplement_catalog, "eucalyptus": eucalyptus}
+
+
+def oil_scraped():
+    return supplement_scraped(
+        name="PHYTOIL EUCALYPTUS 10 ML", external_id="phytoil-eucalyptus-10-ml", url=OIL_URL, price=180,
+        attributes={"manufacturer": "Elentra İlaç"},
+    )
+
+
+def test_new_essential_oil_from_supplements_is_created_in_essential_oils(oil_catalog):
+    # PHYTOIL источник держит среди БАДов; у нас это «Эфирные масла» (02.11.2026).
+    result = ScraperIntegrationService()._process_scraped_products(
+        real_session(oil_catalog, target="supplements"), [oil_scraped()],
+    )
+
+    assert result["created"] == 1
+    product = Product.objects.get(external_id="phytoil-eucalyptus-10-ml")
+    assert (product.product_type, product.category) == ("incense", oil_catalog["eucalyptus"])
+
+
+def test_supplement_subcategory_task_does_not_return_moved_oil_to_supplements(oil_catalog):
+    existing = Product.objects.create(
+        name="PHYTOIL EUCALYPTUS 10 ML", slug="phytoil-eucalyptus-10-ml", product_type="incense",
+        category=oil_catalog["eucalyptus"], price=150, currency="TRY",
+        external_id="phytoil-eucalyptus-10-ml", external_url=OIL_URL, external_data={"source": "ilacfiyati"},
+    )
+
+    result = ScraperIntegrationService()._process_scraped_products(
+        real_session(oil_catalog, target="vitamins"), [oil_scraped()],
+    )
+
+    existing.refresh_from_db()
+    assert result["updated"] == 1
+    assert (existing.product_type, existing.category) == ("incense", oil_catalog["eucalyptus"])
+    assert existing.price == 180

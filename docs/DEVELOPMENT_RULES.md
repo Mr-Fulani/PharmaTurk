@@ -143,7 +143,11 @@ docker-compose за nginx и Cloudflare.
    этом не удаляются — ссылки нужны, иначе файлы снесёт `cleanup_orphaned_media`.
    Парсеры Zara/Inditex отмечают сумки, кошельки, ремни, украшения и шапки
    (`attributes["inditex_category_slugs"]`), и категория задачи из ветки «Одежда»
-   не делает их одеждой. См. [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md).
+   не делает их одеждой. Категория задачи парсера другого типа существующему товару не
+   ставится (кроме лекарств): тип она не меняет, товар оказался бы чужим разделу
+   (`_category_changes_domain`). Смена типа без `Product.save()` — так, как это делает
+   `move_essential_oils_from_supplements`: `save()` синхронизирует из новой доменной записи
+   пустые SEO. См. [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md).
 14. **Файл медиа удаляется только после проверки ссылок, закрытой при сбое.** Резервной
    копии медиа товаров нет: код, который удаляет файл из R2, проверяет ссылки через
    `apps/catalog/utils/media_references.py` (один запрос на поле, а не на файл) и при
