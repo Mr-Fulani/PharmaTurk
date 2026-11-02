@@ -67,6 +67,17 @@ _INGREDIENT_COMMON = frozenset({
 })
 # Русские слова, которые описанием не считаются: «60 доз», «30 шт.», «100 мкг».
 _NOT_DESCRIPTION = frozenset({"доз", "мкг", "мкл"})
+# Число штук: «30 шт.», «10 ампул», «60 доз», «1 pc», «6 × 10 ml»; в источнике — «(30 ADET)», «28 FILM TABLET»
+# (пилот PR #287: PEKUTIN «таблетки, 30 шт.» → без 30 шт.). Пропало — название остаётся.
+_PACK_RE = re.compile(
+    r"(\d+)\s*(?:шт|ампул|флакон|доз|саше|пакет|шприц|картридж|таблет|капсул|пастил|суппозит|овул|туб|×|"
+    r"pcs?\b|ampoule|vial|dose|sachet|syringe|cartridge|tablet|capsule|lozenge|suppositor|ovule)",
+    re.IGNORECASE,
+)
+_SOURCE_PACK_RE = re.compile(
+    r"(?<![\d.,/])(\d+)\s+(?:(?!(?:mg|mcg|ml|gr?|iu|ui|miu)\b)[a-z]+\s+){0,3}?"
+    r"(?:adet|tablet|kapsul|flakon|ampul|sase|doz|enjektor|kartus|pastil|ovul|fitil|tup)\b"
+)
 
 
 @dataclass
@@ -169,6 +180,8 @@ def worse_reasons(field: str, locale: str, old: str, new: str, ingredient: set[s
         return reasons  # фасовку и вторую дозировку SEO-шаблон убирает сам, по плану
     if _doses(old) - _doses(new):
         reasons.append("дозировка")
+    if set(_PACK_RE.findall(old)) - set(_PACK_RE.findall(new)):
+        reasons.append("фасовка")
     if locale == "ru":
         # «RADYOFARMASOTIK HAZIRLAMA KITI» вместо «радиофармацевтический набор»; римское «VIII» — не слово.
         latin = _latin_words(new) - _latin_words(old)
@@ -231,6 +244,10 @@ def plan_refresh(product, log, generator) -> tuple[list[Change], Optional[dict],
     for change in changes:
         for reason in worse_reasons(change.field, change.locale, change.old, change.new, ingredient, brand):
             kept[f"{_group(change.field)}: {reason}"] = None
+    # Число штук источника, которого нет среди штук нового названия.
+    renamed = any(change.field == "name" for change in changes)
+    if renamed and set(_SOURCE_PACK_RE.findall(fold_tr(source))) - set(_PACK_RE.findall(new["ru"]["name"])):
+        kept["название: фасовка"] = None
     groups = {reason.split(":")[0] for reason in kept}
     return [change for change in changes if _group(change.field) not in groups], new, list(kept)
 
