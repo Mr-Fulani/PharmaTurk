@@ -1835,6 +1835,16 @@ BACKPACKS», отдел закупки «COMPLEMENTOS») и кладёт в
 платье. Код — `apps/scrapers/parsers/inditex_categories.py`, тесты —
 `test_inditex_accessory_categories.py` (фрагменты настоящих ответов 21.10).
 
+**Исключение — эфирные масла IlacFiyati.** Источник держит линейку PHYTOIL (эфирные масла,
+гидролаты, цветочные воды) в разделе БАДов. Новый такой товар со ссылкой
+`/takviye-edici-gida/…` получает раздел «Эфирные масла» (`essential-oils` и подразделы, тип
+`incense`) по правилу `apps/catalog/essential_oils.py`; масло в капсулах остаётся БАДом.
+Существующему товару категория задачи **другого типа** не ставится (`_category_changes_domain`
+в `services.py`; кроме лекарств — у них тип по категории уточняет сигнал): тип от категории
+задачи не меняется, и задача с разделом «Витамины» сделала бы масло «благовонием в разделе
+БАДов». Перенос уже сохранённых — команда `move_essential_oils_from_supplements`
+([docs/CATALOG_MAINTENANCE_COMMANDS.md](docs/CATALOG_MAINTENANCE_COMMANDS.md)).
+
 ---
 
 ## 16. Устранение неполадок

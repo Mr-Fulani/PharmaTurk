@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 
+from apps.catalog.essential_oils import essential_oil_category, essential_oil_category_slug
 from apps.catalog.medicine_taxonomy import propose_medicine_category
 from apps.catalog.models import Category, MedicineProduct
 from apps.catalog.supplement_taxonomy import supplement_category_slug, supplement_substance_slug
@@ -126,6 +127,12 @@ def prepare_medicine_category_mapping(session, scraped):
         ).first()
         if supplements is not None:
             scraped.__dict__.pop("_category_override", None)
+            # Эфирные масла и гидролаты (PHYTOIL) источник кладёт в БАДы — у нас
+            # это раздел «Эфирные масла» (catalog.essential_oils).
+            oils = essential_oil_category(essential_oil_category_slug(scraped.name))
+            if oils is not None:
+                scraped.category = oils.slug
+                return True
             slug = supplement_category_slug(scraped.name, scraped.brand)
             subcategory = slug and Category.objects.filter(
                 slug=slug, parent=supplements, is_active=True,

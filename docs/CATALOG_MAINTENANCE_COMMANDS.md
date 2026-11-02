@@ -1,14 +1,15 @@
 # Обслуживание каталога: битые медиа, бренды производителей и FLO, старые цены, названия LCW, смена типа
 
-В документе шесть команд. Все по умолчанию работают в режиме dry-run (только отчёт),
+В документе семь команд. Все по умолчанию работают в режиме dry-run (только отчёт),
 данные меняют только с `--apply`. Отчёт и бэкап у них разные:
 
 - `repair_broken_media` и `assign_manufacturer_brands` пишут CSV-отчёт (`/tmp/...`,
   путь можно задать через `--report`);
 - `repair_flo_brands` пишет CSV-отчёт, а с `--apply` — ещё и бэкап прежних брендов
   (`/tmp/flo_brands_backup_<время>.json`, product_id → brand_id);
-- `clear_heuristic_old_prices` и `retire_stale_domain_records` с `--apply` требуют
-  `--backup <файл.json>` со старыми значениями;
+- `clear_heuristic_old_prices`, `retire_stale_domain_records` и
+  `move_essential_oils_from_supplements` с `--apply` требуют `--backup <файл.json>` со
+  старыми значениями;
 - `repair_lcw_names` печатает замены в консоль, `--report` и `--backup` у неё нет —
   сохраните вывод, прежние названия есть только в нём.
 
@@ -148,6 +149,46 @@ manage.py retire_stale_domain_records --limit 0 --apply --backup /backups/stale-
 (файлы при этом не удалятся: на них ссылается прежняя запись). Если у текущего типа нет
 доменной записи (головные уборы, бельё и исламская одежда не создаются сигналом
 `ensure_domain_product_for_base`), команда товар пропускает и пишет об этом в отчёте.
+
+## `move_essential_oils_from_supplements`
+
+ilacfiyati.com держит линейку PHYTOIL (Elentra İlaç: эфирные масла, гидролаты, цветочные
+воды) среди БАДов, и парсер сохранял её БАДами: в описании стояло «Биологически активная
+добавка к пище», AI-тексты уходили в модерацию (`title_category_mismatch`,
+`supplement_health_claim`). Команда переносит такие товары в раздел «Эфирные масла»
+(`essential-oils`, тип `incense`): масло одного растения — в его подраздел («Эвкалиптовое»,
+«Чайное дерево»…), другое растение или смесь — в «Одиночные масла», гидролаты и цветочные
+воды — в «Эфирные масла». Правило отбора — `apps/catalog/essential_oils.py`: явный признак
+эфирного масла или гидролата («uçucu yağ», «hidrolat», «çiçek suyu», «essential oil», линейка
+PHYTOIL) и нет формы, которую принимают внутрь (капсулы, таблетки, саше…). Просто «yağı» —
+не признак: масло чёрного тмина, рыбий жир — БАДы.
+
+Что меняется (одна транзакция на товар): создаётся `IncenseProduct` — копия общих полей
+`SupplementProduct` (цена, наличие, главное фото, EN SEO) и его переводов; в `Product` тип и
+категория меняются через `update()` (`save()` затёр бы RU SEO пустыми полями новой записи);
+галерея копируется, запись БАДа снимается с публикации (`retire_stale_domain_records`, не
+удаляется); из описаний убирается абзац-оговорка БАДа; «Хит продаж» снимается; бренду
+добавляется тип `incense`. Slug и адрес карточки (`/product/<slug>`) не меняются, предложения
+источника, цены в валютах, корзины и заказы не трогаются. Название и SEO остаются прежними —
+их обновляет повторная AI-обработка. Повторный запуск ничего не находит (товары уже не БАДы).
+Нет активного раздела эфирных масел типа `incense` — команда останавливается с ошибкой.
+
+```bash
+manage.py move_essential_oils_from_supplements                      # показ: id, название, раздел → раздел, наличие, цена
+manage.py move_essential_oils_from_supplements --product 23956      # показ по товару (можно несколько --product)
+manage.py move_essential_oils_from_supplements --apply --backup /backups/essential-oils.json
+```
+
+Откат по бэкапу: `IncenseProduct.objects.filter(base_product_id__in=…).delete()` — через
+queryset, не `instance.delete()` (тот удалит и `Product`; файлы не удалятся — на них ссылается
+запись БАДа), затем вернуть в `Product` `product_type`, `category_id`, `is_featured`,
+`description`, описания `ProductTranslation`, `is_active`/`is_featured` записи БАДа и
+`category_slugs`/`primary_category_slug` бренда.
+
+Новые товары парсер ilacfiyati тем же правилом сразу кладёт в «Эфирные масла»
+(`scrapers/medicine_categories.py`), а категория задачи другого типа у существующего товара
+не меняется (`scrapers/services.py`, `_category_changes_domain`) — перенесённое масло не вернётся
+в БАДы при повторном парсинге.
 
 
 ## Пустые разделы мебели не показываются
