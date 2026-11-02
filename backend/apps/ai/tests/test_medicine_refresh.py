@@ -101,7 +101,7 @@ def test_refresh_without_apply_changes_nothing(capsys):
         # Брак просмотра 01.11.2026: турецкое описание набора вместо русского.
         (
             "name", "ru", "BRAIN-SPECT радиофармацевтический набор для приготовления раствора, 6 флаконов",
-            "BRAIN-SPECT RADYOFARMASOTIK HAZIRLAMA KITI, 6 флаконов", ["латиница вместо перевода"],
+            "BRAIN-SPECT RADYOFARMASOTIK HAZIRLAMA KITI, 6 флаконов", ["форма", "латиница вместо перевода"],
         ),
         # SEO без формы: «из Турции — инструкция, цена» вместо «суспензия для инъекций».
         (
@@ -131,6 +131,7 @@ def test_refresh_without_apply_changes_nothing(capsys):
             "RISPERDAL CONSTA (рисперидон) 37,5 мг, суспензия пролонгированного высвобождения для инъекций (в/м)", [],
         ),
         ("name", "ru", "TERRAMYCIN 30 мг + 10 000 МЕ, мазь", "TERRAMYCIN 30 мг/10000 МЕ, мазь", []),
+        ("name", "ru", "HIBOR 7500 МЕ/0,3 мл, раствор для инъекций, 2 шприца", "HIBOR 7500 МЕ/0,3 мл, 2 шприца", ["форма"]),
         ("meta_title", "en", "SERODERM 0.1% ointment 30 g with betamethasone from Turkey",
          "SERODERM (betamethasone) 0.1%, ointment from Turkey — leaflet, price", []),
         ("name", "ru", "IMMUNATE 500 МЕ, порошок, флакон", "IMMUNATE (фактор свёртывания крови VIII) 500 МЕ, порошок, флакон", []),

@@ -31,16 +31,17 @@ SEO_FIELDS = ("meta_title", "og_title", "meta_description", "og_description", "m
 # Просмотр 01.11.2026 (1 194 товара): шаблон терял форму («RISPERDAL CONSTA 25 мг из Турции»),
 # вещество, вторую дозировку («SERETIDE 100/50 мкг» → «100 мкг») и оставлял турецкие слова
 # («BRAIN-SPECT RADYOFARMASOTIK HAZIRLAMA KITI»). Такое поле остаётся как есть.
+# Шприц, флакон, ампула — упаковка, не форма: «HIBOR …, 2 шприца» без «раствора» — форма пропала.
 _FORM_WORDS = {
     "ru": re.compile(
         r"таблет|капсул|драже|раствор|суспенз|эмульс|сироп|капл|спрей|аэрозол|мазь|крем|гел[ья]|паст[аы]|"
         r"пен[аы]|порош|гранул|лиофил|концентрат|суппозит|свеч|овул|пессар|пастил|пластыр|шампун|лосьон|"
-        r"инъекц|инфуз|ингал|ампул|флакон|шприц|картридж|набор|имплант|жидкост|присыпк"
+        r"инъекц|инфуз|ингал|набор|имплант|жидкост|присыпк"
     ),
     "en": re.compile(
         r"tablet|capsule|drag[eé]e|solution|suspension|emulsion|syrup|drops|spray|aerosol|ointment|cream|"
         r"\bgel\b|paste|foam|powder|granule|lyophili|concentrate|suppositor|ovule|pessar|lozenge|patch|shampoo|"
-        r"lotion|inject|infusion|inhal|ampoule|vial|syringe|cartridge|\bkit\b|implant|liquid"
+        r"lotion|inject|infusion|inhal|\bkit\b|implant|liquid"
     ),
 }
 # Дозировка — число с единицей: «37,5 мг», «100 мкг/50 мкг», «1.000.000 МЕ», «10 000 МЕ», «0,1%».
