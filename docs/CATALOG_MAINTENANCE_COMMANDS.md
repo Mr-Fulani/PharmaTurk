@@ -167,23 +167,34 @@ PHYTOIL) и нет формы, которую принимают внутрь (�
 `SupplementProduct` (цена, наличие, главное фото, EN SEO) и его переводов; в `Product` тип и
 категория меняются через `update()` (`save()` затёр бы RU SEO пустыми полями новой записи);
 галерея копируется, запись БАДа снимается с публикации (`retire_stale_domain_records`, не
-удаляется); из описаний убирается абзац-оговорка БАДа; «Хит продаж» снимается; бренду
-добавляется тип `incense`. Slug и адрес карточки (`/product/<slug>`) не меняются, предложения
+удаляется); из описаний убирается абзац-оговорка БАДа, из ключевых слов (`keywords`,
+`meta_keywords` товара, переводов и новой записи) — «БАД …» / «food supplement …» (вещество в
+списке есть отдельным словом); «Хит продаж» снимается; бренду добавляется тип `incense`. Slug и адрес карточки (`/product/<slug>`) не меняются, предложения
 источника, цены в валютах, корзины и заказы не трогаются. Название и SEO остаются прежними —
 их обновляет повторная AI-обработка. Повторный запуск ничего не находит (товары уже не БАДы).
 Нет активного раздела эфирных масел типа `incense` — команда останавливается с ошибкой.
 
+**Наценка = цена на сайте.** Наценка считается от раздела ([CATEGORY_MARKUP_INHERITANCE.md](CATEGORY_MARKUP_INHERITANCE.md)):
+у БАДов — 50 % корня «БАДы», у «Благовоний» и «Эфирных масел» своей нет (02.11.2026), сработала
+бы общая 25 % — цена на сайте упала бы ≈ на 17 %. Показ печатает цену источника и цену с
+наценкой до → после. `--apply` отказывает, если наценка у кого-то меняется, пока не выбран
+вариант (решает владелец): `--section-markup 50` — записать разделу `essential-oils` наценку
+50 % (цена прежняя; прежнее значение — в бэкапе) или `--allow-markup-change` — перенести с
+общей наценкой.
+
 ```bash
 manage.py move_essential_oils_from_supplements                      # показ: id, название, раздел → раздел, наличие, цена
 manage.py move_essential_oils_from_supplements --product 23956      # показ по товару (можно несколько --product)
-manage.py move_essential_oils_from_supplements --apply --backup /backups/essential-oils.json
+manage.py move_essential_oils_from_supplements --section-markup 50      # показ: цена не меняется?
+manage.py move_essential_oils_from_supplements --section-markup 50 --apply --backup /backups/essential-oils.json
 ```
 
 Откат по бэкапу: `IncenseProduct.objects.filter(base_product_id__in=…).delete()` — через
 queryset, не `instance.delete()` (тот удалит и `Product`; файлы не удалятся — на них ссылается
 запись БАДа), затем вернуть в `Product` `product_type`, `category_id`, `is_featured`,
-`description`, описания `ProductTranslation`, `is_active`/`is_featured` записи БАДа и
-`category_slugs`/`primary_category_slug` бренда.
+`description`, `keywords`, `meta_keywords`, описания и `meta_keywords` `ProductTranslation`,
+`is_active`/`is_featured` записи БАДа, `category_slugs`/`primary_category_slug` бренда и
+`margin_percent` раздела `essential-oils` (`section_margin_percent`).
 
 Новые товары парсер ilacfiyati тем же правилом сразу кладёт в «Эфирные масла»
 (`scrapers/medicine_categories.py`), а категория задачи другого типа у существующего товара

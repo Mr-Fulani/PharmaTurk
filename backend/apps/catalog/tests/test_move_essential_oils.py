@@ -13,7 +13,9 @@ from django.core.management import CommandError, call_command
 from rest_framework.test import APIClient
 
 from apps.ai.services.supplement_content import DISCLAIMER
+from apps.catalog.currency_models import GlobalCurrencySettings
 from apps.catalog.essential_oils import essential_oil_category_slug
+from apps.catalog.utils.product_markup import get_effective_product_markup
 from apps.catalog.models import (
     Brand,
     Category,
@@ -70,9 +72,14 @@ def quiet_signals(monkeypatch):
 def catalog():
     supplements_type, _ = CategoryType.objects.get_or_create(slug="supplements", defaults={"name": "БАДы"})
     incense_type, _ = CategoryType.objects.get_or_create(slug="incense", defaults={"name": "Благовония"})
+    # Наценки как на проде 02.11.2026: корень «БАДы» 50 %, у благовоний своей нет, общая 25 %.
     supplements, _ = Category.objects.update_or_create(
-        slug="supplements", defaults={"name": "БАДы", "category_type": supplements_type, "parent": None, "is_active": True},
+        slug="supplements", defaults={"name": "БАДы", "category_type": supplements_type, "parent": None,
+                                      "is_active": True, "margin_percent": 50},
     )
+    settings = GlobalCurrencySettings.load()
+    settings.default_margin_percentage = 25
+    settings.save()
     herbal, _ = Category.objects.update_or_create(
         slug="herbal-supplements", defaults={"name": "Растительные", "parent": supplements, "is_active": True},
     )
@@ -105,7 +112,11 @@ def oil(catalog):
         external_data={"source": "ilacfiyati", "source_name": "PHYTOIL EUCALYPTUS 10 ML"},
         main_image=PHOTO,
     )
-    Product.objects.filter(pk=product.pk).update(seo_title="PHYTOIL EUCALYPTUS 10 мл — купить из Турции")
+    Product.objects.filter(pk=product.pk).update(
+        seo_title="PHYTOIL EUCALYPTUS 10 мл — купить из Турции",
+        keywords=["PHYTOIL", "эвкалиптовое масло", "PHYTOIL купить", "БАД эвкалиптовое масло"],
+        meta_keywords="PHYTOIL, эвкалиптовое масло, БАД эвкалиптовое масло",
+    )
     supplement = SupplementProduct.objects.get(base_product=product)
     SupplementProduct.objects.filter(pk=supplement.pk).update(meta_title="PHYTOIL EUCALYPTUS 10 ml", active_ingredient="Eucalyptus")
     SupplementProductImage.objects.create(product=supplement, image_url=PHOTO, sort_order=0, is_main=True)
@@ -113,9 +124,11 @@ def oil(catalog):
     SupplementProductTranslation.objects.create(
         product=supplement, locale="en", name="PHYTOIL EUCALYPTUS",
         description=f"<p>Eucalyptus essential oil.</p><p>{DISCLAIMER['en']}</p>",
+        meta_keywords="PHYTOIL, eucalyptus oil, food supplement eucalyptus oil",
     )
     ProductTranslation.objects.create(product=product, locale="en", name="PHYTOIL EUCALYPTUS",
-                                      description=f"<p>Eucalyptus essential oil.</p><p>{DISCLAIMER['en']}</p>")
+                                      description=f"<p>Eucalyptus essential oil.</p><p>{DISCLAIMER['en']}</p>",
+                                      meta_keywords="PHYTOIL, eucalyptus oil, food supplement eucalyptus oil")
     vitamin = Product.objects.create(
         name="SOLGAR VITAMIN C 1000 MG 100 TABLET", slug="solgar-vitamin-c", product_type="supplements",
         category=catalog.supplements, price=950, currency="TRY",
@@ -128,6 +141,8 @@ def test_dry_run_lists_oil_and_changes_nothing(oil, capsys):
 
     out = capsys.readouterr().out
     assert f"{oil.product.pk} | PHYTOIL EUCALYPTUS 10 ML | herbal-supplements → eucalyptus-oil" in out
+    assert "180.00 TRY | 270.00 → 225.00 (50.00% → 25.00%)" in out
+    assert "Наценка меняется: 50.00% → 25.00% — 1 шт." in out
     assert "SOLGAR" not in out
     oil.product.refresh_from_db()
     assert oil.product.product_type == "supplements"
@@ -139,9 +154,42 @@ def test_apply_requires_backup(oil):
         call_command("move_essential_oils_from_supplements", "--apply")
 
 
+def test_apply_refuses_when_site_price_changes(oil, tmp_path):
+    with pytest.raises(CommandError, match="Цена на сайте изменится"):
+        call_command("move_essential_oils_from_supplements", "--apply", "--backup", str(tmp_path / "oils.json"))
+
+    oil.product.refresh_from_db()
+    assert oil.product.product_type == "supplements"
+
+
+def test_section_markup_keeps_site_price(oil, catalog, tmp_path, capsys):
+    call_command("move_essential_oils_from_supplements", "--section-markup", "50")
+    assert "Наценка (цена на сайте) не меняется." in capsys.readouterr().out
+    catalog.oils.refresh_from_db()
+    assert catalog.oils.margin_percent == 0, "показ ничего не пишет"
+
+    call_command("move_essential_oils_from_supplements", "--section-markup", "50", "--apply",
+                 "--backup", str(tmp_path / "oils.json"))
+
+    catalog.oils.refresh_from_db()
+    assert catalog.oils.margin_percent == 50
+    product = Product.objects.select_related("category", "brand").get(pk=oil.product.pk)
+    assert get_effective_product_markup(product) == (50, "category")
+    assert json.loads((tmp_path / "oils.json").read_text(encoding="utf-8"))["section_margin_percent"] == "0.00"
+
+
+def test_allow_markup_change_moves_with_general_markup(oil, tmp_path):
+    call_command("move_essential_oils_from_supplements", "--apply", "--allow-markup-change",
+                 "--backup", str(tmp_path / "oils.json"))
+
+    product = Product.objects.select_related("category", "brand").get(pk=oil.product.pk)
+    assert product.product_type == "incense"
+    assert get_effective_product_markup(product) == (25, "global")
+
+
 def test_apply_moves_oil_to_essential_oils(oil, catalog, tmp_path):
     backup = tmp_path / "oils.json"
-    call_command("move_essential_oils_from_supplements", "--apply", "--backup", str(backup))
+    call_command("move_essential_oils_from_supplements", "--apply", "--section-markup", "50", "--backup", str(backup))
 
     product = Product.objects.get(pk=oil.product.pk)
     assert product.product_type == "incense"
@@ -150,7 +198,11 @@ def test_apply_moves_oil_to_essential_oils(oil, catalog, tmp_path):
     assert product.seo_title == "PHYTOIL EUCALYPTUS 10 мл — купить из Турции", "RU SEO не затирается"
     assert product.is_featured is False
     assert product.description == TEXT_RU
-    assert ProductTranslation.objects.get(product=product, locale="en").description == "<p>Eucalyptus essential oil.</p>"
+    assert product.keywords == ["PHYTOIL", "эвкалиптовое масло", "PHYTOIL купить"]
+    assert product.meta_keywords == "PHYTOIL, эвкалиптовое масло"
+    translation = ProductTranslation.objects.get(product=product, locale="en")
+    assert translation.description == "<p>Eucalyptus essential oil.</p>"
+    assert translation.meta_keywords == "PHYTOIL, eucalyptus oil"
 
     incense = IncenseProduct.objects.get(base_product=product)
     assert incense.is_active and incense.category == catalog.eucalyptus
@@ -160,16 +212,18 @@ def test_apply_moves_oil_to_essential_oils(oil, catalog, tmp_path):
     assert dict(IncenseProductTranslation.objects.filter(product=incense).values_list("locale", "description")) == {
         "ru": TEXT_RU, "en": "<p>Eucalyptus essential oil.</p>",
     }
+    assert IncenseProductTranslation.objects.get(product=incense, locale="en").meta_keywords == "PHYTOIL, eucalyptus oil"
 
     supplement = SupplementProduct.objects.get(pk=oil.supplement.pk)
     assert supplement.is_active is False, "запись БАДа снята, но не удалена"
     oil.brand.refresh_from_db()
     assert oil.brand.category_slugs == ["supplements", "incense"]
 
-    saved = json.loads(backup.read_text(encoding="utf-8"))
+    saved = json.loads(backup.read_text(encoding="utf-8"))["products"]
     assert saved[0]["product"]["product_type"] == "supplements"
     assert saved[0]["product"]["category_id"] == catalog.herbal.pk
     assert DISCLAIMER["ru"] in saved[0]["product"]["description"]
+    assert "БАД эвкалиптовое масло" in saved[0]["product"]["keywords"]
     assert saved[0]["supplement"] == {"pk": oil.supplement.pk, "is_active": True, "is_featured": True}
 
     body = APIClient().get(f"/api/catalog/products/resolve/{product.slug}").json()
@@ -179,15 +233,18 @@ def test_apply_moves_oil_to_essential_oils(oil, catalog, tmp_path):
 
 
 def test_second_apply_finds_nothing(oil, tmp_path, capsys):
-    call_command("move_essential_oils_from_supplements", "--apply", "--backup", str(tmp_path / "1.json"))
-    call_command("move_essential_oils_from_supplements", "--apply", "--backup", str(tmp_path / "2.json"))
+    call_command("move_essential_oils_from_supplements", "--apply", "--section-markup", "50",
+                 "--backup", str(tmp_path / "1.json"))
+    call_command("move_essential_oils_from_supplements", "--apply", "--section-markup", "50",
+                 "--backup", str(tmp_path / "2.json"))
 
     assert "Перенесено товаров: 0" in capsys.readouterr().out
     assert IncenseProduct.objects.filter(base_product=oil.product).count() == 1
 
 
 def test_saving_retired_supplement_keeps_oil_type(oil, catalog, tmp_path):
-    call_command("move_essential_oils_from_supplements", "--apply", "--backup", str(tmp_path / "oils.json"))
+    call_command("move_essential_oils_from_supplements", "--apply", "--section-markup", "50",
+                 "--backup", str(tmp_path / "oils.json"))
 
     SupplementProduct.objects.get(pk=oil.supplement.pk).save()
 
