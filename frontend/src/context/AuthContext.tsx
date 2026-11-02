@@ -31,10 +31,13 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 // Только access: refresh backend кладёт в HttpOnly cookie, JS его не видит (TD-018).
+// expires = срок refresh (7 дней): иначе cookie сессионная, браузер стирает её раньше
+// refresh, и вход «слетает» без попытки тихого обновления.
 const AUTH_COOKIE_OPTIONS = {
   sameSite: 'Lax' as const,
   path: '/',
   secure: process.env.NODE_ENV === 'production',
+  expires: 7,
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

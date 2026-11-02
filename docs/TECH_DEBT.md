@@ -496,6 +496,10 @@ PR слишком рискованно.
   (`Path=/api/auth/`), `/api/auth/logout/` и `/api/users/logout/` → 200, неверный пароль → 400 без cookie,
   виджеты Telegram и Google на `/auth` загружаются. Вход реальным аккаунтом, тихое обновление и выход в
   браузере на проде — проверить владельцу (агенту вводить пароли на проде нельзя).
+- Прод 03.11.2026, вход владельца в Chrome: refresh cookie HttpOnly, JS её не видит; `/api/auth/jwt/refresh/`
+  → 200 с новым access. Ошибка: cookie `access` была сессионной (без `expires`), браузер стирал её раньше
+  refresh (7 дней), и `AuthContext` считал гостя, не пробуя refresh — владелец «входил сотню раз».
+  Исправлено: `expires: 7` у `access` (`AuthContext.tsx`, `lib/api.ts`). Выход проверить после релиза.
 - `access` и `refresh` пишутся через `js-cookie`
   (`frontend/src/context/AuthContext.tsx`) без `HttpOnly`; строгого CSP нет
   (ROADMAP P1.8). Любой XSS = кража сессии. План: CSP report-only → enforcement,

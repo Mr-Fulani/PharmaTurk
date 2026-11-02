@@ -219,10 +219,12 @@ async function refreshAccessToken(baseURL?: string): Promise<string | null> {
   const newAccess = response.data?.access
   if (!newAccess) return null
 
+  // expires = срок refresh (7 дней), как в AuthContext: cookie живёт вместе с refresh.
   Cookies.set('access', newAccess, {
     sameSite: 'Lax' as const,
     path: '/',
     secure: process.env.NODE_ENV === 'production',
+    expires: 7,
   })
   return newAccess
 }
