@@ -33,7 +33,6 @@ class FakeResponse:
 @pytest.fixture
 def posts(settings, monkeypatch):
     settings.INDEXNOW_ENABLED = True
-    settings.INDEXNOW_KEY = "0123456789abcdef0123456789abcdef"
     settings.INDEXNOW_DAILY_URL_LIMIT = 10_000
     settings.FRONTEND_SITE_URL = SITE
     monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
@@ -117,8 +116,9 @@ def test_price_change_is_not_sent_but_new_and_renamed_are(posts):
     request = posts[0]
     assert request["url"] == "https://api.indexnow.org/indexnow"
     assert request["host"] == "mudaroba.com"
-    assert request["key"] == "0123456789abcdef0123456789abcdef"
-    assert request["keyLocation"] == f"{SITE}/0123456789abcdef0123456789abcdef.txt"
+    key = django_settings.INDEXNOW_KEY
+    assert request["key"] == key
+    assert request["keyLocation"] == f"{SITE}/{key}.txt"
     assert IndexNowUrlState.objects.get(path=f"/product/{added.slug}").submitted_at is not None
 
     posts.clear()

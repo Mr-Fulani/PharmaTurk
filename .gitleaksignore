@@ -5,3 +5,5 @@
 256d6f79d969b860ee0dcd2752da7d2432e0f34a:AI_QUICK_TEST.md:curl-auth-header:126
 256d6f79d969b860ee0dcd2752da7d2432e0f34a:AI_TEST_COMMANDS.md:curl-auth-header:35
 256d6f79d969b860ee0dcd2752da7d2432e0f34a:AI_MODULE_OVERVIEW.md:curl-auth-header:87
+# Test-only placeholder IndexNow key (public protocol, not a secret); removed in the next commit.
+d2275af3f41a87354b5d366eb479dc90c9b991cf:backend/apps/catalog/tests/test_indexnow.py:generic-api-key:36
