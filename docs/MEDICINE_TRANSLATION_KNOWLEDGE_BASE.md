@@ -16,7 +16,7 @@
 | Словарь веществ | `AITranslationMemory`, namespace `medicine_inn` (1 876 на 25.10.2026) | МНН на турецком → RU и EN |
 | Словарь брендов | `AITranslationMemory`, namespace `medicine_brand` (6 432, с 24.10.2026) | бренд латиницей → бренд кириллицей для SEO («MAJEZIK» → «Мажезик») |
 | Стандартные фразы | те же записи памяти абзацев | одна запись на фразу для всех лекарств |
-| Глоссарий терминов | вне кода: `~/pharmaturk-translation-work/glossary/` на рабочем Mac | термин TR → RU/EN, из Wikidata и по статистике памяти |
+| Словарь терминов | файл, строит `medicine_memory_review alignment` | турецкая основа → обычные переводы, по статистике памяти |
 
 ### Память абзацев
 
@@ -205,7 +205,7 @@
 ## Проверка нижней части памяти через Claude API (25–26.10.2026, TD-025)
 
 Владелец поручил работать только через API Claude, без OpenAI. Проверены все записи, не попавшие в
-run1–run5: скрипты — `scripts/translation_review/` (порядок шагов — README там же).
+run1–run5. Шаги теперь в командах `medicine_memory_review` и `medicine_claude_batch`, порядок — [AI_GUIDE.md](../AI_GUIDE.md).
 
 1. **Что проверялось.** Выгрузка памяти 25.10: 339 174 записи. Исключены части и группы run1–run5,
    пилот 4, 546 абзацев new667 и все их варианты по `canon`. Осталось 162 845 записей. Их
@@ -292,6 +292,83 @@ run1–run5: скрипты — `scripts/translation_review/` (порядок ш
     С 23.10 правки с многоточием отсекаются фильтром.
   - Корень проблемы — нарезка PDF. Склейка обрывков и блочный сбор раздела в парсере
     (PR #126, #127) убирают её при перескрейпе.
-- **Где лежат инструменты.** Скрипты проверки через Claude API — в репозитории,
-  `scripts/translation_review/`. Словарь, выгрузки и прогоны 23.10 (`glossary/`, `run*/`) — вне
-  репозитория: на рабочем Mac в `~/pharmaturk-translation-work/` и на сервере в `~/ai-pilot/`.
+- **Где лежат данные.** Инструменты — в management-командах (ниже). Выгрузки, ответы моделей и прогоны
+  (`glossary/`, `run*/`, `td025/`) в репозиторий не входят: они на рабочем Mac в `~/pharmaturk-translation-work/` и на
+  сервере в `~/ai-pilot/`. В старых разделах этого документа имена вроде `rank_memory.py` и `site_plan_tr.py` — скрипты
+  того времени; их замена — в таблице ниже.
+
+## Инструменты (TD-031, 01.11.2026)
+
+Порядок запуска — [AI_GUIDE.md](../AI_GUIDE.md), «Проверка переводов и словарей лекарств». Значения ключей не
+переносились: команды берут `ANTHROPIC_API_KEY` из окружения. В скриптах ключей не найдено.
+
+| прежний скрипт | команда |
+|---|---|
+| `memory_export/export_memory.py` | `medicine_memory_review export` |
+| `glossary/scripts/build_alignment.py` (без scipy) | `… alignment` |
+| `glossary/scripts/rank_memory.py`, `make_chunks.py`, `prepare_chunks.py` | `… chunks` |
+| `batch_review.py`, обёртка `rb.sh` | `medicine_claude_batch` |
+| `glossary/scripts/collect_run.py`, `collect_fixes.py` | `… flagged`, `… fragments`, `… fixes` |
+| `make_updates.py` | `… updates` |
+| `run*_apply_mem.py`, `run*_verify_mem.py`, `apply_mem.py` | `… apply`, `… apply --verify` |
+| `td025/bench_score.py` | `… score` |
+| `site_plan_tr.py`, `site_apply.py` | `medicine_site_lines` |
+| workflow `inn-dictionary-rebuild`, `inn_rebuild/scripts/make_chunks.py`, разовые `export_inn.py`, `inn_apply.py` | `medicine_inn_dictionary`, виды `inn`, `inn_verify` |
+| workflow `brand-cyrillic-dictionary`, `brands/collect.py`, `brands_apply.py` | `medicine_brand_dictionary`, виды `brand`, `brand_verify` |
+| `title_eval.py`, `badn.py`, `badn2.py`, `b78.py`, `cyr.py`, `srcn.py` | `medicine_title_diagnostics` |
+
+Сверка с прошлыми прогонами на файлах рабочего Mac, без прода и без запросов к модели:
+
+| шаг | результат |
+|---|---|
+| `chunks` на выгрузке TD-025 | совпали все 3 701 часть, 148 019 абзацев с подсказками и группы вариантов |
+| `alignment` на выгрузке 23.10 | совпали числа; 293 термина из ≈ 21 тыс. отличаются только выбором среди равных значений в конце списка |
+| `fixes` на ответах TD-025 | 6 045 правок совпали слово в слово, стоимость та же ($16,25); одна добавилась (id 405415): `paragraph_problems` с 25.10 изменилась |
+| `updates` | 6 456 + 1 та же правка |
+| `medicine_brand_dictionary collect` на ответах 24.10 | совпал весь словарь, 6 432 бренда, и 421 правка чтения |
+| `medicine_inn_dictionary chunks` | совпали все 1 613 записей с доказательствами Wikidata |
+| `medicine_inn_dictionary collect` на ответах 24.10 | 661 из 662; «Антиген RSVpreF3» 24.10 внесли вручную, команда показывает его как замечание «латиница» |
+
+Что изменилось при переносе:
+
+- Промпт брендов читает латиницу упаковки, а не турецкое произношение: старое правило «c → дж» давало «Энджеф».
+  Код `latin_reading` оставлен страховкой.
+- Пересборка МНН не отменяет решение владельца: «Глицерин», «Адреналин», «Позаконазол» (`INN_KEEP`). Одиночная
+  заглавная латинская буква в RU теперь допустима («Сеннозид B»): 24.10 такие записи добавляли вручную.
+- Поля `ru_base`, `en_base` убраны: написание в скобках названия считает `title_inn`.
+- `medicine_site_lines` берёт последний лог `applied` или `partial` (`latest_applied_log`), прежний скрипт — только `applied`.
+- Сравнение названий идёт по снимку `--save`/`--compare`, а не загрузкой второго файла `medicine_title.py`.
+
+**Выгрузки Wikidata для `--wikidata-dir`.** Запросы к `https://query.wikidata.org/sparql` с заголовком
+`Accept: text/csv` и своим `User-Agent`; файлы кладутся в одну папку.
+
+```sparql
+# wd_atc_labels.csv
+SELECT ?item ?code ?ru ?en ?la WHERE { ?item wdt:P267 ?code .
+  OPTIONAL { ?item rdfs:label ?ru FILTER(LANG(?ru)="ru") } OPTIONAL { ?item rdfs:label ?en FILTER(LANG(?en)="en") }
+  OPTIONAL { ?item rdfs:label ?la FILTER(LANG(?la)="la") } }
+# wd_atc_alias.csv
+SELECT ?item ?lang ?alias WHERE { ?item wdt:P267 ?code . ?item skos:altLabel ?alias .
+  BIND(LANG(?alias) AS ?lang) FILTER(?lang IN ("ru","en")) }
+# wd_who_inn.csv
+SELECT ?item ?inn ?lang (GROUP_CONCAT(DISTINCT ?code; separator="|") AS ?codes) WHERE { ?item p:P2275 ?st .
+  ?st ps:P2275 ?inn . BIND(LANG(?inn) AS ?lang) FILTER(?lang IN ("ru","en","la")) OPTIONAL { ?item wdt:P267 ?code } }
+  GROUP BY ?item ?inn ?lang
+```
+
+**Не перенесено: разовые скрипты.** Они привязаны к списку товаров, дате или одной правке и остаются там, где лежат.
+
+| где | скрипты | почему |
+|---|---|---|
+| сервер | `site_plan.py` | **нельзя повторять**: замена по русскому тексту портит верные строки (выше) |
+| сервер | `fix_thousands_mem.py`, `l5fix.py`, `mem31.py`, `mem4_*.py`, `memfix8*.py`, `p4_apply_mem.py`, `p6_memory.py`, `p7_memory.py`, `p8_memory.py`, `pf.py`, `pf2.py` | ручные правки конкретных записей; теперь через файл `apply` или админку |
+| сервер | `names.py`, `tv.py`, `tv2.py`, `tv3.py`, `chk8.py`, `chk9.py`, `chk138.py`, `t138.py`, `pause138.py`, `resume138.py`, `sections.py`, `para.py`, `para3.py`, `sys_errors.py`, `sys_errors2.py`, `sgk.py`, `types.py`, `med_stats.py` | отладка по списку id или разовая статистика |
+| сервер | `pick_*.py`, `p4_*.py`, `p5_*.py`, `p6_self.py`, `p8_partial.py`, `p10_*.py`, `facts_p7.py`, `facts_p8.py`, `mass_*.py`, `batch_start.sh`, `start_run*.py`, `preview.py`, `report*.py`, `part_review.py`, `leftover.py`, `td_*.py`, `td_batch_start.sh`, `q_short.py`, `post.py`, `ai_snapshot.py`, `rows_backup.py`, `run_once.sh` | пилоты и партии лекарств конкретных дней; массовые прогоны идут через `ai_enqueue` и админку |
+| сервер | `modq*.py`, `modstat*.py`, `close_*.py`, `approve_*.py`, `apply_nonmed_rest_*.py`, `backup_c3.py`, `backup_medsup.py`, `remain*.py`, `repar*.py` | круги разбора очереди модерации, не переводы |
+| сервер | `judge_calib.py`, `atleast_eval.py`, `check_eval.py`, `concept_audit.py`, `concept_eval.py`, `smoke_claude.py`, `smoke2.py` | разовые замеры; `judge_calib.py` — на моделях OpenAI, их больше не используем для этого |
+| сервер | `nm/`, `seo/`, `flob*.py`, `hosp*.py`, `hide_hosp.py`, `ikea_*.py`, `ilac_changes.py`, `ig_probe.py`, `parsers.py`, `junk*.py`, `lcw_backup.py`, `md_bag.py`, `pasif_*.py`, `zero_price.py`, `slug_history_fix.py`, `suproot*.py`, `subcat_*.py`, `profapi.py`, `explain.py`, `timeapi.py`, `r2sizes.py`, `nm_inv.py` | не про переводы лекарств: карточки не лекарств, SEO разделов, парсеры, производительность |
+| Mac | `glossary/scripts/term_check.py`, `term_consistency.py`, `build_wikidata_glossary.py` | замер подсказок 23.10: выбран словарь из памяти |
+| Mac | `glossary/scripts/review_page.py` | HTML-просмотр правок run1–run5; в TD-025 не понадобился, правки читаются из `fixes.jsonl` |
+| Mac | `glossary/scripts/pp_local.py` | заглушка для запуска без Django, команде не нужна |
+| Mac | `missing667/scripts/*`, `td_batch.py` и `td_apply*.py` на сервере | новые абзацы теперь переводит обычная обработка (`translate_paragraphs`), разовые партии не повторяются |
+| Mac | `td025/drive.py`, `wait.sh`, `collect.sh`, `pilot4/review_workflow_example.js`, workflow `medicine-title-forms-review` | обвязка конкретного прогона; агентский workflow заменён Batches API |

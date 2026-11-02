@@ -405,6 +405,98 @@ docker compose exec backend poetry run python manage.py close_resolved_ai_modera
 docker compose exec backend poetry run python manage.py close_resolved_ai_moderation --product-type supplements
 ```
 
+### Проверка переводов и словарей лекарств
+
+Шесть команд (TD-031). Без флага команда только показывает, что сделает, или пишет рабочий файл: в БД пишет
+только `apply` с `--apply`, и только с `--backup <новый файл>` (старый бэкап не затирается), платный запрос к
+Claude уходит только с `--send`. Запись на прод — по «да» владельца. Модель — `claude-haiku-5-5`, ключ берётся из
+`ANTHROPIC_API_KEY` окружения, OpenAI здесь не участвует. Схема, цифры и ловушки — [база переводов](docs/MEDICINE_TRANSLATION_KNOWLEDGE_BASE.md).
+
+| команда | что делает |
+| --- | --- |
+| `medicine_memory_review` | память абзацев: выгрузка, словарь терминов, части, сбор правок, запись и сверка, замер на разметке |
+| `medicine_claude_batch` | отправка частей в Message Batches API (вдвое дешевле), состояние, ответы |
+| `medicine_inn_dictionary` | пересборка словаря МНН по кодам АТХ и Wikidata |
+| `medicine_brand_dictionary` | новые бренды кириллицей; пишет только новые ключи |
+| `medicine_site_lines` | замена исправленных абзацев на страницах по турецкому исходнику, без модели |
+| `medicine_title_diagnostics` | покрытие шаблона названий, сравнение до и после правки, брак в очереди модерации |
+
+**Где запускать.** С БД и ключом — в контейнере backend прода: `export`, `medicine_claude_batch`, `apply`,
+`medicine_site_lines`, `medicine_title_diagnostics`. Файлы туда и обратно — `docker cp`, рабочая папка — `/tmp`.
+Шаги над файлами (`alignment`, `chunks`, `flagged`, `fragments`, `fixes`, `updates`, `decisions`, `collect`) — на
+рабочей машине: `alignment`, `chunks` и `fixes` держат всю память в ОЗУ (`alignment` — 1,2 ГБ и ≈ 10 минут при 339 тыс. записей), а у backend на
+проде лимит 2 ГиБ при обычном расходе 1,1 ГБ ([PROD_MEMORY.md](docs/PROD_MEMORY.md)). БД этим шагам не нужна.
+
+Проверка памяти абзацев (цикл: пилот `--limit 50` → правки кодом → следующая партия):
+
+```bash
+python manage.py medicine_memory_review export --out memory.jsonl.gz                                      # прод
+python manage.py medicine_memory_review alignment --memory memory.jsonl.gz --out alignment.json
+python manage.py medicine_memory_review chunks --memory memory.jsonl.gz --alignment alignment.json \
+  --seen reviewed_ids.json --limit 50 --out-dir run                                 # следующему запуску: run/reviewed_ids.json
+
+python manage.py medicine_claude_batch submit --kind review --effort high --input run/chunks.jsonl.gz     # только оценка
+python manage.py medicine_claude_batch submit --kind review --effort high --input run/chunks.jsonl.gz --send
+python manage.py medicine_claude_batch submit --kind review --effort xhigh --input run/chunks.jsonl.gz --send
+python manage.py medicine_claude_batch status --batch-id <id1> <id2>                                      # пока не ended
+python manage.py medicine_claude_batch results --batch-id <id1> --out rev_high.jsonl
+python manage.py medicine_claude_batch results --batch-id <id2> --out rev_xhigh.jsonl
+
+python manage.py medicine_memory_review flagged --chunks run/chunks.jsonl.gz --results rev_high.jsonl rev_xhigh.jsonl --out flagged.jsonl
+python manage.py medicine_claude_batch submit --kind verify --effort high --input flagged.jsonl --send    # results → ver.jsonl
+python manage.py medicine_memory_review fixes --chunks run/chunks.jsonl.gz --groups run/groups.json --alignment alignment.json \
+  --memory memory.jsonl.gz --out-dir run/pre --review rev_high.jsonl rev_xhigh.jsonl --verify ver.jsonl
+python manage.py medicine_memory_review fragments --fixes run/pre/fixes.jsonl --out fragments.jsonl
+python manage.py medicine_claude_batch submit --kind fragment --effort high --input fragments.jsonl --send  # results → frag.jsonl
+python manage.py medicine_memory_review fixes --chunks run/chunks.jsonl.gz --groups run/groups.json --alignment alignment.json \
+  --memory memory.jsonl.gz --out-dir run/final --review rev_high.jsonl rev_xhigh.jsonl --verify ver.jsonl --fragment frag.jsonl
+python manage.py medicine_memory_review updates --memory memory.jsonl.gz --fixes run/final/fixes.jsonl --out updates.json
+
+python manage.py medicine_memory_review apply --updates updates.json                                      # прод: только показать
+python manage.py medicine_memory_review apply --updates updates.json --apply --backup mem-before.json
+python manage.py medicine_memory_review apply --updates updates.json --verify
+python manage.py medicine_site_lines plan --backups mem-before.json --out site_plan.json
+python manage.py medicine_site_lines apply --plan site_plan.json                                          # только показать
+python manage.py medicine_site_lines apply --plan site_plan.json --apply --backup site-before.json.gz
+```
+
+`max_tokens` в `stats.json` значит, что ответ части не уместился: её досылают с `--max-tokens 32000` (скептику — 64000).
+Откат записи — `loaddata` бэкапа. «Уже проверено» для `chunks` — только то, что передано в `--seen`: список растёт в
+`reviewed_ids.json`, id прошлых прогонов — в `~/pharmaturk-translation-work/td025/` (`seen_ids.json` и части `chunks/`).
+
+Словари — тот же порядок: выгрузка, модель, скептик, сбор, показ, запись.
+
+```bash
+python manage.py medicine_inn_dictionary export --out inn.json                                            # прод
+python manage.py medicine_inn_dictionary chunks --export inn.json --wikidata-dir wd --out inn_chunks.jsonl
+python manage.py medicine_claude_batch submit --kind inn --effort high --input inn_chunks.jsonl --send    # results → inn_r.jsonl
+python manage.py medicine_inn_dictionary decisions --chunks inn_chunks.jsonl --results inn_r.jsonl --out inn_verify.jsonl
+python manage.py medicine_claude_batch submit --kind inn_verify --effort high --input inn_verify.jsonl --send  # results → inn_v.jsonl
+python manage.py medicine_inn_dictionary collect --chunks inn_chunks.jsonl --results inn_v.jsonl --out inn_updates.json
+python manage.py medicine_inn_dictionary apply --updates inn_updates.json                                 # прод: только показать
+python manage.py medicine_inn_dictionary apply --updates inn_updates.json --apply --backup inn-before.json
+
+python manage.py medicine_brand_dictionary export --out brands.json                                       # прод: бренды не из словаря
+python manage.py medicine_brand_dictionary chunks --export brands.json --out brand_chunks.jsonl
+# затем --kind brand, decisions, --kind brand_verify, collect --out brands_dict.json — как у МНН
+python manage.py medicine_brand_dictionary apply --brands brands_dict.json                                # прод: только показать
+python manage.py medicine_brand_dictionary apply --brands brands_dict.json --apply --backup brands-created.json
+```
+
+Новые вещества каталога переводит `translate_medicine_inn`; `medicine_inn_dictionary` исправляет уже записанные. `apply`
+словаря МНН заодно обновляет `active_ingredient` в переводах товаров: после `loaddata` бэкапа разнос нужно повторить
+(`propagate_inn_translations`). Бэкап брендов — список хэшей созданных записей. Название и SEO опубликованных
+лекарств после словарей пересчитывает `medicine_refresh_code_fields`.
+
+Шаблон названий:
+
+```bash
+python manage.py medicine_title_diagnostics                         # покрытие, частые слова там, где шаблон не собрал
+python manage.py medicine_title_diagnostics --save titles.json      # снимок до правки шаблона
+python manage.py medicine_title_diagnostics --compare titles.json   # после релиза или на копии кода: что появилось, пропало, изменилось
+python manage.py medicine_title_diagnostics --moderation            # title_* в очереди: шаблон не собрал или брак проверки
+```
+
 ### Диагностика
 
 Подготовка RAG создаёт коллекции Qdrant, синхронизирует категории и импортирует шаблоны:
