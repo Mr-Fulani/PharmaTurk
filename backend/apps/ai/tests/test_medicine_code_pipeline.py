@@ -529,6 +529,20 @@ def test_title_names_active_ingredient_without_salt():
     # Вещество уже в бренде — не повторяем.
     plain = build_medicine_title("IBUPROFEN 400 MG 20 TABLET")
     assert title_with_inn(plain, "IBUPROFEN 400 MG 20 TABLET", ("Ибупрофен", "Ibuprofen"), "Ibuprofen") == plain
+    # Бренд похож на вещество («RISPERDAL» — «risperidone»), но вещества в названии нет (01.11.2026).
+    name = "RISPERDAL CONSTA 25 MG IM ENJEKSIYONLUK UZATILMIS SALIMLI SUSPANSIYON"
+    assert title_with_inn(build_medicine_title(name), name, ("Рисперидон", "Risperidone"), "Risperidon") == {
+        "ru": "RISPERDAL CONSTA (рисперидон) 25 мг, суспензия пролонгированного высвобождения для инъекций (в/м)",
+        "en": "RISPERDAL CONSTA (risperidone) 25 mg, prolonged-release suspension for injection (IM)",
+    }
+    # Бренд — само вещество в другой записи: «CYTARABINE (цитарабин)» было бы повтором.
+    plain = build_medicine_title("CYTARABINE 100 MG 10 AMPUL")
+    assert title_with_inn(plain, "CYTARABINE 100 MG 10 AMPUL", ("Цитарабин", "Cytarabine"), "Sitarabin") == plain
+    # Бренд — начало вещества, а не оно само: скобки нужны.
+    name = "AZITRO 250 MG 6 FILM TABLET"
+    assert title_with_inn(build_medicine_title(name), name, ("Азитромицин", "Azithromycin"), "Azitromisin")[
+        "ru"
+    ].startswith("AZITRO (азитромицин) 250 мг")
 
 
 @pytest.mark.parametrize(

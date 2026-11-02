@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from functools import lru_cache
 from typing import Any, Optional
@@ -1533,6 +1534,15 @@ def title_brand(name: Any) -> str:
     return " ".join(_title_and_brand(str(name or ""))[1])
 
 
+def _same_word(first: str, second: str) -> bool:
+    """Одно слово с другим окончанием: «cytarabine» и «cytarabine», «ornithin» и «ornithine».
+
+    «ENOX» и «enoxaparin», «RISPERDAL» и «risperidone» — разные: вещество в скобках нужно.
+    """
+    common = len(os.path.commonprefix([first, second]))
+    return common >= 5 and common >= max(len(first), len(second)) - 2
+
+
 def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], active_ingredient: Any = "") -> dict[str, str]:
     """«NEXIUM 40 мг, …» → «NEXIUM (эзомепразол) 40 мг, …»: по бренду и по веществу ищут на каждом языке.
 
@@ -1544,6 +1554,9 @@ def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], activ
     inn_words = {word for word in re.findall(r"[a-z]+", fold_tr(active_ingredient)) if len(word) >= 4}
     if not brand or brand_words & inn_words or len(re.split(r"\s*\+\s*", inn[0])) > 3:
         return title
+    # «CYTARABINE», «L-ORNITHIN» — бренд и есть вещество по-английски.
+    if any(_same_word(word, inn_word) for word in brand_words for inn_word in re.findall(r"[a-z]+", fold_tr(inn[1]))):
+        return title
     result = {}
     for locale, value in zip(("ru", "en"), inn):
         text = title_inn(value)
@@ -1551,7 +1564,9 @@ def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], activ
         if not text or "(" in text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand):
             return title
         # «TURKFLEKS 10%, раствор декстрозы» — вещество уже в названии, в скобках не повторяем.
-        if any(word[:6].lower() in title[locale].lower() for word in re.findall(r"[^\W\d_]{5,}", text)):
+        # Ищем после бренда: «RISPERDAL» начинается как «risperidone», но вещества в названии нет.
+        rest = title[locale][len(brand):].lower()
+        if any(word[:6].lower() in rest for word in re.findall(r"[^\W\d_]{5,}", text)):
             return title
         result[locale] = f"{brand} ({text}){title[locale][len(brand):]}"
     return result
