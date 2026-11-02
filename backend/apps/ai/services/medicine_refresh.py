@@ -43,8 +43,10 @@ _FORM_WORDS = {
         r"lotion|inject|infusion|inhal|ampoule|vial|syringe|cartridge|\bkit\b|implant|liquid"
     ),
 }
-# Дозировка — число с единицей: «37,5 мг», «100 мкг/50 мкг», «1.000.000 МЕ», «0,1%».
-_DOSE_RE = re.compile(r"(\d+(?:[.,]\d+)*)\s*(%|мкг|мг|мл|ме|ед|mcg|mg|ml|iu)(?![a-zа-яё])", re.IGNORECASE)
+# Дозировка — число с единицей: «37,5 мг», «100 мкг/50 мкг», «1.000.000 МЕ», «10 000 МЕ», «0,1%».
+_DOSE_RE = re.compile(
+    r"(\d{1,3}(?:[ \u00a0]\d{3})+|\d+(?:[.,]\d+)*)\s*(%|мкг|мг|мл|ме|ед|mcg|mg|ml|iu)(?![a-zа-яё])", re.IGNORECASE
+)
 _DOSE_UNITS = {"мкг": "mcg", "мг": "mg", "мл": "ml", "ме": "iu", "ед": "iu"}
 # Слова вещества, по которым его не узнать: соли, «экстракт», «витамин».
 _INGREDIENT_COMMON = frozenset({
@@ -108,7 +110,7 @@ def _logged_values(log, locale: str) -> dict[str, str]:
 def _doses(text: str) -> set[tuple[str, str]]:
     """{("37.5", "mg"), ("1000000", "iu")}: «37,5 мг» и «37.5 mg», «1.000.000 МЕ» и «1000000 IU» — одно и то же."""
     return {
-        (re.sub(r"[.,](?=\d{3}(?:\D|$))", "", number).replace(",", "."), _DOSE_UNITS.get(unit.lower(), unit.lower()))
+        (re.sub(r"[., \u00a0](?=\d{3}(?:\D|$))", "", number).replace(",", "."), _DOSE_UNITS.get(unit.lower(), unit.lower()))
         for number, unit in _DOSE_RE.findall(text)
     }
 
