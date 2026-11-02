@@ -419,7 +419,68 @@ def test_night_report_is_plain_and_sent_once(nightly_settings):
     text = nightly_settings[0]
     assert "LC Waikiki: проверено 100 из 300 (весь каталог — примерно за 3 ночи)" in text
     assert "Закончились: 40" in text
-    assert "Нет у продавца: 3" in text
+    assert "Новых неактуальных: 3" in text
+
+
+@pytest.mark.django_db
+def test_missing_colour_is_not_reported_as_a_stale_product(nightly_settings, monkeypatch):
+    product = _lcw_product()
+    ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="lcw",
+        canonical_url="https://www.lcw.com/urun-1-red-o-2",
+        source_domain="www.lcw.com",
+        external_product_id="lcw-1",
+        variant_key="red",
+        source_price=Decimal("100.00"),
+        source_currency="TRY",
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+    )
+    service = NightlyStockCheckService()
+    monkeypatch.setattr(service, "_fetch_product", _gone)
+    state = StockCheckSourceState.objects.create(parser_key="lcw", night=timezone.localdate(), catalog_size=1)
+
+    nightly._record(state, product.pk, (True, product.price), service.run(product.pk))
+    state.save()
+
+    assert state.stats["gone_colours"] == 1 and state.stats["gone"] == 0
+    assert not StaleProductCandidate.objects.exists()
+    text = nightly.build_night_report()
+    assert "Пропал один цвет из нескольких: 1" in text
+    assert "Неактуальных товаров нет, решать ничего не нужно." in text
+    assert "ждут вашего решения" not in text
+
+
+@pytest.mark.django_db
+def test_sold_out_products_are_not_called_stale_in_report():
+    _lcw_product(1, available=False)
+    _lcw_product(2, available=True)
+    StockCheckSourceState.objects.create(
+        parser_key="lcw", night=timezone.localdate(), catalog_size=1,
+        stats={"checked": 1, "became_unavailable": 1},
+    )
+
+    text = nightly.build_night_report()
+
+    assert "Закончились: 1" in text
+    assert "Неактуальных товаров нет, решать ничего не нужно." in text
+    assert "Нет в наличии у этих продавцов: 1. Это не неактуальные" in text
+    assert "/admin/catalog/product/?sold_out=nightly" in text
+
+
+@pytest.mark.django_db
+def test_whole_product_gone_is_counted_as_new_stale_product(monkeypatch):
+    product = _lcw_product()
+    service = NightlyStockCheckService()
+    monkeypatch.setattr(service, "_fetch_product", _gone)
+    state = StockCheckSourceState.objects.create(parser_key="lcw", night=timezone.localdate(), catalog_size=1)
+
+    nightly._record(state, product.pk, (True, product.price), service.run(product.pk))
+    state.save()
+
+    assert state.stats["gone"] == 1 and state.stats["new_candidates"] == 1
+    assert state.stats["gone_colours"] == 0
+    assert "Новых неактуальных: 1" in nightly.build_night_report()
 
 
 # --- признак «товара нет» на настоящих парсерах ------------------------------------------
