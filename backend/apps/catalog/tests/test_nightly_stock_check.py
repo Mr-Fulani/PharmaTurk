@@ -672,3 +672,6 @@ def test_admin_progress_shows_where_cycle_continues():
 
     state.cursor_pk, state.stats = 0, {"checked": 3, "stopped": "cycle_done"}
     assert model_admin.progress(state) == "весь каталог, следующая ночь начнёт сначала"
+
+    state.stats = {"checked": 0, "errors": 30, "stopped": "cycle_done"}
+    assert model_admin.progress(state) == "сайт продавца не отвечал: проверено 0, ошибок 30"
