@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 MAX_RECEIPT_PDF_BYTES = 5 * 1024 * 1024
 # Паузы удваиваются от 30 с: всего около получаса, короткий сбой Telegram переживается
 TELEGRAM_MAX_RETRIES = 6
+TELEGRAM_CAPTION_LIMIT = 1024
+TELEGRAM_MESSAGE_LIMIT = 4096
+# Около 20 тысяч знаков: комментарий заказа не ограничен, а одна заявка не должна завалить чат
+TELEGRAM_MAX_MESSAGE_PARTS = 5
+TELEGRAM_CUT_NOTICE = "\n\n… Дальше текст обрезан, полностью он в заявке в админке."
 
 from .models import Cart, CartItem, Order
 from .services import (
@@ -493,6 +498,65 @@ def _tg_markdown_escape(value) -> str:
     return text
 
 
+def _tg_length(text: str) -> int:
+    """Длина с запасом: эмодзи идёт за две единицы, как в UTF-16, символы экранирования считаются."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _tg_fitting_end(text: str, limit: int) -> int:
+    """Сколько первых символов text укладывается в limit единиц `_tg_length`."""
+    units = 0
+    for index, ch in enumerate(text):
+        units += _tg_length(ch)
+        if units > limit:
+            return index
+    return len(text)
+
+
+def _split_tg_text(text: str) -> list[str]:
+    """Делит текст на сообщения Telegram, не ломая parse_mode=Markdown.
+
+    Разметка шаблона стоит в первых строках, а ввод покупателя экранирован, поэтому нельзя
+    только оторвать символ от обратного слеша перед ним: следующее сообщение открыло бы
+    разметку без конца, и Telegram ответил бы 400. Чистые пробелы Telegram тоже не принимает.
+    """
+    parts = []
+    rest = text.strip()
+    while rest:
+        is_last = len(parts) == TELEGRAM_MAX_MESSAGE_PARTS - 1
+        limit = TELEGRAM_MESSAGE_LIMIT - (_tg_length(TELEGRAM_CUT_NOTICE) if is_last else 0)
+        end = _tg_fitting_end(rest, limit)
+        if end < len(rest):
+            cut = rest.rfind("\n", end // 2, end)
+            if cut == -1:
+                cut = rest.rfind(" ", end // 2, end)
+            if cut != -1:
+                end = cut
+            if rest[end - 1] == "\\" and rest[end] in ("_", "*", "`", "["):
+                end -= 1
+        parts.append(rest[:end].rstrip())
+        rest = rest[end:].lstrip()
+        if is_last and rest:
+            parts[-1] += TELEGRAM_CUT_NOTICE
+            break
+    return parts
+
+
+def _tg_delivery_steps(text: str, attachment: bytes | None, short_caption: str) -> list[tuple[str, bytes | None]]:
+    """Что отправить менеджеру, по порядку: пары (текст, вложение).
+
+    Текст, который влезает в подпись, идёт подписью к вложению. Длинный — отдельными
+    сообщениями, вложение с short_caption следом: подпись длиннее предела Telegram отвергает
+    ответом 400, и пропало бы всё. На повторе шаги те же, отправленные пропускаются по счётчику.
+    """
+    if attachment and _tg_length(text) <= TELEGRAM_CAPTION_LIMIT:
+        return [(text, attachment)]
+    steps = [(part, None) for part in _split_tg_text(text)]
+    if attachment:
+        steps.append((short_caption, attachment))
+    return steps
+
+
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=TELEGRAM_MAX_RETRIES)
 def notify_new_order_telegram(
     self,
@@ -500,6 +564,7 @@ def notify_new_order_telegram(
     order_id: int = None,
     locale: str = 'ru',
     customer_notified: bool = False,
+    admin_steps_sent: int = 0,
 ) -> None:
     """Уведомляет (Telegram) о создании нового заказа.
     Может запускаться как Celery link после send_order_receipt_task — тогда первым аргументом
@@ -507,6 +572,7 @@ def notify_new_order_telegram(
     PDF чека читается напрямую из доверенного R2 bucket либо генерируется заново.
     При временном сбое Telegram повторяется только сообщение менеджеру: покупателю задача
     пишет один раз (customer_notified), иначе после обрыва связи он получил бы дубль.
+    Длинный текст менеджеру уходит по шагам, повтор продолжает с шага admin_steps_sent.
     """
     if order_id is None:
         logger.warning("notify_new_order_telegram: order_id not provided")
@@ -604,8 +670,11 @@ def notify_new_order_telegram(
             admin_text += f"\n{channel_info}: {_md(handle)}"
         if order.comment:
             admin_text += f"\nКомментарий: {_md(order.comment)}"
+        admin_steps = _tg_delivery_steps(admin_text, pdf_bytes, f"🧾 Чек к заказу `{order.number}`")
         try:
-            _send_tg(admin_chat_id, admin_text, document=pdf_bytes, filename=filename)
+            for step_text, step_document in admin_steps[admin_steps_sent:]:
+                _send_tg(admin_chat_id, step_text, document=step_document, filename=filename)
+                admin_steps_sent += 1
         except TelegramTemporaryError as exc:
             logger.warning("Telegram send error for order %s: %s", order.number, exc)
             admin_error = exc
@@ -647,19 +716,18 @@ def notify_new_order_telegram(
         raise self.retry(
             exc=admin_error,
             args=(),
-            kwargs={"order_id": order_id, "locale": locale, "customer_notified": True},
+            kwargs={
+                "order_id": order_id,
+                "locale": locale,
+                "customer_notified": True,
+                "admin_steps_sent": admin_steps_sent,
+            },
             countdown=30 * 2 ** self.request.retries,
         )
 
 
-@app.task(
-    bind=True,
-    autoretry_for=(TelegramTemporaryError,),
-    retry_backoff=30,
-    retry_jitter=False,
-    max_retries=TELEGRAM_MAX_RETRIES,
-)
-def notify_sourcing_request_telegram(self, request_id: int) -> None:
+@app.task(bind=True, max_retries=TELEGRAM_MAX_RETRIES)
+def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0) -> None:
     """Уведомляет менеджера (TELEGRAM_CHAT_ID) о заявке «Найдём товар по ссылке или фото»."""
     from .models import SourcingRequest
     from .services import CONTACT_CHANNEL_TRANSLATIONS, translate_method
@@ -705,23 +773,33 @@ def notify_sourcing_request_telegram(self, request_id: int) -> None:
                 "Sourcing request %s: cannot read photo for Telegram: %s",
                 req.pk, type(exc).__name__,
             )
-    if photo:
-        resp = _post_telegram(
-            bot_token,
-            "sendPhoto",
-            data={"chat_id": chat_id, "caption": text[:1024], "parse_mode": "Markdown"},
-            files={"photo": ("photo.jpg", photo, "image/jpeg")},
-            timeout=20,
+    try:
+        for step_text, step_photo in _tg_delivery_steps(text, photo, f"Фото к заявке `{req.pk}`")[steps_sent:]:
+            if step_photo:
+                resp = _post_telegram(
+                    bot_token,
+                    "sendPhoto",
+                    data={"chat_id": chat_id, "caption": step_text, "parse_mode": "Markdown"},
+                    files={"photo": ("photo.jpg", step_photo, "image/jpeg")},
+                    timeout=20,
+                )
+            else:
+                resp = _post_telegram(
+                    bot_token,
+                    "sendMessage",
+                    json={"chat_id": chat_id, "text": step_text, "parse_mode": "Markdown"},
+                    timeout=15,
+                )
+            if not resp.ok:
+                logger.warning("Telegram sourcing notification failed for %s: HTTP %s", req.pk, resp.status_code)
+            steps_sent += 1
+    except TelegramTemporaryError as exc:
+        raise self.retry(
+            exc=exc,
+            args=(),
+            kwargs={"request_id": request_id, "steps_sent": steps_sent},
+            countdown=30 * 2 ** self.request.retries,
         )
-    else:
-        resp = _post_telegram(
-            bot_token,
-            "sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=15,
-        )
-    if not resp.ok:
-        logger.warning("Telegram sourcing notification failed for %s: HTTP %s", req.pk, resp.status_code)
 
 
 # ─── Сопровождение заявки: статусы и напоминания ─────────────────────────────
