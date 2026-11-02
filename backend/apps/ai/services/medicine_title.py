@@ -1535,9 +1535,12 @@ def title_brand(name: Any) -> str:
 
 
 def _same_word(first: str, second: str) -> bool:
-    """Одно слово в разной записи: общее начало не короче 8 букв (или всего короткого слова)."""
+    """Одно слово с другим окончанием: «cytarabine» и «cytarabine», «ornithin» и «ornithine».
+
+    «ENOX» и «enoxaparin», «RISPERDAL» и «risperidone» — разные: вещество в скобках нужно.
+    """
     common = len(os.path.commonprefix([first, second]))
-    return common >= 4 and common >= min(8, len(first), len(second))
+    return common >= 5 and common >= max(len(first), len(second)) - 2
 
 
 def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], active_ingredient: Any = "") -> dict[str, str]:
@@ -1551,9 +1554,8 @@ def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], activ
     inn_words = {word for word in re.findall(r"[a-z]+", fold_tr(active_ingredient)) if len(word) >= 4}
     if not brand or brand_words & inn_words or len(re.split(r"\s*\+\s*", inn[0])) > 3:
         return title
-    # «CYTARABINE», «L-ORNITHIN» — бренд и есть вещество; «RISPERDAL» и «risperidone» — нет.
-    inn_words |= set(re.findall(r"[a-z]{4,}", fold_tr(inn[1])))
-    if any(_same_word(brand_word, inn_word) for brand_word in brand_words for inn_word in inn_words):
+    # «CYTARABINE», «L-ORNITHIN» — бренд и есть вещество по-английски.
+    if any(_same_word(word, inn_word) for word in brand_words for inn_word in re.findall(r"[a-z]+", fold_tr(inn[1]))):
         return title
     result = {}
     for locale, value in zip(("ru", "en"), inn):

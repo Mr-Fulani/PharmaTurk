@@ -538,6 +538,11 @@ def test_title_names_active_ingredient_without_salt():
     # Бренд — само вещество в другой записи: «CYTARABINE (цитарабин)» было бы повтором.
     plain = build_medicine_title("CYTARABINE 100 MG 10 AMPUL")
     assert title_with_inn(plain, "CYTARABINE 100 MG 10 AMPUL", ("Цитарабин", "Cytarabine"), "Sitarabin") == plain
+    # Бренд — начало вещества, а не оно само: скобки нужны.
+    name = "AZITRO 250 MG 6 FILM TABLET"
+    assert title_with_inn(build_medicine_title(name), name, ("Азитромицин", "Azithromycin"), "Azitromisin")[
+        "ru"
+    ].startswith("AZITRO (азитромицин) 250 мг")
 
 
 @pytest.mark.parametrize(
