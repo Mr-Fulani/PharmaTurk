@@ -47,16 +47,19 @@ class StockCheckSourceStateAdmin(admin.ModelAdmin):
     @admin.display(description="Пройдено в текущем круге")
     def progress(self, obj):
         """Сколько товаров круга уже позади: сверка продолжает с cursor_pk, а не с начала."""
+        stats = obj.stats or {}
+        checked, errors = stats.get("checked", 0), stats.get("errors", 0)
+        if stats.get("error_streak") or (errors and not checked):
+            return f"сайт продавца не отвечал: проверено {checked}, ошибок {errors}"
         if not obj.cursor_pk:
-            if (obj.stats or {}).get("stopped") == "cycle_done":
+            if stats.get("stopped") == "cycle_done":
                 return "весь каталог, следующая ночь начнёт сначала"
             return "—"
         products = checkable_products(obj.parser_key)
         total = products.count()
         done = products.filter(pk__lte=obj.cursor_pk).count()
-        per_night = (obj.stats or {}).get("checked", 0)
-        if per_night and total > done:
-            return f"{done} из {total}, осталось ночей: {ceil((total - done) / per_night)}"
+        if checked and total > done:
+            return f"{done} из {total}, осталось ночей: {ceil((total - done) / checked)}"
         return f"{done} из {total}"
 
     @admin.display(description="Пауза")
