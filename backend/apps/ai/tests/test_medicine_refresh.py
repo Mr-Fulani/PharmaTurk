@@ -106,7 +106,7 @@ def test_refresh_without_apply_changes_nothing(capsys):
         # SEO без формы: «из Турции — инструкция, цена» вместо «суспензия для инъекций».
         (
             "meta_title", "ru", "RISPERDAL CONSTA 25 мг суспензия для инъекций из Турции",
-            "RISPERDAL CONSTA 25 мг из Турции — инструкция, цена", ["форма"],
+            "RISPERDAL CONSTA 25 мг из Турции — инструкция, цена", ["форма", "путь введения"],
         ),
         # Вещество было, пропало; бренд RISPERDAL веществом не считается.
         (
@@ -117,7 +117,7 @@ def test_refresh_without_apply_changes_nothing(capsys):
         (
             "name", "ru", "SERETIDE 100 мкг/50 мкг 60 доз, порошок для ингаляций",
             "SERETIDE (салметерол + флутиказон) 100 мкг DISKUS, 60 доз",
-            ["форма", "дозировка", "латиница вместо перевода"],
+            ["форма", "путь введения", "дозировка", "латиница вместо перевода"],
         ),
         ("name", "ru", "MILUPA GA 1, порошок для приготовления раствора, 500 г", "MILUPA GA 1 500 г",
          ["форма", "нет русского описания"]),
@@ -131,7 +131,19 @@ def test_refresh_without_apply_changes_nothing(capsys):
             "RISPERDAL CONSTA (рисперидон) 37,5 мг, суспензия пролонгированного высвобождения для инъекций (в/м)", [],
         ),
         ("name", "ru", "TERRAMYCIN 30 мг + 10 000 МЕ, мазь", "TERRAMYCIN 30 мг/10000 МЕ, мазь", []),
-        ("name", "ru", "HIBOR 7500 МЕ/0,3 мл, раствор для инъекций, 2 шприца", "HIBOR 7500 МЕ/0,3 мл, 2 шприца", ["форма"]),
+        ("name", "ru", "HIBOR 7500 МЕ/0,3 мл, раствор для инъекций, 2 шприца", "HIBOR 7500 МЕ/0,3 мл, 2 шприца",
+         ["форма", "путь введения"]),
+        # Ревью PR #287: основа формы пропала, а путь введения остался.
+        ("name", "ru", "AMARGINE 5 г/10 мл, раствор для инъекций, 10 ампул", "AMARGINE 5 г/10 мл, для инъекций, 10 ампул",
+         ["форма"]),
+        # Путь введения сменился: «ENJEKTABL SOL» шаблон переводит дословно, «IM/IV INFUZYON» — без инъекций.
+        ("name", "ru", "BIOFLEKS IZOMIX 1/3 раствор для инфузий 500 мл", "BIOFLEKS IZOMIX 1/3, раствор для инъекций, 500 мл",
+         ["путь введения"]),
+        ("name", "ru", "GENTHAVER 160 мг раствор для инъекций и инфузий, 1 ампула",
+         "GENTHAVER 160 мг, раствор для инфузий (в/м, в/в), 1 ампула", ["путь введения"]),
+        # МНН нет в памяти: вещество узнаётся по изотопу.
+        ("meta_title", "en", "MOLTEK FDG fludeoxyglucose (18F) injection solution from Turkey",
+         "MOLTEK FDG, solution for injection, vial (IV) from Turkey", ["вещество"]),
         ("meta_title", "en", "SERODERM 0.1% ointment 30 g with betamethasone from Turkey",
          "SERODERM (betamethasone) 0.1%, ointment from Turkey — leaflet, price", []),
         ("name", "ru", "IMMUNATE 500 МЕ, порошок, флакон", "IMMUNATE (фактор свёртывания крови VIII) 500 МЕ, порошок, флакон", []),

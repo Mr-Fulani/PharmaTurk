@@ -32,18 +32,26 @@ SEO_FIELDS = ("meta_title", "og_title", "meta_description", "og_description", "m
 # вещество, вторую дозировку («SERETIDE 100/50 мкг» → «100 мкг») и оставлял турецкие слова
 # («BRAIN-SPECT RADYOFARMASOTIK HAZIRLAMA KITI»). Такое поле остаётся как есть.
 # Шприц, флакон, ампула — упаковка, не форма: «HIBOR …, 2 шприца» без «раствора» — форма пропала.
+# Основа формы и путь введения — отдельно: «раствор для инъекций» → «для инъекций» (AMARGINE) теряет
+# основу; «раствор для инфузий» → «раствор для инъекций» (BIOFLEKS IZOMIX, «ENJEKTABL SOL» источника
+# шаблон переводит дословно) меняет путь — ревью PR #287.
 _FORM_WORDS = {
     "ru": re.compile(
         r"таблет|капсул|драже|раствор|суспенз|эмульс|сироп|капл|спрей|аэрозол|мазь|крем|гел[ья]|паст[аы]|"
         r"пен[аы]|порош|гранул|лиофил|концентрат|суппозит|свеч|овул|пессар|пастил|пластыр|шампун|лосьон|"
-        r"инъекц|инфуз|ингал|набор|имплант|жидкост|присыпк"
+        r"набор|имплант|жидкост|присыпк"
     ),
     "en": re.compile(
         r"tablet|capsule|drag[eé]e|solution|suspension|emulsion|syrup|drops|spray|aerosol|ointment|cream|"
         r"\bgel\b|paste|foam|powder|granule|lyophili|concentrate|suppositor|ovule|pessar|lozenge|patch|shampoo|"
-        r"lotion|inject|infusion|inhal|\bkit\b|implant|liquid"
+        r"lotion|\bkit\b|implant|liquid"
     ),
 }
+_ROUTE_WORDS = {"ru": re.compile(r"инъекц|инфуз|ингал"), "en": re.compile(r"inject|infusion|inhal")}
+# Изотоп в скобках — часть вещества радиофармпрепарата: «(18F)», «(99mTc)».
+_ISOTOPE_RE = re.compile(
+    r"\((\d{1,3}m?(?:tc|ga|in|tl|lu|ra|sm|xe|cr|f|i|y)|(?:tc|ga|in|tl|lu|ra|sm|xe|cr|f|i|y)-?\d{1,3}m?)\)"
+)
 # Дозировка — число с единицей: «37,5 мг», «100 мкг/50 мкг», «1.000.000 МЕ», «10 000 МЕ», «0,1%».
 _DOSE_RE = re.compile(
     r"(\d{1,3}(?:[ \u00a0]\d{3})+|\d+(?:[.,]\d+)*)\s*(%|мкг|мг|мл|ме|ед|mcg|mg|ml|iu)(?![a-zа-яё])", re.IGNORECASE
@@ -142,13 +150,20 @@ def worse_reasons(field: str, locale: str, old: str, new: str, ingredient: set[s
     forms = _FORM_WORDS[locale]
     if forms.search(old.lower()) and not forms.search(new.lower()):
         reasons.append("форма")
+    routes = _ROUTE_WORDS[locale]
+    if set(routes.findall(old.lower())) - set(routes.findall(new.lower())):
+        reasons.append("путь введения")
     brand_words = set(fold_tr(brand).split())
 
     def without_brand(text: str) -> str:
         return " ".join(word for word in fold_tr(text).split() if word.strip(",.()") not in brand_words)
 
     old_text, new_text = without_brand(old), without_brand(new)
-    if any(stem in old_text for stem in ingredient) and not any(stem in new_text for stem in ingredient):
+    # «fludeoxyglucose (18F)»: МНН нет в памяти, а турецкое «Florodeoksiglukoz» в английском не узнать.
+    lost_isotope = set(_ISOTOPE_RE.findall(old_text)) - set(_ISOTOPE_RE.findall(new_text))
+    if lost_isotope or (
+        any(stem in old_text for stem in ingredient) and not any(stem in new_text for stem in ingredient)
+    ):
         reasons.append("вещество")
     if field != "name":
         return reasons  # фасовку и вторую дозировку SEO-шаблон убирает сам, по плану
@@ -206,8 +221,10 @@ def plan_refresh(product, log, generator) -> tuple[list[Change], Optional[dict],
             # Перезаписываем только то, что не правили руками: значение обработки, пусто или исходник.
             if current in ("", logged[locale][field]) or (field == "name" and current == source):
                 changes.append(Change(obj, field, current, value, locale))
+    # Вещество из полей товара тоже: МНН нет в памяти — у кода остаётся только турецкое написание.
     ingredient = _ingredient_stems(
-        input_data.get("active_ingredient"), code["ru"].get("active_ingredient"), code["en"].get("active_ingredient")
+        input_data.get("active_ingredient"), code["ru"].get("active_ingredient"), code["en"].get("active_ingredient"),
+        *(getattr(obj, "active_ingredient", "") for obj, _name_locale, _seo_locale in targets),
     )
     brand = title_brand(source)
     kept = {}
