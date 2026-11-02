@@ -1,5 +1,6 @@
 """Админка ночной сверки наличия и неактуальных товаров (docs/NIGHTLY_STOCK_CHECK.md, docs/STALE_PRODUCTS.md)."""
 from datetime import timedelta
+from math import ceil
 
 from django.conf import settings
 from django.contrib import admin, messages
@@ -10,6 +11,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from .models_stock import SOURCE_TITLES, ProductDeletionLog, StaleProductCandidate, StockCheckSourceState
+from .services.nightly_stock_check import checkable_products
 
 CONFIRM_TEMPLATE = "admin/catalog/stale_products_confirm.html"
 REASON_TITLES = {"not_found": "страница товара пропала у продавца"}
@@ -27,7 +29,7 @@ def _mb(size) -> str:
 class StockCheckSourceStateAdmin(admin.ModelAdmin):
     """Где остановилась сверка каждого источника, итог ночи и пауза предохранителя."""
 
-    list_display = ("source", "night", "checked", "catalog_size", "last_full_cycle_at", "pause")
+    list_display = ("source", "night", "checked", "catalog_size", "progress", "last_full_cycle_at", "pause")
     readonly_fields = (
         "parser_key", "cursor_pk", "night", "stats", "catalog_size", "last_full_cycle_at",
         "paused_at", "reported_night", "updated_at",
@@ -41,6 +43,21 @@ class StockCheckSourceStateAdmin(admin.ModelAdmin):
     @admin.display(description="Проверено за ночь")
     def checked(self, obj):
         return (obj.stats or {}).get("checked", 0)
+
+    @admin.display(description="Пройдено в текущем круге")
+    def progress(self, obj):
+        """Сколько товаров круга уже позади: сверка продолжает с cursor_pk, а не с начала."""
+        if not obj.cursor_pk:
+            if (obj.stats or {}).get("stopped") == "cycle_done":
+                return "весь каталог, следующая ночь начнёт сначала"
+            return "—"
+        products = checkable_products(obj.parser_key)
+        total = products.count()
+        done = products.filter(pk__lte=obj.cursor_pk).count()
+        per_night = (obj.stats or {}).get("checked", 0)
+        if per_night and total > done:
+            return f"{done} из {total}, осталось ночей: {ceil((total - done) / per_night)}"
+        return f"{done} из {total}"
 
     @admin.display(description="Пауза")
     def pause(self, obj):
