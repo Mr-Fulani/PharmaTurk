@@ -1,5 +1,5 @@
 """Ночная сверка наличия: кандидаты вместо снятия, платные источники, предохранители пачки."""
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -8,13 +8,17 @@ import pytest
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.catalog.models import Category, Product, ProductSourceOffer
+from apps.catalog.models import Category, ClothingProduct, ClothingVariant, Product, ProductSourceOffer
 from apps.catalog.models_stock import StaleProductCandidate, StockCheckSourceState
 from apps.catalog.services import nightly_stock_check as nightly
 from apps.catalog.services.nightly_stock_check import NightlyStockCheckService, run_nightly_batch
-from apps.catalog.services.product_card_source_refresh import ProductCardRefreshError
+from apps.catalog.services.product_card_source_refresh import (
+    ProductCardRefreshError,
+    ProductCardSourceRefreshService,
+)
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.models import ScraperConfig, SiteScraperTask
+from apps.scrapers.source_offers import record_scraped_product_offers
 
 NIGHT = datetime(2026, 10, 29, 2, 0)
 
@@ -245,6 +249,236 @@ def test_dismissed_candidate_keeps_owner_decision(monkeypatch):
     service.run(product.pk)
 
     assert StaleProductCandidate.objects.get(product=product).status == StaleProductCandidate.Status.DISMISSED
+
+
+# --- товар с несколькими цветами: у каждого своя ссылка ----------------------------------
+
+
+def _colour_url(colour):
+    return f"https://www.lcw.com/elbise-{colour}-o-{colour}"
+
+
+def _colour_matrix(colours, opened_url):
+    """Ответ страницы цвета: как у LCW, на ней видны все живые цвета группы."""
+    return ScrapedProduct(
+        name="Supplier title",
+        description="",
+        price=100,
+        currency="TRY",
+        url=opened_url,
+        external_id="lcw-elbise",
+        source="lcw",
+        is_available=True,
+        attributes={
+            "fashion_variants": [
+                {
+                    "external_id": colour,
+                    "color": colour,
+                    "price": 100,
+                    "currency": "TRY",
+                    "external_url": _colour_url(colour),
+                    "is_available": True,
+                    "sizes": [{"size": "M", "is_available": True}],
+                }
+                for colour in colours
+            ]
+        },
+    )
+
+
+def _lcw_dress(colours=("black", "red")):
+    """Платье в нескольких цветах: предложения записаны так же, как после обхода парсером."""
+    category = Category.objects.create(name="Elbise", slug=f"elbise-{uuid4().hex[:8]}")
+    domain = ClothingProduct.objects.create(
+        name="LCW elbise",
+        slug=f"lcw-elbise-{uuid4().hex[:8]}",
+        category=category,
+        price=Decimal("100.00"),
+        currency="TRY",
+        external_id="lcw-elbise",
+        external_url=_colour_url(colours[0]),
+        external_data={"source": "lcw"},
+        is_available=True,
+    )
+    domain.refresh_from_db()
+    product = domain.base_product
+    for colour in colours:
+        ClothingVariant.objects.create(
+            product=domain, name=colour, color=colour, sku=colour, external_id=colour,
+            price=Decimal("100.00"), currency="TRY", is_available=True,
+        )
+    record_scraped_product_offers(
+        product=product, scraped_product=_colour_matrix(colours, _colour_url(colours[0])), deactivate_missing=False
+    )
+    return product
+
+
+class SellerSite:
+    """Продавец вместо сети: страницы живых цветов открываются, остальные — «товара нет»."""
+
+    def __init__(self, *live):
+        self.live = set(live)
+        self.opened = []
+
+    def __call__(self, target):
+        url = target.offer.canonical_url
+        self.opened.append(url)
+        if url not in {_colour_url(colour) for colour in self.live}:
+            return _gone(target)
+        return _colour_matrix(sorted(self.live), url)
+
+
+def _pass_nights(site, nights=1):
+    """Настоящие ночные пачки: одна проверка каждого товара за ночь."""
+    clock = FakeClock()
+    service = NightlyStockCheckService()
+    service._fetch_product = site
+    for _ in range(nights):
+        site.night = getattr(site, "night", -1) + 1
+        run_nightly_batch(
+            now=_night() + timedelta(days=site.night), budget_seconds=600,
+            clock=clock, sleep=clock.sleep, service=service,
+        )
+
+
+def _offers_of(product, colour):
+    return product.source_offers.filter(canonical_url=_colour_url(colour))
+
+
+def _variant_available(product, colour):
+    return ClothingVariant.objects.get(product=product.domain_item, external_id=colour).is_available
+
+
+@pytest.mark.django_db
+def test_gone_colour_is_marked_and_next_check_opens_next_colour():
+    product = _lcw_dress()
+    site = SellerSite("red")
+
+    _pass_nights(site)
+
+    assert site.opened == [_colour_url("black")]
+    assert not StaleProductCandidate.objects.filter(product=product).exists()
+    assert StockCheckSourceState.objects.get(parser_key="lcw").stats["gone_colours"] == 1
+    assert _offers_of(product, "black").get().last_error_code == "not_found"
+    assert _variant_available(product, "black") is False
+
+    # Раньше здесь снова открывалась чёрная ссылка, и красная не проверялась никогда.
+    _pass_nights(site, nights=2)
+
+    assert site.opened == [_colour_url("black"), _colour_url("red"), _colour_url("red")]
+    assert not StaleProductCandidate.objects.filter(product=product).exists()
+    product.refresh_from_db()
+    assert product.is_available is True
+    assert _variant_available(product, "red") is True
+
+
+@pytest.mark.django_db
+def test_product_becomes_candidate_when_all_colours_are_gone():
+    product = _lcw_dress(("black", "red", "blue"))
+    site = SellerSite()
+
+    _pass_nights(site, nights=2)
+    assert not StaleProductCandidate.objects.filter(product=product).exists()
+
+    _pass_nights(site)
+
+    candidate = StaleProductCandidate.objects.get(product=product)
+    assert candidate.status == StaleProductCandidate.Status.CANDIDATE
+    assert candidate.source_url == _colour_url("blue")
+    assert candidate.gone_checks == 1
+    assert StockCheckSourceState.objects.get(parser_key="lcw").stats["new_candidates"] == 1
+    # Сверка только отмечает: товар на сайте и в продаже до решения владельца.
+    product.refresh_from_db()
+    assert product.is_active is True
+    assert product.is_available is True
+    last = _offers_of(product, "blue").get()
+    assert last.availability_status == ProductSourceOffer.AvailabilityStatus.IN_STOCK
+
+    # Дальше пропажа подтверждается каждую ночь, по очереди на всех ссылках.
+    _pass_nights(site, nights=3)
+
+    assert site.opened == [_colour_url(colour) for colour in ("black", "red", "blue") * 2]
+    candidate.refresh_from_db()
+    assert candidate.gone_checks == 4
+    assert candidate.status == StaleProductCandidate.Status.CANDIDATE
+
+
+@pytest.mark.django_db
+def test_all_colours_gone_takes_product_off_sale_without_review(settings):
+    settings.SCRAPER_GONE_REQUIRES_REVIEW = False
+    product = _lcw_dress()
+
+    _pass_nights(SellerSite(), nights=2)
+
+    product.refresh_from_db()
+    assert product.is_available is False
+    assert StaleProductCandidate.objects.filter(product=product).exists()
+
+
+@pytest.mark.django_db
+def test_colour_returned_after_all_gone_clears_candidate():
+    product = _lcw_dress()
+    site = SellerSite()
+    _pass_nights(site, nights=2)
+    assert StaleProductCandidate.objects.filter(product=product).exists()
+
+    site.live = {"red"}
+    # Чёрная пропала по-прежнему; за ней очередь доходит до вернувшейся красной.
+    _pass_nights(site, nights=2)
+
+    assert site.opened[-2:] == [_colour_url("black"), _colour_url("red")]
+    assert not StaleProductCandidate.objects.filter(product=product).exists()
+    assert _offers_of(product, "red").get().last_error_code == ""
+    assert _offers_of(product, "black").get().last_error_code == "not_found"
+    product.refresh_from_db()
+    assert product.is_available is True
+    assert _variant_available(product, "red") is True
+
+
+@pytest.mark.django_db
+def test_returned_colour_seen_on_sibling_page_loses_its_mark():
+    product = _lcw_dress()
+    site = SellerSite("red")
+    _pass_nights(site)
+    assert _offers_of(product, "black").get().last_error_code == "not_found"
+
+    site.live = {"black", "red"}
+    _pass_nights(site)
+
+    # Страницу чёрного цвета не открывали: его снова показала страница красного.
+    assert site.opened[-1] == _colour_url("red")
+    returned = _offers_of(product, "black").get()
+    assert returned.last_error_code == ""
+    assert returned.availability_status == ProductSourceOffer.AvailabilityStatus.IN_STOCK
+    assert _variant_available(product, "black") is True
+
+
+@pytest.mark.django_db
+def test_live_offer_of_other_source_keeps_product_off_the_list():
+    product = _lcw_dress(("black",))
+    ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="flo",
+        canonical_url="https://www.flo.com.tr/urun/elbise-1",
+        source_domain="www.flo.com.tr",
+        source_price=Decimal("100.00"),
+        source_currency="TRY",
+    )
+
+    _pass_nights(SellerSite(), nights=2)
+
+    assert not StaleProductCandidate.objects.filter(product=product).exists()
+
+
+@pytest.mark.django_db
+def test_card_refresh_still_opens_first_url(settings):
+    settings.PRODUCT_CARD_SOURCE_REFRESH_ENABLED = True
+    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = ["lcw"]
+    product = _lcw_dress()
+    _pass_nights(SellerSite("red"))
+
+    assert ProductCardSourceRefreshService()._target(product).offer.canonical_url == _colour_url("black")
+    assert NightlyStockCheckService()._target(product).offer.canonical_url == _colour_url("red")
 
 
 # --- пачка: окно, темп, курсор, предохранители -------------------------------------------
