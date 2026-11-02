@@ -275,4 +275,3 @@ class LongSourcingTextTests(SimpleTestCase):
             [call.method for call in telegram.delivered()],
             ["sendMessage", "sendPhoto", "sendPhoto"],
         )
-
