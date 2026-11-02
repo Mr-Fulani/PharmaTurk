@@ -50,6 +50,7 @@ TEXT_RU = "<p>Эвкалиптовое эфирное масло во флако
     ("BALIK YAĞI OMEGA 3 60 KAPSÜL", None),
     ("PHYTOIL NANE YAĞI 30 KAPSÜL", None),
     ("SOLGAR VITAMIN C 1000 MG 100 TABLET", None),
+    ("VACROL DAMLA ESANSIYEL YAGLAR ICEREN TAKVIYE EDICI GIDA 10 ml şişe", None),
 ])
 def test_essential_oil_rule(name, expected):
     assert essential_oil_category_slug(name) == expected
@@ -58,6 +59,14 @@ def test_essential_oil_rule(name, expected):
 def test_essential_oil_rule_reads_russian_name_without_source():
     assert essential_oil_category_slug("", "Эфирное масло бергамота PHYTOIL, 10 мл") == "single-essential-oils"
     assert essential_oil_category_slug("", "Масло чёрного тмина, 100 мл") is None
+
+
+def test_essential_oil_rule_trusts_turkish_name_over_russian():
+    # Прод 02.11.2026: AI-название «Эфирное масло», а источник продаёт как пищевую добавку.
+    assert essential_oil_category_slug("CHINA OEL 10 ml şişe", "CHINA OEL Эфирное масло, 10 мл") is None
+    assert essential_oil_category_slug("Эфирное масло бергамота PHYTOIL", "Эфирное масло бергамота PHYTOIL") == (
+        "single-essential-oils"
+    )
 
 
 @pytest.fixture(autouse=True)

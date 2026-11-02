@@ -38,6 +38,8 @@ _MARKERS_RU = re.compile(r"эфирн\w* масл|гидролат|цветоч�
 _INGESTED = _re(
     r"kapsul\w*", r"capsules?", r"softgel\w*", r"tablet\w*", r"sase\w*", r"sachets?", r"pastil\w*",
     r"surup\w*", r"syrup", r"gida takviye\w*",
+    # Источник сам называет пищевой добавкой: «VACROL DAMLA ESANSIYEL YAGLAR ICEREN TAKVIYE EDICI GIDA».
+    r"takviye edici gida",
 )
 _INGESTED_RU = re.compile(r"капсул|таблет|саше|сироп|пастил", re.IGNORECASE)
 _WATER = _re(r"\w+ suyu", r"hidrolat\w*", r"hydrosol\w*", r"floral water", r"\w+ water")
@@ -57,11 +59,17 @@ def essential_oil_category_slug(source_name: Any, name_ru: Any = "") -> Optional
     """Slug раздела «Эфирные масла» для товара или None, если это не эфирное масло/гидролат."""
     text = fold_tr(source_name)
     ru = str(name_ru or "")
-    if not (_MARKERS.search(text) or _MARKERS_RU.search(ru)):
+    # RU-название — только если турецкого нет: «CHINA OEL Эфирное масло» и «VACROL Капли с
+    # эфирными маслами» источник продаёт как takviye edici gıda (решение владельца, 02.11.2026).
+    latin = bool(re.search(r"[a-z]", text))
+    if latin:
+        if not _MARKERS.search(text):
+            return None
+    elif not _MARKERS_RU.search(ru):
         return None
     if _INGESTED.search(text) or _INGESTED_RU.search(ru):
         return None
-    if _WATER.search(text) or (not text and _WATER_RU.search(ru)):
+    if _WATER.search(text) or (not latin and _WATER_RU.search(ru)):
         return ROOT_SLUG
     plants = {slug for slug, pattern in PLANT_SLUGS if pattern.search(text)}
     return plants.pop() if len(plants) == 1 else SINGLE_SLUG
