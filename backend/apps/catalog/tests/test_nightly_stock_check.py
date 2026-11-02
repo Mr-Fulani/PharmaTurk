@@ -654,3 +654,21 @@ def test_ummaland_404_is_gone(monkeypatch):
         _fetch(target)
 
     assert error.value.code == "source_not_found"
+
+
+@pytest.mark.django_db
+def test_admin_progress_shows_where_cycle_continues():
+    from django.contrib import admin
+
+    from apps.catalog.admin_stock import StockCheckSourceStateAdmin
+
+    products = [_lcw_product(i) for i in range(1, 4)]
+    model_admin = StockCheckSourceStateAdmin(StockCheckSourceState, admin.site)
+    state = StockCheckSourceState.objects.create(
+        parser_key="lcw", night=timezone.localdate(), cursor_pk=products[0].pk, stats={"checked": 1}
+    )
+
+    assert model_admin.progress(state) == "1 из 3, осталось ночей: 2"
+
+    state.cursor_pk, state.stats = 0, {"checked": 3, "stopped": "cycle_done"}
+    assert model_admin.progress(state) == "весь каталог, следующая ночь начнёт сначала"
