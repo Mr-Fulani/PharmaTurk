@@ -1551,7 +1551,9 @@ def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], activ
         if not text or "(" in text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand):
             return title
         # «TURKFLEKS 10%, раствор декстрозы» — вещество уже в названии, в скобках не повторяем.
-        if any(word[:6].lower() in title[locale].lower() for word in re.findall(r"[^\W\d_]{5,}", text)):
+        # Ищем после бренда: «RISPERDAL» начинается как «risperidone», но вещества в названии нет.
+        rest = title[locale][len(brand):].lower()
+        if any(word[:6].lower() in rest for word in re.findall(r"[^\W\d_]{5,}", text)):
             return title
         result[locale] = f"{brand} ({text}){title[locale][len(brand):]}"
     return result

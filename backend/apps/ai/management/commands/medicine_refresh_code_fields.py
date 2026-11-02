@@ -5,6 +5,7 @@
     manage.py medicine_refresh_code_fields --apply --backup /tmp/refresh-before.json
 
 Меняется только то, что не правили руками после обработки (apps/ai/services/medicine_refresh.py).
+Если новое название или SEO хуже текущего, они остаются как есть и считаются отдельно.
 """
 
 import json
@@ -35,18 +36,23 @@ class Command(BaseCommand):
             products = products.filter(id__in=[int(x) for x in options["ids"].split(",") if x.strip()])
         generator = ContentGenerator.__new__(ContentGenerator)
         generator.llm = None
-        stats, plans = Counter(), []
+        stats, plans, kept_examples = Counter(), [], []
         for product in products.iterator(chunk_size=200):
             log = latest_applied_log(product.id)
             if not log:
                 continue
             stats["обработанных"] += 1
-            changes, new = plan_refresh(product, log, generator)
+            changes, new, kept = plan_refresh(product, log, generator)
             if new is None:
                 stats["название кодом не собирается"] += 1
                 continue
+            if kept:
+                stats["оставлено: новое хуже"] += 1
+                stats.update(f"оставлено, {reason}" for reason in kept)
+                kept_examples.append((product, kept))
             if not changes:
-                stats["уже как в коде или правлено вручную"] += 1
+                if not kept:
+                    stats["уже как в коде или правлено вручную"] += 1
                 continue
             stats["к изменению"] += 1
             stats["полей"] += len(changes)
@@ -56,6 +62,8 @@ class Command(BaseCommand):
             for change in changes:
                 if change.field in ("name", "meta_title", "meta_description"):
                     self.stdout.write(f"  {change.label}: {change.old[:90]!r} → {change.new[:90]!r}")
+        for product, kept in kept_examples[: options["show"]]:
+            self.stdout.write(f"\nоставлено {product.id} {product.slug}: {', '.join(kept)}")
         self.stdout.write("\n" + json.dumps(dict(stats), ensure_ascii=False))
         if not options["apply"]:
             self.stdout.write("Только показ: для записи — --apply --backup <файл>.")

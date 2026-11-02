@@ -270,6 +270,8 @@ _TURKISH_TITLE_WORDS = re.compile(
     r"kapsül|kapsul|şurup|surup|merhem|damla|damlası|damlasi|suspansiyon|süspansiyon|"
     r"giderici|saşe|sase|şişe|sise|efervesan|çiğneme|cigneme|tableti|kapsülü|ağız|agiz|"
     r"sprey|spreyi|losyon|içeren|iceren|ekstresi|yağı|yagi|balık|balik|"
+    # «BRAIN-SPECT RADYOFARMASOTIK HAZIRLAMA KITI» — шаблон брал описание набора за бренд (01.11.2026).
+    r"radyofarmas[oö]tik|haz[iı]rlama|kiti|"
     # Вкус лечебного питания (_TURKISH_FLAVOUR_WORDS): «FORTINI … CILEK AROMALI».
     r"aromal[iı]|aromas[iı]z|[cç]ilek|vanilya|[cç]ikolata|kahve|portakal|ahududu|muz|meyve|kakaolu)\b",
     re.IGNORECASE,
