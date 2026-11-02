@@ -93,6 +93,11 @@ class StaleProductCandidate(models.Model):
     def __str__(self):
         return f"{self.parser_key}: {self.product_id}"
 
+    @classmethod
+    def waiting_decision(cls):
+        """Кого считает отчёт в Telegram и показывает ссылка из него — один критерий на оба места."""
+        return cls.objects.filter(status=cls.Status.CANDIDATE)
+
 
 class ProductDeletionLog(models.Model):
     """Журнал окончательного удаления: копия строк БД и список файлов для восстановления.

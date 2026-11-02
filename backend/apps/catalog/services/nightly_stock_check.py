@@ -28,6 +28,7 @@ import httpx
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.catalog.models import Product
@@ -53,9 +54,12 @@ STAT_KEYS = (
     "became_available",
     "price_changed",
     "gone",
+    "gone_colours",
     "new_candidates",
     "errors",
     "rejected",
+    "error_streak",
+    "error_streak_start_pk",
 )
 
 
@@ -117,6 +121,21 @@ def checkable_products(parser_key: str):
             source_offers__is_active=True,
         )
         .filter(Q(is_available=True) | Q(stale_candidate__status=StaleProductCandidate.Status.CANDIDATE))
+        .exclude(product_type="medicines")
+        .distinct()
+    )
+
+
+def sold_out_products():
+    """Закончились у продавцов сверки: страница на месте, товар на сайте с пометкой «нет в наличии»."""
+    return (
+        Product.objects.filter(
+            is_active=True,
+            is_available=False,
+            source_offers__parser_key__in=nightly_sources(),
+            source_offers__is_active=True,
+            stale_candidate__isnull=True,
+        )
         .exclude(product_type="medicines")
         .distinct()
     )
@@ -278,7 +297,7 @@ class NightlyStockCheckService(ProductCardSourceRefreshService):
         )
         if other_url:
             # Пропал один цвет из нескольких: снимаем только его, как карточка.
-            return self._mark_source_url_unavailable(target)
+            return {**self._mark_source_url_unavailable(target), "colour_gone": 1}
         changes = {"new_candidate": int(
             mark_stale_candidate(
                 target.product, parser_key=target.parser_key, source_url=target.offer.canonical_url
@@ -342,8 +361,12 @@ def _record(state: StockCheckSourceState, product_id: int, before: tuple, result
         clear_stale_candidate(product_id)
     elif code == "source_not_found":
         outcome = "gone"
-        stats["gone"] += 1
-        stats["new_candidates"] += int(changes.get("new_candidate", 0))
+        if changes.get("colour_gone"):
+            # Товар остаётся на сайте с другими цветами: в «Неактуальные товары» он не попадает.
+            stats["gone_colours"] += 1
+        else:
+            stats["gone"] += 1
+            stats["new_candidates"] += int(changes.get("new_candidate", 0))
     elif code in RETRYABLE_CODES:
         stats["errors"] += 1
         return "retryable"
@@ -364,6 +387,17 @@ def _record(state: StockCheckSourceState, product_id: int, before: tuple, result
     if before[1] != after[1]:
         stats["price_changed"] += 1
     return outcome
+
+
+def _track_error_streak(stats: dict, outcome: str, cursor_before: int) -> int:
+    """Серия временных ошибок подряд за ночь: хранится в stats, поэтому идёт через пачки."""
+    if outcome != "retryable":
+        stats["error_streak"] = 0
+        return 0
+    if not stats["error_streak"]:
+        stats["error_streak_start_pk"] = cursor_before
+    stats["error_streak"] += 1
+    return stats["error_streak"]
 
 
 def _loss_tripped(stats: dict) -> bool:
@@ -441,7 +475,6 @@ def _run_batch(sources, *, now, budget, clock, sleep, service) -> dict[str, Any]
             states[key] = state
             queues[key] = []
     next_at = {key: clock() for key in states}
-    consecutive = {key: 0 for key in states}
     while states and clock() + reserve < deadline:
         key = min(states, key=next_at.get)
         state = states[key]
@@ -453,9 +486,11 @@ def _run_batch(sources, *, now, budget, clock, sleep, service) -> dict[str, Any]
         if not queues[key]:
             queues[key] = _next_product_ids(key, state.cursor_pk)
             if not queues[key]:
-                # Весь каталог источника проверен: следующая ночь начнёт сначала.
+                # Каталог источника пройден: следующая ночь начнёт сначала. Если он
+                # кончился на серии ошибок, проверенным до конца он не считается.
                 state.cursor_pk = 0
-                state.last_full_cycle_at = timezone.now()
+                if not state.stats.get("error_streak"):
+                    state.last_full_cycle_at = timezone.now()
                 state.stats["stopped"] = "cycle_done"
                 state.save(update_fields=["cursor_pk", "last_full_cycle_at", "stats", "updated_at"])
                 summary["sources"][key] = "cycle_done"
@@ -469,9 +504,9 @@ def _run_batch(sources, *, now, budget, clock, sleep, service) -> dict[str, Any]
             continue
         result = service.run(product_id)
         outcome = _record(state, product_id, before, result)
+        streak = _track_error_streak(state.stats, outcome, state.cursor_pk)
         state.cursor_pk = product_id
         next_at[key] = max(started + 60.0 / source_rate_per_minute(key), clock())
-        consecutive[key] = consecutive[key] + 1 if outcome == "retryable" else 0
         if outcome == "paid_access_unavailable":
             _pause(state, "Источник требует платный прокси — ночная сверка его не открывает.", timezone.now())
             summary["sources"][key] = "paused"
@@ -483,8 +518,10 @@ def _run_batch(sources, *, now, budget, clock, sleep, service) -> dict[str, Any]
                 timezone.now(),
             )
             summary["sources"][key] = "paused"
-        elif consecutive[key] >= max_errors:
+        elif streak >= max_errors:
             # Сайт не отвечает или ограничил запросы — до следующей ночи его не трогаем.
+            # Товары этой серии не проверены: следующая ночь начнёт с них.
+            state.cursor_pk = state.stats["error_streak_start_pk"]
             state.stats["stopped"] = "source_errors"
             state.save(update_fields=["stats", "cursor_pk", "updated_at"])
             summary["sources"][key] = "source_errors"
@@ -506,8 +543,21 @@ def _plural_nights(count: int) -> str:
     return "ночей"
 
 
+def waiting_list_url() -> str:
+    """Прямая ссылка на тех, кого считает отчёт (``StaleProductCandidate.waiting_decision``)."""
+    path = reverse("admin:catalog_staleproductcandidate_changelist")
+    return f"{settings.SITE_URL}{path}?status__exact={StaleProductCandidate.Status.CANDIDATE}"
+
+
+def sold_out_list_url() -> str:
+    """Прямая ссылка на тех, кого считает ``sold_out_products``."""
+    return f"{settings.SITE_URL}{reverse('admin:catalog_product_changelist')}?sold_out=nightly"
+
+
 def build_night_report(night=None) -> str:
     """Итог ночи простыми словами для владельца."""
+    from apps.catalog.services.stale_products import plan_action
+
     night = night or timezone.localdate()
     lines = [f"🌙 Ночная сверка наличия {night:%d.%m}"]
     for state in StockCheckSourceState.objects.filter(parser_key__in=nightly_sources()).order_by("parser_key"):
@@ -528,16 +578,33 @@ def build_night_report(night=None) -> str:
             f". Закончились: {stats.get('became_unavailable', 0)}, снова в наличии: "
             f"{stats.get('became_available', 0)}, цена изменилась: {stats.get('price_changed', 0)}."
         )
-        if stats.get("gone"):
-            line += f" Нет у продавца: {stats['gone']} (новых {stats.get('new_candidates', 0)})."
+        if stats.get("new_candidates"):
+            line += f" Новых неактуальных: {stats['new_candidates']}."
+        if stats.get("gone_colours"):
+            line += (
+                f" Пропал один цвет из нескольких: {stats['gone_colours']} "
+                "(товар остаётся на сайте с другими цветами)."
+            )
         if stats.get("errors") or stats.get("rejected"):
             line += f" Не удалось проверить: {stats.get('errors', 0) + stats.get('rejected', 0)}."
         if stats.get("stopped") == "source_errors":
             line += " Сайт перестал отвечать — остановились до следующей ночи."
         lines.append(line)
-    waiting = StaleProductCandidate.objects.filter(status=StaleProductCandidate.Status.CANDIDATE).count()
+    waiting = StaleProductCandidate.waiting_decision().select_related("product")
     if waiting:
-        lines.append(f"Товаров, которых нет у продавца: {waiting} — админка «Неактуальные товары».")
+        ready = len(plan_action(waiting, "hide").eligible)
+        lines.append(
+            f"Неактуальные товары — ждут вашего решения: {len(waiting)} (скрыть уже можно: {ready}). "
+            f"Без вас ничего не удаляется.\nОткрыть список: {waiting_list_url()}"
+        )
+    else:
+        lines.append("Неактуальных товаров нет, решать ничего не нужно.")
+    sold_out = sold_out_products().count()
+    if sold_out:
+        lines.append(
+            f"Нет в наличии у этих продавцов: {sold_out}. Это не неактуальные: страницы товаров на месте, "
+            f"товары остаются на сайте с пометкой «нет в наличии», решение не нужно.\nПосмотреть: {sold_out_list_url()}"
+        )
     return "\n".join(lines)
 
 

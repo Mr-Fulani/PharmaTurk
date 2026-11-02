@@ -1,5 +1,6 @@
+import logging
 import uuid
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -11,6 +12,8 @@ from django.utils import timezone
 from apps.users.models import User, UserAddress
 from apps.catalog.models import Product
 from apps.catalog.utils.currency_converter import currency_converter
+
+logger = logging.getLogger(__name__)
 
 
 class PromoCode(models.Model):
@@ -97,7 +100,8 @@ class PromoCode(models.Model):
 
         try:
             amount_dec = Decimal(str(amount))
-        except Exception:
+        except (InvalidOperation, TypeError, ValueError):
+            logger.warning("Promo code %s: invalid amount %r, using 0", self.pk, amount)
             amount_dec = Decimal('0')
 
         if self.discount_type == self.DiscountType.PERCENT:
@@ -113,7 +117,8 @@ class PromoCode(models.Model):
             fixed_value = self.discount_value
         try:
             fixed_dec = Decimal(str(fixed_value))
-        except Exception:
+        except (InvalidOperation, TypeError, ValueError):
+            logger.warning("Promo code %s: invalid fixed value %r, using 0", self.pk, fixed_value)
             fixed_dec = Decimal('0')
 
         discount = min(fixed_dec, amount_dec)
@@ -202,8 +207,12 @@ class Cart(models.Model):
                 from apps.catalog.utils.product_markup import apply_product_markup
                 public_price = apply_product_markup(price, item.product) if needs_product_markup else price
                 total += public_price * item.quantity
-            except Exception:
+            except Exception as exc:
                 # Fallback к старому полю
+                logger.warning(
+                    "Cart %s item %s: saved price used: %s: %s",
+                    self.pk, item.pk, type(exc).__name__, exc,
+                )
                 total += item.price * item.quantity
         
         return round(total, 2)
@@ -544,8 +553,12 @@ class CartItem(models.Model):
             from apps.catalog.utils.product_markup import apply_product_markup
             public_price = apply_product_markup(price, self.product) if needs_product_markup else price
             return round(public_price * self.quantity, 2)
-        except Exception:
+        except Exception as exc:
             # Fallback к старому полю
+            logger.warning(
+                "Cart item %s: saved price used: %s: %s",
+                self.pk, type(exc).__name__, exc,
+            )
             return round(self.price * self.quantity, 2)
 
 

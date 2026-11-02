@@ -382,6 +382,80 @@ def test_consecutive_source_errors_stop_source_until_next_night():
 
 
 @pytest.mark.django_db
+def test_error_streak_continues_across_batches_of_one_night():
+    # Таймаут на карточку длинный: за пачку серия не доходит до порога (ночь 01.11.2026:
+    # 64 ошибки UmmaLand за 67 минут вместо остановки на 10-й).
+    products = [_lcw_product(index) for index in range(1, 8)]
+    clock = FakeClock()
+
+    first = FakeService(clock, error="source_unavailable")
+    run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=first)
+    assert len(first.calls) == 2
+    state = StockCheckSourceState.objects.get(parser_key="lcw")
+    assert "stopped" not in state.stats
+
+    second = FakeService(clock, error="source_unavailable")
+    result = run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=second)
+
+    assert second.calls == [products[2].pk]
+    assert result["sources"]["lcw"] == "source_errors"
+
+
+@pytest.mark.django_db
+def test_success_between_batches_breaks_error_streak():
+    products = [_lcw_product(index) for index in range(1, 8)]
+    clock = FakeClock()
+
+    failing = FakeService(clock, error="source_unavailable")
+    run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=failing)
+    working = FakeService(clock)
+    run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=working)
+    failing_again = FakeService(clock, error="source_unavailable")
+    run_nightly_batch(now=_night(), budget_seconds=110, clock=clock, sleep=clock.sleep, service=failing_again)
+
+    state = StockCheckSourceState.objects.get(parser_key="lcw")
+    assert "stopped" not in state.stats
+    assert state.cursor_pk == products[5].pk
+
+
+@pytest.mark.django_db
+def test_products_of_error_streak_are_checked_next_night():
+    products = [_lcw_product(index) for index in range(1, 7)]
+    clock = FakeClock()
+
+    working = FakeService(clock)
+    run_nightly_batch(now=_night(), budget_seconds=100, clock=clock, sleep=clock.sleep, service=working)
+    assert working.calls == [products[0].pk]
+    failing = FakeService(clock, error="source_unavailable")
+    run_nightly_batch(now=_night(), budget_seconds=3000, clock=clock, sleep=clock.sleep, service=failing)
+    assert len(failing.calls) == 3
+    state = StockCheckSourceState.objects.get(parser_key="lcw")
+    assert state.cursor_pk == products[0].pk
+
+    next_night = FakeService(clock)
+    run_nightly_batch(
+        now=timezone.make_aware(datetime(2026, 10, 30, 2, 0)),
+        budget_seconds=3000, clock=clock, sleep=clock.sleep, service=next_night,
+    )
+    assert next_night.calls == [p.pk for p in products[1:]]
+
+
+@pytest.mark.django_db
+def test_catalog_ended_on_errors_is_not_a_full_cycle():
+    for index in range(1, 3):
+        _lcw_product(index)
+    clock = FakeClock()
+    service = FakeService(clock, error="source_unavailable")
+
+    run_nightly_batch(now=_night(), budget_seconds=3000, clock=clock, sleep=clock.sleep, service=service)
+
+    state = StockCheckSourceState.objects.get(parser_key="lcw")
+    assert len(service.calls) == 2
+    assert state.cursor_pk == 0
+    assert state.last_full_cycle_at is None
+
+
+@pytest.mark.django_db
 def test_source_is_skipped_while_its_scraper_runs():
     _lcw_product()
     config = _lcw_config()
@@ -419,7 +493,68 @@ def test_night_report_is_plain_and_sent_once(nightly_settings):
     text = nightly_settings[0]
     assert "LC Waikiki: проверено 100 из 300 (весь каталог — примерно за 3 ночи)" in text
     assert "Закончились: 40" in text
-    assert "Нет у продавца: 3" in text
+    assert "Новых неактуальных: 3" in text
+
+
+@pytest.mark.django_db
+def test_missing_colour_is_not_reported_as_a_stale_product(nightly_settings, monkeypatch):
+    product = _lcw_product()
+    ProductSourceOffer.objects.create(
+        product=product,
+        parser_key="lcw",
+        canonical_url="https://www.lcw.com/urun-1-red-o-2",
+        source_domain="www.lcw.com",
+        external_product_id="lcw-1",
+        variant_key="red",
+        source_price=Decimal("100.00"),
+        source_currency="TRY",
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+    )
+    service = NightlyStockCheckService()
+    monkeypatch.setattr(service, "_fetch_product", _gone)
+    state = StockCheckSourceState.objects.create(parser_key="lcw", night=timezone.localdate(), catalog_size=1)
+
+    nightly._record(state, product.pk, (True, product.price), service.run(product.pk))
+    state.save()
+
+    assert state.stats["gone_colours"] == 1 and state.stats["gone"] == 0
+    assert not StaleProductCandidate.objects.exists()
+    text = nightly.build_night_report()
+    assert "Пропал один цвет из нескольких: 1" in text
+    assert "Неактуальных товаров нет, решать ничего не нужно." in text
+    assert "ждут вашего решения" not in text
+
+
+@pytest.mark.django_db
+def test_sold_out_products_are_not_called_stale_in_report():
+    _lcw_product(1, available=False)
+    _lcw_product(2, available=True)
+    StockCheckSourceState.objects.create(
+        parser_key="lcw", night=timezone.localdate(), catalog_size=1,
+        stats={"checked": 1, "became_unavailable": 1},
+    )
+
+    text = nightly.build_night_report()
+
+    assert "Закончились: 1" in text
+    assert "Неактуальных товаров нет, решать ничего не нужно." in text
+    assert "Нет в наличии у этих продавцов: 1. Это не неактуальные" in text
+    assert "/admin/catalog/product/?sold_out=nightly" in text
+
+
+@pytest.mark.django_db
+def test_whole_product_gone_is_counted_as_new_stale_product(monkeypatch):
+    product = _lcw_product()
+    service = NightlyStockCheckService()
+    monkeypatch.setattr(service, "_fetch_product", _gone)
+    state = StockCheckSourceState.objects.create(parser_key="lcw", night=timezone.localdate(), catalog_size=1)
+
+    nightly._record(state, product.pk, (True, product.price), service.run(product.pk))
+    state.save()
+
+    assert state.stats["gone"] == 1 and state.stats["new_candidates"] == 1
+    assert state.stats["gone_colours"] == 0
+    assert "Новых неактуальных: 1" in nightly.build_night_report()
 
 
 # --- признак «товара нет» на настоящих парсерах ------------------------------------------

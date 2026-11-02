@@ -5,6 +5,9 @@
 canonical origin редиректом.
 
 В проекте реализованы Google Identity Services, VK ID и Telegram Login Widget.
+Кнопка VK ID скрыта с 01.11.2026 (решение владельца): ВК заблокировал приложение
+«Mudaroba» (ID 54532929) из-за неподтверждённого профиля бизнеса. Вернуть —
+`VK_LOGIN_ENABLED` в `frontend/src/pages/auth/index.tsx` после подтверждения профиля.
 Facebook, Yandex и Apple пока не имеют backend-провайдеров.
 
 ## Общие переменные
