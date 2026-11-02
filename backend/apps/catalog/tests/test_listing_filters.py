@@ -1,6 +1,6 @@
 """Regression contract for the storefront price and availability list filters."""
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -191,14 +191,42 @@ def test_zero_lower_bound_alone_does_not_filter():
     assert catalog_views._apply_price_filter(queryset, make_request("min_price=0")) is queryset
 
 
+INVALID_PRICES = ["abc", "1,5", "NaN", "sNaN", "Infinity", "-Infinity"]
+
+
 @pytest.mark.django_db
-def test_invalid_price_raises_today():
-    # Known defect kept by the move: Decimal raises InvalidOperation, which
-    # _parse_decimal does not catch. Fixing it must change this test on purpose.
-    with pytest.raises(InvalidOperation):
-        catalog_views._apply_price_filter(
-            Product.objects.all(), make_request("min_price=abc")
-        )
+@pytest.mark.parametrize("value", INVALID_PRICES)
+def test_invalid_bound_alone_is_ignored(value):
+    queryset = Product.objects.all()
+
+    assert catalog_views._apply_price_filter(queryset, make_request(f"min_price={value}")) is queryset
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", INVALID_PRICES)
+def test_invalid_bound_keeps_the_valid_one(frozen_price_snapshots, value):
+    make_product("cheap", price=Decimal("10"))
+    make_product("expensive", price=Decimal("100"))
+
+    result = catalog_views._apply_price_filter(
+        Product.objects.all(), make_request(f"min_price={value}&max_price=50")
+    )
+
+    assert slugs(result) == {"cheap"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", [*INVALID_PRICES, "1e999"])
+def test_list_apis_answer_200_for_unusable_price(frozen_price_snapshots, value):
+    make_product("product", price=Decimal("10"))
+    make_clothing("clothing", price=Decimal("10"))
+    client = APIClient()
+
+    for url in ("/api/catalog/products", "/api/catalog/clothing/products"):
+        for headers in ({}, {"HTTP_X_CURRENCY": "USD"}):
+            response = client.get(url, {"min_price": value, "max_price": value}, **headers)
+
+            assert response.status_code == 200, (url, headers)
 
 
 @pytest.mark.django_db

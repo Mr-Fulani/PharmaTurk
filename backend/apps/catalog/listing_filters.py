@@ -1,6 +1,6 @@
 """Price and availability filters for the catalog list endpoints."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db import models
 from django.db.models import Case, F, Q, When
@@ -46,9 +46,10 @@ def _parse_decimal(value):
     if value is None or value == '':
         return None
     try:
-        return Decimal(str(value))
-    except (ValueError, TypeError):
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
         return None
+    return parsed if parsed.is_finite() else None
 
 
 def apply_availability_filter(queryset, request):
