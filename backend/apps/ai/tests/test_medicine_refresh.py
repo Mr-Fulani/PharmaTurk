@@ -148,6 +148,11 @@ def test_refresh_without_apply_changes_nothing(capsys):
          "SERODERM (betamethasone) 0.1%, ointment from Turkey — leaflet, price", []),
         ("name", "ru", "IMMUNATE 500 МЕ, порошок, флакон", "IMMUNATE (фактор свёртывания крови VIII) 500 МЕ, порошок, флакон", []),
         ("name", "ru", "", "BIOFLEKS 5%, раствор декстрозы, 1000 мл", []),
+        # Пилот PR #287: пропало число штук.
+        ("name", "ru", "PEKUTIN 10 мг, таблетки, 30 шт.", "PEKUTIN 10 мг, таблетки", ["фасовка"]),
+        ("name", "ru", "DIAKSI 5 мг/2,5 мл раствор для ректального введения, 5 шт.",
+         "DIAKSI 5 мг/2,5 мл, раствор для ректального введения", ["фасовка"]),
+        ("name", "ru", "SEPTIX 5 мг/1 мг лимонные пастилки (20 пастилок)", "SEPTIX 5 мг/1 мг, пастилки, со вкусом лимона, 20 шт.", []),
     ],
 )
 def test_worse_reasons(field, locale, old, new, reasons):

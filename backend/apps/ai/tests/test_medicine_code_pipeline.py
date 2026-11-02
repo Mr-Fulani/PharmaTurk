@@ -543,6 +543,13 @@ def test_title_names_active_ingredient_without_salt():
     assert title_with_inn(build_medicine_title(name), name, ("Азитромицин", "Azithromycin"), "Azitromisin")[
         "ru"
     ].startswith("AZITRO (азитромицин) 250 мг")
+    # Вакцина: «Hepatit A» — болезнь, в скобки не ставится (пилот PR #287).
+    name = "AVAXIM 0,5ML IM ENJ. ICIN SUSP. 1 KULL. HAZ. ENJEKTOR"
+    plain = build_medicine_title(name)
+    assert title_with_inn(plain, name, ("Гепатит А", "Hepatitis A"), "Hepatit A") == plain
+    # Бренд кончается числом — масса через запятую, не «MILUPA LEU 1 500 г».
+    assert build_medicine_title("MILUPA LEU 1 (500 GR)")["ru"] == "MILUPA LEU 1, 500 г"
+    assert build_medicine_title("EVOLVIA RP 2 (400 G)")["en"] == "EVOLVIA RP 2, 400 g"
 
 
 @pytest.mark.parametrize(

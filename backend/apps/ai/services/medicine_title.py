@@ -1336,7 +1336,9 @@ def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]
         if by_substance:
             pairs = list(zip(substances, values))
             strength = []
-        head = " ".join(brand + strength + list(dict.fromkeys(series)))
+        # «MILUPA LEU 1 (500 GR)»: бренд кончается числом — дозировка через запятую, иначе «1 500 г».
+        joiner = ", " if strength and re.fullmatch(r"\d+(?:[.,]\d+)?", brand[-1]) else " "
+        head = joiner.join([" ".join(brand), " ".join(strength + list(dict.fromkeys(series)))]).strip()
         parts = [head]
         if forms:
             first = forms[0][index]
@@ -1560,8 +1562,12 @@ def title_with_inn(title: dict[str, str], name: Any, inn: tuple[str, str], activ
     result = {}
     for locale, value in zip(("ru", "en"), inn):
         text = title_inn(value)
-        # «Otag (Ml)» — обрывок названия из источника вместо вещества.
-        if not text or "(" in text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand):
+        # «Otag (Ml)» — обрывок названия из источника вместо вещества; «Hepatit A» у вакцины AVAXIM —
+        # болезнь, а не вещество: «AVAXIM (гепатит А)» читается неверно (пилот PR #287).
+        if (
+            not text or "(" in text or len(text) > _INN_TITLE_MAX or not title[locale].startswith(brand)
+            or re.match(r"(гепатит|hepatitis)\b", text, re.IGNORECASE)
+        ):
             return title
         # «TURKFLEKS 10%, раствор декстрозы» — вещество уже в названии, в скобках не повторяем.
         # Ищем после бренда: «RISPERDAL» начинается как «risperidone», но вещества в названии нет.
