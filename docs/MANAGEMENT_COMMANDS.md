@@ -39,11 +39,11 @@ docker exec mudaroba-backend-1 poetry run python manage.py <команда> [ф�
 | [CELERY_TASKS.md](../CELERY_TASKS.md) | `sync_product_vectors`, `clear_similar_cache` |
 | [DB_BACKUP.md](DB_BACKUP.md) | `db_backup` (запускается в `celeryworker`) |
 | [DEPLOY.md](../DEPLOY.md) | `set_telegram_webhook`, `reconcile_coinremitter`, `cleanup_legacy_receipts` |
-| [CURRENCY_SYSTEM_GUIDE.md](../CURRENCY_SYSTEM_GUIDE.md) | `update_product_prices` |
+| [CURRENCY_SYSTEM_GUIDE.md](archive/CURRENCY_SYSTEM_GUIDE.md) | `update_product_prices` |
 | [README-DEV.md](../README-DEV.md) | `seed_catalog_data`, `load_initial_pages` |
 | [SCRAPERS_GUIDE.md](../SCRAPERS_GUIDE.md) | `heal_parsed_gallery_media` |
 | [UMMALAND_PARSER_GUIDE.md](../UMMALAND_PARSER_GUIDE.md) | `run_scraper` |
-| [INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md), [INSTAGRAM_PARSER_IMPLEMENTATION.md](../INSTAGRAM_PARSER_IMPLEMENTATION.md) | `run_instagram_scraper`, `init_instagram_scraper` |
+| [INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md), [INSTAGRAM_PARSER_IMPLEMENTATION.md](archive/INSTAGRAM_PARSER_IMPLEMENTATION.md) | `run_instagram_scraper`, `init_instagram_scraper` |
 
 ## catalog
 

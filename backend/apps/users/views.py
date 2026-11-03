@@ -523,7 +523,11 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             from .avatar_security import normalize_avatar_upload
 
             avatar_file = normalize_avatar_upload(avatar_file)
-        except Exception:
+        except Exception as exc:
+            logger.info(
+                "Avatar upload rejected for user_id=%s: %s",
+                request.user.id, type(exc).__name__,
+            )
             return Response(
                 {'error': 'Недопустимое изображение. Разрешены JPEG, PNG и WebP до 5 МБ.'},
                 status=status.HTTP_400_BAD_REQUEST,
