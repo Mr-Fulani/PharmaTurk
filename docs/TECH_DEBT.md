@@ -304,9 +304,19 @@ PR слишком рискованно.
   работает. Модели, миграции, parser flow и формат API не меняются. Отдельным
   исправлением нечисловые и бесконечные границы цены (`abc`, `1,5`, `NaN`,
   `Infinity`) больше не дают ошибку 500: такая граница игнорируется.
-- **Осталось:** product resolution (`SmartSlugLookupMixin`, карточки в
-  `serializers.py`), прокси медиа и sitemap в `views.py`, доменные сериализаторы,
-  страница товара на фронте, `orders/views.py`.
+- **Срез 8 — поиск карточки по slug:** `SmartSlugLookupMixin` (запасные
+  варианты slug: дубль `a-a`, доменный префикс вроде `headwear-`, их сочетания и
+  компактный ответ списка `view=card` с отзывами), выбор опубликованного
+  варианта и чтение `active_variant_slug` вынесены из `views.py` в
+  `backend/apps/catalog/product_resolution.py`. Код перенесён дословно, старые
+  имена в `views.py` остались точными alias; `test_product_resolution.py`
+  сначала прошёл на старом коде и фиксирует порядок попыток slug и 404.
+  Отдельный поиск базового `Product` в `ProductViewSet.get_object` (без
+  доменного префикса) пока остаётся методом вьюсета. Модели, миграции, parser
+  flow и формат API не меняются.
+- **Осталось:** `ProductViewSet.get_object`, карточки в `serializers.py`, прокси
+  медиа и sitemap в `views.py`, доменные сериализаторы, страница товара на
+  фронте, `orders/views.py`.
 
 ### TD-007 — Неполные quality gates
 
