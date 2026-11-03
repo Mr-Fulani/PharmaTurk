@@ -27,6 +27,7 @@
 | Вход через VK ID (`@vkid/sdk`) | frame/connect | `id.vk.ru`, `id.vk.com` |
 | Cloudflare (Web Analytics, Turnstile) | script/frame/connect | `static.cloudflareinsights.com`, `cloudflareinsights.com`, `challenges.cloudflare.com` |
 | Медиа и видео баннеров | media/connect | свой домен (`/media`, `proxy-media`), `cdn.mudaroba.com`, `blob:` |
+| Видео товаров у источника | media | `www.ikea.com` (мебель IKEA), `umma-land.com` (книги) |
 | Встроенные видео | frame | `www.youtube.com`, `www.youtube-nocookie.com`, `player.vimeo.com` |
 | Шрифт страницы 404 | style/font | `fonts.googleapis.com`, `fonts.gstatic.com` |
 | Картинки | img | любой `https:` — фото товаров приходят с доменов источников |
@@ -35,7 +36,10 @@
 ограничивает. `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`.
 
 На страницах входа дополнительно разрешён `'unsafe-eval'`: виджет Telegram выполняет
-`data-onauth` через `eval`. На остальных страницах его нет.
+`data-onauth` через `eval`. На остальных страницах его нет. CSP берётся из документа, а не
+из адреса: после перехода на `/auth` внутри сайта (ссылка «Войти», `router.push`) действует
+политика прежней страницы, без `'unsafe-eval'`. Поэтому виджет Telegram в production
+перезагружает страницу, если документ открыт не на `/auth`.
 
 Инлайн-скрипты (Consent Mode в `_document.tsx`, инициализация gtag и Метрики в
 `_app.tsx`) пока разрешены через `'unsafe-inline'` в `script-src` — это главная
@@ -79,6 +83,12 @@
   стили переводчика браузера `www.gstatic.com` — 3. На остальных страницах нарушений нет. Политика
   дополнена: `'unsafe-eval'` только на страницах входа (правило `/auth/:path*` в `next.config.js`,
   с локалями), Метрика, `www.gstatic.com`. `wsync` не разрешаем.
+
+- 02–03.11.2026, релиз 76cd1e6d, отчёты за 10 часов: eval на `/auth` — 2 (вход после перехода
+  внутри сайта: `/profile` → `router.replace('/auth')`, политика прежней страницы — после enforce
+  вход через Telegram сломался бы; исправлено перезагрузкой, см. выше), `media-src`
+  `www.ikea.com/pvid/…mp4` на `/brand/ikea` — 1 (видео 678 товаров IKEA и книг umma-land
+  открываются с сайта источника; добавлены в `media-src`).
 
 ## Как перейти в enforce (TD-033)
 

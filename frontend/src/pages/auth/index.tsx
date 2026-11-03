@@ -132,6 +132,17 @@ function TelegramLoginWidget() {
   const uniqueId = `telegram-login-${reactId.replace(/:/g, '')}`
 
   useEffect(() => {
+    // data-onauth выполняется через eval, а 'unsafe-eval' есть только в CSP документа /auth
+    // (next.config.js). После перехода внутри сайта действует CSP прежней страницы — после
+    // enforce вход через Telegram не сработал бы. Перезагружаем один раз (TD-033).
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    if (
+      process.env.NODE_ENV === 'production' && TELEGRAM_BOT_USERNAME && nav &&
+      !/^\/(?:[a-z]{2}\/)?auth(?:\/|$)/.test(new URL(nav.name).pathname)
+    ) {
+      window.location.reload()
+      return
+    }
     const container = containerRef.current
     const handleTelegramAuth = async (user: any) => {
       try {
