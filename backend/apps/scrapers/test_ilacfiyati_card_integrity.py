@@ -152,6 +152,53 @@ def test_inline_section_breaks_lines_only_between_blocks(html, expected):
     assert parser._extract_tab_text(soup, "side_effects") == expected
 
 
+def _inline_section(tab_id, html):
+    return BeautifulSoup(f'<div id="medicineAccordion"><div id="{tab_id}">{html}</div></div>', "html.parser")
+
+
+def test_long_section_is_not_cut_at_12000_chars():
+    # «Kullanmadan Dikkat Edilecekler» ESRAM — 13 349 знаков: до 03.11.2026 обрывалось на «Nöbe».
+    paragraphs = [f"<p>{index}. Doktorunuza danışmadan ilacı kullanmayınız.</p>" for index in range(400)]
+    paragraphs.append("<p>Nöbet geçiriyorsanız doktorunuza söyleyiniz.</p>")
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    text = parser._extract_tab_text(
+        _inline_section("content-kullanmadan-dikkat-edilecekler", "".join(paragraphs)), "before_use_warnings"
+    )
+    assert len(text) > 12000
+    assert text.endswith("Nöbet geçiriyorsanız doktorunuza söyleyiniz.")
+
+
+def test_section_glued_into_one_text_node_is_split_into_lines():
+    # Так отдаёт раздел sinoretik-30-tablet-2 (03.11.2026): теги вырезаны вместе с пробелами.
+    html = (
+        '<div class="page-content">SİNORETİK\'i aşağıdaki durumlarda KULLANMAYINIZEğer;Lisinopril '
+        "maddelere karşı alerjiniz varsa.ADE inhibitörleri içeren ilaçlara karşı alerjiniz varsa. "
+        "Lütfen doktorunuza danışınız.Şiddetli böbrek hastalığınız varsa.(aynı zamanda hamilelikte)"
+        "AmeliyatlarEğer bir ameliyat olacaksanız söyleyiniz.</div>"
+    )
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    text = parser._extract_tab_text(_inline_section("content-kullanmadan-dikkat-edilecekler", html), "before_use_warnings")
+    assert text.split("\n") == [
+        "SİNORETİK'i aşağıdaki durumlarda KULLANMAYINIZ",
+        "Eğer;",
+        "Lisinopril maddelere karşı alerjiniz varsa.",
+        "ADE inhibitörleri içeren ilaçlara karşı alerjiniz varsa. Lütfen doktorunuza danışınız.",
+        "Şiddetli böbrek hastalığınız varsa.",
+        "(aynı zamanda hamilelikte)",
+        "Ameliyatlar",
+        "Eğer bir ameliyat olacaksanız söyleyiniz.",
+    ]
+
+
+def test_regular_section_with_glued_sentence_keeps_its_lines():
+    # У обычной страницы строки — по блокам: склейка внутри абзаца не режется (ключи памяти те же).
+    html = "<p>Alerjiniz varsa.ADE inhibitörleri kullanıyorsanız.</p><p>NovoRapid FlexPen kullanınız.</p>"
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    assert parser._extract_tab_text(_inline_section("content-yan-etkileri", html), "side_effects") == (
+        "Alerjiniz varsa.ADE inhibitörleri kullanıyorsanız.\nNovoRapid FlexPen kullanınız."
+    )
+
+
 def test_repeated_current_parse_produces_identical_content(monkeypatch):
     parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
     monkeypatch.setattr(parser, "_make_request", lambda url: CURRENT_HTML)
