@@ -1,14 +1,19 @@
 """
 Кастомные бэкенды аутентификации для поддержки входа по username, email и телефону.
 """
+import logging
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.db import DatabaseError
 from django.utils.translation import gettext_lazy as _
 
 
 User = get_user_model()
+
+logger = logging.getLogger(__name__)
 
 
 class MultiFieldAuthBackend(ModelBackend):
@@ -74,7 +79,10 @@ class MultiFieldAuthBackend(ModelBackend):
                     # (на случай, если номер хранится в другом формате)
                     try:
                         user = User.objects.filter(phone_number__icontains=cleaned_username.lstrip('+')).first()
-                    except Exception:
+                    except DatabaseError as exc:
+                        logger.warning(
+                            "Phone login lookup failed: %s: %s", type(exc).__name__, exc,
+                        )
                         user = None
             else:
                 # Это username
