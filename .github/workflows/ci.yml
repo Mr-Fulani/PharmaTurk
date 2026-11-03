@@ -84,7 +84,10 @@ jobs:
   backend:
     name: Backend (checks, migrations, pytest)
     needs: [scope]
-    runs-on: ubuntu-latest
+    # ubuntu-latest = 26.04 с 03.11.2026: там pg_dump 18, его дамп не восстанавливается
+    # в postgres:15 (SET transaction_timeout) — test_real_dump_round_trip_and_restore_check.
+    # На проде клиент и сервер 15 (backend/Dockerfile).
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
       run:
