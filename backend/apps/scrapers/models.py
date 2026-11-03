@@ -106,15 +106,6 @@ class ScraperConfig(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(168)],
     )
 
-    ai_on_create_enabled = models.BooleanField(
-        _("AI для новых товаров"),
-        default=True,
-    )
-    ai_on_update_enabled = models.BooleanField(
-        _("AI для обновлений товаров"),
-        default=True,
-    )
-
     # Дополнительные настройки
     use_proxy = models.BooleanField(_("Использовать прокси"), default=False)
     user_agent = models.CharField(_("User-Agent"), max_length=500, blank=True)
