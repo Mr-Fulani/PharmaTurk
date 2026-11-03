@@ -11,6 +11,7 @@ YML-фид (Yandex Market Language) для ВК Маркета и Яндекс.�
 лимитов ВК (8 МБ / 15 000 товаров) делится на части ``?part=N``.
 Подкатегории эндпоинт отдаёт потоком на лету (``iter_yml_feed``), без деления.
 Лекарства и книги в фиды не попадают (решение владельца, ``BLOCKED_PRODUCT_TYPES``).
+Товар без русского названия или описания (турецкий текст источника) — тоже.
 
 Особенности фида:
 - Категории ВК берутся из таблицы VKCategoryMapping по типу товара и полу
@@ -394,6 +395,8 @@ def _iter_offers(products, site_url: str, use_picture_copies: bool = True) -> It
     exported_ids: set[str] = set()  # защита от дублей
     for batch in _iter_product_batches(products):
         for prod in batch:
+            if not _has_russian_text(prod):
+                continue
             offers_el = ET.Element("offers")
             _add_product_offers(offers_el, prod, site_url, vk_map, exported_ids, genders, markups)
             for offer in offers_el:
@@ -404,6 +407,17 @@ def _iter_offers(products, site_url: str, use_picture_copies: bool = True) -> It
                     for picture in offer.findall("picture"):
                         picture.text = picture_copies.get(picture_key(picture.text), picture.text)
                 yield _xml(offer)
+
+
+def _has_russian_text(prod) -> bool:
+    """
+    Название по-русски и описание (если есть) тоже. Иначе это непереведённый текст
+    источника — AI не применён (черновик с браком): в ВК виден сырой турецкий (03.11.2026).
+    """
+    description = html_to_text(prod.description)
+    return bool(_CYRILLIC_RE.search(prod.name or "")) and (
+        not description or bool(_CYRILLIC_RE.search(description))
+    )
 
 
 def iter_feed_offers() -> Iterator[ET.Element]:
