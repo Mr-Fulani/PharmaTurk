@@ -223,7 +223,8 @@ _CONCEPTS = {
     "alcohol": (r"alkol", r"алкогол|спирт", r"alcohol"),
     # Не любая «makine»: «saç kurutma makineleri» — фены.
     "driving": (r"\barac\b|makine kullan", r"транспорт|машин|механизм|автомоб|вожден", r"driv|machin|vehicle"),
-    "storage": (r"sakla", r"хран", r"\bstor|\bkeep"),
+    # Не «bağırsakları» (кишечник): «sakla» — с начала слова (очередь 03.11.2026).
+    "storage": (r"\bsakla", r"хран", r"\bstor|\bkeep"),
     "refrigerator": (r"buzdolab", r"холодильн", r"refrigerat|fridge"),
     # Не «dondurma» — мороженое (но «dondurmayınız» — не замораживать).
     "freeze": (r"dondur(?!ma(?:\b|l[ıi]))|donmu[sş]", r"замора|морозил|заморож", r"freez|frozen"),
@@ -332,7 +333,10 @@ _AT_LEAST = {
         r"\ben az\s+(?:\d|yarım|bir\b|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on\b|yirmi|otuz|kırk|elli|birkaç)"
         r"(?![^.;]{0,30}geç(?:meden|memiş))(?!\S*\s*'?\s*(?:inden|ından|nden|ndan)\b)(?!\S*\s+ila\b)"
         # Диапазон частоты «En az 10 kişide birinden fazla, fakat 100 kişide birden az» (очередь 27.10.2026).
-        r"(?![^.;]{0,50}\bfakat\b)",
+        r"(?![^.;]{0,50}\bfakat\b)"
+        # Частота ≥1/10 «En az 10 kişiden birini etkiler» — «более чем у 1 из 10», а не потерянная
+        # граница; название частоты сверяет frequency_mismatch (очередь 03.11.2026).
+        r"(?!\S*\s+(?:kişi|hasta)\w*\s+(?:bir|1)\S*\s+etki)",
         re.IGNORECASE,
     ),
     "ru": re.compile(

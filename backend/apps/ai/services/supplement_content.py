@@ -70,6 +70,9 @@ _PIECE_WORDS = {
     "flakon": "vial", "ampul": "ampoule", "doz": "dose", "kasik": "dose",
     "poset": "bag", "tup": "tube", "puf": "dose", "flaster": "patch", "bar": "bar", "servis": "serving",
     "adet": "piece", "jel": "piece",
+    # Названия без турецкого источника — уже русские: «… 60 капсул», «… 90 таблеток» (очередь 03.11.2026).
+    "капсула": "capsule", "капсулы": "capsule", "капсул": "capsule",
+    "таблетка": "tablet", "таблетки": "tablet", "таблеток": "tablet", "саше": "sachet",
 }
 _VOLUME_WORDS = {"ml": ("мл", "ml"), "g": ("г", "g"), "gr": ("г", "g"), "gram": ("г", "g"), "mg": ("мг", "mg")}
 # Признак формы у штучной фасовки: «20 шипучих таблеток», «60 мягких капсул».
@@ -97,7 +100,7 @@ _NUMBER = r"\d+(?:[.,]\d+)?"
 _PACK_RE = re.compile(
     rf"(?<![\d.,])(?P<count>{_NUMBER})\s*(?:x\s*(?P<size>{_NUMBER})\s*)?"
     # «60 Böğürtlen Aromalı Çiğnenebilir Jel Form» — вкус между числом и формой; «20 poşet+1 araç» — набор.
-    r"(?P<unit>(?:[a-z]+ ){0,2}cignenebilir jel(?: form)?|jel form|cigneme tableti?|efervesan tablet|stick sase|[a-z]+)"
+    r"(?P<unit>(?:[a-z]+ ){0,2}cignenebilir jel(?: form)?|jel form|cigneme tableti?|efervesan tablet|stick sase|[a-zа-яё]+)"
     rf"(?P<tail>(?:\s*/?\s*{_CONTAINERS}\b)*)(?:\s*\+\s*\d+\s*arac)?\s*$"
 )
 
@@ -686,6 +689,14 @@ def _brand(answer: Any, source_name: str) -> tuple[str, bool]:
         key(w) for w in candidate
     ]:
         return " ".join(words[: len(candidate)]).rstrip(",;:"), True
+    # Название без турецкого источника начинается по-русски («Фолиевая кислота ANEVITA 90 таблеток»):
+    # бренд модели — где угодно в названии, иначе первое слово «Фолиевая» становилось брендом
+    # и название — «Фолиевая Фолиевая кислота» (очередь 03.11.2026).
+    if candidate and words and CYRILLIC_RE.search(words[0]):
+        size = len(candidate)
+        for start in range(1, len(words) - size + 1):
+            if [key(w) for w in words[start:start + size]] == [key(w) for w in candidate]:
+                return " ".join(words[start:start + size]).rstrip(",;:"), True
     return (words[0].rstrip(",;:") if words else ""), False
 
 
