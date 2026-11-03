@@ -147,18 +147,6 @@ class ScraperConfigAdmin(admin.ModelAdmin):
             {"fields": ["sync_enabled", "sync_interval_hours"], "classes": ["collapse"]},
         ),
         (
-            "AI обработка (не используется)",
-            {
-                "fields": ["ai_on_create_enabled", "ai_on_update_enabled"],
-                "classes": ["collapse"],
-                # Колонки оставлены в БД: удаление требует миграции и полного релиза.
-                "description": (
-                    "Флаги ни на что не влияют: AI после парсинга автоматически не "
-                    "запускается, только вручную (см. AI_GUIDE.md)."
-                ),
-            },
-        ),
-        (
             "Дополнительные настройки",
             {
                 "fields": [
@@ -197,8 +185,6 @@ class ScraperConfigAdmin(admin.ModelAdmin):
         "total_runs",
         "successful_runs",
         "total_products_scraped",
-        "ai_on_create_enabled",
-        "ai_on_update_enabled",
     ]
 
     actions = ["run_selected_scrapers", "enable_scrapers", "disable_scrapers"]

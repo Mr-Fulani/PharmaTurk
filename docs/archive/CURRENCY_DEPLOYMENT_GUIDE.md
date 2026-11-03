@@ -2,8 +2,8 @@
 
 > **Архивный документ.** Команды и зависимости ниже относятся к прежнему
 > стеку и не являются исполняемым production runbook. Для текущего окружения
-> используйте [DEPLOY.md](DEPLOY.md), [README-DEV.md](README-DEV.md) и
-> [CELERY_TASKS.md](CELERY_TASKS.md); валютный workflow нужно перепроверить по
+> используйте [DEPLOY.md](../../DEPLOY.md), [README-DEV.md](../../README-DEV.md) и
+> [CELERY_TASKS.md](../../CELERY_TASKS.md); валютный workflow нужно перепроверить по
 > коду перед выполнением любых операций с данными.
 
 ## 🚀 Инструкция по развертыванию

@@ -2,7 +2,7 @@
 
 > **Архивный документ. Не исполнять как checklist.** Он описывает устаревшие
 > Python/Django/Celery зависимости и пути. Актуальные release gates находятся
-> в [DEPLOY.md](DEPLOY.md) и [docs/ROADMAP.md](docs/ROADMAP.md).
+> в [DEPLOY.md](../../DEPLOY.md) и [docs/ROADMAP.md](../ROADMAP.md).
 
 ## ✅ Предварительные требования
 

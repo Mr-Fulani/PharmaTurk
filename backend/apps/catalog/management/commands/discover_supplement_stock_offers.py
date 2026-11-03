@@ -74,8 +74,6 @@ class Command(BaseCommand):
                 "timeout": 15,
                 "max_retries": 1,
                 "sync_enabled": False,
-                "ai_on_create_enabled": False,
-                "ai_on_update_enabled": False,
                 "use_proxy": True,
                 "user_agent": AkakceParser.FIXED_USER_AGENT,
             },
