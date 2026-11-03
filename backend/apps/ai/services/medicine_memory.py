@@ -796,9 +796,17 @@ def section_paragraph_problems(source: str, ru: str, en: str, brand: str = "") -
     # «İ» («LUCRİN DEPOT») метку не получал, и цифры бренда считались потерянными (очередь 26.10.2026).
     if brand:
         glued = re.compile("".join("[Iİıi]" if char in "Iİıi" else re.escape(char) for char in brand), re.IGNORECASE)
-        keys = [glued.sub(BRAND_TOKEN, key) for key in keys]
-        ru_texts = [glued.sub(BRAND_TOKEN, text) for text in ru_texts]
-        en_texts = [glued.sub(BRAND_TOKEN, text) for text in en_texts]
+
+        # Склеенный бренд в источниках — заглавными; внутри обычного слова («Sefalosporin» для SEF,
+        # «Enoksaparin» для OKSAPAR) — не бренд, только отдельным словом (очередь 03.11.2026).
+        def glued_brand(match: re.Match) -> str:
+            text, start, end = match.string, match.start(), match.end()
+            alone = not (start and text[start - 1].isalnum()) and not (end < len(text) and text[end].isalnum())
+            return BRAND_TOKEN if alone or not any(char.islower() for char in match.group(0)) else match.group(0)
+
+        keys = [glued.sub(glued_brand, key) for key in keys]
+        ru_texts = [glued.sub(glued_brand, text) for text in ru_texts]
+        en_texts = [glued.sub(glued_brand, text) for text in en_texts]
         # Бренд кириллицей («ИЗОПТИНÒ», «МИКЛАСТ», «ИНФЛАКОРТом») — тоже бренд: так переводили записи
         # памяти до метки {BRAND} (очередь модерации 27.10.2026: 20 разделов «потеряна метка»).
         letters = _latin_letters(brand, "tr")

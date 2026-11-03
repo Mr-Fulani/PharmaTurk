@@ -1108,7 +1108,15 @@ def paragraph_brand(name: Any, active_ingredient: Any = "") -> str:
     Пусто, если короче 3 букв или совпадает с МНН: «IBUPROFEN 400 MG» — это
     вещество, и в переводе оно должно стать «ибупрофеном», а не меткой.
     """
-    brand = " ".join(_brand_tokens(re.sub(r"[()]", " ", str(name or "")).split(), legacy=True))
+    tokens = re.sub(r"[()]", " ", str(name or "")).split()
+    brand_tokens = _brand_tokens(tokens, legacy=True)
+    extra = tokens[len(brand_tokens):]
+    # «ERTES 72 1,5 MG 1 TABLET» — число без единицы, за которым сразу дозировка, — часть названия:
+    # без него «72» терялось в переводе абзацев (очередь 03.11.2026). «CAPD 18 STAY SAFE» — как раньше.
+    if brand_tokens and len(extra) >= 2 and re.fullmatch(r"\d+", extra[0]) and extra[1][:1].isdigit():
+        brand_tokens = brand_tokens + extra[:1]
+    # «FLEBOGAMMA% 10 DIF» — знак от концентрации, а не бренд: в переводе было «FLEBOGAMMA% %10».
+    brand = " ".join(brand_tokens).rstrip("%")
     words = set(re.findall(r"[a-z]+", fold_tr(brand)))
     if sum(map(len, words)) < 3:
         return ""
