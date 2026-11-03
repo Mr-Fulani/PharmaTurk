@@ -1,3 +1,4 @@
+import logging
 import re
 from rest_framework import serializers
 from django.contrib.auth import authenticate
@@ -6,6 +7,8 @@ from django.conf import settings
 from .models import User, UserAddress, UserSession
 from django.utils import timezone
 from urllib.parse import urlparse, quote
+
+logger = logging.getLogger(__name__)
 
 
 def _build_proxy_media_url(file_field, request):
@@ -467,8 +470,11 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             ).first()
             if testimonial and testimonial.author_avatar:
                 return _build_proxy_media_url(testimonial.author_avatar, request)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "User %s: testimonial avatar unavailable: %s: %s",
+                obj.pk, type(exc).__name__, exc,
+            )
         return None
     
     def get_total_orders(self, obj):

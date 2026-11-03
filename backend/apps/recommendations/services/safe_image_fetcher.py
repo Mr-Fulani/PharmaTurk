@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import re
 import socket
 import ssl
@@ -17,6 +18,7 @@ from PIL import Image
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.util import Timeout
 
+logger = logging.getLogger(__name__)
 
 MAX_URL_LENGTH = 2048
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -245,8 +247,9 @@ def _open_pinned_response(
         if response is not None:
             try:
                 response.release_conn()
-            except Exception:
-                pass
+            except Exception as exc:
+                # Очистка после ответа: исходный результат или ошибка важнее.
+                logger.debug("Image fetch release_conn failed: %s", type(exc).__name__)
         pool.close()
 
 
@@ -407,7 +410,8 @@ def _load_exact_temp_image(url: str, request: object | None) -> ValidatedImage |
         generated_url = default_storage.url(key)
         if not generated_url.startswith(("http://", "https://")):
             generated_url = request.build_absolute_uri(generated_url)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Temp image URL for %s unavailable: %s: %s", key, type(exc).__name__, exc)
         return None
     if url != generated_url:
         return None
