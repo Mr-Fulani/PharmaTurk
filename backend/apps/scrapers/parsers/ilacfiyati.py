@@ -219,6 +219,22 @@ class IlacFiyatiParser(BaseScraper):
         "Sitemizde yer alan içerik bilgi amaçlı",
     )
 
+    # До 03.11.2026 раздел резался на 12 000 знаках, и у длинных инструкций («Kullanmadan
+    # Dikkat Edilecekler» ESRAM — 13 349, PSENAC — 15 528) противопоказания кончались на
+    # полуслове. Предел — только от мусора: на самых длинных страницах до ~16 000.
+    TAB_TEXT_LIMIT = 60000
+
+    # Часть страниц (дубли «…-2»: sinoretik-30-tablet-2) отдаёт раздел одним текстовым
+    # узлом: теги вырезаны вместе с пробелами — «…alerjiniz varsa.ADE inhibitörleri…»,
+    # «KULLANMAYINIZEğer;», «AmeliyatlarEğer». Строка начинается там, где знак препинания
+    # или слово примыкает к заглавной букве без пробела: так у SINORETIK-2 96 % строк
+    # совпали со строками обычной страницы. Только для раздела в одну строку — у обычной
+    # страницы ключи памяти переводов не меняются (и «FlexPen» не режется).
+    GLUED_LINE_BREAK = re.compile(
+        r"(?<=[a-zçğıöşü)][.!?:;,)])(?=[A-ZÇĞİÖŞÜ(])|(?<=\.\.)(?=[A-ZÇĞİÖŞÜ])"
+        r"|(?<=[A-ZÇĞİÖŞÜ]{2})(?=[A-ZÇĞİÖŞÜ][a-zçğıöşü])|(?<=[a-zçğıöşü]{3})(?=[A-ZÇĞİÖŞÜ])"
+    )
+
     # Теги, с которых в тексте раздела начинается новая строка. Остальные
     # (<b>, <sup>, <sub>, <a>, <i>, <span>…) строчные: их текст остаётся в строке.
     BLOCK_TAGS = frozenset({
@@ -519,6 +535,8 @@ class IlacFiyatiParser(BaseScraper):
         text = str(text or "").strip()
         if not text:
             return ""
+        if "\n" not in text:
+            text = self.GLUED_LINE_BREAK.sub("\n", text)
         kept = []
         for line in re.split(r"\n+|(?<=\.)\s{2,}", text):
             line = clean_text(line)
@@ -531,7 +549,9 @@ class IlacFiyatiParser(BaseScraper):
             kept.append(line)
         text = "\n".join(kept)
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
-        return text[:12000]
+        if len(text) > self.TAB_TEXT_LIMIT:
+            self.logger.warning(f"Раздел длиннее {self.TAB_TEXT_LIMIT} знаков ({len(text)}) обрезан")
+        return text[:self.TAB_TEXT_LIMIT]
 
     def _block_text(self, node: Tag) -> str:
         """Текст узла: новая строка только на границе блочного элемента (BLOCK_TAGS).
