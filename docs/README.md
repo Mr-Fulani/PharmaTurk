@@ -94,7 +94,6 @@
 - [AI_TEMPLATES.md](../AI_TEMPLATES.md) — AI-шаблоны;
 - [AI_TEST_COMMANDS.md](../AI_TEST_COMMANDS.md) и [AI_QUICK_TEST.md](../AI_QUICK_TEST.md) — специализированные проверки;
 - [PERSONALIZED_RECOMMENDATIONS.md](PERSONALIZED_RECOMMENDATIONS.md) — что требуется до включения настоящей персонализации;
-- [ml_service/README.md](../ml_service/README.md) — заглушка отдельного ML-сервиса (не используется, backend работает с LLM/Qdrant напрямую);
 - [CELERY_TASKS.md](../CELERY_TASKS.md) — очереди и расписание Celery.
 
 AI и VAPI HTTP API являются административными и требуют staff-пользователя. Наличие документа с примером endpoint не означает публичный доступ.
