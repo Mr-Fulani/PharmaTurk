@@ -71,7 +71,7 @@ def _category(slug, parent=None):
 
 def _shoe(category, *, variants=2, with_attribute=True):
     domain = ShoeProduct.objects.create(
-        name=f"Shoe {uuid4().hex[:6]}",
+        name=f"Кроссовки {uuid4().hex[:6]}",
         slug=f"shoe-{uuid4().hex}",
         description="Кожаные кроссовки",
         category=category,
@@ -240,6 +240,24 @@ def test_untranslated_color_and_supplier_codes_stay_out_of_feed(rub_rate):
         assert "SKU-2" not in description
         assert "ZX-77" not in description
         assert "Артикул" not in description
+
+
+@pytest.mark.django_db
+def test_products_without_russian_text_stay_out_of_feed(rub_rate):
+    root_cat = _category("clothing")
+    translated = _shoe(root_cat, variants=1)
+    turkish_name = _shoe(root_cat, variants=1)
+    turkish_description = _shoe(root_cat, variants=1)
+    without_description = _shoe(root_cat, variants=0)
+    Product.objects.filter(pk=turkish_name.pk).update(
+        name="Erkek 3 Adet Tişört Paketi", description="<p>%100 pamuklu kumaşı</p>"
+    )
+    Product.objects.filter(pk=turkish_description.pk).update(description="<p>Yumuşak ve konforlu</p>")
+    Product.objects.filter(pk=without_description.pk).update(description="")
+
+    ids = {o.attrib["id"].split("v")[0] for o in _offers(_parse(yml_feed.iter_yml_feed(root_cat.slug)))}
+
+    assert ids == {str(translated.id), str(without_description.id)}
 
 
 @pytest.mark.django_db
