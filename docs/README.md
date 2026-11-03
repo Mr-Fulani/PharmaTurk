@@ -106,7 +106,6 @@ AI и VAPI HTTP API являются административными и тр�
 - [MEDICINE_PARSER_CATEGORIES.md](MEDICINE_PARSER_CATEGORIES.md) — как парсер выбирает категорию медикамента;
 - [PARSER_CATALOG_AUDIT_2026-09-14.md](PARSER_CATALOG_AUDIT_2026-09-14.md) — проверка парсеров 14.09 и перенос исправлений в main 17.10;
 - [INSTAGRAM_PARSER_GUIDE.md](../INSTAGRAM_PARSER_GUIDE.md) и [quickstart](../backend/INSTAGRAM_PARSER_QUICKSTART.md);
-- [PARSER_R2_GUIDE.md](../PARSER_R2_GUIDE.md) — storage для результатов парсинга;
 - [UMMALAND_PARSER_GUIDE.md](../UMMALAND_PARSER_GUIDE.md) — доменный parser guide.
 
 Любой реальный запуск парсера сначала выполняйте в dry-run/ограниченном режиме: внешние сайты и их правила меняются независимо от репозитория.
@@ -114,21 +113,19 @@ AI и VAPI HTTP API являются административными и тр�
 ### Валюты и администрирование
 
 - [CURRENCY_ADMIN_GUIDE.md](../CURRENCY_ADMIN_GUIDE.md) — ориентир по работе через admin; перед изменением данных сверять модели и поля с текущим кодом;
-- [CATALOG_ADMIN_ACTIONS_GUIDE.md](../CATALOG_ADMIN_ACTIONS_GUIDE.md), [CATEGORY_ADMIN_GUIDE.md](../CATEGORY_ADMIN_GUIDE.md), [ADMIN_BOOKS_ANALYSIS.md](../ADMIN_BOOKS_ANALYSIS.md).
+- [CATALOG_ADMIN_ACTIONS_GUIDE.md](../CATALOG_ADMIN_ACTIONS_GUIDE.md), [CATEGORY_ADMIN_GUIDE.md](../CATEGORY_ADMIN_GUIDE.md).
 
 ## Исторические и проектные материалы
 
-Следующие файлы фиксируют анализ или состояние на момент конкретной работы. Они не заменяют текущий roadmap и могут ссылаться на старые версии/архитектуру:
+Файлы в [archive/](archive/) (перенесены из корня репозитория 03.11.2026, TD-023) фиксируют анализ или состояние на момент конкретной работы. Они не заменяют текущий roadmap и могут ссылаться на старые версии/архитектуру:
 
-- [ADMIN_IMPROVEMENTS_SUMMARY.md](../ADMIN_IMPROVEMENTS_SUMMARY.md);
-- [CATALOG_REFACTORING_STATUS.md](../CATALOG_REFACTORING_STATUS.md);
-- [CATEGORY_ARCHITECTURE_ANALYSIS.md](../CATEGORY_ARCHITECTURE_ANALYSIS.md);
-- [CURRENCY_CONVERSION_PLAN.md](../CURRENCY_CONVERSION_PLAN.md);
-- [CURRENCY_SYSTEM_GUIDE.md](../CURRENCY_SYSTEM_GUIDE.md), [CURRENCY_DEPLOYMENT_GUIDE.md](../CURRENCY_DEPLOYMENT_GUIDE.md) и [deployment checklist](../CURRENCY_DEPLOYMENT_CHECKLIST.md) — явно архивные, команды не исполнять без пересверки;
-- [CURRENCY_SYSTEM_READY.md](../CURRENCY_SYSTEM_READY.md);
-- [INSTAGRAM_PARSER_IMPLEMENTATION.md](../INSTAGRAM_PARSER_IMPLEMENTATION.md);
-- [INSTAGRAM_PARSER_SUMMARY.md](../INSTAGRAM_PARSER_SUMMARY.md);
-- [REFACTORING_PLAN.md](../REFACTORING_PLAN.md).
+- [ADMIN_BOOKS_ANALYSIS.md](archive/ADMIN_BOOKS_ANALYSIS.md), [ADMIN_IMPROVEMENTS_SUMMARY.md](archive/ADMIN_IMPROVEMENTS_SUMMARY.md);
+- [CATALOG_REFACTORING_STATUS.md](archive/CATALOG_REFACTORING_STATUS.md), [REFACTORING_PLAN.md](archive/REFACTORING_PLAN.md);
+- [CATEGORY_ARCHITECTURE_ANALYSIS.md](archive/CATEGORY_ARCHITECTURE_ANALYSIS.md);
+- [CURRENCY_CONVERSION_PLAN.md](archive/CURRENCY_CONVERSION_PLAN.md), [CURRENCY_SYSTEM_READY.md](archive/CURRENCY_SYSTEM_READY.md);
+- [CURRENCY_SYSTEM_GUIDE.md](archive/CURRENCY_SYSTEM_GUIDE.md), [CURRENCY_DEPLOYMENT_GUIDE.md](archive/CURRENCY_DEPLOYMENT_GUIDE.md) и [deployment checklist](archive/CURRENCY_DEPLOYMENT_CHECKLIST.md) — команды не исполнять без пересверки;
+- [INSTAGRAM_PARSER_IMPLEMENTATION.md](archive/INSTAGRAM_PARSER_IMPLEMENTATION.md), [INSTAGRAM_PARSER_SUMMARY.md](archive/INSTAGRAM_PARSER_SUMMARY.md);
+- [PARSER_R2_GUIDE.md](archive/PARSER_R2_GUIDE.md) — только отсылка к [SCRAPERS_GUIDE.md](../SCRAPERS_GUIDE.md).
 
 Информация о Next.js 14, Django 4.2, 18 категориях, OpenSearch, Coinbase, ЮKassa/CloudPayments, Grafana или ELK в старых материалах не описывает текущий baseline автоматически. Подтверждённый baseline приведён в [README.md](../README.md).
 
