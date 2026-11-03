@@ -12,6 +12,14 @@ logger = logging.getLogger(__name__)
 VISUAL_SEARCH_QUEUE = "recsys_search"
 
 
+def _log_storage_check_failed(product, name, exc) -> None:
+    """Файл не проверился в хранилище — берём следующий кандидат, причина в журнале."""
+    logger.warning(
+        "Product %s: storage check for %s failed: %s: %s",
+        getattr(product, "pk", None), name, type(exc).__name__, exc,
+    )
+
+
 def _working_product_image_url(product):
     """Выбрать существующий storage-файл, не возвращая битый parsed URL."""
     from django.core.files.storage import default_storage
@@ -23,8 +31,8 @@ def _working_product_image_url(product):
         try:
             if default_storage.exists(main_name):
                 return main_file.url
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_storage_check_failed(product, main_name, exc)
 
     main_url = str(getattr(product, "main_image", "") or "")
     if main_url:
@@ -34,8 +42,8 @@ def _working_product_image_url(product):
         try:
             if path and default_storage.exists(path):
                 return main_url
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_storage_check_failed(product, path, exc)
 
     first_img = product.images.exclude(image_file="").first()
     image_file = getattr(first_img, "image_file", None) if first_img else None
@@ -43,8 +51,8 @@ def _working_product_image_url(product):
     try:
         if image_name and default_storage.exists(image_name):
             return image_file.url
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_storage_check_failed(product, image_name, exc)
     return ""
 
 
