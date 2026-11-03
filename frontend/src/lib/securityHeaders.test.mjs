@@ -78,6 +78,14 @@ test('reports from 30-31.10.2026 are covered: Metrika mirror and browser transla
   assert.match(directive('style-src'), /https:\/\/www\.gstatic\.com/)
 })
 
+test('report from 03.11.2026 is covered: product videos from IKEA and umma-land', async () => {
+  const csp = cspValue(await headersFor('production'))
+  const mediaSrc = csp.split('; ').find((part) => part.startsWith('media-src ')) || ''
+
+  assert.match(mediaSrc, /https:\/\/www\.ikea\.com/)
+  assert.match(mediaSrc, /https:\/\/umma-land\.com/)
+})
+
 test('dev server gets no CSP (Next dev needs eval and HMR sockets)', async () => {
   assert.equal(cspValue(await headersFor('development')), undefined)
 })

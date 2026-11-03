@@ -21,7 +21,8 @@ const buildCsp = ({ scriptExtra = '' } = {}) => [
   // Картинки товаров приходят с многих доменов источников — https: целиком.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https://fonts.gstatic.com",
-  "media-src 'self' blob: https://cdn.mudaroba.com",
+  // Видео товаров IKEA (678) и книг umma-land лежат у источника — отчёт media-src 03.11.2026.
+  "media-src 'self' blob: https://cdn.mudaroba.com https://www.ikea.com https://umma-land.com",
   "connect-src 'self' https://cdn.mudaroba.com https://*.google-analytics.com https://*.analytics.google.com" +
     ' https://*.googletagmanager.com https://*.g.doubleclick.net https://www.google.com' +
     ' https://mc.yandex.ru https://mc.yandex.com https://accounts.google.com https://cloudflareinsights.com' +
