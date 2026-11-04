@@ -31,6 +31,7 @@ docker exec mudaroba-backend-1 poetry run python manage.py <команда> [ф�
 | --- | --- |
 | [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) | `repair_broken_media`, `assign_manufacturer_brands`, `repair_flo_brands`, `clear_heuristic_old_prices`, `recalc_colour_prices`, `repair_lcw_names`, `retire_stale_domain_records`, `move_essential_oils_from_supplements` |
 | [CROSS_SOURCE_DUPLICATES.md](CROSS_SOURCE_DUPLICATES.md) | `resolve_cross_source_duplicates` — одинаковые товары FLO ↔ SuperStep (показ по умолчанию, `--apply --backup`, откат `--unhide-all`) |
+| [ILACFIYATI_TWIN_PAGES.md](ILACFIYATI_TWIN_PAGES.md) | `hide_ilacfiyati_twin_pages` — две страницы ilacfiyati одного препарата (показ по умолчанию, `--csv`, `--apply --backup`) |
 | [CONTROLLED_SUBSTANCES.md](CONTROLLED_SUBSTANCES.md) | `refresh_import_restrictions` |
 | [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | `audit_source_offer_rollout`, `discover_supplement_stock_offers` |
 | [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) | `backfill_furniture_attributes` |

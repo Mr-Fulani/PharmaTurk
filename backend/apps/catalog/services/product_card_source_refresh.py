@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from django.conf import settings
 from django.core.cache import cache
@@ -46,6 +46,7 @@ from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.registry import get_parser
 from apps.scrapers.services import (
     BRAND_CLEAR_PRODUCT_TYPES,
+    DEFAULT_ASSUMED_STOCK_QUANTITY,
     ScraperIntegrationService,
     get_or_create_scraped_brand,
 )
@@ -85,6 +86,8 @@ REFERENCE_ONLY_SOURCES = frozenset({"ilacfiyati"})
 SINGLE_OFFER_REFRESH_SOURCES = frozenset({"akakce"})
 # Обновление карточки открывает только цвет предложения, а не всю группу цветов.
 SINGLE_COLOR_REFRESH_SOURCES = frozenset({"flo", "superstep"})
+# Сколько запросов к источнику может сделать одно обновление карточки.
+REFRESH_REQUEST_CHAIN = {"superstep": 3}
 FASHION_PRODUCT_TYPES = frozenset(
     {"clothing", "shoes", "headwear", "underwear", "islamic_clothing"}
 )
@@ -414,6 +417,7 @@ class ProductCardSourceRefreshService:
 
         terminal = self._terminal_failure(target)
         if terminal is not None:
+            self._apply_terminal_absence(target)
             return {"eligible": True, **self._set_state(product.pk, terminal)}
 
         existing = _cache_get(self._state_key(product.pk))
@@ -557,6 +561,8 @@ class ProductCardSourceRefreshService:
                         target.offer.canonical_url,
                         include_sibling_variants=False,
                     )
+                    if result is None and target.parser_key == "superstep":
+                        result = self._superstep_after_missing_card(parser, target)
                 else:
                     result = parser.parse_product_detail(target.offer.canonical_url)
         except (OfferNotFound, OfferGone) as exc:
@@ -590,6 +596,22 @@ class ProductCardSourceRefreshService:
                 retryable=True,
             )
         return result
+
+    @staticmethod
+    def _superstep_after_missing_card(parser, target: RefreshTarget) -> ScrapedProduct | None:
+        """Карточка SuperStep не открылась (404): снят ли цвет, решает поиск ``check_offer``.
+
+        Ссылка цвета — ссылка одного из размеров, её 404 ещё не значит, что цвет
+        снят. Адрес, только что ответивший 404, повторно не запрашивается: сразу
+        поиск цвета по коду модели (та же часть ``check_offer``). Нет в поиске —
+        ``OfferNotFound`` («не найден»); есть по той же ссылке или поиск не ответил —
+        повторяемый сбой. Нашёлся по другой ссылке — карточка разбирается из уже
+        полученного ответа, без второго запроса.
+        """
+        card = parser._relocated_offer_card(SourceOfferVerificationService._context(target.offer))
+        moved_url = urljoin(parser.base_url + "/", str(card["product"].get("absolute_url") or ""))
+        parser._card = lambda _url: card  # siblings выключены — других карточек разбор не открывает
+        return parser.parse_product_detail(moved_url, include_sibling_variants=False)
 
     @staticmethod
     def _single_offer_product(
@@ -809,7 +831,9 @@ class ProductCardSourceRefreshService:
             return 0
         if snapshot and snapshot.stock_precision == ProductSourceOffer.StockPrecision.EXACT:
             return snapshot.stock_quantity
-        return None
+        # Как импорт: «есть» без точного числа — условный остаток, а не None, иначе
+        # следующий проход парсера каждый раз «обновлял» бы товар.
+        return DEFAULT_ASSUMED_STOCK_QUANTITY
 
     def _sync_fashion_inventory(
         self,
@@ -851,6 +875,7 @@ class ProductCardSourceRefreshService:
 
             raw_sizes = spec.get("sizes") if isinstance(spec.get("sizes"), list) else []
             normalized_sizes: list[dict[str, Any]] = []
+            exact_sizes: list[bool] = []
             for size_index, raw_size in enumerate(raw_sizes):
                 if not isinstance(raw_size, dict):
                     continue
@@ -859,6 +884,9 @@ class ProductCardSourceRefreshService:
                     continue
                 snapshot = by_option.get((external_id, size_name))
                 available = self._availability(snapshot, raw_size.get("is_available"))
+                exact_sizes.append(
+                    bool(snapshot and snapshot.stock_precision == ProductSourceOffer.StockPrecision.EXACT)
+                )
                 normalized_sizes.append(
                     {
                         "size": size_name,
@@ -871,14 +899,18 @@ class ProductCardSourceRefreshService:
             variant_snapshot = by_option.get((external_id, ""))
             if normalized_sizes:
                 available = any(row["is_available"] for row in normalized_sizes)
-                exact_values = [
-                    row["stock_quantity"]
-                    for row in normalized_sizes
-                    if row["is_available"] and row["stock_quantity"] is not None
+                in_stock = [
+                    (row, exact) for row, exact in zip(normalized_sizes, exact_sizes) if row["is_available"]
                 ]
-                stock = sum(exact_values) if available and len(exact_values) == sum(
-                    1 for row in normalized_sizes if row["is_available"]
-                ) else (0 if not available else None)
+                if not available:
+                    stock = 0
+                elif all(exact for _row, exact in in_stock):
+                    # Точный остаток (IKEA) — сумма размеров.
+                    stock = sum(int(row["stock_quantity"] or 0) for row, _exact in in_stock)
+                else:
+                    # Как импорт: у цвета «есть» без точного числа — один условный
+                    # остаток, а не 1000 на каждый размер.
+                    stock = DEFAULT_ASSUMED_STOCK_QUANTITY
             else:
                 available = self._availability(variant_snapshot, spec.get("is_available"))
                 stock = self._stock(variant_snapshot, available=available)
@@ -1041,6 +1073,31 @@ class ProductCardSourceRefreshService:
                 counts["variants_updated"] += 1
         return counts
 
+    def _apply_terminal_absence(self, target: RefreshTarget) -> None:
+        """«Не найден» мог первым получить Список заявки (``cart/revalidate``): он
+        пишет только предложение, а товар оставался «в наличии» — карточка снимает
+        URL с продажи здесь. Повторно, пока снятое уже снято, ничего не пишется."""
+        if not self._absence_pending(target):
+            return
+        try:
+            self._on_source_not_found(target)
+        except Exception:
+            logger.exception(
+                "product_card_source_unavailable_persist_failed",
+                extra={"product_id": target.product.pk, "source": target.parser_key},
+            )
+
+    def _absence_pending(self, target: RefreshTarget) -> bool:
+        product = Product.objects.filter(pk=target.product.pk).only("pk", "is_available", "product_type").first()
+        if product is None:
+            return False
+        variant_key = str(target.offer.variant_key or "").strip()
+        if variant_key and product.product_type in FASHION_PRODUCT_TYPES:
+            domain = product.domain_item
+            if domain is not product and hasattr(domain, "variants"):
+                return domain.variants.filter(external_id=variant_key, is_available=True).exists()
+        return bool(product.is_available)
+
     def _on_source_not_found(self, target: RefreshTarget) -> dict[str, int]:
         """Что делать, когда источник окончательно не нашёл открытый URL.
 
@@ -1146,6 +1203,10 @@ class ProductCardSourceRefreshService:
                     values["stock_quantity"] = 0
                 domain_product.__class__.objects.filter(pk=domain_product.pk).update(**values)
 
+        if product.product_type in FASHION_PRODUCT_TYPES and (variants_updated or product_updated):
+            # Снятый цвет мог быть показан вместо скрытого дубля другого продавца:
+            # пересчёт дублей (с проверкой у продавца) вернёт пару сразу, а не после импорта.
+            transaction.on_commit(lambda: resolve_duplicates_for_products([product.pk]))
         return {
             "offers_updated": offers_updated,
             "variants_updated": variants_updated,
@@ -1193,11 +1254,18 @@ class ProductCardSourceRefreshService:
             if ScraperIntegrationService.variants_carry_old_price(specs):
                 old_price = _decimal(default.old_price)
             old_price = source_old_price(old_price, price)
-        any_available = any(row.is_available for row in variants)
-        if any_available != available:
-            # Точный остаток проверенного цвета не равен остатку карточки.
-            available, stock = any_available, (None if any_available else 0)
+        # Наличие и остаток — формулой импорта (_sync_fashion_variants): иначе
+        # следующий проход парсера каждый раз «обновлял» бы товар.
+        available = any(row.is_available for row in variants)
+        total_stock = sum(row.stock_quantity or 0 for row in variants if row.stock_quantity)
+        stock = DEFAULT_ASSUMED_STOCK_QUANTITY if available else (total_stock if total_stock > 0 else None)
         return price, old_price, currency, available, stock
+
+    @staticmethod
+    def _exact_stock(snapshots: list[SourceOfferSnapshot]) -> bool:
+        return bool(snapshots) and all(
+            row.stock_precision == ProductSourceOffer.StockPrecision.EXACT for row in snapshots
+        )
 
     @staticmethod
     def _aggregate_stock(snapshots: list[SourceOfferSnapshot]) -> tuple[bool, int | None]:
@@ -1295,6 +1363,12 @@ class ProductCardSourceRefreshService:
         # текущей (DEVELOPMENT_RULES §5.1): акция закончилась — old_price пустой.
         old_price = source_old_price(_decimal(scraped.old_price), price)
         available, stock = self._aggregate_stock(snapshots)
+        if scraped.stock_quantity is not None and not self._exact_stock(snapshots):
+            # Как импорт (_update_existing_product): остаток товара из ответа
+            # парсера (SuperStep, LCW — 1000 или 0), а не None, иначе следующий
+            # проход парсера каждый раз «обновлял» бы товар.
+            stock = max(int(scraped.stock_quantity), 0)
+            available = stock > 0
         attrs = scraped.attributes if isinstance(scraped.attributes, dict) else {}
         counts = {"variants_created": 0, "variants_updated": 0, "sizes_created": 0, "sizes_updated": 0}
 
@@ -1404,6 +1478,7 @@ class ProductCardSourceRefreshService:
 
         terminal = self._terminal_failure(target)
         if terminal is not None:
+            self._apply_terminal_absence(target)
             failed = self._set_state(product_id, terminal)
             self._observe(target.parser_key, "source_not_found", started_at)
             return failed
@@ -1434,7 +1509,10 @@ class ProductCardSourceRefreshService:
                     minimum=0,
                     maximum=2,
                 )
-                slot_ttl = max(10, math.ceil(timeout * (retries + 1) + 5))
+                # Слот держится всю цепочку запросов (у SuperStep после 404 — поиск
+                # и карточка нового адреса).
+                chain = REFRESH_REQUEST_CHAIN.get(target.parser_key, 1)
+                slot_ttl = max(10, math.ceil(timeout * (retries + 1) * chain + 5))
                 with verifier._source_slot(target.parser_key, slot_ttl) as acquired:
                     if not acquired:
                         raise ProductCardRefreshError(

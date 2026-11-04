@@ -15,7 +15,9 @@ from urllib.parse import urlparse
 
 from django.utils import timezone
 
-from .base.listing_changes import GONE, OPEN, KnownProduct, ListingRow, listing_decision
+from .base.listing_changes import (
+    GONE, OPEN, KnownProduct, ListingRow, listing_decision, twin_skip_fingerprint,
+)
 from .models import SourceListingRow
 
 logger = logging.getLogger(__name__)
@@ -184,10 +186,12 @@ class ListingChangeTracker:
             update_fields=update_fields,
         )
 
-    def remember_saved(self, url: str) -> None:
+    def remember_saved(self, url: str, *, twin_skipped: bool = False) -> None:
         fingerprint = self.pending.pop(url, None)
         if fingerprint is None or self.dry_run:
             return
+        if twin_skipped:
+            fingerprint = twin_skip_fingerprint(fingerprint)
         SourceListingRow.objects.filter(parser_key=self.parser_key, url=url).update(
             fingerprint=fingerprint
         )

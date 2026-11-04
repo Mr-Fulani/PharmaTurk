@@ -52,6 +52,7 @@ from .base.catalog_state import CatalogTraversalState
 from .base.listing_snapshot import ListingGuard, record_listing_snapshot
 from .base.offers import OfferGone, OfferNotFound
 from .listing_changes import mark_products_gone
+from . import ilacfiyati_twins
 from .base.scraper import (
     CategoryPageNotFoundError,
     ScrapedProduct,
@@ -1777,7 +1778,7 @@ class ScraperIntegrationService:
                     message=(
                         f"Пропущен без изменений: {scraped_product._medicine_import_skip_reason}"
                         if getattr(scraped_product, "_medicine_import_skip_reason", None)
-                        else f"Товар {action}"
+                        else f"Товар {action}{getattr(scraped_product, '_ilacfiyati_twin_review', '')}"
                     ),
                     scraped_data=scraped_product.to_dict(),
                 )
@@ -2445,8 +2446,48 @@ class ScraperIntegrationService:
                     similar_product,
                 )
 
+        twin_decisions = self._ilacfiyati_twin_decisions(scraped_product)
+        for decision in twin_decisions:
+            if decision.page.pk is None and decision.action == ilacfiyati_twins.HIDE:
+                scraped_product._medicine_import_skip_reason = (
+                    f"вторая страница препарата, на сайте товар {decision.keep.pk}: {decision.reason}"
+                )
+                # Режим «Только изменения» не открывает её снова, пока строка списка та же.
+                scraped_product._ilacfiyati_twin_skipped = True
+                return "skipped", None
+
         # Создаем новый товар
-        return self._create_new_product(session, scraped_product)
+        action, product = self._create_new_product(session, scraped_product)
+        if product is None:
+            return action, product
+        for decision in twin_decisions:
+            if decision.page.pk is not None and decision.keep.pk is not None:
+                continue  # пара уже сохранённых товаров — её покажет команда
+            if decision.action == ilacfiyati_twins.REVIEW:
+                other = decision.keep if decision.page.pk is None else decision.page
+                scraped_product._ilacfiyati_twin_review = (
+                    f"; на проверку: тот же штрихкод у товара {other.pk} — {decision.reason}"
+                )
+                self.logger.warning(
+                    "IlacFiyati: %s и товар %s со штрихкодом %s не объединены: %s",
+                    scraped_product.url, other.pk, scraped_product.barcode, decision.reason,
+                )
+            elif decision.keep.pk is None:
+                # Новая страница с ценой заменяет показанную без цены.
+                ilacfiyati_twins.hide_twin(decision.page.product, product)
+        return action, product
+
+    def _ilacfiyati_twin_decisions(self, scraped_product: ScrapedProduct) -> list:
+        """Решения по новой странице ilacfiyati и показанным товарам с тем же штрихкодом."""
+        if str(scraped_product.source or "").strip().lower() != "ilacfiyati":
+            return []
+        twins = ilacfiyati_twins.active_twins(scraped_product.barcode)
+        if not twins:
+            return []
+        return ilacfiyati_twins.decide_group(
+            [ilacfiyati_twins.page_from_product(product) for product in twins]
+            + [ilacfiyati_twins.page_from_scraped(scraped_product)]
+        )
 
     def _find_existing_product_by_source_url(
         self,
