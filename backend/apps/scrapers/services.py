@@ -4671,6 +4671,14 @@ class ScraperIntegrationService:
         if analog_product is not None:
             field_values["analog_product"] = analog_product
 
+        # Штрихкод или ссылку, занятые другой строкой этого товара, не переносим: у двух упаковок
+        # IBUCOLD источник поменял штрихкоды местами (04.11.2026), и запись падала на уникальности.
+        for field_name in ("barcode", "external_id"):
+            value = field_values[field_name]
+            if (value and getattr(analog, field_name) != value
+                    and qs.filter(**{field_name: value}).exclude(pk=analog.pk).exists()):
+                field_values[field_name] = ""
+
         for field_name, value in field_values.items():
             if value and getattr(analog, field_name) != value:
                 setattr(analog, field_name, value)
@@ -4780,93 +4788,96 @@ class ScraperIntegrationService:
                 continue
 
             try:
-                analog_url = analog_data.get('url', '')
-                analog_external_id = str(
-                    analog_data.get("external_id")
-                    or (urlparse(analog_url).path.rstrip("/").split("/")[-1] if analog_url else "")
-                    or ""
-                ).strip()
-                analog_barcode = str(analog_data.get("barcode") or "").strip()
-                analog_atc_code = str(analog_data.get("atc_code") or "").strip()
-                analog_sgk_code = str(analog_data.get("sgk_equivalent_code") or "").strip()
-                analog_source_tab = str(analog_data.get("source_tab") or "").strip()
+                # Своя точка сохранения: без неё ошибка одного аналога ломает транзакцию
+                # обновления IlacFiyati, и вся карточка молча откатывается (04.11.2026).
+                with transaction.atomic():
+                    analog_url = analog_data.get('url', '')
+                    analog_external_id = str(
+                        analog_data.get("external_id")
+                        or (urlparse(analog_url).path.rstrip("/").split("/")[-1] if analog_url else "")
+                        or ""
+                    ).strip()
+                    analog_barcode = str(analog_data.get("barcode") or "").strip()
+                    analog_atc_code = str(analog_data.get("atc_code") or "").strip()
+                    analog_sgk_code = str(analog_data.get("sgk_equivalent_code") or "").strip()
+                    analog_source_tab = str(analog_data.get("source_tab") or "").strip()
 
-                analog_ref = self._upsert_medicine_analog_reference(
-                    medicine_product,
-                    name=analog_name,
-                    barcode=analog_barcode,
-                    atc_code=analog_atc_code or atc_code,
-                    sgk_equivalent_code=analog_sgk_code,
-                    external_id=analog_external_id,
-                    source=scraped_product.source,
-                    source_tab=analog_source_tab,
-                )
+                    analog_ref = self._upsert_medicine_analog_reference(
+                        medicine_product,
+                        name=analog_name,
+                        barcode=analog_barcode,
+                        atc_code=analog_atc_code or atc_code,
+                        sgk_equivalent_code=analog_sgk_code,
+                        external_id=analog_external_id,
+                        source=scraped_product.source,
+                        source_tab=analog_source_tab,
+                    )
 
-                # Проверяем, существует ли уже такой препарат. Коды надежнее названия:
-                # названия на ilacfiyati часто отличаются процентами, пробелами и упаковкой.
-                existing = self._find_existing_medicine_analog_product(
-                    name=analog_name,
-                    barcode=analog_barcode,
-                    external_id=analog_external_id,
-                    url=analog_url,
-                )
-                if existing:
-                    med = self._get_medicine_product(existing)
-                    updated = False
-                    if analog_barcode and not med.barcode:
-                        med.barcode = analog_barcode[:100]
-                        updated = True
-                    if active_ingredient and not med.active_ingredient:
-                        med.active_ingredient = active_ingredient
-                        updated = True
-                    if (analog_atc_code or atc_code) and not med.atc_code:
-                        med.atc_code = (analog_atc_code or atc_code)[:100]
-                        updated = True
-                    if analog_sgk_code and not med.sgk_equivalent_code:
-                        med.sgk_equivalent_code = analog_sgk_code[:100]
-                        updated = True
-                    if updated:
-                        med.save()
+                    # Проверяем, существует ли уже такой препарат. Коды надежнее названия:
+                    # названия на ilacfiyati часто отличаются процентами, пробелами и упаковкой.
+                    existing = self._find_existing_medicine_analog_product(
+                        name=analog_name,
+                        barcode=analog_barcode,
+                        external_id=analog_external_id,
+                        url=analog_url,
+                    )
+                    if existing:
+                        med = self._get_medicine_product(existing)
+                        updated = False
+                        if analog_barcode and not med.barcode:
+                            med.barcode = analog_barcode[:100]
+                            updated = True
+                        if active_ingredient and not med.active_ingredient:
+                            med.active_ingredient = active_ingredient
+                            updated = True
+                        if (analog_atc_code or atc_code) and not med.atc_code:
+                            med.atc_code = (analog_atc_code or atc_code)[:100]
+                            updated = True
+                        if analog_sgk_code and not med.sgk_equivalent_code:
+                            med.sgk_equivalent_code = analog_sgk_code[:100]
+                            updated = True
+                        if updated:
+                            med.save()
+                        self._link_medicine_analog_reference(
+                            analog_ref,
+                            med,
+                            barcode=analog_barcode,
+                            atc_code=analog_atc_code or atc_code,
+                            sgk_equivalent_code=analog_sgk_code,
+                        )
+                        self._increment_session_counter(session, "analog_links_saved")
+                        continue
+
+                    # Если не существует, создаем базовую заглушку. Явная ссылка
+                    # достаточна для связи даже без active_ingredient/ATC у основной карточки.
+                    stub_scraped = ScrapedProduct(
+                        name=analog_name,
+                        price=analog_data.get('price'),
+                        url=analog_url,
+                        category=scraped_product.category,
+                        source=scraped_product.source,
+                        external_id=analog_external_id,
+                        barcode=analog_barcode,
+                        is_available=True,
+                        attributes={
+                            'is_stub': True,
+                            'active_ingredient': active_ingredient,
+                            'atc_code': analog_atc_code or atc_code,
+                            'barcode': analog_barcode,
+                            'sgk_equivalent_code': analog_sgk_code,
+                        }
+                    )
+                    _, created_product = self._create_new_product(session, stub_scraped)
+                    created_med = self._get_medicine_product(created_product)
                     self._link_medicine_analog_reference(
                         analog_ref,
-                        med,
+                        created_med,
                         barcode=analog_barcode,
                         atc_code=analog_atc_code or atc_code,
                         sgk_equivalent_code=analog_sgk_code,
                     )
+                    self._increment_session_counter(session, "analog_stubs_created")
                     self._increment_session_counter(session, "analog_links_saved")
-                    continue
-
-                # Если не существует, создаем базовую заглушку. Явная ссылка
-                # достаточна для связи даже без active_ingredient/ATC у основной карточки.
-                stub_scraped = ScrapedProduct(
-                    name=analog_name,
-                    price=analog_data.get('price'),
-                    url=analog_url,
-                    category=scraped_product.category,
-                    source=scraped_product.source,
-                    external_id=analog_external_id,
-                    barcode=analog_barcode,
-                    is_available=True,
-                    attributes={
-                        'is_stub': True,
-                        'active_ingredient': active_ingredient,
-                        'atc_code': analog_atc_code or atc_code,
-                        'barcode': analog_barcode,
-                        'sgk_equivalent_code': analog_sgk_code,
-                    }
-                )
-                _, created_product = self._create_new_product(session, stub_scraped)
-                created_med = self._get_medicine_product(created_product)
-                self._link_medicine_analog_reference(
-                    analog_ref,
-                    created_med,
-                    barcode=analog_barcode,
-                    atc_code=analog_atc_code or atc_code,
-                    sgk_equivalent_code=analog_sgk_code,
-                )
-                self._increment_session_counter(session, "analog_stubs_created")
-                self._increment_session_counter(session, "analog_links_saved")
             except Exception as e:
                 self._increment_session_counter(session, "analog_errors")
                 self.logger.exception("Ошибка сохранения аналога %s: %s", analog_name, e)

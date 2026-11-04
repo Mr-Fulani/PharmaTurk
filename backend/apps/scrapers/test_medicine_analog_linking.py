@@ -151,6 +151,83 @@ def test_medicine_analogs_are_saved_and_matched_by_barcode():
     assert analog_medicine.sgk_equivalent_code == "E007D"
 
 
+def _medicine_with_analog_rows(service, rows):
+    product = Product.objects.create(
+        name="NUROFEN COLD & FLU",
+        slug="nurofen-cold-flu",
+        product_type="medicines",
+        external_id="nurofen-cold-flu",
+        external_data={},
+    )
+    medicine = service._get_medicine_product(product)
+    for name, external_id, barcode in rows:
+        MedicineAnalog.objects.create(
+            product=medicine, source="ilacfiyati", name=name, external_id=external_id, barcode=barcode,
+        )
+    return product, medicine
+
+
+@pytest.mark.django_db
+def test_swapped_analog_barcodes_do_not_break_product_update():
+    # 04.11.2026: у двух упаковок IBUCOLD на источнике поменялись штрихкоды — строка по ссылке
+    # получала штрихкод соседней, IntegrityError ломал транзакцию, и обновление карточки откатывалось.
+    from django.db import transaction
+
+    service = ScraperIntegrationService()
+    with transaction.atomic():
+        product, medicine = _medicine_with_analog_rows(service, [
+            ("IBUCOLD 30 FILM", "ibucold-30-film", "8680760092136"),
+            ("IBUCOLD 30 TB", "ibucold-30-tb", "8680760092952"),
+        ])
+        scraped = ScrapedProduct(
+            name=product.name,
+            source="ilacfiyati",
+            analogs=[
+                {"name": "IBUCOLD 30 FILM", "external_id": "ibucold-30-film", "barcode": "8680760092952"},
+                {"name": "GRIBO COLD 30 TABLET", "external_id": "gribo-cold-30-tablet", "barcode": "8699819010076"},
+            ],
+        )
+        session = _analog_stats_session()
+        service._process_medicine_analogs(product, scraped, session)
+        product.save()
+
+    assert session.analog_errors == 0
+    rows = dict(MedicineAnalog.objects.filter(product=medicine).values_list("external_id", "barcode"))
+    assert rows["ibucold-30-film"] == "8680760092136"
+    assert rows["ibucold-30-tb"] == "8680760092952"
+    assert rows["gribo-cold-30-tablet"] == "8699819010076"
+
+
+@pytest.mark.django_db
+def test_failed_analog_does_not_break_following_analogs(monkeypatch):
+    from django.db import transaction
+
+    service = ScraperIntegrationService()
+    upsert = service._upsert_medicine_analog_reference
+
+    def failing_upsert(medicine, **kwargs):
+        if kwargs["external_id"] == "broken":
+            MedicineAnalog.objects.create(product=medicine, source="ilacfiyati", name="DUP", barcode="111")
+        return upsert(medicine, **kwargs)
+
+    monkeypatch.setattr(service, "_upsert_medicine_analog_reference", failing_upsert)
+    with transaction.atomic():
+        product, medicine = _medicine_with_analog_rows(service, [("FIRST", "first", "111")])
+        scraped = ScrapedProduct(
+            name=product.name,
+            source="ilacfiyati",
+            analogs=[
+                {"name": "BROKEN", "external_id": "broken", "barcode": ""},
+                {"name": "GRIBO COLD 30 TABLET", "external_id": "gribo-cold-30-tablet", "barcode": "222"},
+            ],
+        )
+        service._process_medicine_analogs(product, scraped, session=None)
+        product.save()
+
+    assert not MedicineAnalog.objects.filter(product=medicine, external_id="broken").exists()
+    assert MedicineAnalog.objects.filter(product=medicine, external_id="gribo-cold-30-tablet", barcode="222").exists()
+
+
 @pytest.mark.django_db
 def test_explicit_analog_is_linked_without_active_ingredient_or_atc():
     service = ScraperIntegrationService()
