@@ -269,6 +269,33 @@ def test_rescrape_does_not_return_hidden_color_and_stores_gtin():
     assert list(flo_color.sizes.values_list("gtin", flat=True)) == ["00196968173624"]
 
 
+def test_resolve_takes_price_and_strikethrough_of_one_colour_in_stock(settings):
+    """Пересчёт дублей — то же правило цены, что импорт и витрина
+    (default_fashion_variant): первый цвет карточки распродан — пара одного цвета в
+    наличии, а не 749,70 при зачёркнутой 1 249,50; и при уже записанном дубле."""
+    settings.CROSS_SOURCE_DUPLICATES_ENABLED = True
+    flo, flo_color, _superstep, _superstep_color = _pair("3000", "3500")
+    ShoeVariant.objects.filter(pk=flo_color.pk).update(sort_order=2)
+    gray = _color(flo, "flo", "749.70", available=False, sort_order=0, color="Gri")
+    blue = _color(flo, "flo", "999.60", sort_order=1, color="Mavi")
+    ShoeVariant.objects.filter(pk=gray.pk).update(old_price=Decimal("899.00"))
+    ShoeVariant.objects.filter(pk=blue.pk).update(old_price=Decimal("1249.50"))
+    product_id = flo.base_product_id
+
+    for _ in range(2):
+        resolve_for_products([product_id])
+
+        assert not _active(flo_color)
+        product = Product.objects.get(pk=product_id)
+        assert (product.price, product.old_price, product.is_available) == (
+            Decimal("999.60"),
+            Decimal("1249.50"),
+            True,
+        )
+        Product.objects.filter(pk=product_id).update(price=Decimal("749.70"))
+    assert CrossSourceDuplicate.objects.filter(hidden_variant_id=flo_color.pk).exists()
+
+
 def test_automatic_resolve_only_when_enabled(settings):
     flo, flo_color, _, _ = _pair("3000", "3500")
 

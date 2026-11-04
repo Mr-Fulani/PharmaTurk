@@ -32,6 +32,7 @@ from .models import (
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
 )
 from .seo_defaults import build_catalog_item_seo_defaults, resolve_book_seo_value
+from .utils.default_variant import default_fashion_variant
 from .utils.media_path import normalize_duplicated_media_path
 from .utils.storage_paths import detect_media_type
 from .utils.variant_titles import build_variant_display_title
@@ -2764,11 +2765,8 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
             return None
         cached = _prefetched_active_variants(obj)
         if cached is not None:
-            return next((v for v in cached if v.price is not None), None) or (cached[0] if cached else None)
-        priced = variants.filter(is_active=True, price__isnull=False).order_by("sort_order", "id").first()
-        if priced:
-            return priced
-        return variants.filter(is_active=True).order_by("sort_order", "id").first()
+            return default_fashion_variant(cached)
+        return default_fashion_variant(variants.filter(is_active=True).order_by("sort_order", "id"))
 
     def _get_active_variant(self, obj):
         variants = getattr(obj, "variants", None)
@@ -3209,13 +3207,9 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
         if memo is not None:
             return memo[0]
         cached = self._active_variants_sorted(obj)
-        if cached is not None:
-            result = next((v for v in cached if v.price is not None), None) or (cached[0] if cached else None)
-        else:
-            result = (
-                variants.filter(is_active=True, price__isnull=False).order_by("sort_order", "id").first()
-                or variants.filter(is_active=True).order_by("sort_order", "id").first()
-            )
+        if cached is None:
+            cached = variants.filter(is_active=True).order_by("sort_order", "id")
+        result = default_fashion_variant(cached)
         obj.__dict__['_default_variant_memo'] = (result,)
         return result
 
@@ -7479,9 +7473,9 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
 
     def _get_default_variant(self, obj):
         cached = _prefetched_active_variants(obj)
-        if cached is not None:
-            return cached[0] if cached else None
-        return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
+        if cached is None:
+            cached = obj.variants.filter(is_active=True).order_by("sort_order", "id")
+        return default_fashion_variant(cached)
 
     def _get_active_variant(self, obj):
         active_slug = self.context.get("active_variant_slug")
@@ -7717,9 +7711,9 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
 
     def _get_default_variant(self, obj):
         cached = _prefetched_active_variants(obj)
-        if cached is not None:
-            return cached[0] if cached else None
-        return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
+        if cached is None:
+            cached = obj.variants.filter(is_active=True).order_by("sort_order", "id")
+        return default_fashion_variant(cached)
 
     def _get_active_variant(self, obj):
         active_slug = self.context.get("active_variant_slug")
@@ -7955,9 +7949,9 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
 
     def _get_default_variant(self, obj):
         cached = _prefetched_active_variants(obj)
-        if cached is not None:
-            return cached[0] if cached else None
-        return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
+        if cached is None:
+            cached = obj.variants.filter(is_active=True).order_by("sort_order", "id")
+        return default_fashion_variant(cached)
 
     def _get_active_variant(self, obj):
         active_slug = self.context.get("active_variant_slug")

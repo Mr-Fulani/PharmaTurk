@@ -87,6 +87,7 @@ from apps.catalog.utils.parser_media_handler import (
     source_url_fingerprint,
 )
 from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG, ensure_brand_category
+from apps.catalog.utils.default_variant import default_fashion_variant
 from apps.catalog.utils.old_price import source_old_price
 from apps.catalog.services.cross_source_duplicates import (
     SOURCES as DUPLICATE_SOURCES,
@@ -3285,6 +3286,19 @@ class ScraperIntegrationService:
             )
         return True
 
+    def _colour_variants(self, product: Product, scraped_product: ScrapedProduct) -> list:
+        """Цвета ответа, по которым ``_sync_fashion_variants`` считает цену товара; [] — нет."""
+        attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+        variants = attrs.get("fashion_variants")
+        if isinstance(variants, list) and variants and self._fashion_model_config(product.product_type):
+            return variants
+        return []
+
+    @staticmethod
+    def variants_carry_old_price(variants) -> bool:
+        """Парсер передаёт зачёркнутую цену по цветам (FLO, Zara, SuperStep)."""
+        return any(isinstance(spec, dict) and "old_price" in spec for spec in variants or [])
+
     def _sync_fashion_variants(
         self,
         product: Product,
@@ -3489,13 +3503,17 @@ class ScraperIntegrationService:
 
         active_variants = list(domain_product.variants.filter(is_active=True).order_by("sort_order", "id"))
         if active_variants:
-            default_variant = next(
-                (row for row in active_variants if row.price is not None),
-                active_variants[0],
-            )
+            default_variant = default_fashion_variant(active_variants)
             if domain_product.price != default_variant.price:
                 domain_product.price = default_variant.price
                 changed = True
+            if self.variants_carry_old_price(variants):
+                # Зачёркнутая — того же цвета, что и цена: иначе пара из разных
+                # цветов (749,70 при зачёркнутой 1 249,50 другого цвета).
+                variant_old_price = source_old_price(default_variant.old_price, default_variant.price)
+                if domain_product.old_price != variant_old_price:
+                    domain_product.old_price = variant_old_price
+                    changed = True
             if (default_variant.currency or "") and domain_product.currency != default_variant.currency:
                 domain_product.currency = default_variant.currency
                 changed = True
@@ -3529,6 +3547,10 @@ class ScraperIntegrationService:
         if product.currency != domain_product.currency:
             product.currency = domain_product.currency
             product_dirty = True
+        if active_variants and self.variants_carry_old_price(variants):
+            if product.old_price != domain_product.old_price:
+                product.old_price = domain_product.old_price
+                product_dirty = True
         if product.is_available != domain_product.is_available:
             product.is_available = domain_product.is_available
             product_dirty = True
@@ -3912,7 +3934,20 @@ class ScraperIntegrationService:
             # конвертация выполняются отдельно CurrencyConverter и здесь не участвуют.
             # Manual-only sources (Instagram by default) may enrich content on a
             # repeat scrape, but their existing storefront price stays frozen.
-            if not price_refresh_disabled:
+            # Цену товара с цветами задаёт один раз _sync_fashion_variants
+            # (default_fashion_variant): цена главного цвета парсера здесь
+            # переписывалась бы ещё раз, и товар каждый проход был бы «обновлён».
+            colour_variants = self._colour_variants(existing_product, scraped_product)
+            if not price_refresh_disabled and colour_variants:
+                if not self.variants_carry_old_price(colour_variants):
+                    # Зачёркнутой по цветам нет (LCW) — как раньше, из товара.
+                    new_old_price = source_old_price(
+                        getattr(scraped_product, "old_price", None), existing_product.price,
+                    )
+                    if existing_product.old_price != new_old_price:
+                        existing_product.old_price = new_old_price
+                        updated = True
+            elif not price_refresh_disabled:
                 source_currency = str(scraped_product.currency or "").strip().upper()
                 current_currency = str(existing_product.currency or "").strip().upper()
                 if getattr(scraped_product, "price_unpublished", False) and (
@@ -3959,12 +3994,21 @@ class ScraperIntegrationService:
                 remove_from_sale = existing_product.is_available
                 if (existing_product.external_data or {}).get("is_stub"):
                     gone_review = False
+            elif colour_variants:
+                # Наличие и остаток товара с цветами, как и цену, один раз считает
+                # _sync_fashion_variants: сумма остатков цветов из парсера (Zara,
+                # LCW — по 1000 на цвет) здесь давала бы 2000, там — 1000.
+                pass
             elif scraped_product.is_available != existing_product.is_available:
                 existing_product.is_available = scraped_product.is_available
                 updated = True
                 
             # Обновляем количество на складе
-            if scraped_product.stock_quantity is not None and scraped_product.stock_quantity != existing_product.stock_quantity:
+            if (
+                not colour_variants
+                and scraped_product.stock_quantity is not None
+                and scraped_product.stock_quantity != existing_product.stock_quantity
+            ):
                 existing_product.stock_quantity = scraped_product.stock_quantity
                 existing_product.is_available = (existing_product.stock_quantity or 0) > 0
                 updated = True

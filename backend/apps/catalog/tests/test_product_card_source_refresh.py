@@ -15,6 +15,7 @@ from apps.catalog.models import (
     Category,
     ClothingProduct,
     ClothingVariant,
+    CrossSourceDuplicate,
     ClothingVariantSize,
     FurnitureProduct,
     FurnitureVariant,
@@ -60,6 +61,10 @@ class DummyFloParser:
     pass
 
 
+class DummySuperstepParser:
+    pass
+
+
 def _fake_registry(value):
     if value == "zara":
         return DummyZaraParser
@@ -71,9 +76,13 @@ def _fake_registry(value):
         return DummyInstagramParser
     if value == "flo":
         return DummyFloParser
+    if value == "superstep":
+        return DummySuperstepParser
     host = (urlparse(str(value or "")).hostname or "").casefold()
     if host == "www.flo.com.tr":
         return DummyFloParser
+    if host == "www.superstep.com.tr":
+        return DummySuperstepParser
     if host == "www.zara.com" or host.endswith(".zara.com"):
         return DummyZaraParser
     if host == "www.akakce.com" or host.endswith(".akakce.com"):
@@ -534,6 +543,26 @@ def test_source_not_found_disables_only_variants_on_opened_url(
 
     cache.delete(service._state_key(product.pk))
 
+    # Следующее открытие проверяет красный цвет в наличии, а пропавший чёрный
+    # больше не открывается: 404 по его ссылке окончательный.
+    calls = []
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_product_card_source_task.apply_async",
+        lambda *args, **kwargs: calls.append(kwargs),
+    )
+    assert service._target(product).offer.variant_key == "red"
+    repeated = service.request_refresh(product)
+    assert repeated["status"] == "pending"
+    assert len(calls) == 1
+
+    # Пропал и красный: оба цвета окончательно не найдены — новых запросов нет.
+    product.source_offers.filter(variant_key="red").update(
+        availability_status=ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+        last_error_code="not_found",
+    )
+    cache.delete(service._state_key(product.pk))
+    cache.delete(service._lock_key(product.pk))
+
     def unexpected_enqueue(*_args, **_kwargs):
         raise AssertionError("terminal supplier absence must not enqueue another request")
 
@@ -919,6 +948,111 @@ def test_lcw_group_id_drift_rejects_a_different_variant(parsed_clothing, monkeyp
     domain.refresh_from_db()
     black.refresh_from_db()
     assert product.price == domain.price == black.price == Decimal("100.00")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("parser_key", "url"),
+    [
+        ("flo", "https://www.flo.com.tr/urun/test-product-10001"),
+        ("superstep", "https://www.superstep.com.tr/urun/test-product/k35052t-3/"),
+    ],
+)
+def test_single_colour_refresh_counts_saved_colours_for_card(
+    parsed_clothing,
+    settings,
+    monkeypatch,
+    parser_key,
+    url,
+):
+    """FLO и SuperStep открывают один цвет. Он распродан, а другой цвет в
+    наличии: карточка остаётся в продаже, цена и зачёркнутая — того цвета
+    (Nautica K35052T на локальной базе 04.11 становилась «нет в наличии»)."""
+    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = [parser_key]
+    product, domain, black, red = parsed_clothing
+    ClothingVariant.objects.filter(pk=black.pk).update(sort_order=0, is_available=True)
+    ClothingVariant.objects.filter(pk=red.pk).update(sort_order=1, old_price=Decimal("140.00"))
+    product.source_offers.filter(variant_key="red").update(is_active=False)
+    offer = product.source_offers.get(variant_key="black")
+    offer.parser_key = parser_key
+    offer.canonical_url = url
+    offer.source_domain = ""
+    offer.offer_key = ""
+    offer.save()
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(
+        service,
+        "_fetch_product",
+        lambda target: ScrapedProduct(
+            name="Supplier title",
+            price=120,
+            old_price=None,
+            currency="TRY",
+            url=url,
+            external_id="zara-100",
+            source=parser_key,
+            is_available=False,
+            attributes={
+                "fashion_variants": [
+                    {
+                        "external_id": "black",
+                        "color": "Siyah",
+                        "sku": "SKU-black",
+                        "price": 120,
+                        "old_price": None,
+                        "currency": "TRY",
+                        "external_url": url,
+                        "is_available": False,
+                        "sizes": [{"size": "S", "is_available": False, "sort_order": 0}],
+                    }
+                ]
+            },
+        ),
+    )
+
+    result = service.run(product.pk)
+
+    assert result["status"] == "succeeded"
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    black.refresh_from_db()
+    assert black.is_available is False
+    assert black.price == Decimal("120.00")
+    assert product.is_available is True
+    assert domain.is_available is True
+    assert product.price == domain.price == Decimal("105.00")
+    assert product.old_price == domain.old_price == Decimal("140.00")
+
+
+@pytest.mark.django_db
+def test_card_refresh_opens_colour_in_stock_before_sold_out_one(parsed_clothing):
+    product, _domain, _black, _red = parsed_clothing
+    product.source_offers.filter(variant_key="red").update(
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+    )
+
+    target = ProductCardSourceRefreshService()._target(product)
+
+    assert target.offer.variant_key == "red"
+
+
+@pytest.mark.django_db
+def test_card_refresh_does_not_open_colour_hidden_as_duplicate(parsed_clothing):
+    product, _domain, _black, red = parsed_clothing
+    product.source_offers.filter(variant_key="red").update(
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+    )
+    CrossSourceDuplicate.objects.create(
+        product_type="clothing",
+        hidden_variant_id=red.pk,
+        hidden_product=product,
+        match=CrossSourceDuplicate.Match.EAN,
+        reason=CrossSourceDuplicate.Reason.PRICE,
+    )
+
+    target = ProductCardSourceRefreshService()._target(product)
+
+    assert target.offer.variant_key == "black"
 
 
 @pytest.mark.django_db

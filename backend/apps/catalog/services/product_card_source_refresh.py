@@ -23,7 +23,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 
 from apps.catalog.models import PriceHistory, Product, ProductSourceOffer
@@ -37,6 +37,7 @@ from apps.catalog.services.source_offer_verification import (
     paid_freshness_seconds,
 )
 from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG
+from apps.catalog.utils.default_variant import default_fashion_variant
 from apps.catalog.utils.old_price import source_old_price
 from apps.http_errors import PaidAccessUnavailableError
 from apps.scrapers.base.scraper import ScrapedProduct
@@ -82,6 +83,8 @@ except (ImportError, ValueError):  # pragma: no cover - optional/dev autoreload
 CACHE_VERSION = "v1"
 REFERENCE_ONLY_SOURCES = frozenset({"ilacfiyati"})
 SINGLE_OFFER_REFRESH_SOURCES = frozenset({"akakce"})
+# Обновление карточки открывает только цвет предложения, а не всю группу цветов.
+SINGLE_COLOR_REFRESH_SOURCES = frozenset({"flo", "superstep"})
 FASHION_PRODUCT_TYPES = frozenset(
     {"clothing", "shoes", "headwear", "underwear", "islamic_clothing"}
 )
@@ -268,8 +271,28 @@ class ProductCardSourceRefreshService:
             .exclude(
                 parser_key__in=REFERENCE_ONLY_SOURCES | manual_only_source_keys()
             )
-            .order_by("priority", "id")
+            # FLO и SuperStep обновляют только цвет этого предложения: при равном
+            # приоритете — цвет в наличии, а не распроданный, который открывался бы
+            # каждый раз, пока продающиеся цвета не проверяются.
+            .order_by(
+                "priority",
+                Case(
+                    When(
+                        availability_status__in=[
+                            ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+                            ProductSourceOffer.AvailabilityStatus.LIMITED,
+                        ],
+                        then=Value(0),
+                    ),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+                "id",
+            )
         )
+        hidden_keys = self._hidden_duplicate_keys(product)
+        if hidden_keys:
+            offers = offers.exclude(variant_key__in=hidden_keys)
         for offer in offers:
             parser_class = verifier._trusted_parser_class(offer)
             if parser_class is not None and (
@@ -278,6 +301,21 @@ class ProductCardSourceRefreshService:
             ):
                 return RefreshTarget(product=product, offer=offer, parser_class=parser_class)
         return None
+
+    @staticmethod
+    def _hidden_duplicate_keys(product: Product) -> list[str]:
+        """Цвета, скрытые как дубль у другого продавца: их не открываем."""
+        hidden_ids = list(product.hidden_duplicate_rows.values_list("hidden_variant_id", flat=True))
+        if not hidden_ids:
+            return []
+        domain = product.domain_item
+        if domain is product or not hasattr(domain, "variants"):
+            return []
+        return [
+            key
+            for key in domain.variants.filter(id__in=hidden_ids).values_list("external_id", flat=True)
+            if key
+        ]
 
     @classmethod
     def _terminal_failure(cls, target: RefreshTarget) -> dict[str, Any] | None:
@@ -509,7 +547,7 @@ class ProductCardSourceRefreshService:
                         headers=config.headers,
                         cookies=config.cookies,
                     )
-                if target.parser_key in {"flo", "superstep"}:
+                if target.parser_key in SINGLE_COLOR_REFRESH_SOURCES:
                     # A FLO product group can link many sibling colours. Each sibling
                     # would be another paid browser-rendering request, even though the
                     # user opened only this saved colour. Refresh exactly that colour;
@@ -1105,6 +1143,52 @@ class ProductCardSourceRefreshService:
             "product_updated": product_updated,
         }
 
+    def _fashion_card_summary(
+        self,
+        product: Product,
+        specs: Any,
+        *,
+        all_saved_colors: bool,
+        price: Decimal,
+        old_price: Decimal | None,
+        currency: str,
+        available: bool,
+        stock: int | None,
+    ) -> tuple[Decimal, Decimal | None, str, bool, int | None]:
+        """Цена и наличие карточки — тем же правилом, что импорт: цена и
+        зачёркнутая — одного цвета (``default_fashion_variant``).
+
+        FLO и SuperStep проверяют один цвет (``all_saved_colors``): остальные
+        цвета берутся с сохранёнными данными, и распроданный проверенный цвет не
+        делает «нет в наличии» всю карточку. Остальные источники отдают всю
+        группу цветов — цвета вне ответа не учитываются.
+        """
+        domain = self._existing_domain_item(product)
+        variants = domain.variants.filter(is_active=True).order_by("sort_order", "id")
+        if not all_saved_colors:
+            variants = variants.filter(
+                external_id__in=[
+                    str(spec.get("external_id") or "").strip()
+                    for spec in specs or []
+                    if isinstance(spec, dict)
+                ]
+            )
+        variants = list(variants)
+        if not variants:
+            return price, old_price, currency, available, stock
+        default = default_fashion_variant(variants)
+        if default.price is not None:
+            price = _decimal(default.price) or price
+            currency = _currency(default.currency) or currency
+            if ScraperIntegrationService.variants_carry_old_price(specs):
+                old_price = _decimal(default.old_price)
+            old_price = source_old_price(old_price, price)
+        any_available = any(row.is_available for row in variants)
+        if any_available != available:
+            # Точный остаток проверенного цвета не равен остатку карточки.
+            available, stock = any_available, (None if any_available else 0)
+        return price, old_price, currency, available, stock
+
     @staticmethod
     def _aggregate_stock(snapshots: list[SourceOfferSnapshot]) -> tuple[bool, int | None]:
         in_stock = [
@@ -1209,6 +1293,16 @@ class ProductCardSourceRefreshService:
                 product,
                 list(attrs.get("fashion_variants") or []),
                 snapshots,
+            )
+            price, old_price, currency, available, stock = self._fashion_card_summary(
+                product,
+                attrs.get("fashion_variants"),
+                all_saved_colors=target.parser_key in SINGLE_COLOR_REFRESH_SOURCES,
+                price=price,
+                old_price=old_price,
+                currency=currency,
+                available=available,
+                stock=stock,
             )
         elif product.product_type == "furniture" and attrs.get("furniture_variants"):
             counts = self._sync_furniture_inventory(

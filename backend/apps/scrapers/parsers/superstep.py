@@ -701,10 +701,11 @@ class SuperstepParser(BaseScraper):
                 variant["display_name"] = clean_text(f"{name} - {variant['color']}".strip(" -"))
         if route[0] in SUPERSTEP_PARENT_PLACEMENTS:
             self.parent_placed[f"{subgroup} → {route[0]}"] += 1
-        # Открытый цвет главный, если он есть в наличии: иначе цена и ссылка
-        # товара были бы от распроданного цвета.
-        primary = next((v for v in variants if v["is_available"]), variants[0])
         variants.sort(key=lambda variant: variant["sort_order"])
+        # Главный — первый по порядку сайта цвет в наличии, как в сервисе
+        # (``default_fashion_variant``): цена товара не зависит от того, с какого
+        # цвета начали разбор, и не берётся у распроданного цвета.
+        primary = next((v for v in variants if v["is_available"]), variants[0])
         all_sizes: List[str] = []
         for variant in variants:
             for row in variant["sizes"]:

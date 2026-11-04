@@ -150,3 +150,108 @@ def test_rescrape_writes_colour_strikethrough_only_from_source():
     service._sync_fashion_variants(product, variants=[{k: v for k, v in spec.items() if k != "old_price"}])
     variant.refresh_from_db()
     assert variant.old_price == Decimal("999.99")
+
+
+@pytest.mark.django_db
+def test_card_price_and_strikethrough_come_from_one_colour_in_stock():
+    """Nautica K35052T (SuperStep, 04.11): первый цвет распродан (749,70 / 899),
+    в наличии второй (999,60 / 1 249,50). У карточки — пара одного цвета в
+    наличии, а не 749,70 при зачёркнутой 1 249,50; повтор ничего не меняет."""
+    category = Category.objects.create(name="Поло", slug="clothing-colour-pair")
+    product = Product.objects.create(
+        name="Nautica polo", slug="nautica-colour-pair", category=category,
+        product_type="clothing", price=Decimal("999.60"), old_price=Decimal("1249.50"),
+        currency="TRY", external_id="superstep-K35052T", external_data={},
+    )
+    gray = {
+        "external_id": "superstep-variant-K35052T.0HF", "color": "Gri", "sort_order": 0,
+        "price": "749.70", "old_price": "899.00", "currency": "TRY", "is_available": False,
+    }
+    blue = {
+        "external_id": "superstep-variant-K35052T.4MY", "color": "Mavi", "sort_order": 1,
+        "price": "999.60", "old_price": "1249.50", "currency": "TRY", "is_available": True,
+    }
+    service = ScraperIntegrationService()
+
+    service._sync_fashion_variants(product, variants=[gray, blue])
+
+    product.refresh_from_db()
+    domain = product.domain_item
+    domain.refresh_from_db()
+    pair = (Decimal("999.60"), Decimal("1249.50"))
+    assert (product.price, product.old_price, product.is_available) == (*pair, True)
+    assert (domain.price, domain.old_price) == pair
+    assert service._sync_fashion_variants(product, variants=[gray, blue]) is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("source", ["flo", "zara"])
+def test_full_pass_prices_colour_product_once_and_stays_stable(source, monkeypatch):
+    """Полный проход: цену товара с цветами задаёт правило цвета (default_fashion_variant)
+    один раз. Цена главного цвета парсера (у FLO — открытый, у Zara — первый, здесь
+    распроданный серый) не пишется перед ним, и повторный проход ничего не меняет."""
+    svc, session, product = _setup(price=Decimal("999.60"), old_price=Decimal("1249.50"))
+    gray = {
+        "external_id": f"{source}-gray", "color": "Gri", "sort_order": 0,
+        "price": "749.70", "old_price": "899.00", "currency": "TRY", "is_available": False,
+    }
+    blue = {
+        "external_id": f"{source}-blue", "color": "Mavi", "sort_order": 1,
+        "price": "999.60", "old_price": "1249.50", "currency": "TRY", "is_available": True,
+    }
+    scraped = _scraped(price=749.70, old_price=899)
+    scraped.source = source
+    scraped.stock_quantity = 1000
+    scraped.attributes = {"fashion_variants": [gray, blue]}
+    seen = []
+    sync = svc._sync_fashion_variants
+
+    def spy(product, *, variants):
+        seen.append((product.price, product.old_price))
+        changed = sync(product, variants=variants)
+        seen.append(changed)
+        return changed
+
+    monkeypatch.setattr(svc, "_sync_fashion_variants", spy)
+
+    statuses = [
+        svc._update_existing_product(session, scraped, Product.objects.get(pk=product.pk))[0]
+        for _ in range(2)
+    ]
+
+    product.refresh_from_db()
+    pair = (Decimal("999.60"), Decimal("1249.50"))
+    assert (product.price, product.old_price) == pair
+    assert seen[0] == seen[2] == pair  # цена ответа парсера не записывалась
+    assert seen[3] is False
+    assert statuses[1] == "skipped"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("source", ["zara", "lcw"])
+def test_repeat_pass_with_two_colours_in_stock_is_skipped(source):
+    """Zara и LCW отдают остаток товара суммой по цветам (по 1000 на цвет). Наличие и
+    остаток товара с цветами считаются один раз по цветам — повторный проход того
+    же ответа «пропущен», а не «обновлён» каждый раз (2000 → 1000 → 2000)."""
+    svc, session, product = _setup(price=Decimal("499.90"))
+    colours = [
+        {
+            "external_id": f"{source}-{colour}", "color": colour, "sort_order": index,
+            "price": "499.90", "currency": "TRY", "is_available": True,
+        }
+        for index, colour in enumerate(["Siyah", "Beyaz"])
+    ]
+    scraped = _scraped(price=499.90)
+    scraped.source = source
+    scraped.stock_quantity = 2000
+    scraped.attributes = {"fashion_variants": colours}
+
+    statuses = [
+        svc._update_existing_product(session, scraped, Product.objects.get(pk=product.pk))[0]
+        for _ in range(2)
+    ]
+
+    product.refresh_from_db()
+    assert product.is_available is True
+    assert product.stock_quantity == 1000
+    assert statuses[1] == "skipped"
