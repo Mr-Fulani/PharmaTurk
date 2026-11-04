@@ -38,6 +38,13 @@ class ListingRow:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def twin_skip_fingerprint(fingerprint: str) -> str:
+    """Отпечаток строки, карточку которой сервис не сохранил как вторую страницу препарата
+    (docs/ILACFIYATI_TWIN_PAGES.md). Отличается от обычного: строка без товара с обычным
+    отпечатком (товар потом удалили, карточку пропустили по категории) по-прежнему открывается."""
+    return hashlib.sha256(f"twin:{fingerprint}".encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class KnownProduct:
     """Что о товаре уже есть в БД (для первого прохода без отпечатка)."""
@@ -63,6 +70,8 @@ def listing_decision(
         if product is not None and product.is_available and not product.is_stub:
             return GONE
         return SKIP  # пассивных товаров, которых у нас нет, не заводим
+    if product is None and known_fingerprint and known_fingerprint == twin_skip_fingerprint(row.fingerprint):
+        return SKIP  # вторая страница препарата, строка не изменилась
     if product is None or product.is_stub or not product.is_available:
         return OPEN  # новый товар, заглушка аналога или вернулся в продажу
     if known_fingerprint:

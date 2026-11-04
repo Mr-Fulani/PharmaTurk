@@ -453,7 +453,9 @@ class IlacFiyatiParser(BaseScraper):
         url = self._canonical_product_url(product.url)
         self.catalog_state.mark_product(url)
         if self.change_tracker is not None:
-            self.change_tracker.remember_saved(url)
+            self.change_tracker.remember_saved(
+                url, twin_skipped=bool(getattr(product, "_ilacfiyati_twin_skipped", False)),
+            )
 
     @staticmethod
     def _listing_has_next_page(html: str, category_url: str, page: int) -> Optional[bool]:
