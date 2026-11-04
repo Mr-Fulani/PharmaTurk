@@ -172,6 +172,33 @@ def test_marketplace_product_keeps_shop_price_and_basket_offer_for_manager():
     assert product.description.startswith("Adımlarını kahve tonlarının")
 
 
+def test_colors_grouped_by_mp_color_do_not_reopen_the_same_card():
+    """Пилот 04.11: у бра Puma x Hyrox группа цветов — mp_color («SİYAH»),
+    а integration_renk — «01»; карточка открывалась повторно как «другой цвет»."""
+    url = "/urun/puma-x-hyrox-pwrmode-kadin-siyah-bra/265-529149/"
+    parser = _parser({url: "card_mp_color_265-529149.json"})
+
+    product = parser.parse_product_detail(SITE + url)
+
+    assert parser.requests == [url]
+    (variant,) = product.attributes["fashion_variants"]
+    assert variant["color"] == "Siyah"  # капс «SİYAH» приводится к обычному виду
+    assert [s["size"] for s in variant["sizes"]] == ["XS", "S", "M", "L"]
+    assert product.category == "uw-sports-bras"
+
+
+def test_numeric_sizes_sorted_by_value_not_by_akinon_order():
+    """Детские New Balance: order 2850, 3500, 200180… — из разных систем."""
+    url = "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk-3/"
+    parser = _parser({url: "card_kids_PC9060BK.json"})
+
+    product = parser.parse_product_detail(SITE + url)
+
+    (variant,) = product.attributes["fashion_variants"]
+    assert [s["size"] for s in variant["sizes"]] == ["28.5", "30", "31", "32.5", "33.5", "35"]
+    assert product.attributes["gender"] == "kids"
+
+
 def test_unmapped_subgroup_is_not_loaded():
     figur = json.loads(_fixture("list_erkek_figur.json"))["products"][0]
     card = {"product": figur, "variants": figur["extra_data"]["variants"]}

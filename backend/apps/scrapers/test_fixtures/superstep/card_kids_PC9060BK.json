@@ -1,0 +1,643 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 706858,
+  "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+  "sku": "6446304",
+  "base_code": "PC9060BK",
+  "attributes": {
+   "brand_link": "/new-balance/",
+   "max_bag_limit": "2",
+   "filterable_size": "28,5",
+   "integration_renk": "1",
+   "amazon_poc_barkod": "upc",
+   "integration_beden": "28,5",
+   "integration_marka": "019",
+   "integration_tanim": "AYAKKABI",
+   "product_size_info": "Yarım beden büyük almanı tavsiye ederiz.",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "088",
+   "integration_cinsiyet": "Çocuk",
+   "integration_alt_marka": "NEW BALANCE",
+   "integration_color_hex": "#000000",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "SİYAH",
+   "integration_urun_ozel": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+   "brand_specific_product": "superkids",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "%70Sentetik %29File %1TPoliüretan",
+   "integration_erp_mensei": "Vietnam",
+   "integration_model_renk": "PC9060BK.1",
+   "integration_renk_detay": "Siyah",
+   "integration_urun_detay": "9060",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "CHILDREN",
+   "integration_kalem_icerik": "<p><strong>New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı</strong></p>\n\n<p>New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı, markanın ikonik 99X serisinin rafine stilini fütüristik çizgiler ve gelişmiş yastıklama teknolojileriyle birleştiren iddialı bir modeldir. Y2K estetiğini modern detaylarla yeniden yorumlayan bu özel ayakkabı, çocukların gün boyu ihtiyaç duyduğu üstün konforu ve dayanıklılığı bir arada sunar. Katmanlı saya yapısı ve çarpıcı taban tasarımı, her adımda sağlam ve dengeli bir yürüyüş deneyimi yaratır. Çocuğunun günlük hareket hareketliliğine mükemmel uyum sağlayan yapı, şehir hayatının tempolu ritminde yüksek performans sergiler. Şık siyah renk tonu, modele</p>",
+   "integration_renk_tonu_kod": "012",
+   "integration_urun_ana_grup": "005",
+   "integration_hos_renk_detay": "Siyah",
+   "integration_hos_urun_detay": "Çocuk Sneaker",
+   "integration_base_code_format": "PC9060BK.1.28,5",
+   "integration_erenp_erenbarkod": "8001064463048",
+   "integration_hos_kalem_icerik": "<p>New Balance 9060 Lifestyle Spor Ayakkabı, markanın ikonik 99X serisinin rafine stilini ve inovasyon odaklı tasarımını fütüristik bir yorumla buluşturuyor. Siyah, bej, beyaz, gri ve yeşil gibi nötr ve şık renk seçenekleriyle sunulan bu model, abartılı ve katmanlı taban yapısı sayesinde hem sokak modasında iddialı bir duruş sergiler hem de üst düzey yastıklama sunar. Y2K estetiğini modern konfor teknolojileriyle birleştiren 9060, bebeklerden yetişkinlere kadar her yaş grubu için stil ve rahatlığın zirvesini temsil eder.</p><br> <p><strong>Teknik Özellikler</strong> <li>Çift yoğunluklu orta taban yapısı ABZORB ve SBS yastıklama teknolojileri ile donatılmıştır</li> <li>Premium süet ve nefes</p>",
+   "integration_yurt_disi_barkod": "197966109813",
+   "integration_erp_renk_aciklama": "SİYAH",
+   "integration_global_attribute7": "AYAKKABI"
+  },
+  "attribute_set": 4,
+  "attributes_kwargs": {
+   "filterable_size": {
+    "label": "28,5",
+    "value": "28,5",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "1",
+    "value": "1",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "28,5",
+    "value": "28,5",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "New Balance",
+    "value": "019",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "AYAKKABI",
+    "value": "AYAKKABI",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Spor Ayakkabı & Sneaker",
+    "value": "088",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Çocuk",
+    "value": "Çocuk",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "New Balance",
+    "value": "NEW BALANCE"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "SİYAH",
+    "value": "SİYAH",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Siyah",
+    "value": "Siyah",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Çocuk",
+    "value": "CHILDREN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Ayakkabı",
+    "value": "005",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 3522513,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333470/fd52378b-87cd-4ca1-95af-7f7db2ba7ff7.jpg",
+    "order": 20,
+    "created_date": "2025-08-13T19:57:05.107771Z"
+   },
+   {
+    "pk": 3543112,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333576/00eeccb7-78c0-40cc-9424-4b417194fd95.jpg",
+    "order": 21,
+    "created_date": "2025-09-01T17:23:40.146553Z"
+   },
+   {
+    "pk": 3543113,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333576/4cd36ad4-54f2-42cd-b4b7-c7ef15f77ff6.jpg",
+    "order": 23,
+    "created_date": "2025-09-01T17:23:40.224667Z"
+   },
+   {
+    "pk": 3522514,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333470/465d40ce-1b00-4415-b7b7-ee3db4c4b5fd.jpg",
+    "order": 30,
+    "created_date": "2025-08-13T19:57:05.337105Z"
+   },
+   {
+    "pk": 3522515,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333470/68fbc79f-d66b-463c-a06e-7c0b6cc8e4c1.jpg",
+    "order": 31,
+    "created_date": "2025-08-13T19:57:05.457252Z"
+   }
+  ],
+  "price": "6399",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "6399",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk-3/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 26,
+  "created_date": "2025-08-13T19:40:31.331014Z",
+  "modified_date": "2026-10-13T13:18:02.333111Z",
+  "basket_offers": [],
+  "is_listable": false,
+  "listing_code": "1",
+  "price_extra_field": {
+   "previous_price": "2849.00"
+  }
+ },
+ "variants": [
+  {
+   "attribute_key": "integration_renk",
+   "attribute_name": "Renk",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "10000",
+     "label": "1",
+     "value": "1",
+     "product": {
+      "pk": 706858,
+      "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+      "sku": "6446304",
+      "base_code": "PC9060BK",
+      "attributes": {
+       "filterable_size": "28,5",
+       "integration_renk": "1",
+       "integration_beden": "28,5",
+       "integration_model_renk": "PC9060BK.1",
+       "integration_yurt_disi_barkod": "197966109813"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6399",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 26,
+      "created_date": "2025-08-13T19:40:31.331014Z",
+      "modified_date": "2026-10-13T13:18:02.333111Z",
+      "price_extra_field": {
+       "previous_price": "2849.00"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "attribute_key": "integration_beden",
+   "attribute_name": "Beden",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "2850",
+     "label": "28,5",
+     "value": "28,5",
+     "product": {
+      "pk": 706858,
+      "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+      "sku": "6446304",
+      "base_code": "PC9060BK",
+      "attributes": {
+       "filterable_size": "28,5",
+       "integration_renk": "1",
+       "integration_beden": "28,5",
+       "integration_model_renk": "PC9060BK.1",
+       "integration_yurt_disi_barkod": "197966109813"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6399",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 26,
+      "created_date": "2025-08-13T19:40:31.331014Z",
+      "modified_date": "2026-10-13T13:18:02.333111Z",
+      "price_extra_field": {
+       "previous_price": "2849.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "3500",
+     "label": "35",
+     "value": "35",
+     "product": {
+      "pk": 706852,
+      "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+      "sku": "6446309",
+      "base_code": "PC9060BK",
+      "attributes": {
+       "filterable_size": "35",
+       "integration_renk": "1",
+       "integration_beden": "35",
+       "integration_model_renk": "PC9060BK.1",
+       "integration_yurt_disi_barkod": "197966109790"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6399",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk-1/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-08-13T19:40:30.314019Z",
+      "modified_date": "2026-10-13T13:18:03.121644Z",
+      "price_extra_field": {
+       "previous_price": "2849.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "200180",
+     "label": "31",
+     "value": "31",
+     "product": {
+      "pk": 706874,
+      "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+      "sku": "6446306",
+      "base_code": "PC9060BK",
+      "attributes": {
+       "filterable_size": "31",
+       "integration_renk": "1",
+       "integration_beden": "31",
+       "integration_model_renk": "PC9060BK.1",
+       "integration_yurt_disi_barkod": "197966109851"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6399",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/706874/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 13,
+      "created_date": "2025-08-13T19:40:35.382296Z",
+      "modified_date": "2026-10-13T13:18:01.715791Z",
+      "price_extra_field": {
+       "previous_price": "2849.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "200195",
+     "label": "32,5",
+     "value": "32,5",
+     "product": {
+      "pk": 706857,
+      "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+      "sku": "6446307",
+      "base_code": "PC9060BK",
+      "attributes": {
+       "filterable_size": "32,5",
+       "integration_renk": "1",
+       "integration_beden": "32,5",
+       "integration_model_renk": "PC9060BK.1",
+       "integration_yurt_disi_barkod": "197966109752"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6399",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk-4/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-08-13T19:40:31.200407Z",
+      "modified_date": "2026-10-19T17:29:05.560395Z",
+      "price_extra_field": {
+       "previous_price": "2849.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "200205",
+     "label": "33,5",
+     "value": "33,5",
+     "product": {
+      "pk": 706854,
+      "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+      "sku": "6446308",
+      "base_code": "PC9060BK",
+      "attributes": {
+       "filterable_size": "33,5",
+       "integration_renk": "1",
+       "integration_beden": "33,5",
+       "integration_model_renk": "PC9060BK.1",
+       "integration_yurt_disi_barkod": "197966109776"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6399",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-08-13T19:40:30.569859Z",
+      "modified_date": "2026-10-13T13:18:02.045314Z",
+      "price_extra_field": {
+       "previous_price": "2849.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "330100",
+     "label": "30",
+     "value": "30",
+     "product": {
+      "pk": 706873,
+      "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+      "sku": "6446305",
+      "base_code": "PC9060BK",
+      "attributes": {
+       "filterable_size": "30",
+       "integration_renk": "1",
+       "integration_beden": "30",
+       "integration_model_renk": "PC9060BK.1",
+       "integration_yurt_disi_barkod": "197966109837"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6399",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 35,
+      "created_date": "2025-08-13T19:40:35.016829Z",
+      "modified_date": "2026-10-13T13:18:02.043615Z",
+      "price_extra_field": {
+       "previous_price": "2849.00"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": {
+  "pk": 706858,
+  "name": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+  "sku": "6446304",
+  "base_code": "PC9060BK",
+  "attributes": {
+   "brand_link": "/new-balance/",
+   "max_bag_limit": "2",
+   "filterable_size": "28,5",
+   "integration_renk": "1",
+   "amazon_poc_barkod": "upc",
+   "integration_beden": "28,5",
+   "integration_marka": "019",
+   "integration_tanim": "AYAKKABI",
+   "product_size_info": "Yarım beden büyük almanı tavsiye ederiz.",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "088",
+   "integration_cinsiyet": "Çocuk",
+   "integration_alt_marka": "NEW BALANCE",
+   "integration_color_hex": "#000000",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "SİYAH",
+   "integration_urun_ozel": "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı",
+   "brand_specific_product": "superkids",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "%70Sentetik %29File %1TPoliüretan",
+   "integration_erp_mensei": "Vietnam",
+   "integration_model_renk": "PC9060BK.1",
+   "integration_renk_detay": "Siyah",
+   "integration_urun_detay": "9060",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "CHILDREN",
+   "integration_kalem_icerik": "<p><strong>New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı</strong></p>\n\n<p>New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı, markanın ikonik 99X serisinin rafine stilini fütüristik çizgiler ve gelişmiş yastıklama teknolojileriyle birleştiren iddialı bir modeldir. Y2K estetiğini modern detaylarla yeniden yorumlayan bu özel ayakkabı, çocukların gün boyu ihtiyaç duyduğu üstün konforu ve dayanıklılığı bir arada sunar. Katmanlı saya yapısı ve çarpıcı taban tasarımı, her adımda sağlam ve dengeli bir yürüyüş deneyimi yaratır. Çocuğunun günlük hareket hareketliliğine mükemmel uyum sağlayan yapı, şehir hayatının tempolu ritminde yüksek performans sergiler. Şık siyah renk tonu, modele</p>",
+   "integration_renk_tonu_kod": "012",
+   "integration_urun_ana_grup": "005",
+   "integration_hos_renk_detay": "Siyah",
+   "integration_hos_urun_detay": "Çocuk Sneaker",
+   "integration_base_code_format": "PC9060BK.1.28,5",
+   "integration_erenp_erenbarkod": "8001064463048",
+   "integration_hos_kalem_icerik": "<p>New Balance 9060 Lifestyle Spor Ayakkabı, markanın ikonik 99X serisinin rafine stilini ve inovasyon odaklı tasarımını fütüristik bir yorumla buluşturuyor. Siyah, bej, beyaz, gri ve yeşil gibi nötr ve şık renk seçenekleriyle sunulan bu model, abartılı ve katmanlı taban yapısı sayesinde hem sokak modasında iddialı bir duruş sergiler hem de üst düzey yastıklama sunar. Y2K estetiğini modern konfor teknolojileriyle birleştiren 9060, bebeklerden yetişkinlere kadar her yaş grubu için stil ve rahatlığın zirvesini temsil eder.</p><br> <p><strong>Teknik Özellikler</strong> <li>Çift yoğunluklu orta taban yapısı ABZORB ve SBS yastıklama teknolojileri ile donatılmıştır</li> <li>Premium süet ve nefes</p>",
+   "integration_yurt_disi_barkod": "197966109813",
+   "integration_erp_renk_aciklama": "SİYAH",
+   "integration_global_attribute7": "AYAKKABI"
+  },
+  "attribute_set": 4,
+  "attributes_kwargs": {
+   "filterable_size": {
+    "label": "28,5",
+    "value": "28,5",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "1",
+    "value": "1",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "28,5",
+    "value": "28,5",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "New Balance",
+    "value": "019",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "AYAKKABI",
+    "value": "AYAKKABI",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Spor Ayakkabı & Sneaker",
+    "value": "088",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Çocuk",
+    "value": "Çocuk",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "New Balance",
+    "value": "NEW BALANCE"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "SİYAH",
+    "value": "SİYAH",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Siyah",
+    "value": "Siyah",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Çocuk",
+    "value": "CHILDREN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Ayakkabı",
+    "value": "005",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 3522513,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333470/fd52378b-87cd-4ca1-95af-7f7db2ba7ff7.jpg",
+    "order": 20,
+    "created_date": "2025-08-13T19:57:05.107771Z"
+   },
+   {
+    "pk": 3543112,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333576/00eeccb7-78c0-40cc-9424-4b417194fd95.jpg",
+    "order": 21,
+    "created_date": "2025-09-01T17:23:40.146553Z"
+   },
+   {
+    "pk": 3543113,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333576/4cd36ad4-54f2-42cd-b4b7-c7ef15f77ff6.jpg",
+    "order": 23,
+    "created_date": "2025-09-01T17:23:40.224667Z"
+   },
+   {
+    "pk": 3522514,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333470/465d40ce-1b00-4415-b7b7-ee3db4c4b5fd.jpg",
+    "order": 30,
+    "created_date": "2025-08-13T19:57:05.337105Z"
+   },
+   {
+    "pk": 3522515,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/09/01/75333470/68fbc79f-d66b-463c-a06e-7c0b6cc8e4c1.jpg",
+    "order": 31,
+    "created_date": "2025-08-13T19:57:05.457252Z"
+   }
+  ],
+  "price": "6399",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "6399",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/new-balance-9060-lifestyle-cocuk-siyah-spor-ayakkabi/pc9060bk-3/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 26,
+  "created_date": "2025-08-13T19:40:31.331014Z",
+  "modified_date": "2026-10-13T13:18:02.333111Z",
+  "price_extra_field": {
+   "previous_price": "2849.00"
+  }
+ },
+ "offers": []
+}

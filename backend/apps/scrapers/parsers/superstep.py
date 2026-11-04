@@ -531,25 +531,26 @@ class SuperstepParser(BaseScraper):
             self.logger.info("SuperStep: подгруппа «%s» не раскладывается, товар не загружен: %s", subgroup, product_url)
             return None
 
-        self_color = self._color_code(product)
-        color_options = self._variant_options(card["variants"], self.COLOR_KEYS)
+        color_key = self._color_key(card["variants"])
+        self_color = self._color_code(product, color_key)
+        color_options = self._variant_options(card["variants"], (color_key,))
         # Порядок цветов — как на сайте, с какого бы цвета ни начали обход.
-        color_order = {str(option.get("label") or ""): index for index, option in enumerate(color_options)}
+        color_order = {self._option_value(option): index for index, option in enumerate(color_options)}
         color_rows = [(self_color, card)]
         if include_sibling_variants:
             for option in color_options:
-                label = str(option.get("label") or "")
+                code = self._option_value(option)
                 url = str((option.get("product") or {}).get("absolute_url") or "")
                 # Распроданный цвет не открываем: его вариант выключится как исчезнувший.
-                if label == self_color or not url or not option.get("in_stock"):
+                if code == self_color or not url or not option.get("in_stock"):
                     continue
                 if len(color_rows) >= self.MAX_COLOR_VARIANTS:
                     break
                 sibling = self._card(urljoin(self.base_url, url))
-                if not sibling or self._color_code(sibling["product"]) != label:
-                    self.logger.warning("SuperStep: цвет %s не открылся по %s", label, url)
+                if not sibling or self._color_code(sibling["product"], color_key) != code:
+                    self.logger.warning("SuperStep: цвет %s не открылся по %s", code, url)
                     continue
-                color_rows.append((label, sibling))
+                color_rows.append((code, sibling))
 
         variants = [
             self._build_color_variant(color_card, color_order.get(code, len(color_order)))
@@ -597,15 +598,31 @@ class SuperstepParser(BaseScraper):
             source=self.get_name(),
         )
 
-    @classmethod
-    def _color_code(cls, product: Dict[str, Any]) -> str:
-        attrs = product.get("attributes") or {}
-        return next((str(attrs[key]) for key in cls.COLOR_KEYS if attrs.get(key)), "-")
+    def _color_key(self, variants: Any) -> str:
+        """Атрибут, по которому сайт группирует цвета модели.
+
+        У части товаров маркетплейса есть и ``integration_renk`` («01»), и
+        ``mp_color`` («SİYAH»), а группа цветов — по ``mp_color``.
+        """
+        for group in variants or []:
+            if isinstance(group, dict) and group.get("attribute_key") in self.COLOR_KEYS:
+                return str(group["attribute_key"])
+        return self.COLOR_KEYS[0]
+
+    @staticmethod
+    def _color_code(product: Dict[str, Any], color_key: str) -> str:
+        return str((product.get("attributes") or {}).get(color_key) or "-")
+
+    @staticmethod
+    def _option_value(option: Dict[str, Any]) -> str:
+        """Код варианта: ``label`` бывает подписью («Siyah»), ``value`` — кодом («SİYAH»)."""
+        return str(option.get("value") or option.get("label") or "")
 
     def _build_color_variant(self, card: Dict[str, Any], sort_order: int) -> Dict[str, Any]:
         product = card["product"]
-        color_code = self._color_code(product)
-        sizes = self._build_sizes(card["variants"], color_code)
+        color_key = self._color_key(card["variants"])
+        color_code = self._color_code(product, color_key)
+        sizes = self._build_sizes(card["variants"], color_key, color_code)
         price, old_price = self._selling_and_old_price(product)
         color = self._color_name(product)
         is_available = any(row["is_available"] for row in sizes) if sizes else bool(product.get("in_stock"))
@@ -617,7 +634,7 @@ class SuperstepParser(BaseScraper):
             "price": price,
             "old_price": old_price,
             "currency": "TRY",
-            "external_url": self._color_url(product, card["variants"], color_code),
+            "external_url": self._color_url(product, card["variants"], color_key, color_code),
             "images": self._extract_images(product),
             "stock_quantity": self.DEFAULT_ASSUMED_STOCK_QUANTITY if is_available else 0,
             "is_available": is_available,
@@ -629,22 +646,18 @@ class SuperstepParser(BaseScraper):
             variant["basket_offers"] = offers
         return variant
 
-    def _build_sizes(self, variants: Any, color_code: str) -> List[Dict[str, Any]]:
+    def _build_sizes(self, variants: Any, color_key: str, color_code: str) -> List[Dict[str, Any]]:
         """Размеры одного цвета. Akinon кладёт в список и размеры других цветов
         (тех, что есть только у них) — их отсекаем по коду цвета."""
         options = []
         for index, option in enumerate(self._variant_options(variants, self.SIZE_KEYS)):
             size_product = option.get("product") or {}
-            if self._color_code(size_product) != color_code or not option.get("label"):
+            if self._color_code(size_product, color_key) != color_code or not option.get("label"):
                 continue
-            try:
-                order = int(option.get("order"))
-            except (TypeError, ValueError):
-                order = index
-            options.append((order, index, option, size_product))
-        options.sort(key=lambda row: (row[0], row[1]))
+            options.append((self._size_sort_key(option, index), option, size_product))
+        options.sort(key=lambda row: row[0])
         sizes = []
-        for sort_order, (_, _, option, size_product) in enumerate(options):
+        for sort_order, (_, option, size_product) in enumerate(options):
             available = bool(option.get("in_stock"))
             sizes.append(
                 {
@@ -658,6 +671,19 @@ class SuperstepParser(BaseScraper):
             )
         return sizes
 
+    @classmethod
+    def _size_sort_key(cls, option: Dict[str, Any], index: int) -> tuple:
+        """Числовые размеры («28,5», «32-33») — по числу: ``order`` у Akinon
+        бывает из разных систем (у детской обуви 2850, 3500, 200180…).
+        Буквенные (XS…XXL) — по ``order`` сайта."""
+        match = re.match(r"^(\d+(?:\.\d+)?)(?:-\d+)?$", cls._normalize_size(option.get("label")))
+        if match:
+            return (0, float(match.group(1)), index)
+        try:
+            return (1, int(option.get("order")), index)
+        except (TypeError, ValueError):
+            return (1, index, index)
+
     @staticmethod
     def _normalize_size(value: Any) -> str:
         """«42,5» → «42.5»: полуразмеры хранятся с точкой, как у FLO."""
@@ -670,12 +696,12 @@ class SuperstepParser(BaseScraper):
         value = next((str(attrs[key]).strip() for key in cls.BARCODE_KEYS if attrs.get(key)), "")
         return value if value.isdigit() and 8 <= len(value) <= 14 else ""
 
-    def _color_url(self, product: Dict[str, Any], variants: Any, color_code: str) -> str:
+    def _color_url(self, product: Dict[str, Any], variants: Any, color_key: str, color_code: str) -> str:
         """Ссылка цвета: у части размеров адрес вида /product/<pk>/ — берём /urun/…"""
         urls = [str(product.get("absolute_url") or "")] + [
             str((option.get("product") or {}).get("absolute_url") or "")
             for option in self._variant_options(variants, self.SIZE_KEYS)
-            if self._color_code(option.get("product") or {}) == color_code
+            if self._color_code(option.get("product") or {}, color_key) == color_code
         ]
         url = next((u for u in urls if u.startswith("/urun/")), urls[0])
         return self._canonical_url(urljoin(self.base_url, url))
@@ -711,16 +737,14 @@ class SuperstepParser(BaseScraper):
         return offers
 
     def _color_name(self, product: Dict[str, Any]) -> str:
+        """Название цвета; капс («MAVİ», «SİYAH») — в обычный вид, как у остальных."""
         attrs = product.get("attributes") or {}
-        for key in ("integration_renk_detay", "integration_hos_renk_detay"):
-            if attrs.get(key):
-                return clean_text(str(attrs[key]))
-        tone = clean_text(str(attrs.get("integration_renk_tonu") or ""))
-        if tone:
-            lowered = tone.replace("İ", "i").replace("I", "ı").lower()
-            return lowered[:1].upper() + lowered[1:]
-        color = clean_text(str(attrs.get("mp_color") or ""))
-        return "" if color == "-" else color
+        keys = ("integration_renk_detay", "integration_hos_renk_detay", "integration_renk_tonu", "mp_color")
+        color = next((clean_text(str(attrs[key])) for key in keys if attrs.get(key) not in (None, "", "-")), "")
+        if color.isupper():
+            lowered = color.replace("İ", "i").replace("I", "ı").lower()
+            color = lowered[:1].upper() + lowered[1:]
+        return color
 
     def _extra_attributes(self, product: Dict[str, Any]) -> Dict[str, Any]:
         """Характеристики для правил/AI; служебное (скидка в корзине) на витрину не идёт."""
