@@ -673,6 +673,25 @@ def test_success_updates_only_raw_price_inventory_and_observed_options(
 
 
 @pytest.mark.django_db
+def test_card_refresh_switches_off_sizes_missing_from_response(parsed_clothing, monkeypatch):
+    """Строка размера, которой нет в ответе (у источника сменился формат «42,5» →
+    «42.5»), и дубль той же строки не остаются «в наличии» рядом с новой."""
+    product, domain, black, red = parsed_clothing
+    ClothingVariantSize.objects.create(variant=black, size="42,5", is_available=True, stock_quantity=None)
+    ClothingVariantSize.objects.create(variant=black, size="S", is_available=True, stock_quantity=None)
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_fetch_product", lambda target: _scraped())
+
+    assert service.run(product.pk)["status"] == "succeeded"
+
+    assert list(black.sizes.order_by("id").values_list("size", "is_available")) == [
+        ("S", True), ("42,5", False), ("S", False), ("M", False),
+    ]
+    # Цвет, которого нет в ответе, не трогаем: это не признак снятия.
+    assert red.sizes.get(size="XL").is_available is True
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("source_old_price", [None, 120, 110])
 def test_card_refresh_clears_strikethrough_when_source_sale_ended(
     parsed_clothing,

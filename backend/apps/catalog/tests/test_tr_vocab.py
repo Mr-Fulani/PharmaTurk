@@ -42,3 +42,11 @@ def test_translate_turkish_color_superstep_tones():
     assert translate_turkish_color("Renkli · WZS", "ru") == "Разноцветный · WZS"
     assert translate_turkish_color("GÜMÜŞ", "en") == "Silver"
     assert translate_turkish_color("ALTIN", "ru") == "Золотой"
+
+
+def test_new_superstep_tones_do_not_override_the_main_color_of_a_compound():
+    """Составные цвета FLO и LCW переводятся по-прежнему — по основному цвету."""
+    assert translate_turkish_color("Siyah-Renkli", "ru") == "Черный"
+    assert translate_turkish_color("Mavi-Gümüş", "ru") == "Синий"
+    assert translate_turkish_color("Mor/Altın", "ru") == "Фиолетовый"
+    assert translate_turkish_color("Beyaz-Lacivert", "ru") == "Темно-синий"  # как раньше

@@ -467,17 +467,22 @@ class SuperstepParser(BaseScraper):
         return subgroup, route
 
     HEADWEAR_SUBGROUPS = frozenset({"sapka", "bere"})
-    # Модификаторы перед цветом в названии: «Açık Mavi», «Koyu Gri».
-    NAME_COLOR_MODIFIERS = frozenset({"koyu", "acik", "kirik"})
+    # Модификаторы перед цветом в названии: «Açık Mavi», «Koyu Gri», «Çok Renkli».
+    NAME_COLOR_MODIFIERS = frozenset({"koyu", "acik", "kirik", "cok"})
+    # Слова после цвета, которые относятся к нему: «Kum Rengi».
+    NAME_COLOR_SUFFIXES = frozenset({"rengi", "renk", "tonu"})
+    # Цвет перед этими словами — узор, а не цвет варианта: «Kamuflaj Desenli».
+    NAME_PATTERN_WORDS = frozenset({"desenli", "desen", "baskili", "baski"})
 
     @classmethod
-    def _model_name(cls, product: Dict[str, Any], colors_count: int) -> str:
+    def _model_name(cls, product: Dict[str, Any], colors_count: int, brand: str = "") -> str:
         """Название модели без цвета варианта: «Nautica Erkek Gri Slim Fit … T-Shirt»
         → «Nautica Erkek Slim Fit … T-Shirt». Иначе карточка модели называлась бы
         по цвету, с которого начался обход, и у белого цвета в Списке заявки было
         «Nautica … Gri … — Белый». У модели одного цвета название не меняется.
-        Убираются только цвета словаря (и «Açık/Koyu» перед ними), а не слова вроде
-        «Baskılı», которые описывают сам товар."""
+        Убираются только цвета словаря (и «Açık/Koyu/Çok» перед ними, «Rengi» после),
+        а не слова вроде «Baskılı», которые описывают сам товар. Не трогаются бренд,
+        совпадающий с цветом («Mavi»), и узор («Kamuflaj Desenli»)."""
         name = clean_text(str(product.get("name") or ""))
         if colors_count < 2:
             return name
@@ -489,11 +494,22 @@ class SuperstepParser(BaseScraper):
                 part.lower() not in cls.EN_COLOR_WORDS and translate_turkish_color(part, "en") for part in parts
             )
 
-        drop = {index for index, token in enumerate(tokens) if is_color(token)}
-        drop |= {
-            index - 1 for index in drop
-            if index > 0 and superstep_subgroup_key(tokens[index - 1]) in cls.NAME_COLOR_MODIFIERS
+        keys = [superstep_subgroup_key(token) for token in tokens]
+        brand_keys = superstep_subgroup_key(brand).split()
+        # Бренд, совпадающий с цветом («Mavi»): защищён в начале названия, а если
+        # названия с бренда не начинается — любое слово бренда.
+        if brand_keys and keys[: len(brand_keys)] == brand_keys:
+            protected = set(range(len(brand_keys)))
+        else:
+            protected = {index for index, key in enumerate(keys) if key in brand_keys}
+        drop = {
+            index for index, token in enumerate(tokens)
+            if is_color(token)
+            and index not in protected
+            and (index + 1 >= len(tokens) or keys[index + 1] not in cls.NAME_PATTERN_WORDS)
         }
+        drop |= {index - 1 for index in drop if index > 0 and keys[index - 1] in cls.NAME_COLOR_MODIFIERS}
+        drop |= {index + 1 for index in drop if index + 1 < len(tokens) and keys[index + 1] in cls.NAME_COLOR_SUFFIXES}
         neutral = " ".join(token for index, token in enumerate(tokens) if index not in drop)
         return neutral or name
     # Тип кепки по названию («New Era … 940 Trucker … Şapka»): у сайта одна
@@ -791,7 +807,11 @@ class SuperstepParser(BaseScraper):
         attributes.update(self._extra_attributes(product))
 
         return ScrapedProduct(
-            name=self._model_name(product, len(color_options)) if with_variants else clean_text(str(product.get("name") or "")),
+            name=(
+                self._model_name(product, len(color_options), self._brand(product))
+                if with_variants
+                else clean_text(str(product.get("name") or ""))
+            ),
             description=self._description(product) or self._features_description(product),
             price=primary["price"],
             old_price=primary["old_price"],

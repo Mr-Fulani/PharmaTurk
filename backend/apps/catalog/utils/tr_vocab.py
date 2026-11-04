@@ -47,7 +47,8 @@ TR_COLOR_DICTIONARY: dict[str, dict[str, str]] = {
     # Цвета из фидов ВК 27.10.2026, которые оставались по-турецки.
     "cok renkli": {"ru": "Разноцветный", "en": "Multicolor"},
     # Тоны SuperStep без перевода (04.11.2026): RENKLİ — 491 товар только на первых
-    # страницах корней каталога, GÜMÜŞ, ALTIN.
+    # страницах корней каталога, GÜMÜŞ, ALTIN. В составных цветах они запасные
+    # (TR_SECONDARY_COLOR_KEYS): «Siyah-Renkli» — по-прежнему «Черный».
     "renkli": {"ru": "Разноцветный", "en": "Multicolor"},
     "gumus": {"ru": "Серебристый", "en": "Silver"},
     "altin": {"ru": "Золотой", "en": "Gold"},
@@ -112,14 +113,25 @@ TR_PRODUCT_TERM_DICTIONARY: dict[str, dict[str, str]] = {
 }
 
 
-def _lookup_localized(mapping: dict[str, dict[str, str]], raw_value: str, locale: str) -> str:
+# Ключи, которые в составном цвете не перебивают основной: «Siyah-Renkli»,
+# «Mavi-Gümüş», «Mor/Altın» переводятся по первому цвету, как до их появления.
+TR_SECONDARY_COLOR_KEYS = frozenset({"renkli", "gumus", "altin"})
+
+
+def _lookup_localized(
+    mapping: dict[str, dict[str, str]],
+    raw_value: str,
+    locale: str,
+    secondary: frozenset = frozenset(),
+) -> str:
     normalized = normalize_ascii_text(raw_value)
     if not normalized:
         return ""
     direct = mapping.get(normalized)
     if direct:
         return direct.get(locale) or str(raw_value).strip()
-    for key, values in sorted(mapping.items(), key=lambda item: len(item[0]), reverse=True):
+    # Сначала основные ключи (длинные раньше), запасные — только если основных нет.
+    for key, values in sorted(mapping.items(), key=lambda item: (item[0] in secondary, -len(item[0]))):
         if re.search(rf"(^|[^a-z]){re.escape(key)}([^a-z]|$)", normalized):
             return values.get(locale) or str(raw_value).strip()
     return ""
@@ -135,9 +147,9 @@ def translate_turkish_color(raw_value: str, locale: str) -> str:
     как есть, иначе два цвета после перевода снова совпали бы."""
     base, separator, detail = str(raw_value or "").partition(COLOR_DETAIL_SEPARATOR)
     if separator:
-        translated = _lookup_localized(TR_COLOR_DICTIONARY, base, locale)
+        translated = _lookup_localized(TR_COLOR_DICTIONARY, base, locale, TR_SECONDARY_COLOR_KEYS)
         return f"{translated}{COLOR_DETAIL_SEPARATOR}{detail.strip()}" if translated else ""
-    return _lookup_localized(TR_COLOR_DICTIONARY, raw_value, locale)
+    return _lookup_localized(TR_COLOR_DICTIONARY, raw_value, locale, TR_SECONDARY_COLOR_KEYS)
 
 
 def translate_turkish_product_term(raw_value: str, locale: str) -> str:

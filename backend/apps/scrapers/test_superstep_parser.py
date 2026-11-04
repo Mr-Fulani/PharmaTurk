@@ -551,10 +551,24 @@ def test_model_name_has_no_color_of_the_opened_variant():
         ("Nike Dunk Low Retro Erkek Beyaz/Gri Sneaker", "Nike Dunk Low Retro Erkek Sneaker"),
         ("Converse Çocuk Açık Mavi Sneaker", "Converse Çocuk Sneaker"),
         ("Nike Club Erkek Baskılı Siyah Sweatshirt", "Nike Club Erkek Baskılı Sweatshirt"),
+        ("Nike Everyday Unisex Çok Renkli Çorap", "Nike Everyday Unisex Çorap"),  # не «Çok Çorap»
+        ("Converse Chuck 70 Unisex Kum Rengi Sneaker", "Converse Chuck 70 Unisex Sneaker"),
+        ("Nike Erkek Kamuflaj Desenli Şort", "Nike Erkek Kamuflaj Desenli Şort"),  # узор, не цвет
     ],
 )
 def test_model_name_without_color_words(name, expected):
-    assert SuperstepParser._model_name({"name": name}, 2) == expected
+    assert SuperstepParser._model_name({"name": name}, 2, name.split()[0]) == expected
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Mavi Erkek Mavi Jean", "Mavi Erkek Jean"),  # бренд в начале остаётся, цвет — нет
+        ("Erkek Mavi Jean", "Erkek Mavi Jean"),  # не с бренда — слово бренда не трогаем
+    ],
+)
+def test_model_name_keeps_brand_equal_to_color(name, expected):
+    assert SuperstepParser._model_name({"name": name}, 2, "Mavi") == expected
 
 
 @pytest.mark.parametrize(

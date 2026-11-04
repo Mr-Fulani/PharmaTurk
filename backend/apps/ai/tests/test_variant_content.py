@@ -28,6 +28,23 @@ def test_variant_title_normalization_uses_shared_color_vocabulary():
     assert result["en"]["generated_title"] == "YAPILI BERE - Brown"
 
 
+def test_variant_title_color_is_replaced_only_as_a_whole_word():
+    """«Altinyildiz» не становится «Goldyildiz», «Memory» — «Meфиолетовыйy»."""
+    generator = _generator_without_dependencies()
+    content = {
+        "ru": {"generated_title": "Altinyildiz Memory Foam Altın"},
+        "en": {"generated_title": "Altinyildiz Memory Foam Altın"},
+    }
+
+    result = generator._normalize_variant_generated_titles(
+        content,
+        {"color": "Altın", "suggested_titles": {}},
+    )
+
+    assert result["ru"]["generated_title"] == "Altinyildiz Memory Foam Золотой"
+    assert result["en"]["generated_title"] == "Altinyildiz Memory Foam Gold"
+
+
 def test_color_and_sizes_only_variant_skips_separate_llm_processing():
     generator = _generator_without_dependencies()
     variant = _SaveableVariant(external_data={})
