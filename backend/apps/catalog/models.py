@@ -2812,7 +2812,6 @@ class ClothingVariantSize(models.Model):
         _("GTIN размера"),
         max_length=14,
         blank=True,
-        db_index=True,
         help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
     )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -2824,6 +2823,7 @@ class ClothingVariantSize(models.Model):
         verbose_name_plural = _("Размеры варианта одежды")
         ordering = ["variant", "sort_order", "size"]
         indexes = [
+            models.Index(fields=["gtin"], name="clothing_vsize_gtin_idx"),
             models.Index(fields=["variant", "sort_order"]),
             models.Index(fields=["variant", "size"]),
         ]
@@ -3408,7 +3408,6 @@ class ShoeVariantSize(models.Model):
         _("GTIN размера"),
         max_length=14,
         blank=True,
-        db_index=True,
         help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
     )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -3420,6 +3419,7 @@ class ShoeVariantSize(models.Model):
         verbose_name_plural = _("Размеры варианта обуви")
         ordering = ["variant", "sort_order", "size"]
         indexes = [
+            models.Index(fields=["gtin"], name="shoe_vsize_gtin_idx"),
             models.Index(fields=["variant", "sort_order"]),
             models.Index(fields=["variant", "size"]),
         ]
@@ -7234,7 +7234,6 @@ class HeadwearVariantSize(models.Model):
         _("GTIN размера"),
         max_length=14,
         blank=True,
-        db_index=True,
         help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
     )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -7245,6 +7244,8 @@ class HeadwearVariantSize(models.Model):
         verbose_name = _("Размер варианта: Головной убор")
         verbose_name_plural = _("Размеры вариантов: Головные уборы")
         ordering = ["variant", "sort_order", "size"]
+        # Без db_index: тот поставил бы ещё и ненужный LIKE-индекс varchar_pattern_ops.
+        indexes = [models.Index(fields=["gtin"], name="headwear_vsize_gtin_idx")]
 
 class HeadwearVariantImage(models.Model):
     variant = models.ForeignKey(HeadwearVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
@@ -7400,7 +7401,6 @@ class UnderwearVariantSize(models.Model):
         _("GTIN размера"),
         max_length=14,
         blank=True,
-        db_index=True,
         help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
     )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -7411,6 +7411,8 @@ class UnderwearVariantSize(models.Model):
         verbose_name = _("Размер варианта: Нижнее бельё (товар)")
         verbose_name_plural = _("Размеры вариантов: Нижнее бельё")
         ordering = ["variant", "sort_order", "size"]
+        # Без db_index: тот поставил бы ещё и ненужный LIKE-индекс varchar_pattern_ops.
+        indexes = [models.Index(fields=["gtin"], name="underwear_vsize_gtin_idx")]
 
 class UnderwearVariantImage(models.Model):
     variant = models.ForeignKey(UnderwearVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))

@@ -15,7 +15,6 @@ class Migration(migrations.Migration):
             name="gtin",
             field=models.CharField(
                 blank=True,
-                db_index=True,
                 help_text="Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца.",
                 max_length=14,
                 verbose_name="GTIN размера",
@@ -26,7 +25,6 @@ class Migration(migrations.Migration):
             name="gtin",
             field=models.CharField(
                 blank=True,
-                db_index=True,
                 help_text="Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца.",
                 max_length=14,
                 verbose_name="GTIN размера",
@@ -37,7 +35,6 @@ class Migration(migrations.Migration):
             name="gtin",
             field=models.CharField(
                 blank=True,
-                db_index=True,
                 help_text="Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца.",
                 max_length=14,
                 verbose_name="GTIN размера",
@@ -48,11 +45,26 @@ class Migration(migrations.Migration):
             name="gtin",
             field=models.CharField(
                 blank=True,
-                db_index=True,
                 help_text="Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца.",
                 max_length=14,
                 verbose_name="GTIN размера",
             ),
+        ),
+        migrations.AddIndex(
+            model_name="clothingvariantsize",
+            index=models.Index(fields=["gtin"], name="clothing_vsize_gtin_idx"),
+        ),
+        migrations.AddIndex(
+            model_name="shoevariantsize",
+            index=models.Index(fields=["gtin"], name="shoe_vsize_gtin_idx"),
+        ),
+        migrations.AddIndex(
+            model_name="headwearvariantsize",
+            index=models.Index(fields=["gtin"], name="headwear_vsize_gtin_idx"),
+        ),
+        migrations.AddIndex(
+            model_name="underwearvariantsize",
+            index=models.Index(fields=["gtin"], name="underwear_vsize_gtin_idx"),
         ),
         migrations.CreateModel(
             name="CrossSourceDuplicate",

@@ -1041,10 +1041,15 @@ class ProductCardSourceRefreshService:
                 VariantModel = config["variant_model"]
                 VariantSizeModel = config["variant_size_model"]
                 ProductSizeModel = config["product_size_model"]
+                # Скрытый нами дубль тоже: иначе он остался бы «в наличии» и мог бы
+                # вернуться на сайт вместо пары (docs/CROSS_SOURCE_DUPLICATES.md).
+                hidden = hidden_variant_ids(
+                    product.product_type, domain_product.variants.values_list("id", flat=True)
+                )
                 variants = VariantModel.objects.filter(
+                    Q(is_active=True) | Q(pk__in=hidden),
                     product=domain_product,
                     external_id__in=variant_keys,
-                    is_active=True,
                 )
                 variant_ids = list(variants.values_list("pk", flat=True))
                 variants_updated = variants.update(

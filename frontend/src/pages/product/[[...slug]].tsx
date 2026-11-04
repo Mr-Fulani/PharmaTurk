@@ -3259,7 +3259,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     const currentProductPath = `/product/${slugParts.join('/')}`
 
     if (canonicalPath && currentProductPath !== canonicalPath) {
-      // Скрытый дубль у другого продавца ведёт на показанный временно (302):
+      // Скрытый дубль у другого продавца ведёт на показанный временно (307):
       // цены могут поменяться местами (docs/CROSS_SOURCE_DUPLICATES.md).
       const duplicateRedirect = body.redirect_permanent === false
       return {

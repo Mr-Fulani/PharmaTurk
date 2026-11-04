@@ -26,7 +26,7 @@
 | [SOURCE_OFFER_CART_VERIFICATION_PLAN.md](SOURCE_OFFER_CART_VERIFICATION_PLAN.md) | рабочий план проверки цены и наличия первоисточника в корзине и checkout | активен с 2026-08-27 |
 | [STALE_PRODUCTS.md](STALE_PRODUCTS.md) | «Неактуальные товары» в админке: скрыть и удалить вместе с файлами только по решению владельца, предохранители, журнал и восстановление | 2026-10-28 |
 | [INDEXNOW.md](INDEXNOW.md) | IndexNow для Bing и Яндекса: какие страницы товаров уходят (без изменений цены), ключ, дневной предел, включение и проверка | 2026-11-02 |
-| [CROSS_SOURCE_DUPLICATES.md](CROSS_SOURCE_DUPLICATES.md) | одинаковые товары FLO ↔ SuperStep: по штрихкоду (запасной признак — бренд + артикул), показ более дорогого, скрытый дубль, редирект 302, команда и включение | 2026-11-04 |
+| [CROSS_SOURCE_DUPLICATES.md](CROSS_SOURCE_DUPLICATES.md) | одинаковые товары FLO ↔ SuperStep: по штрихкоду (запасной признак — бренд + артикул), показ более дорогого, скрытый дубль, временный редирект 307, команда и включение | 2026-11-04 |
 | [NIGHTLY_STOCK_CHECK.md](NIGHTLY_STOCK_CHECK.md) | ночная сверка наличия у бесплатных продавцов (LCW, IKEA, UmmaLand), предохранители, кандидаты «нет у продавца», оценка стоимости FLO/Zara | 2026-10-28 |
 | [PRODUCT_CARD_SOURCE_REFRESH_PLAN.md](PRODUCT_CARD_SOURCE_REFRESH_PLAN.md) | план и статус обновления цены/вариантов спарсенной карточки при открытии | активен с 2026-08-29 |
 | [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | rollout, метрики, alerting и безопасный повтор source-offer checks; поиск продавца БАДов (`discover_supplement_stock_offers`) | актуализирован 2026-08-31, переменные обновления карточки и поиск продавца БАДов — 2026-10-22 |

@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Any, Tuple
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.conf import settings
@@ -89,6 +90,7 @@ from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG, ensure_bran
 from apps.catalog.utils.old_price import source_old_price
 from apps.catalog.services.cross_source_duplicates import (
     SOURCES as DUPLICATE_SOURCES,
+    forget_hidden_variants,
     hidden_variant_ids,
     normalize_gtin,
     resolve_for_products as resolve_duplicates_for_products,
@@ -3475,8 +3477,14 @@ class ScraperIntegrationService:
 
         stale_qs = domain_product.variants.exclude(external_id__in=seen_external_ids)
         merge_only = getattr(product, "_fashion_variant_owner_match", False)
-        if not merge_only and stale_qs.filter(is_active=True).exists():
-            stale_qs.update(is_active=False, is_available=False, stock_quantity=0)
+        # Цвет, скрытый нами как дубль, тоже снимается: иначе он остался бы «в наличии» и
+        # пересчёт дублей мог бы вернуть на сайт предложение, которого у продавца нет.
+        retired_ids = list(
+            stale_qs.filter(Q(is_active=True) | Q(id__in=hidden_ids)).values_list("id", flat=True)
+        )
+        if not merge_only and retired_ids:
+            stale_qs.filter(id__in=retired_ids).update(is_active=False, is_available=False, stock_quantity=0)
+            forget_hidden_variants(product.product_type, retired_ids)
             changed = True
 
         active_variants = list(domain_product.variants.filter(is_active=True).order_by("sort_order", "id"))
