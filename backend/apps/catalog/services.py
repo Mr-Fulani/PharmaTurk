@@ -694,9 +694,12 @@ class CatalogNormalizer:
         if not base_slug:
             base_slug = "product"
         
-        # Добавляем external_id к slug для уникальности
-        if external_id:
-            slug = f"{base_slug}-{external_id}"
+        # Добавляем external_id к slug для уникальности. Только допустимые в адресе
+        # символы: точка из кода цвета SuperStep («superstep-13424.0195») давала
+        # слаг, по которому страница товара отвечала 404.
+        safe_external_id = re.sub(r"[^0-9A-Za-z_-]+", "-", str(external_id or "")).strip("-")
+        if safe_external_id:
+            slug = f"{base_slug}-{safe_external_id}"
         else:
             slug = f"{base_slug}-{uuid.uuid4().hex[:8]}"
 
