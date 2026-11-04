@@ -46,6 +46,7 @@ from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.registry import get_parser
 from apps.scrapers.services import (
     BRAND_CLEAR_PRODUCT_TYPES,
+    DEFAULT_ASSUMED_STOCK_QUANTITY,
     ScraperIntegrationService,
     get_or_create_scraped_brand,
 )
@@ -414,6 +415,7 @@ class ProductCardSourceRefreshService:
 
         terminal = self._terminal_failure(target)
         if terminal is not None:
+            self._apply_terminal_absence(target)
             return {"eligible": True, **self._set_state(product.pk, terminal)}
 
         existing = _cache_get(self._state_key(product.pk))
@@ -557,6 +559,8 @@ class ProductCardSourceRefreshService:
                         target.offer.canonical_url,
                         include_sibling_variants=False,
                     )
+                    if result is None and target.parser_key == "superstep":
+                        result = self._superstep_after_missing_card(parser, target)
                 else:
                     result = parser.parse_product_detail(target.offer.canonical_url)
         except (OfferNotFound, OfferGone) as exc:
@@ -590,6 +594,21 @@ class ProductCardSourceRefreshService:
                 retryable=True,
             )
         return result
+
+    @staticmethod
+    def _superstep_after_missing_card(parser, target: RefreshTarget) -> ScrapedProduct | None:
+        """Карточка SuperStep не открылась (404): снят ли цвет, решает ``check_offer``.
+
+        Ссылка цвета — ссылка одного из размеров, её 404 ещё не значит, что цвет
+        снят: ``check_offer`` ищет цвет по коду модели. Нет в поиске —
+        ``OfferNotFound`` («не найден»); нашёлся по другой ссылке — карточка
+        обновляется по ней. Иначе — None, повторяемый сбой источника.
+        """
+        checked = parser.check_offer(SourceOfferVerificationService._context(target.offer))
+        moved = str(checked.canonical_url or "").rstrip("/")
+        if moved and moved != str(target.offer.canonical_url or "").rstrip("/"):
+            return parser.parse_product_detail(checked.canonical_url, include_sibling_variants=False)
+        return None
 
     @staticmethod
     def _single_offer_product(
@@ -809,7 +828,9 @@ class ProductCardSourceRefreshService:
             return 0
         if snapshot and snapshot.stock_precision == ProductSourceOffer.StockPrecision.EXACT:
             return snapshot.stock_quantity
-        return None
+        # Как импорт: «есть» без точного числа — условный остаток, а не None, иначе
+        # следующий проход парсера каждый раз «обновлял» бы товар.
+        return DEFAULT_ASSUMED_STOCK_QUANTITY
 
     def _sync_fashion_inventory(
         self,
@@ -878,7 +899,7 @@ class ProductCardSourceRefreshService:
                 ]
                 stock = sum(exact_values) if available and len(exact_values) == sum(
                     1 for row in normalized_sizes if row["is_available"]
-                ) else (0 if not available else None)
+                ) else (0 if not available else DEFAULT_ASSUMED_STOCK_QUANTITY)
             else:
                 available = self._availability(variant_snapshot, spec.get("is_available"))
                 stock = self._stock(variant_snapshot, available=available)
@@ -1030,6 +1051,31 @@ class ProductCardSourceRefreshService:
                 FurnitureVariant.objects.filter(pk=variant.pk).update(**updates)
                 counts["variants_updated"] += 1
         return counts
+
+    def _apply_terminal_absence(self, target: RefreshTarget) -> None:
+        """«Не найден» мог первым получить Список заявки (``cart/revalidate``): он
+        пишет только предложение, а товар оставался «в наличии» — карточка снимает
+        URL с продажи здесь. Повторно, пока снятое уже снято, ничего не пишется."""
+        if not self._absence_pending(target):
+            return
+        try:
+            self._on_source_not_found(target)
+        except Exception:
+            logger.exception(
+                "product_card_source_unavailable_persist_failed",
+                extra={"product_id": target.product.pk, "source": target.parser_key},
+            )
+
+    def _absence_pending(self, target: RefreshTarget) -> bool:
+        product = Product.objects.filter(pk=target.product.pk).only("pk", "is_available", "product_type").first()
+        if product is None:
+            return False
+        variant_key = str(target.offer.variant_key or "").strip()
+        if variant_key and product.product_type in FASHION_PRODUCT_TYPES:
+            domain = product.domain_item
+            if domain is not product and hasattr(domain, "variants"):
+                return domain.variants.filter(external_id=variant_key, is_available=True).exists()
+        return bool(product.is_available)
 
     def _on_source_not_found(self, target: RefreshTarget) -> dict[str, int]:
         """Что делать, когда источник окончательно не нашёл открытый URL.
@@ -1183,10 +1229,11 @@ class ProductCardSourceRefreshService:
             if ScraperIntegrationService.variants_carry_old_price(specs):
                 old_price = _decimal(default.old_price)
             old_price = source_old_price(old_price, price)
-        any_available = any(row.is_available for row in variants)
-        if any_available != available:
-            # Точный остаток проверенного цвета не равен остатку карточки.
-            available, stock = any_available, (None if any_available else 0)
+        # Наличие и остаток — формулой импорта (_sync_fashion_variants): иначе
+        # следующий проход парсера каждый раз «обновлял» бы товар.
+        available = any(row.is_available for row in variants)
+        total_stock = sum(row.stock_quantity or 0 for row in variants if row.stock_quantity)
+        stock = DEFAULT_ASSUMED_STOCK_QUANTITY if available else (total_stock if total_stock > 0 else None)
         return price, old_price, currency, available, stock
 
     @staticmethod
@@ -1394,6 +1441,7 @@ class ProductCardSourceRefreshService:
 
         terminal = self._terminal_failure(target)
         if terminal is not None:
+            self._apply_terminal_absence(target)
             failed = self._set_state(product_id, terminal)
             self._observe(target.parser_key, "source_not_found", started_at)
             return failed

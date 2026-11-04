@@ -1,9 +1,12 @@
+import json
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlparse
 from uuid import uuid4
 
+import httpx
 import pytest
 from django.core.cache import cache
 from django.db.models.signals import post_save
@@ -32,6 +35,10 @@ from apps.catalog.services.source_offer_verification import SourceOfferVerificat
 from apps.catalog.utils.product_markup import apply_product_markup
 from apps.http_errors import PaidAccessUnavailableError
 from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.models import ScraperConfig, ScrapingSession
+from apps.scrapers.parsers.superstep import SuperstepParser
+from apps.scrapers.services import DEFAULT_ASSUMED_STOCK_QUANTITY, ScraperIntegrationService
+from apps.scrapers.source_offers import record_scraped_product_offers
 from apps.scrapers.base.offers import (
     OfferAvailability,
     OfferCheckResult,
@@ -390,6 +397,189 @@ def test_superstep_card_fetch_refreshes_only_saved_color(monkeypatch):
     assert captured["detail_kwargs"] == {"include_sibling_variants": False}
 
 
+SUPERSTEP = "https://www.superstep.com.tr"
+SUPERSTEP_STANLEY = "/urun/stanley-the-iceflow-flip-straw-2-0-0-89l-unisex-beyaz-termos/13424/"
+SUPERSTEP_FIXTURES = Path(__file__).resolve().parents[2] / "scrapers" / "test_fixtures" / "superstep"
+
+
+class OfflineSuperstepParser(SuperstepParser):
+    """Настоящий парсер SuperStep, сайт подменён: путь → (статус, тело)."""
+
+    routes: dict = {}
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.client.close()
+        self.client = httpx.Client(transport=httpx.MockTransport(self._answer), follow_redirects=True)
+
+    def _answer(self, request):
+        status, body = self.routes.get(request.url.path, (404, "<html>404</html>"))
+        return httpx.Response(status, text=body, request=request)
+
+
+def _superstep_target(canonical_path, external_sku):
+    return SimpleNamespace(
+        parser_key="superstep",
+        parser_class=OfflineSuperstepParser,
+        offer=SimpleNamespace(
+            parser_key="superstep",
+            parser_config={},
+            canonical_url=SUPERSTEP + canonical_path,
+            external_product_id=f"superstep-{external_sku}",
+            external_sku=external_sku,
+            variant_key="",
+            size_key="",
+            selected_options={},
+        ),
+    )
+
+
+def _superstep_search(*tiles):
+    rows = []
+    for name, path in tiles:
+        card = json.loads((SUPERSTEP_FIXTURES / name).read_text(encoding="utf-8"))
+        rows.append(dict(card["product"], absolute_url=path, extra_data={"variants": card["variants"]}))
+    return (200, json.dumps({"products": rows, "pagination": {"current_page": 1, "num_pages": 1}}))
+
+
+@pytest.mark.django_db
+def test_superstep_card_gone_everywhere_is_source_not_found(monkeypatch):
+    """404 ссылки цвета и нет в поиске по коду модели — «не найден»: товар снимется,
+    а не останется «в наличии» с новым запросом на каждое открытие."""
+    monkeypatch.setattr(OfflineSuperstepParser, "routes", {"/list/": _superstep_search()})
+    service = ProductCardSourceRefreshService()
+
+    with pytest.raises(ProductCardRefreshError) as error:
+        service._fetch_product(_superstep_target("/urun/stanley-e2e-yok/zz13424e2e/", "ZZ13424E2E.0195"))
+
+    assert error.value.code == "source_not_found"
+    assert error.value.retryable is False
+
+
+@pytest.mark.django_db
+def test_superstep_card_moved_is_refreshed_by_new_url(monkeypatch):
+    """404 ссылки цвета — это 404 одного размера: цвет нашёлся в поиске по другой
+    ссылке — карточка обновляется по ней, а не снимается."""
+    card = (200, (SUPERSTEP_FIXTURES / "card_stanley_13424.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(
+        OfflineSuperstepParser,
+        "routes",
+        {"/list/": _superstep_search(("card_stanley_13424.json", SUPERSTEP_STANLEY)), SUPERSTEP_STANLEY: card},
+    )
+    service = ProductCardSourceRefreshService()
+
+    result = service._fetch_product(_superstep_target("/urun/stanley-old-slug/13424-9/", "13424.0195"))
+
+    assert result.url == SUPERSTEP + SUPERSTEP_STANLEY
+    assert result.external_id == "superstep-13424.0195"
+
+
+@pytest.mark.django_db
+def test_card_takes_product_off_sale_when_cart_got_not_found_first(parsed_clothing, monkeypatch):
+    """«Не найден» первым получил Список заявки (cart/revalidate пишет только
+    предложение): открытие карточки снимает URL с продажи, а не только показывает
+    «Товар больше недоступен» при товаре «в наличии»."""
+    product, domain, black, _red = parsed_clothing
+    product.source_offers.filter(variant_key="red").update(is_active=False)
+    # Состояние предложения после revalidate с ответом «не найден».
+    product.source_offers.filter(variant_key="black").update(
+        availability_status=ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+        last_error_code="not_found",
+    )
+    ClothingVariant.objects.filter(pk=black.pk).update(is_available=True, stock_quantity=None)
+    Product.objects.filter(pk=product.pk).update(is_available=True, stock_quantity=1000)
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(
+        service, "_fetch_product", lambda target: pytest.fail("terminal absence must not refetch")
+    )
+
+    result = service.run(product.pk)
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "source_not_found"
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    black.refresh_from_db()
+    assert product.is_available is False
+    assert domain.is_available is False
+    assert black.is_available is False
+    assert service._absence_pending(service._target(product)) is False  # повтор ничего не пишет
+
+
+@pytest.mark.django_db
+def test_import_after_card_refresh_is_skipped(settings, monkeypatch):
+    """Обновление карточки пишет наличие и остаток формулой импорта: следующий
+    проход парсера с тем же ответом «пропущен», а не «обновлён» (None ↔ 1000)."""
+    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = ["superstep"]
+    suffix = uuid4().hex[:8]
+    category = Category.objects.create(name="Поло SuperStep", slug=f"polo-superstep-{suffix}")
+    config = ScraperConfig.objects.create(
+        name=f"superstep-{suffix}", parser_class="superstep", base_url=SUPERSTEP, default_category=category
+    )
+    session = ScrapingSession.objects.create(
+        scraper_config=config, start_url=SUPERSTEP, max_pages=1, max_products=10, status="running"
+    )
+    url = SUPERSTEP + "/urun/nautica-polo/k35052t-5/"
+    product = Product.objects.create(
+        name="Nautica polo",
+        slug=f"nautica-polo-{suffix}",
+        category=category,
+        product_type="clothing",
+        price=Decimal("999.60"),
+        currency="TRY",
+        external_id="superstep-K35052T",
+        external_url=url,
+        external_data={"source": "superstep"},
+    )
+    scraped = ScrapedProduct(
+        name="Nautica polo",
+        description="",
+        price=999.6,
+        old_price=1249.5,
+        currency="TRY",
+        url=url,
+        external_id="superstep-K35052T",
+        source="superstep",
+        is_available=True,
+        stock_quantity=DEFAULT_ASSUMED_STOCK_QUANTITY,
+        attributes={
+            "fashion_variants": [
+                {
+                    "external_id": "superstep-variant-K35052T.4MY",
+                    "sku": "K35052T.4MY",
+                    "color": "Mavi",
+                    "sort_order": 0,
+                    "price": 999.6,
+                    "old_price": 1249.5,
+                    "currency": "TRY",
+                    "external_url": url,
+                    "is_available": True,
+                    "stock_quantity": DEFAULT_ASSUMED_STOCK_QUANTITY,
+                    "sizes": [
+                        {
+                            "size": "M",
+                            "is_available": True,
+                            "stock_quantity": DEFAULT_ASSUMED_STOCK_QUANTITY,
+                            "sort_order": 0,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    integration = ScraperIntegrationService()
+    integration._update_existing_product(session, scraped, product)
+    record_scraped_product_offers(product=Product.objects.get(pk=product.pk), scraped_product=scraped)
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_fetch_product", lambda target: scraped)
+
+    assert service.run(product.pk)["status"] == "succeeded"
+    status, refreshed = integration._update_existing_product(session, scraped, Product.objects.get(pk=product.pk))
+
+    assert status == "skipped"
+    assert refreshed.stock_quantity == DEFAULT_ASSUMED_STOCK_QUANTITY
+
+
 def test_flo_card_fetch_maps_clean_page_without_product_to_not_found(
     settings,
     monkeypatch,
@@ -649,7 +839,7 @@ def test_success_updates_only_raw_price_inventory_and_observed_options(
     # Без ключа old_price у цвета парсер его зачёркнутую цену не знает — не трогаем.
     assert black.old_price == Decimal("150.00")
     assert black.is_available is True
-    assert black.stock_quantity is None
+    assert black.stock_quantity == DEFAULT_ASSUMED_STOCK_QUANTITY  # как импорт
     assert black.sizes.get(size="S").is_available is True
     assert black.sizes.get(size="M").is_available is False
 
