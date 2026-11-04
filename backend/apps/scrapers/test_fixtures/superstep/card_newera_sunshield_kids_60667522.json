@@ -1,0 +1,393 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 684306,
+  "name": "New Era MLB League Essentials New York Yankees  Sun Shield Çocuk Bej Şapka",
+  "sku": "6338361",
+  "base_code": "60667522",
+  "attributes": {
+   "brand_link": "/new-era/",
+   "integration_renk": "-",
+   "amazon_poc_barkod": "upc",
+   "integration_beden": "CHLD",
+   "integration_marka": "078",
+   "integration_tanim": "SAPKA",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "009",
+   "integration_cinsiyet": "Çocuk",
+   "integration_alt_marka": "NEW ERA",
+   "integration_color_hex": "#d5bfad",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "BEJ",
+   "integration_urun_ozel": "New Era MLB League Essentials New York Yankees  Sun Shield Çocuk Bej Şapka",
+   "brand_specific_product": "superkids",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "Crown, Visor, Undervisor & Button: 100% POLYESTER, Crown Rear: 100% POLYESTER",
+   "integration_erp_mensei": "Çin",
+   "integration_model_renk": "60667522.-",
+   "integration_renk_detay": "Bej",
+   "integration_urun_detay": "MLB League Essentials New York Yankees  Sun Shield",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "CHILDREN",
+   "integration_kalem_icerik": "<p>New Era MLB League Essentials New York Yankees Sun Shield Çocuk Bej Şapka, çocuğunuzun başını güneşten korurken şıklığından ödün vermemesi için mükemmel bir seçenek. Bej rengi ve New York Yankees logosu ile tasarlanmış bu şapka, rahat kullanım sağlar.</p><br> <p><strong>Teknik Özellikler</strong></p> <li>Güneş ışınlarından koruyan tasarım</li> <li>Yumuşak ve dayanıklı kumaş</li> <li>Esnek tasarım ile rahat kullanım</li> <li>New York Yankees logosu ile şık detay</li>",
+   "integration_renk_tonu_kod": "032",
+   "integration_urun_ana_grup": "002",
+   "integration_hos_renk_detay": "Bej",
+   "integration_hos_urun_detay": "Çocuk Şapka",
+   "integration_base_code_format": "60667522.-.CHLD",
+   "integration_erenp_erenbarkod": "8001063383613",
+   "integration_hos_kalem_icerik": "<p>New Era MLB League Essentials New York Yankees Sun Shield Çocuk Bej Şapka, çocuğunuzun başını güneşten korurken şıklığından ödün vermemesi için mükemmel bir seçenek. Bej rengi ve New York Yankees logosu ile tasarlanmış bu şapka, rahat kullanım sağlar.</p><br> <p><strong>Teknik Özellikler</strong></p> <li>Güneş ışınlarından koruyan tasarım</li> <li>Yumuşak ve dayanıklı kumaş</li> <li>Esnek tasarım ile rahat kullanım</li> <li>New York Yankees logosu ile şık detay</li>",
+   "integration_yurt_disi_barkod": "198582620430",
+   "integration_erp_renk_aciklama": "PASTEL PURPLE",
+   "integration_global_attribute7": "SAPKA"
+  },
+  "attribute_set": 2,
+  "attributes_kwargs": {
+   "integration_renk": {
+    "label": "-",
+    "value": "-",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "CHLD",
+    "value": "CHLD",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "New Era",
+    "value": "078",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "SAPKA",
+    "value": "SAPKA",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Bere",
+    "value": "009",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Çocuk",
+    "value": "Çocuk",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "New Era",
+    "value": "NEW ERA",
+    "data_type": "dropdown"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "BEJ",
+    "value": "BEJ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Bej",
+    "value": "Bej",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Çocuk",
+    "value": "CHILDREN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Aksesuar",
+    "value": "002",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 3400856,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/10e6c943-c6d6-4aa6-955e-2574c4e5c395.jpg",
+    "order": 20,
+    "created_date": "2025-06-18T08:17:23.092919Z"
+   },
+   {
+    "pk": 3400857,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/b943f9b7-9c89-4153-b3ac-032e9faa0992.jpg",
+    "order": 21,
+    "created_date": "2025-06-18T08:17:23.237749Z"
+   },
+   {
+    "pk": 3400858,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/37da9b38-2f75-4129-a7d9-978666336678.jpg",
+    "order": 22,
+    "created_date": "2025-06-18T08:17:23.326114Z"
+   },
+   {
+    "pk": 3400859,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/8cfd078c-b29f-4563-a6de-7764b54e32e3.jpg",
+    "order": 23,
+    "created_date": "2025-06-18T08:17:23.403623Z"
+   },
+   {
+    "pk": 3400860,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/466c5c17-9822-4a1f-b694-b6bcf9ae14c1.jpg",
+    "order": 30,
+    "created_date": "2025-06-18T08:17:23.476210Z"
+   }
+  ],
+  "price": "1999",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "1999",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/new-era-mlb-league-essentials-new-york-yankees-sun-shield-cocuk-bej-sapka/60667522/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 4,
+  "created_date": "2025-06-18T08:10:44.269501Z",
+  "modified_date": "2026-11-04T13:06:28.873163Z",
+  "basket_offers": [],
+  "is_listable": true,
+  "listing_code": "-",
+  "price_extra_field": {
+   "previous_price": "1398.00"
+  }
+ },
+ "variants": [
+  {
+   "attribute_key": "integration_renk",
+   "attribute_name": "Renk",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "45454555",
+     "label": "-",
+     "value": "-",
+     "product": {
+      "pk": 684306,
+      "name": "New Era MLB League Essentials New York Yankees  Sun Shield Çocuk Bej Şapka",
+      "sku": "6338361",
+      "base_code": "60667522",
+      "attributes": {
+       "integration_renk": "-",
+       "integration_beden": "CHLD",
+       "integration_renk_tonu": "BEJ",
+       "integration_model_renk": "60667522.-",
+       "integration_renk_detay": "Bej",
+       "integration_hos_renk_detay": "Bej",
+       "integration_yurt_disi_barkod": "198582620430",
+       "integration_erp_renk_aciklama": "PASTEL PURPLE"
+      },
+      "attribute_set": 2,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Bere",
+        "value": "009",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "1999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "1999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/new-era-mlb-league-essentials-new-york-yankees-sun-shield-cocuk-bej-sapka/60667522/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 4,
+      "created_date": "2025-06-18T08:10:44.269501Z",
+      "modified_date": "2026-11-04T13:06:28.873163Z",
+      "price_extra_field": {
+       "previous_price": "1398.00"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": {
+  "pk": 684306,
+  "name": "New Era MLB League Essentials New York Yankees  Sun Shield Çocuk Bej Şapka",
+  "sku": "6338361",
+  "base_code": "60667522",
+  "attributes": {
+   "brand_link": "/new-era/",
+   "integration_renk": "-",
+   "amazon_poc_barkod": "upc",
+   "integration_beden": "CHLD",
+   "integration_marka": "078",
+   "integration_tanim": "SAPKA",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "009",
+   "integration_cinsiyet": "Çocuk",
+   "integration_alt_marka": "NEW ERA",
+   "integration_color_hex": "#d5bfad",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "BEJ",
+   "integration_urun_ozel": "New Era MLB League Essentials New York Yankees  Sun Shield Çocuk Bej Şapka",
+   "brand_specific_product": "superkids",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "Crown, Visor, Undervisor & Button: 100% POLYESTER, Crown Rear: 100% POLYESTER",
+   "integration_erp_mensei": "Çin",
+   "integration_model_renk": "60667522.-",
+   "integration_renk_detay": "Bej",
+   "integration_urun_detay": "MLB League Essentials New York Yankees  Sun Shield",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "CHILDREN",
+   "integration_kalem_icerik": "<p>New Era MLB League Essentials New York Yankees Sun Shield Çocuk Bej Şapka, çocuğunuzun başını güneşten korurken şıklığından ödün vermemesi için mükemmel bir seçenek. Bej rengi ve New York Yankees logosu ile tasarlanmış bu şapka, rahat kullanım sağlar.</p><br> <p><strong>Teknik Özellikler</strong></p> <li>Güneş ışınlarından koruyan tasarım</li> <li>Yumuşak ve dayanıklı kumaş</li> <li>Esnek tasarım ile rahat kullanım</li> <li>New York Yankees logosu ile şık detay</li>",
+   "integration_renk_tonu_kod": "032",
+   "integration_urun_ana_grup": "002",
+   "integration_hos_renk_detay": "Bej",
+   "integration_hos_urun_detay": "Çocuk Şapka",
+   "integration_base_code_format": "60667522.-.CHLD",
+   "integration_erenp_erenbarkod": "8001063383613",
+   "integration_hos_kalem_icerik": "<p>New Era MLB League Essentials New York Yankees Sun Shield Çocuk Bej Şapka, çocuğunuzun başını güneşten korurken şıklığından ödün vermemesi için mükemmel bir seçenek. Bej rengi ve New York Yankees logosu ile tasarlanmış bu şapka, rahat kullanım sağlar.</p><br> <p><strong>Teknik Özellikler</strong></p> <li>Güneş ışınlarından koruyan tasarım</li> <li>Yumuşak ve dayanıklı kumaş</li> <li>Esnek tasarım ile rahat kullanım</li> <li>New York Yankees logosu ile şık detay</li>",
+   "integration_yurt_disi_barkod": "198582620430",
+   "integration_erp_renk_aciklama": "PASTEL PURPLE",
+   "integration_global_attribute7": "SAPKA"
+  },
+  "attribute_set": 2,
+  "attributes_kwargs": {
+   "integration_renk": {
+    "label": "-",
+    "value": "-",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "CHLD",
+    "value": "CHLD",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "New Era",
+    "value": "078",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "SAPKA",
+    "value": "SAPKA",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Bere",
+    "value": "009",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Çocuk",
+    "value": "Çocuk",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "New Era",
+    "value": "NEW ERA",
+    "data_type": "dropdown"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "BEJ",
+    "value": "BEJ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Bej",
+    "value": "Bej",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Çocuk",
+    "value": "CHILDREN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Aksesuar",
+    "value": "002",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 3400856,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/10e6c943-c6d6-4aa6-955e-2574c4e5c395.jpg",
+    "order": 20,
+    "created_date": "2025-06-18T08:17:23.092919Z"
+   },
+   {
+    "pk": 3400857,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/b943f9b7-9c89-4153-b3ac-032e9faa0992.jpg",
+    "order": 21,
+    "created_date": "2025-06-18T08:17:23.237749Z"
+   },
+   {
+    "pk": 3400858,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/37da9b38-2f75-4129-a7d9-978666336678.jpg",
+    "order": 22,
+    "created_date": "2025-06-18T08:17:23.326114Z"
+   },
+   {
+    "pk": 3400859,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/8cfd078c-b29f-4563-a6de-7764b54e32e3.jpg",
+    "order": 23,
+    "created_date": "2025-06-18T08:17:23.403623Z"
+   },
+   {
+    "pk": 3400860,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/06/17/74544743/466c5c17-9822-4a1f-b694-b6bcf9ae14c1.jpg",
+    "order": 30,
+    "created_date": "2025-06-18T08:17:23.476210Z"
+   }
+  ],
+  "price": "1999",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "1999",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/new-era-mlb-league-essentials-new-york-yankees-sun-shield-cocuk-bej-sapka/60667522/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 4,
+  "created_date": "2025-06-18T08:10:44.269501Z",
+  "modified_date": "2026-11-04T13:06:28.873163Z",
+  "price_extra_field": {
+   "previous_price": "1398.00"
+  }
+ },
+ "offers": []
+}

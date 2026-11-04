@@ -46,6 +46,11 @@ TR_COLOR_DICTIONARY: dict[str, dict[str, str]] = {
     "haki": {"ru": "Хаки", "en": "Khaki"},
     # Цвета из фидов ВК 27.10.2026, которые оставались по-турецки.
     "cok renkli": {"ru": "Разноцветный", "en": "Multicolor"},
+    # Тоны SuperStep без перевода (04.11.2026): RENKLİ — 491 товар только на первых
+    # страницах корней каталога, GÜMÜŞ, ALTIN.
+    "renkli": {"ru": "Разноцветный", "en": "Multicolor"},
+    "gumus": {"ru": "Серебристый", "en": "Silver"},
+    "altin": {"ru": "Золотой", "en": "Gold"},
     "cesitli": {"ru": "Ассорти", "en": "Assorted"},
     "taba": {"ru": "Табачный", "en": "Tan"},
     "kum": {"ru": "Песочный", "en": "Sand"},
