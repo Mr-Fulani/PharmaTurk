@@ -3994,12 +3994,21 @@ class ScraperIntegrationService:
                 remove_from_sale = existing_product.is_available
                 if (existing_product.external_data or {}).get("is_stub"):
                     gone_review = False
+            elif colour_variants:
+                # Наличие и остаток товара с цветами, как и цену, один раз считает
+                # _sync_fashion_variants: сумма остатков цветов из парсера (Zara,
+                # LCW — по 1000 на цвет) здесь давала бы 2000, там — 1000.
+                pass
             elif scraped_product.is_available != existing_product.is_available:
                 existing_product.is_available = scraped_product.is_available
                 updated = True
                 
             # Обновляем количество на складе
-            if scraped_product.stock_quantity is not None and scraped_product.stock_quantity != existing_product.stock_quantity:
+            if (
+                not colour_variants
+                and scraped_product.stock_quantity is not None
+                and scraped_product.stock_quantity != existing_product.stock_quantity
+            ):
                 existing_product.stock_quantity = scraped_product.stock_quantity
                 existing_product.is_available = (existing_product.stock_quantity or 0) > 0
                 updated = True

@@ -1,13 +1,13 @@
-# Обслуживание каталога: битые медиа, бренды производителей и FLO, старые цены, названия LCW, смена типа
+# Обслуживание каталога: битые медиа, бренды производителей и FLO, старые цены, цены цветов, названия LCW, смена типа
 
-В документе семь команд. Все по умолчанию работают в режиме dry-run (только отчёт),
+В документе восемь команд. Все по умолчанию работают в режиме dry-run (только отчёт),
 данные меняют только с `--apply`. Отчёт и бэкап у них разные:
 
 - `repair_broken_media` и `assign_manufacturer_brands` пишут CSV-отчёт (`/tmp/...`,
   путь можно задать через `--report`);
 - `repair_flo_brands` пишет CSV-отчёт, а с `--apply` — ещё и бэкап прежних брендов
   (`/tmp/flo_brands_backup_<время>.json`, product_id → brand_id);
-- `clear_heuristic_old_prices`, `retire_stale_domain_records` и
+- `clear_heuristic_old_prices`, `recalc_colour_prices`, `retire_stale_domain_records` и
   `move_essential_oils_from_supplements` с `--apply` требуют `--backup <файл.json>` со
   старыми значениями;
 - `repair_lcw_names` печатает замены в консоль, `--report` и `--backup` у неё нет —
@@ -108,6 +108,31 @@ manage.py repair_flo_brands --listing-url /ayakkabi --listing-url /giyim
 manage.py clear_heuristic_old_prices                                     # отчёт по источникам
 manage.py clear_heuristic_old_prices --apply --backup /backups/old_price.json
 ```
+
+## `recalc_colour_prices`
+
+До 04.11.2026 цену товара с цветами (одежда, обувь, головные уборы, бельё) задавал первый
+цвет с ценой, даже распроданный, а зачёркнутую — главный цвет парсера: у Nautica
+K35052T 749,70 при зачёркнутой 1 249,50, витрина показывала одну цену, сортировка и
+фильтр шли по другой. Теперь везде одно правило `default_fashion_variant`
+(`apps/catalog/utils/default_variant.py`): первый по порядку сайта цвет в наличии,
+зачёркнутая — того же цвета. Команда приводит к нему `Product` и доменную карточку по
+сохранённым цветам: цену, зачёркнутую, валюту, наличие и остаток (как импорт: 1000 при
+цвете в наличии). Только товары парсеров FLO, SuperStep, Zara, Bershka, Pull&Bear,
+Massimo Dutti и LCW; у LCW зачёркнутой по цветам нет — проверяется только, что она выше
+новой цены. Instagram не трогается: цену ведут вручную. В сеть не ходит, пишет
+`update()` без сигналов, пачками (`--batch-size`, 500).
+
+**Шаг после релиза PR #306** — иначе цены сойдутся с витриной только после следующего
+прохода парсера:
+
+```bash
+manage.py recalc_colour_prices                                           # сколько изменится, примеры
+manage.py recalc_colour_prices --apply --backup /backups/colour_prices.json
+```
+
+Бэкап — значения «до» (`product_id`, доменная карточка, цена, зачёркнутая, валюта,
+наличие, остаток). Повторный запуск после `--apply` показывает «изменится: 0».
 
 ## `repair_lcw_names`
 

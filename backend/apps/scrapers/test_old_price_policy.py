@@ -214,11 +214,44 @@ def test_full_pass_prices_colour_product_once_and_stays_stable(source, monkeypat
 
     monkeypatch.setattr(svc, "_sync_fashion_variants", spy)
 
-    for _ in range(2):
-        svc._update_existing_product(session, scraped, Product.objects.get(pk=product.pk))
+    statuses = [
+        svc._update_existing_product(session, scraped, Product.objects.get(pk=product.pk))[0]
+        for _ in range(2)
+    ]
 
     product.refresh_from_db()
     pair = (Decimal("999.60"), Decimal("1249.50"))
     assert (product.price, product.old_price) == pair
     assert seen[0] == seen[2] == pair  # цена ответа парсера не записывалась
     assert seen[3] is False
+    assert statuses[1] == "skipped"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("source", ["zara", "lcw"])
+def test_repeat_pass_with_two_colours_in_stock_is_skipped(source):
+    """Zara и LCW отдают остаток товара суммой по цветам (по 1000 на цвет). Наличие и
+    остаток товара с цветами считаются один раз по цветам — повторный проход того
+    же ответа «пропущен», а не «обновлён» каждый раз (2000 → 1000 → 2000)."""
+    svc, session, product = _setup(price=Decimal("499.90"))
+    colours = [
+        {
+            "external_id": f"{source}-{colour}", "color": colour, "sort_order": index,
+            "price": "499.90", "currency": "TRY", "is_available": True,
+        }
+        for index, colour in enumerate(["Siyah", "Beyaz"])
+    ]
+    scraped = _scraped(price=499.90)
+    scraped.source = source
+    scraped.stock_quantity = 2000
+    scraped.attributes = {"fashion_variants": colours}
+
+    statuses = [
+        svc._update_existing_product(session, scraped, Product.objects.get(pk=product.pk))[0]
+        for _ in range(2)
+    ]
+
+    product.refresh_from_db()
+    assert product.is_available is True
+    assert product.stock_quantity == 1000
+    assert statuses[1] == "skipped"
