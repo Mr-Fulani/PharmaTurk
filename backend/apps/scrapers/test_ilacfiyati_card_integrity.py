@@ -190,6 +190,37 @@ def test_section_glued_into_one_text_node_is_split_into_lines():
     ]
 
 
+@pytest.mark.parametrize("glued, lines", [
+    # Дубли «-2» (04.11.2026): заголовок капсом склеен со следующим словом капсом — Haiku
+    # переводил «GEREKENLERSİNORETİK'i» как «…SINORETIKНЕ ПРИМЕНЯЙТЕ ОРЕТИК».
+    (
+        "2. SİNORETİK'İ KULLANMADAN ÖNCE DİKKAT EDİLMESİ GEREKENLERSİNORETİK'i aşağıdaki durumlarda KULLANMAYINIZ",
+        ["2. SİNORETİK'İ KULLANMADAN ÖNCE DİKKAT EDİLMESİ GEREKENLER", "SİNORETİK'i aşağıdaki durumlarda KULLANMAYINIZ"],
+    ),
+    (
+        "4. OLASI YAN ETKİLER NELERDİR?Tüm ilaçlar gibi yan etkiler olabilir.",
+        ["4. OLASI YAN ETKİLER NELERDİR?", "Tüm ilaçlar gibi yan etkiler olabilir."],
+    ),
+    (
+        "1. PLEGRIDY NEDİR VE NE İÇİN KULLANILIR?PLEGRIDY nedir?",
+        ["1. PLEGRIDY NEDİR VE NE İÇİN KULLANILIR?", "PLEGRIDY nedir?"],
+    ),
+    (
+        "ATOMINEX KAPSÜL 10 mg SANOFİKULLANMA TALİMATIAğızdan alınır.",
+        ["ATOMINEX KAPSÜL 10 mg SANOFİ", "KULLANMA TALİMATI", "Ağızdan alınır."],
+    ),
+    (
+        "Bu KULLANMA TALİMATINI dikkatlice okuyunuz. DİKKAT EDİLMESİ GEREKENLERİNİ okuyunuz.",
+        ["Bu KULLANMA TALİMATINI dikkatlice okuyunuz. DİKKAT EDİLMESİ GEREKENLERİNİ okuyunuz."],
+    ),
+])
+def test_glued_caps_headings_are_split_into_lines(glued, lines):
+    parser = IlacFiyatiParser(base_url="https://ilacfiyati.com")
+    html = f'<div class="page-content">{glued}</div>'
+    text = parser._extract_tab_text(_inline_section("content-kullanmadan-dikkat-edilecekler", html), "before_use_warnings")
+    assert text.split("\n") == lines
+
+
 def test_regular_section_with_glued_sentence_keeps_its_lines():
     # У обычной страницы строки — по блокам: склейка внутри абзаца не режется (ключи памяти те же).
     html = "<p>Alerjiniz varsa.ADE inhibitörleri kullanıyorsanız.</p><p>NovoRapid FlexPen kullanınız.</p>"
