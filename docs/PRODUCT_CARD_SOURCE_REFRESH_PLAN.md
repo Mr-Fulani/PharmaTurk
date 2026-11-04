@@ -113,6 +113,12 @@
   Massimo Dutti пока не имеют активных production offers и не создают нагрузку.
 - [x] Финальный HTTPS liveness/readiness/security smoke пройден; все application
   containers работают на `60dfefa`, критических refresh/traceback строк после canary — `0`.
+- [ ] SuperStep (04.11.2026): adapter `check_offer` (один JSON цвета, «есть/нет» по
+  размеру) и `superstep` в обоих allowlist в `.env*.example`. После деплоя — добавить
+  `superstep` в `PRODUCT_CARD_SOURCE_REFRESH_SOURCES` и
+  `SOURCE_OFFER_VERIFICATION_SOURCES` на сервере и canary на 5 товарах (сверка с
+  сайтом, размер, которого нет, снятый товар). Окно свежести не нужно — источник
+  бесплатный.
 
 ## Ночная сверка
 
@@ -147,7 +153,7 @@
 
 ```dotenv
 PRODUCT_CARD_SOURCE_REFRESH_ENABLED=false
-PRODUCT_CARD_SOURCE_REFRESH_SOURCES=zara,bershka,pullandbear,massimodutti,flo,lcw,ikea,ummaland,akakce
+PRODUCT_CARD_SOURCE_REFRESH_SOURCES=zara,bershka,pullandbear,massimodutti,flo,lcw,ikea,ummaland,akakce,superstep
 PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS=12
 PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES=1
 PRODUCT_CARD_SOURCE_REFRESH_STATE_TTL_SECONDS=300
