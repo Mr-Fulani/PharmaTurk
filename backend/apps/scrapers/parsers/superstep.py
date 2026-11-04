@@ -201,6 +201,8 @@ class SuperstepParser(BaseScraper):
     SIZE_KEYS = ("integration_beden", "mp_size")
     BARCODE_KEYS = ("integration_yurt_disi_barkod", "mp_yurtdisi_barkod")
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
+    # Корни, у которых есть модели вариантов цвета (остальные — цвет = карточка).
+    VARIANT_ROOTS = frozenset({"shoes", "clothing", "underwear", "headwear"})
     # Предохранитель: максимум цветов на одну карточку (защита от аномалий).
     MAX_COLOR_VARIANTS = 12
 
@@ -318,14 +320,17 @@ class SuperstepParser(BaseScraper):
                 return [option for option in group.get("options") or [] if isinstance(option, dict)]
         return []
 
-    @classmethod
-    def _model_color_id(cls, product: Dict[str, Any]) -> str:
-        """Код цвета модели (``396464.01``, ``B75806.-``) — строка списка и вариант цвета."""
+    def _model_color_id(self, product: Dict[str, Any], variants: Any = None) -> str:
+        """Код цвета модели (``396464.01``, ``B75806.-``) — строка списка и вариант цвета.
+
+        Без ``integration_model_renk`` — base_code и код цвета по тому же
+        атрибуту, по которому сайт группирует цвета (``_color_key``).
+        """
         attrs = product.get("attributes") or {}
         value = str(attrs.get("integration_model_renk") or "").strip()
         if value:
             return value
-        color = next((str(attrs[key]) for key in cls.COLOR_KEYS if attrs.get(key)), "-")
+        color = self._color_code(product, self._color_key(variants))
         return f"{product.get('base_code') or product.get('sku') or ''}.{color}"
 
     @staticmethod
@@ -434,7 +439,9 @@ class SuperstepParser(BaseScraper):
                 raise SuperstepFormatError(f"SuperStep: в списке нет products/pagination: {page_url}")
             tiles = [tile for tile in tiles if isinstance(tile, dict) and tile.get("absolute_url")]
             has_next = int(pagination.get("current_page") or page) < int(pagination.get("num_pages") or 0)
-            identities = [self._model_color_id(tile) for tile in tiles]
+            identities = [
+                self._model_color_id(tile, (tile.get("extra_data") or {}).get("variants")) for tile in tiles
+            ]
             if not tiles or state.page_seen(identities, page):
                 self.has_more_pages = False
                 self.stop_reason = f"Страница {page} пуста или повторяет уже обработанную выдачу; раздел закончился."
@@ -474,7 +481,7 @@ class SuperstepParser(BaseScraper):
                             product,
                             identity,
                             fingerprint,
-                            covers=[str(v.get("sku") or "") for v in product.attributes.get("fashion_variants") or []],
+                            covers=product.attributes.get("superstep_color_ids") or [],
                         )
                     yield product
                     yielded += 1
@@ -501,8 +508,8 @@ class SuperstepParser(BaseScraper):
 
     def mark_catalog_product(self, product):
         """Помнит только сохранённые карточки — вместе с уже загруженными цветами."""
-        for variant in product.attributes.get("fashion_variants") or []:
-            self.catalog_state.mark_product(str(variant.get("sku") or ""))
+        for color_id in product.attributes.get("superstep_color_ids") or []:
+            self.catalog_state.mark_product(color_id)
 
     # --- карточка ------------------------------------------------------------
 
@@ -529,7 +536,12 @@ class SuperstepParser(BaseScraper):
         subgroup, route = self._category_route(product)
         if not route:
             self.unmapped[subgroup] += 1
-            self.logger.info("SuperStep: подгруппа «%s» не раскладывается, товар не загружен: %s", subgroup, product_url)
+            self.logger.warning(
+                "SuperStep: не разложено — подгруппы «%s» нет в таблице раскладки (или она не загружается "
+                "по решению владельца), товар не загружен: %s",
+                subgroup,
+                product_url,
+            )
             return None
 
         color_key = self._color_key(card["variants"])
@@ -538,7 +550,12 @@ class SuperstepParser(BaseScraper):
         # Порядок цветов — как на сайте, с какого бы цвета ни начали обход.
         color_order = {self._option_value(option): index for index, option in enumerate(color_options)}
         color_rows = [(self_color, card)]
-        if include_sibling_variants:
+        # Цвета вариантами умеют только обувь, одежда, бельё и головные уборы
+        # (``ScraperIntegrationService._fashion_model_config``). У аксессуаров,
+        # посуды и спорттоваров каждый цвет — своя карточка: соседние цвета не
+        # открываются, их фото не качаются, у каждой строки списка свой товар.
+        with_variants = route[-1] in self.VARIANT_ROOTS
+        if include_sibling_variants and with_variants:
             for option in color_options:
                 code = self._option_value(option)
                 url = str((option.get("product") or {}).get("absolute_url") or "")
@@ -567,18 +584,23 @@ class SuperstepParser(BaseScraper):
                 if row["size"] not in all_sizes:
                     all_sizes.append(row["size"])
 
-        external_id = f"superstep-{product.get('base_code') or product.get('sku')}"
         attrs = product.get("attributes") or {}
         is_available = any(v["is_available"] for v in variants)
         attributes: Dict[str, Any] = {
-            "fashion_variants": variants,
-            "variant_group_id": external_id,
             "color": primary["color"],
             "gender": self._map_gender(attrs.get("integration_cinsiyet")),
             "sizes": all_sizes,
             "superstep_subgroup": subgroup,
             "superstep_category_slugs": list(route),
+            "superstep_color_ids": [v["sku"] for v in variants],
         }
+        if with_variants:
+            external_id = f"superstep-{product.get('base_code') or product.get('sku')}"
+            sku = str(product.get("base_code") or "")
+            attributes.update({"fashion_variants": variants, "variant_group_id": external_id})
+        else:
+            external_id = f"superstep-{primary['sku']}"
+            sku = primary["sku"]
         attributes.update(self._extra_attributes(product))
 
         return ScrapedProduct(
@@ -592,7 +614,7 @@ class SuperstepParser(BaseScraper):
             category=route[0],
             brand=self._attr_label(product, "integration_alt_marka"),
             external_id=external_id,
-            sku=str(product.get("base_code") or ""),
+            sku=sku,
             is_available=is_available,
             stock_quantity=self.DEFAULT_ASSUMED_STOCK_QUANTITY if is_available else 0,
             attributes=attributes,
@@ -628,7 +650,7 @@ class SuperstepParser(BaseScraper):
         color = self._color_name(product)
         is_available = any(row["is_available"] for row in sizes) if sizes else bool(product.get("in_stock"))
         variant = {
-            "external_id": f"superstep-variant-{self._model_color_id(product)}",
+            "external_id": f"superstep-variant-{self._model_color_id(product, card['variants'])}",
             "sort_order": sort_order,
             "color": color,
             "display_name": clean_text(f"{product.get('name') or ''} - {color}".strip(" -")),
@@ -640,7 +662,7 @@ class SuperstepParser(BaseScraper):
             "stock_quantity": self.DEFAULT_ASSUMED_STOCK_QUANTITY if is_available else 0,
             "is_available": is_available,
             "sizes": sizes,
-            "sku": self._model_color_id(product),
+            "sku": self._model_color_id(product, card["variants"]),
         }
         offers = self._basket_offers(product)
         if offers:

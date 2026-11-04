@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from apps.catalog.models import Category
+from apps.scrapers.models import ScrapedProductLog, ScraperConfig, ScrapingSession
 from apps.scrapers.base.scraper import (
     CategoryPageNotFoundError,
     ScrapedProduct,
@@ -213,6 +214,67 @@ def test_numeric_sizes_sorted_by_value_not_by_akinon_order():
     assert product.attributes["gender"] == "kids"
 
 
+STANLEY = "/urun/stanley-the-iceflow-flip-straw-2-0-0-89l-unisex-beyaz-termos/13424/"
+STANLEY_RED = "/urun/stanley-the-iceflow-flip-straw-2-0-0-89l-unisex-kirmizi-termos/13424/"
+
+
+def _stanley_red_card():
+    """Карточка красного цвета: тот же ответ с кодом цвета 0209 (как на сайте)."""
+    card = json.loads(_fixture("card_stanley_13424.json"))
+    attrs = card["product"]["attributes"]
+    attrs["integration_renk"] = "0209"
+    attrs["integration_model_renk"] = "13424.0209"
+    attrs["integration_renk_detay"] = "Kırmızı"
+    card["product"]["absolute_url"] = STANLEY_RED
+    return json.dumps(card)
+
+
+def test_color_of_type_without_variants_is_its_own_card():
+    """Термос Stanley: у посуды нет модели вариантов цвета — соседние цвета
+    не открываются (их фото не качаются), у цвета свой external_id."""
+    parser = _parser({STANLEY: "card_stanley_13424.json"})
+
+    product = parser.parse_product_detail(SITE + STANLEY)
+
+    assert parser.requests == [STANLEY]
+    assert product.external_id == "superstep-13424.0195"
+    assert product.sku == "13424.0195"
+    assert "fashion_variants" not in product.attributes
+    assert product.attributes["superstep_color_ids"] == ["13424.0195"]
+    assert product.attributes["color"] == "Beyaz"
+    assert product.category == "drinkware"
+    assert len(product.images) == 3
+
+
+def test_listing_opens_each_color_of_type_without_variants_separately():
+    tile = json.loads(_fixture("card_stanley_13424.json"))["product"]
+    card = json.loads(_fixture("card_stanley_13424.json"))
+    tile["extra_data"] = {"variants": card["variants"]}
+    red = json.loads(_stanley_red_card())["product"]
+    red["extra_data"] = {"variants": card["variants"]}
+    listing = {"pagination": {"current_page": 1, "num_pages": 1}, "products": [tile, red]}
+    parser = _parser({
+        STANLEY: "card_stanley_13424.json",
+        STANLEY_RED: _stanley_red_card(),
+        "/termos/": json.dumps(listing),
+    })
+    parser.listing_guard = _Guard()
+
+    products = list(parser.parse_product_list(SITE + "/termos/", max_pages=1))
+
+    assert [p.external_id for p in products] == ["superstep-13424.0195", "superstep-13424.0209"]
+    assert parser.requests == ["/termos/", STANLEY, STANLEY_RED]
+    assert parser.listing_guard.attached == [("13424.0195", ("13424.0195",)), ("13424.0209", ("13424.0209",))]
+
+
+def test_color_id_without_model_renk_uses_the_grouping_attribute():
+    """Нет integration_model_renk — код цвета по атрибуту группы (mp_color)."""
+    card = json.loads(_fixture("card_mp_color_265-529149.json"))
+    card["product"]["attributes"].pop("integration_model_renk")
+
+    assert SuperstepParser()._model_color_id(card["product"], card["variants"]) == "265-529149.SİYAH"
+
+
 def test_unmapped_subgroup_is_not_loaded():
     figur = json.loads(_fixture("list_erkek_figur.json"))["products"][0]
     card = {"product": figur, "variants": figur["extra_data"]["variants"]}
@@ -313,6 +375,35 @@ def test_service_takes_most_specific_existing_category_over_root_task():
 
     assert product.category == "t-shirts"  # «Поло» в каталоге нет — ближайший родитель
     assert product._category_override.slug == "t-shirts"
+
+
+@pytest.mark.django_db
+def test_product_without_catalog_section_is_not_loaded():
+    """Нет ни одного раздела маршрута — товар не уходит в раздел задачи или
+    «по умолчанию», а пропускается с причиной «Не разложено»."""
+    shoes = Category.objects.create(name="Обувь", slug="shoes")
+    config = ScraperConfig.objects.create(
+        name="superstep-test", parser_class="superstep", base_url=SITE, default_category=shoes,
+    )
+    session = ScrapingSession.objects.create(scraper_config=config, status="running", start_url=SITE)
+    product = ScrapedProduct(
+        name="Stanley Termos",
+        url=SITE + STANLEY,
+        external_id="superstep-13424.0195",
+        source="superstep",
+        images=["https://8f08a8-ss.akinoncloudcdn.com/products/x.jpg"],
+        attributes={"superstep_subgroup": "Termos", "superstep_category_slugs": ["drinkware", "tableware"]},
+    )
+    service = ScraperIntegrationService()
+    service._normalize_scraped_media = lambda *args, **kwargs: pytest.fail("фото не качаются")
+    service._process_single_product = lambda *args, **kwargs: pytest.fail("товар не сохраняется")
+
+    results = service._process_scraped_products(session, [product])
+
+    assert results["skipped"] == 1 and results["created"] == 0
+    log = ScrapedProductLog.objects.get(session=session)
+    assert log.action == "skipped"
+    assert "Не разложено" in log.message and "Termos" in log.message
 
 
 @pytest.mark.django_db

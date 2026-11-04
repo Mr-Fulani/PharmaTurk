@@ -1709,6 +1709,21 @@ class ScraperIntegrationService:
         for scraped_product in products:
             try:
                 self._apply_category_mapping(session, scraped_product)
+                unrouted = getattr(scraped_product, "_unrouted_reason", None)
+                if unrouted:
+                    # Не загружаем и фото не качаем: раздела для товара нет.
+                    self.logger.warning("Не разложено: %s — %s", scraped_product.url, unrouted)
+                    results["skipped"] += 1
+                    ScrapedProductLog.objects.create(
+                        session=session,
+                        external_id=scraped_product.external_id,
+                        external_url=scraped_product.url,
+                        product_name=scraped_product.name,
+                        action="skipped",
+                        message=f"Не разложено (не загружен): {unrouted}",
+                        scraped_data=scraped_product.to_dict(),
+                    )
+                    continue
                 self._apply_brand_mapping(session, scraped_product)
                 self._apply_gender_override(session, scraped_product)
                 if str(scraped_product.source or "").strip().lower() == "ilacfiyati":
@@ -1848,15 +1863,22 @@ class ScraperIntegrationService:
 
         # SuperStep раскладывает товар сам — по подгруппе источника. Корень в
         # задаче или категория по умолчанию её не перебивают, явно выбранная
-        # подкатегория — да. Нет точного раздела в каталоге — ближайший родитель.
+        # подкатегория — да. Нет точного раздела в каталоге — ближайший родитель;
+        # нет ни одного — товар не загружается (не в раздел задачи «наугад»).
         if source == "superstep" and (category is None or category.parent_id is None):
             attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
-            for slug in attrs.get("superstep_category_slugs") or []:
-                superstep_category = Category.objects.filter(slug=slug, is_active=True).first()
-                if superstep_category:
-                    scraped_product.category = slug
-                    scraped_product._category_override = superstep_category
-                    return
+            route = [str(slug) for slug in attrs.get("superstep_category_slugs") or []]
+            found = {c.slug: c for c in Category.objects.filter(slug__in=route, is_active=True)}
+            slug = next((slug for slug in route if slug in found), None)
+            if slug:
+                scraped_product.category = slug
+                scraped_product._category_override = found[slug]
+            else:
+                scraped_product._unrouted_reason = (
+                    f"нет активного раздела каталога для подгруппы "
+                    f"«{attrs.get('superstep_subgroup') or '—'}» ({', '.join(route) or 'маршрут пуст'})"
+                )
+            return
 
         # Задачи Zara/Inditex сохраняют в «Одежду», но сумку, ремень, украшение
         # или шапку парсер узнаёт по семейству товара в API. Категорию другого
