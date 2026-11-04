@@ -27,6 +27,10 @@ from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 
 from apps.catalog.models import PriceHistory, Product, ProductSourceOffer
+from apps.catalog.services.cross_source_duplicates import (
+    hidden_variant_ids,
+    resolve_for_products as resolve_duplicates_for_products,
+)
 from apps.catalog.services.source_offer_verification import (
     SourceOfferVerificationService,
     manual_only_source_keys,
@@ -806,6 +810,10 @@ class ProductCardSourceRefreshService:
         ProductSizeModel = config["product_size_model"]
         by_option = self._snapshot_map(snapshots)
         counts = {"variants_created": 0, "variants_updated": 0, "sizes_created": 0, "sizes_updated": 0}
+        # Цвет, скрытый как дубль у другого продавца, проверка на сайт не возвращает.
+        hidden = hidden_variant_ids(
+            product.product_type, domain_product.variants.values_list("id", flat=True)
+        )
 
         for index, spec in enumerate(variants):
             if not isinstance(spec, dict):
@@ -900,7 +908,7 @@ class ProductCardSourceRefreshService:
                     "currency": currency,
                     "is_available": available,
                     "stock_quantity": stock,
-                    "is_active": True,
+                    "is_active": variant.pk not in hidden,
                 }.items():
                     if getattr(variant, field) != value:
                         update_values[field] = value
@@ -1053,10 +1061,15 @@ class ProductCardSourceRefreshService:
                 VariantModel = config["variant_model"]
                 VariantSizeModel = config["variant_size_model"]
                 ProductSizeModel = config["product_size_model"]
+                # Скрытый нами дубль тоже: иначе он остался бы «в наличии» и мог бы
+                # вернуться на сайт вместо пары (docs/CROSS_SOURCE_DUPLICATES.md).
+                hidden = hidden_variant_ids(
+                    product.product_type, domain_product.variants.values_list("id", flat=True)
+                )
                 variants = VariantModel.objects.filter(
+                    Q(is_active=True) | Q(pk__in=hidden),
                     product=domain_product,
                     external_id__in=variant_keys,
-                    is_active=True,
                 )
                 variant_ids = list(variants.values_list("pk", flat=True))
                 variants_updated = variants.update(
@@ -1325,6 +1338,9 @@ class ProductCardSourceRefreshService:
                 currency=currency,
                 source=f"product_card_refresh:{target.parser_key}",
             )
+        if product.product_type in FASHION_PRODUCT_TYPES:
+            # Цены могли поменяться местами с тем же товаром у другого продавца.
+            transaction.on_commit(lambda: resolve_duplicates_for_products([product.pk]))
         return {
             **counts,
             "offers_observed": len(snapshots),

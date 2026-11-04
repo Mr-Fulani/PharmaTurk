@@ -145,6 +145,28 @@ def indexnow_submit_task() -> dict:
     return submit_changed_products()
 
 
+@shared_task(name="catalog.resolve_cross_source_duplicates", soft_time_limit=1500, time_limit=1560, expires=50 * 60)
+def resolve_cross_source_duplicates_task() -> dict:
+    """FLO ↔ SuperStep: ночной полный пересчёт дублей (docs/CROSS_SOURCE_DUPLICATES.md).
+
+    Без CROSS_SOURCE_DUPLICATES_ENABLED ничего не делает.
+    """
+    from apps.catalog.services.cross_source_duplicates import CrossSourceDuplicateService, enabled
+
+    if not enabled():
+        return {"skipped": "disabled"}
+    report = CrossSourceDuplicateService().resolve()
+    return {key: report[key] for key in ("groups", "hidden", "shown", "kept")}
+
+
+@shared_task(name="catalog.verify_hidden_duplicate", soft_time_limit=120, time_limit=150)
+def verify_hidden_duplicate_task(product_type: str, variant_id: int) -> str:
+    """Проверить скрытый дубль у продавца перед возвратом на сайт (docs/CROSS_SOURCE_DUPLICATES.md)."""
+    from apps.catalog.services.cross_source_duplicates import verify_hidden_duplicate
+
+    return verify_hidden_duplicate(product_type, variant_id)
+
+
 @shared_task(
     bind=True,
     name="catalog.delete_stale_products",

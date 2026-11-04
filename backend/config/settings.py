@@ -427,6 +427,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.indexnow_submit",
         "schedule": crontab(minute=45),
     },
+    # Одинаковые товары FLO ↔ SuperStep (docs/CROSS_SOURCE_DUPLICATES.md): полный пересчёт
+    # после ночной сверки. Без CROSS_SOURCE_DUPLICATES_ENABLED ничего не делает.
+    "catalog-resolve-cross-source-duplicates": {
+        "task": "catalog.resolve_cross_source_duplicates",
+        "schedule": crontab(hour=7, minute=5),
+    },
     # Файлы и МБ неактуальных товаров для страницы удаления (docs/STALE_PRODUCTS.md).
     "catalog-stale-products-media-stats": {
         "task": "catalog.stale_products_media_stats",
@@ -816,6 +822,10 @@ NIGHTLY_STOCK_CHECK_MIN_SAMPLE = env.int("NIGHTLY_STOCK_CHECK_MIN_SAMPLE", defau
 INDEXNOW_ENABLED = env.bool("INDEXNOW_ENABLED", default=False)
 INDEXNOW_KEY = env("INDEXNOW_KEY", default="4fccd8201e121b6208b4c72fea513b6a")
 INDEXNOW_DAILY_URL_LIMIT = env.int("INDEXNOW_DAILY_URL_LIMIT", default=10000)
+# Одинаковые товары FLO ↔ SuperStep (docs/CROSS_SOURCE_DUPLICATES.md): на сайте одно,
+# более дорогое предложение. true — пересчёт после импорта, проверки карточки и ночью;
+# команда resolve_cross_source_duplicates работает и без него (по умолчанию только отчёт).
+CROSS_SOURCE_DUPLICATES_ENABLED = env.bool("CROSS_SOURCE_DUPLICATES_ENABLED", default=False)
 # Удаление неактуальных товаров из админки (docs/STALE_PRODUCTS.md): скрыть можно, когда
 # товара нет у продавца MIN_DAYS дней подряд; удалить — через DELETE_AFTER_HIDDEN_DAYS после
 # скрытия. За одно действие — не больше MAX_PER_ACTION товаров и MAX_SOURCE_PERCENT % каталога

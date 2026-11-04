@@ -12,6 +12,9 @@
     медикамента, форма которого на ней есть (services/medicine_groups.py).
   - shipping_rates: {валюта: сумма} | None — доставка 5 USD в валютах цены для
     OfferShippingDetails (см. build_shipping_rates); у мебели, лекарств и услуг None.
+  - redirect_permanent: bool — false, когда canonical_path ведёт со скрытого дубля на
+    показанный (шаг 5): фронт отдаёт временный редирект, а не 301.
+  - redirect_active_variant_slug: str — цвет показанной карточки для такого редиректа.
 
 Порядок поиска (зафиксирован; при смене — обновить тесты и комментарий):
   1) Доменные ViewSet в порядке, согласованном с urls.py. Важно: раньше generic Product
@@ -22,6 +25,9 @@
   3) Service (uslugi).
   4) ProductSlugHistory: старый slug → товар по текущему slug (canonical_path
      отличается от запрошенного → фронт отдаёт 301).
+  5) Скрытый дубль у другого продавца (docs/CROSS_SOURCE_DUPLICATES.md): карточка или
+     цвет, скрытые как дубль, → показанный товар с временным редиректом (307): цены
+     могут поменяться местами, и адрес снова станет основным.
 
 Query-параметры пробрасываются через исходный request (в т.ч. active_variant_slug
 для electronics и др., где serializer читает context из view).
@@ -398,6 +404,14 @@ def build_shipping_rates(product_type: str) -> dict[str, str] | None:
 
 def build_resolve_response(request: HttpRequest | DrfRequest, slug: str) -> Response:
     resolved = resolve_product_payload(request, slug)
+    duplicate_variant_slug = None
+    if resolved is None:
+        from apps.catalog.services.cross_source_duplicates import duplicate_redirect_target
+
+        target = duplicate_redirect_target(slug)
+        if target is not None:
+            resolved = _resolve_live(request, target[0])
+            duplicate_variant_slug = target[1]
     if resolved is None:
         return Response({"detail": "Товар не найден."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -422,5 +436,7 @@ def build_resolve_response(request: HttpRequest | DrfRequest, slug: str) -> Resp
             else None
         ),
         "shipping_rates": build_shipping_rates(product_type),
+        "redirect_permanent": duplicate_variant_slug is None,
+        "redirect_active_variant_slug": duplicate_variant_slug or "",
     }
     return Response(body, status=status.HTTP_200_OK)

@@ -2808,6 +2808,12 @@ class ClothingVariantSize(models.Model):
     )
     is_available = models.BooleanField(_("Доступен"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    gtin = models.CharField(
+        _("GTIN размера"),
+        max_length=14,
+        blank=True,
+        help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
@@ -2817,6 +2823,7 @@ class ClothingVariantSize(models.Model):
         verbose_name_plural = _("Размеры варианта одежды")
         ordering = ["variant", "sort_order", "size"]
         indexes = [
+            models.Index(fields=["gtin"], name="clothing_vsize_gtin_idx"),
             models.Index(fields=["variant", "sort_order"]),
             models.Index(fields=["variant", "size"]),
         ]
@@ -3397,6 +3404,12 @@ class ShoeVariantSize(models.Model):
     )
     is_available = models.BooleanField(_("Доступен"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    gtin = models.CharField(
+        _("GTIN размера"),
+        max_length=14,
+        blank=True,
+        help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
@@ -3406,6 +3419,7 @@ class ShoeVariantSize(models.Model):
         verbose_name_plural = _("Размеры варианта обуви")
         ordering = ["variant", "sort_order", "size"]
         indexes = [
+            models.Index(fields=["gtin"], name="shoe_vsize_gtin_idx"),
             models.Index(fields=["variant", "sort_order"]),
             models.Index(fields=["variant", "size"]),
         ]
@@ -7216,6 +7230,12 @@ class HeadwearVariantSize(models.Model):
     size = models.CharField(_("Размер"), max_length=50, blank=True)
     is_available = models.BooleanField(_("Доступен"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    gtin = models.CharField(
+        _("GTIN размера"),
+        max_length=14,
+        blank=True,
+        help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -7224,6 +7244,8 @@ class HeadwearVariantSize(models.Model):
         verbose_name = _("Размер варианта: Головной убор")
         verbose_name_plural = _("Размеры вариантов: Головные уборы")
         ordering = ["variant", "sort_order", "size"]
+        # Без db_index: тот поставил бы ещё и ненужный LIKE-индекс varchar_pattern_ops.
+        indexes = [models.Index(fields=["gtin"], name="headwear_vsize_gtin_idx")]
 
 class HeadwearVariantImage(models.Model):
     variant = models.ForeignKey(HeadwearVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
@@ -7375,6 +7397,12 @@ class UnderwearVariantSize(models.Model):
     size = models.CharField(_("Размер"), max_length=50, blank=True)
     is_available = models.BooleanField(_("Доступен"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    gtin = models.CharField(
+        _("GTIN размера"),
+        max_length=14,
+        blank=True,
+        help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -7383,6 +7411,8 @@ class UnderwearVariantSize(models.Model):
         verbose_name = _("Размер варианта: Нижнее бельё (товар)")
         verbose_name_plural = _("Размеры вариантов: Нижнее бельё")
         ordering = ["variant", "sort_order", "size"]
+        # Без db_index: тот поставил бы ещё и ненужный LIKE-индекс varchar_pattern_ops.
+        indexes = [models.Index(fields=["gtin"], name="underwear_vsize_gtin_idx")]
 
 class UnderwearVariantImage(models.Model):
     variant = models.ForeignKey(UnderwearVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
@@ -7563,3 +7593,5 @@ class IslamicClothingVariantImage(models.Model):
 from .models_stock import ProductDeletionLog, StaleProductCandidate, StockCheckSourceState  # noqa: E402,F401
 # IndexNow: что последний раз отправлено поисковикам (docs/INDEXNOW.md).
 from .models_indexnow import IndexNowUrlState  # noqa: E402,F401
+# Одинаковые товары разных продавцов (FLO ↔ SuperStep): docs/CROSS_SOURCE_DUPLICATES.md.
+from .models_duplicates import CrossSourceDuplicate  # noqa: E402,F401

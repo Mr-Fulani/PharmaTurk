@@ -346,6 +346,16 @@ class SuperstepParser(BaseScraper):
         return f"{product.get('base_code') or product.get('sku') or ''}.{color}"
 
     @staticmethod
+    def _manufacturer_article(model_color_id: str) -> str:
+        """Артикул производителя с цветом — запасной признак того же товара у FLO.
+
+        «396464.01» → «396464.01», «34-IH9166.-» → «IH9166»: приставка продавца
+        маркетплейса («34-», «265-») и пустой цвет «-» к артикулу не относятся.
+        """
+        value = re.sub(r"^\d{1,4}-(?=[0-9A-Za-z])", "", str(model_color_id or "").strip())
+        return re.sub(r"\.-?$", "", value)
+
+    @staticmethod
     def _attr_label(product: Dict[str, Any], key: str) -> str:
         """Подпись атрибута: у ``integration_alt_grup`` значение — код («088»), подпись — имя."""
         row = (product.get("attributes_kwargs") or {}).get(key)
@@ -794,6 +804,7 @@ class SuperstepParser(BaseScraper):
             "is_available": is_available,
             "sizes": sizes,
             "sku": self._model_color_id(product, card["variants"]),
+            "mpn": self._manufacturer_article(self._model_color_id(product, card["variants"])),
         }
         offers = self._basket_offers(product)
         if offers:

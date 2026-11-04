@@ -433,7 +433,7 @@ SuperStep он в `integration_yurt_disi_barkod` (`4068805874772`), у FLO шт�
 | **PR 2** `feature/superstep-offer-check` | `check_offer()`, тест-контракт в `test_offer_check_contract.py`, включение в проверку карточки и Списка (настройки окружения), доки `SOURCE_OFFER_*` | PR 1 |
 | **PR 3** `feature/superstep-ai-vocab` | словари для правил AI: новые турецкие слова (sneaker, eşofman, tayt, sweatshirt, bere, termos, suluk …), цвета SuperStep; только если пилот AI покажет пробелы | пилот AI |
 | **PR 4** `feature/superstep-nightly` | `superstep` в ночной сверке и в «кандидатах на снятие», доки `NIGHTLY_STOCK_CHECK.md` | PR 2 |
-| **PR 5** `feature/cross-source-duplicates` | FLO ↔ SuperStep: сопоставление по EAN (запасной признак — бренд + артикул + цвет), показ более дорогого, отдельный признак «скрыт как дубль», пересчёт при смене цены, список пар в админке; команда с показом по умолчанию и `--apply --backup` | PR 1 |
+| **PR 5** `feature/cross-source-duplicates` | FLO ↔ SuperStep: сопоставление по EAN (запасной признак — бренд + артикул + цвет), показ более дорогого, отдельный признак «скрыт как дубль», пересчёт при смене цены, список пар в админке; команда с показом по умолчанию и `--apply --backup`. **Сделано 04.11** — [docs/CROSS_SOURCE_DUPLICATES.md](../docs/CROSS_SOURCE_DUPLICATES.md) | PR 1 |
 | **PR 6** `feature/superstep-listing-sweep` | ночная сверка по спискам разделов (330 запросов вместо 15 тыс.) | PR 4, если общий механизм не успевает |
 
 Каждый PR — по правилам `docs/DEVELOPMENT_RULES.md`: тесты, CI зелёный, коммиты
