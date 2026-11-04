@@ -341,6 +341,46 @@ def test_flo_card_fetch_explicitly_requests_web_unlocker(settings, monkeypatch):
     assert captured["detail_kwargs"] == {"include_sibling_variants": False}
 
 
+def test_superstep_card_fetch_refreshes_only_saved_color(monkeypatch):
+    captured = {}
+
+    class SuperstepCaptureParser:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def parse_product_detail(self, url, **kwargs):
+            captured["detail_kwargs"] = kwargs
+            return ScrapedProduct(
+                name="SuperStep product",
+                url=url,
+                source="superstep",
+                external_id="superstep-B75806",
+            )
+
+    target = SimpleNamespace(
+        parser_key="superstep",
+        parser_class=SuperstepCaptureParser,
+        offer=SimpleNamespace(
+            canonical_url="https://www.superstep.com.tr/urun/samba/b75806-1/"
+        ),
+    )
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_scraper_config", lambda _offer: None)
+
+    result = service._fetch_product(target)
+
+    assert result.source == "superstep"
+    assert captured["use_proxy"] is False
+    assert "use_web_unlocker" not in captured
+    assert captured["detail_kwargs"] == {"include_sibling_variants": False}
+
+
 def test_flo_card_fetch_maps_clean_page_without_product_to_not_found(
     settings,
     monkeypatch,
