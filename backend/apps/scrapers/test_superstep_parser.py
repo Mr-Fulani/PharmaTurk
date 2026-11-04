@@ -222,6 +222,37 @@ def test_subgroup_routes(subgroup, gender, expected):
     assert resolve_superstep_category_slugs(subgroup, gender) == expected
 
 
+def _catalog_slugs():
+    """Все slug дерева категорий каталога (как его создаёт seed_catalog_data)."""
+    from apps.catalog import constants
+
+    slugs = {row[0] for row in constants.ROOT_CATEGORIES}
+
+    def walk(rows):
+        for row in rows:
+            slugs.add(row[2])
+            if len(row) > 5 and isinstance(row[5], (list, tuple)):
+                walk(row[5])
+
+    for name in dir(constants):
+        if name.endswith("_SUBCATEGORIES") and isinstance(getattr(constants, name), list):
+            walk(getattr(constants, name))
+    return slugs
+
+
+def test_every_route_slug_exists_in_catalog_tree():
+    """Опечатка в slug молча увела бы товары в родительский раздел."""
+    from apps.scrapers.parsers.superstep import SUPERSTEP_SUBGROUP_CATEGORIES
+
+    known = _catalog_slugs()
+    routes = []
+    for route in SUPERSTEP_SUBGROUP_CATEGORIES.values():
+        routes.extend(route.values() if isinstance(route, dict) else [route])
+    missing = {slug for route in routes for slug in route if slug not in known}
+
+    assert missing == set()
+
+
 @pytest.mark.django_db
 def test_service_takes_most_specific_existing_category_over_root_task():
     clothing = Category.objects.create(name="Одежда", slug="clothing")
