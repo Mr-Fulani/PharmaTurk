@@ -431,6 +431,10 @@ def test_color_detail_from_opened_cards_when_variants_have_no_color_names():
         ("KOYU GRI-Black", "Black"),  # турецкий модификатор «koyu» латиницей тоже убирается
         ("AÇIK MAVİ/White", "White"),
         ("INDIGO-White", "INDIGO-White"),  # английский цвет из словаря не теряется
+        ("Light Kakao", ""),  # оттенок без английского цвета — «Kakao» турецкое
+        ("Light Grey", "Light Grey"),
+        ("Kum Rengi-Sand", "Sand"),  # «rengi», «tonu» и др. — турецкие модификаторы
+        ("Gri Tonu/Black", "Black"),
         ("Siyah/Gümüş", ""),  # Anta: расцветка по-турецки — тогда код цвета
     ],
 )

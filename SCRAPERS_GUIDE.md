@@ -932,10 +932,12 @@ Product URL никогда не считается следующим chunk: и�
   нет, но цвета группирует `mp_color`, и одинаковых названий не бывает).
   Уточнение — расцветка производителя `integration_erp_renk_aciklama` без
   турецких слов: убираются цвета словаря и модификаторы (`TR_COLOR_MODIFIERS`:
-  koyu, açık…) — «BEYAZ-Velvet Moss» → «Velvet Moss», «KOYU GRI-Black» → «Black»;
+  koyu, açık, rengi, tonu, baskılı…) — «BEYAZ-Velvet Moss» → «Velvet Moss»,
+  «KOYU GRI-Black» → «Black», «Kum Rengi-Sand» → «Sand»;
   английские цвета, совпадающие со словарём («INDIGO-White»), остаются. Берётся,
-  только если она латиницей и в ней есть английский цвет (`EN_COLOR_WORDS`):
-  «TOZLU KAKAO», «Siyah/Gümüş» не берутся. Если у группы такой расцветки нет или
+  только если она латиницей и в ней есть английский цвет (`EN_COLOR_WORDS`;
+  оттенок `EN_SHADE_WORDS` — dark, light… — цветом не считается): «TOZLU KAKAO»,
+  «Light Kakao», «Siyah/Gümüş» не берутся. Если у группы такой расцветки нет или
   она совпадает — код цвета («Kahverengi · CHE»). Турецких слов на витрине и в
   фиде ВК нет; `translate_turkish_color` переводит цвет до « · » и сохраняет
   уточнение («Белый · Velvet Moss»), поиск дублей FLO ↔ SuperStep

@@ -1059,10 +1059,17 @@ class SuperstepParser(BaseScraper):
         beige cream ivory gold silver bronze chestnut sand olive khaki burgundy maroon teal
         turquoise charcoal tan camel mint lilac lavender coral rose multi multicolor natural
         nude stone taupe mocha espresso cinnamon rust wine sky sage moss slate graphite smoke
-        indigo dark light""".split()
+        indigo""".split()
     )
+    # Оттенки сами по себе цветом не считаются: «Light Kakao» — турецкое «Kakao».
+    EN_SHADE_WORDS = frozenset({"dark", "light", "pale", "bright", "deep"})
     # Турецкие модификаторы цвета (не цвета словаря): «KOYU GRI-Black» → «Black».
-    TR_COLOR_MODIFIERS = frozenset({"koyu", "acik", "kirik", "parlak", "mat", "tozlu", "cok", "renkli", "desenli", "melanj"})
+    TR_COLOR_MODIFIERS = frozenset(
+        {
+            "koyu", "acik", "kirik", "parlak", "mat", "tozlu", "cok", "renkli", "desenli", "melanj",
+            "renk", "rengi", "tonu", "tonlu", "desen", "baskili", "cizgili", "metalik", "simli", "fume",
+        }
+    )
 
     @classmethod
     def _colorway(cls, product: Dict[str, Any]) -> str:
@@ -1087,7 +1094,7 @@ class SuperstepParser(BaseScraper):
     def _is_turkish_color_word(cls, word: str) -> bool:
         """Турецкое слово цвета или модификатор; английские цвета, совпадающие со
         словарём («INDIGO»), остаются — иначе «INDIGO-White» терял бы смысл."""
-        if word.lower() in cls.EN_COLOR_WORDS:
+        if word.lower() in cls.EN_COLOR_WORDS | cls.EN_SHADE_WORDS:
             return False
         return bool(translate_turkish_color(word, "en")) or superstep_subgroup_key(word) in cls.TR_COLOR_MODIFIERS
 
