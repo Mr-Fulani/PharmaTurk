@@ -7105,7 +7105,7 @@ class HeadwearProduct(AbstractDomainProduct):
     size = models.CharField(_("Размер"), max_length=20, blank=True)
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
     video_url = models.URLField(_("URL видео"), max_length=2000, blank=True)
-    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to=get_domain_main_upload_path, blank=True, null=True)
+    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to=get_domain_main_upload_path, max_length=500, blank=True, null=True)
 
     class Meta:
         verbose_name = _("Головной убор")
@@ -7157,7 +7157,7 @@ class HeadwearProductTranslation(SeoTranslationMixin, models.Model):
 class HeadwearProductImage(models.Model):
     product = models.ForeignKey(HeadwearProduct, on_delete=models.CASCADE, related_name="images", verbose_name=_("Головной убор"))
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
-    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_gallery_upload_path, blank=True, null=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_gallery_upload_path, max_length=500, blank=True, null=True)
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -7185,7 +7185,7 @@ class HeadwearVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
-    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, blank=True, null=True)
+    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, max_length=500, blank=True, null=True)
     external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
@@ -7250,7 +7250,7 @@ class HeadwearVariantSize(models.Model):
 class HeadwearVariantImage(models.Model):
     variant = models.ForeignKey(HeadwearVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
-    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_variant_gallery_upload_path, blank=True, null=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_variant_gallery_upload_path, max_length=500, blank=True, null=True)
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -7272,7 +7272,7 @@ class UnderwearProduct(AbstractDomainProduct):
     size = models.CharField(_("Размер"), max_length=20, blank=True)
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
     video_url = models.URLField(_("URL видео"), max_length=2000, blank=True)
-    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to=get_domain_main_upload_path, blank=True, null=True)
+    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to=get_domain_main_upload_path, max_length=500, blank=True, null=True)
 
     class Meta:
         verbose_name = _("Нижнее бельё (товар)")
@@ -7324,7 +7324,7 @@ class UnderwearProductTranslation(SeoTranslationMixin, models.Model):
 class UnderwearProductImage(models.Model):
     product = models.ForeignKey(UnderwearProduct, on_delete=models.CASCADE, related_name="images", verbose_name=_("Нижнее бельё (товар)"))
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
-    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_gallery_upload_path, blank=True, null=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_gallery_upload_path, max_length=500, blank=True, null=True)
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -7352,7 +7352,7 @@ class UnderwearVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
-    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, blank=True, null=True)
+    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, max_length=500, blank=True, null=True)
     external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
@@ -7417,7 +7417,7 @@ class UnderwearVariantSize(models.Model):
 class UnderwearVariantImage(models.Model):
     variant = models.ForeignKey(UnderwearVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
-    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_variant_gallery_upload_path, blank=True, null=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_variant_gallery_upload_path, max_length=500, blank=True, null=True)
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -7439,7 +7439,7 @@ class IslamicClothingProduct(AbstractDomainProduct):
     size = models.CharField(_("Размер"), max_length=20, blank=True)
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
     video_url = models.URLField(_("URL видео"), max_length=2000, blank=True)
-    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to=get_domain_main_upload_path, blank=True, null=True)
+    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to=get_domain_main_upload_path, max_length=500, blank=True, null=True)
 
     class Meta:
         verbose_name = _("Исламская одежда")
@@ -7491,7 +7491,7 @@ class IslamicClothingProductTranslation(SeoTranslationMixin, models.Model):
 class IslamicClothingProductImage(models.Model):
     product = models.ForeignKey(IslamicClothingProduct, on_delete=models.CASCADE, related_name="images", verbose_name=_("Исламская одежда"))
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
-    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_gallery_upload_path, blank=True, null=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_gallery_upload_path, max_length=500, blank=True, null=True)
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -7519,7 +7519,7 @@ class IslamicClothingVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True, max_length=2000)
-    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, blank=True, null=True)
+    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to=get_domain_variant_main_upload_path, max_length=500, blank=True, null=True)
     external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
@@ -7576,7 +7576,7 @@ class IslamicClothingVariantSize(models.Model):
 class IslamicClothingVariantImage(models.Model):
     variant = models.ForeignKey(IslamicClothingVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
-    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_variant_gallery_upload_path, blank=True, null=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to=get_domain_variant_gallery_upload_path, max_length=500, blank=True, null=True)
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
