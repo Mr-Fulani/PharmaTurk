@@ -70,13 +70,56 @@ def test_different_ingredients_go_to_review_but_fuller_list_does_not():
     ("first", "second", "reason"),
     [
         ("MARKUMAR 3 MG 100 TABLET", "MARCUMAR 3 MG 1X98 TABS", "в названиях разные числа (дозировка или количество)"),
-        ("ABRAXANE 100 MG 1 AMPUL", "ABRAXANE 100 MG 1 VIAL", "в названиях разные слова: ampul, flakon"),
+        ("CYSTAGON 50 MG 100 CAPSULES", "CYSTAGON 50 MG 100 TB", "в названиях разные слова: kapsul, tablet"),
+        # Под одним служебным номером источника встречаются и разные препараты.
+        ("VOXZOGO 0,56 MG 10 DURCHSTECHFLASCHEN", "LARINATE 60 MG 1 INJECTION",
+         "в названиях разные числа (дозировка или количество)"),
         ("GLYCOPYRROLATE 1 MG 100 TABLET", "GLYCOPYRROLATE 1 MG TABLETS USP", "в названиях разные числа (дозировка или количество)"),
     ],
 )
 def test_different_names_go_to_review(first, second, reason):
     [decision] = decide_group([_page(1, first, "100"), _page(2, second)])
     assert (decision.action, decision.reason) == (REVIEW, reason)
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        # Страница TEB называет «AMP.» любую инъекционную упаковку.
+        ("ABRAXANE 100 MG 1 AMPUL", "ABRAXANE 100 MG 1 VIAL"),
+        ("ETHINYLESTRADIOL EFFIK 50 MCG 15 TABLET", "ETHINYLESTRADIOL EFFIK 50 MCG 1X15 TB"),
+        ("L-LYSINE POWDER 1×16 OZ.", "L-LYSINE POWDER 1X16 OZ."),
+        ("FLUTAMID 250 MG 84 TABLET", "FLUTAMIDE 250 MG 84 TABS"),
+        ("RIMSO % 50 50 ML SOL.", "RIMSO % 50 50 ML ORAL SOLUTION"),
+        ("EFLUELDA 0.5 ML KULLANIMA HAZIR ENJEKTOR", "EFLUELDA 0.5 ML KULLANIMA HAZIRENJEKTOR"),
+    ],
+)
+def test_same_pack_written_differently_is_hidden(first, second):
+    assert decide_group([_page(1, first, "100"), _page(2, second)])[0].action == HIDE
+
+
+def test_transliterated_ingredient_is_same_but_other_substance_is_not():
+    name = "QUILONUM RETARD 450 MG 100 TABLET"
+    [same] = decide_group([
+        _page(1, name, "17", ingredient="Lityum Karbonat"), _page(2, name, ingredient="Lithium Carbonate"),
+    ])
+    assert same.action == HIDE
+
+    tylol = "TYLOL HOT D 500 MG + 60 MG + 4 MG / 5 G TOZ 12 POSET"
+    [other] = decide_group([
+        _page(1, tylol, "1007.60", ingredient="Klorfeniramin Maleat + Psödoefedrin Hidroklorür + Parasetamol"),
+        _page(2, tylol, ingredient="Klorfeniramin Maleat + Fenilefrin Hidroklorür + Parasetamol"),
+    ])
+    assert (other.action, other.reason) == (REVIEW, "разный состав")
+
+
+def test_decimal_dose_split_in_url_is_not_another_dose():
+    name = "GUTRON 2.5 MG 50 TABLET"
+    [decision] = decide_group([
+        _page(1, name, "6.39", url="https://ilacfiyati.com/ilaclar/gutron-25-mg-50-tablet"),
+        _page(2, name, url="https://ilacfiyati.com/ilaclar/gutron-2-5-mg-50-tb"),
+    ])
+    assert decision.action == HIDE
 
 
 def test_equal_priced_pages_keep_older_and_different_prices_go_to_review():

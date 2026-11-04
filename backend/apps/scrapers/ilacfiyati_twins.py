@@ -32,20 +32,24 @@ TWIN_OF_KEY = "ilacfiyati_twin_of"
 
 _TR_FOLD = str.maketrans({
     "İ": "i", "I": "i", "ı": "i", "Ş": "s", "ş": "s", "Ğ": "g", "ğ": "g",
-    "Ü": "u", "ü": "u", "Ö": "o", "ö": "o", "Ç": "c", "ç": "c", "µ": "mc", "μ": "mc",
+    "Ü": "u", "ü": "u", "Ö": "o", "ö": "o", "Ç": "c", "ç": "c", "µ": "mc", "μ": "mc", "×": "x",
 })
 _TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)*|[a-z]+")
 _THOUSANDS_RE = re.compile(r"\d{1,3}(?:\.\d{3})+")
 # Одно и то же разными словами и языками: страница фирмы и страница TEB пишут
-# «30 TB» и «30 TABLETS», «TOZ» и «POWDER». Ампула и флакон — разные упаковки, не синонимы.
+# «30 TB» и «30 TABLETS», «TOZ» и «POWDER». Ампула и флакон — одна форма: страница TEB
+# называет «AMP.» любую инъекционную упаковку, у той же страницы фирмы — «VIAL»
+# (на проде 04.11 — 22 пары). Таблетка и капсула — разные формы: такие пары на проверку.
 _SYNONYM_GROUPS = {
-    "tablet": ("tb", "tbl", "tablets", "tabs", "tab", "tabletten", "tablette"),
+    "tablet": ("tb", "tbl", "tablets", "tabs", "tab", "tabletten", "tablette", "filmtabletten",
+               "drj", "draje", "dragee"),
     "kapsul": ("kaps", "kap", "cap", "caps", "capsul", "capsule", "capsules", "kapseln", "kapsel"),
-    "ampul": ("amp", "ampule", "ampulle", "ampullen", "ampoule", "ampoules"),
-    "flakon": ("flk", "vial", "vials", "vyal", "durchstechflasche", "durchstechflaschen"),
-    "powder": ("toz", "pow", "pwdr", "pulver"),
+    "flakon": ("flk", "vial", "vials", "vyal", "durchstechflasche", "durchstechflaschen",
+               "amp", "ampul", "ampule", "ampulle", "ampullen", "ampoule", "ampoules"),
+    "powder": ("toz", "pow", "pwdr", "pulver", "povder"),
     "sachet": ("sachets", "sacht", "poset", "sase"),
     "solution": ("sol", "solusyon", "cozelti", "losung"),
+    "suspension": ("susp", "suspansiyon"),
     "granule": ("granul", "granules", "granulat"),
     "vaccine": ("asi",),
     "g": ("gr", "gram", "gramm"),
@@ -56,15 +60,32 @@ _SYNONYM_GROUPS = {
     "krem": ("cream",),
 }
 _SYNONYMS = {alias: word for word, aliases in _SYNONYM_GROUPS.items() for alias in aliases}
-# Слова, которые не отличают упаковку: «пленочное покрытие», «штук», союзы.
-_FILLER = {"film", "kapli", "coated", "fc", "adet", "and", "ve", "with", "x"}
+# Слова, которые не отличают упаковку: «пленочное покрытие», «штук», «для приёма внутрь», союзы.
+_FILLER = {"film", "kapli", "coated", "fc", "adet", "oral", "and", "ve", "with", "x"}
 _INGREDIENT_FILLER = {"and", "ve", "with", "ile"}
+_INGREDIENT_SYNONYMS = {"asit": "acid", "asidi": "acid"}
+# Транслитерация: страницы пишут вещество по-турецки и по-английски
+# («Lityum Karbonat» / «Lithium Carbonate», «Sultiam» / «Sulthiame»).
+_SPELLING = (("ph", "f"), ("th", "t"), ("w", "v"), ("y", "i"), ("j", "g"))
+# «1X15» — то же, что «15».
+_SINGLE_PACK_RE = re.compile(r"(?<![\d.,])1\s*x\s*(?=\d)")
 # «-2» в конце адреса ilacfiyati — номер повтора страницы, а не дозировка.
 _URL_REPEAT_SUFFIX_RE = re.compile(r"(?<=[a-z])-\d+$")
 
 
 def _fold(text: str) -> str:
     return str(text or "").translate(_TR_FOLD).casefold()
+
+
+def _spelling(word: str) -> str:
+    for old, new in _SPELLING:
+        word = word.replace(old, new)
+    word = re.sub(r"c(?=[ei])", "s", word).replace("c", "k")
+    word = re.sub(r"(.)\1+", r"\1", word)
+    for ending in ("s", "e"):
+        if len(word) > 4 and word.endswith(ending):
+            word = word[:-1]
+    return word
 
 
 def _number(raw: str) -> str:
@@ -77,40 +98,58 @@ def _number(raw: str) -> str:
     return format(value.normalize(), "f")
 
 
+def _name_tokens(name: str) -> list[str]:
+    return _TOKEN_RE.findall(_SINGLE_PACK_RE.sub("", _fold(name)))
+
+
 def name_identity(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """(слова, числа) названия в источнике — без регистра, пунктуации и синонимов форм."""
+    """(слова, числа) названия в источнике — без регистра, пунктуации, синонимов форм и
+    различий написания."""
     words, numbers = set(), []
-    for token in _TOKEN_RE.findall(_fold(name)):
+    for token in _name_tokens(name):
         if token[0].isdigit():
             numbers.append(_number(token))
             continue
         token = _SYNONYMS.get(token, token)
         if token not in _FILLER:
-            words.add(token)
+            words.add(_spelling(token))
     return tuple(sorted(words)), tuple(sorted(numbers))
 
 
+def _name_letters(name: str) -> str:
+    """Слова названия подряд: «HAZIRENJEKTOR» = «HAZIR ENJEKTOR»."""
+    return "".join(
+        _spelling(_SYNONYMS.get(token, token)) for token in _name_tokens(name)
+        if not token[0].isdigit() and _SYNONYMS.get(token, token) not in _FILLER
+    )
+
+
 def ingredient_identity(text: str) -> frozenset:
-    """Слова состава без порядка («A/B/C» = «B, A ve C»); пусто — состав неизвестен."""
+    """Основы слов состава без порядка («A/B/C» = «B, A ve C»): первые шесть букв после
+    транслитерации; пусто — состав неизвестен. Разное вещество («Psödoefedrin» /
+    «Fenilefrin» у TYLOL HOT D) остаётся разным."""
     return frozenset(
-        token for token in _TOKEN_RE.findall(_fold(text))
-        if token not in _INGREDIENT_FILLER and len(token) > 1
+        _spelling(_INGREDIENT_SYNONYMS.get(token, token))[:6] for token in _TOKEN_RE.findall(_fold(text))
+        # Числа состава пишут по-разному («3-4» / «3,4-»); дозировку сравнивает название.
+        if token not in _INGREDIENT_FILLER and len(token) > 1 and not token[0].isdigit()
     )
 
 
 def url_numbers_outside_name(url: str, name: str) -> list[str]:
     """Числа адреса страницы, которых нет в её названии (PREKUNIL: адрес «500-mg», название «750 MG»).
 
-    Адрес теряет запятую («0,5 ML» → «05-ml»), поэтому числа названия сравниваются без
-    разделителей.
+    Адрес теряет запятую («0,5 ML» → «05-ml» или «0-5-ml»), поэтому число названия
+    подходит и целиком без разделителей, и по частям.
     """
     slug = str(url or "").split("?", 1)[0].rstrip("/").rsplit("/ilaclar/", 1)[-1].split("/", 1)[0]
     if not slug or slug == str(url or ""):
         return []
     slug = _URL_REPEAT_SUFFIX_RE.sub("", _fold(slug))
-    name_numbers = Counter(re.sub(r"[.,]", "", token) for token in re.findall(r"\d+(?:[.,]\d+)*", _fold(name)))
-    extra = Counter(re.findall(r"\d+", slug)) - name_numbers
-    return sorted(extra.elements())
+    allowed = set()
+    for token in re.findall(r"\d+(?:[.,]\d+)*", _fold(name)):
+        allowed.add(re.sub(r"[.,]", "", token))
+        allowed.update(re.split(r"[.,]", token))
+    return sorted(number for number in re.findall(r"\d+", slug) if number not in allowed)
 
 
 @dataclass
@@ -164,7 +203,7 @@ def mismatch_reason(keep: TwinPage, other: TwinPage) -> str:
     other_words, other_numbers = name_identity(other.source_name)
     if keep_numbers != other_numbers:
         return "в названиях разные числа (дозировка или количество)"
-    if keep_words != other_words:
+    if keep_words != other_words and _name_letters(keep.source_name) != _name_letters(other.source_name):
         extra = sorted(set(keep_words) ^ set(other_words))
         return "в названиях разные слова: " + ", ".join(extra)
     for page in (keep, other):
