@@ -19,10 +19,12 @@ from apps.scrapers.base.scraper import (
     ScraperAccessBlockedError,
     SiteCategoriesError,
 )
+from apps.catalog.utils.tr_vocab import translate_turkish_color
 from apps.scrapers.parsers.superstep import (
     SuperstepFormatError,
     SuperstepParser,
     resolve_superstep_category_slugs,
+    superstep_subgroup_from_name,
 )
 from apps.scrapers.services import ScraperIntegrationService
 
@@ -276,6 +278,211 @@ def test_color_id_without_model_renk_uses_the_grouping_attribute():
     assert SuperstepParser()._model_color_id(card["product"], card["variants"]) == "265-529149.SİYAH"
 
 
+def test_kids_k_sizes_go_before_other_numeric_sizes():
+    """adidas KI9437: «10K…13.5K», затем «1.5 2 2.5 28.5 33» (order у Akinon вперемешку)."""
+    url = "/urun/adidas-campus-00s-cocuk-kahverengi-spor-ayakkabi/ki9437-1/"
+    parser = _parser({url: "card_kids_KI9437.json"})
+
+    (variant,) = parser.parse_product_detail(SITE + url).attributes["fashion_variants"]
+
+    assert [s["size"] for s in variant["sizes"]] == [
+        "10K", "11K", "11.5K", "12.5K", "13.5K", "1.5", "2", "2.5", "28.5", "33",
+    ]
+
+
+NIKE_GREEN = "/urun/nike-arswft-dfadv-crop-tank-kadin-yesil-t-shirt/265-fn2713-1/"
+
+
+def test_color_without_subgroup_takes_it_from_another_color_of_the_model():
+    """Nike 265-FN2713: у зелёного цвета нет integration_alt_grup, у белого — «Atlet»."""
+    parser = _parser({NIKE_GREEN: "card_mp_no_subgroup_265-FN2713.json"})
+
+    product = parser.parse_product_detail(SITE + NIKE_GREEN)
+
+    assert product.attributes["superstep_subgroup"] == "Atlet"
+    assert product.category == "tank-tops"
+    assert product.attributes["gender"] == "women"
+
+
+def test_subgroup_from_name_when_no_color_has_it():
+    card = json.loads(_fixture("card_mp_no_subgroup_265-FN2713.json"))
+    for group in card["variants"]:
+        for option in group["options"]:
+            (option["product"].get("attributes_kwargs") or {}).pop("integration_alt_grup", None)
+    parser = _parser({NIKE_GREEN: json.dumps(card)})
+
+    product = parser.parse_product_detail(SITE + NIKE_GREEN)
+
+    assert product.attributes["superstep_subgroup"] == "T-Shirt"  # подпись из «… Kadın Yeşil T-Shirt»
+    assert product.category == "t-shirts"
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Nike Arswft Dfadv Crop Tank Kadın Yeşil T-Shirt", "T-Shirt"),
+        ("adidas Samba OG Unisex Kahverengi Sneaker", "Sneaker"),
+        ("Puma Palermo Leather Unisex Beyaz Spor Ayakkabı", "Spor Ayakkabı"),
+        ("Nautica Erkek Lacivert Deniz Şortu", "Deniz Şortu"),
+        ("Eastpak Orbit Unisex Kırmızı Sırt Çantası", "Sırt Çantası"),
+        ("Funko Pop Marvel Figür", "Figür"),
+        ("Hediye Kartı 500 TL", ""),
+    ],
+)
+def test_superstep_subgroup_from_name(name, expected):
+    """Формат один — подпись, как у подгруппы сайта (``superstep_subgroup``)."""
+    assert superstep_subgroup_from_name(name) == expected
+
+
+@pytest.mark.parametrize(
+    "erp_gender,expected",
+    [
+        ("BOYS", ("uw-boys-briefs", "uw-boys-underwear", "uw-children-underwear", "underwear")),
+        ("GIRLS", ("uw-girls-panties", "uw-girls-underwear", "uw-children-underwear", "underwear")),
+        ("CHILDREN", ("uw-children-underwear", "underwear")),
+    ],
+)
+def test_kids_boxers_by_erp_gender(erp_gender, expected):
+    """Детское бельё — по integration_erp_cinsiyet (BOYS/GIRLS), как в плане."""
+    product = {
+        "attributes": {"integration_cinsiyet": "Çocuk", "integration_erp_cinsiyet": erp_gender},
+        "attributes_kwargs": {"integration_alt_grup": {"label": "Boxer"}},
+    }
+
+    assert SuperstepParser()._category_route(product) == ("Boxer", expected)
+
+
+def test_unisex_backpack_in_parent_section_is_reported():
+    """Рюкзаки Unisex — в «Сумки и кошельки» (точного раздела нет): видно в отчёте прогона."""
+    card = json.loads(_fixture("card_stanley_13424.json"))
+    card["product"]["attributes_kwargs"]["integration_alt_grup"] = {"label": "Sırt Çantası"}
+    parser = _parser({STANLEY: json.dumps(card)})
+
+    product = parser.parse_product_detail(SITE + STANLEY)
+
+    assert product.category == "bags-wallets"
+    assert parser._unmapped_report() == (
+        "В родительском разделе (точного нет): 1 товаров — Sırt Çantası → bags-wallets 1."
+    )
+
+
+PUMA_399025_01 = "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025-3/"
+PUMA_399025_06 = "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-6/"
+
+
+def test_same_color_names_inside_model_get_the_maker_colorway():
+    """Puma 399025: два цвета «Beyaz» различаются расцветкой производителя;
+    перевод цвета различитель сохраняет."""
+    parser = _parser({PUMA_399025_01: "card_puma_399025_01.json", PUMA_399025_06: "card_puma_399025_06.json"})
+
+    product = parser.parse_product_detail(SITE + PUMA_399025_01)
+
+    colors = [v["color"] for v in product.attributes["fashion_variants"]]
+    # Турецкое «BEYAZ» из расцветки «BEYAZ-Velvet Moss» убрано: на витрине и в фиде ВК его быть не должно.
+    assert colors == ["Beyaz · Velvet Moss", "Beyaz · PUMA White-PUMA Black"]
+    assert translate_turkish_color(colors[0], "ru") == "Белый · Velvet Moss"
+    assert product.attributes["fashion_variants"][1]["display_name"].endswith("- Beyaz · PUMA White-PUMA Black")
+
+
+def test_color_detail_does_not_depend_on_sibling_stock():
+    """Соседний «Beyaz» распродан и не открывается — уточнение остаётся тем же."""
+    card = json.loads(_fixture("card_puma_399025_01.json"))
+    for group in card["variants"]:
+        for option in group["options"]:
+            option["in_stock"] = False
+    parser = _parser({PUMA_399025_01: json.dumps(card)})
+
+    product = parser.parse_product_detail(SITE + PUMA_399025_01)
+
+    assert parser.requests == [PUMA_399025_01]
+    assert [v["color"] for v in product.attributes["fashion_variants"]] == ["Beyaz · PUMA White-PUMA Black"]
+
+
+def test_color_detail_from_opened_cards_when_variants_have_no_color_names():
+    """У вариантов маркетплейса (mp_*) в карточке нет названий цветов —
+    одинаковые цвета находятся по карточкам открытых цветов."""
+    cards = {}
+    for path, name in ((PUMA_399025_01, "card_puma_399025_01.json"), (PUMA_399025_06, "card_puma_399025_06.json")):
+        card = json.loads(_fixture(name))
+        for group in card["variants"]:
+            for option in group["options"]:
+                attrs = option["product"]["attributes"]
+                for key in ("integration_renk_detay", "integration_hos_renk_detay", "integration_renk_tonu",
+                            "integration_erp_renk_aciklama"):
+                    attrs.pop(key, None)
+        cards[path] = json.dumps(card)
+    parser = _parser(cards)
+
+    product = parser.parse_product_detail(SITE + PUMA_399025_01)
+
+    assert [v["color"] for v in product.attributes["fashion_variants"]] == [
+        "Beyaz · Velvet Moss", "Beyaz · PUMA White-PUMA Black",
+    ]
+
+
+@pytest.mark.parametrize(
+    "colorway,expected",
+    [
+        ("BEYAZ-Velvet Moss", "Velvet Moss"),
+        ("PUMA White-PUMA Black", "PUMA White-PUMA Black"),
+        ("Beyaz-Kahverengi", ""),
+        ("CHESTNUT (KAHVE)", "CHESTNUT"),
+        ("TOZLU KAKAO", ""),  # турецкие слова вне словаря цветов — не берём
+        ("LIGHT BRONZE", "LIGHT BRONZE"),
+        ("KOYU GRI-Black", "Black"),  # турецкий модификатор «koyu» латиницей тоже убирается
+        ("AÇIK MAVİ/White", "White"),
+        ("INDIGO-White", "INDIGO-White"),  # английский цвет из словаря не теряется
+        ("Light Kakao", ""),  # оттенок без английского цвета — «Kakao» турецкое
+        ("Light Grey", "Light Grey"),
+        ("Kum Rengi-Sand", "Sand"),  # «rengi», «tonu» и др. — турецкие модификаторы
+        ("Gri Tonu/Black", "Black"),
+        ("Siyah/Gümüş", ""),  # Anta: расцветка по-турецки — тогда код цвета
+    ],
+)
+def test_colorway_without_turkish_color_words(colorway, expected):
+    assert SuperstepParser._colorway({"attributes": {"integration_erp_renk_aciklama": colorway}}) == expected
+
+
+def test_same_color_names_without_colorway_get_the_color_code():
+    cards = {}
+    for path, name in ((PUMA_399025_01, "card_puma_399025_01.json"), (PUMA_399025_06, "card_puma_399025_06.json")):
+        card = json.loads(_fixture(name))
+        card["product"]["attributes"].pop("integration_erp_renk_aciklama", None)
+        for group in card["variants"]:
+            for option in group["options"]:
+                option["product"]["attributes"].pop("integration_erp_renk_aciklama", None)
+        cards[path] = json.dumps(card)
+    parser = _parser(cards)
+
+    product = parser.parse_product_detail(SITE + PUMA_399025_01)
+
+    assert [v["color"] for v in product.attributes["fashion_variants"]] == ["Beyaz · 06", "Beyaz · 01"]
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # Без турецкой замены I→ı: было бы «Nıke», «Tımberland» (slug «tmberland»).
+        ("NIKE", "Nike"),
+        ("TIMBERLAND", "Timberland"),
+        ("LEVI'S", "Levi's"),
+        ("STANLEY", "Stanley"),
+        ("NEW BALANCE", "New Balance"),
+        # Аббревиатуры не трогаем.
+        ("KİNETİX", "Kinetix"),  # İ → I, без комбинируемой точки
+        ("ASICS", "ASICS"),
+        ("DKNY", "DKNY"),
+        ("UGG", "UGG"),
+        ("EA7", "EA7"),
+        ("adidas", "adidas"),
+    ],
+)
+def test_brand_in_caps_is_normalized(raw, expected):
+    product = {"attributes_kwargs": {"integration_alt_marka": {"label": raw}}}
+
+    assert SuperstepParser()._brand(product) == expected
+
+
 def test_unmapped_subgroup_is_not_loaded():
     figur = json.loads(_fixture("list_erkek_figur.json"))["products"][0]
     card = {"product": figur, "variants": figur["extra_data"]["variants"]}
@@ -316,6 +523,15 @@ def test_html_instead_of_json_stops_as_blocked():
         ("Sırt Çantası", "kids", ("bags-wallets", "accessories")),
         ("Şapka", "", ("hw-baseball-caps", "hw-caps", "headwear")),
         ("Termos", "", ("drinkware", "tableware")),
+        # Детям — детские разделы (пилот 04.11: кепки и бельё шли во взрослые).
+        ("Şapka", "kids", ("hw-childrens-caps", "hw-children-headwear", "headwear")),
+        ("Bere", "kids", ("hw-childrens-beanies", "hw-children-headwear", "headwear")),
+        ("İç Giyim", "kids", ("uw-children-underwear", "underwear")),
+        ("Bra & Spor Sütyeni", "kids", ("uw-girls-underwear", "uw-children-underwear", "underwear")),
+        ("Boxer", "men", ("uw-boxers", "uw-mens-underwear", "underwear")),
+        ("Boxer", "kids", ("uw-children-underwear", "underwear")),
+        # Подгруппа подписью из названия («Sneaker») раскладывается как подгруппа сайта.
+        ("Sneaker", "men", ("sneakers", "shoes")),
         ("Figür", "men", ()),
         ("Satranç Takımı", "", ()),
         ("281", "", ()),

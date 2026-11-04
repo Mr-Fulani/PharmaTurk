@@ -1,0 +1,1026 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 652682,
+  "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+  "sku": "6206235",
+  "base_code": "399025",
+  "attributes": {
+   "brand_link": "/puma/",
+   "max_bag_limit": "2",
+   "filterable_size": "37,5",
+   "integration_renk": "06",
+   "integration_stil": "098",
+   "integration_beden": "37,5",
+   "integration_desen": "026",
+   "integration_marka": "031",
+   "integration_tanim": "AYAKKABI",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "088",
+   "integration_cinsiyet": "Unisex",
+   "integration_alt_marka": "PUMA",
+   "integration_color_hex": "#ffffff",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "BEYAZ",
+   "integration_urun_ozel": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "%63 İnek Derisi, %37 Sentetik",
+   "integration_erp_mensei": "Çin",
+   "integration_model_renk": "399025.06",
+   "integration_renk_detay": "Beyaz",
+   "integration_urun_detay": "Easy Rider Mix",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "WOMEN",
+   "integration_kalem_icerik": "<p><strong>Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı</strong></p>\n\n<p>Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı, 70'lerin klasik koşu estetiğini günümüzün sokak modasıyla buluşturan ikonik bir unisex sneaker modelidir. Retro tasarımı ve zamansız çizgileriyle dikkat çeken bu özel model, günlük yaşamında nostaljik şıklığı konforla bir arada yaşamak isteyenlere hitap eder. Kaliteli malzeme yapısı ve özenle işlenmiş detayları sayesinde her ortamda stilini ön plana çıkarır. İnce silüeti ayağı nazikçe sararken, vintage dokunuşlar kombinlerine özgün bir hava katar. Puma mirasını modern şehir hayatının ritmiyle harmanlayan Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı, her</p>",
+   "integration_renk_tonu_kod": "004",
+   "integration_urun_ana_grup": "005",
+   "integration_hos_renk_detay": "Beyaz",
+   "integration_hos_urun_detay": "Unisex Sneaker",
+   "integration_base_code_format": "399025.06.4,5",
+   "integration_erenp_erenbarkod": "8001062062359",
+   "integration_hos_kalem_icerik": "<p>Puma Easy Rider Mix Unisex Beyaz Haki Sneaker, 70'lerin koşu stilinden ilham alarak sokak modasına retro bir yorum kazandırıyor. İnce silüeti ve vintage havasıyla günlük kombinlere nostaljik bir dokunuş ekleyen bu model, deri üst yüzeyi ve süet kaplamalarıyla kaliteli bir yapı sunuyor. ProFoam teknolojili EVA orta tabanı ise her adımda hafiflik ve yastıklama sağlarken, kauçuk dış tabanı sağlam zemin tutuşu sunuyor. Stil sahibi konfor arayanlar için ideal bir seçenek</p><br> \n<p><strong>Teknik Özellikler</strong></p> \n<li>%70,66 deri ve %29,34 sentetik üst yüzey yapısı ile dayanıklılık ve şıklığı bir araya getirir</li> \n<li>ProFoam teknolojisi sayesinde EVA orta tabanı hafif ve enerji</p>",
+   "integration_yurt_disi_barkod": "4067983303180",
+   "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss",
+   "integration_global_attribute7": "AYAKKABI"
+  },
+  "attribute_set": 4,
+  "attributes_kwargs": {
+   "filterable_size": {
+    "label": "37,5",
+    "value": "37,5",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "06",
+    "value": "06",
+    "data_type": "dropdown"
+   },
+   "integration_stil": {
+    "label": "DAYWEAR",
+    "value": "098",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "37,5",
+    "value": "37,5",
+    "data_type": "dropdown"
+   },
+   "integration_desen": {
+    "label": "026",
+    "value": "026",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "Puma",
+    "value": "031",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "AYAKKABI",
+    "value": "AYAKKABI",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Spor Ayakkabı & Sneaker",
+    "value": "088",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Unisex",
+    "value": "Unisex",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "Puma",
+    "value": "PUMA",
+    "data_type": "dropdown"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "BEYAZ",
+    "value": "BEYAZ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Beyaz",
+    "value": "Beyaz",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Kadın",
+    "value": "WOMEN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Ayakkabı",
+    "value": "005",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 3222034,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/03/28/49402821/87e2aa17-8ed5-4ad9-a636-4df23beb2764.jpg",
+    "order": 20,
+    "created_date": "2025-03-27T11:08:56.962482Z"
+   },
+   {
+    "pk": 3222035,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/03/28/49402932/a3d7c562-bc81-41d6-bc9a-4e20f87abe06.jpg",
+    "order": 21,
+    "created_date": "2025-03-27T11:08:57.032687Z"
+   },
+   {
+    "pk": 3222037,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/03/28/49402808/00342774-1093-40a4-9767-47e47852d9b2.jpg",
+    "order": 30,
+    "created_date": "2025-03-27T11:08:57.175855Z"
+   },
+   {
+    "pk": 3222038,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/03/28/49402883/28712ae0-3cdc-4413-a46f-04b6c66970bd.jpg",
+    "order": 31,
+    "created_date": "2025-03-27T11:08:57.251398Z"
+   },
+   {
+    "pk": 3224631,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/03/28/49402883/7e81faad-eef8-4e37-9e49-13053090e51f.jpg",
+    "order": 32,
+    "created_date": "2025-03-28T05:11:01.846333Z"
+   },
+   {
+    "pk": 3224632,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/03/28/49402883/412b0278-49d6-4036-b8f2-0d7a3fedfede.jpg",
+    "order": 33,
+    "created_date": "2025-03-28T05:11:01.924298Z"
+   }
+  ],
+  "price": "3700",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "7399",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-6/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 5,
+  "created_date": "2025-03-27T11:08:09.457109Z",
+  "modified_date": "2026-11-04T10:29:04.080773Z",
+  "basket_offers": [],
+  "is_listable": true,
+  "listing_code": "06",
+  "price_extra_field": {
+   "previous_price": "7399.00"
+  }
+ },
+ "variants": [
+  {
+   "attribute_key": "integration_renk",
+   "attribute_name": "Renk",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "60000",
+     "label": "06",
+     "value": "06",
+     "product": {
+      "pk": 652682,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6206235",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "37,5",
+       "integration_renk": "06",
+       "integration_beden": "37,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303180",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-6/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 5,
+      "created_date": "2025-03-27T11:08:09.457109Z",
+      "modified_date": "2026-11-04T10:29:04.080773Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "100001",
+     "label": "01",
+     "value": "01",
+     "product": {
+      "pk": 636724,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6205752",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "38,5",
+       "integration_renk": "01",
+       "integration_beden": "38,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299855",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-02-06T06:44:55.538825Z",
+      "modified_date": "2026-11-04T11:01:44.031381Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "attribute_key": "integration_beden",
+   "attribute_name": "Beden",
+   "options": [
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "3600",
+     "label": "36",
+     "value": "36",
+     "product": {
+      "pk": 652679,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6206225",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "36",
+       "integration_renk": "06",
+       "integration_beden": "36",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303173",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-5/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-03-27T11:08:09.113832Z",
+      "modified_date": "2026-11-04T10:29:04.083702Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3700",
+     "label": "37",
+     "value": "37",
+     "product": {
+      "pk": 652680,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205924",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "37",
+       "integration_renk": "06",
+       "integration_beden": "37",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303111",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/652680/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 9,
+      "created_date": "2025-03-27T11:08:09.211532Z",
+      "modified_date": "2026-11-04T10:29:04.075452Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3750",
+     "label": "37,5",
+     "value": "37,5",
+     "product": {
+      "pk": 652682,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6206235",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "37,5",
+       "integration_renk": "06",
+       "integration_beden": "37,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303180",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-6/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 5,
+      "created_date": "2025-03-27T11:08:09.457109Z",
+      "modified_date": "2026-11-04T10:29:04.080773Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3800",
+     "label": "38",
+     "value": "38",
+     "product": {
+      "pk": 652677,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205346",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "38",
+       "integration_renk": "06",
+       "integration_beden": "38",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303128",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/652677/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 21,
+      "created_date": "2025-03-27T11:08:08.829722Z",
+      "modified_date": "2026-11-04T10:29:04.052926Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "3850",
+     "label": "38,5",
+     "value": "38,5",
+     "product": {
+      "pk": 652676,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205359",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "38,5",
+       "integration_renk": "06",
+       "integration_beden": "38,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303197",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/652676/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-03-27T11:08:08.659266Z",
+      "modified_date": "2026-11-04T10:29:04.066587Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3900",
+     "label": "39",
+     "value": "39",
+     "product": {
+      "pk": 652681,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205968",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "39",
+       "integration_renk": "06",
+       "integration_beden": "39",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303135",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/652681/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 2,
+      "created_date": "2025-03-27T11:08:09.321433Z",
+      "modified_date": "2026-11-04T10:29:04.079402Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4000",
+     "label": "40",
+     "value": "40",
+     "product": {
+      "pk": 652678,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205370",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "40",
+       "integration_renk": "06",
+       "integration_beden": "40",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303203",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/652678/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-03-27T11:08:08.997101Z",
+      "modified_date": "2026-11-04T10:29:04.059924Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4100",
+     "label": "41",
+     "value": "41",
+     "product": {
+      "pk": 652663,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205380",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "41",
+       "integration_renk": "06",
+       "integration_beden": "41",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303210",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/652663/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-03-27T11:07:39.450574Z",
+      "modified_date": "2026-11-04T10:29:04.054040Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4200",
+     "label": "42",
+     "value": "42",
+     "product": {
+      "pk": 652665,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205991",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "42",
+       "integration_renk": "06",
+       "integration_beden": "42",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303159",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-4/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 1,
+      "created_date": "2025-03-27T11:07:39.680796Z",
+      "modified_date": "2026-11-04T10:29:04.063879Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4250",
+     "label": "42,5",
+     "value": "42,5",
+     "product": {
+      "pk": 652661,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205391",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "42,5",
+       "integration_renk": "06",
+       "integration_beden": "42,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303227",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 3,
+      "created_date": "2025-03-27T11:07:39.229087Z",
+      "modified_date": "2026-11-04T10:29:04.067541Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4300",
+     "label": "43",
+     "value": "43",
+     "product": {
+      "pk": 652660,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205402",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "43",
+       "integration_renk": "06",
+       "integration_beden": "43",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303166",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-1/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 27,
+      "created_date": "2025-03-27T11:07:39.108002Z",
+      "modified_date": "2026-11-04T10:29:04.070737Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4400",
+     "label": "44",
+     "value": "44",
+     "product": {
+      "pk": 652662,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205446",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "44",
+       "integration_renk": "06",
+       "integration_beden": "44",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303050",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/652662/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 7,
+      "created_date": "2025-03-27T11:07:39.329479Z",
+      "modified_date": "2026-11-04T10:29:04.058080Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4500",
+     "label": "45",
+     "value": "45",
+     "product": {
+      "pk": 652666,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6205880",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "45",
+       "integration_renk": "06",
+       "integration_beden": "45",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303098",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 12,
+      "created_date": "2025-03-27T11:07:39.786895Z",
+      "modified_date": "2026-11-04T10:29:04.084911Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4600",
+     "label": "46",
+     "value": "46",
+     "product": {
+      "pk": 652664,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6206213",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "46",
+       "integration_renk": "06",
+       "integration_beden": "46",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303067",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-03-27T11:07:39.575419Z",
+      "modified_date": "2026-11-04T10:29:04.070546Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": null,
+ "offers": []
+}

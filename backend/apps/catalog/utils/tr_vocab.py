@@ -120,7 +120,18 @@ def _lookup_localized(mapping: dict[str, dict[str, str]], raw_value: str, locale
     return ""
 
 
+# Разделитель цвета и различителя одинаковых цветов одной модели (парсер SuperStep).
+COLOR_DETAIL_SEPARATOR = " · "
+
+
 def translate_turkish_color(raw_value: str, locale: str) -> str:
+    """Цвет по словарю. «Beyaz · PUMA White-PUMA Black» — различитель одинаковых
+    цветов одной модели: переводится цвет до разделителя, уточнение остаётся
+    как есть, иначе два цвета после перевода снова совпали бы."""
+    base, separator, detail = str(raw_value or "").partition(COLOR_DETAIL_SEPARATOR)
+    if separator:
+        translated = _lookup_localized(TR_COLOR_DICTIONARY, base, locale)
+        return f"{translated}{COLOR_DETAIL_SEPARATOR}{detail.strip()}" if translated else ""
     return _lookup_localized(TR_COLOR_DICTIONARY, raw_value, locale)
 
 
