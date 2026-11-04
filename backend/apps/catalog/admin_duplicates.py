@@ -18,7 +18,7 @@ class CrossSourceDuplicateAdmin(admin.ModelAdmin):
     """Только просмотр: решения принимает пересчёт (resolve_cross_source_duplicates)."""
 
     list_display = (
-        "hidden", "hidden_price", "shown", "shown_price", "currency", "match", "reason", "product_hidden", "updated_at",
+        "hidden", "hidden_price", "shown", "shown_price", "currency", "match", "reason", "product_hidden", "confirmed_at", "updated_at",
     )
     list_filter = ("product_type", "match", "reason", "product_hidden")
     search_fields = ("hidden_product__name", "shown_product__name", "hidden_product__slug", "shown_product__slug")

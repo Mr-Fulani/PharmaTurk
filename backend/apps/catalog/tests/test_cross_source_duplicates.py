@@ -6,29 +6,48 @@
 3. цены поменялись местами — предложения тоже;
 4. у дорогого нет размеров в наличии, а у дешёвого есть — показываем дешёвое.
 """
+from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from django.core.management import call_command
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.catalog.models import (
     Brand,
     Category,
+    ClothingProduct,
+    ClothingVariant,
+    ClothingVariantSize,
     CrossSourceDuplicate,
     Product,
+    ProductSourceOffer,
     ShoeProduct,
     ShoeVariant,
     ShoeVariantSize,
 )
+from apps.catalog.services.product_card_source_refresh import ProductCardSourceRefreshService, RefreshTarget
+from apps.scrapers.base.offers import (
+    OfferAvailability,
+    OfferCheckError,
+    OfferCheckErrorCode,
+    OfferCheckResult,
+    OfferStockPrecision,
+)
+from apps.scrapers.parsers.flo import FloParser
+from apps.catalog.services import cross_source_duplicates
 from apps.catalog.services.cross_source_duplicates import (
     CrossSourceDuplicateService,
+    _check_at_seller,
     article_key,
     color_key,
     normalize_gtin,
     resolve_for_products,
+    verify_hidden_duplicate,
 )
 from apps.catalog.services.stale_products import _set_active
 from apps.scrapers.parsers.superstep import SuperstepParser
@@ -101,8 +120,9 @@ def test_gtin_and_article_normalization():
     assert article_key("Nike", "DV5456-106") == article_key("NIKE", "DV5456.106") == "nike|DV5456106"
     assert SuperstepParser._manufacturer_article("34-IH9166.-") == "IH9166"
     assert SuperstepParser._manufacturer_article("396464.01") == "396464.01"
-    assert color_key("Beyaz-Siyah") == color_key("BEYAZ") == "beyaz"
-    assert color_key("Açık Gri") == "acik"
+    assert color_key("BEYAZ") == color_key("Beyaz") == "beyaz"
+    assert color_key("Açık Gri") == "acik gri" != color_key("Açık Mavi")
+    assert color_key("Beyaz-Siyah") != color_key("Beyaz")
 
 
 def test_rule2_cheaper_offer_is_hidden_not_deleted():
@@ -168,14 +188,20 @@ def test_rule1_article_needs_same_brand_and_missing_barcodes(nike):
     assert CrossSourceDuplicateService().resolve()["groups"] == 0
 
 
-def test_rule3_prices_swap_offers_swap():
+def test_rule3_prices_swap_offers_swap(settings):
+    settings.CROSS_SOURCE_DUPLICATES_ENABLED = True
     flo, flo_color, superstep, superstep_color = _pair("3000", "3500")
     CrossSourceDuplicateService().resolve()
     assert not _active(flo_color)
 
     # FLO подорожал — пересчёт по одному товару (как после импорта или проверки карточки).
     ShoeVariant.objects.filter(pk=flo_color.pk).update(price=Decimal("4000"))
-    CrossSourceDuplicateService().resolve([flo.base_product_id])
+    report = CrossSourceDuplicateService().resolve([flo.base_product_id])
+    # Скрытый цвет возвращается только после проверки у продавца — до неё показан текущий.
+    assert report["verify"] == {("shoes", flo_color.pk)}
+    assert not _active(flo_color) and _active(superstep_color)
+    with patch("apps.catalog.services.cross_source_duplicates._check_at_seller", return_value="found"):
+        assert verify_hidden_duplicate("shoes", flo_color.pk) == "found"
 
     assert _active(flo_color) and not _active(superstep_color)
     assert _active(flo) and Product.objects.get(pk=flo.base_product_id).is_active
@@ -435,3 +461,207 @@ def test_rule2_compares_site_price_with_markup():
     assert _active(flo_color) and not _active(superstep_color)
     row = CrossSourceDuplicate.objects.get()
     assert row.shown_price == Decimal("4500.00")
+
+
+# --- повторное ревью #305 ---------------------------------------------------------
+
+
+def _clothing_pair():
+    colors = []
+    for source, price, codes in (("flo", "1000", UPC), ("superstep", "1200", EAN)):
+        domain = ClothingProduct.objects.create(
+            name="Polo", slug=f"{source}-polo-{uuid4().hex[:10]}", price=Decimal(price), currency="TRY",
+            is_available=True,
+        )
+        variant = ClothingVariant.objects.create(
+            product=domain, name="Цвет", slug=f"{source}-polo-color-{uuid4().hex[:10]}", color="Beyaz",
+            price=Decimal(price), currency="TRY", is_available=True,
+            external_id=f"{source}-variant-{uuid4().hex[:8]}",
+        )
+        for index, code in enumerate(codes):
+            ClothingVariantSize.objects.create(variant=variant, size=f"S{index}", gtin=normalize_gtin(code))
+        colors.append(variant)
+    return colors
+
+
+def test_unhide_all_with_type_keeps_other_types(tmp_path):
+    _, flo_shoe, _, _ = _pair("3000", "3500")
+    flo_polo, _ = _clothing_pair()
+    CrossSourceDuplicateService().resolve()
+    assert CrossSourceDuplicate.objects.count() == 2
+
+    call_command(
+        "resolve_cross_source_duplicates", "--unhide-all", "--type", "shoes", "--apply",
+        "--backup", str(tmp_path / "undo.json"), stdout=StringIO(),
+    )
+
+    assert _active(flo_shoe)
+    assert list(CrossSourceDuplicate.objects.values_list("product_type", flat=True)) == ["clothing"]
+    assert not _active(flo_polo)
+
+
+def test_hidden_color_returns_only_after_seller_confirms(settings):
+    settings.CROSS_SOURCE_DUPLICATES_ENABLED = True
+    _, flo_color, _, superstep_color = _pair("3000", "3500")
+    CrossSourceDuplicateService().resolve()
+    ShoeVariant.objects.filter(pk=flo_color.pk).update(price=Decimal("4000"))
+
+    # Проверка не удалась — ничего не меняется, показан текущий.
+    with patch("apps.catalog.services.cross_source_duplicates._check_at_seller", return_value="unknown"):
+        assert verify_hidden_duplicate("shoes", flo_color.pk) == "unknown"
+    CrossSourceDuplicateService().resolve()
+    assert not _active(flo_color) and _active(superstep_color)
+
+    # Продавец убрал цвет — строка удаляется, цвет не вернётся никогда.
+    with patch("apps.catalog.services.cross_source_duplicates._check_at_seller", return_value="gone"):
+        assert verify_hidden_duplicate("shoes", flo_color.pk) == "gone"
+    flo_color.refresh_from_db()
+    assert not flo_color.is_active and not flo_color.is_available
+    assert not CrossSourceDuplicate.objects.exists() and _active(superstep_color)
+
+
+def test_confirmation_expires():
+    _, flo_color, _, superstep_color = _pair("3000", "3500")
+    CrossSourceDuplicateService().resolve()
+    ShoeVariant.objects.filter(pk=flo_color.pk).update(price=Decimal("4000"))
+    stale = timezone.now() - cross_source_duplicates.CONFIRM_TTL - timedelta(minutes=1)
+    CrossSourceDuplicate.objects.update(confirmed_at=stale)
+
+    CrossSourceDuplicateService().resolve()
+    assert not _active(flo_color) and _active(superstep_color)
+
+    CrossSourceDuplicate.objects.update(confirmed_at=timezone.now())
+    CrossSourceDuplicateService().resolve()
+    assert _active(flo_color) and not _active(superstep_color)
+
+
+def _flo_offer(product, variant):
+    url = f"https://www.flo.com.tr/urun/nike-{uuid4().hex[:6]}"
+    return ProductSourceOffer.objects.create(
+        product=product, parser_key="flo", canonical_url=url, source_domain="www.flo.com.tr",
+        variant_key=variant.external_id, size_key="40", source_price=Decimal("3000"), source_currency="TRY",
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+        stock_precision=ProductSourceOffer.StockPrecision.BOOLEAN,
+    )
+
+
+def _result(offer, *, availability=OfferAvailability.IN_STOCK, error=None):
+    return OfferCheckResult(
+        availability_status=availability, stock_precision=OfferStockPrecision.BOOLEAN,
+        canonical_url=offer.canonical_url, error=error,
+    )
+
+
+def test_check_at_seller_uses_live_offer_check_or_fresh_import():
+    flo, flo_color, _, _ = _pair("3000", "3500")
+    CrossSourceDuplicateService().resolve()
+    row = CrossSourceDuplicate.objects.get()
+    product = Product.objects.get(pk=flo.base_product_id)
+
+    # Источник без живой проверки: свежий импорт — подтверждение, старый — нет.
+    Product.objects.filter(pk=product.pk).update(last_synced_at=timezone.now())
+    assert _check_at_seller(row, flo_color) == "found"
+    Product.objects.filter(pk=product.pk).update(last_synced_at=timezone.now() - timedelta(days=3))
+    assert _check_at_seller(row, flo_color) == "unknown"
+
+    offer = _flo_offer(product, flo_color)
+    service = "apps.catalog.services.source_offer_verification.SourceOfferVerificationService"
+    with patch(f"{service}.is_enabled_for", return_value=True):
+        with patch(f"{service}.verify", return_value=_result(offer)):
+            assert _check_at_seller(row, flo_color) == "found"
+        gone = OfferCheckError(OfferCheckErrorCode.NOT_FOUND, "404", retryable=False)
+        with patch(f"{service}.verify", return_value=_result(offer, availability=OfferAvailability.UNKNOWN, error=gone)):
+            assert _check_at_seller(row, flo_color) == "gone"
+        timeout = OfferCheckError(OfferCheckErrorCode.TIMEOUT, "timeout", retryable=True)
+        with patch(
+            f"{service}.verify",
+            return_value=_result(offer, availability=OfferAvailability.SOURCE_UNREACHABLE, error=timeout),
+        ):
+            assert _check_at_seller(row, flo_color) == "unknown"
+
+
+def test_flag_off_retired_shown_card_returns_hidden_pair_after_check(settings):
+    settings.CROSS_SOURCE_DUPLICATES_ENABLED = False
+    flo, flo_color, superstep, _ = _pair("3000", "3500")
+    CrossSourceDuplicateService().resolve()
+    assert not Product.objects.get(pk=flo.base_product_id).is_active
+
+    _set_active(Product.objects.get(pk=superstep.base_product_id), False)
+    # До подтверждения продавца скрытая пара не возвращается.
+    assert not _active(flo_color)
+
+    with patch("apps.catalog.services.cross_source_duplicates._check_at_seller", return_value="found"):
+        verify_hidden_duplicate("shoes", flo_color.pk)
+
+    assert _active(flo_color) and Product.objects.get(pk=flo.base_product_id).is_active
+    assert not CrossSourceDuplicate.objects.exists()
+    response = APIClient().get(f"/api/catalog/products/resolve/{Product.objects.get(pk=flo.base_product_id).slug}")
+    assert response.status_code == 200 and response.data["redirect_permanent"] is True
+
+
+def test_card_refresh_keeps_hidden_color_inactive():
+    flo, flo_color, _, _ = _pair("3000", "3500")
+    flo_other = _color(flo, "flo", "2500", gtins=["196968999999", "196968999998"], sort_order=1)
+    CrossSourceDuplicateService().resolve()
+    product = Product.objects.get(pk=flo.base_product_id)
+    specs = [
+        {
+            "external_id": variant.external_id, "price": price, "currency": "TRY", "color": "Beyaz",
+            "is_available": True, "sizes": [{"size": "40", "is_available": True}],
+        }
+        for variant, price in ((flo_color, 3000), (flo_other, 2500))
+    ]
+
+    ProductCardSourceRefreshService()._sync_fashion_inventory(product, specs, [])
+
+    assert not _active(flo_color) and _active(flo_other)
+
+
+def test_source_url_gone_marks_hidden_color_unavailable():
+    flo, flo_color, _, _ = _pair("3000", "3500")
+    CrossSourceDuplicateService().resolve()
+    product = Product.objects.get(pk=flo.base_product_id)
+    offer = _flo_offer(product, flo_color)
+
+    ProductCardSourceRefreshService()._mark_source_url_unavailable(
+        RefreshTarget(product=product, offer=offer, parser_class=FloParser)
+    )
+
+    flo_color.refresh_from_db()
+    assert not flo_color.is_available and not flo_color.is_active
+    assert set(flo_color.sizes.values_list("is_available", flat=True)) == {False}
+
+
+def test_full_pass_runs_in_short_batches(monkeypatch):
+    monkeypatch.setattr(cross_source_duplicates, "FULL_PASS_BATCH", 1)
+    locks = []
+    original = CrossSourceDuplicateService._lock
+    monkeypatch.setattr(CrossSourceDuplicateService, "_lock", staticmethod(lambda: locks.append(1) or original()))
+    _, first, _, _ = _pair("3000", "3500")
+    other = ["196968333331", "196968333332"]
+    flo = _shoe("flo", "2000")
+    second = _color(flo, "flo", "2000", gtins=other)
+    superstep = _shoe("superstep", "2500")
+    _color(superstep, "superstep", "2500", gtins=[f"0{code}" for code in other])
+
+    report = CrossSourceDuplicateService().resolve()
+
+    assert report["hidden"] == 2 and not _active(first) and not _active(second)
+    # Каждая пачка (здесь — один товар) — своя короткая транзакция со своей блокировкой.
+    assert len(locks) == 4
+
+
+def test_import_retiring_color_during_resolve_wins():
+    _, flo_color, _, _ = _pair("3000", "3500")
+    CrossSourceDuplicateService().resolve()
+    ShoeVariant.objects.filter(pk=flo_color.pk).update(price=Decimal("4000"))
+    CrossSourceDuplicate.objects.update(confirmed_at=timezone.now())
+    service = CrossSourceDuplicateService(["shoes"])
+    members = service.load_members("shoes")
+    plan = service.plan("shoes", members)
+    # Пока план считался, импорт снял цвет у продавца (удалил строку).
+    cross_source_duplicates.forget_hidden_variants("shoes", [flo_color.pk])
+
+    service.apply("shoes", members, plan)
+
+    assert not _active(flo_color)

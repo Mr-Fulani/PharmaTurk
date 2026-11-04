@@ -109,6 +109,15 @@ class Migration(migrations.Migration):
                         verbose_name="Скрыта вся карточка",
                     ),
                 ),
+                (
+                    "confirmed_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="Последняя проверка у продавца перед возвратом на сайт: скрытый цвет возвращается, только если она свежая.",
+                        null=True,
+                        verbose_name="Продавец подтвердил",
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="Скрыт")),
                 ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Проверено")),
                 (

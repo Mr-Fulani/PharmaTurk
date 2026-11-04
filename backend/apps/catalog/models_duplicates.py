@@ -50,6 +50,12 @@ class CrossSourceDuplicate(models.Model):
         default=False,
         help_text=_("Все цвета товара оказались дублями — товар снят с сайта, его адрес ведёт на показанный."),
     )
+    confirmed_at = models.DateTimeField(
+        _("Продавец подтвердил"),
+        null=True,
+        blank=True,
+        help_text=_("Последняя проверка у продавца перед возвратом на сайт: скрытый цвет возвращается, только если она свежая."),
+    )
     created_at = models.DateTimeField(_("Скрыт"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Проверено"), auto_now=True)
 

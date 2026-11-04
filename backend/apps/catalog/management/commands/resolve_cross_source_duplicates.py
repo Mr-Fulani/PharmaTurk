@@ -21,9 +21,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from apps.catalog.models import CrossSourceDuplicate, Product
-from apps.catalog.services.cross_source_duplicates import TYPE_MODELS, CrossSourceDuplicateService
-
-SOURCE_TITLES = {"flo": "FLO", "superstep": "SuperStep"}
+from apps.catalog.services.cross_source_duplicates import SOURCE_TITLES, TYPE_MODELS, CrossSourceDuplicateService
 
 
 class Command(BaseCommand):
@@ -60,6 +58,11 @@ class Command(BaseCommand):
         report = service.resolve(product_ids, dry_run=True)
         decisions = report["decisions"]
         self._print_report(decisions, options["sample"])
+        if report["verify"]:
+            self.stdout.write(
+                f"Ждут проверки у продавца перед возвратом на сайт: {len(report['verify'])} цветов "
+                "(с --apply проверка ставится в очередь, до неё показан текущий)."
+            )
         if not options["apply"]:
             self.stdout.write("Dry-run: ничего не изменено. Для записи: --apply --backup <файл>.")
             return
