@@ -3259,14 +3259,17 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     const currentProductPath = `/product/${slugParts.join('/')}`
 
     if (canonicalPath && currentProductPath !== canonicalPath) {
+      // Скрытый дубль у другого продавца ведёт на показанный временно (302):
+      // цены могут поменяться местами (docs/CROSS_SOURCE_DUPLICATES.md).
+      const duplicateRedirect = body.redirect_permanent === false
       return {
         redirect: {
           destination: buildFavoriteProductHref(
             `${localePrefix}${canonicalPath}`,
-            activeVariantFromQuery,
+            duplicateRedirect ? body.redirect_active_variant_slug || undefined : activeVariantFromQuery,
             favoriteSizeFromQuery
           ),
-          permanent: true,
+          permanent: !duplicateRedirect,
         },
       }
     }

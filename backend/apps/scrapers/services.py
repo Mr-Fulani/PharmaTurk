@@ -87,6 +87,12 @@ from apps.catalog.utils.parser_media_handler import (
 )
 from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG, ensure_brand_category
 from apps.catalog.utils.old_price import source_old_price
+from apps.catalog.services.cross_source_duplicates import (
+    SOURCES as DUPLICATE_SOURCES,
+    hidden_variant_ids,
+    normalize_gtin,
+    resolve_for_products as resolve_duplicates_for_products,
+)
 import datetime
 
 
@@ -1741,6 +1747,13 @@ class ScraperIntegrationService:
                 self._record_source_offers(session, scraped_product, product)
                 if not getattr(scraped_product, "_medicine_import_skip_reason", None):
                     record_listing_snapshot(scraped_product, product)
+                # Цены и наличие сохранены — сравнить с тем же товаром у другого продавца.
+                if (
+                    product is not None
+                    and action in ("created", "updated")
+                    and str(scraped_product.source or "").strip().lower() in DUPLICATE_SOURCES
+                ):
+                    resolve_duplicates_for_products([product.pk])
 
                 # Обновляем счетчики
                 if action == "created":
@@ -3193,6 +3206,9 @@ class ScraperIntegrationService:
                         "is_available": bool(raw.get("is_available", True)),
                         "stock_quantity": raw.get("stock_quantity"),
                         "sort_order": int(raw.get("sort_order") or idx),
+                        # Штрихкод производителя размера — по нему находим тот же
+                        # товар у другого продавца (docs/CROSS_SOURCE_DUPLICATES.md).
+                        "gtin": normalize_gtin(raw.get("gtin") or raw.get("barcode")),
                     }
                 )
                 continue
@@ -3207,6 +3223,7 @@ class ScraperIntegrationService:
                         "is_available": True,
                         "stock_quantity": None,
                         "sort_order": idx,
+                        "gtin": "",
                     }
                 )
         return normalized
@@ -3303,6 +3320,15 @@ class ScraperIntegrationService:
 
         keep_variant_names = has_applied_ai_content(product)
 
+        # Цвет, скрытый как дубль у другого продавца, повторный парсинг на сайт не
+        # возвращает: показать его снова решает пересчёт дублей после сохранения.
+        existing_variant_ids = dict(
+            VariantModel.objects.filter(product=domain_product).values_list("external_id", "id")
+        )
+        hidden_ids = hidden_variant_ids(product.product_type, existing_variant_ids.values())
+        hidden_external_ids = {e for e, vid in existing_variant_ids.items() if vid in hidden_ids}
+        sizes_have_gtin = any(f.name == "gtin" for f in VariantSizeModel._meta.concrete_fields)
+
         for idx, spec in enumerate(variants):
             if not isinstance(spec, dict):
                 continue
@@ -3342,7 +3368,7 @@ class ScraperIntegrationService:
                 "sort_order": int(spec.get("sort_order") or idx),
                 "stock_quantity": stock_quantity,
                 "is_available": bool(avail and stock_quantity > 0),
-                "is_active": True,
+                "is_active": ext not in hidden_external_ids,
             }
             # Зачёркнутая цена цвета — только та, что показывает источник, и
             # только выше текущей (source_old_price): акция кончилась — пусто.
@@ -3395,12 +3421,15 @@ class ScraperIntegrationService:
                 changed = changed or images_changed
 
             size_payload = self._normalize_variant_sizes_payload(spec.get("sizes") or [])
+            if not sizes_have_gtin:
+                size_payload = [{k: v for k, v in row.items() if k != "gtin"} for row in size_payload]
             existing_sizes = [
                 {
                     "size": row.size,
                     "is_available": row.is_available,
                     "stock_quantity": row.stock_quantity,
                     "sort_order": row.sort_order,
+                    **({"gtin": row.gtin} if sizes_have_gtin else {}),
                 }
                 for row in variant.sizes.all().order_by("sort_order", "id")
             ]
@@ -3414,6 +3443,7 @@ class ScraperIntegrationService:
                             is_available=row["is_available"],
                             stock_quantity=row["stock_quantity"],
                             sort_order=row["sort_order"],
+                            **({"gtin": row["gtin"]} if sizes_have_gtin else {}),
                         )
                         for row in size_payload
                     ]

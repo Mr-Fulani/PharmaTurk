@@ -2808,6 +2808,13 @@ class ClothingVariantSize(models.Model):
     )
     is_available = models.BooleanField(_("Доступен"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    gtin = models.CharField(
+        _("GTIN размера"),
+        max_length=14,
+        blank=True,
+        db_index=True,
+        help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
@@ -3397,6 +3404,13 @@ class ShoeVariantSize(models.Model):
     )
     is_available = models.BooleanField(_("Доступен"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    gtin = models.CharField(
+        _("GTIN размера"),
+        max_length=14,
+        blank=True,
+        db_index=True,
+        help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
@@ -7216,6 +7230,13 @@ class HeadwearVariantSize(models.Model):
     size = models.CharField(_("Размер"), max_length=50, blank=True)
     is_available = models.BooleanField(_("Доступен"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    gtin = models.CharField(
+        _("GTIN размера"),
+        max_length=14,
+        blank=True,
+        db_index=True,
+        help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -7375,6 +7396,13 @@ class UnderwearVariantSize(models.Model):
     size = models.CharField(_("Размер"), max_length=50, blank=True)
     is_available = models.BooleanField(_("Доступен"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    gtin = models.CharField(
+        _("GTIN размера"),
+        max_length=14,
+        blank=True,
+        db_index=True,
+        help_text=_("Штрихкод производителя (EAN/UPC), дополненный нулями до 14 цифр. По нему находим тот же товар у другого продавца."),
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -7563,3 +7591,5 @@ class IslamicClothingVariantImage(models.Model):
 from .models_stock import ProductDeletionLog, StaleProductCandidate, StockCheckSourceState  # noqa: E402,F401
 # IndexNow: что последний раз отправлено поисковикам (docs/INDEXNOW.md).
 from .models_indexnow import IndexNowUrlState  # noqa: E402,F401
+# Одинаковые товары разных продавцов (FLO ↔ SuperStep): docs/CROSS_SOURCE_DUPLICATES.md.
+from .models_duplicates import CrossSourceDuplicate  # noqa: E402,F401
