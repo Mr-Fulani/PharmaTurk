@@ -71,7 +71,8 @@ logger = logging.getLogger(__name__)
 # «Как подключить новый источник к поиску дублей».
 SOURCE_PREFIXES = {"flo-variant-": "flo", "superstep-variant-": "superstep"}
 SOURCES = tuple(SOURCE_PREFIXES.values())
-SOURCE_TITLES = {"flo": "FLO", "superstep": "SuperStep"}
+# Названия продавцов для отчёта (не путать с models_stock.SOURCE_TITLES ночной сверки).
+SELLER_TITLES = {"flo": "FLO", "superstep": "SuperStep"}
 
 TYPE_MODELS = {
     "shoes": (ShoeVariant, ShoeVariantSize, ShoeProductSize),
@@ -416,7 +417,9 @@ class CrossSourceDuplicateService:
         product_ok = member.product_active or member.product_id in hidden_products
         return visible_or_ours and product_ok
 
-    def plan(self, product_type: str, members: dict[int, Member]) -> Plan:
+    def plan(self, product_type: str, members: dict[int, Member], *, hide_new: bool = True) -> Plan:
+        """hide_new=False — как в apply: проверку у продавца ставим, только если её итог
+        может что-то изменить (у FLO это платный запрос через прокси)."""
         now = timezone.now()
         hidden_products = self._hidden_products(product_type, {m.product_id for m in members.values()})
         eligible = [m for m in members.values() if self._eligible(m, hidden_products)]
@@ -433,7 +436,9 @@ class CrossSourceDuplicateService:
             if not shown.showable(now):
                 # Вернуть скрытый цвет можно только после подтверждения продавца; пока —
                 # лучший из тех, кто может быть на сайте, или группа без изменений.
-                plan.verify.add(shown.variant_id)
+                # Без новых скрытий возврат возможен, только если показанного в группе нет.
+                if hide_new or all(m.row is not None for m in group if m is not shown):
+                    plan.verify.add(shown.variant_id)
                 candidates = [m for m in group if m.showable(now)]
                 if not candidates:
                     plan.frozen.update(m.variant_id for m in group)
@@ -475,7 +480,8 @@ class CrossSourceDuplicateService:
         """hide_new=False (автопересчёт выключен): новых скрытий нет, только поддержка
         уже скрытого — группа, где пришлось бы скрыть ещё один цвет, не меняется."""
         variant_model = TYPE_MODELS[product_type][0]
-        stats = {"hidden": 0, "shown": 0, "kept": 0}
+        # id цветов, а не счётчики: в полном проходе группа может попасть в две пачки.
+        stats: dict[str, set[int]] = {"hidden": set(), "shown": set(), "kept": set()}
         # До удаления строк: по ним видно, какие карточки сняты целиком.
         hidden_before = self._hidden_products(product_type, {m.product_id for m in members.values()})
         # Перечитать цвета и строки под блокировкой: план мог устареть, пока шла загрузка
@@ -511,10 +517,15 @@ class CrossSourceDuplicateService:
 
         touched_products: set[int] = set()
         for member in members.values():
-            if member.variant_id in frozen or member.variant_id not in fresh:
+            if member.variant_id not in fresh:
                 continue
-            if member.row is not None and member.variant_id not in fresh_rows:
-                continue  # строку удалил импорт: цвет снят продавцом
+            if member.variant_id in frozen or (member.row is not None and member.variant_id not in fresh_rows):
+                # Видимость не меняем (группа ждёт проверки или цвет снят продавцом), но
+                # цену и наличие карточки пересчитываем по показанным цветам: проверка
+                # карточки пишет их по всем цветам, включая скрытый.
+                if member.row is not None:
+                    touched_products.add(member.product_id)
+                continue
             if member.variant_id in target:
                 _, shown, match, reason = target[member.variant_id]
                 values = {
@@ -531,10 +542,10 @@ class CrossSourceDuplicateService:
                     CrossSourceDuplicate.objects.update_or_create(
                         product_type=product_type, hidden_variant_id=member.variant_id, defaults=values
                     )
-                    stats["hidden"] += 1
+                    stats["hidden"].add(member.variant_id)
                 else:
                     CrossSourceDuplicate.objects.filter(pk=member.row.pk).update(**values, updated_at=now)
-                    stats["kept"] += 1
+                    stats["kept"].add(member.variant_id)
                 if fresh[member.variant_id]:
                     variant_model.objects.filter(pk=member.variant_id).update(is_active=False, updated_at=now)
                 # И без смены цвета: у карточки мог пропасть последний показанный цвет.
@@ -543,7 +554,7 @@ class CrossSourceDuplicateService:
                 # Показанный (подтверждённый продавцом) или цвет снятой не нами карточки.
                 CrossSourceDuplicate.objects.filter(pk=member.row.pk).delete()
                 variant_model.objects.filter(pk=member.variant_id).update(is_active=True, updated_at=now)
-                stats["shown"] += 1
+                stats["shown"].add(member.variant_id)
                 touched_products.add(member.product_id)
 
         for product_id in touched_products:
@@ -607,37 +618,40 @@ class CrossSourceDuplicateService:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(%s)", [LOCK_KEY])
 
-    def _resolve_batch(self, product_type: str, product_ids, *, hide_new: bool, report: dict) -> None:
+    @staticmethod
+    def _add_decisions(acc: dict, product_type: str, plan: Plan) -> None:
+        for decision in plan.decisions:
+            key = (product_type, frozenset(m.variant_id for m in [decision.shown, *(h[0] for h in decision.hidden)]))
+            acc["decisions"][key] = decision  # группа из двух пачек — одна, решение последней
+        acc["verify"] |= {(product_type, vid) for vid in plan.verify}
+
+    def _resolve_batch(self, product_type: str, product_ids, *, hide_new: bool, acc: dict) -> None:
         with transaction.atomic():
             self._lock()
             members = self.load_members(product_type, product_ids)
             if not members:
                 return
-            plan = self.plan(product_type, members)
+            plan = self.plan(product_type, members, hide_new=hide_new)
             stats = self.apply(product_type, members, plan, hide_new=hide_new)
-        report["groups"] += len(plan.decisions)
-        report["decisions"].extend(plan.decisions)
-        report["verify"] |= {(product_type, vid) for vid in plan.verify}
+        self._add_decisions(acc, product_type, plan)
         for key in ("hidden", "shown", "kept"):
-            report[key] += stats[key]
+            acc[key] |= {(product_type, vid) for vid in stats[key]}
 
     def resolve(self, product_ids=None, *, dry_run: bool = False, hide_new: bool = True) -> dict:
         """Пересчёт для товаров (или всего каталога FLO + SuperStep при product_ids=None)."""
-        report = {"groups": 0, "hidden": 0, "shown": 0, "kept": 0, "decisions": [], "verify": set()}
+        acc = {"decisions": {}, "verify": set(), "hidden": set(), "shown": set(), "kept": set()}
         for product_type in self.product_types:
             if product_ids is not None and not dry_run:
-                self._resolve_batch(product_type, product_ids, hide_new=hide_new, report=report)
+                self._resolve_batch(product_type, product_ids, hide_new=hide_new, acc=acc)
                 continue
             # Отчёт и полный проход: сначала план без блокировки — по нему видно, какие
             # товары затронуты; запись — пачками, каждая своей транзакцией с перепроверкой.
             members = self.load_members(product_type, product_ids)
             if not members:
                 continue
-            plan = self.plan(product_type, members)
+            plan = self.plan(product_type, members, hide_new=hide_new)
             if dry_run:
-                report["groups"] += len(plan.decisions)
-                report["decisions"].extend(plan.decisions)
-                report["verify"] |= {(product_type, vid) for vid in plan.verify}
+                self._add_decisions(acc, product_type, plan)
                 continue
             involved = sorted(
                 {m.product_id for d in plan.decisions for m in [d.shown, *(h[0] for h in d.hidden)]}
@@ -645,11 +659,20 @@ class CrossSourceDuplicateService:
             )
             for start in range(0, len(involved), FULL_PASS_BATCH):
                 self._resolve_batch(
-                    product_type, involved[start:start + FULL_PASS_BATCH], hide_new=hide_new, report=report
+                    product_type, involved[start:start + FULL_PASS_BATCH], hide_new=hide_new, acc=acc
                 )
-        if report["verify"] and not dry_run:
-            request_verification(report["verify"])
-        return report
+        if acc["verify"] and not dry_run:
+            request_verification(acc["verify"])
+        # Скрытый в одной пачке и оставленный скрытым в следующей — «скрыт», не «оставлен».
+        kept = acc["kept"] - acc["hidden"]
+        return {
+            "groups": len(acc["decisions"]),
+            "decisions": list(acc["decisions"].values()),
+            "verify": acc["verify"],
+            "hidden": len(acc["hidden"]),
+            "shown": len(acc["shown"]),
+            "kept": len(kept),
+        }
 
     @transaction.atomic
     def unhide_all(self) -> int:
@@ -663,7 +686,7 @@ class CrossSourceDuplicateService:
                     "hidden_variant_id", flat=True
                 ),
             )
-            count += self.apply(product_type, members, Plan())["shown"]
+            count += len(self.apply(product_type, members, Plan())["shown"])
         # Строки без цвета (вариант удалён) выбранных типов — просто убрать.
         CrossSourceDuplicate.objects.filter(product_type__in=self.product_types).delete()
         return count
@@ -698,11 +721,13 @@ def request_verification(items: Iterable[tuple[str, int]]) -> None:
     """Поставить проверку скрытых цветов у продавца (не чаще раза в 30 минут на цвет)."""
     from apps.catalog.tasks import verify_hidden_duplicate_task
 
-    for product_type, variant_id in items:
+    def enqueue(product_type: str, variant_id: int) -> None:
+        # Ключ — после коммита: откат транзакции не должен на 30 минут запретить проверку.
         if cache.add(f"v1:xsdup:verify:{product_type}:{variant_id}", 1, VERIFY_DEDUPE_SECONDS):
-            transaction.on_commit(
-                lambda pt=product_type, vid=variant_id: verify_hidden_duplicate_task.delay(pt, vid)
-            )
+            verify_hidden_duplicate_task.delay(product_type, variant_id)
+
+    for product_type, variant_id in items:
+        transaction.on_commit(lambda pt=product_type, vid=variant_id: enqueue(pt, vid))
 
 
 def _check_at_seller(row: CrossSourceDuplicate, variant) -> str:

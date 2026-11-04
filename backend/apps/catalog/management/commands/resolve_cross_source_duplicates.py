@@ -21,7 +21,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from apps.catalog.models import CrossSourceDuplicate, Product
-from apps.catalog.services.cross_source_duplicates import SOURCE_TITLES, TYPE_MODELS, CrossSourceDuplicateService
+from apps.catalog.services.cross_source_duplicates import SELLER_TITLES, TYPE_MODELS, CrossSourceDuplicateService
 
 
 class Command(BaseCommand):
@@ -87,7 +87,7 @@ class Command(BaseCommand):
             )
         )
         winners = Counter(d.shown.source for d in decisions)
-        self.stdout.write("Показан: " + (", ".join(f"{SOURCE_TITLES.get(k, k)} — {v}" for k, v in winners.items()) or "—"))
+        self.stdout.write("Показан: " + (", ".join(f"{SELLER_TITLES.get(k, k)} — {v}" for k, v in winners.items()) or "—"))
         stock = sum(1 for d in decisions if any(r == CrossSourceDuplicate.Reason.STOCK for *_, r in d.hidden))
         self.stdout.write(f"Показан более дешёвый, потому что у дорогого нет размеров: {stock}.")
 
@@ -107,7 +107,7 @@ class Command(BaseCommand):
     def _describe(member, names) -> str:
         stock = "есть размеры" if member.available else "нет размеров"
         return (
-            f"{SOURCE_TITLES.get(member.source, member.source)} #{member.product_id} "
+            f"{SELLER_TITLES.get(member.source, member.source)} #{member.product_id} "
             f"«{names.get(member.product_id, '')}» на сайте {member.site_price} {member.currency} "
             f"(у продавца {member.price}), {stock}"
         )

@@ -647,6 +647,8 @@ def test_full_pass_runs_in_short_batches(monkeypatch):
     report = CrossSourceDuplicateService().resolve()
 
     assert report["hidden"] == 2 and not _active(first) and not _active(second)
+    # Группа попадает в пачку каждого своего товара, но считается один раз.
+    assert report["groups"] == 2 and report["kept"] == 0
     # Каждая пачка (здесь — один товар) — своя короткая транзакция со своей блокировкой.
     assert len(locks) == 4
 
@@ -665,3 +667,41 @@ def test_import_retiring_color_during_resolve_wins():
     service.apply("shoes", members, plan)
 
     assert not _active(flo_color)
+
+
+# --- третье ревью #305 ------------------------------------------------------------
+
+
+def test_frozen_group_still_fixes_card_price_and_stock():
+    flo = _shoe("flo", "3000")
+    matched = _color(flo, "flo", "3000", gtins=UPC, sort_order=0)
+    _color(flo, "flo", "2500", gtins=["196968999999", "196968999998"], sort_order=1, available=False)
+    superstep = _shoe("superstep", "3500")
+    _color(superstep, "superstep", "3500", gtins=EAN)
+    CrossSourceDuplicateService().resolve()
+    # FLO подорожал и подтверждён, но при выключенном флаге SuperStep не скрывается — группа
+    # заморожена. Проверка карточки тем временем записала цену и наличие скрытого цвета.
+    ShoeVariant.objects.filter(pk=matched.pk).update(price=Decimal("4000"))
+    CrossSourceDuplicate.objects.update(confirmed_at=timezone.now())
+    Product.objects.filter(pk=flo.base_product_id).update(price=Decimal("4000"), is_available=True)
+
+    CrossSourceDuplicateService().resolve([flo.base_product_id], hide_new=False)
+
+    assert not _active(matched)
+    card = Product.objects.get(pk=flo.base_product_id)
+    assert card.price == Decimal("2500") and not card.is_available
+
+
+def test_flag_off_requests_seller_check_only_when_it_can_change_something():
+    flo, flo_color, superstep, _ = _pair("3000", "3500")
+    CrossSourceDuplicateService().resolve()
+    ShoeVariant.objects.filter(pk=flo_color.pk).update(price=Decimal("4000"))
+
+    # SuperStep показан и без новых скрытий не уйдёт — платная проверка FLO бесполезна.
+    report = CrossSourceDuplicateService().resolve([flo.base_product_id], hide_new=False)
+    assert report["verify"] == set()
+
+    # Показанную карточку сняли — проверка нужна: от неё зависит, вернётся ли FLO.
+    _set_active(Product.objects.get(pk=superstep.base_product_id), False)
+    report = CrossSourceDuplicateService().resolve([flo.base_product_id], hide_new=False)
+    assert report["verify"] == {("shoes", flo_color.pk)}
