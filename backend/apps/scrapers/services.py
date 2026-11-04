@@ -3266,6 +3266,26 @@ class ScraperIntegrationService:
             )
         return True
 
+    @staticmethod
+    def default_fashion_variant(variants):
+        """Цвет, чья цена — цена карточки: первый по порядку сайта цвет в наличии
+        с ценой, иначе первый с ценой.
+
+        Не зависит от того, с какого цвета начали разбор: цена не «прыгает»
+        между проходами и не берётся у распроданного цвета. Тем же правилом
+        пользуется обновление карточки при открытии.
+        """
+        priced = [row for row in variants if row.price is not None]
+        return next(
+            (row for row in priced if row.is_available),
+            priced[0] if priced else variants[0],
+        )
+
+    @staticmethod
+    def variants_carry_old_price(variants) -> bool:
+        """Парсер передаёт зачёркнутую цену по цветам (FLO, Zara, SuperStep)."""
+        return any(isinstance(spec, dict) and "old_price" in spec for spec in variants or [])
+
     def _sync_fashion_variants(
         self,
         product: Product,
@@ -3451,13 +3471,17 @@ class ScraperIntegrationService:
 
         active_variants = list(domain_product.variants.filter(is_active=True).order_by("sort_order", "id"))
         if active_variants:
-            default_variant = next(
-                (row for row in active_variants if row.price is not None),
-                active_variants[0],
-            )
+            default_variant = self.default_fashion_variant(active_variants)
             if domain_product.price != default_variant.price:
                 domain_product.price = default_variant.price
                 changed = True
+            if self.variants_carry_old_price(variants):
+                # Зачёркнутая — того же цвета, что и цена: иначе пара из разных
+                # цветов (749,70 при зачёркнутой 1 249,50 другого цвета).
+                variant_old_price = source_old_price(default_variant.old_price, default_variant.price)
+                if domain_product.old_price != variant_old_price:
+                    domain_product.old_price = variant_old_price
+                    changed = True
             if (default_variant.currency or "") and domain_product.currency != default_variant.currency:
                 domain_product.currency = default_variant.currency
                 changed = True
@@ -3491,6 +3515,10 @@ class ScraperIntegrationService:
         if product.currency != domain_product.currency:
             product.currency = domain_product.currency
             product_dirty = True
+        if active_variants and self.variants_carry_old_price(variants):
+            if product.old_price != domain_product.old_price:
+                product.old_price = domain_product.old_price
+                product_dirty = True
         if product.is_available != domain_product.is_available:
             product.is_available = domain_product.is_available
             product_dirty = True

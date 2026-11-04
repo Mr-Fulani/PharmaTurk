@@ -149,7 +149,8 @@ def test_sizes_of_other_colors_are_not_mixed_in():
     assert white["external_url"] == SITE + PUMA_01
     assert len(white["images"]) == 7
     assert len(variants["396464.03"]["images"]) == 12
-    assert product.url == SITE + PUMA_01  # открытый цвет в наличии — он главный
+    # Главный — первый по порядку сайта цвет в наличии, с какого бы ни начали.
+    assert product.url == SITE + PUMA_03
     assert product.sku == "396464"
 
 

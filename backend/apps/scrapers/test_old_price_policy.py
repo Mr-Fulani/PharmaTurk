@@ -150,3 +150,35 @@ def test_rescrape_writes_colour_strikethrough_only_from_source():
     service._sync_fashion_variants(product, variants=[{k: v for k, v in spec.items() if k != "old_price"}])
     variant.refresh_from_db()
     assert variant.old_price == Decimal("999.99")
+
+
+@pytest.mark.django_db
+def test_card_price_and_strikethrough_come_from_one_colour_in_stock():
+    """Nautica K35052T (SuperStep, 04.11): первый цвет распродан (749,70 / 899),
+    в наличии второй (999,60 / 1 249,50). У карточки — пара одного цвета в
+    наличии, а не 749,70 при зачёркнутой 1 249,50; повтор ничего не меняет."""
+    category = Category.objects.create(name="Поло", slug="clothing-colour-pair")
+    product = Product.objects.create(
+        name="Nautica polo", slug="nautica-colour-pair", category=category,
+        product_type="clothing", price=Decimal("999.60"), old_price=Decimal("1249.50"),
+        currency="TRY", external_id="superstep-K35052T", external_data={},
+    )
+    gray = {
+        "external_id": "superstep-variant-K35052T.0HF", "color": "Gri", "sort_order": 0,
+        "price": "749.70", "old_price": "899.00", "currency": "TRY", "is_available": False,
+    }
+    blue = {
+        "external_id": "superstep-variant-K35052T.4MY", "color": "Mavi", "sort_order": 1,
+        "price": "999.60", "old_price": "1249.50", "currency": "TRY", "is_available": True,
+    }
+    service = ScraperIntegrationService()
+
+    service._sync_fashion_variants(product, variants=[gray, blue])
+
+    product.refresh_from_db()
+    domain = product.domain_item
+    domain.refresh_from_db()
+    pair = (Decimal("999.60"), Decimal("1249.50"))
+    assert (product.price, product.old_price, product.is_available) == (*pair, True)
+    assert (domain.price, domain.old_price) == pair
+    assert service._sync_fashion_variants(product, variants=[gray, blue]) is False
