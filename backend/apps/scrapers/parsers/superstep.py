@@ -25,7 +25,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 
-from apps.catalog.utils.tr_vocab import COLOR_DETAIL_SEPARATOR
+from apps.catalog.utils.tr_vocab import COLOR_DETAIL_SEPARATOR, translate_turkish_color
 
 from ..base.catalog_state import CatalogTraversalState
 from ..base.listing_snapshot import listing_fingerprint
@@ -61,11 +61,18 @@ def superstep_subgroup_key(label: Any) -> str:
 
 
 def _by_gender(
-    women: Sequence[str], men: Sequence[str], other: Sequence[str], kids: Sequence[str] = ()
+    women: Sequence[str],
+    men: Sequence[str],
+    other: Sequence[str],
+    kids: Sequence[str] = (),
+    boys: Sequence[str] = (),
+    girls: Sequence[str] = (),
 ) -> Dict[str, Tuple[str, ...]]:
+    """Маршрут по полу; ``boys``/``girls`` — детям по ``integration_erp_cinsiyet``."""
     routes = {"women": tuple(women), "men": tuple(men), "": tuple(other)}
-    if kids:
-        routes["kids"] = tuple(kids)
+    for key, route in (("kids", kids), ("boys", boys), ("girls", girls)):
+        if route:
+            routes[key] = tuple(route)
     return routes
 
 
@@ -134,13 +141,17 @@ SUPERSTEP_SUBGROUP_CATEGORIES: Dict[str, Any] = {
     # Бельё
     "boxer": _by_gender(
         *[("uw-boxers", "uw-mens-underwear", "underwear")] * 3,
-        kids=("uw-boys-underwear", *_KIDS_UNDERWEAR),
+        kids=_KIDS_UNDERWEAR,
+        boys=("uw-boys-briefs", "uw-boys-underwear", *_KIDS_UNDERWEAR),
+        girls=("uw-girls-panties", "uw-girls-underwear", *_KIDS_UNDERWEAR),
     ),
     "ic giyim": _by_gender(
         ("uw-womens-underwear", "underwear"),
         ("uw-mens-underwear", "underwear"),
         ("underwear",),
         kids=_KIDS_UNDERWEAR,
+        boys=("uw-boys-underwear", *_KIDS_UNDERWEAR),
+        girls=("uw-girls-underwear", *_KIDS_UNDERWEAR),
     ),
     "bra": _by_gender(
         *[("uw-sports-bras", "uw-bras", "underwear")] * 3,
@@ -219,30 +230,43 @@ SUPERSTEP_NAME_SUBGROUPS = {
 
 
 def superstep_subgroup_from_name(name: Any) -> str:
-    """Подгруппа по окончанию названия («… Kadın Yeşil T-Shirt» → «t-shirt»).
+    """Подгруппа по окончанию названия — подписью, как у сайта
+    («… Kadın Yeşil T-Shirt» → «T-Shirt»).
 
     Нужна товарам маркетплейса без ``integration_alt_grup``: тип товара в
     названии SuperStep всегда в конце. Самое длинное совпадение побеждает
-    («deniz şortu» раньше «şort»).
+    («Deniz Şortu» раньше «Şort»).
     """
-    text = superstep_subgroup_key(name)
-    keys = {key: key for key in (*SUPERSTEP_SUBGROUP_CATEGORIES, *SUPERSTEP_SKIPPED_SUBGROUPS)}
-    keys.update(SUPERSTEP_NAME_SUBGROUPS)
-    for ending in sorted(keys, key=len, reverse=True):
+    words = clean_text(str(name or "")).split()
+    text = superstep_subgroup_key(" ".join(words))
+    endings = {*SUPERSTEP_SUBGROUP_CATEGORIES, *SUPERSTEP_SKIPPED_SUBGROUPS, *SUPERSTEP_NAME_SUBGROUPS}
+    for ending in sorted(endings, key=len, reverse=True):
         if text == ending or text.endswith(" " + ending):
-            return keys[ending]
+            return " ".join(words[-len(ending.split()):])
     return ""
 
 
-def resolve_superstep_category_slugs(subgroup: Any, gender: str = "") -> Tuple[str, ...]:
-    """Разделы подгруппы (от точного к корню); пусто — подгруппа не раскладывается."""
+def resolve_superstep_category_slugs(subgroup: Any, gender: str = "", kids_gender: str = "") -> Tuple[str, ...]:
+    """Разделы подгруппы (от точного к корню); пусто — подгруппа не раскладывается.
+
+    ``kids_gender`` — «boys»/«girls» из ``integration_erp_cinsiyet`` детского товара.
+    """
     key = superstep_subgroup_key(subgroup)
+    key = SUPERSTEP_NAME_SUBGROUPS.get(key, key)
     if not key or key in SUPERSTEP_SKIPPED_SUBGROUPS:
         return ()
     route = SUPERSTEP_SUBGROUP_CATEGORIES.get(key, ())
     if isinstance(route, dict):
-        route = route.get(gender) or route[""]
+        kids_route = route.get(kids_gender) if gender == "kids" and kids_gender else None
+        route = kids_route or route.get(gender) or route[""]
     return tuple(route)
+
+
+# Разделы, куда подгруппа кладётся за неимением точного (корни и «Сумки и
+# кошельки» для рюкзаков Unisex): по плану §5.1 это видно в отчёте прогона.
+SUPERSTEP_PARENT_PLACEMENTS = frozenset(
+    {"shoes", "clothing", "underwear", "headwear", "accessories", "sports", "tableware", "bags-wallets"}
+)
 
 
 class SuperstepParser(BaseScraper):
@@ -278,6 +302,7 @@ class SuperstepParser(BaseScraper):
             }
         )
         self.unmapped: Counter = Counter()
+        self.parent_placed: Counter = Counter()
 
     def get_name(self) -> str:
         return "superstep"
@@ -428,8 +453,10 @@ class SuperstepParser(BaseScraper):
                     break
         if not subgroup:
             subgroup = superstep_subgroup_from_name(product.get("name"))
-        gender = self._map_gender((product.get("attributes") or {}).get("integration_cinsiyet"))
-        return subgroup, resolve_superstep_category_slugs(subgroup, gender)
+        attrs = product.get("attributes") or {}
+        gender = self._map_gender(attrs.get("integration_cinsiyet"))
+        kids_gender = {"BOYS": "boys", "GIRLS": "girls"}.get(str(attrs.get("integration_erp_cinsiyet") or "").upper(), "")
+        return subgroup, resolve_superstep_category_slugs(subgroup, gender, kids_gender)
 
     def _tile_fingerprint(self, tile: Dict[str, Any]) -> str:
         """Отпечаток строки списка: то, что меняется между обходами.
@@ -469,10 +496,16 @@ class SuperstepParser(BaseScraper):
         )
 
     def _unmapped_report(self) -> str:
-        if not self.unmapped:
-            return ""
-        top = ", ".join(f"{name or 'без подгруппы'} {count}" for name, count in self.unmapped.most_common(12))
-        return f"Не разложено (не загружены): {sum(self.unmapped.values())} строк — {top}."
+        parts = []
+        if self.unmapped:
+            top = ", ".join(f"{name or 'без подгруппы'} {count}" for name, count in self.unmapped.most_common(12))
+            parts.append(f"Не разложено (не загружены): {sum(self.unmapped.values())} строк — {top}.")
+        if self.parent_placed:
+            top = ", ".join(f"{name} {count}" for name, count in self.parent_placed.most_common(12))
+            parts.append(
+                f"В родительском разделе (точного нет): {sum(self.parent_placed.values())} товаров — {top}."
+            )
+        return " ".join(parts)
 
     def parse_product_list(
         self,
@@ -486,6 +519,7 @@ class SuperstepParser(BaseScraper):
         self.stop_reason = ""
         self.catalog_skipped = 0
         self.unmapped = Counter()
+        self.parent_placed = Counter()
         try:
             yield from self._iterate_listing(category_url, max_pages, start_page)
         finally:
@@ -659,7 +693,14 @@ class SuperstepParser(BaseScraper):
             self._build_color_variant(color_card, color_order.get(code, len(color_order)))
             for code, color_card in color_rows
         ]
-        self._distinguish_color_names(variants, [color_card["product"] for _, color_card in color_rows])
+        details = self._color_details(card)
+        for (code, color_card), variant in zip(color_rows, variants):
+            if code in details:
+                variant["color"] = f"{variant['color']}{COLOR_DETAIL_SEPARATOR}{details[code]}"[:50]
+                name = clean_text(str(color_card["product"].get("name") or ""))
+                variant["display_name"] = clean_text(f"{name} - {variant['color']}".strip(" -"))
+        if route[0] in SUPERSTEP_PARENT_PLACEMENTS:
+            self.parent_placed[f"{subgroup} → {route[0]}"] += 1
         # Открытый цвет главный, если он есть в наличии: иначе цена и ссылка
         # товара были бы от распроданного цвета.
         primary = next((v for v in variants if v["is_available"]), variants[0])
@@ -978,38 +1019,82 @@ class SuperstepParser(BaseScraper):
             color = lowered[:1].upper() + lowered[1:]
         return color
 
-    def _distinguish_color_names(self, variants: List[Dict[str, Any]], products: List[Dict[str, Any]]) -> None:
-        """Одинаковые названия цветов внутри модели (у Puma 399025 два «Beyaz»,
-        у Anta три «Siyah») — с расцветкой производителя
-        (``integration_erp_renk_aciklama``: «Beyaz · PUMA White-PUMA Black»), а
-        если её нет или она тоже совпадает — с кодом цвета («Siyah · CHE»).
-        Иначе покупатель видит несколько одинаковых цветов. Перевод цвета
-        (``translate_turkish_color``) уточнение после « · » сохраняет."""
-        groups: Dict[str, List[int]] = {}
-        for index, variant in enumerate(variants):
-            groups.setdefault(variant["color"].casefold(), []).append(index)
-        for indexes in groups.values():
-            if len(indexes) < 2:
+    def _color_details(self, card: Dict[str, Any]) -> Dict[str, str]:
+        """Уточнения одинаковых названий цветов модели: код цвета → уточнение.
+
+        У Puma 399025 два «Beyaz», у Anta три «Siyah» — покупатель видел бы
+        одинаковые цвета. Считается по всем цветам модели из карточки (у
+        вариантов цвета в карточке полные атрибуты), а не по открытым: иначе
+        «Beyaz · …» превращался бы в «Beyaz», когда соседний цвет распродан.
+        Уточнение — расцветка производителя без турецких слов
+        (``integration_erp_renk_aciklama`` «BEYAZ-Velvet Moss» → «Velvet Moss»),
+        а если у группы она пустая или совпадает — код цвета («CHE»).
+        """
+        color_key = self._color_key(card["variants"])
+        groups: Dict[str, List[Tuple[str, str, str]]] = {}
+        for option in self._variant_options(card["variants"], (color_key,)):
+            product = option.get("product") or {}
+            name = self._color_name(product)
+            if name:
+                attrs = product.get("attributes") or {}
+                fallback = str(attrs.get("integration_renk") or self._option_value(option))
+                groups.setdefault(name.casefold(), []).append(
+                    (self._option_value(option), self._colorway(product), fallback)
+                )
+        details: Dict[str, str] = {}
+        for rows in groups.values():
+            if len(rows) < 2:
                 continue
-            colorways = [
-                clean_text(str((products[i].get("attributes") or {}).get("integration_erp_renk_aciklama") or ""))
-                for i in indexes
-            ]
+            colorways = [colorway for _, colorway, _ in rows]
             use_colorway = all(colorways) and len({c.casefold() for c in colorways}) == len(colorways)
-            for i, colorway in zip(indexes, colorways):
-                variant = variants[i]
-                extra = colorway if use_colorway else variant["sku"].rsplit(".", 1)[-1]
-                variant["color"] = f"{variant['color']}{COLOR_DETAIL_SEPARATOR}{extra}"[:50]
-                name = clean_text(str(products[i].get("name") or ""))
-                variant["display_name"] = clean_text(f"{name} - {variant['color']}".strip(" -"))
+            for code, colorway, fallback in rows:
+                details[code] = colorway if use_colorway else fallback
+        return details
+
+    # Английские слова цвета: расцветка без них («TOZLU KAKAO») может быть
+    # турецкой, а турецких слов на витрине и в фиде ВК быть не должно.
+    EN_COLOR_WORDS = frozenset(
+        """white black gray grey brown blue navy green red pink purple violet orange yellow
+        beige cream ivory gold silver bronze chestnut sand olive khaki burgundy maroon teal
+        turquoise charcoal tan camel mint lilac lavender coral rose multi multicolor natural
+        nude stone taupe mocha espresso cinnamon rust wine sky sage moss slate graphite smoke""".split()
+    )
+
+    @classmethod
+    def _colorway(cls, product: Dict[str, Any]) -> str:
+        """Расцветка производителя без турецких слов или пусто.
+
+        «BEYAZ-Velvet Moss» → «Velvet Moss» (турецкие цвета словаря убираются),
+        «TOZLU KAKAO» → «» (латиница без английского цвета — не берём).
+        """
+        text = clean_text(str((product.get("attributes") or {}).get("integration_erp_renk_aciklama") or ""))
+        text = re.sub(r"[^\W\d_]+", lambda m: "" if translate_turkish_color(m.group(0), "en") else m.group(0), text)
+        text = re.sub(r"\(\s*\)", "", text)
+        text = re.sub(r"\s*([/-])\s*(?:[/-]\s*)+", r"\1", text)
+        text = clean_text(text).strip(" -/")
+        words = re.findall(r"[^\W\d_]+", text)
+        if not words or not all(word.isascii() for word in words):
+            return ""
+        if not any(word.lower() in cls.EN_COLOR_WORDS for word in words):
+            return ""
+        return text
+
+    # Аббревиатуры брендов, которые пишутся капсом.
+    BRAND_ABBREVIATIONS = frozenset({"UGG", "EA7", "DC", "HUF", "ASICS", "DKNY", "BOSS", "NBA", "NFL", "MLB"})
 
     def _brand(self, product: Dict[str, Any]) -> str:
-        """Бренд; капс («STANLEY», «BROOKS») — в обычный регистр, как у других
-        брендов сайта. Короткие аббревиатуры (UGG, DC, EA7) не трогаем."""
+        """Бренд; капс («STANLEY», «LEVI'S») — в обычный регистр без турецкой
+        замены I→ı (было бы «Nıke», «Tımberland»). Аббревиатуры (DKNY, UGG,
+        ASICS) не трогаем. Существующий бренд каталог находит без учёта
+        регистра (``get_or_create_scraped_brand``) и пишет как в базе."""
         brand = self._attr_label(product, "integration_alt_marka")
-        if brand.isupper() and len(brand) > 3:
-            brand = " ".join(word[:1] + word[1:].replace("İ", "i").replace("I", "ı").lower() for word in brand.split())
-        return brand
+        if not brand.isupper():
+            return brand
+        words = []
+        for word in brand.split():
+            keep = word in self.BRAND_ABBREVIATIONS or (len(word) <= 4 and not re.search(r"[AEIOUİÖÜ]", word))
+            words.append(word if keep else word.capitalize())
+        return " ".join(words)
 
     def _extra_attributes(self, product: Dict[str, Any]) -> Dict[str, Any]:
         """Характеристики для правил/AI; служебное (скидка в корзине) на витрину не идёт."""

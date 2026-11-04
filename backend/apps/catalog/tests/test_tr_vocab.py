@@ -31,6 +31,6 @@ def test_translate_turkish_color_keeps_detail_after_separator():
     """Различитель одинаковых цветов одной модели (SuperStep) переживает перевод."""
     assert translate_turkish_color("Beyaz · PUMA White-PUMA Black", "ru") == "Белый · PUMA White-PUMA Black"
     assert translate_turkish_color("Siyah · CHE", "en") == "Black · CHE"
-    assert translate_turkish_color("Kum · 01", "ru") == ""
+    assert translate_turkish_color("Zümrüt · 01", "ru") == ""  # цвета нет в словаре
     # Скобки других источников ведут себя как раньше.
     assert translate_turkish_color("Siyah (Baskılı)", "ru") == "Черный"

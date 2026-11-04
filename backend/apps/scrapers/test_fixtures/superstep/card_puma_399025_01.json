@@ -220,8 +220,12 @@
        "filterable_size": "37,5",
        "integration_renk": "06",
        "integration_beden": "37,5",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.06",
-       "integration_yurt_disi_barkod": "4067983303180"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303180",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -267,8 +271,12 @@
        "filterable_size": "38,5",
        "integration_renk": "01",
        "integration_beden": "38,5",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299855"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299855",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -320,8 +328,12 @@
        "filterable_size": "36",
        "integration_renk": "01",
        "integration_beden": "36",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299770"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299770",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -367,8 +379,12 @@
        "filterable_size": "37",
        "integration_renk": "01",
        "integration_beden": "37",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299794"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299794",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -414,8 +430,12 @@
        "filterable_size": "37,5",
        "integration_renk": "01",
        "integration_beden": "37,5",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299817"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299817",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -461,8 +481,12 @@
        "filterable_size": "38",
        "integration_renk": "01",
        "integration_beden": "38",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299848"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299848",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -508,8 +532,12 @@
        "filterable_size": "38,5",
        "integration_renk": "01",
        "integration_beden": "38,5",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299855"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299855",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -555,8 +583,12 @@
        "filterable_size": "39",
        "integration_renk": "01",
        "integration_beden": "39",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299862"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299862",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -602,8 +634,12 @@
        "filterable_size": "40",
        "integration_renk": "01",
        "integration_beden": "40",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299879"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299879",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -649,8 +685,12 @@
        "filterable_size": "41",
        "integration_renk": "01",
        "integration_beden": "41",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299893"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299893",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -696,8 +736,12 @@
        "filterable_size": "42",
        "integration_renk": "01",
        "integration_beden": "42",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299909"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299909",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -743,8 +787,12 @@
        "filterable_size": "42,5",
        "integration_renk": "01",
        "integration_beden": "42,5",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299916"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299916",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -790,8 +838,12 @@
        "filterable_size": "43",
        "integration_renk": "01",
        "integration_beden": "43",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299923"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299923",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -837,8 +889,12 @@
        "filterable_size": "44",
        "integration_renk": "01",
        "integration_beden": "44",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299930"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299930",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -884,8 +940,12 @@
        "filterable_size": "45",
        "integration_renk": "01",
        "integration_beden": "45",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299954"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299954",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
@@ -931,8 +991,12 @@
        "filterable_size": "46",
        "integration_renk": "01",
        "integration_beden": "46",
+       "integration_renk_tonu": "BEYAZ",
        "integration_model_renk": "399025.01",
-       "integration_yurt_disi_barkod": "4067979299961"
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299961",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
       },
       "attribute_set": 4,
       "attributes_kwargs": {
