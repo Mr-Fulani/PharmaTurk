@@ -699,7 +699,8 @@ def _offer_name(base_name: str, variant_options: list[tuple[str, str]]) -> str:
     name = base_name.strip()
     extras = []
     for param_name, value in variant_options:
-        if value.lower() in name.lower():
+        # Целым словом: размер «42» в коде «B42282» или «S» в «Adidas» — не повтор.
+        if re.search(rf"(?<!\w){re.escape(value)}(?!\w)", name, re.IGNORECASE):
             continue
         extras.append(value[:1].lower() + value[1:] if param_name == "Цвет" else value)
     suffix = ", " + ", ".join(extras) if extras else ""
