@@ -13,6 +13,7 @@ from apps.catalog.models import (
     IslamicClothingVariant,
     Product,
 )
+from apps.scrapers.listing_changes import mark_products_gone
 
 
 def _colours(variant_model, domain, colours):
@@ -31,9 +32,16 @@ def _colours(variant_model, domain, colours):
 
 
 @pytest.fixture
-def products(db, monkeypatch):
+def currency_updates(monkeypatch):
+    """Товары, для которых пересчитаны цены в валютах (курсов в тестовой базе нет)."""
+    calls = []
+    monkeypatch.setattr(Product, "update_currency_prices", lambda self, *args, **kwargs: calls.append(self.pk))
+    return calls
+
+
+@pytest.fixture
+def products(db, currency_updates):
     """Nautica K35052T до релиза: цена серого (распродан) при зачёркнутой синего."""
-    monkeypatch.setattr(Product, "update_currency_prices", lambda *args, **kwargs: None)
     category = Category.objects.create(name="Поло", slug="recalc-colour-prices")
     nautica = ClothingProduct.objects.create(
         name="Nautica polo", slug="recalc-nautica", category=category,
@@ -78,9 +86,10 @@ def test_apply_requires_backup(products):
         call_command("recalc_colour_prices", "--apply", stdout=StringIO())
 
 
-def test_apply_takes_pair_of_one_colour_in_stock_and_keeps_manual_sources(products, tmp_path):
+def test_apply_takes_pair_of_one_colour_in_stock_and_keeps_manual_sources(products, currency_updates, tmp_path):
     nautica, manual = products
     backup = tmp_path / "colour_prices.json"
+    currency_updates.clear()
 
     call_command("recalc_colour_prices", "--apply", "--backup", str(backup), "--batch-size", "1", stdout=StringIO())
 
@@ -93,7 +102,27 @@ def test_apply_takes_pair_of_one_colour_in_stock_and_keeps_manual_sources(produc
     saved = json.loads(backup.read_text(encoding="utf-8"))
     assert [row["product_id"] for row in saved] == [nautica.base_product_id]
     assert saved[0]["before"]["price"] == "749.70"
+    assert saved[0]["domain_before"]["price"] == "749.70"
+    # Фильтр и сортировка идут по ценам в валютах — они пересчитаны у каждого изменённого.
+    assert currency_updates == [nautica.base_product_id]
 
     out = StringIO()
     call_command("recalc_colour_prices", stdout=out)
     assert "изменится: 0" in out.getvalue()
+
+
+def test_product_taken_off_sale_is_not_put_back(products, tmp_path):
+    """mark_products_gone снимает товар и карточку, а цвета остаются «в наличии»:
+    команда наличие только снимает или оставляет, в продажу (и в фид ВК) не возвращает."""
+    nautica, _ = products
+    mark_products_gone([nautica.base_product_id], parser_key="superstep", reason="test_gone", review=False)
+
+    call_command(
+        "recalc_colour_prices", "--apply", "--backup", str(tmp_path / "colour_prices.json"), stdout=StringIO()
+    )
+
+    product = _base(nautica)
+    nautica.refresh_from_db()
+    assert product.is_available is False
+    assert nautica.is_available is False
+    assert product.price == Decimal("999.60")  # цена — по правилу, наличие не тронуто

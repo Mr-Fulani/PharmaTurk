@@ -43,6 +43,8 @@ DOMAIN_MODELS = {
 COLOUR_OLD_PRICE_SOURCES = frozenset({"flo", "zara", "bershka", "pullandbear", "massimodutti", "superstep"})
 SOURCES = COLOUR_OLD_PRICE_SOURCES | {"lcw"}
 FIELDS = ("price", "old_price", "currency", "is_available", "stock_quantity")
+# Цены в валютах с наценкой: по ним идут фильтр и сортировка (listing_filters.py).
+CONVERTED_FIELDS = ("converted_price_rub", "final_price_rub", "converted_price_usd", "final_price_usd")
 EXAMPLES = 10
 
 
@@ -51,12 +53,17 @@ def target_values(source: str, current: dict, colours: list) -> dict:
     default = default_fashion_variant(colours)
     any_available = any(row.is_available for row in colours)
     total_stock = sum(row.stock_quantity or 0 for row in colours if row.stock_quantity)
-    values = {
-        "is_available": any_available,
-        "stock_quantity": (
-            DEFAULT_ASSUMED_STOCK_QUANTITY if any_available else (total_stock if total_stock > 0 else None)
-        ),
-    }
+    values = {}
+    if current["is_available"] or not any_available:
+        # Наличие команда только снимает или оставляет. Снятый товар
+        # (mark_products_gone, 404 ссылки товара) остаётся с цветами «в наличии» —
+        # вернуть его в продажу может только новый разбор у источника.
+        values = {
+            "is_available": any_available,
+            "stock_quantity": (
+                DEFAULT_ASSUMED_STOCK_QUANTITY if any_available else (total_stock if total_stock > 0 else None)
+            ),
+        }
     if default.price is not None:
         old_price = default.old_price if source in COLOUR_OLD_PRICE_SOURCES else current["old_price"]
         values.update(
@@ -65,6 +72,10 @@ def target_values(source: str, current: dict, colours: list) -> dict:
             old_price=source_old_price(old_price, default.price),
         )
     return values
+
+
+def _jsonable(values: dict) -> dict:
+    return {key: value if value is None or isinstance(value, bool) else str(value) for key, value in values.items()}
 
 
 class Command(BaseCommand):
@@ -119,10 +130,8 @@ class Command(BaseCommand):
                         "product_id": change["product_id"],
                         "domain": change["domain"],
                         "domain_id": change["domain_id"],
-                        "before": {
-                            key: value if value is None or isinstance(value, bool) else str(value)
-                            for key, value in change["before"].items()
-                        },
+                        "before": _jsonable(change["before"]),
+                        "domain_before": _jsonable(change["domain_before"]),
                     }
                     for change in changes
                 ],
@@ -171,6 +180,7 @@ class Command(BaseCommand):
                         "domain": model._meta.label,
                         "domain_id": domain.pk,
                         "before": before,
+                        "domain_before": domain_before,
                         "after": after,
                     }
                 )
@@ -185,3 +195,9 @@ class Command(BaseCommand):
                 # update(), а не save(): сигналы Product (контент, медиа, AI) здесь не нужны.
                 Product.objects.filter(pk=change["product_id"]).update(**change["after"], updated_at=now)
                 models[change["domain"]].objects.filter(pk=change["domain_id"]).update(**change["after"])
+                # Цены в валютах с наценкой — как при save(): ProductPrice и поля Product.
+                product = Product.objects.get(pk=change["product_id"])
+                product.update_currency_prices()
+                Product.objects.filter(pk=product.pk).update(
+                    **{field: getattr(product, field) for field in CONVERTED_FIELDS}
+                )
