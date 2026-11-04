@@ -25,6 +25,8 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 
+from apps.catalog.utils.tr_vocab import COLOR_DETAIL_SEPARATOR
+
 from ..base.catalog_state import CatalogTraversalState
 from ..base.listing_snapshot import listing_fingerprint
 from ..base.offers import (
@@ -58,8 +60,16 @@ def superstep_subgroup_key(label: Any) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _by_gender(women: Sequence[str], men: Sequence[str], other: Sequence[str]) -> Dict[str, Tuple[str, ...]]:
-    return {"women": tuple(women), "men": tuple(men), "": tuple(other)}
+def _by_gender(
+    women: Sequence[str], men: Sequence[str], other: Sequence[str], kids: Sequence[str] = ()
+) -> Dict[str, Tuple[str, ...]]:
+    routes = {"women": tuple(women), "men": tuple(men), "": tuple(other)}
+    if kids:
+        routes["kids"] = tuple(kids)
+    return routes
+
+
+_KIDS_UNDERWEAR = ("uw-children-underwear", "underwear")
 
 
 _BAGS = ("bags-wallets", "accessories")
@@ -122,18 +132,34 @@ SUPERSTEP_SUBGROUP_CATEGORIES: Dict[str, Any] = {
     "bikini": ("clothing",),
     "bikini & mayo": ("clothing",),
     # Бельё
-    "boxer": ("uw-boxers", "uw-mens-underwear", "underwear"),
+    "boxer": _by_gender(
+        *[("uw-boxers", "uw-mens-underwear", "underwear")] * 3,
+        kids=("uw-boys-underwear", *_KIDS_UNDERWEAR),
+    ),
     "ic giyim": _by_gender(
         ("uw-womens-underwear", "underwear"),
         ("uw-mens-underwear", "underwear"),
         ("underwear",),
+        kids=_KIDS_UNDERWEAR,
     ),
-    "bra": ("uw-sports-bras", "uw-bras", "underwear"),
-    "bra & spor sutyeni": ("uw-sports-bras", "uw-bras", "underwear"),
+    "bra": _by_gender(
+        *[("uw-sports-bras", "uw-bras", "underwear")] * 3,
+        kids=("uw-girls-underwear", *_KIDS_UNDERWEAR),
+    ),
+    "bra & spor sutyeni": _by_gender(
+        *[("uw-sports-bras", "uw-bras", "underwear")] * 3,
+        kids=("uw-girls-underwear", *_KIDS_UNDERWEAR),
+    ),
     "corap": ("uw-socks", "uw-socks-hosiery", "underwear"),
     # Головные уборы
-    "sapka": ("hw-baseball-caps", "hw-caps", "headwear"),
-    "bere": ("hw-beanies", "hw-winter-headwear", "headwear"),
+    "sapka": _by_gender(
+        *[("hw-baseball-caps", "hw-caps", "headwear")] * 3,
+        kids=("hw-childrens-caps", "hw-children-headwear", "headwear"),
+    ),
+    "bere": _by_gender(
+        *[("hw-beanies", "hw-winter-headwear", "headwear")] * 3,
+        kids=("hw-childrens-beanies", "hw-children-headwear", "headwear"),
+    ),
     # Аксессуары
     "sirt cantasi": _by_gender(
         ("acc-womens-backpacks", "womens-bags", *_BAGS),
@@ -182,6 +208,30 @@ SUPERSTEP_SUBGROUP_CATEGORIES: Dict[str, Any] = {
 # Решение владельца 04.11.2026: фигурки (Funko, Bearbrick), шахматы и
 # служебная группа «281» не загружаются, даже если для них появится раздел.
 SUPERSTEP_SKIPPED_SUBGROUPS = frozenset({"figur", "satranc takimi", "281"})
+
+
+# Окончания названий товара, которые не совпадают с подгруппой дословно.
+SUPERSTEP_NAME_SUBGROUPS = {
+    "sneaker": "spor ayakkabi & sneaker",
+    "spor ayakkabi": "spor ayakkabi & sneaker",
+    "sporcu sutyeni": "bra & spor sutyeni",
+}
+
+
+def superstep_subgroup_from_name(name: Any) -> str:
+    """Подгруппа по окончанию названия («… Kadın Yeşil T-Shirt» → «t-shirt»).
+
+    Нужна товарам маркетплейса без ``integration_alt_grup``: тип товара в
+    названии SuperStep всегда в конце. Самое длинное совпадение побеждает
+    («deniz şortu» раньше «şort»).
+    """
+    text = superstep_subgroup_key(name)
+    keys = {key: key for key in (*SUPERSTEP_SUBGROUP_CATEGORIES, *SUPERSTEP_SKIPPED_SUBGROUPS)}
+    keys.update(SUPERSTEP_NAME_SUBGROUPS)
+    for ending in sorted(keys, key=len, reverse=True):
+        if text == ending or text.endswith(" " + ending):
+            return keys[ending]
+    return ""
 
 
 def resolve_superstep_category_slugs(subgroup: Any, gender: str = "") -> Tuple[str, ...]:
@@ -363,8 +413,21 @@ class SuperstepParser(BaseScraper):
             return clean_text(str(row["label"]))
         return clean_text(str((product.get("attributes") or {}).get(key) or ""))
 
-    def _category_route(self, product: Dict[str, Any]) -> Tuple[str, Tuple[str, ...]]:
+    def _category_route(self, product: Dict[str, Any], variants: Any = None) -> Tuple[str, Tuple[str, ...]]:
+        """Подгруппа и маршрут. У части товаров маркетплейса нет
+        ``integration_alt_grup`` (Nike 265-FN2713, зелёный цвет): тогда — подгруппа
+        другого цвета той же модели (без запросов, из вариантов карточки), а
+        если и её нет — по окончанию названия."""
         subgroup = self._attr_label(product, "integration_alt_grup")
+        if not subgroup:
+            for option in self._variant_options(variants, self.COLOR_KEYS):
+                row = ((option.get("product") or {}).get("attributes_kwargs") or {}).get("integration_alt_grup")
+                label = clean_text(str((row or {}).get("label") or "")) if isinstance(row, dict) else ""
+                if label and not label.isdigit():
+                    subgroup = label
+                    break
+        if not subgroup:
+            subgroup = superstep_subgroup_from_name(product.get("name"))
         gender = self._map_gender((product.get("attributes") or {}).get("integration_cinsiyet"))
         return subgroup, resolve_superstep_category_slugs(subgroup, gender)
 
@@ -484,7 +547,7 @@ class SuperstepParser(BaseScraper):
                         guard.remember_covered(identity, fingerprint)
                     continue
                 attempted.add(identity)
-                subgroup, route = self._category_route(tile)
+                subgroup, route = self._category_route(tile, (tile.get("extra_data") or {}).get("variants"))
                 if not route:
                     # Не загружаем, но строка обработана — иначе страница из одних
                     # фигурок считалась бы «без новых товаров».
@@ -555,7 +618,7 @@ class SuperstepParser(BaseScraper):
         product = card["product"]
         if not product.get("name"):
             return None
-        subgroup, route = self._category_route(product)
+        subgroup, route = self._category_route(product, card["variants"])
         if not route:
             self.unmapped[subgroup] += 1
             self.logger.warning(
@@ -596,6 +659,7 @@ class SuperstepParser(BaseScraper):
             self._build_color_variant(color_card, color_order.get(code, len(color_order)))
             for code, color_card in color_rows
         ]
+        self._distinguish_color_names(variants, [color_card["product"] for _, color_card in color_rows])
         # Открытый цвет главный, если он есть в наличии: иначе цена и ссылка
         # товара были бы от распроданного цвета.
         primary = next((v for v in variants if v["is_available"]), variants[0])
@@ -634,7 +698,7 @@ class SuperstepParser(BaseScraper):
             url=primary["external_url"],
             images=primary["images"],
             category=route[0],
-            brand=self._attr_label(product, "integration_alt_marka"),
+            brand=self._brand(product),
             external_id=external_id,
             sku=sku,
             is_available=is_available,
@@ -837,16 +901,20 @@ class SuperstepParser(BaseScraper):
 
     @classmethod
     def _size_sort_key(cls, option: Dict[str, Any], index: int) -> tuple:
-        """Числовые размеры («28,5», «32-33») — по числу: ``order`` у Akinon
-        бывает из разных систем (у детской обуви 2850, 3500, 200180…).
-        Буквенные (XS…XXL) — по ``order`` сайта."""
-        match = re.match(r"^(\d+(?:\.\d+)?)(?:-\d+)?$", cls._normalize_size(option.get("label")))
+        """Детские «10K…13.5K» — первыми, затем числовые («1.5», «28,5»,
+        «32-33») по числу: ``order`` у Akinon бывает из разных систем (у
+        детской обуви 2850, 3500, 200180…). Буквенные (XS…XXL) — по ``order``."""
+        label = cls._normalize_size(option.get("label"))
+        match = re.match(r"^(\d+(?:\.\d+)?)K$", label, re.IGNORECASE)
         if match:
             return (0, float(match.group(1)), index)
+        match = re.match(r"^(\d+(?:\.\d+)?)(?:-\d+)?$", label)
+        if match:
+            return (1, float(match.group(1)), index)
         try:
-            return (1, int(option.get("order")), index)
+            return (2, int(option.get("order")), index)
         except (TypeError, ValueError):
-            return (1, index, index)
+            return (2, index, index)
 
     @staticmethod
     def _normalize_size(value: Any) -> str:
@@ -909,6 +977,39 @@ class SuperstepParser(BaseScraper):
             lowered = color.replace("İ", "i").replace("I", "ı").lower()
             color = lowered[:1].upper() + lowered[1:]
         return color
+
+    def _distinguish_color_names(self, variants: List[Dict[str, Any]], products: List[Dict[str, Any]]) -> None:
+        """Одинаковые названия цветов внутри модели (у Puma 399025 два «Beyaz»,
+        у Anta три «Siyah») — с расцветкой производителя
+        (``integration_erp_renk_aciklama``: «Beyaz · PUMA White-PUMA Black»), а
+        если её нет или она тоже совпадает — с кодом цвета («Siyah · CHE»).
+        Иначе покупатель видит несколько одинаковых цветов. Перевод цвета
+        (``translate_turkish_color``) уточнение после « · » сохраняет."""
+        groups: Dict[str, List[int]] = {}
+        for index, variant in enumerate(variants):
+            groups.setdefault(variant["color"].casefold(), []).append(index)
+        for indexes in groups.values():
+            if len(indexes) < 2:
+                continue
+            colorways = [
+                clean_text(str((products[i].get("attributes") or {}).get("integration_erp_renk_aciklama") or ""))
+                for i in indexes
+            ]
+            use_colorway = all(colorways) and len({c.casefold() for c in colorways}) == len(colorways)
+            for i, colorway in zip(indexes, colorways):
+                variant = variants[i]
+                extra = colorway if use_colorway else variant["sku"].rsplit(".", 1)[-1]
+                variant["color"] = f"{variant['color']}{COLOR_DETAIL_SEPARATOR}{extra}"[:50]
+                name = clean_text(str(products[i].get("name") or ""))
+                variant["display_name"] = clean_text(f"{name} - {variant['color']}".strip(" -"))
+
+    def _brand(self, product: Dict[str, Any]) -> str:
+        """Бренд; капс («STANLEY», «BROOKS») — в обычный регистр, как у других
+        брендов сайта. Короткие аббревиатуры (UGG, DC, EA7) не трогаем."""
+        brand = self._attr_label(product, "integration_alt_marka")
+        if brand.isupper() and len(brand) > 3:
+            brand = " ".join(word[:1] + word[1:].replace("İ", "i").replace("I", "ı").lower() for word in brand.split())
+        return brand
 
     def _extra_attributes(self, product: Dict[str, Any]) -> Dict[str, Any]:
         """Характеристики для правил/AI; служебное (скидка в корзине) на витрину не идёт."""

@@ -25,3 +25,12 @@ def test_translate_turkish_color_handles_dotted_capital_i_and_feed_shades():
     assert translate_turkish_color("Kum rengi", "ru") == "Песочный"
     assert translate_turkish_color("Koyu Indıgo", "ru") == "Темный индиго"
     assert translate_turkish_color("Açık Mavi", "ru") == "Голубой"
+
+
+def test_translate_turkish_color_keeps_detail_after_separator():
+    """Различитель одинаковых цветов одной модели (SuperStep) переживает перевод."""
+    assert translate_turkish_color("Beyaz · PUMA White-PUMA Black", "ru") == "Белый · PUMA White-PUMA Black"
+    assert translate_turkish_color("Siyah · CHE", "en") == "Black · CHE"
+    assert translate_turkish_color("Kum · 01", "ru") == ""
+    # Скобки других источников ведут себя как раньше.
+    assert translate_turkish_color("Siyah (Baskılı)", "ru") == "Черный"
