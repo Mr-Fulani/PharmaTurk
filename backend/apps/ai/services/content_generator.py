@@ -1165,8 +1165,10 @@ class ContentGenerator:
                 for source_color, translations in TR_COLOR_DICTIONARY.items():
                     localized_color = translations.get(locale)
                     if localized_color and source_color.lower() in cleaned_title.lower():
+                        # Только целое слово: иначе «Altinyildiz» → «Goldyildiz»,
+                        # «Memory» → «Meфиолетовыйy».
                         cleaned_title = re.sub(
-                            re.escape(source_color),
+                            rf"(?<![^\W\d_]){re.escape(source_color)}(?![^\W\d_])",
                             localized_color,
                             cleaned_title,
                             flags=re.IGNORECASE,

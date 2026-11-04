@@ -1,0 +1,385 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 803266,
+  "name": "New Era Midi Homefield 940 Trucker Unisex Mavi Şapka",
+  "sku": "6908282",
+  "base_code": "60856247",
+  "attributes": {
+   "brand_link": "/new-era/",
+   "integration_renk": "-",
+   "integration_beden": "OSFM",
+   "integration_marka": "078",
+   "integration_tanim": "SAPKA",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "020",
+   "integration_cinsiyet": "Unisex",
+   "integration_alt_marka": "NEW ERA",
+   "integration_color_hex": "#309af4",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "MAVİ",
+   "integration_urun_ozel": "New Era Midi Homefield 940 Trucker Unisex Mavi Şapka",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "%100 Polyester",
+   "integration_erp_mensei": "Çin",
+   "integration_model_renk": "60856247.-",
+   "integration_renk_detay": "Mavi",
+   "integration_urun_detay": "Midi Homefield 940 Trucker",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "UNISEX",
+   "integration_kalem_icerik": "<p><strong>New Era Midi Homefield 940 Trucker Unisex Mavi Şapka</strong></p>\n<p>New Era Midi Homefield 940 Trucker Unisex Mavi Şapka, ikonik file panel tasarımı ve kavisli siperlik detaylarıyla öne çıkan, günlük kullanıma uygun sportif bir aksesuar seçeneğidir. Mavi rengin dinamik ve canlı tonlarını taşıyan bu şapka, sokak modasının vazgeçilmez bir parçası olarak stiline anında zamansız bir hava katar. Hafif yapısı sayesinde başınızda ağırlık hissettirmez ve gün boyu konforlu bir kullanım vadeder. Unisex tasarımı ile hem kadın hem erkek kullanıcılar için mükemmel bir uyum sunan New Era Midi Homefield 940 Trucker Unisex Mavi Şapka, açık hava etkinliklerinde, sporda veya şehir hayatının yoğun</p>",
+   "integration_renk_tonu_kod": "008",
+   "integration_urun_ana_grup": "002",
+   "integration_hos_renk_detay": "Mavi",
+   "integration_hos_urun_detay": "Unisex Şapka",
+   "integration_base_code_format": "60856247.-.OSFM",
+   "integration_erenp_erenbarkod": "8001069082824",
+   "integration_hos_kalem_icerik": "<p>New Era Midi Homefield 940 Trucker Unisex Mavi Şapka, klasik trucker stilini modern 940 formuyla bir araya getirerek günlük kombinlerine sportif bir görünüm kazandırır. Mavi rengin canlı etkisi sayesinde farklı stillerle kolayca uyum sağlar. Hafif yapısı ve file panel detayları gün boyu konforlu kullanım deneyimi sunar</p><br> <p><strong>Teknik Özellikler</strong> <li>File arka panel nefes alabilir kullanım sağlar</li> <li>Ayarlanabilir arka bant rahat uyum hissi sunar</li> <li>Kavisli siperlik güneşe karşı ekstra koruma oluşturur</li>",
+   "integration_yurt_disi_barkod": "199420391369",
+   "has_product_barcode_exemption": true,
+   "integration_erp_renk_aciklama": "PASTEL MAVİ",
+   "integration_global_attribute7": "SAPKA"
+  },
+  "attribute_set": 2,
+  "attributes_kwargs": {
+   "integration_renk": {
+    "label": "-",
+    "value": "-",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "OSFM",
+    "value": "OSFM",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "New Era",
+    "value": "078",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "SAPKA",
+    "value": "SAPKA",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Şapka",
+    "value": "020",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Unisex",
+    "value": "Unisex",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "New Era",
+    "value": "NEW ERA",
+    "data_type": "dropdown"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "MAVİ",
+    "value": "MAVİ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Mavi",
+    "value": "Mavi",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Unisex",
+    "value": "UNISEX",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Aksesuar",
+    "value": "002",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 4698479,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78126350/94745b69-ddcc-4111-81e1-4cca737cf15a.jpg",
+    "order": 20,
+    "created_date": "2026-06-01T05:51:26.331288Z"
+   },
+   {
+    "pk": 4698494,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78127812/d9e1155d-1696-409c-9f8a-fc5bee984380.jpg",
+    "order": 21,
+    "created_date": "2026-06-01T05:51:30.527710Z"
+   },
+   {
+    "pk": 4698495,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78126350/61a3ff90-dab7-4734-b615-26681f913f7f.jpg",
+    "order": 22,
+    "created_date": "2026-06-01T05:51:30.597204Z"
+   },
+   {
+    "pk": 4698496,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78126350/2786386e-632f-4ad8-a34e-400b7fc5370e.jpg",
+    "order": 23,
+    "created_date": "2026-06-01T05:51:30.665287Z"
+   },
+   {
+    "pk": 4698497,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78126350/83514d97-8e5c-4de6-8462-2b41a4022015.jpg",
+    "order": 30,
+    "created_date": "2026-06-01T05:51:30.729414Z"
+   }
+  ],
+  "price": "2999",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "2999",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/new-era-midi-homefield-940-trucker-unisex-mavi-sapka/60856247/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 183,
+  "created_date": "2026-06-01T05:51:01.212857Z",
+  "modified_date": "2026-11-04T12:57:52.038696Z",
+  "basket_offers": [],
+  "is_listable": true,
+  "listing_code": "-",
+  "price_extra_field": {}
+ },
+ "variants": [
+  {
+   "attribute_key": "integration_renk",
+   "attribute_name": "Renk",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "45454555",
+     "label": "-",
+     "value": "-",
+     "product": {
+      "pk": 803266,
+      "name": "New Era Midi Homefield 940 Trucker Unisex Mavi Şapka",
+      "sku": "6908282",
+      "base_code": "60856247",
+      "attributes": {
+       "integration_renk": "-",
+       "integration_beden": "OSFM",
+       "integration_renk_tonu": "MAVİ",
+       "integration_model_renk": "60856247.-",
+       "integration_renk_detay": "Mavi",
+       "integration_hos_renk_detay": "Mavi",
+       "integration_yurt_disi_barkod": "199420391369",
+       "integration_erp_renk_aciklama": "PASTEL MAVİ"
+      },
+      "attribute_set": 2,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Şapka",
+        "value": "020",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "2999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "2999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/new-era-midi-homefield-940-trucker-unisex-mavi-sapka/60856247/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 183,
+      "created_date": "2026-06-01T05:51:01.212857Z",
+      "modified_date": "2026-11-04T12:57:52.038696Z",
+      "price_extra_field": {}
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": {
+  "pk": 803266,
+  "name": "New Era Midi Homefield 940 Trucker Unisex Mavi Şapka",
+  "sku": "6908282",
+  "base_code": "60856247",
+  "attributes": {
+   "brand_link": "/new-era/",
+   "integration_renk": "-",
+   "integration_beden": "OSFM",
+   "integration_marka": "078",
+   "integration_tanim": "SAPKA",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "020",
+   "integration_cinsiyet": "Unisex",
+   "integration_alt_marka": "NEW ERA",
+   "integration_color_hex": "#309af4",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "MAVİ",
+   "integration_urun_ozel": "New Era Midi Homefield 940 Trucker Unisex Mavi Şapka",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "%100 Polyester",
+   "integration_erp_mensei": "Çin",
+   "integration_model_renk": "60856247.-",
+   "integration_renk_detay": "Mavi",
+   "integration_urun_detay": "Midi Homefield 940 Trucker",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "UNISEX",
+   "integration_kalem_icerik": "<p><strong>New Era Midi Homefield 940 Trucker Unisex Mavi Şapka</strong></p>\n<p>New Era Midi Homefield 940 Trucker Unisex Mavi Şapka, ikonik file panel tasarımı ve kavisli siperlik detaylarıyla öne çıkan, günlük kullanıma uygun sportif bir aksesuar seçeneğidir. Mavi rengin dinamik ve canlı tonlarını taşıyan bu şapka, sokak modasının vazgeçilmez bir parçası olarak stiline anında zamansız bir hava katar. Hafif yapısı sayesinde başınızda ağırlık hissettirmez ve gün boyu konforlu bir kullanım vadeder. Unisex tasarımı ile hem kadın hem erkek kullanıcılar için mükemmel bir uyum sunan New Era Midi Homefield 940 Trucker Unisex Mavi Şapka, açık hava etkinliklerinde, sporda veya şehir hayatının yoğun</p>",
+   "integration_renk_tonu_kod": "008",
+   "integration_urun_ana_grup": "002",
+   "integration_hos_renk_detay": "Mavi",
+   "integration_hos_urun_detay": "Unisex Şapka",
+   "integration_base_code_format": "60856247.-.OSFM",
+   "integration_erenp_erenbarkod": "8001069082824",
+   "integration_hos_kalem_icerik": "<p>New Era Midi Homefield 940 Trucker Unisex Mavi Şapka, klasik trucker stilini modern 940 formuyla bir araya getirerek günlük kombinlerine sportif bir görünüm kazandırır. Mavi rengin canlı etkisi sayesinde farklı stillerle kolayca uyum sağlar. Hafif yapısı ve file panel detayları gün boyu konforlu kullanım deneyimi sunar</p><br> <p><strong>Teknik Özellikler</strong> <li>File arka panel nefes alabilir kullanım sağlar</li> <li>Ayarlanabilir arka bant rahat uyum hissi sunar</li> <li>Kavisli siperlik güneşe karşı ekstra koruma oluşturur</li>",
+   "integration_yurt_disi_barkod": "199420391369",
+   "has_product_barcode_exemption": true,
+   "integration_erp_renk_aciklama": "PASTEL MAVİ",
+   "integration_global_attribute7": "SAPKA"
+  },
+  "attribute_set": 2,
+  "attributes_kwargs": {
+   "integration_renk": {
+    "label": "-",
+    "value": "-",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "OSFM",
+    "value": "OSFM",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "New Era",
+    "value": "078",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "SAPKA",
+    "value": "SAPKA",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Şapka",
+    "value": "020",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Unisex",
+    "value": "Unisex",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "New Era",
+    "value": "NEW ERA",
+    "data_type": "dropdown"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "MAVİ",
+    "value": "MAVİ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Mavi",
+    "value": "Mavi",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Unisex",
+    "value": "UNISEX",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Aksesuar",
+    "value": "002",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 4698479,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78126350/94745b69-ddcc-4111-81e1-4cca737cf15a.jpg",
+    "order": 20,
+    "created_date": "2026-06-01T05:51:26.331288Z"
+   },
+   {
+    "pk": 4698494,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78127812/d9e1155d-1696-409c-9f8a-fc5bee984380.jpg",
+    "order": 21,
+    "created_date": "2026-06-01T05:51:30.527710Z"
+   },
+   {
+    "pk": 4698495,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78126350/61a3ff90-dab7-4734-b615-26681f913f7f.jpg",
+    "order": 22,
+    "created_date": "2026-06-01T05:51:30.597204Z"
+   },
+   {
+    "pk": 4698496,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78126350/2786386e-632f-4ad8-a34e-400b7fc5370e.jpg",
+    "order": 23,
+    "created_date": "2026-06-01T05:51:30.665287Z"
+   },
+   {
+    "pk": 4698497,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/05/22/78126350/83514d97-8e5c-4de6-8462-2b41a4022015.jpg",
+    "order": 30,
+    "created_date": "2026-06-01T05:51:30.729414Z"
+   }
+  ],
+  "price": "2999",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "2999",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/new-era-midi-homefield-940-trucker-unisex-mavi-sapka/60856247/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 183,
+  "created_date": "2026-06-01T05:51:01.212857Z",
+  "modified_date": "2026-11-04T12:57:52.038696Z",
+  "price_extra_field": {}
+ },
+ "offers": []
+}

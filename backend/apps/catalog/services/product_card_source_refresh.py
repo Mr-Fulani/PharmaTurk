@@ -967,12 +967,14 @@ class ProductCardSourceRefreshService:
                     VariantModel.objects.filter(pk=variant.pk).update(**update_values)
                     counts["variants_updated"] += 1
 
+            kept_size_ids = []
             for size_row in normalized_sizes:
                 size_obj = variant.sizes.filter(size=size_row["size"]).order_by("id").first()
                 if size_obj is None:
-                    VariantSizeModel.objects.create(variant=variant, **size_row)
+                    kept_size_ids.append(VariantSizeModel.objects.create(variant=variant, **size_row).pk)
                     counts["sizes_created"] += 1
                     continue
+                kept_size_ids.append(size_obj.pk)
                 size_updates = {
                     field: value
                     for field, value in size_row.items()
@@ -981,6 +983,14 @@ class ProductCardSourceRefreshService:
                 if size_updates:
                     VariantSizeModel.objects.filter(pk=size_obj.pk).update(**size_updates)
                     counts["sizes_updated"] += 1
+            if normalized_sizes:
+                # Строка размера, которой нет в ответе (у источника сменился формат:
+                # «42,5» → «42.5»), и её дубль не остаются «в наличии» рядом с новой.
+                counts["sizes_updated"] += (
+                    variant.sizes.exclude(pk__in=kept_size_ids)
+                    .filter(is_available=True)
+                    .update(is_available=False, stock_quantity=0)
+                )
 
         active_variants = list(domain_product.variants.filter(is_active=True).order_by("sort_order", "id"))
         integration._sync_product_size_rows(

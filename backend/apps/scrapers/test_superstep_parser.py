@@ -379,9 +379,9 @@ def test_same_color_names_inside_model_get_the_maker_colorway():
 
     colors = [v["color"] for v in product.attributes["fashion_variants"]]
     # Турецкое «BEYAZ» из расцветки «BEYAZ-Velvet Moss» убрано: на витрине и в фиде ВК его быть не должно.
-    assert colors == ["Beyaz · Velvet Moss", "Beyaz · PUMA White-PUMA Black"]
+    assert colors == ["Beyaz · Velvet Moss", "Beyaz · White-Black"]
     assert translate_turkish_color(colors[0], "ru") == "Белый · Velvet Moss"
-    assert product.attributes["fashion_variants"][1]["display_name"].endswith("- Beyaz · PUMA White-PUMA Black")
+    assert product.attributes["fashion_variants"][1]["display_name"].endswith("- Beyaz · White-Black")
 
 
 def test_color_detail_does_not_depend_on_sibling_stock():
@@ -395,7 +395,7 @@ def test_color_detail_does_not_depend_on_sibling_stock():
     product = parser.parse_product_detail(SITE + PUMA_399025_01)
 
     assert parser.requests == [PUMA_399025_01]
-    assert [v["color"] for v in product.attributes["fashion_variants"]] == ["Beyaz · PUMA White-PUMA Black"]
+    assert [v["color"] for v in product.attributes["fashion_variants"]] == ["Beyaz · White-Black"]
 
 
 def test_color_detail_from_opened_cards_when_variants_have_no_color_names():
@@ -416,7 +416,7 @@ def test_color_detail_from_opened_cards_when_variants_have_no_color_names():
     product = parser.parse_product_detail(SITE + PUMA_399025_01)
 
     assert [v["color"] for v in product.attributes["fashion_variants"]] == [
-        "Beyaz · Velvet Moss", "Beyaz · PUMA White-PUMA Black",
+        "Beyaz · Velvet Moss", "Beyaz · White-Black",
     ]
 
 
@@ -481,6 +481,143 @@ def test_brand_in_caps_is_normalized(raw, expected):
     product = {"attributes_kwargs": {"integration_alt_marka": {"label": raw}}}
 
     assert SuperstepParser()._brand(product) == expected
+
+
+NEW_ERA_TRUCKER = "/urun/new-era-midi-homefield-940-trucker-unisex-mavi-sapka/60856247/"
+NEW_ERA_SUN_SHIELD = "/urun/new-era-mlb-league-essentials-new-york-yankees-sun-shield-cocuk-bej-sapka/60667522/"
+NIKE_RENKLI = "/urun/nike-ultra-comfort-erkek-renkli-boxer/0000ke1257-1/"
+LACOSTE_KIDS = "/urun/lacoste-cocuk-bisiklet-yaka-mavi-t-shirt/tj7365/"
+
+
+def test_trucker_cap_goes_to_trucker_caps():
+    """У сайта одна подгруппа «Şapka» на все кепки; тип — по названию."""
+    parser = _parser({NEW_ERA_TRUCKER: "card_newera_trucker_60856247.json"})
+
+    assert parser.parse_product_detail(SITE + NEW_ERA_TRUCKER).category == "hw-trucker-caps"
+
+
+def test_cap_with_beanie_subgroup_is_a_kids_cap_by_name():
+    """New Era Sun Shield: подгруппа сайта «Bere», в названии «… Çocuk Bej Şapka»."""
+    parser = _parser({NEW_ERA_SUN_SHIELD: "card_newera_sunshield_kids_60667522.json"})
+
+    product = parser.parse_product_detail(SITE + NEW_ERA_SUN_SHIELD)
+
+    assert product.attributes["superstep_subgroup"] == "Şapka"
+    assert product.category == "hw-childrens-caps"
+
+
+@pytest.mark.parametrize(
+    "name,gender,expected",
+    [
+        ("New Era 9Forty Snapback Unisex Siyah Şapka", "unisex", "hw-snapbacks"),
+        ("Kangol Bucket Kadın Bej Şapka", "women", "hw-bucket-hats"),
+        ("Kangol Bucket Çocuk Bej Şapka", "kids", "hw-childrens-panamas"),
+        ("New Era 9Forty Unisex Siyah Şapka", "unisex", ""),
+    ],
+)
+def test_cap_type_by_name(name, gender, expected):
+    route = SuperstepParser._cap_route(name, gender)
+    assert (route[0] if route else "") == expected
+
+
+def test_renkli_color_is_translated_and_duplicates_get_a_code():
+    """Nike 0000KE1257: два цвета «RENKLİ» (WZS, 425) с одинаковой расцветкой «MULTI»."""
+    parser = _parser({NIKE_RENKLI: "card_nike_renkli_0000KE1257.json"})
+
+    product = parser.parse_product_detail(SITE + NIKE_RENKLI)
+
+    colors = [v["color"] for v in product.attributes["fashion_variants"]]
+    assert colors == ["Renkli · WZS"]
+    assert translate_turkish_color(colors[0], "ru") == "Разноцветный · WZS"
+    # Название модели без цвета варианта («Renkli»): у модели три цвета.
+    assert product.name == "Nike Ultra Comfort Erkek Boxer"
+
+
+def test_model_name_has_no_color_of_the_opened_variant():
+    """Иначе белый цвет Nautica в Списке заявки: «Nautica Erkek Gri … — Белый»."""
+    parser = _parser()
+
+    nautica = parser.parse_product_detail(SITE + NAUTICA_0HF)
+    samba = parser.parse_product_detail(SITE + SAMBA)
+
+    assert nautica.name == "Nautica Erkek Slim Fit Kısa Kollu Polo Yaka T-Shirt"
+    assert samba.name == "adidas Samba OG Unisex Beyaz Spor Ayakkabı"  # модель одного цвета
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı", "Puma Easy Rider Mix Unisex Spor Ayakkabı"),
+        ("Nike Dunk Low Retro Erkek Beyaz/Gri Sneaker", "Nike Dunk Low Retro Erkek Sneaker"),
+        ("Converse Çocuk Açık Mavi Sneaker", "Converse Çocuk Sneaker"),
+        ("Nike Club Erkek Baskılı Siyah Sweatshirt", "Nike Club Erkek Baskılı Sweatshirt"),
+        ("Nike Everyday Unisex Çok Renkli Çorap", "Nike Everyday Unisex Çorap"),  # не «Çok Çorap»
+        ("Converse Chuck 70 Unisex Kum Rengi Sneaker", "Converse Chuck 70 Unisex Sneaker"),
+        ("Nike Erkek Kamuflaj Desenli Şort", "Nike Erkek Kamuflaj Desenli Şort"),  # узор, не цвет
+    ],
+)
+def test_model_name_without_color_words(name, expected):
+    assert SuperstepParser._model_name({"name": name}, 2, name.split()[0]) == expected
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Mavi Erkek Mavi Jean", "Mavi Erkek Jean"),  # бренд в начале остаётся, цвет — нет
+        ("Erkek Mavi Jean", "Erkek Mavi Jean"),  # не с бренда — слово бренда не трогаем
+    ],
+)
+def test_model_name_keeps_brand_equal_to_color(name, expected):
+    assert SuperstepParser._model_name({"name": name}, 2, "Mavi") == expected
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("13-14 Yaş", "13-14 лет"),
+        ("2 Yaş", "2 года"),
+        ("1-2 Yaş", "1-2 года"),
+        ("1 Yaş", "1 год"),
+        ("11-12 Yaş", "11-12 лет"),
+        ("18-24 Ay", "18-24 мес."),
+        ("6 Ay", "6 мес."),
+        ("42,5", "42.5"),
+    ],
+)
+def test_age_sizes_in_russian(raw, expected):
+    assert SuperstepParser._normalize_size(raw) == expected
+
+
+def test_age_sizes_sorted_by_age():
+    labels = ["13-14 Yaş", "2 Yaş", "18-24 Ay", "6 Yaş", "6 Ay"]
+    options = [{"label": label} for label in labels]
+
+    ordered = sorted(range(len(options)), key=lambda i: SuperstepParser._size_sort_key(options[i], i))
+
+    assert [SuperstepParser._normalize_size(labels[i]) for i in ordered] == [
+        "6 мес.", "18-24 мес.", "2 года", "6 лет", "13-14 лет",
+    ]
+
+
+def test_kids_age_sizes_from_live_card():
+    """Lacoste TJ7365: «6 Yaş, 10 Yaş, 12 Yaş, 14 Yaş, 8 Yaş» шли не по порядку."""
+    parser = _parser({LACOSTE_KIDS: "card_lacoste_kids_yas_TJ7365.json"})
+
+    (variant, *_) = parser.parse_product_detail(SITE + LACOSTE_KIDS).attributes["fashion_variants"]
+    sizes = [s["size"] for s in variant["sizes"]]
+
+    assert sizes == sorted(sizes, key=lambda size: int(size.split()[0]))
+    assert all(size.endswith(("лет", "года", "год")) for size in sizes)
+
+
+def test_colorway_without_model_name_words():
+    """Palermo: «Palermo Lth PUMA White-Vapor Gray-Gum» → без названия модели."""
+    colorway = SuperstepParser._colorway(
+        {"attributes": {"integration_erp_renk_aciklama": "Palermo Lth PUMA White-Vapor Gray-Gum"}},
+        {"palermo", "lth", "puma", "leather", "unisex"},
+    )
+
+    assert colorway == "White-Vapor Gray-Gum"
 
 
 def test_unmapped_subgroup_is_not_loaded():

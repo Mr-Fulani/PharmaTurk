@@ -451,12 +451,87 @@ class SuperstepParser(BaseScraper):
                 if label and not label.isdigit():
                     subgroup = label
                     break
+        name_subgroup = superstep_subgroup_from_name(product.get("name"))
         if not subgroup:
-            subgroup = superstep_subgroup_from_name(product.get("name"))
+            subgroup = name_subgroup
+        elif {superstep_subgroup_key(subgroup), superstep_subgroup_key(name_subgroup)} == self.HEADWEAR_SUBGROUPS:
+            # Сайт путает «Bere» и «Şapka» (New Era Sun Shield — «Bere», а в
+            # названии «… Çocuk Bej Şapka»): верим названию.
+            subgroup = name_subgroup
         attrs = product.get("attributes") or {}
         gender = self._map_gender(attrs.get("integration_cinsiyet"))
         kids_gender = {"BOYS": "boys", "GIRLS": "girls"}.get(str(attrs.get("integration_erp_cinsiyet") or "").upper(), "")
-        return subgroup, resolve_superstep_category_slugs(subgroup, gender, kids_gender)
+        route = resolve_superstep_category_slugs(subgroup, gender, kids_gender)
+        if superstep_subgroup_key(subgroup) == "sapka":
+            route = self._cap_route(product.get("name"), gender) or route
+        return subgroup, route
+
+    HEADWEAR_SUBGROUPS = frozenset({"sapka", "bere"})
+    # Модификаторы перед цветом в названии: «Açık Mavi», «Koyu Gri», «Çok Renkli».
+    NAME_COLOR_MODIFIERS = frozenset({"koyu", "acik", "kirik", "cok"})
+    # Слова после цвета, которые относятся к нему: «Kum Rengi».
+    NAME_COLOR_SUFFIXES = frozenset({"rengi", "renk", "tonu"})
+    # Цвет перед этими словами — узор, а не цвет варианта: «Kamuflaj Desenli».
+    NAME_PATTERN_WORDS = frozenset({"desenli", "desen", "baskili", "baski"})
+
+    @classmethod
+    def _model_name(cls, product: Dict[str, Any], colors_count: int, brand: str = "") -> str:
+        """Название модели без цвета варианта: «Nautica Erkek Gri Slim Fit … T-Shirt»
+        → «Nautica Erkek Slim Fit … T-Shirt». Иначе карточка модели называлась бы
+        по цвету, с которого начался обход, и у белого цвета в Списке заявки было
+        «Nautica … Gri … — Белый». У модели одного цвета название не меняется.
+        Убираются только цвета словаря (и «Açık/Koyu/Çok» перед ними, «Rengi» после),
+        а не слова вроде «Baskılı», которые описывают сам товар. Не трогаются бренд,
+        совпадающий с цветом («Mavi»), и узор («Kamuflaj Desenli»)."""
+        name = clean_text(str(product.get("name") or ""))
+        if colors_count < 2:
+            return name
+        tokens = name.split()
+
+        def is_color(token: str) -> bool:
+            parts = [part for part in re.split(r"[/-]", token) if part]
+            return bool(parts) and all(
+                part.lower() not in cls.EN_COLOR_WORDS and translate_turkish_color(part, "en") for part in parts
+            )
+
+        keys = [superstep_subgroup_key(token) for token in tokens]
+        brand_keys = superstep_subgroup_key(brand).split()
+        # Бренд, совпадающий с цветом («Mavi»): защищён в начале названия, а если
+        # названия с бренда не начинается — любое слово бренда.
+        if brand_keys and keys[: len(brand_keys)] == brand_keys:
+            protected = set(range(len(brand_keys)))
+        else:
+            protected = {index for index, key in enumerate(keys) if key in brand_keys}
+        drop = {
+            index for index, token in enumerate(tokens)
+            if is_color(token)
+            and index not in protected
+            and (index + 1 >= len(tokens) or keys[index + 1] not in cls.NAME_PATTERN_WORDS)
+        }
+        drop |= {index - 1 for index in drop if index > 0 and keys[index - 1] in cls.NAME_COLOR_MODIFIERS}
+        drop |= {index + 1 for index in drop if index + 1 < len(tokens) and keys[index + 1] in cls.NAME_COLOR_SUFFIXES}
+        neutral = " ".join(token for index, token in enumerate(tokens) if index not in drop)
+        return neutral or name
+    # Тип кепки по названию («New Era … 940 Trucker … Şapka»): у сайта одна
+    # подгруппа «Şapka» на все кепки и панамы. Детям — детские разделы.
+    CAP_TYPES = (
+        ("trucker", ("hw-trucker-caps", "hw-caps", "headwear"), ()),
+        ("snapback", ("hw-snapbacks", "hw-caps", "headwear"), ()),
+        ("bucket", ("hw-bucket-hats", "hw-summer-headwear", "headwear"),
+         ("hw-childrens-panamas", "hw-children-headwear", "headwear")),
+        ("balikci", ("hw-bucket-hats", "hw-summer-headwear", "headwear"),
+         ("hw-childrens-panamas", "hw-children-headwear", "headwear")),
+        ("visor", ("hw-visors", "hw-summer-headwear", "headwear"), ()),
+        ("vizor", ("hw-visors", "hw-summer-headwear", "headwear"), ()),
+    )
+
+    @classmethod
+    def _cap_route(cls, name: Any, gender: str) -> Tuple[str, ...]:
+        words = set(superstep_subgroup_key(name).split())
+        for marker, adult, kids in cls.CAP_TYPES:
+            if marker in words:
+                return kids if gender == "kids" else adult
+        return ()
 
     def _tile_fingerprint(self, tile: Dict[str, Any]) -> str:
         """Отпечаток строки списка: то, что меняется между обходами.
@@ -732,7 +807,11 @@ class SuperstepParser(BaseScraper):
         attributes.update(self._extra_attributes(product))
 
         return ScrapedProduct(
-            name=clean_text(str(product.get("name") or "")),
+            name=(
+                self._model_name(product, len(color_options), self._brand(product))
+                if with_variants
+                else clean_text(str(product.get("name") or ""))
+            ),
             description=self._description(product) or self._features_description(product),
             price=primary["price"],
             old_price=primary["old_price"],
@@ -941,12 +1020,20 @@ class SuperstepParser(BaseScraper):
             )
         return sizes
 
+    AGE_SIZE_RE = re.compile(r"^(\d+)(?:-(\d+))?\s*(yas|ay)$")
+
     @classmethod
     def _size_sort_key(cls, option: Dict[str, Any], index: int) -> tuple:
         """Детские «10K…13.5K» — первыми, затем числовые («1.5», «28,5»,
         «32-33») по числу: ``order`` у Akinon бывает из разных систем (у
-        детской обуви 2850, 3500, 200180…). Буквенные (XS…XXL) — по ``order``."""
-        label = cls._normalize_size(option.get("label"))
+        детской обуви 2850, 3500, 200180…). Возрастные («18-24 Ay», «6 Yaş»,
+        «13-14 Yaş») — по возрасту, месяцы раньше лет. Буквенные (XS…XXL) — по ``order``."""
+        raw = clean_text(str(option.get("label") or ""))
+        age = cls.AGE_SIZE_RE.match(superstep_subgroup_key(raw))
+        if age:
+            months = int(age.group(1)) * (1 if age.group(3) == "ay" else 12)
+            return (2, months, index)
+        label = cls._normalize_size(raw)
         match = re.match(r"^(\d+(?:\.\d+)?)K$", label, re.IGNORECASE)
         if match:
             return (0, float(match.group(1)), index)
@@ -954,14 +1041,30 @@ class SuperstepParser(BaseScraper):
         if match:
             return (1, float(match.group(1)), index)
         try:
-            return (2, int(option.get("order")), index)
+            return (3, int(option.get("order")), index)
         except (TypeError, ValueError):
-            return (2, index, index)
+            return (3, index, index)
+
+    @classmethod
+    def _normalize_size(cls, value: Any) -> str:
+        """«42,5» → «42.5»: полуразмеры хранятся с точкой, как у FLO.
+        Возраст по-русски: «13-14 Yaş» → «13-14 лет», «2 Yaş» → «2 года»,
+        «18-24 Ay» → «18-24 мес.» — турецкого слова в размере не остаётся."""
+        text = clean_text(str(value))
+        age = cls.AGE_SIZE_RE.match(superstep_subgroup_key(text))
+        if age:
+            numbers = "-".join(n for n in age.group(1, 2) if n)
+            unit = "мес." if age.group(3) == "ay" else cls._years_word(int(age.group(2) or age.group(1)))
+            return f"{numbers} {unit}"
+        return re.sub(r"(\d),(\d)", r"\1.\2", text)
 
     @staticmethod
-    def _normalize_size(value: Any) -> str:
-        """«42,5» → «42.5»: полуразмеры хранятся с точкой, как у FLO."""
-        return re.sub(r"(\d),(\d)", r"\1.\2", clean_text(str(value)))
+    def _years_word(number: int) -> str:
+        if number % 10 == 1 and number % 100 != 11:
+            return "год"
+        if number % 10 in (2, 3, 4) and number % 100 not in (12, 13, 14):
+            return "года"
+        return "лет"
 
     @classmethod
     def _barcode(cls, product: Dict[str, Any]) -> str:
@@ -1035,14 +1138,21 @@ class SuperstepParser(BaseScraper):
         она пустая или совпадает — код цвета (``integration_renk``: «CHE»).
         """
         color_key = self._color_key(card["variants"])
+        options = self._variant_options(card["variants"], (color_key,))
+        products = [opened.get(self._option_value(option)) or option.get("product") or {} for option in options]
+        # Слова названий модели (Palermo, Lth, PUMA) — не уточнение цвета.
+        model_words = {
+            superstep_subgroup_key(word)
+            for product in [*products, *opened.values()]
+            for word in re.findall(r"[^\W\d_]+", str(product.get("name") or ""))
+        }
         groups: Dict[str, List[Tuple[str, str, str]]] = {}
-        for option in self._variant_options(card["variants"], (color_key,)):
+        for option, product in zip(options, products):
             code = self._option_value(option)
-            product = opened.get(code) or option.get("product") or {}
             name = self._color_name(product)
             if name:
                 fallback = str((product.get("attributes") or {}).get("integration_renk") or code)
-                groups.setdefault(name.casefold(), []).append((code, self._colorway(product), fallback))
+                groups.setdefault(name.casefold(), []).append((code, self._colorway(product, model_words), fallback))
         details: Dict[str, str] = {}
         for rows in groups.values():
             if len(rows) < 2:
@@ -1073,16 +1183,28 @@ class SuperstepParser(BaseScraper):
     )
 
     @classmethod
-    def _colorway(cls, product: Dict[str, Any]) -> str:
-        """Расцветка производителя без турецких слов или пусто.
+    def _colorway(cls, product: Dict[str, Any], model_words: frozenset = frozenset()) -> str:
+        """Расцветка производителя без турецких слов и названия модели или пусто.
 
         «BEYAZ-Velvet Moss» → «Velvet Moss» (турецкие цвета словаря убираются),
+        «Palermo Lth PUMA White-Vapor Gray-Gum» → «White-Vapor Gray-Gum» (слова
+        из названий модели ``model_words``, кроме английских цветов),
         «TOZLU KAKAO» → «» (латиница без английского цвета — не берём).
         """
+
+        def keep(match):
+            word = match.group(0)
+            if cls._is_turkish_color_word(word):
+                return ""
+            if superstep_subgroup_key(word) in model_words and word.lower() not in cls.EN_COLOR_WORDS:
+                return ""
+            return word
+
         text = clean_text(str((product.get("attributes") or {}).get("integration_erp_renk_aciklama") or ""))
-        text = re.sub(r"[^\W\d_]+", lambda m: "" if cls._is_turkish_color_word(m.group(0)) else m.group(0), text)
+        text = re.sub(r"[^\W\d_]+", keep, text)
         text = re.sub(r"\(\s*\)", "", text)
-        text = re.sub(r"\s*([/-])\s*(?:[/-]\s*)+", r"\1", text)
+        text = re.sub(r"\s*([/-])\s*", r"\1", text)
+        text = re.sub(r"([/-])(?:[/-])+", r"\1", text)
         text = clean_text(text).strip(" -/")
         words = re.findall(r"[^\W\d_]+", text)
         if not words or not all(word.isascii() for word in words):

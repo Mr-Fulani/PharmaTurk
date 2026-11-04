@@ -34,3 +34,19 @@ def test_translate_turkish_color_keeps_detail_after_separator():
     assert translate_turkish_color("Zümrüt · 01", "ru") == ""  # цвета нет в словаре
     # Скобки других источников ведут себя как раньше.
     assert translate_turkish_color("Siyah (Baskılı)", "ru") == "Черный"
+
+
+def test_translate_turkish_color_superstep_tones():
+    """Тоны SuperStep, которые оставались по-турецки на сайте и пропадали в фиде ВК."""
+    assert translate_turkish_color("RENKLİ", "ru") == "Разноцветный"
+    assert translate_turkish_color("Renkli · WZS", "ru") == "Разноцветный · WZS"
+    assert translate_turkish_color("GÜMÜŞ", "en") == "Silver"
+    assert translate_turkish_color("ALTIN", "ru") == "Золотой"
+
+
+def test_new_superstep_tones_do_not_override_the_main_color_of_a_compound():
+    """Составные цвета FLO и LCW переводятся по-прежнему — по основному цвету."""
+    assert translate_turkish_color("Siyah-Renkli", "ru") == "Черный"
+    assert translate_turkish_color("Mavi-Gümüş", "ru") == "Синий"
+    assert translate_turkish_color("Mor/Altın", "ru") == "Фиолетовый"
+    assert translate_turkish_color("Beyaz-Lacivert", "ru") == "Темно-синий"  # как раньше
