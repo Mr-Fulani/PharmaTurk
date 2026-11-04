@@ -19,6 +19,7 @@ def _analog_stats_session():
     )
 
 
+@pytest.mark.django_db
 def test_explicit_analog_without_codes_creates_stub_and_updates_stats(monkeypatch):
     service = ScraperIntegrationService.__new__(ScraperIntegrationService)
     service.logger = SimpleNamespace(exception=lambda *args, **kwargs: None)
@@ -194,6 +195,9 @@ def test_swapped_analog_barcodes_do_not_break_product_update():
     assert session.analog_errors == 0
     rows = dict(MedicineAnalog.objects.filter(product=medicine).values_list("external_id", "barcode"))
     assert rows["ibucold-30-film"] == "8680760092136"
+    # По чужому штрихкоду строка не привязывается и заглушка не создаётся.
+    assert MedicineAnalog.objects.get(product=medicine, external_id="ibucold-30-film").analog_product_id is None
+    assert not Product.objects.filter(external_id="ibucold-30-film").exists()
     assert rows["ibucold-30-tb"] == "8680760092952"
     assert rows["gribo-cold-30-tablet"] == "8699819010076"
 

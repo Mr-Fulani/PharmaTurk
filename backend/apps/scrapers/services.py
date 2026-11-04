@@ -4673,11 +4673,17 @@ class ScraperIntegrationService:
 
         # Штрихкод или ссылку, занятые другой строкой этого товара, не переносим: у двух упаковок
         # IBUCOLD источник поменял штрихкоды местами (04.11.2026), и запись падала на уникальности.
+        analog.conflicting_fields = []
         for field_name in ("barcode", "external_id"):
             value = field_values[field_name]
             if (value and getattr(analog, field_name) != value
                     and qs.filter(**{field_name: value}).exclude(pk=analog.pk).exists()):
+                self.logger.warning(
+                    "Аналог %s товара %s: %s %s уже у другой строки, не переносится",
+                    name, product.pk, field_name, value,
+                )
                 field_values[field_name] = ""
+                analog.conflicting_fields.append(field_name)
 
         for field_name, value in field_values.items():
             if value and getattr(analog, field_name) != value:
@@ -4812,6 +4818,9 @@ class ScraperIntegrationService:
                         source=scraped_product.source,
                         source_tab=analog_source_tab,
                     )
+                    # Связь по отброшенному штрихкоду/ссылке привязала бы строку к чужой упаковке.
+                    if getattr(analog_ref, "conflicting_fields", None):
+                        continue
 
                     # Проверяем, существует ли уже такой препарат. Коды надежнее названия:
                     # названия на ilacfiyati часто отличаются процентами, пробелами и упаковкой.
