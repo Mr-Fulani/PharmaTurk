@@ -25,6 +25,14 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from ..base.catalog_state import CatalogTraversalState
 from ..base.listing_snapshot import listing_fingerprint
+from ..base.offers import (
+    MalformedOfferResponse,
+    OfferCheckContext,
+    OfferCheckResult,
+    OfferNotFound,
+    result_from_scraped_product,
+    translate_offer_check_errors,
+)
 from ..base.scraper import (
     BaseScraper,
     CategoryPageNotFoundError,
@@ -620,6 +628,55 @@ class SuperstepParser(BaseScraper):
             attributes=attributes,
             source=self.get_name(),
         )
+
+    # --- проверка наличия ----------------------------------------------------
+
+    @translate_offer_check_errors
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """Один запрос JSON сохранённого цвета; соседние цвета не открываются.
+
+        Снятый товар Akinon отдаёт 404 (и при сменившемся slug тоже), ссылка
+        ``/product/<pk>/`` — 200 с ``{"detail": "Bulunamadı."}``. Карточка
+        другой модели или цвета — тоже «не найден»: чужой товар не подставляем.
+        Наличие — «есть/нет» по размеру, точный остаток не храним.
+        """
+        url = self._json_url(self._canonical_url(offer.canonical_url))
+        text, final_url = self._make_offer_request(url, include_final_url=True)
+        if not self.is_product_url(final_url):
+            raise OfferNotFound(offer.canonical_url)
+        try:
+            card = json.loads(text)
+        except ValueError:
+            raise ScraperAccessBlockedError(source="SuperStep", status_code=403, url=url)
+        if isinstance(card, dict) and "product" not in card and card.get("detail"):
+            raise OfferNotFound(offer.canonical_url)
+        if (
+            not isinstance(card, dict)
+            or not isinstance(card.get("product"), dict)
+            or not isinstance(card.get("variants"), list)
+        ):
+            raise MalformedOfferResponse()
+
+        variant = self._build_color_variant(card, sort_order=0)
+        if offer.variant_key:
+            same_offer = variant["external_id"] == offer.variant_key
+        else:
+            same_offer = not offer.external_sku or variant["sku"] == offer.external_sku
+        if not same_offer:
+            raise OfferNotFound(offer.canonical_url)
+        scraped = ScrapedProduct(
+            name=clean_text(str(card["product"].get("name") or "")),
+            price=variant["price"],
+            currency="TRY",
+            url=variant["external_url"],
+            external_id=offer.external_product_id,
+            sku=variant["sku"],
+            is_available=variant["is_available"],
+            stock_quantity=variant["stock_quantity"],
+            attributes={"fashion_variants": [variant]},
+            source=self.get_name(),
+        )
+        return result_from_scraped_product(offer, scraped, exact_stock=False)
 
     def _color_key(self, variants: Any) -> str:
         """Атрибут, по которому сайт группирует цвета модели.

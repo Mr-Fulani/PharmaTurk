@@ -1,10 +1,13 @@
+import json
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 import pytest
 
 from apps.http_errors import ExternalAccessBlockedError
 from apps.scrapers.base.offers import (
+    MalformedOfferResponse,
     OfferAvailability,
     OfferCheckContext,
     OfferCheckErrorCode,
@@ -25,6 +28,7 @@ from apps.scrapers.parsers.instagram import InstagramParser
 from apps.scrapers.parsers.lcw import LcwParser
 from apps.scrapers.parsers.massimodutti import MassimoDuttiParser
 from apps.scrapers.parsers.pullandbear import PullAndBearParser
+from apps.scrapers.parsers.superstep import SuperstepParser
 from apps.scrapers.parsers.ummaland import UmmalandParser
 from apps.scrapers.parsers.zara import ZaraParser
 
@@ -608,3 +612,134 @@ def test_ummaland_check_is_boolean_and_read_only(monkeypatch):
 
     assert result.availability_status == OfferAvailability.OUT_OF_STOCK
     assert result.stock_precision == OfferStockPrecision.BOOLEAN
+
+
+SUPERSTEP = "https://www.superstep.com.tr"
+SUPERSTEP_SAMBA = "/urun/adidas-samba-og-unisex-beyaz-spor-ayakkabi/b75806-1/"
+SUPERSTEP_STANLEY = "/urun/stanley-the-iceflow-flip-straw-2-0-0-89l-unisex-beyaz-termos/13424/"
+SUPERSTEP_FIXTURES = Path(__file__).parent / "test_fixtures" / "superstep"
+
+
+def _superstep_parser(routes):
+    """Парсер SuperStep с подменённым HTTP: путь → (статус, тело) или адрес редиректа."""
+    parser = SuperstepParser()
+    parser.requests = []
+
+    def handle(request):
+        parser.requests.append(str(request.url))
+        status, body = routes.get(request.url.path, (404, "<html>404</html>"))
+        if status in (301, 302):
+            return httpx.Response(status, headers={"Location": body}, request=request)
+        return httpx.Response(status, text=body, request=request)
+
+    parser.client.close()
+    parser.client = httpx.Client(transport=httpx.MockTransport(handle), follow_redirects=True)
+    return parser
+
+
+def _superstep_card(name):
+    return (200, (SUPERSTEP_FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def _superstep_context(size="42", **overrides):
+    payload = {
+        "canonical_url": SUPERSTEP + SUPERSTEP_SAMBA,
+        "external_product_id": "superstep-B75806",
+        "external_sku": "",
+        "variant_key": "superstep-variant-B75806.-",
+        "size_key": size,
+        "selected_options": {"color": "Beyaz", "size": size},
+    }
+    payload.update(overrides)
+    return OfferCheckContext(**payload)
+
+
+@pytest.mark.parametrize(
+    ("size", "expected"),
+    [("42", OfferAvailability.IN_STOCK), ("40.5", OfferAvailability.OUT_OF_STOCK)],
+)
+def test_superstep_offer_check_reads_one_json_and_hides_quantity(size, expected):
+    parser = _superstep_parser({SUPERSTEP_SAMBA: _superstep_card("card_samba_B75806.json")})
+
+    result = parser.check_offer(_superstep_context(size))
+
+    assert parser.requests == [SUPERSTEP + SUPERSTEP_SAMBA + "?format=json"]
+    assert result.availability_status == expected
+    assert result.stock_precision == OfferStockPrecision.BOOLEAN
+    assert result.stock_quantity is None
+    assert result.source_price == Decimal("7999.00")
+    assert result.source_currency == "TRY"
+    assert result.canonical_url == SUPERSTEP + SUPERSTEP_SAMBA
+
+
+def test_superstep_offer_check_without_color_variants_matches_saved_sku():
+    """Термос: у посуды нет вариантов цвета, предложение узнаём по коду цвета модели."""
+    parser = _superstep_parser({SUPERSTEP_STANLEY: _superstep_card("card_stanley_13424.json")})
+
+    result = parser.check_offer(
+        _superstep_context(
+            "",
+            canonical_url=SUPERSTEP + SUPERSTEP_STANLEY,
+            external_product_id="superstep-13424.0195",
+            external_sku="13424.0195",
+            variant_key="",
+            selected_options={},
+        )
+    )
+
+    assert result.availability_status == OfferAvailability.IN_STOCK
+    assert result.source_price == Decimal("3329.00")
+
+
+@pytest.mark.parametrize(
+    "routes",
+    [
+        {},  # снятый товар и сменившийся slug — 404
+        {SUPERSTEP_SAMBA: (200, json.dumps({"detail": "Bulunamadı."}))},
+        {SUPERSTEP_SAMBA: (302, SUPERSTEP + "/erkek-spor-ayakkabi/")},
+    ],
+    ids=["404", "detail", "redirect-to-category"],
+)
+def test_superstep_offer_check_reports_removed_product_as_not_found(routes):
+    parser = _superstep_parser(routes)
+
+    with pytest.raises(OfferNotFound) as error:
+        parser.check_offer(_superstep_context())
+
+    assert error.value.error.code == OfferCheckErrorCode.NOT_FOUND
+    assert error.value.error.retryable is False
+
+
+def test_superstep_offer_check_never_substitutes_another_color():
+    parser = _superstep_parser({SUPERSTEP_SAMBA: _superstep_card("card_samba_B75806.json")})
+
+    with pytest.raises(OfferNotFound):
+        parser.check_offer(_superstep_context(variant_key="superstep-variant-B75806.01"))
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_exception", "expected_code"),
+    [
+        (
+            "<html><title>Access denied</title></html>",
+            OfferSourceUnavailable,
+            OfferCheckErrorCode.ACCESS_BLOCKED,
+        ),
+        (
+            json.dumps({"product": {"name": "x"}}),
+            MalformedOfferResponse,
+            OfferCheckErrorCode.MALFORMED_RESPONSE,
+        ),
+    ],
+)
+def test_superstep_offer_check_does_not_turn_broken_response_into_out_of_stock(
+    body,
+    expected_exception,
+    expected_code,
+):
+    parser = _superstep_parser({SUPERSTEP_SAMBA: (200, body)})
+
+    with pytest.raises(expected_exception) as error:
+        parser.check_offer(_superstep_context())
+
+    assert error.value.error.code == expected_code
