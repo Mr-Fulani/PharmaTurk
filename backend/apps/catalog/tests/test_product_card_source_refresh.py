@@ -406,6 +406,7 @@ class OfflineSuperstepParser(SuperstepParser):
     """Настоящий парсер SuperStep, сайт подменён: путь → (статус, тело)."""
 
     routes: dict = {}
+    requested: list = []
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -413,6 +414,7 @@ class OfflineSuperstepParser(SuperstepParser):
         self.client = httpx.Client(transport=httpx.MockTransport(self._answer), follow_redirects=True)
 
     def _answer(self, request):
+        self.requested.append(request.url.path)
         status, body = self.routes.get(request.url.path, (404, "<html>404</html>"))
         return httpx.Response(status, text=body, request=request)
 
@@ -447,6 +449,7 @@ def test_superstep_card_gone_everywhere_is_source_not_found(monkeypatch):
     """404 ссылки цвета и нет в поиске по коду модели — «не найден»: товар снимется,
     а не останется «в наличии» с новым запросом на каждое открытие."""
     monkeypatch.setattr(OfflineSuperstepParser, "routes", {"/list/": _superstep_search()})
+    monkeypatch.setattr(OfflineSuperstepParser, "requested", [])
     service = ProductCardSourceRefreshService()
 
     with pytest.raises(ProductCardRefreshError) as error:
@@ -454,6 +457,8 @@ def test_superstep_card_gone_everywhere_is_source_not_found(monkeypatch):
 
     assert error.value.code == "source_not_found"
     assert error.value.retryable is False
+    # Адрес, ответивший 404, повторно не запрашивается — сразу поиск.
+    assert OfflineSuperstepParser.requested == ["/urun/stanley-e2e-yok/zz13424e2e/", "/list/"]
 
 
 @pytest.mark.django_db
@@ -466,16 +471,21 @@ def test_superstep_card_moved_is_refreshed_by_new_url(monkeypatch):
         "routes",
         {"/list/": _superstep_search(("card_stanley_13424.json", SUPERSTEP_STANLEY)), SUPERSTEP_STANLEY: card},
     )
+    monkeypatch.setattr(OfflineSuperstepParser, "requested", [])
     service = ProductCardSourceRefreshService()
 
     result = service._fetch_product(_superstep_target("/urun/stanley-old-slug/13424-9/", "13424.0195"))
 
     assert result.url == SUPERSTEP + SUPERSTEP_STANLEY
     assert result.external_id == "superstep-13424.0195"
+    # Каждый адрес — один раз: карточка нового адреса не скачивается повторно.
+    assert OfflineSuperstepParser.requested == ["/urun/stanley-old-slug/13424-9/", "/list/", SUPERSTEP_STANLEY]
 
 
 @pytest.mark.django_db
-def test_card_takes_product_off_sale_when_cart_got_not_found_first(parsed_clothing, monkeypatch):
+def test_card_takes_product_off_sale_when_cart_got_not_found_first(
+    parsed_clothing, monkeypatch, django_capture_on_commit_callbacks
+):
     """«Не найден» первым получил Список заявки (cart/revalidate пишет только
     предложение): открытие карточки снимает URL с продажи, а не только показывает
     «Товар больше недоступен» при товаре «в наличии»."""
@@ -492,8 +502,14 @@ def test_card_takes_product_off_sale_when_cart_got_not_found_first(parsed_clothi
     monkeypatch.setattr(
         service, "_fetch_product", lambda target: pytest.fail("terminal absence must not refetch")
     )
+    resolved = []
+    monkeypatch.setattr(
+        "apps.catalog.services.product_card_source_refresh.resolve_duplicates_for_products",
+        lambda ids: resolved.append(list(ids)),
+    )
 
-    result = service.run(product.pk)
+    with django_capture_on_commit_callbacks(execute=True):
+        result = service.run(product.pk)
 
     assert result["status"] == "failed"
     assert result["error_code"] == "source_not_found"
@@ -504,6 +520,8 @@ def test_card_takes_product_off_sale_when_cart_got_not_found_first(parsed_clothi
     assert domain.is_available is False
     assert black.is_available is False
     assert service._absence_pending(service._target(product)) is False  # повтор ничего не пишет
+    # Снятый цвет мог быть показан вместо скрытого дубля — пересчёт дублей сразу.
+    assert resolved == [[product.pk]]
 
 
 @pytest.mark.django_db
@@ -557,11 +575,12 @@ def test_import_after_card_refresh_is_skipped(settings, monkeypatch):
                     "stock_quantity": DEFAULT_ASSUMED_STOCK_QUANTITY,
                     "sizes": [
                         {
-                            "size": "M",
+                            "size": size,
                             "is_available": True,
                             "stock_quantity": DEFAULT_ASSUMED_STOCK_QUANTITY,
-                            "sort_order": 0,
+                            "sort_order": index,
                         }
+                        for index, size in enumerate(["S", "M", "L"])
                     ],
                 }
             ]
@@ -578,6 +597,59 @@ def test_import_after_card_refresh_is_skipped(settings, monkeypatch):
 
     assert status == "skipped"
     assert refreshed.stock_quantity == DEFAULT_ASSUMED_STOCK_QUANTITY
+    # Три размера в наличии — у цвета один условный остаток, как у импорта, а не 3000.
+    colour = refreshed.domain_item.variants.get(external_id="superstep-variant-K35052T.4MY")
+    assert colour.stock_quantity == DEFAULT_ASSUMED_STOCK_QUANTITY
+
+
+@pytest.mark.django_db
+def test_import_after_card_refresh_is_skipped_for_product_without_colours(settings, monkeypatch):
+    """Термос Stanley (у посуды нет цветов): обновление карточки пишет остаток из
+    ответа парсера, как импорт (1000), а не None — следующий проход «пропущен»."""
+    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = ["superstep"]
+    suffix = uuid4().hex[:8]
+    category = Category.objects.create(name="Термосы", slug=f"termos-{suffix}")
+    config = ScraperConfig.objects.create(
+        name=f"superstep-{suffix}", parser_class="superstep", base_url=SUPERSTEP, default_category=category
+    )
+    session = ScrapingSession.objects.create(
+        scraper_config=config, start_url=SUPERSTEP, max_pages=1, max_products=10, status="running"
+    )
+    url = SUPERSTEP + SUPERSTEP_STANLEY
+    product = Product.objects.create(
+        name="Stanley termos",
+        slug=f"stanley-termos-{suffix}",
+        category=category,
+        product_type="tableware",
+        price=Decimal("3329.00"),
+        currency="TRY",
+        external_id="superstep-13424.0195",
+        external_url=url,
+        external_data={"source": "superstep"},
+    )
+    scraped = ScrapedProduct(
+        name="Stanley termos",
+        description="",
+        price=3329,
+        currency="TRY",
+        url=url,
+        external_id="superstep-13424.0195",
+        sku="13424.0195",
+        source="superstep",
+        is_available=True,
+        stock_quantity=DEFAULT_ASSUMED_STOCK_QUANTITY,
+    )
+    integration = ScraperIntegrationService()
+    integration._update_existing_product(session, scraped, product)
+    record_scraped_product_offers(product=Product.objects.get(pk=product.pk), scraped_product=scraped)
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_fetch_product", lambda target: scraped)
+
+    assert service.run(product.pk)["status"] == "succeeded"
+    assert Product.objects.get(pk=product.pk).stock_quantity == DEFAULT_ASSUMED_STOCK_QUANTITY
+    status, _ = integration._update_existing_product(session, scraped, Product.objects.get(pk=product.pk))
+
+    assert status == "skipped"
 
 
 def test_flo_card_fetch_maps_clean_page_without_product_to_not_found(
