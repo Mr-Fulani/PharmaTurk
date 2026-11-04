@@ -478,6 +478,9 @@ class FloParser(BaseScraper):
             "is_available": is_available,
             "sizes": sizes,
             "sku": sku,
+            # Артикул производителя с цветом (Nike «DV5456-106») — запасной признак
+            # того же товара у SuperStep, если штрихкодов нет.
+            "mpn": clean_text(str(detail.get("model_kodu") or "")),
         }
 
     def parse_product_detail(

@@ -154,6 +154,9 @@ class TestBuildResolveResponse:
         with patch(
             "apps.catalog.services.product_resolve.resolve_product_payload",
             return_value=None,
+        ), patch(
+            "apps.catalog.services.cross_source_duplicates.duplicate_redirect_target",
+            return_value=None,
         ):
             resp = build_resolve_response(req, "nope")
         assert resp.status_code == status.HTTP_404_NOT_FOUND

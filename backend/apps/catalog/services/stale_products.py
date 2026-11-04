@@ -34,6 +34,7 @@ from django.db.models.deletion import Collector
 from django.utils import timezone
 
 from apps.catalog.models import Product
+from apps.catalog.services.cross_source_duplicates import on_product_retired
 from apps.catalog.models_stock import SOURCE_TITLES, ProductDeletionLog, StaleProductCandidate
 from apps.catalog.utils.media_references import MediaReferenceCheckError, media_reference_fields
 
@@ -254,6 +255,9 @@ def _set_active(product: Product, active: bool) -> None:
     domain = product.domain_item
     if domain is not product:
         domain.__class__.objects.filter(pk=domain.pk).update(is_active=active)
+    if not active:
+        # Снятую карточку пересчёт дублей FLO ↔ SuperStep больше не возвращает.
+        on_product_retired(product.pk)
 
 
 def hide_candidates(candidate_ids: Iterable[int], user=None, *, now=None) -> Plan:
