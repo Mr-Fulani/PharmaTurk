@@ -114,7 +114,8 @@
 - [x] Финальный HTTPS liveness/readiness/security smoke пройден; все application
   containers работают на `60dfefa`, критических refresh/traceback строк после canary — `0`.
 - [ ] SuperStep (04.11.2026): adapter `check_offer` (один JSON цвета, «есть/нет» по
-  размеру) и `superstep` в обоих allowlist в `.env*.example`. После деплоя — добавить
+  размеру), обновление карточки — только сохранённый цвет, как у FLO
+  (`include_sibling_variants=False`), и `superstep` в обоих allowlist в `.env*.example`. После деплоя — добавить
   `superstep` в `PRODUCT_CARD_SOURCE_REFRESH_SOURCES` и
   `SOURCE_OFFER_VERIFICATION_SOURCES` на сервере и canary на 5 товарах (сверка с
   сайтом, размер, которого нет, снятый товар). Окно свежести не нужно — источник

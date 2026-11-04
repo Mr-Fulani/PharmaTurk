@@ -505,11 +505,12 @@ class ProductCardSourceRefreshService:
                         headers=config.headers,
                         cookies=config.cookies,
                     )
-                if target.parser_key == "flo":
+                if target.parser_key in {"flo", "superstep"}:
                     # A FLO product group can link many sibling colours. Each sibling
                     # would be another paid browser-rendering request, even though the
                     # user opened only this saved colour. Refresh exactly that colour;
-                    # the cart follows the same one-offer rule.
+                    # the cart follows the same one-offer rule. SuperStep is free, but
+                    # up to 12 sibling cards with parser delays would hold the slot.
                     result = parser.parse_product_detail(
                         target.offer.canonical_url,
                         include_sibling_variants=False,

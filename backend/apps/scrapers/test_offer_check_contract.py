@@ -691,23 +691,75 @@ def test_superstep_offer_check_without_color_variants_matches_saved_sku():
     assert result.source_price == Decimal("3329.00")
 
 
+def _superstep_search(*tiles, num_pages=1):
+    """Ответ поиска ``/list/?search_text=…``: строки — товары карточек с вариантами."""
+    rows = []
+    for name, absolute_url in tiles:
+        card = json.loads((SUPERSTEP_FIXTURES / name).read_text(encoding="utf-8"))
+        tile = dict(card["product"], absolute_url=absolute_url)
+        tile["extra_data"] = {"variants": card["variants"]}
+        rows.append(tile)
+    pagination = {"current_page": 1, "num_pages": num_pages}
+    return (200, json.dumps({"products": rows, "pagination": pagination}))
+
+
 @pytest.mark.parametrize(
-    "routes",
-    [
-        {},  # снятый товар и сменившийся slug — 404
-        {SUPERSTEP_SAMBA: (200, json.dumps({"detail": "Bulunamadı."}))},
-        {SUPERSTEP_SAMBA: (302, SUPERSTEP + "/erkek-spor-ayakkabi/")},
-    ],
-    ids=["404", "detail", "redirect-to-category"],
+    "missing_page",
+    [(404, "<html>404</html>"), (200, json.dumps({"detail": "Bulunamadı."}))],
+    ids=["404", "detail"],
 )
-def test_superstep_offer_check_reports_removed_product_as_not_found(routes):
-    parser = _superstep_parser(routes)
+def test_superstep_offer_check_confirms_removal_through_search(missing_page):
+    """Ссылка цвета — ссылка одного размера: её 404 ещё не «снят весь цвет»."""
+    parser = _superstep_parser({SUPERSTEP_SAMBA: missing_page, "/list/": _superstep_search()})
 
     with pytest.raises(OfferNotFound) as error:
         parser.check_offer(_superstep_context())
 
     assert error.value.error.code == OfferCheckErrorCode.NOT_FOUND
     assert error.value.error.retryable is False
+    assert parser.requests[1] == SUPERSTEP + "/list/?search_text=B75806&format=json"
+
+
+def test_superstep_offer_check_follows_color_found_by_search_at_new_url():
+    old_url = "/urun/adidas-samba-og-unisex-beyaz-spor-ayakkabi/b75806-10/"
+    parser = _superstep_parser(
+        {
+            "/list/": _superstep_search(("card_samba_B75806.json", SUPERSTEP_SAMBA)),
+            SUPERSTEP_SAMBA: _superstep_card("card_samba_B75806.json"),
+        }
+    )
+
+    result = parser.check_offer(_superstep_context(canonical_url=SUPERSTEP + old_url))
+
+    assert result.availability_status == OfferAvailability.IN_STOCK
+    assert result.canonical_url == SUPERSTEP + SUPERSTEP_SAMBA
+
+
+@pytest.mark.parametrize(
+    "routes",
+    [
+        # Цвет в поиске по той же ссылке, но страница не открылась.
+        {"/list/": _superstep_search(("card_samba_B75806.json", SUPERSTEP_SAMBA))},
+        # В поиске не всё на первой странице.
+        {"/list/": _superstep_search(num_pages=2)},
+        # Поиск сам не ответил.
+        {},
+        # Редирект не на товар (главная на техработах) отвечает 200.
+        {
+            SUPERSTEP_SAMBA: (302, SUPERSTEP + "/erkek-spor-ayakkabi/"),
+            "/erkek-spor-ayakkabi/": (200, json.dumps({"products": [], "pagination": {}})),
+        },
+    ],
+    ids=["listed-same-url", "search-has-more-pages", "search-failed", "redirect-to-category"],
+)
+def test_superstep_offer_check_does_not_guess_removal(routes):
+    parser = _superstep_parser(routes)
+
+    with pytest.raises(OfferSourceUnavailable) as error:
+        parser.check_offer(_superstep_context())
+
+    assert error.value.error.code == OfferCheckErrorCode.TRANSPORT_ERROR
+    assert error.value.error.retryable is True
 
 
 def test_superstep_offer_check_never_substitutes_another_color():

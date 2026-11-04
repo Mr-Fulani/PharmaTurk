@@ -23,13 +23,17 @@ from collections import Counter
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
+import httpx
+
 from ..base.catalog_state import CatalogTraversalState
 from ..base.listing_snapshot import listing_fingerprint
 from ..base.offers import (
     MalformedOfferResponse,
     OfferCheckContext,
+    OfferCheckErrorCode,
     OfferCheckResult,
     OfferNotFound,
+    OfferSourceUnavailable,
     result_from_scraped_product,
     translate_offer_check_errors,
 )
@@ -635,28 +639,16 @@ class SuperstepParser(BaseScraper):
     def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
         """Один запрос JSON сохранённого цвета; соседние цвета не открываются.
 
-        Снятый товар Akinon отдаёт 404 (и при сменившемся slug тоже), ссылка
-        ``/product/<pk>/`` — 200 с ``{"detail": "Bulunamadı."}``. Карточка
-        другой модели или цвета — тоже «не найден»: чужой товар не подставляем.
+        «Не найден» закрепляется надолго, поэтому ставится только при уверенности:
+        ссылка цвета — это ссылка одного из размеров, и её 404 (или
+        ``{"detail": "Bulunamadı."}`` у ``/product/<pk>/``) ещё не значит, что
+        снят весь цвет. Тогда цвет ищется в поиске сайта по коду модели: нашёлся
+        по другой ссылке — проверяется по ней, нет в поиске — «не найден».
+        Редирект не на товар (главная на техработах) — сбой источника. Карточка
+        другой модели или цвета — «не найден»: чужой товар не подставляем.
         Наличие — «есть/нет» по размеру, точный остаток не храним.
         """
-        url = self._json_url(self._canonical_url(offer.canonical_url))
-        text, final_url = self._make_offer_request(url, include_final_url=True)
-        if not self.is_product_url(final_url):
-            raise OfferNotFound(offer.canonical_url)
-        try:
-            card = json.loads(text)
-        except ValueError:
-            raise ScraperAccessBlockedError(source="SuperStep", status_code=403, url=url)
-        if isinstance(card, dict) and "product" not in card and card.get("detail"):
-            raise OfferNotFound(offer.canonical_url)
-        if (
-            not isinstance(card, dict)
-            or not isinstance(card.get("product"), dict)
-            or not isinstance(card.get("variants"), list)
-        ):
-            raise MalformedOfferResponse()
-
+        card = self._offer_card(offer.canonical_url) or self._relocated_offer_card(offer)
         variant = self._build_color_variant(card, sort_order=0)
         if offer.variant_key:
             same_offer = variant["external_id"] == offer.variant_key
@@ -677,6 +669,87 @@ class SuperstepParser(BaseScraper):
             source=self.get_name(),
         )
         return result_from_scraped_product(offer, scraped, exact_stock=False)
+
+    def _offer_json(self, url: str) -> Tuple[Dict[str, Any], str]:
+        text, final_url = self._make_offer_request(url, include_final_url=True)
+        try:
+            data = json.loads(text)
+        except ValueError:
+            raise ScraperAccessBlockedError(source="SuperStep", status_code=403, url=url)
+        if not isinstance(data, dict):
+            raise MalformedOfferResponse()
+        return data, final_url
+
+    def _offer_card(self, product_url: str) -> Optional[Dict[str, Any]]:
+        """JSON карточки для проверки; None — сайт ответил «нет такой страницы»."""
+        try:
+            card, final_url = self._offer_json(self._json_url(self._canonical_url(product_url)))
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
+        if not self.is_product_url(final_url):
+            raise OfferSourceUnavailable(
+                OfferCheckErrorCode.TRANSPORT_ERROR,
+                f"SuperStep: redirect away from product page to {final_url}",
+                retryable=True,
+            )
+        if "product" not in card and card.get("detail"):
+            return None
+        if not isinstance(card.get("product"), dict) or not isinstance(card.get("variants"), list):
+            raise MalformedOfferResponse()
+        return card
+
+    def _relocated_offer_card(self, offer: OfferCheckContext) -> Dict[str, Any]:
+        """Карточка цвета, чья ссылка не открылась, — через поиск по коду модели."""
+        model_color = (
+            offer.variant_key.removeprefix("superstep-variant-")
+            if offer.variant_key
+            else offer.external_sku
+        )
+        base_code = model_color.rpartition(".")[0]
+        if not base_code:
+            raise OfferSourceUnavailable(
+                OfferCheckErrorCode.TRANSPORT_ERROR,
+                "SuperStep: product page is missing and offer has no model code",
+                retryable=False,
+            )
+        search_url = self._json_url("/list/?" + urlencode({"search_text": base_code}))
+        try:
+            data, _ = self._offer_json(search_url)
+        except httpx.HTTPStatusError as exc:
+            raise OfferSourceUnavailable(
+                OfferCheckErrorCode.TRANSPORT_ERROR,
+                f"SuperStep: search returned HTTP {exc.response.status_code}",
+                retryable=True,
+                http_status=exc.response.status_code,
+            ) from exc
+        tiles = data.get("products")
+        if not isinstance(tiles, list):
+            raise MalformedOfferResponse()
+        for tile in tiles:
+            if not isinstance(tile, dict):
+                continue
+            variants = (tile.get("extra_data") or {}).get("variants")
+            if self._model_color_id(tile, variants) != model_color:
+                continue
+            moved_url = urljoin(self.base_url, str(tile.get("absolute_url") or ""))
+            if self._canonical_url(moved_url) != self._canonical_url(offer.canonical_url):
+                card = self._offer_card(moved_url)
+                if card:
+                    return card
+            raise OfferSourceUnavailable(
+                OfferCheckErrorCode.TRANSPORT_ERROR,
+                "SuperStep: color is listed in search but its page is missing",
+                retryable=True,
+            )
+        if int((data.get("pagination") or {}).get("num_pages") or 1) > 1:
+            raise OfferSourceUnavailable(
+                OfferCheckErrorCode.TRANSPORT_ERROR,
+                "SuperStep: color is not on the first search page",
+                retryable=True,
+            )
+        raise OfferNotFound(offer.canonical_url)
 
     def _color_key(self, variants: Any) -> str:
         """Атрибут, по которому сайт группирует цвета модели.

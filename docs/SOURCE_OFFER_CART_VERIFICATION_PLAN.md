@@ -1517,9 +1517,12 @@ offer-строк; штатный rollback следующих фаз — откл
   errors `0`, nginx 5xx `0`, public health зелёный.
 - [ ] SuperStep (04.11.2026): trusted adapter `check_offer` — один запрос
   `<ссылка цвета>?format=json` без прокси, boolean-наличие размера (точный `stock`
-  источника не хранится по решению владельца), 404 / `{"detail": "Bulunamadı."}` /
-  редирект не на товар → `not_found`, другой цвет по ссылке → `not_found`, HTML вместо
-  JSON → `access_blocked`, JSON без `product` → `malformed_response`. Contract tests в
+  источника не хранится по решению владельца). 404 / `{"detail": "Bulunamadı."}`
+  ссылки цвета (это ссылка одного размера) → поиск цвета по коду модели: нет в
+  поиске → `not_found`, нашёлся по другой ссылке → проверка по ней, иначе
+  `transport_error` (retryable); редирект не на товар → `transport_error`; другой
+  цвет по ссылке → `not_found`; HTML вместо JSON → `access_blocked`; JSON без
+  `product` → `malformed_response`. Обновление карточки — только сохранённый цвет. Contract tests в
   `test_offer_check_contract.py`. В production allowlist ещё не добавлен — после
   деплоя и canary.
 
