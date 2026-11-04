@@ -543,6 +543,26 @@ def test_source_not_found_disables_only_variants_on_opened_url(
 
     cache.delete(service._state_key(product.pk))
 
+    # Следующее открытие проверяет красный цвет в наличии, а пропавший чёрный
+    # больше не открывается: 404 по его ссылке окончательный.
+    calls = []
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_product_card_source_task.apply_async",
+        lambda *args, **kwargs: calls.append(kwargs),
+    )
+    assert service._target(product).offer.variant_key == "red"
+    repeated = service.request_refresh(product)
+    assert repeated["status"] == "pending"
+    assert len(calls) == 1
+
+    # Пропал и красный: оба цвета окончательно не найдены — новых запросов нет.
+    product.source_offers.filter(variant_key="red").update(
+        availability_status=ProductSourceOffer.AvailabilityStatus.OUT_OF_STOCK,
+        last_error_code="not_found",
+    )
+    cache.delete(service._state_key(product.pk))
+    cache.delete(service._lock_key(product.pk))
+
     def unexpected_enqueue(*_args, **_kwargs):
         raise AssertionError("terminal supplier absence must not enqueue another request")
 

@@ -9,6 +9,7 @@ variants__images и variants__sizes. Сериализаторы обязаны �
 
 import re
 import uuid
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -245,7 +246,7 @@ def test_default_colour_follows_price_rule_of_import(domain, prefetch):
         slug=f"polo-{slug}-{suffix}",
         category=category,
         brand=brand,
-        price="999.60",
+        price=Decimal("999.60"),
         currency="TRY",
         is_active=True,
     )
@@ -256,7 +257,7 @@ def test_default_colour_follows_price_rule_of_import(domain, prefetch):
             name=f"Polo v{position}",
             slug=f"polo-{slug}-v{position}-{suffix}",
             color=f"color-{position}",
-            price=price,
+            price=Decimal(price),
             currency="TRY",
             is_active=True,
             is_available=available,
