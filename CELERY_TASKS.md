@@ -52,6 +52,7 @@ Beat только публикует задачи. Для исполнения �
 | `catalog-nightly-stock-check` | `catalog.nightly_stock_check` | каждые 10 минут `01:00`–`04:50` и `06:00`–`06:20` (05:xx — пересчёт цен) | `celery` | Пачка ночной сверки наличия у бесплатных источников (LCW, IKEA, UmmaLand), ≤ 8 минут; только при `NIGHTLY_STOCK_CHECK_ENABLED=true`. `docs/NIGHTLY_STOCK_CHECK.md`. |
 | `catalog-nightly-stock-check-report` | `catalog.nightly_stock_check_report` | ежедневно `06:45` | `celery` | Итог ночной сверки владельцу в Telegram: сколько проверено, закончилось, вернулось, пропало у продавца. |
 | `catalog-indexnow-submit` | `catalog.indexnow_submit` | каждый час в `:45` | `celery` | Новые, изменённые (название, описание, наличие, переводы — не цена) и снятые страницы товаров, RU и EN, — в IndexNow (Bing, Яндекс); не больше `INDEXNOW_DAILY_URL_LIMIT` URL в сутки; только при `INDEXNOW_ENABLED=true`. `docs/INDEXNOW.md`. |
+| `catalog-resolve-cross-source-duplicates` | `catalog.resolve_cross_source_duplicates` | ежедневно `07:05` | `celery` | Полный пересчёт одинаковых товаров FLO ↔ SuperStep: показан более дорогой, второй скрыт; только при `CROSS_SOURCE_DUPLICATES_ENABLED=true`. `docs/CROSS_SOURCE_DUPLICATES.md`. |
 | `catalog-stale-products-media-stats` | `catalog.stale_products_media_stats` | ежедневно `06:55` | `celery` | Для «Неактуальных товаров» — сколько файлов и МБ освободит удаление (общие файлы не в счёт); только с R2 и при наличии кандидатов. `docs/STALE_PRODUCTS.md`. |
 
 ### Обогащение медиа лекарств

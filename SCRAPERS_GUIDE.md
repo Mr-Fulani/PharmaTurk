@@ -849,7 +849,10 @@ Product URL никогда не считается следующим chunk: и�
 - `manufacturer` → бренд, `sku` → артикул, `external_id = flo-<sku>`;
 - `price` → цена (TRY), `is_in_stock` + `options[].is_in_stock` → наличие;
 - `options[]` → размеры: каждый с `option_value` (размер), `barcode` (EAN),
-  `sku`, `is_in_stock` — кладутся в `fashion_variants[0]["sizes"]`;
+  `sku`, `is_in_stock` — кладутся в `fashion_variants[0]["sizes"]`; штрихкод
+  сохраняется в `gtin` размера, `model_kodu` (артикул производителя с цветом,
+  `DV5456-106`) — в `mpn` цвета: по ним находятся те же товары у SuperStep
+  ([docs/CROSS_SOURCE_DUPLICATES.md](docs/CROSS_SOURCE_DUPLICATES.md));
 - `media_gallery[]` → изображения (CDN `floimages.mncdn.com`, дедуп по URL);
 - `breadcrumb[]` → категория (последний уровень), `cinsiyet` → пол;
 - обувные turkish-поля смаплены на ключи `attribute_specs`: `materyal`→`material`,
@@ -901,7 +904,10 @@ Product URL никогда не считается следующим chunk: и�
   «32-33») — по значению, буквенные (XS…XXL) — по полю `order` сайта (у детской
   обуви `order` из разных систем: 2850, 3500, 200180…);
   штрихкод размера — только EAN из цифр (внутренние коды вида `1K35052T0HFXS`
-  не берутся);
+  не берутся), сохраняется в `gtin` размера; артикул производителя — код цвета
+  модели без приставки продавца маркетплейса (`34-IH9166.-` → `IH9166`) в `mpn`
+  цвета: по ним находятся те же товары у FLO
+  ([docs/CROSS_SOURCE_DUPLICATES.md](docs/CROSS_SOURCE_DUPLICATES.md));
 - цена = `price` (витрина); `old_price` — то, что сайт зачёркивает: «прежняя
   цена» `price_extra_field.previous_price` (турецкое правило о самой низкой цене
   за последние дни), а без неё — `retail_price`; только если выше цены. Сверено
