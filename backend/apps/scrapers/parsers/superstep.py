@@ -693,7 +693,7 @@ class SuperstepParser(BaseScraper):
             self._build_color_variant(color_card, color_order.get(code, len(color_order)))
             for code, color_card in color_rows
         ]
-        details = self._color_details(card)
+        details = self._color_details(card, {code: color_card["product"] for code, color_card in color_rows})
         for (code, color_card), variant in zip(color_rows, variants):
             if code in details:
                 variant["color"] = f"{variant['color']}{COLOR_DETAIL_SEPARATOR}{details[code]}"[:50]
@@ -1019,28 +1019,29 @@ class SuperstepParser(BaseScraper):
             color = lowered[:1].upper() + lowered[1:]
         return color
 
-    def _color_details(self, card: Dict[str, Any]) -> Dict[str, str]:
+    def _color_details(self, card: Dict[str, Any], opened: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
         """Уточнения одинаковых названий цветов модели: код цвета → уточнение.
 
-        У Puma 399025 два «Beyaz», у Anta три «Siyah» — покупатель видел бы
-        одинаковые цвета. Считается по всем цветам модели из карточки (у
-        вариантов цвета в карточке полные атрибуты), а не по открытым: иначе
-        «Beyaz · …» превращался бы в «Beyaz», когда соседний цвет распродан.
-        Уточнение — расцветка производителя без турецких слов
-        (``integration_erp_renk_aciklama`` «BEYAZ-Velvet Moss» → «Velvet Moss»),
-        а если у группы она пустая или совпадает — код цвета («CHE»).
+        У Puma 399025 два «Beyaz», у UGG 1173891 три «Kahverengi» — покупатель
+        видел бы одинаковые цвета. Группы считаются по всем цветам модели, а не
+        только по открытым, — уточнение не зависит от того, распродан ли соседний
+        цвет. Название и расцветка — из карточки открытого цвета, а для
+        неоткрытого — из его варианта в карточке: у собственных товаров SuperStep
+        (``integration_*``) там полные атрибуты. У маркетплейса (``mp_*``) в
+        вариантах названий нет, но цвета там группирует ``mp_color`` — одинаковых
+        названий у разных вариантов не бывает.
+        Уточнение — расцветка без турецких слов (``_colorway``), а если у группы
+        она пустая или совпадает — код цвета (``integration_renk``: «CHE»).
         """
         color_key = self._color_key(card["variants"])
         groups: Dict[str, List[Tuple[str, str, str]]] = {}
         for option in self._variant_options(card["variants"], (color_key,)):
-            product = option.get("product") or {}
+            code = self._option_value(option)
+            product = opened.get(code) or option.get("product") or {}
             name = self._color_name(product)
             if name:
-                attrs = product.get("attributes") or {}
-                fallback = str(attrs.get("integration_renk") or self._option_value(option))
-                groups.setdefault(name.casefold(), []).append(
-                    (self._option_value(option), self._colorway(product), fallback)
-                )
+                fallback = str((product.get("attributes") or {}).get("integration_renk") or code)
+                groups.setdefault(name.casefold(), []).append((code, self._colorway(product), fallback))
         details: Dict[str, str] = {}
         for rows in groups.values():
             if len(rows) < 2:
@@ -1057,8 +1058,11 @@ class SuperstepParser(BaseScraper):
         """white black gray grey brown blue navy green red pink purple violet orange yellow
         beige cream ivory gold silver bronze chestnut sand olive khaki burgundy maroon teal
         turquoise charcoal tan camel mint lilac lavender coral rose multi multicolor natural
-        nude stone taupe mocha espresso cinnamon rust wine sky sage moss slate graphite smoke""".split()
+        nude stone taupe mocha espresso cinnamon rust wine sky sage moss slate graphite smoke
+        indigo dark light""".split()
     )
+    # Турецкие модификаторы цвета (не цвета словаря): «KOYU GRI-Black» → «Black».
+    TR_COLOR_MODIFIERS = frozenset({"koyu", "acik", "kirik", "parlak", "mat", "tozlu", "cok", "renkli", "desenli", "melanj"})
 
     @classmethod
     def _colorway(cls, product: Dict[str, Any]) -> str:
@@ -1068,7 +1072,7 @@ class SuperstepParser(BaseScraper):
         «TOZLU KAKAO» → «» (латиница без английского цвета — не берём).
         """
         text = clean_text(str((product.get("attributes") or {}).get("integration_erp_renk_aciklama") or ""))
-        text = re.sub(r"[^\W\d_]+", lambda m: "" if translate_turkish_color(m.group(0), "en") else m.group(0), text)
+        text = re.sub(r"[^\W\d_]+", lambda m: "" if cls._is_turkish_color_word(m.group(0)) else m.group(0), text)
         text = re.sub(r"\(\s*\)", "", text)
         text = re.sub(r"\s*([/-])\s*(?:[/-]\s*)+", r"\1", text)
         text = clean_text(text).strip(" -/")
@@ -1078,6 +1082,14 @@ class SuperstepParser(BaseScraper):
         if not any(word.lower() in cls.EN_COLOR_WORDS for word in words):
             return ""
         return text
+
+    @classmethod
+    def _is_turkish_color_word(cls, word: str) -> bool:
+        """Турецкое слово цвета или модификатор; английские цвета, совпадающие со
+        словарём («INDIGO»), остаются — иначе «INDIGO-White» терял бы смысл."""
+        if word.lower() in cls.EN_COLOR_WORDS:
+            return False
+        return bool(translate_turkish_color(word, "en")) or superstep_subgroup_key(word) in cls.TR_COLOR_MODIFIERS
 
     # Аббревиатуры брендов, которые пишутся капсом.
     BRAND_ABBREVIATIONS = frozenset({"UGG", "EA7", "DC", "HUF", "ASICS", "DKNY", "BOSS", "NBA", "NFL", "MLB"})
@@ -1093,7 +1105,8 @@ class SuperstepParser(BaseScraper):
         words = []
         for word in brand.split():
             keep = word in self.BRAND_ABBREVIATIONS or (len(word) <= 4 and not re.search(r"[AEIOUİÖÜ]", word))
-            words.append(word if keep else word.capitalize())
+            # «KİNETİX»: İ → I до capitalize(), иначе «Ki̇neti̇x» с комбинируемой точкой.
+            words.append(word if keep else word.replace("İ", "I").capitalize())
         return " ".join(words)
 
     def _extra_attributes(self, product: Dict[str, Any]) -> Dict[str, Any]:

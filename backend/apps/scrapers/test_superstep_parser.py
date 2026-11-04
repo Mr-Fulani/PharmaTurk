@@ -397,6 +397,28 @@ def test_color_detail_does_not_depend_on_sibling_stock():
     assert [v["color"] for v in product.attributes["fashion_variants"]] == ["Beyaz · PUMA White-PUMA Black"]
 
 
+def test_color_detail_from_opened_cards_when_variants_have_no_color_names():
+    """У вариантов маркетплейса (mp_*) в карточке нет названий цветов —
+    одинаковые цвета находятся по карточкам открытых цветов."""
+    cards = {}
+    for path, name in ((PUMA_399025_01, "card_puma_399025_01.json"), (PUMA_399025_06, "card_puma_399025_06.json")):
+        card = json.loads(_fixture(name))
+        for group in card["variants"]:
+            for option in group["options"]:
+                attrs = option["product"]["attributes"]
+                for key in ("integration_renk_detay", "integration_hos_renk_detay", "integration_renk_tonu",
+                            "integration_erp_renk_aciklama"):
+                    attrs.pop(key, None)
+        cards[path] = json.dumps(card)
+    parser = _parser(cards)
+
+    product = parser.parse_product_detail(SITE + PUMA_399025_01)
+
+    assert [v["color"] for v in product.attributes["fashion_variants"]] == [
+        "Beyaz · Velvet Moss", "Beyaz · PUMA White-PUMA Black",
+    ]
+
+
 @pytest.mark.parametrize(
     "colorway,expected",
     [
@@ -406,6 +428,10 @@ def test_color_detail_does_not_depend_on_sibling_stock():
         ("CHESTNUT (KAHVE)", "CHESTNUT"),
         ("TOZLU KAKAO", ""),  # турецкие слова вне словаря цветов — не берём
         ("LIGHT BRONZE", "LIGHT BRONZE"),
+        ("KOYU GRI-Black", "Black"),  # турецкий модификатор «koyu» латиницей тоже убирается
+        ("AÇIK MAVİ/White", "White"),
+        ("INDIGO-White", "INDIGO-White"),  # английский цвет из словаря не теряется
+        ("Siyah/Gümüş", ""),  # Anta: расцветка по-турецки — тогда код цвета
     ],
 )
 def test_colorway_without_turkish_color_words(colorway, expected):
@@ -416,6 +442,7 @@ def test_same_color_names_without_colorway_get_the_color_code():
     cards = {}
     for path, name in ((PUMA_399025_01, "card_puma_399025_01.json"), (PUMA_399025_06, "card_puma_399025_06.json")):
         card = json.loads(_fixture(name))
+        card["product"]["attributes"].pop("integration_erp_renk_aciklama", None)
         for group in card["variants"]:
             for option in group["options"]:
                 option["product"]["attributes"].pop("integration_erp_renk_aciklama", None)
@@ -437,6 +464,7 @@ def test_same_color_names_without_colorway_get_the_color_code():
         ("STANLEY", "Stanley"),
         ("NEW BALANCE", "New Balance"),
         # Аббревиатуры не трогаем.
+        ("KİNETİX", "Kinetix"),  # İ → I, без комбинируемой точки
         ("ASICS", "ASICS"),
         ("DKNY", "DKNY"),
         ("UGG", "UGG"),
