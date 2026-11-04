@@ -42,8 +42,8 @@ class CrossSourceDuplicate(models.Model):
     )
     match = models.CharField(_("Как узнали"), max_length=20, choices=Match.choices)
     reason = models.CharField(_("Почему показан другой"), max_length=20, choices=Reason.choices)
-    hidden_price = models.DecimalField(_("Цена скрытого"), max_digits=10, decimal_places=2, null=True, blank=True)
-    shown_price = models.DecimalField(_("Цена показанного"), max_digits=10, decimal_places=2, null=True, blank=True)
+    hidden_price = models.DecimalField(_("Цена скрытого на сайте, лиры"), max_digits=10, decimal_places=2, null=True, blank=True)
+    shown_price = models.DecimalField(_("Цена показанного на сайте, лиры"), max_digits=10, decimal_places=2, null=True, blank=True)
     currency = models.CharField(_("Валюта"), max_length=5, blank=True)
     product_hidden = models.BooleanField(
         _("Скрыта вся карточка"),

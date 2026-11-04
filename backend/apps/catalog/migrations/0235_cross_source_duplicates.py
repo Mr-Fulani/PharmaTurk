@@ -94,11 +94,11 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "hidden_price",
-                    models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True, verbose_name="Цена скрытого"),
+                    models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True, verbose_name="Цена скрытого на сайте, лиры"),
                 ),
                 (
                     "shown_price",
-                    models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True, verbose_name="Цена показанного"),
+                    models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True, verbose_name="Цена показанного на сайте, лиры"),
                 ),
                 ("currency", models.CharField(blank=True, max_length=5, verbose_name="Валюта")),
                 (

@@ -105,7 +105,8 @@ class Command(BaseCommand):
         stock = "есть размеры" if member.available else "нет размеров"
         return (
             f"{SOURCE_TITLES.get(member.source, member.source)} #{member.product_id} "
-            f"«{names.get(member.product_id, '')}» {member.price} {member.currency}, {stock}"
+            f"«{names.get(member.product_id, '')}» на сайте {member.site_price} {member.currency} "
+            f"(у продавца {member.price}), {stock}"
         )
 
     @staticmethod

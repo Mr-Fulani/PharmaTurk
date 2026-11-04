@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 
 from apps.catalog.models import (
     Brand,
+    Category,
     CrossSourceDuplicate,
     Product,
     ShoeProduct,
@@ -420,3 +421,17 @@ def test_flag_off_still_fixes_card_price_from_shown_colors(settings):
     resolve_for_products([flo.base_product_id])
 
     assert Product.objects.get(pk=flo.base_product_id).price == Decimal("2500")
+
+
+def test_rule2_compares_site_price_with_markup():
+    """«Дороже» — для покупателя: цена продавца с нашей наценкой (раздел, бренд)."""
+    flo, flo_color, superstep, superstep_color = _pair("3000", "3500")
+    # У раздела FLO своя наценка 50 %: 4 500 на сайте против 3 500 (+ общая) у SuperStep.
+    section = Category.objects.create(name="Кроссовки FLO", slug=f"flo-sneakers-{uuid4().hex[:8]}", margin_percent=50)
+    Product.objects.filter(pk=flo.base_product_id).update(category=section)
+
+    CrossSourceDuplicateService().resolve()
+
+    assert _active(flo_color) and not _active(superstep_color)
+    row = CrossSourceDuplicate.objects.get()
+    assert row.shown_price == Decimal("4500.00")

@@ -20,7 +20,10 @@
 (``on_product_retired``). Пересчёт идёт под ``pg_advisory_xact_lock``, перед записью
 цвета группы перечитываются ``select_for_update``.
 
-Сравниваем цену продавца в лирах: наценка у обоих одна (бренд → раздел → общая).
+Сравниваем цену на сайте: цену продавца в лирах с нашей наценкой (бренд → раздел →
+общая, ``get_effective_product_markup``). Наценка у двух предложений может различаться:
+товар FLO и SuperStep ложится в разные разделы (и в разные строки бренда), у раздела
+бывает своя наценка (``--section-markup``). Курс валюты у обоих один, порядок не меняет.
 """
 from __future__ import annotations
 
@@ -53,6 +56,8 @@ from apps.catalog.models import (
     UnderwearVariant,
     UnderwearVariantSize,
 )
+
+from apps.catalog.utils.product_markup import apply_markup_percent, get_effective_product_markup
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +134,13 @@ class Member:
     article: str
     brand_name: str = ""
     color: str = ""
+    site_price: Decimal | None = None  # цена продавца с нашей наценкой
     gtins: set[str] = field(default_factory=set)
     row: CrossSourceDuplicate | None = None
 
     def rank(self) -> tuple:
         # Дороже — выше; без цены — ниже всех; при равной цене остаётся показанный.
-        return (self.price is not None, self.price or Decimal("0"), self.visible, -self.variant_id)
+        return (self.site_price is not None, self.site_price or Decimal("0"), self.visible, -self.variant_id)
 
 
 @dataclass
@@ -157,7 +163,7 @@ def choose_shown(members: list[Member]) -> tuple[Member, str]:
         shown = max([m for m in members if m.row is None] or members, key=Member.rank)
     top = max(members, key=Member.rank)
     reason = CrossSourceDuplicate.Reason.PRICE
-    if top is not shown and (top.price or 0) > (shown.price or 0):
+    if top is not shown and (top.site_price or 0) > (shown.site_price or 0):
         reason = CrossSourceDuplicate.Reason.STOCK
     return shown, reason
 
@@ -282,6 +288,7 @@ class CrossSourceDuplicateService:
             )
         if not members:
             return members
+        self._attach_site_prices(members.values())
         # Подзапрос, а не список id: при полном проходе цветов десятки тысяч.
         ids = qs.values("id")
         for variant_id, code in size_model.objects.filter(variant_id__in=ids).exclude(gtin="").values_list(
@@ -293,6 +300,26 @@ class CrossSourceDuplicateService:
             if row.hidden_variant_id in members:
                 members[row.hidden_variant_id].row = row
         return members
+
+    @staticmethod
+    def _attach_site_prices(members: Iterable[Member]) -> None:
+        """Цена на сайте = цена продавца × наценка карточки (одна на бренд + раздел)."""
+        members = list(members)
+        margins: dict[tuple, Decimal] = {}
+        by_product: dict[int, Decimal] = {}
+        products = Product.objects.filter(pk__in={m.product_id for m in members}).select_related(
+            "brand", "category"
+        ).only(  # без тяжёлого external_data карточки
+            "id", "brand", "category", "brand__margin_percent", "category__margin_percent", "category__parent"
+        )
+        for product in products:
+            key = (product.brand_id, product.category_id)
+            if key not in margins:
+                margins[key] = get_effective_product_markup(product)[0]
+            by_product[product.pk] = margins[key]
+        for m in members:
+            if m.price is not None:
+                m.site_price = apply_markup_percent(m.price, by_product.get(m.product_id, Decimal("0")))
 
     def _neighbour_ids(self, product_type: str, members: dict[int, Member]) -> set[int]:
         """Цвета другого продавца, которые могут совпасть с уже загруженными."""
@@ -420,8 +447,8 @@ class CrossSourceDuplicateService:
                     "hidden_product_id": member.product_id,
                     "match": match,
                     "reason": reason,
-                    "hidden_price": member.price,
-                    "shown_price": shown.price,
+                    "hidden_price": member.site_price,
+                    "shown_price": shown.site_price,
                     "currency": member.currency,
                 }
                 if member.row is None:
