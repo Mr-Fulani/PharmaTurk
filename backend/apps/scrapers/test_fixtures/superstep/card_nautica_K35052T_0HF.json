@@ -1,0 +1,595 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 692265,
+  "name": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+  "sku": "4755548",
+  "base_code": "K35052T",
+  "attributes": {
+   "brand_link": "/nautica/",
+   "filterable_size": "XS",
+   "integration_renk": "0HF",
+   "integration_yaka": "Polo",
+   "integration_beden": "XS",
+   "integration_desen": "026",
+   "integration_marka": "021",
+   "integration_model": "K35052T",
+   "integration_tanim": "POLO",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "004",
+   "integration_cinsiyet": "Erkek",
+   "integration_alt_marka": "NAUTICA",
+   "integration_color_hex": "#ababab",
+   "integration_erp_sezon": "24SS",
+   "integration_renk_tonu": "GRİ",
+   "integration_urun_ozel": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "%95 PAMUK %5 ELASTAN",
+   "integration_erp_mensei": "TURKIYE",
+   "integration_model_renk": "K35052T.0HF",
+   "integration_renk_detay": "Gri",
+   "integration_urun_detay": "Slim Fit",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "MEN",
+   "integration_kalem_icerik": "<p><strong>Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt</strong></p>\n<p>Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt, yüksek pamuk oranlı esnek kumaşı ve modern kesimiyle zamansız şıklığı gün boyu süren konforla birleştiren özel bir tasarımdır. Günlük yaşamın dinamik temposuna mükemmel bir uyum sağlayan Nautica t-shirt, gardırobunun en işlevsel ve stil sahibi parçalarından biri olmaya adaydır. Nefes alabilen doğal yapısı sayesinde sıcak günlerde bile ferah bir kullanım sunarken, vücudu nazikçe saran yapısıyla daha fit ve derli toplu bir görünüm elde etmene yardımcı olur. Klasik polo yaka detayının getirdiği zarafet, modern şehir hayatının casual çizgileriyle buluşarak</p>",
+   "integration_renk_tonu_kod": "005",
+   "integration_urun_ana_grup": "001",
+   "integration_hos_renk_detay": "Gri",
+   "integration_hos_urun_detay": "Erkek Polo",
+   "integration_base_code_format": "K35052T.0HF.XS",
+   "integration_erenp_erenbarkod": "8001047555487",
+   "integration_hos_kalem_icerik": "<p>%95 pamuklu dokusu ile uzun yıllar vazgeçilmez bir parçanız olmayı hedefleyen model, şıklığı ve rahatlığı bir arada sunuyor.</p><br><p><strong>Teknik Özellikler</strong><li>%95 Pamuk %5 Elastan</li><li>Slim Fit</li><li>Polo Yaka</li><li>Kısa Kollu</li><li>Modelin Bilgileri; Boy: 190 cm, Göğüs: 104 cm, Bel: 85 cm</li><li>Modelin Giydiği Beden: M/32</li>",
+   "integration_yurt_disi_barkod": "1K35052T0HFXS",
+   "integration_erp_renk_aciklama": "SHARKFIN GREY",
+   "integration_global_attribute7": "POLO"
+  },
+  "attribute_set": 3,
+  "attributes_kwargs": {
+   "filterable_size": {
+    "label": "XS",
+    "value": "XS",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "0HF",
+    "value": "0HF",
+    "data_type": "dropdown"
+   },
+   "integration_yaka": {
+    "label": "Polo",
+    "value": "Polo",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "XS",
+    "value": "XS",
+    "data_type": "dropdown"
+   },
+   "integration_desen": {
+    "label": "026",
+    "value": "026",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "Nautica",
+    "value": "021",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "POLO",
+    "value": "POLO",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Polo",
+    "value": "004",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Erkek",
+    "value": "Erkek",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "Nautica",
+    "value": "NAUTICA"
+   },
+   "integration_erp_sezon": {
+    "label": "24SS",
+    "value": "24SS",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "GRİ",
+    "value": "GRİ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Gri",
+    "value": "Gri",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Erkek",
+    "value": "MEN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Giyim",
+    "value": "001",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 3441898,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2023/07/28/8388232/698d110b-c969-451d-8e36-761f5dead255.jpg",
+    "order": 20,
+    "created_date": "2025-07-04T05:21:31.563581Z"
+   },
+   {
+    "pk": 3441899,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2023/07/28/8388314/f8193fee-d47b-41c7-91b8-c994ab0c968b.jpg",
+    "order": 22,
+    "created_date": "2025-07-04T05:21:33.164522Z"
+   },
+   {
+    "pk": 3441900,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2023/07/28/8388394/c3456b3c-1bbe-4d0f-9af9-faac3f46d6e7.jpg",
+    "order": 30,
+    "created_date": "2025-07-04T05:21:33.240369Z"
+   },
+   {
+    "pk": 3441901,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2023/07/28/8388371/50b6ef31-393a-4911-9d59-d2adb4bc24c7.jpg",
+    "order": 31,
+    "created_date": "2025-07-04T05:21:33.317084Z"
+   }
+  ],
+  "price": "749.70",
+  "in_stock": false,
+  "currency_type": "try",
+  "retail_price": "2499",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/nautica-erkek-gri-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-3/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 0,
+  "created_date": "2025-07-04T05:04:15.140750Z",
+  "modified_date": "2026-11-02T13:48:30.606506Z",
+  "basket_offers": [],
+  "is_listable": false,
+  "listing_code": "0HF",
+  "price_extra_field": {
+   "previous_price": "899.00"
+  }
+ },
+ "variants": [
+  {
+   "attribute_key": "integration_renk",
+   "attribute_name": "Renk",
+   "options": [
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "0",
+     "label": "0HF",
+     "value": "0HF",
+     "product": {
+      "pk": 692265,
+      "name": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755548",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "XS",
+       "integration_renk": "0HF",
+       "integration_beden": "XS",
+       "integration_model_renk": "K35052T.0HF",
+       "integration_yurt_disi_barkod": "1K35052T0HFXS"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "749.70",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-gri-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-07-04T05:04:15.140750Z",
+      "modified_date": "2026-11-02T13:48:30.606506Z",
+      "price_extra_field": {
+       "previous_price": "899.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "0",
+     "label": "4MY",
+     "value": "4MY",
+     "product": {
+      "pk": 691076,
+      "name": "Nautica Erkek Mavi Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "5484165",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "XS",
+       "integration_renk": "4MY",
+       "integration_beden": "XS",
+       "integration_model_renk": "K35052T.4MY",
+       "integration_yurt_disi_barkod": "1K35052T4MYXS"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "999.60",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-mavi-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-5/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 1,
+      "created_date": "2025-07-03T15:51:31.548868Z",
+      "modified_date": "2026-11-02T13:38:45.056533Z",
+      "price_extra_field": {
+       "previous_price": "1249.50"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "260051",
+     "label": "0TB",
+     "value": "0TB",
+     "product": {
+      "pk": 692185,
+      "name": "Nautica Erkek Siyah Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755554",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "XS",
+       "integration_renk": "0TB",
+       "integration_beden": "XS",
+       "integration_model_renk": "K35052T.0TB",
+       "integration_yurt_disi_barkod": "1K35052T0TBXS"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "499",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-siyah-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-07-04T05:03:59.928077Z",
+      "modified_date": "2026-11-02T12:56:54.627615Z",
+      "price_extra_field": {
+       "previous_price": "999.60"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "260054",
+     "label": "1BW",
+     "value": "1BW",
+     "product": {
+      "pk": 691717,
+      "name": "Nautica Erkek Beyaz Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755560",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "XS",
+       "integration_renk": "1BW",
+       "integration_beden": "XS",
+       "integration_model_renk": "K35052T.1BW",
+       "integration_yurt_disi_barkod": "1K35052T1BWXS"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "499",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-beyaz-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-1/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 136,
+      "created_date": "2025-07-04T05:02:30.103363Z",
+      "modified_date": "2026-11-02T12:56:24.214216Z",
+      "price_extra_field": {
+       "previous_price": "999.60"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "attribute_key": "integration_beden",
+   "attribute_name": "Beden",
+   "options": [
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "11",
+     "label": "XS",
+     "value": "XS",
+     "product": {
+      "pk": 692265,
+      "name": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755548",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "XS",
+       "integration_renk": "0HF",
+       "integration_beden": "XS",
+       "integration_model_renk": "K35052T.0HF",
+       "integration_yurt_disi_barkod": "1K35052T0HFXS"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "749.70",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-gri-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-07-04T05:04:15.140750Z",
+      "modified_date": "2026-11-02T13:48:30.606506Z",
+      "price_extra_field": {
+       "previous_price": "899.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "20",
+     "label": "S",
+     "value": "S",
+     "product": {
+      "pk": 692286,
+      "name": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755546",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "S",
+       "integration_renk": "0HF",
+       "integration_beden": "S",
+       "integration_model_renk": "K35052T.0HF",
+       "integration_yurt_disi_barkod": "1K35052T0HFS"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "749.70",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-gri-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-4/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-07-04T05:04:19.162378Z",
+      "modified_date": "2026-11-02T13:16:31.401170Z",
+      "price_extra_field": {
+       "previous_price": "899.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "32",
+     "label": "M",
+     "value": "M",
+     "product": {
+      "pk": 692220,
+      "name": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755545",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "M",
+       "integration_renk": "0HF",
+       "integration_beden": "M",
+       "integration_model_renk": "K35052T.0HF",
+       "integration_yurt_disi_barkod": "1K35052T0HFM"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "749.70",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/692220/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-07-04T05:04:06.733094Z",
+      "modified_date": "2026-11-02T13:24:46.660170Z",
+      "price_extra_field": {
+       "previous_price": "899.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "41",
+     "label": "L",
+     "value": "L",
+     "product": {
+      "pk": 692210,
+      "name": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755544",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "L",
+       "integration_renk": "0HF",
+       "integration_beden": "L",
+       "integration_model_renk": "K35052T.0HF",
+       "integration_yurt_disi_barkod": "1K35052T0HFL"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "749.70",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-gri-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-07-04T05:04:04.943340Z",
+      "modified_date": "2026-11-02T13:44:23.468467Z",
+      "price_extra_field": {
+       "previous_price": "899.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "50",
+     "label": "XL",
+     "value": "XL",
+     "product": {
+      "pk": 691711,
+      "name": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755547",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "XL",
+       "integration_renk": "0HF",
+       "integration_beden": "XL",
+       "integration_model_renk": "K35052T.0HF",
+       "integration_yurt_disi_barkod": "1K35052T0HFXL"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "749.70",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-gri-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t-1/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-07-04T05:02:29.076480Z",
+      "modified_date": "2026-11-02T13:24:47.201283Z",
+      "price_extra_field": {
+       "previous_price": "899.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "55",
+     "label": "XXL",
+     "value": "XXL",
+     "product": {
+      "pk": 692257,
+      "name": "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt",
+      "sku": "4755549",
+      "base_code": "K35052T",
+      "attributes": {
+       "filterable_size": "2XL",
+       "integration_renk": "0HF",
+       "integration_beden": "XXL",
+       "integration_model_renk": "K35052T.0HF",
+       "integration_yurt_disi_barkod": "1K35052T0HFXXL"
+      },
+      "attribute_set": 3,
+      "extra_attributes": {},
+      "price": "749.70",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "2499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/nautica-erkek-gri-slim-fit-kisa-kollu-polo-yaka-t-shirt/k35052t/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-07-04T05:04:13.977132Z",
+      "modified_date": "2026-11-02T13:27:34.281657Z",
+      "price_extra_field": {
+       "previous_price": "899.00"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": null,
+ "offers": []
+}

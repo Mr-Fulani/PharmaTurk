@@ -1,0 +1,799 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 843338,
+  "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+  "sku": "34-6609767",
+  "base_code": "34-IH9166",
+  "attributes": {
+   "mp_size": "46",
+   "mp_color": "-",
+   "brand_link": "/adidas/",
+   "mp_unified": "yes",
+   "mp_description": "<p>Adımlarını kahve tonlarının sıcaklığıyla taçlandırmaya hazır mısın? Zamana meydan okuyan tasarımıyla adidas Samba OG Kadın Kahverengi Sneaker, her kombininin yıldızı olmaya aday. Klasikleşmiş silüeti ve modern dokunuşlarıyla bu sneaker, şehir hayatının ritmine mükemmel uyum sağlar. Gün boyu konfor sunan yapısıyla, tarzından ödün vermeden rahatlığı deneyimleyebilirsin.</p><h2>adidas Samba OG Kadın Kahverengi Sneaker Özellikleri</h2><li>Bu ikonik sneaker, kahverengi tonlarıyla zamansız bir şıklık sunar ve kolayca kombinlenebilir.</li><li>Klasik T burun detayı ve dikişli panelleriyle, modelin özgün estetiğini yansıtır.</li><li>Günlük kullanıma uygun yapısıyla, adımlarına hafiflik ve konfor</p>",
+   "mp_eren_barkod": "8001066097678",
+   "filterable_size": "46",
+   "integration_renk": "-",
+   "integration_marka": "013",
+   "integration_tanim": "AYAKKABI",
+   "mp_basecodeformat": "IH9166.-.11",
+   "mp_yurtdisi_barkod": "4068805874857",
+   "integration_alt_grup": "088",
+   "integration_cinsiyet": "Unisex",
+   "integration_alt_marka": "ADIDAS",
+   "integration_clean_kod": "HARİÇ",
+   "integration_renk_tonu": "KAHVERENGİ",
+   "integration_model_renk": "34-IH9166.-",
+   "integration_erp_cinsiyet": "MEN",
+   "integration_urun_ana_grup": "005"
+  },
+  "attribute_set": 40,
+  "attributes_kwargs": {
+   "mp_size": {
+    "label": "46",
+    "value": "46",
+    "data_type": "valuelabel"
+   },
+   "mp_color": {
+    "label": "-",
+    "value": "-",
+    "data_type": "valuelabel"
+   },
+   "mp_unified": {
+    "label": "yes",
+    "value": "yes",
+    "data_type": "dropdown"
+   },
+   "filterable_size": {
+    "label": "46",
+    "value": "46",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "-",
+    "value": "-",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "adidas",
+    "value": "013",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "AYAKKABI",
+    "value": "AYAKKABI",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Spor Ayakkabı & Sneaker",
+    "value": "088",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Unisex",
+    "value": "Unisex",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "adidas",
+    "value": "ADIDAS",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "KAHVERENGİ",
+    "value": "KAHVERENGİ",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Erkek",
+    "value": "MEN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Ayakkabı",
+    "value": "005",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 4922279,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261231/4413139d-9ce3-458e-9261-edeb39d85c28.jpg",
+    "order": 20,
+    "created_date": "2026-08-27T05:06:50.824668Z"
+   },
+   {
+    "pk": 4922272,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261206/5b77b908-543e-473d-b2dd-1c158d33b2c2.jpg",
+    "order": 21,
+    "created_date": "2026-08-27T05:06:50.098709Z"
+   },
+   {
+    "pk": 4922280,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261234/9f1fe35f-c796-4def-905c-bd3af027c44d.jpg",
+    "order": 22,
+    "created_date": "2026-08-27T05:06:50.894994Z"
+   },
+   {
+    "pk": 4922290,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261234/4bd399b7-4bee-471e-aa88-585a06978c22.jpg",
+    "order": 30,
+    "created_date": "2026-08-27T05:06:51.900778Z"
+   },
+   {
+    "pk": 4922285,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261231/ee34234a-1276-46a5-b810-187a74ab26db.jpg",
+    "order": 31,
+    "created_date": "2026-08-27T05:06:51.410340Z"
+   },
+   {
+    "pk": 4922261,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261220/3b154a4a-ef8e-4e78-b4f5-6cb7b90fe57b.jpg",
+    "order": 32,
+    "created_date": "2026-08-27T05:06:49.012051Z"
+   },
+   {
+    "pk": 4922295,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261214/ba146376-4dce-4c8b-9ca6-00d3642fb344.jpg",
+    "order": 33,
+    "created_date": "2026-08-27T05:06:52.355999Z"
+   },
+   {
+    "pk": 4922269,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261216/b8941c4a-00c8-438b-a7ad-7f8c765848fa.jpg",
+    "order": 34,
+    "created_date": "2026-08-27T05:06:49.794398Z"
+   },
+   {
+    "pk": 4922270,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/10/78261231/0f54d4ab-a43d-479a-916a-3bfbd907eb0f.jpg",
+    "order": 35,
+    "created_date": "2026-08-27T05:06:49.898061Z"
+   }
+  ],
+  "price": "7999",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "7999",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/adidas-samba-og-unisex-kahverengi-sneaker/34-ih9166-5/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 6,
+  "created_date": "2026-08-27T05:06:42.410653Z",
+  "modified_date": "2026-09-30T05:27:14.074384Z",
+  "basket_offers": [
+   {
+    "pk": 317072,
+    "label": "SEPETTE %40 İNDİRİM",
+    "listing_kwargs": {
+     "quantity": 1,
+     "discounted_total_price": 4799.4,
+     "discount": 3199.6,
+     "price": "7999",
+     "retail_price": "7999"
+    },
+    "kwargs": {
+     "show_benefit_products": false
+    },
+    "client_types": []
+   }
+  ],
+  "is_listable": true,
+  "listing_code": "-",
+  "price_extra_field": {}
+ },
+ "variants": [
+  {
+   "attribute_key": "mp_size",
+   "attribute_name": "MP Size",
+   "options": [
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4300",
+     "label": "36",
+     "value": "36",
+     "product": {
+      "pk": 839802,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609768",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "36",
+       "mp_color": "-",
+       "filterable_size": "36",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874772",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/839802/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-08-26T18:34:16.532680Z",
+      "modified_date": "2026-11-02T10:50:59.873442Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4350",
+     "label": "36,5",
+     "value": "36,5",
+     "product": {
+      "pk": 839892,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609769",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "36,5",
+       "mp_color": "-",
+       "filterable_size": "36,5",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805871115",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/adidas-samba-og-unisex-kahverengi-sneaker/34-ih9166-4/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-08-26T18:34:26.208920Z",
+      "modified_date": "2026-11-02T10:51:01.702797Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4600",
+     "label": "37",
+     "value": "37",
+     "product": {
+      "pk": 839778,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609770",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "37",
+       "mp_color": "-",
+       "filterable_size": "37",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874802",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/adidas-samba-og-unisex-kahverengi-sneaker/34-ih9166/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-08-26T18:34:14.012987Z",
+      "modified_date": "2026-11-02T10:51:02.309775Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4900",
+     "label": "38",
+     "value": "38",
+     "product": {
+      "pk": 839788,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609771",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "38",
+       "mp_color": "-",
+       "filterable_size": "38",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805871139",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/adidas-samba-og-unisex-kahverengi-sneaker/34-ih9166-1/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-08-26T18:34:15.009875Z",
+      "modified_date": "2026-11-02T10:51:01.085198Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4950",
+     "label": "38,5",
+     "value": "38,5",
+     "product": {
+      "pk": 839793,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609772",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "38,5",
+       "mp_color": "-",
+       "filterable_size": "38,5",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874826",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/839793/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-08-26T18:34:15.627715Z",
+      "modified_date": "2026-11-02T10:51:00.496754Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "5150",
+     "label": "39",
+     "value": "39",
+     "product": {
+      "pk": 839838,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609773",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "39",
+       "mp_color": "-",
+       "filterable_size": "39",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874833",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/839838/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-08-26T18:34:20.618448Z",
+      "modified_date": "2026-11-02T10:51:02.767462Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "5450",
+     "label": "40",
+     "value": "40",
+     "product": {
+      "pk": 839834,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609774",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "40",
+       "mp_color": "-",
+       "filterable_size": "40",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874840",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/adidas-samba-og-unisex-kahverengi-sneaker/34-ih9166-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-08-26T18:34:20.216518Z",
+      "modified_date": "2026-11-02T10:51:03.294130Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "5850",
+     "label": "41",
+     "value": "41",
+     "product": {
+      "pk": 843343,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609775",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "41",
+       "mp_color": "-",
+       "filterable_size": "41",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874864",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/843343/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 1,
+      "created_date": "2026-08-27T05:06:43.588256Z",
+      "modified_date": "2026-10-14T17:51:33.023556Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "6200",
+     "label": "42",
+     "value": "42",
+     "product": {
+      "pk": 843339,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609776",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "42",
+       "mp_color": "-",
+       "filterable_size": "42",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805871122",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/843339/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 27,
+      "created_date": "2026-08-27T05:06:42.511180Z",
+      "modified_date": "2026-09-30T05:27:14.085609Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "6250",
+     "label": "42,5",
+     "value": "42,5",
+     "product": {
+      "pk": 843337,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609777",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "42,5",
+       "mp_color": "-",
+       "filterable_size": "42,5",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805871146",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/adidas-samba-og-unisex-kahverengi-sneaker/34-ih9166-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 9,
+      "created_date": "2026-08-27T05:06:42.328171Z",
+      "modified_date": "2026-09-30T05:27:14.079968Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "6450",
+     "label": "43",
+     "value": "43",
+     "product": {
+      "pk": 843341,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609778",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "43",
+       "mp_color": "-",
+       "filterable_size": "43",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805871054",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/843341/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 49,
+      "created_date": "2026-08-27T05:06:42.709092Z",
+      "modified_date": "2026-09-30T05:27:14.083562Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "6700",
+     "label": "44",
+     "value": "44",
+     "product": {
+      "pk": 843342,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609779",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "44",
+       "mp_color": "-",
+       "filterable_size": "44",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874796",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/843342/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 27,
+      "created_date": "2026-08-27T05:06:43.114680Z",
+      "modified_date": "2026-09-30T05:27:14.080046Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "6850",
+     "label": "45",
+     "value": "45",
+     "product": {
+      "pk": 843340,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609766",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "45",
+       "mp_color": "-",
+       "filterable_size": "45",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805871092",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/843340/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 22,
+      "created_date": "2026-08-27T05:06:42.605757Z",
+      "modified_date": "2026-09-30T05:27:14.077124Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "6910",
+     "label": "46",
+     "value": "46",
+     "product": {
+      "pk": 843338,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609767",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "46",
+       "mp_color": "-",
+       "filterable_size": "46",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874857",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/adidas-samba-og-unisex-kahverengi-sneaker/34-ih9166-5/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 6,
+      "created_date": "2026-08-27T05:06:42.410653Z",
+      "modified_date": "2026-09-30T05:27:14.074384Z",
+      "price_extra_field": {}
+     }
+    }
+   ]
+  },
+  {
+   "attribute_key": "mp_color",
+   "attribute_name": "MP Color",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "0",
+     "label": "-",
+     "value": "-",
+     "product": {
+      "pk": 843338,
+      "name": "adidas Samba OG Unisex Kahverengi Sneaker",
+      "sku": "34-6609767",
+      "base_code": "34-IH9166",
+      "attributes": {
+       "mp_size": "46",
+       "mp_color": "-",
+       "filterable_size": "46",
+       "integration_renk": "-",
+       "mp_yurtdisi_barkod": "4068805874857",
+       "integration_model_renk": "34-IH9166.-"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "7999",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/adidas-samba-og-unisex-kahverengi-sneaker/34-ih9166-5/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 6,
+      "created_date": "2026-08-27T05:06:42.410653Z",
+      "modified_date": "2026-09-30T05:27:14.074384Z",
+      "price_extra_field": {}
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": null,
+ "offers": []
+}

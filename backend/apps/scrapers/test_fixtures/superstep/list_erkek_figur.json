@@ -1,0 +1,558 @@
+{
+ "pagination": {
+  "current_page": 1,
+  "num_pages": 3,
+  "page_size": 48,
+  "total_count": 114
+ },
+ "facets": [
+  {
+   "name": "Kategoriler",
+   "key": "category_ids",
+   "search_key": "category_ids",
+   "widget_type": "category",
+   "order": 1,
+   "extra_params": {},
+   "data": {
+    "widget_type": "category",
+    "name": "Kategoriler",
+    "key": "category_ids",
+    "search_key": "category_ids",
+    "choices": [
+     {
+      "label": "AKSESUAR",
+      "value": 47,
+      "quantity": 1448,
+      "is_selected": false,
+      "depth": 0,
+      "real_depth": 3,
+      "url": "/erkek-aksesuar/?format=json",
+      "menuitemmodel": "a546724fe9db4dd8be2e50d19266466d",
+      "is_parent_of_selection": true
+     },
+     {
+      "label": "Çanta & Cüzdan",
+      "value": 48,
+      "quantity": 400,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-canta-cuzdan/?format=json",
+      "menuitemmodel": "8b7c2e4108df4bc989e7649071ebd0a9",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Valiz",
+      "value": 1027,
+      "quantity": 8,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-valiz/?format=json",
+      "menuitemmodel": "424224ce47394c3f909cc8e6ab55efd7",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Çorap",
+      "value": 51,
+      "quantity": 39,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-corap/?format=json",
+      "menuitemmodel": "96b8584a05ca42b6adedbf01c7517197",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Saat",
+      "value": 53,
+      "quantity": 2,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-saat/?format=json",
+      "menuitemmodel": "5b9885e2e66c4e9aacc3b52c298a1b62",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Bere & Atkı & Eldiven",
+      "value": 55,
+      "quantity": 143,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-bere-atki-eldiven/?format=json",
+      "menuitemmodel": "5a4ae1e5cef04573bfe9aba79f282e96",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Bakım Malzemesi",
+      "value": 56,
+      "quantity": 4,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-bakim-malzemesi/?format=json",
+      "menuitemmodel": "e3c7b5f321294efbb902754b2cd4f15b",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Şapka",
+      "value": 54,
+      "quantity": 518,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-sapka/?format=json",
+      "menuitemmodel": "d4fd64d1650c475890f191879faf34ae",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Spor Aksesuarları",
+      "value": 268,
+      "quantity": 190,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-spor-aksesuarlari/?format=json",
+      "menuitemmodel": "82ab02dcd3f24305b74a077b6c4b6959",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Figür",
+      "value": 604,
+      "quantity": 114,
+      "is_selected": true,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-figur/?format=json",
+      "menuitemmodel": "e32a6cc67dd043c2912ce3cb19f6bd8b",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Basketbol Topu",
+      "value": 730,
+      "quantity": 29,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-basketbol-topu/?format=json",
+      "menuitemmodel": "2cbd3f005af44ea8bcef16221e2fce81",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "Anahtarlık",
+      "value": 764,
+      "quantity": 2,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 4,
+      "url": "/erkek-anahtarlik/?format=json",
+      "menuitemmodel": "1f23a08bdbba45198a6395435dc82dee",
+      "is_parent_of_selection": false
+     }
+    ],
+    "order": 1
+   }
+  },
+  {
+   "name": "Kategori",
+   "key": "integration_alt_grup",
+   "search_key": "attributes_integration_alt_grup",
+   "widget_type": "multiselect",
+   "order": 2,
+   "extra_params": {},
+   "data": {
+    "widget_type": "multiselect",
+    "name": "Kategori",
+    "key": "integration_alt_grup",
+    "search_key": "attributes_integration_alt_grup",
+    "choices": [
+     {
+      "label": "Figür",
+      "value": "278",
+      "quantity": 114,
+      "is_selected": false
+     }
+    ],
+    "order": 2
+   }
+  }
+ ],
+ "search_text": null,
+ "products": [
+  {
+   "pk": 618922,
+   "name": "Funko Pop Harry Potter: Harry Potter Renkli Figür",
+   "sku": "6085075",
+   "base_code": "5858",
+   "attributes": {
+    "brand_link": "/funko/",
+    "filterable_size": "Standart",
+    "integration_renk": "-",
+    "integration_stil": "000",
+    "amazon_poc_barkod": "upc",
+    "integration_beden": "NS",
+    "integration_desen": "003",
+    "integration_marka": "275",
+    "integration_tanim": "FIGUR",
+    "integration_alt_ust": "-",
+    "integration_alt_grup": "278",
+    "integration_cinsiyet": "Unisex",
+    "integration_alt_marka": "FUNKO",
+    "integration_color_hex": "renkli",
+    "integration_erp_sezon": "26AW",
+    "integration_renk_tonu": "RENKLİ",
+    "integration_urun_ozel": "Funko Pop Harry Potter: Harry Potter Renkli Figür",
+    "integration_beden_seti": "0",
+    "integration_erp_icerik": "VİNİL",
+    "integration_erp_mensei": "Vietnam",
+    "integration_model_renk": "5858.-",
+    "integration_renk_detay": "RENKLİ",
+    "integration_urun_detay": "Pop Harry Potter: Harry Potter",
+    "integration_olcu_birimi": "Adet",
+    "integration_erp_cinsiyet": "UNISEX",
+    "integration_kalem_icerik": "<p><strong>Funko Pop Harry Potter: Harry Potter Renkli Figür</strong></p>\n<p>Funko Pop Harry Potter: Harry Potter Renkli Figür, dünyaca ünlü büyücülük evreninin ikonik ana karakterini detaylı tasarım detaylarıyla koleksiyonunuza taşıyan özel bir figürdür. Popüler kültürün en sevilen karakterlerinden biri olan Harry Potter, film serisindeki kendine has tarzı ve büyüleyici atmosferiyle bu özel figür tasarımında hayat bulur. Koleksiyon tutkunları ve serinin hayranları için üretilen Funko Pop Harry Potter: Harry Potter Renkli Figür, yaşam alanlarınıza veya çalışma masanıza büyüleyici bir dokunuş katmak için ideal bir seçenektir.</p>\n<br><br>\n<p><strong>Neden Funko Pop Harry Potter: Harry Potter</p>",
+    "integration_renk_tonu_kod": "034",
+    "integration_urun_ana_grup": "002",
+    "integration_hos_renk_detay": "Renkli",
+    "integration_hos_urun_detay": "Figür",
+    "integration_base_code_format": "5858.-.NS",
+    "integration_erenp_erenbarkod": "8001060850750",
+    "integration_hos_kalem_icerik": "<p>Funko Pop Harry Potter Harry Potter figürü, Harry Potter serisinin ana karakterini koleksiyonunuza eklemenin harika bir yoludur. Bu figür, Harry Potter'ın ikonik görünümünü mükemmel şekilde yansıtır ve filmdeki büyüleyici havasını taşır. Harry Potter hayranları için vazgeçilmez bir koleksiyon parçasıdır.</p><br> <p><strong>Teknik Özellikler</strong></p> <li>Harry Potter serisinden tam karakter tasarımı</li> <li>Yüksek kaliteli PVC malzeme kullanımı</li> <li>Detaylı ve renkli tasarım</li> <li>Koleksiyonluk figür</li> <li>Harry Potter evrenindeki diğer figürlerle uyumlu</li>",
+    "integration_yurt_disi_barkod": "849803058586",
+    "integration_erp_renk_aciklama": "ÇOK RENKLİ",
+    "integration_global_attribute7": "FIGUR"
+   },
+   "attribute_set": 2,
+   "attributes_kwargs": {
+    "filterable_size": {
+     "label": "Standart",
+     "value": "Standart",
+     "data_type": "dropdown"
+    },
+    "integration_renk": {
+     "label": "-",
+     "value": "-",
+     "data_type": "dropdown"
+    },
+    "integration_stil": {
+     "label": "-",
+     "value": "000",
+     "data_type": "dropdown"
+    },
+    "integration_beden": {
+     "label": "NS",
+     "value": "NS",
+     "data_type": "dropdown"
+    },
+    "integration_desen": {
+     "label": "DÜZ",
+     "value": "003",
+     "data_type": "dropdown"
+    },
+    "integration_marka": {
+     "label": "Funko",
+     "value": "275",
+     "data_type": "dropdown"
+    },
+    "integration_tanim": {
+     "label": "FIGUR",
+     "value": "FIGUR",
+     "data_type": "dropdown"
+    },
+    "integration_alt_grup": {
+     "label": "Figür",
+     "value": "278",
+     "data_type": "dropdown"
+    },
+    "integration_cinsiyet": {
+     "label": "Unisex",
+     "value": "Unisex",
+     "data_type": "dropdown"
+    },
+    "integration_alt_marka": {
+     "label": "Funko",
+     "value": "FUNKO",
+     "data_type": "dropdown"
+    },
+    "integration_erp_sezon": {
+     "label": "26AW",
+     "value": "26AW",
+     "data_type": "dropdown"
+    },
+    "integration_renk_tonu": {
+     "label": "RENKLİ",
+     "value": "RENKLİ"
+    },
+    "integration_beden_seti": {
+     "label": "0",
+     "value": "0",
+     "data_type": "dropdown"
+    },
+    "integration_renk_detay": {
+     "label": "RENKLİ",
+     "value": "RENKLİ"
+    },
+    "integration_erp_cinsiyet": {
+     "label": "Unisex",
+     "value": "UNISEX",
+     "data_type": "dropdown"
+    },
+    "integration_urun_ana_grup": {
+     "label": "Aksesuar",
+     "value": "002",
+     "data_type": "dropdown"
+    }
+   },
+   "extra_attributes": {},
+   "productimage_set": [
+    {
+     "pk": 3031514,
+     "status": "active",
+     "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/12/05/44981517/a78a2b40-df18-49c2-87e8-4d4369e7b1d9.jpg",
+     "order": 20,
+     "created_date": "2024-12-06T06:15:58.608845Z"
+    },
+    {
+     "pk": 3031515,
+     "status": "active",
+     "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/12/05/44981517/187de36b-3fc3-40bc-bc2f-be0482bbd306.jpg",
+     "order": 21,
+     "created_date": "2024-12-06T06:15:58.724127Z"
+    }
+   ],
+   "price": "1579",
+   "in_stock": true,
+   "currency_type": "try",
+   "retail_price": "1579",
+   "unit_type": "qty",
+   "tax_rate": "20.00",
+   "absolute_url": "/urun/funko-pop-harry-potter-harry-potter-renkli-figur/5858/",
+   "product_type": "0",
+   "price_type": "default",
+   "is_ready_to_basket": false,
+   "stock": 35,
+   "created_date": "2024-12-06T06:15:29.636516Z",
+   "modified_date": "2026-10-21T06:30:52.729867Z",
+   "basket_offers": [],
+   "extra_data": {
+    "variants": [
+     {
+      "options": [
+       {
+        "label": "-",
+        "product": {
+         "pk": 618922,
+         "sku": "6085075",
+         "name": "Funko Pop Harry Potter: Harry Potter Renkli Figür",
+         "price": "1579",
+         "attributes": {
+          "filterable_size": "Standart",
+          "integration_renk": "-",
+          "integration_beden": "NS"
+         },
+         "absolute_url": "/urun/funko-pop-harry-potter-harry-potter-renkli-figur/5858/",
+         "retail_price": "1579",
+         "price_extra_field": {
+          "previous_price": "1119.00"
+         }
+        },
+        "in_stock": true,
+        "is_selectable": true
+       }
+      ],
+      "attribute_key": "integration_renk"
+     }
+    ]
+   },
+   "is_listable": true,
+   "listing_code": "-",
+   "price_extra_field": {
+    "previous_price": "1119.00"
+   },
+   "discount_amount": 0,
+   "discount_ratio": 0
+  },
+  {
+   "pk": 728238,
+   "name": "Funko POP NBA: Lakers LeBron James Unisex Renkli Figür",
+   "sku": "6560071",
+   "base_code": "65792",
+   "attributes": {
+    "brand_link": "/funko/",
+    "filterable_size": "Standart",
+    "integration_renk": "-",
+    "integration_beden": "NS",
+    "integration_marka": "275",
+    "integration_tanim": "FIGUR",
+    "integration_alt_ust": "-",
+    "integration_alt_grup": "278",
+    "integration_cinsiyet": "Unisex",
+    "integration_alt_marka": "FUNKO",
+    "integration_color_hex": "renkli",
+    "integration_erp_sezon": "26SS",
+    "integration_renk_tonu": "RENKLİ",
+    "integration_urun_ozel": "Funko POP NBA: Lakers LeBron James Unisex Renkli Figür",
+    "integration_beden_seti": "0",
+    "integration_erp_icerik": "VİNİL",
+    "integration_erp_mensei": "Çin",
+    "integration_model_renk": "65792.-",
+    "integration_renk_detay": "Renkli",
+    "integration_urun_detay": "NBA: Lakers LeBron James",
+    "integration_olcu_birimi": "Adet",
+    "integration_erp_cinsiyet": "UNISEX",
+    "integration_kalem_icerik": "<p><strong>Funko POP NBA: Lakers LeBron James Unisex Renkli Figür</strong></p>\n<p>Funko POP NBA: Lakers LeBron James Unisex Renkli Figür, basketbol dünyasının efsanevi ismi LeBron James'in Los Angeles Lakers formasıyla tasarlanmış koleksiyonluk bir vinil figürdür. NBA tutkunları ve figür koleksiyoncuları için özel olarak üretilen bu popüler tasarım, ikonik oyuncunun sahada sergilediği karizmatik duruşu masana, rafına veya sergileme alanına taşır. Detaylı tasarımı ve özgün hatları sayesinde basketbol kültürünün enerjisini yaşam alanının merkezine konumlandırır. İster kendi koleksiyonunu genişletmek ister sevdiklerine basketbol ruhunu yansıtan özel bir hediye sunmak iste, bu figür tutkunu</p>",
+    "integration_renk_tonu_kod": "034",
+    "integration_urun_ana_grup": "002",
+    "integration_hos_renk_detay": "Renkli",
+    "integration_hos_urun_detay": "Figür",
+    "integration_base_code_format": "65792.-.NS",
+    "integration_erenp_erenbarkod": "8001065600718",
+    "integration_yurt_disi_barkod": "889698657921",
+    "integration_erp_renk_aciklama": "ÇOK RENKLİ",
+    "integration_global_attribute7": "FIGUR"
+   },
+   "attribute_set": 2,
+   "attributes_kwargs": {
+    "filterable_size": {
+     "label": "Standart",
+     "value": "Standart",
+     "data_type": "dropdown"
+    },
+    "integration_renk": {
+     "label": "-",
+     "value": "-",
+     "data_type": "dropdown"
+    },
+    "integration_beden": {
+     "label": "NS",
+     "value": "NS",
+     "data_type": "dropdown"
+    },
+    "integration_marka": {
+     "label": "Funko",
+     "value": "275",
+     "data_type": "dropdown"
+    },
+    "integration_tanim": {
+     "label": "FIGUR",
+     "value": "FIGUR",
+     "data_type": "dropdown"
+    },
+    "integration_alt_grup": {
+     "label": "Figür",
+     "value": "278",
+     "data_type": "dropdown"
+    },
+    "integration_cinsiyet": {
+     "label": "Unisex",
+     "value": "Unisex",
+     "data_type": "dropdown"
+    },
+    "integration_alt_marka": {
+     "label": "Funko",
+     "value": "FUNKO"
+    },
+    "integration_erp_sezon": {
+     "label": "26SS",
+     "value": "26SS",
+     "data_type": "dropdown"
+    },
+    "integration_renk_tonu": {
+     "label": "RENKLİ",
+     "value": "RENKLİ",
+     "data_type": "dropdown"
+    },
+    "integration_beden_seti": {
+     "label": "0",
+     "value": "0",
+     "data_type": "dropdown"
+    },
+    "integration_renk_detay": {
+     "label": "Renkli",
+     "value": "Renkli",
+     "data_type": "dropdown"
+    },
+    "integration_erp_cinsiyet": {
+     "label": "Unisex",
+     "value": "UNISEX",
+     "data_type": "dropdown"
+    },
+    "integration_urun_ana_grup": {
+     "label": "Aksesuar",
+     "value": "002",
+     "data_type": "dropdown"
+    }
+   },
+   "extra_attributes": {},
+   "productimage_set": [
+    {
+     "pk": 3638298,
+     "status": "active",
+     "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/10/24/75952735/b6314de9-9099-4fe7-be25-541188105b01.jpg",
+     "order": 20,
+     "created_date": "2025-10-26T07:27:08.320064Z"
+    },
+    {
+     "pk": 3638299,
+     "status": "active",
+     "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/10/24/75952735/d96f83de-81df-4120-a595-eeefefde75cc.jpg",
+     "order": 22,
+     "created_date": "2025-10-26T07:27:08.435768Z"
+    }
+   ],
+   "price": "1579",
+   "in_stock": true,
+   "currency_type": "try",
+   "retail_price": "1579",
+   "unit_type": "qty",
+   "tax_rate": "20.00",
+   "absolute_url": "/urun/funko-pop-nba-lakers-lebron-james-unisex-renkli-figur/65792/",
+   "product_type": "0",
+   "price_type": "default",
+   "is_ready_to_basket": false,
+   "stock": 2,
+   "created_date": "2025-10-26T07:18:01.871904Z",
+   "modified_date": "2026-10-12T01:09:21.943481Z",
+   "basket_offers": [],
+   "extra_data": {
+    "variants": [
+     {
+      "options": [
+       {
+        "label": "-",
+        "product": {
+         "pk": 728238,
+         "sku": "6560071",
+         "name": "Funko POP NBA: Lakers LeBron James Unisex Renkli Figür",
+         "price": "1579",
+         "attributes": {
+          "filterable_size": "Standart",
+          "integration_renk": "-",
+          "integration_beden": "NS"
+         },
+         "absolute_url": "/urun/funko-pop-nba-lakers-lebron-james-unisex-renkli-figur/65792/",
+         "retail_price": "1579",
+         "price_extra_field": {
+          "previous_price": "1699.00"
+         }
+        },
+        "in_stock": true,
+        "is_selectable": true
+       }
+      ],
+      "attribute_key": "integration_renk"
+     }
+    ]
+   },
+   "is_listable": true,
+   "listing_code": "-",
+   "price_extra_field": {
+    "previous_price": "1699.00"
+   },
+   "discount_amount": 0,
+   "discount_ratio": 0
+  }
+ ]
+}

@@ -1846,6 +1846,18 @@ class ScraperIntegrationService:
                 scraped_product._category_override = flo_category
                 return
 
+        # SuperStep раскладывает товар сам — по подгруппе источника. Корень в
+        # задаче или категория по умолчанию её не перебивают, явно выбранная
+        # подкатегория — да. Нет точного раздела в каталоге — ближайший родитель.
+        if source == "superstep" and (category is None or category.parent_id is None):
+            attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+            for slug in attrs.get("superstep_category_slugs") or []:
+                superstep_category = Category.objects.filter(slug=slug, is_active=True).first()
+                if superstep_category:
+                    scraped_product.category = slug
+                    scraped_product._category_override = superstep_category
+                    return
+
         # Задачи Zara/Inditex сохраняют в «Одежду», но сумку, ремень, украшение
         # или шапку парсер узнаёт по семейству товара в API. Категорию другого
         # типа, выбранную в задаче, не перебиваем. Override не ставим: у

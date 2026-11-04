@@ -32,6 +32,7 @@ BASE_URLS = {
     "lcw": "https://www.lcw.com",
     "ikea": "https://www.ikea.com.tr",
     "ummaland": "https://umma-land.com",
+    "superstep": "https://www.superstep.com.tr",
 }
 CARD_URL_CHECKS = {
     "flo": "is_flo_product_url",
@@ -39,6 +40,7 @@ CARD_URL_CHECKS = {
     "lcw": "is_lcw_product_url",
     "ikea": "is_ikea_product_url",
     "ummaland": "is_product_url",
+    "superstep": "is_product_url",
 }
 
 

@@ -22,7 +22,7 @@ from apps.catalog.models import FurnitureVariant, Product
 
 PARSER_SOURCES = (
     "ilacfiyati", "lcw", "flo", "ikea", "zara", "ummaland",
-    "bershka", "pullandbear", "massimodutti",
+    "bershka", "pullandbear", "massimodutti", "superstep",
 )
 
 
