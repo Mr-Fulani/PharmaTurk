@@ -123,6 +123,9 @@ def test_gtin_and_article_normalization():
     assert color_key("BEYAZ") == color_key("Beyaz") == "beyaz"
     assert color_key("Açık Gri") == "acik gri" != color_key("Açık Mavi")
     assert color_key("Beyaz-Siyah") != color_key("Beyaz")
+    # Уточнение одинаковых цветов модели SuperStep не мешает найти тот же цвет у FLO.
+    assert color_key("Beyaz · Velvet Moss") == color_key("BEYAZ") == "beyaz"
+    assert color_key("Kahverengi · CHE") != color_key("Siyah")
 
 
 def test_rule2_cheaper_offer_is_hidden_not_deleted():

@@ -1,0 +1,1033 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 637106,
+  "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+  "sku": "6205708",
+  "base_code": "399025",
+  "attributes": {
+   "brand_link": "/puma/",
+   "max_bag_limit": "2",
+   "filterable_size": "46",
+   "integration_renk": "01",
+   "integration_beden": "46",
+   "integration_desen": "026",
+   "integration_marka": "031",
+   "integration_tanim": "AYAKKABI",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "088",
+   "integration_cinsiyet": "Unisex",
+   "integration_alt_marka": "PUMA",
+   "integration_color_hex": "#ffffff",
+   "integration_erp_sezon": "26SS",
+   "integration_renk_tonu": "BEYAZ",
+   "integration_urun_ozel": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "%63 İnek Derisi, %37 Sentetik",
+   "integration_erp_mensei": "Vietnam",
+   "integration_model_renk": "399025.01",
+   "integration_renk_detay": "Beyaz",
+   "integration_urun_detay": "Easy Rider Mix",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "MEN",
+   "integration_kalem_icerik": "<p><strong>Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı</strong></p>\n<p>Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı, retro koşu estetiğini modern sokak modasıyla buluşturan ikonik tasarımıyla her adımda yüksek konfor ve zamansız bir tarz sunar. Şık beyaz rengi sayesinde sade ve dinamik bir görünüm sergileyen bu özel model, günlük yaşamın hızlı temposuna kolayca uyum sağlar. İnek derisi ve sentetik materyallerin dengeli birleşimiyle üretilen dayanıklı dış yüzeyi, ayakkabının formunu uzun süre korumasına yardımcı olurken esnek taban yapısı gün boyu doğal adımları destekler. Hem kadınların hem de erkeklerin gardırobunda kilit bir parça olmaya aday olan Puma Easy Rider Mix Unisex Beyaz</p>",
+   "integration_renk_tonu_kod": "004",
+   "integration_urun_ana_grup": "005",
+   "integration_hos_renk_detay": "Beyaz",
+   "integration_hos_urun_detay": "Unisex Sneaker",
+   "integration_base_code_format": "399025.01.11",
+   "integration_erenp_erenbarkod": "8001062057089",
+   "integration_hos_kalem_icerik": "<p>Puma Easy Rider, 70'lerin sonlarında koşu sporunun pistlerden sokaklara taşınmasıyla doğmuş bir modeldir. Bugün, klasik ince profili ve retro havasıyla geri dönüyor. Deri üst yüzey ve süet kaplamalarla tasarlanmış bu model, günlük kombinlere retro bir dokunuş katmak için mükemmel bir seçenek olacak.Hafif EVA, her adımda yastıklama sağlar ve bir sonraki adımınızı hızlandırır.</p><br> <p><strong>Teknik Özellikler</strong></p> <li>Süet ve sentetik kaplamalar</li> <li>Süet PUMA Formstrip ve topuk FOT detayları</li> <li>Kauçuk dış taban</li><li>Bağcık kapanışı</li> <li>Deri üst yüzey</li>",
+   "integration_yurt_disi_barkod": "4067979299961",
+   "integration_erp_renk_aciklama": "PUMA White-PUMA Black",
+   "integration_global_attribute7": "AYAKKABI"
+  },
+  "attribute_set": 4,
+  "attributes_kwargs": {
+   "filterable_size": {
+    "label": "46",
+    "value": "46",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "01",
+    "value": "01",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "46",
+    "value": "46",
+    "data_type": "dropdown"
+   },
+   "integration_desen": {
+    "label": "026",
+    "value": "026",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "Puma",
+    "value": "031",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "AYAKKABI",
+    "value": "AYAKKABI",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Spor Ayakkabı & Sneaker",
+    "value": "088",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Unisex",
+    "value": "Unisex",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "Puma",
+    "value": "PUMA"
+   },
+   "integration_erp_sezon": {
+    "label": "26SS",
+    "value": "26SS",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "BEYAZ",
+    "value": "BEYAZ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Beyaz",
+    "value": "Beyaz",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Erkek",
+    "value": "MEN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Ayakkabı",
+    "value": "005",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 3125662,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/02/05/49402908/80c2bb71-9505-45ac-ad4c-3185e19d1046.jpg",
+    "order": 20,
+    "created_date": "2025-02-06T07:07:01.933887Z"
+   },
+   {
+    "pk": 3125661,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/02/05/49402789/65197eb5-72fc-4ccd-a453-9e71d604c6e6.jpg",
+    "order": 21,
+    "created_date": "2025-02-06T07:07:01.859420Z"
+   },
+   {
+    "pk": 3125663,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/02/05/49402892/3d695582-42d6-4efc-9639-b7e588a5b228.jpg",
+    "order": 30,
+    "created_date": "2025-02-06T07:07:02.000483Z"
+   },
+   {
+    "pk": 3125664,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/02/05/49402931/338d9af7-c20a-4512-9196-1e2f44f06e46.jpg",
+    "order": 31,
+    "created_date": "2025-02-06T07:07:02.071675Z"
+   },
+   {
+    "pk": 3125666,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/02/05/49402931/5e6ccc5b-35c1-45e8-bac8-d0da8291b371.jpg",
+    "order": 32,
+    "created_date": "2025-02-06T07:07:02.211637Z"
+   },
+   {
+    "pk": 3125665,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/02/05/49402931/5b089bae-25cd-4751-8287-27b5d4eb3cd1.jpg",
+    "order": 33,
+    "created_date": "2025-02-06T07:07:02.144709Z"
+   },
+   {
+    "pk": 3125504,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/02/05/49402931/6bac4d94-3dac-4369-a049-8e93e2f67ae6.jpg",
+    "order": 34,
+    "created_date": "2025-02-06T07:06:38.422048Z"
+   },
+   {
+    "pk": 3125505,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2025/02/05/49402931/850144db-940b-4308-8fe4-c3edef5f6f46.jpg",
+    "order": 35,
+    "created_date": "2025-02-06T07:06:38.737133Z"
+   }
+  ],
+  "price": "3700",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "7399",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/product/637106/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 5,
+  "created_date": "2025-02-06T06:50:27.138623Z",
+  "modified_date": "2026-11-04T11:01:43.994655Z",
+  "basket_offers": [],
+  "is_listable": false,
+  "listing_code": "01",
+  "price_extra_field": {
+   "previous_price": "7399.00"
+  }
+ },
+ "variants": [
+  {
+   "attribute_key": "integration_renk",
+   "attribute_name": "Renk",
+   "options": [
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "60000",
+     "label": "06",
+     "value": "06",
+     "product": {
+      "pk": 652682,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Haki Spor Ayakkabı",
+      "sku": "6206235",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "37,5",
+       "integration_renk": "06",
+       "integration_beden": "37,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.06",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067983303180",
+       "integration_erp_renk_aciklama": "BEYAZ-Velvet Moss"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-haki-spor-ayakkabi/399025-6/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 5,
+      "created_date": "2025-03-27T11:08:09.457109Z",
+      "modified_date": "2026-11-04T10:29:04.080773Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "100001",
+     "label": "01",
+     "value": "01",
+     "product": {
+      "pk": 636724,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6205752",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "38,5",
+       "integration_renk": "01",
+       "integration_beden": "38,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299855",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-02-06T06:44:55.538825Z",
+      "modified_date": "2026-11-04T11:01:44.031381Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "attribute_key": "integration_beden",
+   "attribute_name": "Beden",
+   "options": [
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3600",
+     "label": "36",
+     "value": "36",
+     "product": {
+      "pk": 636722,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6206139",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "36",
+       "integration_renk": "01",
+       "integration_beden": "36",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299770",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 92,
+      "created_date": "2025-02-06T06:44:55.343263Z",
+      "modified_date": "2026-11-04T11:01:43.995303Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3700",
+     "label": "37",
+     "value": "37",
+     "product": {
+      "pk": 636721,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6206150",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "37",
+       "integration_renk": "01",
+       "integration_beden": "37",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299794",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025-1/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 121,
+      "created_date": "2025-02-06T06:44:55.213635Z",
+      "modified_date": "2026-11-04T11:01:44.000573Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3750",
+     "label": "37,5",
+     "value": "37,5",
+     "product": {
+      "pk": 636725,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6206161",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "37,5",
+       "integration_renk": "01",
+       "integration_beden": "37,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299817",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/636725/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 62,
+      "created_date": "2025-02-06T06:44:55.668740Z",
+      "modified_date": "2026-11-04T11:01:44.037591Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3800",
+     "label": "38",
+     "value": "38",
+     "product": {
+      "pk": 636729,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6206172",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "38",
+       "integration_renk": "01",
+       "integration_beden": "38",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299848",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025-4/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 148,
+      "created_date": "2025-02-06T06:44:56.105358Z",
+      "modified_date": "2026-11-04T11:01:44.036967Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "3850",
+     "label": "38,5",
+     "value": "38,5",
+     "product": {
+      "pk": 636724,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6205752",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "38,5",
+       "integration_renk": "01",
+       "integration_beden": "38,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299855",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025-3/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2025-02-06T06:44:55.538825Z",
+      "modified_date": "2026-11-04T11:01:44.031381Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3900",
+     "label": "39",
+     "value": "39",
+     "product": {
+      "pk": 636731,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6206183",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "39",
+       "integration_renk": "01",
+       "integration_beden": "39",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299862",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/636731/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 92,
+      "created_date": "2025-02-06T06:44:56.308182Z",
+      "modified_date": "2026-11-04T11:01:44.038358Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4000",
+     "label": "40",
+     "value": "40",
+     "product": {
+      "pk": 636723,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6206192",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "40",
+       "integration_renk": "01",
+       "integration_beden": "40",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299879",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/636723/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 76,
+      "created_date": "2025-02-06T06:44:55.437349Z",
+      "modified_date": "2026-11-04T11:01:44.008463Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4100",
+     "label": "41",
+     "value": "41",
+     "product": {
+      "pk": 637100,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6205795",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "41",
+       "integration_renk": "01",
+       "integration_beden": "41",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299893",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/637100/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 41,
+      "created_date": "2025-02-06T06:50:26.420045Z",
+      "modified_date": "2026-11-04T11:01:44.010298Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4200",
+     "label": "42",
+     "value": "42",
+     "product": {
+      "pk": 637095,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6205335",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "42",
+       "integration_renk": "01",
+       "integration_beden": "42",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299909",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/637095/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 96,
+      "created_date": "2025-02-06T06:50:25.872959Z",
+      "modified_date": "2026-11-04T11:01:43.997430Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4250",
+     "label": "42,5",
+     "value": "42,5",
+     "product": {
+      "pk": 637096,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6205814",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "42,5",
+       "integration_renk": "01",
+       "integration_beden": "42,5",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299916",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/637096/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 36,
+      "created_date": "2025-02-06T06:50:25.986537Z",
+      "modified_date": "2026-11-04T11:01:43.995539Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4300",
+     "label": "43",
+     "value": "43",
+     "product": {
+      "pk": 637099,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6205847",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "43",
+       "integration_renk": "01",
+       "integration_beden": "43",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299923",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/637099/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 133,
+      "created_date": "2025-02-06T06:50:26.318080Z",
+      "modified_date": "2026-11-04T11:01:44.031295Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4400",
+     "label": "44",
+     "value": "44",
+     "product": {
+      "pk": 637097,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6206202",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "44",
+       "integration_renk": "01",
+       "integration_beden": "44",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299930",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025-5/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 108,
+      "created_date": "2025-02-06T06:50:26.084685Z",
+      "modified_date": "2026-11-04T11:01:44.047034Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4500",
+     "label": "45",
+     "value": "45",
+     "product": {
+      "pk": 637094,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6206128",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "45",
+       "integration_renk": "01",
+       "integration_beden": "45",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299954",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-easy-rider-mix-unisex-beyaz-spor-ayakkabi/399025/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 102,
+      "created_date": "2025-02-06T06:50:24.852328Z",
+      "modified_date": "2026-11-04T11:01:44.049341Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4600",
+     "label": "46",
+     "value": "46",
+     "product": {
+      "pk": 637106,
+      "name": "Puma Easy Rider Mix Unisex Beyaz Spor Ayakkabı",
+      "sku": "6205708",
+      "base_code": "399025",
+      "attributes": {
+       "filterable_size": "46",
+       "integration_renk": "01",
+       "integration_beden": "46",
+       "integration_renk_tonu": "BEYAZ",
+       "integration_model_renk": "399025.01",
+       "integration_renk_detay": "Beyaz",
+       "integration_hos_renk_detay": "Beyaz",
+       "integration_yurt_disi_barkod": "4067979299961",
+       "integration_erp_renk_aciklama": "PUMA White-PUMA Black"
+      },
+      "attribute_set": 4,
+      "attributes_kwargs": {
+       "integration_alt_grup": {
+        "label": "Spor Ayakkabı & Sneaker",
+        "value": "088",
+        "data_type": "dropdown"
+       }
+      },
+      "extra_attributes": {},
+      "price": "3700",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "7399",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/637106/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 5,
+      "created_date": "2025-02-06T06:50:27.138623Z",
+      "modified_date": "2026-11-04T11:01:43.994655Z",
+      "price_extra_field": {
+       "previous_price": "7399.00"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": null,
+ "offers": []
+}

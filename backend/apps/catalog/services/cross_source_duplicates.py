@@ -63,6 +63,7 @@ from apps.catalog.models import (
     UnderwearVariantSize,
 )
 from apps.catalog.utils.product_markup import apply_markup_percent, get_effective_product_markup
+from apps.catalog.utils.tr_vocab import COLOR_DETAIL_SEPARATOR
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +126,13 @@ _TR_FOLD = str.maketrans("ıİşŞçÇğĞöÖüÜ", "iissccggoouu")
 
 def color_key(color) -> str:
     """Цвет целиком без регистра, знаков и турецких букв: «BEYAZ» = «Beyaz»,
-    «Açık Gri» ≠ «Açık Mavi», «Beyaz-Siyah» ≠ «Beyaz». Сомнение — не объединяем."""
-    return " ".join(re.findall(r"[a-z0-9]+", str(color or "").translate(_TR_FOLD).casefold()))
+    «Açık Gri» ≠ «Açık Mavi», «Beyaz-Siyah» ≠ «Beyaz». Сомнение — не объединяем.
+
+    Уточнение после « · » (различитель одинаковых цветов одной модели у
+    SuperStep: «Beyaz · Velvet Moss») не сравнивается — у FLO его нет.
+    """
+    base = str(color or "").partition(COLOR_DETAIL_SEPARATOR)[0]
+    return " ".join(re.findall(r"[a-z0-9]+", base.translate(_TR_FOLD).casefold()))
 
 
 def source_of(external_id: str) -> str:
