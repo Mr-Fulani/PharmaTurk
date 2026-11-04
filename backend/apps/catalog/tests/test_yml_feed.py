@@ -322,6 +322,14 @@ def test_offer_name_skips_color_already_in_name_and_fits_limit():
     assert words.endswith("Коллаген")
 
 
+def test_offer_name_matches_option_as_whole_word_only():
+    # Размер внутри кода модели или буква внутри бренда — не повтор, размер дописывается.
+    assert yml_feed._offer_name("Кроссовки b42282", [("Размер", "42")]) == "Кроссовки b42282, 42"
+    assert yml_feed._offer_name("Худи Adidas", [("Размер", "S")]) == "Худи Adidas, S"
+    assert yml_feed._offer_name("Кроссовки, 42", [("Размер", "42")]) == "Кроссовки, 42"
+    assert yml_feed._offer_name("Кепка Хаки", [("Цвет", "хаки")]) == "Кепка Хаки"
+
+
 @pytest.mark.django_db
 def test_feed_builds_domain_whose_variants_have_no_is_active(rub_rate):
     domain = SportsProduct.objects.create(
