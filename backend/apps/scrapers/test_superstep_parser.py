@@ -91,7 +91,7 @@ def test_multicolor_model_collects_colors_inside_one_card():
     assert list(variants) == ["K35052T.0HF", "K35052T.4MY", "K35052T.1BW"]
     assert [v["sort_order"] for v in variants.values()] == [0, 1, 3]
     gray, blue, white = variants.values()
-    assert (gray["color"], gray["price"], gray["old_price"], gray["is_available"]) == ("Gri", 749.7, 2499.0, False)
+    assert (gray["color"], gray["price"], gray["old_price"], gray["is_available"]) == ("Gri", 749.7, 899.0, False)
     assert (blue["color"], blue["price"], blue["is_available"]) == ("Mavi", 999.6, True)
     assert white["external_id"] == "superstep-variant-K35052T.1BW"
     assert white["external_url"] == SITE + NAUTICA_1BW
@@ -101,7 +101,7 @@ def test_multicolor_model_collects_colors_inside_one_card():
     assert {s["barcode"] for s in white["sizes"]} == {""}
     # Открытый цвет распродан — цена и ссылка товара от первого цвета в наличии.
     assert product.price == 999.6
-    assert product.old_price == 2499.0
+    assert product.old_price == 1249.5  # как на сайте: −20 %, не retail_price 2 499
     assert product.url == SITE + NAUTICA_4MY
     assert product.is_available is True
     assert product.category == "polo-shirts"
@@ -129,7 +129,7 @@ def test_shoe_half_sizes_and_barcodes():
     assert product.attributes["gender"] == "unisex"
     assert product.attributes["size_advice"] == "Yarım beden büyük almanı tavsiye ederiz."
     assert product.category == "sneakers"
-    assert product.old_price is None  # retail_price == price
+    assert product.old_price is None  # previous_price 4 319 ниже цены — сайт не зачёркивает
 
 
 def test_sizes_of_other_colors_are_not_mixed_in():
@@ -150,6 +150,20 @@ def test_sizes_of_other_colors_are_not_mixed_in():
     assert len(variants["396464.03"]["images"]) == 12
     assert product.url == SITE + PUMA_01  # открытый цвет в наличии — он главный
     assert product.sku == "396464"
+
+
+@pytest.mark.parametrize(
+    "prices,expected",
+    [
+        # Живые карточки 04.11.2026, зачёркнутая цена сверена на сайте.
+        ({"price": "4194", "retail_price": "6990", "price_extra_field": {"previous_price": "5243.00"}}, 5243.0),
+        ({"price": "4799", "retail_price": "5999", "price_extra_field": {"previous_price": "3599.00"}}, None),
+        ({"price": "4899", "retail_price": "6999", "price_extra_field": {}}, 6999.0),
+        ({"price": "7999", "retail_price": "7999"}, None),
+    ],
+)
+def test_strikethrough_price_is_what_the_site_shows(prices, expected):
+    assert SuperstepParser._selling_and_old_price(prices) == (float(prices["price"]), expected)
 
 
 def test_marketplace_product_keeps_shop_price_and_basket_offer_for_manager():

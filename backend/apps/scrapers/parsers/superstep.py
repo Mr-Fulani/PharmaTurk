@@ -344,7 +344,7 @@ class SuperstepParser(BaseScraper):
     def _tile_fingerprint(self, tile: Dict[str, Any]) -> str:
         """Отпечаток строки списка: то, что меняется между обходами.
 
-        Цена, зачёркнутая цена, наличие, размеры этого цвета с наличием,
+        Цена, обе цены для зачёркивания, наличие, размеры этого цвета с наличием,
         цвета модели с наличием и ценой, число фото и скидки «в корзине».
         Точный остаток ``stock`` не входит: парсер его не сохраняет.
         """
@@ -355,6 +355,7 @@ class SuperstepParser(BaseScraper):
                 "name": tile.get("name"),
                 "price": tile.get("price"),
                 "retail_price": tile.get("retail_price"),
+                "previous_price": (tile.get("price_extra_field") or {}).get("previous_price"),
                 "in_stock": tile.get("in_stock"),
                 "sizes": [
                     [str(option.get("label") or ""), bool(option.get("in_stock"))]
@@ -802,10 +803,22 @@ class SuperstepParser(BaseScraper):
 
     @classmethod
     def _selling_and_old_price(cls, product: Dict[str, Any]):
-        """Цена витрины ``price``; зачёркнутая ``retail_price`` — только если выше."""
+        """Цена витрины ``price`` и зачёркнутая цена, которую показывает сайт.
+
+        Сайт зачёркивает «прежнюю цену» ``price_extra_field.previous_price``
+        (турецкое правило о самой низкой цене за последние дни), а не
+        ``retail_price``: Nautica 999,60 — зачёркнуто 1 249,50, не 2 499;
+        Puma 401744 4 799 при previous 3 599 — не зачёркнуто ничего, хотя
+        retail 5 999. Без ``previous_price`` зачёркнута ``retail_price``
+        (Quiksilver 4 899 / 6 999). Сверено на сайте 04.11.2026.
+        """
         price = cls._price(product.get("price"))
-        retail = cls._price(product.get("retail_price"))
-        return price, (retail if price and retail and retail > price else None)
+        extra = product.get("price_extra_field")
+        if isinstance(extra, dict) and extra.get("previous_price") not in (None, ""):
+            shown = cls._price(extra.get("previous_price"))
+        else:
+            shown = cls._price(product.get("retail_price"))
+        return price, (shown if price and shown and shown > price else None)
 
     @staticmethod
     def _map_gender(value: Any) -> str:
