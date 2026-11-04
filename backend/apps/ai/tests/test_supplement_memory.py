@@ -59,7 +59,7 @@ def _answer_for(user_prompt):
 
 def _translator_llm(answer=_answer_for):
     def generate_content(**kwargs):
-        assert kwargs["system_prompt"] == sm.LINE_SYSTEM_PROMPT
+        assert kwargs["system_prompt"].startswith(sm.LINE_SYSTEM_PROMPT)
         return {"content": answer(kwargs["user_prompt"]), "tokens": {"prompt": 100, "completion": 80}, "cost_usd": 0.0002}
 
     return SimpleNamespace(generate_content=Mock(side_effect=generate_content))
@@ -134,6 +134,7 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         "Karnıyarık otu lifi ( Plantago ovata )\n"
         "Uyarılar:\n"
         "Serin ve kuru yerde muhafaza ediniz. Tavsiye Edilen Tüketim Tarihinden (TETT) önce tüketiniz.\n"
+        "Maya, buğday, glüten, soya ve süt ürünleri gibi potansiyel alerjenleri içermez.\n"
         "Parti No ve Tavsiye Edilen Tüketim Tarihi (TETT) kutunun alt yüzündedir."
     )
     parts = sm.section_parts({"product_info": text})
@@ -142,6 +143,57 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         "excipients": ["Kapsül (hidroksipropilmetil selüloz)", "topaklanmayı önleyici (yağ asitlerinin magnezyum tuzları)"],
         "warnings": ["Serin ve kuru yerde muhafaza ediniz."],
     }
+
+
+@pytest.mark.parametrize(
+    "source, ru, en, problems",
+    [
+        # Ошибки пилота 05.11.2026 на сервере (Haiku 5.5).
+        ("Rezene Tohum Ekstraktı", "Экстракт семян укропа", "Fennel seed extract", ["supplement_ingredient_mistranslated"]),
+        ("Mine Çiçeği Toprak Üstü Ekstraktı", "Экстракт надземной части мяты", "Mint aerial part extract",
+         ["supplement_ingredient_mistranslated"]),
+        ("Dul Avrat Otu", "Дул Аврат Оту", "Dul Avrat Otu", ["supplement_ingredient_mistranslated"]),
+        ("Dokosahekzaenoik asit (DHA)", "Docosahexaenoic acid (DHA)", "Docosahexaenoic acid (DHA)", ["ru_latin_not_in_source"]),
+        # Верные: латиница из источника допустима.
+        ("Hayıt Tohum Ekstraktı", "Экстракт семян авраамова дерева", "Chaste tree seed extract", []),
+        ("Saw Palmetto Meyve Ekstresi", "Экстракт плодов Saw Palmetto", "Saw Palmetto fruit extract", []),
+    ],
+)
+def test_line_problems_catch_wrong_plants_and_english_words(source, ru, en, problems):
+    assert sm.line_problems(source, ru, en) == problems
+
+
+def test_usage_keeps_only_dosing_sentences_and_source_escapes_are_fixed():
+    text = (
+        "Kullanım Şekli:\n"
+        "Yetişkinler için günde 3 defa 1u2019er tablet. Sprey formu ile kolay kullanım avantajı sağlar. "
+        "Hücresel enerjisi artan cilt hücreleri daha hızlı yenilenir."
+    )
+    assert sm.section_parts({"product_info": text}) == {"usage": ["Yetişkinler için günde 3 defa 1’er tablet."]}
+
+
+@pytest.mark.django_db
+def test_bacteria_strains_stay_latin_without_model():
+    llm = SimpleNamespace(generate_content=Mock())
+
+    blocks, _usage = sm.translate_blocks({"ingredients": "İçeriği:\nLactobacillus acidophilus- LA-5®, Bifidobacterium- BB-12®"}, llm)
+
+    assert blocks.ru == {"composition": ["Lactobacillus acidophilus- LA-5®", "Bifidobacterium- BB-12®"]}
+    llm.generate_content.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_glossary_hints_go_to_translator_and_wrong_plant_is_not_remembered():
+    def wrong(user_prompt):
+        items = json.loads(user_prompt.split("\n\n", 1)[1])
+        return {key: {"ru": "Экстракт семян укропа", "en": "Fennel seed extract"} for key in items}
+
+    llm = _translator_llm(wrong)
+    blocks, _usage = sm.translate_blocks({"ingredients": "İçeriği:\nRezene Tohum Ekstraktı"}, llm)
+
+    assert "REZENE" in llm.generate_content.call_args.kwargs["system_prompt"]
+    assert blocks.ru == {} and blocks.stats["rejected"] == {"Rezene Tohum Ekstraktı": ["supplement_ingredient_mistranslated"]}
+    assert not AITranslationMemory.objects.filter(namespace=sm.LINE_NAMESPACE).exists()
 
 
 @pytest.mark.django_db
@@ -220,7 +272,7 @@ def test_supplement_card_gets_memory_blocks_and_model_is_told_not_to_retell_them
     card_call = {"content": _card_answer(), "tokens": {"prompt": 900, "completion": 300}, "cost_usd": 0.0003}
 
     def generate_content(**kwargs):
-        if kwargs["system_prompt"] == sm.LINE_SYSTEM_PROMPT:
+        if kwargs["system_prompt"].startswith(sm.LINE_SYSTEM_PROMPT):
             return {"content": _answer_for(kwargs["user_prompt"]), "tokens": {"prompt": 100, "completion": 80}, "cost_usd": 0.0002}
         return card_call
 

@@ -17,11 +17,12 @@ namespace ``supplement_line``.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from apps.ai.services import medicine_memory
+from apps.ai.services import medicine_memory, supplement_glossary
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.translation_memory import lookup, normalize_source_text, remember
 
@@ -46,8 +47,10 @@ LINE_SYSTEM_PROMPT = (
     "«Хранить в недоступном для детей месте». Вещества — принятыми названиями: «kolekalsiferol» = "
     "холекальциферол / cholecalciferol, «hacim arttırıcı» = наполнитель / bulking agent, «topaklanmayı "
     "önleyici» = антислёживающий агент / anti-caking agent, «takviye edici gıda» = БАД / food supplement. "
-    "Латинские названия бактерий и растений (Lactobacillus acidophilus) оставляй латиницей. "
-    "Ответ — строго JSON."
+    "«Takviye edici gıdalar normal beslenmenin yerine geçemez» = «БАДы не заменяют полноценное питание» / "
+    "«Food supplements are not a substitute for a varied diet». Числа пиши цифрами, как в источнике («Günde 1 "
+    "tablet» = «1 таблетка в день»). Латинские названия бактерий и растений (Lactobacillus acidophilus) оставляй "
+    "латиницей; других английских слов в русском переводе нет. Ответ — строго JSON."
 )
 
 # Подписи разделов на странице БАДа (``fold_tr``, без двоеточия). Подпись другого
@@ -94,6 +97,38 @@ _UNIT_RE = re.compile(r"(?<![^\W\d_])(?:mg|mcg|µg|g|gr|ml|iu|ui|ie|kob|cfu|kcal
 _QUANTITY_ONLY_RE = re.compile(r"[\d\s.,%/x×()*-]*")
 _PORTION_HEADER_RE = re.compile(r"\bicin$")  # «Her 10 ml için», «2 tablet için»
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÇĞİÖŞÜ0-9«\"(])")
+# Предложение блока «способ применения» — о приёме: доза, частота, возраст, как принимать. Описание
+# действия («Hücresel enerjisi artan cilt hücreleri…») и реклама («kolay kullanım avantajı») — нет.
+_USAGE_RE = re.compile(
+    r"gunde|gunluk|\bkez\b|defa|tablet|kapsul|sase|damla|\bml\b|olcek|yemek|ogun|kahvalti|\bsu\b|"
+    r"alin|alma|tuket|kullan|calkala|karistir|erit|yutul|puskurt|cigne|\byas|yetiskin|cocuk|porsiyon|\bdoz"
+)
+_ADVERT_RE = re.compile(r"avantaj")
+# Экранированные символы, которые источник отдаёт текстом: «1u2019er tablet», «(600 u00b5g)».
+_ESCAPED_CHAR_RE = re.compile(r"u(2019|2018|00b5|00b0)")
+# Штаммы бактерий латиницей («Lactobacillus acidophilus- LA-5®», «Bifidobacterium- BB-12®») не переводятся.
+_LATIN_STRAIN_RE = re.compile(
+    r"^(?:lactobacillus|bifidobacterium|streptococcus|lactococcus|saccharomyces|bacillus|enterococcus|"
+    r"pediococcus|leuconostoc|[lbs]\.)\b"
+)
+_LATIN_WORD_RE = re.compile(r"[A-Za-z]{4,}")
+
+
+def _skip_sentence(folded: str) -> bool:
+    return bool(_DISCLAIMER_DUPLICATE_RE.search(folded) or _PACKAGE_DATA_RE.search(folded))
+
+
+def line_problems(source: str, ru: str, en: str) -> list[str]:
+    """Причины не принимать перевод части сверх проверок абзацев лекарств."""
+    problems = []
+    # Вещество словаря переведено иначе: «Rezene» — «укроп», «Mine Çiçeği» — «мята» (пилот 05.11.2026).
+    if supplement_glossary.missing_terms(source, ru, en):
+        problems.append("supplement_ingredient_mistranslated")
+    # Английское слово в русском переводе, которого нет в источнике: «Приём docosahexaenoic acid».
+    folded_source = fold_tr(source)
+    if any(fold_tr(word) not in folded_source for word in _LATIN_WORD_RE.findall(ru)):
+        problems.append("ru_latin_not_in_source")
+    return problems
 
 
 @dataclass
@@ -194,16 +229,19 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
         filled = False  # у текущей подписи уже есть текст
         open_part: Optional[tuple[str, int]] = None  # предложение без точки в конце — его продолжение ниже
         for raw in str(text or "").split("\n"):
-            line = normalize_source_text(raw)
+            line = normalize_source_text(_ESCAPED_CHAR_RE.sub(lambda m: chr(int(m.group(1), 16)), raw))
             if not line:
                 continue
             # Фраза, разрезанная переносом: «Tavsiye edilen» / «günlük alım dozunu aşmayınız.»
             if open_part and _LOWER_START_RE.match(line):
                 kind, index = open_part
-                joined = _sentences(f"{parts[kind][index]} {line}")
+                joined = [
+                    sentence for sentence in _sentences(f"{parts[kind][index]} {line}")
+                    if not _skip_sentence(fold_tr(sentence))
+                ]
                 parts[kind][index:index + 1] = joined
                 last = index + len(joined) - 1
-                open_part = None if re.search(r"[.!?;:]$", parts[kind][last]) else (kind, last)
+                open_part = (kind, last) if joined and not re.search(r"[.!?;:]$", parts[kind][last]) else None
                 continue
             open_part = None
             kind, rest, is_label = _label(line)
@@ -227,9 +265,15 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
                 continue
             for sentence in _sentences(line):
                 folded = fold_tr(sentence)
-                if _DISCLAIMER_DUPLICATE_RE.search(folded) or _PACKAGE_DATA_RE.search(folded) or sentence.endswith("?"):
+                if _skip_sentence(folded) or sentence.endswith("?"):
                     continue
                 target = current
+                if target == "usage" and (not _USAGE_RE.search(folded) or _ADVERT_RE.search(folded)):
+                    continue
+                # «… gibi potansiyel alerjenleri içermez» — не предупреждение, модель пересказывает это в описании
+                # (пилот 05.11.2026: одна фраза дважды); «… içerebilir» остаётся.
+                if target == "warnings" and "icermez" in folded:
+                    continue
                 if target is None:
                     if _STANDARD_STORAGE_RE.search(folded) and not re.search(r"ulasamayacag", folded):
                         target = "storage"
@@ -254,15 +298,25 @@ def translate_blocks(sections: dict[str, str], llm) -> tuple[SupplementBlocks, d
     """
     blocks = SupplementBlocks(parts=section_parts(sections))
     units = list(dict.fromkeys(unit for items in blocks.parts.values() for unit in items))
-    found = lookup(LINE_NAMESPACE, units) if units else {}
+    found = {unit: {"ru": unit, "en": unit} for unit in units if _LATIN_STRAIN_RE.match(fold_tr(unit))}
+    found.update(lookup(LINE_NAMESPACE, [unit for unit in units if unit not in found]) if units else {})
     cached = len(found)
     missing = [unit for unit in units if unit not in found]
     usage: dict[str, Any] = {"tokens": {}, "cost_usd": 0.0, "processing_time_ms": 0}
     rejected: dict[str, list[str]] = {}
     if missing and llm is not None:
-        accepted, rejected, usage = medicine_memory.translate_paragraphs(
-            missing, llm, system_prompt=LINE_SYSTEM_PROMPT
+        hints: dict[str, str] = {}
+        for unit in missing:
+            hints.update(supplement_glossary.glossary_for(unit))
+        system_prompt = LINE_SYSTEM_PROMPT + (
+            f"\nСловарь — переводи эти слова только так: {json.dumps(hints, ensure_ascii=False)}" if hints else ""
         )
+        accepted, rejected, usage = medicine_memory.translate_paragraphs(missing, llm, system_prompt=system_prompt)
+        for unit, values in list(accepted.items()):
+            problems = line_problems(unit, values["ru"], values["en"])
+            if problems:
+                rejected[unit] = problems
+                del accepted[unit]
         if accepted:
             remember(LINE_NAMESPACE, accepted)
             found.update(accepted)
