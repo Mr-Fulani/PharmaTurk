@@ -93,7 +93,8 @@ _EXCIPIENT_RE = re.compile(
     r"silikon dioksit|magnezyum stearat|mikrokristalin|hidroksipropil)"
 )
 # Строка таблицы состава, а не компонент: «270 mg», «mg», «%76,00», «Her 10 ml için».
-_UNIT_RE = re.compile(r"(?<![^\W\d_])(?:mg|mcg|µg|g|gr|ml|iu|ui|ie|kob|cfu|kcal|kj)(?![^\W\d_])")
+# «640 μg RE», «12 mg α-TE», «17,5 mg NE» — греческая «μ» и эквиваленты витаминов тоже единицы.
+_UNIT_RE = re.compile(r"(?<![^\W\d_])(?:mg|mcg|[µμ]g|g|gr|ml|iu|ui|ie|kob|cfu|kcal|kj|re|ne|α-te|te)(?![^\W\d_])")
 _QUANTITY_ONLY_RE = re.compile(r"[\d\s.,%/x×()*-]*")
 _PORTION_HEADER_RE = re.compile(r"\bicin$")  # «Her 10 ml için», «2 tablet için»
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÇĞİÖŞÜ0-9«\"(])")
@@ -104,6 +105,11 @@ _USAGE_RE = re.compile(
     r"alin|alma|tuket|kullan|calkala|karistir|erit|yutul|puskurt|cigne|\byas|yetiskin|cocuk|porsiyon|\bdoz"
 )
 _ADVERT_RE = re.compile(r"avantaj")
+# Хранение — только о хранении; «Şeker, tuz, nişasta içermez», «Vegan … uygundur» после подписи — нет.
+_STORAGE_TOPIC_RE = re.compile(_STANDARD_STORAGE_RE.pattern + r"|derece|isig|isik|\bnem|sicaklik|dondur|buzdolab|ambalaj")
+# «… gibi potansiyel alerjenleri içermez», «… kullanılmamıştır» — не предупреждение, модель пересказывает это в
+# описании (пилот 05.11.2026: одна фраза дважды); «… içerebilir» остаётся.
+_FREE_FROM_RE = re.compile(r"icermez|kullanilmamistir")
 # Экранированные символы, которые источник отдаёт текстом: «1u2019er tablet», «(600 u00b5g)».
 _ESCAPED_CHAR_RE = re.compile(r"u(2019|2018|00b5|00b0)")
 # Штаммы бактерий латиницей («Lactobacillus acidophilus- LA-5®», «Bifidobacterium- BB-12®») не переводятся.
@@ -172,7 +178,8 @@ def _split_top_level(text: str) -> list[str]:
 
 
 def _sentences(text: str) -> list[str]:
-    return [part.strip() for part in _SENTENCE_SPLIT_RE.split(text) if re.search(r"[^\W\d_]{2}", part)]
+    # «*** Takviye edici gıdalar …» — сноска источника; без звёздочек фраза совпадает с той же без сноски.
+    return [part.strip().lstrip("* ") for part in _SENTENCE_SPLIT_RE.split(text) if re.search(r"[^\W\d_]{2}", part)]
 
 
 def _label_kind(label: str) -> Optional[str]:
@@ -226,6 +233,7 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
     for text in sections.values():
         current: Optional[str] = None
         list_seen = False  # в составе уже была строка-список «A, B, C»
+        composition_start = 0  # с какого компонента начался состав текущей подписи
         filled = False  # у текущей подписи уже есть текст
         open_part: Optional[tuple[str, int]] = None  # предложение без точки в конце — его продолжение ниже
         for raw in str(text or "").split("\n"):
@@ -247,11 +255,16 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
             kind, rest, is_label = _label(line)
             if is_label:
                 current, list_seen, filled = kind, False, False
+                composition_start = len(parts["composition"])
                 if not rest:
                     continue
                 line = rest
             elif current == "composition":
-                if _TABLE_HEADER_RE.search(fold_tr(line)) or (list_seen and len(_split_top_level(line)) < 2):
+                # Строка-количество («640 μg RE») — это таблица доз, а не список: состав этой подписи не берётся.
+                if _QUANTITY_ONLY_RE.fullmatch(_UNIT_RE.sub("", fold_tr(line))):
+                    del parts["composition"][composition_start:]
+                    current = None
+                elif _TABLE_HEADER_RE.search(fold_tr(line)) or (list_seen and len(_split_top_level(line)) < 2):
                     current = None
             # Короткая строка без точки после текста способа применения или предупреждений — уже
             # таблица или заголовок («Form», «Tablet», «Raf Ömrü Bilgisi»): блок закончился.
@@ -268,17 +281,20 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
                 if _skip_sentence(folded) or sentence.endswith("?"):
                     continue
                 target = current
-                if target == "usage" and (not _USAGE_RE.search(folded) or _ADVERT_RE.search(folded)):
-                    continue
-                # «… gibi potansiyel alerjenleri içermez» — не предупреждение, модель пересказывает это в описании
-                # (пилот 05.11.2026: одна фраза дважды); «… içerebilir» остаётся.
-                if target == "warnings" and "icermez" in folded:
-                    continue
                 if target is None:
                     if _STANDARD_STORAGE_RE.search(folded) and not re.search(r"ulasamayacag", folded):
                         target = "storage"
                     elif _STANDARD_WARNING_RE.search(folded):
                         target = "warnings"
+                if target == "usage" and (not _USAGE_RE.search(folded) or _ADVERT_RE.search(folded)):
+                    continue
+                if target in ("warnings", "storage") and _FREE_FROM_RE.search(folded):
+                    continue
+                if target == "storage" and not _STORAGE_TOPIC_RE.search(folded):
+                    # «Tavsiye edilen günlük porsiyonu aşmayın» под подписью хранения — предупреждение.
+                    if not _STANDARD_WARNING_RE.search(folded):
+                        continue
+                    target = "warnings"
                 if target:
                     parts[target].append(sentence)
                     open_part = None if re.search(r"[.!?;:]$", sentence) else (target, len(parts[target]) - 1)
@@ -289,6 +305,30 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
         for kind, items in parts.items()
         if items
     }
+
+
+LINE_PROBLEMS = ("supplement_ingredient_mistranslated", "ru_latin_not_in_source")
+
+
+def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:
+    """Перевод частей моделью с подсказками словаря и проверками ``line_problems``."""
+    # Только вещества: у описательных слов варианты через «/» («кора / кожура») модель переносила в перевод.
+    hints = {
+        key.upper(): f"{supplement_glossary.GLOSSARY[key][0]} | {supplement_glossary.GLOSSARY[key][1]}"
+        for unit in units
+        for key in supplement_glossary.found_terms(unit)
+        if supplement_glossary.GLOSSARY[key][2] == supplement_glossary.S
+    }
+    system_prompt = LINE_SYSTEM_PROMPT + (
+        f"\nСловарь — переводи эти слова только так: {json.dumps(hints, ensure_ascii=False)}" if hints else ""
+    )
+    accepted, rejected, usage = medicine_memory.translate_paragraphs(units, llm, system_prompt=system_prompt)
+    for unit, values in list(accepted.items()):
+        problems = line_problems(unit, values["ru"], values["en"])
+        if problems:
+            rejected[unit] = problems
+            del accepted[unit]
+    return accepted, rejected, usage
 
 
 def translate_blocks(sections: dict[str, str], llm) -> tuple[SupplementBlocks, dict[str, Any]]:
@@ -305,18 +345,15 @@ def translate_blocks(sections: dict[str, str], llm) -> tuple[SupplementBlocks, d
     usage: dict[str, Any] = {"tokens": {}, "cost_usd": 0.0, "processing_time_ms": 0}
     rejected: dict[str, list[str]] = {}
     if missing and llm is not None:
-        hints: dict[str, str] = {}
-        for unit in missing:
-            hints.update(supplement_glossary.glossary_for(unit))
-        system_prompt = LINE_SYSTEM_PROMPT + (
-            f"\nСловарь — переводи эти слова только так: {json.dumps(hints, ensure_ascii=False)}" if hints else ""
-        )
-        accepted, rejected, usage = medicine_memory.translate_paragraphs(missing, llm, system_prompt=system_prompt)
-        for unit, values in list(accepted.items()):
-            problems = line_problems(unit, values["ru"], values["en"])
-            if problems:
-                rejected[unit] = problems
-                del accepted[unit]
+        accepted, rejected, usage = _translate(missing, llm)
+        # Отказ своих проверок — один повтор: в пилоте 05.11.2026 модель вернула английский вместо русского
+        # сразу для 10 компонентов одного запроса.
+        retry = [unit for unit, reasons in rejected.items() if set(reasons) & set(LINE_PROBLEMS)]
+        if retry:
+            accepted_again, rejected_again, usage_again = _translate(retry, llm)
+            accepted.update(accepted_again)
+            rejected = {unit: reasons for unit, reasons in {**rejected, **rejected_again}.items() if unit not in accepted}
+            medicine_memory._add_usage(usage, usage_again)
         if accepted:
             remember(LINE_NAMESPACE, accepted)
             found.update(accepted)

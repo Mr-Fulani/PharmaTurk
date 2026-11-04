@@ -242,6 +242,8 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "dul avrat otu": ("лопух", "burdock", S),
     "dulavrat otu": ("лопух", "burdock", S),
     "dulavratotu": ("лопух", "burdock", S),
+    "sahtere": ("дымянка", "fumitory", S),
+    "sahtare": ("дымянка", "fumitory", S),
     "hashas": ("мак", "poppy", S),
     "sarimsak": ("чеснок", "garlic", S),
     "yosunu": ("водоросли / исландский мох", "algae / moss", S),

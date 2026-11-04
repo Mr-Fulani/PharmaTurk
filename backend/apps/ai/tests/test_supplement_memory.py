@@ -172,6 +172,42 @@ def test_usage_keeps_only_dosing_sentences_and_source_escapes_are_fixed():
     assert sm.section_parts({"product_info": text}) == {"usage": ["Yetişkinler için günde 3 defa 1’er tablet."]}
 
 
+def test_dose_table_is_not_composition_and_storage_keeps_only_storage():
+    # PHARMATON VITALITY и NBTLIFE MULTILIFE (пилот 2, 05.11.2026), сокращены.
+    text = (
+        "İçerik:\n"
+        "Vitaminler\n"
+        "Vitamin A\n"
+        "640 μg RE\n"
+        "Muhafaza Koşulları:\n"
+        "Oda sıcaklığında, serin ve kuru yerde muhafaza ediniz. Şeker, tuz, nişasta içermez.\n"
+        "Vegan ve vejetaryen bireylerin kullanımına da uygundur. Takviye edici gıdalar normal beslenmenin yerine geçemez.\n"
+        "Uyarılar:\n"
+        "Soya, buğday ve balık gibi potansiyel alerjenleri içermez. Tavsiye edilen günlük porsiyonu aşmayın.\n"
+        "*** Takviye edici gıdalar normal beslenmenin yerine geçemez."
+    )
+    assert sm.section_parts({"product_info": text}) == {
+        "storage": ["Oda sıcaklığında, serin ve kuru yerde muhafaza ediniz."],
+        "warnings": ["Takviye edici gıdalar normal beslenmenin yerine geçemez.", "Tavsiye edilen günlük porsiyonu aşmayın."],
+    }
+
+
+@pytest.mark.django_db
+def test_english_instead_of_russian_is_retried_once():
+    calls = []
+
+    def english_first(user_prompt):
+        calls.append(user_prompt)
+        items = json.loads(user_prompt.split("\n\n", 1)[1])
+        ru = "Olive oil" if len(calls) == 1 else "Оливковое масло"
+        return {key: {"ru": ru, "en": "Olive oil"} for key in items}
+
+    blocks, usage = sm.translate_blocks({"ingredients": "İçeriği:\nZeytinyağı"}, _translator_llm(english_first))
+
+    assert len(calls) == 2 and usage["cost_usd"] == pytest.approx(0.0004)
+    assert blocks.ru == {"composition": ["Оливковое масло"]}
+
+
 @pytest.mark.django_db
 def test_bacteria_strains_stay_latin_without_model():
     llm = SimpleNamespace(generate_content=Mock())
