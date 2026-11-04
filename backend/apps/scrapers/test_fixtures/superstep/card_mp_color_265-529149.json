@@ -1,0 +1,331 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 911461,
+  "name": "Puma x Hyrox Pwrmode Kadın Siyah Bra",
+  "sku": "265-6744956",
+  "base_code": "265-529149",
+  "attributes": {
+   "mp_size": "L",
+   "mp_color": "SİYAH",
+   "brand_link": "/puma/",
+   "mp_unified": "yes",
+   "filterable_size": "L",
+   "integration_renk": "01",
+   "integration_marka": "031",
+   "mp_yurtdisi_barkod": "4070033302309",
+   "integration_alt_grup": "277",
+   "integration_cinsiyet": "Kadın",
+   "integration_alt_marka": "PUMA",
+   "integration_renk_tonu": "SİYAH",
+   "integration_urun_ozel": "Puma x Hyrox Pwrmode Kadın Siyah Bra",
+   "integration_model_renk": "265-529149.01",
+   "integration_kalem_icerik": "<p>Puma x Hyrox PWRMODE Kadın Spor Sütyeni, HYROX antrenmanları ve orta etkili koşu seansları için destek, hareket özgürlüğü ve konfor sunan bir modeldir. Orta seviyeli aktivitelerde vücudu destekleyecek şekilde tasarlanan yapısı güvenli kullanım sağlar. Telsiz tasarımı sürtünme ve baskı hissini azaltarak uzun süreli antrenmanlarda rahatlık sunar. Ayarlanabilir askıları farklı vücut yapılarına uyum sağlarken, arka kısımdaki kopçalı kapama ürünü kolayca giyip çıkarma imkânı verir. Teknik ve esnek yapısıyla koşu, fitness ve fonksiyonel antrenmanlara uygundur.</p>",
+   "integration_urun_ana_grup": "001",
+   "integration_base_code_format": "529149.01.L"
+  },
+  "attribute_set": 40,
+  "attributes_kwargs": {
+   "mp_size": {
+    "label": "L",
+    "value": "L",
+    "data_type": "valuelabel"
+   },
+   "mp_color": {
+    "label": "Siyah",
+    "value": "SİYAH",
+    "data_type": "valuelabel"
+   },
+   "mp_unified": {
+    "label": "yes",
+    "value": "yes",
+    "data_type": "dropdown"
+   },
+   "filterable_size": {
+    "label": "L",
+    "value": "L",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "01",
+    "value": "01",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "Puma",
+    "value": "031",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Bra",
+    "value": "277",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Kadın",
+    "value": "Kadın",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "Puma",
+    "value": "PUMA",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "SİYAH",
+    "value": "SİYAH",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Giyim",
+    "value": "001",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 5276595,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/10/23/78987043/f9a31a57-a6bd-493d-b0eb-c2d435bb14cf.jpg",
+    "order": 20,
+    "created_date": "2026-11-03T07:15:36.852661Z"
+   },
+   {
+    "pk": 5276258,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/10/23/78986776/82cbbd28-377b-4d66-91ce-882b2e94f348.jpg",
+    "order": 22,
+    "created_date": "2026-11-03T07:14:56.365435Z"
+   }
+  ],
+  "price": "4499",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "4499",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/puma-x-hyrox-pwrmode-kadin-siyah-bra/265-529149/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 2,
+  "created_date": "2026-11-03T06:28:25.864983Z",
+  "modified_date": "2026-11-03T07:14:56.411584Z",
+  "basket_offers": [],
+  "is_listable": true,
+  "listing_code": "SİYAH",
+  "price_extra_field": {}
+ },
+ "variants": [
+  {
+   "attribute_key": "mp_size",
+   "attribute_name": "MP Size",
+   "options": [
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "9140",
+     "label": "XS",
+     "value": "XS",
+     "product": {
+      "pk": 911744,
+      "name": "Puma x Hyrox Pwrmode Kadın Siyah Bra",
+      "sku": "265-6744959",
+      "base_code": "265-529149",
+      "attributes": {
+       "mp_size": "XS",
+       "mp_color": "SİYAH",
+       "filterable_size": "XS",
+       "integration_renk": "01",
+       "mp_yurtdisi_barkod": "4070033302293",
+       "integration_model_renk": "265-529149.01"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "4499",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "4499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/911744/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 3,
+      "created_date": "2026-11-03T06:29:02.955490Z",
+      "modified_date": "2026-11-03T07:15:32.368824Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "9160",
+     "label": "S",
+     "value": "S",
+     "product": {
+      "pk": 911740,
+      "name": "Puma x Hyrox Pwrmode Kadın Siyah Bra",
+      "sku": "265-6744958",
+      "base_code": "265-529149",
+      "attributes": {
+       "mp_size": "S",
+       "mp_color": "SİYAH",
+       "filterable_size": "S",
+       "integration_renk": "01",
+       "mp_yurtdisi_barkod": "4070033302248",
+       "integration_model_renk": "265-529149.01"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "4499",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "4499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/911740/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 13,
+      "created_date": "2026-11-03T06:29:02.499249Z",
+      "modified_date": "2026-11-03T07:15:21.988321Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "9205",
+     "label": "M",
+     "value": "M",
+     "product": {
+      "pk": 911594,
+      "name": "Puma x Hyrox Pwrmode Kadın Siyah Bra",
+      "sku": "265-6744957",
+      "base_code": "265-529149",
+      "attributes": {
+       "mp_size": "M",
+       "mp_color": "SİYAH",
+       "filterable_size": "M",
+       "integration_renk": "01",
+       "mp_yurtdisi_barkod": "4070033302316",
+       "integration_model_renk": "265-529149.01"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "4499",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "4499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/911594/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 12,
+      "created_date": "2026-11-03T06:28:45.453421Z",
+      "modified_date": "2026-11-03T07:15:33.395485Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "9225",
+     "label": "L",
+     "value": "L",
+     "product": {
+      "pk": 911461,
+      "name": "Puma x Hyrox Pwrmode Kadın Siyah Bra",
+      "sku": "265-6744956",
+      "base_code": "265-529149",
+      "attributes": {
+       "mp_size": "L",
+       "mp_color": "SİYAH",
+       "filterable_size": "L",
+       "integration_renk": "01",
+       "mp_yurtdisi_barkod": "4070033302309",
+       "integration_model_renk": "265-529149.01"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "4499",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "4499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-x-hyrox-pwrmode-kadin-siyah-bra/265-529149/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 2,
+      "created_date": "2026-11-03T06:28:25.864983Z",
+      "modified_date": "2026-11-03T07:14:56.411584Z",
+      "price_extra_field": {}
+     }
+    }
+   ]
+  },
+  {
+   "attribute_key": "mp_color",
+   "attribute_name": "MP Color",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "5435346",
+     "label": "Siyah",
+     "value": "SİYAH",
+     "product": {
+      "pk": 911461,
+      "name": "Puma x Hyrox Pwrmode Kadın Siyah Bra",
+      "sku": "265-6744956",
+      "base_code": "265-529149",
+      "attributes": {
+       "mp_size": "L",
+       "mp_color": "SİYAH",
+       "filterable_size": "L",
+       "integration_renk": "01",
+       "mp_yurtdisi_barkod": "4070033302309",
+       "integration_model_renk": "265-529149.01"
+      },
+      "attribute_set": 40,
+      "extra_attributes": {},
+      "price": "4499",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "4499",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-x-hyrox-pwrmode-kadin-siyah-bra/265-529149/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 2,
+      "created_date": "2026-11-03T06:28:25.864983Z",
+      "modified_date": "2026-11-03T07:14:56.411584Z",
+      "price_extra_field": {}
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": null,
+ "offers": []
+}

@@ -1,0 +1,497 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 803313,
+  "name": "Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos",
+  "sku": "6879566",
+  "base_code": "13424",
+  "attributes": {
+   "aktivite": "SPORTSTYLE",
+   "Kapasite2": "0,89 L",
+   "brand_link": "/stanley/",
+   "filterable_size": "Standart",
+   "integration_renk": "0195",
+   "integration_beden": "NS",
+   "integration_marka": "440",
+   "integration_tanim": "TERMOS",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "208",
+   "integration_cinsiyet": "Unisex",
+   "integration_alt_marka": "STANLEY",
+   "integration_color_hex": "#ffffff",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "BEYAZ",
+   "integration_urun_ozel": "Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos",
+   "brand_specific_product": "heartbeat",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "PASLANMAZ ÇELİK TERMOS",
+   "integration_erp_mensei": "Çin",
+   "integration_model_renk": "13424.0195",
+   "integration_renk_detay": "Beyaz",
+   "integration_urun_detay": "The IceFlow Flip Straw 2.0 Tumbler 0.89L",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "UNISEX",
+   "integration_kalem_icerik": "<p><strong>Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos</strong></p>\n\n<p>Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos, paslanmaz çelik gövdesi ve gelişmiş yalıtım teknolojisiyle gün boyunca soğuk içeceklerini ideal sıcaklıkta tutan yüksek performanslı bir kulplu termostur. Günlük yaşamın hızlı temposunda, yoğun antrenman seanslarında ya da uzun süreli açık hava etkinliklerinde sıvı ihtiyacını kesintisiz karşılamak üzere tasarlanmış bu model, fonksiyonelliği şık tasarımla bir araya getirir. Zamansız beyaz rengi ve net çizgileri, her türlü spor ekipmanı ve günlük aksesuarla kusursuz bir görsel bütünlük yakalar. Güçlü yapısı sayesinde darbelere karşı üstün</p>",
+   "integration_renk_tonu_kod": "004",
+   "integration_urun_ana_grup": "002",
+   "integration_hos_renk_detay": "Beyaz",
+   "integration_hos_urun_detay": "Termos",
+   "integration_base_code_format": "13424.0195.NS",
+   "integration_erenp_erenbarkod": "8001068795664",
+   "integration_hos_kalem_icerik": "<p>Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos, gün boyu soğuk içeceklerini yanında taşımak için geniş hacimli ve pratik bir kullanım sunar. Beyaz rengi temiz ve ferah bir görünüm kazandırırken, 0.89 litrelik kapasitesi okul, ofis, spor ve açık hava planlarında ideal alan sağlar. Flip straw pipetli kapağı sayesinde hareket halindeyken kolayca içmene yardımcı olur</p><br> <p><strong>Teknik Özellikler</strong> <li>0.89 litrelik kapasite, su ve soğuk içeceklerini gün içinde daha uzun süre yanında taşımak için geniş kullanım alanı sunar</li> <li>Flip straw pipetli kapak tasarımı, kapağı tamamen açmadan pratik ve kontrollü içim deneyimi sağlar</li> <li>Yalıtımlı gövde yapısı,</p>",
+   "integration_yurt_disi_barkod": "1210001902381",
+   "integration_erp_renk_aciklama": "BEYAZ",
+   "integration_global_attribute7": "TERMOS"
+  },
+  "attribute_set": 2,
+  "attributes_kwargs": {
+   "aktivite": {
+    "label": "Günlük",
+    "value": "SPORTSTYLE",
+    "data_type": "dropdown"
+   },
+   "Kapasite2": {
+    "label": "0,89 L",
+    "value": "0,89 L",
+    "data_type": "dropdown"
+   },
+   "filterable_size": {
+    "label": "Standart",
+    "value": "Standart",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "0195",
+    "value": "0195",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "NS",
+    "value": "NS",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "Stanley",
+    "value": "440",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "TERMOS",
+    "value": "TERMOS",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Termos",
+    "value": "208",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Unisex",
+    "value": "Unisex",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "STANLEY",
+    "value": "STANLEY",
+    "data_type": "dropdown"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "BEYAZ",
+    "value": "BEYAZ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Beyaz",
+    "value": "Beyaz",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Unisex",
+    "value": "UNISEX",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Aksesuar",
+    "value": "002",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 4698571,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/01/77974771/b07bc587-a2b9-4d4d-8a82-45a9d69d96e7.jpg",
+    "order": 20,
+    "created_date": "2026-06-01T12:32:07.597460Z"
+   },
+   {
+    "pk": 4698572,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/01/77974771/93e454af-26fd-4e23-a2a6-189b62462dea.jpg",
+    "order": 22,
+    "created_date": "2026-06-01T12:32:07.951674Z"
+   },
+   {
+    "pk": 4698573,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/01/77974771/8d3a786d-0a7a-4b00-8dad-d8aaec00451b.jpg",
+    "order": 30,
+    "created_date": "2026-06-01T12:32:08.017910Z"
+   }
+  ],
+  "price": "3329",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "3329",
+  "unit_type": "qty",
+  "tax_rate": "20.00",
+  "absolute_url": "/urun/stanley-the-iceflow-flip-straw-2-0-0-89l-unisex-beyaz-termos/13424/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 1,
+  "created_date": "2026-06-01T12:31:37.580106Z",
+  "modified_date": "2026-10-14T11:31:08.575814Z",
+  "basket_offers": [],
+  "is_listable": true,
+  "listing_code": "0195",
+  "price_extra_field": {}
+ },
+ "variants": [
+  {
+   "attribute_key": "integration_renk",
+   "attribute_name": "Renk",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "195",
+     "label": "0195",
+     "value": "0195",
+     "product": {
+      "pk": 803313,
+      "name": "Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos",
+      "sku": "6879566",
+      "base_code": "13424",
+      "attributes": {
+       "filterable_size": "Standart",
+       "integration_renk": "0195",
+       "integration_beden": "NS",
+       "integration_model_renk": "13424.0195",
+       "integration_yurt_disi_barkod": "1210001902381"
+      },
+      "attribute_set": 2,
+      "extra_attributes": {},
+      "price": "3329",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "3329",
+      "unit_type": "qty",
+      "tax_rate": "20.00",
+      "absolute_url": "/urun/stanley-the-iceflow-flip-straw-2-0-0-89l-unisex-beyaz-termos/13424/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 1,
+      "created_date": "2026-06-01T12:31:37.580106Z",
+      "modified_date": "2026-10-14T11:31:08.575814Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "209",
+     "label": "0209",
+     "value": "0209",
+     "product": {
+      "pk": 803291,
+      "name": "Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Kırmızı Termos",
+      "sku": "6879567",
+      "base_code": "13424",
+      "attributes": {
+       "filterable_size": "Standart",
+       "integration_renk": "0209",
+       "integration_beden": "NS",
+       "integration_model_renk": "13424.0209",
+       "integration_yurt_disi_barkod": "1210001902459"
+      },
+      "attribute_set": 2,
+      "extra_attributes": {},
+      "price": "3329",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "3329",
+      "unit_type": "qty",
+      "tax_rate": "20.00",
+      "absolute_url": "/urun/stanley-the-iceflow-flip-straw-2-0-0-89l-unisex-kirmizi-termos/13424/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 203,
+      "created_date": "2026-06-01T12:31:34.276158Z",
+      "modified_date": "2026-10-14T11:31:05.705497Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "215",
+     "label": "0215",
+     "value": "0215",
+     "product": {
+      "pk": 880805,
+      "name": "Stanley The IceFlow Flip Straw 2.0 Tumbler 0.89L Mor Termos",
+      "sku": "6913229",
+      "base_code": "13424",
+      "attributes": {
+       "filterable_size": "Standart",
+       "integration_renk": "0215",
+       "integration_beden": "NS",
+       "integration_model_renk": "13424.0215",
+       "integration_yurt_disi_barkod": "1210001902480"
+      },
+      "attribute_set": 2,
+      "extra_attributes": {},
+      "price": "3329",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "3329",
+      "unit_type": "qty",
+      "tax_rate": "20.00",
+      "absolute_url": "/urun/stanley-the-iceflow-flip-straw-2-0-tumbler-0-89l-mor-termos/13424/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 159,
+      "created_date": "2026-10-19T06:21:49.064000Z",
+      "modified_date": "2026-10-19T06:21:49.381672Z",
+      "price_extra_field": {}
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "219",
+     "label": "0219",
+     "value": "0219",
+     "product": {
+      "pk": 830641,
+      "name": "Stanley The IceFlow Flip Straw Pipetli 0.89L Unisex Sarı Termos",
+      "sku": "6928258",
+      "base_code": "13424",
+      "attributes": {
+       "filterable_size": "Standart",
+       "integration_renk": "0219",
+       "integration_beden": "Standart",
+       "integration_model_renk": "13424.0219",
+       "integration_yurt_disi_barkod": "1210001902503"
+      },
+      "attribute_set": 2,
+      "extra_attributes": {},
+      "price": "3329",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "3329",
+      "unit_type": "qty",
+      "tax_rate": "20.00",
+      "absolute_url": "/urun/stanley-the-iceflow-flip-straw-pipetli-0-89l-unisex-sari-termos/13424/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-08-12T15:35:03.464519Z",
+      "modified_date": "2026-08-19T15:20:35.310748Z",
+      "price_extra_field": {}
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": {
+  "pk": 803313,
+  "name": "Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos",
+  "sku": "6879566",
+  "base_code": "13424",
+  "attributes": {
+   "aktivite": "SPORTSTYLE",
+   "Kapasite2": "0,89 L",
+   "brand_link": "/stanley/",
+   "filterable_size": "Standart",
+   "integration_renk": "0195",
+   "integration_beden": "NS",
+   "integration_marka": "440",
+   "integration_tanim": "TERMOS",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "208",
+   "integration_cinsiyet": "Unisex",
+   "integration_alt_marka": "STANLEY",
+   "integration_color_hex": "#ffffff",
+   "integration_erp_sezon": "26AW",
+   "integration_renk_tonu": "BEYAZ",
+   "integration_urun_ozel": "Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos",
+   "brand_specific_product": "heartbeat",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "PASLANMAZ ÇELİK TERMOS",
+   "integration_erp_mensei": "Çin",
+   "integration_model_renk": "13424.0195",
+   "integration_renk_detay": "Beyaz",
+   "integration_urun_detay": "The IceFlow Flip Straw 2.0 Tumbler 0.89L",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "UNISEX",
+   "integration_kalem_icerik": "<p><strong>Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos</strong></p>\n\n<p>Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos, paslanmaz çelik gövdesi ve gelişmiş yalıtım teknolojisiyle gün boyunca soğuk içeceklerini ideal sıcaklıkta tutan yüksek performanslı bir kulplu termostur. Günlük yaşamın hızlı temposunda, yoğun antrenman seanslarında ya da uzun süreli açık hava etkinliklerinde sıvı ihtiyacını kesintisiz karşılamak üzere tasarlanmış bu model, fonksiyonelliği şık tasarımla bir araya getirir. Zamansız beyaz rengi ve net çizgileri, her türlü spor ekipmanı ve günlük aksesuarla kusursuz bir görsel bütünlük yakalar. Güçlü yapısı sayesinde darbelere karşı üstün</p>",
+   "integration_renk_tonu_kod": "004",
+   "integration_urun_ana_grup": "002",
+   "integration_hos_renk_detay": "Beyaz",
+   "integration_hos_urun_detay": "Termos",
+   "integration_base_code_format": "13424.0195.NS",
+   "integration_erenp_erenbarkod": "8001068795664",
+   "integration_hos_kalem_icerik": "<p>Stanley The IceFlow Flip Straw 2.0 0.89L Unisex Beyaz Termos, gün boyu soğuk içeceklerini yanında taşımak için geniş hacimli ve pratik bir kullanım sunar. Beyaz rengi temiz ve ferah bir görünüm kazandırırken, 0.89 litrelik kapasitesi okul, ofis, spor ve açık hava planlarında ideal alan sağlar. Flip straw pipetli kapağı sayesinde hareket halindeyken kolayca içmene yardımcı olur</p><br> <p><strong>Teknik Özellikler</strong> <li>0.89 litrelik kapasite, su ve soğuk içeceklerini gün içinde daha uzun süre yanında taşımak için geniş kullanım alanı sunar</li> <li>Flip straw pipetli kapak tasarımı, kapağı tamamen açmadan pratik ve kontrollü içim deneyimi sağlar</li> <li>Yalıtımlı gövde yapısı,</p>",
+   "integration_yurt_disi_barkod": "1210001902381",
+   "integration_erp_renk_aciklama": "BEYAZ",
+   "integration_global_attribute7": "TERMOS"
+  },
+  "attribute_set": 2,
+  "attributes_kwargs": {
+   "aktivite": {
+    "label": "Günlük",
+    "value": "SPORTSTYLE",
+    "data_type": "dropdown"
+   },
+   "Kapasite2": {
+    "label": "0,89 L",
+    "value": "0,89 L",
+    "data_type": "dropdown"
+   },
+   "filterable_size": {
+    "label": "Standart",
+    "value": "Standart",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "0195",
+    "value": "0195",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "NS",
+    "value": "NS",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "Stanley",
+    "value": "440",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "TERMOS",
+    "value": "TERMOS",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Termos",
+    "value": "208",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Unisex",
+    "value": "Unisex",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "STANLEY",
+    "value": "STANLEY",
+    "data_type": "dropdown"
+   },
+   "integration_erp_sezon": {
+    "label": "26AW",
+    "value": "26AW",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "BEYAZ",
+    "value": "BEYAZ",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Beyaz",
+    "value": "Beyaz",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Unisex",
+    "value": "UNISEX",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Aksesuar",
+    "value": "002",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 4698571,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/01/77974771/b07bc587-a2b9-4d4d-8a82-45a9d69d96e7.jpg",
+    "order": 20,
+    "created_date": "2026-06-01T12:32:07.597460Z"
+   },
+   {
+    "pk": 4698572,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/01/77974771/93e454af-26fd-4e23-a2a6-189b62462dea.jpg",
+    "order": 22,
+    "created_date": "2026-06-01T12:32:07.951674Z"
+   },
+   {
+    "pk": 4698573,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2026/06/01/77974771/8d3a786d-0a7a-4b00-8dad-d8aaec00451b.jpg",
+    "order": 30,
+    "created_date": "2026-06-01T12:32:08.017910Z"
+   }
+  ],
+  "price": "3329",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "3329",
+  "unit_type": "qty",
+  "tax_rate": "20.00",
+  "absolute_url": "/urun/stanley-the-iceflow-flip-straw-2-0-0-89l-unisex-beyaz-termos/13424/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 1,
+  "created_date": "2026-06-01T12:31:37.580106Z",
+  "modified_date": "2026-10-14T11:31:08.575814Z",
+  "price_extra_field": {}
+ },
+ "offers": []
+}

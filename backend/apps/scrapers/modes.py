@@ -61,6 +61,16 @@ PARSER_MODES = {
         "site": "дерево категорий /tum-kategoriler (~130 разделов)",
         "note": "Идёт через платный прокси — большие прогоны только с согласия.",
     },
+    "superstep": {
+        "label": "SuperStep",
+        "product": "https://www.superstep.com.tr/urun/<название>/b75806-1/",
+        "category": "https://www.superstep.com.tr/erkek-spor-ayakkabi/",
+        "site": "корни каталога Erkek, Kadın, Çocuk, Heartbeat (~20 тыс. строк, ~430 страниц)",
+        "note": (
+            "Без прокси. Товары без нашего раздела (фигурки, шахматы) не загружаются — "
+            "их число в «Причине остановки» чанка."
+        ),
+    },
     "ikea": {
         "label": "IKEA",
         "product": "https://www.ikea.com.tr/urun/<название>-80541594",

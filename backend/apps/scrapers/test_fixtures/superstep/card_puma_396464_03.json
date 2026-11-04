@@ -1,0 +1,1139 @@
+{
+ "in_stock": true,
+ "product": {
+  "pk": 383726,
+  "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+  "sku": "5485771",
+  "base_code": "396464",
+  "attributes": {
+   "badge_text": "BESTSELLER",
+   "brand_link": "/puma/",
+   "hoss_badge": "Bestseller",
+   "max_bag_limit": "2",
+   "filterable_size": "44",
+   "integration_renk": "03",
+   "integration_stil": "098",
+   "integration_beden": "44",
+   "integration_cocuk": "0",
+   "integration_desen": "026",
+   "integration_erkek": "1",
+   "integration_kadin": "1",
+   "integration_marka": "031",
+   "integration_tanim": "AYAKKABI",
+   "integration_alt_ust": "-",
+   "integration_alt_grup": "088",
+   "integration_cinsiyet": "Unisex",
+   "integration_alt_marka": "PUMA",
+   "integration_color_hex": "#000000",
+   "integration_erp_sezon": "26SS",
+   "integration_renk_tonu": "SİYAH",
+   "integration_urun_ozel": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+   "max_basket_item_limit": "2",
+   "integration_beden_seti": "0",
+   "integration_erp_icerik": "%95 İnek Derisi, %5 Sentetik",
+   "integration_erp_mensei": "Vietnam",
+   "integration_model_renk": "396464.03",
+   "integration_renk_detay": "Siyah",
+   "integration_urun_detay": "Palermo Leather",
+   "integration_olcu_birimi": "Adet",
+   "integration_erp_cinsiyet": "MEN",
+   "integration_kalem_icerik": "<p><strong>Puma Palermo Leather Unisex Siyah Spor Ayakkabı</strong></p>\n<p>Puma Palermo Leather Unisex Siyah Spor Ayakkabı, efsanevi teras kültürünün ikonik siluetini kaliteli deri malzeme ve zamansız bir siyah tasarımla modern sokak stiline taşıyan klasik bir spor ayakkabıdır. İtalyan stilinden ilham alan bu özel model, minimalist görünümünü markanın köklü mirasıyla birleştirerek her adımda fark yaratmanı sağlar. Günlük tempona zahmetsizce uyum sağlayan yapısı, kaliteli dış yüzeyi ve konforlu iç tabanı sayesinde stilinden ödün vermeden gün boyu rahat hareket etmene imkan tanır. Hem spor aktivitelerinden ilham alan dinamik kombinlerde hem de casual sokak modasında kendine güçlü bir yer</p>",
+   "integration_renk_tonu_kod": "012",
+   "integration_urun_ana_grup": "005",
+   "integration_hos_renk_detay": "Siyah",
+   "integration_hos_urun_detay": "Unisex Sneaker",
+   "integration_renk_grup_kodu": "396464",
+   "integration_base_code_format": "396464.03.9,5",
+   "integration_erenp_erenbarkod": "8001054857710",
+   "integration_hos_kalem_icerik": "<p>Palermo, 80'li yılların başında ortaya çıkmış ve kısa sürede İngiliz futbol stadyumlarındaki teras kalabalıklarının vazgeçilmezi haline gelmişti. Şimdi, o taraftarlar için geri geldi. Orijinali gibi Palermo da üst kısımda imza etiketi, T-ayak yapısı ve tabii ki klasik tabanıyla tamamlandı. Bu versiyonda süet taban ve folyo baskılı PUMA markalı deri Formstrip bulunur.\r\n</p><br>\r\n<p>\r\n<strong>Teknik Özellikler</strong>\r\n<li>Süet tabanlı deri yüzey</li>\r\n<li>Süet dil ve kabartmalı PUMA markalı etiket ve file destek</li>\r\n<li>Sentetik astar</li>\r\n<li>Kauçuk orta taban</li>\r\n<li>Kauçuk dış taban</li>",
+   "integration_yurt_disi_barkod": "4099685704712",
+   "integration_erp_renk_aciklama": "Palermo Lth PUMA Black-Feather Gray-Gum",
+   "integration_erp_siparis_grubu": "-",
+   "integration_global_attribute7": "AYAKKABI"
+  },
+  "attribute_set": 4,
+  "attributes_kwargs": {
+   "filterable_size": {
+    "label": "44",
+    "value": "44",
+    "data_type": "dropdown"
+   },
+   "integration_renk": {
+    "label": "03",
+    "value": "03",
+    "data_type": "dropdown"
+   },
+   "integration_stil": {
+    "label": "DAYWEAR",
+    "value": "098",
+    "data_type": "dropdown"
+   },
+   "integration_beden": {
+    "label": "44",
+    "value": "44",
+    "data_type": "dropdown"
+   },
+   "integration_desen": {
+    "label": "026",
+    "value": "026",
+    "data_type": "dropdown"
+   },
+   "integration_marka": {
+    "label": "Puma",
+    "value": "031",
+    "data_type": "dropdown"
+   },
+   "integration_tanim": {
+    "label": "AYAKKABI",
+    "value": "AYAKKABI",
+    "data_type": "dropdown"
+   },
+   "integration_alt_grup": {
+    "label": "Spor Ayakkabı & Sneaker",
+    "value": "088",
+    "data_type": "dropdown"
+   },
+   "integration_cinsiyet": {
+    "label": "Unisex",
+    "value": "Unisex",
+    "data_type": "dropdown"
+   },
+   "integration_alt_marka": {
+    "label": "Puma",
+    "value": "PUMA"
+   },
+   "integration_erp_sezon": {
+    "label": "26SS",
+    "value": "26SS",
+    "data_type": "dropdown"
+   },
+   "integration_renk_tonu": {
+    "label": "SİYAH",
+    "value": "SİYAH",
+    "data_type": "dropdown"
+   },
+   "integration_beden_seti": {
+    "label": "0",
+    "value": "0",
+    "data_type": "dropdown"
+   },
+   "integration_renk_detay": {
+    "label": "Siyah",
+    "value": "Siyah",
+    "data_type": "dropdown"
+   },
+   "integration_erp_cinsiyet": {
+    "label": "Erkek",
+    "value": "MEN",
+    "data_type": "dropdown"
+   },
+   "integration_urun_ana_grup": {
+    "label": "Ayakkabı",
+    "value": "005",
+    "data_type": "dropdown"
+   }
+  },
+  "extra_attributes": {},
+  "productimage_set": [
+   {
+    "pk": 1829309,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/16438118/4c9f363f-bc33-44f2-a4aa-ba5b46f12760.jpg",
+    "order": 20,
+    "created_date": "2023-11-15T05:03:23.064232Z"
+   },
+   {
+    "pk": 3001184,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/16438170/c7a55df7-a381-4cbf-80d3-3068609c006a.jpg",
+    "order": 21,
+    "created_date": "2024-11-20T17:22:35.516954Z"
+   },
+   {
+    "pk": 1829311,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/10/21/16438196/2b054c31-66c6-44d0-b99e-18897eb09a06.jpg",
+    "order": 22,
+    "created_date": "2023-11-15T05:03:23.371763Z"
+   },
+   {
+    "pk": 3001185,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/16438170/fb1137b8-ea19-4c0b-916d-2193f5ac942d.jpg",
+    "order": 24,
+    "created_date": "2024-11-20T17:22:35.576402Z"
+   },
+   {
+    "pk": 3001186,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/16438170/6e346dc6-1747-43bb-aa19-548a65f2d161.jpg",
+    "order": 25,
+    "created_date": "2024-11-20T17:22:35.614762Z"
+   },
+   {
+    "pk": 1872182,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/21667296/edf4125c-42f9-4670-9509-2574ab6ac1fb.jpg",
+    "order": 30,
+    "created_date": "2023-12-01T17:04:00.090345Z"
+   },
+   {
+    "pk": 1872183,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/21667296/5554f9c9-7041-4c15-b298-61f2797efe74.jpg",
+    "order": 31,
+    "created_date": "2023-12-01T17:04:00.137933Z"
+   },
+   {
+    "pk": 1829314,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/16438196/d7f838a1-cb0a-4917-867d-dd588ea0594d.jpg",
+    "order": 32,
+    "created_date": "2023-11-15T05:03:23.521090Z"
+   },
+   {
+    "pk": 3001344,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/16438170/c2e11ee2-f0c2-4a8d-bc8b-11223050659e.jpg",
+    "order": 33,
+    "created_date": "2024-11-20T17:22:44.845387Z"
+   },
+   {
+    "pk": 3001345,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/16438170/114d1c0f-4a16-49f0-bb8e-11b1970f4273.jpg",
+    "order": 34,
+    "created_date": "2024-11-20T17:22:44.890680Z"
+   },
+   {
+    "pk": 3001346,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/21667296/d8d6366b-d8ae-41c5-93ad-e0b728ea7b30.jpg",
+    "order": 35,
+    "created_date": "2024-11-20T17:22:44.941166Z"
+   },
+   {
+    "pk": 3001347,
+    "status": "active",
+    "image": "https://8f08a8-ss.akinoncloudcdn.com/products/2024/11/20/21667296/8c6df201-3b4b-481b-871b-f7eabca26276.jpg",
+    "order": 36,
+    "created_date": "2024-11-20T17:22:44.993472Z"
+   }
+  ],
+  "price": "6478",
+  "in_stock": true,
+  "currency_type": "try",
+  "retail_price": "6478",
+  "unit_type": "qty",
+  "tax_rate": "10.00",
+  "absolute_url": "/urun/puma-palermo-leather-unisex-siyah-spor-ayakkabi/396464/",
+  "product_type": "0",
+  "price_type": "default",
+  "is_ready_to_basket": false,
+  "stock": 310,
+  "created_date": "2023-11-15T05:01:11.967701Z",
+  "modified_date": "2026-10-26T12:40:13.942705Z",
+  "basket_offers": [],
+  "is_listable": true,
+  "listing_code": "03",
+  "price_extra_field": {
+   "previous_price": "3239.00"
+  }
+ },
+ "variants": [
+  {
+   "attribute_key": "integration_renk",
+   "attribute_name": "Renk",
+   "options": [
+    {
+     "is_selected": true,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "30000",
+     "label": "03",
+     "value": "03",
+     "product": {
+      "pk": 383726,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485771",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "44",
+       "integration_renk": "03",
+       "integration_beden": "44",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704712"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-palermo-leather-unisex-siyah-spor-ayakkabi/396464/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 310,
+      "created_date": "2023-11-15T05:01:11.967701Z",
+      "modified_date": "2026-10-26T12:40:13.942705Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "50000",
+     "label": "05",
+     "value": "05",
+     "product": {
+      "pk": 499263,
+      "name": "Puma Palermo Lth Erkek Beyaz Spor Ayakkabı",
+      "sku": "5623725",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "41",
+       "integration_renk": "05",
+       "integration_beden": "41",
+       "integration_model_renk": "396464.05",
+       "integration_yurt_disi_barkod": "4099685843053"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "2350",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "4700",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-palermo-lth-erkek-beyaz-spor-ayakkabi/396464-4/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2024-07-31T08:03:24.647054Z",
+      "modified_date": "2026-10-16T19:04:05.450865Z",
+      "price_extra_field": {
+       "previous_price": "3525.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "100001",
+     "label": "01",
+     "value": "01",
+     "product": {
+      "pk": 383725,
+      "name": "Puma Palermo Leather Unisex Beyaz Spor Ayakkabı",
+      "sku": "5485753",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "41",
+       "integration_renk": "01",
+       "integration_beden": "41",
+       "integration_model_renk": "396464.01",
+       "integration_yurt_disi_barkod": "4099685703265"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-palermo-leather-unisex-beyaz-spor-ayakkabi/396464-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 446,
+      "created_date": "2023-11-15T05:01:11.835545Z",
+      "modified_date": "2026-10-26T12:40:13.951375Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "120000",
+     "label": "12",
+     "value": "12",
+     "product": {
+      "pk": 509294,
+      "name": "Puma Palermo Lth Unisex Beyaz Spor Ayakkabı",
+      "sku": "5906921",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "41",
+       "integration_renk": "12",
+       "integration_beden": "41",
+       "integration_model_renk": "396464.12",
+       "integration_yurt_disi_barkod": "4067979539395"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "3525",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "4700",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-palermo-lth-unisex-beyaz-spor-ayakkabi/396464-1/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2024-08-02T06:52:10.842922Z",
+      "modified_date": "2026-10-19T13:56:44.470959Z",
+      "price_extra_field": {
+       "previous_price": "2359.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "130000",
+     "label": "13",
+     "value": "13",
+     "product": {
+      "pk": 553130,
+      "name": "Puma Palermo Leather Unisex Krem Spor Ayakkabı",
+      "sku": "5906932",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "43",
+       "integration_renk": "13",
+       "integration_beden": "43",
+       "integration_model_renk": "396464.13",
+       "integration_yurt_disi_barkod": "4067979301411"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "2659",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "5300",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-palermo-leather-unisex-krem-spor-ayakkabi/396464-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2024-10-09T10:41:10.981037Z",
+      "modified_date": "2026-10-19T22:26:47.482477Z",
+      "price_extra_field": {
+       "previous_price": "3710.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "280000",
+     "label": "28",
+     "value": "28",
+     "product": {
+      "pk": 781126,
+      "name": "Puma Palermo Unisex Kahverengi Spor Ayakkabı",
+      "sku": "6574408",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "36",
+       "integration_renk": "28",
+       "integration_beden": "36",
+       "integration_model_renk": "396464.28",
+       "integration_yurt_disi_barkod": "4069161727719"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6999",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6999",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-palermo-unisex-kahverengi-spor-ayakkabi/396464-2/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2026-03-09T06:09:15.644721Z",
+      "modified_date": "2026-10-20T05:55:10.362404Z",
+      "price_extra_field": {
+       "previous_price": "3500.00"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "attribute_key": "integration_beden",
+   "attribute_name": "Beden",
+   "options": [
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3600",
+     "label": "36",
+     "value": "36",
+     "product": {
+      "pk": 383752,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485760",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "36",
+       "integration_renk": "03",
+       "integration_beden": "36",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704590"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383752/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 152,
+      "created_date": "2023-11-15T05:01:14.647829Z",
+      "modified_date": "2026-10-19T13:56:47.850883Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3700",
+     "label": "37",
+     "value": "37",
+     "product": {
+      "pk": 383762,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485761",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "37",
+       "integration_renk": "03",
+       "integration_beden": "37",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704606"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383762/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 317,
+      "created_date": "2023-11-15T05:01:15.633720Z",
+      "modified_date": "2026-10-19T13:56:49.168166Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "3750",
+     "label": "37,5",
+     "value": "37,5",
+     "product": {
+      "pk": 383729,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485762",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "37,5",
+       "integration_renk": "03",
+       "integration_beden": "37,5",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704613"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383729/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2023-11-15T05:01:12.280097Z",
+      "modified_date": "2026-10-22T00:22:32.419917Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "3800",
+     "label": "38",
+     "value": "38",
+     "product": {
+      "pk": 383741,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485763",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "38",
+       "integration_renk": "03",
+       "integration_beden": "38",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704620"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383741/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 247,
+      "created_date": "2023-11-15T05:01:13.453287Z",
+      "modified_date": "2026-10-19T13:56:46.356909Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "3850",
+     "label": "38,5",
+     "value": "38,5",
+     "product": {
+      "pk": 383749,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485764",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "38,5",
+       "integration_renk": "03",
+       "integration_beden": "38,5",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704637"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383749/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2023-11-15T05:01:14.344878Z",
+      "modified_date": "2026-10-28T00:25:22.898171Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "3900",
+     "label": "39",
+     "value": "39",
+     "product": {
+      "pk": 383759,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485765",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "39",
+       "integration_renk": "03",
+       "integration_beden": "39",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704644"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383759/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2023-11-15T05:01:15.313304Z",
+      "modified_date": "2026-11-04T00:09:36.930969Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4000",
+     "label": "40",
+     "value": "40",
+     "product": {
+      "pk": 383727,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485766",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "40",
+       "integration_renk": "03",
+       "integration_beden": "40",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704651"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383727/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 143,
+      "created_date": "2023-11-15T05:01:12.089163Z",
+      "modified_date": "2026-10-19T13:56:44.168035Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4100",
+     "label": "41",
+     "value": "41",
+     "product": {
+      "pk": 383738,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485767",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "41",
+       "integration_renk": "03",
+       "integration_beden": "41",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704675"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383738/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 365,
+      "created_date": "2023-11-15T05:01:13.164933Z",
+      "modified_date": "2026-10-26T12:40:13.945571Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4200",
+     "label": "42",
+     "value": "42",
+     "product": {
+      "pk": 383744,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485768",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "42",
+       "integration_renk": "03",
+       "integration_beden": "42",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704682"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383744/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 174,
+      "created_date": "2023-11-15T05:01:13.738557Z",
+      "modified_date": "2026-10-26T12:40:13.951354Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4250",
+     "label": "42,5",
+     "value": "42,5",
+     "product": {
+      "pk": 383751,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485769",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "42,5",
+       "integration_renk": "03",
+       "integration_beden": "42,5",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704699"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383751/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 82,
+      "created_date": "2023-11-15T05:01:14.544364Z",
+      "modified_date": "2026-10-26T12:40:13.942754Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4300",
+     "label": "43",
+     "value": "43",
+     "product": {
+      "pk": 383758,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485770",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "43",
+       "integration_renk": "03",
+       "integration_beden": "43",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704705"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383758/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 397,
+      "created_date": "2023-11-15T05:01:15.205634Z",
+      "modified_date": "2026-10-26T12:40:13.951286Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4400",
+     "label": "44",
+     "value": "44",
+     "product": {
+      "pk": 383726,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485771",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "44",
+       "integration_renk": "03",
+       "integration_beden": "44",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704712"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/urun/puma-palermo-leather-unisex-siyah-spor-ayakkabi/396464/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 310,
+      "created_date": "2023-11-15T05:01:11.967701Z",
+      "modified_date": "2026-10-26T12:40:13.942705Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4450",
+     "label": "44,5",
+     "value": "44,5",
+     "product": {
+      "pk": 428966,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5526525",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "44,5",
+       "integration_renk": "03",
+       "integration_beden": "44,5",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704729"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/428966/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2024-03-22T14:56:07.179427Z",
+      "modified_date": "2026-10-26T12:40:13.952597Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": true,
+     "is_selectable_without_stock": true,
+     "in_stock": true,
+     "order": "4500",
+     "label": "45",
+     "value": "45",
+     "product": {
+      "pk": 383733,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485758",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "45",
+       "integration_renk": "03",
+       "integration_beden": "45",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704736"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": true,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383733/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 149,
+      "created_date": "2023-11-15T05:01:12.681483Z",
+      "modified_date": "2026-10-26T12:40:13.947793Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4600",
+     "label": "46",
+     "value": "46",
+     "product": {
+      "pk": 383740,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5485759",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "46",
+       "integration_renk": "03",
+       "integration_beden": "46",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704552"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/383740/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2023-11-15T05:01:13.363933Z",
+      "modified_date": "2026-10-26T12:40:13.951506Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    },
+    {
+     "is_selected": false,
+     "is_selectable": false,
+     "is_selectable_without_stock": true,
+     "in_stock": false,
+     "order": "4700",
+     "label": "47",
+     "value": "47",
+     "product": {
+      "pk": 428965,
+      "name": "Puma Palermo Leather Unisex Siyah Spor Ayakkabı",
+      "sku": "5526526",
+      "base_code": "396464",
+      "attributes": {
+       "filterable_size": "47",
+       "integration_renk": "03",
+       "integration_beden": "47",
+       "integration_model_renk": "396464.03",
+       "integration_yurt_disi_barkod": "4099685704569"
+      },
+      "attribute_set": 4,
+      "extra_attributes": {},
+      "price": "6478",
+      "in_stock": false,
+      "currency_type": "try",
+      "retail_price": "6478",
+      "unit_type": "qty",
+      "tax_rate": "10.00",
+      "absolute_url": "/product/428965/",
+      "product_type": "0",
+      "price_type": "default",
+      "is_ready_to_basket": false,
+      "stock": 0,
+      "created_date": "2024-03-22T14:56:07.104058Z",
+      "modified_date": "2026-10-26T12:40:13.941628Z",
+      "price_extra_field": {
+       "previous_price": "3239.00"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "selected_variant": null,
+ "offers": []
+}

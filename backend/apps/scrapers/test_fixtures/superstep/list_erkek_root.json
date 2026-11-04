@@ -1,0 +1,105 @@
+{
+ "pagination": {
+  "current_page": 1,
+  "num_pages": 203,
+  "page_size": 48,
+  "total_count": 9727
+ },
+ "facets": [
+  {
+   "name": "Kategoriler",
+   "key": "category_ids",
+   "search_key": "category_ids",
+   "widget_type": "category",
+   "order": 1,
+   "extra_params": {},
+   "data": {
+    "widget_type": "category",
+    "name": "Kategoriler",
+    "key": "category_ids",
+    "search_key": "category_ids",
+    "choices": [
+     {
+      "label": "KADIN",
+      "value": 2,
+      "quantity": 7893,
+      "is_selected": false,
+      "depth": 0,
+      "real_depth": 2,
+      "url": "/kadin/?format=json",
+      "menuitemmodel": "49c3e073dd4f41519bcb068e5b7e3856",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "ERKEK",
+      "value": 31,
+      "quantity": 9727,
+      "is_selected": true,
+      "depth": 0,
+      "real_depth": 2,
+      "url": "/erkek/?format=json",
+      "menuitemmodel": "cf8947e4e9af4727bae7a97bfbb8d216",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "AYAKKABI",
+      "value": 40,
+      "quantity": 2514,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 3,
+      "url": "/erkek-ayakkabi/?format=json",
+      "menuitemmodel": "167a62bfcbbd4d2d994d349acb1d56ed",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "GİYİM",
+      "value": 32,
+      "quantity": 5767,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 3,
+      "url": "/erkek-giyim/?format=json",
+      "menuitemmodel": "4a95bcbe31f34bcfa8e4dbdeed8ed981",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "AKSESUAR",
+      "value": 47,
+      "quantity": 1446,
+      "is_selected": false,
+      "depth": 1,
+      "real_depth": 3,
+      "url": "/erkek-aksesuar/?format=json",
+      "menuitemmodel": "a546724fe9db4dd8be2e50d19266466d",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "ÇOCUK",
+      "value": 121,
+      "quantity": 2889,
+      "is_selected": false,
+      "depth": 0,
+      "real_depth": 2,
+      "url": "/cocuk/?format=json",
+      "menuitemmodel": "9d2bb736d6f24dea9ffa8ad9d196f29b",
+      "is_parent_of_selection": false
+     },
+     {
+      "label": "HEARTBEAT",
+      "value": 1125,
+      "quantity": 1658,
+      "is_selected": false,
+      "depth": 0,
+      "real_depth": 2,
+      "url": "/heartbeat-1/?format=json",
+      "menuitemmodel": "222df9b68ac6456eb40842af18c02774",
+      "is_parent_of_selection": false
+     }
+    ],
+    "order": 1
+   }
+  }
+ ],
+ "products": []
+}
