@@ -90,7 +90,6 @@ def test_different_names_go_to_review(first, second, reason):
         ("ETHINYLESTRADIOL EFFIK 50 MCG 15 TABLET", "ETHINYLESTRADIOL EFFIK 50 MCG 1X15 TB"),
         ("L-LYSINE POWDER 1×16 OZ.", "L-LYSINE POWDER 1X16 OZ."),
         ("FLUTAMID 250 MG 84 TABLET", "FLUTAMIDE 250 MG 84 TABS"),
-        ("RIMSO % 50 50 ML SOL.", "RIMSO % 50 50 ML ORAL SOLUTION"),
         ("EFLUELDA 0.5 ML KULLANIMA HAZIR ENJEKTOR", "EFLUELDA 0.5 ML KULLANIMA HAZIRENJEKTOR"),
     ],
 )
@@ -119,6 +118,25 @@ def test_decimal_dose_split_in_url_is_not_another_dose():
         _page(1, name, "6.39", url="https://ilacfiyati.com/ilaclar/gutron-25-mg-50-tablet"),
         _page(2, name, url="https://ilacfiyati.com/ilaclar/gutron-2-5-mg-50-tb"),
     ])
+    assert decision.action == HIDE
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "reason"),
+    [
+        ("NACL 20 X 5 ML AMPUL", "NACL 5 X 20 ML AMPUL", "в названиях те же числа, но при других единицах"),
+        ("XYZ 25 MG 50 TABLET", "XYZ 50 MG 25 TABLET", "в названиях те же числа, но при других единицах"),
+        # Раствор для приёма внутрь и раствор для инъекций — разные формы.
+        ("XYZ 50 MG 10 ML ORAL SOLUTION", "XYZ 50 MG 10 ML SOLUTION", "в названиях разные слова: oral"),
+    ],
+)
+def test_swapped_numbers_and_oral_form_go_to_review(first, second, reason):
+    [decision] = decide_group([_page(1, first, "100"), _page(2, second)])
+    assert (decision.action, decision.reason) == (REVIEW, reason)
+
+
+def test_same_number_units_written_differently_are_hidden():
+    [decision] = decide_group([_page(1, "ARZERRA 3 VIALS × 5 ML", "100"), _page(2, "ARZERRA 3 VIAL X 5 ML")])
     assert decision.action == HIDE
 
 
@@ -292,3 +310,80 @@ def test_command_shows_by_default_and_apply_requires_backup(tmp_path, capsys):
     [row] = json.loads(backup.read_text(encoding="utf-8"))
     assert (row["product_id"], row["keep_id"], row["is_active"]) == (priceless.pk, priced.pk, True)
     assert ilacfiyati_twins.TWIN_OF_KEY not in row["external_data"]
+
+
+@pytest.mark.django_db
+def test_analog_stub_is_not_a_twin():
+    priced = _medicine("trikafta-copackaged-100-mg-84-tablets", price=Decimal("16109.59"))
+    stub = _medicine("trikafta-copackaged-84-tablets")
+    Product.objects.filter(pk=stub.pk).update(external_data={**stub.external_data, "is_stub": True})
+
+    assert ilacfiyati_twins.duplicate_barcode_groups() == {}
+    assert ilacfiyati_twins.active_twins(SERVICE_BARCODE) == [priced]
+
+
+@pytest.mark.django_db
+def test_parser_logs_only_pair_with_new_page(monkeypatch, caplog):
+    keep = _medicine("prekunil-750-mg-550-tablet-a", name="PREKUNIL 750 MG 550 TABLET", price=Decimal("260"),
+                     barcode="1111111100599")
+    _medicine("prekunil-750-mg-50-tablet", name="PREKUNIL 750 MG 50 TABLET", barcode="1111111100599")
+    service = ScraperIntegrationService()
+    monkeypatch.setattr(
+        service, "_create_new_product",
+        lambda _s, scraped: ("created", _medicine(scraped.external_id, name=scraped.name, barcode=scraped.barcode)),
+    )
+    scraped = _scraped("prekunil-500-mg-550-tablet", name="PREKUNIL 500 MG 550 TABLET", barcode="1111111100599")
+
+    with caplog.at_level("WARNING"):
+        service._process_single_product(None, scraped)
+
+    warnings = [record.getMessage() for record in caplog.records if "не объединены" in record.getMessage()]
+    assert len(warnings) == 1 and f"товар {keep.pk}" in warnings[0]
+    assert f"у товара {keep.pk}" in scraped._ilacfiyati_twin_review
+
+
+def test_skipped_twin_row_is_not_reopened_until_it_changes():
+    from apps.scrapers.base.listing_changes import (
+        OPEN, SKIP, ListingRow, listing_decision, twin_skip_fingerprint,
+    )
+
+    row = ListingRow(url="https://ilacfiyati.com/ilaclar/trikafta-copackaged-84-tablets", name=TRIKAFTA,
+                     barcode=SERVICE_BARCODE, price=Decimal("0"), price_text="0,00 TL", status="AKTIF",
+                     prescription="")
+    remembered = twin_skip_fingerprint(row.fingerprint)
+    assert listing_decision(row, known_fingerprint=remembered, product=None) == SKIP
+    # Обычный отпечаток без товара (товар удалили) — карточка открывается, как раньше.
+    assert listing_decision(row, known_fingerprint=row.fingerprint, product=None) == OPEN
+    changed = ListingRow(**{**row.__dict__, "price": Decimal("100"), "price_text": "100,00 TL"})
+    assert listing_decision(changed, known_fingerprint=remembered, product=None) == OPEN
+
+
+@pytest.mark.django_db
+def test_tracker_remembers_skipped_twin_page():
+    import uuid
+
+    from apps.scrapers.base.listing_changes import SKIP, ListingRow
+    from apps.scrapers.listing_changes import ListingChangeTracker
+
+    url = "https://ilacfiyati.com/ilaclar/trikafta-copackaged-84-tablets"
+    row = ListingRow(url=url, name=TRIKAFTA, barcode=SERVICE_BARCODE, price=Decimal("0"), price_text="0,00 TL",
+                     status="AKTIF", prescription="")
+    tracker = ListingChangeTracker("ilacfiyati", uuid.uuid4())
+    tracker.decide([row])
+    tracker.remember_saved(url, twin_skipped=True)
+
+    assert tracker.decide([row]) == {url: SKIP}
+
+
+@pytest.mark.django_db
+def test_command_does_not_overwrite_existing_backup(tmp_path):
+    _medicine("trikafta-copackaged-100-mg-84-tablets", price=Decimal("16109.59"))
+    priceless = _medicine("trikafta-copackaged-84-tablets")
+    backup = tmp_path / "before.json"
+    backup.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(CommandError):
+        call_command("hide_ilacfiyati_twin_pages", apply=True, backup=str(backup))
+
+    assert backup.read_text(encoding="utf-8") == "[]"
+    assert _active(priceless) == (True, True)

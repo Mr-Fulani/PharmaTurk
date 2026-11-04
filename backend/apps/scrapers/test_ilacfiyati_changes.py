@@ -190,7 +190,7 @@ class FakeTracker:
     def decide(self, rows):
         return {row.url: self.decisions.get(row.url, SKIP) for row in rows}
 
-    def remember_saved(self, url):
+    def remember_saved(self, url, **_kwargs):
         self.saved.append(url)
 
     def mark_seen(self, urls):

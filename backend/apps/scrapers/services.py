@@ -2451,6 +2451,8 @@ class ScraperIntegrationService:
                 scraped_product._medicine_import_skip_reason = (
                     f"вторая страница препарата, на сайте товар {decision.keep.pk}: {decision.reason}"
                 )
+                # Режим «Только изменения» не открывает её снова, пока строка списка та же.
+                scraped_product._ilacfiyati_twin_skipped = True
                 return "skipped", None
 
         # Создаем новый товар
@@ -2458,6 +2460,8 @@ class ScraperIntegrationService:
         if product is None:
             return action, product
         for decision in twin_decisions:
+            if decision.page.pk is not None and decision.keep.pk is not None:
+                continue  # пара уже сохранённых товаров — её покажет команда
             if decision.action == ilacfiyati_twins.REVIEW:
                 other = decision.keep if decision.page.pk is None else decision.page
                 scraped_product._ilacfiyati_twin_review = (

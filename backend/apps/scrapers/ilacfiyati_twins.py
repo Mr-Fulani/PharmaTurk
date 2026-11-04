@@ -23,6 +23,7 @@ from typing import Iterable, Optional
 
 from django.core.cache import cache
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 HIDE = "hide"
@@ -60,8 +61,11 @@ _SYNONYM_GROUPS = {
     "krem": ("cream",),
 }
 _SYNONYMS = {alias: word for word, aliases in _SYNONYM_GROUPS.items() for alias in aliases}
-# Слова, которые не отличают упаковку: «пленочное покрытие», «штук», «для приёма внутрь», союзы.
-_FILLER = {"film", "kapli", "coated", "fc", "adet", "oral", "and", "ve", "with", "x"}
+# Слова, которые не отличают упаковку: «пленочное покрытие», «штук», союзы. «ORAL» отличает:
+# «ORAL SOLUTION» и «SOLUTION» (инъекция) — разные формы.
+_FILLER = {"film", "kapli", "coated", "fc", "adet", "and", "ve", "with", "x"}
+# Единицы, к которым привязано число: «25 MG 50 TABLET» и «50 MG 25 TABLET» — разные упаковки.
+_UNITS = {"mg", "mcg", "g", "kg", "ml", "l", "iu", "ui", "ie", "u", "mmol", "meq", "oz"}
 _INGREDIENT_FILLER = {"and", "ve", "with", "ile"}
 _INGREDIENT_SYNONYMS = {"asit": "acid", "asidi": "acid"}
 # Транслитерация: страницы пишут вещество по-турецки и по-английски
@@ -114,6 +118,18 @@ def name_identity(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
         if token not in _FILLER:
             words.add(_spelling(token))
     return tuple(sorted(words)), tuple(sorted(numbers))
+
+
+def number_units(name: str) -> tuple[tuple[str, str], ...]:
+    """Числа названия с единицей сразу после них («20 X 5 ML» → (20, ""), (5, ml))."""
+    tokens = _name_tokens(name)
+    pairs = []
+    for index, token in enumerate(tokens):
+        if token[0].isdigit():
+            following = tokens[index + 1] if index + 1 < len(tokens) else ""
+            following = _SYNONYMS.get(following, following)
+            pairs.append((_number(token), following if following in _UNITS else ""))
+    return tuple(sorted(pairs))
 
 
 def _name_letters(name: str) -> str:
@@ -203,6 +219,8 @@ def mismatch_reason(keep: TwinPage, other: TwinPage) -> str:
     other_words, other_numbers = name_identity(other.source_name)
     if keep_numbers != other_numbers:
         return "в названиях разные числа (дозировка или количество)"
+    if number_units(keep.source_name) != number_units(other.source_name):
+        return "в названиях те же числа, но при других единицах"
     if keep_words != other_words and _name_letters(keep.source_name) != _name_letters(other.source_name):
         extra = sorted(set(keep_words) ^ set(other_words))
         return "в названиях разные слова: " + ", ".join(extra)
@@ -258,6 +276,13 @@ def decide_group(pages: Iterable[TwinPage]) -> list[TwinDecision]:
     return decisions
 
 
+def _stub_q(prefix: str = "") -> Q:
+    """Заглушка аналога (страница, которую видели только в таблице аналогов) — не близнец:
+    её сам парсер дополнит при открытии страницы. Условие с has_key: у строки без ключа
+    сравнение JSON дало бы NULL, и exclude() выкинул бы её."""
+    return Q(**{f"{prefix}external_data__has_key": "is_stub"}) & Q(**{f"{prefix}external_data__is_stub": True})
+
+
 def active_twins(barcode: str, *, exclude_pk: Optional[int] = None) -> list:
     """Показанные на сайте лекарства ilacfiyati с этим штрихкодом (Product)."""
     from apps.catalog.models import Product
@@ -271,7 +296,7 @@ def active_twins(barcode: str, *, exclude_pk: Optional[int] = None) -> list:
         medicine_item__is_active=True,
         medicine_item__barcode=barcode,
         external_url__contains="ilacfiyati.com",
-    )
+    ).exclude(_stub_q())
     if exclude_pk:
         qs = qs.exclude(pk=exclude_pk)
     return list(qs.order_by("pk"))
@@ -288,6 +313,7 @@ def duplicate_barcode_groups() -> dict[str, list]:
             base_product__external_url__contains="ilacfiyati.com",
         )
         .exclude(barcode="")
+        .exclude(_stub_q("base_product__"))
         .values_list("barcode", flat=True)
     )
     return {barcode: active_twins(barcode) for barcode, count in sorted(counts.items()) if count > 1}

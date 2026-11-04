@@ -16,6 +16,7 @@ Product и MedicineProduct) и ведёт их адрес 301 на оставл�
 """
 import csv
 import json
+import os
 from collections import Counter
 
 from django.core.management.base import BaseCommand, CommandError
@@ -39,6 +40,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if options["apply"] and not options["backup"]:
             raise CommandError("С --apply нужен --backup <файл>.")
+        if options["apply"] and os.path.exists(options["backup"]):
+            raise CommandError(f"Файл {options['backup']} уже есть — бэкап его не перезаписывает, укажите новый.")
         groups = ilacfiyati_twins.duplicate_barcode_groups()
         if options["barcode"]:
             groups = {barcode: rows for barcode, rows in groups.items() if barcode in options["barcode"]}
