@@ -87,6 +87,7 @@ from apps.catalog.utils.parser_media_handler import (
     source_url_fingerprint,
 )
 from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG, ensure_brand_category
+from apps.catalog.utils.default_variant import default_fashion_variant
 from apps.catalog.utils.old_price import source_old_price
 from apps.catalog.services.cross_source_duplicates import (
     SOURCES as DUPLICATE_SOURCES,
@@ -3285,20 +3286,13 @@ class ScraperIntegrationService:
             )
         return True
 
-    @staticmethod
-    def default_fashion_variant(variants):
-        """Цвет, чья цена — цена карточки: первый по порядку сайта цвет в наличии
-        с ценой, иначе первый с ценой.
-
-        Не зависит от того, с какого цвета начали разбор: цена не «прыгает»
-        между проходами и не берётся у распроданного цвета. Тем же правилом
-        пользуется обновление карточки при открытии.
-        """
-        priced = [row for row in variants if row.price is not None]
-        return next(
-            (row for row in priced if row.is_available),
-            priced[0] if priced else variants[0],
-        )
+    def _colour_variants(self, product: Product, scraped_product: ScrapedProduct) -> list:
+        """Цвета ответа, по которым ``_sync_fashion_variants`` считает цену товара; [] — нет."""
+        attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+        variants = attrs.get("fashion_variants")
+        if isinstance(variants, list) and variants and self._fashion_model_config(product.product_type):
+            return variants
+        return []
 
     @staticmethod
     def variants_carry_old_price(variants) -> bool:
@@ -3509,7 +3503,7 @@ class ScraperIntegrationService:
 
         active_variants = list(domain_product.variants.filter(is_active=True).order_by("sort_order", "id"))
         if active_variants:
-            default_variant = self.default_fashion_variant(active_variants)
+            default_variant = default_fashion_variant(active_variants)
             if domain_product.price != default_variant.price:
                 domain_product.price = default_variant.price
                 changed = True
@@ -3940,7 +3934,20 @@ class ScraperIntegrationService:
             # конвертация выполняются отдельно CurrencyConverter и здесь не участвуют.
             # Manual-only sources (Instagram by default) may enrich content on a
             # repeat scrape, but their existing storefront price stays frozen.
-            if not price_refresh_disabled:
+            # Цену товара с цветами задаёт один раз _sync_fashion_variants
+            # (default_fashion_variant): цена главного цвета парсера здесь
+            # переписывалась бы ещё раз, и товар каждый проход был бы «обновлён».
+            colour_variants = self._colour_variants(existing_product, scraped_product)
+            if not price_refresh_disabled and colour_variants:
+                if not self.variants_carry_old_price(colour_variants):
+                    # Зачёркнутой по цветам нет (LCW) — как раньше, из товара.
+                    new_old_price = source_old_price(
+                        getattr(scraped_product, "old_price", None), existing_product.price,
+                    )
+                    if existing_product.old_price != new_old_price:
+                        existing_product.old_price = new_old_price
+                        updated = True
+            elif not price_refresh_disabled:
                 source_currency = str(scraped_product.currency or "").strip().upper()
                 current_currency = str(existing_product.currency or "").strip().upper()
                 if getattr(scraped_product, "price_unpublished", False) and (

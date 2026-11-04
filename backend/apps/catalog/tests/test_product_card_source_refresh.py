@@ -15,6 +15,7 @@ from apps.catalog.models import (
     Category,
     ClothingProduct,
     ClothingVariant,
+    CrossSourceDuplicate,
     ClothingVariantSize,
     FurnitureProduct,
     FurnitureVariant,
@@ -1013,6 +1014,25 @@ def test_card_refresh_opens_colour_in_stock_before_sold_out_one(parsed_clothing)
     target = ProductCardSourceRefreshService()._target(product)
 
     assert target.offer.variant_key == "red"
+
+
+@pytest.mark.django_db
+def test_card_refresh_does_not_open_colour_hidden_as_duplicate(parsed_clothing):
+    product, _domain, _black, red = parsed_clothing
+    product.source_offers.filter(variant_key="red").update(
+        availability_status=ProductSourceOffer.AvailabilityStatus.IN_STOCK,
+    )
+    CrossSourceDuplicate.objects.create(
+        product_type="clothing",
+        hidden_variant_id=red.pk,
+        hidden_product=product,
+        match=CrossSourceDuplicate.Match.EAN,
+        reason=CrossSourceDuplicate.Reason.PRICE,
+    )
+
+    target = ProductCardSourceRefreshService()._target(product)
+
+    assert target.offer.variant_key == "black"
 
 
 @pytest.mark.django_db

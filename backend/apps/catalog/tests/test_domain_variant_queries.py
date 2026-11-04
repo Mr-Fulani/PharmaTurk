@@ -228,3 +228,45 @@ def test_prefetched_variants_give_same_payload_as_database(domain):
             actual = serializer_class(prefetched, context=context).data
 
             assert actual == expected, (domain, product.slug, name)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("prefetch", [False, True])
+@pytest.mark.parametrize("domain", ["clothing", "headwear", "islamic_clothing", "shoes", "underwear"])
+def test_default_colour_follows_price_rule_of_import(domain, prefetch):
+    """Витрина выбирает цвет тем же правилом, что цену товара (default_fashion_variant):
+    первый цвет распродан — показывается цвет в наличии. Иначе витрина показывала
+    749,70 серого Nautica, а сортировка и фильтр шли по 999,60 синего."""
+    brand, category, suffix = _brand_with_category(domain)
+    product_model, variant_model, *_, serializer_class = DOMAINS[domain]
+    slug = domain.replace("_", "-")
+    product = product_model.objects.create(
+        name="Polo",
+        slug=f"polo-{slug}-{suffix}",
+        category=category,
+        brand=brand,
+        price="999.60",
+        currency="TRY",
+        is_active=True,
+    )
+    slugs = []
+    for position, (price, available) in enumerate([("749.70", False), ("999.60", True)]):
+        variant = variant_model.objects.create(
+            product=product,
+            name=f"Polo v{position}",
+            slug=f"polo-{slug}-v{position}-{suffix}",
+            color=f"color-{position}",
+            price=price,
+            currency="TRY",
+            is_active=True,
+            is_available=available,
+            sort_order=position,
+        )
+        slugs.append(variant.slug)
+    obj = product_model.objects.get(pk=product.pk)
+    if prefetch:
+        prefetch_related_objects([obj], "variants")
+
+    data = serializer_class(obj, context={"request": _request()}).data
+
+    assert data["default_variant_slug"] == slugs[1]

@@ -37,6 +37,7 @@ from apps.catalog.services.source_offer_verification import (
     paid_freshness_seconds,
 )
 from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG
+from apps.catalog.utils.default_variant import default_fashion_variant
 from apps.catalog.utils.old_price import source_old_price
 from apps.http_errors import PaidAccessUnavailableError
 from apps.scrapers.base.scraper import ScrapedProduct
@@ -289,6 +290,9 @@ class ProductCardSourceRefreshService:
                 "id",
             )
         )
+        hidden_keys = self._hidden_duplicate_keys(product)
+        if hidden_keys:
+            offers = offers.exclude(variant_key__in=hidden_keys)
         for offer in offers:
             parser_class = verifier._trusted_parser_class(offer)
             if parser_class is not None and (
@@ -297,6 +301,21 @@ class ProductCardSourceRefreshService:
             ):
                 return RefreshTarget(product=product, offer=offer, parser_class=parser_class)
         return None
+
+    @staticmethod
+    def _hidden_duplicate_keys(product: Product) -> list[str]:
+        """Цвета, скрытые как дубль у другого продавца: их не открываем."""
+        hidden_ids = list(product.hidden_duplicate_rows.values_list("hidden_variant_id", flat=True))
+        if not hidden_ids:
+            return []
+        domain = product.domain_item
+        if domain is product or not hasattr(domain, "variants"):
+            return []
+        return [
+            key
+            for key in domain.variants.filter(id__in=hidden_ids).values_list("external_id", flat=True)
+            if key
+        ]
 
     @classmethod
     def _terminal_failure(cls, target: RefreshTarget) -> dict[str, Any] | None:
@@ -1137,7 +1156,7 @@ class ProductCardSourceRefreshService:
         stock: int | None,
     ) -> tuple[Decimal, Decimal | None, str, bool, int | None]:
         """Цена и наличие карточки — тем же правилом, что импорт: цена и
-        зачёркнутая — одного цвета (``ScraperIntegrationService.default_fashion_variant``).
+        зачёркнутая — одного цвета (``default_fashion_variant``).
 
         FLO и SuperStep проверяют один цвет (``all_saved_colors``): остальные
         цвета берутся с сохранёнными данными, и распроданный проверенный цвет не
@@ -1157,7 +1176,7 @@ class ProductCardSourceRefreshService:
         variants = list(variants)
         if not variants:
             return price, old_price, currency, available, stock
-        default = ScraperIntegrationService.default_fashion_variant(variants)
+        default = default_fashion_variant(variants)
         if default.price is not None:
             price = _decimal(default.price) or price
             currency = _currency(default.currency) or currency

@@ -62,6 +62,8 @@ from apps.catalog.models import (
     UnderwearVariant,
     UnderwearVariantSize,
 )
+from apps.catalog.utils.default_variant import default_fashion_variant
+from apps.catalog.utils.old_price import source_old_price
 from apps.catalog.utils.product_markup import apply_markup_percent, get_effective_product_markup
 
 logger = logging.getLogger(__name__)
@@ -593,11 +595,18 @@ class CrossSourceDuplicateService:
         пересчёт может идти после проверки карточки, где сигналы Product не нужны."""
         from apps.scrapers.services import DEFAULT_ASSUMED_STOCK_QUANTITY, ScraperIntegrationService
 
-        default = next((v for v in active if v.price is not None), active[0])
+        # Цена и зачёркнутая — одного цвета, тем же правилом, что импорт и витрина
+        # (FLO и SuperStep передают зачёркнутую по цветам).
+        default = default_fashion_variant(active)
         any_avail = any(v.is_available for v in active)
         total_stock = sum((v.stock_quantity or 0) for v in active if v.stock_quantity)
         stock = DEFAULT_ASSUMED_STOCK_QUANTITY if any_avail else (total_stock if total_stock > 0 else None)
-        values = {"price": default.price, "is_available": any_avail, "stock_quantity": stock}
+        values = {
+            "price": default.price,
+            "old_price": source_old_price(default.old_price, default.price),
+            "is_available": any_avail,
+            "stock_quantity": stock,
+        }
         if default.currency:
             values["currency"] = default.currency
         if default.main_image:
