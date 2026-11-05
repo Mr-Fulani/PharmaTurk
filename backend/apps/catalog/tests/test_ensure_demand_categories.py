@@ -9,8 +9,8 @@ from apps.catalog.models import Category, CategoryTranslation
 
 
 def _category(slug, name, parent=None, **extra):
-    category = Category.objects.create(slug=slug, name=name, parent=parent, **extra)
-    CategoryTranslation.objects.create(category=category, locale="ru", name=name)
+    category = Category.objects.create(slug=slug, name=name, parent=parent, description=name, **extra)
+    CategoryTranslation.objects.create(category=category, locale="ru", name=name, description=name)
     return category
 
 
@@ -23,7 +23,8 @@ def tree(db):
     _category("drinkware", "Стаканы и бокалы")
     sandals = _category("sandals", "Сандалии")
     _category("slides", "Слайды", sandals, meta_title="Слайды | Сандалии | Mudaroba", meta_description="Ручное описание")
-    _category("flip-flops", "Шлёпанцы", sandals)
+    flip_flops = _category("flip-flops", "Шлёпанцы", sandals)
+    CategoryTranslation.objects.filter(category=flip_flops).update(h1="Шлёпанцы из Турции", seo_text="Шлёпанцы для пляжа.")
     return bags
 
 
@@ -54,10 +55,19 @@ def test_apply_creates_and_renames_with_backup(tree, tmp_path):
     assert slides.meta_title == ""  # шаблон со старым названием очищен
     assert slides.meta_description == "Ручное описание"  # без старого названия — не трогаем
     assert slides.translations.get(locale="ru").name == "Шлёпанцы"
-    assert Category.objects.get(slug="flip-flops").name == "Сланцы и вьетнамки"
+    # описание «Слайды» на странице «Шлёпанцы» и «Шлёпанцы» на странице «Сланцы» — чужие ключи
+    assert slides.description == "Шлёпанцы"
+    assert slides.translations.get(locale="ru").description == "Шлёпанцы"
+    flip_flops = Category.objects.get(slug="flip-flops")
+    assert flip_flops.name == "Сланцы и вьетнамки"
+    assert flip_flops.description == "Сланцы и вьетнамки"
+    flip_ru = flip_flops.translations.get(locale="ru")
+    assert (flip_ru.description, flip_ru.h1, flip_ru.seo_text) == ("Сланцы и вьетнамки", "", "")
     assert Category.objects.get(slug="hoodies").name == "Толстовки и худи"
 
     saved = json.loads(backup.read_text(encoding="utf-8"))
+    assert sorted(saved["created"]) == ["backpacks", "fleece", "thermoses"]
+    assert {row["slug"]: row["description"] for row in saved["renamed"]}["slides"] == "Слайды"
     assert {row["slug"]: row["name"] for row in saved["renamed"]} == {
         "flip-flops": "Шлёпанцы",
         "slides": "Слайды",

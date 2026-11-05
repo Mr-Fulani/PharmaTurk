@@ -6,11 +6,12 @@
 («Беговые», «Угги», «Сабо») — их заполняет раскладка парсера.
 
 Переименование — только если название ещё прежнее (ручные правки не затираются).
-Автоматические title/description со старым названием очищаются: страница строит их
-из нового названия. Товары не переносятся.
+Описание, равное старому названию, заменяется новым (как в constants.py); автоматические
+title/description и тексты посадочной страницы со старым названием очищаются — страница
+строит их из нового названия. Товары не переносятся.
 
-    manage.py ensure_demand_categories                              # показ, без записи
-    manage.py ensure_demand_categories --apply --backup /tmp/x.json # запись + бэкап
+    manage.py ensure_demand_categories                                          # показ
+    manage.py ensure_demand_categories --apply --backup /backups/demand-categories.json
 """
 import json
 
@@ -29,15 +30,16 @@ NEW_CATEGORIES = [
         "Термосы, термокружки и термобутылки", "Thermoses, travel mugs and insulated bottles",
     ),
 ]
-# (slug, прежнее RU, новое RU): «шлёпанцы» и «сланцы» ищут, «слайды» — нет;
-# «толстовка» — самое частое слово для худи и свитшотов. Порядок важен: имя
+# (slug, прежнее RU, новое RU, новое описание RU): «шлёпанцы» и «сланцы» ищут, «слайды» —
+# нет; «толстовка» — самое частое слово для худи и свитшотов. Порядок важен: имя
 # уникально внутри родителя, поэтому «Шлёпанцы» сначала освобождаются.
 RENAMES = [
-    ("flip-flops", "Шлёпанцы", "Сланцы и вьетнамки"),
-    ("slides", "Слайды", "Шлёпанцы"),
-    ("hoodies", "Худии", "Толстовки и худи"),
+    ("flip-flops", "Шлёпанцы", "Сланцы и вьетнамки", "Сланцы и вьетнамки"),
+    ("slides", "Слайды", "Шлёпанцы", "Шлёпанцы"),
+    ("hoodies", "Худии", "Толстовки и худи", "Толстовки и худи"),
 ]
 AUTO_META_FIELDS = ("meta_title", "og_title", "meta_description", "og_description", "meta_keywords")
+LANDING_FIELDS = ("h1", "meta_title", "meta_description", "seo_text")
 
 
 def _category_row(category):
@@ -46,8 +48,9 @@ def _category_row(category):
         "slug": category.slug,
         "name": category.name,
         **{field: getattr(category, field) for field in AUTO_META_FIELDS},
+        "description": category.description,
         "translations": [
-            {"locale": t.locale, "name": t.name, "description": t.description}
+            {"locale": t.locale, "name": t.name, "description": t.description, **{f: getattr(t, f) for f in LANDING_FIELDS}}
             for t in category.translations.all()
         ],
     }
@@ -68,7 +71,7 @@ class Command(BaseCommand):
         creates, renames = self._plan()
         for parent, slug, name_ru, *_ in creates:
             self.stdout.write(f"+ раздел «{name_ru}» ({slug}) в «{parent.name}» ({parent.slug})")
-        for category, old, new in renames:
+        for category, old, new, _ in renames:
             self.stdout.write(f"~ «{old}» → «{new}» ({category.slug})")
         if not creates and not renames:
             self.stdout.write("Изменений нет.")
@@ -78,12 +81,12 @@ class Command(BaseCommand):
             return
 
         with open(options["backup"], "w", encoding="utf-8") as fh:
-            json.dump({"renamed": [_category_row(c) for c, _, _ in renames]}, fh, ensure_ascii=False, indent=1)
+            json.dump({"renamed": [_category_row(c) for c, *_ in renames], "created": [c[1] for c in creates]}, fh, ensure_ascii=False, indent=1)
         with transaction.atomic():
             for parent, slug, name_ru, name_en, desc_ru, desc_en in creates:
                 self._create(parent, slug, name_ru, name_en, desc_ru, desc_en)
-            for category, old, new in renames:
-                self._rename(category, old, new)
+            for category, old, new, description in renames:
+                self._rename(category, old, new, description)
         self.stdout.write(self.style.SUCCESS(
             f"Создано разделов: {len(creates)}, переименовано: {len(renames)}. Бэкап: {options['backup']}"
         ))
@@ -102,8 +105,8 @@ class Command(BaseCommand):
         if missing_parents:
             raise CommandError(f"Нет родительских разделов: {', '.join(missing_parents)}.")
         renames = [
-            (category, old, new)
-            for slug, old, new in RENAMES
+            (category, old, new, description)
+            for slug, old, new, description in RENAMES
             for category in Category.objects.filter(slug=slug, name=old)
         ]
         return creates, renames
@@ -123,12 +126,23 @@ class Command(BaseCommand):
         for locale, name, description in (("ru", name_ru, desc_ru), ("en", name_en, desc_en)):
             CategoryTranslation.objects.create(category=category, locale=locale, name=name, description=description)
 
-    def _rename(self, category, old, new):
+    def _rename(self, category, old, new, description):
         category.name = new
         fields = ["name"]
+        if (category.description or "").strip() == old:
+            category.description = description
+            fields.append("description")
         for field in AUTO_META_FIELDS:
             if old in str(getattr(category, field) or ""):
                 setattr(category, field, "")  # шаблон страницы соберёт из нового названия
                 fields.append(field)
         category.save(update_fields=fields)
-        CategoryTranslation.objects.filter(category=category, locale="ru", name=old).update(name=new)
+        for translation in CategoryTranslation.objects.filter(category=category, locale="ru"):
+            if translation.name == old:
+                translation.name = new
+            if (translation.description or "").strip() == old:
+                translation.description = description
+            for field in LANDING_FIELDS:
+                if old in str(getattr(translation, field) or ""):
+                    setattr(translation, field, "")  # текст со старым названием — шаблон до перегенерации
+            translation.save()
