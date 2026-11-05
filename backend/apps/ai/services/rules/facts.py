@@ -298,9 +298,9 @@ def parse_name(name: str, facts: ProductFacts) -> None:
         facts.kind = specific[0]
     elif kinds:
         facts.kind = kinds[0]
-    # Номер сразу за брендом («New Balance 9060 Lifestyle») — модель; у магазинов-брендов
-    # (LC Waikiki) первым бывает артикул.
-    leading_number = bool(facts.brand) and vocab.fold(facts.brand) not in vocab.STORE_BRANDS and bool(model) and bool(tokens) and model[0] == tokens[0]
+    # Номер сразу за брендом («New Balance 9060 Lifestyle») — модель только у брендов с
+    # числовыми моделями; у остальных («Pierre Cardin 6205») — артикул.
+    leading_number = vocab.fold(facts.brand) in vocab.NUMERIC_MODEL_BRANDS and bool(model) and bool(tokens) and model[0] == tokens[0]
     facts.model = " ".join(drop_codes(model, leading_number=leading_number)).strip(" &/+")
 
 
@@ -474,6 +474,9 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
         facts.kind = category_kind or facts.kind
     if facts.kind is not None:
         facts.kind = vocab.BRAND_KINDS.get((vocab.fold(facts.brand), facts.kind.ru), facts.kind)
+    if facts.kind is not None and facts.kind.ru in vocab.JACKET_KINDS:
+        words = vocab.fold(facts.model).split()
+        facts.kind = next((vocab.MODEL_WORD_KINDS[word] for word in words if word in vocab.MODEL_WORD_KINDS), facts.kind)
     if product_type == "perfumery" and (facts.kind is None or facts.kind.generic):
         fragrance_type = vocab.fold(attrs.get("fragrance_type"))
         facts.kind = vocab.KINDS.get(fragrance_type, facts.kind)
