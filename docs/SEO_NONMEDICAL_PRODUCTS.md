@@ -47,7 +47,8 @@
 не меняется. Обычно — исходное название транслитом + `external_id`
 (`adidas-samba-og-unisex-beyaz-spor-ayakkab-superstep-B75806`).
 
-У источников из `RU_TITLE_SLUG_SOURCES` (сейчас `superstep`, 05.11.2026) — русское название
+У источников из `RU_TITLE_SLUG_SOURCES` (сейчас `superstep`; решение владельца 05.11.2026 —
+«русский транслитом») — русское название
 по правилам выше без цвета, транслитом, и код модели без имени источника:
 `krossovki-uniseks-adidas-samba-og-b75806`, `zhenskie-uggi-ugg-classic-ultra-mini-1116109`.
 Цвета в адресе нет: в карточке несколько цветов. Правила не назвали товар (спорттовары,
