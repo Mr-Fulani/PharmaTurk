@@ -458,6 +458,13 @@ class SuperstepParser(BaseScraper):
             # Сайт путает «Bere» и «Şapka» (New Era Sun Shield — «Bere», а в
             # названии «… Çocuk Bej Şapka»): верим названию.
             subgroup = name_subgroup
+        elif (
+            superstep_subgroup_key(subgroup) in self.LOOSE_TOP_SUBGROUPS
+            and superstep_subgroup_key(name_subgroup) in self.LOOSE_TOP_NAME_SUBGROUPS
+        ):
+            # В «Sweatshirt»/«Polar» сайт кладёт и флисовые куртки («Napapijri
+            # … Polar Ceket»), и футболки («Nike Impossiblysoft … T-Shirt»).
+            subgroup = name_subgroup
         attrs = product.get("attributes") or {}
         gender = self._map_gender(attrs.get("integration_cinsiyet"))
         kids_gender = {"BOYS": "boys", "GIRLS": "girls"}.get(str(attrs.get("integration_erp_cinsiyet") or "").upper(), "")
@@ -467,6 +474,8 @@ class SuperstepParser(BaseScraper):
         return subgroup, route
 
     HEADWEAR_SUBGROUPS = frozenset({"sapka", "bere"})
+    LOOSE_TOP_SUBGROUPS = frozenset({"sweatshirt", "polar", "hoodie"})
+    LOOSE_TOP_NAME_SUBGROUPS = frozenset({"ceket", "mont", "yelek", "t-shirt"})
     # Модификаторы перед цветом в названии: «Açık Mavi», «Koyu Gri», «Çok Renkli».
     NAME_COLOR_MODIFIERS = frozenset({"koyu", "acik", "kirik", "cok"})
     # Слова после цвета, которые относятся к нему: «Kum Rengi».

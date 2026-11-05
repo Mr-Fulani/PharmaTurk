@@ -974,7 +974,10 @@ Product URL никогда не считается следующим chunk: и�
 «детский»); тип кепки — по названию (у сайта одна подгруппа «Şapka»): Trucker →
 `hw-trucker-caps`, Snapback → `hw-snapbacks`, Bucket/Balıkçı → `hw-bucket-hats`
 (детям — `hw-childrens-panamas`), Visor → `hw-visors`; если подгруппа «Bere», а в
-названии «Şapka» (New Era Sun Shield) или наоборот — верим названию. Детское
+названии «Şapka» (New Era Sun Shield) или наоборот — верим названию. В «Sweatshirt»,
+«Polar» и «Hoodie» сайт кладёт и флисовые куртки, и футболки: если название кончается
+на «Ceket», «Mont», «Yelek» или «T-Shirt», раздел — по названию («Napapijri … Polar
+Ceket» → `jackets`, «Nike Impossiblysoft … T-Shirt» → `t-shirts`). Детское
 бельё — по `integration_erp_cinsiyet`: BOYS —
 `uw-boys-briefs`/`uw-boys-underwear`, GIRLS — `uw-girls-panties`/`uw-girls-underwear`.
 Рюкзаки «Unisex» — в «Сумки и кошельки» (`bags-wallets`): отдельного раздела

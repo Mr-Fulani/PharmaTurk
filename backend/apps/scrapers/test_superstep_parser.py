@@ -489,6 +489,29 @@ NIKE_RENKLI = "/urun/nike-ultra-comfort-erkek-renkli-boxer/0000ke1257-1/"
 LACOSTE_KIDS = "/urun/lacoste-cocuk-bisiklet-yaka-mavi-t-shirt/tj7365/"
 
 
+@pytest.mark.parametrize(
+    "subgroup,name,expected",
+    [
+        # Волна 2 на проде 05.11: у сайта подгруппа «Sweatshirt», а товар — куртка или футболка.
+        ("Sweatshirt", "Napapijri Yupik 3 Erkek Krem Polar Ceket", "jackets"),
+        ("Sweatshirt", "Nike Impossiblysoft Kadın Beyaz T-Shirt", "t-shirts"),
+        ("Polar", "The North Face Glacier Erkek Siyah Yelek", "vests"),
+        ("Sweatshirt", "The North Face Crest Fz Erkek Gri Outdoor Polar", "knitwear"),
+        ("Sweatshirt", "adidas Lk Dy Çocuk Turuncu Sweatshirt", "knitwear"),
+        # Поло с «… Polo Yaka T-Shirt» в названии остаются поло.
+        ("Polo", "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt", "polo-shirts"),
+    ],
+)
+def test_loose_top_subgroup_is_refined_by_name(subgroup, name, expected):
+    product = {
+        "name": name,
+        "attributes": {"integration_cinsiyet": "Erkek"},
+        "attributes_kwargs": {"integration_alt_grup": {"label": subgroup}},
+    }
+
+    assert SuperstepParser()._category_route(product)[1][0] == expected
+
+
 def test_trucker_cap_goes_to_trucker_caps():
     """У сайта одна подгруппа «Şapka» на все кепки; тип — по названию."""
     parser = _parser({NEW_ERA_TRUCKER: "card_newera_trucker_60856247.json"})
