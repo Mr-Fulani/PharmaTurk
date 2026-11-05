@@ -982,7 +982,12 @@ Ceket» → `jackets`, «Nike Impossiblysoft … T-Shirt» → `t-shirts`, «…
 «Флиски» (`fleece`), «Sweatshirt» → «Толстовки и худи» (`hoodies`), «Termos» и «Suluk» →
 «Термосы и термокружки» (`thermoses`), UGG в «Bot»/«Bot & Çizme» → «Угги» (`ugg-boots`),
 «Terlik» с «Clog» в названии (Crocs) → «Сабо» (`clogs`); пока нового раздела нет,
-товар идёт в следующий slug маршрута (`knitwear`, `drinkware`, `boots`…). Детское
+товар идёт в следующий slug маршрута (`knitwear`, `drinkware`, `boots`…). Уже загруженный
+товар переезжает в новый раздел при повторном обходе, только когда меняется его строка
+списка (`_apply_category_mapping` ставит `_category_override`): постепенно и не все. Разом —
+командой `move_superstep_to_demand_categories` (показ по умолчанию, `--apply --backup
+/backups/….json`, без сети; раздел — тот же `SuperstepParser.subgroup_route`, переносит
+только в новые разделы и только при той же наценке и типе). Детское
 бельё — по `integration_erp_cinsiyet`: BOYS —
 `uw-boys-briefs`/`uw-boys-underwear`, GIRLS — `uw-girls-panties`/`uw-girls-underwear`.
 Рюкзаки «Unisex» и детские — в «Рюкзаки» (`backpacks`), мужские и женские — в свои

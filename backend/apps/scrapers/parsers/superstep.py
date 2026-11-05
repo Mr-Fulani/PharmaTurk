@@ -451,35 +451,46 @@ class SuperstepParser(BaseScraper):
                 if label and not label.isdigit():
                     subgroup = label
                     break
-        name_subgroup = superstep_subgroup_from_name(product.get("name"))
+        attrs = product.get("attributes") or {}
+        gender = self._map_gender(attrs.get("integration_cinsiyet"))
+        kids_gender = {"BOYS": "boys", "GIRLS": "girls"}.get(str(attrs.get("integration_erp_cinsiyet") or "").upper(), "")
+        return self.subgroup_route(subgroup, product.get("name"), self._brand(product), gender, kids_gender)
+
+    @classmethod
+    def subgroup_route(
+        cls, subgroup: Any, name: Any, brand: Any, gender: str, kids_gender: str = ""
+    ) -> Tuple[str, Tuple[str, ...]]:
+        """Подгруппа и маршрут по подгруппе сайта, названию и бренду — без запросов.
+
+        Нужна и команде переноса уже загруженных товаров
+        (``move_superstep_to_demand_categories``): раскладка та же, что при сборе.
+        """
+        name_subgroup = superstep_subgroup_from_name(name)
         if not subgroup:
             subgroup = name_subgroup
-        elif {superstep_subgroup_key(subgroup), superstep_subgroup_key(name_subgroup)} == self.HEADWEAR_SUBGROUPS:
+        elif {superstep_subgroup_key(subgroup), superstep_subgroup_key(name_subgroup)} == cls.HEADWEAR_SUBGROUPS:
             # Сайт путает «Bere» и «Şapka» (New Era Sun Shield — «Bere», а в
             # названии «… Çocuk Bej Şapka»): верим названию.
             subgroup = name_subgroup
         elif (
-            superstep_subgroup_key(subgroup) in self.LOOSE_TOP_SUBGROUPS
-            and superstep_subgroup_key(name_subgroup) in self.LOOSE_TOP_NAME_SUBGROUPS
+            superstep_subgroup_key(subgroup) in cls.LOOSE_TOP_SUBGROUPS
+            and superstep_subgroup_key(name_subgroup) in cls.LOOSE_TOP_NAME_SUBGROUPS
         ):
             # В «Sweatshirt»/«Polar» сайт кладёт и флисовые куртки («Napapijri
             # … Polar Ceket»), и футболки («Nike Impossiblysoft … T-Shirt»); флис
             # («… Outdoor Polar») — во «Флиски», а не в «Толстовки».
             subgroup = name_subgroup
-        attrs = product.get("attributes") or {}
-        gender = self._map_gender(attrs.get("integration_cinsiyet"))
-        kids_gender = {"BOYS": "boys", "GIRLS": "girls"}.get(str(attrs.get("integration_erp_cinsiyet") or "").upper(), "")
         route = resolve_superstep_category_slugs(subgroup, gender, kids_gender)
         key = superstep_subgroup_key(subgroup)
-        name_words = set(superstep_subgroup_key(product.get("name")).split())
+        name_words = set(superstep_subgroup_key(name).split())
         if key == "sapka":
-            route = self._cap_route(product.get("name"), gender) or route
-        elif key in {"bot", "bot & cizme"} and "ugg" in name_words | {superstep_subgroup_key(self._brand(product))}:
+            route = cls._cap_route(name, gender) or route
+        elif key in {"bot", "bot & cizme"} and "ugg" in name_words | {superstep_subgroup_key(brand)}:
             # Ищут «угги», а не «сапоги UGG» (SEO-ядро 05.11).
-            route = self.UGG_ROUTE
+            route = cls.UGG_ROUTE
         elif key == "terlik" and "clog" in name_words:
             # Crocs Classic Clog, Crocband Clog — сабо, а не шлёпанцы.
-            route = self.CLOG_ROUTE
+            route = cls.CLOG_ROUTE
         return subgroup, route
 
     UGG_ROUTE = ("ugg-boots", "boots", "shoes")
