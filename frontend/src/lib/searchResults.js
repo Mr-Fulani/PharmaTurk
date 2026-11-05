@@ -44,3 +44,12 @@ export function appendSearchPage(existing, incoming) {
   const seen = new Set(existing.map((item) => item?.id))
   return [...existing, ...incoming.filter((item) => !seen.has(item?.id))]
 }
+
+// Нашлось не по запросу как есть (бэкенд: search_info) → {mode, query} или null.
+// mode: layout — другая раскладка, translit — латиницей, typo — исправлена опечатка.
+export function readSearchInfo(data) {
+  const info = data && !Array.isArray(data) ? data.search_info : null
+  if (!info || typeof info.query !== 'string' || !info.query) return null
+  if (!['layout', 'translit', 'typo'].includes(info.mode)) return null
+  return { mode: info.mode, query: info.query }
+}

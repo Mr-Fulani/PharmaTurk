@@ -138,7 +138,7 @@ from .supplement_market_check_api import (
     as _build_supplement_market_check_response,
 )
 from .querysets import non_public_shadow_product_q, source_variant_q
-from .product_search import filter_by_search, order_by_relevance
+from .product_search import filter_by_search, order_by_relevance, search_plan
 from .throttles import (
     MEDICINE_MARKET_CHECK_THROTTLES,
     PRODUCT_CARD_SOURCE_REFRESH_THROTTLES,
@@ -1743,8 +1743,13 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         
         # Поиск по словам в подготовленном тексте товара (docs/PRODUCT_SEARCH.md)
         search = self.request.query_params.get('search')
+        plan = None
         if search:
-            queryset = filter_by_search(queryset, search)
+            # Раскладка, латиница, опечатка — выбор один раз на запрос (docs/PRODUCT_SEARCH.md)
+            if getattr(self, '_search_plan_for', None) != search:
+                self._search_plan_for, self._search_plan = search, search_plan(search)
+            plan = self._search_plan
+            queryset = filter_by_search(queryset, search, plan=plan)
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -1802,7 +1807,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         # Сортировка: с поиском и без явной сортировки — по точности совпадения
         ordering = self.request.query_params.get('ordering')
         if search and not ordering:
-            queryset = order_by_relevance(queryset, search)
+            queryset = order_by_relevance(queryset, search, plan=plan)
         else:
             queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
 
@@ -1872,7 +1877,13 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         ]
     )
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        response = super().list(request, *args, **kwargs)
+        # Нашлось не по запросу как есть (раскладка, латиница, опечатка) — страница
+        # поиска пишет «Показаны результаты по запросу …» (docs/PRODUCT_SEARCH.md).
+        plan = getattr(self, '_search_plan', None)
+        if plan is not None and plan.corrected and isinstance(response.data, dict):
+            response.data['search_info'] = {'mode': plan.mode, 'query': plan.query}
+        return response
     
     @extend_schema(
         summary="Получить товар по slug",

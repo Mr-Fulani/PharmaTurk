@@ -229,6 +229,13 @@ BRAND_RU: dict[str, str] = {
     "new era": "нью эра",
     "stanley": "стэнли",
     "under armour": "андер армор",
+    # Поиск по сайту (docs/PRODUCT_SEARCH.md): написания, которые чтение латиницы даёт иначе
+    # («ikea» → «икеа», «pfizer» → «пфизер», «abdi ibrahim» → «абди ибрахим»).
+    "ikea": "икея",
+    "on": "он раннинг",
+    "on running": "он раннинг",
+    "abdi ibrahim": "абди ибрагим",
+    "pfizer": "пфайзер",
 }
 
 # Слово бренда, которое в названии — часть другого имени: «New Era … New York Yankees»

@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   appendSearchPage,
   nextSearchSource,
+  readSearchInfo,
   readSearchPage,
   searchProductParams,
   searchServiceParams,
@@ -51,4 +52,11 @@ test('show more loads products first, then services', () => {
   assert.equal(nextSearchSource({ hasMore: true }, { hasMore: true }), 'products')
   assert.equal(nextSearchSource({ hasMore: false }, { hasMore: true }), 'services')
   assert.equal(nextSearchSource({ hasMore: false }, { hasMore: false }), null)
+})
+
+test('search_info is shown only for known correction modes', () => {
+  assert.deepEqual(readSearchInfo({ search_info: { mode: 'layout', query: 'нурофен' } }), { mode: 'layout', query: 'нурофен' })
+  assert.equal(readSearchInfo({ search_info: { mode: 'other', query: 'x' } }), null)
+  assert.equal(readSearchInfo({ results: [] }), null)
+  assert.equal(readSearchInfo([]), null)
 })

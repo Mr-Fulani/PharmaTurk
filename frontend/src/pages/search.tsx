@@ -1,10 +1,12 @@
 import { useRouter } from 'next/router'
 import Head from 'next/head'
+import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { getSingleFlight } from '../lib/api'
 import {
   appendSearchPage,
   nextSearchSource,
+  readSearchInfo,
   readSearchPage,
   searchProductParams,
   searchServiceParams,
@@ -34,6 +36,8 @@ export default function SearchPage() {
   const [services, setServices] = useState<SourceState>(EMPTY_SOURCE)
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState<string | null>(null)
+  // Нашлось не по запросу как есть: другая раскладка, латиница или опечатка (search_info API)
+  const [searchInfo, setSearchInfo] = useState<{ mode: string; query: string } | null>(null)
   // Запрос, к которому относятся показанные результаты: ответ «Показать ещё»
   // по прежнему запросу не должен попасть в список нового.
   const queryRef = useRef(q)
@@ -48,6 +52,7 @@ export default function SearchPage() {
     if (!router.isReady) return
     setMoreError(null)
     setLoadingMore(false)
+    setSearchInfo(null)
     if (!q) {
       setProducts(EMPTY_SOURCE)
       setServices(EMPTY_SOURCE)
@@ -75,6 +80,7 @@ export default function SearchPage() {
         const servicePage = readSearchPage(servicesRes?.data)
 
         setProducts({ items: productPage.results, count: productPage.count, page: 1, hasMore: productPage.hasMore })
+        setSearchInfo(readSearchInfo(productsRes?.data))
         setServices({ items: markServices(servicePage.results), count: servicePage.count, page: 1, hasMore: servicePage.hasMore })
         if (!productsRes && !servicesRes) {
           setError(t('search_error', 'Не удалось выполнить поиск. Попробуйте ещё раз.'))
@@ -135,6 +141,16 @@ export default function SearchPage() {
       <main className="mx-auto max-w-6xl px-3 pt-0 pb-6 sm:p-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('search_results', 'Результаты поиска')}</h1>
         <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">{q ? `${t('search_for', 'По запросу')}: "${q}"` : t('search_placeholder')}</div>
+        {q && !loading && searchInfo ? (
+          <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            {searchInfo.mode === 'typo'
+              ? t('search_did_you_mean', 'Точных совпадений нет. Возможно, вы искали')
+              : t('search_shown_for', 'Показаны результаты по запросу')}{' '}
+            <Link href={{ pathname: '/search', query: { query: searchInfo.query } }} className="font-medium text-[var(--accent)] underline">
+              «{searchInfo.query}»
+            </Link>
+          </div>
+        ) : null}
         {q && !loading && total > 0 ? (
           <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">{t('search_found_count', 'Найдено: {{count}}', { count: total })}</div>
         ) : null}

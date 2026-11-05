@@ -7,18 +7,37 @@
 в тексте (числа необязательны, если есть другие слова). Найденное сортируется
 по точности совпадения.
 
+Вторая очередь (``search_language``): в текст добавляются бренд и торговое название
+кириллицей, тип товара и пол по-русски и по-английски, названия раздела; в запросе
+отсекаются окончания и учитываются синонимы. Если ничего не нашлось — другая
+раскладка, чтение латиницы кириллицей и обратно, исправление опечатки (``search_plan``).
+
 Пока таблица индекса пуста (до первого ``rebuild_product_search_index --apply``
 на проде), поиск и сигналы работают по-старому: ``name__icontains``.
 """
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Iterable, Optional
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
 from django.db.models.functions import Length
 from django.db.models.signals import post_save
+
+from .search_language import (
+    QUERY_SYNONYMS,
+    TYPO_CANDIDATE_THRESHOLD,
+    TYPO_MIN_LENGTH,
+    closest_word,
+    cyrillic_to_latin,
+    latin_reading,
+    latin_to_cyrillic,
+    letter_twin,
+    stem,
+    switch_layout,
+)
 
 # Турецкие и прочие латинские буквы с диакритикой → латиница, ё → е.
 # Заглавная İ отдельно: ``"İ".lower()`` даёт «i» с комбинируемой точкой (U+0307).
@@ -79,27 +98,105 @@ def _translation_values(obj, field: str) -> list:
     return [getattr(row, field, "") for row in translations.all()]
 
 
-def build_search_row(product, domain=None) -> dict[str, str]:
-    """Поля ``ProductSearchIndex`` товара. ``domain`` — его доменная запись (лекарство, одежда…)."""
+# Типы товаров, у которых тип и пол из словаря карточек не ищутся: в названиях
+# лекарств турецкие слова словаря («SET», «BOT») — не тип товара.
+_MEDICAL_TYPES = {"medicines", "supplements", "medical_equipment"}
+
+
+def _vocab():
+    from apps.ai.services.rules import vocab
+
+    return vocab
+
+
+_PHRASES: dict[tuple[str, ...], tuple[str, str]] = {}
+
+
+def _kind_phrases() -> dict[tuple[str, ...], tuple[str, str]]:
+    """Нормализованная фраза названия (турецкая или английская) → (тип или пол по-русски, по-английски)."""
+    if not _PHRASES:
+        vocab = _vocab()
+        for key, kind in vocab.KINDS.items():
+            _PHRASES[tuple(normalize_search_text(key).split())] = (kind.ru, kind.en)
+        for key, (ru, en) in vocab.AUDIENCE.items():
+            _PHRASES[tuple(normalize_search_text(key).split())] = (ru.lstrip("="), en)
+    return _PHRASES
+
+
+def kind_words(names: Iterable[str]) -> list[str]:
+    """Тип товара и пол из названия по-русски и по-английски: «Kadın Spor Ayakkabı» →
+    «женский Women's», «кроссовки Sneakers». Самая длинная фраза словаря с каждого слова."""
+    phrases = _kind_phrases()
+    longest = max(map(len, phrases))
+    found: list[str] = []
+    for name in names:
+        words = normalize_search_text(name).split()
+        index = 0
+        while index < len(words):
+            for size in range(min(longest, len(words) - index), 0, -1):
+                value = phrases.get(tuple(words[index:index + size]))
+                if value:
+                    found += value
+                    index += size
+                    break
+            else:
+                index += 1
+    return found
+
+
+_CATEGORY_DEPTH = 3  # раздел, его родитель и родитель родителя (загружены одним запросом)
+
+
+def _category_names(category) -> list[str]:
+    """Названия раздела товара и разделов выше («Кроссовки», «Женская обувь», «Обувь»)."""
+    names: list[str] = []
+    for _ in range(_CATEGORY_DEPTH):
+        if category is None:
+            break
+        names += [category.name, *_translation_values(category, "name")]
+        category = category.parent if category.parent_id else None
+    return names
+
+
+def build_search_row(product, domain=None, cyrillic_names: Iterable[str] = ()) -> dict[str, str]:
+    """Поля ``ProductSearchIndex`` товара. ``domain`` — его доменная запись (лекарство, одежда…),
+    ``cyrillic_names`` — торговое название кириллицей из словаря ``medicine_brand``."""
     names = [product.name, *_translation_values(product, "name")]
     codes = [getattr(product, field, "") for field in _PRODUCT_FIELDS]
     details: list = []
+    product_type = str(product.product_type or "").replace("-", "_")
     if domain is not None:
         names += [domain.name, *_translation_values(domain, "name")]
         details += [getattr(domain, field, "") for field in _DOMAIN_FIELDS]
         details += _translation_values(domain, "active_ingredient")
+        details.append(latin_reading(normalize_search_text(getattr(domain, "manufacturer", ""))))
         for relation in _VARIANT_RELATIONS:
             manager = getattr(domain, relation, None)
             if manager is not None and hasattr(manager, "all"):
                 for variant in manager.all():
                     codes += [getattr(variant, field, "") for field in _VARIANT_FIELDS]
+    about: list = []
+    if product_type == "medicines":
+        # Торговое название кириллицей: из словаря и чтением латиницы («NUROFEN» → «нурофен»).
+        from apps.ai.services.medicine_title import title_brand
+
+        names += [*cyrillic_names, latin_reading(normalize_search_text(title_brand(product.name)))]
+    elif product_type not in _MEDICAL_TYPES:
+        about += kind_words(names)
+    audience = _vocab().AUDIENCE.get(str(product.gender or ""))
+    if audience:
+        about += [audience[0].lstrip("="), audience[1]]
+    about += _category_names(product.category if product.category_id else None)
     brand = product.brand
     brands = []
     if brand is not None and brand.slug != _PLACEHOLDER_BRAND_SLUG:
         brands = [brand.name, *_translation_values(brand, "name")]
+        # Как бренд пишут по-русски: словарь карточек («nike» → «найк») и чтение латиницы.
+        brand_key = normalize_search_text(brand.name)
+        brands += [_vocab().BRAND_RU.get(brand_key, ""), latin_reading(brand_key)]
     name_text = _unique_lines(names)
     brand_text = _unique_lines(brands)
-    text = _unique_lines([name_text, brand_text, *details, *codes])
+    text = _unique_lines([name_text, brand_text, *details, *about, *codes])
     return {"name": name_text, "brand": brand_text, "text": text.replace("\n", " ")}
 
 
@@ -111,15 +208,24 @@ def search_index_ready() -> bool:
 
 
 def _product_queryset():
-    from .models import BrandTranslation, Product, ProductTranslation
+    from .models import BrandTranslation, CategoryTranslation, Product, ProductTranslation
 
     return (
         Product.objects.order_by("pk")
-        .select_related("brand")
-        .only("pk", "name", "product_type", "brand", "brand__name", "brand__slug", *_PRODUCT_FIELDS)
+        .select_related("brand", "category__parent__parent")
+        .only(
+            "pk", "name", "product_type", "gender", "brand", "brand__name", "brand__slug",
+            "category", "category__name", "category__parent", "category__parent__name",
+            "category__parent__parent", "category__parent__parent__name",
+            *_PRODUCT_FIELDS,
+        )
         .prefetch_related(
             Prefetch("translations", queryset=ProductTranslation.objects.only("pk", "product_id", "name")),
             Prefetch("brand__translations", queryset=BrandTranslation.objects.only("pk", "brand_id", "name")),
+            *(
+                Prefetch(f"{path}__translations", queryset=CategoryTranslation.objects.only("pk", "category_id", "name"))
+                for path in ("category", "category__parent", "category__parent__parent")
+            ),
         )
     )
 
@@ -171,10 +277,33 @@ def iter_search_rows(product_ids: Optional[Iterable[int]] = None, *, batch_size:
         yield from _rows_for(batch)
 
 
+def _medicine_cyrillic_names(products) -> dict[int, list[str]]:
+    """product_id → торговое название кириллицей из словаря ``medicine_brand`` (PR #167),
+    так же, как его пишет SEO лекарства (``content_generator``)."""
+    from apps.ai.services.medicine_memory import peek
+    from apps.ai.services.medicine_seo import BRAND_NAMESPACE, cyrillic_brand
+    from apps.ai.services.medicine_title import paragraph_brand, title_brand
+
+    brands = {
+        product.pk: (title_brand(product.name), paragraph_brand(product.name))
+        for product in products
+        if str(product.product_type or "") == "medicines"
+    }
+    keys = {key for pair in brands.values() for key in pair if key}
+    found = peek(BRAND_NAMESPACE, keys) if keys else {}
+    result = {}
+    for pk, (brand, short) in brands.items():
+        ru = cyrillic_brand(brand, short, found) if brand else ""
+        if ru:
+            result[pk] = [ru]
+    return result
+
+
 def _rows_for(products):
     domains = _domain_records(products)
+    cyrillic = _medicine_cyrillic_names(products)
     for product in products:
-        yield product.pk, build_search_row(product, domains.get(product.pk))
+        yield product.pk, build_search_row(product, domains.get(product.pk), cyrillic.get(product.pk, ()))
 
 
 def write_search_rows(rows) -> int:
@@ -229,16 +358,131 @@ def search_words(search: str) -> tuple[str, list[str]]:
     return query, required
 
 
-def filter_by_search(queryset, search: str, *, prefix: str = ""):
-    """Фильтр по словам запроса. ``prefix`` — путь до Product («base_product__» у доменных)."""
-    if not search_index_ready():
-        return queryset.filter(name__icontains=search)
-    query, words = search_words(search)
+@dataclass(frozen=True)
+class SearchPlan:
+    """По какому тексту искать. ``mode``: words — запрос как есть; layout — другая раскладка;
+    translit — латиница прочитана кириллицей или наоборот; typo — исправлена опечатка."""
+
+    query: str
+    mode: str = "words"
+
+    @property
+    def corrected(self) -> bool:
+        return self.mode != "words"
+
+
+def _whole_word(field: str, word: str) -> Q:
+    return (
+        Q(**{field: word})
+        | Q(**{f"{field}__startswith": f"{word} "})
+        | Q(**{f"{field}__endswith": f" {word}"})
+        | Q(**{f"{field}__contains": f" {word} "})
+    )
+
+
+def word_condition(word: str, field: str, *, alone: bool = False) -> Q:
+    """Одно слово запроса: основа без окончания, синонимы, буква витамина в другом алфавите.
+
+    Одна буква рядом с другими словами («витамин с») — целым словом, иначе её найдёт
+    любой текст. Только LIKE: каждое условие идёт по триграммному индексу.
+    """
+    twin = letter_twin(word)
+    if len(word) == 1 and not alone:
+        condition = _whole_word(field, word)
+        return condition | _whole_word(field, twin) if twin else condition
+    base = stem(word)
+    variants = [base, *QUERY_SYNONYMS.get(base, ()), *([twin] if twin else [])]
+    condition = Q()
+    for variant in dict.fromkeys(variants):
+        condition |= Q(**{f"{field}__contains": variant})
+    return condition
+
+
+def _search_condition(query: str, field: str) -> Optional[Q]:
+    _, words = search_words(query)
     if not words:
-        return queryset.none()
+        return None
+    condition = Q()
     for word in words:
-        queryset = queryset.filter(**{f"{prefix}search_index__text__contains": word})
-    return queryset
+        condition &= word_condition(word, field, alone=len(words) == 1)
+    return condition
+
+
+def _index_has(query: str) -> bool:
+    from .models_search import ProductSearchIndex
+
+    condition = _search_condition(query, "text")
+    return condition is not None and ProductSearchIndex.objects.filter(condition).exists()
+
+
+def _typo_candidates(word: str) -> list[str]:
+    """Тексты товаров, где есть слово, похожее на ``word`` (триграммный индекс, не больше 300)."""
+    from .models_search import ProductSearchIndex
+
+    table = ProductSearchIndex._meta.db_table
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('pg_trgm.word_similarity_threshold', %s, true)", [str(TYPO_CANDIDATE_THRESHOLD)]
+        )
+        cursor.execute(f"SELECT text FROM {table} WHERE text %%> %s LIMIT 300", [word])
+        return [row[0] for row in cursor.fetchall()]
+
+
+def _typo_correction(query: str) -> str:
+    """Запрос, в котором слова без совпадений заменены похожими словами каталога, или пусто."""
+    words = query.split()
+    changed = False
+    for index, word in enumerate(words):
+        if len(word) < TYPO_MIN_LENGTH or word.isdigit() or _index_has(word):
+            continue
+        replacement = closest_word(word, _typo_candidates(word))
+        if replacement:
+            words[index], changed = replacement, True
+    return " ".join(words) if changed else ""
+
+
+def _alternatives(search: str, query: str):
+    layout = normalize_search_text(switch_layout(search))
+    # Буква на клавише-знаке («х» — «[») пропадает при нормализации: «худи» → «elb», часть
+    # другого слова. Такую раскладку не пробуем, как и слова короче 4 букв.
+    if len(layout.replace(" ", "")) == len(query.replace(" ", "")) and max(map(len, layout.split()), default=0) >= 4:
+        yield "layout", layout
+    if re.search("[а-я]", query):
+        yield "translit", cyrillic_to_latin(query)
+    if re.search("[a-z]", query):
+        yield "translit", " ".join(latin_to_cyrillic(word) or word for word in query.split())
+
+
+def search_plan(search: str) -> Optional[SearchPlan]:
+    """Как искать запрос; ``None`` — индекс пуст, поиск по названию (см. модуль).
+
+    Запрос как есть ничего не находит — пробуем другую раскладку («gfhfwtnfvjk» →
+    «парацетамол»), чтение латиницы («paracetamol» → «парацетамол», «нурофен» → «nurofen»),
+    затем исправление опечатки. Каждая проверка — ``EXISTS`` по индексу, только пока
+    ничего не нашлось; найденный текст ищется и сортируется как обычный запрос.
+    """
+    if not search_index_ready():
+        return None
+    query = normalize_search_text(search)
+    if not query or _index_has(query):
+        return SearchPlan(query)
+    for mode, text in _alternatives(search, query):
+        if text and text != query and _index_has(text):
+            return SearchPlan(text, mode)
+    corrected = _typo_correction(query)
+    if corrected and _index_has(corrected):
+        return SearchPlan(corrected, "typo")
+    return SearchPlan(query)
+
+
+def filter_by_search(queryset, search: str, *, prefix: str = "", plan: Optional[SearchPlan] = None):
+    """Фильтр по словам запроса. ``prefix`` — путь до Product («base_product__» у доменных),
+    ``plan`` — уже выбранный ``search_plan(search)``, чтобы не выбирать второй раз."""
+    plan = plan or search_plan(search)
+    if plan is None:
+        return queryset.filter(name__icontains=search)
+    condition = _search_condition(plan.query, f"{prefix}search_index__text")
+    return queryset.none() if condition is None else queryset.filter(condition)
 
 
 def _line_equals(field: str, value: str) -> Q:
@@ -251,7 +495,7 @@ def _line_equals(field: str, value: str) -> Q:
     )
 
 
-def order_by_relevance(queryset, search: str, *, prefix: str = ""):
+def order_by_relevance(queryset, search: str, *, prefix: str = "", plan: Optional[SearchPlan] = None):
     """Точное название или бренд → название начинается с запроса → запрос с начала
     слова в названии → остальное; внутри — короче название, в наличии, новее.
 
@@ -260,9 +504,10 @@ def order_by_relevance(queryset, search: str, *, prefix: str = ""):
     (прод 05.11.2026 после выкатки: «пленочной оболочкой» 6 с вместе с детоастом).
     Запрос, в котором нет слова от 3 символов («кр», «ма», «a b»), — без сортировки по точности, сначала новые.
     """
-    query, _ = search_words(search)
+    plan = plan or search_plan(search)
+    query = plan.query if plan else ""
     longest = max((len(word) for word in query.split()), default=0)
-    if longest < _MIN_RANKED_QUERY or not search_index_ready():
+    if longest < _MIN_RANKED_QUERY:
         return queryset.order_by("-created_at", "-id")
     names = f"{prefix}search_index__name"
     brand = f"{prefix}search_index__brand"
@@ -282,7 +527,7 @@ def order_by_relevance(queryset, search: str, *, prefix: str = ""):
 
 # Поля, от которых зависит текст. save(update_fields=…) без них (наличие из ночной
 # сверки, цена) пересчёт не запускает.
-_PRODUCT_TRIGGERS = {"name", "brand", "brand_id", "product_type", *_PRODUCT_FIELDS}
+_PRODUCT_TRIGGERS = {"name", "brand", "brand_id", "product_type", "gender", "category", "category_id", *_PRODUCT_FIELDS}
 _DOMAIN_TRIGGERS = {"name", "base_product", "base_product_id", *_DOMAIN_FIELDS}
 _TRANSLATION_TRIGGERS = {"name", "active_ingredient", "locale", "product", "product_id"}
 _VARIANT_TRIGGERS = {*_VARIANT_FIELDS, "product", "product_id"}

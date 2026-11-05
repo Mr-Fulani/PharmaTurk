@@ -52,6 +52,8 @@
   "search_show_all": "Show all results",
   "search_found_count": "Found: {{count}}",
   "search_show_more": "Show more",
+  "search_shown_for": "Showing results for",
+  "search_did_you_mean": "No exact matches. Did you mean",
   "cart_empty": "Your request is empty",
   "cart_empty_description": "Add items to your request to send it to a manager",
   "color_черный": "Black",
