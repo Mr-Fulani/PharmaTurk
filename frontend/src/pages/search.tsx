@@ -2,6 +2,7 @@ import { useRouter } from 'next/router'
 import Head from 'next/head'
 import { useEffect, useState } from 'react'
 import { getSingleFlight } from '../lib/api'
+import { appendSearchPage, readSearchPage, searchProductParams } from '../lib/searchResults'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from '../components/ProductCard'
 import VisualSearch from '../components/VisualSearch'
@@ -15,7 +16,12 @@ import { gtmSearch } from '../lib/gtm'
 export default function SearchPage() {
   const router = useRouter()
   const q = ((router.query.query || router.query.q || '') as string).trim()
-  const [items, setItems] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+  const [services, setServices] = useState<any[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   // С запросом в URL страница сразу (и в SSR) в состоянии загрузки: иначе первым
   // кадром мелькает «Товары не найдены».
   const [loading, setLoading] = useState(Boolean(q))
@@ -25,7 +31,10 @@ export default function SearchPage() {
   useEffect(() => {
     if (!router.isReady) return
     if (!q) {
-      setItems([])
+      setProducts([])
+      setServices([])
+      setTotal(0)
+      setHasMore(false)
       setError(null)
       setLoading(false)
       return
@@ -38,7 +47,7 @@ export default function SearchPage() {
       try {
         // A failure in one catalog must not hide valid results from the other.
         const [productsResult, servicesResult] = await Promise.allSettled([
-          getSingleFlight('/catalog/products', { params: { search: q, page_size: 24, view: 'card', include_facets: false } }),
+          getSingleFlight('/catalog/products', { params: searchProductParams(q) }),
           getSingleFlight('/catalog/services', { params: { search: q, page_size: 24, view: 'card' } })
         ])
 
@@ -46,16 +55,16 @@ export default function SearchPage() {
 
         const productsRes = productsResult.status === 'fulfilled' ? productsResult.value : null
         const servicesRes = servicesResult.status === 'fulfilled' ? servicesResult.value : null
-        const products = productsRes
-          ? (Array.isArray(productsRes.data) ? productsRes.data : (productsRes.data.results || []))
-          : []
+        const productPage = readSearchPage(productsRes?.data)
+        const servicePage = readSearchPage(servicesRes?.data)
         // Помечаем услуги, чтобы ProductCard понимал какой тип ссылки строить
-        const services = (servicesRes
-          ? (Array.isArray(servicesRes.data) ? servicesRes.data : (servicesRes.data.results || []))
-          : [])
-          .map((s: any) => ({ ...s, product_type: s.product_type || 'uslugi' }))
+        const foundServices = servicePage.results.map((s: any) => ({ ...s, product_type: s.product_type || 'uslugi' }))
 
-        setItems([...products, ...services])
+        setProducts(productPage.results)
+        setServices(foundServices)
+        setTotal(productPage.count + foundServices.length)
+        setPage(1)
+        setHasMore(productPage.hasMore)
         if (!productsRes && !servicesRes) {
           setError(t('search_error', 'Не удалось выполнить поиск. Попробуйте ещё раз.'))
         } else if (!productsRes || !servicesRes) {
@@ -71,6 +80,24 @@ export default function SearchPage() {
     }
   }, [q, router.isReady, t])
 
+  const loadMore = async () => {
+    const nextPage = page + 1
+    setLoadingMore(true)
+    try {
+      const res = await getSingleFlight('/catalog/products', { params: searchProductParams(q, nextPage) })
+      const productPage = readSearchPage(res.data)
+      setProducts((current) => appendSearchPage(current, productPage.results))
+      setPage(nextPage)
+      setHasMore(productPage.hasMore)
+    } catch {
+      setError(t('search_partial_error', 'Часть результатов временно недоступна.'))
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const items = [...products, ...services]
+
   return (
     <>
       <Head>
@@ -80,6 +107,9 @@ export default function SearchPage() {
       <main className="mx-auto max-w-6xl px-3 pt-0 pb-6 sm:p-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('search_results', 'Результаты поиска')}</h1>
         <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">{q ? `${t('search_for', 'По запросу')}: "${q}"` : t('search_placeholder')}</div>
+        {q && !loading && total > 0 ? (
+          <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">{t('search_found_count', 'Найдено: {{count}}', { count: total })}</div>
+        ) : null}
         <div className="mt-8">
           <VisualSearch />
         </div>
@@ -129,6 +159,18 @@ export default function SearchPage() {
               })}
             </div>
           )}
+          {!loading && hasMore ? (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                className="min-h-[44px] rounded-lg border border-gray-300 px-6 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800"
+              >
+                {loadingMore ? t('search_loading', 'Загрузка…') : t('search_show_more', 'Показать ещё')}
+              </button>
+            </div>
+          ) : null}
         </section>
       </main>
     </>

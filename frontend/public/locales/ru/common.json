@@ -50,6 +50,8 @@
   "auth_csrf_error": "Ошибка безопасности. Обновите страницу и попробуйте снова.",
   "search_loading": "Поиск…",
   "search_show_all": "Показать все результаты",
+  "search_found_count": "Найдено: {{count}}",
+  "search_show_more": "Показать ещё",
   "cart_empty": "Заявка пуста",
   "cart_empty_description": "Добавьте товары в заявку, чтобы отправить её менеджеру",
   "color_черный": "Черный",
