@@ -218,6 +218,37 @@ def test_review_315_kind_and_model_edge_cases(name, brand, product_type, categor
     assert build_titles(collect_facts(product, {"name": name, "brand": brand}))["ru"] == ru
 
 
+@pytest.mark.parametrize(
+    "name, brand, product_type, category, ru",
+    [
+        # мяч и полотенце уступают типу из названия (ревью #317)
+        ("Erkek Havlu Çorap", "LC Waikiki", "underwear", None, "Мужские носки LC Waikiki"),
+        ("Erkek Havlu Şort", "LC Waikiki", "clothing", None, "Мужские шорты LC Waikiki"),
+        ("Ralph Lauren Havlu Erkek Polo", "Ralph Lauren", "clothing", None, "Мужское поло Ralph Lauren"),
+        ("Nike Erkek Havlu Çorap", "Nike", "underwear", "uw-socks", "Мужские носки Nike"),
+        ("Futbol Topu Baskılı Erkek Çocuk Tişört", "LC Waikiki", "clothing", None, "Детская футболка LC Waikiki с принтом"),
+        ("Erkek Bebek Futbol Topu Desenli Pijama", "LC Waikiki", "clothing", None, "Детская пижама LC Waikiki с узором"),
+        ("Basketbol Baskılı Tişört", "LC Waikiki", "clothing", None, "Футболка LC Waikiki с баскетбольным принтом"),
+        ("Kız Bebek Suluk", "LC Waikiki", "tableware", None, "Детская бутылка для воды LC Waikiki"),
+        # без другого типа — мяч и полотенце
+        (
+            "Nike Elite Tournament 7 No Unisex Turuncu Basketbol Topu", "Nike", "sports", None,
+            "Баскетбольный мяч унисекс Nike Elite Tournament 7 No, оранжевый",
+        ),
+        (
+            "UNITED4 Classic Unisex Siyah Plaj Havlusu", "UNITED4", "sports", None,
+            "Полотенце унисекс UNITED4 Classic для пляжа, черное",
+        ),
+        # «Ceket» у Lacoste на SuperStep — куртки (бомберы, на молнии, с капюшоном)
+        ("Lacoste Erkek Fermuarlı Lacivert Ceket", "Lacoste", "clothing", "jackets", "Мужская куртка Lacoste с молнией, темно-синяя"),
+    ],
+)
+def test_review_317_generic_ball_towel_and_baby_audience(name, brand, product_type, category, ru):
+    category_ns = SimpleNamespace(slug=category) if category else None
+    product = SimpleNamespace(product_type=product_type, category=category_ns, variants=None, domain_item=None)
+    assert build_titles(collect_facts(product, {"name": name, "brand": brand}))["ru"] == ru
+
+
 def test_hyphen_codes_and_store_brand_numbers_stay_out_of_model():
     facts = _facts("Bisiklet Yaka Beyaz Erkek T-Shirt J5SM-TST7325", "clothing", brand="Mavi")
     assert "J5SM" not in facts.model
