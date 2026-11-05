@@ -138,6 +138,7 @@ from .supplement_market_check_api import (
     as _build_supplement_market_check_response,
 )
 from .querysets import non_public_shadow_product_q, source_variant_q
+from .product_search import filter_by_search, order_by_relevance
 from .throttles import (
     MEDICINE_MARKET_CHECK_THROTTLES,
     PRODUCT_CARD_SOURCE_REFRESH_THROTTLES,
@@ -1731,10 +1732,10 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         # Фильтр по полу (product.gender | category.gender)
         queryset = _apply_gender_filter(queryset, self.request)
         
-        # Фильтр по поиску
+        # Поиск по словам в подготовленном тексте товара (docs/PRODUCT_SEARCH.md)
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search)
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -1789,10 +1790,12 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
-        # Сортировка
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        ordering = self._normalize_ordering(ordering)
-        queryset = queryset.order_by(ordering)
+        # Сортировка: с поиском и без явной сортировки — по точности совпадения
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search)
+        else:
+            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
 
         queryset = self._apply_facet_filters(queryset)
         if self.request.query_params.get('view') == 'card':
@@ -2454,7 +2457,7 @@ class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vie
         # Фильтр по поиску
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search, prefix='base_product__')
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -2462,9 +2465,11 @@ class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vie
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        ordering = self._normalize_ordering(ordering)
-        queryset = queryset.order_by(ordering)
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search, prefix='base_product__')
+        else:
+            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         
         return self._apply_facet_filters(queryset)
     
@@ -2666,7 +2671,7 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
         # Фильтр по поиску
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search, prefix='base_product__')
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -2674,9 +2679,11 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        ordering = self._normalize_ordering(ordering)
-        queryset = queryset.order_by(ordering)
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search, prefix='base_product__')
+        else:
+            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         
         return self._apply_facet_filters(queryset)
     
@@ -2838,7 +2845,7 @@ class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, 
         # Фильтр по поиску
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search, prefix='base_product__')
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -2846,9 +2853,11 @@ class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, 
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        ordering = self._normalize_ordering(ordering)
-        queryset = queryset.order_by(ordering)
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search, prefix='base_product__')
+        else:
+            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         
         return self._apply_facet_filters(queryset)
     
@@ -2982,12 +2991,15 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
             queryset = queryset.filter(q).distinct()
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search, prefix='base_product__')
         queryset = _apply_price_filter(queryset, self.request)
         queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        queryset = queryset.order_by(self._normalize_ordering(ordering))
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search, prefix='base_product__')
+        else:
+            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         return self._apply_facet_filters(queryset)
 
     def get_serializer_context(self):
@@ -3117,7 +3129,7 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
         # Фильтр по поиску
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search, prefix='base_product__')
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -3125,9 +3137,11 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        ordering = self._normalize_ordering(ordering)
-        queryset = queryset.order_by(ordering)
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search, prefix='base_product__')
+        else:
+            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         
         return self._apply_facet_filters(queryset)
     
@@ -4255,7 +4269,7 @@ class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         # Поиск
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search, prefix='base_product__')
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -4263,9 +4277,11 @@ class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
 
         # Сортировка
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        ordering = self._normalize_ordering(ordering)
-        queryset = queryset.order_by(ordering)
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search, prefix='base_product__')
+        else:
+            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
 
         return queryset
 
@@ -4404,7 +4420,7 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
         # Поиск
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search, prefix='base_product__')
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -4412,9 +4428,11 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
 
         # Сортировка
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        ordering = self._normalize_ordering(ordering)
-        queryset = queryset.order_by(ordering)
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search, prefix='base_product__')
+        else:
+            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
 
         return queryset
 
@@ -4596,7 +4614,7 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         # Поиск
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = filter_by_search(queryset, search, prefix='base_product__')
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -4607,8 +4625,11 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         queryset = self._apply_domain_filters(queryset)
 
         # Сортировка
-        ordering = self.request.query_params.get('ordering', '-created_at')
-        queryset = queryset.order_by(*self._normalize_ordering(ordering))
+        ordering = self.request.query_params.get('ordering')
+        if search and not ordering:
+            queryset = order_by_relevance(queryset, search, prefix='base_product__')
+        else:
+            queryset = queryset.order_by(*self._normalize_ordering(ordering or '-created_at'))
 
         return queryset
 
