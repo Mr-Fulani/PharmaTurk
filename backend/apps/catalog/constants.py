@@ -865,8 +865,8 @@ SHOE_SUBCATEGORIES = [
         "Sandals",
         [
             ("Сандалии", "Sandals", "sandals-classic", "Классические сандалии", "Classic sandals"),
-            ("Шлёпанцы", "Flip-flops", "flip-flops", "Шлёпанцы", "Flip-flops"),
-            ("Слайды", "Slides", "slides", "Слайды", "Slides"),
+            ("Сланцы и вьетнамки", "Flip-flops", "flip-flops", "Сланцы и вьетнамки", "Flip-flops"),
+            ("Шлёпанцы", "Slides", "slides", "Шлёпанцы", "Slides"),
             ("Сабо", "Clogs", "clogs", "Сабо", "Clogs"),
         ],
     ),
@@ -961,7 +961,8 @@ CLOTHING_SUBCATEGORIES = [
             ("Джемперы", "Jumpers", "jumpers", "Джемперы", "Jumpers"),
             ("Пуловеры", "Pullovers", "pullovers", "Пуловеры", "Pullovers"),
             ("Водолазки", "Turtlenecks", "turtlenecks", "Водолазки", "Turtlenecks"),
-            ("Худии", "Hoodies", "hoodies", "Худии", "Hoodies"),
+            ("Толстовки и худи", "Hoodies", "hoodies", "Толстовки и худи", "Hoodies"),
+            ("Флиски", "Fleece Jackets", "fleece", "Флиски и флисовые кофты", "Fleece jackets"),
         ],
     ),
     (
@@ -1689,6 +1690,7 @@ TABLEWARE_SUBCATEGORIES = [
             ("Пивные бокалы", "Beer Glasses", "beer-glasses", "Пивные бокалы", "Beer glasses"),
             ("Кружки", "Mugs", "mugs", "Кружки", "Mugs"),
             ("Чашки", "Cups", "cups", "Чашки", "Cups"),
+            ("Термосы и термокружки", "Thermoses & Travel Mugs", "thermoses", "Термосы, термокружки и термобутылки", "Thermoses, travel mugs and insulated bottles"),
         ],
     ),
     (
@@ -2987,6 +2989,7 @@ ACCESSORIES_SUBCATEGORIES = [
                     ("Органайзеры для путешествий", "Travel Organizers", "travel-organizers", "Органайзеры для путешествий", "Travel organizers"),
                 ],
             ),
+            ("Рюкзаки", "Backpacks", "backpacks", "Рюкзаки городские и спортивные", "City and sports backpacks"),
         ],
     ),
     (
