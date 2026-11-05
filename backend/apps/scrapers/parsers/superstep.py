@@ -109,9 +109,9 @@ SUPERSTEP_SUBGROUP_CATEGORIES: Dict[str, Any] = {
     "crop": ("crop-tops", "tops", "clothing"),
     "body": ("tops-items", "tops", "clothing"),
     "gomlek": ("shirts", "tops", "clothing"),
-    "sweatshirt": ("knitwear", "clothing"),
+    "sweatshirt": ("hoodies", "knitwear", "clothing"),
     "hoodie": ("hoodies", "knitwear", "clothing"),
-    "polar": ("knitwear", "clothing"),
+    "polar": ("fleece", "knitwear", "clothing"),
     "triko": ("sweaters", "knitwear", "clothing"),
     "kazak": ("sweaters", "knitwear", "clothing"),
     "suveter": ("sweaters", "knitwear", "clothing"),
@@ -175,7 +175,7 @@ SUPERSTEP_SUBGROUP_CATEGORIES: Dict[str, Any] = {
     "sirt cantasi": _by_gender(
         ("acc-womens-backpacks", "womens-bags", *_BAGS),
         ("acc-mens-backpacks", "mens-bags", *_BAGS),
-        _BAGS,
+        ("backpacks", *_BAGS),
     ),
     "bel cantasi": _by_gender(
         ("acc-belt-bags", "womens-bags", *_BAGS),
@@ -212,8 +212,8 @@ SUPERSTEP_SUBGROUP_CATEGORIES: Dict[str, Any] = {
     "kayak eldiveni": ("winter-sports", "sports"),
     "havlu": ("sports",),
     # Посуда
-    "termos": ("drinkware", "tableware"),
-    "suluk": ("drinkware", "tableware"),
+    "termos": ("thermoses", "drinkware", "tableware"),
+    "suluk": ("thermoses", "drinkware", "tableware"),
 }
 
 # Решение владельца 04.11.2026: фигурки (Funko, Bearbrick), шахматы и
@@ -263,7 +263,7 @@ def resolve_superstep_category_slugs(subgroup: Any, gender: str = "", kids_gende
 
 
 # Разделы, куда подгруппа кладётся за неимением точного (корни и «Сумки и
-# кошельки» для рюкзаков Unisex): по плану §5.1 это видно в отчёте прогона.
+# кошельки» для спортивных сумок): по плану §5.1 это видно в отчёте прогона.
 SUPERSTEP_PARENT_PLACEMENTS = frozenset(
     {"shoes", "clothing", "underwear", "headwear", "accessories", "sports", "tableware", "bags-wallets"}
 )
@@ -463,19 +463,31 @@ class SuperstepParser(BaseScraper):
             and superstep_subgroup_key(name_subgroup) in self.LOOSE_TOP_NAME_SUBGROUPS
         ):
             # В «Sweatshirt»/«Polar» сайт кладёт и флисовые куртки («Napapijri
-            # … Polar Ceket»), и футболки («Nike Impossiblysoft … T-Shirt»).
+            # … Polar Ceket»), и футболки («Nike Impossiblysoft … T-Shirt»); флис
+            # («… Outdoor Polar») — во «Флиски», а не в «Толстовки».
             subgroup = name_subgroup
         attrs = product.get("attributes") or {}
         gender = self._map_gender(attrs.get("integration_cinsiyet"))
         kids_gender = {"BOYS": "boys", "GIRLS": "girls"}.get(str(attrs.get("integration_erp_cinsiyet") or "").upper(), "")
         route = resolve_superstep_category_slugs(subgroup, gender, kids_gender)
-        if superstep_subgroup_key(subgroup) == "sapka":
+        key = superstep_subgroup_key(subgroup)
+        name_words = set(superstep_subgroup_key(product.get("name")).split())
+        if key == "sapka":
             route = self._cap_route(product.get("name"), gender) or route
+        elif key in {"bot", "bot & cizme"} and "ugg" in name_words | {superstep_subgroup_key(self._brand(product))}:
+            # Ищут «угги», а не «сапоги UGG» (SEO-ядро 05.11).
+            route = self.UGG_ROUTE
+        elif key == "terlik" and "clog" in name_words:
+            # Crocs Classic Clog, Crocband Clog — сабо, а не шлёпанцы.
+            route = self.CLOG_ROUTE
         return subgroup, route
+
+    UGG_ROUTE = ("ugg-boots", "boots", "shoes")
+    CLOG_ROUTE = ("clogs", "sandals", "shoes")
 
     HEADWEAR_SUBGROUPS = frozenset({"sapka", "bere"})
     LOOSE_TOP_SUBGROUPS = frozenset({"sweatshirt", "polar", "hoodie"})
-    LOOSE_TOP_NAME_SUBGROUPS = frozenset({"ceket", "mont", "yelek", "t-shirt"})
+    LOOSE_TOP_NAME_SUBGROUPS = frozenset({"ceket", "mont", "yelek", "t-shirt", "polar"})
     # Модификаторы перед цветом в названии: «Açık Mavi», «Koyu Gri», «Çok Renkli».
     NAME_COLOR_MODIFIERS = frozenset({"koyu", "acik", "kirik", "cok"})
     # Слова после цвета, которые относятся к нему: «Kum Rengi».
