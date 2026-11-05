@@ -1451,6 +1451,11 @@ class AbstractDomainProduct(models.Model):
                 base_product=None
             )
             self.__class__.objects.filter(pk=self.pk).update(base_product=product)
+            # Связь поставлена update() без сигнала: пересчёт поискового текста
+            # Product.post_save мог пройти раньше и не увидеть доменных полей.
+            from .product_search import schedule_reindex
+
+            schedule_reindex([product.pk])
             return
 
         # Обновляем существующую shadow-копию
@@ -7595,3 +7600,5 @@ from .models_stock import ProductDeletionLog, StaleProductCandidate, StockCheckS
 from .models_indexnow import IndexNowUrlState  # noqa: E402,F401
 # Одинаковые товары разных продавцов (FLO ↔ SuperStep): docs/CROSS_SOURCE_DUPLICATES.md.
 from .models_duplicates import CrossSourceDuplicate  # noqa: E402,F401
+# Подготовленный текст для поиска товаров на сайте: docs/PRODUCT_SEARCH.md.
+from .models_search import ProductSearchIndex  # noqa: E402,F401

@@ -1305,7 +1305,9 @@ class CatalogService:
             queryset = queryset.filter(brand_id=brand_id)
         
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            from .product_search import filter_by_search, order_by_relevance
+
+            queryset = order_by_relevance(filter_by_search(queryset, search), search)
         
         if min_price is not None:
             queryset = queryset.filter(price__gte=min_price)

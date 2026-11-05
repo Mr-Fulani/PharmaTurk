@@ -1613,3 +1613,10 @@ def refresh_medicine_import_restrictions(sender, instance, raw=False, **kwargs):
             import_restricted_countries=instance.import_restricted_countries,
             import_restriction_note=instance.import_restriction_note,
         )
+
+
+# Поиск на сайте: текст товара пересчитывается после сохранения товара, его
+# перевода или доменной записи (docs/PRODUCT_SEARCH.md).
+from .product_search import connect_signals as _connect_product_search_signals  # noqa: E402
+
+_connect_product_search_signals()
