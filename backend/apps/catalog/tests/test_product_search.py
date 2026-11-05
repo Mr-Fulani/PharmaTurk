@@ -228,3 +228,92 @@ def test_rebuild_command_shows_by_default_and_writes_with_apply(make_product, ca
 
     call_command("rebuild_product_search_index", "--clear", "--apply")
     assert not ProductSearchIndex.objects.exists()
+
+
+def _seed_index(make_product):
+    """Непустой индекс: сигналы пишут только в заполненный (как на проде после бэкафилла)."""
+    make_product("Seed product")
+    _rebuild()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_new_domain_product_is_indexed_with_domain_fields(make_product, make_medicine):
+    _seed_index(make_product)
+
+    medicine = make_medicine("CORASPIN 100 mg", manufacturer="Bayer Türk", active_ingredient="asetilsalisilik asit")
+
+    row = ProductSearchIndex.objects.get(product_id=medicine.base_product_id)
+    assert "bayer turk" in row.text and "asetilsalisilik asit" in row.text
+
+
+@pytest.mark.django_db(transaction=True)
+def test_variant_codes_are_indexed_on_save(make_product, monkeypatch):
+    from apps.catalog.models import ClothingProduct, ClothingVariant
+
+    _seed_index(make_product)
+    clothing = ClothingProduct.objects.create(
+        name="Basic Tişört", slug=f"cl-{uuid.uuid4().hex[:8]}", price=Decimal("5"), currency="TRY", is_active=True
+    )
+    clothing.refresh_from_db()
+
+    ClothingVariant.objects.create(product=clothing, name="Beyaz", slug=f"v-{uuid.uuid4().hex[:8]}", sku="JL9188")
+
+    assert "jl9188" in ProductSearchIndex.objects.get(product_id=clothing.base_product_id).text
+
+
+def test_save_without_search_fields_does_not_reindex(make_product, django_capture_on_commit_callbacks, monkeypatch):
+    product = make_product("Stock item")
+    _rebuild()
+    calls = []
+    monkeypatch.setattr("apps.catalog.product_search.reindex_products", lambda ids: calls.append(ids))
+
+    with django_capture_on_commit_callbacks(execute=True):
+        product.is_available = False
+        product.save(update_fields=["is_available"])
+    assert calls == []
+
+    with django_capture_on_commit_callbacks(execute=True):
+        product.save(update_fields=["name"])
+    assert calls == [{product.pk}]
+
+
+def test_unchanged_text_is_not_rewritten(make_product):
+    product = make_product("Same title")
+    _rebuild()
+
+    assert reindex_products([product.pk]) == 0
+    Product.objects.filter(pk=product.pk).update(name="Other title")
+    assert reindex_products([product.pk]) == 1
+
+
+def test_reindex_error_does_not_break_save(make_product, django_capture_on_commit_callbacks, monkeypatch):
+    product = make_product("Robust title")
+    _rebuild()
+
+    def boom(ids):
+        raise RuntimeError("index down")
+
+    monkeypatch.setattr("apps.catalog.product_search.reindex_products", boom)
+    with django_capture_on_commit_callbacks(execute=True):
+        product.name = "Saved anyway"
+        product.save()
+
+    assert Product.objects.get(pk=product.pk).name == "Saved anyway"
+
+
+def test_single_character_query_keeps_newest_first(make_product):
+    older = make_product("a older")
+    newer = make_product("b newer a")
+    Product.objects.filter(pk=older.pk).update(created_at=older.created_at.replace(year=2020))
+    _rebuild()
+
+    assert _ids({"search": "a"})[:2] == [newer.pk, older.pk]
+
+
+def test_rebuild_ids_refused_while_index_is_empty(make_product):
+    from django.core.management.base import CommandError
+
+    product = make_product("Lonely")
+    with pytest.raises(CommandError):
+        call_command("rebuild_product_search_index", "--ids", str(product.pk), "--apply")
+    assert not ProductSearchIndex.objects.exists()

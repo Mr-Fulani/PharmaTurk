@@ -41,6 +41,9 @@ class Command(BaseCommand):
                 raise CommandError("--ids: только числа через запятую") from exc
 
         first_fill = not search_index_ready()
+        if first_fill and ids is not None:
+            # Строка одного товара включила бы новый поиск для всего сайта.
+            raise CommandError("Индекс пуст: сначала полное заполнение без --ids.")
         started = time.monotonic()
         existing = {
             row[0]: row[1:]

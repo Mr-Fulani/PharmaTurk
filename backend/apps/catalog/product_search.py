@@ -193,14 +193,32 @@ def write_search_rows(rows) -> int:
 
 
 def reindex_products(product_ids: Iterable[int]) -> int:
-    """Пересчёт текста товаров после сохранения. Пустой индекс не трогается (см. модуль)."""
+    """Пересчёт текста товаров после сохранения. Пустой индекс не трогается (см. модуль).
+
+    Строка с тем же текстом не переписывается: ночная сверка и парсеры сохраняют
+    товары часто, а текст меняется редко. Возвращает число записанных строк.
+    """
+    from .models_search import ProductSearchIndex
+
     ids = {pk for pk in product_ids if pk}
     if not ids or not search_index_ready():
         return 0
-    return write_search_rows(list(iter_search_rows(ids)))
+    current = {
+        pk: (name, brand, text)
+        for pk, name, brand, text in ProductSearchIndex.objects.filter(product_id__in=ids).values_list(
+            "product_id", "name", "brand", "text"
+        )
+    }
+    return write_search_rows([
+        (pk, fields)
+        for pk, fields in iter_search_rows(ids)
+        if current.get(pk) != (fields["name"], fields["brand"], fields["text"])
+    ])
 
 
 # --- запрос ------------------------------------------------------------------
+
+_MIN_RANKED_QUERY = 2
 
 
 def search_words(search: str) -> tuple[str, list[str]]:
@@ -227,7 +245,9 @@ def order_by_relevance(queryset, search: str, *, prefix: str = ""):
     """Точное название или бренд → название начинается с запроса → запрос с начала
     слова в названии → похожесть названия → наличие → новизна."""
     query, _ = search_words(search)
-    if not query or not search_index_ready():
+    # Один символ («a», «3») находит десятки тысяч товаров: сортировка по точности
+    # стоила ≈ 270 мс SQL против 1 мс (модельный каталог 30 тыс.). С двух символов — 20–30 мс.
+    if len(query) < _MIN_RANKED_QUERY or not search_index_ready():
         return queryset.order_by("-created_at")
     names = f"{prefix}search_index__name"
     brand = f"{prefix}search_index__brand"
@@ -242,34 +262,58 @@ def order_by_relevance(queryset, search: str, *, prefix: str = ""):
     )
     return queryset.annotate(
         search_tier=tier,
-        search_similarity=TrigramSimilarity("name", query),
+        search_similarity=TrigramSimilarity(names, query),
     ).order_by("search_tier", "-search_similarity", "-is_available", "-created_at", "-id")
 
 
 # --- сигналы -----------------------------------------------------------------
 
+# Поля, от которых зависит текст. save(update_fields=…) без них (наличие из ночной
+# сверки, цена) пересчёт не запускает.
+_PRODUCT_TRIGGERS = {"name", "brand", "brand_id", "product_type", *_PRODUCT_FIELDS}
+_DOMAIN_TRIGGERS = {"name", "base_product", "base_product_id", *_DOMAIN_FIELDS}
+_TRANSLATION_TRIGGERS = {"name", "active_ingredient", "locale", "product", "product_id"}
+_VARIANT_TRIGGERS = {*_VARIANT_FIELDS, "product", "product_id"}
 
-def _schedule(product_ids) -> None:
+
+def _touches(kwargs, triggers) -> bool:
+    update_fields = kwargs.get("update_fields")
+    return update_fields is None or bool(set(update_fields) & triggers)
+
+
+def schedule_reindex(product_ids) -> None:
+    """Пересчёт после коммита. Ошибка пересчёта пишется в лог и не ломает save()."""
     ids = {pk for pk in product_ids if pk}
     if ids:
-        transaction.on_commit(lambda: reindex_products(ids))
+        transaction.on_commit(lambda: reindex_products(ids), robust=True)
 
 
 def _product_saved(sender, instance, **kwargs):
-    _schedule([instance.pk])
+    if _touches(kwargs, _PRODUCT_TRIGGERS):
+        schedule_reindex([instance.pk])
 
 
 def _product_translation_saved(sender, instance, **kwargs):
-    _schedule([instance.product_id])
+    if _touches(kwargs, _TRANSLATION_TRIGGERS):
+        schedule_reindex([instance.product_id])
 
 
 def _domain_saved(sender, instance, **kwargs):
-    _schedule([instance.base_product_id])
+    if _touches(kwargs, _DOMAIN_TRIGGERS):
+        schedule_reindex([instance.base_product_id])
 
 
-def _domain_translation_saved(sender, instance, **kwargs):
-    domain_model = sender._meta.get_field("product").related_model
-    _schedule(domain_model.objects.filter(pk=instance.product_id).values_list("base_product_id", flat=True))
+def _child_saver(parent_field: str, triggers: set):
+    """Перевод или вариант доменной записи → товар этой записи."""
+
+    def handler(sender, instance, **kwargs):
+        if not _touches(kwargs, triggers):
+            return
+        domain_model = sender._meta.get_field(parent_field).related_model
+        parent_id = getattr(instance, sender._meta.get_field(parent_field).attname)
+        schedule_reindex(domain_model.objects.filter(pk=parent_id).values_list("base_product_id", flat=True))
+
+    return handler
 
 
 def connect_signals() -> None:
@@ -282,9 +326,19 @@ def connect_signals() -> None:
     )
     for product_type, model in domain_models().items():
         post_save.connect(_domain_saved, sender=model, dispatch_uid=f"product_search_domain_{product_type}")
-        translation_model = model._meta.get_field("translations").related_model
+        translation = model._meta.get_field("translations")
         post_save.connect(
-            _domain_translation_saved,
-            sender=translation_model,
+            _child_saver(translation.field.name, _TRANSLATION_TRIGGERS),
+            sender=translation.related_model,
+            weak=False,
             dispatch_uid=f"product_search_domain_translation_{product_type}",
         )
+        for relation in _VARIANT_RELATIONS:
+            if relation in {field.name for field in model._meta.get_fields()}:
+                variants = model._meta.get_field(relation)
+                post_save.connect(
+                    _child_saver(variants.field.name, _VARIANT_TRIGGERS),
+                    sender=variants.related_model,
+                    weak=False,
+                    dispatch_uid=f"product_search_variant_{product_type}_{relation}",
+                )

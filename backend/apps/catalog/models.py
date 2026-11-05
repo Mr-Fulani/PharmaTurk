@@ -1451,6 +1451,11 @@ class AbstractDomainProduct(models.Model):
                 base_product=None
             )
             self.__class__.objects.filter(pk=self.pk).update(base_product=product)
+            # Связь поставлена update() без сигнала: пересчёт поискового текста
+            # Product.post_save мог пройти раньше и не увидеть доменных полей.
+            from .product_search import schedule_reindex
+
+            schedule_reindex([product.pk])
             return
 
         # Обновляем существующую shadow-копию
