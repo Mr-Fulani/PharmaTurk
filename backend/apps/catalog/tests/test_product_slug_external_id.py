@@ -5,6 +5,7 @@ import re
 import pytest
 
 from apps.catalog.models import Category, Product
+from apps.catalog import services as catalog_services
 from apps.catalog.services import CatalogNormalizer, ru_slugify
 from apps.vapi.client import ProductData
 
@@ -91,7 +92,8 @@ def test_superstep_slug_falls_back_to_old_format_when_rules_fail(monkeypatch):
     def broken(*args, **kwargs):
         raise ValueError("сломанное правило")
 
-    monkeypatch.setattr("apps.catalog.services.ru_title_slug_base", broken)
+    # services.py загружается пакетом apps.catalog.services как отдельный модуль (_module)
+    monkeypatch.setattr(catalog_services._module, "ru_title_slug_base", broken)
     product = CatalogNormalizer().normalize_product(_superstep_sneaker())
 
     assert product.slug.endswith("-superstep-B75806")
