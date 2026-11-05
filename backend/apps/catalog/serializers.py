@@ -1470,7 +1470,13 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
 
         # Избранное конкретного варианта хранится как shadow Product. У него нет
         # one-to-one domain_item, поэтому восстанавливаем галерею по source_variant_*.
-        if not gallery and isinstance(getattr(obj, 'external_data', None), dict):
+        # В выдаче поиска external_data отложен (копий вариантов там нет), и чтение
+        # поля здесь было бы отдельным запросом с детоастом дампа на каждую карточку.
+        if (
+            not gallery
+            and 'external_data' not in obj.get_deferred_fields()
+            and isinstance(getattr(obj, 'external_data', None), dict)
+        ):
             from .models import HeadwearVariant, IslamicClothingVariant, UnderwearVariant
 
             external = obj.external_data or {}
@@ -1797,6 +1803,10 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         return None
 
     def _get_external_attributes(self, obj):
+        # Отложенный external_data (выдача поиска) ради ISBN/страниц грузим только у книг:
+        # иначе отдельный запрос с детоастом дампа парсера на каждую карточку.
+        if 'external_data' in obj.get_deferred_fields() and getattr(obj, 'product_type', '') != 'books':
+            return {}
         data = obj.external_data or {}
         attrs = data.get('attributes') or {}
         return attrs if isinstance(attrs, dict) else {}

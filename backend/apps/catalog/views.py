@@ -1810,7 +1810,12 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         if self.request.query_params.get('view') == 'card':
             # Pagination evaluates only the requested slice; type-specific
             # galleries/translations are prefetched by _prepare_list_page.
-            return queryset.select_related('category', 'brand', 'price_info')
+            queryset = queryset.select_related('category', 'brand', 'price_info')
+            if search:
+                # Дампы парсеров в external_data карточке не нужны; без defer страница
+                # детоастила их у каждой показанной строки (docs/PRODUCT_SEARCH.md).
+                queryset = queryset.defer('external_data')
+            return queryset
 
         # Prefetch для main_image_url и images (medicine, supplement, books, clothing и др.)
         queryset = queryset.select_related('category__parent__parent', 'brand', 'book_item').prefetch_related(

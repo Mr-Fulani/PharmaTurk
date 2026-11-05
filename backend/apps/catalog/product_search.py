@@ -258,10 +258,11 @@ def order_by_relevance(queryset, search: str, *, prefix: str = ""):
     Ключи сортировки считаются для всех совпадений, поэтому только дешёвые: LIKE и
     длина названия. Регулярки и ``similarity`` на 8,8 тыс. совпадений стоили ≈ 0,8 с
     (прод 05.11.2026 после выкатки: «пленочной оболочкой» 6 с вместе с детоастом).
-    Запрос короче 3 символов («кр», «ма») — без сортировки по точности, сначала новые.
+    Запрос, в котором нет слова от 3 символов («кр», «ма», «a b»), — без сортировки по точности, сначала новые.
     """
     query, _ = search_words(search)
-    if len(query) < _MIN_RANKED_QUERY or not search_index_ready():
+    longest = max((len(word) for word in query.split()), default=0)
+    if longest < _MIN_RANKED_QUERY or not search_index_ready():
         return queryset.order_by("-created_at", "-id")
     names = f"{prefix}search_index__name"
     brand = f"{prefix}search_index__brand"
