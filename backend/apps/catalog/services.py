@@ -177,6 +177,26 @@ def _internal_media_url_missing_from_storage(url: str) -> bool:
         return False
 
 
+# Источники, у новых товаров которых адрес — русское название транслитом и код модели,
+# без имени поставщика и турецких слов: «krossovki-uniseks-adidas-samba-og-b75806»
+# вместо «adidas-samba-og-unisex-beyaz-spor-ayakkab-superstep-B75806» (05.11.2026).
+RU_TITLE_SLUG_SOURCES = frozenset({"superstep"})
+
+
+def ru_title_slug_base(name: str, brand: str, product_type: str, category, attributes: dict) -> str:
+    """Название по правилам SEO без цвета («Кроссовки унисекс adidas Samba OG»), иначе «бренд модель», транслитом."""
+    from types import SimpleNamespace
+
+    from apps.ai.services.rules.facts import RULE_PRODUCT_TYPES, collect_facts
+    from apps.ai.services.rules.text import build_titles
+
+    product = SimpleNamespace(product_type=product_type or "", category=category, variants=None, domain_item=None)
+    facts = collect_facts(product, {"name": name, "brand": brand or "", "attributes": {"gender": (attributes or {}).get("gender")}})
+    title = build_titles(facts)["ru"].split(", ")[0] if product_type in RULE_PRODUCT_TYPES else ""
+    text = title or f"{facts.brand} {facts.model}".strip()
+    return (trans_slugify(text, language_code="ru") or slugify(text)) if text else ""
+
+
 class CatalogNormalizer:
     """Сервис для нормализации данных из API парсера в модели БД."""
     
@@ -702,6 +722,16 @@ class CatalogNormalizer:
             slug = f"{base_slug}-{safe_external_id}"
         else:
             slug = f"{base_slug}-{uuid.uuid4().hex[:8]}"
+
+        source = str(raw_meta.get("source") or "")
+        if source in RU_TITLE_SLUG_SOURCES and safe_external_id.startswith(f"{source}-") and not existing_products.exists():
+            ru_base = ru_title_slug_base(
+                product_data.name, product_data.brand or "", resolved_product_type or "", resolved_category, raw_meta.get("attributes") or {},
+            )
+            ru_slug = f"{ru_base}-{safe_external_id[len(source) + 1:]}".lower() if ru_base else ""
+            # Тот же артикул у другого источника (FLO) — остаётся слаг с префиксом источника.
+            if ru_slug and not Product.objects.filter(slug=ru_slug).exists():
+                slug = ru_slug
 
         # У некоторых источников (ilacfiyati) external_id — это слаг имени,
         # и конкатенация даёт задвоение X-X. Схлопываем, если не занято.
