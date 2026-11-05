@@ -1,8 +1,14 @@
 import { useRouter } from 'next/router'
 import Head from 'next/head'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getSingleFlight } from '../lib/api'
-import { appendSearchPage, readSearchPage, searchProductParams } from '../lib/searchResults'
+import {
+  appendSearchPage,
+  nextSearchSource,
+  readSearchPage,
+  searchProductParams,
+  searchServiceParams,
+} from '../lib/searchResults'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from '../components/ProductCard'
 import VisualSearch from '../components/VisualSearch'
@@ -13,15 +19,25 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { gtmSearch } from '../lib/gtm'
 
+type SourceState = { items: any[]; count: number; page: number; hasMore: boolean }
+const EMPTY_SOURCE: SourceState = { items: [], count: 0, page: 1, hasMore: false }
+
+// Помечаем услуги, чтобы ProductCard понимал какой тип ссылки строить
+function markServices(results: any[]) {
+  return results.map((s: any) => ({ ...s, product_type: s.product_type || 'uslugi' }))
+}
+
 export default function SearchPage() {
   const router = useRouter()
   const q = ((router.query.query || router.query.q || '') as string).trim()
-  const [products, setProducts] = useState<any[]>([])
-  const [services, setServices] = useState<any[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(false)
+  const [products, setProducts] = useState<SourceState>(EMPTY_SOURCE)
+  const [services, setServices] = useState<SourceState>(EMPTY_SOURCE)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState<string | null>(null)
+  // Запрос, к которому относятся показанные результаты: ответ «Показать ещё»
+  // по прежнему запросу не должен попасть в список нового.
+  const queryRef = useRef(q)
+  queryRef.current = q
   // С запросом в URL страница сразу (и в SSR) в состоянии загрузки: иначе первым
   // кадром мелькает «Товары не найдены».
   const [loading, setLoading] = useState(Boolean(q))
@@ -30,11 +46,11 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!router.isReady) return
+    setMoreError(null)
+    setLoadingMore(false)
     if (!q) {
-      setProducts([])
-      setServices([])
-      setTotal(0)
-      setHasMore(false)
+      setProducts(EMPTY_SOURCE)
+      setServices(EMPTY_SOURCE)
       setError(null)
       setLoading(false)
       return
@@ -48,7 +64,7 @@ export default function SearchPage() {
         // A failure in one catalog must not hide valid results from the other.
         const [productsResult, servicesResult] = await Promise.allSettled([
           getSingleFlight('/catalog/products', { params: searchProductParams(q) }),
-          getSingleFlight('/catalog/services', { params: { search: q, page_size: 24, view: 'card' } })
+          getSingleFlight('/catalog/services', { params: searchServiceParams(q) })
         ])
 
         if (cancelled) return
@@ -57,14 +73,9 @@ export default function SearchPage() {
         const servicesRes = servicesResult.status === 'fulfilled' ? servicesResult.value : null
         const productPage = readSearchPage(productsRes?.data)
         const servicePage = readSearchPage(servicesRes?.data)
-        // Помечаем услуги, чтобы ProductCard понимал какой тип ссылки строить
-        const foundServices = servicePage.results.map((s: any) => ({ ...s, product_type: s.product_type || 'uslugi' }))
 
-        setProducts(productPage.results)
-        setServices(foundServices)
-        setTotal(productPage.count + foundServices.length)
-        setPage(1)
-        setHasMore(productPage.hasMore)
+        setProducts({ items: productPage.results, count: productPage.count, page: 1, hasMore: productPage.hasMore })
+        setServices({ items: markServices(servicePage.results), count: servicePage.count, page: 1, hasMore: servicePage.hasMore })
         if (!productsRes && !servicesRes) {
           setError(t('search_error', 'Не удалось выполнить поиск. Попробуйте ещё раз.'))
         } else if (!productsRes || !servicesRes) {
@@ -80,23 +91,40 @@ export default function SearchPage() {
     }
   }, [q, router.isReady, t])
 
+  const source = nextSearchSource(products, services)
+
   const loadMore = async () => {
-    const nextPage = page + 1
+    if (!source) return
+    const requestQuery = q
+    const current = source === 'products' ? products : services
+    const nextPage = current.page + 1
     setLoadingMore(true)
     try {
-      const res = await getSingleFlight('/catalog/products', { params: searchProductParams(q, nextPage) })
-      const productPage = readSearchPage(res.data)
-      setProducts((current) => appendSearchPage(current, productPage.results))
-      setPage(nextPage)
-      setHasMore(productPage.hasMore)
+      const res = source === 'products'
+        ? await getSingleFlight('/catalog/products', { params: searchProductParams(requestQuery, nextPage) })
+        : await getSingleFlight('/catalog/services', { params: searchServiceParams(requestQuery, nextPage) })
+      if (queryRef.current !== requestQuery) return
+      const page = readSearchPage(res.data)
+      const update = (state: SourceState): SourceState => ({
+        items: appendSearchPage(state.items, source === 'services' ? markServices(page.results) : page.results),
+        count: page.count,
+        page: nextPage,
+        hasMore: page.hasMore,
+      })
+      if (source === 'products') setProducts(update)
+      else setServices(update)
+      setMoreError(null)
     } catch {
-      setError(t('search_partial_error', 'Часть результатов временно недоступна.'))
+      if (queryRef.current === requestQuery) {
+        setMoreError(t('search_partial_error', 'Часть результатов временно недоступна.'))
+      }
     } finally {
-      setLoadingMore(false)
+      if (queryRef.current === requestQuery) setLoadingMore(false)
     }
   }
 
-  const items = [...products, ...services]
+  const items = [...products.items, ...services.items]
+  const total = products.count + services.count
 
   return (
     <>
@@ -159,7 +187,8 @@ export default function SearchPage() {
               })}
             </div>
           )}
-          {!loading && hasMore ? (
+          {moreError ? <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">{moreError}</div> : null}
+          {!loading && source ? (
             <div className="mt-6 flex justify-center">
               <button
                 type="button"

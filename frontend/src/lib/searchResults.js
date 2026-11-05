@@ -13,6 +13,22 @@ export function searchProductParams(query, page = 1) {
   }
 }
 
+export function searchServiceParams(query, page = 1) {
+  return {
+    search: query,
+    page_size: SEARCH_PAGE_SIZE,
+    view: 'card',
+    ...(page > 1 ? { page } : {}),
+  }
+}
+
+// Что догружает «Показать ещё»: сначала товары, потом услуги (они идут в конце списка).
+export function nextSearchSource(products, services) {
+  if (products.hasMore) return 'products'
+  if (services.hasMore) return 'services'
+  return null
+}
+
 // Ответ DRF ({count, next, results}) или старый массив → {results, count, hasMore}.
 export function readSearchPage(data) {
   if (Array.isArray(data)) {

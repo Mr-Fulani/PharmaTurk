@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { appendSearchPage, readSearchPage, searchProductParams, SEARCH_PAGE_SIZE } from './searchResults.js'
+import {
+  appendSearchPage,
+  nextSearchSource,
+  readSearchPage,
+  searchProductParams,
+  searchServiceParams,
+  SEARCH_PAGE_SIZE,
+} from './searchResults.js'
 
 test('first page has no page param, next pages ask for the page number', () => {
   assert.deepEqual(searchProductParams('нурофен'), {
@@ -34,4 +41,14 @@ test('next page is appended without duplicates', () => {
     { id: 2 },
     { id: 3 },
   ])
+})
+
+test('services are paged the same way, without facets flag', () => {
+  assert.deepEqual(searchServiceParams('массаж', 2), { search: 'массаж', page_size: SEARCH_PAGE_SIZE, view: 'card', page: 2 })
+})
+
+test('show more loads products first, then services', () => {
+  assert.equal(nextSearchSource({ hasMore: true }, { hasMore: true }), 'products')
+  assert.equal(nextSearchSource({ hasMore: false }, { hasMore: true }), 'services')
+  assert.equal(nextSearchSource({ hasMore: false }, { hasMore: false }), null)
 })
