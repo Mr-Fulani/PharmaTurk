@@ -251,6 +251,12 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "kara halile": ("терминалия хебула", "chebulic myrobalan / terminalia chebula", S),
     "bayir turpu": ("хрен", "horseradish", S),
     "peynir alti suyu": ("молочная сыворотка", "whey", S),
+    # Пилот 4: «Melaloyka Yağı» — транслитерацией, «Yumurta zarı» — «скорлупа», «Büyük Meyveli Vaksiniyum» —
+    # «черника», «nem verici: gliserol» — «загуститель».
+    "melaloyka": ("чайное дерево", "tea tree", S),
+    "yumurta zari": ("мембрана яичной скорлупы", "eggshell membrane", S),
+    "buyuk meyveli vaksiniyum": ("клюква крупноплодная", "cranberry", S),
+    "nem verici": ("влагоудерживающий агент / увлажняющий агент / увлажнитель", "humectant", S),
     "hashas": ("мак", "poppy", S),
     "sarimsak": ("чеснок", "garlic", S),
     "yosunu": ("водоросли / исландский мох", "algae / moss", S),

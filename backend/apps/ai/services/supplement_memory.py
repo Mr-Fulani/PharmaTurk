@@ -22,9 +22,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from apps.ai.models import AITranslationMemory
 from apps.ai.services import medicine_memory, supplement_glossary
 from apps.ai.services.medicine_reference import fold_tr
-from apps.ai.services.translation_memory import lookup, normalize_source_text, remember
+from apps.ai.services.rules.memory import REUSABLE_LOG_STATUSES
+from apps.ai.services.translation_memory import lookup, normalize_source_text, remember, source_hash
 
 LINE_NAMESPACE = "supplement_line"
 BLOCK_KINDS = ("composition", "excipients", "usage", "warnings", "storage")
@@ -36,6 +38,9 @@ BLOCK_TITLES = {
     "storage": ("Хранение", "Storage"),
 }
 UNIT_MAX_CHARS = 400
+# Короткие части («Jelatin», «Gliserin», «Su») — по одной на запрос: перестановку соседних коротких строк
+# проверка сдвига не ловит (ревью PR #313: «Jelatin» ↔ «Gliserin» принимались).
+SHORT_UNIT_WORDS = 3
 
 LINE_SYSTEM_PROMPT = (
     "Ты переводчик этикеток биологически активных добавок (БАД). Переводи с турецкого на русский "
@@ -46,7 +51,8 @@ LINE_SYSTEM_PROMPT = (
     "«Не превышайте рекомендуемую суточную порцию», «Çocukların ulaşamayacağı yerde saklayın» = "
     "«Хранить в недоступном для детей месте». Вещества — принятыми названиями: «kolekalsiferol» = "
     "холекальциферол / cholecalciferol, «hacim arttırıcı» = наполнитель / bulking agent, «topaklanmayı "
-    "önleyici» = антислёживающий агент / anti-caking agent, «takviye edici gıda» = БАД / food supplement, «kıvam arttırıcı» = загуститель / thickener. "
+    "önleyici» = антислёживающий агент / anti-caking agent, «takviye edici gıda» = БАД / food supplement, «kıvam arttırıcı» = загуститель / thickener, «nem verici» = влагоудерживающий агент / humectant, «sertleştirici» = "
+    "уплотнитель / firming agent. "
     "«tok karnına» = «после еды» / «after a meal», «aç karnına» = «натощак» / «on an empty stomach». "
     "«Takviye edici gıdalar normal beslenmenin yerine geçemez» = «БАДы не заменяют полноценное питание» / "
     "«Food supplements are not a substitute for a varied diet». Числа пиши цифрами, как в источнике («Günde 1 "
@@ -76,6 +82,9 @@ _STANDARD_WARNING_RE = re.compile(
     r"asma(?:yin|yiniz)|yerine gec|ulasamayacag|hamile|emzir|doktor|hekim|alerj|"
     r"kullanilmamal|tuketilmemeli|onerilmez"
 )
+# Без подписи фраза — предупреждение, только если она что-то велит или запрещает: «Hamilelik … ihtiyaç duyulan
+# vitaminleri içerir», «Doktorlar tarafından önerilen formül» — описание, а не предупреждение (ревью PR #313).
+_DIRECTIVE_RE = re.compile(r"asma(?:yin|yiniz)|yerine gec|ulasamayacag|danis|dikkat|onerilmez|icerebilir")
 # «serin» — словом: «Fosfotidilserin» — вещество, а не «прохладное место».
 _STANDARD_STORAGE_RE = re.compile(r"\bserin\b|\bkuru yer|muhafaza ed|sakla(?:yin|yiniz)|°c|gunes isig")
 # То же, что «биологически активная добавка, не является лекарственным средством» дисклеймера
@@ -95,12 +104,12 @@ _EXCIPIENT_RE = re.compile(
     # Оболочка таблетки (NUTRAXIN, пилот 3).
     r"|selul|polietilen|polivinil|metakrilat|polioksietilen|yag asitlerinin|\btalk\b|izomalt|pancar koku"
 )
-_E_CODE_RE = re.compile(r"\be ?\d{3}")  # «Kalsiyum Karbonat (E 170)»
 
 
 def _is_excipient(folded: str) -> bool:
     # Название — до скобки: «L-Askorbik Asit (Vitomin C, Hacim Artırıcı Mikrokristalin Selüloz, …» — витамин.
-    return bool(_EXCIPIENT_RE.search(folded.split("(")[0]) or _E_CODE_RE.search(folded))
+    # Код E не признак: «Kalsiyum karbonat (E170)» в БАДе с кальцием и «Vitamin E 400 IU» — действующие вещества.
+    return bool(_EXCIPIENT_RE.search(folded.split("(")[0]))
 
 
 # Строка таблицы состава, а не компонент: «270 mg», «mg», «%76,00», «Her 10 ml için».
@@ -116,8 +125,16 @@ _USAGE_RE = re.compile(
     r"alin|alma|tuket|kullan|calkala|karistir|erit|yutul|puskurt|cigne|\byas|yetiskin|cocuk|porsiyon|\bdoz"
 )
 # «Pratik sprey formu sayesinde … kolayca tüketebilirsiniz», «Dünya’nın en çok tercih edilen …» — реклама;
-# «Aşağıdaki örnek beslenme tablosunu …» — ссылка на таблицу, которой в карточке нет.
-_ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|asagidaki")
+# «Aşağıdaki örnek beslenme tablosunu …» — ссылка на таблицу, которой в карточке нет. «Aşağıdaki durumlarda
+# kullanmayınız: …» — противопоказание, его не трогать.
+_ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|tablo")
+# Заявления о пользе («Yorgunluk ve bitkinliğin azalmasına katkıda bulunur», «… Sağlık Beyanları Yönetmeliği'ne
+# göre») — БАДу на карточке нельзя (пилот 4: попали в способ применения). «Tedavi gören kişiler doktoruna
+# danışarak kullanmalıdır» — предупреждение, «tedavi» здесь не признак.
+_TR_CLAIM_RE = re.compile(r"katkida bulun|destekle|yardimci ol|guclendir|iyilestir|faydali|beyanlari")
+# Страховка после перевода: обещание пользы в готовом блоке — блок не показывается целиком (не по предложению:
+# неполный блок не должен выглядеть полным).
+_RU_BENEFIT_RE = re.compile(r"способству|поддерживает|укрепля|улучша|помогает", re.IGNORECASE)
 # Хранение — только о хранении; «Şeker, tuz, nişasta içermez», «Vegan … uygundur» после подписи — нет.
 _STORAGE_TOPIC_RE = re.compile(_STANDARD_STORAGE_RE.pattern + r"|derece|isig|isik|\bnem|sicaklik|dondur|buzdolab|ambalaj")
 # «… gibi potansiyel alerjenleri içermez», «… kullanılmamıştır» — не предупреждение, модель пересказывает это в
@@ -137,6 +154,42 @@ def _skip_sentence(folded: str) -> bool:
     return bool(_DISCLAIMER_DUPLICATE_RE.search(folded) or _PACKAGE_DATA_RE.search(folded))
 
 
+# Переворот смысла, который не ловят проверки чисел и сдвига (ревью PR #313): запрет переведён разрешением,
+# «натощак» и «после еды», «младше» и «старше» перепутаны. Источник — после ``fold_tr``.
+# Запрет: «kullanmamalıdır», «aşmayınız», «tüketilmemelidir», «önerilmez», «uygun değildir», «geçemez».
+_PROHIBITION_RE = re.compile(r"\w(?:mamali|memeli|mayin|meyin)\w*")  # «kullanmamalıdır», «ısıtmayınız»
+_NEGATION_RE = re.compile(_PROHIBITION_RE.pattern + r"|\b(?!pekmez)\w+(?:maz|mez)(?:lar|ler)?\b|\bdegil|onerilmez")
+_RU_NEGATION_RE = re.compile(r"(?<![а-яё])(?:не|нельзя|ни)(?![а-яё])|запрещ|противопоказ|избега|недопуст", re.IGNORECASE)
+_EN_NEGATION_RE = re.compile(r"\b(?:not|no|never|avoid|without|cannot)\b|n't", re.IGNORECASE)
+_EMPTY_STOMACH_RE = re.compile(r"\bac\b.*karn")  # «aç karnına», «aç ya da tok karnına»
+_FULL_STOMACH_RE = re.compile(r"\btok karn")
+_AGE_UNDER_RE = re.compile(r"\byas\w*\s+(?:alti|altinda|kucuk)")  # «12 yaş altı», «15 yaşından küçüklerde»
+_AGE_OVER_RE = re.compile(r"\byas\w*\s+(?:ve\s+)?(?:ustu|uzeri|ustundeki|buyuk)")  # «11 yaş ve üzeri»
+_RU_UNDER_RE = re.compile(r"младше|моложе|(?<![а-яё])до\s+\d|менее|меньше|не достиг", re.IGNORECASE)
+_EN_UNDER_RE = re.compile(r"\b(?:under|below|younger|less than)\b", re.IGNORECASE)
+_RU_OVER_RE = re.compile(r"старше|(?<![а-яё])от\s+\d|и более|\d\s*\+", re.IGNORECASE)
+_EN_OVER_RE = re.compile(r"\b(?:over|older|above|and up|or more)\b|\d\s*\+", re.IGNORECASE)
+
+
+def _meaning_problems(folded_source: str, ru: str, en: str) -> list[str]:
+    problems = []
+    if _NEGATION_RE.search(folded_source) and not (_RU_NEGATION_RE.search(ru) and _EN_NEGATION_RE.search(en)):
+        problems.append("negation_lost")
+    empty, full = _EMPTY_STOMACH_RE.search(folded_source), _FULL_STOMACH_RE.search(folded_source)
+    # «aç ya da tok karnına» — и натощак, и после еды.
+    if empty and not full and not ("натощак" in ru.lower() and "empty stomach" in en.lower()):
+        problems.append("meal_timing_mistranslated")
+    # «tok karnına» — после еды, а модель писала «натощак» (пилот 3, дважды).
+    if full and not empty and ("натощак" in ru.lower() or "empty stomach" in en.lower()):
+        problems.append("meal_timing_mistranslated")
+    under, over = _AGE_UNDER_RE.search(folded_source), _AGE_OVER_RE.search(folded_source)
+    if under and not over and not (_RU_UNDER_RE.search(ru) and _EN_UNDER_RE.search(en)):
+        problems.append("age_mistranslated")
+    if over and not under and not (_RU_OVER_RE.search(ru) and _EN_OVER_RE.search(en)):
+        problems.append("age_mistranslated")
+    return problems
+
+
 def line_problems(source: str, ru: str, en: str) -> list[str]:
     """Причины не принимать перевод части сверх проверок абзацев лекарств."""
     problems = []
@@ -145,15 +198,15 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
         problems.append("supplement_ingredient_mistranslated")
     # Английское слово в русском переводе, которого нет в источнике: «Приём docosahexaenoic acid».
     folded_source = fold_tr(source)
-    if any(fold_tr(word) not in folded_source for word in _LATIN_WORD_RE.findall(ru)):
+    # «Valeriana off icinalis» в источнике — «officinalis» в переводе верен.
+    if any(fold_tr(word) not in folded_source.replace(" ", "") for word in _LATIN_WORD_RE.findall(ru)):
         problems.append("ru_latin_not_in_source")
-    # «tok karnına» — после еды, а модель писала «натощак» (пилот 3, дважды).
-    # «aç ya da tok karnına» — и натощак, и после еды.
-    if "tok karn" in folded_source and not re.search(r"\bac\b", folded_source) and (
-        "натощак" in ru.lower() or "empty stomach" in en.lower()
-    ):
-        problems.append("meal_timing_mistranslated")
-    return problems
+    # Турецкое слово в переводе («Мелалойка Ягы (Melaloyka Yağı)») и подсказка словаря целиком («прополис | propolis»).
+    # Бренд «METİLMAX» из источника остаётся как есть.
+    turkish_words = re.findall(r"\w*[ğışçöüĞİŞÇÖÜ]\w*", ru)
+    if any(word not in source for word in turkish_words) or ("|" in ru + en and "|" not in source):
+        problems.append("ru_untranslated")
+    return problems + _meaning_problems(folded_source, ru, en)
 
 
 @dataclass
@@ -191,7 +244,8 @@ def _split_top_level(text: str) -> list[str]:
             _QUANTITY_ONLY_RE.fullmatch(_UNIT_RE.sub("", folded)) or _PORTION_HEADER_RE.search(folded)
             or _DISCLAIMER_DUPLICATE_RE.search(folded)
             or "takviye edici gida" in folded
-            or re.fullmatch(r"(?:aktif|yardimci) bilesen(?:ler)?", folded)  # заголовок, а не компонент
+            # Заголовок, а не компонент: «Aktif Bileşenler», «Bileşen», «Ürün Detayları», «2 Kapsülde».
+            or re.fullmatch(r"(?:(?:aktif|yardimci) )?bilesen(?:ler)?|urun detaylari|\d+ \w+(?:de|da|te|ta)", folded)
         ):
             result.append(item)
     return result
@@ -231,9 +285,14 @@ def _label(line: str) -> tuple[Optional[str], str, bool]:
     kind = _label_kind(fold_tr(match.group(1)).strip(" *"))
     if kind:
         return kind, match.group(2).strip(), True
-    # Подпись другого раздела («Ürün Adı:», «Menşe Ülke: Kanada») — короткая, без точки внутри;
-    # текст после неё проверяется на типовые фразы.
-    if len(match.group(1).split()) <= 5 and "." not in match.group(1):
+    # Подпись другого раздела («Ürün Adı:», «Menşe Ülke: Kanada») — короткая, без точки внутри и без глагола:
+    # «Aşağıdaki durumlarda kullanmayınız: kalp hastalığı.» — противопоказание; текст после подписи
+    # проверяется на типовые фразы.
+    folded_label = fold_tr(match.group(1))
+    if (
+        len(match.group(1).split()) <= 5 and "." not in match.group(1)
+        and not _PROHIBITION_RE.search(folded_label) and not re.search(r"(?:iniz|unuz)$", folded_label)
+    ):
         return None, match.group(2).strip(), True
     return None, line, False
 
@@ -281,7 +340,11 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
         ]
         for line in _without_attribute_table(lines):
             # Фраза, разрезанная переносом: «Tavsiye edilen» / «günlük alım dozunu aşmayınız.»
-            if open_part and _LOWER_START_RE.match(line):
+            # «Hamile ve emziren kadınlar,» / «Doktora danışmadan kullanmamalıdır.» — продолжение после запятой
+            # с заглавной буквы (ревью PR #313: на карточке был обрывок «…женщины,.»).
+            if open_part and (
+                _LOWER_START_RE.match(line) or (parts[open_part[0]][open_part[1]].endswith(",") and not _label(line)[2])
+            ):
                 kind, index = open_part
                 joined = [
                     sentence for sentence in _sentences(f"{parts[kind][index]} {line}")
@@ -325,13 +388,15 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
                 continue
             for sentence in _sentences(line):
                 folded = fold_tr(sentence)
-                if _skip_sentence(folded) or sentence.endswith("?"):
+                if _skip_sentence(folded) or sentence.endswith("?") or _TR_CLAIM_RE.search(folded):
                     continue
                 target = current
                 if target is None:
                     if _STANDARD_STORAGE_RE.search(folded) and not re.search(r"ulasamayacag", folded):
                         target = "storage"
-                    elif _STANDARD_WARNING_RE.search(folded):
+                    elif (_STANDARD_WARNING_RE.search(folded) and _DIRECTIVE_RE.search(folded)) or _PROHIBITION_RE.search(
+                        folded
+                    ):
                         target = "warnings"
                 if _ADVERT_RE.search(folded):
                     continue
@@ -358,7 +423,10 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
     }
 
 
-LINE_PROBLEMS = ("supplement_ingredient_mistranslated", "ru_latin_not_in_source", "meal_timing_mistranslated")
+LINE_PROBLEMS = (
+    "supplement_ingredient_mistranslated", "ru_latin_not_in_source", "ru_untranslated", "negation_lost",
+    "meal_timing_mistranslated", "age_mistranslated",
+)
 
 
 def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:
@@ -366,7 +434,9 @@ def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:
     # Только вещества: у описательных слов варианты через «/» («кора / кожура») модель переносила в перевод.
     hints = {
         # Первый вариант: «фолиевая кислота / фолат» модель переносила в перевод целиком (пилот 3).
-        key.upper(): " | ".join(supplement_glossary.GLOSSARY[key][index].split(" / ")[0] for index in (0, 1))
+        # «ru | en» строкой модель копировала в перевод («прополис | propolis», пилот 4).
+        key.upper(): {"ru": supplement_glossary.GLOSSARY[key][0].split(" / ")[0],
+                      "en": supplement_glossary.GLOSSARY[key][1].split(" / ")[0]}
         for unit in units
         for key in supplement_glossary.found_terms(unit)
         if supplement_glossary.GLOSSARY[key][2] == supplement_glossary.S
@@ -374,7 +444,20 @@ def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:
     system_prompt = LINE_SYSTEM_PROMPT + (
         f"\nСловарь — переводи эти слова только так: {json.dumps(hints, ensure_ascii=False)}" if hints else ""
     )
-    accepted, rejected, usage = medicine_memory.translate_paragraphs(units, llm, system_prompt=system_prompt)
+    requests = [[unit] for unit in units if len(unit.split()) <= SHORT_UNIT_WORDS]
+    longer = [unit for unit in units if len(unit.split()) > SHORT_UNIT_WORDS]
+    if longer:
+        requests.append(longer)
+    accepted: dict[str, dict[str, str]] = {}
+    rejected: dict[str, list[str]] = {}
+    usage: dict[str, Any] = {"tokens": {}, "cost_usd": 0.0, "processing_time_ms": 0}
+    for request in requests:
+        request_accepted, request_rejected, request_usage = medicine_memory.translate_paragraphs(
+            request, llm, system_prompt=system_prompt
+        )
+        accepted.update(request_accepted)
+        rejected.update(request_rejected)
+        medicine_memory._add_usage(usage, request_usage)
     for unit, values in list(accepted.items()):
         problems = line_problems(unit, values["ru"], values["en"])
         if problems:
@@ -383,15 +466,43 @@ def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:
     return accepted, rejected, usage
 
 
-def translate_blocks(sections: dict[str, str], llm) -> tuple[SupplementBlocks, dict[str, Any]]:
+def _remember(accepted: dict[str, dict[str, str]], log) -> None:
+    """Запись с логом карточки: отклонённый модератором лог снимает её из повторного использования."""
+    remember(LINE_NAMESPACE, accepted, log=log)
+    # Запись карточки, которую модератор не принял, уступает свежему переводу (как ``rules.memory.remember``).
+    stale = AITranslationMemory.objects.filter(
+        namespace=LINE_NAMESPACE,
+        source_hash__in=[source_hash(normalize_source_text(unit)) for unit in accepted],
+        source_log__isnull=False,
+    ).exclude(source_log__status__in=REUSABLE_LOG_STATUSES)
+    if log is not None:
+        stale = stale.exclude(source_log=log)
+    by_hash = {source_hash(normalize_source_text(unit)): values for unit, values in accepted.items()}
+    for entry in stale:
+        values = by_hash[entry.source_hash]
+        entry.ru_text, entry.en_text, entry.source_log = values["ru"], values["en"], log
+        entry.save(update_fields=["ru_text", "en_text", "source_log"])
+
+
+# Оборванная фраза («Hamile ve emziren kadınlar,»): блок с ней не показывается, лучше без блока, чем неполный.
+_FRAGMENT_RE = re.compile(r"(?:,|\b(?:ve|veya|ile|ya da))$")
+
+
+def translate_blocks(sections: dict[str, str], llm, log=None) -> tuple[SupplementBlocks, dict[str, Any]]:
     """Части блоков — из памяти, новые — моделью; блок готов, если переведены все его части.
 
-    → (блоки, usage запросов перевода). ``llm=None`` — только память.
+    → (блоки, usage запросов перевода). ``llm=None`` — только память. Из памяти берутся записи принятых
+    карточек и ручные правки; ``log`` — лог карточки, с ним сохраняются новые переводы.
     """
     blocks = SupplementBlocks(parts=section_parts(sections))
     units = list(dict.fromkeys(unit for items in blocks.parts.values() for unit in items))
+    fragments = [unit for unit in units if _FRAGMENT_RE.search(fold_tr(unit))]
+    units = [unit for unit in units if unit not in fragments]
     found = {unit: {"ru": unit, "en": unit} for unit in units if _LATIN_STRAIN_RE.match(fold_tr(unit))}
-    found.update(lookup(LINE_NAMESPACE, [unit for unit in units if unit not in found]) if units else {})
+    if units:
+        found.update(lookup(
+            LINE_NAMESPACE, [unit for unit in units if unit not in found], log_statuses=REUSABLE_LOG_STATUSES
+        ))
     cached = len(found)
     missing = [unit for unit in units if unit not in found]
     usage: dict[str, Any] = {"tokens": {}, "cost_usd": 0.0, "processing_time_ms": 0}
@@ -407,9 +518,13 @@ def translate_blocks(sections: dict[str, str], llm) -> tuple[SupplementBlocks, d
             rejected = {unit: reasons for unit, reasons in {**rejected, **rejected_again}.items() if unit not in accepted}
             medicine_memory._add_usage(usage, usage_again)
         if accepted:
-            remember(LINE_NAMESPACE, accepted)
+            _remember(accepted, log)
             found.update(accepted)
+    claims = []
     for kind, items in blocks.parts.items():
+        if any(item in found and _RU_BENEFIT_RE.search(found[item]["ru"]) for item in items):
+            claims.append(kind)
+            continue
         if all(item in found for item in items):
             blocks.ru[kind] = [found[item]["ru"] for item in items]
             blocks.en[kind] = [found[item]["en"] for item in items]
@@ -419,6 +534,8 @@ def translate_blocks(sections: dict[str, str], llm) -> tuple[SupplementBlocks, d
         "translated": len([unit for unit in missing if unit in found]),
         "rejected": {unit[:120]: reasons for unit, reasons in rejected.items()},
         "missing": len([unit for unit in units if unit not in found]),
+        "fragments": [unit[:120] for unit in fragments],
+        "claim_blocks": claims,
         "blocks": sorted(blocks.ru),
         "incomplete_blocks": sorted(set(blocks.parts) - set(blocks.ru)),
     }

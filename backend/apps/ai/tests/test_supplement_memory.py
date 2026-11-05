@@ -6,10 +6,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from apps.ai.models import AITranslationMemory
+from apps.ai.models import AIProcessingLog, AIProcessingStatus, AITranslationMemory
 from apps.ai.services import supplement_content as sc
 from apps.ai.services import supplement_memory as sm
 from apps.ai.services.translation_memory import remember
+from apps.catalog.models import Product
 
 # Фрагмент «Ürün Bilgisi» настоящей карточки (HERBALAND SAMBUZINC, ilacfiyati 05.11.2026), сокращён.
 PRODUCT_INFO = """Herbaland SambuZinC Gummies 60 Tablet
@@ -164,6 +165,30 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         ("Saw Palmetto Meyve Ekstresi", "Экстракт плодов Saw Palmetto", "Saw Palmetto fruit extract", []),
         ("Gün içinde aç ya da tok karnına kullanılabilir.", "Можно принимать натощак или после еды.",
          "Can be taken on an empty stomach or after a meal.", []),
+        # Ревью PR #313: перевороты смысла, которые проходили проверки чисел и сдвига.
+        ("Yetişkinler için günde 3 kez aç karnına 1'er kapsül alınması önerilir.",
+         "Взрослым рекомендуется по 1 капсуле 3 раза в день после еды.",
+         "Adults: 1 capsule 3 times a day after a meal.", ["meal_timing_mistranslated"]),
+        ("Kronik hastalığı olanlar ve ilaç kullananlar doktora danışmadan kullanmamalıdır.",
+         "Лицам с хроническими заболеваниями и принимающим лекарства можно применять после консультации с врачом.",
+         "People with chronic diseases and those taking medicines may use it after consulting a doctor.", ["negation_lost"]),
+        ("12 yaş altı çocuklarda kullanılmamalıdır.", "Не применять у детей старше 12 лет.",
+         "Do not use in children over 12 years.", ["age_mistranslated"]),
+        ("11 yaş ve üzeri yetişkinlerde günde 1 kapsül kullanılması önerilir.", "Детям младше 11 лет: 1 капсула в день.",
+         "Children under 11: 1 capsule a day.", ["age_mistranslated"]),
+        # Верные переводы запрета, возраста и «не заменяют».
+        ("Takviye edici gıdalar normal beslenmenin yerine geçemez.", "Пищевые добавки не могут заменить нормальное питание.",
+         "Food supplements cannot replace a normal diet.", []),
+        ("12 yaş altı çocuklarda kullanılmamalıdır.", "Не применять у детей младше 12 лет.",
+         "Do not use in children under 12 years of age.", []),
+        ("Keçiboynuzu pekmezi", "Патока рожкового дерева", "Carob molasses", []),
+        # Пилот 4: подсказка словаря целиком, турецкое слово в переводе; бренд и латынь с опечаткой источника — верно.
+        ("Propolis", "прополис | propolis", "propolis", ["ru_untranslated"]),
+        ("Melaloyka Yaği", "Мелалойка Ягы (Melaloyka Yağı)", "Melaloyka Yağı (Melaloyka Oil)",
+         ["supplement_ingredient_mistranslated", "ru_untranslated"]),
+        ("METİLMAX B12 vitamini", "METİLMAX с витамином B12", "METİLMAX with vitamin B12", []),
+        ("Valerian (Valeriana off icinalis, kök)", "Валериана (Valeriana officinalis, корень)",
+         "Valerian (Valeriana officinalis, root)", []),
     ],
 )
 def test_line_problems_catch_wrong_plants_and_english_words(source, ru, en, problems):
@@ -221,11 +246,102 @@ def test_attribute_table_label_warnings_and_dose_rows_are_not_composition():
     assert sm.section_parts({"product_info": usage}) == {"usage": ["Günde 3 defa 2 puf kullanılması önerilir."]}
 
 
-def test_tablet_coating_and_e_codes_are_excipients_but_vitamin_with_bad_brackets_is_not():
-    coating = "İçindekiler: Mikrokristalin Selüloz, Polivinil Alkol, Talk, Kalsiyum Karbonat (E 170)"
+def test_tablet_coating_is_excipients_but_active_substances_with_e_codes_are_not():
+    coating = "İçindekiler: Mikrokristalin Selüloz, Polivinil Alkol, Talk, Silikon Dioksit (E 551)"
     assert list(sm.section_parts({"product_info": coating})) == ["excipients"]
     vitamin = "İçindekiler: L-Askorbik Asit (Vitomin C, Hacim Artırıcı Mikrokristalin Selüloz, Talk"
     assert list(sm.section_parts({"product_info": vitamin})) == ["composition"]
+    # Ревью PR #313: кальций в БАДе с кальцием и витамин E — действующие вещества.
+    calcium = "İçindekiler: Kalsiyum karbonat (E170), Mikrokristalin selüloz"
+    assert list(sm.section_parts({"product_info": calcium})) == ["composition"]
+    assert list(sm.section_parts({"product_info": "İçindekiler: Vitamin E 400 IU, Jelatin"})) == ["composition"]
+
+
+def test_contraindications_wrapped_lines_and_unlabeled_descriptions():
+    # Ревью PR #313: «Aşağıdaki … kullanmayınız:» — противопоказание, а не подпись другого раздела.
+    text = "Uyarılar:\nAşağıdaki durumlarda kullanmayınız: kalp hastalığı."
+    assert sm.section_parts({"product_info": text}) == {"warnings": ["Aşağıdaki durumlarda kullanmayınız: kalp hastalığı."]}
+    unlabeled = "Aşağıdaki durumlarda kullanmayınız: kalp hastalığı."
+    assert sm.section_parts({"product_info": unlabeled}) == {"warnings": [unlabeled]}
+    # Перенос после запятой со строки с заглавной буквы — одна фраза.
+    wrapped = "Uyarılar:\nHamile ve emziren kadınlar,\nDoktora danışmadan kullanmamalıdır."
+    assert sm.section_parts({"product_info": wrapped}) == {
+        "warnings": ["Hamile ve emziren kadınlar, Doktora danışmadan kullanmamalıdır."]
+    }
+    # Строки описания без подписи — не предупреждения, хотя в них «hamile», «doktor».
+    indications = (
+        "Hamilelik ve emzirme döneminde ihtiyaç duyulan vitamin ve mineralleri içerir.\n"
+        "Doktorlar tarafından önerilen formül."
+    )
+    assert sm.section_parts({"supplement_indications": indications}) == {}
+    # «Aşağıdaki örnek beslenme tablosunu …» — ссылка на таблицу, которой в карточке нет.
+    table = "Kullanım Şekli:\nAşağıdaki örnek beslenme tablosunu doktorunuza danışarak kullanabilirsiniz."
+    assert sm.section_parts({"product_info": table}) == {}
+
+
+def test_health_claims_are_not_taken_into_blocks():
+    # VITAGLUCAN (пилот 4): заявления о пользе под подписью способа применения.
+    text = (
+        "Kullanım Önerisi: Yetişkinler için günde 1 tablet.\n"
+        "Ürünün içeriğinde bulunan C vitamini;\n"
+        "- Yorgunluk ve bitkinliğin azalmasına katkıda bulunur.\n"
+        "Uyarılar:\nTedavi gören kişiler doktoruna danışarak kullanmalıdır."
+    )
+    assert sm.section_parts({"product_info": text}) == {
+        "usage": ["Yetişkinler için günde 1 tablet."],
+        "warnings": ["Tedavi gören kişiler doktoruna danışarak kullanmalıdır."],
+    }
+
+
+@pytest.mark.django_db
+def test_block_with_benefit_claim_in_translation_is_not_shown():
+    usage = "Günde 1 tablet su ile alınır."
+    remember(sm.LINE_NAMESPACE, {usage: {"ru": "1 таблетка в день, способствует бодрости.", "en": "1 tablet a day."}})
+
+    blocks, _usage = sm.translate_blocks({"product_info": f"Kullanım Şekli:\n{usage}"}, None)
+
+    assert blocks.ru == {} and blocks.stats["claim_blocks"] == ["usage"]
+
+
+@pytest.mark.django_db
+def test_fragment_keeps_block_out():
+    text = "Uyarılar:\nTavsiye edilen günlük porsiyonu aşmayın.\nHamile ve emziren kadınlar,\nMuhafaza Koşulları:"
+    blocks, _usage = sm.translate_blocks({"product_info": text}, _translator_llm())
+
+    assert blocks.ru == {} and blocks.stats["fragments"] == ["Hamile ve emziren kadınlar,"]
+    assert blocks.stats["incomplete_blocks"] == ["warnings"]
+
+
+@pytest.mark.django_db
+def test_short_parts_go_one_per_request():
+    # Ревью PR #313: «Jelatin» ↔ «Gliserin» в одном запросе переставлялись без пропуска и проходили проверки.
+    translations = {"Jelatin": ("желатин", "gelatin"), "Gliserin": ("глицерин", "glycerol"), "Su": ("вода", "water")}
+    requests = []
+
+    def answer(user_prompt):
+        items = json.loads(user_prompt.split("\n\n", 1)[1])
+        requests.append(list(items.values()))
+        return {key: {"ru": translations[text][0], "en": translations[text][1]} for key, text in items.items()}
+
+    blocks, _usage = sm.translate_blocks({"ingredients": "İçeriği: Jelatin, Gliserin, Su"}, _translator_llm(answer))
+
+    assert requests == [["Jelatin"], ["Gliserin"], ["Su"]]
+    assert blocks.ru == {"composition": ["желатин", "глицерин", "вода"]}
+
+
+@pytest.mark.django_db
+def test_lines_of_rejected_card_are_not_reused_and_give_way_to_new_translation():
+    product = Product.objects.create(name="X", slug="sup-line-log")
+    log = AIProcessingLog.objects.create(product=product, status=AIProcessingStatus.MODERATION, input_data={})
+    remember(sm.LINE_NAMESPACE, {"Tavsiye edilen günlük porsiyonu aşmayın.": {"ru": "Плохо", "en": "Bad"}}, log=log)
+    text = "Uyarılar:\nTavsiye edilen günlük porsiyonu aşmayın."
+    fresh = AIProcessingLog.objects.create(product=product, status=AIProcessingStatus.PROCESSING, input_data={})
+
+    blocks, _usage = sm.translate_blocks({"product_info": text}, _translator_llm(), log=fresh)
+
+    assert blocks.ru == {"warnings": ["Не превышайте рекомендуемую суточную порцию."]}
+    entry = AITranslationMemory.objects.get(namespace=sm.LINE_NAMESPACE)
+    assert (entry.ru_text, entry.source_log_id) == ("Не превышайте рекомендуемую суточную порцию.", fresh.pk)
 
 
 @pytest.mark.django_db
@@ -266,7 +382,7 @@ def test_glossary_hints_go_to_translator_and_wrong_plant_is_not_remembered():
     assert "REZENE" in llm.generate_content.call_args.kwargs["system_prompt"]
     # Только первый вариант словаря: «фолиевая кислота / фолат» модель переносила в перевод целиком.
     sm.translate_blocks({"ingredients": "İçeriği:\nFolik asit"}, llm)
-    assert '"FOLIK ASIT": "фолиевая кислота | folic acid"' in llm.generate_content.call_args.kwargs["system_prompt"]
+    assert '"FOLIK ASIT": {"ru": "фолиевая кислота", "en": "folic acid"}' in llm.generate_content.call_args.kwargs["system_prompt"]
     assert blocks.ru == {} and blocks.stats["rejected"] == {"Rezene Tohum Ekstraktı": ["supplement_ingredient_mistranslated"]}
     assert not AITranslationMemory.objects.filter(namespace=sm.LINE_NAMESPACE).exists()
 
@@ -278,8 +394,9 @@ def test_new_parts_are_translated_once_and_then_come_from_memory():
 
     blocks, usage = sm.translate_blocks(sections, llm)
 
-    assert llm.generate_content.call_count == 1  # 8 частей — один запрос (до 10)
-    assert usage["cost_usd"] == pytest.approx(0.0002)
+    # «Su» и «Tatlandırıcı (Eritrol, Ksilitol)» — короткие, по одной на запрос; остальные 6 — одним запросом.
+    assert llm.generate_content.call_count == 3
+    assert usage["cost_usd"] == pytest.approx(0.0006)
     assert blocks.ru["usage"] == ["По 1 штуке в день, разжёвывая."]
     assert blocks.stats["translated"] == 8 and blocks.stats["cached"] == 0
     assert AITranslationMemory.objects.filter(namespace=sm.LINE_NAMESPACE).count() == 8
@@ -313,18 +430,42 @@ def test_admin_edit_in_memory_is_used_without_model():
     llm.generate_content.assert_not_called()
 
 
-def test_block_texts_drop_claims_in_both_languages_and_go_before_disclaimer():
+def test_block_texts_keep_warnings_with_disease_words_and_go_before_disclaimer():
+    # Ревью PR #313: фильтр обещаний лечения молча выбрасывал настоящие предупреждения и «лечебную ромашку».
+    warning_ru = "Лицам с хроническими заболеваниями и принимающим лекарства не применять без консультации врача."
+    warning_en = "People with chronic diseases or taking medicines should not use it without consulting a doctor."
     blocks = sm.SupplementBlocks(
-        ru={"composition": ["вода", "витамин C"], "warnings": ["Не превышайте порцию", "Не применяется для лечения болезней."]},
-        en={"composition": ["water", "vitamin C"], "warnings": ["Do not exceed the portion", "Not used to treat diseases."]},
+        ru={"composition": ["вода", "экстракт лечебной ромашки"], "warnings": ["Не превышайте порцию", warning_ru]},
+        en={"composition": ["water", "chamomile extract"], "warnings": ["Do not exceed the portion", warning_en]},
     )
 
     ru = sc.memory_block_texts(blocks, "ru")
     description = sc.build_description(["SOLGAR — пищевая добавка."], "ru", blocks=ru)
 
-    assert ru == ["Состав: вода, витамин C.", "Предупреждения: Не превышайте порцию."]
-    assert sc.memory_block_texts(blocks, "en")[1] == "Warnings: Do not exceed the portion."
-    assert description.endswith(f"<p>Предупреждения: Не превышайте порцию.</p><p>{sc.DISCLAIMER['ru']}</p>")
+    assert ru == ["Состав: вода, экстракт лечебной ромашки.", f"Предупреждения: Не превышайте порцию. {warning_ru}"]
+    assert sc.memory_block_texts(blocks, "en")[1] == f"Warnings: Do not exceed the portion. {warning_en}"
+    assert description.endswith(f"<p>Предупреждения: Не превышайте порцию. {warning_ru}</p><p>{sc.DISCLAIMER['ru']}</p>")
+
+
+def test_log_problems_do_not_check_memory_blocks_again():
+    # Ревью PR #313: число из конца раздела (за пределом SECTION_TEXT_LIMIT) и числа словами
+    # («Günde iki kez» → «2 раза») в блоках памяти отправляли всё описание на модерацию.
+    usage_ru = "Способ применения: 2 раза в день."
+    warning_ru = "Предупреждения: Не давать детям младше 15 лет. Не применять при заболеваниях сердца."
+    description = f"<p>SOLGAR — пищевая добавка.</p><p>{usage_ru}</p><p>{warning_ru}</p><p>{sc.DISCLAIMER['ru']}</p>"
+    long_text = "Ürün Bilgisi:\n" + "Bilgi. " * 400 + "\nUyarılar:\n15 yaşından küçüklerde kullanmayınız."
+    supplement = {"brand": "SOLGAR", "memory_texts": {"ru": [usage_ru, warning_ru], "en": []}}
+    log = SimpleNamespace(
+        raw_llm_response={"rule_content": {"supplement": supplement}},
+        input_data={"name": "SOLGAR TAKVIYE EDICI GIDA", "attributes": {"source_tabs": {"product_info": {"text": long_text}}}},
+        extracted_attributes={},
+        generated_title="",
+        generated_description=description,
+    )
+
+    assert sc.log_problems(log) == {}
+    supplement["memory_texts"] = {}
+    assert set(sc.log_problems(log)["description"]) == {"supplement_health_claim", "supplement_unsourced_number"}
 
 
 def _card_answer():
@@ -360,6 +501,7 @@ def test_supplement_card_gets_memory_blocks_and_model_is_told_not_to_retell_them
     assert "<p>Состав: вода, подсластитель (эритрит, ксилит), L-аскорбиновая кислота (витамин C)," in description
     assert "<p>Способ применения: По 1 штуке в день, разжёвывая.</p>" in description
     assert result["content"]["en"]["generated_description"].count("<p>") == 6
-    assert result["cost_usd"] == pytest.approx(0.0005)
+    assert result["cost_usd"] == pytest.approx(0.0009)  # карточка + 3 запроса перевода частей
+    assert result["rule_content"]["supplement"]["memory_texts"]["ru"][1] == "Способ применения: По 1 штуке в день, разжёвывая."
     assert result["rule_content"]["description_source"] == "llm+memory"
     assert result["rule_content"]["supplement"]["memory"]["translated"] == 8

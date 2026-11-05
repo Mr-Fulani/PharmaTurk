@@ -379,20 +379,16 @@ def clean_paragraph(text: Any, source_name: str = "") -> str:
 def memory_block_texts(blocks: "supplement_memory.SupplementBlocks", locale: str) -> list[str]:
     """Готовые блоки памяти → абзацы «Состав: …», «Способ применения: …».
 
-    Предложение с обещанием лечения в RU или EN выпадает в обоих языках: «İlaç değildir…»
-    повторяет дисклеймер карточки, а блоки RU и EN должны совпадать.
+    Блоки не фильтруются по словам обещаний лечения: «Kronik hastalığı olanlar … doktora danışmadan
+    kullanmamalıdır» — предупреждение, «экстракт лечебной ромашки» — состав (ревью PR #313: фильтр молча
+    выбрасывал их, и неполный блок выглядел полным). Дубль дисклеймера «İlaç değildir…» отбрасывает
+    ``supplement_memory.section_parts``.
     """
     texts = []
     for kind in supplement_memory.BLOCK_KINDS:
         if kind not in blocks.ru:
             continue
-        pairs = [
-            (ru, en) for ru, en in zip(blocks.ru[kind], blocks.en[kind])
-            if not (_CLAIM_RE.search(ru) or _CLAIM_RE.search(en))
-        ]
-        values = list(dict.fromkeys(ru if locale == "ru" else en for ru, en in pairs))
-        if not values:
-            continue
+        values = list(dict.fromkeys(blocks.ru[kind] if locale == "ru" else blocks.en[kind]))
         title = supplement_memory.BLOCK_TITLES[kind][0 if locale == "ru" else 1]
         if kind in ("composition", "excipients"):
             body = ", ".join(value.rstrip(" .") for value in values) + "."
@@ -436,9 +432,16 @@ def form_mismatch(description: Any, pack: Optional[Pack], source_name: Any = "")
     return other and not own
 
 
-def description_problems(description: Any, source: Any) -> list[str]:
-    """Причины модерации описания БАДа: обещание лечения, число не из источника."""
-    plain = re.sub(r"<[^>]+>", " ", str(description or ""))
+def description_problems(description: Any, source: Any, memory_texts: Optional[list[str]] = None) -> list[str]:
+    """Причины модерации описания БАДа: обещание лечения, число не из источника.
+
+    ``memory_texts`` — абзацы из памяти переводов: каждая их часть проверена при переводе по своему
+    исходнику, а слова «заболевание», «лечебная» и числа словами («Günde iki kez» — «2 раза») в них законны.
+    """
+    description = str(description or "")
+    for text in memory_texts or []:
+        description = description.replace(f"<p>{text}</p>", " ")
+    plain = re.sub(r"<[^>]+>", " ", description)
     for text in (*DISCLAIMER.values(), *BABY_DISCLAIMER.values()):
         plain = plain.replace(text, " ")
     problems = []
@@ -597,9 +600,10 @@ def log_problems(log) -> dict[str, list[str]]:
         title.append("supplement_ingredient_mistranslated")
     if title:
         problems["title"] = title
+    memory_texts = (rule_content.get("supplement") or {}).get("memory_texts") or {}
     description = list(dict.fromkeys(
-        description_problems(getattr(log, "generated_description", ""), source)
-        + description_problems(en_description, source)
+        description_problems(getattr(log, "generated_description", ""), source, memory_texts.get("ru"))
+        + description_problems(en_description, source, memory_texts.get("en"))
     ))
     pack = parse_pack(source_name)
     if form_mismatch(getattr(log, "generated_description", ""), pack, source_name) or form_mismatch(
@@ -955,7 +959,10 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
     result: dict[str, Any] = _empty_usage()
     # Состав, способ применения, предупреждения и хранение — из памяти переводов, новые части
     # переводит модель короткими запросами; готовые блоки модель не пересказывает.
-    blocks, memory_usage = supplement_memory.translate_blocks(source_sections(input_data, limit=None), llm)
+    blocks, memory_usage = supplement_memory.translate_blocks(
+        source_sections(input_data, limit=None), llm, log=log_entry
+    )
+    memory_texts = {locale: memory_block_texts(blocks, locale) for locale in ("ru", "en")}
     program_blocks = [supplement_memory.BLOCK_TITLES[kind][0] for kind in supplement_memory.BLOCK_KINDS if kind in blocks.ru]
     llm_result = llm.generate_content(
         system_prompt=SYSTEM_PROMPT,
@@ -1000,7 +1007,7 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
     descriptions = {
         locale: build_description(
             description.get(locale), locale, baby_food=baby_food, source_name=source_name,
-            blocks=memory_block_texts(blocks, locale),
+            blocks=memory_texts[locale],
         )
         for locale in ("ru", "en")
     }
@@ -1038,6 +1045,8 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
             "product": product_text,
             "source_sections": sorted(sections),
             "memory": blocks.stats,
+            # Для log_problems: эти абзацы проверены по частям при переводе.
+            "memory_texts": memory_texts if any(memory_texts.values()) else {},
         },
     }
     return result
