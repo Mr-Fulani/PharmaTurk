@@ -182,6 +182,9 @@ AUDIENCE: dict[str, tuple[str, str]] = {
     "cocuk": ("детский", "Kids'"),
     "erkek cocuk": ("детский", "Boys'"),
     "kiz cocuk": ("детский", "Girls'"),
+    "erkek bebek": ("детский", "Baby Boys'"),
+    "kiz bebek": ("детский", "Baby Girls'"),
+    "kiz": ("детский", "Girls'"),
     "bebek": ("детский", "Kids'"),
     "unisex": ("=унисекс", "Unisex"),
 }
@@ -328,6 +331,7 @@ KINDS: dict[str, Kind] = {
     "high sneaker": _k("высокие кроссовки", PL, "High-Top Sneakers"),
     "spor ayakkabi": _k("кроссовки", PL, "Sneakers"),
     "kosu ayakkabisi": _k("беговые кроссовки", PL, "Running Shoes"),
+    "basketbol ayakkabisi": _k("баскетбольные кроссовки", PL, "Basketball Shoes"),
     "sandalet": _k("сандалии", PL, "Sandals"),
     "sandal": _k("сандалии", PL, "Sandals"),
     "terlik": _k("шлепанцы", PL, "Slippers"),
@@ -363,6 +367,19 @@ KINDS: dict[str, Kind] = {
     "kalem kutusu": _k("пенал", M, "Pencil Case"),
     "valiz": _k("чемодан", M, "Suitcase"),
     "anahtarlik": _k("брелок", M, "Keychain"),
+    # посуда и спорттовары SuperStep: их title пишет LLM, а тип нужен для адреса товара.
+    # Мяч и полотенце — generic: «Havlu Çorap» (махровые носки), «Futbol Topu Baskılı Tişört»
+    # (футболка с мячом) — тип из названия важнее.
+    "termos": _k("термос", M, "Thermos"),
+    "termos bardak": _k("термокружка", F, "Travel Mug"),
+    "suluk": _k("бутылка для воды", F, "Water Bottle"),
+    "matara": _k("фляга", F, "Flask"),
+    "basketbol topu": _k("баскетбольный мяч", M, "Basketball", generic=True),
+    "futbol topu": _k("футбольный мяч", M, "Football", generic=True),
+    "voleybol topu": _k("волейбольный мяч", M, "Volleyball", generic=True),
+    "topu": _k("мяч", M, "Ball", generic=True),
+    "havlu": _k("полотенце", N, "Towel", generic=True),
+    "havlusu": _k("полотенце", N, "Towel", generic=True),
     # головные уборы
     "sapka": _k("головной убор", M, "Hat", generic=True),
     "kep": _k("кепка", F, "Cap"),
@@ -693,6 +710,8 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "bagcikli": ("на шнурках", "Lace-Up"),
     "tokali": ("с пряжкой", "Buckle"),
     "antrenman": ("для тренировок", "Training"),
+    "basketbol baskili": ("с баскетбольным принтом", "Basketball Print"),
+    "futbol baskili": ("с футбольным принтом", "Football Print"),
     "kosu": ("для бега", "Running"),
     "su gecirmez": ("с защитой от воды", "Waterproof"),
     "cift bantli": ("с двумя ремешками", "Double-Strap"),

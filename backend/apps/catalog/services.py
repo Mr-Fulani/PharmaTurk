@@ -177,6 +177,42 @@ def _internal_media_url_missing_from_storage(url: str) -> bool:
         return False
 
 
+# Источники, у новых товаров которых адрес — русское название транслитом и код модели,
+# без имени поставщика и турецких слов: «krossovki-uniseks-adidas-samba-og-b75806»
+# вместо «adidas-samba-og-unisex-beyaz-spor-ayakkab-superstep-B75806» (05.11.2026).
+RU_TITLE_SLUG_SOURCES = frozenset({"superstep"})
+
+
+# Транслит как в адресах Яндекса: «я» — ya, «й» — y, «х» — kh («muzhskaya», не «muzhskaja»).
+_RU_SLUG_LETTERS = str.maketrans({
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh", "з": "z",
+    "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
+    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh",
+    "щ": "shch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+})
+
+
+def ru_slugify(text: str) -> str:
+    return slugify(str(text or "").lower().translate(_RU_SLUG_LETTERS))
+
+
+def ru_title_slug_base(name: str, brand: str, product_type: str, category, attributes: dict) -> str:
+    """Название по правилам SEO без цвета («Кроссовки унисекс adidas Samba OG»), иначе «бренд модель», транслитом.
+
+    Правила названий работают и для спорттоваров и посуды («Термос унисекс Stanley …»), хотя
+    их title пишет LLM: для адреса достаточно типа из словаря.
+    """
+    from types import SimpleNamespace
+
+    from apps.ai.services.rules.facts import collect_facts
+    from apps.ai.services.rules.text import build_titles
+
+    product = SimpleNamespace(product_type=product_type or "", category=category, variants=None, domain_item=None)
+    facts = collect_facts(product, {"name": name, "brand": brand or "", "attributes": {"gender": (attributes or {}).get("gender")}})
+    text = build_titles(facts)["ru"].split(", ")[0] or f"{facts.brand} {facts.model}".strip()
+    return ru_slugify(text) if text else ""
+
+
 class CatalogNormalizer:
     """Сервис для нормализации данных из API парсера в модели БД."""
     
@@ -702,6 +738,20 @@ class CatalogNormalizer:
             slug = f"{base_slug}-{safe_external_id}"
         else:
             slug = f"{base_slug}-{uuid.uuid4().hex[:8]}"
+
+        source = str(raw_meta.get("source") or "")
+        if source in RU_TITLE_SLUG_SOURCES and safe_external_id.startswith(f"{source}-") and not existing_products.exists():
+            try:
+                ru_base = ru_title_slug_base(
+                    product_data.name, product_data.brand or "", resolved_product_type or "", resolved_category, raw_meta.get("attributes") or {},
+                )
+            except Exception:  # правила не должны ронять создание товара: остаётся прежний адрес
+                self.logger.exception("Слаг из русского названия не собран: %s", external_id)
+                ru_base = ""
+            ru_slug = f"{ru_base}-{safe_external_id[len(source) + 1:]}".lower() if ru_base else ""
+            # Тот же артикул у другого источника (FLO) — остаётся слаг с префиксом источника.
+            if ru_slug and not Product.objects.filter(slug=ru_slug).exists():
+                slug = ru_slug
 
         # У некоторых источников (ilacfiyati) external_id — это слаг имени,
         # и конкатенация даёт задвоение X-X. Схлопываем, если не занято.
