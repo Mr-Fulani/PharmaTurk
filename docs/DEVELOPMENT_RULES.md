@@ -188,6 +188,7 @@ docker-compose за nginx и Cloudflare.
    находились (44 из 115 запросов аудита). Новое поле, по которому покупатель ищет товар, —
    в `build_search_row` и тест. Массовая правка через `update()`/`bulk_*` сигналы обходит:
    после неё — `rebuild_product_search_index --apply` ([PRODUCT_SEARCH.md](PRODUCT_SEARCH.md)).
+   Откат релиза на версию без таблицы индекса — только после `--clear --apply` (каскад FK — в коде).
 
 ## 4. Фронтенд (Next.js)
 
