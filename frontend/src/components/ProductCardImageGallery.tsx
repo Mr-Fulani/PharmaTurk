@@ -143,7 +143,7 @@ export default function ProductCardImageGallery({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={previewImageUrl || effectiveGallery[activeIndex]?.image_url || fallback}
-          alt={effectiveGallery[activeIndex]?.alt_text || name}
+          alt={name || effectiveGallery[activeIndex]?.alt_text}
           loading="lazy"
           decoding="async"
           width={400}
@@ -165,7 +165,7 @@ export default function ProductCardImageGallery({
           <img
             key={`${item.id || imageKey(item.image_url || '')}-${index}`}
             src={item.image_url || fallback}
-            alt={item.alt_text || name}
+            alt={name || item.alt_text}
             loading="lazy"
             decoding="async"
             width={400}
