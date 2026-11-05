@@ -15,9 +15,9 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
-from django.contrib.postgres.search import TrigramSimilarity
 from django.db import transaction
 from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
+from django.db.models.functions import Length
 from django.db.models.signals import post_save
 
 # Турецкие и прочие латинские буквы с диакритикой → латиница, ё → е.
@@ -218,7 +218,7 @@ def reindex_products(product_ids: Iterable[int]) -> int:
 
 # --- запрос ------------------------------------------------------------------
 
-_MIN_RANKED_QUERY = 2
+_MIN_RANKED_QUERY = 3
 
 
 def search_words(search: str) -> tuple[str, list[str]]:
@@ -241,29 +241,40 @@ def filter_by_search(queryset, search: str, *, prefix: str = ""):
     return queryset
 
 
+def _line_equals(field: str, value: str) -> Q:
+    """Одна из строк многострочного поля равна value (только LIKE, без регулярок)."""
+    return (
+        Q(**{field: value})
+        | Q(**{f"{field}__startswith": f"{value}\n"})
+        | Q(**{f"{field}__endswith": f"\n{value}"})
+        | Q(**{f"{field}__contains": f"\n{value}\n"})
+    )
+
+
 def order_by_relevance(queryset, search: str, *, prefix: str = ""):
     """Точное название или бренд → название начинается с запроса → запрос с начала
-    слова в названии → похожесть названия → наличие → новизна."""
+    слова в названии → остальное; внутри — короче название, в наличии, новее.
+
+    Ключи сортировки считаются для всех совпадений, поэтому только дешёвые: LIKE и
+    длина названия. Регулярки и ``similarity`` на 8,8 тыс. совпадений стоили ≈ 0,8 с
+    (прод 05.11.2026 после выкатки: «пленочной оболочкой» 6 с вместе с детоастом).
+    Запрос короче 3 символов («кр», «ма») — без сортировки по точности, сначала новые.
+    """
     query, _ = search_words(search)
-    # Один символ («a», «3») находит десятки тысяч товаров: сортировка по точности
-    # стоила ≈ 270 мс SQL против 1 мс (модельный каталог 30 тыс.). С двух символов — 20–30 мс.
     if len(query) < _MIN_RANKED_QUERY or not search_index_ready():
-        return queryset.order_by("-created_at")
+        return queryset.order_by("-created_at", "-id")
     names = f"{prefix}search_index__name"
     brand = f"{prefix}search_index__brand"
-    exact = f"(?n)^{query}$"
     tier = Case(
-        When(Q(**{f"{names}__regex": exact}) | Q(**{f"{brand}__regex": exact}), then=Value(0)),
-        When(**{f"{names}__regex": f"(?n)^{query}( |$)"}, then=Value(1)),
-        When(**{f"{names}__regex": f"(?n)^{query}"}, then=Value(2)),
-        When(**{f"{names}__regex": f"(^|\\s){query}"}, then=Value(3)),
-        default=Value(4),
+        When(_line_equals(names, query) | _line_equals(brand, query), then=Value(0)),
+        When(Q(**{f"{names}__startswith": query}) | Q(**{f"{names}__contains": f"\n{query}"}), then=Value(1)),
+        When(**{f"{names}__contains": f" {query}"}, then=Value(2)),
+        default=Value(3),
         output_field=IntegerField(),
     )
-    return queryset.annotate(
-        search_tier=tier,
-        search_similarity=TrigramSimilarity(names, query),
-    ).order_by("search_tier", "-search_similarity", "-is_available", "-created_at", "-id")
+    return queryset.annotate(search_tier=tier, search_name_length=Length("name")).order_by(
+        "search_tier", "search_name_length", "-is_available", "-created_at", "-id"
+    )
 
 
 # --- сигналы -----------------------------------------------------------------

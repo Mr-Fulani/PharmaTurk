@@ -317,3 +317,34 @@ def test_rebuild_ids_refused_while_index_is_empty(make_product):
     with pytest.raises(CommandError):
         call_command("rebuild_product_search_index", "--ids", str(product.pk), "--apply")
     assert not ProductSearchIndex.objects.exists()
+
+
+def test_short_query_is_newest_first_without_relevance(make_product):
+    older = make_product("Кр")  # точное совпадение, но запрос короче 3 символов
+    newer = make_product("Крем для рук")
+    Product.objects.filter(pk=older.pk).update(created_at=older.created_at.replace(year=2020))
+    _rebuild()
+
+    assert _ids({"search": "кр"})[:2] == [newer.pk, older.pk]
+
+
+def test_search_excludes_service_rows_without_external_data_condition(make_product):
+    """Служебные строки — подзапросом по частичному индексу 0217: условие на external_data
+    в основном запросе детоастило дампы парсеров по каждому совпадению (прод: «кр» 20 с)."""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    public = make_product("Krem public")
+    variant = make_product("Krem variant copy", external_data={"source_variant_id": 1})
+    stub = make_product("Krem stub", product_type="medicines", external_data={"is_stub": True})
+    _rebuild()
+
+    with CaptureQueriesContext(connection) as queries:
+        found = _ids({"search": "krem"})
+
+    assert found == [public.pk]
+    assert variant.pk not in found and stub.pk not in found
+    search_sql = [q["sql"] for q in queries.captured_queries if "catalog_productsearchindex" in q["sql"]]
+    assert search_sql
+    for sql in search_sql:
+        assert '"catalog_product"."external_data" ?' not in sql
