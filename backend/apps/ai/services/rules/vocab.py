@@ -300,13 +300,16 @@ KINDS: dict[str, Kind] = {
     "biker sort": _k("велосипедки", PL, "Biker Shorts"),
     "kosu sortu": _k("шорты для бега", PL, "Running Shorts"),
     "deniz sortu": _k("шорты для плавания", PL, "Swim Shorts"),
-    "polar": _k("флиска", F, "Fleece Jacket"),
+    # «Polar» один — флиска (SuperStep), но «Polar Sweatshirt», «Polar Bere» — свитшот, шапка:
+    # generic уступает типу из названия. Английское «Fleece» — линейка («Club Fleece»), не тип.
+    "polar": _k("флиска", F, "Fleece Jacket", generic=True),
     "polar ceket": _k("флиска", F, "Fleece Jacket"),
     "polar mont": _k("флиска", F, "Fleece Jacket"),
-    "fleece": _k("флиска", F, "Fleece Jacket"),
     "ruzgarlik": _k("ветровка", F, "Windbreaker"),
     "yagmurluk": _k("дождевик", M, "Raincoat"),
-    "esofman ustu": _k("олимпийка", F, "Track Jacket"),
+    # Олимпийка — на молнии; кофта без молнии у LCW — «спортивная кофта».
+    "esofman ustu": _k("спортивная кофта", F, "Track Top"),
+    "fermuarli esofman ustu": _k("олимпийка", F, "Track Jacket"),
     "sort takim": _k("комплект с шортами", M, "Shorts Set"),
     "sort takimi": _k("комплект с шортами", M, "Shorts Set"),
     "tulum": _k("комбинезон", M, "Jumpsuit"),
@@ -397,6 +400,7 @@ CATEGORY_KINDS: dict[str, Kind] = {
     "sunglasses": KINDS["gunes gozlugu"],
     "hw-caps": KINDS["kep"],
     # разделы, куда SuperStep кладёт «Şapka» без уточнения (05.11.2026)
+    "fleece": KINDS["polar ceket"],
     "hw-baseball-caps": _k("бейсболка", F, "Baseball Cap"),
     "hw-trucker-caps": _k("кепка-тракер", F, "Trucker Cap"),
     "hw-childrens-caps": KINDS["kep"],
@@ -420,10 +424,35 @@ CATEGORY_KINDS: dict[str, Kind] = {
 # Бренд + тип → название, под которым товар ищут: «UGG Classic Mini Kadın Bot» —
 # «угги», а не «ботинки» («угги ugg оригинал» в подсказках Яндекса, 05.11.2026).
 _UGG_BOOTS = _k("угги", PL, "UGG Boots")
+# «Ceket» у спортивных брендов — куртка, а не пиджак («Nike Windrunner Erkek Ceket»);
+# у LC Waikiki, Zara, Hugo, Tommy Hilfiger «Ceket» бывает пиджаком — их здесь нет.
+SPORT_JACKET_BRANDS = frozenset(
+    {
+        "nike", "jordan", "adidas", "puma", "reebok", "under armour", "new balance", "asics", "on", "on running",
+        "hoka", "brooks", "mizuno", "saucony", "anta", "champion", "kappa", "ea7", "everlast", "the north face",
+        "columbia", "salomon", "napapijri", "helly hansen", "jack wolfskin", "mc kinley", "energetics",
+        "converse", "vans", "les benjamins", "united4", "alpha industries", "karl kani", "dickies", "huf",
+        "the hundreds", "quiksilver", "billabong", "roxy", "speedo", "lacoste",
+    }
+)
+_JACKET = _k("куртка", F, "Jacket")
 BRAND_KINDS: dict[tuple[str, str], Kind] = {
     ("ugg", "ботинки"): _UGG_BOOTS,
     ("ugg", "сапоги"): _UGG_BOOTS,
+    **{(brand, "пиджак"): _JACKET for brand in SPORT_JACKET_BRANDS},
 }
+# Слово модели, по которому куртку ищут иначе: «Nike Windrunner» — ветровка,
+# «adidas Firebird / SST / Beckenbauer» — олимпийка.
+MODEL_WORD_KINDS: dict[str, Kind] = {
+    "windrunner": KINDS["ruzgarlik"],
+    "firebird": KINDS["fermuarli esofman ustu"],
+    "sst": KINDS["fermuarli esofman ustu"],
+    "beckenbauer": KINDS["fermuarli esofman ustu"],
+}
+JACKET_KINDS = frozenset({"пиджак", "куртка", "спортивная кофта"})
+# Бренды, у которых модель — число («New Balance 9060», «530», «2002»): номер сразу за
+# брендом — модель. У остальных (FLO: «Kinetix 1234», «Pierre Cardin 6205») — артикул.
+NUMERIC_MODEL_BRANDS = frozenset({"new balance"})
 
 # Мебель IKEA: значение furniture_type (без названия серии) → тип.
 FURNITURE_KINDS: dict[str, Kind] = {
@@ -694,7 +723,6 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "destekli": ("", ""),
     "tam boy": ("", ""),
     "outdoor": ("", ""),
-    "crew": ("", ""),
     "ua": ("", ""),  # «Vans UA Sk8-Low», «UA Tech»: сокращение линейки/бренда
 }
 
@@ -707,7 +735,7 @@ _ENGLISH_VOCAB_WORDS = frozenset(
         "fit", "graphic", "hoodie", "indigo", "jean", "jeans", "kids", "loafer", "logo", "men", "metal",
         "mint", "model", "noos", "normal", "oval", "oversize", "parfum", "petrol", "pls", "polo", "poplin", "relaxed",
         "sandal", "slip", "sneaker", "ss", "stick", "sweatshirt", "tee", "tshirt", "unisex", "women",
-        "bra", "biker", "crew", "fleece", "outdoor", "polar", "ua",
+        "bra", "biker", "outdoor", "polar", "ua",
     }
 )
 TURKISH_TITLE_WORDS = frozenset(

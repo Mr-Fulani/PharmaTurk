@@ -169,6 +169,55 @@ def test_sportswear_titles(name, brand, product_type, category, ru):
     assert build_titles(collect_facts(product, {"name": name, "brand": brand}))["ru"] == ru
 
 
+@pytest.mark.parametrize(
+    "name, brand, product_type, category, ru",
+    [
+        # «Polar» уступает типу из названия, «Fleece» — линейка, не тип (ревью #315)
+        ("Erkek Polar Sweatshirt", "LC Waikiki", "clothing", None, "Мужской свитшот LC Waikiki"),
+        ("Polar Eşofman Altı", "LC Waikiki", "clothing", None, "Спортивные брюки LC Waikiki"),
+        ("Erkek Polar Bere", "LC Waikiki", "headwear", None, "Мужская шапка LC Waikiki"),
+        ("Kadın Polar Hırka", "LC Waikiki", "clothing", None, "Женский кардиган LC Waikiki"),
+        ("Kız Çocuk Polar Pijama Takımı", "LC Waikiki", "clothing", None, "Детская пижама LC Waikiki"),
+        (
+            "Nike Sportswear Club Fleece Erkek Gri Sweatshirt", "Nike", "clothing", "knitwear",
+            "Мужской свитшот Nike Sportswear Club Fleece, серый",
+        ),
+        (
+            "Jordan Brooklyn Fleece Kadın Siyah Eşofman Altı", "Jordan", "clothing", "pants",
+            "Женские спортивные брюки Jordan Brooklyn Fleece, черные",
+        ),
+        ("Columbia Fleece Erkek Siyah Pantolon", "Columbia", "clothing", "pants", "Мужские брюки Columbia Fleece, черные"),
+        (
+            "The North Face Extreme Pile Erkek Siyah Polar", "The North Face", "clothing", "knitwear",
+            "Мужская флиска The North Face Extreme Pile, черная",
+        ),
+        # «Ceket» спортивного бренда — куртка, по модели — ветровка/олимпийка; у LCW и Zara — пиджак
+        ("Nike Windrunner Erkek Siyah Ceket", "Nike", "clothing", "jackets", "Мужская ветровка Nike Windrunner, черная"),
+        (
+            "adidas Adicolor Classics Firebird Erkek Siyah Ceket", "adidas", "clothing", "jackets",
+            "Мужская олимпийка adidas Adicolor Classics Firebird, черная",
+        ),
+        ("adidas Essentials Erkek Siyah Ceket", "adidas", "clothing", "jackets", "Мужская куртка adidas Essentials, черная"),
+        ("Slim Fit Erkek Ceket", "LC Waikiki", "clothing", None, "Мужской пиджак LC Waikiki приталенного кроя"),
+        ("Erkek Ceket", "Zara", "clothing", None, "Мужской пиджак Zara"),
+        # олимпийка — только на молнии
+        ("Erkek Eşofman Üstü", "LC Waikiki", "clothing", None, "Мужская спортивная кофта LC Waikiki"),
+        ("Erkek Fermuarlı Eşofman Üstü", "LC Waikiki", "clothing", None, "Мужская олимпийка LC Waikiki"),
+        # «Crew» — часть модели; номер за брендом — модель только у New Balance
+        (
+            "Nike Everyday Cushioned Crew Unisex Beyaz Çorap", "Nike", "underwear", "uw-socks",
+            "Носки унисекс Nike Everyday Cushioned Crew, белые",
+        ),
+        ("Kinetix 1234 Erkek Siyah Sneaker", "Kinetix", "shoes", "sneakers", "Мужские кроссовки Kinetix, черные"),
+        ("New Balance 9060 Unisex Gri Spor Ayakkabı", "New Balance", "shoes", "sneakers", "Кроссовки унисекс New Balance 9060, серые"),
+    ],
+)
+def test_review_315_kind_and_model_edge_cases(name, brand, product_type, category, ru):
+    category_ns = SimpleNamespace(slug=category) if category else None
+    product = SimpleNamespace(product_type=product_type, category=category_ns, variants=None, domain_item=None)
+    assert build_titles(collect_facts(product, {"name": name, "brand": brand}))["ru"] == ru
+
+
 def test_hyphen_codes_and_store_brand_numbers_stay_out_of_model():
     facts = _facts("Bisiklet Yaka Beyaz Erkek T-Shirt J5SM-TST7325", "clothing", brand="Mavi")
     assert "J5SM" not in facts.model
