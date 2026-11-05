@@ -126,9 +126,110 @@ def test_titles_from_turkish_names(name, product_type, ru, en):
     assert titles == {"ru": ru, "en": en}
 
 
+@pytest.mark.parametrize(
+    "name, brand, product_type, category, ru",
+    [
+        # номер модели сразу за брендом — модель, не артикул («new balance 9060» ищут)
+        (
+            "New Balance 9060 Lifestyle Çocuk Siyah Spor Ayakkabı", "New Balance", "shoes", "sneakers",
+            "Детские кроссовки New Balance 9060 Lifestyle, черные",
+        ),
+        ("Vans Ua Sk8-Low Unisex Siyah Sneaker", "Vans", "shoes", "sneakers", "Кроссовки унисекс Vans Sk8-Low, черные"),
+        ("UGG Classic Ultra Mini Kadın Bot", "UGG", "shoes", "boots", "Женские угги UGG Classic Ultra Mini"),
+        (
+            "Birkenstock Arizona Eva Metallic Çift Bantlı Erkek Gri Plaj Terliği", "Birkenstock", "shoes", "slides",
+            "Мужские шлепанцы Birkenstock Arizona Eva Metallic с двумя ремешками для пляжа, серые",
+        ),
+        (
+            "The North Face Glacier Erkek Siyah Polar Ceket", "The North Face", "clothing", "jackets",
+            "Мужская флиска The North Face Glacier, черная",
+        ),
+        (
+            "Asics Nagino Run Adjustable Kadın Yeşil Koşu Taytı", "Asics", "clothing", "leggings",
+            "Женские тайтсы для бега Asics Nagino Run Adjustable, зеленые",
+        ),
+        (
+            "Under Armour Velociti Elite Kadın Siyah Koşu Bra", "Under Armour", "underwear", "uw-sports-bras",
+            "Женский спортивный бюстгальтер Under Armour Velociti Elite для бега, черный",
+        ),
+        # «Şapka» без уточнения — тип раздела, «New» из «New York» — не слово бренда New Era
+        (
+            "New Era Los Angeles Dodgers 940 Unisex Siyah Şapka", "New Era", "headwear", "hw-baseball-caps",
+            "Бейсболка унисекс New Era Los Angeles Dodgers 940, черная",
+        ),
+        (
+            "New Era MLB League Essentials New York Yankees Sun Shield Çocuk Bej Şapka", "New Era", "headwear",
+            "hw-childrens-caps", "Детская кепка New Era MLB League Essentials New York Yankees Sun Shield, бежевая",
+        ),
+    ],
+)
+def test_sportswear_titles(name, brand, product_type, category, ru):
+    """Названия SuperStep, которые раньше уходили в LLM или теряли модель (05.11.2026)."""
+    product = SimpleNamespace(product_type=product_type, category=SimpleNamespace(slug=category), variants=None)
+    assert build_titles(collect_facts(product, {"name": name, "brand": brand}))["ru"] == ru
+
+
+@pytest.mark.parametrize(
+    "name, brand, product_type, category, ru",
+    [
+        # «Polar» уступает типу из названия, «Fleece» — линейка, не тип (ревью #315)
+        ("Erkek Polar Sweatshirt", "LC Waikiki", "clothing", None, "Мужской свитшот LC Waikiki"),
+        ("Polar Eşofman Altı", "LC Waikiki", "clothing", None, "Спортивные брюки LC Waikiki"),
+        ("Erkek Polar Bere", "LC Waikiki", "headwear", None, "Мужская шапка LC Waikiki"),
+        ("Kadın Polar Hırka", "LC Waikiki", "clothing", None, "Женский кардиган LC Waikiki"),
+        ("Kız Çocuk Polar Pijama Takımı", "LC Waikiki", "clothing", None, "Детская пижама LC Waikiki"),
+        (
+            "Nike Sportswear Club Fleece Erkek Gri Sweatshirt", "Nike", "clothing", "knitwear",
+            "Мужской свитшот Nike Sportswear Club Fleece, серый",
+        ),
+        (
+            "Jordan Brooklyn Fleece Kadın Siyah Eşofman Altı", "Jordan", "clothing", "pants",
+            "Женские спортивные брюки Jordan Brooklyn Fleece, черные",
+        ),
+        ("Columbia Fleece Erkek Siyah Pantolon", "Columbia", "clothing", "pants", "Мужские брюки Columbia Fleece, черные"),
+        (
+            "The North Face Extreme Pile Erkek Siyah Polar", "The North Face", "clothing", "knitwear",
+            "Мужская флиска The North Face Extreme Pile, черная",
+        ),
+        # «Ceket» спортивного бренда — куртка, по модели — ветровка/олимпийка; у LCW и Zara — пиджак
+        ("Nike Windrunner Erkek Siyah Ceket", "Nike", "clothing", "jackets", "Мужская ветровка Nike Windrunner, черная"),
+        (
+            "adidas Adicolor Classics Firebird Erkek Siyah Ceket", "adidas", "clothing", "jackets",
+            "Мужская олимпийка adidas Adicolor Classics Firebird, черная",
+        ),
+        ("adidas Essentials Erkek Siyah Ceket", "adidas", "clothing", "jackets", "Мужская куртка adidas Essentials, черная"),
+        ("Slim Fit Erkek Ceket", "LC Waikiki", "clothing", None, "Мужской пиджак LC Waikiki приталенного кроя"),
+        ("Erkek Ceket", "Zara", "clothing", None, "Мужской пиджак Zara"),
+        # олимпийка — только на молнии
+        ("Erkek Eşofman Üstü", "LC Waikiki", "clothing", None, "Мужская спортивная кофта LC Waikiki"),
+        ("Erkek Fermuarlı Eşofman Üstü", "LC Waikiki", "clothing", None, "Мужская олимпийка LC Waikiki"),
+        # «Crew» — часть модели; номер за брендом — модель только у New Balance
+        (
+            "Nike Everyday Cushioned Crew Unisex Beyaz Çorap", "Nike", "underwear", "uw-socks",
+            "Носки унисекс Nike Everyday Cushioned Crew, белые",
+        ),
+        ("Kinetix 1234 Erkek Siyah Sneaker", "Kinetix", "shoes", "sneakers", "Мужские кроссовки Kinetix, черные"),
+        ("New Balance 9060 Unisex Gri Spor Ayakkabı", "New Balance", "shoes", "sneakers", "Кроссовки унисекс New Balance 9060, серые"),
+    ],
+)
+def test_review_315_kind_and_model_edge_cases(name, brand, product_type, category, ru):
+    category_ns = SimpleNamespace(slug=category) if category else None
+    product = SimpleNamespace(product_type=product_type, category=category_ns, variants=None, domain_item=None)
+    assert build_titles(collect_facts(product, {"name": name, "brand": brand}))["ru"] == ru
+
+
+def test_hyphen_codes_and_store_brand_numbers_stay_out_of_model():
+    facts = _facts("Bisiklet Yaka Beyaz Erkek T-Shirt J5SM-TST7325", "clothing", brand="Mavi")
+    assert "J5SM" not in facts.model
+    facts = _facts("PC-7315 M Kahve Erkek Sandalet", "shoes", brand="Pierre Cardin")
+    assert "7315" not in facts.model
+    facts = _facts("4480 Erkek Tişört", "clothing", brand="LC Waikiki")
+    assert "4480" not in facts.model
+
+
 def test_unknown_turkish_word_falls_back_to_llm_title():
     facts = _facts("Erkek Hafif Günlük Deniz Ayakkabısı - Ortopedik Tabanlı Plaj ve Havuz Terliği")
-    assert facts.untranslated == ["Plaj", "Havuz"]
+    assert facts.untranslated == ["Havuz"]  # «Plaj» — «для пляжа» с 05.11.2026
     assert build_titles(facts) == {"ru": "", "en": ""}
 
 
@@ -197,17 +298,31 @@ def test_seo_fits_limits_and_uses_site_wording():
     facts = _facts("BUCKY 6FX Beyaz Erkek Sneaker")
     titles = build_titles(facts)
     seo = build_seo(facts, titles, {"ru": "Легкие кроссовки из ПВХ. Второе предложение.", "en": "Light PVC sneakers. More."})
-    assert seo["ru"]["seo_title"] == "Мужские кроссовки BUCKY 6FX, белые — купить с доставкой из Турции"
+    assert seo["ru"]["seo_title"] == "Мужские кроссовки BUCKY 6FX, белые — купить оригинал из Турции"
     # Название в именительном падеже: «Заказать мужская футболка» было ошибкой.
     assert seo["ru"]["seo_description"] == (
         "Мужские кроссовки BUCKY 6FX, белые. Оригинальный товар из Турции с доставкой. Легкие кроссовки из ПВХ."
     )
-    assert seo["en"]["seo_title"].endswith("— buy with delivery from Turkey")
+    assert seo["en"]["seo_title"].endswith("— buy original from Turkey")
     assert "кроссовки BUCKY 6FX" in seo["ru"]["keywords"]
     long_title = {"ru": "Очень " * 20 + "длинное название", "en": ""}
     long_seo = build_seo(facts, long_title, {})
     assert len(long_seo["ru"]["seo_title"]) <= 70 and long_seo["ru"]["seo_title"].endswith("…")
     assert "en" not in long_seo
+
+
+def test_seo_for_unisex_branded_sneakers_uses_search_words():
+    """Слова из подсказок Яндекса: «оригинал», бренд кириллицей, «мужские/женские» у унисекс."""
+    product = SimpleNamespace(product_type="shoes", category=SimpleNamespace(slug="sneakers"), variants=None)
+    facts = collect_facts(product, {"name": "adidas Samba OG Unisex Beyaz Spor Ayakkabı", "brand": "adidas"})
+    titles = build_titles(facts)
+    seo = build_seo(facts, titles, {})["ru"]
+    assert seo["seo_title"] == f"{titles['ru']} — купить оригинал из Турции"
+    assert seo["seo_description"].startswith(f"{titles['ru']}. Модель унисекс — для мужчин и женщин. Оригинальный товар")
+    assert len(seo["seo_description"]) <= 160
+    for word in ("мужские кроссовки", "женские кроссовки", "кроссовки адидас", "adidas Samba OG оригинал"):
+        assert word in seo["keywords"]
+    assert len(seo["keywords"]) <= 10
 
 
 def test_lcw_source_header_and_legal_tail_are_removed():
@@ -509,7 +624,7 @@ def test_russian_name_gets_rule_english_title_and_survives_missing_en_from_llm()
     en = log.extracted_attributes["seo_translations"]["en"]
     assert en["generated_title"] == "LC Waikiki Men's Faux Leather Belt"
     assert en["generated_description"].startswith("LC Waikiki Men's Faux Leather Belt. Material: faux leather.")
-    assert en["meta_title"] == "LC Waikiki Men's Faux Leather Belt — buy with delivery from Turkey"
+    assert en["meta_title"] == "LC Waikiki Men's Faux Leather Belt — buy original from Turkey"
     assert log.raw_llm_response["rule_content"]["description_fallback"] == ["en"]
     assert not AITranslationMemory.objects.exists()  # неполный перевод не запоминаем
     # 12 слов — короче прежнего порога 20, но это пересказ короткого источника
