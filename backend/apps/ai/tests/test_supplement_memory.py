@@ -154,9 +154,16 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
          ["supplement_ingredient_mistranslated"]),
         ("Dul Avrat Otu", "Дул Аврат Оту", "Dul Avrat Otu", ["supplement_ingredient_mistranslated"]),
         ("Dokosahekzaenoik asit (DHA)", "Docosahexaenoic acid (DHA)", "Docosahexaenoic acid (DHA)", ["ru_latin_not_in_source"]),
+        # Пилот 3: «tok karnına» (после еды) — «натощак»; «Passiflora» — «маракуйя».
+        ("Yetişkinler için tok karnına günde 1-2 tablet.", "Взрослым принимать 1-2 таблетки в день натощак.",
+         "For adults, take 1-2 tablets per day on an empty stomach.", ["meal_timing_mistranslated"]),
+        ("Passiflora toprak üstü ekstresi (Passiflora incarnata)", "Экстракт надземной части маракуйи (Passiflora incarnata)",
+         "Passionflower aerial part extract (Passiflora incarnata)", ["supplement_ingredient_mistranslated"]),
         # Верные: латиница из источника допустима.
         ("Hayıt Tohum Ekstraktı", "Экстракт семян авраамова дерева", "Chaste tree seed extract", []),
         ("Saw Palmetto Meyve Ekstresi", "Экстракт плодов Saw Palmetto", "Saw Palmetto fruit extract", []),
+        ("Gün içinde aç ya da tok karnına kullanılabilir.", "Можно принимать натощак или после еды.",
+         "Can be taken on an empty stomach or after a meal.", []),
     ],
 )
 def test_line_problems_catch_wrong_plants_and_english_words(source, ru, en, problems):
@@ -190,6 +197,35 @@ def test_dose_table_is_not_composition_and_storage_keeps_only_storage():
         "storage": ["Oda sıcaklığında, serin ve kuru yerde muhafaza ediniz."],
         "warnings": ["Takviye edici gıdalar normal beslenmenin yerine geçemez.", "Tavsiye edilen günlük porsiyonu aşmayın."],
     }
+
+
+def test_attribute_table_label_warnings_and_dose_rows_are_not_composition():
+    # PHARMATON 50 PLUS, ANTI NATURAL, PHYTORELIEF, VELAVIT, BEE & YOU (пилот 3, 05.11.2026), сокращены.
+    pharmaton = (
+        "İçerik Bilgisi:\n"
+        "Takviye edici gıdalar normal beslenmenin yerine geçemez.\n"
+        "Çocukların ulaşamayacağı yerde saklayınız.\n"
+        "Form\nKapsül\nİçerik\nBakır B Vitaminleri C Vitamini Çinko"
+    )
+    assert sm.section_parts({"product_info": pharmaton}) == {
+        "warnings": ["Takviye edici gıdalar normal beslenmenin yerine geçemez.", "Çocukların ulaşamayacağı yerde saklayınız."],
+    }
+    dotted = "İçerik: Her 1 Kapsül İçin;\nMagnezyum Bisglisinat.......125 mg\nVitamin C.............................40 mg"
+    assert sm.section_parts({"product_info": dotted}) == {"composition": ["Magnezyum Bisglisinat", "Vitamin C"]}
+    columns = "Ürün Bileşimi:\nAktif Bileşenler Bir Pastil Bir Günlük Turmeric ( Zerdeçal ) 50 Mg 150 Mg\nGinger ( Zencefil ) 5 Mg 15 Mg"
+    assert sm.section_parts({"product_info": columns}) == {}
+    usage = (
+        "Kullanım Şekli\n30 Tablet\nKullanım Önerisi: Günde 3 defa 2 puf kullanılması önerilir. "
+        "Pratik sprey formu sayesinde ürünü doğrudan boğaza uygulayarak kolayca tüketebilirsiniz."
+    )
+    assert sm.section_parts({"product_info": usage}) == {"usage": ["Günde 3 defa 2 puf kullanılması önerilir."]}
+
+
+def test_tablet_coating_and_e_codes_are_excipients_but_vitamin_with_bad_brackets_is_not():
+    coating = "İçindekiler: Mikrokristalin Selüloz, Polivinil Alkol, Talk, Kalsiyum Karbonat (E 170)"
+    assert list(sm.section_parts({"product_info": coating})) == ["excipients"]
+    vitamin = "İçindekiler: L-Askorbik Asit (Vitomin C, Hacim Artırıcı Mikrokristalin Selüloz, Talk"
+    assert list(sm.section_parts({"product_info": vitamin})) == ["composition"]
 
 
 @pytest.mark.django_db
@@ -228,6 +264,9 @@ def test_glossary_hints_go_to_translator_and_wrong_plant_is_not_remembered():
     blocks, _usage = sm.translate_blocks({"ingredients": "İçeriği:\nRezene Tohum Ekstraktı"}, llm)
 
     assert "REZENE" in llm.generate_content.call_args.kwargs["system_prompt"]
+    # Только первый вариант словаря: «фолиевая кислота / фолат» модель переносила в перевод целиком.
+    sm.translate_blocks({"ingredients": "İçeriği:\nFolik asit"}, llm)
+    assert '"FOLIK ASIT": "фолиевая кислота | folic acid"' in llm.generate_content.call_args.kwargs["system_prompt"]
     assert blocks.ru == {} and blocks.stats["rejected"] == {"Rezene Tohum Ekstraktı": ["supplement_ingredient_mistranslated"]}
     assert not AITranslationMemory.objects.filter(namespace=sm.LINE_NAMESPACE).exists()
 

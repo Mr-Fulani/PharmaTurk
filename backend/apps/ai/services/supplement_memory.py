@@ -46,7 +46,8 @@ LINE_SYSTEM_PROMPT = (
     "«Не превышайте рекомендуемую суточную порцию», «Çocukların ulaşamayacağı yerde saklayın» = "
     "«Хранить в недоступном для детей месте». Вещества — принятыми названиями: «kolekalsiferol» = "
     "холекальциферол / cholecalciferol, «hacim arttırıcı» = наполнитель / bulking agent, «topaklanmayı "
-    "önleyici» = антислёживающий агент / anti-caking agent, «takviye edici gıda» = БАД / food supplement. "
+    "önleyici» = антислёживающий агент / anti-caking agent, «takviye edici gıda» = БАД / food supplement, «kıvam arttırıcı» = загуститель / thickener. "
+    "«tok karnına» = «после еды» / «after a meal», «aç karnına» = «натощак» / «on an empty stomach». "
     "«Takviye edici gıdalar normal beslenmenin yerine geçemez» = «БАДы не заменяют полноценное питание» / "
     "«Food supplements are not a substitute for a varied diet». Числа пиши цифрами, как в источнике («Günde 1 "
     "tablet» = «1 таблетка в день»). Латинские названия бактерий и растений (Lactobacillus acidophilus) оставляй "
@@ -91,7 +92,17 @@ _EXCIPIENT_RE = re.compile(
     r"^(?:kapsul|kaplama|hacim art|dolgu|topaklan|stabiliz|emulgat|jellest|tatlandir|aroma|koruyucu|renklendir|"
     r"kivam|nem verici|parlatici|asitlik duzenley|antioksidan|sigir jelatin|balik jelatin|jelatin|gliserin|"
     r"silikon dioksit|magnezyum stearat|mikrokristalin|hidroksipropil)"
+    # Оболочка таблетки (NUTRAXIN, пилот 3).
+    r"|selul|polietilen|polivinil|metakrilat|polioksietilen|yag asitlerinin|\btalk\b|izomalt|pancar koku"
 )
+_E_CODE_RE = re.compile(r"\be ?\d{3}")  # «Kalsiyum Karbonat (E 170)»
+
+
+def _is_excipient(folded: str) -> bool:
+    # Название — до скобки: «L-Askorbik Asit (Vitomin C, Hacim Artırıcı Mikrokristalin Selüloz, …» — витамин.
+    return bool(_EXCIPIENT_RE.search(folded.split("(")[0]) or _E_CODE_RE.search(folded))
+
+
 # Строка таблицы состава, а не компонент: «270 mg», «mg», «%76,00», «Her 10 ml için».
 # «640 μg RE», «12 mg α-TE», «17,5 mg NE» — греческая «μ» и эквиваленты витаминов тоже единицы.
 _UNIT_RE = re.compile(r"(?<![^\W\d_])(?:mg|mcg|[µμ]g|g|gr|ml|iu|ui|ie|kob|cfu|kcal|kj|re|ne|α-te|te)(?![^\W\d_])")
@@ -104,7 +115,9 @@ _USAGE_RE = re.compile(
     r"gunde|gunluk|\bkez\b|defa|tablet|kapsul|sase|damla|\bml\b|olcek|yemek|ogun|kahvalti|\bsu\b|"
     r"alin|alma|tuket|kullan|calkala|karistir|erit|yutul|puskurt|cigne|\byas|yetiskin|cocuk|porsiyon|\bdoz"
 )
-_ADVERT_RE = re.compile(r"avantaj")
+# «Pratik sprey formu sayesinde … kolayca tüketebilirsiniz», «Dünya’nın en çok tercih edilen …» — реклама;
+# «Aşağıdaki örnek beslenme tablosunu …» — ссылка на таблицу, которой в карточке нет.
+_ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|asagidaki")
 # Хранение — только о хранении; «Şeker, tuz, nişasta içermez», «Vegan … uygundur» после подписи — нет.
 _STORAGE_TOPIC_RE = re.compile(_STANDARD_STORAGE_RE.pattern + r"|derece|isig|isik|\bnem|sicaklik|dondur|buzdolab|ambalaj")
 # «… gibi potansiyel alerjenleri içermez», «… kullanılmamıştır» — не предупреждение, модель пересказывает это в
@@ -134,6 +147,12 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
     folded_source = fold_tr(source)
     if any(fold_tr(word) not in folded_source for word in _LATIN_WORD_RE.findall(ru)):
         problems.append("ru_latin_not_in_source")
+    # «tok karnına» — после еды, а модель писала «натощак» (пилот 3, дважды).
+    # «aç ya da tok karnına» — и натощак, и после еды.
+    if "tok karn" in folded_source and not re.search(r"\bac\b", folded_source) and (
+        "натощак" in ru.lower() or "empty stomach" in en.lower()
+    ):
+        problems.append("meal_timing_mistranslated")
     return problems
 
 
@@ -172,6 +191,7 @@ def _split_top_level(text: str) -> list[str]:
             _QUANTITY_ONLY_RE.fullmatch(_UNIT_RE.sub("", folded)) or _PORTION_HEADER_RE.search(folded)
             or _DISCLAIMER_DUPLICATE_RE.search(folded)
             or "takviye edici gida" in folded
+            or re.fullmatch(r"(?:aktif|yardimci) bilesen(?:ler)?", folded)  # заголовок, а не компонент
         ):
             result.append(item)
     return result
@@ -222,9 +242,26 @@ def _label(line: str) -> tuple[Optional[str], str, bool]:
 # «%BRD», «1 Kapsül İçeriği», «Her bitkisel kapsülde», «Besin Enerjisi» — список закончился.
 _TABLE_HEADER_RE = re.compile(
     r"miktar|etken madde|brd\b|\brda\b|besin|enerji|icerigi|bilesen adi|supplement facts|"
-    r"^her\b|\bicin$|^bilesenler$|^icindekiler$"
+    r"^her\b|\bicin$|^bilesenler$|^icindekiler$|^\d+ \w+(?:de|da|te|ta)$"
 )
 _LOWER_START_RE = re.compile(r"^[a-zçğıöşü]")
+# Строка таблицы доз со столбцами «на пастилку / в день»: «Ginger ( Zencefil ) 5 Mg 15 Mg» (пилот 3).
+_DOSE_ROW_RE = re.compile(r"\d\s*(?:mg|mcg|[µμ]g|g|iu|ml)\s+[\d.,]+\s*(?:mg|mcg|[µμ]g|g|iu|ml)$")
+# «Saw Palmetto Meyve Ekstresi ..... 170 mg» — компонент и доза: доза уходит, компонент остаётся.
+_DOTTED_AMOUNT_RE = re.compile(r"\s*\.{3,}.*$")
+# Строка таблицы, а не способ применения: «30 Tablet» после подписи «Kullanım Şekli» без двоеточия.
+_FORM_WORD_RE = re.compile(r"\b(?:tablet|kapsul|sase|adet|pastil|damla|puf)\w*")
+# Характеристики в конце страницы: «Form» / «Kapsül» / «İçerik» / «Bakır B Vitaminleri C Vitamini …» —
+# метки фильтров каталога, а не состав.
+_ATTRIBUTE_LABELS = ("form", "icerik")
+
+
+def _without_attribute_table(lines: list[str]) -> list[str]:
+    end = len(lines)
+    while end >= 2 and fold_tr(lines[end - 2]).strip() in _ATTRIBUTE_LABELS:
+        end -= 2
+    labels = {fold_tr(line).strip() for line in lines[end::2]}
+    return lines[:end] if "form" in labels else lines
 
 
 def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
@@ -236,10 +273,13 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
         composition_start = 0  # с какого компонента начался состав текущей подписи
         filled = False  # у текущей подписи уже есть текст
         open_part: Optional[tuple[str, int]] = None  # предложение без точки в конце — его продолжение ниже
-        for raw in str(text or "").split("\n"):
-            line = normalize_source_text(_ESCAPED_CHAR_RE.sub(lambda m: chr(int(m.group(1), 16)), raw))
-            if not line:
-                continue
+        lines = [
+            line for line in (
+                normalize_source_text(_ESCAPED_CHAR_RE.sub(lambda m: chr(int(m.group(1), 16)), raw))
+                for raw in str(text or "").split("\n")
+            ) if line
+        ]
+        for line in _without_attribute_table(lines):
             # Фраза, разрезанная переносом: «Tavsiye edilen» / «günlük alım dozunu aşmayınız.»
             if open_part and _LOWER_START_RE.match(line):
                 kind, index = open_part
@@ -261,8 +301,15 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
                 line = rest
             elif current == "composition":
                 # Строка-количество («640 μg RE») — это таблица доз, а не список: состав этой подписи не берётся.
-                if _QUANTITY_ONLY_RE.fullmatch(_UNIT_RE.sub("", fold_tr(line))):
+                line = _DOTTED_AMOUNT_RE.sub("", line)
+                folded_line = fold_tr(line)
+                if _QUANTITY_ONLY_RE.fullmatch(_UNIT_RE.sub("", folded_line)) or _DOSE_ROW_RE.search(folded_line):
                     del parts["composition"][composition_start:]
+                    current = None
+                # «İçerik Bilgisi:» и сразу фразы этикетки (PHARMATON, пилот 3): состава под подписью нет.
+                elif any(regex.search(folded_line) for regex in (
+                    _STANDARD_WARNING_RE, _STANDARD_STORAGE_RE, _DISCLAIMER_DUPLICATE_RE
+                )):
                     current = None
                 elif _TABLE_HEADER_RE.search(fold_tr(line)) or (list_seen and len(_split_top_level(line)) < 2):
                     current = None
@@ -286,7 +333,11 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
                         target = "storage"
                     elif _STANDARD_WARNING_RE.search(folded):
                         target = "warnings"
-                if target == "usage" and (not _USAGE_RE.search(folded) or _ADVERT_RE.search(folded)):
+                if _ADVERT_RE.search(folded):
+                    continue
+                if target == "usage" and (
+                    not _USAGE_RE.search(folded) or _QUANTITY_ONLY_RE.fullmatch(_FORM_WORD_RE.sub("", folded))
+                ):
                     continue
                 if target in ("warnings", "storage") and _FREE_FROM_RE.search(folded):
                     continue
@@ -298,7 +349,7 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
                 if target:
                     parts[target].append(sentence)
                     open_part = None if re.search(r"[.!?;:]$", sentence) else (target, len(parts[target]) - 1)
-    if parts["composition"] and all(_EXCIPIENT_RE.match(fold_tr(item)) for item in parts["composition"]):
+    if parts["composition"] and all(_is_excipient(fold_tr(item)) for item in parts["composition"]):
         parts["excipients"], parts["composition"] = parts["composition"], []
     return {
         kind: list(dict.fromkeys(item for item in items if len(item) <= UNIT_MAX_CHARS))
@@ -307,14 +358,15 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
     }
 
 
-LINE_PROBLEMS = ("supplement_ingredient_mistranslated", "ru_latin_not_in_source")
+LINE_PROBLEMS = ("supplement_ingredient_mistranslated", "ru_latin_not_in_source", "meal_timing_mistranslated")
 
 
 def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:
     """Перевод частей моделью с подсказками словаря и проверками ``line_problems``."""
     # Только вещества: у описательных слов варианты через «/» («кора / кожура») модель переносила в перевод.
     hints = {
-        key.upper(): f"{supplement_glossary.GLOSSARY[key][0]} | {supplement_glossary.GLOSSARY[key][1]}"
+        # Первый вариант: «фолиевая кислота / фолат» модель переносила в перевод целиком (пилот 3).
+        key.upper(): " | ".join(supplement_glossary.GLOSSARY[key][index].split(" / ")[0] for index in (0, 1))
         for unit in units
         for key in supplement_glossary.found_terms(unit)
         if supplement_glossary.GLOSSARY[key][2] == supplement_glossary.S

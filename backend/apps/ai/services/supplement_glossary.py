@@ -244,6 +244,13 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "dulavratotu": ("лопух", "burdock", S),
     "sahtere": ("дымянка", "fumitory", S),
     "sahtare": ("дымянка", "fumitory", S),
+    # Пилот 3 (05.11.2026): «Passiflora» — «маракуйя», «Japon poligonumu» — «японский полигонум»,
+    # «Kara Halile» — транслитерация.
+    "passiflora": ("пассифлора / страстоцвет", "passionflower / passiflora", S),
+    "japon poligonumu": ("горец японский / рейнутрия", "japanese knotweed", S),
+    "kara halile": ("терминалия хебула", "chebulic myrobalan / terminalia chebula", S),
+    "bayir turpu": ("хрен", "horseradish", S),
+    "peynir alti suyu": ("молочная сыворотка", "whey", S),
     "hashas": ("мак", "poppy", S),
     "sarimsak": ("чеснок", "garlic", S),
     "yosunu": ("водоросли / исландский мох", "algae / moss", S),
