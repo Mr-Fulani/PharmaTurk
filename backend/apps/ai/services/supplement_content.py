@@ -439,13 +439,17 @@ def description_problems(description: Any, source: Any, memory_texts: Optional[l
     исходнику, а слова «заболевание», «лечебная» и числа словами («Günde iki kez» — «2 раза») в них законны.
     """
     description = str(description or "")
+    claim_in_memory = False
     for text in memory_texts or []:
-        description = description.replace(f"<p>{text}</p>", " ")
+        if f"<p>{text}</p>" in description:
+            description = description.replace(f"<p>{text}</p>", " ")
+            # Числа в блоках не проверяются, обещания лечения в применении и составе — да (узким списком).
+            claim_in_memory = claim_in_memory or supplement_memory.memory_text_claim(html.unescape(text))
     plain = re.sub(r"<[^>]+>", " ", description)
     for text in (*DISCLAIMER.values(), *BABY_DISCLAIMER.values()):
         plain = plain.replace(text, " ")
     problems = []
-    if _CLAIM_RE.search(_without_source_words(plain, str(source or ""))):
+    if claim_in_memory or _CLAIM_RE.search(_without_source_words(plain, str(source or ""))):
         problems.append("supplement_health_claim")
     if unsourced_numbers(plain, source):
         problems.append("supplement_unsourced_number")

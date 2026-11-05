@@ -126,8 +126,8 @@ _USAGE_RE = re.compile(
 )
 # «Pratik sprey formu sayesinde … kolayca tüketebilirsiniz», «Dünya’nın en çok tercih edilen …» — реклама;
 # «Aşağıdaki örnek beslenme tablosunu …» — ссылка на таблицу, которой в карточке нет. «Aşağıdaki durumlarda
-# kullanmayınız: …» — противопоказание, его не трогать.
-_ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|tablo")
+# kullanmayınız: …» — противопоказание, «Tabloda belirtilen günlük dozu aşmayınız» — предупреждение, их не трогать.
+_ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|ornek\b.*\btablo")
 # Заявления о пользе («Yorgunluk ve bitkinliğin azalmasına katkıda bulunur», «… Sağlık Beyanları Yönetmeliği'ne
 # göre») — БАДу на карточке нельзя (пилот 4: попали в способ применения). «Tedavi gören kişiler doktoruna
 # danışarak kullanmalıdır» — предупреждение, «tedavi» здесь не признак.
@@ -135,6 +135,31 @@ _TR_CLAIM_RE = re.compile(r"katkida bulun|destekle|yardimci ol|guclendir|iyilest
 # Страховка после перевода: обещание пользы в готовом блоке — блок не показывается целиком (не по предложению:
 # неполный блок не должен выглядеть полным).
 _RU_BENEFIT_RE = re.compile(r"способству|поддерживает|укрепля|улучша|помогает", re.IGNORECASE)
+# Обещание лечения или профилактики в способе применения и составе («При лечении простуды — 2 таблетки в день»,
+# «Для защиты иммунитета …», «Для снижения холестерина …», ревью PR #313). Узкий список, не ``_CLAIM_RE``
+# карточки: «экстракт лечебной ромашки» — состав, а «заболевания» в предупреждениях законны, поэтому к
+# предупреждениям и хранению не применяется.
+_TREATMENT_KINDS = ("composition", "excipients", "usage")
+_RU_TREATMENT_RE = re.compile(
+    r"(?<![а-яё])(?:лечени|лечит|вылеч|излеч|профилакт|сниж|защит|защищ|предотвра|избав|укрепл)|"
+    r"(?:при|от|для)\s+(?:\w+\s+)?(?:простуд|болезн|заболеван|грипп|кашл|инфекц|холестерин|давлени)",
+    re.IGNORECASE,
+)
+_EN_TREATMENT_RE = re.compile(
+    # Целыми словами: «Lactobacillus reuteri Protectis» — штамм, а не «protect».
+    r"\b(?:treat(?:s|ed|ing|ment)?|cures?|prevent(?:s|ion|ing|ive)?|protect(?:s|ion|ing)?|lowers?|lowering|"
+    r"reduc(?:e|es|ing|tion)|fight(?:s|ing)?|against)\b|\bfor\s+(?:\w+\s+)?(?:colds?|flu|diseases?|infections?)\b",
+    re.IGNORECASE,
+)
+
+
+def memory_text_claim(text: str) -> bool:
+    """Абзац блока памяти («Способ применения: …») с обещанием лечения — для модерации описания."""
+    titles = {title for kind in _TREATMENT_KINDS for title in BLOCK_TITLES[kind]}
+    title = text.split(":", 1)[0]
+    return title in titles and bool(_RU_TREATMENT_RE.search(text) or _EN_TREATMENT_RE.search(text))
+
+
 # Хранение — только о хранении; «Şeker, tuz, nişasta içermez», «Vegan … uygundur» после подписи — нет.
 _STORAGE_TOPIC_RE = re.compile(_STANDARD_STORAGE_RE.pattern + r"|derece|isig|isik|\bnem|sicaklik|dondur|buzdolab|ambalaj")
 # «… gibi potansiyel alerjenleri içermez», «… kullanılmamıştır» — не предупреждение, модель пересказывает это в
@@ -159,8 +184,22 @@ def _skip_sentence(folded: str) -> bool:
 # Запрет: «kullanmamalıdır», «aşmayınız», «tüketilmemelidir», «önerilmez», «uygun değildir», «geçemez».
 _PROHIBITION_RE = re.compile(r"\w(?:mamali|memeli|mayin|meyin)\w*")  # «kullanmamalıdır», «ısıtmayınız»
 _NEGATION_RE = re.compile(_PROHIBITION_RE.pattern + r"|\b(?!pekmez)\w+(?:maz|mez)(?:lar|ler)?\b|\bdegil|onerilmez")
-_RU_NEGATION_RE = re.compile(r"(?<![а-яё])(?:не|нельзя|ни)(?![а-яё])|запрещ|противопоказ|избега|недопуст", re.IGNORECASE)
-_EN_NEGATION_RE = re.compile(r"\b(?:not|no|never|avoid|without|cannot)\b|n't", re.IGNORECASE)
+# Запрет в переводе — «не» при глаголе, а не при деепричастии: «могут применять, не превышая дозу» — разрешение
+# (ревью PR #313); так же «not exceeding».
+_RU_PROHIBITION_WORDS_RE = re.compile(r"нельзя|запрещ|противопоказ|избега|недопуст", re.IGNORECASE)
+_RU_NOT_RE = re.compile(r"(?<![а-яё])не\s+([а-яё]+)", re.IGNORECASE)
+_EN_PROHIBITION_WORDS_RE = re.compile(r"\b(?:no|never|avoid|cannot)\b|n't", re.IGNORECASE)
+_EN_NOT_RE = re.compile(r"\bnot\s+(\w+)", re.IGNORECASE)
+
+
+def _negated(ru: str, en: str) -> bool:
+    ru_ok = _RU_PROHIBITION_WORDS_RE.search(ru) or any(
+        not (word.endswith("я") and not word.endswith("ся")) for word in _RU_NOT_RE.findall(ru)
+    )
+    en_ok = _EN_PROHIBITION_WORDS_RE.search(en) or any(not word.endswith("ing") for word in _EN_NOT_RE.findall(en))
+    return bool(ru_ok and en_ok)
+
+
 _EMPTY_STOMACH_RE = re.compile(r"\bac\b.*karn")  # «aç karnına», «aç ya da tok karnına»
 _FULL_STOMACH_RE = re.compile(r"\btok karn")
 _AGE_UNDER_RE = re.compile(r"\byas\w*\s+(?:alti|altinda|kucuk)")  # «12 yaş altı», «15 yaşından küçüklerde»
@@ -173,7 +212,7 @@ _EN_OVER_RE = re.compile(r"\b(?:over|older|above|and up|or more)\b|\d\s*\+", re.
 
 def _meaning_problems(folded_source: str, ru: str, en: str) -> list[str]:
     problems = []
-    if _NEGATION_RE.search(folded_source) and not (_RU_NEGATION_RE.search(ru) and _EN_NEGATION_RE.search(en)):
+    if _NEGATION_RE.search(folded_source) and not _negated(ru, en):
         problems.append("negation_lost")
     empty, full = _EMPTY_STOMACH_RE.search(folded_source), _FULL_STOMACH_RE.search(folded_source)
     # «aç ya da tok karnına» — и натощак, и после еды.
@@ -522,7 +561,13 @@ def translate_blocks(sections: dict[str, str], llm, log=None) -> tuple[Supplemen
             found.update(accepted)
     claims = []
     for kind, items in blocks.parts.items():
-        if any(item in found and _RU_BENEFIT_RE.search(found[item]["ru"]) for item in items):
+        if any(
+            item in found and (
+                _RU_BENEFIT_RE.search(found[item]["ru"])
+                or (kind in _TREATMENT_KINDS and _RU_TREATMENT_RE.search(found[item]["ru"]))
+            )
+            for item in items
+        ):
             claims.append(kind)
             continue
         if all(item in found for item in items):

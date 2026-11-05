@@ -184,6 +184,9 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         ("Keçiboynuzu pekmezi", "Патока рожкового дерева", "Carob molasses", []),
         # Пилот 4: подсказка словаря целиком, турецкое слово в переводе; бренд и латынь с опечаткой источника — верно.
         ("Propolis", "прополис | propolis", "propolis", ["ru_untranslated"]),
+        # Повторное ревью: «не» при деепричастии — не запрет.
+        ("Doktora danışmadan kullanmamalıdır.", "Могут применять, не превышая дозу.", "May use, not exceeding the dose.",
+         ["negation_lost"]),
         ("Melaloyka Yaği", "Мелалойка Ягы (Melaloyka Yağı)", "Melaloyka Yağı (Melaloyka Oil)",
          ["supplement_ingredient_mistranslated", "ru_untranslated"]),
         ("METİLMAX B12 vitamini", "METİLMAX с витамином B12", "METİLMAX with vitamin B12", []),
@@ -277,6 +280,47 @@ def test_contraindications_wrapped_lines_and_unlabeled_descriptions():
     # «Aşağıdaki örnek beslenme tablosunu …» — ссылка на таблицу, которой в карточке нет.
     table = "Kullanım Şekli:\nAşağıdaki örnek beslenme tablosunu doktorunuza danışarak kullanabilirsiniz."
     assert sm.section_parts({"product_info": table}) == {}
+
+
+TREATMENT_CLAIMS = {
+    # Повторное ревью PR #313: обещания лечения в способе применения проходили модерацию.
+    "Soğuk algınlığı tedavisinde günde 2 tablet kullanılır.": (
+        "При лечении простуды — 2 таблетки в день.", "For treating colds: 2 tablets a day."
+    ),
+    "Bağışıklığı korumak için günde 1 tablet kullanılır.": (
+        "Для защиты иммунитета — 1 таблетка в день.", "To protect immunity: 1 tablet a day."
+    ),
+    "Kolesterolü düşürmek için günde 1 kapsül kullanılır.": (
+        "Для снижения холестерина — 1 капсула в день.", "To lower cholesterol: 1 capsule a day."
+    ),
+}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("source", list(TREATMENT_CLAIMS))
+def test_treatment_claim_in_usage_hides_block_and_goes_to_moderation(source):
+    ru, en = TREATMENT_CLAIMS[source]
+    remember(sm.LINE_NAMESPACE, {source: {"ru": ru, "en": en}})
+
+    blocks, _usage = sm.translate_blocks({"product_info": f"Kullanım Şekli: {source}"}, None)
+
+    assert blocks.ru == {} and blocks.stats["claim_blocks"] == ["usage"]
+    # Если такой абзац всё же в описании (старый лог, правка), модерация его ловит, а числа в нём не проверяет.
+    text = f"Способ применения: {ru}"
+    description = f"<p>SOLGAR — пищевая добавка.</p><p>{text}</p>"
+    assert sc.description_problems(description, "SOLGAR", [text]) == ["supplement_health_claim"]
+
+
+def test_treatment_words_in_warnings_and_composition_names_are_not_claims():
+    assert not sm.memory_text_claim("Предупреждения: При заболеваниях сердца не применять без консультации врача.")
+    assert not sm.memory_text_claim("Состав: экстракт лечебной ромашки, вода.")
+    assert sm.memory_text_claim("Способ применения: При лечении простуды — 2 таблетки в день.")
+
+
+def test_warning_about_table_dose_is_kept():
+    # Повторное ревью: «tablo» выбрасывал предупреждение, и блок выглядел полным.
+    text = "Uyarılar:\nTabloda belirtilen günlük dozu aşmayınız."
+    assert sm.section_parts({"product_info": text}) == {"warnings": ["Tabloda belirtilen günlük dozu aşmayınız."]}
 
 
 def test_health_claims_are_not_taken_into_blocks():
