@@ -987,7 +987,10 @@ Ceket» → `jackets`, «Nike Impossiblysoft … T-Shirt» → `t-shirts`, «…
 списка (`_apply_category_mapping` ставит `_category_override`): постепенно и не все. Разом —
 командой `move_superstep_to_demand_categories` (показ по умолчанию, `--apply --backup
 /backups/….json`, без сети; раздел — тот же `SuperstepParser.subgroup_route`, переносит
-только в новые разделы и только при той же наценке и типе). Детское
+только в новые разделы и только при той же наценке и типе; переведённое название там, где
+раздел решает турецкое слово, — пропуск). Откат: из бэкапа `product_id → category_id`
+вернуть раздел и в `Product`, и в доменной записи (`product.domain_item`) через `update()`.
+Детское
 бельё — по `integration_erp_cinsiyet`: BOYS —
 `uw-boys-briefs`/`uw-boys-underwear`, GIRLS — `uw-girls-panties`/`uw-girls-underwear`.
 Рюкзаки «Unisex» и детские — в «Рюкзаки» (`backpacks`), мужские и женские — в свои

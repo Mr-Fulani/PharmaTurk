@@ -25,10 +25,15 @@ from django.db import transaction
 
 from apps.catalog.models import Category, Product
 from apps.catalog.utils.product_markup import get_category_markup
-from apps.scrapers.parsers.superstep import SuperstepParser
+from apps.scrapers.parsers.superstep import SuperstepParser, superstep_subgroup_key
 
 DEMAND_SLUGS = frozenset({"fleece", "hoodies", "thermoses", "backpacks", "ugg-boots", "clogs"})
 _CYRILLIC_RE = re.compile(r"[а-яё]", re.IGNORECASE)
+# Разделы и подгруппы, где маршрут решает турецкое слово названия: угги, сабо, флис по
+# названию; «Sweatshirt»/«Polar»/«Hoodie» — по окончанию («Polar Ceket», «T-Shirt»);
+# «Şapka»/«Bere» — по типу кепки. Переведённое название их не узнаёт.
+NAME_DEPENDENT_SLUGS = frozenset({"fleece", "ugg-boots", "clogs"})
+NAME_DEPENDENT_SUBGROUPS = SuperstepParser.LOOSE_TOP_SUBGROUPS | SuperstepParser.HEADWEAR_SUBGROUPS
 
 
 class Command(BaseCommand):
@@ -82,7 +87,9 @@ class Command(BaseCommand):
         slug = next((slug for slug in route if slug in categories), None)
         if slug not in DEMAND_SLUGS or (product.category and product.category.slug == slug):
             return None, ""
-        if _CYRILLIC_RE.search(product.name or "") and slug in {"fleece", "ugg-boots", "clogs"}:
+        if _CYRILLIC_RE.search(product.name or "") and (
+            slug in NAME_DEPENDENT_SLUGS or superstep_subgroup_key(subgroup) in NAME_DEPENDENT_SUBGROUPS
+        ):
             return None, "название уже переведено"
         target = categories[slug]
         if product.category is None:
