@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { appendSentenceIfShort, buildCategoryDescription, limitTitle, splitSeoText, truncateAtWord } from './seoText.js'
+import { appendSentenceIfShort, buildCategoryDescription, limitTitle, productImageAlt, splitSeoText, truncateAtWord } from './seoText.js'
 
 test('short text is returned as is with collapsed whitespace', () => {
   assert.equal(truncateAtWord('  Аспирин   500  ', 200), 'Аспирин 500')
@@ -94,4 +94,13 @@ test('empty seo text gives no blocks', () => {
   assert.deepEqual(splitSeoText(''), [])
   assert.deepEqual(splitSeoText(null), [])
   assert.deepEqual(splitSeoText('##   \n\n  '), [])
+})
+
+test('product image alt uses the page-language name, not the stored Turkish alt', () => {
+  const storedAlt = 'adidas Samba OG Unisex Beyaz Spor Ayakkabı - Белый - фото 2'
+  const name = 'Кроссовки унисекс adidas Samba OG, белые'
+  assert.equal(productImageAlt({ name, storedAlt, index: 0 }), name)
+  assert.equal(productImageAlt({ name, storedAlt, index: 1 }), `${name} — фото 2`)
+  assert.equal(productImageAlt({ name: 'Sneakers', storedAlt, index: 2, photoLabel: 'photo' }), 'Sneakers — photo 3')
+  assert.equal(productImageAlt({ name: '', storedAlt, index: 1 }), storedAlt)
 })

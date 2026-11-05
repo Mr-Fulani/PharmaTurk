@@ -60,6 +60,17 @@ export function buildCategoryDescription({ base, lead, countText, subcategories 
 }
 
 /**
+ * alt фото товара: название на языке страницы, со второго кадра — «фото N».
+ * Сохранённый alt_text собран при загрузке из исходного (турецкого) названия —
+ * только запасной вариант, когда названия нет.
+ */
+export function productImageAlt({ name, storedAlt, index = 0, photoLabel = 'фото' }) {
+  const base = String(name || '').trim()
+  if (!base) return String(storedAlt || '').trim()
+  return index > 0 ? `${base} — ${photoLabel} ${index + 1}` : base
+}
+
+/**
  * SEO-текст посадочной страницы (поле seo_text из API) → блоки для вывода:
  * абзацы разделены пустой строкой, строка «## …» — подзаголовок. Текст обычный,
  * без HTML: React выводит его как текст, разметку из админки не исполняет.

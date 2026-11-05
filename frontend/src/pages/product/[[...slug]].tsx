@@ -51,7 +51,7 @@ import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
-import { limitTitle, truncateAtWord } from '../../lib/seoText'
+import { limitTitle, productImageAlt, truncateAtWord } from '../../lib/seoText'
 import { drugGroupHeading } from '../../lib/drugGroup'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
@@ -1477,7 +1477,7 @@ export default function ProductPage({
               name: displayProductName || product.name,
               site: SITE_NAME,
             })
-        : t('product_page_seo_description', 'Заказать {{name}} из Турции{{category}}{{brand}} на {{site}}. Актуальные цены, доставка, оформление через менеджера.', {
+        : t('product_page_seo_description', '{{name}} из Турции{{category}}{{brand}} — заказ на {{site}}. Актуальные цены, доставка, оформление через менеджера.', {
             name: displayProductName || product.name,
             category: seoCategoryName ? t('product_seo_in_category', ' в категории {{category}}', { category: seoCategoryName }) : '',
             brand: seoBrandName ? t('product_seo_brand', ', бренд {{brand}}', { brand: seoBrandName }) : '',
@@ -1775,7 +1775,7 @@ export default function ProductPage({
                               className="w-full h-full object-contain"
                               onError={(event) => replaceFailedVideoWithFallback(
                                 event.currentTarget,
-                                img.alt_text || displayProductName || product.name
+                                productImageAlt({ name: displayProductName || product.name, storedAlt: img.alt_text, index: imageIndex, photoLabel: t('product_image_photo_label', 'фото') })
                               )}
                             />
                           )
@@ -1784,7 +1784,7 @@ export default function ProductPage({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={resolvedUrl || getPlaceholderImageUrl({ type: 'product', id: product.id })}
-                          alt={img.alt_text || displayProductName || product.name}
+                          alt={productImageAlt({ name: displayProductName || product.name, storedAlt: img.alt_text, index: imageIndex, photoLabel: t('product_image_photo_label', 'фото') })}
                           loading={imageIndex === 0 ? 'eager' : 'lazy'}
                           fetchPriority={imageIndex === 0 ? 'high' : 'low'}
                           decoding="async"
@@ -1839,7 +1839,7 @@ export default function ProductPage({
               {/* --- ДЕСКТОПНЫЕ МИНИАТЮРЫ СЛЕВА (Скрыты на мобильных) --- */}
               {gallerySource.length > 0 && (
                 <div className="hidden md:flex flex-col gap-3 overflow-y-auto flex-shrink-0">
-                  {gallerySource.map((img) => {
+                  {gallerySource.map((img, thumbIndex) => {
                     const resolvedThumbnail = resolveMediaUrl(img.image_url)
                     const thumbKey = String(img.id)
                     const placeholderId = `${product.id}-thumb-${img.id}`
@@ -1897,7 +1897,7 @@ export default function ProductPage({
                                 aria-label={img.alt_text || displayProductName || product.name}
                                 onError={(event) => replaceFailedVideoWithFallback(
                                   event.currentTarget,
-                                  img.alt_text || displayProductName || product.name
+                                  productImageAlt({ name: displayProductName || product.name, storedAlt: img.alt_text, index: thumbIndex, photoLabel: t('product_image_photo_label', 'фото') })
                                 )}
                               />
                             )
@@ -1906,7 +1906,7 @@ export default function ProductPage({
                           /* eslint-disable-next-line @next/next/no-img-element */
                           <img
                             src={thumbnailSrc}
-                            alt={img.alt_text || displayProductName || product.name}
+                            alt={productImageAlt({ name: displayProductName || product.name, storedAlt: img.alt_text, index: thumbIndex, photoLabel: t('product_image_photo_label', 'фото') })}
                             loading="lazy"
                             decoding="async"
                             width={112}
