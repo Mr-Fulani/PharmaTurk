@@ -640,10 +640,12 @@ def translate_paragraphs(
     llm,
     *,
     on_batch: Optional[Callable[[dict], None]] = None,
+    system_prompt: str = PARAGRAPH_SYSTEM_PROMPT,
 ) -> tuple[dict, dict, dict]:
     """Перевод новых абзацев моделью: (принятые, причины отказа, usage).
 
     Абзацы с отказом повторяются один раз отдельным коротким запросом.
+    ``system_prompt`` — свой у строк этикеток БАДов (``supplement_memory``).
     """
     accepted: dict[str, dict[str, str]] = {}
     rejected: dict[str, list[str]] = {}
@@ -652,7 +654,7 @@ def translate_paragraphs(
     def run(batch: list[str]) -> None:
         items = paragraph_items(batch)
         payload, result = _call_translator(
-            llm, PARAGRAPH_SYSTEM_PROMPT, items, max_tokens=PARAGRAPH_MAX_TOKENS, prompt=paragraph_user_prompt
+            llm, system_prompt, items, max_tokens=PARAGRAPH_MAX_TOKENS, prompt=paragraph_user_prompt
         )
         _add_usage(usage, result)
         batch_accepted, batch_rejected = check_paragraph_payload(items, payload)
