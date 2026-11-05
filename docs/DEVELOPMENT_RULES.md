@@ -182,6 +182,12 @@ docker-compose за nginx и Cloudflare.
    проверку человеку, не объединять. Код, который ставит лекарству `is_active=True`,
    не возвращает товары с `external_data["ilacfiyati_twin_of"]`
    ([ILACFIYATI_TWIN_PAGES.md](ILACFIYATI_TWIN_PAGES.md)).
+17. **Поиск товаров — только через `apps/catalog/product_search.py`** (`filter_by_search`,
+   `order_by_relevance`), не `name__icontains`: до 05.11.2026 поиск смотрел только в
+   `Product.name`, и производители, переводы, МНН, штрихкоды, «омега 3», «US Polo» не
+   находились (44 из 115 запросов аудита). Новое поле, по которому покупатель ищет товар, —
+   в `build_search_row` и тест. Массовая правка через `update()`/`bulk_*` сигналы обходит:
+   после неё — `rebuild_product_search_index --apply` ([PRODUCT_SEARCH.md](PRODUCT_SEARCH.md)).
 
 ## 4. Фронтенд (Next.js)
 
