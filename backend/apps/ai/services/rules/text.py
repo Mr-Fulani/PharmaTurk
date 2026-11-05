@@ -198,10 +198,15 @@ def _lead(description: str, title: str, locale: str) -> str:
     return ""
 
 
-def _meta_title(title: str, long_template: str, short_template: str) -> str:
-    """Полное название с «купить…», затем без цвета, затем короткая форма без цвета."""
+def _meta_title(title: str, long_template: str, middle_template: str, short_template: str) -> str:
+    """Полное название с «купить…», затем без цвета, затем короче — без «купить», без «оригинал»."""
     base = title.split(", ")[0]
-    for candidate in (long_template.format(title=title), long_template.format(title=base), short_template.format(title=base)):
+    for candidate in (
+        long_template.format(title=title),
+        long_template.format(title=base),
+        middle_template.format(title=base),
+        short_template.format(title=base),
+    ):
         if len(candidate) <= META_TITLE_MAX:
             return candidate
     return truncate_at_word(short_template.format(title=base), META_TITLE_MAX)
@@ -214,38 +219,56 @@ def build_seo(facts: ProductFacts, titles: dict[str, str], descriptions: dict[st
     мужская футболка» было ошибкой), затем факт «из Турции» и первое
     содержательное предложение описания.
     """
+    # «оригинал» — частое уточнение к бренду и модели в рунете («nike air force 1 белые
+    # оригинал», «угги ugg оригинал»; подсказки Яндекса 05.11.2026), чаще «доставки».
     templates = {
-        "ru": ("{title} — купить с доставкой из Турции", "{title} из Турции", "{title}. Оригинальный товар из Турции с доставкой."),
-        "en": ("{title} — buy with delivery from Turkey", "{title} from Turkey", "{title}. Original product from Turkey with delivery."),
+        "ru": ("{title} — купить оригинал из Турции", "{title} — оригинал из Турции", "{title} из Турции", "{title}. Оригинальный товар из Турции с доставкой."),
+        "en": ("{title} — buy original from Turkey", "{title} — original from Turkey", "{title} from Turkey", "{title}. Original product from Turkey with delivery."),
     }
+    # Унисекс ищут как «мужские …» и «женские …»: говорим об этом в description.
+    unisex_note = {"ru": "Модель унисекс — для мужчин и женщин.", "en": "Unisex: for men and women."}
     result: dict[str, dict[str, Any]] = {}
-    for locale, (long_title, short_title, description_head) in templates.items():
+    for locale, (long_title, middle_title, short_title, description_head) in templates.items():
         title = str(titles.get(locale) or "").strip()
         if not title:
             continue
         lead = _lead(descriptions.get(locale) or "", title, locale)
-        meta_description = truncate_at_word(f"{description_head.format(title=title)} {lead}".strip(), META_DESCRIPTION_MAX)
+        head = description_head.format(title=title)
+        if _is_unisex(facts):
+            head = f"{title}. {unisex_note[locale]} {head[len(title) + 2:]}"
+        meta_description = truncate_at_word(f"{head} {lead}".strip(), META_DESCRIPTION_MAX)
         result[locale] = {
-            "seo_title": _meta_title(title, long_title, short_title),
+            "seo_title": _meta_title(title, long_title, middle_title, short_title),
             "seo_description": meta_description,
             "keywords": build_keywords(facts, locale, title),
         }
     return result
 
 
+def _is_unisex(facts: ProductFacts) -> bool:
+    return bool(facts.audience) and facts.audience[1] == "Unisex"
+
+
 def build_keywords(facts: ProductFacts, locale: str, title: str) -> list[str]:
     base = title.split(", ")[0]
     words: list[str] = [base]
     identity = _identity(facts)
+    brand_ru = vocab.BRAND_RU.get(vocab.fold(facts.brand)) if locale == "ru" else None
     if facts.kind:
         kind = facts.kind.ru if locale == "ru" else facts.kind.en.lower()
         words.append(kind)
-        if facts.audience and locale == "ru":
+        if _is_unisex(facts) and locale == "ru":
+            words.extend(f"{vocab.ru_adjective(audience, facts.kind.gender)} {kind}" for audience in ("мужской", "женский"))
+        elif facts.audience and locale == "ru":
             words.append(_ru_head(facts))
         elif facts.audience:
             words.append(f"{facts.audience[1]} {kind}")
         if identity:
             words.append(f"{kind} {identity}")
+        if brand_ru:
+            words.append(f"{kind} {brand_ru}")
+        if identity and locale == "ru":
+            words.append(f"{identity} оригинал")
         words.append(f"{kind} из Турции" if locale == "ru" else f"{kind} from Turkey")
     if facts.brand:
         words.append(facts.brand)
@@ -255,4 +278,4 @@ def build_keywords(facts: ProductFacts, locale: str, title: str) -> list[str]:
         if clean and clean.casefold() not in seen:
             seen.add(clean.casefold())
             result.append(clean)
-    return result[:8]
+    return result[:10]

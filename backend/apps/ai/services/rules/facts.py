@@ -146,16 +146,20 @@ def is_supplier_code(token: str) -> bool:
     return (digits >= 4 or long_code) and not _DIMENSIONS_RE.fullmatch(stripped)
 
 
-def drop_codes(tokens: list[str]) -> list[str]:
-    """Убирает артикулы, короткие коды цвета за ними («DM0DM22546 BDS») и проценты состава («%100»)."""
+def drop_codes(tokens: list[str], *, leading_number: bool = False) -> list[str]:
+    """Убирает артикулы, короткие коды цвета за ними («DM0DM22546 BDS») и проценты состава («%100»).
+
+    ``leading_number`` — первый токен стоит сразу за брендом: четыре цифры там —
+    модель («New Balance 9060», «New Balance 2002»), а не артикул.
+    """
     result: list[str] = []
     after_sku = False
     previous_kept = False
-    for token in tokens:
+    for position, token in enumerate(tokens):
         stripped = token.strip("()[],.;:")
         # Четыре цифры сразу за словом модели — номер модели («Emr 1830»),
         # отдельно («Tişört 4480», «Sandalet 5003») — артикул. Пустой токен — разрыв.
-        model_number = stripped.isdigit() and len(stripped) == 4 and previous_kept
+        model_number = stripped.isdigit() and len(stripped) == 4 and (previous_kept or (leading_number and position == 0))
         # Размер «M» в «PC-7315 M Kahve». Только латиница: русские «с», «в», «и» в LLM-названии — слова.
         single_letter = len(stripped) == 1 and stripped.isascii() and stripped.isalpha()
         if not stripped or single_letter or "%" in stripped or (is_supplier_code(stripped) and not model_number) or (
@@ -180,6 +184,12 @@ def supplier_code_tokens(name: str) -> set[str]:
     kept = {token.strip("()[],.;:").upper() for token in drop_codes(tokens)}
     codes = {token.strip("()[],.;:").upper() for token in tokens} - kept
     return codes | {part for code in codes if "." in code for part in code.split(".") if part}
+
+
+def _is_hyphen_model(token: str) -> bool:
+    """«Sk8-Hi», «XT-6», «RS-X» — модель, а не код вида «J5SM-TST7325» или «PC-7315»."""
+    parts = token.strip("()[],.;:").split("-")
+    return len(parts) == 2 and all(parts) and sum(char.isdigit() for char in token) <= 2
 
 
 def _is_strong_model_token(token: str) -> bool:
@@ -270,7 +280,8 @@ def parse_name(name: str, facts: ProductFacts) -> None:
             if model and model[-1]:
                 model.append("")  # разрыв: «Barcelona Urban … Sandalet 5003»
             continue
-        if key in brand_tokens or _HYPHEN_CODE_RE.match(token):
+        brand_word = key in brand_tokens and " ".join(folded[index : index + 2]) not in vocab.BRAND_WORD_PHRASES
+        if brand_word or (_HYPHEN_CODE_RE.match(token) and not _is_hyphen_model(token)):
             index += 1
             continue
         if token in ("&", "/", "+") and model:
@@ -287,7 +298,10 @@ def parse_name(name: str, facts: ProductFacts) -> None:
         facts.kind = specific[0]
     elif kinds:
         facts.kind = kinds[0]
-    facts.model = " ".join(drop_codes(model)).strip(" &/+")
+    # Номер сразу за брендом («New Balance 9060 Lifestyle») — модель; у магазинов-брендов
+    # (LC Waikiki) первым бывает артикул.
+    leading_number = bool(facts.brand) and vocab.fold(facts.brand) not in vocab.STORE_BRANDS and bool(model) and bool(tokens) and model[0] == tokens[0]
+    facts.model = " ".join(drop_codes(model, leading_number=leading_number)).strip(" &/+")
 
 
 def _starts_vocab(folded: list[str], index: int) -> bool:
@@ -458,6 +472,8 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
             facts.finish = vocab.translate_furniture_finish(attrs.get("color"))
     elif facts.kind is None or (facts.kind.generic and category_kind):
         facts.kind = category_kind or facts.kind
+    if facts.kind is not None:
+        facts.kind = vocab.BRAND_KINDS.get((vocab.fold(facts.brand), facts.kind.ru), facts.kind)
     if product_type == "perfumery" and (facts.kind is None or facts.kind.generic):
         fragrance_type = vocab.fold(attrs.get("fragrance_type"))
         facts.kind = vocab.KINDS.get(fragrance_type, facts.kind)

@@ -198,6 +198,39 @@ STORE_LINE_WORDS = frozenset({"lcw", "accessories", "vision", "casual", "young",
 # Общие слова названий Zara в ВЕРХНЕМ регистре, которых нет в словарях: «3'LÜ PAKET» —
 # «3 шт.», «BOMBER CEKET» — «бомбер». Не модель (очередь модерации 27.10.2026).
 GENERIC_NAME_WORDS = frozenset({"paket", "bomber"})
+# Бренд кириллицей — так его часто ищут («кроссовки адидас», «кроссовки найк»,
+# «термокружка стенли»; подсказки Яндекса 05.11.2026). Только в ключевые слова:
+# в названии и title бренд пишется как у производителя.
+BRAND_RU: dict[str, str] = {
+    "adidas": "адидас",
+    "nike": "найк",
+    "jordan": "джордан",
+    "new balance": "нью беланс",
+    "puma": "пума",
+    "reebok": "рибок",
+    "asics": "асикс",
+    "salomon": "саломон",
+    "converse": "конверс",
+    "vans": "ванс",
+    "lacoste": "лакост",
+    "crocs": "крокс",
+    "ugg": "угг",
+    "timberland": "тимберленд",
+    "the north face": "норт фейс",
+    "columbia": "коламбия",
+    "calvin klein": "кельвин кляйн",
+    "tommy hilfiger": "томми хилфигер",
+    "skechers": "скечерс",
+    "birkenstock": "биркеншток",
+    "hoka": "хока",
+    "new era": "нью эра",
+    "stanley": "стэнли",
+    "under armour": "андер армор",
+}
+
+# Слово бренда, которое в названии — часть другого имени: «New Era … New York Yankees»
+# (команда на кепке). Остальные слова бренда в названии не пишем — бренд уже стоит впереди.
+BRAND_WORD_PHRASES = frozenset({"new york", "new jersey", "new orleans", "new england"})
 # Магазины, чьи названия — описание по-турецки без модели («Teknik naylon pantolon»):
 # латинское слово до типа — не модель, а непереведённое слово (кроме кодов и ВЕРХНЕГО регистра).
 DESCRIPTIVE_NAME_BRANDS = frozenset({"zara", "bershka", "pull&bear", "massimo dutti"})
@@ -260,11 +293,33 @@ KINDS: dict[str, Kind] = {
     "bluz": _k("блузка", F, "Blouse"),
     "tunik": _k("туника", F, "Tunic"),
     "tayt": _k("леггинсы", PL, "Leggings"),
+    "tayti": _k("леггинсы", PL, "Leggings"),
+    # спортивная одежда SuperStep (05.11.2026): слова, с которыми название уходило в LLM
+    "kosu tayti": _k("тайтсы для бега", PL, "Running Tights"),
+    "kisa tayt": _k("велосипедки", PL, "Biker Shorts"),
+    "biker sort": _k("велосипедки", PL, "Biker Shorts"),
+    "kosu sortu": _k("шорты для бега", PL, "Running Shorts"),
+    "deniz sortu": _k("шорты для плавания", PL, "Swim Shorts"),
+    "polar": _k("флиска", F, "Fleece Jacket"),
+    "polar ceket": _k("флиска", F, "Fleece Jacket"),
+    "polar mont": _k("флиска", F, "Fleece Jacket"),
+    "fleece": _k("флиска", F, "Fleece Jacket"),
+    "ruzgarlik": _k("ветровка", F, "Windbreaker"),
+    "yagmurluk": _k("дождевик", M, "Raincoat"),
+    "esofman ustu": _k("олимпийка", F, "Track Jacket"),
+    "sort takim": _k("комплект с шортами", M, "Shorts Set"),
+    "sort takimi": _k("комплект с шортами", M, "Shorts Set"),
+    "tulum": _k("комбинезон", M, "Jumpsuit"),
     # нижнее бельё
     "boxer": _k("трусы-боксеры", PL, "Boxers"),
     "slip": _k("трусы-слипы", PL, "Briefs"),
     "kulot": _k("трусы", PL, "Briefs"),
     "corap": _k("носки", PL, "Socks"),
+    "corabi": _k("носки", PL, "Socks"),
+    "kosu corabi": _k("беговые носки", PL, "Running Socks"),
+    "bra": _k("спортивный бюстгальтер", M, "Sports Bra"),
+    "spor sutyeni": _k("спортивный бюстгальтер", M, "Sports Bra"),
+    "sutyen": _k("бюстгальтер", M, "Bra"),
     # обувь
     "sneaker": _k("кроссовки", PL, "Sneakers"),
     "high sneaker": _k("высокие кроссовки", PL, "High-Top Sneakers"),
@@ -297,6 +352,14 @@ KINDS: dict[str, Kind] = {
     "kravat": _k("галстук", M, "Tie"),
     "papyon": _k("галстук-бабочка", F, "Bow Tie"),
     "saat": _k("часы", PL, "Watch"),
+    "bel cantasi": _k("поясная сумка", F, "Waist Bag"),
+    "omuz cantasi": _k("сумка через плечо", F, "Shoulder Bag"),
+    "postaci cantasi": _k("сумка-мессенджер", F, "Messenger Bag"),
+    "spor cantasi": _k("спортивная сумка", F, "Sports Bag"),
+    "seyahat cantasi": _k("дорожная сумка", F, "Travel Bag"),
+    "kalem kutusu": _k("пенал", M, "Pencil Case"),
+    "valiz": _k("чемодан", M, "Suitcase"),
+    "anahtarlik": _k("брелок", M, "Keychain"),
     # головные уборы
     "sapka": _k("головной убор", M, "Hat", generic=True),
     "kep": _k("кепка", F, "Cap"),
@@ -333,6 +396,13 @@ CATEGORY_KINDS: dict[str, Kind] = {
     "mens-classic-belts": KINDS["kemer"],
     "sunglasses": KINDS["gunes gozlugu"],
     "hw-caps": KINDS["kep"],
+    # разделы, куда SuperStep кладёт «Şapka» без уточнения (05.11.2026)
+    "hw-baseball-caps": _k("бейсболка", F, "Baseball Cap"),
+    "hw-trucker-caps": _k("кепка-тракер", F, "Trucker Cap"),
+    "hw-childrens-caps": KINDS["kep"],
+    "hw-bucket-hats": _k("панама", F, "Bucket Hat"),
+    "hw-beanies": KINDS["bere"],
+    "uw-sports-bras": KINDS["bra"],
     "uw-mens-underwear": KINDS["boxer"],
     "burkini": _k("буркини", N, "Burkini"),
     # мебель: когда furniture_type нет в словаре
@@ -345,6 +415,14 @@ CATEGORY_KINDS: dict[str, Kind] = {
     "sofa-beds": _k("диван-кровать", M, "Sofa-Bed"),
     "coffee-tables": _k("журнальный столик", M, "Coffee Table"),
     "bed-bases": _k("основание кровати", N, "Bed Base"),
+}
+
+# Бренд + тип → название, под которым товар ищут: «UGG Classic Mini Kadın Bot» —
+# «угги», а не «ботинки» («угги ugg оригинал» в подсказках Яндекса, 05.11.2026).
+_UGG_BOOTS = _k("угги", PL, "UGG Boots")
+BRAND_KINDS: dict[tuple[str, str], Kind] = {
+    ("ugg", "ботинки"): _UGG_BOOTS,
+    ("ugg", "сапоги"): _UGG_BOOTS,
 }
 
 # Мебель IKEA: значение furniture_type (без названия серии) → тип.
@@ -585,6 +663,18 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "cirtli": ("на липучке", "Velcro"),
     "bagcikli": ("на шнурках", "Lace-Up"),
     "tokali": ("с пряжкой", "Buckle"),
+    "antrenman": ("для тренировок", "Training"),
+    "kosu": ("для бега", "Running"),
+    "su gecirmez": ("с защитой от воды", "Waterproof"),
+    "cift bantli": ("с двумя ремешками", "Double-Strap"),
+    "plaj": ("для пляжа", "Beach"),
+    "hafif destekli": ("лёгкой поддержки", "Light Support"),
+    "orta destekli": ("средней поддержки", "Medium Support"),
+    "yuksek destekli": ("сильной поддержки", "High Support"),
+    "pedli": ("с чашками", "Padded"),
+    "full-zip": ("на молнии", "Full-Zip"),
+    "full zip": ("на молнии", "Full-Zip"),
+    "zip up": ("на молнии", "Zip-Up"),
     # допустимые, но не выносимые в название
     "gunluk": ("", ""),
     "hafif": ("", ""),
@@ -600,6 +690,12 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "ile": ("", ""),
     "model": ("", ""),
     "yeni": ("", ""),
+    "bantli": ("", ""),
+    "destekli": ("", ""),
+    "tam boy": ("", ""),
+    "outdoor": ("", ""),
+    "crew": ("", ""),
+    "ua": ("", ""),  # «Vans UA Sk8-Low», «UA Tech»: сокращение линейки/бренда
 }
 
 # Турецкие слова словарей, которые LLM копирует в название как есть («Мужские сандалии
@@ -611,6 +707,7 @@ _ENGLISH_VOCAB_WORDS = frozenset(
         "fit", "graphic", "hoodie", "indigo", "jean", "jeans", "kids", "loafer", "logo", "men", "metal",
         "mint", "model", "noos", "normal", "oval", "oversize", "parfum", "petrol", "pls", "polo", "poplin", "relaxed",
         "sandal", "slip", "sneaker", "ss", "stick", "sweatshirt", "tee", "tshirt", "unisex", "women",
+        "bra", "biker", "crew", "fleece", "outdoor", "polar", "ua",
     }
 )
 TURKISH_TITLE_WORDS = frozenset(
