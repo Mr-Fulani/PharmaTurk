@@ -1667,7 +1667,16 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         """Фильтрация товаров по параметрам."""
         queryset = Product.objects.filter(is_active=True)
         queryset = queryset.exclude(product_type='jewelry')
-        queryset = queryset.exclude(non_public_shadow_product_q())
+        if self.request.query_params.get('search'):
+            # Поиск сортирует все совпадения, а не первые строки по created_at: условие
+            # на external_data проверялось бы по каждой строке с детоастом дампов парсеров
+            # (прод 05.11.2026: «кр» 20 с, «пленочной оболочкой» 6 с). Служебные строки —
+            # подзапросом по маленькому частичному индексу 0217 (DEVELOPMENT_RULES §2.9).
+            queryset = queryset.exclude(
+                id__in=Product.objects.filter(non_public_shadow_product_q()).values('id')
+            )
+        else:
+            queryset = queryset.exclude(non_public_shadow_product_q())
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -1801,7 +1810,12 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         if self.request.query_params.get('view') == 'card':
             # Pagination evaluates only the requested slice; type-specific
             # galleries/translations are prefetched by _prepare_list_page.
-            return queryset.select_related('category', 'brand', 'price_info')
+            queryset = queryset.select_related('category', 'brand', 'price_info')
+            if search:
+                # Дампы парсеров в external_data карточке не нужны; без defer страница
+                # детоастила их у каждой показанной строки (docs/PRODUCT_SEARCH.md).
+                queryset = queryset.defer('external_data')
+            return queryset
 
         # Prefetch для main_image_url и images (medicine, supplement, books, clothing и др.)
         queryset = queryset.select_related('category__parent__parent', 'brand', 'book_item').prefetch_related(
@@ -2465,11 +2479,11 @@ class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vie
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
+        # Поиск внутри раздела — без сортировки по точности: она перебирает все совпадения,
+        # а условия на external_data доменных таблиц детоастят дампы парсеров
+        # (docs/PRODUCT_SEARCH.md, «Скорость»). Сайт ищет через /catalog/products.
         ordering = self.request.query_params.get('ordering')
-        if search and not ordering:
-            queryset = order_by_relevance(queryset, search, prefix='base_product__')
-        else:
-            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
+        queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         
         return self._apply_facet_filters(queryset)
     
@@ -2679,11 +2693,11 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
+        # Поиск внутри раздела — без сортировки по точности: она перебирает все совпадения,
+        # а условия на external_data доменных таблиц детоастят дампы парсеров
+        # (docs/PRODUCT_SEARCH.md, «Скорость»). Сайт ищет через /catalog/products.
         ordering = self.request.query_params.get('ordering')
-        if search and not ordering:
-            queryset = order_by_relevance(queryset, search, prefix='base_product__')
-        else:
-            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
+        queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         
         return self._apply_facet_filters(queryset)
     
@@ -2853,11 +2867,11 @@ class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, 
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
+        # Поиск внутри раздела — без сортировки по точности: она перебирает все совпадения,
+        # а условия на external_data доменных таблиц детоастят дампы парсеров
+        # (docs/PRODUCT_SEARCH.md, «Скорость»). Сайт ищет через /catalog/products.
         ordering = self.request.query_params.get('ordering')
-        if search and not ordering:
-            queryset = order_by_relevance(queryset, search, prefix='base_product__')
-        else:
-            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
+        queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         
         return self._apply_facet_filters(queryset)
     
@@ -2995,11 +3009,11 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
         queryset = _apply_price_filter(queryset, self.request)
         queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+        # Поиск внутри раздела — без сортировки по точности: она перебирает все совпадения,
+        # а условия на external_data доменных таблиц детоастят дампы парсеров
+        # (docs/PRODUCT_SEARCH.md, «Скорость»). Сайт ищет через /catalog/products.
         ordering = self.request.query_params.get('ordering')
-        if search and not ordering:
-            queryset = order_by_relevance(queryset, search, prefix='base_product__')
-        else:
-            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
+        queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         return self._apply_facet_filters(queryset)
 
     def get_serializer_context(self):
@@ -3137,11 +3151,11 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
+        # Поиск внутри раздела — без сортировки по точности: она перебирает все совпадения,
+        # а условия на external_data доменных таблиц детоастят дампы парсеров
+        # (docs/PRODUCT_SEARCH.md, «Скорость»). Сайт ищет через /catalog/products.
         ordering = self.request.query_params.get('ordering')
-        if search and not ordering:
-            queryset = order_by_relevance(queryset, search, prefix='base_product__')
-        else:
-            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
+        queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
         
         return self._apply_facet_filters(queryset)
     
@@ -4277,11 +4291,11 @@ class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
 
         # Сортировка
+        # Поиск внутри раздела — без сортировки по точности: она перебирает все совпадения,
+        # а условия на external_data доменных таблиц детоастят дампы парсеров
+        # (docs/PRODUCT_SEARCH.md, «Скорость»). Сайт ищет через /catalog/products.
         ordering = self.request.query_params.get('ordering')
-        if search and not ordering:
-            queryset = order_by_relevance(queryset, search, prefix='base_product__')
-        else:
-            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
+        queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
 
         return queryset
 
@@ -4428,11 +4442,11 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
 
         # Сортировка
+        # Поиск внутри раздела — без сортировки по точности: она перебирает все совпадения,
+        # а условия на external_data доменных таблиц детоастят дампы парсеров
+        # (docs/PRODUCT_SEARCH.md, «Скорость»). Сайт ищет через /catalog/products.
         ordering = self.request.query_params.get('ordering')
-        if search and not ordering:
-            queryset = order_by_relevance(queryset, search, prefix='base_product__')
-        else:
-            queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
+        queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
 
         return queryset
 
@@ -4625,11 +4639,11 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         queryset = self._apply_domain_filters(queryset)
 
         # Сортировка
+        # Поиск внутри раздела — без сортировки по точности: она перебирает все совпадения,
+        # а условия на external_data доменных таблиц детоастят дампы парсеров
+        # (docs/PRODUCT_SEARCH.md, «Скорость»). Сайт ищет через /catalog/products.
         ordering = self.request.query_params.get('ordering')
-        if search and not ordering:
-            queryset = order_by_relevance(queryset, search, prefix='base_product__')
-        else:
-            queryset = queryset.order_by(*self._normalize_ordering(ordering or '-created_at'))
+        queryset = queryset.order_by(*self._normalize_ordering(ordering or '-created_at'))
 
         return queryset
 

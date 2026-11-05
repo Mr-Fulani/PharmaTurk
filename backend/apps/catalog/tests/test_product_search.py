@@ -317,3 +317,118 @@ def test_rebuild_ids_refused_while_index_is_empty(make_product):
     with pytest.raises(CommandError):
         call_command("rebuild_product_search_index", "--ids", str(product.pk), "--apply")
     assert not ProductSearchIndex.objects.exists()
+
+
+def test_short_query_is_newest_first_without_relevance(make_product):
+    older = make_product("Кр")  # точное совпадение, но запрос короче 3 символов
+    newer = make_product("Крем для рук")
+    Product.objects.filter(pk=older.pk).update(created_at=older.created_at.replace(year=2020))
+    _rebuild()
+
+    assert _ids({"search": "кр"})[:2] == [newer.pk, older.pk]
+
+
+def test_search_excludes_service_rows_without_external_data_condition(make_product):
+    """Служебные строки — подзапросом по частичному индексу 0217: условие на external_data
+    в основном запросе детоастило дампы парсеров по каждому совпадению (прод: «кр» 20 с)."""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    public = make_product("Krem public")
+    variant = make_product("Krem variant copy", external_data={"source_variant_id": 1})
+    stub = make_product("Krem stub", product_type="medicines", external_data={"is_stub": True})
+    _rebuild()
+
+    with CaptureQueriesContext(connection) as queries:
+        found = _ids({"search": "krem"})
+
+    assert found == [public.pk]
+    assert variant.pk not in found and stub.pk not in found
+    search_sql = [q["sql"] for q in queries.captured_queries if "catalog_productsearchindex" in q["sql"]]
+    assert search_sql
+    for sql in search_sql:
+        assert '"catalog_product"."external_data" ?' not in sql
+
+
+def _search_queryset(params):
+    from rest_framework.request import Request
+    from rest_framework.test import APIRequestFactory
+
+    from apps.catalog.views import ProductViewSet
+
+    view = ProductViewSet()
+    view.request = Request(APIRequestFactory().get(URL, params))
+    view.action = "list"
+    view.format_kwarg = None
+    return view.get_queryset()
+
+
+def test_search_queryset_can_use_nonpublic_partial_index(make_product):
+    """§2.9: предикат подзапроса совпадает с частичным индексом 0217 — без детоаста external_data."""
+    from django.db import connection
+
+    make_product("Krem")
+    _rebuild()
+    sql, params = _search_queryset({"search": "krem", "view": "card"}).query.sql_with_params()
+
+    with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL enable_seqscan = off")  # пустая тестовая БД — иначе seq scan
+        cursor.execute(f"EXPLAIN {sql}", params)
+        plan = "\n".join(row[0] for row in cursor.fetchall())
+
+    assert "catalog_product_nonpublic_id_idx" in plan
+    assert '"catalog_product"."external_data" ?' not in sql
+    assert '"catalog_product"."external_data"' not in sql.split(" FROM ")[0]  # отложен в карточках
+
+
+def test_relevance_sort_uses_only_cheap_keys(make_product):
+    make_product("Krem nemlendirici")
+    _rebuild()
+    sql = str(_search_queryset({"search": "krem nemlendirici", "view": "card"}).query)
+
+    assert "ORDER BY" in sql
+    assert "similarity(" not in sql.lower()
+    assert " ~ " not in sql  # без регулярных выражений
+
+
+def test_search_pages_are_consistent_with_count(make_product):
+    created = [make_product(f"Krem {i:02d}").pk for i in range(25)]
+    Product.objects.filter(pk__in=created).update(created_at=Product.objects.get(pk=created[0]).created_at)
+    _rebuild()
+
+    seen = []
+    for page in (1, 2, 3):
+        response = APIClient().get(
+            URL, {"search": "krem", "view": "card", "include_facets": "false", "page_size": 10, "page": page}
+        )
+        assert response.status_code == 200
+        assert response.data["count"] == 25
+        seen += [row["id"] for row in response.data["results"]]
+
+    assert sorted(seen) == sorted(created) and len(seen) == len(set(seen))
+
+
+def test_short_words_with_space_are_not_ranked(make_product):
+    older = make_product("кр ма")  # точное совпадение, но слова короче 3 символов
+    newer = make_product("Крем маска")
+    Product.objects.filter(pk=older.pk).update(created_at=older.created_at.replace(year=2020))
+    _rebuild()
+
+    assert _ids({"search": "кр ма"})[:2] == [newer.pk, older.pk]
+
+
+def test_legacy_search_endpoint_excludes_service_rows_without_external_data_condition(make_product):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    public = make_product("Krem public")
+    make_product("Krem variant copy", external_data={"source_variant_id": 1})
+    _rebuild()
+
+    with CaptureQueriesContext(connection) as queries:
+        response = APIClient().get("/api/catalog/products/search", {"q": "krem"})
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.data] == [public.pk]
+    for sql in (q["sql"] for q in queries.captured_queries if "catalog_productsearchindex" in q["sql"]):
+        assert '"catalog_product"."external_data" ?' not in sql

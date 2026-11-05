@@ -1293,10 +1293,20 @@ class CatalogService:
                     limit: int = 50,
                     offset: int = 0) -> List[Product]:
         """Получает товары с фильтрацией."""
-        queryset = Product.objects.filter(is_active=True).exclude(
-            Q(product_type__in=['clothing', 'shoes']) &
-            (Q(external_data__has_key='source_variant_id') | Q(external_data__has_key='source_variant_slug'))
-        )
+        queryset = Product.objects.filter(is_active=True)
+        if search:
+            # Поиск сортирует все совпадения: служебные строки — подзапросом по частичному
+            # индексу 0217, без условия на external_data по каждой строке (docs/PRODUCT_SEARCH.md).
+            from .querysets import non_public_shadow_product_q
+
+            queryset = queryset.exclude(
+                id__in=Product.objects.filter(non_public_shadow_product_q()).values('id')
+            )
+        else:
+            queryset = queryset.exclude(
+                Q(product_type__in=['clothing', 'shoes']) &
+                (Q(external_data__has_key='source_variant_id') | Q(external_data__has_key='source_variant_slug'))
+            )
         
         if category_id:
             queryset = queryset.filter(category_id=category_id)
