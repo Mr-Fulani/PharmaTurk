@@ -239,6 +239,10 @@ def test_review_315_kind_and_model_edge_cases(name, brand, product_type, categor
             "UNITED4 Classic Unisex Siyah Plaj Havlusu", "UNITED4", "sports", None,
             "Полотенце унисекс UNITED4 Classic для пляжа, черное",
         ),
+        (
+            "Nike LeBron Witness 8 Erkek Basketbol Ayakkabısı", "Nike", "shoes", "basketball-shoes",
+            "Мужские баскетбольные кроссовки Nike LeBron Witness 8",
+        ),
         # «Ceket» у Lacoste на SuperStep — куртки (бомберы, на молнии, с капюшоном)
         ("Lacoste Erkek Fermuarlı Lacivert Ceket", "Lacoste", "clothing", "jackets", "Мужская куртка Lacoste с молнией, темно-синяя"),
     ],

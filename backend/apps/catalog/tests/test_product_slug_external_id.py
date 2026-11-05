@@ -116,6 +116,10 @@ def test_ru_slugify_uses_yandex_transliteration():
             "termokruzhka-uniseks-stanley-adventure-stacking-047l-13424-0195",
         ),
         (
+            "Nike LeBron Witness 8 Erkek Basketbol Ayakkabısı", "shoes",
+            "muzhskie-basketbolnye-krossovki-nike-lebron-witness-8-13424-0195",
+        ),
+        (
             "Nike Elite Tournament 7 No Unisex Turuncu Basketbol Topu", "sports",
             "basketbolnyy-myach-uniseks-nike-elite-tournament-7-no-13424-0195",
         ),

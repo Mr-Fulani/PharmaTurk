@@ -331,6 +331,7 @@ KINDS: dict[str, Kind] = {
     "high sneaker": _k("высокие кроссовки", PL, "High-Top Sneakers"),
     "spor ayakkabi": _k("кроссовки", PL, "Sneakers"),
     "kosu ayakkabisi": _k("беговые кроссовки", PL, "Running Shoes"),
+    "basketbol ayakkabisi": _k("баскетбольные кроссовки", PL, "Basketball Shoes"),
     "sandalet": _k("сандалии", PL, "Sandals"),
     "sandal": _k("сандалии", PL, "Sandals"),
     "terlik": _k("шлепанцы", PL, "Slippers"),
