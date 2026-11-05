@@ -245,7 +245,7 @@ def test_color_of_type_without_variants_is_its_own_card():
     assert "fashion_variants" not in product.attributes
     assert product.attributes["superstep_color_ids"] == ["13424.0195"]
     assert product.attributes["color"] == "Beyaz"
-    assert product.category == "drinkware"
+    assert product.category == "thermoses"
     assert len(product.images) == 3
 
 
@@ -352,17 +352,29 @@ def test_kids_boxers_by_erp_gender(erp_gender, expected):
     assert SuperstepParser()._category_route(product) == ("Boxer", expected)
 
 
-def test_unisex_backpack_in_parent_section_is_reported():
-    """Рюкзаки Unisex — в «Сумки и кошельки» (точного раздела нет): видно в отчёте прогона."""
+def test_unisex_backpack_goes_to_backpacks():
+    """Рюкзаки Unisex — в «Рюкзаки» (SEO 05.11), а не в родительский раздел."""
     card = json.loads(_fixture("card_stanley_13424.json"))
     card["product"]["attributes_kwargs"]["integration_alt_grup"] = {"label": "Sırt Çantası"}
     parser = _parser({STANLEY: json.dumps(card)})
 
     product = parser.parse_product_detail(SITE + STANLEY)
 
+    assert product.category == "backpacks"
+    assert parser._unmapped_report() == ""
+
+
+def test_sports_bag_in_parent_section_is_reported():
+    """Спортивные сумки — в «Сумки и кошельки» (точного раздела нет): видно в отчёте прогона."""
+    card = json.loads(_fixture("card_stanley_13424.json"))
+    card["product"]["attributes_kwargs"]["integration_alt_grup"] = {"label": "Spor Çantası"}
+    parser = _parser({STANLEY: json.dumps(card)})
+
+    product = parser.parse_product_detail(SITE + STANLEY)
+
     assert product.category == "bags-wallets"
     assert parser._unmapped_report() == (
-        "В родительском разделе (точного нет): 1 товаров — Sırt Çantası → bags-wallets 1."
+        "В родительском разделе (точного нет): 1 товаров — Spor Çantası → bags-wallets 1."
     )
 
 
@@ -496,8 +508,10 @@ LACOSTE_KIDS = "/urun/lacoste-cocuk-bisiklet-yaka-mavi-t-shirt/tj7365/"
         ("Sweatshirt", "Napapijri Yupik 3 Erkek Krem Polar Ceket", "jackets"),
         ("Sweatshirt", "Nike Impossiblysoft Kadın Beyaz T-Shirt", "t-shirts"),
         ("Polar", "The North Face Glacier Erkek Siyah Yelek", "vests"),
-        ("Sweatshirt", "The North Face Crest Fz Erkek Gri Outdoor Polar", "knitwear"),
-        ("Sweatshirt", "adidas Lk Dy Çocuk Turuncu Sweatshirt", "knitwear"),
+        # SEO 05.11: флис — «Флиски», свитшоты — «Толстовки и худи».
+        ("Sweatshirt", "The North Face Crest Fz Erkek Gri Outdoor Polar", "fleece"),
+        ("Polar", "Columbia Fast Trek Kadın Siyah Polar", "fleece"),
+        ("Sweatshirt", "adidas Lk Dy Çocuk Turuncu Sweatshirt", "hoodies"),
         # Поло с «… Polo Yaka T-Shirt» в названии остаются поло.
         ("Polo", "Nautica Erkek Gri Slim Fit Kısa Kollu Polo Yaka T-Shirt", "polo-shirts"),
     ],
@@ -510,6 +524,31 @@ def test_loose_top_subgroup_is_refined_by_name(subgroup, name, expected):
     }
 
     assert SuperstepParser()._category_route(product)[1][0] == expected
+
+
+@pytest.mark.parametrize(
+    "subgroup,name,brand,expected",
+    [
+        # SEO 05.11: ищут «угги» и «сабо» — у моделей свои разделы внутри подгруппы сайта.
+        ("Bot", "UGG Classic Mini II Kadın Kahverengi Bot", "UGG", ("ugg-boots", "boots", "shoes")),
+        ("Bot & Çizme", "UGG Classic Tall II Kadın Siyah Çizme", "UGG", ("ugg-boots", "boots", "shoes")),
+        ("Bot", "Timberland Premium 6 Inch Erkek Sarı Bot", "TIMBERLAND", ("boots", "shoes")),
+        ("Terlik", "Crocs Classic Clog Unisex Siyah Terlik", "CROCS", ("clogs", "sandals", "shoes")),
+        ("Terlik", "Crocs Classic Slide Unisex Siyah Terlik", "CROCS", ("slides", "sandals", "shoes")),
+    ],
+)
+def test_ugg_and_clog_models_get_own_sections(subgroup, name, brand, expected):
+    product = {
+        "name": name,
+        "attributes": {"integration_cinsiyet": "Kadın"},
+        "attributes_kwargs": {
+            "integration_alt_grup": {"label": subgroup},
+            "integration_alt_marka": {"label": brand},
+        },
+    }
+
+    assert SuperstepParser()._category_route(product)[1] == expected
+    assert set(expected) <= _catalog_slugs()
 
 
 def test_trucker_cap_goes_to_trucker_caps():
@@ -680,9 +719,11 @@ def test_html_instead_of_json_stops_as_blocked():
         ("İç Giyim", "women", ("uw-womens-underwear", "underwear")),
         ("İç Giyim", "unisex", ("underwear",)),
         ("Sırt Çantası", "women", ("acc-womens-backpacks", "womens-bags", "bags-wallets", "accessories")),
-        ("Sırt Çantası", "kids", ("bags-wallets", "accessories")),
+        ("Sırt Çantası", "kids", ("backpacks", "bags-wallets", "accessories")),
+        ("Sırt Çantası", "", ("backpacks", "bags-wallets", "accessories")),
+        ("Süluk", "", ("thermoses", "drinkware", "tableware")),
         ("Şapka", "", ("hw-baseball-caps", "hw-caps", "headwear")),
-        ("Termos", "", ("drinkware", "tableware")),
+        ("Termos", "", ("thermoses", "drinkware", "tableware")),
         # Детям — детские разделы (пилот 04.11: кепки и бельё шли во взрослые).
         ("Şapka", "kids", ("hw-childrens-caps", "hw-children-headwear", "headwear")),
         ("Bere", "kids", ("hw-childrens-beanies", "hw-children-headwear", "headwear")),

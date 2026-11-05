@@ -976,14 +976,20 @@ Product URL никогда не считается следующим chunk: и�
 (детям — `hw-childrens-panamas`), Visor → `hw-visors`; если подгруппа «Bere», а в
 названии «Şapka» (New Era Sun Shield) или наоборот — верим названию. В «Sweatshirt»,
 «Polar» и «Hoodie» сайт кладёт и флисовые куртки, и футболки: если название кончается
-на «Ceket», «Mont», «Yelek» или «T-Shirt», раздел — по названию («Napapijri … Polar
-Ceket» → `jackets`, «Nike Impossiblysoft … T-Shirt» → `t-shirts`). Детское
+на «Ceket», «Mont», «Yelek», «T-Shirt» или «Polar», раздел — по названию («Napapijri … Polar
+Ceket» → `jackets`, «Nike Impossiblysoft … T-Shirt» → `t-shirts`, «… Outdoor Polar» →
+`fleece`). Разделы по спросу в рунете (SEO-ядро 05.11, разделы — PR #318): «Polar» →
+«Флиски» (`fleece`), «Sweatshirt» → «Толстовки и худи» (`hoodies`), «Termos» и «Suluk» →
+«Термосы и термокружки» (`thermoses`), UGG в «Bot»/«Bot & Çizme» → «Угги» (`ugg-boots`),
+«Terlik» с «Clog» в названии (Crocs) → «Сабо» (`clogs`); пока нового раздела нет,
+товар идёт в следующий slug маршрута (`knitwear`, `drinkware`, `boots`…). Детское
 бельё — по `integration_erp_cinsiyet`: BOYS —
 `uw-boys-briefs`/`uw-boys-underwear`, GIRLS — `uw-girls-panties`/`uw-girls-underwear`.
-Рюкзаки «Unisex» — в «Сумки и кошельки» (`bags-wallets`): отдельного раздела
-унисекс-рюкзаков нет, а план (§5.1) велит класть такие в ближайший родительский
-раздел и показывать это в отчёте прогона: в «Причине остановки» чанка — «В
-родительском разделе (точного нет): N товаров — Sırt Çantası → bags-wallets 12, …»
+Рюкзаки «Unisex» и детские — в «Рюкзаки» (`backpacks`), мужские и женские — в свои
+разделы. Подгруппы без точного раздела (спортивные сумки) план (§5.1) велит класть в
+ближайший родительский раздел и показывать это в отчёте прогона: в «Причине
+остановки» чанка — «В родительском разделе (точного нет): N товаров — Spor Çantası →
+bags-wallets 12, …»
 (`SUPERSTEP_PARENT_PLACEMENTS`: корни и `bags-wallets`). У части
 товаров маркетплейса нет `integration_alt_grup` (Nike 265-FN2713, зелёный цвет):
 тогда подгруппа берётся у другого цвета той же модели (из вариантов карточки,
