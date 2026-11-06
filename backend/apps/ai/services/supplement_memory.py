@@ -365,7 +365,8 @@ def _split_dose_and_prohibition(sentence: str) -> list[str]:
     folded = fold_tr(sentence)
     if "," not in sentence or not (_DOSE_TR_RE.search(folded) and _PROHIBITION_RE.search(folded)):
         return [sentence]
-    clauses = [clause.strip() for clause in sentence.split(",") if clause.strip()]
+    # Десятичная запятая «2,5 ml», «1,5 ölçek» — не граница части фразы (ревью #329).
+    clauses = [clause.strip() for clause in re.split(r"(?<!\d),|,(?!\d)", sentence) if clause.strip()]
     first_prohibition = next(i for i, clause in enumerate(clauses) if _PROHIBITION_RE.search(fold_tr(clause)))
     dose = ", ".join(clauses[:first_prohibition])
     if not first_prohibition or not _DOSE_TR_RE.search(fold_tr(dose)):

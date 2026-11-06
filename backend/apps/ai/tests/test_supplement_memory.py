@@ -585,6 +585,13 @@ def test_warning_under_usage_label_goes_to_warnings():
         "usage": ["Günde 1 kapsül yemekle alınız.", "Günde 1 kapsül."],
         "warnings": ["Doktorunuza danışmadan daha fazla kullanmayınız.", "3 aydan fazla kullanmayınız."],
     }
+    # Десятичная запятая в дозе — не граница части фразы.
+    decimal = ("Kullanım Şekli:\nGünde 2,5 ml alınız, 3 aydan fazla kullanmayınız. "
+               "Günde 1,5 ölçek, doktorunuza danışmadan daha fazla kullanmayınız.")
+    assert sm.section_parts({"product_info": decimal}) == {
+        "usage": ["Günde 2,5 ml alınız.", "Günde 1,5 ölçek."],
+        "warnings": ["3 aydan fazla kullanmayınız.", "Doktorunuza danışmadan daha fazla kullanmayınız."],
+    }
     # С дозой — остаётся в применении (ревью #328).
     dose = "Kullanım Şekli:\nDoktorunuza danışarak günde 2 kapsül alınız."
     assert sm.section_parts({"product_info": dose}) == {"usage": ["Doktorunuza danışarak günde 2 kapsül alınız."]}
