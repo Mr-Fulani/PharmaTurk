@@ -22,6 +22,7 @@ from apps.ai.services.rules.facts import (
     clean_source_text,
     collect_facts,
     drop_codes,
+    product_source,
 )
 from apps.ai.services.rules.text import (
     TURKISH_LEFTOVER_RE,
@@ -42,9 +43,17 @@ _TURKISH_LETTERS_RE = re.compile(r"[çğışÇĞİŞ]")
 _CYRILLIC_LETTERS_RE = re.compile(r"[а-яё]", re.IGNORECASE)
 # Латиница (бренд/модель) в начале RU-названия, затем русский тип со строчной.
 _BRAND_FIRST_RE = re.compile(r"^((?:[^\sа-яёА-ЯЁ]+\s+)+)([а-яё][^,]*)(,.*)?$")
-# SuperStep: «DIS YUZEY:%100 SIGIR DERISI TABAN:%100 KAUCUK» — верх и подошва одной строкой;
-# без обрезки «Материал» брал «Каучук» подошвы у кожаных кроссовок (пилот 06.11.2026).
-_SOLE_PART_RE = re.compile(r"(?:d[ıi][şs]\s*)?taban\s*:|outsole\s*:", re.IGNORECASE)
+# «DIS YUZEY:%76 POLYESTER %12 SUET SIGIR DERISI TABAN:%100 KAUCUK», «Üst: Deri, İç taban: Deri,
+# Taban: Kauçuk», «Upper:Recycled polyester, TPUOutsole: Rubber» — материалы по частям одной строкой.
+# Без разбора «Материал» брал «Каучук» подошвы у кожаных кроссовок (пилот SuperStep 06.11.2026).
+# Верх — в «Материал» (первый, основной компонент), подошва — в «Материал подошвы»; стелька,
+# промежуточная подошва и подкладка не берутся.
+_MATERIAL_LABEL_RE = re.compile(
+    r"(d[ıi][şs]\s*y[üu]zey|[üu]st\s*y[üu]zey|[iİı]ç\s*taban|ara\s*taban|d[ıi][şs]\s*taban|outsole"
+    r"|\b(?:[üu]st|upper|taban|astar|lining))\s*:",
+    re.IGNORECASE,
+)
+_MATERIAL_PART_RE = re.compile(r"%\s*\d+|\d+\s*%|[,/;]")
 # Предложения-«вода», которые модель пишет вопреки промпту (пилот SuperStep 06.11.2026: 12 и 6
 # описаний из 50): «Модель подходит для повседневной носки», «Цвет сочетается с джинсами».
 # Вырезается предложение целиком, чтобы текст не обрывался.
@@ -61,7 +70,6 @@ _FILLER_SENTENCE_RE = {
     ),
 }
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+(?=[«\"A-ZА-ЯЁ])")
-_UPPER_LABEL_RE = re.compile(r"^\s*(?:d[ıi][şs]\s*y[üu]zey|upper)\s*:\s*", re.IGNORECASE)
 
 SYSTEM_PROMPT = """
 Ты — редактор-переводчик карточек интернет-магазина Mudaroba (товары из Турции).
@@ -141,7 +149,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     facts = collect_facts(product, input_data)
     titles = _validated_titles(product, build_titles(facts))
     title_sources = {locale: "rules" for locale, title in titles.items() if title}
-    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"))
+    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"), product_source(product))
     source_text = source_text[:SOURCE_TEXT_LIMIT]
     namespace = memory.namespace_for(product.category_id)
 
@@ -235,10 +243,12 @@ def _fragrance_name(payload: dict[str, Any], plan: RulePlan, input_data: dict[st
 
 def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts) -> list[dict[str, Any]]:
     attrs = input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {}
-    material = attrs.get("material")
-    if isinstance(material, str) and _SOLE_PART_RE.search(material):
-        upper = _SOLE_PART_RE.split(material, maxsplit=1)[0]
-        attrs = {**attrs, "material": _UPPER_LABEL_RE.sub("", upper).strip(" ,;")}
+    labelled = _labelled_materials(attrs.get("material"))
+    if labelled is not None:
+        upper, sole = labelled
+        attrs = {**attrs, "material": upper}
+        if sole and not attrs.get("sole_material"):
+            attrs["sole_material"] = sole
     kind = (facts.kind.ru, facts.kind.en) if facts.kind else None
     overrides = {
         "material": facts.upper,
@@ -271,6 +281,29 @@ def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts
             continue
         rows.append(_attribute_row(candidate.slug, value_ru, value_en))
     return rows
+
+
+def _labelled_materials(raw: Any) -> tuple[str, str] | None:
+    """(основной материал верха, подошва) из строки с метками; без меток — None (как было)."""
+    if not isinstance(raw, str):
+        return None
+    labels = list(_MATERIAL_LABEL_RE.finditer(raw))
+    if not labels:
+        return None
+    parts: dict[str, str] = {}
+    for current, following in zip(labels, labels[1:] + [None]):
+        label = vocab.fold(current.group(1)).replace(" ", "")
+        role = "upper" if label in ("disyuzey", "ustyuzey", "ust", "upper") else (
+            "sole" if label in ("distaban", "taban", "outsole") else ""
+        )
+        value = raw[current.end() : following.start() if following else len(raw)]
+        if role and role not in parts:
+            parts[role] = value
+    if "upper" not in parts and labels[0].start() > 0:
+        parts["upper"] = raw[: labels[0].start()]  # «Deri/Tekstil, Taban: Kauçuk» — верх без метки
+    pieces = [piece.strip(" .") for piece in _MATERIAL_PART_RE.split(parts.get("upper", ""))]
+    upper = next((piece for piece in pieces if piece), "")
+    return upper, parts.get("sole", "").strip(" ,;.")
 
 
 def _attribute_row(slug: str, value_ru: str, value_en: str | None) -> dict[str, Any]:

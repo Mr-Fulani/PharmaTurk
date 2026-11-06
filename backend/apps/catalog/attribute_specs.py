@@ -81,6 +81,8 @@ ATTRIBUTE_SPECS: tuple[DynamicAttributeSpec, ...] = (
             ("gerçek deri", "Натуральная кожа"),
             ("suni deri", "Искусственная кожа"),
             ("vegan deri", "Искусственная кожа"),
+            ("suet", "Замша"),  # «Süet», «SUET SIGIR DERISI» (SuperStep) — до «deri»
+            ("deri", "Натуральная кожа"),  # «Deri», «SIGIR DERISI»; искусственная — выше
             ("pamuk", "Хлопок"),
             ("kumas", "Ткань"),
             ("kumaş", "Ткань"),
@@ -400,6 +402,7 @@ _VALUE_RU_TO_EN: dict[str, str] = {
     # material / sole-material
     "Натуральная кожа": "Genuine Leather",
     "Искусственная кожа": "Faux Leather",
+    "Замша": "Suede",
     "Хлопок": "Cotton",
     "Ткань": "Fabric",
     "Текстиль": "Textile",

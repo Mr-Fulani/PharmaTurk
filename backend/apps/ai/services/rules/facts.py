@@ -88,27 +88,44 @@ def _attrs(input_data: dict[str, Any]) -> dict[str, Any]:
     return attrs if isinstance(attrs, dict) else {}
 
 
-# SuperStep: шаблонный текст магазина. «Kombin Önerileri» — с чем носить (модель пересказывала
-# «сочетается с джинсами»), оговорки «непроверенные сведения не добавлены» и коды Option — не факты.
-# Текст с такой оговоркой фактов не несёт вовсе: описание собирается из фактов (пилот 06.11.2026).
-_SOURCE_NO_FACTS_RE = re.compile(
-    r"(?:iddia\w*|tahmin)\s+eklenmemiş|doğrulanmış[^.]*(?:bulunmamaktadır|yer almamaktadır)", re.IGNORECASE
+# SuperStep: шаблонный текст магазина (только этот источник). «Kombin Önerileri» — с чем носить
+# (модель пересказывала «сочетается с джинсами»), оговорки «проверенных сведений нет» и коды Option —
+# не факты (пилот 06.11.2026). Режется строка или предложение (граница — точка, тег, перевод строки).
+# Весь текст пустой, только если магазин пишет, что описание ограничено названием и разделом.
+_SUPERSTEP_NO_FACTS_RE = re.compile(r"eklenmemiş[^.<\n]*sınırlı\s+tutul", re.IGNORECASE)
+_SUPERSTEP_HEADINGS = (
+    r"Bakım|Ürün Özellikleri|Teknik Özellikler|Ürün Detayları|Sana Sağlayacağı|Kullanım Önerileri"
+    r"|Neden\s[^.?!<]*Tercih Etmelisin"
 )
-_SOURCE_OUTFIT_RE = re.compile(r"Kombin Önerileri\b.*?(?=\bBakım\b|$)", re.DOTALL)
-_SOURCE_FILLER_SENTENCE_RE = re.compile(r"[^.?!]*(?:doğrula\w*|varyant kodu)[^.?!]*[.?!]", re.IGNORECASE)
+_SUPERSTEP_OUTFIT_RE = re.compile(rf"Kombin Önerileri.*?(?=<h\d|<strong|<b>|{_SUPERSTEP_HEADINGS}|$)", re.DOTALL)
+_SUPERSTEP_FILLER_RE = re.compile(
+    r"[^.?!<>\n]*(?:doğrulanabil\w*|doğrulanama\w*|varyant kodu"
+    r"|doğrulanmış\s+(?:[^\s.<]+\s+){0,3}(?:bilgi|veri)\w*)[^.?!<>\n]*[.?!]?",
+    re.IGNORECASE,
+)
 
 
-def clean_source_text(value: Any) -> str:
-    """Текст источника без HTML, кодов LCW и юридического хвоста."""
+def product_source(product: Any) -> str:
+    """Источник товара по external_id: «superstep-B75806» → «superstep»."""
+    return str(getattr(product, "external_id", "") or "").split("-", 1)[0].lower()
+
+
+def _clean_superstep(text: str) -> str:
+    if _SUPERSTEP_NO_FACTS_RE.search(text):
+        return ""
+    text = _SUPERSTEP_OUTFIT_RE.sub(" ", text)
+    text = _SUPERSTEP_FILLER_RE.sub(" ", text)
+    return re.sub(r"Option\s*/\s*ürün kodu:\s*[^\s<]+", " ", text, flags=re.IGNORECASE)
+
+
+def clean_source_text(value: Any, source: str = "") -> str:
+    """Текст источника без HTML, кодов LCW и юридического хвоста; ``source`` — product_source()."""
     text = str(value or "")
     for _ in range(2):  # у части источников HTML экранирован дважды
         text = html.unescape(text)
+    if source == "superstep":
+        text = _clean_superstep(text)
     text = re.sub(r"<[^>]+>", " ", text)
-    if _SOURCE_NO_FACTS_RE.search(text):
-        return ""
-    text = _SOURCE_OUTFIT_RE.sub(" ", text)
-    text = _SOURCE_FILLER_SENTENCE_RE.sub(" ", text)
-    text = re.sub(r"Option\s*/\s*ürün kodu:\s*\S+", " ", text, flags=re.IGNORECASE)
     text = re.sub(r"Ürün Kodu:\s*\S+", " ", text)
     text = re.sub(r"\bS\d{6,}\b", " ", text)
     text = re.sub(r"(?:İmalatçı|Imalatçı)\s*/.*$", " ", text, flags=re.DOTALL)
@@ -448,7 +465,7 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
     facts.has_variants = _variant_colors(product) > 0  # цвет вариант допишет сам
     # FLO дописывает к турецкому названию русский цвет: «… Sneaker - Серый».
     name = _CYRILLIC_SUFFIX_RE.sub("", str(input_data.get("name") or ""))
-    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"))
+    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"), product_source(product))
     if vocab.fold(facts.brand) in vocab.STORE_BRANDS and not _CYRILLIC_RE.search(name):
         leading, rest = _leading_brand(name)
         if vocab.fold(leading).startswith(vocab.STORE_OWN_LINE_PREFIXES):
