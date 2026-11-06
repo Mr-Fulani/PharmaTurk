@@ -18,7 +18,7 @@ from apps.ai.services.rules import vocab
 _VERB = r"[а-яё]+(?:ет|ит|ют|ят|ут|ат|ется|ится|ются|ятся|ются)\b"
 _EVERYDAY_RE = {
     "ru": re.compile(
-        r"(?P<lead>,\s*|\s+и\s+)?"
+        r"(?P<lead>,\s*а\s+также\s+|,\s*|\s+и\s+)?"
         r"(?P<verb>(?:(?:идеально|отлично|хорошо)\s+)?(?:подход\w+|подойд\w+|предназначен\w*|создан\w*|рассчитан\w*|удобн\w*|идеальн\w*)\s+"
         r"|дела\w+\s+(?:[а-яё]+\s+)?подходящ\w*\s+)?"
         r"(?:как\s+)?для\s+повседневн\w*\s+(?:(?:и\s+)?[а-яё]+\s+)?(?:носки|образ\w*|использовани\w*|стил\w*)"
@@ -68,7 +68,7 @@ _DANGLING_RE = {
 # и не «Стирка при 30 С.».
 _DANGLING_ALWAYS_RE = {
     "ru": re.compile(
-        r"(?:,\s*|\s+)(?:и|а|но|или|для|который|которая|которое|которые|которую|которого|которым|которыми)$",
+        r"(?:,\s*|\s+)(?:и|а|но|или|для|поэтому|который|которая|которое|которые|которую|которого|которым|которыми)$",
         re.IGNORECASE,
     ),
     "en": re.compile(r"(?:,\s*|\s+)(?:and|or|but)$", re.IGNORECASE),
@@ -91,6 +91,8 @@ _GENERIC_WORDS = frozenset({
     "эти", "этот", "эта", "такие", "такой", "такая", "кроссовок", "обуви", "изделия", "товара",
 })
 _ADJECTIVE_RE = re.compile(r"(?:ый|ий|ой|ая|яя|ое|ее|ые|ие)$")
+# Существительные на «-ой»/«-ий»: «Прямой крой» — факт, а не два прилагательных.
+_NOT_ADJECTIVES = frozenset({"крой", "покрой", "герой", "слой", "строй", "бой", "зной", "кий", "гений"})
 _FACT_RE = re.compile(
     r"[A-Za-z0-9]|верх|подошв|ткан|материал|стельк|состав|хлоп|кож|замш|сетк|л[её]н|льн|шерст|полиэстер|эластан"
     r"|вискоз|нейлон|резин|каучук|мех|пух",
@@ -196,7 +198,14 @@ def _is_empty(text: str) -> bool:
     words = [word.lower() for word in re.findall(r"[^\W\d_]+", text)]
     if re.search(r"[A-Za-z0-9]", text):
         return False
-    return all(word in _GENERIC_WORDS or _ADJECTIVE_RE.search(word) for word in words)
+    previous_adjective = False
+    for word in words:
+        # Слово сразу после прилагательного — определяемое существительное («прямой крой»).
+        adjective = bool(_ADJECTIVE_RE.search(word)) and word not in _NOT_ADJECTIVES and not previous_adjective
+        if not (adjective or word in _GENERIC_WORDS):
+            return False  # существительное-факт: «крой», «верх», «толщина»
+        previous_adjective = adjective
+    return True
 
 
 def _without_filler(sentence: str, locale: str) -> str:
@@ -225,7 +234,7 @@ def _without_filler(sentence: str, locale: str) -> str:
             fragment = _FRAGMENT_START_RE.match(cleaned)
             if fragment and not fragment.group(0).rstrip().endswith(",") and not _FACT_RE.search(cleaned[fragment.end() :]):
                 return ""  # «особенно в жаркую погоду или в офисе.» — ни начала, ни факта
-            cleaned = _FRAGMENT_START_RE.sub("", cleaned).strip()
+            cleaned = _LEAD_JOINER_RE.sub("", _FRAGMENT_START_RE.sub("", cleaned).strip())
             cleaned = cleaned[:1].upper() + cleaned[1:]
         if _is_empty(cleaned.rstrip(".!?…")):
             return ""
