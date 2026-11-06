@@ -1039,3 +1039,29 @@ def test_generic_words_of_other_catalogs_are_not_furniture_conflicts():
     for title in ("Children's Wardrobe IKEA PLATSA", "IKEA PLATSA Storage System, Light Grey"):
         report = SemanticValidator().validate(product, generated_titles={"en": title}, dynamic_attributes=[])
         assert "title_category_mismatch" not in report.reasons, title
+
+
+@pytest.mark.parametrize(
+    "name, brand, product_type, ru",
+    [
+        ("Hunter Apres Ski Termal Kadın Kar Botu", "Hunter", "shoes", "Женские зимние ботинки Hunter Apres Ski Termal"),
+        ("Keen WK450 Erkek Krem Yürüyüş Ayakkabısı", "Keen", "shoes", "Мужские кроссовки для ходьбы Keen WK450, кремовые"),
+        ("Mizuno Wave Momentum Pro Unisex Beyaz Voleybol Ayakkabısı", "Mizuno", "shoes",
+         "Волейбольные кроссовки унисекс Mizuno Wave Momentum Pro, белые"),
+        ("Lacoste T-Clip Set Çocuk Beyaz Cırt Cırtlı Spor Ayakkabı", "Lacoste", "shoes",
+         "Детские кроссовки Lacoste T-Clip Set на липучке, белые"),
+        ("Veja Volley Suede Erkek Kahvrengi Sneaker", "Veja", "shoes", "Мужские кроссовки Veja Volley Suede, коричневые"),
+        ("Jordan Jumpman Emb Ss Crew Erkek Beyaz T-Shirt", "Jordan", "clothing",
+         "Мужская футболка Jordan Jumpman Emb с круглым вырезом, белая"),
+        ("Lacoste Classic Fit Erkek T-Shirt", "Lacoste", "clothing", "Мужская футболка Lacoste классического кроя"),
+    ],
+)
+def test_superstep_words_are_translated_by_vocab(name, brand, product_type, ru):
+    facts, titles = _titles(name, product_type, brand=brand)
+    assert not facts.untranslated
+    assert titles["ru"] == ru
+
+
+def test_superstep_model_words_like_leather_and_run_crew_stay_in_model():
+    assert _titles("Veja V-90 Leather Erkek Beyaz Sneaker", "shoes", brand="Veja")[0].model == "V-90 Leather"
+    assert _titles("Nike Mdwt Run Crew 1Pr - 168 Unisex Beyaz Çorap", "underwear", brand="Nike")[0].model.startswith("Mdwt Run Crew")
