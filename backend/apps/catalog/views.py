@@ -138,7 +138,7 @@ from .supplement_market_check_api import (
     as _build_supplement_market_check_response,
 )
 from .querysets import non_public_shadow_product_q, source_variant_q
-from .product_search import filter_by_search, order_by_relevance
+from .product_search import filter_by_search, order_by_relevance, request_search_plan
 from .throttles import (
     MEDICINE_MARKET_CHECK_THROTTLES,
     PRODUCT_CARD_SOURCE_REFRESH_THROTTLES,
@@ -1743,8 +1743,11 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         
         # Поиск по словам в подготовленном тексте товара (docs/PRODUCT_SEARCH.md)
         search = self.request.query_params.get('search')
+        plan = None
         if search:
-            queryset = filter_by_search(queryset, search)
+            # Раскладка, латиница, опечатка — выбор один раз на запрос (docs/PRODUCT_SEARCH.md)
+            plan = request_search_plan(self.request, search)
+            queryset = filter_by_search(queryset, search, plan=plan)
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -1802,7 +1805,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         # Сортировка: с поиском и без явной сортировки — по точности совпадения
         ordering = self.request.query_params.get('ordering')
         if search and not ordering:
-            queryset = order_by_relevance(queryset, search)
+            queryset = order_by_relevance(queryset, search, plan=plan)
         else:
             queryset = queryset.order_by(self._normalize_ordering(ordering or '-created_at'))
 
@@ -1872,7 +1875,14 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         ]
     )
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        response = super().list(request, *args, **kwargs)
+        # Нашлось не по запросу как есть (раскладка, латиница, опечатка) — страница
+        # поиска пишет «Показаны результаты по запросу …» (docs/PRODUCT_SEARCH.md).
+        search = request.query_params.get('search')
+        plan = request_search_plan(request, search) if search else None
+        if plan is not None and plan.corrected and isinstance(response.data, dict) and response.data.get('count'):
+            response.data['search_info'] = {'mode': plan.mode, 'query': plan.query}
+        return response
     
     @extend_schema(
         summary="Получить товар по slug",
@@ -2471,7 +2481,9 @@ class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vie
         # Фильтр по поиску
         search = self.request.query_params.get('search')
         if search:
-            queryset = filter_by_search(queryset, search, prefix='base_product__')
+            queryset = filter_by_search(
+                queryset, search, prefix='base_product__', plan=request_search_plan(self.request, search)
+            )
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -2685,7 +2697,9 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
         # Фильтр по поиску
         search = self.request.query_params.get('search')
         if search:
-            queryset = filter_by_search(queryset, search, prefix='base_product__')
+            queryset = filter_by_search(
+                queryset, search, prefix='base_product__', plan=request_search_plan(self.request, search)
+            )
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -2859,7 +2873,9 @@ class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, 
         # Фильтр по поиску
         search = self.request.query_params.get('search')
         if search:
-            queryset = filter_by_search(queryset, search, prefix='base_product__')
+            queryset = filter_by_search(
+                queryset, search, prefix='base_product__', plan=request_search_plan(self.request, search)
+            )
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -3005,7 +3021,9 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
             queryset = queryset.filter(q).distinct()
         search = self.request.query_params.get('search')
         if search:
-            queryset = filter_by_search(queryset, search, prefix='base_product__')
+            queryset = filter_by_search(
+                queryset, search, prefix='base_product__', plan=request_search_plan(self.request, search)
+            )
         queryset = _apply_price_filter(queryset, self.request)
         queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
@@ -3143,7 +3161,9 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
         # Фильтр по поиску
         search = self.request.query_params.get('search')
         if search:
-            queryset = filter_by_search(queryset, search, prefix='base_product__')
+            queryset = filter_by_search(
+                queryset, search, prefix='base_product__', plan=request_search_plan(self.request, search)
+            )
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -4283,7 +4303,9 @@ class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         # Поиск
         search = self.request.query_params.get('search')
         if search:
-            queryset = filter_by_search(queryset, search, prefix='base_product__')
+            queryset = filter_by_search(
+                queryset, search, prefix='base_product__', plan=request_search_plan(self.request, search)
+            )
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -4434,7 +4456,9 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
         # Поиск
         search = self.request.query_params.get('search')
         if search:
-            queryset = filter_by_search(queryset, search, prefix='base_product__')
+            queryset = filter_by_search(
+                queryset, search, prefix='base_product__', plan=request_search_plan(self.request, search)
+            )
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
@@ -4628,7 +4652,9 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         # Поиск
         search = self.request.query_params.get('search')
         if search:
-            queryset = filter_by_search(queryset, search, prefix='base_product__')
+            queryset = filter_by_search(
+                queryset, search, prefix='base_product__', plan=request_search_plan(self.request, search)
+            )
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
