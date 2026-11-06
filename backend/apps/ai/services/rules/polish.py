@@ -19,11 +19,12 @@ _VERB = r"[а-яё]+(?:ет|ит|ют|ят|ут|ат|ется|ится|ются|
 _EVERYDAY_RE = {
     "ru": re.compile(
         r"(?P<lead>,\s*|\s+и\s+)?"
-        r"(?P<verb>(?:(?:идеально|отлично|хорошо)\s+)?(?:подход\w+|подойд\w+|предназначен\w*|создан\w*|рассчитан\w*)\s+"
+        r"(?P<verb>(?:(?:идеально|отлично|хорошо)\s+)?(?:подход\w+|подойд\w+|предназначен\w*|создан\w*|рассчитан\w*|удобн\w*|идеальн\w*)\s+"
         r"|дела\w+\s+(?:[а-яё]+\s+)?подходящ\w*\s+)?"
         r"(?:как\s+)?для\s+повседневн\w*\s+(?:(?:и\s+)?[а-яё]+\s+)?(?:носки|образ\w*|использовани\w*|стил\w*)"
         r"(?:\s+в\s+городе|\s+по\s+городу|,\s*в\s+том\s+числе\s+[^.,;!?]*)?"
-        rf"(?:(?P<both>,\s*так\s+и\s+(?=для|в|на|при))|(?P<tail>\s+и\s+(?!{_VERB})(?=[а-яё]))|\s+и(?=\s+{_VERB}))?",
+        rf"(?:(?P<both>,\s*так\s+и\s+(?=для|в|на|при)|,\s*а\s+также\s+(?=для|в|на|при))"
+        rf"|(?P<tail>\s+и\s+(?!{_VERB})(?=[а-яё]))|\s+и(?=\s+{_VERB}))?",
         re.IGNORECASE,
     ),
     "en": re.compile(
@@ -56,7 +57,7 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+(?=[«\"A-ZА-ЯЁ])")
 # говорит — предложение убирается.
 _DANGLING_RE = {
     "ru": re.compile(
-        r"(?:,\s*|\s+)(?:и|а|но|или|для|с|со|в|во|на|из|по|от|к|ко|при|без|под|над|о|об|что|чтобы|как|так|"
+        r"(?:,\s*|\s+)(?:и|а|но|или|для|с|со|в|во|на|из|по|от|к|ко|при|без|под|над|о|об|что|чтобы|как|так|поэтому|потому|"
         r"который|которая|которое|которые|котором|которой|которых|которую|которого|которым|которыми)$",
         re.IGNORECASE,
     ),
@@ -75,12 +76,26 @@ _DANGLING_ALWAYS_RE = {
 # «подходит как для спорта, так и.» / «… так и для повседневной носки» → «подходит для спорта».
 _BOTH_RE = re.compile(
     r"\bкак\s+((?:для|в|на|при)\s+[^,]+),\s*так(?:\s+и(?:\s+для\s+повседневн\w*\s+(?:(?:и\s+)?[а-яё]+\s+)?"
-    r"(?:носки|образ\w*|использовани\w*|стил\w*))?)?(?=\s*[.!?…]?$|\s*[.!?…])",
+    r"(?:носки|образ\w*|использовани\w*|стил\w*))?)?(?=\s*[.!?…]?$|\s*[.!?…]|,\s*и\s)",
     re.IGNORECASE,
 )
 # Начало предложения вырезано: «…, а подошва из EVA гасит удары.» → «Подошва из EVA гасит удары.»
 _LEAD_JOINER_RE = re.compile(r"^(?:[,;:—–-]\s*|(?:а|но|и|при\s+этом)\s+)+", re.IGNORECASE)
-_FRAGMENT_START_RE = re.compile(r"^(?:особенно|в\s+том\s+числе|например)\b", re.IGNORECASE)
+# «…, особенно летом, ткань — 100 % лён.» → «Ткань — 100 % лён.»; без запятой — только само слово.
+_FRAGMENT_START_RE = re.compile(r"^(?:особенно|в\s+том\s+числе|например)\b(?:[^,.!?…]*,\s*)?", re.IGNORECASE)
+# Остаток только из общих слов и прилагательных («Модель.», «Чёрный цвет.», «Базовая модель.») —
+# смысла нет; «Верх кожа.», «Не мнётся.», «Материал — хлопок.» — факт.
+_GENERIC_WORDS = frozenset({
+    "модель", "модели", "изделие", "товар", "вещь", "цвет", "оттенок", "дизайн", "стиль", "кроссовки",
+    "обувь", "он", "она", "оно", "они", "это", "его", "её", "ее", "их", "и", "а", "но",
+    "эти", "этот", "эта", "такие", "такой", "такая", "кроссовок", "обуви", "изделия", "товара",
+})
+_ADJECTIVE_RE = re.compile(r"(?:ый|ий|ой|ая|яя|ое|ее|ые|ие)$")
+_FACT_RE = re.compile(
+    r"[A-Za-z0-9]|верх|подошв|ткан|материал|стельк|состав|хлоп|кож|замш|сетк|л[её]н|льн|шерст|полиэстер|эластан"
+    r"|вискоз|нейлон|резин|каучук|мех|пух",
+    re.IGNORECASE,
+)
 _HOLLOW_RE = {
     "ru": re.compile(
         r"(?:подход\w*|подойд\w*|предназначен\w*|создан\w*|рассчитан\w*|подходящ\w*|универсальн\w*|органично|удобно|легко)$",
@@ -178,9 +193,10 @@ def _trim_dangling(sentence: str, locale: str, *, cut: bool) -> str:
 
 
 def _is_empty(text: str) -> bool:
-    """«Модель», «Чёрный цвет» — без вырезанного оборота смысла нет; «Подошва EVA» — факт."""
-    words = re.findall(r"[^\W\d_]+", text)
-    return len(words) <= 2 and not re.search(r"[A-Za-z0-9]", text)
+    words = [word.lower() for word in re.findall(r"[^\W\d_]+", text)]
+    if re.search(r"[A-Za-z0-9]", text):
+        return False
+    return all(word in _GENERIC_WORDS or _ADJECTIVE_RE.search(word) for word in words)
 
 
 def _without_filler(sentence: str, locale: str) -> str:
@@ -192,7 +208,11 @@ def _without_filler(sentence: str, locale: str) -> str:
             return f"{lead}{match.group('verb') or ''}{'для' if locale == 'ru' else 'for'} "
         return ""
 
-    cleaned = _BOTH_RE.sub(r"\1", sentence) if locale == "ru" else sentence
+    cleaned = sentence
+    if locale == "ru":
+        cleaned = _drop_turkish_asides(cleaned)  # «Цвет (lacivert).» → «Цвет.» → пусто
+        # «как для бега, так и для повседневной носки, и для зала» → «для бега и для зала»
+        cleaned = re.sub(r",\s*(и\s+для\b)", r" \1", _BOTH_RE.sub(r"\1", cleaned)) if _BOTH_RE.search(cleaned) else cleaned
     cleaned = _EVERYDAY_RE[locale].sub(everyday, _PAIRING_RE[locale].sub("", cleaned))
     cut = cleaned != sentence
     if cut:
@@ -202,8 +222,10 @@ def _without_filler(sentence: str, locale: str) -> str:
         if lead_cut or (sentence[:1].isupper() and cleaned[:1].islower()):
             # Начало вырезано: «…, а подошва из EVA гасит удары.» → «Подошва из EVA гасит удары.»
             cleaned = _LEAD_JOINER_RE.sub("", cleaned)
-            if _FRAGMENT_START_RE.match(cleaned):
-                return ""  # «особенно в жаркую погоду.» — без начала не предложение
+            fragment = _FRAGMENT_START_RE.match(cleaned)
+            if fragment and not fragment.group(0).rstrip().endswith(",") and not _FACT_RE.search(cleaned[fragment.end() :]):
+                return ""  # «особенно в жаркую погоду или в офисе.» — ни начала, ни факта
+            cleaned = _FRAGMENT_START_RE.sub("", cleaned).strip()
             cleaned = cleaned[:1].upper() + cleaned[1:]
         if _is_empty(cleaned.rstrip(".!?…")):
             return ""
@@ -219,7 +241,6 @@ def polish_description(text: str, locale: str, product_type: str = "") -> str:
     if locale == "ru":
         for pattern, replacement in _RU_FIXES + (_FILE_FIXES if product_type in _MESH_TYPES else ()):
             text = pattern.sub(replacement, text)
-        text = _drop_turkish_asides(text)
     parts = re.split(r"(<[^>]+>)", text)
     for index, part in enumerate(parts):
         if part.startswith("<") or not part.strip():

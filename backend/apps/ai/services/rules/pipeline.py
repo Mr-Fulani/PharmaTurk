@@ -157,8 +157,9 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     source_text = source_text[:SOURCE_TEXT_LIMIT]
     # Модели SuperStep — без турецкого названия и полей шаблона с ним (она переносила их в описание);
     # ключ памяти — полный текст: соседние цвета одной модели отличаются только названием.
+    raw_source = input_data.get("raw_description") or input_data.get("description")
     prompt_text = (
-        superstep_prompt_text(source_text, str(input_data.get("name") or "").strip())
+        superstep_prompt_text(raw_source, str(input_data.get("name") or "").strip())[:SOURCE_TEXT_LIMIT]
         if source == "superstep"
         else source_text
     )
@@ -185,6 +186,10 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
         if memory_hit:
             descriptions = {"ru": memory_hit["ru"], "en": memory_hit["en"]}
             description_source = "memory"
+    if not descriptions and source == "superstep" and source_text and not prompt_text:
+        # Без названия и полей шаблона фактов не осталось — описание из фактов, а не пересказ названия.
+        descriptions = build_fact_description(facts, titles)
+        description_source = "template" if len(descriptions) == 2 else "llm"
     if facts.russian_name and description_source == "llm":
         # EN из фактов знает только тип («Zara Men's Cap» у двадцати разных кепок):
         # раз модель всё равно вызывается, EN — переводом русского названия.
@@ -222,7 +227,7 @@ def _user_prompt(product, plan: RulePlan, input_data: dict[str, Any]) -> str:
         "product_kind": {"ru": facts.kind.ru, "en": facts.kind.en} if facts.kind else None,
         "titles": {locale: title for locale, title in plan.titles.items() if title},
         "facts": {key: value for key, value in facts.as_dict().items() if value},
-        "source_text": plan.prompt_text or plan.source_text,
+        "source_text": plan.prompt_text if plan.source == "superstep" else plan.source_text,
     }
     return "Данные о товаре (недоверенные):\n" + json.dumps(payload, ensure_ascii=False)
 

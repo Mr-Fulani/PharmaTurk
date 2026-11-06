@@ -138,17 +138,21 @@ def _clean_superstep(text: str) -> str:
     return text
 
 
-def superstep_prompt_text(text: str, name: str) -> str:
+def superstep_prompt_text(raw: Any, name: str) -> str:
     """Текст SuperStep для модели: без названия товара и полей шаблона с ним.
 
-    Ключ памяти переводов — полный текст (``clean_source_text``): названием с цветом
-    отличаются тексты соседних цветов одной модели, и старые записи памяти остаются в силе.
+    Строится из исходного HTML построчно: поле шаблона в пункте списка без точки
+    («<li>Marka: Lacoste</li>») режется до конца строки. Ключ памяти переводов — полный
+    текст (``clean_source_text``): названием с цветом отличаются тексты соседних цветов одной
+    модели, и старые записи памяти остаются в силе.
     """
+    text = clean_source_text(raw, "superstep", keep_lines=True)
     if len(name) > 10:
         text = text.replace(name, " ")
     text = _SUPERSTEP_META_FIELD_RE.sub(" ", text)
-    text = re.sub(r"\s+\.", ".", re.sub(r"(?:\s*\.){2,}", ".", text))  # «Ürün Özellikleri . . .» после вырезанных полей
-    return re.sub(r"\s+", " ", text).strip(" ,")
+    text = re.sub(r"[^\S\n]+\.", ".", re.sub(r"(?:[^\S\n]*\.){2,}", ".", text))  # «Ürün Özellikleri . . .»
+    lines = (re.sub(r"[^\S\n]+", " ", line).strip(" ,.") for line in text.split("\n"))
+    return "\n".join(line for line in lines if re.search(r"[^\W\d_]", line))
 
 
 def _cut_outfit_tips(text: str) -> str:
@@ -164,24 +168,33 @@ def _cut_outfit_tips(text: str) -> str:
     return " ".join(part for part in (text[: match.start()].strip(), " ".join(sentences), tail) if part)
 
 
-def clean_source_text(value: Any, source: str = "") -> str:
-    """Текст источника без HTML, кодов LCW и юридического хвоста; ``source`` — product_source()."""
+def clean_source_text(value: Any, source: str = "", *, keep_lines: bool = False) -> str:
+    """Текст источника без HTML, кодов LCW и юридического хвоста; ``source`` — product_source().
+
+    ``keep_lines`` — границы абзацев и пунктов списка остаются переводами строк (текст для модели:
+    поле шаблона без точки режется до конца строки, а не до первой точки). Ключ памяти — без него.
+    """
     text = str(value or "")
     for _ in range(2):  # у части источников HTML экранирован дважды
         text = html.unescape(text)
     if source == "superstep":
         text = _clean_superstep(text)
+    if keep_lines:
+        text = re.sub(r"<br\s*/?>|</(?:p|li|div|h[1-6]|tr|ul|ol)>", "\n", text, flags=re.IGNORECASE)
+    spaces = r"[^\S\n]+" if keep_lines else r"\s+"
     text = re.sub(r"<[^>]+>", " ", text)
     if source == "superstep":
-        text = _cut_outfit_tips(re.sub(r"\s+", " ", text))
+        text = _cut_outfit_tips(re.sub(spaces, " ", text))
     text = re.sub(r"Ürün Kodu:\s*\S+", " ", text)
     text = re.sub(r"\bS\d{6,}\b", " ", text)
     text = re.sub(r"(?:İmalatçı|Imalatçı)\s*/.*$", " ", text, flags=re.DOTALL)
     text = re.sub(r"Ürün İçeriği ve Özellikleri", " ", text)
     # Остаток шапки LCW: « - 26865 - Renksiz - NIVEA MEN…» → «NIVEA MEN…»
     text = re.sub(r"^(?:\s*-\s*[^-]{1,30}?(?=\s+-))+\s*-\s*", " ", text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip(" -")
+    text = re.sub(spaces, " ", text)
+    if keep_lines:
+        text = re.sub(r" *\n[\s]*", "\n", text)
+    return text.strip(" -\n")
 
 
 # «PC-5112-3892 Taba-Erkek Sandalet», «Vizon-Erkek»: цвет и пол слитно через дефис.
