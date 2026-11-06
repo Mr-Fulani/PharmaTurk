@@ -449,7 +449,8 @@ _COVERED_SENTENCE_RES = {
     "composition": re.compile(r"^\W*(?:состав|ingredients)\b(?! одной порции| на \d)", re.IGNORECASE),
     # Пересказ предупреждений при готовом блоке (NUTRAFARM 7273).
     "warnings": re.compile(
-        r"не превыш(?:айте|ать)|недоступн\w* для детей|не замен\w* (?:нормальн|полноценн|сбалансир)|"
+        r"не (?:следует )?превыш(?:айте|ать)|превышать нельзя|недоступн\w* для детей|"
+        r"не замен\w* (?:нормальн|полноценн|сбалансир)|"
         r"do not exceed|out of (?:the )?reach of children|not (?:be used as )?a substitute",
         re.IGNORECASE,
     ),
@@ -630,7 +631,8 @@ _PIECE_COUNT_RE = re.compile(
 # Порция в той же фразе — не фасовка: «… по 2 капсулы в день», «take 2 softgels daily» (ревью #328).
 _PORTION_BEFORE_RE = re.compile(r"(?:\bпо|\btake|\btakes|\btaken)\s*$", re.IGNORECASE)
 _PORTION_AFTER_RE = re.compile(
-    r"^\s*\w*\s*(?:в день|в сутки|daily|a day|per day|per serving|на порцию|за раз|=\s*\d*\s*(?:порц|serving))",
+    r"^\s*\w*\s*(?:в день|в сутки|daily|a day|per day|per serving|на порцию|за раз|на при[её]м|per dose|per intake|"
+    r"=\s*\d*\s*(?:порц|serving))",
     re.IGNORECASE,
 )
 # «Выпускается в упаковке по 60 капсул» — «по» здесь о фасовке, число сравнивается (ревью #328).

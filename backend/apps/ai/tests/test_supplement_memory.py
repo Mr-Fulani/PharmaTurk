@@ -578,6 +578,13 @@ def test_warning_under_usage_label_goes_to_warnings():
     assert sm.section_parts({"product_info": limits}) == {
         "warnings": ["Günde 2 kapsülden fazla kullanmayınız.", "Bir defada 2 kapsülden fazla almayınız."]
     }
+    # Доза и запрет через запятую — доза в применении, запрет в предупреждениях (ревью #329).
+    mixed = ("Kullanım Şekli:\nGünde 1 kapsül yemekle alınız, doktorunuza danışmadan daha fazla kullanmayınız. "
+             "Günde 1 kapsül, 3 aydan fazla kullanmayınız.")
+    assert sm.section_parts({"product_info": mixed}) == {
+        "usage": ["Günde 1 kapsül yemekle alınız.", "Günde 1 kapsül."],
+        "warnings": ["Doktorunuza danışmadan daha fazla kullanmayınız.", "3 aydan fazla kullanmayınız."],
+    }
     # С дозой — остаётся в применении (ревью #328).
     dose = "Kullanım Şekli:\nDoktorunuza danışarak günde 2 kapsül alınız."
     assert sm.section_parts({"product_info": dose}) == {"usage": ["Doktorunuza danışarak günde 2 kapsül alınız."]}
@@ -655,6 +662,10 @@ def test_model_text_keeps_product_and_drops_what_blocks_say():
     assert "источником витаминов A и D" in text and "Состав одной порции" in text
     assert "Состав: ментол" not in text and "каждое утро" not in text and "нужен для одного дня" not in text
     assert "недоступном" not in text and "не заменяют" not in text and "Пищевая добавка." not in text
+    # «Не следует превышать дозу» модели при блоке предупреждений — тоже повтор (ревью #329).
+    assert "превышать" not in sc.build_description(
+        ["SOLGAR — витамин C.", "Не следует превышать рекомендуемую дозу."], "ru", blocks=[usage], covered=covered
+    )
     assert "<p>В одной капсуле 480 мг экстракта.</p>" in text and "Ещё сироп во флаконе 100 мл." in text
     # Где нет блока состава и предупреждений — модель их называет.
     assert "Состав: ментол" in sc.build_description(paragraphs, "ru")
@@ -694,6 +705,7 @@ def test_pack_count_in_description_must_match_title():
     assert not sc.pack_mismatch("<p>В упаковке 60 капсул.</p>", sc.parse_pack("X 2 x 30 Kapsül"))
     assert sc.pack_mismatch("<p>В упаковке 30 капсул.</p>", capsules)
     assert not sc.pack_mismatch("<p>В упаковке 60 капсул; 1 капсула = 1 порция.</p>", capsules)
+    assert not sc.pack_mismatch("<p>Во флаконе по 1 капсуле на приём.</p>", capsules)
     # «В упаковке по 60 капсул» — фасовка, а не порция.
     assert sc.pack_mismatch("<p>Выпускается в упаковке по 60 капсул.</p>", sc.parse_pack("X 64 Kapsül"))
 
