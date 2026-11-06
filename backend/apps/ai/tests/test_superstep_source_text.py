@@ -106,6 +106,14 @@ def test_shoe_material_upper_and_sole_by_labels(raw, material, sole):
     assert values.get("sole-material") == sole
 
 
+def test_labelled_materials_only_for_shoes():
+    rows = _dynamic_attributes(
+        SimpleNamespace(product_type="accessories"), {"attributes": {"material": "Üst: Hakiki deri, Taban: Kauçuk"}},
+        ProductFacts(product_type="accessories"),
+    )
+    assert {row["slug"]: row["value_ru"] for row in rows}.get("material") == "Натуральная кожа"
+
+
 @pytest.mark.parametrize(
     "name, brand, model",
     [
@@ -115,14 +123,6 @@ def test_shoe_material_upper_and_sole_by_labels(raw, material, sole):
         ("Kinetix J5SM-TST7325 Erkek Sneaker", "Kinetix", ""),
     ],
 )
-def test_labelled_materials_only_for_shoes():
-    rows = _dynamic_attributes(
-        SimpleNamespace(product_type="accessories"), {"attributes": {"material": "Üst: Hakiki deri, Taban: Kauçuk"}},
-        ProductFacts(product_type="accessories"),
-    )
-    assert {row["slug"]: row["value_ru"] for row in rows}.get("material") == "Натуральная кожа"
-
-
 def test_short_hyphen_code_right_after_brand_is_model(name, brand, model):
     facts = ProductFacts(product_type="shoes", brand=brand)
     parse_name(name, facts)
