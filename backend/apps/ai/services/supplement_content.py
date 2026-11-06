@@ -337,7 +337,8 @@ _META_RE = re.compile(
     # суть товара, пилот 2 на проде 06.11.2026).
     r"в источнике|из источника|источник не|данным источника|в данных|не указан|не приведен|уточн|инструкци|консульт|специалист|"
     # «in the source», а не «a natural source of vitamins A and D» (ревью #328).
-    r"\bin the source\b|\bthe source (?:does|did|doesn't|lacks)|\bper the source\b|not specified|not provided|not stated|"
+    r"\bin the source\b|\bthe source (?:does|did|doesn't|lacks|provides no|gives no|has no|contains no)|"
+    r"\bper the source\b|\baccording to the source\b|not specified|not provided|not stated|"
     r"not given|not listed|label|instructions|consult|specialist",
     re.IGNORECASE,
 )
@@ -448,7 +449,8 @@ _COVERED_SENTENCE_RES = {
     "composition": re.compile(r"^\W*(?:состав|ingredients)\b(?! одной порции| на \d)", re.IGNORECASE),
     # Пересказ предупреждений при готовом блоке (NUTRAFARM 7273).
     "warnings": re.compile(
-        r"не превыш(?:айте|ать)|недоступн\w* для детей|не замен\w* (?:нормальн|полноценн|сбалансир)|"
+        r"не (?:следует )?превыш(?:айте|ать)|превышать нельзя|недоступн\w* для детей|"
+        r"не замен\w* (?:нормальн|полноценн|сбалансир)|"
         r"do not exceed|out of (?:the )?reach of children|not (?:be used as )?a substitute",
         re.IGNORECASE,
     ),
@@ -466,11 +468,14 @@ def covered_by_blocks(kinds) -> tuple:
 # Повтор частей по смыслу (пилот 06.11.2026, IMUPLUS 120): «Хранить в недоступном для детей месте» в
 # предупреждениях и «Хранить в недоступном для детей месте при температуре ниже 25°C» в хранении; «Не превышайте
 # рекомендуемую суточную дозу» и «… порцию». Решение — по русскому тексту, то же убирается из английского.
-_STOP_WORDS = {"в", "во", "и", "с", "со", "на", "по", "для", "при", "от", "до", "а", "или", "к", "из", "о", "об", "также"}
+_STOP_WORDS = {"в", "во", "и", "с", "со", "на", "по", "для", "при", "от", "до", "а", "или", "к", "из", "о", "об", "также",
+               "следует", "нужно", "необходимо", "должны", "должен"}
 
 
 # «Дозу» и «порцию» источник пишет вперемешку — для сравнения это одно слово.
-_SAME_STEMS = {"порци": "доз", "дозу": "доз", "дозы": "доз", "дозир": "доз", "dose": "доз", "porti": "доз"}
+_SAME_STEMS = {"порци": "доз", "дозу": "доз", "дозы": "доз", "дозир": "доз", "dose": "доз", "porti": "доз",
+               # «Не следует превышать дозу» = «Дозу превышать нельзя» (ревью #328).
+               "нельз": "не", "запре": "не"}
 
 
 def _content_stems(text: str) -> frozenset:
@@ -625,7 +630,13 @@ _PIECE_COUNT_RE = re.compile(
 )
 # Порция в той же фразе — не фасовка: «… по 2 капсулы в день», «take 2 softgels daily» (ревью #328).
 _PORTION_BEFORE_RE = re.compile(r"(?:\bпо|\btake|\btakes|\btaken)\s*$", re.IGNORECASE)
-_PORTION_AFTER_RE = re.compile(r"^\s*\w*\s*(?:в день|в сутки|daily|a day|per day|per serving|на порцию|за раз)", re.IGNORECASE)
+_PORTION_AFTER_RE = re.compile(
+    r"^\s*\w*\s*(?:в день|в сутки|daily|a day|per day|per serving|на порцию|за раз|на при[её]м|per dose|per intake|"
+    r"=\s*\d*\s*(?:порц|serving))",
+    re.IGNORECASE,
+)
+# «Выпускается в упаковке по 60 капсул» — «по» здесь о фасовке, число сравнивается (ревью #328).
+_PACK_PO_RE = re.compile(r"(?:упаков\w*|флакон\w*|банк\w*|коробк\w*)\s+по\s*$", re.IGNORECASE)
 
 
 def pack_mismatch(description: Any, pack: Optional[Pack]) -> bool:
@@ -643,7 +654,8 @@ def pack_mismatch(description: Any, pack: Optional[Pack]) -> bool:
             continue
         for match in _PIECE_COUNT_RE.finditer(sentence):
             after = sentence[match.end():match.end() + 20]
-            if _PORTION_BEFORE_RE.search(sentence[:match.start()]) or _PORTION_AFTER_RE.search(after):
+            before = sentence[:match.start()]
+            if (_PORTION_BEFORE_RE.search(before) and not _PACK_PO_RE.search(before)) or _PORTION_AFTER_RE.search(after):
                 continue
             if int(match.group(1)) not in allowed:
                 return True

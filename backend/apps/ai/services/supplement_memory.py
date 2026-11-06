@@ -129,6 +129,7 @@ _USAGE_RE = re.compile(
 # «Pratik sprey formu sayesinde … kolayca tüketebilirsiniz», «Dünya’nın en çok tercih edilen …» — реклама;
 # «Aşağıdaki örnek beslenme tablosunu …» — ссылка на таблицу, которой в карточке нет. «Aşağıdaki durumlarda
 # kullanmayınız: …» — противопоказание, «Tabloda belirtilen günlük dozu aşmayınız» — предупреждение, их не трогать.
+_DOSE_LIMIT_RE = re.compile(r"\d+\s*(?:kapsul|tablet|sase|olcek|damla|ml|pastil|puf)\w*\s+fazla")
 _DOSE_TR_RE = re.compile(r"\bgunde\b|\bdefa\b|\bkez\b|\d+\s*(?:kapsul|tablet|sase|olcek|damla|ml\b|pastil|puf)")
 _ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|ornek\b.*\btablo")
 # Заявления о пользе («Yorgunluk ve bitkinliğin azalmasına katkıda bulunur», «… Sağlık Beyanları Yönetmeliği'ne
@@ -261,7 +262,7 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
     if (
         any(word not in source for word in turkish_words) or ("|" in ru + en and "|" not in source)
         or _RU_LATIN_UNIT_RE.search(ru) or bracketed_source_word
-        or re.search(r"(?i)\b(\w+) \(\1\)", ru) or re.search(r"%\s?\d", ru)
+        or re.search(r"(?i)\b([^\W\d_]+) \(\1\)", ru) or re.search(r"%\s?\d", ru)
         # «in lin», «ADI»; коды «Q10», «B6» как есть — верно.
         or (ru.strip().lower() == source.strip().lower() and all(len(w) <= 3 and w.isalpha() for w in source.split()))
     ):
@@ -270,7 +271,8 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
     # Только то же число: «D3 (1)» — сноска, не повтор (ревью #328).
     if any(
         re.sub(r"\s|[–-]", "-", a) == re.sub(r"\s|[–-]", "-", b)
-        for a, b in re.findall(r"(\d+(?:\s*[–-]\s*\d+)?)\s*\(\s*(\d+(?:\s*[–-]\s*\d+)?)\s*\)", ru)
+        # «Омега-3 (3)» — число в названии вещества, не диапазон.
+        for a, b in re.findall(r"(?<![\w-])(\d+(?:\s*[–-]\s*\d+)?)\s*\(\s*(\d+(?:\s*[–-]\s*\d+)?)\s*\)", ru)
     ):
         problems.append("number_repeated")
     return problems + _meaning_problems(folded_source, ru, en)
@@ -331,12 +333,14 @@ def _split_top_level(text: str) -> list[str]:
     for item in items:
         # Сноска, приклеенная к компоненту: «Kolekalsiferol. Formülasyonda kaplama maddesi olarak kullanılan
         # bileşenin ticari markasıdır» (PHARMATON 7265) — компонент без сноски.
-        # Только после целого слова и вне скобок: «Bifidobacterium (B. Lactis BB-12) …», «Vit. C Askorbik asit» —
-        # сокращения, не сноска (ревью #328).
+        # Только после целого слова, вне скобок и если хвост — предложение со сказуемым («… markasıdır»):
+        # «Bifidobacterium (B. Lactis BB-12) …», «Vit. C …», «Ekstr. Ginkgo …» — сокращения, «… konsantresi. Kapsül
+        # kabuğu bileşenleri: sığır jelatini» — состав, не сноска (ревью #328).
         sentence_tail = re.search(r"[^\W\d_]{4,}\.\s+(?=[A-ZÇĞİÖŞÜ])", item)
         if (
             sentence_tail and len(item[sentence_tail.end():].split()) >= 4
             and item[:sentence_tail.start()].count("(") == item[:sentence_tail.start()].count(")")
+            and re.search(r"(?:d[iu]r|t[iu]r)\W*$", fold_tr(item[sentence_tail.end():]))
         ):
             item = item[:sentence_tail.end()].rstrip().rstrip(".")
         item = item.strip(" .*")
@@ -353,6 +357,22 @@ def _split_top_level(text: str) -> list[str]:
         ):
             result.append(item)
     return result
+
+
+def _split_dose_and_prohibition(sentence: str) -> list[str]:
+    """«Günde 1 kapsül yemekle alınız, doktorunuza danışmadan daha fazla kullanmayınız.» → доза и запрет отдельно:
+    доза остаётся в способе применения, запрет уходит в предупреждения (ревью #329)."""
+    folded = fold_tr(sentence)
+    if "," not in sentence or not (_DOSE_TR_RE.search(folded) and _PROHIBITION_RE.search(folded)):
+        return [sentence]
+    # Десятичная запятая «2,5 ml», «1,5 ölçek» — не граница части фразы (ревью #329).
+    clauses = [clause.strip() for clause in re.split(r"(?<!\d),|,(?!\d)", sentence) if clause.strip()]
+    first_prohibition = next(i for i, clause in enumerate(clauses) if _PROHIBITION_RE.search(fold_tr(clause)))
+    dose = ", ".join(clauses[:first_prohibition])
+    if not first_prohibition or not _DOSE_TR_RE.search(fold_tr(dose)):
+        return [sentence]
+    prohibition = ", ".join(clauses[first_prohibition:])
+    return [dose.rstrip(" .") + ".", prohibition[:1].upper() + prohibition[1:]]
 
 
 def _sentences(text: str) -> list[str]:
@@ -514,7 +534,10 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 list_seen = list_seen or len(items) > 1
                 parts["composition"].extend(items)
                 continue
-            for sentence in _sentences(line):
+            sentences = _sentences(line)
+            if current == "usage":
+                sentences = [part for sentence in sentences for part in _split_dose_and_prohibition(sentence)]
+            for sentence in sentences:
                 folded = fold_tr(sentence)
                 if _skip_sentence(folded) or sentence.endswith("?") or _TR_CLAIM_RE.search(folded):
                     continue
@@ -532,7 +555,9 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 # danışınız») — в предупреждения (NUTRAFARM 7273: предупреждения внутри «Способа применения»).
                 # Фраза с дозой или кратностью остаётся в применении: «Doktorunuza danışarak günde 2 kapsül alınız»
                 # (ревью #328: блок «Способ применения» пропадал).
-                if target == "usage" and not _DOSE_TR_RE.search(folded) and (
+                # «Günde 2 kapsülden fazla kullanmayınız» — доза в запрете, это предупреждение (ревью #328); «fazla» не
+                # после дозы («daha fazla», «3 aydan fazla») запрет делает только вместе со своей частью фразы (#329).
+                if target == "usage" and (not _DOSE_TR_RE.search(folded) or _DOSE_LIMIT_RE.search(folded)) and (
                     (_STANDARD_WARNING_RE.search(folded) and _DIRECTIVE_RE.search(folded)) or _PROHIBITION_RE.search(folded)
                 ):
                     target = "warnings"
