@@ -45,6 +45,22 @@ _BRAND_FIRST_RE = re.compile(r"^((?:[^\sа-яёА-ЯЁ]+\s+)+)([а-яё][^,]*)(,
 # SuperStep: «DIS YUZEY:%100 SIGIR DERISI TABAN:%100 KAUCUK» — верх и подошва одной строкой;
 # без обрезки «Материал» брал «Каучук» подошвы у кожаных кроссовок (пилот 06.11.2026).
 _SOLE_PART_RE = re.compile(r"(?:d[ıi][şs]\s*)?taban\s*:|outsole\s*:", re.IGNORECASE)
+# Предложения-«вода», которые модель пишет вопреки промпту (пилот SuperStep 06.11.2026: 12 и 6
+# описаний из 50): «Модель подходит для повседневной носки», «Цвет сочетается с джинсами».
+# Вырезается предложение целиком, чтобы текст не обрывался.
+_FILLER_SENTENCE_RE = {
+    "ru": re.compile(
+        r"для\s+повседневн\w*\s+(?:носки|образ\w*|использовани\w*|стил\w*)"
+        r"|сочета\w*\s+с\s+(?:джинс|брюк|чинос|шорт|юбк|плать|разн\w+|любы\w+|больш\w+|други\w+|повседневн\w+)",
+        re.IGNORECASE,
+    ),
+    "en": re.compile(
+        r"\b(?:everyday|daily|casual)\s+(?:wear|looks?|outfits?|style)\b"
+        r"|\b(?:pairs?|goes|go|combines?|matches?)\s+(?:well\s+|easily\s+|perfectly\s+)?with\b",
+        re.IGNORECASE,
+    ),
+}
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+(?=[«\"A-ZА-ЯЁ])")
 _UPPER_LABEL_RE = re.compile(r"^\s*(?:d[ıi][şs]\s*y[üu]zey|upper)\s*:\s*", re.IGNORECASE)
 
 SYSTEM_PROMPT = """
@@ -275,6 +291,23 @@ def _add_usage(result: dict[str, Any], extra: dict[str, Any]) -> None:
     result["cost_usd"] = float(result.get("cost_usd") or 0) + float(extra.get("cost_usd") or 0)
 
 
+def drop_filler_sentences(text: str, locale: str) -> str:
+    """Описание без предложений-«воды»; теги и остальные предложения не меняются."""
+    pattern = _FILLER_SENTENCE_RE.get(locale)
+    if not text or pattern is None or not pattern.search(text):
+        return text
+    parts = re.split(r"(<[^>]+>)", text)
+    for index, part in enumerate(parts):
+        if part.startswith("<") or not pattern.search(part):
+            continue
+        sentences = _SENTENCE_SPLIT_RE.split(part)
+        kept = [sentence for sentence in sentences if not pattern.search(sentence)]
+        lead = part[: len(part) - len(part.lstrip())]
+        parts[index] = (lead + " ".join(sentence.strip() for sentence in kept)) if kept else ""
+    cleaned = re.sub(r"<p>\s*</p>", "", "".join(parts))
+    return cleaned.strip() if re.sub(r"<[^>]+>|\s", "", cleaned) else ""
+
+
 def _description_text(payload: dict[str, Any], locale: str) -> str:
     bucket = payload.get(locale) if isinstance(payload.get(locale), dict) else {}
     text = re.sub(r"<[^>]+>", " ", str(bucket.get("generated_description") or ""))
@@ -300,6 +333,10 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
     titles = dict(plan.titles)
     llm_titles: dict[str, str] = {}
     descriptions = dict(plan.descriptions)
+    if plan.description_source == "memory":
+        descriptions = {locale: drop_filler_sentences(text, locale) for locale, text in descriptions.items()}
+        if not all(descriptions.values()):
+            descriptions = build_fact_description(plan.facts, titles) or descriptions
     if plan.needs_llm:
         request = {
             "system_prompt": SYSTEM_PROMPT,
@@ -331,7 +368,7 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
                 titles[locale] = _checked_llm_title(llm_titles[locale], plan.facts, locale)
                 plan.title_sources[locale] = "llm"
             if plan.description_source == "llm":
-                descriptions[locale] = str(bucket.get("generated_description") or "").strip()
+                descriptions[locale] = drop_filler_sentences(str(bucket.get("generated_description") or "").strip(), locale)
         # LLM-название с турецким словом — название правилами без этого слова
         # (тип, бренд, модель); если и его нет, остаётся LLM-вариант (модерация).
         if any(not titles.get(locale) for locale in plan.missing_titles):

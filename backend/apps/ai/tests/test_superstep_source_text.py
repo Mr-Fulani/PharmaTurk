@@ -51,3 +51,41 @@ def test_shoe_material_is_not_taken_from_sole(raw, expected):
 
     rows = _dynamic_attributes(SimpleNamespace(product_type="shoes"), {"attributes": {"material": raw}}, ProductFacts(product_type="shoes"))
     assert next((row["value_ru"] for row in rows if row["slug"] == "material"), None) == expected
+
+
+def test_filler_sentences_are_dropped_whole_and_empty_paragraphs_go():
+    from apps.ai.services.rules.pipeline import drop_filler_sentences
+
+    text = (
+        "<p>Футболка Lacoste из 100% хлопка. Модель подходит для повседневной носки. Вырез круглый.</p>"
+        "<p>Чёрный цвет сочетается с джинсами и брюками.</p>"
+    )
+    assert drop_filler_sentences(text, "ru") == "<p>Футболка Lacoste из 100% хлопка. Вырез круглый.</p>"
+    assert drop_filler_sentences("<p>Подошва 3.5 см. Подходит для повседневной носки.</p>", "ru") == "<p>Подошва 3.5 см.</p>"
+    assert drop_filler_sentences("<p>Модель подходит для повседневной носки.</p>", "ru") == ""
+    assert drop_filler_sentences("<p>Made of cotton. It pairs well with jeans.</p>", "en") == "<p>Made of cotton.</p>"
+
+
+@pytest.mark.parametrize(
+    "name, brand, model",
+    [
+        ("Lacoste AG-LT23 Ultra Kadın Mavi Sneaker", "Lacoste", "AG-LT23 Ultra"),
+        ("McKinley MG30-1 Çocuk Beyaz Kayak Botu", "Mc Kinley", "MG30-1"),
+        ("Pierre Cardin PC-7315 Erkek Sandalet", "Pierre Cardin", ""),  # 4 цифры — артикул
+        ("Kinetix J5SM-TST7325 Erkek Sneaker", "Kinetix", ""),
+    ],
+)
+def test_short_hyphen_code_right_after_brand_is_model(name, brand, model):
+    from apps.ai.services.rules.facts import ProductFacts, parse_name
+
+    facts = ProductFacts(product_type="shoes", brand=brand)
+    parse_name(name, facts)
+    assert facts.model == model
+
+
+def test_title_cleanup_keeps_short_model_code_and_drops_supplier_codes():
+    from apps.catalog.utils.variant_titles import strip_price_and_codes_from_title
+
+    assert strip_price_and_codes_from_title("Женские кроссовки Lacoste AG-LT23 Ultra") == "Женские кроссовки Lacoste AG-LT23 Ultra"
+    assert strip_price_and_codes_from_title("Bisiklet Yaka T-Shirt J5SM-TST7325") == "Bisiklet Yaka T-Shirt"
+    assert strip_price_and_codes_from_title("Sandalet PC-7315 Taba") == "Sandalet Taba"

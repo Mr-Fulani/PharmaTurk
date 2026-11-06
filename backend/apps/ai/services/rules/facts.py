@@ -207,6 +207,11 @@ def _is_hyphen_model(token: str) -> bool:
     return len(parts) == 2 and all(parts) and sum(char.isdigit() for char in token) <= 2
 
 
+# «Lacoste AG-LT23 Ultra», «McKinley MG30-1»: буквы, до двух цифр, дефис, короткий хвост — модель,
+# если стоит сразу за брендом. «PC-7315», «J5SM-TST7325», «PC-5112-3892» — артикулы.
+BRAND_MODEL_CODE_RE = re.compile(r"^[A-Za-z]{2,}\d{0,2}-[A-Za-z]{0,3}\d{1,2}$")
+
+
 def _is_strong_model_token(token: str) -> bool:
     """После описательных слов допустимы только коды и ВЕРХНИЙ регистр."""
     stripped = token.strip("()[],.;:")
@@ -296,7 +301,8 @@ def parse_name(name: str, facts: ProductFacts) -> None:
                 model.append("")  # разрыв: «Barcelona Urban … Sandalet 5003»
             continue
         brand_word = key in brand_tokens and " ".join(folded[index : index + 2]) not in vocab.BRAND_WORD_PHRASES
-        if brand_word or (_HYPHEN_CODE_RE.match(token) and not _is_hyphen_model(token)):
+        model_code = bool(facts.brand) and not model and not seen_vocab and BRAND_MODEL_CODE_RE.match(token.strip("()[],.;:"))
+        if brand_word or (_HYPHEN_CODE_RE.match(token) and not _is_hyphen_model(token) and not model_code):
             index += 1
             continue
         if token in ("&", "/", "+") and model:
