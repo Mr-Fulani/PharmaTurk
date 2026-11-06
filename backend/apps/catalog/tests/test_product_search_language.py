@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 from apps.ai.services.medicine_seo import BRAND_NAMESPACE
 from apps.ai.services.translation_memory import remember
 from apps.catalog.models import Brand, Category, CategoryTranslation, MedicineProduct, Product
-from apps.catalog.product_search import kind_words, search_plan
+from apps.catalog.product_search import iter_search_rows, kind_words, search_plan
 from apps.catalog.search_language import closest_word, edit_distance, latin_to_cyrillic, letter_twin, stem, switch_layout
 
 from .test_product_search import URL, _ids, _rebuild
@@ -204,3 +204,93 @@ def test_category_change_reindexes_product(make_product, django_capture_on_commi
         product.category = shoes
         product.save(update_fields=["category"])
     assert _ids({"search": "кроссовки"}) == [product.pk]
+
+
+def test_synonym_keys_match_word_forms():
+    from apps.catalog.search_language import QUERY_REPLACEMENTS, QUERY_SYNONYMS
+
+    for word in ("детей", "тапочки", "ребенка", "женщинам", "мальчиков", "кроссы"):
+        assert stem(word) in QUERY_SYNONYMS or stem(word) in QUERY_REPLACEMENTS, word
+
+
+def test_synonyms_do_not_find_other_words(make_product):
+    sneakers = make_product("Erkek Sneaker")
+    make_product("PHYTOIL Кедровая вода, 100 мл")
+    make_product("Кроссворды Пророки")
+    make_product("NEUJOYS PUFFER спрей")
+    _rebuild()
+
+    assert _ids({"search": "кроссы"}) == [sneakers.pk]
+    assert _ids({"search": "кеды"}) == [sneakers.pk]
+    assert _ids({"search": "кроссовки"}) == [sneakers.pk]
+    assert _ids({"search": "пуховик"}) == []
+
+
+def test_prepositions_are_optional(make_product):
+    nasal = make_product("OTRIVIN Назальный спрей 0,1%")
+    burun = make_product("Burun Damlası")
+    shampoo = make_product("Шампунь и кондиционер 2 в 1")
+    tea = make_product("Чай травяной с ромашкой")
+    make_product("Носки хлопковые")
+    _rebuild()
+
+    assert set(_ids({"search": "капли в нос"})) == {nasal.pk, burun.pk}
+    assert _ids({"search": "шампунь 2 в 1"}) == [shampoo.pk]
+    assert _ids({"search": "чай с ромашкой"}) == [tea.pk]
+    assert _ids({"search": "крем для рук и ног"}) == []  # предлоги не находят «Носки» сами по себе
+
+
+def test_short_brand_word_and_new_balance(make_product):
+    on = make_product("Cloudmonster Erkek Sneaker", brand=_brand("On"))
+    make_product("Sezon Erkek Sneaker")  # «он» внутри слова не считается
+    nb = make_product("574 Erkek Sneaker", brand=_brand("New Balance"))
+    _rebuild()
+
+    assert _ids({"search": "кроссовки он"}) == [on.pk]
+    assert _ids({"search": "нью баланс"}) == [nb.pk]
+    assert _ids({"search": "нью беланс"}) == [nb.pk]
+
+
+def test_rebuild_has_no_query_per_product(make_product):
+    top = Category.objects.create(name="Обувь", slug=f"c-{uuid.uuid4().hex[:8]}")
+    mid = Category.objects.create(name="Женская обувь", slug=f"c-{uuid.uuid4().hex[:8]}", parent=top)
+    leaf = Category.objects.create(name="Кроссовки", slug=f"c-{uuid.uuid4().hex[:8]}", parent=mid)
+    great = Category.objects.create(name="Ещё ниже", slug=f"c-{uuid.uuid4().hex[:8]}", parent=leaf)
+    make_product("One", category=great)
+    with CaptureQueriesContext(connection) as one:
+        rows = dict(iter_search_rows())
+    for index in range(5):
+        make_product(f"More {index}", category=great)
+    with CaptureQueriesContext(connection) as many:
+        dict(iter_search_rows())
+    assert len(many) == len(one)
+    assert "женская обувь" in next(iter(rows.values()))["text"]
+
+
+def test_long_garbage_query_is_bounded(make_product):
+    make_product("Парацетамол 500 мг")
+    _rebuild()
+    garbage = " ".join(f"щжфывапролд{index}х" for index in range(30))
+    with CaptureQueriesContext(connection) as queries:
+        assert _ids({"search": garbage}) == []
+    search_sql = [q for q in queries if "catalog_productsearchindex" in q["sql"] or "word_similarity" in q["sql"]]
+    assert len(search_sql) <= 10, [q["sql"][:80] for q in search_sql]
+
+
+def test_section_search_chooses_plan_once(make_product):
+    make_product("Парацетамол 500 мг")
+    _rebuild()
+    with CaptureQueriesContext(connection) as queries:
+        response = APIClient().get("/api/catalog/clothing/products", {"search": "gfhfwtnfvjk"})
+    assert response.status_code == 200
+    checks = [q for q in queries if q["sql"].startswith('SELECT 1 AS "a" FROM "catalog_productsearchindex"')]
+    # индекс заполнен? + запрос как есть + раскладка — один раз, хотя get_queryset вызывается 3–4 раза
+    assert len(checks) == 3, [q["sql"][:120] for q in checks]
+
+
+def test_no_correction_note_when_nothing_visible(make_product):
+    hidden = make_product("Парацетамол 500 мг")
+    _rebuild()
+    Product.objects.filter(pk=hidden.pk).update(is_active=False)
+    data = _search("gfhfwtnfvjk")
+    assert data["count"] == 0 and "search_info" not in data

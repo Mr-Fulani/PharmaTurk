@@ -27,7 +27,11 @@ from django.db.models.functions import Length
 from django.db.models.signals import post_save
 
 from .search_language import (
+    PHRASE_SYNONYMS,
+    QUERY_REPLACEMENTS,
     QUERY_SYNONYMS,
+    STOP_WORDS,
+    VITAMIN_STEMS,
     TYPO_CANDIDATE_THRESHOLD,
     TYPO_MIN_LENGTH,
     closest_word,
@@ -150,11 +154,12 @@ _CATEGORY_DEPTH = 3  # раздел, его родитель и родитель
 def _category_names(category) -> list[str]:
     """Названия раздела товара и разделов выше («Кроссовки», «Женская обувь», «Обувь»)."""
     names: list[str] = []
-    for _ in range(_CATEGORY_DEPTH):
+    for level in range(_CATEGORY_DEPTH):
         if category is None:
             break
         names += [category.name, *_translation_values(category, "name")]
-        category = category.parent if category.parent_id else None
+        # У последнего загруженного уровня parent отложен (only): его не трогаем, иначе запрос на товар.
+        category = category.parent if level < _CATEGORY_DEPTH - 1 and category.parent_id else None
     return names
 
 
@@ -380,22 +385,45 @@ def _whole_word(field: str, word: str) -> Q:
     )
 
 
+def _word_start(field: str, word: str) -> Q:
+    return Q(**{f"{field}__startswith": word}) | Q(**{f"{field}__contains": f" {word}"})
+
+
 def word_condition(word: str, field: str, *, alone: bool = False) -> Q:
     """Одно слово запроса: основа без окончания, синонимы, буква витамина в другом алфавите.
 
-    Одна буква рядом с другими словами («витамин с») — целым словом, иначе её найдёт
-    любой текст. Только LIKE: каждое условие идёт по триграммному индексу.
+    Рядом с другими словами одна буква («витамин с») ищется целым словом, две («он», «d3») —
+    с начала слова, иначе их найдёт почти любой текст. Только LIKE: каждое условие идёт
+    по триграммному индексу.
     """
     twin = letter_twin(word)
-    if len(word) == 1 and not alone:
-        condition = _whole_word(field, word)
-        return condition | _whole_word(field, twin) if twin else condition
+    spellings = [word, twin] if twin else [word]
+    if not alone and len(word) <= 2 and not word.isdigit():
+        match = _whole_word if len(word) == 1 else _word_start
+        condition = Q()
+        for spelling in spellings:
+            condition |= match(field, spelling)
+        return condition
     base = stem(word)
-    variants = [base, *QUERY_SYNONYMS.get(base, ()), *([twin] if twin else [])]
+    if base in QUERY_REPLACEMENTS:
+        variants = list(QUERY_REPLACEMENTS[base])
+    else:
+        variants = [base, *QUERY_SYNONYMS.get(base, ()), *spellings[1:]]
     condition = Q()
     for variant in dict.fromkeys(variants):
         condition |= Q(**{f"{field}__contains": variant})
     return condition
+
+
+def _required_words(words: list[str]) -> list[str]:
+    """Слова, которые должны найтись: без предлогов и союзов («капли в нос» → «капли», «нос»),
+    кроме буквы после «витамин» («витамин с»). Запрос из одних предлогов ищется как есть."""
+    kept = [
+        word
+        for index, word in enumerate(words)
+        if word not in STOP_WORDS or (len(word) == 1 and index and stem(words[index - 1]).startswith(VITAMIN_STEMS))
+    ]
+    return kept or words
 
 
 def _search_condition(query: str, field: str) -> Optional[Q]:
@@ -403,6 +431,15 @@ def _search_condition(query: str, field: str) -> Optional[Q]:
     if not words:
         return None
     condition = Q()
+    text = f" {' '.join(words)} "
+    for phrase, variants in PHRASE_SYNONYMS.items():
+        if f" {phrase} " in text:
+            text = text.replace(f" {phrase} ", " ")
+            phrase_condition = Q()
+            for variant in variants:
+                phrase_condition |= Q(**{f"{field}__contains": variant})
+            condition &= phrase_condition
+    words = _required_words(text.split()) if text.strip() else []
     for word in words:
         condition &= word_condition(word, field, alone=len(words) == 1)
     return condition
@@ -415,27 +452,58 @@ def _index_has(query: str) -> bool:
     return condition is not None and ProductSearchIndex.objects.filter(condition).exists()
 
 
-def _typo_candidates(word: str) -> list[str]:
-    """Тексты товаров, где есть слово, похожее на ``word`` (триграммный индекс, не больше 300)."""
+def _words_found(words: list[str]) -> list[bool]:
+    """Есть ли каждое слово в индексе — одним запросом ``SELECT EXISTS(…), EXISTS(…)``."""
+    from .models_search import ProductSearchIndex
+
+    parts, params = [], []
+    for word in words:
+        sql, word_params = (
+            ProductSearchIndex.objects.filter(word_condition(word, "text", alone=True)).values("pk")[:1]
+            .query.sql_with_params()
+        )
+        parts.append(f"EXISTS({sql})")
+        params += word_params
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT " + ", ".join(parts), params)
+        return list(cursor.fetchone())
+
+
+def _typo_candidates(words: list[str]) -> list[str]:
+    """Тексты товаров, где есть слово, похожее на одно из ``words`` (триграммный индекс)."""
     from .models_search import ProductSearchIndex
 
     table = ProductSearchIndex._meta.db_table
+    condition = " OR ".join(["text %%> %s"] * len(words))
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
             "SELECT set_config('pg_trgm.word_similarity_threshold', %s, true)", [str(TYPO_CANDIDATE_THRESHOLD)]
         )
-        cursor.execute(f"SELECT text FROM {table} WHERE text %%> %s LIMIT 300", [word])
+        cursor.execute(f"SELECT text FROM {table} WHERE {condition} LIMIT %s", [*words, 300 * len(words)])
         return [row[0] for row in cursor.fetchall()]
+
+
+# Проверяется не больше стольких слов и исправляется не больше трёх: запрос из 30 выдуманных
+# слов — те же два запроса к базе (проверка слов и кандидаты), а не по запросу на слово.
+_TYPO_MAX_CHECKS = 6
+_TYPO_MAX_FIXES = 3
 
 
 def _typo_correction(query: str) -> str:
     """Запрос, в котором слова без совпадений заменены похожими словами каталога, или пусто."""
     words = query.split()
+    positions = [i for i, word in enumerate(words) if len(word) >= TYPO_MIN_LENGTH and not word.isdigit()]
+    positions = positions[:_TYPO_MAX_CHECKS]
+    if not positions:
+        return ""
+    found = _words_found([words[i] for i in positions])
+    missing = [i for i, ok in zip(positions, found) if not ok][:_TYPO_MAX_FIXES]
+    if not missing:
+        return ""
+    texts = _typo_candidates([words[i] for i in missing])
     changed = False
-    for index, word in enumerate(words):
-        if len(word) < TYPO_MIN_LENGTH or word.isdigit() or _index_has(word):
-            continue
-        replacement = closest_word(word, _typo_candidates(word))
+    for index in missing:
+        replacement = closest_word(words[index], texts)
         if replacement:
             words[index], changed = replacement, True
     return " ".join(words) if changed else ""
@@ -453,6 +521,22 @@ def _alternatives(search: str, query: str):
         yield "translit", " ".join(latin_to_cyrillic(word) or word for word in query.split())
 
 
+# Длиннее запрос обрезается по слову: в шапке так не ищут, а каждое слово — условие SQL.
+_MAX_QUERY = 100
+
+
+def request_search_plan(request, search: str) -> Optional[SearchPlan]:
+    """``search_plan`` один раз на HTTP-запрос: вьюсеты с фасетами вызывают ``get_queryset``
+    3–4 раза, а запасные шаги (раскладка, опечатки) — это запросы к базе."""
+    plans = getattr(request, "_product_search_plans", None)
+    if plans is None:
+        plans = {}
+        setattr(request, "_product_search_plans", plans)
+    if search not in plans:
+        plans[search] = search_plan(search)
+    return plans[search]
+
+
 def search_plan(search: str) -> Optional[SearchPlan]:
     """Как искать запрос; ``None`` — индекс пуст, поиск по названию (см. модуль).
 
@@ -464,6 +548,8 @@ def search_plan(search: str) -> Optional[SearchPlan]:
     if not search_index_ready():
         return None
     query = normalize_search_text(search)
+    if len(query) > _MAX_QUERY:
+        query = query[:_MAX_QUERY].rsplit(" ", 1)[0]
     if not query or _index_has(query):
         return SearchPlan(query)
     for mode, text in _alternatives(search, query):

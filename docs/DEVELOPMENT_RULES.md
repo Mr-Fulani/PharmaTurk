@@ -193,7 +193,7 @@ docker-compose за nginx и Cloudflare.
    строки — подзапросом по индексу 0217, проверка — на каталоге с тяжёлым `external_data`
    (05.11.2026 после выкатки «кр» искалось 20 с).
    Кириллица, синонимы, раскладка и опечатки — словарями (`vocab.BRAND_RU`, `vocab.KINDS`,
-   память `medicine_brand`, `search_language.QUERY_SYNONYMS`), не новым словарём брендов и не LLM;
+   память `medicine_brand`, словари запроса в `search_language.py`), не новым словарём брендов и не LLM;
    исправленный запрос ищется теми же `LIKE`, без `similarity` в `COUNT` и странице.
 
 ## 4. Фронтенд (Next.js)
