@@ -336,7 +336,9 @@ _META_RE = re.compile(
     # «в источнике не указано», а не «рыбий жир — природный источник витаминов» (SOLGAR 7225, 7318: пропадала
     # суть товара, пилот 2 на проде 06.11.2026).
     r"в источнике|из источника|источник не|данным источника|в данных|не указан|не приведен|уточн|инструкци|консульт|специалист|"
-    r"\bsource\b|not specified|not provided|not stated|not given|not listed|label|instructions|consult|specialist",
+    # «in the source», а не «a natural source of vitamins A and D» (ревью #328).
+    r"\bin the source\b|\bthe source (?:does|did|doesn't|lacks)|\bper the source\b|not specified|not provided|not stated|"
+    r"not given|not listed|label|instructions|consult|specialist",
     re.IGNORECASE,
 )
 _DROP_RES = (_CLAIM_RE, _BOILERPLATE_RE, _META_RE)
@@ -446,7 +448,7 @@ _COVERED_SENTENCE_RES = {
     "composition": re.compile(r"^\W*(?:состав|ingredients)\b(?! одной порции| на \d)", re.IGNORECASE),
     # Пересказ предупреждений при готовом блоке (NUTRAFARM 7273).
     "warnings": re.compile(
-        r"не превыша|недоступн\w* для детей|не замен\w* (?:нормальн|полноценн|сбалансир)|"
+        r"не превыш(?:айте|ать)|недоступн\w* для детей|не замен\w* (?:нормальн|полноценн|сбалансир)|"
         r"do not exceed|out of (?:the )?reach of children|not (?:be used as )?a substitute",
         re.IGNORECASE,
     ),
@@ -456,7 +458,8 @@ _COVERED_SENTENCE_RES = {
 
 def covered_by_blocks(kinds) -> tuple:
     """Регулярные выражения тем, которые в описании уже даёт блок памяти."""
-    kinds = set(kinds) | ({"composition"} if "excipients" in kinds else set())
+    # Только блок «Состав»: при одних «Вспомогательных веществах» состав модели — единственный источник действующих
+    # веществ (ревью #328: «Состав: магний цитрат 300 мг …» пропадал).
     return tuple(regex for kind, regex in _COVERED_SENTENCE_RES.items() if kind in kinds)
 
 
@@ -616,23 +619,35 @@ def form_mismatch(description: Any, pack: Optional[Pack], source_name: Any = "")
 # «В одной упаковке 60 конфет» при фасовке «64 жевательные конфеты» (OCEAN SMART GUMMIES 7360, пилот 2 на проде).
 _PACK_SENTENCE_RE = re.compile(r"упаков|в банке|во флаконе|в коробке|\bpack|bottle|\bbox\b|\bjar\b", re.IGNORECASE)
 _PIECE_COUNT_RE = re.compile(
-    r"(\d+)\s*(?:шт|капсул|таблет|конфет|саше|пастил|мармелад|жевательн|желейн|драже|"
+    r"(\d+)\s*(?:шт\b|штук|капсул|таблет|конфет|саше|пастил|мармелад|жевательн|желейн|драже|"
     r"capsul|softgel|tablet|gumm|sachet|lozeng|pieces|chewable)",
     re.IGNORECASE,
 )
+# Порция в той же фразе — не фасовка: «… по 2 капсулы в день», «take 2 softgels daily» (ревью #328).
+_PORTION_BEFORE_RE = re.compile(r"(?:\bпо|\btake|\btakes|\btaken)\s*$", re.IGNORECASE)
+_PORTION_AFTER_RE = re.compile(r"^\s*\w*\s*(?:в день|в сутки|daily|a day|per day|per serving|на порцию|за раз)", re.IGNORECASE)
 
 
 def pack_mismatch(description: Any, pack: Optional[Pack]) -> bool:
-    """Число штук в описании «в упаковке …» не совпадает с фасовкой названия."""
+    """Число штук в описании «в упаковке …» не совпадает с фасовкой названия.
+
+    Фасовка «2 уп. по 30 капсул» допускает и 30, и 60; «2 блистера по 30 капсул» — 30 после «по» не считается.
+    """
     if pack is None or not pack.piece:
         return False
-    allowed = set(re.findall(r"\d+", pack.ru))
+    numbers = [int(n) for n in re.findall(r"\d+", pack.ru)]
+    allowed = set(numbers) | ({numbers[0] * numbers[1]} if len(numbers) == 2 else set())
     plain = re.sub(r"<[^>]+>", " ", str(description or ""))
-    return any(
-        number not in allowed
-        for sentence in _SENTENCE_RE.split(plain) if _PACK_SENTENCE_RE.search(sentence)
-        for number in _PIECE_COUNT_RE.findall(sentence)
-    )
+    for sentence in _SENTENCE_RE.split(plain):
+        if not _PACK_SENTENCE_RE.search(sentence):
+            continue
+        for match in _PIECE_COUNT_RE.finditer(sentence):
+            after = sentence[match.end():match.end() + 20]
+            if _PORTION_BEFORE_RE.search(sentence[:match.start()]) or _PORTION_AFTER_RE.search(after):
+                continue
+            if int(match.group(1)) not in allowed:
+                return True
+    return False
 
 
 def description_problems(description: Any, source: Any, memory_texts: Optional[list[str]] = None) -> list[str]:

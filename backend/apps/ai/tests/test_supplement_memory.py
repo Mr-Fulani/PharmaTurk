@@ -208,6 +208,12 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
          "Взрослым рекомендуется по 1 шасе (5000 мг) в день, смешав с 300 мл воды.",
          "Adults: 1 sachet (5000 mg) a day mixed with 300 ml of water.", ["supplement_ingredient_mistranslated"]),
         ("Menthol (mentol)%0.26", "Ментол 0,26 %", "Menthol 0.26%", []),
+        # Ревью #328: опечатки «selülaz» в целлюлозах, сноска «(1)», коды как есть.
+        ("Mikrokristalin selülaz", "Микрокристаллическая целлюлоза", "Microcrystalline cellulose", []),
+        ("Hidroksipropil selülaz", "Гидроксипропилцеллюлоза", "Hydroxypropyl cellulose", []),
+        ("D3 Vitamini (1)", "Витамин D3 (1)", "Vitamin D3 (1)", []),
+        ("Q10", "Q10", "Q10", []),
+        ("B6", "B6", "B6", []),
         # Штамм латиницей с «GR-1» — не единица (ревью #327).
         ("Lactobacillus rhamnosus GR-1", "Lactobacillus rhamnosus GR-1", "Lactobacillus rhamnosus GR-1", []),
         # Повторное ревью: «не» при деепричастии — не запрет.
@@ -538,10 +544,20 @@ def test_bad_translation_already_in_memory_is_retranslated_and_replaced_but_manu
         # Сноска, приклеенная к компоненту (PHARMATON 7265).
         ("İçindekiler: Biotin, Kolekalsiferol. Formülasyonda kaplama maddesi olarak kullanilan bilesenin ticari "
          "markasidır", ["Biotin", "Kolekalsiferol"]),
+        # Сокращения — не сноска (ревью #328).
+        ("İçindekiler: Bifidobacterium (B. Lactis BB-12) 1 milyar KOB, Vit. C Askorbik asit 500 mg",
+         ["Bifidobacterium (B. Lactis BB-12) 1 milyar KOB", "Vit. C Askorbik asit 500 mg"]),
     ],
 )
 def test_composition_without_table_headers_prose_and_second_copies(text, composition):
     assert sm.section_parts({"product_info": text}).get("composition") == composition
+
+
+def test_prose_composition_is_marked_hidden_in_stats():
+    text = "Ürün Bileşimi:\nKoenzim Q10, E, B3, B5 Vitaminleri, Biotin ve Selenyum içerir."
+    with mock.patch.object(sm, "lookup", return_value={}):
+        blocks, _usage = sm.translate_blocks({"ingredients": text}, None)
+    assert blocks.stats["hidden_blocks"] == {"composition": "prose_list"}
 
 
 def test_warning_under_usage_label_goes_to_warnings():
@@ -552,6 +568,9 @@ def test_warning_under_usage_label_goes_to_warnings():
         "usage": ["Günde 2 kapsül alınız."],
         "warnings": ["Tavsiye edilen günlük dozu aşmayınız.", "Hamilelik döneminde doktorunuza danışınız."],
     }
+    # С дозой — остаётся в применении (ревью #328).
+    dose = "Kullanım Şekli:\nDoktorunuza danışarak günde 2 kapsül alınız."
+    assert sm.section_parts({"product_info": dose}) == {"usage": ["Doktorunuza danışarak günde 2 kapsül alınız."]}
 
 
 def test_unclosed_bracket_does_not_swallow_the_rest_of_composition():
@@ -629,6 +648,21 @@ def test_model_text_keeps_product_and_drops_what_blocks_say():
     assert "<p>В одной капсуле 480 мг экстракта.</p>" in text and "Ещё сироп во флаконе 100 мл." in text
     # Где нет блока состава и предупреждений — модель их называет.
     assert "Состав: ментол" in sc.build_description(paragraphs, "ru")
+    # Одни «Вспомогательные вещества» состав не покрывают — действующие вещества модели остаются (ревью #328).
+    excipients_only = sc.build_description(
+        ["Состав: магний цитрат 300 мг, витамин B6 2 мг."], "ru",
+        blocks=["Вспомогательные вещества: ГПМЦ."], covered=sc.covered_by_blocks({"excipients": [1]}),
+    )
+    assert "магний цитрат 300 мг" in excipients_only
+    # «Содержание магния не превышает 300 мг» — не пересказ предупреждения.
+    assert "не превышает 300 мг" in sc.build_description(
+        ["Содержание магния не превышает 300 мг."], "ru", blocks=["Предупреждения: …"],
+        covered=sc.covered_by_blocks({"warnings": [1]}),
+    )
+    # По-английски «source» — не рассуждение о данных (SOLGAR в EN).
+    assert "natural source of vitamins" in sc.build_description(
+        ["Cod liver oil is a natural source of vitamins A and D."], "en"
+    )
 
 
 def test_pack_count_in_description_must_match_title():
@@ -636,6 +670,24 @@ def test_pack_count_in_description_must_match_title():
     pack = sc.parse_pack("OCEAN SMART GUMMIES MULTIVITAMIN TAKVIYE EDICI GIDA 64 çiğnenebilir jel form")
     assert sc.pack_mismatch("<p>В одной упаковке 60 конфет.</p>", pack)
     assert not sc.pack_mismatch("<p>Упаковка: 64 жевательные конфеты. Порция — 2 конфеты в день.</p>", pack)
+    # Ревью #328: штаммы, порция в той же фразе, «2 x 30», блистеры.
+    capsules = sc.parse_pack("X 60 Kapsül")
+    assert not sc.pack_mismatch("<p>В упаковке 60 капсул с 10 штаммами бактерий.</p>", capsules)
+    assert not sc.pack_mismatch("<p>В упаковке 60 капсул, по 2 капсулы в день.</p>", capsules)
+    assert not sc.pack_mismatch("<p>Bottle of 60 softgels, take 2 softgels daily.</p>", capsules)
+    assert not sc.pack_mismatch("<p>В упаковке 2 блистера по 30 капсул.</p>", capsules)
+    assert not sc.pack_mismatch("<p>В упаковке 60 капсул.</p>", sc.parse_pack("X 2 x 30 Kapsül"))
+    assert sc.pack_mismatch("<p>В упаковке 30 капсул.</p>", capsules)
+
+
+def test_log_problems_flag_pack_mismatch():
+    log = SimpleNamespace(
+        raw_llm_response={"rule_content": {"supplement": {"brand": "OCEAN"}}},
+        input_data={"name": "OCEAN SMART GUMMIES MULTIVITAMIN TAKVIYE EDICI GIDA 64 çiğnenebilir jel form"},
+        extracted_attributes={}, generated_title="",
+        generated_description="<p>OCEAN — жевательные конфеты. В одной упаковке 60 конфет.</p>",
+    )
+    assert "supplement_pack_mismatch" in sc.log_problems(log)["description"]
 
 
 def test_block_texts_drop_repeats_and_say_gummy_for_gummies():
