@@ -42,6 +42,10 @@ _TURKISH_LETTERS_RE = re.compile(r"[çğışÇĞİŞ]")
 _CYRILLIC_LETTERS_RE = re.compile(r"[а-яё]", re.IGNORECASE)
 # Латиница (бренд/модель) в начале RU-названия, затем русский тип со строчной.
 _BRAND_FIRST_RE = re.compile(r"^((?:[^\sа-яёА-ЯЁ]+\s+)+)([а-яё][^,]*)(,.*)?$")
+# SuperStep: «DIS YUZEY:%100 SIGIR DERISI TABAN:%100 KAUCUK» — верх и подошва одной строкой;
+# без обрезки «Материал» брал «Каучук» подошвы у кожаных кроссовок (пилот 06.11.2026).
+_SOLE_PART_RE = re.compile(r"(?:d[ıi][şs]\s*)?taban\s*:|outsole\s*:", re.IGNORECASE)
+_UPPER_LABEL_RE = re.compile(r"^\s*(?:d[ıi][şs]\s*y[üu]zey|upper)\s*:\s*", re.IGNORECASE)
 
 SYSTEM_PROMPT = """
 Ты — редактор-переводчик карточек интернет-магазина Mudaroba (товары из Турции).
@@ -215,6 +219,10 @@ def _fragrance_name(payload: dict[str, Any], plan: RulePlan, input_data: dict[st
 
 def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts) -> list[dict[str, Any]]:
     attrs = input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {}
+    material = attrs.get("material")
+    if isinstance(material, str) and _SOLE_PART_RE.search(material):
+        upper = _SOLE_PART_RE.split(material, maxsplit=1)[0]
+        attrs = {**attrs, "material": _UPPER_LABEL_RE.sub("", upper).strip(" ,;")}
     kind = (facts.kind.ru, facts.kind.en) if facts.kind else None
     overrides = {
         "material": facts.upper,

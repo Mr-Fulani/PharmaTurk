@@ -32,3 +32,22 @@ def test_superstep_text_that_admits_no_facts_is_empty(disclaimer):
 
 def test_ordinary_eklenmemis_is_not_a_superstep_disclaimer():
     assert "paraben" in clean_source_text("Paraben eklenmemiş formül, ferah çiçeksi koku.")
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("DIS YUZEY:%62 PAMUK %27 SIGIR DERISI %11 SUET SIGIR DERISI TABAN:%100 KAUCUK", "Хлопок"),
+        ("DIS YUZEY:%100 SIGIR DERISI TABAN:%100 KAUCUK", None),  # верх не распознан — лучше пусто, чем подошва
+        ("Upper:Recycled polyester, TPUOutsole: Rubber", None),
+        ("Kauçuk", "Каучук"),  # одна подошва без разметки (шлёпанцы) — как раньше
+    ],
+)
+def test_shoe_material_is_not_taken_from_sole(raw, expected):
+    from types import SimpleNamespace
+
+    from apps.ai.services.rules.facts import ProductFacts
+    from apps.ai.services.rules.pipeline import _dynamic_attributes
+
+    rows = _dynamic_attributes(SimpleNamespace(product_type="shoes"), {"attributes": {"material": raw}}, ProductFacts(product_type="shoes"))
+    assert next((row["value_ru"] for row in rows if row["slug"] == "material"), None) == expected
