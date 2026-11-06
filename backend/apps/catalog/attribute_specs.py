@@ -81,8 +81,6 @@ ATTRIBUTE_SPECS: tuple[DynamicAttributeSpec, ...] = (
             ("gerçek deri", "Натуральная кожа"),
             ("suni deri", "Искусственная кожа"),
             ("vegan deri", "Искусственная кожа"),
-            ("suet", "Замша"),  # «Süet», «SUET SIGIR DERISI» (SuperStep) — до «deri»
-            ("deri", "Натуральная кожа"),  # «Deri», «SIGIR DERISI»; искусственная — выше
             ("pamuk", "Хлопок"),
             ("kumas", "Ткань"),
             ("kumaş", "Ткань"),
@@ -99,6 +97,10 @@ ATTRIBUTE_SPECS: tuple[DynamicAttributeSpec, ...] = (
             ("eva", "EVA"),
             ("poliuretan", "Полиуретан"),
             ("polyurethane", "Полиуретан"),
+            # SuperStep: «SÜET», «SIGIR DERISI». В конце списка: прежние совпадения не меняются;
+            # одно «deri» не берём — оно внутри других слов («derinlik» у IKEA).
+            ("suet", "Замша"),
+            ("sigir derisi", "Натуральная кожа"),
         ),
         max_words=4,
     ),

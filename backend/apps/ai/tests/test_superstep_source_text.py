@@ -91,9 +91,10 @@ def test_filler_sentences_are_dropped_whole_and_empty_paragraphs_go():
         ("DIS YUZEY:%62 PAMUK %27 SIGIR DERISI %11 SUET SIGIR DERISI TABAN:%100 KAUCUK", "Хлопок", "Каучук"),
         ("DIS YUZEY:%100 SIGIR DERISI TABAN:%100 KAUCUK", "Натуральная кожа", "Каучук"),
         ("DIS YUZEY:%76 POLYESTER %12 SUET SIGIR DERISI TABAN:%100 KAUCUK", None, "Каучук"),  # основной — полиэстер
-        ("Üst: Deri, İç taban: Deri, Ara taban: EVA, Taban: Kauçuk", "Натуральная кожа", "Каучук"),
+        ("Üst: Sığır Derisi, İç taban: Deri, Ara taban: EVA, Taban: Kauçuk", "Натуральная кожа", "Каучук"),
         ("Üst: Süet, Astar: Tekstil, Taban: Kauçuk", "Замша", "Каучук"),
-        ("Deri/Tekstil, Taban: Kauçuk", "Натуральная кожа", "Каучук"),
+        ("Üst: Deri, Taban: Kauçuk", None, "Каучук"),  # одно «deri» не распознаём — лучше пусто
+        ("Tekstil/Deri, Taban: Kauçuk", "Текстиль", "Каучук"),  # верх без метки
         ("Upper:Recycled polyester, TPUOutsole: Rubber", None, "Резина"),
         ("Kauçuk", "Каучук", None),  # одна подошва без меток (шлёпанцы) — как раньше
     ],
@@ -114,6 +115,14 @@ def test_shoe_material_upper_and_sole_by_labels(raw, material, sole):
         ("Kinetix J5SM-TST7325 Erkek Sneaker", "Kinetix", ""),
     ],
 )
+def test_labelled_materials_only_for_shoes():
+    rows = _dynamic_attributes(
+        SimpleNamespace(product_type="accessories"), {"attributes": {"material": "Üst: Hakiki deri, Taban: Kauçuk"}},
+        ProductFacts(product_type="accessories"),
+    )
+    assert {row["slug"]: row["value_ru"] for row in rows}.get("material") == "Натуральная кожа"
+
+
 def test_short_hyphen_code_right_after_brand_is_model(name, brand, model):
     facts = ProductFacts(product_type="shoes", brand=brand)
     parse_name(name, facts)

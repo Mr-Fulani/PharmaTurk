@@ -243,7 +243,7 @@ def _fragrance_name(payload: dict[str, Any], plan: RulePlan, input_data: dict[st
 
 def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts) -> list[dict[str, Any]]:
     attrs = input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {}
-    labelled = _labelled_materials(attrs.get("material"))
+    labelled = _labelled_materials(attrs.get("material")) if facts.product_type == "shoes" else None
     if labelled is not None:
         upper, sole = labelled
         attrs = {**attrs, "material": upper}
