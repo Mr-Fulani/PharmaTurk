@@ -386,9 +386,9 @@ docker compose exec backend poetry run python manage.py ai_enqueue --product-typ
 
 ### Новые товары одного источника: `source_ai_cards`
 
-Партии парсера (SuperStep: по 450–500 товаров) — одной командой: берёт товары источника
-(`external_id` начинается с `<source>-`) без готового AI-лога и проводит их через правила и Claude
-(`ContentGenerator.process_product`, `auto_apply=False`). Название, SEO и атрибуты — правилами
+Партии парсера (SuperStep: по 450–500 товаров) — одной командой: берёт активные товары источника
+(`external_id` начинается с `<source>-`) с разделом и без готового AI-лога и проводит их через правила
+и Claude (`ContentGenerator.process_product`, `auto_apply=False`). Название, SEO и атрибуты — правилами
 (`docs/SEO_NONMEDICAL_PRODUCTS.md`), описание — модель; каждый новый перевод описания ложится в
 память переводов (`product_description:<раздел>`), такой же текст следующих партий берётся из неё
 без запроса. Применение не меняет цену, валюту, бренд и раздел (раздел — только у товара без него).
@@ -397,18 +397,28 @@ docker compose exec backend poetry run python manage.py ai_enqueue --product-typ
 manage.py source_ai_cards --source superstep                                   # сколько новых, по типам
 manage.py source_ai_cards --source superstep --run --limit 500 --workers 4     # черновики, товары не меняются
 manage.py source_ai_cards --source superstep --run --force --ids 1,2,3         # переобработать (старые логи закроются)
-manage.py source_ai_cards --source superstep --report --since 2026-11-06       # статусы, модерация, память, $
-manage.py source_ai_cards --source superstep --apply --since 2026-11-06 \
+manage.py source_ai_cards --source superstep --report --since 2026-11-07       # статусы, модерация, память, $
+manage.py source_ai_cards --source superstep --apply --since 2026-11-07T07:00 \
     --backup /home/deploy/backups/superstep-rows-$(date +%Y%m%d-%H%M).json.gz  # только «Завершено»
+manage.py source_ai_cards --restore /home/deploy/backups/superstep-rows-….json.gz  # откат применения
 ```
 
+- Только Claude: при `AI_OPENAI_ENABLED=true` `--run` не запускается (запасной путь `LLMClient` ушёл бы
+  в OpenAI). Неактивные и товары без раздела не берутся: категоризация шла бы через эмбеддинги OpenAI.
 - `--run` печатает итог: `описание` — `memory` (из памяти), `llm` (новый перевод), `template`
   (из фактов); `название` — `rules` или `llm`; причины модерации; стоимость по `cost_usd` логов.
-- `--apply` без `--backup` не запускается. В бэкапе — строки товара, доменной записи, переводов,
-  атрибутов и размеров. Модерация не применяется: её разбирают в админке.
+- `--apply` требует `--since` (время МСК начала нужного `--run`: старые пилотные логи не применятся)
+  и `--backup` — новый файл (существующий не перезаписывается). В бэкапе — строки товара, доменной
+  записи, переводов, атрибутов, размеров и вариантов; рядом `<бэкап>.created.json` — строки, созданные
+  применением. После применения названия вариантов синхронизируются с новым названием товара
+  (`sync_variant_titles_from_parent`, как в задаче Celery). Модерация не применяется: её разбирают в
+  админке. Товар, чьё название поменяли после `--run`, пропускается с пометкой.
+- Откат: `--restore <бэкап>` в одной транзакции удаляет строки из `.created.json` и возвращает строки
+  бэкапа. Логи AI остаются «Применено»; чтобы применить заново, нужен новый `--run --force`.
 - На проде запускать в отдельном контейнере из образа backend (≤ 6 потоков, `--memory 2g`, сети
   `mudaroba_data` и `mudaroba_edge` — без внешней сети Claude недоступен), через `nohup`, не в
-  `/tmp` контейнера сайта. Не в 01:00–06:30 МСК. Порядок: `--run` → проверка отчёта → `--apply`.
+  `/tmp` контейнера сайта. С 01:00 до 06:30 МСК `--run` и `--apply` отказываются запускаться.
+  Порядок: `--run` → проверка отчёта → `--apply`.
 
 ### Закрытие лишней модерации: `close_resolved_ai_moderation`
 

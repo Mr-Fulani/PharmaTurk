@@ -2,14 +2,17 @@
 
     manage.py source_ai_cards --source superstep                          # показать: сколько новых
     manage.py source_ai_cards --source superstep --run --limit 500        # черновики, товары не меняются
-    manage.py source_ai_cards --source superstep --report --since 2026-11-06
-    manage.py source_ai_cards --source superstep --apply --backup ~/backups/ss-rows.json.gz
+    manage.py source_ai_cards --source superstep --report --since 2026-11-07
+    manage.py source_ai_cards --source superstep --apply --since 2026-11-07T07:00 --backup ~/backups/ss-rows.json.gz
+    manage.py source_ai_cards --restore ~/backups/ss-rows.json.gz         # откат применения из бэкапа
 
 Черновик — обычный лог AI (полная обработка без применения): название, SEO и атрибуты
 собирают правила (apps/ai/services/rules), описание пишет модель и кладёт в память
 переводов — повторный такой же текст следующих партий берётся из памяти бесплатно.
-Применяются только «Завершено» (модерация остаётся людям); цену, валюту, бренд и раздел
-применение не меняет (раздел — только у товара без раздела). Порядок — docs/AI_RUNS_ADMIN_GUIDE.md.
+Только Claude: с AI_OPENAI_ENABLED=true черновики не делаются (запасной путь ушёл бы в OpenAI),
+товары без раздела не берутся (их категоризация — через эмбеддинги OpenAI).
+Применяются только «Завершено» с даты --since (модерация остаётся людям); цену, валюту, бренд
+и раздел применение не меняет (раздел — только у товара без раздела). Порядок — AI_GUIDE.md.
 """
 
 import gzip
@@ -17,12 +20,16 @@ import json
 import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
+from django.apps import apps as django_apps
+from django.conf import settings
 from django.core import serializers
 from django.core.management.base import BaseCommand, CommandError
-from django.db import close_old_connections
+from django.db import close_old_connections, transaction
 from django.db.models import Sum
+from django.utils import timezone
 
 from apps.ai.models import AIModerationQueue, AIProcessingLog, AIProcessingStatus
 from apps.ai.services.bulk_ops import select_products_for_ai
@@ -30,14 +37,18 @@ from apps.ai.services.content_generator import ContentGenerator
 from apps.catalog.models import Product
 
 MAX_WORKERS = 6
-BACKUP_RELATIONS = ("translations", "dynamic_attributes", "sizes")
+# Доменная запись и Product: переводы, атрибуты, размеры — пишет применение; варианты —
+# синхронизация их названий после применения.
+BACKUP_RELATIONS = ("translations", "dynamic_attributes", "sizes", "variants")
+MOSCOW = ZoneInfo("Europe/Moscow")
+NIGHT_START, NIGHT_END = time(1, 0), time(6, 30)
 
 
 class Command(BaseCommand):
     help = "Новые товары источника — через правила и Claude: черновики, отчёт, применение с бэкапом строк."
 
     def add_arguments(self, parser):
-        parser.add_argument("--source", required=True, help="Префикс external_id, например superstep")
+        parser.add_argument("--source", help="Префикс external_id, например superstep")
         parser.add_argument("--ids", help="Только эти id товаров (через запятую)")
         parser.add_argument("--limit", type=int, default=500, help="Сколько товаров за запуск --run")
         parser.add_argument("--workers", type=int, default=4, help=f"Параллельных запросов (до {MAX_WORKERS})")
@@ -45,41 +56,79 @@ class Command(BaseCommand):
         mode = parser.add_mutually_exclusive_group()
         mode.add_argument("--run", action="store_true", help="Сделать черновики (товары не меняются)")
         mode.add_argument("--report", action="store_true", help="Итог по логам источника")
-        mode.add_argument("--apply", action="store_true", help="Применить черновики «Завершено» (нужен --backup)")
-        parser.add_argument("--backup", help="Файл бэкапа строк перед применением (.json или .json.gz)")
-        parser.add_argument("--since", help="Для --report и --apply: логи с этой даты (ГГГГ-ММ-ДД)")
+        mode.add_argument("--apply", action="store_true", help="Применить черновики «Завершено» (нужны --since и --backup)")
+        mode.add_argument("--restore", metavar="BACKUP", help="Вернуть строки из бэкапа --apply и удалить созданные им")
+        parser.add_argument("--backup", help="Новый файл бэкапа строк перед применением (.json или .json.gz)")
+        parser.add_argument("--since", help="Логи с этого момента: ГГГГ-ММ-ДД или ГГГГ-ММ-ДДTЧЧ:ММ (МСК)")
 
     def handle(self, *args, **options):
+        if options["restore"]:
+            self._restore(options["restore"])
+            return
+        if not options["source"]:
+            raise CommandError("Нужен --source")
         prefix = f"{options['source'].strip().rstrip('-')}-"
         products = Product.objects.filter(external_id__startswith=prefix)
         if options["ids"]:
-            products = products.filter(id__in=[int(x) for x in options["ids"].split(",") if x.strip()])
+            products = products.filter(id__in=self._ids(options["ids"]))
+        if options["run"] or options["apply"]:
+            self._check_night()
         if options["apply"]:
-            if not options["backup"]:
-                raise CommandError("--apply требует --backup <файл>")
+            if not options["since"] or not options["backup"]:
+                raise CommandError("--apply требует --since (с какого момента логи) и --backup <файл>")
             self._apply(products, options)
         elif options["report"]:
             self._report(self._logs(products, options))
         else:
             self._run(products, options)
 
+    @staticmethod
+    def _ids(raw):
+        try:
+            return [int(x) for x in raw.split(",") if x.strip()]
+        except ValueError:
+            raise CommandError(f"--ids: нужны числа через запятую, получено {raw!r}") from None
+
+    @staticmethod
+    def _check_night():
+        now = timezone.now().astimezone(MOSCOW).time()
+        if NIGHT_START <= now < NIGHT_END:
+            raise CommandError("С 01:00 до 06:30 МСК не запускать: ночные задачи сервера.")
+
+    @staticmethod
+    def _since(raw):
+        for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(raw, fmt).replace(tzinfo=MOSCOW)
+            except ValueError:
+                continue
+        raise CommandError(f"--since: ГГГГ-ММ-ДД или ГГГГ-ММ-ДДTЧЧ:ММ, получено {raw!r}")
+
     def _logs(self, products, options):
         logs = AIProcessingLog.objects.filter(product__in=products, processing_type="full")
         if options["since"]:
-            logs = logs.filter(created_at__date__gte=datetime.strptime(options["since"], "%Y-%m-%d").date())
+            logs = logs.filter(created_at__gte=self._since(options["since"]))
         return logs
 
     def _run(self, products, options):
+        active = products.filter(is_active=True)
+        skipped = {
+            "неактивные": products.filter(is_active=False).count(),
+            "без раздела": active.filter(category__isnull=True).count(),
+        }
         candidates = select_products_for_ai(
-            ids=list(products.values_list("id", flat=True)), include_processed=options["force"]
+            ids=list(active.filter(category__isnull=False).values_list("id", flat=True)),
+            include_processed=options["force"],
         )
         ids = list(candidates.values_list("id", flat=True)[: options["limit"]])
         by_type = Counter(candidates.values_list("product_type", flat=True))
         label = "Товаров" if options["force"] else "Без русской карточки"
-        self.stdout.write(f"{label}: {candidates.count()} {dict(by_type)}; к обработке: {len(ids)}")
+        self.stdout.write(f"{label}: {candidates.count()} {dict(by_type)}; к обработке: {len(ids)}; не берутся: {skipped}")
         if not options["run"] or not ids:
             self.stdout.write("Только показ: черновики — --run." if ids else "Новых товаров нет.")
             return
+        if getattr(settings, "AI_OPENAI_ENABLED", True):
+            raise CommandError("AI_OPENAI_ENABLED=true: запасной путь ушёл бы в OpenAI. Только Claude — выключите OpenAI.")
         workers = max(1, min(options["workers"], MAX_WORKERS))
         local = threading.local()
 
@@ -133,36 +182,84 @@ class Command(BaseCommand):
             "стоимость_usd": float(cost),
         }, ensure_ascii=False))
 
+    @staticmethod
+    def _owned_rows(product):
+        """Product, доменная запись и их строки, которые меняет применение."""
+        objects = {}
+        for obj in (product, product.domain_item):
+            if obj is None:
+                continue
+            objects[(obj._meta.label, obj.pk)] = obj
+            for relation in BACKUP_RELATIONS:
+                manager = getattr(obj, relation, None)
+                if manager is not None and hasattr(manager, "all"):
+                    for row in manager.all():
+                        objects[(row._meta.label, row.pk)] = row
+                        for child in ("translations", "sizes"):  # переводы и размеры вариантов
+                            sub = getattr(row, child, None) if relation == "variants" else None
+                            if sub is not None and hasattr(sub, "all"):
+                                objects.update({(item._meta.label, item.pk): item for item in sub.all()})
+        return objects
+
     def _apply(self, products, options):
         logs = list(
-            self._logs(products, options)
+            self._logs(products.filter(is_active=True), options)
             .filter(status=AIProcessingStatus.COMPLETED)
             .select_related("product")
             .order_by("product_id", "-id")
             .distinct("product_id")
         )
         if not logs:
-            self.stdout.write("Нет черновиков «Завершено».")
+            self.stdout.write("Нет черновиков «Завершено» с этой даты.")
             return
-        rows = []
+        # Название, правленное после обработки, не перезаписываем: снимок лога защищает
+        # только описание, SEO и переводы. Такие товары — в админку.
+        manual = [log for log in logs if (log.product.name or "") != str((log.input_data or {}).get("name") or "")]
+        logs = [log for log in logs if log not in manual]
+        for log in manual:
+            self.stdout.write(f"  {log.product_id}: название менялось после обработки — пропущен (лог {log.pk})")
+        before = {}
         for log in logs:
-            for obj in {id(o): o for o in (log.product, log.product.domain_item) if o is not None}.values():
-                rows.append(obj)
-                for relation in BACKUP_RELATIONS:
-                    manager = getattr(obj, relation, None)
-                    if manager is not None and hasattr(manager, "all"):
-                        rows.extend(manager.all())
+            before.update(self._owned_rows(log.product))
         opener = gzip.open if options["backup"].endswith(".gz") else open
-        with opener(options["backup"], "wt", encoding="utf-8") as handle:
-            handle.write(serializers.serialize("json", rows))
-        self.stdout.write(f"Бэкап: {options['backup']} ({len(rows)} строк, {len(logs)} товаров)")
+        with opener(options["backup"], "xt", encoding="utf-8") as handle:  # «x»: чужой бэкап не затирается
+            handle.write(serializers.serialize("json", list(before.values())))
+        self.stdout.write(f"Бэкап: {options['backup']} ({len(before)} строк, {len(logs)} товаров)")
+
         generator = ContentGenerator()
-        result = Counter()
+        result, created = Counter(), set()
         for log in logs:
             try:
                 applied = generator.apply_log_to_product(log)
-                result[applied.application_status or applied.status] += 1
+                product = Product.objects.get(pk=log.product_id)
+                generator.sync_variant_titles_from_parent(product, log_entry=applied)
+                result[str(applied.application_status or applied.status)] += 1
+                created.update(key for key in self._owned_rows(product) if key not in before)
             except Exception as exc:
                 result["error"] += 1
                 self.stdout.write(f"  {log.product_id} (лог {log.pk}): {exc}")
-        self.stdout.write(f"Применено: {dict(result)}")
+        with open(f"{options['backup']}.created.json", "x", encoding="utf-8") as handle:
+            json.dump(sorted([label, pk] for label, pk in created), handle)
+        self.stdout.write(
+            f"Применено: {dict(result)}; новых строк: {len(created)} (список — {options['backup']}.created.json). "
+            f"Откат: source_ai_cards --restore {options['backup']}"
+        )
+
+    def _restore(self, backup):
+        opener = gzip.open if backup.endswith(".gz") else open
+        try:
+            with opener(backup, "rt", encoding="utf-8") as handle:
+                rows = list(serializers.deserialize("json", handle.read()))
+            with open(f"{backup}.created.json", encoding="utf-8") as handle:
+                created = json.load(handle)
+        except OSError as exc:
+            raise CommandError(f"Нет файла бэкапа: {exc}") from None
+        with transaction.atomic():
+            for label, pk in created:
+                django_apps.get_model(label).objects.filter(pk=pk).delete()
+            for row in rows:
+                row.save()
+        self.stdout.write(
+            f"Восстановлено строк: {len(rows)}, удалено созданных: {len(created)}. "
+            "Логи AI остаются «Применено» — при новом применении нужен новый --run."
+        )
