@@ -224,7 +224,8 @@ def test_polish_product_memory_shows_then_applies_with_backup(tmp_path):
     backup = tmp_path / "pdmem.json"
     call_command("polish_product_memory", "--apply", "--backup", str(backup), stdout=StringIO())
 
-    bad.refresh_from_db(); clean.refresh_from_db(); other.refresh_from_db()
+    for row_ in (bad, clean, other):
+        row_.refresh_from_db()
     assert bad.ru_text == "<p>Мягкая ткань. Эргономичный крой. Кремовый цвет нейтрален.</p>"
     assert clean.ru_text == "<p>Мягкая ткань.</p>" and other.ru_text == "Ергономичный"
     assert json.loads(backup.read_text()) == [
