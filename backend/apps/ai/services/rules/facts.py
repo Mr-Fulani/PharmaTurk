@@ -93,11 +93,17 @@ def _attrs(input_data: dict[str, Any]) -> dict[str, Any]:
 # не факты (пилот 06.11.2026). Режется строка или предложение (граница — точка, тег, перевод строки).
 # Весь текст пустой, только если магазин пишет, что описание ограничено названием и разделом.
 _SUPERSTEP_NO_FACTS_RE = re.compile(r"eklenmemiş[^.<\n]*sınırlı\s+tutul", re.IGNORECASE)
-_SUPERSTEP_HEADINGS = (
+_SUPERSTEP_HEADING_RE = re.compile(
     r"Bakım|Ürün Özellikleri|Teknik Özellikler|Ürün Detayları|Sana Sağlayacağı|Kullanım Önerileri"
-    r"|Neden\s[^.?!<]*Tercih Etmelisin"
+    r"|Neden\s[^.?!]*Tercih Etmelisin"
 )
-_SUPERSTEP_OUTFIT_RE = re.compile(rf"Kombin Önerileri.*?(?=<h\d|<strong|<b>|{_SUPERSTEP_HEADINGS}|$)", re.DOTALL)
+# После «Kombin Önerileri» режутся подряд идущие советы «с чем носить» — до первого предложения
+# без таких слов или до следующего заголовка: заголовков у SuperStep может и не быть.
+_SUPERSTEP_OUTFIT_WORDS_RE = re.compile(
+    r"kombin|tamamla|eşleştir|birleştir|\bgiy|pantolon|\bjean|şort|tişört|sweatshirt|ceket|gömlek|\betek\b"
+    r"|elbise|\bstil|\btarz|\bton\w*|\brenk|görünüm|parça|katman|nötr|aksesuar|\bplan|bedenli|ölçü",
+    re.IGNORECASE,
+)
 _SUPERSTEP_FILLER_RE = re.compile(
     r"[^.?!<>\n]*(?:doğrulanabil\w*|doğrulanama\w*|varyant kodu"
     r"|doğrulanmış\s+(?:[^\s.<]+\s+){0,3}(?:bilgi|veri)\w*)[^.?!<>\n]*[.?!]?",
@@ -113,9 +119,21 @@ def product_source(product: Any) -> str:
 def _clean_superstep(text: str) -> str:
     if _SUPERSTEP_NO_FACTS_RE.search(text):
         return ""
-    text = _SUPERSTEP_OUTFIT_RE.sub(" ", text)
     text = _SUPERSTEP_FILLER_RE.sub(" ", text)
     return re.sub(r"Option\s*/\s*ürün kodu:\s*[^\s<]+", " ", text, flags=re.IGNORECASE)
+
+
+def _cut_outfit_tips(text: str) -> str:
+    match = re.search(r"Kombin Önerileri\s*", text)
+    if not match:
+        return text
+    rest = text[match.end() :]
+    heading = _SUPERSTEP_HEADING_RE.search(rest)
+    section, tail = (rest[: heading.start()], rest[heading.start() :]) if heading else (rest, "")
+    sentences = re.split(r"(?<=[.!?])\s+", section.strip())
+    while sentences and _SUPERSTEP_OUTFIT_WORDS_RE.search(sentences[0]):
+        sentences.pop(0)
+    return " ".join(part for part in (text[: match.start()].strip(), " ".join(sentences), tail) if part)
 
 
 def clean_source_text(value: Any, source: str = "") -> str:
@@ -126,6 +144,8 @@ def clean_source_text(value: Any, source: str = "") -> str:
     if source == "superstep":
         text = _clean_superstep(text)
     text = re.sub(r"<[^>]+>", " ", text)
+    if source == "superstep":
+        text = _cut_outfit_tips(re.sub(r"\s+", " ", text))
     text = re.sub(r"Ürün Kodu:\s*\S+", " ", text)
     text = re.sub(r"\bS\d{6,}\b", " ", text)
     text = re.sub(r"(?:İmalatçı|Imalatçı)\s*/.*$", " ", text, flags=re.DOTALL)

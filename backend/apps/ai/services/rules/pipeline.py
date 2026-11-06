@@ -31,7 +31,11 @@ from apps.ai.services.rules.text import (
     build_titles,
     is_thin_source,
 )
-from apps.catalog.attribute_specs import english_for_canonical_ru, extract_dynamic_attribute_candidates
+from apps.catalog.attribute_specs import (
+    canonicalize_dynamic_attribute_value,
+    english_for_canonical_ru,
+    extract_dynamic_attribute_candidates,
+)
 from apps.catalog.product_semantics import looks_untranslated_turkish
 
 SOURCE_TEXT_LIMIT = 3000
@@ -60,20 +64,35 @@ _UPPER_MATERIALS = {
     "deri": ("Натуральная кожа", "Genuine Leather"),
     "sigir derisi": ("Натуральная кожа", "Genuine Leather"),
     "suet": ("Замша", "Suede"),
+    "suet deri": ("Замша", "Suede"),
     "suet sigir derisi": ("Замша", "Suede"),
 }
-# Предложения-«вода», которые модель пишет вопреки промпту (пилот SuperStep 06.11.2026: 12 и 6
-# описаний из 50): «Модель подходит для повседневной носки», «Цвет сочетается с джинсами».
-# Вырезается предложение целиком, чтобы текст не обрывался.
-_FILLER_SENTENCE_RE = {
+# Обороты-«вода», которые модель пишет вопреки промпту (пилот SuperStep 06.11.2026: 12 и 6
+# описаний из 50): «… подходит для повседневной носки», «Цвет сочетается с джинсами и брюками».
+# Вырезается оборот; предложение целиком — только если без него в нём ничего не осталось.
+_EVERYDAY_RE = {
     "ru": re.compile(
-        r"для\s+повседневн\w*\s+(?:(?:и\s+)?[а-яё]+\s+)?(?:носки|образ\w*|использовани\w*|стил\w*)"
-        r"|сочета\w*\s+с\s+(?:джинс|брюк|чинос|шорт|юбк|плать|разн\w+|любы\w+|больш\w+|други\w+|повседневн\w+)",
+        r"(?P<lead>,\s*)?(?P<verb>(?:(?:идеально|отлично|хорошо)\s+)?(?:подход\w+|подойд\w+|предназначен\w*|создан\w*|рассчитан\w*)\s+)?"
+        r"(?:как\s+)?для\s+повседневн\w*\s+(?:(?:и\s+)?[а-яё]+\s+)?(?:носки|образ\w*|использовани\w*|стил\w*)"
+        r"(?P<tail>\s+и\s+(?=[а-яё]))?",
         re.IGNORECASE,
     ),
     "en": re.compile(
-        r"\b(?:everyday|daily|casual)\s+(?:wear|looks?|outfits?|style)\b"
-        r"|\b(?:pairs?|goes|go|combines?|matches?)\s+(?:well\s+|easily\s+|perfectly\s+)?with\b",
+        r"(?P<lead>,\s*)?(?P<verb>(?:ideal|perfect|great|suitable|designed|made)\s+)?for\s+(?:everyday|daily|casual)\s+"
+        r"(?:wear|looks?|outfits?|style)(?P<tail>\s+and\s+(?=[a-z]))?",
+        re.IGNORECASE,
+    ),
+}
+_PAIRING_RE = {
+    "ru": re.compile(
+        r"(?:,\s*)?(?:(?:легко|отлично|хорошо|гармонично|удачно|позволя\w+|можно)\s+)?сочета\w*(?:\s+[а-яё]+){0,2}\s+с\s+"
+        r"(?:джинс|брюк|чинос|шорт|юбк|плать|разн\w+|любы\w+|больш\w+|други\w+|повседневн\w+)[^.,;!?]*"
+        r"(?:,(?!\s*(?:а|но|при|что|котор\w*)\s)[^.,;!?]*)*",  # весь перечень: «с джинсами, чинозами или шортами»
+        re.IGNORECASE,
+    ),
+    "en": re.compile(
+        r"(?:,\s*)?(?:it\s+|they\s+)?(?:pairs?|goes|go|combines?|matches?)\s+(?:well\s+|easily\s+|perfectly\s+)?with\s+[^.,;!?]*"
+        r"(?:,(?!\s*(?:and|but|while|which)\s)[^.,;!?]*)*",
         re.IGNORECASE,
     ),
 }
@@ -252,13 +271,13 @@ def _fragrance_name(payload: dict[str, Any], plan: RulePlan, input_data: dict[st
 def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts) -> list[dict[str, Any]]:
     attrs = input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {}
     labelled = _labelled_materials(attrs.get("material")) if facts.product_type == "shoes" else None
-    upper_material = None
+    upper_material, labelled_sole = None, ""
     if labelled is not None:
-        upper, sole = labelled
+        upper, labelled_sole = labelled
+        # Подошву в attrs не кладём: спецификация «Материал» берёт любой ключ с «material»
+        # (и «sole_material» тоже) — подошва снова стала бы материалом. Строка подошвы — ниже.
         attrs = {**attrs, "material": upper}
         upper_material = _UPPER_MATERIALS.get(vocab.fold(upper))
-        if sole and not attrs.get("sole_material"):
-            attrs["sole_material"] = sole
     kind = (facts.kind.ru, facts.kind.en) if facts.kind else None
     overrides = {
         "material": upper_material or facts.upper,
@@ -290,6 +309,11 @@ def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts
         if looks_untranslated_turkish(value_ru) or (value_en and looks_untranslated_turkish(value_en)):
             continue
         rows.append(_attribute_row(candidate.slug, value_ru, value_en))
+    if labelled_sole and not any(row["slug"] == "sole-material" for row in rows):
+        sole_ru = canonicalize_dynamic_attribute_value("sole-material", labelled_sole, product_type="shoes")
+        sole_en = english_for_canonical_ru(sole_ru)
+        if sole_en:
+            rows.append(_attribute_row("sole-material", sole_ru, sole_en))
     return rows
 
 
@@ -334,20 +358,39 @@ def _add_usage(result: dict[str, Any], extra: dict[str, Any]) -> None:
     result["cost_usd"] = float(result.get("cost_usd") or 0) + float(extra.get("cost_usd") or 0)
 
 
+def _without_filler(sentence: str, locale: str) -> str:
+    def everyday(match: re.Match) -> str:
+        if match.group("tail"):  # «для повседневной носки и бега» → «для бега»
+            return f"{match.group('lead') or ' '}{match.group('verb') or ''}{'для' if locale == 'ru' else 'for'} ".replace(", ", " ")
+        return ""
+
+    cleaned = _PAIRING_RE[locale].sub("", _EVERYDAY_RE[locale].sub(everyday, sentence))
+    if cleaned == sentence:
+        return sentence
+    cleaned = re.sub(r"\s+([,.!?…;:])", r"\1", re.sub(r"\s{2,}", " ", cleaned)).strip()
+    cleaned = re.sub(r"^[,;:\s]+|[,;:]+(?=[.!?…]?$)", "", cleaned)
+    words = re.findall(r"[^\W\d_]+", cleaned)
+    if len(words) <= 2:  # «Модель.», «Чёрный цвет.» — без оборота пусто
+        return ""
+    return cleaned if cleaned[-1] in ".!?…" else cleaned + "."
+
+
 def drop_filler_sentences(text: str, locale: str) -> str:
-    """Описание без предложений-«воды»; теги и остальные предложения не меняются."""
-    pattern = _FILLER_SENTENCE_RE.get(locale)
-    if not text or pattern is None or not pattern.search(text):
+    """Описание без оборотов-«воды»; теги и остальной текст не меняются."""
+    if not text or locale not in _EVERYDAY_RE:
+        return text
+    if not (_EVERYDAY_RE[locale].search(text) or _PAIRING_RE[locale].search(text)):
         return text
     parts = re.split(r"(<[^>]+>)", text)
     for index, part in enumerate(parts):
-        if part.startswith("<") or not pattern.search(part):
+        if part.startswith("<") or not part.strip():
             continue
-        sentences = _SENTENCE_SPLIT_RE.split(part)
-        kept = [sentence for sentence in sentences if not pattern.search(sentence)]
         lead = part[: len(part) - len(part.lstrip())]
-        parts[index] = (lead + " ".join(sentence.strip() for sentence in kept)) if kept else ""
-    cleaned = re.sub(r"<p>\s*</p>", "", "".join(parts))
+        kept = [s for s in (_without_filler(s.strip(), locale) for s in _SENTENCE_SPLIT_RE.split(part)) if s]
+        parts[index] = (lead + " ".join(kept)) if kept else ""
+    cleaned = "".join(parts)
+    for _ in range(2):  # вложенные пустые теги: <ul><li></li></ul>
+        cleaned = re.sub(r"<(p|li|ul|ol)>\s*</\1>", "", cleaned)
     return cleaned.strip() if re.sub(r"<[^>]+>|\s", "", cleaned) else ""
 
 

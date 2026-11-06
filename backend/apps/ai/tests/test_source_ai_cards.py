@@ -141,6 +141,21 @@ def test_night_window_blocks_run(monkeypatch, settings):
         call_command("source_ai_cards", "--source", "superstep", "--run", stdout=StringIO())
 
 
+def test_apply_skips_product_whose_newest_log_is_in_moderation(generator, category, tmp_path):
+    product = _product("superstep-1", category)
+    _log(product)
+    _log(product, status=AIProcessingStatus.MODERATION)
+    out = StringIO()
+
+    call_command(
+        "source_ai_cards", "--source", "superstep", "--apply", "--since", "2026-11-05",
+        "--backup", str(tmp_path / "rows.json"), stdout=out,
+    )
+
+    assert generator.applied == []
+    assert "самый новый лог не «Завершено»" in out.getvalue()
+
+
 def test_apply_backs_up_rows_keeps_price_brand_category_and_restores(generator, category, tmp_path):
     brand = Brand.objects.create(name="Nike", slug="source-cards-nike")
     ready = _product("superstep-1", category, brand=brand)

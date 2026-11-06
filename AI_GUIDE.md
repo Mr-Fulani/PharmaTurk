@@ -418,7 +418,21 @@ manage.py source_ai_cards --restore /home/deploy/backups/superstep-rows-….json
 - На проде запускать в отдельном контейнере из образа backend (≤ 6 потоков, `--memory 2g`, сети
   `mudaroba_data` и `mudaroba_edge` — без внешней сети Claude недоступен), через `nohup`, не в
   `/tmp` контейнера сайта. С 01:00 до 06:30 МСК `--run` и `--apply` отказываются запускаться.
-  Порядок: `--run` → проверка отчёта → `--apply`.
+  Порядок: `--run` → проверка отчёта → `--apply`. Бэкап пишется в папку хоста, смонтированную в
+  контейнер: контейнер с `--rm` удаляется вместе со своими файлами. `--user` — чтобы пользователь
+  контейнера мог писать в `/home/deploy/backups` (без него «Permission denied»):
+
+  ```bash
+  IMG=$(docker inspect mudaroba-backend-1 --format '{{.Config.Image}}')
+  docker run --rm -d --name mudaroba-source-cards --memory 2g --memory-swap 2g --cpus 2 \
+    --network mudaroba_data --dns 8.8.8.8 --dns 1.1.1.1 --user "$(id -u):$(id -g)" \
+    --env-file <(docker inspect mudaroba-backend-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -v '^HOSTNAME=') \
+    -v /home/deploy/backups:/backups --entrypoint sleep "$IMG" 43200
+  docker network connect mudaroba_edge mudaroba-source-cards
+  nohup docker exec mudaroba-source-cards /app/.venv/bin/python manage.py source_ai_cards --source superstep \
+    --apply --since 2026-11-07T07:00 --backup /backups/superstep-rows-$(date +%Y%m%d-%H%M).json.gz > apply.log 2>&1 &
+  docker stop mudaroba-source-cards   # после работы; бэкап остаётся в /home/deploy/backups
+  ```
 
 ### Закрытие лишней модерации: `close_resolved_ai_moderation`
 
