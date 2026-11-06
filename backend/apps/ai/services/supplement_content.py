@@ -333,8 +333,12 @@ _BOILERPLATE_RE = re.compile(
 # - рассуждение о данных («в источнике не указано, уточняйте на упаковке») и совет врача —
 #   его дописывает код (DISCLAIMER).
 _META_RE = re.compile(
-    r"источник|в данных|не указан|не приведен|уточн|инструкци|консульт|специалист|"
-    r"\bsource\b|not specified|not provided|not stated|not given|not listed|label|instructions|consult|specialist",
+    # «в источнике не указано», а не «рыбий жир — природный источник витаминов» (SOLGAR 7225, 7318: пропадала
+    # суть товара, пилот 2 на проде 06.11.2026).
+    r"в источнике|из источника|источник не|данным источника|в данных|не указан|не приведен|уточн|инструкци|консульт|специалист|"
+    # «in the source», а не «a natural source of vitamins A and D» (ревью #328).
+    r"\bin the source\b|\bthe source (?:does|did|doesn't|lacks)|\bper the source\b|not specified|not provided|not stated|"
+    r"not given|not listed|label|instructions|consult|specialist",
     re.IGNORECASE,
 )
 _DROP_RES = (_CLAIM_RE, _BOILERPLATE_RE, _META_RE)
@@ -365,6 +369,22 @@ def _without_source_words(sentence: str, source_name: str) -> str:
     return re.sub(r"[A-Za-z][A-Za-z0-9]*", lambda m: "" if fold_tr(m.group(0)) in words else m.group(0), sentence)
 
 
+# «Состав обновлён: в одной капсуле …» — пометка источника о новой формуле, не текст карточки (HELIOCAPS 7259);
+# «в флаконе» — «во флаконе» (OCEAN VM 7226). Пилот 2 на проде, 06.11.2026.
+_UPDATED_NOTE_RE = re.compile(r"(?:состав|формула) обновл[её]н\w*\s*:\s*(\w)|(?:formula|composition) (?:has been )?updated\s*:\s*(\w)",
+                              re.IGNORECASE)
+
+
+# Пустая фраза-остаток: «Пищевая добавка.» после «… Не заменяет нормальное питание.» (OCEAN 7287).
+_EMPTY_SENTENCE_RE = re.compile(r"(?:пищевая добавка|биологически активная добавка|бад|food supplement|dietary supplement)\.?",
+                                re.IGNORECASE)
+
+
+def _fix_model_wording(text: str) -> str:
+    text = _UPDATED_NOTE_RE.sub(lambda m: (m.group(1) or m.group(2)).upper(), text)
+    return re.sub(r"\b([Вв]) (?=флакон)", r"\1о ", text)
+
+
 def clean_paragraph(text: Any, source_name: str = "", extra_drop: tuple = ()) -> str:
     """Абзац без предложений с обещаниями, справочными полями и рассуждениями о данных.
 
@@ -372,9 +392,11 @@ def clean_paragraph(text: Any, source_name: str = "", extra_drop: tuple = ()) ->
     """
     plain = re.sub(r"<[^>]+>", " ", str(text or ""))
     plain = re.sub(r"\s+", " ", plain).strip()
+    plain = _fix_model_wording(plain)
     kept = [
         s for s in _SENTENCE_RE.split(plain)
-        if s and not any(r.search(_without_source_words(s, source_name)) for r in (*_DROP_RES, *extra_drop))
+        if s and not _EMPTY_SENTENCE_RE.fullmatch(s)
+        and not any(r.search(_without_source_words(s, source_name)) for r in (*_DROP_RES, *extra_drop))
     ]
     return " ".join(kept).strip()
 
@@ -386,7 +408,8 @@ def clean_paragraph(text: Any, source_name: str = "", extra_drop: tuple = ()) ->
 # язык», «леденцы для рассасывания») остаётся.
 # «… раза в день», а не «в 2 раза выше» и «10 разных штаммов» (ревью #327).
 _DOSE_RE = re.compile(
-    r"в день|в сутки|раза? в (?:день|сутки|недел)|ежедневно по|per day|a day\b|times a|once daily|twice daily",
+    r"в день|в сутки|раза? в (?:день|сутки|недел)|ежедневно по|каждое утро|каждый вечер|способ\w* применени|"
+    r"per day|a day\b|times a|once daily|twice daily|every morning|how to use",
     re.IGNORECASE,
 )
 # Короткая фраза — повтор, только если это указание («Принимать внутрь.»), а не «Капсулы удобно принимать.».
@@ -400,7 +423,8 @@ _HOW_TO_TAKE_RE = re.compile(
     re.IGNORECASE,
 )
 _PIECE_AMOUNT_RE = re.compile(
-    r"\d+\s*(?:капсул|таблет|капел|капл|саше|мерн|ложк|пастил|конфет|мл|capsul|tablet|drop|sachet|scoop|ml\b)",
+    r"\d+\s*(?:капсул|таблет|капел|капл|саше|мерн|ложк|пастил|конфет|мармелад|желейн|мл|"
+    r"capsul|tablet|drop|sachet|scoop|gumm|ml\b)",
     re.IGNORECASE,
 )
 
@@ -420,12 +444,22 @@ class _UsageSentence:
 
 _COVERED_SENTENCE_RES = {
     "usage": _UsageSentence,
+    # Модель сама начинает «Состав: …», а следом идёт блок «Состав» (OTACI 7210, VENATURA 7313).
+    "composition": re.compile(r"^\W*(?:состав|ingredients)\b(?! одной порции| на \d)", re.IGNORECASE),
+    # Пересказ предупреждений при готовом блоке (NUTRAFARM 7273).
+    "warnings": re.compile(
+        r"не превыш(?:айте|ать)|недоступн\w* для детей|не замен\w* (?:нормальн|полноценн|сбалансир)|"
+        r"do not exceed|out of (?:the )?reach of children|not (?:be used as )?a substitute",
+        re.IGNORECASE,
+    ),
     "storage": re.compile(r"\bхран|\bstore|storage", re.IGNORECASE),  # не «сохранения бактерий», «охраняется»
 }
 
 
 def covered_by_blocks(kinds) -> tuple:
     """Регулярные выражения тем, которые в описании уже даёт блок памяти."""
+    # Только блок «Состав»: при одних «Вспомогательных веществах» состав модели — единственный источник действующих
+    # веществ (ревью #328: «Состав: магний цитрат 300 мг …» пропадал).
     return tuple(regex for kind, regex in _COVERED_SENTENCE_RES.items() if kind in kinds)
 
 
@@ -580,6 +614,40 @@ def form_mismatch(description: Any, pack: Optional[Pack], source_name: Any = "")
         for stem in stems
     )
     return other and not own
+
+
+# «В одной упаковке 60 конфет» при фасовке «64 жевательные конфеты» (OCEAN SMART GUMMIES 7360, пилот 2 на проде).
+_PACK_SENTENCE_RE = re.compile(r"упаков|в банке|во флаконе|в коробке|\bpack|bottle|\bbox\b|\bjar\b", re.IGNORECASE)
+_PIECE_COUNT_RE = re.compile(
+    r"(\d+)\s*(?:шт\b|штук|капсул|таблет|конфет|саше|пастил|мармелад|жевательн|желейн|драже|"
+    r"capsul|softgel|tablet|gumm|sachet|lozeng|pieces|chewable)",
+    re.IGNORECASE,
+)
+# Порция в той же фразе — не фасовка: «… по 2 капсулы в день», «take 2 softgels daily» (ревью #328).
+_PORTION_BEFORE_RE = re.compile(r"(?:\bпо|\btake|\btakes|\btaken)\s*$", re.IGNORECASE)
+_PORTION_AFTER_RE = re.compile(r"^\s*\w*\s*(?:в день|в сутки|daily|a day|per day|per serving|на порцию|за раз)", re.IGNORECASE)
+
+
+def pack_mismatch(description: Any, pack: Optional[Pack]) -> bool:
+    """Число штук в описании «в упаковке …» не совпадает с фасовкой названия.
+
+    Фасовка «2 уп. по 30 капсул» допускает и 30, и 60; «2 блистера по 30 капсул» — 30 после «по» не считается.
+    """
+    if pack is None or not pack.piece:
+        return False
+    numbers = [int(n) for n in re.findall(r"\d+", pack.ru)]
+    allowed = set(numbers) | ({numbers[0] * numbers[1]} if len(numbers) == 2 else set())
+    plain = re.sub(r"<[^>]+>", " ", str(description or ""))
+    for sentence in _SENTENCE_RE.split(plain):
+        if not _PACK_SENTENCE_RE.search(sentence):
+            continue
+        for match in _PIECE_COUNT_RE.finditer(sentence):
+            after = sentence[match.end():match.end() + 20]
+            if _PORTION_BEFORE_RE.search(sentence[:match.start()]) or _PORTION_AFTER_RE.search(after):
+                continue
+            if int(match.group(1)) not in allowed:
+                return True
+    return False
 
 
 def description_problems(description: Any, source: Any, memory_texts: Optional[list[str]] = None) -> list[str]:
@@ -764,6 +832,8 @@ def log_problems(log) -> dict[str, list[str]]:
         en_description, pack, source_name
     ):
         description.append("supplement_form_mismatch")
+    if pack_mismatch(getattr(log, "generated_description", ""), pack) or pack_mismatch(en_description, pack):
+        description.append("supplement_pack_mismatch")
     if description:
         problems["description"] = description
     return problems
@@ -818,6 +888,7 @@ SYSTEM_PROMPT = """
 4. ingredients — вещества, названные в source_name или source_sections, по порядку: {"ru", "en", "dose"}; dose — количество с единицей на порцию, только если оно есть в источнике («50 мг», «1×10⁹ КОЕ»), иначе "". Пусто, если веществ не названо.
 5. serving — рекомендуемая суточная порция, только если она есть в source_sections («1 капсула в день во время еды» / «1 capsule a day with a meal»), иначе "".
 6. description — описание для карточки магазина: {"ru": [абзацы], "en": [те же абзацы по-английски]}, 1–3 абзаца.
+   - Первое предложение называет продукт: что это и из чего («SOLGAR — рыбий жир из печени трески в мягких капсулах»), а не только бренд; число штук — ровно как в фасовке названия.
    - Пиши только то, что есть в данных: что это (бренд — латиницей, ровно как brand), состав, форма, фасовка, как принимать (facts.route). Если есть source_sections — перескажи описание товара, состав с количествами, порцию, хранение и предупреждения из них.
    - Можно одним предложением нейтрально пояснить, что такое главный компонент: к какому классу веществ он относится или из какого растения его получают («Бромелаин — протеолитические ферменты из стеблей ананаса»).
    - Нельзя ничего сверх данных: действие на организм и пользу («поддерживает», «участвует», «необходим для»), лечение и профилактику болезней, способ производства и сырьё конкретного товара («холодный отжим»), советы по приёму и хранению, которых нет в source_sections; рецепт, SGK, срок годности, страну, производителя и импорт, цену, наличие, доставку; рекламные штампы; любые числа не из данных.
