@@ -192,6 +192,22 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         ("Ubikinol (Koenzim Q10) 200 mg", "Убиквинол (Коэнзим Q10) 200 мг", "Ubiquinol (Coenzyme Q10) 200 mg",
          ["supplement_ingredient_mistranslated"]),
         ("Aspir yağı", "сафлоровое масло", "safflower oil", []),
+        # Пилот 2 на проде 06.11.2026: турецкое слово в скобках, слово дважды, турецкий процент, обрывок,
+        # диапазон дважды, целлюлаза, саше.
+        ("Menthol (mentol)%0.26", "Ментол (mentol) 0,26 %", "Menthol 0.26%", ["ru_untranslated"]),
+        ("Thymol (timol)%0.0002", "Тимол (тимол)%0.0002", "Thymol 0.0002%", ["ru_untranslated"]),
+        ("in lin", "in lin", "in lin", ["ru_untranslated"]),
+        ("ADI", "ADI", "ADI", ["ru_untranslated"]),
+        ("Yetişkinler için, tercihen yemek zamanı, günde bir-üç (1-3) kapsül.",
+         "Для взрослых, предпочтительно во время еды, 1–3 (1-3) капсулы в день.",
+         "For adults, preferably with meals, 1–3 capsules a day.", ["number_repeated"]),
+        ("Selülaz", "Целлюлоза", "Cellulose", ["supplement_ingredient_mistranslated"]),
+        ("bitkisel kapsül (hidroksipropil metil selülaz) (E464)", "растительная капсула (гидроксипропилметилцеллюлоза) (E464)",
+         "vegetable capsule (hydroxypropyl methylcellulose) (E464)", []),
+        ("Yetişkinler için günde 1 Şase (5000mg)'nin 300 ml su ile karıştırılarak tüketilmesi tavsiye edilir.",
+         "Взрослым рекомендуется по 1 шасе (5000 мг) в день, смешав с 300 мл воды.",
+         "Adults: 1 sachet (5000 mg) a day mixed with 300 ml of water.", ["supplement_ingredient_mistranslated"]),
+        ("Menthol (mentol)%0.26", "Ментол 0,26 %", "Menthol 0.26%", []),
         # Штамм латиницей с «GR-1» — не единица (ревью #327).
         ("Lactobacillus rhamnosus GR-1", "Lactobacillus rhamnosus GR-1", "Lactobacillus rhamnosus GR-1", []),
         # Повторное ревью: «не» при деепричастии — не запрет.
@@ -505,6 +521,39 @@ def test_bad_translation_already_in_memory_is_retranslated_and_replaced_but_manu
     assert entry.ru_text == "сафлоровое масло"
 
 
+@pytest.mark.parametrize(
+    "text, composition",
+    [
+        # Заголовки таблицы вместо состава (пилот 2 на проде, 06.11.2026).
+        ("İçerik Bilgisi:\nAdı\nMiktarı\nBalık Yağı\n1100 mg", None),  # OCEAN PULSE 7257
+        ("İçindekiler: Her 1 tablette;\n%BRD\nAlfa Lipoik Asit 200 mg", None),  # NUTRAXIN 7233
+        ("Ürün Bileşenleri\nGünlük Doz2 kapsül\nRDA\nVitamin C Buffered C\n1000 mg", None),  # NUTRAFARM 7242
+        ("Ürün Bileşimi:\nADI", None),  # OCEAN IODINE 7227
+        ("Bileşenler: Her kapsülde;\n1000 mg Çörek Otu Yağı", ["1000 mg Çörek Otu Yağı"]),  # OCEAN 7287
+        # Состав фразой с «E», «B3» — не список (DOPPELHERZ 7300).
+        ("Ürün Bileşimi:\nKoenzim Q10, E, B3, B5, B12, B2, B6, B1 Vitaminleri, Biotin ve Selenyum içerir.", None),
+        # Английская копия с ошибками распознавания (ZADE VITAL 7357).
+        ("İçindekiler: glutatyon, biotin, metilkobalamin (B12 vitamini). INGREDIENTS: Hydtrolyzed fsh collagen, "
+         "peptides, inulin", ["glutatyon", "biotin", "metilkobalamin (B12 vitamini)"]),
+        # Сноска, приклеенная к компоненту (PHARMATON 7265).
+        ("İçindekiler: Biotin, Kolekalsiferol. Formülasyonda kaplama maddesi olarak kullanilan bilesenin ticari "
+         "markasidır", ["Biotin", "Kolekalsiferol"]),
+    ],
+)
+def test_composition_without_table_headers_prose_and_second_copies(text, composition):
+    assert sm.section_parts({"product_info": text}).get("composition") == composition
+
+
+def test_warning_under_usage_label_goes_to_warnings():
+    # NUTRAFARM 7273: предупреждения внутри «Способа применения».
+    text = ("Kullanım Şekli:\nGünde 2 kapsül alınız. Tavsiye edilen günlük dozu aşmayınız. "
+            "Hamilelik döneminde doktorunuza danışınız.")
+    assert sm.section_parts({"product_info": text}) == {
+        "usage": ["Günde 2 kapsül alınız."],
+        "warnings": ["Tavsiye edilen günlük dozu aşmayınız.", "Hamilelik döneminde doktorunuza danışınız."],
+    }
+
+
 def test_unclosed_bracket_does_not_swallow_the_rest_of_composition():
     # HERBALAND 7156 (пилот 06.11.2026): «[» без «]» — витамины пропадали, а «Состав» выглядел полным.
     text = (
@@ -555,6 +604,38 @@ def test_model_sentences_about_dosing_and_storage_are_dropped_when_blocks_cover_
     # Если от текста модели ничего не осталось — блоки и дисклеймер остаются.
     only_dosing = sc.build_description(["Принимать внутрь."], "ru", blocks=[usage], covered=covered)
     assert only_dosing == f"<p>{usage}</p><p>{sc.DISCLAIMER['ru']}</p>"
+
+
+def test_model_text_keeps_product_and_drops_what_blocks_say():
+    # Пилот 2 на проде 06.11.2026.
+    usage = "Способ применения: 1 капсула в день."
+    covered = sc.covered_by_blocks({"usage": [1], "composition": [1], "warnings": [1]})
+    paragraphs = [
+        # SOLGAR 7225, 7318: «источник» — не рассуждение о данных, суть товара остаётся.
+        "Мягкие капсулы с жиром печени трески, источником витаминов A и D.",
+        "Состав: ментол, эвкалиптол.",  # OTACI 7210 — состав уже в блоке
+        "Состав одной порции (2 мармеладки): экстракт эпимедиума 200 мг.",  # дозы на порцию — оставить
+        "Принимать каждое утро: 2 мармеладки. Способ применения нужен для одного дня.",  # SOVITAL 7244
+        "Хранить в недоступном для детей месте. Пищевые добавки не заменяют нормальный рацион.",  # NUTRAFARM 7273
+        "Состав обновлён: в одной капсуле 480 мг экстракта.",  # HELIOCAPS 7259
+        "Сироп во флаконе 150 мл. Ещё сироп в флаконе 100 мл.",  # OCEAN VM 7226
+        "Пищевая добавка. Не заменяет нормальное питание.",  # OCEAN 7287
+    ]
+    text = sc.build_description(paragraphs, "ru", blocks=[usage], covered=covered)
+
+    assert "источником витаминов A и D" in text and "Состав одной порции" in text
+    assert "Состав: ментол" not in text and "каждое утро" not in text and "нужен для одного дня" not in text
+    assert "недоступном" not in text and "не заменяют" not in text and "Пищевая добавка." not in text
+    assert "<p>В одной капсуле 480 мг экстракта.</p>" in text and "Ещё сироп во флаконе 100 мл." in text
+    # Где нет блока состава и предупреждений — модель их называет.
+    assert "Состав: ментол" in sc.build_description(paragraphs, "ru")
+
+
+def test_pack_count_in_description_must_match_title():
+    # OCEAN SMART GUMMIES 7360: «В одной упаковке 60 конфет» при «64 жевательные конфеты».
+    pack = sc.parse_pack("OCEAN SMART GUMMIES MULTIVITAMIN TAKVIYE EDICI GIDA 64 çiğnenebilir jel form")
+    assert sc.pack_mismatch("<p>В одной упаковке 60 конфет.</p>", pack)
+    assert not sc.pack_mismatch("<p>Упаковка: 64 жевательные конфеты. Порция — 2 конфеты в день.</p>", pack)
 
 
 def test_block_texts_drop_repeats_and_say_gummy_for_gummies():

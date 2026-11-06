@@ -57,7 +57,7 @@ LINE_SYSTEM_PROMPT = (
     "уплотнитель / firming agent. "
     "«tok karnına» = «после еды» / «after a meal», «aç karnına» = «натощак» / «on an empty stomach». "
     "«Takviye edici gıdalar normal beslenmenin yerine geçemez» = «БАДы не заменяют полноценное питание» / "
-    "«Food supplements are not a substitute for a varied diet». Единицы в русском — по-русски: мг, мкг, г, мл, МЕ, КОЕ («10 ml» = «10 мл»). Числа пиши цифрами, как в источнике («Günde 1 "
+    "«Food supplements are not a substitute for a varied diet». Единицы в русском — по-русски: мг, мкг, г, мл, МЕ, КОЕ («10 ml» = «10 мл»), проценты — «0,26 %». Турецкие и латинские дубли в скобках не переноси: «Menthol (mentol)» = «ментол», «bir-üç (1-3)» = «1–3». Числа пиши цифрами, как в источнике («Günde 1 "
     "tablet» = «1 таблетка в день»). Латинские названия бактерий и растений (Lactobacillus acidophilus) оставляй "
     "латиницей; других английских слов в русском переводе нет. Ответ — строго JSON."
 )
@@ -237,7 +237,11 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
     """Причины не принимать перевод части сверх проверок абзацев лекарств."""
     problems = []
     # Вещество словаря переведено иначе: «Rezene» — «укроп», «Mine Çiçeği» — «мята» (пилот 05.11.2026).
-    if supplement_glossary.missing_terms(source, ru, en):
+    missing = supplement_glossary.missing_terms(source, ru, en)
+    # «hidroksipropil metil selülaz» — опечатка источника в «selüloz» (целлюлоза), а не фермент целлюлаза.
+    if re.search(r"metil\s*selulaz", fold_tr(source)):
+        missing = [term for term in missing if term != "selulaz"]
+    if missing:
         problems.append("supplement_ingredient_mistranslated")
     # Английское слово в русском переводе, которого нет в источнике: «Приём docosahexaenoic acid».
     folded_source = fold_tr(source)
@@ -248,11 +252,20 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
     # Бренд «METİLMAX» из источника остаётся как есть.
     turkish_words = re.findall(r"\w*[ğışçöüĞİŞÇÖÜ]\w*", ru)
     # Латинская единица в русском: «1 мерная ёмкость mg/5ml», «по 10 ml» (пилот 06.11.2026, IMUPLUS).
+    # Турецкое слово источника в скобках: «Ментол (mentol)», «Камфора (kafur)»; слово и оно же в скобках:
+    # «Тимол (тимол)»; турецкий процент «%0.0002»; непереведённый обрывок «in lin» (пилот 2 на проде, 06.11.2026).
+    source_words = set(re.findall(r"[a-z]+", folded_source))
+    bracketed_source_word = any(word.lower() in source_words for word in re.findall(r"\(([a-zçğışöü]+)\)", ru))
     if (
         any(word not in source for word in turkish_words) or ("|" in ru + en and "|" not in source)
-        or _RU_LATIN_UNIT_RE.search(ru)
+        or _RU_LATIN_UNIT_RE.search(ru) or bracketed_source_word
+        or re.search(r"(?i)\b(\w+) \(\1\)", ru) or re.search(r"%\s?\d", ru)
+        or (ru.strip().lower() == source.strip().lower() and all(len(w) <= 3 for w in source.split()))
     ):
         problems.append("ru_untranslated")
+    # Диапазон дважды: «bir-üç (1-3)» → «1–3 (1-3) капсулы» (SOLGAR 7256).
+    if re.search(r"\d\s*[–-]?\s*\d*\s*\(\s*\d[\d\s–-]*\)", ru):
+        problems.append("number_repeated")
     return problems + _meaning_problems(folded_source, ru, en)
 
 
@@ -309,6 +322,11 @@ def _split_top_level(text: str) -> list[str]:
     items.append("".join(current))
     result = []
     for item in items:
+        # Сноска, приклеенная к компоненту: «Kolekalsiferol. Formülasyonda kaplama maddesi olarak kullanılan
+        # bileşenin ticari markasıdır» (PHARMATON 7265) — компонент без сноски.
+        sentence_tail = re.search(r"\.\s+(?=[A-ZÇĞİÖŞÜ])", item)
+        if sentence_tail and len(item[sentence_tail.end():].split()) >= 4:
+            item = item[:sentence_tail.start()]
         item = item.strip(" .*")
         folded = fold_tr(item)
         # «FEROGLOBİN … İçeren Sıvı Takviye Edici Gıda - 200 ml» — название товара, а не компонент.
@@ -318,6 +336,8 @@ def _split_top_level(text: str) -> list[str]:
             or "takviye edici gida" in folded
             # Заголовок, а не компонент: «Aktif Bileşenler», «Bileşen», «Ürün Detayları», «2 Kapsülde».
             or re.fullmatch(r"(?:(?:aktif|yardimci) )?bilesen(?:ler)?|urun detaylari|\d+ \w+(?:de|da|te|ta)", folded)
+            # «Adı», «Miktarı», «Her 1 tablette», «Her kapsülde», «Günlük Doz2 kapsül», «%BRD» (пилот 2 на проде).
+            or re.fullmatch(r"adi|miktari?|her\s+(?:\d+\s*)?\w+|gunluk ?doz.*|%?\s*brd\W*|rda", folded)
         ):
             result.append(item)
     return result
@@ -373,7 +393,9 @@ def _label(line: str) -> tuple[Optional[str], str, bool]:
 # «%BRD», «1 Kapsül İçeriği», «Her bitkisel kapsülde», «Besin Enerjisi» — список закончился.
 _TABLE_HEADER_RE = re.compile(
     r"miktar|etken madde|brd\b|\brda\b|besin|enerji|icerigi|bilesen adi|supplement facts|"
-    r"^her\b|\bicin$|^bilesenler$|^icindekiler$|^\d+ \w+(?:de|da|te|ta)$"
+    r"^her\b|\bicin$|^bilesenler$|^icindekiler$|^\d+ \w+(?:de|da|te|ta)$|"
+    # Столбцы таблицы «Adı / Miktarı», «Günlük Doz 2 kapsül» (пилот 2 на проде, 06.11.2026: 7257, 7242).
+    r"^adi$|^miktari$|gunluk ?doz"
 )
 _LOWER_START_RE = re.compile(r"^[a-zçğıöşü]")
 # Строка таблицы доз со столбцами «на пастилку / в день»: «Ginger ( Zencefil ) 5 Mg 15 Mg» (пилот 3).
@@ -459,7 +481,21 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], list
                 current = None
             filled = True
             if current == "composition":
+                # Вторая копия состава по-английски с ошибками распознавания («… B12 vitamini). INGREDIENTS:
+                # Hydtrolyzed fsh collagen …», ZADE VITAL 7357) — не берётся, состав на ней заканчивается.
+                english = re.search(r"\bingredients\s*:", line, re.IGNORECASE)
+                if english:
+                    line = line[:english.start()]
+                # Состав фразой: «Koenzim Q10, E, B3, B5, B12 … Vitaminleri, Biotin ve Selenyum içerir» (DOPPELHERZ
+                # 7300) — «E», «B3» отдельными частями бессмысленны, а без них состав неполный.
+                pieces = [piece.strip(" .*") for piece in re.split(r"[,;]", line)]
+                if re.search(r"\bicerir\W*$", fold_tr(line)) or any(re.fullmatch(r"[A-Za-z]\d{0,2}", p) for p in pieces):
+                    del parts["composition"][composition_start:]
+                    current = None
+                    continue
                 items = _split_top_level(line)
+                if english:
+                    current = None
                 list_seen = list_seen or len(items) > 1
                 parts["composition"].extend(items)
                 continue
@@ -477,6 +513,12 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], list
                         target = "warnings"
                 if _ADVERT_RE.search(folded):
                     continue
+                # Предупреждение под подписью способа применения («Tavsiye edilen günlük dozu aşmayınız», «… doktorunuza
+                # danışınız») — в предупреждения (NUTRAFARM 7273: предупреждения внутри «Способа применения»).
+                if target == "usage" and (
+                    (_STANDARD_WARNING_RE.search(folded) and _DIRECTIVE_RE.search(folded)) or _PROHIBITION_RE.search(folded)
+                ):
+                    target = "warnings"
                 if target == "usage" and (
                     not _USAGE_RE.search(folded) or _QUANTITY_ONLY_RE.fullmatch(_FORM_WORD_RE.sub("", folded))
                 ):
@@ -501,7 +543,7 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], list
 
 
 LINE_PROBLEMS = (
-    "supplement_ingredient_mistranslated", "ru_latin_not_in_source", "ru_untranslated", "negation_lost",
+    "supplement_ingredient_mistranslated", "ru_latin_not_in_source", "ru_untranslated", "number_repeated", "negation_lost",
     "meal_timing_mistranslated", "age_mistranslated",
 )
 
