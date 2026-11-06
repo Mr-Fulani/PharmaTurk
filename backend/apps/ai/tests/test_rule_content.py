@@ -1054,6 +1054,8 @@ def test_generic_words_of_other_catalogs_are_not_furniture_conflicts():
         ("Jordan Jumpman Emb Ss Crew Erkek Beyaz T-Shirt", "Jordan", "clothing",
          "Мужская футболка Jordan Jumpman Emb с круглым вырезом, белая"),
         ("Lacoste Classic Fit Erkek T-Shirt", "Lacoste", "clothing", "Мужская футболка Lacoste классического кроя"),
+        ("Nautica Erkek Slim Fit Kısa Kollu Polo Yaka T-Shirt", "Nautica", "clothing",
+         "Мужское поло Nautica приталенного кроя с коротким рукавом"),
     ],
 )
 def test_superstep_words_are_translated_by_vocab(name, brand, product_type, ru):

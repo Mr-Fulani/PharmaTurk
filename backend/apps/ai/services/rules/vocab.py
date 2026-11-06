@@ -278,6 +278,7 @@ KINDS: dict[str, Kind] = {
     "polo": _k("поло", N, "Polo Shirt"),
     "polo tisort": _k("поло", N, "Polo Shirt"),
     "polo yaka tisort": _k("поло", N, "Polo Shirt"),
+    "polo yaka t-shirt": _k("поло", N, "Polo Shirt"),  # SuperStep: «Nautica … Polo Yaka T-Shirt»
     "gomlek": _k("рубашка", F, "Shirt"),
     "pantolon": _k("брюки", PL, "Trousers"),
     "jean": _k("джинсы", PL, "Jeans"),
