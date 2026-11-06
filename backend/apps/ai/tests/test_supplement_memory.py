@@ -212,6 +212,7 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         ("Mikrokristalin selülaz", "Микрокристаллическая целлюлоза", "Microcrystalline cellulose", []),
         ("Hidroksipropil selülaz", "Гидроксипропилцеллюлоза", "Hydroxypropyl cellulose", []),
         ("D3 Vitamini (1)", "Витамин D3 (1)", "Vitamin D3 (1)", []),
+        ("Omega-3 (3)", "Омега-3 (3)", "Omega-3 (3)", []),
         ("Q10", "Q10", "Q10", []),
         ("B6", "B6", "B6", []),
         # Штамм латиницей с «GR-1» — не единица (ревью #327).
@@ -547,6 +548,10 @@ def test_bad_translation_already_in_memory_is_retranslated_and_replaced_but_manu
         # Сокращения — не сноска (ревью #328).
         ("İçindekiler: Bifidobacterium (B. Lactis BB-12) 1 milyar KOB, Vit. C Askorbik asit 500 mg",
          ["Bifidobacterium (B. Lactis BB-12) 1 milyar KOB", "Vit. C Askorbik asit 500 mg"]),
+        ("İçindekiler: Ekstr. Ginkgo biloba yaprak ekstresi 120 mg, Havuç konsantresi. Kapsül kabuğu bileşenleri: "
+         "sığır jelatini",
+         ["Ekstr. Ginkgo biloba yaprak ekstresi 120 mg",
+          "Havuç konsantresi. Kapsül kabuğu bileşenleri: sığır jelatini"]),
     ],
 )
 def test_composition_without_table_headers_prose_and_second_copies(text, composition):
@@ -567,6 +572,11 @@ def test_warning_under_usage_label_goes_to_warnings():
     assert sm.section_parts({"product_info": text}) == {
         "usage": ["Günde 2 kapsül alınız."],
         "warnings": ["Tavsiye edilen günlük dozu aşmayınız.", "Hamilelik döneminde doktorunuza danışınız."],
+    }
+    # Доза в запрете «… fazla …» — предупреждение (ревью #328).
+    limits = "Kullanım Şekli:\nGünde 2 kapsülden fazla kullanmayınız. Bir defada 2 kapsülden fazla almayınız."
+    assert sm.section_parts({"product_info": limits}) == {
+        "warnings": ["Günde 2 kapsülden fazla kullanmayınız.", "Bir defada 2 kapsülden fazla almayınız."]
     }
     # С дозой — остаётся в применении (ревью #328).
     dose = "Kullanım Şekli:\nDoktorunuza danışarak günde 2 kapsül alınız."
@@ -663,6 +673,11 @@ def test_model_text_keeps_product_and_drops_what_blocks_say():
     assert "natural source of vitamins" in sc.build_description(
         ["Cod liver oil is a natural source of vitamins A and D."], "en"
     )
+    # Рассуждение о данных по-английски выпадает.
+    meta = ["Cod liver oil softgels.", "The source provides no dosage.",
+            "According to the source, one capsule contains 300 mg."]
+    assert sc.build_description(meta, "en").startswith("<p>Cod liver oil softgels.</p><p>")
+    assert "source" not in sc.build_description(meta, "en")
 
 
 def test_pack_count_in_description_must_match_title():
@@ -678,6 +693,9 @@ def test_pack_count_in_description_must_match_title():
     assert not sc.pack_mismatch("<p>В упаковке 2 блистера по 30 капсул.</p>", capsules)
     assert not sc.pack_mismatch("<p>В упаковке 60 капсул.</p>", sc.parse_pack("X 2 x 30 Kapsül"))
     assert sc.pack_mismatch("<p>В упаковке 30 капсул.</p>", capsules)
+    assert not sc.pack_mismatch("<p>В упаковке 60 капсул; 1 капсула = 1 порция.</p>", capsules)
+    # «В упаковке по 60 капсул» — фасовка, а не порция.
+    assert sc.pack_mismatch("<p>Выпускается в упаковке по 60 капсул.</p>", sc.parse_pack("X 64 Kapsül"))
 
 
 def test_log_problems_flag_pack_mismatch():
@@ -725,6 +743,12 @@ def test_block_texts_drop_repeats_and_say_gummy_for_gummies():
         en={"usage": ["Women: 1 pink tablet a day.", "Men: 1 purple tablet a day."]},
     )
     assert "фиолетовом" in sc.memory_block_texts(pair, "ru")[0]
+    # Одно и то же разными словами: «не следует превышать» = «превышать нельзя» (ревью #328).
+    same = sm.SupplementBlocks(
+        ru={"warnings": ["Не следует превышать рекомендуемую дозу.", "Рекомендуемую дозу превышать нельзя."]},
+        en={"warnings": ["Do not exceed the recommended dose.", "The recommended dose must not be exceeded."]},
+    )
+    assert sc.memory_block_texts(same, "ru") == ["Предупреждения: Не следует превышать рекомендуемую дозу."]
     # Ревью #327: «не», числа целиком и группа людей.
     cases = [
         ("Принимать во время еды.", "Не принимать во время еды вместе с препаратами железа."),
