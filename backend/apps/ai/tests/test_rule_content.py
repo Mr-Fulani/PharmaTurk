@@ -1039,4 +1039,3 @@ def test_generic_words_of_other_catalogs_are_not_furniture_conflicts():
     for title in ("Children's Wardrobe IKEA PLATSA", "IKEA PLATSA Storage System, Light Grey"):
         report = SemanticValidator().validate(product, generated_titles={"en": title}, dynamic_attributes=[])
         assert "title_category_mismatch" not in report.reasons, title
-
