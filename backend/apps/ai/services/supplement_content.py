@@ -384,9 +384,13 @@ def clean_paragraph(text: Any, source_name: str = "", extra_drop: tuple = ()) ->
 # (пилот 06.11.2026, HERBALAND 7156, OSENDE 7171). Повтор — это указание дозы («… в день», «7 капель»)
 # или короткое «Принимать внутрь.»; описание товара с упоминанием приёма («… в форме спрея для приёма под
 # язык», «леденцы для рассасывания») остаётся.
+# «… раза в день», а не «в 2 раза выше» и «10 разных штаммов» (ревью #327).
 _DOSE_RE = re.compile(
-    r"в день|в сутки|раз в|\d+\s*раз|ежедневно по|per day|a day\b|times a|once daily|twice daily", re.IGNORECASE
+    r"в день|в сутки|раза? в (?:день|сутки|недел)|ежедневно по|per day|a day\b|times a|once daily|twice daily",
+    re.IGNORECASE,
 )
+# Короткая фраза — повтор, только если это указание («Принимать внутрь.»), а не «Капсулы удобно принимать.».
+_SHORT_INSTRUCTION_RE = re.compile(r"^(?:принима\w*|употребля\w*|применя\w*)\b|внутрь|\borally\b|^take\b", re.IGNORECASE)
 _INSTRUCTION_RE = re.compile(r"принима|употребля|рекомендуем\w* (?:при[её]м|порци|доз)|\btake|\btaken|orally", re.IGNORECASE)
 # Глагол приёма — указание, а не описание: «Таблетку растворяют в стакане воды» (REDOXON 7141); «таблетки для
 # рассасывания» — описание.
@@ -409,13 +413,14 @@ class _UsageSentence:
         if _DOSE_RE.search(sentence) or _HOW_TO_TAKE_RE.search(sentence):
             return True
         return bool(_INSTRUCTION_RE.search(sentence)) and (
-            bool(_PIECE_AMOUNT_RE.search(sentence)) or len(sentence.split()) <= 6
+            bool(_PIECE_AMOUNT_RE.search(sentence))
+            or (len(sentence.split()) <= 6 and bool(_SHORT_INSTRUCTION_RE.search(sentence)))
         )
 
 
 _COVERED_SENTENCE_RES = {
     "usage": _UsageSentence,
-    "storage": re.compile(r"хран|\bstore|storage", re.IGNORECASE),
+    "storage": re.compile(r"\bхран|\bstore|storage", re.IGNORECASE),  # не «сохранения бактерий», «охраняется»
 }
 
 
@@ -435,26 +440,44 @@ _SAME_STEMS = {"порци": "доз", "дозу": "доз", "дозы": "доз
 
 
 def _content_stems(text: str) -> frozenset:
+    # Числа целиком: «100000» и «10000» — разные (ревью #327).
     words = re.findall(r"[а-яёa-z0-9]+", text.lower())
-    return frozenset(_SAME_STEMS.get(word[:5], word[:5]) for word in words if word not in _STOP_WORDS)
+    return frozenset(
+        word if word.isdigit() else _SAME_STEMS.get(word[:5], word[:5]) for word in words if word not in _STOP_WORDS
+    )
+
+
+# Группа людей — разные указания: «Взрослым …» и «Беременным …», «Женщинам …» и «Мужчинам …» (ревью #327).
+_GROUP_STEMS = {"взрос": "adult", "adult": "adult", "детям": "child", "детей": "child", "дети": "child",
+                "ребен": "child", "child": "child", "берем": "pregnant", "pregn": "pregnant", "мужчи": "men",
+                "men": "men", "женщи": "women", "women": "women", "пожил": "elderly", "elder": "elderly",
+                "кормл": "nursing", "кормя": "nursing", "breas": "nursing"}
+_NEGATION_STEMS = {"не", "нельз", "запре", "проти", "not", "never", "avoid"}
 
 
 def _duplicate_indexes(values: list[str]) -> set[int]:
-    """Номера частей-повторов: целиком внутри более полной части или почти совпадает с более ранней."""
+    """Номера частей-повторов: целиком внутри более полной части или почти совпадает с более ранней.
+
+    Повтор — только при тех же «не», группе людей и числах: «Принимать во время еды» ≠ «Не принимать во время
+    еды вместе с железом», «По 1 капсуле в день» ≠ «Детям старше 12 лет по 1 капсуле в день» (ревью #327).
+    Часть без чисел может войти в более полную с числами: «Хранить в недоступном для детей месте» —
+    в «… при температуре ниже 25°C».
+    """
     stems = [_content_stems(value) for value in values]
     numbers = [{stem for stem in own if stem.isdigit()} for own in stems]
+    groups = [{_GROUP_STEMS[stem] for stem in own if stem in _GROUP_STEMS} for own in stems]
+    negated = [bool(own & _NEGATION_STEMS) for own in stems]
     drop: set[int] = set()
     for i, own in enumerate(stems):
         if len(own) < 3:
             continue
         for j, other in enumerate(stems):
-            if i == j or j in drop or len(other) < 3:
+            if i == j or j in drop or len(other) < 3 or negated[i] != negated[j] or groups[i] != groups[j]:
                 continue
-            if own < other or (
-                # 0,85, не ниже: «Женщинам … из розового блистера» и «Мужчинам … из фиолетового» (PREGNACARE
-                # HIM & HER) совпадают на 70 %, а это разные указания.
-                j < i and numbers[i] == numbers[j] and len(own & other) / len(own | other) >= 0.85
-            ):
+            contained = own < other and (not numbers[i] or numbers[i] == numbers[j])
+            # 0,85, не ниже: «Женщинам … из розового блистера» и «Мужчинам … из фиолетового» совпадают на 70 %.
+            similar = j < i and numbers[i] == numbers[j] and len(own & other) / len(own | other) >= 0.85
+            if contained or similar:
                 drop.add(i)
                 break
     return drop
@@ -462,7 +485,8 @@ def _duplicate_indexes(values: list[str]) -> set[int]:
 
 # Жевательные конфеты источник называет «Tablet» («Günde 1 tablet»): в блоке памяти перевод верен источнику,
 # а на карточке конфет — «таблетка» (пилот 06.11.2026, HERBALAND). Замена только при показе, память не меняется.
-_GUMMY_SOURCE_RE = re.compile(r"\b(?:gummy|gummies|jelibon|ayicik|cignenebilir)\b")
+# «çiğnenebilir tablet» — жевательная таблетка, не конфета (ревью #327).
+_GUMMY_SOURCE_RE = re.compile(r"\b(?:gummy|gummies|jelibon|ayicik)\b")
 _GUMMY_WORDS = {
     "ru": (("таблетками", "жевательными конфетами"), ("таблеткам", "жевательным конфетам"),
            ("таблетках", "жевательных конфетах"), ("таблеток", "жевательных конфет"),
@@ -473,8 +497,16 @@ _GUMMY_WORDS = {
 
 
 def _gummy_wording(text: str, locale: str) -> str:
+    """«таблетку» → «жевательную конфету»; «жевательная таблетка» и «chewable tablet» не трогаются, заглавная
+    буква сохраняется («Таблетку разжевать» → «Жевательную конфету разжевать»)."""
+    chewable = r"(жевательн\w*\s+)" if locale == "ru" else r"(chewable\s+)"
     for word, replacement in _GUMMY_WORDS[locale]:
-        text = re.sub(rf"(?i)\b{word}\b", replacement, text)
+        def swap(match, replacement=replacement):
+            if match.group(1):
+                return match.group(0)
+            found = match.group(2)
+            return replacement[0].upper() + replacement[1:] if found[0].isupper() else replacement
+        text = re.sub(rf"(?i){chewable}?\b({word})\b", swap, text)
     return text
 
 
@@ -522,7 +554,8 @@ def build_description(
     items = paragraphs if isinstance(paragraphs, list) else [paragraphs]
     cleaned = [clean_paragraph(item, source_name, covered) for item in items]
     cleaned = [item for item in cleaned if item]
-    if not cleaned:
+    # Все предложения модели выпали — блоки памяти и дисклеймер остаются (ревью #327: так пустели STREPSILS, ANTI).
+    if not cleaned and not blocks:
         return ""
     disclaimer = (BABY_DISCLAIMER if baby_food else DISCLAIMER)[locale]
     return "".join(f"<p>{item}</p>" for item in cleaned + list(blocks or []) + [disclaimer])

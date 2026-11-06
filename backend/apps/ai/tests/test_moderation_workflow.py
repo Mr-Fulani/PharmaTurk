@@ -1367,13 +1367,23 @@ def test_moderation_task_writes_all_reasons_into_log_notes():
     log = AIProcessingLog.objects.create(product=product, status=AIProcessingStatus.MODERATION, input_data={})
 
     create_moderation_task(log, reasons=["supplement_unsourced_number", "title_identity_lost"])
-
     log.refresh_from_db()
-    assert log.moderation_notes == "Причины: supplement_unsourced_number, title_identity_lost"
+    assert log.moderation_notes == "Автопроверка: supplement_unsourced_number, title_identity_lost"
     assert AIModerationQueue.objects.get(log_entry=log).reason == "supplement_unsourced_number"
-    # Заметку модератора не перезаписываем.
-    log.moderation_notes = "Проверено вручную"
-    log.save(update_fields=["moderation_notes"])
+
+    # Новое попадание в очередь обновляет автоматическую заметку.
     create_moderation_task(log, reasons=["title_identity_lost"])
     log.refresh_from_db()
-    assert log.moderation_notes == "Проверено вручную"
+    assert log.moderation_notes == "Автопроверка: title_identity_lost"
+
+    # Отклонение с неизменённым полем формы не делает автоматический текст заметкой модератора.
+    reject_log(log, notes=log.moderation_notes)
+    log.refresh_from_db()
+    assert log.status == AIProcessingStatus.REJECTED and log.moderation_notes == "Автопроверка: title_identity_lost"
+
+    # Заметку модератора не перезаписываем.
+    log2 = AIProcessingLog.objects.create(product=product, status=AIProcessingStatus.MODERATION, input_data={},
+                                          moderation_notes="Проверено вручную")
+    create_moderation_task(log2, reasons=["title_identity_lost"])
+    log2.refresh_from_db()
+    assert log2.moderation_notes == "Проверено вручную"

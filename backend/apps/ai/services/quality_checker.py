@@ -115,6 +115,10 @@ def check_needs_moderation(log: AIProcessingLog) -> bool:
     return bool(get_moderation_reasons(log))
 
 
+# Начало автоматической заметки в ``moderation_notes`` — отличает её от заметки модератора.
+AUTO_NOTE_PREFIX = "Автопроверка: "
+
+
 def create_moderation_task(
     log: AIProcessingLog,
     reasons: List[str] | None = None,
@@ -123,10 +127,14 @@ def create_moderation_task(
     reasons = reasons if reasons is not None else get_moderation_reasons(log)
     reason = reasons[0] if reasons else "manual_review"
     # Очередь хранит одну причину; все — в заметке лога, иначе в модерации не видно, почему лог там
-    # (пилот БАДов 06.11.2026: 5 логов в moderation с пустыми заметками).
-    if reasons and not (log.moderation_notes or "").strip():
-        log.moderation_notes = "Причины: " + ", ".join(dict.fromkeys(reasons))
-        log.save(update_fields=["moderation_notes", "updated_at"])
+    # (пилот БАДов 06.11.2026: 5 логов в moderation с пустыми заметками). Автоматическая заметка обновляется
+    # при новом попадании в очередь; заметку модератора не трогаем.
+    notes = (log.moderation_notes or "").strip()
+    if reasons and (not notes or notes.startswith(AUTO_NOTE_PREFIX)):
+        auto = AUTO_NOTE_PREFIX + ", ".join(dict.fromkeys(reasons))
+        if notes != auto:
+            log.moderation_notes = auto
+            log.save(update_fields=["moderation_notes", "updated_at"])
     priority = 2 if reason in {"low_confidence", "title_category_mismatch", "untranslated_attribute"} else 3
     task, created = AIModerationQueue.objects.get_or_create(
         log_entry=log,

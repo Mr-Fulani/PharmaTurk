@@ -14,7 +14,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.ai.models import AIApplicationStatus, AIProcessingStatus
-from apps.ai.services.quality_checker import get_moderation_reasons
+from apps.ai.services.quality_checker import AUTO_NOTE_PREFIX, get_moderation_reasons
 from apps.ai.services.semantic_validator import SemanticValidator, medicine_paragraph_findings
 from apps.ai.services.size_inventory import (
     current_product_sizes,
@@ -860,7 +860,8 @@ def reject_log(log, *, user=None, notes: str = ""):
         if user is not None:
             log.processed_by = user
         log.moderation_date = resolved_at
-        if notes:
+        # Форма админки передаёт поле как есть: автоматическая заметка — не заметка модератора.
+        if notes and not notes.startswith(AUTO_NOTE_PREFIX):
             log.moderation_notes = notes
         log.save(
             update_fields=[
