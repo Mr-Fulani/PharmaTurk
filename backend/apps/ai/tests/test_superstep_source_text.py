@@ -63,6 +63,10 @@ def test_filler_sentences_are_dropped_whole_and_empty_paragraphs_go():
     assert drop_filler_sentences(text, "ru") == "<p>Футболка Lacoste из 100% хлопка. Вырез круглый.</p>"
     assert drop_filler_sentences("<p>Подошва 3.5 см. Подходит для повседневной носки.</p>", "ru") == "<p>Подошва 3.5 см.</p>"
     assert drop_filler_sentences("<p>Модель подходит для повседневной носки.</p>", "ru") == ""
+    assert drop_filler_sentences("<p>Верх из сетки. Подходит для повседневной городской носки.</p>", "ru") == "<p>Верх из сетки.</p>"
+    assert drop_filler_sentences("<p>Низкий профиль. Для повседневного и городского использования.</p>", "ru") == "<p>Низкий профиль.</p>"
+    # описание дизайна — не «вода»
+    assert "сочетается с современными линиями" in drop_filler_sentences("<p>Силуэт сочетается с современными линиями.</p>", "ru")
     assert drop_filler_sentences("<p>Made of cotton. It pairs well with jeans.</p>", "en") == "<p>Made of cotton.</p>"
 
 
