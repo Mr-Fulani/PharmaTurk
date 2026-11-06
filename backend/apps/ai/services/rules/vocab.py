@@ -72,6 +72,7 @@ COLORS: dict[str, tuple[str, str]] = {
     "antrasit": ("антрацитовый", "Anthracite"),
     "komur": ("темно-серый", "Charcoal"),
     "kahverengi": ("коричневый", "Brown"),
+    "kahvrengi": ("коричневый", "Brown"),  # опечатка источника (Veja, SuperStep)
     "kahve": ("коричневый", "Brown"),
     "aci kahve": ("темно-коричневый", "Dark brown"),
     "taba": ("рыжий", "Tan"),
@@ -277,6 +278,7 @@ KINDS: dict[str, Kind] = {
     "polo": _k("поло", N, "Polo Shirt"),
     "polo tisort": _k("поло", N, "Polo Shirt"),
     "polo yaka tisort": _k("поло", N, "Polo Shirt"),
+    "polo yaka t-shirt": _k("поло", N, "Polo Shirt"),  # SuperStep: «Nautica … Polo Yaka T-Shirt»
     "gomlek": _k("рубашка", F, "Shirt"),
     "pantolon": _k("брюки", PL, "Trousers"),
     "jean": _k("джинсы", PL, "Jeans"),
@@ -338,6 +340,10 @@ KINDS: dict[str, Kind] = {
     "high sneaker": _k("высокие кроссовки", PL, "High-Top Sneakers"),
     "spor ayakkabi": _k("кроссовки", PL, "Sneakers"),
     "kosu ayakkabisi": _k("беговые кроссовки", PL, "Running Shoes"),
+    "arazi kosu ayakkabisi": _k("кроссовки для трейлраннинга", PL, "Trail Running Shoes"),
+    "yuruyus ayakkabisi": _k("кроссовки для ходьбы", PL, "Walking Shoes"),
+    "voleybol ayakkabisi": _k("волейбольные кроссовки", PL, "Volleyball Shoes"),
+    "bilekli sneaker": _k("высокие кроссовки", PL, "High-Top Sneakers"),
     "basketbol ayakkabisi": _k("баскетбольные кроссовки", PL, "Basketball Shoes"),
     "sandalet": _k("сандалии", PL, "Sandals"),
     "sandal": _k("сандалии", PL, "Sandals"),
@@ -346,6 +352,13 @@ KINDS: dict[str, Kind] = {
     "clog": _k("сабо", PL, "Clogs"),
     "deniz ayakkabisi": _k("аквашузы", PL, "Water Shoes"),
     "bot": _k("ботинки", PL, "Boots"),
+    "botu": _k("ботинки", PL, "Boots"),
+    # SuperStep: Hunter «Kar Botu», McKinley «Kayak Botu» — зимние дутые ботинки, не лыжные.
+    "kar botu": _k("зимние ботинки", PL, "Snow Boots"),
+    "kayak botu": _k("зимние ботинки", PL, "Snow Boots"),
+    "uzun bot": _k("высокие сапоги", PL, "Tall Boots"),
+    "yagmur botu": _k("резиновые сапоги", PL, "Rain Boots"),  # Hunter
+    "yagmur cizmesi": _k("резиновые сапоги", PL, "Rain Boots"),
     "cizme": _k("сапоги", PL, "Boots"),
     "loafer": _k("лоферы", PL, "Loafers"),
     "slip on": _k("слипоны", PL, "Slip-Ons"),
@@ -610,6 +623,11 @@ FURNITURE_FINISHES: dict[str, tuple[str, str]] = {
 DESCRIPTORS: dict[str, tuple[str, str]] = {
     "bisiklet yaka": ("с круглым вырезом", "Crew Neck"),
     "crew neck": ("с круглым вырезом", "Crew Neck"),
+    # Одно «Crew» — часть модели носков Nike («Run Crew»), поэтому только с «Ss».
+    "ss crew": ("с круглым вырезом", "Crew Neck"),
+    # FLO Jack & Jones: «TEE SS CREW NECK», обрезанное «SS CREW NEC» — целиком, иначе «NECK» уходит в модель.
+    "ss crew neck": ("с круглым вырезом", "Crew Neck"),
+    "ss crew nec": ("с круглым вырезом", "Crew Neck"),
     "cneck": ("с круглым вырезом", "Crew Neck"),
     "yuvarlak yaka": ("с круглым вырезом", "Crew Neck"),
     "v yaka": ("с V-образным вырезом", "V-Neck"),
@@ -622,6 +640,10 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "logo baskili": ("с логотипом", "Logo"),
     "logolu": ("с логотипом", "Logo"),
     "desenli": ("с узором", "Patterned"),
+    "renk bloklu": ("в стиле колор-блок", "Colorblock"),
+    "monogram": ("с монограммой", "Monogram"),
+    # Одно «Parlak» — блеск чего угодно («Parlak Taşlı Sandalet» у FLO/LCW), поэтому только с кожей.
+    "parlak deri": ("из лакированной кожи", "Patent Leather"),
     # «Polo Yaka Çapa Desenli» без словаря уходило в LLM, и та писала «с круглым вырезом в рубчик».
     "capa desenli": ("с принтом якорей", "Anchor Print"),
     "yelken desenli": ("с принтом парусников", "Sailboat Print"),
@@ -701,6 +723,7 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "rahat kesim": ("свободного кроя", "Relaxed Fit"),
     "oversize": ("оверсайз", "Oversize"),
     "slim fit": ("приталенного кроя", "Slim Fit"),
+    "classic fit": ("классического кроя", "Classic Fit"),
     "dar kesim": ("приталенного кроя", "Slim Fit"),
     "pamuk": ("из хлопка", "Cotton"),
     "pamuklu": ("из хлопка", "Cotton"),
@@ -714,6 +737,7 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "ortopedik tabanli": ("с ортопедической стелькой", "Orthopedic"),
     "anatomik": ("с анатомической стелькой", "Anatomic"),
     "cirtli": ("на липучке", "Velcro"),
+    "cirt cirtli": ("на липучке", "Velcro"),
     "bagcikli": ("на шнурках", "Lace-Up"),
     "tokali": ("с пряжкой", "Buckle"),
     "antrenman": ("для тренировок", "Training"),
@@ -761,7 +785,7 @@ _ENGLISH_VOCAB_WORDS = frozenset(
         "fit", "graphic", "hoodie", "indigo", "jean", "jeans", "kids", "loafer", "logo", "men", "metal",
         "mint", "model", "noos", "normal", "oval", "oversize", "parfum", "petrol", "pls", "polo", "poplin", "relaxed",
         "sandal", "slip", "sneaker", "ss", "stick", "sweatshirt", "tee", "tshirt", "unisex", "women",
-        "bra", "biker", "outdoor", "polar", "ua",
+        "bra", "biker", "outdoor", "polar", "ua", "monogram",
     }
 )
 TURKISH_TITLE_WORDS = frozenset(
