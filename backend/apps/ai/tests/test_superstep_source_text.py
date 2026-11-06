@@ -53,6 +53,18 @@ def test_superstep_outfit_section_before_features_keeps_features():
     assert clean_source_text(text, SS) == "Giriş metni. Ürün Özellikleri Üst: süet. Taban: kauçuk."
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Giriş. Kombin Önerileri Jean ile tamamla. Hafif yapı, EVA ara taban.", "Giriş. Hafif yapı, EVA ara taban."),
+        ("<p>Kombin Önerileri</p><p>Chino pantolon ile tamamla.</p><p>Hafif yapı, EVA ara taban.</p>", "Hafif yapı, EVA ara taban."),
+        ("<p>Kombin Önerileri</p><p>Jean ile tamamla.</p>", ""),
+    ],
+)
+def test_superstep_outfit_tips_without_next_heading_stop_at_first_fact(text, expected):
+    assert clean_source_text(text, SS) == expected
+
+
 def test_superstep_real_technology_claim_stays():
     text = "Klinik olarak doğrulanmış Air Max yastıklama sunar."
     assert clean_source_text(text, SS) == text
@@ -86,6 +98,21 @@ def test_filler_sentences_are_dropped_whole_and_empty_paragraphs_go():
 
 
 @pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Мужские кроссовки Lacoste L003 из натуральной кожи для повседневной носки.", "Мужские кроссовки Lacoste L003 из натуральной кожи."),
+        ("Кроссовки для повседневной носки и бега.", "Кроссовки для бега."),
+        ("Модель низкого профиля (low-top) предназначена для повседневного и городского использования.", "Модель низкого профиля (low-top)."),
+        ("Чёрный цвет позволяет сочетать модель с джинсами, чинозами или шортами.", ""),
+        ("Футболка легко сочетается с джинсами, а мягкий хлопок приятен к телу.", "Футболка, а мягкий хлопок приятен к телу."),
+        ("<ul><li>Подходит для повседневной носки.</li><li>Подошва EVA.</li></ul>", "<ul><li>Подошва EVA.</li></ul>"),
+    ],
+)
+def test_filler_phrase_is_cut_and_facts_stay(text, expected):
+    assert drop_filler_sentences(text, "ru") == expected
+
+
+@pytest.mark.parametrize(
     "raw, material, sole",
     [
         ("DIS YUZEY:%62 PAMUK %27 SIGIR DERISI %11 SUET SIGIR DERISI TABAN:%100 KAUCUK", "Хлопок", "Каучук"),
@@ -96,6 +123,9 @@ def test_filler_sentences_are_dropped_whole_and_empty_paragraphs_go():
         ("Üst: Deri, Taban: Kauçuk", "Натуральная кожа", "Каучук"),  # «deri» — только точное слово верха
         ("Tekstil/Deri, Taban: Kauçuk", "Текстиль", "Каучук"),  # верх без метки
         ("Upper:Recycled polyester, TPUOutsole: Rubber", None, "Резина"),
+        ("İç taban: Deri, Taban: Kauçuk", None, "Каучук"),  # подошва не становится «Материалом»
+        ("Ara taban: EVA, Dış taban: Kauçuk", None, "Каучук"),
+        ("Üst: Süet Deri, Taban: Kauçuk", "Замша", "Каучук"),
         ("Kauçuk", "Каучук", None),  # одна подошва без меток (шлёпанцы) — как раньше
     ],
 )
