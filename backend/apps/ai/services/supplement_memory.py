@@ -55,7 +55,7 @@ LINE_SYSTEM_PROMPT = (
     "уплотнитель / firming agent. "
     "«tok karnına» = «после еды» / «after a meal», «aç karnına» = «натощак» / «on an empty stomach». "
     "«Takviye edici gıdalar normal beslenmenin yerine geçemez» = «БАДы не заменяют полноценное питание» / "
-    "«Food supplements are not a substitute for a varied diet». Числа пиши цифрами, как в источнике («Günde 1 "
+    "«Food supplements are not a substitute for a varied diet». Единицы в русском — по-русски: мг, мкг, г, мл, МЕ, КОЕ («10 ml» = «10 мл»). Числа пиши цифрами, как в источнике («Günde 1 "
     "tablet» = «1 таблетка в день»). Латинские названия бактерий и растений (Lactobacillus acidophilus) оставляй "
     "латиницей; других английских слов в русском переводе нет. Ответ — строго JSON."
 )
@@ -173,6 +173,7 @@ _LATIN_STRAIN_RE = re.compile(
     r"pediococcus|leuconostoc|[lbs]\.)\b"
 )
 _LATIN_WORD_RE = re.compile(r"[A-Za-z]{4,}")
+_RU_LATIN_UNIT_RE = re.compile(r"(?<![A-Za-z])(?:mg|mcg|[µμ]g|ml|iu|gr|kcal|cfu)(?![A-Za-z])", re.IGNORECASE)
 
 
 def _skip_sentence(folded: str) -> bool:
@@ -243,7 +244,11 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
     # Турецкое слово в переводе («Мелалойка Ягы (Melaloyka Yağı)») и подсказка словаря целиком («прополис | propolis»).
     # Бренд «METİLMAX» из источника остаётся как есть.
     turkish_words = re.findall(r"\w*[ğışçöüĞİŞÇÖÜ]\w*", ru)
-    if any(word not in source for word in turkish_words) or ("|" in ru + en and "|" not in source):
+    # Латинская единица в русском: «1 мерная ёмкость mg/5ml», «по 10 ml» (пилот 06.11.2026, IMUPLUS).
+    if (
+        any(word not in source for word in turkish_words) or ("|" in ru + en and "|" not in source)
+        or _RU_LATIN_UNIT_RE.search(ru)
+    ):
         problems.append("ru_untranslated")
     return problems + _meaning_problems(folded_source, ru, en)
 
@@ -260,11 +265,15 @@ class SupplementBlocks:
 
 def _split_top_level(text: str) -> list[str]:
     """Список состава → компоненты: запятая или точка с запятой вне скобок."""
+    # Незакрытая скобка источника («Multivitamin ve Mineral Karışımı(%3,77) [Vitamin C(…), …» без «]») склеивала
+    # остаток списка в одну часть длиннее UNIT_MAX_CHARS (пилот 06.11.2026, HERBALAND 7156): такую скобку не считаем.
+    opening = "".join(o for o, c in ("()", "[]") if text.count(o) <= text.count(c))
+    closing = "".join(c for o, c in ("()", "[]") if o in opening)
     items, depth, current = [], 0, []
     for index, char in enumerate(text):
-        if char in "([":
+        if char in opening:
             depth += 1
-        elif char in ")]":
+        elif char in closing:
             depth = max(0, depth - 1)
         # «1,3 - 1,6 Beta Glukan», «%0,91»: запятая между цифрами — десятичная.
         decimal = char == "," and text[index - 1 : index].isdigit() and text[index + 1 : index + 2].isdigit()
@@ -276,6 +285,9 @@ def _split_top_level(text: str) -> list[str]:
     items.append("".join(current))
     result = []
     for item in items:
+        for o, c in ("()", "[]"):
+            if o not in opening and item.count(o) > item.count(c):
+                item = re.sub(rf"\s*\{o}\s*", ": " if o == "[" else " ", item, count=1)  # «Karışımı(%3,77) [Vitamin C»
         item = item.strip(" .*")
         folded = fold_tr(item)
         # «FEROGLOBİN … İçeren Sıvı Takviye Edici Gıda - 200 ml» — название товара, а не компонент.
@@ -455,10 +467,11 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
                     open_part = None if re.search(r"[.!?;:]$", sentence) else (target, len(parts[target]) - 1)
     if parts["composition"] and all(_is_excipient(fold_tr(item)) for item in parts["composition"]):
         parts["excipients"], parts["composition"] = parts["composition"], []
+    # Блок с частью длиннее UNIT_MAX_CHARS не показывается: без неё он неполный, а выглядел бы полным.
     return {
-        kind: list(dict.fromkeys(item for item in items if len(item) <= UNIT_MAX_CHARS))
+        kind: list(dict.fromkeys(items))
         for kind, items in parts.items()
-        if items
+        if items and all(len(item) <= UNIT_MAX_CHARS for item in items)
     }
 
 

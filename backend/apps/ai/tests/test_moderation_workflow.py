@@ -40,6 +40,7 @@ from apps.catalog.models import (
     JewelryProduct,
     MedicineProduct,
     MedicineProductTranslation,
+    Product,
     SportsProduct,
     UnderwearProduct,
 )
@@ -1356,3 +1357,23 @@ def test_close_resolved_moderation_closes_existing_duplicates():
     assert old_log.status == AIProcessingStatus.REJECTED
     assert new_log.status == AIProcessingStatus.MODERATION
     assert new_queue.resolved_at is None
+
+
+def test_moderation_task_writes_all_reasons_into_log_notes():
+    # Пилот БАДов 06.11.2026: логи в moderation с пустыми заметками — очередь хранит одну причину.
+    from apps.ai.services.quality_checker import create_moderation_task
+
+    product = Product.objects.create(name="X", slug="mod-notes-reasons")
+    log = AIProcessingLog.objects.create(product=product, status=AIProcessingStatus.MODERATION, input_data={})
+
+    create_moderation_task(log, reasons=["supplement_unsourced_number", "title_identity_lost"])
+
+    log.refresh_from_db()
+    assert log.moderation_notes == "Причины: supplement_unsourced_number, title_identity_lost"
+    assert AIModerationQueue.objects.get(log_entry=log).reason == "supplement_unsourced_number"
+    # Заметку модератора не перезаписываем.
+    log.moderation_notes = "Проверено вручную"
+    log.save(update_fields=["moderation_notes"])
+    create_moderation_task(log, reasons=["title_identity_lost"])
+    log.refresh_from_db()
+    assert log.moderation_notes == "Проверено вручную"

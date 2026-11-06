@@ -184,6 +184,13 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         ("Keçiboynuzu pekmezi", "Патока рожкового дерева", "Carob molasses", []),
         # Пилот 4: подсказка словаря целиком, турецкое слово в переводе; бренд и латынь с опечаткой источника — верно.
         ("Propolis", "прополис | propolis", "propolis", ["ru_untranslated"]),
+        # Пилот на проде 06.11: латинские единицы в русском, «сафлор» без масла, «Убиквинол».
+        ("Günde 2 ölçek 10 ml kullanılır.", "По 2 мерные ёмкости по 10 ml в день.", "2 scoops of 10 ml a day.",
+         ["ru_untranslated"]),
+        ("Aspir yağı", "сафлор", "safflower", ["supplement_ingredient_mistranslated"]),
+        ("Ubikinol (Koenzim Q10) 200 mg", "Убиквинол (Коэнзим Q10) 200 мг", "Ubiquinol (Coenzyme Q10) 200 mg",
+         ["supplement_ingredient_mistranslated"]),
+        ("Aspir yağı", "сафлоровое масло", "safflower oil", []),
         # Повторное ревью: «не» при деепричастии — не запрет.
         ("Doktora danışmadan kullanmamalıdır.", "Могут применять, не превышая дозу.", "May use, not exceeding the dose.",
          ["negation_lost"]),
@@ -472,6 +479,79 @@ def test_admin_edit_in_memory_is_used_without_model():
 
     assert blocks.ru == {"usage": ["1 штука в день."]}
     llm.generate_content.assert_not_called()
+
+
+def test_unclosed_bracket_does_not_swallow_the_rest_of_composition():
+    # HERBALAND 7156 (пилот 06.11.2026): «[» без «]» — витамины пропадали, а «Состав» выглядел полным.
+    text = (
+        "Ürün Bileşimi:\nŞeker Kamışı Şekeri, Su, Jelleştirici(Pektin), Multivitamin ve Mineral Karışımı(%3,77) "
+        "[Vitamin C(L-askorbik asit), Vitamin E(DL-alfa-tokoferil asetat), D-Biotin, " + "Maltodekstrin, " * 40 + "Çinko."
+    )
+    parts = sm.section_parts({"ingredients": text})["composition"]
+    assert parts[:5] == [
+        "Şeker Kamışı Şekeri", "Su", "Jelleştirici(Pektin)", "Multivitamin ve Mineral Karışımı(%3,77): Vitamin C(L-askorbik asit)",
+        "Vitamin E(DL-alfa-tokoferil asetat)",
+    ]
+    assert parts[-1] == "Çinko"
+    # Часть длиннее UNIT_MAX_CHARS — блока нет совсем, а не без этой части.
+    long_warning = "Uyarılar:\nTavsiye edilen günlük porsiyonu aşmayın. " + "Hamilelik döneminde doktorunuza danışınız " * 12 + "."
+    assert "warnings" not in sm.section_parts({"product_info": long_warning})
+
+
+def test_model_sentences_about_dosing_and_storage_are_dropped_when_blocks_cover_them():
+    # Пилот на проде 06.11.2026: HERBALAND 7156, OSENDE 7171, STREPSILS 7148, OCEAN METHYL 7117.
+    paragraphs = [
+        "OSENDE QH Fort — пищевая добавка с убихинолом в мягких капсулах. В одной капсуле 200 мг убихинола.",
+        "Принимать внутрь по 1 капсуле один раз в день.",
+        "Детям 4–10 лет — по 1 конфете в день под присмотром взрослых. Таблетку растворяют в стакане воды.",
+        "Ocean Methyl B12 — пищевая добавка в форме спрея для приёма под язык. Леденцы для рассасывания.",
+        "Хранить в прохладном месте.",
+    ]
+    usage = "Способ применения: Рекомендуется принимать 1 капсулу 1 раз в день."
+    with_blocks = sc.build_description(paragraphs, "ru", blocks=[usage], covered=sc.covered_by_blocks({"usage": [1]}))
+
+    assert "один раз в день" not in with_blocks and "по 1 конфете" not in with_blocks and "растворяют" not in with_blocks
+    assert "В одной капсуле 200 мг убихинола." in with_blocks and "для приёма под язык" in with_blocks
+    assert "Леденцы для рассасывания." in with_blocks and "Хранить в прохладном месте." in with_blocks
+    # Без блока способа применения модель о приёме говорит.
+    assert "один раз в день" in sc.build_description(paragraphs, "ru")
+
+
+def test_block_texts_drop_repeats_and_say_gummy_for_gummies():
+    # IMUPLUS 120: одно и то же в предупреждениях и хранении, «дозу» и «порцию» дважды.
+    blocks = sm.SupplementBlocks(
+        ru={
+            "usage": ["Детям 4–10 лет по 1 таблетке в день."],
+            "warnings": ["Не превышайте рекомендуемую суточную дозу.", "Хранить в недоступном для детей месте.",
+                         "Не превышайте рекомендуемую суточную порцию.", "Не применять детям до 4 лет."],
+            "storage": ["Хранить в недоступном для детей месте при температуре ниже 25°C."],
+        },
+        en={
+            "usage": ["Children 4–10: 1 tablet a day."],
+            "warnings": ["Do not exceed the recommended daily dose.", "Keep out of reach of children.",
+                         "Do not exceed the recommended daily portion.", "Not for children under 4."],
+            "storage": ["Store out of reach of children below 25°C."],
+        },
+    )
+
+    ru = sc.memory_block_texts(blocks, "ru", "HERBALAND MULTIVITAMINS GUMMIES CIGNENEBILIR FORM")
+    en = sc.memory_block_texts(blocks, "en", "HERBALAND MULTIVITAMINS GUMMIES CIGNENEBILIR FORM")
+
+    assert ru == [
+        "Способ применения: Детям 4–10 лет по 1 жевательной конфете в день.",
+        "Предупреждения: Не превышайте рекомендуемую суточную дозу. Не применять детям до 4 лет.",
+        "Хранение: Хранить в недоступном для детей месте при температуре ниже 25°C.",
+    ]
+    assert en[0] == "How to use: Children 4–10: 1 gummy a day." and "portion" not in en[1]
+    # У таблеток слово не меняется.
+    assert "по 1 таблетке" in sc.memory_block_texts(blocks, "ru", "SOLGAR VITAMIN C 60 TABLET")[0]
+    # Разные указания с общими словами — не повтор (PREGNACARE HIM & HER: розовый и фиолетовый блистер).
+    pair = sm.SupplementBlocks(
+        ru={"usage": ["Женщинам от 11 лет рекомендуется по 1 таблетке в день из таблеток в розовом блистере.",
+                      "Мужчинам от 11 лет рекомендуется по 1 таблетке в день из таблеток в фиолетовом блистере."]},
+        en={"usage": ["Women: 1 pink tablet a day.", "Men: 1 purple tablet a day."]},
+    )
+    assert "фиолетовом" in sc.memory_block_texts(pair, "ru")[0]
 
 
 def test_block_texts_keep_warnings_with_disease_words_and_go_before_disclaimer():

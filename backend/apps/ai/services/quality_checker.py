@@ -122,6 +122,11 @@ def create_moderation_task(
     """Создать или повторно открыть запись в очереди модерации для лога."""
     reasons = reasons if reasons is not None else get_moderation_reasons(log)
     reason = reasons[0] if reasons else "manual_review"
+    # Очередь хранит одну причину; все — в заметке лога, иначе в модерации не видно, почему лог там
+    # (пилот БАДов 06.11.2026: 5 логов в moderation с пустыми заметками).
+    if reasons and not (log.moderation_notes or "").strip():
+        log.moderation_notes = "Причины: " + ", ".join(dict.fromkeys(reasons))
+        log.save(update_fields=["moderation_notes", "updated_at"])
     priority = 2 if reason in {"low_confidence", "title_category_mismatch", "untranslated_attribute"} else 3
     task, created = AIModerationQueue.objects.get_or_create(
         log_entry=log,
