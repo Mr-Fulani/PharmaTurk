@@ -7,6 +7,8 @@ from typing import List
 from django.utils import timezone
 
 from apps.ai.models import AIProcessingLog, AIModerationQueue, AIProcessingStatus
+from apps.ai.services.rules.facts import RULE_PRODUCT_TYPES
+from apps.ai.services.rules.polish import turkish_leftovers
 from apps.ai.services.semantic_validator import SemanticValidationReport, SemanticValidator, medicine_foreign_flavour
 
 
@@ -78,6 +80,13 @@ def get_moderation_reasons(
         # Узкий запрос пересказывает источник без «воды»: короткий исходник даёт
         # короткое описание. Порог ловит только пустой/сломанный ответ.
         minimum_description_words = 10
+        # Турецкое слово в RU-описании («из Şişme модели», «Kapsül Koleksiyon») — модель не
+        # перевела часть источника (карточки SuperStep 06.11.2026). Бренд и модель — не ошибка.
+        facts = rule_content.get("facts") if isinstance(rule_content.get("facts"), dict) else {}
+        if (product_type or input_data.get("product_type")) in RULE_PRODUCT_TYPES and turkish_leftovers(
+            log.generated_description, f"{facts.get('brand') or ''} {facts.get('model') or ''}"
+        ):
+            reasons.append("description_untranslated")
     tabs = (input_data.get("attributes") or {}).get("source_tabs") if isinstance(input_data.get("attributes"), dict) else None
     tabs = tabs if isinstance(tabs, dict) else {}
     if product_type == "medicines" and not any(

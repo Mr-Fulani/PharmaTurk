@@ -3,7 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from apps.ai.services.rules.facts import ProductFacts, clean_source_text, parse_name, product_source
-from apps.ai.services.rules.pipeline import _dynamic_attributes, drop_filler_sentences
+from apps.ai.services.rules.pipeline import _dynamic_attributes
+from apps.ai.services.rules.polish import polish_description as drop_filler_sentences
 
 SS = "superstep"
 SUPERSTEP_SOURCE = (

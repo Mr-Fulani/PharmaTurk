@@ -234,14 +234,18 @@ class Command(BaseCommand):
         result, created = Counter(), set()
         for log in logs:
             try:
-                applied = generator.apply_log_to_product(log)
-                product = Product.objects.get(pk=log.product_id)
-                generator.sync_variant_titles_from_parent(product, log_entry=applied)
-                result[str(applied.application_status or applied.status)] += 1
-                created.update(key for key in self._owned_rows(product) if key not in before)
+                # Товар и названия его вариантов — одной транзакцией: сбой синхронизации откатывает
+                # и применение, товар не остаётся записанным наполовину (06.11.2026: три спорттовара).
+                with transaction.atomic():
+                    applied = generator.apply_log_to_product(log)
+                    product = Product.objects.get(pk=log.product_id)
+                    generator.sync_variant_titles_from_parent(product, log_entry=applied)
             except Exception as exc:
                 result["error"] += 1
                 self.stdout.write(f"  {log.product_id} (лог {log.pk}): {exc}")
+                continue
+            result[str(applied.application_status or applied.status)] += 1
+            created.update(key for key in self._owned_rows(product) if key not in before)
         with open(f"{options['backup']}.created.json", "x", encoding="utf-8") as handle:
             json.dump(sorted([label, pk] for label, pk in created), handle)
         self.stdout.write(

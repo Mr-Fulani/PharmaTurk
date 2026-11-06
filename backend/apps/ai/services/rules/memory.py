@@ -28,7 +28,10 @@ def lookup(namespace: str, source_text: str) -> dict[str, Any] | None:
     return {**texts, "memory_id": entry.pk, "source_log_id": entry.source_log_id}
 
 
-def remember(namespace: str, source_text: str, ru: str, en: str, log: AIProcessingLog | None) -> None:
+def remember(
+    namespace: str, source_text: str, ru: str, en: str, log: AIProcessingLog | None, *, replace: bool = False
+) -> None:
+    """``replace`` — прежний перевод негоден (турецкие слова), новый заменяет его в любом случае."""
     if translation_memory.remember(namespace, {source_text: {"ru": ru, "en": en}}, log=log):
         return
     # Старая автоматическая запись, чей лог не принят, уступает свежему переводу.
@@ -36,5 +39,7 @@ def remember(namespace: str, source_text: str, ru: str, en: str, log: AIProcessi
         namespace=namespace,
         source_hash=translation_memory.source_hash(source_text),
         source_log__isnull=False,
-    ).exclude(source_log__status__in=REUSABLE_LOG_STATUSES)
+    )
+    if not replace:
+        stale = stale.exclude(source_log__status__in=REUSABLE_LOG_STATUSES)
     stale.update(ru_text=ru, en_text=en, source_log=log)

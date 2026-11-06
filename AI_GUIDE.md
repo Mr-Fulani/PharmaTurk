@@ -434,6 +434,15 @@ manage.py source_ai_cards --restore /home/deploy/backups/superstep-rows-….json
   docker stop mudaroba-source-cards   # после работы; бэкап остаётся в /home/deploy/backups
   ```
 
+### Правка сохранённых описаний: `polish_product_memory`
+
+Записи памяти `product_description:*` — через те же правила, что и новые описания
+(`apps/ai/services/rules/polish.py`, см. `docs/SEO_NONMEDICAL_PRODUCTS.md`, «Описание»). Без
+`--apply` только показывает, сколько записей изменится, и примеры; с `--apply` нужен новый файл
+`--backup` (JSON: pk, ru_text, en_text до правки). Запись, у которой после правки не остаётся
+текста, не меняется. Описание из памяти правится и при каждом чтении, команда — для порядка
+в самих записях. На проде — в отдельном контейнере, как `source_ai_cards`.
+
 ### Закрытие лишней модерации: `close_resolved_ai_moderation`
 
 В админке — кнопка «Закрыть решённые записи модерации» в «AI-прогонах».

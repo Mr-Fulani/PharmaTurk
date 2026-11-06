@@ -1114,8 +1114,18 @@ class ContentGenerator:
             or preferred_parent_ru
         )
 
+        # У SportsVariant нет is_active, sort_order и name (source_ai_cards --apply падал с
+        # FieldError на трёх спорттоварах SuperStep 06.11.2026) — без названия синхронизировать нечего.
+        variant_fields = {field.name for field in variants_manager.model._meta.get_fields()}
+        if "name" not in variant_fields:
+            return 0
+        variants_qs = variants_manager.all()
+        if "is_active" in variant_fields:
+            variants_qs = variants_qs.filter(is_active=True)
+        variants_qs = variants_qs.order_by(*(("sort_order", "id") if "sort_order" in variant_fields else ("id",)))
+
         updated = 0
-        for variant in variants_manager.filter(is_active=True).order_by("sort_order", "id"):
+        for variant in variants_qs:
             update_fields = []
             suggested_ru = strip_price_and_codes_from_title(preferred_parent_ru)
             translated_color_ru = translate_common_color(getattr(variant, "color", "") or "", "ru")

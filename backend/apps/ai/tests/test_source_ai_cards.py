@@ -193,3 +193,43 @@ def test_apply_backs_up_rows_keeps_price_brand_category_and_restores(generator, 
 
     ready.refresh_from_db()
     assert ready.name == "Nike superstep-1 Erkek Spor Ayakkabı"
+
+
+def test_failed_variant_sync_rolls_back_whole_product(generator, category, tmp_path, monkeypatch):
+    product = _product("superstep-1", category)
+    _log(product)
+
+    def broken_sync(self, product, log_entry=None):
+        raise RuntimeError("Cannot resolve keyword 'is_active' into field")
+
+    monkeypatch.setattr(generator, "sync_variant_titles_from_parent", broken_sync)
+    out = StringIO()
+
+    call_command(
+        "source_ai_cards", "--source", "superstep", "--apply", "--since", "2026-11-05",
+        "--backup", str(tmp_path / "rows.json"), stdout=out,
+    )
+
+    product.refresh_from_db()
+    assert product.name == "Nike superstep-1 Erkek Spor Ayakkabı"  # применение откатилось вместе с синхронизацией
+    assert "'error': 1" in out.getvalue()
+    assert json.loads((tmp_path / "rows.json.created.json").read_text()) == []
+
+
+def test_variant_title_sync_skips_variants_without_name_field():
+    from apps.ai.services.content_generator import ContentGenerator
+    from apps.catalog.models import SportsProduct, SportsVariant
+
+    product = Product.objects.create(
+        name="Nike Elite Tournament 7 No Unisex Turuncu Basketbol Topu", slug="sports-sync-ball",
+        product_type="sports", price=100, currency="TRY", external_id="superstep-26934",
+    )
+    sports, _ = SportsProduct.objects.update_or_create(
+        base_product=product, defaults={"name": product.name, "slug": "sports-sync-ball"}
+    )
+    SportsVariant.objects.create(product=sports, color="Turuncu", size="7")
+    generator = ContentGenerator.__new__(ContentGenerator)
+    product.refresh_from_db()
+    assert isinstance(product.domain_item, SportsProduct)  # иначе тест не дошёл бы до вариантов
+
+    assert generator.sync_variant_titles_from_parent(product) == 0  # у SportsVariant нет name/is_active/sort_order

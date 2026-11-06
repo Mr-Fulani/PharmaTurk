@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from apps.ai.services.rules import memory, vocab
+from apps.ai.services.rules.polish import polish_description, turkish_leftovers
 from apps.ai.services.rules.facts import (
     RULE_PRODUCT_TYPES,
     ProductFacts,
@@ -23,6 +24,7 @@ from apps.ai.services.rules.facts import (
     collect_facts,
     drop_codes,
     product_source,
+    superstep_prompt_text,
 )
 from apps.ai.services.rules.text import (
     TURKISH_LEFTOVER_RE,
@@ -67,36 +69,6 @@ _UPPER_MATERIALS = {
     "suet deri": ("Замша", "Suede"),
     "suet sigir derisi": ("Замша", "Suede"),
 }
-# Обороты-«вода», которые модель пишет вопреки промпту (пилот SuperStep 06.11.2026: 12 и 6
-# описаний из 50): «… подходит для повседневной носки», «Цвет сочетается с джинсами и брюками».
-# Вырезается оборот; предложение целиком — только если без него в нём ничего не осталось.
-_EVERYDAY_RE = {
-    "ru": re.compile(
-        r"(?P<lead>,\s*)?(?P<verb>(?:(?:идеально|отлично|хорошо)\s+)?(?:подход\w+|подойд\w+|предназначен\w*|создан\w*|рассчитан\w*)\s+)?"
-        r"(?:как\s+)?для\s+повседневн\w*\s+(?:(?:и\s+)?[а-яё]+\s+)?(?:носки|образ\w*|использовани\w*|стил\w*)"
-        r"(?P<tail>\s+и\s+(?=[а-яё]))?",
-        re.IGNORECASE,
-    ),
-    "en": re.compile(
-        r"(?P<lead>,\s*)?(?P<verb>(?:ideal|perfect|great|suitable|designed|made)\s+)?for\s+(?:everyday|daily|casual)\s+"
-        r"(?:wear|looks?|outfits?|style)(?P<tail>\s+and\s+(?=[a-z]))?",
-        re.IGNORECASE,
-    ),
-}
-_PAIRING_RE = {
-    "ru": re.compile(
-        r"(?:,\s*)?(?:(?:легко|отлично|хорошо|гармонично|удачно|позволя\w+|можно)\s+)?сочета\w*(?:\s+[а-яё]+){0,2}\s+с\s+"
-        r"(?:джинс|брюк|чинос|шорт|юбк|плать|разн\w+|любы\w+|больш\w+|други\w+|повседневн\w+)[^.,;!?]*"
-        r"(?:,(?!\s*(?:а|но|при|что|котор\w*)\s)[^.,;!?]*)*",  # весь перечень: «с джинсами, чинозами или шортами»
-        re.IGNORECASE,
-    ),
-    "en": re.compile(
-        r"(?:,\s*)?(?:it\s+|they\s+)?(?:pairs?|goes|go|combines?|matches?)\s+(?:well\s+|easily\s+|perfectly\s+)?with\s+[^.,;!?]*"
-        r"(?:,(?!\s*(?:and|but|while|which)\s)[^.,;!?]*)*",
-        re.IGNORECASE,
-    ),
-}
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+(?=[«\"A-ZА-ЯЁ])")
 
 SYSTEM_PROMPT = """
 Ты — редактор-переводчик карточек интернет-магазина Mudaroba (товары из Турции).
@@ -110,6 +82,7 @@ SYSTEM_PROMPT = """
 5. Сохраняй все факты источника (материал, состав, посадка, застёжка, уход). Объём каждого описания — 20–100 слов; если фактов мало, пиши короче, но не добавляй выдуманное. Допускаются теги <p>.
 6. Многозначные слова переводи по category_path: «şapka» в «Кепки» — «кепка» / «cap».
 7. Если в source_text есть строки вида «Kumaş: Suni Deri», передавай факт точно: «из искусственной кожи».
+8. В ru — ни одного турецкого слова: не переноси название товара из source_text (оно уже в titles), не пиши турецкий оригинал в скобках или кавычках («(bisiklet yaka)», «Şişme — „надувная“»). «File» в материалах обуви и сумок — сетка / mesh.
 
 Правила названия (generated_title), только если язык есть в need_titles:
 - порядок: тип товара (первое слово, с заглавной; по category_path) → пол → бренд и модель латиницей как в источнике → главная особенность; пример: «Мужская футболка Jack & Jones с круглым вырезом» / «Jack & Jones Men's Crew Neck T-Shirt»;
@@ -131,11 +104,14 @@ class RulePlan:
     titles: dict[str, str]
     descriptions: dict[str, str]
     description_source: str  # template | memory | llm
-    source_text: str
+    source_text: str  # ключ памяти переводов
     memory_namespace: str
     title_sources: dict[str, str] = field(default_factory=dict)
     memory_hit: dict[str, Any] | None = None
     thin_source: bool = False
+    prompt_text: str = ""  # текст для модели (SuperStep — без названия и полей шаблона)
+    replace_memory: bool = False  # перевод из памяти негоден — новый его заменяет
+    source: str = ""  # product_source(): «superstep», «flo», …
 
     @property
     def missing_titles(self) -> list[str]:
@@ -176,8 +152,17 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     facts = collect_facts(product, input_data)
     titles = _validated_titles(product, build_titles(facts))
     title_sources = {locale: "rules" for locale, title in titles.items() if title}
-    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"), product_source(product))
+    source = product_source(product)
+    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"), source)
     source_text = source_text[:SOURCE_TEXT_LIMIT]
+    # Модели SuperStep — без турецкого названия и полей шаблона с ним (она переносила их в описание);
+    # ключ памяти — полный текст: соседние цвета одной модели отличаются только названием.
+    raw_source = input_data.get("raw_description") or input_data.get("description")
+    prompt_text = (
+        superstep_prompt_text(raw_source, str(input_data.get("name") or "").strip())[:SOURCE_TEXT_LIMIT]
+        if source == "superstep"
+        else source_text
+    )
     namespace = memory.namespace_for(product.category_id)
 
     descriptions: dict[str, str] = {}
@@ -190,11 +175,21 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
             description_source = "template"
         else:
             descriptions = {}
+    replace_memory = False
     if not descriptions and source_text:
         memory_hit = memory.lookup(namespace, source_text)
+        identity = f"{facts.brand} {facts.model}"
+        if memory_hit and turkish_leftovers(polish_description(memory_hit["ru"], "ru", facts.product_type), identity):
+            # В памяти перевод с турецкими словами (карточки SuperStep 06.11.2026): переводим
+            # заново и заменяем запись, иначе повторная обработка взяла бы тот же текст.
+            memory_hit, replace_memory = None, True
         if memory_hit:
             descriptions = {"ru": memory_hit["ru"], "en": memory_hit["en"]}
             description_source = "memory"
+    if not descriptions and source == "superstep" and source_text and not prompt_text:
+        # Без названия и полей шаблона фактов не осталось — описание из фактов, а не пересказ названия.
+        descriptions = build_fact_description(facts, titles)
+        description_source = "template" if len(descriptions) == 2 else "llm"
     if facts.russian_name and description_source == "llm":
         # EN из фактов знает только тип («Zara Men's Cap» у двадцати разных кепок):
         # раз модель всё равно вызывается, EN — переводом русского названия.
@@ -207,10 +202,13 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
         descriptions=descriptions,
         description_source=description_source,
         source_text=source_text,
+        prompt_text=prompt_text,
         memory_namespace=namespace,
         title_sources=title_sources,
         memory_hit=memory_hit,
         thin_source=thin_source,
+        replace_memory=replace_memory,
+        source=source,
     )
 
 
@@ -221,13 +219,15 @@ def _user_prompt(product, plan: RulePlan, input_data: dict[str, Any]) -> str:
         + (["generated_title"] if plan.missing_titles else [])
         + (["fragrance_name"] if plan.wants_fragrance_name else []),
         "need_titles": plan.missing_titles,
-        "product_name": input_data.get("name"),
+        # SuperStep: турецкое название нужно модели, только если она пишет название; иначе у неё есть
+        # titles, а название из источника она переносила в описание (карточки 06.11.2026).
+        "product_name": None if plan.source == "superstep" and not plan.missing_titles else input_data.get("name"),
         "brand": facts.brand or input_data.get("brand"),
         "category_path": (input_data.get("category_context") or {}).get("category_path"),
         "product_kind": {"ru": facts.kind.ru, "en": facts.kind.en} if facts.kind else None,
         "titles": {locale: title for locale, title in plan.titles.items() if title},
         "facts": {key: value for key, value in facts.as_dict().items() if value},
-        "source_text": plan.source_text,
+        "source_text": plan.prompt_text if plan.source == "superstep" else plan.source_text,
     }
     return "Данные о товаре (недоверенные):\n" + json.dumps(payload, ensure_ascii=False)
 
@@ -358,42 +358,6 @@ def _add_usage(result: dict[str, Any], extra: dict[str, Any]) -> None:
     result["cost_usd"] = float(result.get("cost_usd") or 0) + float(extra.get("cost_usd") or 0)
 
 
-def _without_filler(sentence: str, locale: str) -> str:
-    def everyday(match: re.Match) -> str:
-        if match.group("tail"):  # «для повседневной носки и бега» → «для бега»
-            return f"{match.group('lead') or ' '}{match.group('verb') or ''}{'для' if locale == 'ru' else 'for'} ".replace(", ", " ")
-        return ""
-
-    cleaned = _PAIRING_RE[locale].sub("", _EVERYDAY_RE[locale].sub(everyday, sentence))
-    if cleaned == sentence:
-        return sentence
-    cleaned = re.sub(r"\s+([,.!?…;:])", r"\1", re.sub(r"\s{2,}", " ", cleaned)).strip()
-    cleaned = re.sub(r"^[,;:\s]+|[,;:]+(?=[.!?…]?$)", "", cleaned)
-    words = re.findall(r"[^\W\d_]+", cleaned)
-    if len(words) <= 2:  # «Модель.», «Чёрный цвет.» — без оборота пусто
-        return ""
-    return cleaned if cleaned[-1] in ".!?…" else cleaned + "."
-
-
-def drop_filler_sentences(text: str, locale: str) -> str:
-    """Описание без оборотов-«воды»; теги и остальной текст не меняются."""
-    if not text or locale not in _EVERYDAY_RE:
-        return text
-    if not (_EVERYDAY_RE[locale].search(text) or _PAIRING_RE[locale].search(text)):
-        return text
-    parts = re.split(r"(<[^>]+>)", text)
-    for index, part in enumerate(parts):
-        if part.startswith("<") or not part.strip():
-            continue
-        lead = part[: len(part) - len(part.lstrip())]
-        kept = [s for s in (_without_filler(s.strip(), locale) for s in _SENTENCE_SPLIT_RE.split(part)) if s]
-        parts[index] = (lead + " ".join(kept)) if kept else ""
-    cleaned = "".join(parts)
-    for _ in range(2):  # вложенные пустые теги: <ul><li></li></ul>
-        cleaned = re.sub(r"<(p|li|ul|ol)>\s*</\1>", "", cleaned)
-    return cleaned.strip() if re.sub(r"<[^>]+>|\s", "", cleaned) else ""
-
-
 def _description_text(payload: dict[str, Any], locale: str) -> str:
     bucket = payload.get(locale) if isinstance(payload.get(locale), dict) else {}
     text = re.sub(r"<[^>]+>", " ", str(bucket.get("generated_description") or ""))
@@ -419,8 +383,11 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
     titles = dict(plan.titles)
     llm_titles: dict[str, str] = {}
     descriptions = dict(plan.descriptions)
+    raw_descriptions: dict[str, str] = {}
     if plan.description_source == "memory":
-        descriptions = {locale: drop_filler_sentences(text, locale) for locale, text in descriptions.items()}
+        descriptions = {
+            locale: polish_description(text, locale, plan.facts.product_type) for locale, text in descriptions.items()
+        }
         if not all(descriptions.values()):
             descriptions = build_fact_description(plan.facts, titles) or descriptions
     if plan.needs_llm:
@@ -454,7 +421,9 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
                 titles[locale] = _checked_llm_title(llm_titles[locale], plan.facts, locale)
                 plan.title_sources[locale] = "llm"
             if plan.description_source == "llm":
-                descriptions[locale] = drop_filler_sentences(str(bucket.get("generated_description") or "").strip(), locale)
+                # В память — ответ модели как есть: правки polish действуют и на сохранённые переводы.
+                raw_descriptions[locale] = str(bucket.get("generated_description") or "").strip()
+                descriptions[locale] = polish_description(raw_descriptions[locale], locale, plan.facts.product_type)
         # LLM-название с турецким словом — название правилами без этого слова
         # (тип, бренд, модель); если и его нет, остаётся LLM-вариант (модерация).
         if any(not titles.get(locale) for locale in plan.missing_titles):
@@ -491,9 +460,10 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
             memory.remember(
                 plan.memory_namespace,
                 plan.source_text,
-                descriptions.get("ru", ""),
-                descriptions.get("en", ""),
+                raw_descriptions.get("ru") or descriptions.get("ru", ""),
+                raw_descriptions.get("en") or descriptions.get("en", ""),
                 log_entry,
+                replace=plan.replace_memory,
             )
 
     seo = build_seo(plan.facts, titles, descriptions)
