@@ -28,9 +28,11 @@ def _product(external_id, **extra):
 class FakeGenerator:
     calls = []
     applied = []
+    options = []
 
-    def process_product(self, product_id, processing_type, auto_apply):
+    def process_product(self, product_id, processing_type, auto_apply, options=None):
         FakeGenerator.calls.append((product_id, processing_type, auto_apply))
+        FakeGenerator.options.append(options)
         return AIProcessingLog.objects.create(
             product_id=product_id,
             processing_type="full",
@@ -48,7 +50,7 @@ class FakeGenerator:
 
 @pytest.fixture
 def generator(monkeypatch):
-    FakeGenerator.calls, FakeGenerator.applied = [], []
+    FakeGenerator.calls, FakeGenerator.applied, FakeGenerator.options = [], [], []
     monkeypatch.setattr("apps.ai.management.commands.source_ai_cards.ContentGenerator", FakeGenerator)
     return FakeGenerator
 
@@ -78,6 +80,16 @@ def test_run_makes_drafts_without_applying_and_reports_memory(generator):
     assert report["логов"] == 2
     assert report["описание"] == {"memory": 2}
     assert generator.applied == []
+
+
+def test_force_reprocesses_products_with_logs(generator):
+    done = _product("superstep-1")
+    AIProcessingLog.objects.create(product=done, processing_type="full", status=AIProcessingStatus.COMPLETED, input_data={})
+
+    call_command("source_ai_cards", "--source", "superstep", "--run", "--force", "--workers", "1", stdout=StringIO())
+
+    assert generator.calls == [(done.id, "full", False)]
+    assert generator.options == [{"force": True}]
 
 
 def test_apply_requires_backup(generator):

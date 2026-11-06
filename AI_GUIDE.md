@@ -396,6 +396,7 @@ docker compose exec backend poetry run python manage.py ai_enqueue --product-typ
 ```bash
 manage.py source_ai_cards --source superstep                                   # сколько новых, по типам
 manage.py source_ai_cards --source superstep --run --limit 500 --workers 4     # черновики, товары не меняются
+manage.py source_ai_cards --source superstep --run --force --ids 1,2,3         # переобработать (старые логи закроются)
 manage.py source_ai_cards --source superstep --report --since 2026-11-06       # статусы, модерация, память, $
 manage.py source_ai_cards --source superstep --apply --since 2026-11-06 \
     --backup /home/deploy/backups/superstep-rows-$(date +%Y%m%d-%H%M).json.gz  # только «Завершено»

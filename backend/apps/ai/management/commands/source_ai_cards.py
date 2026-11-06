@@ -41,6 +41,7 @@ class Command(BaseCommand):
         parser.add_argument("--ids", help="Только эти id товаров (через запятую)")
         parser.add_argument("--limit", type=int, default=500, help="Сколько товаров за запуск --run")
         parser.add_argument("--workers", type=int, default=4, help=f"Параллельных запросов (до {MAX_WORKERS})")
+        parser.add_argument("--force", action="store_true", help="С --run: заново и уже обработанные (старые логи закроются)")
         mode = parser.add_mutually_exclusive_group()
         mode.add_argument("--run", action="store_true", help="Сделать черновики (товары не меняются)")
         mode.add_argument("--report", action="store_true", help="Итог по логам источника")
@@ -69,10 +70,13 @@ class Command(BaseCommand):
         return logs
 
     def _run(self, products, options):
-        candidates = select_products_for_ai(ids=list(products.values_list("id", flat=True)))
+        candidates = select_products_for_ai(
+            ids=list(products.values_list("id", flat=True)), include_processed=options["force"]
+        )
         ids = list(candidates.values_list("id", flat=True)[: options["limit"]])
         by_type = Counter(candidates.values_list("product_type", flat=True))
-        self.stdout.write(f"Без русской карточки: {candidates.count()} {dict(by_type)}; к обработке: {len(ids)}")
+        label = "Товаров" if options["force"] else "Без русской карточки"
+        self.stdout.write(f"{label}: {candidates.count()} {dict(by_type)}; к обработке: {len(ids)}")
         if not options["run"] or not ids:
             self.stdout.write("Только показ: черновики — --run." if ids else "Новых товаров нет.")
             return
@@ -83,8 +87,11 @@ class Command(BaseCommand):
             try:
                 if not hasattr(local, "generator"):
                     local.generator = ContentGenerator()
-                log = local.generator.process_product(product_id, processing_type="full", auto_apply=False)
-                return product_id, log.pk, log.status
+                log = local.generator.process_product(
+                    product_id, processing_type="full", auto_apply=False,
+                    options={"force": True} if options["force"] else None,
+                )
+                return product_id, log.pk, str(log.status)
             except Exception as exc:  # ошибка одного товара не останавливает партию
                 return product_id, None, f"error: {exc}"[:200]
             finally:
@@ -119,7 +126,7 @@ class Command(BaseCommand):
         cost = logs.aggregate(total=Sum("cost_usd"))["total"] or 0
         self.stdout.write(json.dumps({
             "логов": logs.count(),
-            "статусы": dict(Counter(logs.values_list("status", flat=True))),
+            "статусы": dict(Counter(map(str, logs.values_list("status", flat=True)))),
             "описание": dict(sources),  # memory — из памяти, llm — новый перевод, template — из фактов
             "название": dict(titles),  # rules — правила, llm — модель
             "модерация": dict(reasons),
