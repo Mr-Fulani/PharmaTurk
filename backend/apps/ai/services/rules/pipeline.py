@@ -111,6 +111,7 @@ class RulePlan:
     thin_source: bool = False
     prompt_text: str = ""  # текст для модели (SuperStep — без названия и полей шаблона)
     replace_memory: bool = False  # перевод из памяти негоден — новый его заменяет
+    source: str = ""  # product_source(): «superstep», «flo», …
 
     @property
     def missing_titles(self) -> list[str]:
@@ -202,6 +203,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
         memory_hit=memory_hit,
         thin_source=thin_source,
         replace_memory=replace_memory,
+        source=source,
     )
 
 
@@ -212,7 +214,9 @@ def _user_prompt(product, plan: RulePlan, input_data: dict[str, Any]) -> str:
         + (["generated_title"] if plan.missing_titles else [])
         + (["fragrance_name"] if plan.wants_fragrance_name else []),
         "need_titles": plan.missing_titles,
-        "product_name": input_data.get("name"),
+        # SuperStep: турецкое название нужно модели, только если она пишет название; иначе у неё есть
+        # titles, а название из источника она переносила в описание (карточки 06.11.2026).
+        "product_name": None if plan.source == "superstep" and not plan.missing_titles else input_data.get("name"),
         "brand": facts.brand or input_data.get("brand"),
         "category_path": (input_data.get("category_context") or {}).get("category_path"),
         "product_kind": {"ru": facts.kind.ru, "en": facts.kind.en} if facts.kind else None,
