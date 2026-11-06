@@ -88,12 +88,27 @@ def _attrs(input_data: dict[str, Any]) -> dict[str, Any]:
     return attrs if isinstance(attrs, dict) else {}
 
 
+# SuperStep: шаблонный текст магазина. «Kombin Önerileri» — с чем носить (модель пересказывала
+# «сочетается с джинсами»), оговорки «непроверенные сведения не добавлены» и коды Option — не факты.
+# Текст с такой оговоркой фактов не несёт вовсе: описание собирается из фактов (пилот 06.11.2026).
+_SOURCE_NO_FACTS_RE = re.compile(
+    r"(?:iddia\w*|tahmin)\s+eklenmemiş|doğrulanmış[^.]*(?:bulunmamaktadır|yer almamaktadır)", re.IGNORECASE
+)
+_SOURCE_OUTFIT_RE = re.compile(r"Kombin Önerileri\b.*?(?=\bBakım\b|$)", re.DOTALL)
+_SOURCE_FILLER_SENTENCE_RE = re.compile(r"[^.?!]*(?:doğrula\w*|varyant kodu)[^.?!]*[.?!]", re.IGNORECASE)
+
+
 def clean_source_text(value: Any) -> str:
     """Текст источника без HTML, кодов LCW и юридического хвоста."""
     text = str(value or "")
     for _ in range(2):  # у части источников HTML экранирован дважды
         text = html.unescape(text)
     text = re.sub(r"<[^>]+>", " ", text)
+    if _SOURCE_NO_FACTS_RE.search(text):
+        return ""
+    text = _SOURCE_OUTFIT_RE.sub(" ", text)
+    text = _SOURCE_FILLER_SENTENCE_RE.sub(" ", text)
+    text = re.sub(r"Option\s*/\s*ürün kodu:\s*\S+", " ", text, flags=re.IGNORECASE)
     text = re.sub(r"Ürün Kodu:\s*\S+", " ", text)
     text = re.sub(r"\bS\d{6,}\b", " ", text)
     text = re.sub(r"(?:İmalatçı|Imalatçı)\s*/.*$", " ", text, flags=re.DOTALL)
