@@ -135,8 +135,20 @@ def _clean_superstep(text: str) -> str:
         return ""
     text = _SUPERSTEP_FILLER_RE.sub(" ", text)
     text = re.sub(r"Option\s*/\s*ürün kodu:\s*[^\s<]+", " ", text, flags=re.IGNORECASE)
+    return text
+
+
+def superstep_prompt_text(text: str, name: str) -> str:
+    """Текст SuperStep для модели: без названия товара и полей шаблона с ним.
+
+    Ключ памяти переводов — полный текст (``clean_source_text``): названием с цветом
+    отличаются тексты соседних цветов одной модели, и старые записи памяти остаются в силе.
+    """
+    if len(name) > 10:
+        text = text.replace(name, " ")
     text = _SUPERSTEP_META_FIELD_RE.sub(" ", text)
-    return re.sub(r"\s+\.", ".", re.sub(r"(?:\s*\.){2,}", ".", text))  # «Ürün Özellikleri . . .» после вырезанных полей
+    text = re.sub(r"\s+\.", ".", re.sub(r"(?:\s*\.){2,}", ".", text))  # «Ürün Özellikleri . . .» после вырезанных полей
+    return re.sub(r"\s+", " ", text).strip(" ,")
 
 
 def _cut_outfit_tips(text: str) -> str:

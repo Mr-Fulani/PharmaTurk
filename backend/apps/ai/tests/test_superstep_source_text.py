@@ -41,7 +41,7 @@ def test_superstep_disclaimer_about_one_field_cuts_only_that_sentence():
         "Teknik Özellikler Marka: Lacoste. Teknoloji ve donanım: Liste verisinde doğrulanmış teknik teknoloji "
         "bilgisi yer almamaktadır. Dış taban: %100 kauçuk."
     )
-    assert clean_source_text(text, SS) == "Teknik Özellikler. Dış taban: %100 kauçuk."  # «Marka» — поле шаблона
+    assert clean_source_text(text, SS) == "Teknik Özellikler Marka: Lacoste. Dış taban: %100 kauçuk."
 
 
 def test_superstep_html_list_without_dots_keeps_other_items():

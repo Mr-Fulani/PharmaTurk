@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.ai.services.rules.facts import clean_source_text
+from apps.ai.services.rules.facts import clean_source_text, superstep_prompt_text
 from apps.ai.services.rules.polish import polish_description, turkish_leftovers
 from apps.ai.services.rules.vocab import translate_shoe_material
 
@@ -21,8 +21,8 @@ from apps.ai.services.rules.vocab import translate_shoe_material
         ("Кремовый цвет нейтрален и.", "Кремовый цвет нейтрален."),  # 27101
         ("Белый цвет нейтрален и.", "Белый цвет нейтрален."),  # 28452
         ("Белый цвет нейтрален и легко сочетается с повседневной одеждой.", "Белый цвет нейтрален."),
-        ("Модель подходит как для спорта, так и.", ""),  # 27143
-        ("Модель подходит как для спорта, так и для повседневной носки.", ""),
+        ("Модель подходит как для спорта, так и.", "Модель подходит для спорта."),  # 27143
+        ("Модель подходит как для спорта, так и для повседневной носки.", "Модель подходит для спорта."),
         (
             "Однотонный белый цвет подходит как для мальчиков, так и для девочек и.",  # 27016
             "Однотонный белый цвет подходит как для мальчиков, так и для девочек.",
@@ -44,7 +44,6 @@ from apps.ai.services.rules.vocab import translate_shoe_material
         ("Лёгкий ергономичный стелька.", "Лёгкий эргономичный стелька."),  # 27357
         ("Бренд Lacoste. Кроя regular fit — садится по фигуре.", "Бренд Lacoste. Крой regular fit — садится по фигуре."),  # 28265
         ("Жилет тёплый. Кроя без рукавов не ограничивает движения рук.", "Жилет тёплый. Крой без рукавов не ограничивает движения рук."),  # 28313
-        ("Сделаны из файла, TPU и синтетической кожи.", "Сделаны из сетки, TPU и синтетической кожи."),  # 27526
         ("Лёгкая лёгкая подошва обеспечивает удобство.", "Лёгкая подошва обеспечивает удобство."),  # 27434
         ("Кроссовки из белого цвета с логотипом.", "Кроссовки белого цвета с логотипом."),  # 27225
         ("Низкий голенище не давит на лодыжку.", "Низкое голенище не давит на лодыжку."),  # 27929
@@ -58,6 +57,30 @@ from apps.ai.services.rules.vocab import translate_shoe_material
 )
 def test_polish_ru(text, expected):
     assert polish_description(text, "ru") == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Ревью #330: начало вырезано — союз срезается, буква поднимается, факт остаётся.
+        ("Подходит для повседневной носки, а подошва из EVA гасит удары.", "Подошва из EVA гасит удары."),
+        ("Легко сочетается с джинсами, а мягкая стелька из пены снижает нагрузку.", "Мягкая стелька из пены снижает нагрузку."),
+        ("Для повседневной носки: верх из замши, подошва EVA.", "Верх из замши, подошва EVA."),
+        ("Для повседневной носки и спорта подойдут эти кроссовки.", "Для спорта подойдут эти кроссовки."),
+        # Нетронутое предложение: хвост срезается только там, где предложение так не кончается никогда.
+        ("Стирка при 30 С.", "Стирка при 30 С."),
+        ("Логотип бренда «Hotiç» на язычке.", "Логотип бренда «Hotiç» на язычке."),  # бренд в кавычках
+        ("Из коллекции «Altınyıldız Classics».", "Из коллекции «Altınyıldız Classics»."),
+        ("Папка для файла А4.", "Папка для файла А4."),  # «файл» → «сетка» только у обуви и сумок
+    ],
+)
+def test_polish_review_330(text, expected):
+    assert polish_description(text, "ru") == expected
+
+
+def test_file_is_mesh_only_for_shoes_and_bags():
+    assert polish_description("Сделаны из файла, TPU и синтетической кожи.", "ru", "shoes") == "Сделаны из сетки, TPU и синтетической кожи."  # 27526
+    assert polish_description("Папка для файла А4.", "ru", "furniture") == "Папка для файла А4."
 
 
 @pytest.mark.parametrize(
@@ -78,6 +101,11 @@ def test_polish_ru(text, expected):
         ("Средняя толщина делает его подходящим для повседневной носки.", ""),  # 449
         ("Подходит для повседневного использования, особенно в жаркую погоду или в офисе.", ""),  # 4609
         ("Базовая модель, которую удобно сочетать с джинсами и брюками.", ""),  # 21012
+        # Модульность у IKEA — факт, не «вода» (13625, 14262).
+        ("Кресло из модульной серии: его можно сочетать с другими модулями и менять конфигурацию.",
+         "Кресло из модульной серии: его можно сочетать с другими модулями и менять конфигурацию."),
+        ("Классический простой дизайн, который гармонично сочетается с другими предметами серии NIPÅSEN.",
+         "Классический простой дизайн, который гармонично сочетается с другими предметами серии NIPÅSEN."),
         # «В сочетании с …» у IKEA — факт, не «вода» (15334).
         ("В сочетании с другими каркасами PAX позволяет использовать весь угол для хранения.",
          "В сочетании с другими каркасами PAX позволяет использовать весь угол для хранения."),
@@ -98,6 +126,11 @@ def test_polish_keeps_tags_and_drops_empty_ones():
         ("Made of cotton. Ideal for everyday wear. It pairs well with jeans.", "Made of cotton."),
         ("The cream color is neutral and.", "The cream color is neutral."),
         ("Both upper and sole are durable.", "Both upper and sole are durable."),
+        # Английское предложение может кончаться предлогом.
+        ("Simply slide your foot in.", "Simply slide your foot in."),
+        ("The strap keeps the shoe on.", "The strap keeps the shoe on."),
+        ("Pull them on.", "Pull them on."),
+        ("Model Bye Bye Bye sneakers.", "Model Bye Bye Bye sneakers."),  # повтор слова в модели
     ],
 )
 def test_polish_en(text, expected):
@@ -114,6 +147,8 @@ def test_polish_en(text, expected):
         ("Lacoste Kadın Beyaz Powercourt — женские белые кроссовки.", "Lacoste Powercourt", ["Kadın", "Beyaz"]),  # 27255
         ("Посадка regular fit, slim fit, classic fit, crew neck.", "Lacoste", []),  # английские слова — не ошибка
         ("Кроссовки İnci белые.", "İnci", []),  # бренд с турецкой буквой
+        # Короткие слова словаря совпадают с латиницей моделей: «Bot», «Spor», «Krem», «Mont», «Marin», «Doktor».
+        ("Модели Bot, Marin, Spor, Doktor, Dar, Kar, Tam, Ter, Mont, Krem.", "", []),
     ],
 )
 def test_turkish_leftovers_in_ru_description(text, identity, leftovers):
@@ -139,18 +174,23 @@ def test_turkish_leftover_sends_rule_log_to_moderation():
     assert "description_untranslated" not in get_moderation_reasons(log)
 
 
-def test_superstep_template_fields_with_turkish_name_are_cut():
+def test_superstep_template_fields_and_name_go_only_from_model_text():
     # 28197, 28219, 28329: «Название модели: Lacoste Sport Kadın Relaxed Fit Beyaz Şort» в описании.
+    name = "Lacoste Sport Kadın Relaxed Fit Beyaz Şort"
     text = (
-        "Ürün Özellikleri Marka: Lacoste. Ürün tipi: Şort. Ürün adı: Lacoste Sport Kadın Relaxed Fit Beyaz Şort. "
+        f"{name} , kadın için bir şort modelidir. Ürün Özellikleri Marka: Lacoste. Ürün tipi: Şort. Ürün adı: {name}. "
         "Kalıp: Relaxed Fit. Bakım Nemli bezle silin."
     )
-    cleaned = clean_source_text(text, "superstep")
-    assert "Kadın" not in cleaned and "Marka" not in cleaned and "Ürün tipi" not in cleaned
-    assert "Kalıp: Relaxed Fit." in cleaned and "Nemli bezle silin" in cleaned
+    key = clean_source_text(text, "superstep")
+    prompt = superstep_prompt_text(key, name)
+    assert "Kadın" not in prompt and "Marka" not in prompt and "Ürün tipi" not in prompt
+    assert "Kalıp: Relaxed Fit." in prompt and "Nemli bezle silin" in prompt
     flat = "Teknik Özellikler Marka: Lacoste Ürün adı: Lacoste AG-LT23 Ultra Kadın Mavi Sneaker Alt grup: Spor Ayakkabı Renk: Mavi"
-    assert clean_source_text(flat, "superstep") == "Teknik Özellikler Renk: Mavi"
-    assert clean_source_text(text, "flo") == text  # другие источники не трогаются
+    assert superstep_prompt_text(flat, "") == "Teknik Özellikler Renk: Mavi"
+    # Ключ памяти — с названием: тексты соседних цветов одной модели различаются только им.
+    black = clean_source_text(text.replace("Beyaz", "Siyah"), "superstep")
+    assert name in key and key != black
+    assert superstep_prompt_text(key, name) == superstep_prompt_text(black, name.replace("Beyaz", "Siyah"))
 
 
 def test_file_material_is_mesh():
@@ -168,7 +208,7 @@ def test_pipeline_polishes_model_answer_and_remembers_it_raw():
 
     category, _ = Category.objects.update_or_create(slug="t-shirts", defaults={"name": "Футболки", "is_active": True})
     name = "Lacoste Erkek Relaxed Fit Bisiklet Yaka T-Shirt"
-    source = "Pamuklu kumaştan üretilen rahat kesim tişört. Yumuşak dokusu gün boyu konfor sağlar. Bisiklet yaka detayı."
+    source = f"{name} , pamuklu kumaştan üretilen rahat kesim tişört. Yumuşak dokusu gün boyu konfor sağlar. Bisiklet yaka detayı."
     product = Product.objects.create(
         name=name, slug="polish-pipeline-tee", product_type="clothing", category=category, description=source,
         external_id="superstep-POLISH1",
@@ -193,6 +233,50 @@ def test_pipeline_polishes_model_answer_and_remembers_it_raw():
     assert "Кремовый цвет нейтрален." in log.generated_description
     memory = AITranslationMemory.objects.get(source_log=log)
     assert memory.ru_text == raw_ru  # в памяти — ответ модели как есть: правка действует при каждом чтении
+    # Модели — без турецкого названия; ключ памяти — с ним (цвета одной модели не путаются).
+    assert name not in llm.generate_content.call_args.kwargs["user_prompt"]
+    assert name in memory.source_text
+
+
+@pytest.mark.django_db
+def test_memory_translation_with_turkish_words_is_translated_again_and_replaced():
+    from unittest.mock import Mock
+
+    from apps.ai.models import AIProcessingLog, AITranslationMemory
+    from apps.ai.services.content_generator import ContentGenerator
+    from apps.ai.services.result_applier import AIResultApplier
+    from apps.ai.services.rules.memory import namespace_for
+    from apps.ai.services.translation_memory import source_hash
+    from apps.catalog.models import Category, ClothingProduct, Product
+
+    category, _ = Category.objects.update_or_create(slug="jackets", defaults={"name": "Куртки", "is_active": True})
+    name = "Lacoste Erkek Classic Fit Kapüşonlu Gri Şişme Mont"
+    source = f"{name} , kapüşonlu şişme mont modelidir. Su itici kumaş, fermuarlı cepler, ayarlanabilir kapüşon."
+    product = Product.objects.create(
+        name=name, slug="polish-memory-replace", product_type="clothing", category=category, description=source,
+        external_id="superstep-POLISH2",
+    )
+    ClothingProduct.objects.update_or_create(base_product=product, defaults={"name": name, "slug": "polish-memory-replace"})
+    old_log = AIProcessingLog.objects.create(product=product, processing_type="full", status="completed", input_data={})
+    key = clean_source_text(source, "superstep")
+    AITranslationMemory.objects.create(
+        namespace=namespace_for(category.id), source_hash=source_hash(key), source_text=key,
+        ru_text="<p>Мужская куртка Lacoste, утеплённая (Şişme — «надувная»). Капюшон регулируется.</p>",
+        en_text="<p>Puffer jacket.</p>", source_log=old_log,
+    )
+    new_ru = "<p>Мужская утеплённая куртка с капюшоном. Водоотталкивающая ткань, карманы на молнии.</p>"
+    llm = SimpleNamespace(model="test-model", generate_content=Mock(return_value={
+        "content": {"ru": {"generated_description": new_ru}, "en": {"generated_description": "<p>Puffer jacket with hood.</p>"}},
+        "tokens": {"prompt": 400, "completion": 300, "total": 700, "cached": 0}, "cost_usd": 0.0003, "processing_time_ms": 5,
+    }))
+    generator = ContentGenerator.__new__(ContentGenerator)
+    generator.vector_store, generator.result_applier, generator.llm = None, AIResultApplier(), llm
+
+    log = generator.process_product(product.id, options={"analyze_images": False, "force": True})
+
+    assert llm.generate_content.called  # из памяти не взято: там турецкое слово
+    assert "Şişme" not in log.generated_description
+    assert AITranslationMemory.objects.get(source_hash=source_hash(key)).ru_text == new_ru
 
 
 @pytest.mark.django_db

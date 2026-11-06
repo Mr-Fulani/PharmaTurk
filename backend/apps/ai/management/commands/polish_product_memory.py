@@ -2,10 +2,12 @@
 
     manage.py polish_product_memory                                       # только показать
     manage.py polish_product_memory --apply --backup /backups/pdmem-before.json
+    manage.py polish_product_memory --restore /backups/pdmem-before.json   # вернуть как было
 
-Описание из памяти и так правится при каждом чтении, команда приводит в порядок сами
-записи: «Ергономичная», висящие хвосты «нейтрален и.», «вода», турецкие оригиналы в скобках.
-Запись, у которой после правки не остаётся текста, не меняется (она в отчёте).
+Необязательная команда. Описание из памяти и так правится при каждом чтении (pipeline), а с
+06.11.2026 в память пишется ответ модели как есть. Команда нужна, чтобы сами записи в админке
+(«Память переводов») и в выгрузках были без «Ергономичная», висящих хвостов «нейтрален и.»,
+«воды» и турецких оригиналов в скобках. Запись, у которой после правки не остаётся текста, не меняется.
 """
 
 import json
@@ -26,8 +28,17 @@ class Command(BaseCommand):
         parser.add_argument("--apply", action="store_true", help="Записать (без него — только показать)")
         parser.add_argument("--backup", help="Новый файл бэкапа строк перед записью (обязателен с --apply)")
         parser.add_argument("--show", type=int, default=10, help="Сколько примеров показать")
+        parser.add_argument("--restore", metavar="BACKUP", help="Вернуть записи из бэкапа --apply")
 
     def handle(self, *args, **options):
+        if options["restore"]:
+            with open(options["restore"], encoding="utf-8") as handle:
+                saved = json.load(handle)
+            with transaction.atomic():
+                for item in saved:
+                    AITranslationMemory.objects.filter(pk=item["pk"]).update(ru_text=item["ru_text"], en_text=item["en_text"])
+            self.stdout.write(f"Восстановлено записей: {len(saved)}")
+            return
         if options["apply"] and not options["backup"]:
             raise CommandError("--apply требует --backup <файл>")
         rows = AITranslationMemory.objects.filter(namespace__startswith=f"{NAMESPACE_PREFIX}:").only(

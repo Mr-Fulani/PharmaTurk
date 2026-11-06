@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from apps.ai.services.rules import memory, vocab
-from apps.ai.services.rules.polish import polish_description
+from apps.ai.services.rules.polish import polish_description, turkish_leftovers
 from apps.ai.services.rules.facts import (
     RULE_PRODUCT_TYPES,
     ProductFacts,
@@ -24,6 +24,7 @@ from apps.ai.services.rules.facts import (
     collect_facts,
     drop_codes,
     product_source,
+    superstep_prompt_text,
 )
 from apps.ai.services.rules.text import (
     TURKISH_LEFTOVER_RE,
@@ -103,11 +104,13 @@ class RulePlan:
     titles: dict[str, str]
     descriptions: dict[str, str]
     description_source: str  # template | memory | llm
-    source_text: str
+    source_text: str  # ключ памяти переводов
     memory_namespace: str
     title_sources: dict[str, str] = field(default_factory=dict)
     memory_hit: dict[str, Any] | None = None
     thin_source: bool = False
+    prompt_text: str = ""  # текст для модели (SuperStep — без названия и полей шаблона)
+    replace_memory: bool = False  # перевод из памяти негоден — новый его заменяет
 
     @property
     def missing_titles(self) -> list[str]:
@@ -150,11 +153,14 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     title_sources = {locale: "rules" for locale, title in titles.items() if title}
     source = product_source(product)
     source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"), source)
-    name = str(input_data.get("name") or "").strip()
-    if source == "superstep" and len(name) > 10:
-        # Текст SuperStep начинается с турецкого названия товара — модель переносила его в описание.
-        source_text = re.sub(r"\s+", " ", source_text.replace(name, " ")).strip(" ,")
     source_text = source_text[:SOURCE_TEXT_LIMIT]
+    # Модели SuperStep — без турецкого названия и полей шаблона с ним (она переносила их в описание);
+    # ключ памяти — полный текст: соседние цвета одной модели отличаются только названием.
+    prompt_text = (
+        superstep_prompt_text(source_text, str(input_data.get("name") or "").strip())
+        if source == "superstep"
+        else source_text
+    )
     namespace = memory.namespace_for(product.category_id)
 
     descriptions: dict[str, str] = {}
@@ -167,8 +173,14 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
             description_source = "template"
         else:
             descriptions = {}
+    replace_memory = False
     if not descriptions and source_text:
         memory_hit = memory.lookup(namespace, source_text)
+        identity = f"{facts.brand} {facts.model}"
+        if memory_hit and turkish_leftovers(polish_description(memory_hit["ru"], "ru", facts.product_type), identity):
+            # В памяти перевод с турецкими словами (карточки SuperStep 06.11.2026): переводим
+            # заново и заменяем запись, иначе повторная обработка взяла бы тот же текст.
+            memory_hit, replace_memory = None, True
         if memory_hit:
             descriptions = {"ru": memory_hit["ru"], "en": memory_hit["en"]}
             description_source = "memory"
@@ -184,10 +196,12 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
         descriptions=descriptions,
         description_source=description_source,
         source_text=source_text,
+        prompt_text=prompt_text,
         memory_namespace=namespace,
         title_sources=title_sources,
         memory_hit=memory_hit,
         thin_source=thin_source,
+        replace_memory=replace_memory,
     )
 
 
@@ -204,7 +218,7 @@ def _user_prompt(product, plan: RulePlan, input_data: dict[str, Any]) -> str:
         "product_kind": {"ru": facts.kind.ru, "en": facts.kind.en} if facts.kind else None,
         "titles": {locale: title for locale, title in plan.titles.items() if title},
         "facts": {key: value for key, value in facts.as_dict().items() if value},
-        "source_text": plan.source_text,
+        "source_text": plan.prompt_text or plan.source_text,
     }
     return "Данные о товаре (недоверенные):\n" + json.dumps(payload, ensure_ascii=False)
 
@@ -362,7 +376,9 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
     descriptions = dict(plan.descriptions)
     raw_descriptions: dict[str, str] = {}
     if plan.description_source == "memory":
-        descriptions = {locale: polish_description(text, locale) for locale, text in descriptions.items()}
+        descriptions = {
+            locale: polish_description(text, locale, plan.facts.product_type) for locale, text in descriptions.items()
+        }
         if not all(descriptions.values()):
             descriptions = build_fact_description(plan.facts, titles) or descriptions
     if plan.needs_llm:
@@ -398,7 +414,7 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
             if plan.description_source == "llm":
                 # В память — ответ модели как есть: правки polish действуют и на сохранённые переводы.
                 raw_descriptions[locale] = str(bucket.get("generated_description") or "").strip()
-                descriptions[locale] = polish_description(raw_descriptions[locale], locale)
+                descriptions[locale] = polish_description(raw_descriptions[locale], locale, plan.facts.product_type)
         # LLM-название с турецким словом — название правилами без этого слова
         # (тип, бренд, модель); если и его нет, остаётся LLM-вариант (модерация).
         if any(not titles.get(locale) for locale in plan.missing_titles):
@@ -438,6 +454,7 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
                 raw_descriptions.get("ru") or descriptions.get("ru", ""),
                 raw_descriptions.get("en") or descriptions.get("en", ""),
                 log_entry,
+                replace=plan.replace_memory,
             )
 
     seo = build_seo(plan.facts, titles, descriptions)
