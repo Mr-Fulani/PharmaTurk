@@ -1,13 +1,22 @@
 import re
 from .tr_vocab import translate_turkish_color
 
+_MODEL_CODE_RE = re.compile(r"^[A-Za-z]{2,}\d{0,2}-[A-Za-z]{0,3}\d{1,2}$")
+
 
 def strip_price_and_codes_from_title(title: str) -> str:
     if not title:
         return ""
     cleaned = str(title)
     # Код — слово через дефис с цифрой («J5SM-TST7325», «BASIC-T-SHIRT1»); «Sofa-Bed», «Slip-Ons», «SPIDER-MAN» — нет.
-    cleaned = re.sub(r"\b(?=[A-Z-]*\d)[A-Z0-9]{2,}(?:-[A-Z0-9]+)+\b", "", cleaned, flags=re.IGNORECASE)
+    # Модель вида «AG-LT23», «MG30-1» (буквы, до двух цифр, короткий хвост) — не код: правила кладут
+    # её в название только сразу за брендом (rules.facts.BRAND_MODEL_CODE_RE).
+    cleaned = re.sub(
+        r"\b(?=[A-Z-]*\d)[A-Z0-9]{2,}(?:-[A-Z0-9]+)+\b",
+        lambda match: match.group(0) if _MODEL_CODE_RE.match(match.group(0)) else "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.sub(r"\b\d+[.,]\d+\s*(TL|TRY|USD|EUR|RUB|KZT|USDT)\b", "", cleaned, flags=re.IGNORECASE)
     # Цена без валюты («349,00»). Дозировки и размеры («2,5 MG», «0,5 мл», «1,5 м»)
     # не трогаем: у них одна цифра после запятой или единица измерения следом.

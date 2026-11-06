@@ -88,12 +88,64 @@ def _attrs(input_data: dict[str, Any]) -> dict[str, Any]:
     return attrs if isinstance(attrs, dict) else {}
 
 
-def clean_source_text(value: Any) -> str:
-    """Текст источника без HTML, кодов LCW и юридического хвоста."""
+# SuperStep: шаблонный текст магазина (только этот источник). «Kombin Önerileri» — с чем носить
+# (модель пересказывала «сочетается с джинсами»), оговорки «проверенных сведений нет» и коды Option —
+# не факты (пилот 06.11.2026). Режется строка или предложение (граница — точка, тег, перевод строки).
+# Весь текст пустой, только если магазин пишет, что описание ограничено названием и разделом.
+_SUPERSTEP_NO_FACTS_RE = re.compile(r"eklenmemiş[^.<\n]*sınırlı\s+tutul", re.IGNORECASE)
+_SUPERSTEP_HEADING_RE = re.compile(
+    r"Bakım|Ürün Özellikleri|Teknik Özellikler|Ürün Detayları|Sana Sağlayacağı|Kullanım Önerileri"
+    r"|Neden\s[^.?!]*Tercih Etmelisin"
+)
+# После «Kombin Önerileri» режутся подряд идущие советы «с чем носить» — до первого предложения
+# без таких слов или до следующего заголовка: заголовков у SuperStep может и не быть.
+_SUPERSTEP_OUTFIT_WORDS_RE = re.compile(
+    r"kombin|tamamla|eşleştir|birleştir|\bgiy|pantolon|\bjean|şort|tişört|sweatshirt|ceket|gömlek|\betek\b"
+    r"|elbise|\bstil|\btarz|\bton\w*|\brenk|görünüm|parça|katman|nötr|aksesuar|\bplan|bedenli|ölçü",
+    re.IGNORECASE,
+)
+_SUPERSTEP_FILLER_RE = re.compile(
+    r"[^.?!<>\n]*(?:doğrulanabil\w*|doğrulanama\w*|varyant kodu"
+    r"|doğrulanmış\s+(?:[^\s.<]+\s+){0,3}(?:bilgi|veri)\w*)[^.?!<>\n]*[.?!]?",
+    re.IGNORECASE,
+)
+
+
+def product_source(product: Any) -> str:
+    """Источник товара по external_id: «superstep-B75806» → «superstep»."""
+    return str(getattr(product, "external_id", "") or "").split("-", 1)[0].lower()
+
+
+def _clean_superstep(text: str) -> str:
+    if _SUPERSTEP_NO_FACTS_RE.search(text):
+        return ""
+    text = _SUPERSTEP_FILLER_RE.sub(" ", text)
+    return re.sub(r"Option\s*/\s*ürün kodu:\s*[^\s<]+", " ", text, flags=re.IGNORECASE)
+
+
+def _cut_outfit_tips(text: str) -> str:
+    match = re.search(r"Kombin Önerileri\s*", text)
+    if not match:
+        return text
+    rest = text[match.end() :]
+    heading = _SUPERSTEP_HEADING_RE.search(rest)
+    section, tail = (rest[: heading.start()], rest[heading.start() :]) if heading else (rest, "")
+    sentences = re.split(r"(?<=[.!?])\s+", section.strip())
+    while sentences and _SUPERSTEP_OUTFIT_WORDS_RE.search(sentences[0]):
+        sentences.pop(0)
+    return " ".join(part for part in (text[: match.start()].strip(), " ".join(sentences), tail) if part)
+
+
+def clean_source_text(value: Any, source: str = "") -> str:
+    """Текст источника без HTML, кодов LCW и юридического хвоста; ``source`` — product_source()."""
     text = str(value or "")
     for _ in range(2):  # у части источников HTML экранирован дважды
         text = html.unescape(text)
+    if source == "superstep":
+        text = _clean_superstep(text)
     text = re.sub(r"<[^>]+>", " ", text)
+    if source == "superstep":
+        text = _cut_outfit_tips(re.sub(r"\s+", " ", text))
     text = re.sub(r"Ürün Kodu:\s*\S+", " ", text)
     text = re.sub(r"\bS\d{6,}\b", " ", text)
     text = re.sub(r"(?:İmalatçı|Imalatçı)\s*/.*$", " ", text, flags=re.DOTALL)
@@ -192,6 +244,11 @@ def _is_hyphen_model(token: str) -> bool:
     return len(parts) == 2 and all(parts) and sum(char.isdigit() for char in token) <= 2
 
 
+# «Lacoste AG-LT23 Ultra», «McKinley MG30-1»: буквы, до двух цифр, дефис, короткий хвост — модель,
+# если стоит сразу за брендом. «PC-7315», «J5SM-TST7325», «PC-5112-3892» — артикулы.
+BRAND_MODEL_CODE_RE = re.compile(r"^[A-Za-z]{2,}\d{0,2}-[A-Za-z]{0,3}\d{1,2}$")
+
+
 def _is_strong_model_token(token: str) -> bool:
     """После описательных слов допустимы только коды и ВЕРХНИЙ регистр."""
     stripped = token.strip("()[],.;:")
@@ -281,7 +338,8 @@ def parse_name(name: str, facts: ProductFacts) -> None:
                 model.append("")  # разрыв: «Barcelona Urban … Sandalet 5003»
             continue
         brand_word = key in brand_tokens and " ".join(folded[index : index + 2]) not in vocab.BRAND_WORD_PHRASES
-        if brand_word or (_HYPHEN_CODE_RE.match(token) and not _is_hyphen_model(token)):
+        model_code = bool(facts.brand) and not model and not seen_vocab and BRAND_MODEL_CODE_RE.match(token.strip("()[],.;:"))
+        if brand_word or (_HYPHEN_CODE_RE.match(token) and not _is_hyphen_model(token) and not model_code):
             index += 1
             continue
         if token in ("&", "/", "+") and model:
@@ -427,7 +485,7 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
     facts.has_variants = _variant_colors(product) > 0  # цвет вариант допишет сам
     # FLO дописывает к турецкому названию русский цвет: «… Sneaker - Серый».
     name = _CYRILLIC_SUFFIX_RE.sub("", str(input_data.get("name") or ""))
-    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"))
+    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"), product_source(product))
     if vocab.fold(facts.brand) in vocab.STORE_BRANDS and not _CYRILLIC_RE.search(name):
         leading, rest = _leading_brand(name)
         if vocab.fold(leading).startswith(vocab.STORE_OWN_LINE_PREFIXES):

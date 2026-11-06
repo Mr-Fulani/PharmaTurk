@@ -202,13 +202,17 @@ class Command(BaseCommand):
         return objects
 
     def _apply(self, products, options):
-        logs = list(
+        latest = list(
             self._logs(products.filter(is_active=True), options)
-            .filter(status=AIProcessingStatus.COMPLETED)
             .select_related("product")
             .order_by("product_id", "-id")
             .distinct("product_id")
         )
+        # Самый новый лог товара в модерации или с ошибкой — старый «Завершено» не применяем.
+        logs = [log for log in latest if log.status == AIProcessingStatus.COMPLETED]
+        newer = Counter(str(log.status) for log in latest if log.status != AIProcessingStatus.COMPLETED)
+        if newer:
+            self.stdout.write(f"Пропущены: самый новый лог не «Завершено» — {dict(newer)}")
         if not logs:
             self.stdout.write("Нет черновиков «Завершено» с этой даты.")
             return

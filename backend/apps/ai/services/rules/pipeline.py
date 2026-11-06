@@ -22,6 +22,7 @@ from apps.ai.services.rules.facts import (
     clean_source_text,
     collect_facts,
     drop_codes,
+    product_source,
 )
 from apps.ai.services.rules.text import (
     TURKISH_LEFTOVER_RE,
@@ -30,7 +31,11 @@ from apps.ai.services.rules.text import (
     build_titles,
     is_thin_source,
 )
-from apps.catalog.attribute_specs import english_for_canonical_ru, extract_dynamic_attribute_candidates
+from apps.catalog.attribute_specs import (
+    canonicalize_dynamic_attribute_value,
+    english_for_canonical_ru,
+    extract_dynamic_attribute_candidates,
+)
 from apps.catalog.product_semantics import looks_untranslated_turkish
 
 SOURCE_TEXT_LIMIT = 3000
@@ -42,6 +47,56 @@ _TURKISH_LETTERS_RE = re.compile(r"[çğışÇĞİŞ]")
 _CYRILLIC_LETTERS_RE = re.compile(r"[а-яё]", re.IGNORECASE)
 # Латиница (бренд/модель) в начале RU-названия, затем русский тип со строчной.
 _BRAND_FIRST_RE = re.compile(r"^((?:[^\sа-яёА-ЯЁ]+\s+)+)([а-яё][^,]*)(,.*)?$")
+# «DIS YUZEY:%76 POLYESTER %12 SUET SIGIR DERISI TABAN:%100 KAUCUK», «Üst: Deri, İç taban: Deri,
+# Taban: Kauçuk», «Upper:Recycled polyester, TPUOutsole: Rubber» — материалы по частям одной строкой.
+# Без разбора «Материал» брал «Каучук» подошвы у кожаных кроссовок (пилот SuperStep 06.11.2026).
+# Верх — в «Материал» (первый, основной компонент), подошва — в «Материал подошвы»; стелька,
+# промежуточная подошва и подкладка не берутся.
+_MATERIAL_LABEL_RE = re.compile(
+    r"(d[ıi][şs]\s*y[üu]zey|[üu]st\s*y[üu]zey|[iİı]ç\s*taban|ara\s*taban|d[ıi][şs]\s*taban|outsole"
+    r"|\b(?:[üu]st|upper|taban|astar|lining))\s*:",
+    re.IGNORECASE,
+)
+_MATERIAL_PART_RE = re.compile(r"%\s*\d+|\d+\s*%|[,/;]")
+# Верх, которого нет в общих алиасах материала: точное совпадение, без подстрок
+# (одно «deri» внутри «derinlik» у IKEA, «PU SUET» у FLO — искусственная замша).
+_UPPER_MATERIALS = {
+    "deri": ("Натуральная кожа", "Genuine Leather"),
+    "sigir derisi": ("Натуральная кожа", "Genuine Leather"),
+    "suet": ("Замша", "Suede"),
+    "suet deri": ("Замша", "Suede"),
+    "suet sigir derisi": ("Замша", "Suede"),
+}
+# Обороты-«вода», которые модель пишет вопреки промпту (пилот SuperStep 06.11.2026: 12 и 6
+# описаний из 50): «… подходит для повседневной носки», «Цвет сочетается с джинсами и брюками».
+# Вырезается оборот; предложение целиком — только если без него в нём ничего не осталось.
+_EVERYDAY_RE = {
+    "ru": re.compile(
+        r"(?P<lead>,\s*)?(?P<verb>(?:(?:идеально|отлично|хорошо)\s+)?(?:подход\w+|подойд\w+|предназначен\w*|создан\w*|рассчитан\w*)\s+)?"
+        r"(?:как\s+)?для\s+повседневн\w*\s+(?:(?:и\s+)?[а-яё]+\s+)?(?:носки|образ\w*|использовани\w*|стил\w*)"
+        r"(?P<tail>\s+и\s+(?=[а-яё]))?",
+        re.IGNORECASE,
+    ),
+    "en": re.compile(
+        r"(?P<lead>,\s*)?(?P<verb>(?:ideal|perfect|great|suitable|designed|made)\s+)?for\s+(?:everyday|daily|casual)\s+"
+        r"(?:wear|looks?|outfits?|style)(?P<tail>\s+and\s+(?=[a-z]))?",
+        re.IGNORECASE,
+    ),
+}
+_PAIRING_RE = {
+    "ru": re.compile(
+        r"(?:,\s*)?(?:(?:легко|отлично|хорошо|гармонично|удачно|позволя\w+|можно)\s+)?сочета\w*(?:\s+[а-яё]+){0,2}\s+с\s+"
+        r"(?:джинс|брюк|чинос|шорт|юбк|плать|разн\w+|любы\w+|больш\w+|други\w+|повседневн\w+)[^.,;!?]*"
+        r"(?:,(?!\s*(?:а|но|при|что|котор\w*)\s)[^.,;!?]*)*",  # весь перечень: «с джинсами, чинозами или шортами»
+        re.IGNORECASE,
+    ),
+    "en": re.compile(
+        r"(?:,\s*)?(?:it\s+|they\s+)?(?:pairs?|goes|go|combines?|matches?)\s+(?:well\s+|easily\s+|perfectly\s+)?with\s+[^.,;!?]*"
+        r"(?:,(?!\s*(?:and|but|while|which)\s)[^.,;!?]*)*",
+        re.IGNORECASE,
+    ),
+}
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+(?=[«\"A-ZА-ЯЁ])")
 
 SYSTEM_PROMPT = """
 Ты — редактор-переводчик карточек интернет-магазина Mudaroba (товары из Турции).
@@ -121,7 +176,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     facts = collect_facts(product, input_data)
     titles = _validated_titles(product, build_titles(facts))
     title_sources = {locale: "rules" for locale, title in titles.items() if title}
-    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"))
+    source_text = clean_source_text(input_data.get("raw_description") or input_data.get("description"), product_source(product))
     source_text = source_text[:SOURCE_TEXT_LIMIT]
     namespace = memory.namespace_for(product.category_id)
 
@@ -215,9 +270,17 @@ def _fragrance_name(payload: dict[str, Any], plan: RulePlan, input_data: dict[st
 
 def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts) -> list[dict[str, Any]]:
     attrs = input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {}
+    labelled = _labelled_materials(attrs.get("material")) if facts.product_type == "shoes" else None
+    upper_material, labelled_sole = None, ""
+    if labelled is not None:
+        upper, labelled_sole = labelled
+        # Подошву в attrs не кладём: спецификация «Материал» берёт любой ключ с «material»
+        # (и «sole_material» тоже) — подошва снова стала бы материалом. Строка подошвы — ниже.
+        attrs = {**attrs, "material": upper}
+        upper_material = _UPPER_MATERIALS.get(vocab.fold(upper))
     kind = (facts.kind.ru, facts.kind.en) if facts.kind else None
     overrides = {
-        "material": facts.upper,
+        "material": upper_material or facts.upper,
         "sole-material": facts.sole,
         "furniture-type": kind if facts.product_type == "furniture" else None,
         # Парсер кладёт в тип аксессуара slug категории («belts»).
@@ -246,7 +309,35 @@ def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts
         if looks_untranslated_turkish(value_ru) or (value_en and looks_untranslated_turkish(value_en)):
             continue
         rows.append(_attribute_row(candidate.slug, value_ru, value_en))
+    if labelled_sole and not any(row["slug"] == "sole-material" for row in rows):
+        sole_ru = canonicalize_dynamic_attribute_value("sole-material", labelled_sole, product_type="shoes")
+        sole_en = english_for_canonical_ru(sole_ru)
+        if sole_en:
+            rows.append(_attribute_row("sole-material", sole_ru, sole_en))
     return rows
+
+
+def _labelled_materials(raw: Any) -> tuple[str, str] | None:
+    """(основной материал верха, подошва) из строки с метками; без меток — None (как было)."""
+    if not isinstance(raw, str):
+        return None
+    labels = list(_MATERIAL_LABEL_RE.finditer(raw))
+    if not labels:
+        return None
+    parts: dict[str, str] = {}
+    for current, following in zip(labels, labels[1:] + [None]):
+        label = vocab.fold(current.group(1)).replace(" ", "")
+        role = "upper" if label in ("disyuzey", "ustyuzey", "ust", "upper") else (
+            "sole" if label in ("distaban", "taban", "outsole") else ""
+        )
+        value = raw[current.end() : following.start() if following else len(raw)]
+        if role and role not in parts:
+            parts[role] = value
+    if "upper" not in parts and labels[0].start() > 0:
+        parts["upper"] = raw[: labels[0].start()]  # «Deri/Tekstil, Taban: Kauçuk» — верх без метки
+    pieces = [piece.strip(" .") for piece in _MATERIAL_PART_RE.split(parts.get("upper", ""))]
+    upper = next((piece for piece in pieces if piece), "")
+    return upper, parts.get("sole", "").strip(" ,;.")
 
 
 def _attribute_row(slug: str, value_ru: str, value_en: str | None) -> dict[str, Any]:
@@ -265,6 +356,42 @@ def _add_usage(result: dict[str, Any], extra: dict[str, Any]) -> None:
         tokens[key] = (tokens.get(key) or 0) + (value or 0)
     result["tokens"] = tokens
     result["cost_usd"] = float(result.get("cost_usd") or 0) + float(extra.get("cost_usd") or 0)
+
+
+def _without_filler(sentence: str, locale: str) -> str:
+    def everyday(match: re.Match) -> str:
+        if match.group("tail"):  # «для повседневной носки и бега» → «для бега»
+            return f"{match.group('lead') or ' '}{match.group('verb') or ''}{'для' if locale == 'ru' else 'for'} ".replace(", ", " ")
+        return ""
+
+    cleaned = _PAIRING_RE[locale].sub("", _EVERYDAY_RE[locale].sub(everyday, sentence))
+    if cleaned == sentence:
+        return sentence
+    cleaned = re.sub(r"\s+([,.!?…;:])", r"\1", re.sub(r"\s{2,}", " ", cleaned)).strip()
+    cleaned = re.sub(r"^[,;:\s]+|[,;:]+(?=[.!?…]?$)", "", cleaned)
+    words = re.findall(r"[^\W\d_]+", cleaned)
+    if len(words) <= 2:  # «Модель.», «Чёрный цвет.» — без оборота пусто
+        return ""
+    return cleaned if cleaned[-1] in ".!?…" else cleaned + "."
+
+
+def drop_filler_sentences(text: str, locale: str) -> str:
+    """Описание без оборотов-«воды»; теги и остальной текст не меняются."""
+    if not text or locale not in _EVERYDAY_RE:
+        return text
+    if not (_EVERYDAY_RE[locale].search(text) or _PAIRING_RE[locale].search(text)):
+        return text
+    parts = re.split(r"(<[^>]+>)", text)
+    for index, part in enumerate(parts):
+        if part.startswith("<") or not part.strip():
+            continue
+        lead = part[: len(part) - len(part.lstrip())]
+        kept = [s for s in (_without_filler(s.strip(), locale) for s in _SENTENCE_SPLIT_RE.split(part)) if s]
+        parts[index] = (lead + " ".join(kept)) if kept else ""
+    cleaned = "".join(parts)
+    for _ in range(2):  # вложенные пустые теги: <ul><li></li></ul>
+        cleaned = re.sub(r"<(p|li|ul|ol)>\s*</\1>", "", cleaned)
+    return cleaned.strip() if re.sub(r"<[^>]+>|\s", "", cleaned) else ""
 
 
 def _description_text(payload: dict[str, Any], locale: str) -> str:
@@ -292,6 +419,10 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
     titles = dict(plan.titles)
     llm_titles: dict[str, str] = {}
     descriptions = dict(plan.descriptions)
+    if plan.description_source == "memory":
+        descriptions = {locale: drop_filler_sentences(text, locale) for locale, text in descriptions.items()}
+        if not all(descriptions.values()):
+            descriptions = build_fact_description(plan.facts, titles) or descriptions
     if plan.needs_llm:
         request = {
             "system_prompt": SYSTEM_PROMPT,
@@ -323,7 +454,7 @@ def run_rule_content(product, plan: RulePlan, input_data: dict[str, Any], llm, l
                 titles[locale] = _checked_llm_title(llm_titles[locale], plan.facts, locale)
                 plan.title_sources[locale] = "llm"
             if plan.description_source == "llm":
-                descriptions[locale] = str(bucket.get("generated_description") or "").strip()
+                descriptions[locale] = drop_filler_sentences(str(bucket.get("generated_description") or "").strip(), locale)
         # LLM-название с турецким словом — название правилами без этого слова
         # (тип, бренд, модель); если и его нет, остаётся LLM-вариант (модерация).
         if any(not titles.get(locale) for locale in plan.missing_titles):
