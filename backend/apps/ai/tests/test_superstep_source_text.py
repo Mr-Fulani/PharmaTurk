@@ -3,7 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from apps.ai.services.rules.facts import ProductFacts, clean_source_text, parse_name, product_source
-from apps.ai.services.rules.pipeline import _dynamic_attributes, drop_filler_sentences
+from apps.ai.services.rules.pipeline import _dynamic_attributes
+from apps.ai.services.rules.polish import polish_description as drop_filler_sentences
 
 SS = "superstep"
 SUPERSTEP_SOURCE = (
@@ -40,7 +41,7 @@ def test_superstep_disclaimer_about_one_field_cuts_only_that_sentence():
         "Teknik Özellikler Marka: Lacoste. Teknoloji ve donanım: Liste verisinde doğrulanmış teknik teknoloji "
         "bilgisi yer almamaktadır. Dış taban: %100 kauçuk."
     )
-    assert clean_source_text(text, SS) == "Teknik Özellikler Marka: Lacoste. Dış taban: %100 kauçuk."
+    assert clean_source_text(text, SS) == "Teknik Özellikler. Dış taban: %100 kauçuk."  # «Marka» — поле шаблона
 
 
 def test_superstep_html_list_without_dots_keeps_other_items():

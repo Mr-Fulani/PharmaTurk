@@ -850,6 +850,7 @@ SHOE_MATERIALS: dict[str, tuple[str, str]] = {
     "pu": ("полиуретан", "polyurethane"),
     "pvc": ("ПВХ", "PVC"),
     "mesh": ("сетка", "mesh"),
+    "file": ("сетка", "mesh"),  # SuperStep «File/TPU»: турецкое «file» — сетка
     "kanvas": ("канвас", "canvas"),
     "suni deri": ("искусственная кожа", "faux leather"),
     "deri": ("натуральная кожа", "genuine leather"),

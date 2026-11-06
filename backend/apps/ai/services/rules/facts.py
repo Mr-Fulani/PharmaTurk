@@ -111,6 +111,20 @@ _SUPERSTEP_FILLER_RE = re.compile(
 )
 
 
+# Поля шаблона с названием, брендом и типом: модель переносила их в описание как есть —
+# «Название модели: Lacoste Sport Kadın Relaxed Fit Beyaz Şort» (карточки 06.11.2026). Всё это
+# уже есть в названии и характеристиках. Значение — до следующего поля, точки или конца строки.
+_SUPERSTEP_FIELD_LABELS = (
+    r"Marka|Ürün\s+(?:tipi|adı)|Alt\s+grup|Hedef\s+kullanıcı|Renk|Option|Materyal|Malzeme|Ölçü(?:\s+ve\s+beden)?"
+    r"|Teknoloji(?:\s+ve\s+donanım)?|Kalıp|Kesim|Dış\s+(?:taban|yüzey)|Taban|Üst(?:\s+yüzey)?|Astar|Cinsiyet"
+    r"|Sezon|Kullanım\s+Alanı|Kumaş|İçerik|Yaka|Kol\s+boyu|Desen|Ürün\s+sayfas\w*(?:\s+[^\s:]+){0,3}"
+)
+_SUPERSTEP_META_FIELD_RE = re.compile(
+    rf"(?:Marka|Ürün\s+(?:tipi|adı)|Alt\s+grup|Hedef\s+kullanıcı)\s*:\s*.*?(?=\s*(?:{_SUPERSTEP_FIELD_LABELS})\s*:|[.;<\n]|$)",
+    re.IGNORECASE,
+)
+
+
 def product_source(product: Any) -> str:
     """Источник товара по external_id: «superstep-B75806» → «superstep»."""
     return str(getattr(product, "external_id", "") or "").split("-", 1)[0].lower()
@@ -120,7 +134,9 @@ def _clean_superstep(text: str) -> str:
     if _SUPERSTEP_NO_FACTS_RE.search(text):
         return ""
     text = _SUPERSTEP_FILLER_RE.sub(" ", text)
-    return re.sub(r"Option\s*/\s*ürün kodu:\s*[^\s<]+", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"Option\s*/\s*ürün kodu:\s*[^\s<]+", " ", text, flags=re.IGNORECASE)
+    text = _SUPERSTEP_META_FIELD_RE.sub(" ", text)
+    return re.sub(r"\s+\.", ".", re.sub(r"(?:\s*\.){2,}", ".", text))  # «Ürün Özellikleri . . .» после вырезанных полей
 
 
 def _cut_outfit_tips(text: str) -> str:
