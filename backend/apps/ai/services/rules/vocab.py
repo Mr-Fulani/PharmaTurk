@@ -625,6 +625,9 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "crew neck": ("с круглым вырезом", "Crew Neck"),
     # Одно «Crew» — часть модели носков Nike («Run Crew»), поэтому только с «Ss».
     "ss crew": ("с круглым вырезом", "Crew Neck"),
+    # FLO Jack & Jones: «TEE SS CREW NECK», обрезанное «SS CREW NEC» — целиком, иначе «NECK» уходит в модель.
+    "ss crew neck": ("с круглым вырезом", "Crew Neck"),
+    "ss crew nec": ("с круглым вырезом", "Crew Neck"),
     "cneck": ("с круглым вырезом", "Crew Neck"),
     "yuvarlak yaka": ("с круглым вырезом", "Crew Neck"),
     "v yaka": ("с V-образным вырезом", "V-Neck"),

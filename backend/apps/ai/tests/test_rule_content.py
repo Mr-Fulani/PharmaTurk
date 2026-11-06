@@ -1074,3 +1074,6 @@ def test_parlak_alone_is_not_translated_as_glossy():
 def test_superstep_model_words_like_leather_and_run_crew_stay_in_model():
     assert _titles("Veja V-90 Leather Erkek Beyaz Sneaker", "shoes", brand="Veja")[0].model == "V-90 Leather"
     assert _titles("Nike Mdwt Run Crew 1Pr - 168 Unisex Beyaz Çorap", "underwear", brand="Nike")[0].model.startswith("Mdwt Run Crew")
+    # FLO: «… TEE SS CREW NECK» — «NECK» не становится моделью
+    facts = _titles("Bisiklet Yaka Lacivert Erkek T-Shirt 12271257_JJJAYCE TEE SS CREW NECK", "clothing", brand="Jack & Jones")[0]
+    assert "NECK" not in facts.model and "CREW" not in facts.model
