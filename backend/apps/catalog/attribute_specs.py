@@ -97,10 +97,6 @@ ATTRIBUTE_SPECS: tuple[DynamicAttributeSpec, ...] = (
             ("eva", "EVA"),
             ("poliuretan", "Полиуретан"),
             ("polyurethane", "Полиуретан"),
-            # SuperStep: «SÜET», «SIGIR DERISI». В конце списка: прежние совпадения не меняются;
-            # одно «deri» не берём — оно внутри других слов («derinlik» у IKEA).
-            ("suet", "Замша"),
-            ("sigir derisi", "Натуральная кожа"),
         ),
         max_words=4,
     ),
@@ -404,7 +400,6 @@ _VALUE_RU_TO_EN: dict[str, str] = {
     # material / sole-material
     "Натуральная кожа": "Genuine Leather",
     "Искусственная кожа": "Faux Leather",
-    "Замша": "Suede",
     "Хлопок": "Cotton",
     "Ткань": "Fabric",
     "Текстиль": "Textile",

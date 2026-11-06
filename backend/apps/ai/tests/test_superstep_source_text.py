@@ -93,7 +93,7 @@ def test_filler_sentences_are_dropped_whole_and_empty_paragraphs_go():
         ("DIS YUZEY:%76 POLYESTER %12 SUET SIGIR DERISI TABAN:%100 KAUCUK", None, "Каучук"),  # основной — полиэстер
         ("Üst: Sığır Derisi, İç taban: Deri, Ara taban: EVA, Taban: Kauçuk", "Натуральная кожа", "Каучук"),
         ("Üst: Süet, Astar: Tekstil, Taban: Kauçuk", "Замша", "Каучук"),
-        ("Üst: Deri, Taban: Kauçuk", None, "Каучук"),  # одно «deri» не распознаём — лучше пусто
+        ("Üst: Deri, Taban: Kauçuk", "Натуральная кожа", "Каучук"),  # «deri» — только точное слово верха
         ("Tekstil/Deri, Taban: Kauçuk", "Текстиль", "Каучук"),  # верх без метки
         ("Upper:Recycled polyester, TPUOutsole: Rubber", None, "Резина"),
         ("Kauçuk", "Каучук", None),  # одна подошва без меток (шлёпанцы) — как раньше

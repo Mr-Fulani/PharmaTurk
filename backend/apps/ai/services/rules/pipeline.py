@@ -54,6 +54,14 @@ _MATERIAL_LABEL_RE = re.compile(
     re.IGNORECASE,
 )
 _MATERIAL_PART_RE = re.compile(r"%\s*\d+|\d+\s*%|[,/;]")
+# Верх, которого нет в общих алиасах материала: точное совпадение, без подстрок
+# (одно «deri» внутри «derinlik» у IKEA, «PU SUET» у FLO — искусственная замша).
+_UPPER_MATERIALS = {
+    "deri": ("Натуральная кожа", "Genuine Leather"),
+    "sigir derisi": ("Натуральная кожа", "Genuine Leather"),
+    "suet": ("Замша", "Suede"),
+    "suet sigir derisi": ("Замша", "Suede"),
+}
 # Предложения-«вода», которые модель пишет вопреки промпту (пилот SuperStep 06.11.2026: 12 и 6
 # описаний из 50): «Модель подходит для повседневной носки», «Цвет сочетается с джинсами».
 # Вырезается предложение целиком, чтобы текст не обрывался.
@@ -244,14 +252,16 @@ def _fragrance_name(payload: dict[str, Any], plan: RulePlan, input_data: dict[st
 def _dynamic_attributes(product, input_data: dict[str, Any], facts: ProductFacts) -> list[dict[str, Any]]:
     attrs = input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {}
     labelled = _labelled_materials(attrs.get("material")) if facts.product_type == "shoes" else None
+    upper_material = None
     if labelled is not None:
         upper, sole = labelled
         attrs = {**attrs, "material": upper}
+        upper_material = _UPPER_MATERIALS.get(vocab.fold(upper))
         if sole and not attrs.get("sole_material"):
             attrs["sole_material"] = sole
     kind = (facts.kind.ru, facts.kind.en) if facts.kind else None
     overrides = {
-        "material": facts.upper,
+        "material": upper_material or facts.upper,
         "sole-material": facts.sole,
         "furniture-type": kind if facts.product_type == "furniture" else None,
         # Парсер кладёт в тип аксессуара slug категории («belts»).
