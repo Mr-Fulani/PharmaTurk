@@ -256,6 +256,10 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "melaloyka": ("чайное дерево", "tea tree", S),
     "yumurta zari": ("мембрана яичной скорлупы", "eggshell membrane", S),
     "buyuk meyveli vaksiniyum": ("клюква крупноплодная", "cranberry", S),
+    # Пилот на проде 06.11.2026: «Aspir yağı» — «сафлор», «Ubikinol» — «Убиквинол» рядом с «убихинолом».
+    "aspir yagi": ("сафлоровое масло / масло сафлора", "safflower oil", S),
+    "ubikinol": ("убихинол", "ubiquinol", S),
+    "ubikinon": ("убихинон", "ubiquinone", S),
     "nem verici": ("влагоудерживающий агент / увлажняющий агент / увлажнитель", "humectant", S),
     "hashas": ("мак", "poppy", S),
     "sarimsak": ("чеснок", "garlic", S),

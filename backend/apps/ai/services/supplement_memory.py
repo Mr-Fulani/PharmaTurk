@@ -22,6 +22,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from django.db.models import Q
+
 from apps.ai.models import AITranslationMemory
 from apps.ai.services import medicine_memory, supplement_glossary
 from apps.ai.services.medicine_reference import fold_tr
@@ -55,7 +57,7 @@ LINE_SYSTEM_PROMPT = (
     "уплотнитель / firming agent. "
     "«tok karnına» = «после еды» / «after a meal», «aç karnına» = «натощак» / «on an empty stomach». "
     "«Takviye edici gıdalar normal beslenmenin yerine geçemez» = «БАДы не заменяют полноценное питание» / "
-    "«Food supplements are not a substitute for a varied diet». Числа пиши цифрами, как в источнике («Günde 1 "
+    "«Food supplements are not a substitute for a varied diet». Единицы в русском — по-русски: мг, мкг, г, мл, МЕ, КОЕ («10 ml» = «10 мл»). Числа пиши цифрами, как в источнике («Günde 1 "
     "tablet» = «1 таблетка в день»). Латинские названия бактерий и растений (Lactobacillus acidophilus) оставляй "
     "латиницей; других английских слов в русском переводе нет. Ответ — строго JSON."
 )
@@ -173,6 +175,8 @@ _LATIN_STRAIN_RE = re.compile(
     r"pediococcus|leuconostoc|[lbs]\.)\b"
 )
 _LATIN_WORD_RE = re.compile(r"[A-Za-z]{4,}")
+# Единица — после числа: штаммы «GR-1», «ML-7» латиницей законны (ревью #327).
+_RU_LATIN_UNIT_RE = re.compile(r"\d\s*(?:mg|mcg|[µμ]g|ml|iu|gr|kcal|cfu)(?![A-Za-z])", re.IGNORECASE)
 
 
 def _skip_sentence(folded: str) -> bool:
@@ -243,7 +247,11 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
     # Турецкое слово в переводе («Мелалойка Ягы (Melaloyka Yağı)») и подсказка словаря целиком («прополис | propolis»).
     # Бренд «METİLMAX» из источника остаётся как есть.
     turkish_words = re.findall(r"\w*[ğışçöüĞİŞÇÖÜ]\w*", ru)
-    if any(word not in source for word in turkish_words) or ("|" in ru + en and "|" not in source):
+    # Латинская единица в русском: «1 мерная ёмкость mg/5ml», «по 10 ml» (пилот 06.11.2026, IMUPLUS).
+    if (
+        any(word not in source for word in turkish_words) or ("|" in ru + en and "|" not in source)
+        or _RU_LATIN_UNIT_RE.search(ru)
+    ):
         problems.append("ru_untranslated")
     return problems + _meaning_problems(folded_source, ru, en)
 
@@ -258,8 +266,33 @@ class SupplementBlocks:
     stats: dict[str, Any] = field(default_factory=dict)
 
 
+def _without_unclosed_brackets(text: str) -> str:
+    """Скобки без пары: «[» → «: », «(» → пробел; парные не трогаются."""
+    stack, unclosed = [], set()
+    for index, char in enumerate(text):
+        if char in "([":
+            stack.append(index)
+        elif char in ")]" and stack and text[stack[-1]] == {")": "(", "]": "["}[char]:
+            stack.pop()
+    unclosed.update(stack)
+    out = []
+    for index, char in enumerate(text):
+        if index in unclosed:
+            replacement = ": " if char == "[" else " "
+            while out and out[-1] == " ":
+                out.pop()
+            out.append(replacement)
+        else:
+            out.append(char)
+    return re.sub(r"(: |\s)\s+", r"\1", "".join(out))
+
+
 def _split_top_level(text: str) -> list[str]:
     """Список состава → компоненты: запятая или точка с запятой вне скобок."""
+    # Незакрытая скобка источника («Multivitamin ve Mineral Karışımı(%3,77) [Vitamin C(…), …» без «]») склеивала
+    # остаток списка в одну часть длиннее UNIT_MAX_CHARS (пилот 06.11.2026, HERBALAND 7156). Убираем только её —
+    # парные скобки остаются, и запятые внутри «(…, 10 mg)» список не дробят (ревью #327).
+    text = _without_unclosed_brackets(text)
     items, depth, current = [], 0, []
     for index, char in enumerate(text):
         if char in "([":
@@ -364,6 +397,11 @@ def _without_attribute_table(lines: list[str]) -> list[str]:
 
 def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
     """Разделы источника → {вид блока: части по порядку, без повторов}."""
+    return _section_parts(sections)[0]
+
+
+def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], list[str]]:
+    """→ (части блоков, виды блоков, скрытых из-за части длиннее UNIT_MAX_CHARS)."""
     parts: dict[str, list[str]] = {kind: [] for kind in BLOCK_KINDS}
     for text in sections.values():
         current: Optional[str] = None
@@ -455,11 +493,11 @@ def section_parts(sections: dict[str, str]) -> dict[str, list[str]]:
                     open_part = None if re.search(r"[.!?;:]$", sentence) else (target, len(parts[target]) - 1)
     if parts["composition"] and all(_is_excipient(fold_tr(item)) for item in parts["composition"]):
         parts["excipients"], parts["composition"] = parts["composition"], []
+    # Блок с частью длиннее UNIT_MAX_CHARS не показывается: без неё он неполный, а выглядел бы полным.
+    too_long = [kind for kind, items in parts.items() if any(len(item) > UNIT_MAX_CHARS for item in items)]
     return {
-        kind: list(dict.fromkeys(item for item in items if len(item) <= UNIT_MAX_CHARS))
-        for kind, items in parts.items()
-        if items
-    }
+        kind: list(dict.fromkeys(items)) for kind, items in parts.items() if items and kind not in too_long
+    }, too_long
 
 
 LINE_PROBLEMS = (
@@ -505,15 +543,21 @@ def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:
     return accepted, rejected, usage
 
 
-def _remember(accepted: dict[str, dict[str, str]], log) -> None:
-    """Запись с логом карточки: отклонённый модератором лог снимает её из повторного использования."""
+def _remember(accepted: dict[str, dict[str, str]], log, replace: frozenset = frozenset()) -> None:
+    """Запись с логом карточки: отклонённый модератором лог снимает её из повторного использования.
+
+    ``replace`` — части, чья автоматическая запись в памяти не прошла ``line_problems``: свежий перевод её заменяет.
+    """
     remember(LINE_NAMESPACE, accepted, log=log)
     # Запись карточки, которую модератор не принял, уступает свежему переводу (как ``rules.memory.remember``).
     stale = AITranslationMemory.objects.filter(
         namespace=LINE_NAMESPACE,
         source_hash__in=[source_hash(normalize_source_text(unit)) for unit in accepted],
         source_log__isnull=False,
-    ).exclude(source_log__status__in=REUSABLE_LOG_STATUSES)
+    ).exclude(
+        Q(source_log__status__in=REUSABLE_LOG_STATUSES)
+        & ~Q(source_hash__in=[source_hash(normalize_source_text(unit)) for unit in replace])
+    )
     if log is not None:
         stale = stale.exclude(source_log=log)
     by_hash = {source_hash(normalize_source_text(unit)): values for unit, values in accepted.items()}
@@ -533,7 +577,8 @@ def translate_blocks(sections: dict[str, str], llm, log=None) -> tuple[Supplemen
     → (блоки, usage запросов перевода). ``llm=None`` — только память. Из памяти берутся записи принятых
     карточек и ручные правки; ``log`` — лог карточки, с ним сохраняются новые переводы.
     """
-    blocks = SupplementBlocks(parts=section_parts(sections))
+    parts, too_long = _section_parts(sections)
+    blocks = SupplementBlocks(parts=parts)
     units = list(dict.fromkeys(unit for items in blocks.parts.values() for unit in items))
     fragments = [unit for unit in units if _FRAGMENT_RE.search(fold_tr(unit))]
     units = [unit for unit in units if unit not in fragments]
@@ -542,6 +587,23 @@ def translate_blocks(sections: dict[str, str], llm, log=None) -> tuple[Supplemen
         found.update(lookup(
             LINE_NAMESPACE, [unit for unit in units if unit not in found], log_statuses=REUSABLE_LOG_STATUSES
         ))
+    # Готовые переводы проходят те же проверки, что и новые (ревью #327: «mg/5ml», «сафлор» из памяти прода
+    # иначе снова попадали на карточки). Ручная правка (без лога) — источник правды, её не проверяем.
+    bad_memory = {
+        unit: problems for unit in found if not _LATIN_STRAIN_RE.match(fold_tr(unit))
+        for problems in [line_problems(unit, found[unit]["ru"], found[unit]["en"])] if problems
+    }
+    if bad_memory:
+        manual = set(AITranslationMemory.objects.filter(
+            namespace=LINE_NAMESPACE, source_log__isnull=True,
+            source_hash__in=[source_hash(normalize_source_text(unit)) for unit in bad_memory],
+        ).values_list("source_hash", flat=True))
+        bad_memory = {
+            unit: problems for unit, problems in bad_memory.items()
+            if source_hash(normalize_source_text(unit)) not in manual
+        }
+        for unit in bad_memory:
+            del found[unit]
     cached = len(found)
     missing = [unit for unit in units if unit not in found]
     usage: dict[str, Any] = {"tokens": {}, "cost_usd": 0.0, "processing_time_ms": 0}
@@ -557,7 +619,7 @@ def translate_blocks(sections: dict[str, str], llm, log=None) -> tuple[Supplemen
             rejected = {unit: reasons for unit, reasons in {**rejected, **rejected_again}.items() if unit not in accepted}
             medicine_memory._add_usage(usage, usage_again)
         if accepted:
-            _remember(accepted, log)
+            _remember(accepted, log, replace=frozenset(bad_memory))
             found.update(accepted)
     claims = []
     for kind, items in blocks.parts.items():
@@ -580,6 +642,8 @@ def translate_blocks(sections: dict[str, str], llm, log=None) -> tuple[Supplemen
         "rejected": {unit[:120]: reasons for unit, reasons in rejected.items()},
         "missing": len([unit for unit in units if unit not in found]),
         "fragments": [unit[:120] for unit in fragments],
+        "memory_rejected": {unit[:120]: problems for unit, problems in bad_memory.items()},
+        "too_long_blocks": too_long,
         "claim_blocks": claims,
         "blocks": sorted(blocks.ru),
         "incomplete_blocks": sorted(set(blocks.parts) - set(blocks.ru)),

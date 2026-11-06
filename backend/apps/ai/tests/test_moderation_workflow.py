@@ -40,6 +40,7 @@ from apps.catalog.models import (
     JewelryProduct,
     MedicineProduct,
     MedicineProductTranslation,
+    Product,
     SportsProduct,
     UnderwearProduct,
 )
@@ -1356,3 +1357,33 @@ def test_close_resolved_moderation_closes_existing_duplicates():
     assert old_log.status == AIProcessingStatus.REJECTED
     assert new_log.status == AIProcessingStatus.MODERATION
     assert new_queue.resolved_at is None
+
+
+def test_moderation_task_writes_all_reasons_into_log_notes():
+    # Пилот БАДов 06.11.2026: логи в moderation с пустыми заметками — очередь хранит одну причину.
+    from apps.ai.services.quality_checker import create_moderation_task
+
+    product = Product.objects.create(name="X", slug="mod-notes-reasons")
+    log = AIProcessingLog.objects.create(product=product, status=AIProcessingStatus.MODERATION, input_data={})
+
+    create_moderation_task(log, reasons=["supplement_unsourced_number", "title_identity_lost"])
+    log.refresh_from_db()
+    assert log.moderation_notes == "Автопроверка: supplement_unsourced_number, title_identity_lost"
+    assert AIModerationQueue.objects.get(log_entry=log).reason == "supplement_unsourced_number"
+
+    # Новое попадание в очередь обновляет автоматическую заметку.
+    create_moderation_task(log, reasons=["title_identity_lost"])
+    log.refresh_from_db()
+    assert log.moderation_notes == "Автопроверка: title_identity_lost"
+
+    # Отклонение с неизменённым полем формы не делает автоматический текст заметкой модератора.
+    reject_log(log, notes=log.moderation_notes)
+    log.refresh_from_db()
+    assert log.status == AIProcessingStatus.REJECTED and log.moderation_notes == "Автопроверка: title_identity_lost"
+
+    # Заметку модератора не перезаписываем.
+    log2 = AIProcessingLog.objects.create(product=product, status=AIProcessingStatus.MODERATION, input_data={},
+                                          moderation_notes="Проверено вручную")
+    create_moderation_task(log2, reasons=["title_identity_lost"])
+    log2.refresh_from_db()
+    assert log2.moderation_notes == "Проверено вручную"
