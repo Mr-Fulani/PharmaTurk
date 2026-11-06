@@ -357,6 +357,8 @@ KINDS: dict[str, Kind] = {
     "kar botu": _k("зимние ботинки", PL, "Snow Boots"),
     "kayak botu": _k("зимние ботинки", PL, "Snow Boots"),
     "uzun bot": _k("высокие сапоги", PL, "Tall Boots"),
+    "yagmur botu": _k("резиновые сапоги", PL, "Rain Boots"),  # Hunter
+    "yagmur cizmesi": _k("резиновые сапоги", PL, "Rain Boots"),
     "cizme": _k("сапоги", PL, "Boots"),
     "loafer": _k("лоферы", PL, "Loafers"),
     "slip on": _k("слипоны", PL, "Slip-Ons"),
@@ -637,7 +639,8 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "desenli": ("с узором", "Patterned"),
     "renk bloklu": ("в стиле колор-блок", "Colorblock"),
     "monogram": ("с монограммой", "Monogram"),
-    "parlak": ("с глянцевым покрытием", "Glossy"),
+    # Одно «Parlak» — блеск чего угодно («Parlak Taşlı Sandalet» у FLO/LCW), поэтому только с кожей.
+    "parlak deri": ("из лакированной кожи", "Patent Leather"),
     # «Polo Yaka Çapa Desenli» без словаря уходило в LLM, и та писала «с круглым вырезом в рубчик».
     "capa desenli": ("с принтом якорей", "Anchor Print"),
     "yelken desenli": ("с принтом парусников", "Sailboat Print"),

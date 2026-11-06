@@ -1056,12 +1056,19 @@ def test_generic_words_of_other_catalogs_are_not_furniture_conflicts():
         ("Lacoste Classic Fit Erkek T-Shirt", "Lacoste", "clothing", "Мужская футболка Lacoste классического кроя"),
         ("Nautica Erkek Slim Fit Kısa Kollu Polo Yaka T-Shirt", "Nautica", "clothing",
          "Мужское поло Nautica приталенного кроя с коротким рукавом"),
+        ("Hunter Original Kadın Siyah Yağmur Botu", "Hunter", "shoes", "Женские резиновые сапоги Hunter Original, черные"),
     ],
 )
 def test_superstep_words_are_translated_by_vocab(name, brand, product_type, ru):
     facts, titles = _titles(name, product_type, brand=brand)
     assert not facts.untranslated
     assert titles["ru"] == ru
+
+
+def test_parlak_alone_is_not_translated_as_glossy():
+    # «Parlak Taşlı Sandalet» у FLO/LCW — блестящие камни, не глянцевое покрытие.
+    assert not _titles("Parlak Taşlı Kadın Sandalet", "shoes")[0].descriptors
+    assert _titles("Kadın Parlak Deri Babet", "shoes")[0].descriptors == [("из лакированной кожи", "Patent Leather")]
 
 
 def test_superstep_model_words_like_leather_and_run_crew_stay_in_model():
