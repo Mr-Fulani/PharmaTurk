@@ -31,7 +31,7 @@ def test_superstep_text_that_admits_no_facts_is_empty(disclaimer):
 
 
 def test_ordinary_eklenmemis_is_not_a_superstep_disclaimer():
-    assert "paraben" in clean_source_text("Paraben eklenmemiş formül, ferah çiçeksi koku.")
+    assert "Paraben eklenmemiş" in clean_source_text("Paraben eklenmemiş formül, ferah çiçeksi koku.")
 
 
 @pytest.mark.parametrize(
