@@ -144,11 +144,11 @@ def test_seo_fits_limits_and_uses_cyrillic_brand():
         "SOLGAR", "Солгар", {"ru": "Витамин D3 1000 МЕ", "en": "Vitamin D3 1000 IU"},
         sc.parse_pack("SOLGAR VITAMIN D3 1000 IU 100 softjel"),
     )
-    assert seo["ru"]["seo_title"] == "Солгар (SOLGAR) Витамин D3 1000 МЕ — купить из Турции"
-    assert seo["ru"]["seo_description"].startswith("Солгар (SOLGAR) Витамин D3 1000 МЕ, 100 мягких капсул из Турции.")
+    assert seo["ru"]["seo_title"] == "Солгар (Solgar) Витамин D3 1000 МЕ — купить из Турции"
+    assert seo["ru"]["seo_description"].startswith("Солгар (Solgar) Витамин D3 1000 МЕ, 100 мягких капсул из Турции.")
     assert "Заявка менеджеру" in seo["ru"]["seo_description"]
-    assert seo["en"]["seo_title"] == "SOLGAR Vitamin D3 1000 IU, 100 soft capsules — buy from Turkey"
-    assert {"SOLGAR", "Солгар", "витамин D3 1000 МЕ", "Солгар из Турции"} <= set(seo["ru"]["keywords"])
+    assert seo["en"]["seo_title"] == "Solgar Vitamin D3 1000 IU, 100 soft capsules — buy from Turkey"
+    assert {"Solgar", "Солгар", "витамин D3 1000 МЕ", "витамин D3 1000 МЕ из Турции"} <= set(seo["ru"]["keywords"])
     long = sc.build_seo(
         "ZADE VITAL", "Заде Витал",
         {"ru": "Омега-3, рыбий жир, витамины A, D и E, со вкусом смеси фруктов, сироп", "en": "Omega-3 Fish Oil Syrup"},
@@ -158,6 +158,70 @@ def test_seo_fits_limits_and_uses_cyrillic_brand():
         assert len(long[locale]["seo_title"]) <= sc.SEO_TITLE_MAX
         assert len(long[locale]["seo_description"]) <= sc.SEO_DESCRIPTION_MAX
     assert long["ru"]["seo_title"].split()[-1] not in {"и", "с", "со", ","}
+
+
+def test_seo_brand_spelled_as_searched():
+    """SEO-ядро 07.11.2026: бренд в SEO — как его ищут, а не транслитерация модели."""
+    from apps.ai.services.supplement_brands import seo_brand
+
+    # «Доппельхерц» не ищут — ищут «доппельгерц».
+    assert seo_brand("DOPPELHERZ", "Доппельхерц")[:2] == ("Doppelherz", "Доппельгерц")
+    # Ocean ищут вместе с производителем: «орзакс оушен экстрамаг»; слово линейки из памяти сохраняется.
+    assert seo_brand("OCEAN EXTRAMAG", "Оушен Экстрамаг")[:2] == ("Orzax Ocean Extramag", "Орзакс Оушен Экстрамаг")
+    # Кириллица из памяти не делится по словам — кириллицей только бренд словаря, в скобках те же слова.
+    assert seo_brand("NATROL EASY-C", "") == ("Natrol Easy-C", "Натрол", "Natrol")
+    # «Вунка» не ищут (подсказки — фильм «Вонка»): бренд только латиницей.
+    assert seo_brand("VOONKA", "Вунка")[:2] == ("Voonka", "")
+    # Длинный ключ важнее короткого: «Прегнакеа», а не «Прегнакэар» из памяти.
+    assert seo_brand("VITABIOTICS PREGNACARE", "Витабиотикс Прегнакэар")[:2] == (
+        "Vitabiotics Pregnacare", "Витабиотикс Прегнакеа"
+    )
+    # Турецкая «İ» без точки сверху, аббревиатуры заглавными (ревью #333).
+    assert seo_brand("OCEAN BİOTİN", "").latin == "Orzax Ocean Biotin"
+    assert seo_brand("HIPP 1 ORGANİK COMBİOTİC", "").latin == "HiPP 1 Organik Combiotic"
+    assert seo_brand("OCEAN EPA-DHA MSM", "").latin == "Orzax Ocean EPA-DHA MSM"
+    aligned = sc.build_seo("VELAVIT PHYTOGLOW", "", {"ru": "Пищевая добавка", "en": "Food Supplement"}, None)
+    assert aligned["ru"]["seo_title"] == "Велавит (Velavit) Phytoglow, пищевая добавка — купить из Турции"
+    # «Пищевая добавка» уступает место бренду кириллицей.
+    generic = sc.build_seo(
+        "OCEAN EXTRAMAG", "Оушен Экстрамаг", {"ru": "Пищевая добавка", "en": "Food Supplement"}, sc.parse_pack("X 120 tablet")
+    )
+    assert generic["ru"]["seo_title"] == "Орзакс Оушен Экстрамаг (Orzax Ocean Extramag) — купить из Турции"
+    # Бренда нет в словаре — как раньше.
+    assert seo_brand("MEGA-FARMA", "Мега-Фарма") == ("MEGA-FARMA", "Мега-Фарма", "MEGA-FARMA")
+
+    seo = sc.build_seo("VOONKA", "Вунка", {"ru": "Витамин C", "en": "Vitamin C"}, sc.parse_pack("X 62 tablet"))
+    assert seo["ru"]["seo_title"].startswith("Voonka Витамин C")
+    assert "Вунка" not in " ".join([seo["ru"]["seo_title"], seo["ru"]["seo_description"], *seo["ru"]["keywords"]])
+
+
+def test_seo_mentions_russian_directions_only_with_usage_block():
+    """«<бренд> инструкция на русском» — частый запрос к турецким БАДам; обещать её можно, только
+    если на карточке есть «Способ применения»."""
+    args = ("MAGNIMORE", "", {"ru": "Магния цитрат", "en": "Magnesium Citrate"}, sc.parse_pack("X 60 kapsul"))
+    with_usage = sc.build_seo(*args, usage=True)
+    without = sc.build_seo(*args)
+    assert "Инструкция на русском: состав и способ применения." in with_usage["ru"]["seo_description"]
+    assert "Magnimore инструкция на русском" in with_usage["ru"]["keywords"]
+    assert "Описание и состав на русском." in without["ru"]["seo_description"]
+    assert not any("инструкция" in keyword for keyword in without["ru"]["keywords"])
+    for locale in ("ru", "en"):
+        assert len(with_usage[locale]["seo_description"]) <= sc.SEO_DESCRIPTION_MAX
+        assert len(with_usage[locale]["keywords"]) <= 8
+    # «Заявка менеджеру» не вытесняется: длинное название — короткая «инструкция» (ревью #333).
+    long = sc.build_seo(
+        "OCEAN EXTRAMAG", "Оушен Экстрамаг", {"ru": "Пищевая добавка", "en": "Food Supplement"},
+        sc.parse_pack("X 120 tablet"), usage=True,
+    )["ru"]["seo_description"]
+    assert long.endswith("Инструкция на русском. Заявка менеджеру, доставка 7–14 дней."), long
+    # Детское питание — способ приготовления.
+    baby = sc.build_seo("APTAMIL", "", {"ru": "Смесь 3", "en": "Formula 3"}, None, baby_food=True, usage=True)
+    assert "состав и способ приготовления" in baby["ru"]["seo_description"]
+    # Признак — готовый абзац «Способ применения:», в списке абзацев или в HTML описания.
+    assert sc.has_usage_paragraph(["Состав: магний.", "Способ применения: 1 капсула в день."])
+    assert not sc.has_usage_paragraph(["Состав: магний.", "Предупреждения: не превышать."])
+    assert sc.has_usage_paragraph("<p>Магний.</p><p>Способ применения: 1 капсула в день.</p>")
+    assert not sc.has_usage_paragraph("<p>Способ применения не указан.</p>")
 
 
 def test_title_problem_when_number_from_source_is_lost():
