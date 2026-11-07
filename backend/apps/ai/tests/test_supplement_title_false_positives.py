@@ -68,3 +68,33 @@ def test_untranslated_turkish_in_ru_title_is_blocked(catalog, source_name, ru_ti
 def test_russian_words_and_brands_are_not_flagged(catalog):
     reasons = _reasons(catalog, "SOLGAR SASE 30", "Solgar, 30 саше по 5 г", "Solgar, 30 sachets")
     assert "title_untranslated" not in reasons
+
+
+def test_baby_food_description_applies_after_moderator_review(catalog):
+    # Ревью #332, п. 7: supplement_baby_food_review от текста не зависит — без отметки модератора описание
+    # детского питания не применилось бы никогда.
+    from apps.ai.services.moderation import MODERATION_REASON_LABELS
+
+    product = Product.objects.create(
+        name="HIPP 1 ORGANIK COMBIOTIC DEVAM SUTU 350 g", slug="fp-hipp-review", product_type="supplements",
+        category=catalog,
+    )
+    description = {"ru": "<p>HIPP — молочная смесь.</p>", "en": "<p>HIPP is a milk formula.</p>"}
+    log = AIProcessingLog.objects.create(
+        product=product, processing_type="full", input_data={"name": product.name},
+        generated_description=description["ru"], raw_llm_response={"rule_content": {"supplement": {"brand": "HIPP"}}},
+        extracted_attributes={"seo_translations": {"en": {"generated_description": description["en"]}}},
+    )
+    report = SemanticValidator().validate_log(log)
+    assert "description" in report.rejected_fields and "supplement_baby_food_review" in report.reasons
+    assert "supplement_baby_food_review" in MODERATION_REASON_LABELS and "supplement_translit" in MODERATION_REASON_LABELS
+
+    log.extracted_attributes = {**log.extracted_attributes, "moderator_description_review": dict(description)}
+    log.save(update_fields=["extracted_attributes"])
+    report = SemanticValidator().validate_log(log)
+    assert "description" not in report.rejected_fields and "description" in report.moderator_reviewed_fields
+
+    # Новое описание снова проверяется.
+    log.generated_description = "<p>HIPP — другая смесь.</p>"
+    log.save(update_fields=["generated_description"])
+    assert "description" in SemanticValidator().validate_log(log).rejected_fields

@@ -264,11 +264,12 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "krom pikolinat": ("пиколинат хрома", "chromium picolinate", S),
     # Пилот 4 на проде 07.11.2026: «parlatıcı» — «подсластитель», «akgünlük» — транслит, «dil altı» —
     # «дилатационный», «Magnezyum Taurat» — «Тауррат», «sitrat» — «ситрат».
-    "parlatici": ("глазирователь / глазирующий агент / полирующий агент / глянцеватель",
+    "parlatici": ("глазирователь / глазирующий агент / глазирующее вещество / полирующий агент / глянцеватель",
                   "glazing agent / polishing agent / glaze", S),
     "akgunluk": ("босвеллия / ладан", "boswellia / frankincense", S),
     "dil alti": ("под язык / подъязычный", "sublingual / under the tongue", S),
     "dilaltina": ("под язык / подъязычный", "sublingual / under the tongue", S),
+    "dil altina": ("под язык / подъязычный", "sublingual / under the tongue", S),
     "taurat": ("таурат", "taurate", S),
     "sitrat": ("цитрат", "citrate", S),
     "melaloyka": ("чайное дерево", "tea tree", S),

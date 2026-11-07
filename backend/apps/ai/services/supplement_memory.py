@@ -157,10 +157,12 @@ def _dose_table_actives(sections: dict) -> list[str]:
 
 
 # Доза: число или числительное до двух слов перед формой («1 (bir)-2 (iki) yumuşak kapsül», «1 çiğnenebilir jel form»,
-# «iki adettir»), кратность («günde», «sabah akşam»), «по назначению врача» — способ применения есть (пилот 4 на проде).
+# «iki adettir», «1 yemek kaşığı», «30 gram»), кратность («günde», «sabah akşam»), «по назначению врача» — способ
+# применения есть (пилот 4 на проде, ревью #332).
 _USAGE_DOSE_RE = re.compile(
-    r"(?:\d+|\b(?:bir|iki|uc|dort|bes|alti|yarim))\s*(?:\([^()]*\)\s*)?(?:[^\W\d_]+\s+){0,2}"
-    r"(?:kapsul|tablet|sase|olcek|damla|ml\b|g\b|gr\b|pastil|puf|porsiyon|tup|flakon|kasik|ampul|gummy|jel|adet)|"
+    r"(?:\d+|\b(?:bir|iki|uc|dort|bes|alti|yedi|sekiz|dokuz|on|yarim))\s*(?:\([^()]*\)\s*)?(?:[^\W\d_]+\s+){0,2}"
+    r"(?:kapsul|tablet|kaplet|draje|sase|paket|sise|olcek|damla|ml\b|g\b|gr\b|gram|pastil|puf|porsiyon|tup|flakon|"
+    r"kasi[gk]|ampul|gummy|jel|adet)|"
     r"\bgunde\b|\bdefa\b|\bkez\b|\d\s*[x×]\s*\d|\bsabah\b|\baksam\b|doktor\w* oner|hekim\w* oner|sayisina gore"
 )
 _DOSE_TR_RE = re.compile(r"\bgunde\b|\bdefa\b|\bkez\b|\d+\s*(?:kapsul|tablet|sase|olcek|damla|ml\b|pastil|puf)")
@@ -168,8 +170,11 @@ _ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|ornek\b.*\
 # Заявления о пользе («Yorgunluk ve bitkinliğin azalmasına katkıda bulunur», «… Sağlık Beyanları Yönetmeliği'ne
 # göre») — БАДу на карточке нельзя (пилот 4: попали в способ применения). «Tedavi gören kişiler doktoruna
 # danışarak kullanmalıdır» — предупреждение, «tedavi» здесь не признак.
-# «… elde ettiğiniz faydaya göre …» (SUDA 7616, пилот 4 на проде).
-_TR_CLAIM_RE = re.compile(r"katkida bulun|destekle|yardimci ol|guclendir|iyilestir|\bfayda|beyanlari")
+# «… elde ettiğiniz faydaya göre …» (SUDA 7616, пилот 4 на проде); «fayda/zarar değerlendirmesi» — предупреждение
+# (ревью #332).
+_TR_CLAIM_RE = re.compile(
+    r"katkida bulun|destekle|yardimci ol|guclendir|iyilestir|\bfayda(?!\w*\s*(?:/|-|ve)?\s*zarar)|beyanlari"
+)
 # Страховка после перевода: обещание пользы в готовом блоке — блок не показывается целиком (не по предложению:
 # неполный блок не должен выглядеть полным).
 _RU_BENEFIT_RE = re.compile(r"способству|поддерживает|укрепля|улучша|помогает", re.IGNORECASE)
@@ -208,7 +213,13 @@ _ESCAPED_CHAR_RE = re.compile(r"u(2019|2018|00b5|00b0)")
 # Штаммы бактерий латиницей («Lactobacillus acidophilus- LA-5®», «Bifidobacterium- BB-12®») не переводятся.
 _LATIN_STRAIN_RE = re.compile(
     r"^(?:lactobacillus|bifidobacterium|streptococcus|lactococcus|saccharomyces|bacillus|enterococcus|"
-    r"pediococcus|leuconostoc|[lbs]\.)\b"
+    r"pediococcus|leuconostoc|lacticaseibacillus|lactiplantibacillus|limosilactobacillus|ligilactobacillus|"
+    r"akkermansia)\b|^[lbs]\.(?!\w)"
+)
+# Латинское название вида строчными как есть — верно: «serenoa repens», «ascophyllum nodosum», «l. reuteri»,
+# «lactiplantibacillus plantarum 299v» (ревью #332); «kcenzim 010» и турецкие «papatya ekstresi», «zeytin yagi» — нет.
+_LATIN_BINOMIAL_RE = re.compile(
+    r"(?:[a-z]{4,}|[a-z]\.)\s*[a-z]{4,}(?<!si)(?<!su)(?<!gi)(?<!gu)(?<!zu)(?<!ti)(?<!yi)(?:\s+[a-z0-9-]+)?"
 )
 _LATIN_WORD_RE = re.compile(r"[A-Za-z]{4,}")
 # Турецкое слово транслитом в русском тексте (akgünlük, ahududu, maya, dil altı, «тауррат»): перевод части не
@@ -311,11 +322,16 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
         or (ru.strip().lower() == source.strip().lower() and all(len(w) <= 3 and w.isalpha() for w in source.split()))
         # Как есть со строчной буквы — обрывок распознавания текста: «kcenzim 010» (OSENDE 7569); «Serenoa repens»,
         # «Q10» как есть — верно.
-        or (ru.strip() == source.strip() and source.strip()[:1].islower() and not _LATIN_STRAIN_RE.match(fold_tr(source)))
+        or (ru.strip() == source.strip() and source.strip()[:1].islower() and not _LATIN_STRAIN_RE.match(fold_tr(source))
+            and not _LATIN_BINOMIAL_RE.fullmatch(source.strip()))
     ):
         problems.append("ru_untranslated")
     # «принимать 1 таблетка» — именительный после «принимать (по)» (VIAPECIA 7555, OCEAN 7746, пилот 4 на проде).
-    if re.search(r"(?i)\b(?:принима|употребля|применя)\w*\s+(?:по\s+)?1\s+(?:таблетка|капсула|пастилка|конфета)\b", ru):
+    # «1 мерная ложка», «1 жевательная конфета» — с прилагательным (ревью #332).
+    if re.search(
+        r"(?i)\b(?:принима|употребля|применя)\w*\s+(?:по\s+)?1\s+(?:\w+[ая]я\s+)?(?:таблетка|капсула|пастилка|конфета|ложка)\b",
+        ru,
+    ):
         problems.append("ru_grammar")
     # Диапазон дважды: «bir-üç (1-3)» → «1–3 (1-3) капсулы» (SOLGAR 7256).
     # Только то же число: «D3 (1)» — сноска, не повтор (ревью #328).
@@ -365,6 +381,8 @@ def _split_top_level(text: str) -> list[str]:
     # остаток списка в одну часть длиннее UNIT_MAX_CHARS (пилот 06.11.2026, HERBALAND 7156). Убираем только её —
     # парные скобки остаются, и запятые внутри «(…, 10 mg)» список не дробят (ревью #327).
     text = _without_unclosed_brackets(text)
+    # «• Vitamin C • Çinko • Vitamin D3» — «•» с пробелом разделяет компоненты (ревью #332); «DL•a» — нет.
+    text = re.sub(r"\s+•\s+", ", ", text)
     items, depth, current = [], 0, []
     for index, char in enumerate(text):
         if char in "([":
@@ -406,7 +424,8 @@ def _split_top_level(text: str) -> list[str]:
             or _DISCLAIMER_DUPLICATE_RE.search(folded)
             or "takviye edici gida" in folded
             # Фасовка вместо компонента: «30 kapsül» (GONAMAX 7623, пилот 4 на проде).
-            or _QUANTITY_ONLY_RE.fullmatch(_FORM_WORD_RE.sub("", _UNIT_RE.sub("", folded)))
+            # Голое «Kapsül» — компонент (оболочка), не фасовка (ревью #332).
+            or (re.search(r"\d", folded) and _QUANTITY_ONLY_RE.fullmatch(_FORM_WORD_RE.sub("", _UNIT_RE.sub("", folded))))
             # Заголовок, а не компонент: «Aktif Bileşenler», «Bileşen», «Ürün Detayları», «2 Kapsülde».
             or re.fullmatch(r"(?:(?:aktif|yardimci) )?bilesen(?:ler)?|urun detaylari|\d+ \w+(?:de|da|te|ta)", folded)
 
@@ -639,12 +658,14 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 if target == "usage" and (
                     not _USAGE_RE.search(folded) or _QUANTITY_ONLY_RE.fullmatch(_FORM_WORD_RE.sub("", folded))
                     or _table_row(sentence)
-                    # Заголовок таблицы доз: «Her 1 ölçekte (10 g) ;» (DAY2DAY 7547, пилот 4 на проде).
-                    or (re.match(r"her\b", folded) and len(folded.split()) <= 5
-                        and not re.search(r"alin|kullan|tuket|\bgun\b", folded))
-                    or sentence.rstrip().endswith(";")
+                    # Заголовок таблицы доз: «Her 1 ölçekte (10 g) ;» (DAY2DAY 7547, пилот 4 на проде); «Her sabah
+                    # 1 kapsül.» — способ применения (ревью #332).
+                    or re.fullmatch(r"her\s+(?:\d+\s+)?\w+(?:de|da|te|ta)\s*(?:\([^()]*\)\s*)?[;:]?", folded.strip())
                 ):
                     continue
+                if target == "usage":
+                    # «… günde 2 kapsül;» — часть закончена, «;» в конце — точка (ревью #332: строка пропадала).
+                    sentence = re.sub(r"\s*;\s*$", ".", sentence)
                 if target in ("warnings", "storage") and _FREE_FROM_RE.search(folded):
                     continue
                 if target == "storage" and not _STORAGE_TOPIC_RE.search(folded):

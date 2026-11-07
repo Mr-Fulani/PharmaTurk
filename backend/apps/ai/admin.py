@@ -31,6 +31,7 @@ from .services.moderation import (
 )
 from .services.semantic_validator import (
     medicine_paragraph_findings,
+    moderator_reviewed_description,
     moderator_reviewed_title,
 )
 from .services.size_inventory import (
@@ -281,6 +282,15 @@ class AIProcessingLogForm(forms.ModelForm):
             "название снова проверяется."
         ),
     )
+    description_reviewed = forms.BooleanField(
+        required=False,
+        label="Описание проверено модератором",
+        help_text=(
+            "Для БАДов: отметьте, если проверили описание RU/EN (детское питание, транслит, ложная причина "
+            "автопроверки): описание применится как есть. Отметка относится к текущему тексту — после его "
+            "изменения или новой обработки AI описание снова проверяется."
+        ),
+    )
     generated_en_title = forms.CharField(
         max_length=255,
         required=False,
@@ -409,6 +419,7 @@ class AIProcessingLogForm(forms.ModelForm):
         self._medicine_fallback_values = {}
         if self.instance and self.instance.pk:
             self.fields["title_reviewed"].initial = moderator_reviewed_title(self.instance, attrs)
+            self.fields["description_reviewed"].initial = moderator_reviewed_description(self.instance, attrs)
             seo_translations = attrs.get("seo_translations") or {}
             seo_en = seo_translations.get("en") or attrs.get("seo_en") or {}
             self.fields["generated_en_title"].initial = seo_en.get("generated_title") or ""
@@ -624,6 +635,26 @@ class AIProcessingLogForm(forms.ModelForm):
                         }
                 else:
                     attrs.pop("moderator_title_review", None)
+            if "description_reviewed" in self.cleaned_data:
+                if self.cleaned_data["description_reviewed"]:
+                    # Отметка хранит проверенный текст (moderator_reviewed_description).
+                    reviewed_descriptions = {
+                        "ru": (obj.generated_description or "").strip(),
+                        "en": str(seo_en.get("generated_description") or "").strip(),
+                    }
+                    previous = attrs.get("moderator_description_review")
+                    if not (
+                        isinstance(previous, dict)
+                        and {locale: previous.get(locale) for locale in ("ru", "en")} == reviewed_descriptions
+                    ):
+                        moderator = getattr(self, "moderator", None)
+                        attrs["moderator_description_review"] = {
+                            **reviewed_descriptions,
+                            "reviewed_by": getattr(moderator, "username", "") or "",
+                            "reviewed_at": timezone.now().isoformat(),
+                        }
+                else:
+                    attrs.pop("moderator_description_review", None)
             product_type = getattr(getattr(obj, "product", None), "product_type", None)
             if "inventory_sizes" in self.cleaned_data and supports_size_inventory(product_type):
                 moderator_sizes = parse_moderator_size_list(
@@ -908,6 +939,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     "generated_title",
                     "title_reviewed",
                     "generated_description",
+                    "description_reviewed",
                 ),
                 "description": "Можно исправить предложение AI перед применением.",
             },

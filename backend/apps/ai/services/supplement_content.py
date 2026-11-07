@@ -381,7 +381,8 @@ _EMPTY_SENTENCE_RE = re.compile(r"(?:пищевая добавка|биолог�
                                 re.IGNORECASE)
 # «Состав: 30 капсул.» — модель приняла число в упаковке за состав (GONAMAX 7623, пилот 4 на проде).
 _PACK_AS_COMPOSITION_RE = re.compile(
-    r"\W*(?:состав|ingredients)\s*:\s*\d+\s*(?:капсул\w*|таблет\w*|саше|пастил\w*|capsules?|tablets?|sachets?)\.?",
+    r"\W*(?:состав|ingredients)\s*:\s*\d+\s*(?:[^\W\d_]+\s+)?"
+    r"(?:капсул\w*|таблет\w*|саше|пастил\w*|capsules?|tablets?|sachets?|softgels?)\.?",
     re.IGNORECASE,
 )
 
@@ -395,31 +396,50 @@ _TRANSLIT_FIXES = (
 )
 
 
-def _fix_translit(text: str) -> str:
-    for regex, replacement in _TRANSLIT_FIXES:
-        # Заглавная — только у слова с заглавной («Ситрат»), не у «HELAL» посреди фразы.
+_EN_TRANSLIT_FIXES = ((re.compile(r"\bHELAL\b"), "halal"),)
+# «магний цитрат» → «цитрат магния», «DL-a-токоферол» → «DL-α-токоферол» (ревью #332).
+_SALT_GENITIVE = {"магний": "магния", "кальций": "кальция", "цинк": "цинка", "калий": "калия", "железо": "железа"}
+_SALT_ORDER_RE = re.compile(r"(?i)\b(магний|кальций|цинк|калий|железо)\s+(цитрат|бисглицинат|глицинат|таурат)\b")
+_ALPHA_RE = re.compile(r"\b(DL|D|L)-a-(?=токоферол)")
+
+
+def _fix_translit(text: str, locale: str = "ru") -> str:
+    """Только у своего языка: в EN «HELAL certified» → «halal certified», не «халяль» (ревью #332)."""
+    for regex, replacement in _TRANSLIT_FIXES if locale == "ru" else _EN_TRANSLIT_FIXES:
+        # Заглавная — у слова с заглавной («Ситрат») и в начале фразы («HELAL sertifikalı» → «Халяль»), не у
+        # «HELAL» посреди фразы.
         text = regex.sub(
-            lambda m, r=replacement: r[0].upper() + r[1:] if m.group(0)[:2].istitle() else r, text
+            lambda m, r=replacement: r[0].upper() + r[1:] if m.group(0)[:2].istitle() or (
+                m.group(0)[:1].isupper() and re.search(r"(?:^|[.!?:]\s*)$", m.string[:m.start()])
+            ) else r,
+            text,
         )
+    if locale == "ru":
+        text = _SALT_ORDER_RE.sub(
+            lambda m: (m.group(2).capitalize() if m.group(1)[0].isupper() else m.group(2).lower())
+            + " " + _SALT_GENITIVE[m.group(1).lower()],
+            text,
+        )
+        text = _ALPHA_RE.sub(r"\1-α-", text)
     return text
 
 
-def _fix_model_wording(text: str) -> str:
-    text = _fix_translit(text)
+def _fix_model_wording(text: str, locale: str = "ru") -> str:
+    text = _fix_translit(text, locale)
     text = _UPDATED_NOTE_RE.sub(lambda m: (m.group(1) or m.group(2)).upper(), text)
     # Турецкое слово в скобках: «экстракт клюквы (Turna Yemişi)» (VOONKA NEXT 7407, пилот 3 на проде).
     text = re.sub(r"\s*\([^()]*[çğışöüÇĞİŞÖÜ][^()]*\)", "", text)
     return re.sub(r"\b([Вв]) (?=флакон)", r"\1о ", text)
 
 
-def clean_paragraph(text: Any, source_name: str = "", extra_drop: tuple = ()) -> str:
+def clean_paragraph(text: Any, source_name: str = "", extra_drop: tuple = (), locale: str = "ru") -> str:
     """Абзац без предложений с обещаниями, справочными полями и рассуждениями о данных.
 
     ``extra_drop`` — темы, которые уже есть в блоках памяти (``covered_by_blocks``).
     """
     plain = re.sub(r"<[^>]+>", " ", str(text or ""))
     plain = re.sub(r"\s+", " ", plain).strip()
-    plain = _fix_model_wording(plain)
+    plain = _fix_model_wording(plain, locale)
     kept = [
         s for s in _SENTENCE_RE.split(plain)
         if s and not _EMPTY_SENTENCE_RE.fullmatch(s) and not _PACK_AS_COMPOSITION_RE.fullmatch(s)
@@ -546,6 +566,8 @@ def _duplicate_indexes(values: list[str]) -> set[int]:
             bracketed = set(re.findall(r"\d+", " ".join(re.findall(r"\(([^()]*)\)", values[j]))))
             contained = contained or (
                 numbers[i] < numbers[j] and (numbers[j] - numbers[i]) <= bracketed
+                # Без своих слов: «… 1 капсулу в день утром …» — не повтор «… 1 капсулу (500 мг) в день …» (ревью #332).
+                and (own - numbers[i]) <= other
                 and len(own & other) / len(own | other) >= 0.7
             )
             # 0,85, не ниже: «Женщинам … из розового блистера» и «Мужчинам … из фиолетового» совпадают на 70 %.
@@ -591,6 +613,10 @@ def _piece_words(source_name: str) -> Optional[dict]:
     """Слова формы выпуска вместо слова источника: конфеты, капсулы или таблетки — по названию."""
     if _GUMMY_SOURCE_RE.search(fold_tr(source_name)):
         return _GUMMY_WORDS
+    folded = fold_tr(source_name)
+    # Набор «OMEGA 3 30 KAPSUL + MULTIVITAMIN 30 TABLET»: обе формы — не меняем (ревью #332).
+    if re.search(r"\bkapsul", folded) and re.search(r"\btablet", folded):
+        return None
     pack = parse_pack(source_name) if source_name else None
     piece = pack.piece if pack is not None else ""
     return {"capsule": _CAPSULE_WORDS, "tablet": _TABLET_WORDS}.get(piece)
@@ -615,8 +641,8 @@ def _gummy_wording(text: str, locale: str, words: Optional[dict] = None) -> str:
 _ACRONYMS_RE = re.compile(r"\b(cla|epa|dha|msm|gaba|hmb|pqq|nadh)\b", re.IGNORECASE)
 
 
-def _block_wording(value: str) -> str:
-    value = _fix_translit(value)
+def _block_wording(value: str, locale: str = "ru") -> str:
+    value = _fix_translit(value, locale)
     # Звёздочка сноски — у слова или в начале фразы; «2*1 капсула» не трогаем (ревью #331).
     value = re.sub(r"\s{2,}", " ", re.sub(r"(?<!\d)\*+|\*+(?!\d)", "", value)).strip()
     return _ACRONYMS_RE.sub(lambda m: m.group(1).upper(), value)
@@ -646,9 +672,11 @@ def memory_block_texts(
         values = list(dict.fromkeys(value for index, value in enumerate(items) if (kind, index) not in duplicates))
         if not values:
             continue
-        if piece_words:
+        # Капсула ↔ таблетка — только в способе применения: «оболочка капсулы» в составе и «с капсулами железа»
+        # в предупреждениях — не о фасовке (ревью #332). Конфеты — во всех блоках, как в #327.
+        if piece_words and (piece_words is _GUMMY_WORDS or kind == "usage"):
             values = [_gummy_wording(value, locale, piece_words) for value in values]
-        values = [_block_wording(value) for value in values]
+        values = [_block_wording(value, locale) for value in values]
         title = supplement_memory.BLOCK_TITLES[kind][0 if locale == "ru" else 1]
         if kind in ("composition", "excipients"):
             body = ", ".join(value.rstrip(" .") for value in values) + "."
@@ -665,7 +693,7 @@ def build_description(
     """``blocks`` — абзацы из памяти переводов (``memory_block_texts``), без фильтра предложений модели;
     ``covered`` — темы этих блоков (``covered_by_blocks``): такие предложения модели выпадают как повтор."""
     items = paragraphs if isinstance(paragraphs, list) else [paragraphs]
-    cleaned = [clean_paragraph(item, source_name, covered) for item in items]
+    cleaned = [clean_paragraph(item, source_name, covered, locale) for item in items]
     cleaned = [item for item in cleaned if item]
     # Все предложения модели выпали — блоки памяти и дисклеймер остаются (ревью #327: так пустели STREPSILS, ANTI).
     if not cleaned and not blocks:
@@ -1016,13 +1044,17 @@ def _facts(input_data: dict) -> dict[str, Any]:
 
 
 def _section_glossary(sections: dict) -> dict[str, dict[str, str]]:
-    """Слова словаря из разделов источника — первым вариантом («ahududu» — малина, пилот 4 на проде) (пилот 3 на проде: «Tribulus» — «пузырник»,
-    «Melaloyka» — «мелалеука» в описании при «масле чайного дерева» в составе)."""
+    """Вещества словаря из разделов источника — первым вариантом (пилот 3 на проде: «Tribulus» — «пузырник»,
+    «Melaloyka» — «мелалеука» в описании при «масле чайного дерева» в составе; пилот 4: «ahududu» — малина).
+
+    Только вещества (S): «HAMILE» — «для беременных», «ENERJI» — «для энергии» из противопоказаний и заявлений
+    модель называла бы обязательными словами (ревью #332)."""
     text = " ".join(str(value) for value in (sections or {}).values())
     return {
         key.upper(): {"ru": supplement_glossary.GLOSSARY[key][0].split(" / ")[0],
                       "en": supplement_glossary.GLOSSARY[key][1].split(" / ")[0]}
         for key in supplement_glossary.found_terms(text)
+        if supplement_glossary.GLOSSARY[key][2] == supplement_glossary.S
     }
 
 
