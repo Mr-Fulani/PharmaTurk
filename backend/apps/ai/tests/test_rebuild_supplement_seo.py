@@ -349,3 +349,54 @@ def test_partial_write_keeps_log_evidence_for_objects_left_alone(tmp_path):
     supplement.translations.filter(locale="ru").update(meta_description=logged_description)
     stats, _examples = refresh.run([pid])
     assert stats["к изменению"] == 1 and stats["объектов правлено вручную (оставлены)"] == 0
+
+
+@pytest.mark.django_db
+def test_reapply_moderation_and_admin_form_use_rebuilt_seo(tmp_path):
+    """Ревью #335: SEO лога после пересборки — прежнее; применение, модерация и форма лога берут новое."""
+    from apps.ai.admin import AIProcessingLogForm
+    from apps.ai.services.moderation import build_change_preview
+
+    supplement, log = _processed_with_old_seo()
+    pid = supplement.base_product_id
+    with open(tmp_path / "b.jsonl", "w") as backup:
+        refresh.run([pid], apply=True, backup=backup)
+    log.refresh_from_db()
+    rebuilt = log.extracted_attributes["supplement_seo_rebuilt"]
+    assert log.extracted_attributes["seo_translations"]["ru"]["meta_title"] == OLD_TITLE  # лог не переписан
+    assert refresh.seo_translations_with_rebuilt(log.extracted_attributes)["ru"]["meta_title"] == rebuilt["ru"]["meta_title"]
+
+    # Модерация не показывает прежнее SEO как «предложенное».
+    rows = build_change_preview(log)
+    proposed = {(row.section, row.label): row.proposed for row in rows}
+    assert proposed[("SEO RU", "SEO title")] == rebuilt["ru"]["meta_title"]
+    assert OLD_TITLE not in proposed.values()
+
+    # Повторное применение лога (поле пустое — перезапись разрешена) пишет новое, а не прежнее SEO.
+    from apps.ai.models import AIProcessingLog, AIProcessingStatus
+
+    supplement.translations.filter(locale="ru").update(meta_title="")
+    AIProcessingLog.objects.filter(pk=log.pk).update(status=AIProcessingStatus.COMPLETED)
+    log.refresh_from_db()
+    _generator([ANSWER]).apply_log_to_product(log)
+    assert supplement.translations.get(locale="ru").meta_title == rebuilt["ru"]["meta_title"]
+
+    # Форма лога в админке показывает новое SEO в RU-полях.
+    form = AIProcessingLogForm(instance=log)
+    assert form.initial["generated_seo_title"] == rebuilt["ru"]["meta_title"]
+    assert form.initial["generated_seo_description"] == rebuilt["ru"]["meta_description"]
+
+    # Сохранение формы без правок SEO: новое SEO переносится в seo_translations, ключ пересборки снимается.
+    data = {}
+    for name, bound in ((name, form[name]) for name in form.fields):
+        value = bound.value()
+        if value is None or value is False:
+            continue
+        data[name] = value
+    bound_form = AIProcessingLogForm(instance=log, data=data)
+    assert bound_form.is_valid(), bound_form.errors
+    saved = bound_form.save()
+    saved.refresh_from_db()
+    assert "supplement_seo_rebuilt" not in saved.extracted_attributes
+    assert saved.extracted_attributes["seo_translations"]["ru"]["meta_title"] == rebuilt["ru"]["meta_title"]
+    assert saved.extracted_attributes["seo_translations"]["en"]["meta_title"] == rebuilt["en"]["meta_title"]

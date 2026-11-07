@@ -71,6 +71,24 @@ LEGACY_EDITS = (
 _ADMIN_SEO_RE = re.compile(r"meta|\bog[ _]|seo|мета", re.IGNORECASE)
 
 
+def seo_translations_with_rebuilt(attrs: Any) -> dict:
+    """SEO лога с тем, что записала пересборка (``supplement_seo_rebuilt``) поверх: на карточке именно оно.
+
+    Нужно повторному применению лога и модерации — иначе они вернут или покажут как «предложенное»
+    прежнее SEO лога (ревью #335).
+    """
+    attrs = attrs if isinstance(attrs, dict) else {}
+    seo = {
+        locale: dict(values) for locale, values in (attrs.get("seo_translations") or {}).items()
+        if isinstance(values, dict)
+    }
+    rebuilt = attrs.get(_REBUILT_SEO_KEY)
+    for locale, values in (rebuilt.items() if isinstance(rebuilt, dict) else ()):
+        if isinstance(values, dict):
+            seo[locale] = {**seo.get(locale, {}), **values}
+    return seo
+
+
 def _model(label: str):
     return apps.get_model(label)
 

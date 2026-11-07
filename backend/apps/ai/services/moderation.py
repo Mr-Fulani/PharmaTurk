@@ -656,7 +656,10 @@ def build_change_preview(
         product_type,
         allow_moderator_override=True,
     )
-    seo = attrs.get("seo_translations") or {}
+    # С SEO пересборки БАДов поверх: «предложенным» не показывается прежнее SEO лога.
+    from apps.ai.services.supplement_seo_refresh import seo_translations_with_rebuilt
+
+    seo = seo_translations_with_rebuilt(attrs)
     seo_ru = seo.get("ru") or {}
     seo_en = seo.get("en") or attrs.get("seo_en") or {}
     translations = {
