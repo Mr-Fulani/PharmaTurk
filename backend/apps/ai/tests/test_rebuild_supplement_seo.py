@@ -230,3 +230,62 @@ def test_rebuild_bumps_updated_at_for_sitemap(tmp_path):
     supplement.refresh_from_db()
     assert supplement.updated_at > past
     assert Product.objects.get(pk=supplement.base_product_id).updated_at > past
+
+
+def _with_legacy_delivery(supplement, log):
+    """Лог до 28.10: «доставка 7–21 рабочий день»; на сайте — та же строка после замены в базе на «7–14 дней»."""
+    site = "Мега-Фарма (MEGA-FARMA) Бетаглюкан из Турции. Заявка менеджеру, доставка 7–14 дней."
+    logged = site.replace("доставка 7–14 дней", "доставка 7–21 рабочий день")
+    attrs = dict(log.extracted_attributes)
+    seo = dict(attrs["seo_translations"])
+    seo["ru"] = {**seo["ru"], "meta_description": logged, "og_description": logged}
+    attrs["seo_translations"] = seo
+    log.extracted_attributes = attrs
+    log.generated_seo_description = logged
+    log.save(update_fields=["extracted_attributes", "generated_seo_description"])
+    supplement.translations.filter(locale="ru").update(meta_description=site, og_description=site)
+
+
+@pytest.mark.django_db
+def test_legacy_delivery_edit_is_auto_only_with_flag(tmp_path):
+    """07.11: 5 333 объекта остались со старым SEO — 28.10 срок доставки заменён прямо в базе, в логах прежний."""
+    supplement, log = _processed_with_old_seo()
+    _with_legacy_delivery(supplement, log)
+    pid = supplement.base_product_id
+    assert refresh.run([pid])[0]["объектов правлено вручную (оставлены)"] == 1
+    stats, _examples = refresh.run([pid], legacy_as_auto=True)
+    assert stats["объектов правлено вручную (оставлены)"] == 0 and stats["к изменению"] == 1
+    call_command(
+        "rebuild_supplement_seo", "--ids", str(pid), "--treat-legacy-as-auto", "--apply", "--backup", str(tmp_path / "b.jsonl")
+    )
+    assert supplement.translations.get(locale="ru").meta_title != OLD_TITLE
+    # Настоящая ручная правка остаётся и с флагом.
+    supplement.translations.filter(locale="ru").update(meta_description="Ручное описание модератора.")
+    assert refresh.run([pid], legacy_as_auto=True)[0]["объектов правлено вручную (оставлены)"] == 1
+
+
+@pytest.mark.django_db
+def test_admin_history_seo_edit_protects_product_with_flag():
+    from django.contrib.admin.models import CHANGE, LogEntry
+    from django.contrib.auth import get_user_model
+    from django.contrib.contenttypes.models import ContentType
+
+    supplement, log = _processed_with_old_seo()
+    _with_legacy_delivery(supplement, log)
+    pid = supplement.base_product_id
+    user = get_user_model().objects.create(username="moderator", email="moderator@example.com")
+
+    def edit(fields):
+        LogEntry.objects.create(
+            user=user, content_type=ContentType.objects.get_for_model(type(supplement)), object_id=str(supplement.pk),
+            object_repr="x", action_flag=CHANGE,
+            change_message=json.dumps([{"changed": {"name": "Перевод БАДа", "object": "x", "fields": fields}}]),
+        )
+
+    edit(["Цена"])  # не SEO — не мешает
+    assert refresh.run([pid], legacy_as_auto=True)[0]["к изменению"] == 1
+    edit(["Meta Title"])
+    stats, _examples = refresh.run([pid], legacy_as_auto=True)
+    assert stats["пропущено: SEO правлено в админке"] == 1
+    # Без флага история админки не читается — поведение прежнее.
+    assert refresh.run([pid])[0]["пропущено: SEO правлено в админке"] == 0

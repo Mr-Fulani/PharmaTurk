@@ -30,6 +30,11 @@ class Command(BaseCommand):
         parser.add_argument("--backup", help="Файл бэкапа SEO-полей (jsonl), обязателен с --apply")
         parser.add_argument("--restore", help="Вернуть SEO-поля из файла бэкапа")
         parser.add_argument("--show", type=int, default=10, help="Сколько примеров показать")
+        parser.add_argument(
+            "--treat-legacy-as-auto", action="store_true",
+            help="SEO с разовой правкой в базе (28.10: «доставка 7–21 рабочий день» → «7–14 дней») — тоже "
+                 "автоматическое; товары с правкой SEO в истории админки пропускаются",
+        )
 
     def handle(self, *args, **options):
         if options["restore"]:
@@ -53,9 +58,11 @@ class Command(BaseCommand):
             except FileExistsError:
                 raise CommandError(f"Файл бэкапа уже есть: {options['backup']} — укажите новый.")
             with backup:
-                stats, examples = run(ids, apply=True, backup=backup, show=options["show"])
+                stats, examples = run(
+                    ids, apply=True, backup=backup, show=options["show"], legacy_as_auto=options["treat_legacy_as_auto"]
+                )
         else:
-            stats, examples = run(ids, show=options["show"])
+            stats, examples = run(ids, show=options["show"], legacy_as_auto=options["treat_legacy_as_auto"])
         for plan in examples:
             self.stdout.write(f"\n{plan.product_id}")
             for change in plan.changes:
