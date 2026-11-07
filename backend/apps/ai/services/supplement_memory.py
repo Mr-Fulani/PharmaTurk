@@ -57,7 +57,7 @@ LINE_SYSTEM_PROMPT = (
     "уплотнитель / firming agent. "
     "«tok karnına» = «после еды» / «after a meal», «aç karnına» = «натощак» / «on an empty stomach». "
     "«Takviye edici gıdalar normal beslenmenin yerine geçemez» = «БАДы не заменяют полноценное питание» / "
-    "«Food supplements are not a substitute for a varied diet». Единицы в русском — по-русски: мг, мкг, г, мл, МЕ, КОЕ («10 ml» = «10 мл»), проценты — «0,26 %». Турецкие и латинские дубли в скобках не переноси: «Menthol (mentol)» = «ментол», «bir-üç (1-3)» = «1–3». Числа пиши цифрами, как в источнике («Günde 1 "
+    "«Food supplements are not a substitute for a varied diet». Единицы в русском — по-русски: мг, мкг, г, мл, МЕ, КОЕ («10 ml» = «10 мл»), проценты — «0,26 %». Турецкие и латинские дубли в скобках не переноси: «Menthol (mentol)» = «ментол», «bir-üç (1-3)» = «1–3». «11 yaş ve üzeri yetişkinler» = «взрослым и детям от 11 лет». Числа пиши цифрами, как в источнике («Günde 1 "
     "tablet» = «1 таблетка в день»). Латинские названия бактерий и растений (Lactobacillus acidophilus) оставляй "
     "латиницей; других английских слов в русском переводе нет. Ответ — строго JSON."
 )
@@ -119,7 +119,8 @@ def _is_excipient(folded: str) -> bool:
 _UNIT_RE = re.compile(r"(?<![^\W\d_])(?:mg|mcg|[µμ]g|g|gr|ml|iu|ui|ie|kob|cfu|kcal|kj|re|ne|α-te|te)(?![^\W\d_])")
 _QUANTITY_ONLY_RE = re.compile(r"[\d\s.,%/x×()*-]*")
 _PORTION_HEADER_RE = re.compile(r"\bicin$")  # «Her 10 ml için», «2 tablet için»
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÇĞİÖŞÜ0-9«\"(])")
+# «* Kafein içerir» после точки — отдельная сноска-фраза (NUTRAXIN QUICK-SLIM 7423, пилот 3 на проде).
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÇĞİÖŞÜ0-9«\"(*])")
 # Предложение блока «способ применения» — о приёме: доза, частота, возраст, как принимать. Описание
 # действия («Hücresel enerjisi artan cilt hücreleri…») и реклама («kolay kullanım avantajı») — нет.
 _USAGE_RE = re.compile(
@@ -130,6 +131,31 @@ _USAGE_RE = re.compile(
 # «Aşağıdaki örnek beslenme tablosunu …» — ссылка на таблицу, которой в карточке нет. «Aşağıdaki durumlarda
 # kullanmayınız: …» — противопоказание, «Tabloda belirtilen günlük dozu aşmayınız» — предупреждение, их не трогать.
 _DOSE_LIMIT_RE = re.compile(r"\d+\s*(?:kapsul|tablet|sase|olcek|damla|ml|pastil|puf)\w*\s+fazla")
+
+
+def _dose_table_actives(sections: dict) -> list[str]:
+    """Вещества таблицы доз — только между её заголовком («Her 3 Tablette», «%BRD», «Etken Madde») и следующей
+    подписью: «Kafein» / «80 mg» или «Kafein 150 mg» в одной строке (NUTRAXIN QUICK-SLIM 7423)."""
+    names = []
+    for text in sections.values():
+        lines = [fold_tr(line).strip() for line in str(text or "").split("\n") if line.strip()]
+        in_table = False
+        for line, following in zip(lines, [*lines[1:], ""]):
+            if re.search(r"^her\b|%\s*brd|etken madde|\bmiktar|\bicin$", line):
+                in_table = True
+                continue
+            if ":" in line or len(line.split()) > 12:
+                in_table = False
+            if not in_table or not re.search(r"[a-z]{3}", line) or _TABLE_HEADER_RE.search(line):
+                continue
+            inline = re.fullmatch(r"([^,]{3,80}?)\s+\d[\d.,]*\s*(?:mg|mcg|[µμ]g|g|iu|kob|cfu)\b.*", line)
+            if inline:
+                names.append(inline.group(1))
+            elif following and _QUANTITY_ONLY_RE.fullmatch(_UNIT_RE.sub("", following)) and re.search(r"\d", following):
+                names.append(line)
+    return list(dict.fromkeys(names))
+
+
 _DOSE_TR_RE = re.compile(r"\bgunde\b|\bdefa\b|\bkez\b|\d+\s*(?:kapsul|tablet|sase|olcek|damla|ml\b|pastil|puf)")
 _ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|ornek\b.*\btablo")
 # Заявления о пользе («Yorgunluk ve bitkinliğin azalmasına katkıda bulunur», «… Sağlık Beyanları Yönetmeliği'ne
@@ -218,6 +244,9 @@ _EN_OVER_RE = re.compile(r"\b(?:over|older|above|and up|or more)\b|\d\s*\+", re.
 
 def _meaning_problems(folded_source: str, ru: str, en: str) -> list[str]:
     problems = []
+    # «1 yaş ve üzeri yetişkinlerin» — опечатка «11»; «Взрослым и детям от 1 года» опасно (VIAPECIA 7524, пилот 3).
+    if re.search(r"(?<![\d,.])[1-3]\s*yas\w*\s+(?:ve\s+)?(?:uzeri|ustu)\s+yetiskin", folded_source):
+        problems.append("age_suspicious")
     if _NEGATION_RE.search(folded_source) and not _negated(ru, en):
         problems.append("negation_lost")
     empty, full = _EMPTY_STOMACH_RE.search(folded_source), _FULL_STOMACH_RE.search(folded_source)
@@ -352,6 +381,8 @@ def _split_top_level(text: str) -> list[str]:
             or "takviye edici gida" in folded
             # Заголовок, а не компонент: «Aktif Bileşenler», «Bileşen», «Ürün Detayları», «2 Kapsülde».
             or re.fullmatch(r"(?:(?:aktif|yardimci) )?bilesen(?:ler)?|urun detaylari|\d+ \w+(?:de|da|te|ta)", folded)
+            # Сводка через тире «Propolis - Karamürver - Melaloyka Yağı -- Su» (POREGE 7533) — заголовок, не компонент.
+            or "--" in item or item.count(" - ") >= 2
             # «Adı», «Miktarı», «Her 1 tablette», «Her kapsülde», «Günlük Doz2 kapsül», «%BRD» (пилот 2 на проде).
             or re.fullmatch(r"adi|miktari?|her\s+(?:\d+\s*)?\w+|gunluk ?doz.*|%?\s*brd\W*|rda", folded)
         ):
@@ -373,6 +404,17 @@ def _split_dose_and_prohibition(sentence: str) -> list[str]:
         return [sentence]
     prohibition = ", ".join(clauses[first_prohibition:])
     return [dose.rstrip(" .") + ".", prohibition[:1].upper() + prohibition[1:]]
+
+
+def _table_row(sentence: str) -> bool:
+    """Строка таблицы, а не фраза: без точки, слова с заглавной, без кратности приёма — «4-11 Yaş Arası 1,11 ve
+    Üzeri Çiğnenebilir Tablet» (VELAVIT KIDS 7511, пилот 3 на проде); «… 2×1 Kapsül, … 1×1 Kapsül» — кратность есть."""
+    words = [word for word in re.findall(r"[^\W\d_]+", sentence) if len(word) > 2]
+    if re.search(r"[.!]$", sentence.strip()) or len(words) < 3:
+        return False
+    if re.search(r"\bgunde\b|\bdefa\b|\bkez\b|\d\s*[x×]\s*\d|yemek|ogun|kahvalti|tercihen|sabah|aksam", fold_tr(sentence)):
+        return False
+    return sum(word[0].isupper() for word in words) / len(words) >= 0.6
 
 
 def _sentences(text: str) -> list[str]:
@@ -563,6 +605,7 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                     target = "warnings"
                 if target == "usage" and (
                     not _USAGE_RE.search(folded) or _QUANTITY_ONLY_RE.fullmatch(_FORM_WORD_RE.sub("", folded))
+                    or _table_row(sentence)
                 ):
                     continue
                 if target in ("warnings", "storage") and _FREE_FROM_RE.search(folded):
@@ -575,6 +618,18 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 if target:
                     parts[target].append(sentence)
                     open_part = None if re.search(r"[.!?;:]$", sentence) else (target, len(parts[target]) - 1)
+    # «Ürün Bileşimi» из вспомогательных веществ и одного действующего, а остальные действующие — в таблице доз
+    # («Her 3 Tablette: Yeşil Çay …», NUTRAXIN QUICK-SLIM 7423): такой «Состав» вводит в заблуждение — не показываем.
+    # Состав с одним действующим веществом («L askorbik asit» + вспомогательные) — полный, его не трогаем.
+    composition = parts["composition"]
+    excipient_share = sum(_is_excipient(fold_tr(item)) for item in composition) / len(composition) if composition else 0
+    if 0.7 <= excipient_share < 1:
+        actives = _dose_table_actives(sections)
+        listed = fold_tr(" ".join(composition))
+        covered = [name for name in actives if any(word in listed for word in name.split() if len(word) >= 4)]
+        if len(actives) >= 2 and len(covered) < len(actives) / 2:
+            parts["composition"] = []
+            hidden["composition"] = "partial_list"
     if parts["composition"] and all(_is_excipient(fold_tr(item)) for item in parts["composition"]):
         parts["excipients"], parts["composition"] = parts["composition"], []
     # Блок с частью длиннее UNIT_MAX_CHARS не показывается: без неё он неполный, а выглядел бы полным.
@@ -589,6 +644,8 @@ LINE_PROBLEMS = (
     "supplement_ingredient_mistranslated", "ru_latin_not_in_source", "ru_untranslated", "number_repeated", "negation_lost",
     "meal_timing_mistranslated", "age_mistranslated",
 )
+# Не ошибка перевода, а подозрительный источник: повтор перевода не поможет, нужен человек.
+SOURCE_PROBLEMS = ("age_suspicious",)
 
 
 def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:

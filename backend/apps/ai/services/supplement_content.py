@@ -383,6 +383,8 @@ _EMPTY_SENTENCE_RE = re.compile(r"(?:пищевая добавка|биолог�
 
 def _fix_model_wording(text: str) -> str:
     text = _UPDATED_NOTE_RE.sub(lambda m: (m.group(1) or m.group(2)).upper(), text)
+    # Турецкое слово в скобках: «экстракт клюквы (Turna Yemişi)» (VOONKA NEXT 7407, пилот 3 на проде).
+    text = re.sub(r"\s*\([^()]*[çğışöüÇĞİŞÖÜ][^()]*\)", "", text)
     return re.sub(r"\b([Вв]) (?=флакон)", r"\1о ", text)
 
 
@@ -535,11 +537,28 @@ _GUMMY_WORDS = {
 }
 
 
-def _gummy_wording(text: str, locale: str) -> str:
+# Капсулы источник тоже бывает называет «tablet» (SUNJOY OMEGA MAX 7377, пилот 3 на проде).
+_CAPSULE_WORDS = {
+    "ru": (("таблетками", "капсулами"), ("таблеткам", "капсулам"), ("таблетках", "капсулах"), ("таблеток", "капсул"),
+           ("таблетке", "капсуле"), ("таблетку", "капсулу"), ("таблеткой", "капсулой"), ("таблетки", "капсулы"),
+           ("таблетка", "капсула")),
+    "en": (("tablets", "capsules"), ("tablet", "capsule")),
+}
+
+
+def _piece_words(source_name: str) -> Optional[dict]:
+    """Слова формы выпуска вместо «таблетки» источника: конфеты или капсулы, по названию."""
+    if _GUMMY_SOURCE_RE.search(fold_tr(source_name)):
+        return _GUMMY_WORDS
+    pack = parse_pack(source_name) if source_name else None
+    return _CAPSULE_WORDS if pack is not None and pack.piece == "capsule" else None
+
+
+def _gummy_wording(text: str, locale: str, words: Optional[dict] = None) -> str:
     """«таблетку» → «жевательную конфету»; «жевательная таблетка» и «chewable tablet» не трогаются, заглавная
     буква сохраняется («Таблетку разжевать» → «Жевательную конфету разжевать»)."""
     chewable = r"(жевательн\w*\s+)" if locale == "ru" else r"(chewable\s+)"
-    for word, replacement in _GUMMY_WORDS[locale]:
+    for word, replacement in (words or _GUMMY_WORDS)[locale]:
         def swap(match, replacement=replacement):
             if match.group(1):
                 return match.group(0)
@@ -547,6 +566,16 @@ def _gummy_wording(text: str, locale: str) -> str:
             return replacement[0].upper() + replacement[1:] if found[0].isupper() else replacement
         text = re.sub(rf"(?i){chewable}?\b({word})\b", swap, text)
     return text
+
+
+# Сноски источника «Sığır Jelatini*», «* Kafein içerir» без текста сноски — висящие звёздочки; «Cla» — CLA
+# (NUTRAXIN 7455, 7423, пилот 3 на проде).
+_ACRONYMS_RE = re.compile(r"\b(cla|epa|dha|msm|gaba|hmb|pqq|nadh)\b", re.IGNORECASE)
+
+
+def _block_wording(value: str) -> str:
+    value = re.sub(r"\s{2,}", " ", value.replace("*", "")).strip()
+    return _ACRONYMS_RE.sub(lambda m: m.group(1).upper(), value)
 
 
 def memory_block_texts(
@@ -566,15 +595,16 @@ def memory_block_texts(
         for index in range(len(blocks.ru[kind]))
     ]
     duplicates = {flat[i] for i in _duplicate_indexes([blocks.ru[kind][index] for kind, index in flat])}
-    gummy = bool(_GUMMY_SOURCE_RE.search(fold_tr(source_name)))
+    piece_words = _piece_words(source_name)
     texts = []
     for kind in kinds:
         items = blocks.ru[kind] if locale == "ru" else blocks.en[kind]
         values = list(dict.fromkeys(value for index, value in enumerate(items) if (kind, index) not in duplicates))
         if not values:
             continue
-        if gummy:
-            values = [_gummy_wording(value, locale) for value in values]
+        if piece_words:
+            values = [_gummy_wording(value, locale, piece_words) for value in values]
+        values = [_block_wording(value) for value in values]
         title = supplement_memory.BLOCK_TITLES[kind][0 if locale == "ru" else 1]
         if kind in ("composition", "excipients"):
             body = ", ".join(value.rstrip(" .") for value in values) + "."
@@ -846,6 +876,11 @@ def log_problems(log) -> dict[str, list[str]]:
         description.append("supplement_form_mismatch")
     if pack_mismatch(getattr(log, "generated_description", ""), pack) or pack_mismatch(en_description, pack):
         description.append("supplement_pack_mismatch")
+    # «1 yaş ve üzeri yetişkin» в источнике — нужен человек (VIAPECIA 7524, пилот 3 на проде).
+    memory = (rule_content.get("supplement") or {}).get("memory") or {}
+    rejected = [*(memory.get("rejected") or {}).values(), *(memory.get("memory_rejected") or {}).values()]
+    if any(set(reasons) & set(supplement_memory.SOURCE_PROBLEMS) for reasons in rejected):
+        description.append("supplement_source_suspicious")
     if description:
         problems["description"] = description
     return problems
@@ -889,7 +924,7 @@ SYSTEM_PROMPT = """
 Ты — редактор карточек БАДов интернет-магазина Mudaroba (товары из Турции). Программа уже разобрала фасовку и сама соберёт название «{brand} {product}, {фасовка}», SEO и характеристики. Верни только поля ниже, по данным товара.
 
 1. brand — бренд или линейка: первые слова source_name ровно как в источнике (те же буквы), до первого слова о составе, форме или назначении; название линейки или продукта, которое не переводится и не транслитерируется («CINOPAN», «SLEEPO», «DIBALANCE», «DEFENCE»), — часть бренда. Примеры: «SOLGAR VITAMIN D3 1000 IU YUMUSAK KAPSUL» → «SOLGAR»; «ZADE VITAL A VITAMINI KAPSUL 500 mg» → «ZADE VITAL»; «MAGNIMORE PLUS TAKVIYE EDICI GIDA» → «MAGNIMORE PLUS»; «MEGA-FARMA BETAGLUKAN SURUP …» → «MEGA-FARMA»; «SOVITAL SLEEPO MELATONIN …» → «SOVITAL SLEEPO»; «DR. ROJAGEN DIBALANCE TAKVIYE EDICI GIDA» → «DR. ROJAGEN DIBALANCE»; «OCEAN SMART GUMMIES DEFENCE C VITAMINI …» → «OCEAN SMART GUMMIES DEFENCE».
-В glossary — точные переводы турецких слов этого названия: переводи эти слова только так.
+В glossary — точные переводы турецких слов этого названия: переводи эти слова только так. В section_glossary — так же для веществ из source_sections: в description называй их только так (в нужном падеже).
 
 2. brand_ru — только если brand_ru не дан во входных данных: бренд кириллицей, как его прочтёт покупатель с упаковки («SOLGAR» → «Солгар», «ZADE VITAL» → «Заде Витал»). Только кириллица, цифры и дефис.
 3. product — что это за товар, коротко, как в названии товара в магазине: остаток source_name после бренда без фасовки (количества штук, объёма или массы упаковки) по-русски / по-английски.
@@ -930,6 +965,18 @@ def _facts(input_data: dict) -> dict[str, Any]:
     return facts
 
 
+def _section_glossary(sections: dict) -> dict[str, dict[str, str]]:
+    """Вещества словаря из разделов источника — первым вариантом (пилот 3 на проде: «Tribulus» — «пузырник»,
+    «Melaloyka» — «мелалеука» в описании при «масле чайного дерева» в составе)."""
+    text = " ".join(str(value) for value in (sections or {}).values())
+    return {
+        key.upper(): {"ru": supplement_glossary.GLOSSARY[key][0].split(" / ")[0],
+                      "en": supplement_glossary.GLOSSARY[key][1].split(" / ")[0]}
+        for key in supplement_glossary.found_terms(text)
+        if supplement_glossary.GLOSSARY[key][2] == supplement_glossary.S
+    }
+
+
 def _user_prompt(
     source_name: str, brand_ru: str, pack: Optional[Pack], input_data: dict, sections: dict,
     program_blocks: Optional[list[str]] = None,
@@ -941,6 +988,7 @@ def _user_prompt(
         "pack": {"ru": pack.ru, "en": pack.en, "form": pack.form_ru or None} if pack else None,
         "facts": _facts(input_data),
         "glossary": supplement_glossary.glossary_for(_middle(source_name, pack)) or None,
+        "section_glossary": _section_glossary(sections) or None,
         "source_sections": sections or None,
         "program_blocks": program_blocks or None,
     }
@@ -1187,6 +1235,15 @@ def _restore_lost_numbers(
     return brand, product_text
 
 
+def _brand_latin(paragraphs: Any, brand_ru: str, brand: str) -> Any:
+    """Бренд в описании — латиницей, как в названии: «Натурес Баунти — …» у части карточек NATURES BOUNTY
+    (7474, 7536, пилот 3 на проде)."""
+    if not brand_ru or not brand:
+        return paragraphs
+    swap = lambda text: re.sub(re.escape(brand_ru), brand, str(text or ""), flags=re.IGNORECASE)  # noqa: E731
+    return [swap(item) for item in paragraphs] if isinstance(paragraphs, list) else swap(paragraphs)
+
+
 def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> dict[str, Any]:
     """Результат в форме ``LLMClient.generate_content`` для общего пути сохранения."""
     started = time.time()
@@ -1243,7 +1300,8 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
     description = answer.get("description") if isinstance(answer.get("description"), dict) else {}
     descriptions = {
         locale: build_description(
-            description.get(locale), locale, baby_food=baby_food, source_name=source_name,
+            _brand_latin(description.get(locale), brand_ru, title_brand), locale, baby_food=baby_food,
+            source_name=source_name,
             blocks=memory_texts[locale], covered=covered_by_blocks(blocks.ru),
         )
         for locale in ("ru", "en")

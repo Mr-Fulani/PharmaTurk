@@ -213,6 +213,16 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         ("Hidroksipropil selülaz", "Гидроксипропилцеллюлоза", "Hydroxypropyl cellulose", []),
         ("D3 Vitamini (1)", "Витамин D3 (1)", "Vitamin D3 (1)", []),
         ("Omega-3 (3)", "Омега-3 (3)", "Omega-3 (3)", []),
+        # Пилот 3 на проде 07.11.2026: растения и вещества словаря, возраст-опечатка источника.
+        ("Tribulus Terrestris Extract", "Экстракт пузырника", "Tribulus extract", ["supplement_ingredient_mistranslated"]),
+        ("Honry Goat Weed Extract", "Экстракт травы Honry Goat Weed", "Honry Goat Weed extract",
+         ["supplement_ingredient_mistranslated"]),
+        ("Menakuino 7", "Menakuino 7", "Menakuino 7", ["supplement_ingredient_mistranslated"]),
+        ("Kapsül: Balık Jelatini", "Капсула: рыбий желатин", "Capsule: fish gelatin", []),
+        ("1 yaş ve üzeri yetişkinlerin günde 1 saşe kullanması önerilir.", "Взрослым и детям от 1 года — 1 саше в день.",
+         "Adults and children aged 1 year and older: 1 sachet a day.", ["age_suspicious"]),
+        ("11 yaş ve üzeri yetişkinlerin günde 1 saşe kullanması önerilir.", "Взрослым и детям от 11 лет — 1 саше в день.",
+         "Adults and children aged 11 and over: 1 sachet a day.", []),
         ("Q10", "Q10", "Q10", []),
         ("B6", "B6", "B6", []),
         # Штамм латиницей с «GR-1» — не единица (ревью #327).
@@ -558,6 +568,50 @@ def test_composition_without_table_headers_prose_and_second_copies(text, composi
     assert sm.section_parts({"product_info": text}).get("composition") == composition
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # VELAVIT KIDS 7511: строка таблицы — не способ применения.
+        ("Kullanım Şekli:\n4-11 Yaş Arası 1,11 ve Üzeri Çiğnenebilir Tablet", {}),
+        # Но указания без привычного глагола остаются.
+        ("Kullanım Şekli:\nAkut Dönemde 12'şer Saat Arayla 2×1 Kapsül, Sonrasında Koruyucu Olarak 1×1 Kapsül",
+         {"usage": ["Akut Dönemde 12'şer Saat Arayla 2×1 Kapsül, Sonrasında Koruyucu Olarak 1×1 Kapsül"]}),
+        ("Kullanım Şekli:\nGünde 1 kapsül.\n(Tercihen Yemekle Birlikte ya da Yemekten Hemen Sonra)",
+         {"usage": ["Günde 1 kapsül.", "(Tercihen Yemekle Birlikte ya da Yemekten Hemen Sonra)"]}),
+        ("Kullanım Şekli:\nDamlalar kaşıkla verilebilir.", {"usage": ["Damlalar kaşıkla verilebilir."]}),
+        # NUTRAXIN QUICK-SLIM 7423: «* Kafein içerir» — отдельная фраза, без звёздочки.
+        ("Kullanım Şekli:\nGünde 3 defa 1 tablet kullanılması önerilir. * Kafein içerir.",
+         {"usage": ["Günde 3 defa 1 tablet kullanılması önerilir."]}),
+        # POREGE 7533: сводка через тире — не компонент.
+        ("Ürün Bileşimi:\nPropolis - Karamürver - Melaloyka Yağı -- Su, Propolis Ekstresi, Kara Mürver Ekstresi",
+         {"composition": ["Propolis Ekstresi", "Kara Mürver Ekstresi"]}),
+    ],
+)
+def test_pilot3_usage_rows_footnotes_and_summary_items(text, expected):
+    assert sm.section_parts({"product_info": text}) == expected
+
+
+def test_partial_composition_with_actives_only_in_dose_table_is_hidden():
+    # NUTRAXIN QUICK-SLIM 7423: в «Ürün Bileşimi» вспомогательные и хром, действующие — только в таблице доз.
+    sections = {
+        "product_info": "Her 3 Tablette\nYeşil Çay Ekstresi\n500 mg\nYeşil Kahve Ekstresi\n400 mg\nKafein\n80 mg",
+        "ingredients": "Ürün Bileşimi:\nMikrokristalin Selüloz, Hidroksipropil Metil Selüloz, Silikon Dioksit, "
+                       "Yağ Asitlerinin Magnezyum Tuzları, Krom Pikolinat.",
+    }
+    with mock.patch.object(sm, "lookup", return_value={}):
+        blocks, _usage = sm.translate_blocks(sections, None)
+    assert "composition" not in blocks.parts and blocks.stats["hidden_blocks"] == {"composition": "partial_list"}
+    # Вещество и доза в одной строке таблицы — так же.
+    inline = dict(sections, product_info="Her 3 Tablette\nYeşil Çay Ekstresi 300 mg\nKafein 150 mg\nAhududu Keton 75 mg")
+    assert "composition" not in sm.section_parts(inline)
+    # Одно действующее вещество + вспомогательные — полный состав (VENATURA SR VITAMIN C).
+    single = {
+        "product_info": "Her 1 tablette\nVitamin C\n1000 mg",
+        "ingredients": "Ürün Bileşimi:\nL askorbik asit, Mikrokristalin selüloz, Silikon dioksit, Magnezyum stearat",
+    }
+    assert "composition" in sm.section_parts(single)
+
+
 def test_prose_composition_is_marked_hidden_in_stats():
     text = "Ürün Bileşimi:\nKoenzim Q10, E, B3, B5 Vitaminleri, Biotin ve Selenyum içerir."
     with mock.patch.object(sm, "lookup", return_value={}):
@@ -696,6 +750,45 @@ def test_model_text_keeps_product_and_drops_what_blocks_say():
             "According to the source, one capsule contains 300 mg."]
     assert sc.build_description(meta, "en").startswith("<p>Cod liver oil softgels.</p><p>")
     assert "source" not in sc.build_description(meta, "en")
+
+
+def test_pilot3_model_text_brand_turkish_brackets_and_block_wording():
+    # VOONKA NEXT 7407: турецкие слова в скобках у модели.
+    text = sc.build_description(["Состав: экстракт клюквы (Turna Yemişi) и шалфея (Adaçayı), D-манноза (D-Mannose)."], "ru")
+    assert "Turna" not in text and "Adaçayı" not in text and "(D-Mannose)" in text
+    # NATURES BOUNTY 7474: бренд в описании — латиницей, как в названии.
+    assert sc._brand_latin(["Натурес Баунти — пищевая добавка."], "Натурес Баунти", "NATURES BOUNTY") == [
+        "NATURES BOUNTY — пищевая добавка."
+    ]
+    # NUTRAXIN 7455: «Cla», висящие звёздочки; SUNJOY 7377: «таблетка» у капсул.
+    blocks = sm.SupplementBlocks(
+        ru={"composition": ["Cla (конъюгированная линолевая кислота)", "Говяжий желатин*"],
+            "usage": ["По 1 таблетке в день.", "* Содержит кофеин."]},
+        en={"composition": ["Cla (conjugated linoleic acid)", "Bovine gelatin*"],
+            "usage": ["1 tablet a day.", "* Contains caffeine."]},
+    )
+    ru = sc.memory_block_texts(blocks, "ru", "SUNJOY OMEGA MAX KAPSUL 30 kapsül")
+    assert ru == ["Состав: CLA (конъюгированная линолевая кислота), Говяжий желатин.",
+                  "Способ применения: По 1 капсуле в день. Содержит кофеин."]
+    assert sc.memory_block_texts(blocks, "en", "SUNJOY OMEGA MAX KAPSUL 30 kapsül")[1] == (
+        "How to use: 1 capsule a day. Contains caffeine."
+    )
+    # Подсказки словаря по веществам из разделов — модели.
+    assert sc._section_glossary({"ingredients": "Tribulus Terrestris Extract, Melaloyka Yağı"}) == {
+        "TRIBULUS": {"ru": "якорцы стелющиеся", "en": "tribulus"},
+        "MELALOYKA": {"ru": "чайное дерево", "en": "tea tree"},
+    }
+
+
+def test_log_problems_flag_suspicious_source_age():
+    # VIAPECIA 7524: «1 yaş ve üzeri yetişkinlerin» — опечатка источника, нужен человек.
+    log = SimpleNamespace(
+        raw_llm_response={"rule_content": {"supplement": {"brand": "VIAPECIA", "memory": {
+            "rejected": {"1 yaş ve üzeri yetişkinlerin …": ["age_suspicious"]}}}}},
+        input_data={"name": "VIAPECIA PRO-MAGNIUM SASE 20 saşe"}, extracted_attributes={}, generated_title="",
+        generated_description="<p>VIAPECIA — магний в саше.</p>",
+    )
+    assert "supplement_source_suspicious" in sc.log_problems(log)["description"]
 
 
 def test_pack_count_in_description_must_match_title():
