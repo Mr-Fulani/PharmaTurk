@@ -56,6 +56,9 @@ TR_COLOR_DICTIONARY: dict[str, dict[str, str]] = {
     "taba": {"ru": "Табачный", "en": "Tan"},
     "kum": {"ru": "Песочный", "en": "Sand"},
     "vizon": {"ru": "Норковый", "en": "Mink"},
+    # Seniorah (07.11.2026): «Sakkara Fuşya …», «İrene Siyah-Platin …»
+    "fusya": {"ru": "Фуксия", "en": "Fuchsia"},
+    "platin": {"ru": "Платиновый", "en": "Platinum"},
     "acik mavi": {"ru": "Голубой", "en": "Light blue"},
     "indigo": {"ru": "Индиго", "en": "Indigo"},
     "acik indigo": {"ru": "Светлый индиго", "en": "Light indigo"},
@@ -115,7 +118,8 @@ TR_PRODUCT_TERM_DICTIONARY: dict[str, dict[str, str]] = {
 
 # Ключи, которые в составном цвете не перебивают основной: «Siyah-Renkli»,
 # «Mavi-Gümüş», «Mor/Altın» переводятся по первому цвету, как до их появления.
-TR_SECONDARY_COLOR_KEYS = frozenset({"renkli", "gumus", "altin"})
+# «platin», «fusya» (Seniorah, 07.11.2026) — тоже запасные: «Siyah-Platin» остаётся «Черный», как было.
+TR_SECONDARY_COLOR_KEYS = frozenset({"renkli", "gumus", "altin", "platin", "fusya"})
 
 
 def _lookup_localized(

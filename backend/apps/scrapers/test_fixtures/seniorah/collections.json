@@ -1,0 +1,52 @@
+{
+ "collections": [
+  {
+   "id": 450309521635,
+   "handle": "babet",
+   "title": "Babet Ayakkabı",
+   "products_count": 32
+  },
+  {
+   "id": 457456550115,
+   "handle": "bot",
+   "title": "Bot",
+   "products_count": 25
+  },
+  {
+   "id": 450309619939,
+   "handle": "sandalet",
+   "title": "Sandalet",
+   "products_count": 9
+  },
+  {
+   "id": 450309390563,
+   "handle": "spor-ayakkabi",
+   "title": "Spor Ayakkabı",
+   "products_count": 22
+  },
+  {
+   "id": 450309652707,
+   "handle": "terlik",
+   "title": "Terlik",
+   "products_count": 61
+  },
+  {
+   "id": 450309587171,
+   "handle": "topuklu-ayakkabi",
+   "title": "Topuklu Ayakkabı",
+   "products_count": 77
+  },
+  {
+   "id": 450388099299,
+   "handle": "yeni-sezon",
+   "title": "Yeni Sezon",
+   "products_count": 156
+  },
+  {
+   "id": 456378024163,
+   "handle": "cizme",
+   "title": "Çizme",
+   "products_count": 31
+  }
+ ]
+}

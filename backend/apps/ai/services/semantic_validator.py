@@ -26,7 +26,7 @@ from apps.ai.services.medicine_title import (
     title_brand,
 )
 from apps.ai.services.rules.facts import supplier_code_tokens
-from apps.ai.services.rules.vocab import TURKISH_TITLE_WORDS, fold, generic_title_words
+from apps.ai.services.rules.vocab import fold, generic_title_words, turkish_title_words
 from apps.ai.services import supplement_content, supplement_glossary
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
@@ -501,7 +501,9 @@ _APPAREL_TITLE_TYPES = frozenset({"clothing", "shoes", "underwear", "headwear", 
 
 
 def _apparel_title_turkish_words(title: Any, product) -> bool:
-    words = {fold(word.strip("()[],.;:")) for word in str(title or "").split()} & TURKISH_TITLE_WORDS
+    words = {fold(word.strip("()[],.;:")) for word in str(title or "").split()} & turkish_title_words(
+        getattr(product, "product_type", "")
+    )
     if not words:
         return False
     # Бренд читается только здесь: «Mavi» — бренд, а не цвет.
@@ -1092,7 +1094,7 @@ class SemanticValidator:
             # Турецкие названия часто целиком в ВЕРХНЕМ регистре: общие слова
             # («TEE», «SNEAKER», «BEYAZ») — не идентичность, а бренд/модель
             # («LC WAIKIKI» → «LC Waikiki») сверяем без учёта регистра.
-            generic = generic_title_words()
+            generic = generic_title_words(product_type)
             # Артикулы поставщика правила в название не пишут (rules/facts.py).
             codes = supplier_code_tokens(source_name)
             # Слово с чисто турецкими буквами («GÜNEŞ», «DİKDÖRTGEN») — не модель:

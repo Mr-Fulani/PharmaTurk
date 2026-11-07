@@ -1067,7 +1067,11 @@ def test_superstep_words_are_translated_by_vocab(name, brand, product_type, ru):
 
 def test_parlak_alone_is_not_translated_as_glossy():
     # «Parlak Taşlı Sandalet» у FLO/LCW — блестящие камни, не глянцевое покрытие.
-    assert not _titles("Parlak Taşlı Kadın Sandalet", "shoes")[0].descriptors
+    # «Parlak Taşlı» — блестящие стразы (словарь обуви, 07.11.2026), одно «Parlak» — не глянец
+    # и в название не остаётся («Женские сандалии Polaris Parlak со стразами» — ревью #336).
+    assert _titles("Polaris Parlak Taşlı Kadın Sandalet", "shoes")[1]["ru"] == "Женские сандалии Polaris с блестящими стразами"
+    facts, titles = _titles("Polaris Parlak Kadın Sandalet", "shoes")
+    assert not facts.untranslated and titles["ru"] == "Женские сандалии Polaris"
     assert _titles("Kadın Parlak Deri Babet", "shoes")[0].descriptors == [("из лакированной кожи", "Patent Leather")]
 
 
@@ -1077,3 +1081,97 @@ def test_superstep_model_words_like_leather_and_run_crew_stay_in_model():
     # FLO: «… TEE SS CREW NECK» — «NECK» не становится моделью
     facts = _titles("Bisiklet Yaka Lacivert Erkek T-Shirt 12271257_JJJAYCE TEE SS CREW NECK", "clothing", brand="Jack & Jones")[0]
     assert "NECK" not in facts.model and "CREW" not in facts.model
+
+
+@pytest.mark.parametrize(
+    "name, category, ru",
+    [
+        # уточнение каблука — в типе: «туфли на низком каблуке», а не «туфли на каблуке»
+        ("Kitten Cilt Kısa İnce Topuklu Kadın Ayakkabı", "heels", "Женские туфли на низком каблуке Seniorah Kitten из экокожи"),
+        ("Urban Cilt Sivri Burun İnce Yüksek Topuklu Kadın Ayakkabı", "heels",
+         "Женские туфли на высоком тонком каблуке Seniorah Urban из экокожи с острым носком"),
+        ("Belina Rugan İnce Bantlı Kadın Kalın Topuklu Ayakkabı", "heels",
+         "Женские туфли на толстом каблуке Seniorah Belina с лаковым покрытием с тонкими ремешками"),
+        ("Minimalist Rugan Yüksek İnce Topuklu Kadın Stiletto", "heels",
+         "Женские туфли на шпильке Seniorah Minimalist с лаковым покрытием на высоком тонком каблуке"),
+        ("Starlit Taşlı Süet Yuvarlak Burun Alçak Topuklu Diz Üstü Uzun Kadın Çizme", "boots-classic",
+         "Женские ботфорты Seniorah Starlit со стразами из замши"),
+        ("Hercai Cilt-Süet Kadın Kovboy Çizme", "boots-classic", "Женские казаки Seniorah Hercai из экокожи и замши"),
+        ("Meriella Cilt Dokuma Örgü Desenli Sivri Burun İnce Topuklu Yarım Bot Bootie", "ankle-boots",
+         "Женские ботильоны Seniorah Meriella из экокожи с плетеным узором"),
+        ("Lisa Süet Kadın İçi Kürklü Sabo Ev Terliği", "slippers",
+         "Женские домашние тапочки Seniorah Lisa из замши с мехом внутри"),
+        ("Rugan Toka Detaylı Balerin Kadın Babet", "ballet-flats", "Женские балетки Seniorah с лаковым покрытием с пряжкой"),
+        ("Gaia Süet Parmak Arası Kadın Sandalet", "sandals-classic",
+         "Женские сандалии Seniorah Gaia из замши с перемычкой между пальцами"),
+    ],
+)
+def test_seniorah_shoe_words_are_translated_by_vocab(name, category, ru):
+    # пол парсер Seniorah отдаёт атрибутом: «Kadın» есть не в каждом названии
+    facts, titles = _titles(name, "shoes", brand="Seniorah", category_slug=category, attrs={"gender": "women"})
+    assert not facts.untranslated
+    assert titles["ru"] == ru
+
+
+def test_shoe_words_are_not_used_for_other_types():
+    # «Cilt» у обуви — экокожа, у косметики и аксессуаров — нет.
+    facts = _titles("Cilt Bakım Kremi", "perfumery")[0]
+    assert ("из экокожи", "Faux Leather") not in facts.descriptors
+    assert _titles("Cilt Kadın Babet", "shoes")[0].descriptors == [("из экокожи", "Faux Leather")]
+
+
+def test_seniorah_shoe_materials():
+    assert vocab.translate_shoe_material("Cilt/Süet") == ("экокожа, замша", "faux leather, suede")
+    assert vocab.translate_shoe_material("Peluş sıcak astar") == ("теплый плюш", "warm plush")
+    assert vocab.translate_shoe_material("Rugan") == ("лаковая экокожа", "patent faux leather")
+
+
+@pytest.mark.parametrize(
+    "name, product_type",
+    [("Balerin Yaka Kısa Kollu Bluz", "clothing"), ("Balerin Etek", "clothing"), ("Sabo Cep Detaylı Pantolon", "clothing")],
+)
+def test_shoe_kinds_do_not_hijack_clothing(name, product_type):
+    """«Balerin Yaka» у LCW и «Balerin Etek» у Zara — не балетки (ревью #336)."""
+    facts, titles = _titles(name, product_type)
+    assert facts.kind is None or facts.kind.ru not in ("балетки", "сабо")
+    assert "Балетки" not in titles["ru"] and "балетки" not in titles["ru"]
+
+
+def test_shoe_words_are_turkish_leftovers_only_in_shoe_titles():
+    """Готовые названия одежды LCW («Женское платье Saten») не считаются непереведёнными
+    из-за обувного словаря; у обуви «Saten» в названии — брак."""
+    assert "saten" not in vocab.TURKISH_TITLE_WORDS and "toka" not in vocab.TURKISH_TITLE_WORDS
+    assert {"saten", "toka", "sik"} <= vocab.turkish_title_words("shoes")
+    assert "saten" not in vocab.turkish_title_words("clothing")
+    assert "saten" not in vocab.generic_title_words("clothing")
+    assert "saten" in vocab.generic_title_words("shoes")
+    dress = SimpleNamespace(product_type="clothing", brand=None)
+    shoe = SimpleNamespace(product_type="shoes", brand=None)
+    from apps.ai.services.semantic_validator import _apparel_title_turkish_words
+
+    assert not _apparel_title_turkish_words("Женское платье Saten", dress)
+    assert _apparel_title_turkish_words("Женские балетки Saten", shoe)
+
+
+def test_seniorah_models_without_name_get_heel_and_third_detail():
+    """У Seniorah две модели «Cilt Bilek Bağlı Kadın Topuklu Ayakkabı» и три «Rugan Toka Detaylı …
+    Babet»: различают высота каблука и деталь, срезанная лимитом."""
+    def titles(name, slug, heel, external_id):
+        product = SimpleNamespace(
+            product_type="shoes", category=SimpleNamespace(slug=slug), domain_item=None, external_id=external_id,
+        )
+        facts = collect_facts(product, {"name": name, "brand": "Seniorah", "attributes": {"gender": "women", "heel_height": heel}})
+        return build_titles(facts)["ru"]
+
+    tall = titles("Cilt Bilek Bağlı Kadın Topuklu Ayakkabı", "heels", "10 cm", "seniorah-P-057-03-C")
+    low = titles("Cilt Bilek Bağlı Kadın Topuklu Ayakkabı", "heels", "5\xa0cm", "seniorah-P-583-122-C")
+    assert tall == "Женские туфли на каблуке Seniorah из экокожи с ремешком на щиколотке, каблук 10 см"
+    assert low.endswith("каблук 5 см") and tall != low
+    flats = {
+        titles(f"Rugan Toka Detaylı {detail} Kadın Babet", "ballet-flats", "1 cm", f"seniorah-P-0216-{code}-R")
+        for detail, code in (("Balerin", "1900"), ("Sivri Burun", "2100"), ("Küt Burun", "2097"))
+    }
+    assert len(flats) == 3 and not any("каблук" in title for title in flats)
+    # Модель с именем и чужие источники — как раньше: два описания, без каблука.
+    assert titles("Kitten Cilt Kısa İnce Topuklu Kadın Ayakkabı", "heels", "3 cm", "seniorah-P-057-01-C").endswith("Kitten из экокожи")
+    assert "каблук 10" not in titles("Cilt Bilek Bağlı Kadın Topuklu Ayakkabı", "heels", "10 cm", "flo-123")

@@ -3,7 +3,9 @@
 Создаёт недостающие разделы, под которые у SuperStep есть товары и которые ищут
 («флиска», «рюкзак», «термокружка stanley»), и переименовывает разделы, названия
 которых так не ищут («Слайды» → «Шлёпанцы»). Остальные нужные разделы уже есть
-(«Беговые», «Угги», «Сабо») — их заполняет раскладка парсера.
+(«Беговые», «Угги», «Сабо») — их заполняет раскладка парсера. 07.11.2026 добавлены
+«Туфли на каблуке» и «Балетки» под женскую обувь Seniorah: на проде команда создаст
+только их, прежние разделы уже есть.
 
 Переименование — только если название ещё прежнее (ручные правки не затираются).
 Описание, равное старому названию, заменяется новым (как в constants.py); автоматические
@@ -19,7 +21,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models import Max
 
-from apps.catalog.models import Category, CategoryTranslation
+from apps.catalog.models import Category, CategoryTranslation, Product
 
 # (родитель, slug, RU, EN, описание RU, описание EN)
 NEW_CATEGORIES = [
@@ -28,6 +30,17 @@ NEW_CATEGORIES = [
     (
         "drinkware", "thermoses", "Термосы и термокружки", "Thermoses & Travel Mugs",
         "Термосы, термокружки и термобутылки", "Thermoses, travel mugs and insulated bottles",
+    ),
+    # Женская обувь Seniorah (решение владельца 07.11.2026, reports/seniorah-feasibility-2026-11-07.md):
+    # «туфли на каблуке» и «балетки» ищут именно так, а своего раздела у них не было.
+    (
+        "dress-shoes", "heels", "Туфли на каблуке", "Heels",
+        "Женские туфли на каблуке: шпильки, лодочки, на толстом каблуке",
+        "Women's heels: stilettos, pumps, block heels",
+    ),
+    (
+        "casual-shoes", "ballet-flats", "Балетки", "Ballet Flats",
+        "Балетки женские: лаковые, замшевые, Мэри Джейн", "Women's ballet flats: patent, suede, Mary Jane",
     ),
 ]
 # (slug, прежнее RU, новое RU, новое описание RU): «шлёпанцы» и «сланцы» ищут, «слайды» —
@@ -68,7 +81,12 @@ class Command(BaseCommand):
         if apply and not options["backup"]:
             raise CommandError("С --apply нужен --backup <файл>.")
 
-        creates, renames = self._plan()
+        creates, renames, taken = self._plan()
+        for parent, slug, name_ru in taken:
+            self.stdout.write(
+                f"! «{name_ru}» уже есть в «{parent.name}» ({parent.slug}) под другим slug — {slug} не создаю"
+            )
+        self._report_ballet_flats(creates)
         for parent, slug, name_ru, *_ in creates:
             self.stdout.write(f"+ раздел «{name_ru}» ({slug}) в «{parent.name}» ({parent.slug})")
         for category, old, new, _ in renames:
@@ -94,12 +112,18 @@ class Command(BaseCommand):
     def _plan(self):
         missing_parents = []
         creates = []
+        taken = []
         for parent_slug, slug, *names in NEW_CATEGORIES:
             if Category.objects.filter(slug=slug).exists():
                 continue
             parent = Category.objects.filter(slug=parent_slug).first()
             if parent is None:
                 missing_parents.append(parent_slug)
+                continue
+            # Имя уникально внутри родителя: раздел с тем же именем (заведённый руками)
+            # уронил бы всю транзакцию на IntegrityError.
+            if Category.objects.filter(parent=parent, name=names[0]).exists():
+                taken.append((parent, slug, names[0]))
                 continue
             creates.append((parent, slug, *names))
         if missing_parents:
@@ -109,7 +133,25 @@ class Command(BaseCommand):
             for slug, old, new, description in RENAMES
             for category in Category.objects.filter(slug=slug, name=old)
         ]
-        return creates, renames
+        return creates, renames, taken
+
+    def _report_ballet_flats(self, creates):
+        """Товары «балетки» вне «Повседневной обуви»: после появления раздела «Балетки»
+        проверка названия может счесть их чужими разделу (title_category_mismatch)."""
+        if not any(slug == "ballet-flats" for _, slug, *_ in creates):
+            return
+        rows = (
+            Product.objects.filter(name__icontains="балетк")
+            .exclude(category__slug="casual-shoes")
+            .values_list("id", "name", "category__slug")
+            .order_by("id")
+        )
+        count = rows.count()
+        if not count:
+            return
+        self.stdout.write(f"Товары «балетк…» вне casual-shoes: {count} (после раздела «Балетки» проверить):")
+        for product_id, name, category in rows[:20]:
+            self.stdout.write(f"  {product_id} [{category}] {name}")
 
     def _create(self, parent, slug, name_ru, name_en, desc_ru, desc_en):
         last = Category.objects.filter(parent=parent).aggregate(value=Max("sort_order"))["value"]

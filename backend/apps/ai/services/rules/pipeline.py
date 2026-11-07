@@ -241,7 +241,7 @@ def _checked_llm_title(title: str, facts: ProductFacts, locale: str) -> str:
         _TURKISH_LETTERS_RE.search(clean)
         or TURKISH_LEFTOVER_RE.search(clean)
         or words.intersection(vocab.fold(word) for word in facts.untranslated)
-        or (words - identity) & vocab.TURKISH_TITLE_WORDS
+        or (words - identity) & vocab.turkish_title_words(facts.product_type)
         # Имя магазина из промпта вместо бренда («футболка Mudaroba в полоску»).
         or "mudaroba" in words - identity
     ):

@@ -25,13 +25,15 @@ def tree(db):
     _category("slides", "Слайды", sandals, meta_title="Слайды | Сандалии | Mudaroba", meta_description="Ручное описание")
     flip_flops = _category("flip-flops", "Шлёпанцы", sandals)
     CategoryTranslation.objects.filter(category=flip_flops).update(h1="Шлёпанцы из Турции", seo_text="Шлёпанцы для пляжа.")
+    _category("dress-shoes", "Туфли", sandals.parent)
+    _category("casual-shoes", "Повседневная обувь", sandals.parent)
     return bags
 
 
 def test_dry_run_changes_nothing(tree):
     call_command("ensure_demand_categories")
 
-    assert not Category.objects.filter(slug__in=["fleece", "backpacks", "thermoses"]).exists()
+    assert not Category.objects.filter(slug__in=["fleece", "backpacks", "thermoses", "heels", "ballet-flats"]).exists()
     assert Category.objects.get(slug="slides").name == "Слайды"
 
 
@@ -49,6 +51,10 @@ def test_apply_creates_and_renames_with_backup(tree, tmp_path):
     assert set(backpacks.translations.values_list("locale", "name")) == {("ru", "Рюкзаки"), ("en", "Backpacks")}
     assert Category.objects.get(slug="thermoses").parent.slug == "drinkware"
     assert Category.objects.get(slug="fleece").parent.slug == "knitwear"
+    heels = Category.objects.get(slug="heels")
+    assert (heels.parent.slug, heels.name) == ("dress-shoes", "Туфли на каблуке")
+    assert heels.translations.get(locale="en").name == "Heels"
+    assert Category.objects.get(slug="ballet-flats").parent.slug == "casual-shoes"
 
     slides = Category.objects.get(slug="slides")
     assert slides.name == "Шлёпанцы"
@@ -66,7 +72,7 @@ def test_apply_creates_and_renames_with_backup(tree, tmp_path):
     assert Category.objects.get(slug="hoodies").name == "Толстовки и худи"
 
     saved = json.loads(backup.read_text(encoding="utf-8"))
-    assert sorted(saved["created"]) == ["backpacks", "fleece", "thermoses"]
+    assert sorted(saved["created"]) == ["backpacks", "ballet-flats", "fleece", "heels", "thermoses"]
     assert {row["slug"]: row["description"] for row in saved["renamed"]}["slides"] == "Слайды"
     assert {row["slug"]: row["name"] for row in saved["renamed"]} == {
         "flip-flops": "Шлёпанцы",
@@ -84,3 +90,29 @@ def test_manual_rename_is_kept(tree):
     call_command("ensure_demand_categories", "--apply", "--backup", "/dev/null")
 
     assert Category.objects.get(slug="slides").name == "Слайды и шлёпанцы"
+
+
+def test_same_name_under_parent_is_reported_not_created(tree, tmp_path):
+    """«Балетки», заведённые руками под другим slug, не роняют транзакцию unique_together."""
+    casual = Category.objects.get(slug="casual-shoes")
+    _category("baletki-manual", "Балетки", casual)
+
+    call_command("ensure_demand_categories", "--apply", "--backup", str(tmp_path / "b.json"))
+
+    assert not Category.objects.filter(slug="ballet-flats").exists()
+    assert Category.objects.filter(slug="heels").exists()
+
+
+def test_show_lists_ballet_flats_outside_casual_shoes(tree, capsys):
+    from apps.catalog.models import Product
+
+    shoes = Category.objects.get(slug="dress-shoes")
+    Product.objects.create(
+        name="Женские балетки Lacoste", slug="lacoste-baletki", category=shoes, product_type="shoes",
+        price=1, currency="TRY", external_id="flo-1", external_data={},
+    )
+
+    call_command("ensure_demand_categories")
+
+    out = capsys.readouterr().out
+    assert "Товары «балетк…» вне casual-shoes: 1" in out and "Женские балетки Lacoste" in out

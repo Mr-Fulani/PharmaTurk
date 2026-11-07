@@ -89,6 +89,7 @@ COLORS: dict[str, tuple[str, str]] = {
     "sari": ("желтый", "Yellow"),
     "yesil": ("зеленый", "Green"),
     "yag yesili": ("оливковый", "Olive"),
+    "platin": ("платиновый", "Platinum"),  # Seniorah «Siyah-Platin»
     "elma yesili": ("яблочно-зеленый", "Apple green"),
     "haki": ("=цвета хаки", "Khaki"),
     "indigo": ("=цвета индиго", "Indigo"),
@@ -432,6 +433,9 @@ CATEGORY_KINDS: dict[str, Kind] = {
     "baggy-fit": KINDS["jean"],
     "sneakers": KINDS["sneaker"],
     "sandals": KINDS["sandalet"],
+    # «İnce Topuklu Kadın Ayakkabı»: «Topuklu» не рядом с «Ayakkabı», тип — по разделу
+    "heels": _k("туфли на каблуке", PL, "Heels"),
+    "ballet-flats": KINDS["babet"],
     "belts": KINDS["kemer"],
     "mens-classic-belts": KINDS["kemer"],
     "sunglasses": KINDS["gunes gozlugu"],
@@ -456,6 +460,128 @@ CATEGORY_KINDS: dict[str, Kind] = {
     "sofa-beds": _k("диван-кровать", M, "Sofa-Bed"),
     "coffee-tables": _k("журнальный столик", M, "Coffee Table"),
     "bed-bases": _k("основание кровати", N, "Bed Base"),
+}
+
+# Только для обуви: в других типах эти слова значат другое («Cilt Bakım» — уход за кожей
+# лица, «Diz Üstü Etek» — юбка). Женская обувь Seniorah, 07.11.2026.
+SHOE_KINDS: dict[str, Kind] = {
+    # «Diz Üstü Uzun Kadın Çizme» — ботфорты: так их и ищут
+    "diz ustu": _k("ботфорты", PL, "Over-the-Knee Boots"),
+    "stiletto": _k("туфли на шпильке", PL, "Stilettos"),
+    # «Balerin Yaka Bluz» у LCW, «Balerin Etek» у Zara — не балетки, поэтому только у обуви
+    "balerin": _k("балетки", PL, "Ballet Flats"),
+    "sabo": _k("сабо", PL, "Clogs"),
+    "mantar terlik": _k("шлепанцы на пробковой подошве", PL, "Cork Slides"),
+    "ev terligi": _k("домашние тапочки", PL, "House Slippers"),
+    "sabo ev terligi": _k("домашние тапочки", PL, "House Slippers"),
+    "topuklu ayakkabi": _k("туфли на каблуке", PL, "Heels"),
+    "topuklu bot": _k("ботильоны", PL, "Heeled Ankle Boots"),
+    "yarim bot": _k("ботильоны", PL, "Ankle Boots"),
+    "yarim bot bootie": _k("ботильоны", PL, "Ankle Boots"),
+    "bootie": _k("ботильоны", PL, "Ankle Boots"),
+    "topuklu cizme": _k("сапоги на каблуке", PL, "Heeled Boots"),
+    "cizmesi": _k("сапоги", PL, "Boots"),
+    "kovboy cizme": _k("казаки", PL, "Cowboy Boots"),
+    "kovboy cizmesi": _k("казаки", PL, "Cowboy Boots"),
+    "binici cizmesi": _k("сапоги в стиле райдер", PL, "Riding Boots"),
+}
+SHOE_DESCRIPTORS: dict[str, tuple[str, str]] = {
+    # материал верха
+    "cilt": ("из экокожи", "Faux Leather"),
+    "kroko cilt": ("из экокожи под крокодила", "Croc-Effect Faux Leather"),
+    "kroko": ("с тиснением под крокодила", "Croc-Effect"),
+    "metalik cilt": ("из экокожи металлик", "Metallic Faux Leather"),
+    "metalik-cilt": ("из экокожи металлик", "Metallic Faux Leather"),
+    "metalik": ("металлик", "Metallic"),
+    "cilt-suet": ("из экокожи и замши", "Faux Leather and Suede"),
+    "gercek deri suet": ("из натуральной замши", "Genuine Suede"),
+    "kot-gercek deri": ("из денима и натуральной кожи", "Denim and Genuine Leather"),
+    # «rugan» — лаковое покрытие; натуральная ли кожа, магазин не пишет
+    "rugan": ("с лаковым покрытием", "Patent"),
+    "saten": ("из атласа", "Satin"),
+    "kumas": ("из текстиля", "Fabric"),
+    "kumas strec": ("из эластичного текстиля", "Stretch Fabric"),
+    "strec": ("с эластичным верхом", "Stretch"),
+    "ust bilek strec esnek": ("с эластичным голенищем", "Stretch Shaft"),
+    "strec file": ("из эластичной сетки", "Stretch Mesh"),
+    "file": ("с сеткой", "Mesh"),
+    "file detayli": ("с сеткой", "Mesh"),
+    # носок
+    "sivri burun": ("с острым носком", "Pointed-Toe"),
+    "kut burun": ("с квадратным носком", "Square-Toe"),
+    "yuvarlak burun": ("с круглым носком", "Round-Toe"),
+    # каблук и подошва
+    "topuklu": ("на каблуке", "Heeled"),
+    "ince topuklu": ("на тонком каблуке", "Slender Heel"),
+    "kalin topuklu": ("на толстом каблуке", "Block Heel"),
+    "yuksek topuklu": ("на высоком каблуке", "High Heel"),
+    "yuksek ince topuklu": ("на высоком тонком каблуке", "High Slender Heel"),
+    "ince yuksek topuklu": ("на высоком тонком каблуке", "High Slender Heel"),
+    "kisa topuklu": ("на низком каблуке", "Kitten Heel"),
+    "kisa ince topuklu": ("на низком каблуке", "Kitten Heel"),
+    "alcak topuklu": ("на низком каблуке", "Low Heel"),
+    "alcak ince topuklu": ("на низком тонком каблуке", "Low Slender Heel"),
+    "alcak kalin topuklu": ("на низком толстом каблуке", "Low Block Heel"),
+    "dolgu topuk": ("на танкетке", "Wedge"),
+    "dolgu topuklu": ("на танкетке", "Wedge"),
+    "kalin tabanli": ("на толстой подошве", "Chunky Sole"),
+    "ince tabanli": ("на тонкой подошве", "Low-Profile Sole"),
+    "yuksek taban": ("на платформе", "Platform"),
+    "yuksek tabanli": ("на платформе", "Platform"),
+    "duz taban": ("на плоской подошве", "Flat Sole"),
+    "mantar": ("на пробковой подошве", "Cork Sole"),
+    # голенище, ремешки, застёжки
+    "diz alti": ("до колена", "Knee-Length"),
+    "koruklu": ("со сборкой", "Slouch"),
+    "esnek baldir": ("с эластичным голенищем", "Stretch Shaft"),
+    "ust bilek": ("", ""),
+    "bilek bagli": ("с ремешком на щиколотке", "Ankle Strap"),
+    "bilek bag": ("с ремешком на щиколотке", "Ankle Strap"),
+    "bilek bag detayli": ("с ремешком на щиколотке", "Ankle Strap"),
+    "bilek kemerli": ("с ремешком на щиколотке", "Ankle Strap"),
+    "bilek toka detayli": ("с пряжкой на щиколотке", "Ankle Buckle"),
+    "parmak arasi": ("с перемычкой между пальцами", "Toe-Post"),
+    "arkasi acik": ("с открытой пяткой", "Slingback"),
+    "dekolte": ("с глубоким вырезом", "Low-Cut"),
+    "dekolte kesim": ("с глубоким вырезом", "Low-Cut"),
+    "tek bant": ("с одним ремешком", "Single-Strap"),
+    "ince bantli": ("с тонкими ремешками", "Fine-Strap"),
+    "kalin bantli": ("с широкими ремешками", "Broad-Strap"),
+    "ince cift bantli": ("с двумя тонкими ремешками", "Double Fine-Strap"),
+    "cift kalin bantli": ("с двумя широкими ремешками", "Double Broad-Strap"),
+    "uc bantli": ("с тремя ремешками", "Triple-Strap"),
+    "uc kalin bantli": ("с тремя широкими ремешками", "Triple Broad-Strap"),
+    "toka": ("с пряжкой", "Buckle"),
+    "toka detayli": ("с пряжкой", "Buckle"),
+    "tek toka": ("с пряжкой", "Buckle"),
+    "cift tokali": ("с двумя пряжками", "Double-Buckle"),
+    "hasir": ("с плетением", "Woven"),
+    "hasir toka detayli": ("с плетеной пряжкой", "Woven Buckle"),
+    "lastik detayli": ("с резинкой", "Elastic"),
+    # отделка
+    "tasli": ("со стразами", "Embellished"),
+    # «Parlak Taşlı Sandalet» (FLO): блестящие стразы; одно «Parlak» — не глянец, в название не идёт
+    "parlak tasli": ("с блестящими стразами", "Sparkly Rhinestone"),
+    "parlak": ("", ""),
+    "kristal tasli": ("со стразами", "Embellished"),
+    "fiyonk": ("с бантом", "Bow"),
+    "fiyonk detayli": ("с бантом", "Bow"),
+    "fiyonk aksesuarli": ("с бантом", "Bow"),
+    "aksesuarli": ("с декором", "Embellished"),
+    "gold aksesuarli": ("с золотистой фурнитурой", "Gold-Tone Hardware"),
+    "zimbali": ("с перфорацией", "Perforated"),
+    "dokuma orgu desenli": ("с плетеным узором", "Woven Pattern"),
+    "yilan desenli": ("с принтом под змею", "Snake Print"),
+    "leopar desenli": ("с леопардовым принтом", "Leopard Print"),
+    "yildiz desenli": ("с принтом звезды", "Star Print"),
+    "ici kurklu": ("с мехом внутри", "Fur-Lined"),
+    "ici pelus": ("с плюшевой подкладкой", "Plush-Lined"),
+    "mary jane": ("в стиле Мэри Джейн", "Mary Jane"),
+    # допустимые, но не выносимые в название
+    "sik": ("", ""),
+    "maskulen": ("", ""),
+    "tarz": ("", ""),
+    "uzun": ("", ""),
 }
 
 # Бренд + тип → название, под которым товар ищут: «UGG Classic Mini Kadın Bot» —
@@ -794,6 +920,20 @@ TURKISH_TITLE_WORDS = frozenset(
     for key in mapping
     if " " not in key and "-" not in key and key not in _ENGLISH_VOCAB_WORDS
 )
+# Слова только обувного словаря: у одежды LCW «Saten», «Toka», «Sik» в готовом названии
+# не считаются непереведёнными, пока словарь не расширен для одежды (ревью #336).
+SHOE_TITLE_WORDS = frozenset(
+    key
+    for mapping in (SHOE_KINDS, SHOE_DESCRIPTORS)
+    for key in mapping
+    if " " not in key and "-" not in key and key not in _ENGLISH_VOCAB_WORDS
+) - TURKISH_TITLE_WORDS
+
+
+def turkish_title_words(product_type: str = "") -> frozenset[str]:
+    """Турецкие слова словарей, которых не должно быть в готовом названии этого типа."""
+    return TURKISH_TITLE_WORDS | SHOE_TITLE_WORDS if product_type == "shoes" else TURKISH_TITLE_WORDS
+
 
 # Канонический материал аксессуара (RU из attribute_specs) → фраза названия.
 MATERIAL_PHRASES: dict[str, tuple[str, str]] = {
@@ -868,6 +1008,33 @@ SHOE_MATERIALS: dict[str, tuple[str, str]] = {
     "tpr": ("термопластичная резина", "TPR"),
     "tpu": ("термополиуретан", "TPU"),
     "poli": ("полимер", "polymer"),
+    # Seniorah «Dış materyal / İç materyal» (07.11.2026); « - » между частями парсер меняет на «/»
+    "cilt": ("экокожа", "faux leather"),
+    "cilt strec": ("экокожа-стрейч", "stretch faux leather"),
+    "metalik cilt": ("экокожа металлик", "metallic faux leather"),
+    "kroko": ("экокожа под крокодила", "croc-effect faux leather"),
+    "kroko cilt": ("экокожа под крокодила", "croc-effect faux leather"),
+    "suet": ("замша", "suede"),
+    "suet strec": ("замша-стрейч", "stretch suede"),
+    "rugan": ("лаковая экокожа", "patent faux leather"),
+    "gercek deri": ("натуральная кожа", "genuine leather"),
+    "saten": ("атлас", "satin"),
+    "saten kumas": ("атлас", "satin"),
+    "kumas": ("текстиль", "fabric"),
+    "kumas astar": ("текстиль", "fabric"),
+    "strec": ("стрейч", "stretch"),
+    "strec kumas": ("эластичный текстиль", "stretch fabric"),
+    "kumas strec": ("эластичный текстиль", "stretch fabric"),
+    "tas": ("стразы", "rhinestones"),
+    "kurk": ("мех", "fur"),
+    "sicak astar": ("теплая подкладка", "warm lining"),
+    "pelus sicak astar": ("теплый плюш", "warm plush"),
+    "sicak pelus astar": ("теплый плюш", "warm plush"),
+    "hasir": ("соломка", "straw"),
+    "gercek deri suet": ("натуральная замша", "genuine suede"),
+    "strec file kumas": ("эластичная сетка", "stretch mesh"),
+    "tasli": ("стразы", "rhinestones"),
+    "kot": ("деним", "denim"),
 }
 
 
@@ -934,14 +1101,18 @@ def translate_furniture_finish(raw: str | None) -> tuple[str, str] | None:
     return "/".join(ru_parts), "/".join(en_parts)
 
 
-@lru_cache(maxsize=1)
-def generic_title_words() -> frozenset[str]:
+@lru_cache(maxsize=4)
+def generic_title_words(product_type: str = "") -> frozenset[str]:
     """Словарные слова (тип, цвет, пол, описание) и линейки магазина — не бренд/модель.
 
     Слова из фраз тоже: «GÜNEŞ GÖZLÜĞÜ» в названии Zara — тип, а не модель.
+    Обувные словари — только у обуви.
     """
     words = set()
-    for mapping in (KINDS, COLORS, AUDIENCE, DESCRIPTORS, COLOR_MODIFIERS):
+    mappings = [KINDS, COLORS, AUDIENCE, DESCRIPTORS, COLOR_MODIFIERS]
+    if product_type == "shoes":
+        mappings += [SHOE_KINDS, SHOE_DESCRIPTORS]
+    for mapping in mappings:
         for key in mapping:
             words.update(key.split())
     return frozenset(words | COLOR_NOISE | STORE_LINE_WORDS | GENERIC_NAME_WORDS)
