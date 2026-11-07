@@ -9,6 +9,7 @@ import pytest
 
 from apps.ai.models import AIProcessingLog, AIProcessingStatus, AITranslationMemory
 from apps.ai.services import supplement_content as sc
+from apps.ai.services import supplement_glossary
 from apps.ai.services import supplement_memory as sm
 from apps.ai.services.translation_memory import remember
 from apps.catalog.models import Product
@@ -215,6 +216,19 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         ("Omega-3 (3)", "Омега-3 (3)", "Omega-3 (3)", []),
         # Пилот 3 на проде 07.11.2026: растения и вещества словаря, возраст-опечатка источника.
         ("Tribulus Terrestris Extract", "Экстракт пузырника", "Tribulus extract", ["supplement_ingredient_mistranslated"]),
+        # Пилот 4 на проде 07.11.2026.
+        ("parlatıcı (sarı balmumu)", "подсластитель (жёлтый воск)", "sweetener (yellow beeswax)",
+         ["supplement_ingredient_mistranslated"]),
+        ("parlatıcı (sarı balmumu)", "глазирователь (жёлтый воск)", "glazing agent (yellow beeswax)", []),
+        ("Akgünlük Ekstraktı (%19,06)", "Экстракт акгюнлюк (19,06 %)", "Akgunluk extract (19.06%)",
+         ["supplement_ingredient_mistranslated", "ru_untranslated"]),
+        ("Dilaltına günde 1-2 puf kullanılması tavsiye edilir.", "Дилатационно 1–2 пуфа в день.", "1–2 puffs a day.",
+         ["supplement_ingredient_mistranslated", "ru_untranslated"]),
+        ("Magnezyum Taurat", "Тауррат магния", "Magnesium taurate", ["ru_untranslated"]),
+        ("kcenzim 010", "kcenzim 010", "kcenzim 010", ["ru_untranslated"]),
+        ("11 yaş üzeri yetişkinler için günde 1 tablet tüketilmesi tavsiye edilir",
+         "Взрослым и детям от 11 лет рекомендуется принимать 1 таблетка в день",
+         "Adults and children over 11: 1 tablet a day", ["ru_grammar"]),
         # Перевод, который подсказывает словарь, в родительном падеже — верен (ревью #331).
         ("Tribulus Terrestris Extract", "Экстракт якорцев стелющихся", "Tribulus terrestris extract", []),
         ("Honry Goat Weed Extract", "Экстракт травы Honry Goat Weed", "Honry Goat Weed extract",
@@ -580,7 +594,8 @@ def test_composition_without_table_headers_prose_and_second_copies(text, composi
          {"usage": ["Akut Dönemde 12'şer Saat Arayla 2×1 Kapsül, Sonrasında Koruyucu Olarak 1×1 Kapsül"]}),
         ("Kullanım Şekli:\nGünde 1 kapsül.\n(Tercihen Yemekle Birlikte ya da Yemekten Hemen Sonra)",
          {"usage": ["Günde 1 kapsül.", "(Tercihen Yemekle Birlikte ya da Yemekten Hemen Sonra)"]}),
-        ("Kullanım Şekli:\nDamlalar kaşıkla verilebilir.", {"usage": ["Damlalar kaşıkla verilebilir."]}),
+        ("Kullanım Şekli:\nGünde 5 damla. Damlalar kaşıkla verilebilir.",
+         {"usage": ["Günde 5 damla.", "Damlalar kaşıkla verilebilir."]}),
         # NUTRAXIN QUICK-SLIM 7423: «* Kafein içerir» — отдельная фраза, без звёздочки.
         ("Kullanım Şekli:\nGünde 3 defa 1 tablet kullanılması önerilir. * Kafein içerir.",
          {"usage": ["Günde 3 defa 1 tablet kullanılması önerilir."]}),
@@ -598,6 +613,32 @@ def test_composition_without_table_headers_prose_and_second_copies(text, composi
 )
 def test_pilot3_usage_rows_footnotes_and_summary_items(text, expected):
     assert sm.section_parts({"product_info": text}) == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # COXIL 7544: маркеры списка; OSENDE 7569: «•» вместо дефиса; GONAMAX 7623: фасовка вместо компонента.
+        ("Ürün Bileşimi:\n- Sambucus Nigra (Karamürver), - Gam arabik, - Stevia, DL•a-tokoferil asetat, 30 kapsül",
+         {"composition": ["Sambucus Nigra (Karamürver)", "Gam arabik", "Stevia", "DL-a-tokoferil asetat"]}),
+        # DAY2DAY 7547: заголовок таблицы доз — не способ применения.
+        ("Kullanım Şekli:\nGünde 10 g (1 ölçek) su ile karıştırılarak tüketilir. Her 1 ölçekte (10 g) ;",
+         {"usage": ["Günde 10 g (1 ölçek) su ile karıştırılarak tüketilir."]}),
+        # ACTIVE PLUS 7768: применение без дозы — блок неполный, не показывается.
+        ("Kullanım Şekli:\n11 yaş ve üzeri yetişkinlerin kullanımına uygundur.", {}),
+        # SUDA 7616: обещание пользы в применении.
+        ("Kullanım Şekli:\nGünde 1 porsiyon tüketilir. 8 haftadan sonra elde ettiğiniz faydaya göre ayarlayabilirsiniz.",
+         {"usage": ["Günde 1 porsiyon tüketilir."]}),
+    ],
+)
+def test_pilot4_composition_and_usage_parsing(text, expected):
+    assert sm.section_parts({"product_info": text}) == expected
+
+
+def test_pilot4_usage_without_dose_is_marked_hidden():
+    with mock.patch.object(sm, "lookup", return_value={}):
+        blocks, _usage = sm.translate_blocks({"product_info": "Kullanım Şekli:\n11 yaş ve üzeri kullanım için uygundur."}, None)
+    assert blocks.stats["hidden_blocks"] == {"usage": "no_dose"}
 
 
 def test_partial_composition_with_actives_only_in_dose_table_is_hidden():
@@ -751,7 +792,7 @@ def test_model_text_keeps_product_and_drops_what_blocks_say():
         ["Состав: магний цитрат 300 мг, витамин B6 2 мг."], "ru",
         blocks=["Вспомогательные вещества: ГПМЦ."], covered=sc.covered_by_blocks({"excipients": [1]}),
     )
-    assert "магний цитрат 300 мг" in excipients_only
+    assert "цитрат магния 300 мг" in excipients_only
     # «Содержание магния не превышает 300 мг» — не пересказ предупреждения.
     assert "не превышает 300 мг" in sc.build_description(
         ["Содержание магния не превышает 300 мг."], "ru", blocks=["Предупреждения: …"],
@@ -793,10 +834,37 @@ def test_pilot3_model_text_brand_turkish_brackets_and_block_wording():
         "How to use: 1 capsule a day. Contains caffeine."
     )
     # Подсказки словаря по веществам из разделов — модели.
-    assert sc._section_glossary({"ingredients": "Tribulus Terrestris Extract, Melaloyka Yağı"}) == {
-        "TRIBULUS": {"ru": "якорцы стелющиеся", "en": "tribulus"},
-        "MELALOYKA": {"ru": "чайное дерево", "en": "tea tree"},
-    }
+    hints = sc._section_glossary({"ingredients": "Tribulus Terrestris Extract, Melaloyka Yağı"})
+    assert hints["TRIBULUS"] == {"ru": "якорцы стелющиеся", "en": "tribulus"}
+    assert hints["MELALOYKA"] == {"ru": "чайное дерево", "en": "tea tree"}
+
+
+def test_pilot4_card_wording_translit_tablets_and_repeats():
+    # Исправимый транслит: «ситрат», HELAL, «МСМ»; у таблеток «капсула» → «таблетка» (DYNAVIT 7688, 7719).
+    text = sc.build_description(["Содержит магний ситрат и МСМ. Сертификат HELAL."], "ru")
+    assert "цитрат" in text and "MSM" in text and "халяль" in text and "ситрат" not in text
+    blocks = sm.SupplementBlocks(
+        ru={"usage": ["1 капсула в день для взрослых.", "Взрослым рекомендуется принимать 1 порцию продукта в любое время суток.",
+                      "Взрослым рекомендуется принимать 1 порцию (40 мл) продукта в любое время суток."]},
+        en={"usage": ["1 capsule a day for adults.", "Adults: 1 serving at any time.", "Adults: 1 serving (40 ml) at any time."]},
+    )
+    ru = sc.memory_block_texts(blocks, "ru", "DYNAVIT BIOTIN TAKVIYE EDICI GIDA 5000 mcg 100 tablet")
+    # Та же доза с уточнением в скобках — повтор (SUDA 7616); остаётся подробная.
+    assert ru == ["Способ применения: 1 таблетка в день для взрослых. "
+                  "Взрослым рекомендуется принимать 1 порцию (40 мл) продукта в любое время суток."]
+
+
+def test_log_problems_flag_translit_and_baby_food():
+    def log(name, description):
+        return SimpleNamespace(
+            raw_llm_response={"rule_content": {"supplement": {"brand": name.split()[0]}}},
+            input_data={"name": name}, extracted_attributes={}, generated_title="", generated_description=description,
+        )
+    # CC II 7611, MAXLAK 7683: турецкое слово транслитом.
+    assert "supplement_translit" in sc.log_problems(log("CC II KAPSUL 30 kapsül", "<p>Экстракт акгюнлюк.</p>"))["description"]
+    # HIPP 7628: детское питание — всегда на модерацию.
+    baby = sc.log_problems(log("HIPP 1 ORGANIK COMBIOTIC DEVAM SUTU 350 g", "<p>HIPP — молочная смесь.</p>"))
+    assert "supplement_baby_food_review" in baby["description"]
 
 
 def test_log_problems_flag_suspicious_source_age():
@@ -985,3 +1053,103 @@ def test_supplement_card_gets_memory_blocks_and_model_is_told_not_to_retell_them
     assert result["rule_content"]["supplement"]["memory_texts"]["ru"][1] == "Способ применения: По 1 штуке в день, разжёвывая."
     assert result["rule_content"]["description_source"] == "llm+memory"
     assert result["rule_content"]["supplement"]["memory"]["translated"] == 8
+
+
+def test_pack_count_is_not_a_composition_paragraph():
+    # GONAMAX 7623, пилот 4 на проде: модель написала «Состав: 30 капсул.»
+    assert sc.clean_paragraph("Состав: 30 капсул.") == ""
+    assert sc.clean_paragraph("Ingredients: 30 capsules.") == ""
+    assert sc.clean_paragraph("Состав: 30 мг цинка.") == "Состав: 30 мг цинка."
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Ревью #332, п. 1: «Her …» с дозой — способ применения, заголовок — только «Her 1 ölçekte (10 g) ;».
+        ("Kullanım Şekli:\nHer sabah 1 kapsül.", {"usage": ["Her sabah 1 kapsül."]}),
+        ("Kullanım Şekli:\nHer öğünde 1 tablet.", {"usage": ["Her öğünde 1 tablet."]}),
+        ("Kullanım Şekli:\nHer yemekten sonra 1 kapsül.", {"usage": ["Her yemekten sonra 1 kapsül."]}),
+        # П. 2: «;» в конце — не повод выбрасывать дозу.
+        ("Kullanım Şekli:\nYetişkinler için günde 2 kapsül;\nÇocuklar için günde 1 kapsül.",
+         {"usage": ["Yetişkinler için günde 2 kapsül.", "Çocuklar için günde 1 kapsül."]}),
+        # П. 3: доза ложками, граммами, каплетами, числительными — блок не скрывается.
+        ("Kullanım Şekli:\n1 yemek kaşığı alınır.", {"usage": ["1 yemek kaşığı alınır."]}),
+        ("Kullanım Şekli:\n2 ölçü kaşığı suya karıştırılarak alınır.", {"usage": ["2 ölçü kaşığı suya karıştırılarak alınır."]}),
+        ("Kullanım Şekli:\n30 gram su ile karıştırılarak tüketilir.", {"usage": ["30 gram su ile karıştırılarak tüketilir."]}),
+        ("Kullanım Şekli:\n1 kaplet su ile alınır.", {"usage": ["1 kaplet su ile alınır."]}),
+        # П. 9: «fayda/zarar değerlendirmesi» — предупреждение, не заявление о пользе.
+        ("Uyarılar:\nHamilelik döneminde fayda/zarar değerlendirmesi doktor tarafından yapılmalıdır.",
+         {"warnings": ["Hamilelik döneminde fayda/zarar değerlendirmesi doktor tarafından yapılmalıdır."]}),
+        # Желательное: «•» как разделитель, голое «Kapsül» — компонент.
+        ("Ürün Bileşimi:\n• Vitamin C • Çinko • Vitamin D3", {"composition": ["Vitamin C", "Çinko", "Vitamin D3"]}),
+        ("Ürün Bileşimi:\nBalık yağı, Kapsül", {"composition": ["Balık yağı", "Kapsül"]}),
+    ],
+)
+def test_review_332_parsing_keeps_real_usage_warnings_and_components(text, expected):
+    assert sm.section_parts({"product_info": text}) == expected
+
+
+@pytest.mark.parametrize(
+    "source, ru, problems",
+    [
+        # Ревью #332, п. 10: латынь строчными как есть — верно.
+        ("lacticaseibacillus rhamnosus GG", "lacticaseibacillus rhamnosus GG", []),
+        ("lactiplantibacillus plantarum 299v", "lactiplantibacillus plantarum 299v", []),
+        ("akkermansia muciniphila", "akkermansia muciniphila", []),
+        ("serenoa repens", "serenoa repens", []),
+        ("ascophyllum nodosum", "ascophyllum nodosum", []),
+        ("l. reuteri", "l. reuteri", []),
+        # Обрывок распознавания и турецкое как есть — нет.
+        ("kcenzim 010", "kcenzim 010", ["ru_untranslated"]),
+        ("papatya ekstresi", "papatya ekstresi", ["ru_untranslated"]),
+        # Желательное: «1 мерная ложка» после «принимать».
+        ("Günde 1 ölçek alınır", "Принимать 1 мерная ложка в день", ["ru_grammar"]),
+        ("Günde 1 ölçek alınır", "Принимать по 1 мерной ложке в день", []),
+    ],
+)
+def test_review_332_line_problems(source, ru, problems):
+    assert [p for p in sm.line_problems(source, ru, ru) if p in ("ru_untranslated", "ru_grammar")] == problems
+
+
+def test_review_332_card_wording():
+    # П. 4: исправления транслита — только в RU; «халяль» в начале фразы — с заглавной.
+    assert "HELAL" not in sc.build_description(["HELAL certified capsules."], "en")
+    assert "халяль" not in sc.build_description(["HELAL certified capsules."], "en")
+    assert sc.clean_paragraph("HELAL сертификат.") == "Халяль сертификат."
+    # Желательное: порядок слов соли, α-токоферол.
+    assert sc.clean_paragraph("Содержит магний ситрат.") == "Содержит цитрат магния."
+    assert sc.clean_paragraph("Магний цитрат 300 мг.") == "Цитрат магния 300 мг."
+    assert sc.clean_paragraph("DL-a-токоферол ацетат.") == "DL-α-токоферол ацетат."
+    assert sc.clean_paragraph("Ingredients: 60 softgels.") == ""
+    # П. 5: фраза со своим словом («утром») — не повтор фразы с дозой в скобках.
+    blocks = sm.SupplementBlocks(
+        ru={"usage": ["Взрослым по 1 капсулу в день утром во время еды.",
+                      "Взрослым по 1 капсулу (500 мг) в день во время еды."]},
+        en={"usage": ["Adults: 1 capsule a day in the morning with food.", "Adults: 1 capsule (500 mg) a day with food."]},
+    )
+    assert "утром" in sc.memory_block_texts(blocks, "ru")[0]
+    # П. 6: капсула ↔ таблетка — только в способе применения и не у наборов с обеими формами.
+    blocks = sm.SupplementBlocks(
+        ru={"composition": ["желатин (оболочка капсулы)"], "usage": ["1 капсула в день."],
+            "warnings": ["Не принимать одновременно с капсулами железа."]},
+        en={"composition": ["gelatin (capsule shell)"], "usage": ["1 capsule a day."],
+            "warnings": ["Do not take with iron capsules."]},
+    )
+    ru = sc.memory_block_texts(blocks, "ru", "DYNAVIT BIOTIN TAKVIYE EDICI GIDA 100 tablet")
+    assert ru[0] == "Состав: желатин (оболочка капсулы)."
+    assert ru[1] == "Способ применения: 1 таблетка в день."
+    assert "капсулами железа" in ru[2]
+    assert sc.memory_block_texts(blocks, "en", "DYNAVIT BIOTIN 100 tablet")[0] == "Ingredients: gelatin (capsule shell)."
+    mixed = sm.SupplementBlocks(ru={"usage": ["1 капсула утром и 1 таблетка вечером."]},
+                                en={"usage": ["1 capsule in the morning and 1 tablet in the evening."]})
+    assert sc.memory_block_texts(mixed, "ru", "OMEGA 3 30 KAPSUL + MULTIVITAMIN 30 TABLET") == [
+        "Способ применения: 1 капсула утром и 1 таблетка вечером."
+    ]
+    assert sc.memory_block_texts(mixed, "ru", "SET 30 TABLET 30 KAPSUL") == [
+        "Способ применения: 1 капсула утром и 1 таблетка вечером."
+    ]
+    # П. 8: модели подсказываются только вещества, не «для беременных» и «для энергии».
+    hints = sc._section_glossary({"warnings": "Hamile ve emziren anneler, çocuklar kullanmamalıdır. Enerji. Ahududu aroması."})
+    assert set(hints) == {"AHUDUDU"}
+    # Желательное: «Dil altına» раздельно.
+    assert "dil altina" in supplement_glossary.found_terms("Dil altına 1 puf")
