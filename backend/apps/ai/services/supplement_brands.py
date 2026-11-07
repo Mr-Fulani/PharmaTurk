@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import re
+from typing import NamedTuple
 
 from apps.ai.services.medicine_reference import fold_tr
 
@@ -81,19 +82,38 @@ def _word_key(word: str) -> str:
     return re.sub(r"[^a-z0-9]", "", fold_tr(word))
 
 
+def _title_part(part: str) -> str:
+    # Обозначения и аббревиатуры остаются заглавными: «EPA-DHA», «MSM», «NAC», «Q10» (ревью #333).
+    from apps.ai.services.supplement_content import _ACRONYMS_RE, _ALLOWED_LATIN
+
+    if len(part) <= 2 or re.search(r"\d", part) or _ACRONYMS_RE.fullmatch(part) or _ALLOWED_LATIN.match(part):
+        return part
+    # Турецкая «İ»: str.lower() даёт «i» с точкой сверху (U+0307) — «Bi̇oti̇n» (ревью #333).
+    part = part.replace("İ", "I")
+    return part[:1] + part[1:].lower()
+
+
 def _title_word(word: str) -> str:
-    """Слово линейки после бренда: «FIXMIX» → «Fixmix», «EASY-C» → «Easy-C»; «D3», «GS» — как есть."""
-    if len(word) <= 2 or re.search(r"\d", word) or not word.isupper():
+    """Слово линейки после бренда: «FIXMIX» → «Fixmix», «EASY-C» → «Easy-C», «BİOTİN» → «Biotin»;
+    «D3», «GS», «EPA-DHA» — как есть."""
+    if not word.isupper():
         return word
-    return "-".join(part[:1] + part[1:].lower() for part in word.split("-"))
+    return "-".join(_title_part(part) for part in word.split("-"))
 
 
-def seo_brand(brand: str, brand_ru: str) -> tuple[str, str]:
-    """(латиница, кириллица) бренда для SEO; бренда нет в словаре — (brand, brand_ru) без изменений.
+class SeoBrand(NamedTuple):
+    latin: str  # бренд латиницей целиком: «Orzax Ocean Gummies»
+    ru: str  # кириллицей или ""
+    latin_for_ru: str  # часть латиницы, которую передаёт кириллица: «Orzax Ocean»
+
+
+def seo_brand(brand: str, brand_ru: str) -> SeoBrand:
+    """Бренд для SEO; бренда нет в словаре — бренд источника и кириллица из памяти без изменений.
 
     Слова линейки после бренда остаются: «OCEAN EXTRAMAG» + «Оушен Экстрамаг» →
-    («Orzax Ocean Extramag», «Орзакс Оушен Экстрамаг»). Если кириллица из памяти не делится
-    по словам так же, как латиница, — кириллицей пишется только бренд из словаря.
+    «Orzax Ocean Extramag» / «Орзакс Оушен Экстрамаг». Если кириллица из памяти не делится
+    по словам так же, как латиница, кириллицей пишется только бренд из словаря, и в скобках —
+    те же слова: «Велавит (Velavit) Phytoglow …», а не «Велавит (Velavit Phytoglow)».
     """
     words = str(brand or "").split()
     keys = [_word_key(word) for word in words]
@@ -102,13 +122,13 @@ def seo_brand(brand: str, brand_ru: str) -> tuple[str, str]:
         if entry:
             break
     else:
-        return brand, brand_ru
+        return SeoBrand(brand, brand_ru, brand)
     latin, ru = entry
     rest = words[size:]
     display = " ".join([latin, *(_title_word(word) for word in rest)])
     if not ru or not rest:
-        return display, ru
+        return SeoBrand(display, ru, display)
     ru_words = str(brand_ru or "").split()
     if len(ru_words) == len(words):
-        return display, " ".join([ru, *ru_words[size:]])
-    return display, ru
+        return SeoBrand(display, " ".join([ru, *ru_words[size:]]), display)
+    return SeoBrand(display, ru, latin)

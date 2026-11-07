@@ -29,10 +29,10 @@
 | [5011](https://mudaroba.com/product/dynavit-osteo-takviye-edici-gida-tablet-60-tablet) | DYNAVIT OSTEO, пищевая добавка, 60 таблеток | DYNAVIT OSTEO, пищевая добавка, 60 таблеток — купить из Турции | Dynavit Osteo, пищевая добавка, 60 таблеток — купить из Турции |
 | [5090](https://mudaroba.com/product/swiss-bork-omega-kapsul-30-kapsul) | SWISS BORK Омега, 30 капсул | Свисс Борк (SWISS BORK) Омега, 30 капсул — купить из Турции | Swiss Bork Омега, 30 капсул — купить из Турции |
 | [1739](https://mudaroba.com/product/goodday-alcar-asetil-l-karnitin-takviye-edici-gida-30-kapsul) | GOODDAY Ацетил L-карнитин, 30 капсул | Гудди (GOODDAY) Ацетил L-карнитин, 30 капсул — купить из Турции | GoodDay Ацетил L-карнитин, 30 капсул — купить из Турции |
-| [5981](https://mudaroba.com/product/velavit-phytoglow-anti-hair-loss-takviye-edici-gida-60-kapsul) | VELAVIT PHYTOGLOW Анти-выпадение волос, пищевая добавка, 60 капсул | VELAVIT PHYTOGLOW Анти-выпадение волос, пищевая добавка из Турции | Велавит (Velavit Phytoglow) Анти-выпадение волос — купить из Турции |
+| [5981](https://mudaroba.com/product/velavit-phytoglow-anti-hair-loss-takviye-edici-gida-60-kapsul) | VELAVIT PHYTOGLOW Анти-выпадение волос, пищевая добавка, 60 капсул | VELAVIT PHYTOGLOW Анти-выпадение волос, пищевая добавка из Турции | Велавит (Velavit) Phytoglow Анти-выпадение волос — купить из Турции |
 | [2673](https://mudaroba.com/product/vitabiotics-pregnacare-orginal-tablet-30-tablet) | VITABIOTICS PREGNACARE Оригинальный комплекс для беременных, 30 таблеток | VITABIOTICS PREGNACARE Оригинальный комплекс для беременных из Турции | Vitabiotics Pregnacare Оригинальный комплекс для беременных из Турции |
 | [3905](https://mudaroba.com/product/doppelherz-biotin-l-sistein-cinko-kapsul-30-kapsul) | DOPPELHERZ Биотин, L-цистеин и цинк, 30 капсул | Доппельхерц (DOPPELHERZ) Биотин, L-цистеин и цинк — купить из Турции | Доппельгерц (Doppelherz) Биотин, L-цистеин и цинк — купить из Турции |
-| [7258](https://mudaroba.com/product/natrol-easy-c-takviye-edici-gida-1000-mg-60-tablet) | NATROL EASY-C Витамин C 1000 мг, 60 таблеток | NATROL EASY-C Витамин C 1000 мг, 60 таблеток — купить из Турции | Натрол (Natrol Easy-C) Витамин C 1000 мг — купить из Турции |
+| [7258](https://mudaroba.com/product/natrol-easy-c-takviye-edici-gida-1000-mg-60-tablet) | NATROL EASY-C Витамин C 1000 мг, 60 таблеток | NATROL EASY-C Витамин C 1000 мг, 60 таблеток — купить из Турции | Натрол (Natrol) Easy-C Витамин C 1000 мг — купить из Турции |
 | [7602](https://mudaroba.com/product/magnimore-magnesium-citrate-takviye-edici-gida-60-kapsul) | MAGNIMORE Магния цитрат, 60 капсул | Магнимор (MAGNIMORE) Магния цитрат, 60 капсул — купить из Турции | Магнимор (Magnimore) Магния цитрат, 60 капсул — купить из Турции |
 | [6364](https://mudaroba.com/product/maxigal-melatonin-tablet-3-mg-120-tablet) | MAXIGAL Мелатонин 3 мг, 120 таблеток | Максигал (MAXIGAL) Мелатонин 3 мг, 120 таблеток — купить из Турции | Максигал (Maxigal) Мелатонин 3 мг, 120 таблеток — купить из Турции |
 | [404](https://mudaroba.com/product/argivit-bromelain-takviye-edici-gida-60-tablet) | ARGIVIT Бромелаин, 60 таблеток | Аргивит (ARGIVIT) Бромелаин, 60 таблеток — купить из Турции | Аргивит (Argivit) Бромелаин, 60 таблеток — купить из Турции |
@@ -48,7 +48,7 @@
 | [1092](https://mudaroba.com/product/apidemica-karadut-karamurver-propolis-bal-c-vitamini-iceren-pastil-24-adet) | APIDEMICA Пастилки с чёрной шелковицей, чёрной бузиной, прополисом, мёдом и витамином C, 24 шт. | Апидемика (APIDEMICA) Пастилки с чёрной шелковицей — купить из Турции | Apidemica Пастилки с чёрной шелковицей — купить из Турции |
 | [269](https://mudaroba.com/product/venatura-magnezyum-bisglisinat-takviye-edici-gida-120-mg-60-tablet) | VENATURA Магний бисглицинат 120 мг, 60 таблеток | Венатура (VENATURA) Магний бисглицинат 120 мг — купить из Турции | Венатура (Venatura) Магний бисглицинат 120 мг — купить из Турции |
 | [501](https://mudaroba.com/product/day2day-the-collagen-all-body-kolajen-peptitleri-ve-vitamin-kompleks-iceren-takviye-edici-gida-300-g-toz) | DAY2DAY THE Коллагеновый комплекс с пептидами и витаминами, порошок, 300 г | DAY2DAY THE Коллагеновый комплекс с пептидами и витаминами из Турции | Дэй Ту Дэй (Day2Day) Коллагеновый комплекс — купить из Турции |
-| [2664](https://mudaroba.com/product/ocean-gummies-vitamin-d3-iceren-takviye-edici-gida-cignenebilir-jel-1000-iu-60-jel) | OCEAN GUMMIES Витамин D3 1000 МЕ, 60 шт. | OCEAN GUMMIES Витамин D3 1000 МЕ, 60 шт. — купить из Турции | Орзакс Оушен (Orzax Ocean Gummies) Витамин D3 1000 МЕ из Турции |
+| [2664](https://mudaroba.com/product/ocean-gummies-vitamin-d3-iceren-takviye-edici-gida-cignenebilir-jel-1000-iu-60-jel) | OCEAN GUMMIES Витамин D3 1000 МЕ, 60 шт. | OCEAN GUMMIES Витамин D3 1000 МЕ, 60 шт. — купить из Турции | Орзакс Оушен (Orzax Ocean) Gummies Витамин D3 1000 МЕ из Турции |
 
 ## Description и keywords (первые 10)
 
@@ -62,7 +62,7 @@
 **2237** ZADE VITAL Омега-3 для детей, апельсиновый сироп, 100 мл
 
 - description было: Заде Витал (ZADE VITAL) Омега-3 для детей, апельсиновый сироп, 100 мл из Турции. Описание и состав на русском. Заявка менеджеру, доставка 7–14 дней.
-- description стало: Заде Витал (Zade Vital) Омега-3 для детей, апельсиновый сироп, 100 мл из Турции. Инструкция на русском: состав и способ применения.
+- description стало: Заде Витал (Zade Vital) Омега-3 для детей, апельсиновый сироп, 100 мл из Турции. Инструкция на русском. Заявка менеджеру, доставка 7–14 дней.
 - keywords было: ZADE VITAL, Заде Витал, Заде Витал омега-3 для детей, омега-3 для детей, Заде Витал из Турции, Заде Витал купить, БАД омега-3 для детей
 - keywords стало: Zade Vital, Заде Витал, Заде Витал омега-3 для детей, омега-3 для детей, омега-3 для детей из Турции, Заде Витал купить, БАД омега-3 для детей
 
@@ -97,7 +97,7 @@
 **1920** VOONKA Витамин C со вкусом апельсина, 62 жевательных таблетки
 
 - description было: Вунка (VOONKA) Витамин C со вкусом апельсина, 62 жевательных таблетки из Турции. Описание и состав на русском. Заявка менеджеру, доставка 7–14 дней.
-- description стало: Voonka Витамин C со вкусом апельсина, 62 жевательных таблетки из Турции. Инструкция на русском: состав и способ применения.
+- description стало: Voonka Витамин C со вкусом апельсина, 62 жевательных таблетки из Турции. Инструкция на русском. Заявка менеджеру, доставка 7–14 дней.
 - keywords было: VOONKA, Вунка, Вунка витамин C со вкусом апельсина, витамин C со вкусом апельсина, Вунка из Турции, Вунка купить, БАД витамин C со вкусом апельсина
 - keywords стало: Voonka, Voonka витамин C со вкусом апельсина, витамин C со вкусом апельсина, витамин C со вкусом апельсина из Турции, Voonka купить, БАД витамин C со вкусом апельсина
 
@@ -111,7 +111,7 @@
 **537** OCEAN EXTRAMAG, пищевая добавка, 120 таблеток
 
 - description было: Оушен Экстрамаг (OCEAN EXTRAMAG), пищевая добавка, 120 таблеток из Турции. Описание и состав на русском. Заявка менеджеру, доставка 7–14 дней.
-- description стало: Орзакс Оушен Экстрамаг (Orzax Ocean Extramag), пищевая добавка, 120 таблеток из Турции. Инструкция на русском: состав и способ применения.
+- description стало: Орзакс Оушен Экстрамаг (Orzax Ocean Extramag), пищевая добавка, 120 таблеток из Турции. Инструкция на русском. Заявка менеджеру, доставка 7–14 дней.
 - keywords было: OCEAN EXTRAMAG, Оушен Экстрамаг, Оушен Экстрамаг из Турции, Оушен Экстрамаг купить, БАД
 - keywords стало: Orzax Ocean Extramag, Орзакс Оушен Экстрамаг, Орзакс Оушен Экстрамаг из Турции, Орзакс Оушен Экстрамаг купить, БАД
 
@@ -121,4 +121,7 @@
 - description стало: Орзакс Оушен (Orzax Ocean) L-глутатион 250 мг, 30 таблеток из Турции. Инструкция на русском: состав и способ применения. Заявка менеджеру, доставка 7–14 дней.
 - keywords было: OCEAN, Оушен, Оушен l-глутатион 250 мг, l-глутатион 250 мг, Оушен из Турции, Оушен купить, БАД l-глутатион 250 мг
 - keywords стало: Orzax Ocean, Орзакс Оушен, Орзакс Оушен l-глутатион 250 мг, l-глутатион 250 мг, l-глутатион 250 мг из Турции, Орзакс Оушен купить, БАД l-глутатион 250 мг
+
+«Заявка менеджеру, доставка 7–14 дней.» осталась у 34 из 40 описаний со «Способом применения» (было 33 из 40):
+у 6 карточек с очень длинным названием она не помещалась и раньше.
 
