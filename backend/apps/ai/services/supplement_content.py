@@ -379,9 +379,33 @@ _UPDATED_NOTE_RE = re.compile(r"(?:состав|формула) обновл[е�
 # Пустая фраза-остаток: «Пищевая добавка.» после «… Не заменяет нормальное питание.» (OCEAN 7287).
 _EMPTY_SENTENCE_RE = re.compile(r"(?:пищевая добавка|биологически активная добавка|бад|food supplement|dietary supplement)\.?",
                                 re.IGNORECASE)
+# «Состав: 30 капсул.» — модель приняла число в упаковке за состав (GONAMAX 7623, пилот 4 на проде).
+_PACK_AS_COMPOSITION_RE = re.compile(
+    r"\W*(?:состав|ingredients)\s*:\s*\d+\s*(?:капсул\w*|таблет\w*|саше|пастил\w*|capsules?|tablets?|sachets?)\.?",
+    re.IGNORECASE,
+)
+
+
+# Турецкий транслит в русском тексте, который легко исправить: «магний ситрат» (OCEAN EXTRAMAG 7583), «Сертификат
+# HELAL» (SUDA 7616), «МСМ» рядом с «MSM» (CC II 7611). Пилот 4 на проде.
+_TRANSLIT_FIXES = (
+    (re.compile(r"(?i)\bбисглисинат"), "бисглицинат"), (re.compile(r"(?i)\bглисинат"), "глицинат"),
+    (re.compile(r"(?i)\bситрат"), "цитрат"), (re.compile(r"\b(?:HELAL|[Хх]елал\w*)\b"), "халяль"),
+    (re.compile(r"\bМСМ\b"), "MSM"),
+)
+
+
+def _fix_translit(text: str) -> str:
+    for regex, replacement in _TRANSLIT_FIXES:
+        # Заглавная — только у слова с заглавной («Ситрат»), не у «HELAL» посреди фразы.
+        text = regex.sub(
+            lambda m, r=replacement: r[0].upper() + r[1:] if m.group(0)[:2].istitle() else r, text
+        )
+    return text
 
 
 def _fix_model_wording(text: str) -> str:
+    text = _fix_translit(text)
     text = _UPDATED_NOTE_RE.sub(lambda m: (m.group(1) or m.group(2)).upper(), text)
     # Турецкое слово в скобках: «экстракт клюквы (Turna Yemişi)» (VOONKA NEXT 7407, пилот 3 на проде).
     text = re.sub(r"\s*\([^()]*[çğışöüÇĞİŞÖÜ][^()]*\)", "", text)
@@ -398,7 +422,7 @@ def clean_paragraph(text: Any, source_name: str = "", extra_drop: tuple = ()) ->
     plain = _fix_model_wording(plain)
     kept = [
         s for s in _SENTENCE_RE.split(plain)
-        if s and not _EMPTY_SENTENCE_RE.fullmatch(s)
+        if s and not _EMPTY_SENTENCE_RE.fullmatch(s) and not _PACK_AS_COMPOSITION_RE.fullmatch(s)
         and not any(r.search(_without_source_words(s, source_name)) for r in (*_DROP_RES, *extra_drop))
     ]
     return " ".join(kept).strip()
@@ -516,6 +540,14 @@ def _duplicate_indexes(values: list[str]) -> set[int]:
             if i == j or j in drop or len(other) < 3 or negated[i] != negated[j] or groups[i] != groups[j]:
                 continue
             contained = own < other and (not numbers[i] or numbers[i] == numbers[j])
+            # Та же доза, но меньше подробностей: «… 1 порцию продукта в день …» рядом с «… 1 порцию (40 мл) продукта …»
+            # (SUDA 7616, пилот 4 на проде) — остаётся фраза с большим числом чисел.
+            # Лишние числа — только уточнение в скобках: «По 1 капсуле в день» и «По 1–2 капсулы в день» — разные дозы.
+            bracketed = set(re.findall(r"\d+", " ".join(re.findall(r"\(([^()]*)\)", values[j]))))
+            contained = contained or (
+                numbers[i] < numbers[j] and (numbers[j] - numbers[i]) <= bracketed
+                and len(own & other) / len(own | other) >= 0.7
+            )
             # 0,85, не ниже: «Женщинам … из розового блистера» и «Мужчинам … из фиолетового» совпадают на 70 %.
             similar = j < i and numbers[i] == numbers[j] and len(own & other) / len(own | other) >= 0.85
             if contained or similar:
@@ -546,12 +578,22 @@ _CAPSULE_WORDS = {
 }
 
 
+# Обратная замена: у таблеток «Yetişkinler için günde 1 kapsül» из памяти → «капсула» (DYNAVIT 7688, 7719).
+_TABLET_WORDS = {
+    "ru": (("капсулами", "таблетками"), ("капсулам", "таблеткам"), ("капсулах", "таблетках"), ("капсул", "таблеток"),
+           ("капсуле", "таблетке"), ("капсулу", "таблетку"), ("капсулой", "таблеткой"), ("капсулы", "таблетки"),
+           ("капсула", "таблетка")),
+    "en": (("capsules", "tablets"), ("capsule", "tablet")),
+}
+
+
 def _piece_words(source_name: str) -> Optional[dict]:
-    """Слова формы выпуска вместо «таблетки» источника: конфеты или капсулы, по названию."""
+    """Слова формы выпуска вместо слова источника: конфеты, капсулы или таблетки — по названию."""
     if _GUMMY_SOURCE_RE.search(fold_tr(source_name)):
         return _GUMMY_WORDS
     pack = parse_pack(source_name) if source_name else None
-    return _CAPSULE_WORDS if pack is not None and pack.piece == "capsule" else None
+    piece = pack.piece if pack is not None else ""
+    return {"capsule": _CAPSULE_WORDS, "tablet": _TABLET_WORDS}.get(piece)
 
 
 def _gummy_wording(text: str, locale: str, words: Optional[dict] = None) -> str:
@@ -574,6 +616,7 @@ _ACRONYMS_RE = re.compile(r"\b(cla|epa|dha|msm|gaba|hmb|pqq|nadh)\b", re.IGNOREC
 
 
 def _block_wording(value: str) -> str:
+    value = _fix_translit(value)
     # Звёздочка сноски — у слова или в начале фразы; «2*1 капсула» не трогаем (ревью #331).
     value = re.sub(r"\s{2,}", " ", re.sub(r"(?<!\d)\*+|\*+(?!\d)", "", value)).strip()
     return _ACRONYMS_RE.sub(lambda m: m.group(1).upper(), value)
@@ -882,6 +925,12 @@ def log_problems(log) -> dict[str, list[str]]:
     rejected = [*(memory.get("rejected") or {}).values(), *(memory.get("memory_rejected") or {}).values()]
     if any(set(reasons) & set(supplement_memory.SOURCE_PROBLEMS) for reasons in rejected):
         description.append("supplement_source_suspicious")
+    # Транслит турецкого слова в описании («экстракт акгюнлюк», «вкус ахмудовый») и детское питание (HIPP 1:
+    # «последующая … с рождения», шаги приготовления без начала) — всегда человеку (пилот 4 на проде).
+    if supplement_memory.TRANSLIT_RE.search(re.sub(r"<[^>]+>", " ", str(getattr(log, "generated_description", "") or ""))):
+        description.append("supplement_translit")
+    if is_baby_food(source_name):
+        description.append("supplement_baby_food_review")
     if description:
         problems["description"] = description
     return problems
@@ -967,14 +1016,13 @@ def _facts(input_data: dict) -> dict[str, Any]:
 
 
 def _section_glossary(sections: dict) -> dict[str, dict[str, str]]:
-    """Вещества словаря из разделов источника — первым вариантом (пилот 3 на проде: «Tribulus» — «пузырник»,
+    """Слова словаря из разделов источника — первым вариантом («ahududu» — малина, пилот 4 на проде) (пилот 3 на проде: «Tribulus» — «пузырник»,
     «Melaloyka» — «мелалеука» в описании при «масле чайного дерева» в составе)."""
     text = " ".join(str(value) for value in (sections or {}).values())
     return {
         key.upper(): {"ru": supplement_glossary.GLOSSARY[key][0].split(" / ")[0],
                       "en": supplement_glossary.GLOSSARY[key][1].split(" / ")[0]}
         for key in supplement_glossary.found_terms(text)
-        if supplement_glossary.GLOSSARY[key][2] == supplement_glossary.S
     }
 
 

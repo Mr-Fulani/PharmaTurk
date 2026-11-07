@@ -156,12 +156,20 @@ def _dose_table_actives(sections: dict) -> list[str]:
     return list(dict.fromkeys(names))
 
 
+# Доза: число или числительное до двух слов перед формой («1 (bir)-2 (iki) yumuşak kapsül», «1 çiğnenebilir jel form»,
+# «iki adettir»), кратность («günde», «sabah akşam»), «по назначению врача» — способ применения есть (пилот 4 на проде).
+_USAGE_DOSE_RE = re.compile(
+    r"(?:\d+|\b(?:bir|iki|uc|dort|bes|alti|yarim))\s*(?:\([^()]*\)\s*)?(?:[^\W\d_]+\s+){0,2}"
+    r"(?:kapsul|tablet|sase|olcek|damla|ml\b|g\b|gr\b|pastil|puf|porsiyon|tup|flakon|kasik|ampul|gummy|jel|adet)|"
+    r"\bgunde\b|\bdefa\b|\bkez\b|\d\s*[x×]\s*\d|\bsabah\b|\baksam\b|doktor\w* oner|hekim\w* oner|sayisina gore"
+)
 _DOSE_TR_RE = re.compile(r"\bgunde\b|\bdefa\b|\bkez\b|\d+\s*(?:kapsul|tablet|sase|olcek|damla|ml\b|pastil|puf)")
 _ADVERT_RE = re.compile(r"avantaj|sayesinde|tercih edilen|sertifikali|ornek\b.*\btablo")
 # Заявления о пользе («Yorgunluk ve bitkinliğin azalmasına katkıda bulunur», «… Sağlık Beyanları Yönetmeliği'ne
 # göre») — БАДу на карточке нельзя (пилот 4: попали в способ применения). «Tedavi gören kişiler doktoruna
 # danışarak kullanmalıdır» — предупреждение, «tedavi» здесь не признак.
-_TR_CLAIM_RE = re.compile(r"katkida bulun|destekle|yardimci ol|guclendir|iyilestir|faydali|beyanlari")
+# «… elde ettiğiniz faydaya göre …» (SUDA 7616, пилот 4 на проде).
+_TR_CLAIM_RE = re.compile(r"katkida bulun|destekle|yardimci ol|guclendir|iyilestir|\bfayda|beyanlari")
 # Страховка после перевода: обещание пользы в готовом блоке — блок не показывается целиком (не по предложению:
 # неполный блок не должен выглядеть полным).
 _RU_BENEFIT_RE = re.compile(r"способству|поддерживает|укрепля|улучша|помогает", re.IGNORECASE)
@@ -203,6 +211,13 @@ _LATIN_STRAIN_RE = re.compile(
     r"pediococcus|leuconostoc|[lbs]\.)\b"
 )
 _LATIN_WORD_RE = re.compile(r"[A-Za-z]{4,}")
+# Турецкое слово транслитом в русском тексте (akgünlük, ahududu, maya, dil altı, «тауррат»): перевод части не
+# принимается, описание с ним — на модерацию (пилот 4 на проде 07.11.2026).
+TRANSLIT_RE = re.compile(
+    r"акгюнл|ахуду|ахмуд|маниот|дилатацион|сарымсак|зенджефил|зердечал|кекик|адачай|ыхламур|мюрвер|ысырган|кушбурну|"
+    r"тауррат",
+    re.IGNORECASE,
+)
 # Единица — после числа: штаммы «GR-1», «ML-7» латиницей законны (ревью #327).
 _RU_LATIN_UNIT_RE = re.compile(r"\d\s*(?:mg|mcg|[µμ]g|ml|iu|gr|kcal|cfu)(?![A-Za-z])", re.IGNORECASE)
 
@@ -290,12 +305,18 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
     bracketed_source_word = any(word.lower() in source_words for word in re.findall(r"\(([a-zçğışöü]+)\)", ru))
     if (
         any(word not in source for word in turkish_words) or ("|" in ru + en and "|" not in source)
-        or _RU_LATIN_UNIT_RE.search(ru) or bracketed_source_word
+        or _RU_LATIN_UNIT_RE.search(ru) or bracketed_source_word or TRANSLIT_RE.search(ru)
         or re.search(r"(?i)\b([^\W\d_]+) \(\1\)", ru) or re.search(r"%\s?\d", ru)
         # «in lin», «ADI»; коды «Q10», «B6» как есть — верно.
         or (ru.strip().lower() == source.strip().lower() and all(len(w) <= 3 and w.isalpha() for w in source.split()))
+        # Как есть со строчной буквы — обрывок распознавания текста: «kcenzim 010» (OSENDE 7569); «Serenoa repens»,
+        # «Q10» как есть — верно.
+        or (ru.strip() == source.strip() and source.strip()[:1].islower() and not _LATIN_STRAIN_RE.match(fold_tr(source)))
     ):
         problems.append("ru_untranslated")
+    # «принимать 1 таблетка» — именительный после «принимать (по)» (VIAPECIA 7555, OCEAN 7746, пилот 4 на проде).
+    if re.search(r"(?i)\b(?:принима|употребля|применя)\w*\s+(?:по\s+)?1\s+(?:таблетка|капсула|пастилка|конфета)\b", ru):
+        problems.append("ru_grammar")
     # Диапазон дважды: «bir-üç (1-3)» → «1–3 (1-3) капсулы» (SOLGAR 7256).
     # Только то же число: «D3 (1)» — сноска, не повтор (ревью #328).
     if any(
@@ -376,13 +397,16 @@ def _split_top_level(text: str) -> list[str]:
             and re.search(r"(?:d[iu]r|t[iu]r)\W*$", fold_tr(item[sentence_tail.end():]))
         ):
             item = item[:sentence_tail.end()].rstrip().rstrip(".")
-        item = item.strip(" .*")
+        # Маркер списка «- Sambucus Nigra», «• Stevia» (COXIL 7544) и «•» вместо дефиса («DL•a-tokoferil», OSENDE 7569).
+        item = re.sub(r"^\s*[-•–]\s+", "", item).replace("•", "-").strip(" .*")
         folded = fold_tr(item)
         # «FEROGLOBİN … İçeren Sıvı Takviye Edici Gıda - 200 ml» — название товара, а не компонент.
         if re.search(r"[^\W\d_]{2}", item) and not (
             _QUANTITY_ONLY_RE.fullmatch(_UNIT_RE.sub("", folded)) or _PORTION_HEADER_RE.search(folded)
             or _DISCLAIMER_DUPLICATE_RE.search(folded)
             or "takviye edici gida" in folded
+            # Фасовка вместо компонента: «30 kapsül» (GONAMAX 7623, пилот 4 на проде).
+            or _QUANTITY_ONLY_RE.fullmatch(_FORM_WORD_RE.sub("", _UNIT_RE.sub("", folded)))
             # Заголовок, а не компонент: «Aktif Bileşenler», «Bileşen», «Ürün Detayları», «2 Kapsülde».
             or re.fullmatch(r"(?:(?:aktif|yardimci) )?bilesen(?:ler)?|urun detaylari|\d+ \w+(?:de|da|te|ta)", folded)
 
@@ -615,6 +639,10 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 if target == "usage" and (
                     not _USAGE_RE.search(folded) or _QUANTITY_ONLY_RE.fullmatch(_FORM_WORD_RE.sub("", folded))
                     or _table_row(sentence)
+                    # Заголовок таблицы доз: «Her 1 ölçekte (10 g) ;» (DAY2DAY 7547, пилот 4 на проде).
+                    or (re.match(r"her\b", folded) and len(folded.split()) <= 5
+                        and not re.search(r"alin|kullan|tuket|\bgun\b", folded))
+                    or sentence.rstrip().endswith(";")
                 ):
                     continue
                 if target in ("warnings", "storage") and _FREE_FROM_RE.search(folded):
@@ -627,6 +655,11 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 if target:
                     parts[target].append(sentence)
                     open_part = None if re.search(r"[.!?;:]$", sentence) else (target, len(parts[target]) - 1)
+    # Способ применения без дозы и кратности — «11 yaş ve üzeri yetişkinlerin kullanımına uygundur» (ACTIVE PLUS 7768):
+    # блок неполный, не показываем (пилот 4 на проде).
+    if parts["usage"] and not any(_USAGE_DOSE_RE.search(fold_tr(item)) for item in parts["usage"]):
+        parts["usage"] = []
+        hidden["usage"] = "no_dose"
     # «Ürün Bileşimi» из вспомогательных веществ и одного действующего, а остальные действующие — в таблице доз
     # («Her 3 Tablette: Yeşil Çay …», NUTRAXIN QUICK-SLIM 7423): такой «Состав» вводит в заблуждение — не показываем.
     # Состав с одним действующим веществом («L askorbik asit» + вспомогательные) — полный, его не трогаем.
@@ -653,7 +686,8 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
 
 
 LINE_PROBLEMS = (
-    "supplement_ingredient_mistranslated", "ru_latin_not_in_source", "ru_untranslated", "number_repeated", "negation_lost",
+    "supplement_ingredient_mistranslated", "ru_latin_not_in_source", "ru_untranslated", "number_repeated", "ru_grammar",
+    "negation_lost",
     "meal_timing_mistranslated", "age_mistranslated",
 )
 # Не ошибка перевода, а подозрительный источник: повтор перевода не поможет, нужен человек.
