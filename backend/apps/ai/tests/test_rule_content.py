@@ -1067,7 +1067,8 @@ def test_superstep_words_are_translated_by_vocab(name, brand, product_type, ru):
 
 def test_parlak_alone_is_not_translated_as_glossy():
     # «Parlak Taşlı Sandalet» у FLO/LCW — блестящие камни, не глянцевое покрытие.
-    assert not _titles("Parlak Taşlı Kadın Sandalet", "shoes")[0].descriptors
+    # «Taşlı» — стразы (словарь обуви Seniorah, 07.11.2026), «Parlak» — не глянец.
+    assert _titles("Parlak Taşlı Kadın Sandalet", "shoes")[0].descriptors == [("со стразами", "Embellished")]
     assert _titles("Kadın Parlak Deri Babet", "shoes")[0].descriptors == [("из лакированной кожи", "Patent Leather")]
 
 
@@ -1077,3 +1078,43 @@ def test_superstep_model_words_like_leather_and_run_crew_stay_in_model():
     # FLO: «… TEE SS CREW NECK» — «NECK» не становится моделью
     facts = _titles("Bisiklet Yaka Lacivert Erkek T-Shirt 12271257_JJJAYCE TEE SS CREW NECK", "clothing", brand="Jack & Jones")[0]
     assert "NECK" not in facts.model and "CREW" not in facts.model
+
+
+@pytest.mark.parametrize(
+    "name, category, ru",
+    [
+        ("Kitten Cilt Kısa İnce Topuklu Kadın Ayakkabı", "heels", "Женские туфли на каблуке Seniorah Kitten из экокожи"),
+        ("Urban Cilt Sivri Burun İnce Yüksek Topuklu Kadın Ayakkabı", "heels",
+         "Женские туфли на каблуке Seniorah Urban из экокожи с острым носком"),
+        ("Minimalist Rugan Yüksek İnce Topuklu Kadın Stiletto", "heels",
+         "Женские туфли на шпильке Seniorah Minimalist с лаковым покрытием на высоком тонком каблуке"),
+        ("Starlit Taşlı Süet Yuvarlak Burun Alçak Topuklu Diz Üstü Uzun Kadın Çizme", "boots-classic",
+         "Женские ботфорты Seniorah Starlit со стразами из замши"),
+        ("Hercai Cilt-Süet Kadın Kovboy Çizme", "boots-classic", "Женские казаки Seniorah Hercai из экокожи и замши"),
+        ("Meriella Cilt Dokuma Örgü Desenli Sivri Burun İnce Topuklu Yarım Bot Bootie", "ankle-boots",
+         "Женские ботильоны Seniorah Meriella из экокожи с плетеным узором"),
+        ("Lisa Süet Kadın İçi Kürklü Sabo Ev Terliği", "slippers",
+         "Женские домашние тапочки Seniorah Lisa из замши с мехом внутри"),
+        ("Rugan Toka Detaylı Balerin Kadın Babet", "ballet-flats", "Женские балетки Seniorah с лаковым покрытием с пряжкой"),
+        ("Gaia Süet Parmak Arası Kadın Sandalet", "sandals-classic",
+         "Женские сандалии Seniorah Gaia из замши с перемычкой между пальцами"),
+    ],
+)
+def test_seniorah_shoe_words_are_translated_by_vocab(name, category, ru):
+    # пол парсер Seniorah отдаёт атрибутом: «Kadın» есть не в каждом названии
+    facts, titles = _titles(name, "shoes", brand="Seniorah", category_slug=category, attrs={"gender": "women"})
+    assert not facts.untranslated
+    assert titles["ru"] == ru
+
+
+def test_shoe_words_are_not_used_for_other_types():
+    # «Cilt» у обуви — экокожа, у косметики и аксессуаров — нет.
+    facts = _titles("Cilt Bakım Kremi", "perfumery")[0]
+    assert ("из экокожи", "Faux Leather") not in facts.descriptors
+    assert _titles("Cilt Kadın Babet", "shoes")[0].descriptors == [("из экокожи", "Faux Leather")]
+
+
+def test_seniorah_shoe_materials():
+    assert vocab.translate_shoe_material("Cilt/Süet") == ("экокожа, замша", "faux leather, suede")
+    assert vocab.translate_shoe_material("Peluş sıcak astar") == ("теплый плюш", "warm plush")
+    assert vocab.translate_shoe_material("Rugan") == ("лаковая экокожа", "patent faux leather")

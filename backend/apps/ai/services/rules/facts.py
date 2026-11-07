@@ -345,6 +345,9 @@ def parse_name(name: str, facts: ProductFacts) -> None:
     brand_tokens = {vocab.fold(part) for part in facts.brand.split()} if facts.brand else set()
     descriptive = vocab.fold(facts.brand) in vocab.DESCRIPTIVE_NAME_BRANDS
     seen_vocab = False
+    mappings = [(vocab.KINDS, "kind"), (vocab.AUDIENCE, "audience"), (vocab.DESCRIPTORS, "descriptor")]
+    if facts.product_type == "shoes":
+        mappings += [(vocab.SHOE_KINDS, "kind"), (vocab.SHOE_DESCRIPTORS, "descriptor")]
     model: list[str] = []
     kinds: list[Kind] = []
     index = 0
@@ -356,7 +359,7 @@ def parse_name(name: str, facts: ProductFacts) -> None:
             continue
         # Самая длинная фраза из всех словарей: «Polo Yaka» — вырез, а не тип «поло».
         length, value, target = 0, None, None
-        for mapping, label in ((vocab.KINDS, "kind"), (vocab.AUDIENCE, "audience"), (vocab.DESCRIPTORS, "descriptor")):
+        for mapping, label in mappings:
             found, found_value = _match_phrase(folded, index, mapping)
             if found > length:
                 length, value, target = found, found_value, label

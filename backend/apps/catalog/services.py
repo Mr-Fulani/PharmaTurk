@@ -180,7 +180,8 @@ def _internal_media_url_missing_from_storage(url: str) -> bool:
 # Источники, у новых товаров которых адрес — русское название транслитом и код модели,
 # без имени поставщика и турецких слов: «krossovki-uniseks-adidas-samba-og-b75806»
 # вместо «adidas-samba-og-unisex-beyaz-spor-ayakkab-superstep-B75806» (05.11.2026).
-RU_TITLE_SLUG_SOURCES = frozenset({"superstep"})
+# Seniorah — с 07.11.2026: марку в России не знают, ищут по виду обуви.
+RU_TITLE_SLUG_SOURCES = frozenset({"superstep", "seniorah"})
 
 
 # Транслит как в адресах Яндекса: «я» — ya, «й» — y, «х» — kh («muzhskaya», не «muzhskaja»).

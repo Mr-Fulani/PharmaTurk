@@ -58,11 +58,16 @@ def _identity(facts: ProductFacts) -> str:
 
 
 def _title_descriptors(facts: ProductFacts) -> list[tuple[str, str]]:
-    """Материал важнее прочих описательных слов, порядок внутри групп сохраняется."""
-    materials = [pair for pair in facts.descriptors if pair[0].startswith("из ")]
-    others = [pair for pair in facts.descriptors if not pair[0].startswith("из ")]
+    """Материал важнее прочих описательных слов, порядок внутри групп сохраняется.
+
+    Слово, которое уже есть в типе, не повторяется: «туфли на каблуке … на низком
+    каблуке», «шлепанцы на пробковой подошве … на пробковой подошве»."""
+    kind_words = set(facts.kind.ru.split()) if facts.kind else set()
+    descriptors = [pair for pair in facts.descriptors if pair[0].split()[-1] not in kind_words]
+    materials = [pair for pair in descriptors if pair[0].startswith("из ")]
+    others = [pair for pair in descriptors if not pair[0].startswith("из ")]
     chosen = set((materials + others)[:TITLE_DESCRIPTORS_MAX])
-    return [pair for pair in facts.descriptors if pair in chosen]
+    return [pair for pair in descriptors if pair in chosen]
 
 
 def build_titles(facts: ProductFacts, *, ignore_untranslated: bool = False) -> dict[str, str]:

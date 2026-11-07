@@ -17,6 +17,11 @@
 
 - **Тип** — из названия (`KINDS`), иначе из раздела (`CATEGORY_KINDS`): «Şapka» в разделе
   «Бейсболки» — «бейсболка», а не «головной убор».
+- **Только у обуви** (`SHOE_KINDS`, `SHOE_DESCRIPTORS`; женская обувь Seniorah, 07.11.2026):
+  «Cilt» — «из экокожи», «Rugan» — «с лаковым покрытием», «Sivri Burun» — «с острым носком»,
+  «İnce Topuklu» — «на тонком каблуке», «Diz Üstü» — «ботфорты», «Kovboy Çizme» — «казаки».
+  У других типов эти слова значат другое («Cilt Bakım» — уход за кожей лица). Описание,
+  повторяющее слово типа, в название не идёт: «туфли на каблуке … на низком каблуке».
 - **Бренд + тип** (`BRAND_KINDS`): UGG + «Bot» — «угги» (так их ищут); «Ceket» у спортивных
   брендов (`SPORT_JACKET_BRANDS`) — «куртка», у LC Waikiki, Zara, Hugo — «пиджак». Слово
   модели уточняет куртку (`MODEL_WORD_KINDS`): Windrunner — ветровка, Firebird/SST — олимпийка.
@@ -92,8 +97,8 @@ manage.py polish_product_memory --restore /backups/pdmem-before-….json   # в�
 не меняется. Обычно — исходное название транслитом + `external_id`
 (`adidas-samba-og-unisex-beyaz-spor-ayakkab-superstep-B75806`).
 
-У источников из `RU_TITLE_SLUG_SOURCES` (сейчас `superstep`; решение владельца 05.11.2026 —
-«русский транслитом») — русское название
+У источников из `RU_TITLE_SLUG_SOURCES` (`superstep`, решение владельца 05.11.2026 —
+«русский транслитом»; `seniorah` — с 07.11.2026) — русское название
 по правилам выше без цвета, транслитом, и код модели без имени источника:
 `krossovki-uniseks-adidas-samba-og-b75806`, `zhenskie-uggi-ugg-classic-ultra-mini-1116109`.
 Транслит как в адресах Яндекса (`ru_slugify`: я — ya, й — y, х — kh): `muzhskaya-fliska`,

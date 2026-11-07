@@ -829,6 +829,7 @@ SHOE_SUBCATEGORIES = [
             ("Броги", "Brogues", "brogues", "Броги", "Brogues"),
             ("Монки", "Monk Strap", "monk-strap", "Монки", "Monk strap shoes"),
             ("Лоферы", "Loafers", "loafers", "Лоферы", "Loafers"),
+            ("Туфли на каблуке", "Heels", "heels", "Женские туфли на каблуке: шпильки, лодочки, на толстом каблуке", "Women's heels: stilettos, pumps, block heels"),
         ],
     ),
     (
@@ -842,6 +843,7 @@ SHOE_SUBCATEGORIES = [
             ("Топсайдеры", "Boat Shoes", "boat-shoes", "Топсайдеры", "Boat shoes"),
             ("Слипоны", "Slip-ons", "slip-ons", "Слипоны", "Slip-ons"),
             ("Эспадрильи", "Espadrilles", "espadrilles", "Эспадрильи", "Espadrilles"),
+            ("Балетки", "Ballet Flats", "ballet-flats", "Балетки женские: лаковые, замшевые, Мэри Джейн", "Women's ballet flats: patent, suede, Mary Jane"),
         ],
     ),
     (

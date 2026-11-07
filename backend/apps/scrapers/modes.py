@@ -71,6 +71,16 @@ PARSER_MODES = {
             "их число в «Причине остановки» чанка."
         ),
     },
+    "seniorah": {
+        "label": "Seniorah",
+        "product": "https://seniorah.com/products/<название>",
+        "category": "https://seniorah.com/collections/topuklu-ayakkabi",
+        "site": "разделы сайта /collections.json (8 разделов, ~255 товаров — несколько минут)",
+        "note": (
+            "Shopify, без прокси. Женская обувь одной марки: в настройках «Бренд по умолчанию» — "
+            "Seniorah. Раздел у нас — по виду обуви в названии; нового вида — в «Причине остановки»."
+        ),
+    },
     "ikea": {
         "label": "IKEA",
         "product": "https://www.ikea.com.tr/urun/<название>-80541594",

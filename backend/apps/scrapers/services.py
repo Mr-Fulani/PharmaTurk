@@ -1878,13 +1878,14 @@ class ScraperIntegrationService:
                 scraped_product._category_override = flo_category
                 return
 
-        # SuperStep раскладывает товар сам — по подгруппе источника. Корень в
-        # задаче или категория по умолчанию её не перебивают, явно выбранная
-        # подкатегория — да. Нет точного раздела в каталоге — ближайший родитель;
-        # нет ни одного — товар не загружается (не в раздел задачи «наугад»).
-        if source == "superstep" and (category is None or category.parent_id is None):
+        # SuperStep и Seniorah раскладывают товар сами — по подгруппе источника
+        # или виду обуви в названии. Корень в задаче или категория по умолчанию
+        # их не перебивают, явно выбранная подкатегория — да. Нет точного раздела
+        # в каталоге — ближайший родитель; нет ни одного — товар не загружается
+        # (не в раздел задачи «наугад»).
+        if source in ("superstep", "seniorah") and (category is None or category.parent_id is None):
             attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
-            route = [str(slug) for slug in attrs.get("superstep_category_slugs") or []]
+            route = [str(slug) for slug in attrs.get(f"{source}_category_slugs") or []]
             found = {c.slug: c for c in Category.objects.filter(slug__in=route, is_active=True)}
             slug = next((slug for slug in route if slug in found), None)
             if slug:
@@ -1893,7 +1894,8 @@ class ScraperIntegrationService:
             else:
                 scraped_product._unrouted_reason = (
                     f"нет активного раздела каталога для подгруппы "
-                    f"«{attrs.get('superstep_subgroup') or '—'}» ({', '.join(route) or 'маршрут пуст'})"
+                    f"«{attrs.get('superstep_subgroup') or scraped_product.name or '—'}» "
+                    f"({', '.join(route) or 'маршрут пуст'})"
                 )
             return
 

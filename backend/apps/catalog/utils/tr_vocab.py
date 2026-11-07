@@ -56,6 +56,9 @@ TR_COLOR_DICTIONARY: dict[str, dict[str, str]] = {
     "taba": {"ru": "Табачный", "en": "Tan"},
     "kum": {"ru": "Песочный", "en": "Sand"},
     "vizon": {"ru": "Норковый", "en": "Mink"},
+    # Seniorah (07.11.2026): «Sakkara Fuşya …», «İrene Siyah-Platin …»
+    "fusya": {"ru": "Фуксия", "en": "Fuchsia"},
+    "platin": {"ru": "Платиновый", "en": "Platinum"},
     "acik mavi": {"ru": "Голубой", "en": "Light blue"},
     "indigo": {"ru": "Индиго", "en": "Indigo"},
     "acik indigo": {"ru": "Светлый индиго", "en": "Light indigo"},

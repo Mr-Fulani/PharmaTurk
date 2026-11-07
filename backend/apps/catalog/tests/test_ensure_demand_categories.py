@@ -25,13 +25,15 @@ def tree(db):
     _category("slides", "Слайды", sandals, meta_title="Слайды | Сандалии | Mudaroba", meta_description="Ручное описание")
     flip_flops = _category("flip-flops", "Шлёпанцы", sandals)
     CategoryTranslation.objects.filter(category=flip_flops).update(h1="Шлёпанцы из Турции", seo_text="Шлёпанцы для пляжа.")
+    _category("dress-shoes", "Туфли", sandals.parent)
+    _category("casual-shoes", "Повседневная обувь", sandals.parent)
     return bags
 
 
 def test_dry_run_changes_nothing(tree):
     call_command("ensure_demand_categories")
 
-    assert not Category.objects.filter(slug__in=["fleece", "backpacks", "thermoses"]).exists()
+    assert not Category.objects.filter(slug__in=["fleece", "backpacks", "thermoses", "heels", "ballet-flats"]).exists()
     assert Category.objects.get(slug="slides").name == "Слайды"
 
 
@@ -49,6 +51,10 @@ def test_apply_creates_and_renames_with_backup(tree, tmp_path):
     assert set(backpacks.translations.values_list("locale", "name")) == {("ru", "Рюкзаки"), ("en", "Backpacks")}
     assert Category.objects.get(slug="thermoses").parent.slug == "drinkware"
     assert Category.objects.get(slug="fleece").parent.slug == "knitwear"
+    heels = Category.objects.get(slug="heels")
+    assert (heels.parent.slug, heels.name) == ("dress-shoes", "Туфли на каблуке")
+    assert heels.translations.get(locale="en").name == "Heels"
+    assert Category.objects.get(slug="ballet-flats").parent.slug == "casual-shoes"
 
     slides = Category.objects.get(slug="slides")
     assert slides.name == "Шлёпанцы"
@@ -66,7 +72,7 @@ def test_apply_creates_and_renames_with_backup(tree, tmp_path):
     assert Category.objects.get(slug="hoodies").name == "Толстовки и худи"
 
     saved = json.loads(backup.read_text(encoding="utf-8"))
-    assert sorted(saved["created"]) == ["backpacks", "fleece", "thermoses"]
+    assert sorted(saved["created"]) == ["backpacks", "ballet-flats", "fleece", "heels", "thermoses"]
     assert {row["slug"]: row["description"] for row in saved["renamed"]}["slides"] == "Слайды"
     assert {row["slug"]: row["name"] for row in saved["renamed"]} == {
         "flip-flops": "Шлёпанцы",
