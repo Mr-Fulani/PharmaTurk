@@ -639,7 +639,7 @@ def _gummy_wording(text: str, locale: str, words: Optional[dict] = None) -> str:
 
 # Сноски источника «Sığır Jelatini*», «* Kafein içerir» без текста сноски — висящие звёздочки; «Cla» — CLA
 # (NUTRAXIN 7455, 7423, пилот 3 на проде).
-_ACRONYMS_RE = re.compile(r"\b(cla|epa|dha|msm|gaba|hmb|pqq|nadh)\b", re.IGNORECASE)
+_ACRONYMS_RE = re.compile(r"\b(cla|epa|dha|msm|gaba|hmb|pqq|nadh|zma)\b", re.IGNORECASE)
 
 
 def _block_wording(value: str, locale: str = "ru") -> str:
@@ -693,8 +693,11 @@ def has_usage_paragraph(texts: Any) -> bool:
     Блок usage мог быть убран как повтор предупреждения (``memory_block_texts``), поэтому смотрится
     готовый абзац, а не блоки (ревью #333)."""
     title = supplement_memory.BLOCK_TITLES["usage"][0]
-    paragraphs = texts if isinstance(texts, (list, tuple)) else re.split(r"<p>", str(texts or ""))
-    return any(str(text).lstrip().startswith(f"{title}:") for text in paragraphs)
+    # Абзац из админки может прийти с атрибутами и выделением: «<p class="…"><strong>Способ применения:</strong> …».
+    paragraphs = texts if isinstance(texts, (list, tuple)) else re.split(r"<p\b[^>]*>", str(texts or ""))
+    return any(
+        html.unescape(re.sub(r"<[^>]+>", "", str(text))).lstrip().startswith(f"{title}:") for text in paragraphs
+    )
 
 
 def build_description(

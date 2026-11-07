@@ -2,37 +2,39 @@
 
     manage.py rebuild_supplement_seo --ids 3958,537            # показать было/стало
     manage.py rebuild_supplement_seo --all --show 20           # все БАДы, только показ
-    manage.py rebuild_supplement_seo --all --apply --backup /tmp/supp-seo-before.json
-    manage.py rebuild_supplement_seo --restore /tmp/supp-seo-before.json
+    manage.py rebuild_supplement_seo --all --apply --backup /tmp/supp-seo-before.jsonl
+    manage.py rebuild_supplement_seo --restore /tmp/supp-seo-before.jsonl
 
-Меняются только SEO title / description / keywords (RU и EN); название (H1) не меняется.
-Поле, изменённое вручную после обработки, остаётся (apps/ai/services/supplement_seo_refresh.py).
+Меняются только SEO title / description / keywords (RU и EN); название (H1) не меняется. Пачки по 200,
+бэкап — только SEO-поля и SEO лога (apps/ai/services/supplement_seo_refresh.py). Перед --restore текущие
+значения тех же строк сохраняются в <файл>.before-restore.jsonl.
 """
 
 import json
-from collections import Counter
 
-from django.core import serializers
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.ai.services.supplement_seo_refresh import SEO_FIELDS, apply_seo, plan_seo
+from apps.ai.services.supplement_seo_refresh import restore_backup, run
 from apps.catalog.models import Product
 
 
 class Command(BaseCommand):
-    help = "SEO БАДов — заново кодом из AI-логов (без модели), с бэкапом строк."
+    help = "SEO БАДов — заново кодом из AI-логов (без модели), с бэкапом SEO-полей."
 
     def add_arguments(self, parser):
         parser.add_argument("--ids", help="id товаров через запятую")
         parser.add_argument("--all", action="store_true", help="Все БАДы")
         parser.add_argument("--apply", action="store_true", help="Записать (без него — только показать)")
-        parser.add_argument("--backup", help="Файл бэкапа строк перед записью (обязателен с --apply)")
-        parser.add_argument("--restore", help="Вернуть строки из файла бэкапа")
+        parser.add_argument("--backup", help="Файл бэкапа SEO-полей (jsonl), обязателен с --apply")
+        parser.add_argument("--restore", help="Вернуть SEO-поля из файла бэкапа")
         parser.add_argument("--show", type=int, default=10, help="Сколько примеров показать")
 
     def handle(self, *args, **options):
         if options["restore"]:
-            return self._restore(options["restore"])
+            snapshot = f"{options['restore']}.before-restore.jsonl"
+            restored = restore_backup(options["restore"], snapshot)
+            self.stdout.write(f"Возвращено строк: {restored} из {options['restore']}; что было до возврата — {snapshot}.")
+            return
         if options["apply"] and not options["backup"]:
             raise CommandError("--apply требует --backup <файл>")
         if bool(options["ids"]) == bool(options["all"]):
@@ -40,47 +42,21 @@ class Command(BaseCommand):
         products = Product.objects.filter(product_type="supplements").order_by("id")
         if options["ids"]:
             products = products.filter(id__in=[int(x) for x in options["ids"].split(",") if x.strip()])
-        stats, plans = Counter(), []
-        for product in products.iterator(chunk_size=200):
-            stats["товаров"] += 1
-            changes, new, skipped = plan_seo(product)
-            if skipped:
-                stats[f"пропущено: {skipped}"] += 1
-                continue
-            if not changes:
-                stats["уже как в коде или правлено вручную"] += 1
-                continue
-            stats["к изменению"] += 1
-            stats["полей"] += len(changes)
-            plans.append((product, changes, new))
-        for product, changes, _new in plans[: options["show"]]:
-            self.stdout.write(f"\n{product.id} {product.slug}")
-            for change in changes:
-                if change.field in ("meta_title", "meta_description") and change.locale == "ru":
-                    self.stdout.write(f"  {change.label}: {change.old!r}\n    → {change.new!r}")
+        ids = list(products.values_list("id", flat=True))
+        if options["apply"]:
+            with open(options["backup"], "w") as backup:
+                stats, examples = run(ids, apply=True, backup=backup, show=options["show"])
+        else:
+            stats, examples = run(ids, show=options["show"])
+        for plan in examples:
+            self.stdout.write(f"\n{plan.product_id}")
+            for change in plan.changes:
+                if change.locale == "ru":
+                    self.stdout.write(f"  {change.label}[ru].meta_title: {change.old['meta_title']!r}\n    → {change.new['meta_title']!r}")
+                    self.stdout.write(f"  {change.label}[ru].meta_description: → {change.new['meta_description']!r}")
+                    break
         self.stdout.write("\n" + json.dumps(dict(stats), ensure_ascii=False))
         if not options["apply"]:
             self.stdout.write("Только показ: для записи — --apply --backup <файл>.")
-            return
-        objects = {id(change.obj): change.obj for _p, changes, _n in plans for change in changes}
-        with open(options["backup"], "w") as handle:
-            handle.write(serializers.serialize("json", list(objects.values())))
-        for _product, changes, new in plans:
-            apply_seo(changes, new)
-        self.stdout.write(f"Записано товаров: {len(plans)}, бэкап строк: {options['backup']} ({len(objects)} строк).")
-
-    def _restore(self, path):
-        with open(path) as handle:
-            rows = list(serializers.deserialize("json", handle.read()))
-        # Только SEO-поля: описание, записанное после бэкапа, остаётся. Обычный save(), а не
-        # DeserializedObject.save(): у домена он синхронизирует Product.
-        restored = 0
-        for row in rows:
-            current = type(row.object).objects.filter(pk=row.object.pk).first()
-            if current is None:
-                continue
-            for field in SEO_FIELDS:
-                setattr(current, field, getattr(row.object, field))
-            current.save(update_fields=list(SEO_FIELDS))
-            restored += 1
-        self.stdout.write(f"Возвращено строк: {restored} из {len(rows)} ({path}).")
+        else:
+            self.stdout.write(f"Бэкап SEO-полей: {options['backup']}.")

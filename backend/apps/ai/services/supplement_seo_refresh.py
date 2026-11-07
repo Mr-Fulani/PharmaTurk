@@ -5,60 +5,59 @@ SEO БАДа (title, description, keywords) собирает ``supplement_conten
 (``raw_llm_response.rule_content.supplement``), поэтому новый шаблон можно применить ко всем БАДам
 без запросов к модели. Название (H1, ``name``) не меняется.
 
-- Входные данные — лог, по которому собрано название на сайте: круг описаний БАДов возвращает
-  прежние название и SEO, и последний лог может описывать другое название.
-- Перезаписывается только то, что записала какая-либо обработка товара (или пусто): поле,
-  изменённое вручную, остаётся.
-- «Инструкция на русском» — по текущему описанию на сайте: если модератор убрал абзац «Способ
-  применения», SEO его не обещает.
+- Входные данные — лог, по которому собрано название на сайте (круг описаний БАДов возвращает
+  прежние название и SEO). Если название из частей лога не собирается в текущее (модератор поправил
+  название в логе или на карточке), товар пропускается: части лога — исходный ответ модели.
+- Объект (домен, перевод) перезаписывается, только если все его SEO-поля пусты, уже как в коде или
+  записаны какой-либо обработкой товара; хоть одно поле правлено вручную — объект остаётся целиком.
+- «Инструкция на русском» — по текущему описанию на сайте.
+- Работа идёт пачками: каждая пачка читается и пишется в одной транзакции под блокировкой строк,
+  пишутся только SEO-поля через ``update()`` — без ``save()`` и синхронизации домена с ``Product``,
+  чтобы не откатить цену, остаток и описание, записанные парсером тем временем.
+- Бэкап — только SEO-поля строк и SEO лога (jsonl), возврат — ``restore_backup``.
 
-Где лежит SEO БАДа: ``SupplementProduct`` (SEO — EN, как пишет применение лога; ``Product``
-получает его синхронизацией при сохранении), переводы ``SupplementProductTranslation`` и
-``ProductTranslation`` (ru и en — своё SEO).
+Где лежит SEO БАДа: ``SupplementProduct`` (EN, как пишет применение лога) и его копия в ``Product``
+(как делает синхронизация домена), переводы ``SupplementProductTranslation`` и ``ProductTranslation``.
 """
 
 from __future__ import annotations
 
+import json
 import re
-from types import SimpleNamespace
-from typing import Any, Optional
+from collections import Counter
+from dataclasses import dataclass, field
+from typing import Iterable, Optional, TextIO
 
+from django.apps import apps
 from django.db import transaction
+from django.db.models.fields.json import KeyTransform
 from django.utils import timezone
 
 from apps.ai.services import supplement_content
-from apps.ai.services.medicine_refresh import Change, _keywords_text
+from apps.ai.services.medicine_refresh import _keywords_text
 
+BATCH_SIZE = 200
 SEO_FIELDS = ("meta_title", "og_title", "meta_description", "og_description", "meta_keywords")
+PRODUCT_SEO_FIELDS = (
+    "seo_title", "seo_description", "keywords", "meta_title", "meta_description", "meta_keywords", "og_title",
+    "og_description",
+)
+LOG_LABEL = "ai.aiprocessinglog"
+DOMAIN_LABEL = "catalog.supplementproduct"
+PRODUCT_LABEL = "catalog.product"
+_REBUILT_KEY = "supplement_seo_rebuilt_at"
+# Чем применение лога заполняет поле, если в seo_translations его нет (ContentGenerator.apply_log_to_product).
+_COUNTERPART = {"og_title": "meta_title", "og_description": "meta_description"}
+_GENERATED = {
+    "meta_title": "generated_seo_title", "og_title": "generated_seo_title",
+    "meta_description": "generated_seo_description", "og_description": "generated_seo_description",
+    "meta_keywords": "generated_keywords",
+}
 _LINE_NUMBER_RE = re.compile(r"\d[\d/.,]*\+?")
 
 
-def _supplement_data(log) -> dict:
-    rule = (log.raw_llm_response or {}).get("rule_content") if isinstance(log.raw_llm_response, dict) else None
-    data = (rule or {}).get("supplement") if isinstance(rule, dict) else None
-    return data if isinstance(data, dict) else {}
-
-
-def _logged_name(log, locale: str) -> str:
-    seo = ((log.extracted_attributes or {}).get("seo_translations") or {}).get(locale) or {}
-    return str(seo.get("generated_title") or (log.generated_title if locale == "ru" else "") or "").strip()
-
-
-def _logged_seo(log, locale: str) -> dict[str, str]:
-    seo = ((log.extracted_attributes or {}).get("seo_translations") or {}).get(locale) or {}
-    values = {field: str(seo.get(field) or "").strip() for field in SEO_FIELDS}
-    values["meta_keywords"] = _keywords_text(seo.get("meta_keywords"))
-    return values
-
-
-def supplement_logs(product_id: int) -> list:
-    from apps.ai.models import AIProcessingLog
-
-    return list(
-        AIProcessingLog.objects.filter(product_id=product_id)
-        .only("id", "raw_llm_response", "extracted_attributes", "generated_title", "generated_seo_title")
-        .order_by("-id")
-    )
+def _model(label: str):
+    return apps.get_model(label)
 
 
 def title_brand(brand: str, name: str, product_ru: str) -> str:
@@ -73,53 +72,132 @@ def title_brand(brand: str, name: str, product_ru: str) -> str:
     return brand
 
 
-def _targets(product) -> list[tuple[Any, str]]:
-    """(объект, локаль SEO)."""
-    from apps.catalog.models import ProductTranslation
-
-    domain = getattr(product, "domain_item", None)
-    if domain is None or domain is product:
-        return []
-    targets = [(domain, "en")]
-    targets += [(t, t.locale) for t in domain.translations.filter(locale__in=("ru", "en"))]
-    targets += [(t, t.locale) for t in ProductTranslation.objects.filter(product=product, locale__in=("ru", "en"))]
-    return targets
+# ── Чтение пачки ─────────────────────────────────────────────────────────────
 
 
-def _current_ru(product) -> tuple[str, str]:
-    """Название и описание RU на сайте: перевод домена → домен → товар."""
-    domain = getattr(product, "domain_item", None)
-    translation = domain.translations.filter(locale="ru").first() if domain is not None else None
-    name = (getattr(translation, "name", "") or getattr(domain, "name", "") or product.name or "").strip()
-    description = (
-        getattr(translation, "description", "") or getattr(domain, "description", "") or product.description or ""
+@dataclass
+class _Batch:
+    names: dict[int, tuple[str, str]] = field(default_factory=dict)  # product_id → (H1, описание RU)
+    targets: dict[int, list[tuple[str, int, str, dict]]] = field(default_factory=dict)  # (модель, pk, локаль, SEO)
+    domains: dict[int, int] = field(default_factory=dict)  # product_id → pk домена
+    logs: dict[int, list[dict]] = field(default_factory=dict)
+
+
+def _load(product_ids: list[int], lock: bool) -> _Batch:
+    Product = _model(PRODUCT_LABEL)
+    Domain = _model(DOMAIN_LABEL)
+    DomainTr = _model("catalog.supplementproducttranslation")
+    ProductTr = _model("catalog.producttranslation")
+    Log = _model(LOG_LABEL)
+
+    def query(model, **filters):
+        qs = model.objects.filter(**filters)
+        return qs.select_for_update() if lock else qs
+
+    batch = _Batch()
+    products = {row["id"]: row for row in query(Product, id__in=product_ids).values("id", "name", "description")}
+    domains = list(query(Domain, base_product_id__in=product_ids).values("id", "base_product_id", "name", "description", *SEO_FIELDS))
+    domain_by_pk = {row["id"]: row for row in domains}
+    domain_tr = list(
+        query(DomainTr, product_id__in=list(domain_by_pk), locale__in=("ru", "en"))
+        .values("id", "product_id", "locale", "name", "description", *SEO_FIELDS)
     )
-    return name, description
+    product_tr = list(
+        query(ProductTr, product_id__in=product_ids, locale__in=("ru", "en")).values("id", "product_id", "locale", *SEO_FIELDS)
+    )
+    ru_tr = {row["product_id"]: row for row in domain_tr if row["locale"] == "ru"}
+    for row in domains:
+        pid = row["base_product_id"]
+        batch.domains[pid] = row["id"]
+        tr = ru_tr.get(row["id"]) or {}
+        product = products.get(pid) or {}
+        batch.names[pid] = (
+            (tr.get("name") or row["name"] or product.get("name") or "").strip(),
+            tr.get("description") or row["description"] or product.get("description") or "",
+        )
+        batch.targets[pid] = [(DOMAIN_LABEL, row["id"], "en", {f: row[f] for f in SEO_FIELDS})]
+    for row in domain_tr:
+        pid = domain_by_pk[row["product_id"]]["base_product_id"]
+        batch.targets[pid].append(("catalog.supplementproducttranslation", row["id"], row["locale"], {f: row[f] for f in SEO_FIELDS}))
+    for row in product_tr:
+        if row["product_id"] in batch.targets:
+            batch.targets[row["product_id"]].append(("catalog.producttranslation", row["id"], row["locale"], {f: row[f] for f in SEO_FIELDS}))
+    # Из лога — только части названия и SEO, без raw_llm_response целиком.
+    log_rows = (
+        Log.objects.filter(product_id__in=list(batch.domains))
+        .annotate(
+            supplement=KeyTransform("supplement", KeyTransform("rule_content", "raw_llm_response")),
+            seo=KeyTransform("seo_translations", "extracted_attributes"),
+        )
+        .values(
+            "id", "product_id", "generated_title", "generated_seo_title", "generated_seo_description",
+            "generated_keywords", "supplement", "seo",
+        )
+        .order_by("-id")
+    )
+    for row in log_rows:
+        row["supplement"] = row["supplement"] if isinstance(row["supplement"], dict) else {}
+        row["seo"] = row["seo"] if isinstance(row["seo"], dict) else {}
+        batch.logs.setdefault(row["product_id"], []).append(row)
+    return batch
 
 
-def plan_seo(product, logs: Optional[list] = None) -> tuple[list[Change], Optional[dict], str]:
-    """(изменения, новые значения {"ru": …, "en": …}, причина пропуска или "")."""
-    logs = supplement_logs(product.id) if logs is None else logs
-    name, description = _current_ru(product)
-    source_log = next((log for log in logs if _supplement_data(log) and _logged_name(log, "ru") == name), None)
-    if source_log is None:
-        reason = "нет лога кода БАДа" if not any(_supplement_data(log) for log in logs) else "название не из лога"
-        return [], None, reason
-    data = _supplement_data(source_log)
+# ── План ─────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class ObjectChange:
+    label: str
+    pk: int
+    locale: str
+    old: dict[str, str]
+    new: dict[str, str]
+
+
+@dataclass
+class ProductPlan:
+    product_id: int
+    reason: str = ""
+    log_id: Optional[int] = None
+    new: dict = field(default_factory=dict)
+    changes: list[ObjectChange] = field(default_factory=list)
+    kept_manual: int = 0
+
+
+def _logged_name(log: dict) -> str:
+    seo_ru = log["seo"].get("ru") if isinstance(log["seo"].get("ru"), dict) else {}
+    return str(seo_ru.get("generated_title") or log["generated_title"] or "").strip()
+
+
+def _candidates(logs: list[dict], locale: str, name: str) -> set[str]:
+    """Что могла записать в поле какая-либо обработка товара."""
+    values = set()
+    for log in logs:
+        seo = log["seo"].get(locale) if isinstance(log["seo"].get(locale), dict) else {}
+        for key in (name, _COUNTERPART.get(name)):
+            if key:
+                values.add(_keywords_text(seo.get(key)) if key == "meta_keywords" else str(seo.get(key) or "").strip())
+        values.add(_keywords_text(log[_GENERATED[name]]) if name == "meta_keywords" else str(log[_GENERATED[name]] or "").strip())
+    values.discard("")
+    return values
+
+
+def _new_values(data: dict, name: str, description: str) -> Optional[dict]:
     product_text = data.get("product") if isinstance(data.get("product"), dict) else {}
     if not product_text.get("ru"):
-        return [], None, "в логе нет «что это»"
-    pack_data = data.get("pack") if isinstance(data.get("pack"), dict) else None
-    pack = SimpleNamespace(ru=pack_data.get("ru", ""), en=pack_data.get("en", "")) if pack_data else None
+        return None
+    pack_data = data.get("pack") if isinstance(data.get("pack"), dict) else {}
+    pack_ru, pack_en = str(pack_data.get("ru") or ""), str(pack_data.get("en") or "")
+    brand = title_brand(str(data.get("brand") or ""), name, product_text["ru"])
+    # Части лога — исходный ответ модели; правку названия модератором они не знают (ревью #333).
+    if supplement_content.assemble_title(brand, product_text["ru"], pack_ru, "ru") != name:
+        return {}
+    pack = type("Pack", (), {"ru": pack_ru, "en": pack_en})() if pack_ru or pack_en else None
     seo = supplement_content.build_seo(
-        title_brand(str(data.get("brand") or ""), name, product_text["ru"]),
-        str(data.get("brand_ru") or ""),
-        product_text,
-        pack,
-        baby_food=bool(data.get("baby_food")),
-        usage=supplement_content.has_usage_paragraph(description),
+        brand, str(data.get("brand_ru") or ""), product_text, pack,
+        baby_food=bool(data.get("baby_food")), usage=supplement_content.has_usage_paragraph(description),
     )
-    new = {
+    return {
         locale: {
             "meta_title": seo[locale]["seo_title"],
             "og_title": seo[locale]["seo_title"],
@@ -129,39 +207,174 @@ def plan_seo(product, logs: Optional[list] = None) -> tuple[list[Change], Option
         }
         for locale in ("ru", "en")
     }
-    # Что записывала любая обработка товара: после круга описаний на сайте SEO прошлого лога.
-    logged = {locale: [_logged_seo(log, locale) for log in logs] for locale in ("ru", "en")}
-    changes = []
-    for obj, locale in _targets(product):
-        for field in SEO_FIELDS:
-            current = str(getattr(obj, field, "") or "").strip()
-            value = new[locale][field]
-            if current == value:
-                continue
-            if current == "" or any(current == values[field] for values in logged[locale]):
-                changes.append(Change(obj, field, current, value, locale))
-    return changes, {"log": source_log, **new}, ""
 
 
-def apply_seo(changes: list[Change], new: dict) -> None:
-    """Записать и отметить в логе: следующая пересборка сверяет поля уже с новыми значениями."""
-    if not changes:
-        return
-    log = new["log"]
-    with transaction.atomic():
-        by_obj: dict[int, tuple[Any, set]] = {}
-        for change in changes:
-            setattr(change.obj, change.field, change.new)
-            by_obj.setdefault(id(change.obj), (change.obj, set()))[1].add(change.field)
-        # Переводы — до домена: сохранение домена синхронизирует Product.
-        for obj, fields in sorted(by_obj.values(), key=lambda item: hasattr(item[0], "translations")):
-            obj.save(update_fields=sorted(fields))
-        attrs = dict(log.extracted_attributes or {})
-        seo = dict(attrs.get("seo_translations") or {})
-        for locale in ("ru", "en"):
-            seo[locale] = {**dict(seo.get(locale) or {}), **new[locale]}
-        attrs["seo_translations"] = seo
-        attrs["supplement_seo_rebuilt_at"] = timezone.now().isoformat()
-        log.extracted_attributes = attrs
-        log.generated_seo_title = new["ru"]["meta_title"][:70]
-        log.save(update_fields=["extracted_attributes", "generated_seo_title"])
+def _plan(product_id: int, batch: _Batch) -> ProductPlan:
+    plan = ProductPlan(product_id)
+    if product_id not in batch.domains:
+        plan.reason = "нет доменной записи БАДа"
+        return plan
+    name, description = batch.names[product_id]
+    logs = batch.logs.get(product_id, [])
+    source = next((log for log in logs if log["supplement"] and _logged_name(log) == name), None)
+    if source is None:
+        plan.reason = "название не из лога" if any(log["supplement"] for log in logs) else "нет лога кода БАДа"
+        return plan
+    new = _new_values(source["supplement"], name, description)
+    if new is None:
+        plan.reason = "в логе нет «что это»"
+        return plan
+    if not new:
+        plan.reason = "название правлено"
+        return plan
+    plan.log_id, plan.new = source["id"], new
+    for label, pk, locale, current in batch.targets[product_id]:
+        target = new[locale]
+        old = {f: str(current[f] or "").strip() for f in SEO_FIELDS}
+        if old == target:
+            continue
+        # Хоть одно поле правлено вручную — объект целиком остаётся (иначе og_title ≠ meta_title).
+        manual = [
+            f for f in SEO_FIELDS
+            if old[f] and old[f] != target[f] and old[f] not in _candidates(logs, locale, f)
+        ]
+        if manual:
+            plan.kept_manual += 1
+            continue
+        plan.changes.append(ObjectChange(label, pk, locale, old, target))
+    return plan
+
+
+# ── Запись и бэкап ───────────────────────────────────────────────────────────
+
+
+def _backup_rows(plan: ProductPlan, product_row: Optional[dict], log_row: dict) -> list[dict]:
+    rows = [{"model": change.label, "pk": change.pk, "fields": change.old} for change in plan.changes]
+    if product_row is not None:
+        rows.append({"model": PRODUCT_LABEL, "pk": product_row["id"], "fields": {f: product_row[f] for f in PRODUCT_SEO_FIELDS}})
+    attrs = log_row["extracted_attributes"] or {}
+    rows.append({
+        "model": LOG_LABEL, "pk": log_row["id"],
+        "fields": {
+            "seo_translations": attrs.get("seo_translations"),
+            "generated_seo_title": log_row["generated_seo_title"],
+            _REBUILT_KEY: attrs.get(_REBUILT_KEY),
+        },
+    })
+    return rows
+
+
+def _product_mirror(domain_seo: dict) -> dict:
+    """Копия SEO домена в Product — как ``_sync_to_base_product``."""
+    return {
+        "seo_title": domain_seo["meta_title"],
+        "seo_description": domain_seo["meta_description"],
+        "keywords": [k.strip() for k in (domain_seo["meta_keywords"] or "").split(",") if k.strip()],
+        "meta_title": domain_seo["meta_title"],
+        "meta_description": domain_seo["meta_description"],
+        "meta_keywords": domain_seo["meta_keywords"],
+        "og_title": domain_seo["og_title"],
+        "og_description": domain_seo["og_description"],
+    }
+
+
+def _write(plan: ProductPlan, backup: Optional[TextIO]) -> None:
+    Product = _model(PRODUCT_LABEL)
+    Log = _model(LOG_LABEL)
+    log_row = Log.objects.select_for_update().filter(pk=plan.log_id).values("id", "extracted_attributes", "generated_seo_title").first()
+    domain_change = next((c for c in plan.changes if c.label == DOMAIN_LABEL), None)
+    product_row = (
+        Product.objects.filter(pk=plan.product_id).values("id", *PRODUCT_SEO_FIELDS).first() if domain_change else None
+    )
+    if backup is not None:
+        for row in _backup_rows(plan, product_row, log_row):
+            backup.write(json.dumps(row, ensure_ascii=False) + "\n")
+    for change in plan.changes:
+        _model(change.label).objects.filter(pk=change.pk).update(**change.new)
+    if domain_change is not None:
+        Product.objects.filter(pk=plan.product_id).update(**_product_mirror(domain_change.new))
+    attrs = dict(log_row["extracted_attributes"] or {})
+    seo = dict(attrs.get("seo_translations") or {})
+    for locale in ("ru", "en"):
+        seo[locale] = {**dict(seo.get(locale) or {}), **plan.new[locale]}
+    attrs["seo_translations"] = seo
+    attrs[_REBUILT_KEY] = timezone.now().isoformat()
+    Log.objects.filter(pk=plan.log_id).update(extracted_attributes=attrs, generated_seo_title=plan.new["ru"]["meta_title"][:70])
+
+
+def run(
+    product_ids: Iterable[int], *, apply: bool = False, backup: Optional[TextIO] = None, show: int = 10,
+    stats: Optional[Counter] = None,
+) -> tuple[Counter, list[ProductPlan]]:
+    """План (и запись при ``apply``) пачками по ``BATCH_SIZE``; возвращает счётчики и до ``show`` примеров."""
+    if apply and backup is None:
+        raise ValueError("запись только с бэкапом")
+    stats = Counter() if stats is None else stats
+    examples: list[ProductPlan] = []
+    ids = list(product_ids)
+    for start in range(0, len(ids), BATCH_SIZE):
+        chunk = ids[start:start + BATCH_SIZE]
+        with transaction.atomic():
+            batch = _load(chunk, lock=apply)
+            for product_id in chunk:
+                plan = _plan(product_id, batch)
+                stats["товаров"] += 1
+                if plan.reason:
+                    stats[f"пропущено: {plan.reason}"] += 1
+                    continue
+                if plan.kept_manual:
+                    stats["объектов правлено вручную (оставлены)"] += plan.kept_manual
+                if not plan.changes:
+                    stats["уже как в коде"] += 1
+                    continue
+                stats["к изменению"] += 1
+                stats["объектов"] += len(plan.changes)
+                if len(examples) < show:
+                    examples.append(plan)
+                if apply:
+                    _write(plan, backup)
+                    stats["записано"] += 1
+    return stats, examples
+
+
+def restore_backup(path: str, snapshot_path: str) -> int:
+    """Вернуть строки из бэкапа (только SEO-поля и SEO лога) пачками; текущие значения тех же строк —
+    сначала в ``snapshot_path``."""
+    with open(path) as handle:
+        rows = [json.loads(line) for line in handle if line.strip()]
+    restored = 0
+    with open(snapshot_path, "w") as snapshot:
+        for start in range(0, len(rows), BATCH_SIZE):
+            with transaction.atomic():
+                for row in rows[start:start + BATCH_SIZE]:
+                    model = _model(row["model"])
+                    if row["model"] == LOG_LABEL:
+                        current = model.objects.select_for_update().filter(pk=row["pk"]).values(
+                            "extracted_attributes", "generated_seo_title"
+                        ).first()
+                        if current is None:
+                            continue
+                        attrs = dict(current["extracted_attributes"] or {})
+                        snapshot.write(json.dumps({"model": LOG_LABEL, "pk": row["pk"], "fields": {
+                            "seo_translations": attrs.get("seo_translations"),
+                            "generated_seo_title": current["generated_seo_title"],
+                            _REBUILT_KEY: attrs.get(_REBUILT_KEY),
+                        }}, ensure_ascii=False) + "\n")
+                        fields = row["fields"]
+                        attrs["seo_translations"] = fields["seo_translations"]
+                        if fields.get(_REBUILT_KEY):
+                            attrs[_REBUILT_KEY] = fields[_REBUILT_KEY]
+                        else:
+                            attrs.pop(_REBUILT_KEY, None)
+                        model.objects.filter(pk=row["pk"]).update(
+                            extracted_attributes=attrs, generated_seo_title=fields["generated_seo_title"]
+                        )
+                    else:
+                        names = list(row["fields"])
+                        current = model.objects.select_for_update().filter(pk=row["pk"]).values(*names).first()
+                        if current is None:
+                            continue
+                        snapshot.write(json.dumps({"model": row["model"], "pk": row["pk"], "fields": current}, ensure_ascii=False) + "\n")
+                        model.objects.filter(pk=row["pk"]).update(**row["fields"])
+                    restored += 1
+    return restored
