@@ -13,7 +13,8 @@
 - название собирает код: «{бренд} {что это}, {фасовка}», бренд и фасовку модель
   потерять не может;
 - бренд кириллицей для SEO берётся из памяти переводов (namespace
-  ``supplement_brand``), новый — из ответа модели и запоминается;
+  ``supplement_brand``), новый — из ответа модели и запоминается; бренды из словаря спроса
+  ``supplement_brands`` пишутся в SEO так, как их ищут;
 - SEO title/description/keywords и «Состав»/«Порция» (переводы БАДа) — код;
 - из описания код убирает предложения с SGK, сроком годности, страной, обещаниями лечения и
   рассуждениями о данных, а в конце добавляет «не является лекарственным средством».
@@ -29,7 +30,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from apps.ai.models import AIProcessingLog
-from apps.ai.services import supplement_glossary, supplement_memory, translation_memory
+from apps.ai.services import supplement_brands, supplement_glossary, supplement_memory, translation_memory
 from apps.ai.services.medicine_reference import fold_tr, ru_plural, translate_reference_field
 from apps.ai.services.medicine_title import CYRILLIC_RE, looks_like_source_name
 from apps.ai.services.ownership import SOURCE_NAME_KEY
@@ -615,6 +616,16 @@ def memory_block_texts(
     return texts
 
 
+def has_usage_paragraph(texts: Any) -> bool:
+    """Есть ли на карточке абзац «Способ применения: …» — по абзацам памяти или по HTML описания.
+
+    Блок usage мог быть убран как повтор предупреждения (``memory_block_texts``), поэтому смотрится
+    готовый абзац, а не блоки (ревью #333)."""
+    title = supplement_memory.BLOCK_TITLES["usage"][0]
+    paragraphs = texts if isinstance(texts, (list, tuple)) else re.split(r"<p>", str(texts or ""))
+    return any(str(text).lstrip().startswith(f"{title}:") for text in paragraphs)
+
+
 def build_description(
     paragraphs: Any, locale: str, *, baby_food: bool = False, source_name: str = "", blocks: Optional[list[str]] = None,
     covered: tuple = (),
@@ -759,8 +770,14 @@ _SEO_TEXTS = {
         "buy": " — купить из Турции",
         "turkey": " из Турции",
         "info": "Описание и состав на русском.",
+        # «magnimore инструкция на русском», «ocean extramag инструкция на русском» — частые запросы
+        # к турецким БАДам (SEO-ядро 07.11.2026); только у карточек со «Способом применения».
+        "info_usage": "Инструкция на русском: состав и способ применения.",
+        "info_usage_baby": "Инструкция на русском: состав и способ приготовления.",
+        "info_usage_short": "Инструкция на русском.",
         "order": "Заявка менеджеру, доставка 7–14 дней.",
         "keyword_turkey": "{brand} из Турции",
+        "keyword_usage": "{brand} инструкция на русском",
         "keyword_buy": "{brand} купить",
         "supplement": "БАД",
         "baby": "детское питание",
@@ -769,8 +786,12 @@ _SEO_TEXTS = {
         "buy": " — buy from Turkey",
         "turkey": " from Turkey",
         "info": "Description and ingredients in English.",
+        "info_usage": "Directions in English: ingredients and how to take.",
+        "info_usage_baby": "Directions in English: ingredients and preparation.",
+        "info_usage_short": "Directions in English.",
         "order": "Send a request, delivery in 7–14 days.",
         "keyword_turkey": "{brand} Turkey",
+        "keyword_usage": "{brand} directions",
         "keyword_buy": "buy {brand}",
         "supplement": "food supplement",
         "baby": "baby food",
@@ -779,9 +800,14 @@ _SEO_TEXTS = {
 
 
 def build_seo(
-    brand: str, brand_ru: str, product: dict[str, str], pack: Optional[Pack], *, baby_food: bool = False
+    brand: str, brand_ru: str, product: dict[str, str], pack: Optional[Pack], *, baby_food: bool = False,
+    usage: bool = False,
 ) -> dict[str, dict[str, Any]]:
-    """SEO title (≤70), description (≤160) и keywords БАДа из частей названия."""
+    """SEO title (≤70), description (≤160) и keywords БАДа из частей названия.
+
+    Бренд — как его ищут (``supplement_brands``); ``usage`` — на карточке есть «Способ применения».
+    """
+    brand, brand_ru, brand_for_ru = supplement_brands.seo_brand(brand, brand_ru)
     result = {}
     for locale in ("ru", "en"):
         texts = dict(_SEO_TEXTS[locale])
@@ -791,7 +817,8 @@ def build_seo(
         pack_text = getattr(pack, locale, "") if pack else ""
         cyrillic = brand_ru if locale == "ru" and brand_ru and brand_ru.lower() != brand.lower() else ""
         short = core.split(", ")[0]
-        heads = [f"{cyrillic} ({brand})", brand] if cyrillic else [brand]
+        # В скобках — те же слова, что кириллицей: «Велавит (Velavit) Phytoglow» (ревью #333).
+        heads = [f"{cyrillic} ({brand_for_ru}){brand[len(brand_for_ru):]}", brand] if cyrillic else [brand]
         names = [assemble_title(head, core, "", locale) for head in heads]
         # Бренд кириллицей важнее полного состава, а «купить / из Турции» — важнее остального
         # состава: «Мега-Фарма (MEGA-FARMA) Бетаглюкан — купить из Турции».
@@ -805,6 +832,10 @@ def build_seo(
             for part in dict.fromkeys((short, first)):
                 part_name = assemble_title(head, part, "", locale)
                 candidates += [part_name + texts["buy"], part_name + texts["turkey"]]
+            # «Пищевая добавка» поиску ничего не даёт, а бренд кириллицей даёт: «Орзакс Оушен Экстрамаг
+            # (Orzax Ocean Extramag) — купить из Турции» (SEO-ядро 07.11.2026).
+            if is_generic(short, locale):
+                candidates += [head + texts["buy"], head + texts["turkey"]]
         candidates += names
         seo_title = next((c for c in candidates if len(c) <= SEO_TITLE_MAX), None) or _fit(names[-1], SEO_TITLE_MAX)
 
@@ -812,22 +843,33 @@ def build_seo(
         for name in names:
             leads += [f"{name}, {pack_text}{texts['turkey']}." if pack_text else f"{name}{texts['turkey']}.", f"{name}{texts['turkey']}."]
         lead = next((c for c in leads if len(c) <= SEO_DESCRIPTION_MAX), None) or _fit(leads[-1], SEO_DESCRIPTION_MAX - 1) + "."
-        description = lead
-        for sentence in (texts["info"], texts["order"]):
-            if len(description) + 1 + len(sentence) <= SEO_DESCRIPTION_MAX:
-                description = f"{description} {sentence}"
+        # «Заявка менеджеру…» не вытесняется: «инструкция» сокращается, а без места — прежний текст (ревью #333).
+        infos = (
+            [texts["info_usage_baby" if baby_food else "info_usage"], texts["info_usage_short"]] if usage else []
+        ) + [texts["info"]]
+        description = next(
+            (f"{lead} {info} {texts['order']}" for info in infos
+             if len(lead) + len(info) + len(texts["order"]) + 2 <= SEO_DESCRIPTION_MAX),
+            lead,
+        )
+        if description == lead:
+            for sentence in (texts["info"], texts["order"]):
+                if len(description) + 1 + len(sentence) <= SEO_DESCRIPTION_MAX:
+                    description = f"{description} {sentence}"
 
         # Ключевая фраза — до первой запятой: meta_keywords сам делится запятыми.
         core_keyword = short if locale == "en" else short[:1].lower() + short[1:]
         specific = bool(short) and not is_generic(short, locale)
         shown = cyrillic or brand
+        # «Солгар из Турции» не ищут, а «омега 3 турция», «коллаген турция» — ищут (SEO-ядро 07.11.2026).
         keywords = [
             brand,
             cyrillic,
             f"{shown} {core_keyword}" if specific else "",
             core_keyword if specific else "",
-            texts["keyword_turkey"].format(brand=shown),
+            texts["keyword_turkey"].format(brand=core_keyword if specific else shown),
             texts["keyword_buy"].format(brand=shown),
+            texts["keyword_usage"].format(brand=brand) if usage else "",
             f"{texts['supplement']} {core_keyword}" if specific else texts["supplement"],
         ]
         result[locale] = {
@@ -1309,7 +1351,9 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
         for locale in ("ru", "en")
     }
     serving = answer.get("serving") if isinstance(answer.get("serving"), dict) else {}
-    seo = build_seo(title_brand, brand_ru, product_text, pack, baby_food=baby_food)
+    seo = build_seo(
+        title_brand, brand_ru, product_text, pack, baby_food=baby_food, usage=has_usage_paragraph(memory_texts["ru"])
+    )
 
     content: dict[str, Any] = {}
     for locale in ("ru", "en"):
