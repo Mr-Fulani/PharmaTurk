@@ -83,6 +83,9 @@ SEO, переводы, AI-тексты и медиа не меняются. Те
 Всё выключено, пока не задано `NIGHTLY_STOCK_CHECK_ENABLED=true` в `.env` прода (после
 правки — пересоздать `celeryworker` и `celerybeat`).
 
+Сверять можно любой источник с `check_offer`. Seniorah (07.11.2026) готов, но в список не
+добавлен до пилота: включение — `seniorah` в `NIGHTLY_STOCK_CHECK_SOURCES` (прокси не нужен).
+
 ```dotenv
 NIGHTLY_STOCK_CHECK_ENABLED=true
 NIGHTLY_STOCK_CHECK_SOURCES=lcw,ikea,ummaland

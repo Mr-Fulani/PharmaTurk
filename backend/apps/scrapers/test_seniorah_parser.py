@@ -434,3 +434,143 @@ def test_product_without_catalog_section_is_not_loaded():
     assert results["skipped"] == 1 and results["created"] == 0
     log = ScrapedProductLog.objects.get(session=session)
     assert "Не разложено" in log.message and "heels" in log.message
+
+
+# --- проверка наличия и обновление карточки ------------------------------------
+
+
+def _offer_parser(routes):
+    """Парсер с подменённым HTTP: путь → (статус, тело) или адрес редиректа."""
+    import httpx
+
+    parser = SeniorahParser()
+    parser.requests = []
+
+    def handle(request):
+        parser.requests.append(unquote(request.url.path))
+        status, body = routes.get(unquote(request.url.path), (404, "<html>404</html>"))
+        if status in (301, 302):
+            return httpx.Response(status, headers={"Location": body}, request=request)
+        return httpx.Response(status, text=body, request=request)
+
+    parser.client.close()
+    parser.client = httpx.Client(transport=httpx.MockTransport(handle), follow_redirects=True)
+    return parser
+
+
+def _noda_card(**changes):
+    row = next(r for r in _catalog()["products"] if r["handle"].startswith("krem-cilt-lastik"))
+    row.update(changes)
+    return (200, json.dumps({"product": row}))
+
+
+NODA_CREAM = "/products/krem-cilt-lastik-detayli-kadin-topuklu-ayakkabi"
+
+
+def _offer_context(size="39", **overrides):
+    from apps.scrapers.base.offers import OfferCheckContext
+
+    payload = {
+        "canonical_url": SITE + NODA_CREAM,
+        "external_product_id": "seniorah-P-057-09-C",
+        "variant_key": "seniorah-variant-8857996296419",
+        "size_key": size,
+        "selected_options": {"color": "Krem", "size": size},
+    }
+    payload.update(overrides)
+    return OfferCheckContext(**payload)
+
+
+@pytest.mark.parametrize("size, in_stock", [("39", True), ("36", False)])
+def test_offer_check_reads_one_json_of_the_saved_color(size, in_stock):
+    from apps.scrapers.base.offers import OfferAvailability, OfferStockPrecision
+
+    parser = _offer_parser({NODA_CREAM + ".json": _noda_card()})
+
+    result = parser.check_offer(_offer_context(size))
+
+    assert parser.requests == [NODA_CREAM + ".json"]  # весь каталог не грузится
+    expected = OfferAvailability.IN_STOCK if in_stock else OfferAvailability.OUT_OF_STOCK
+    assert result.availability_status == expected
+    assert result.stock_precision == OfferStockPrecision.BOOLEAN and result.stock_quantity is None
+    assert str(result.source_price) == "1449.90" and result.source_currency == "TRY"
+
+
+def test_offer_check_removed_product_is_not_found():
+    from apps.scrapers.base.offers import OfferNotFound
+
+    with pytest.raises(OfferNotFound):
+        _offer_parser({}).check_offer(_offer_context())
+
+
+def test_offer_check_never_substitutes_another_product_after_redirect():
+    from apps.scrapers.base.offers import OfferNotFound
+
+    other = "/products/noda-krem-yeni"
+    parser = _offer_parser({
+        NODA_CREAM + ".json": (301, SITE + other + ".json"),
+        other + ".json": _noda_card(id=1),
+    })
+
+    with pytest.raises(OfferNotFound):
+        parser.check_offer(_offer_context())
+
+
+@pytest.mark.parametrize(
+    "routes, code",
+    [
+        ({NODA_CREAM + ".json": (200, "<html>Just a moment...</html>")}, "access_blocked"),
+        ({NODA_CREAM + ".json": (200, json.dumps({"product": {"title": "x"}}))}, "malformed_response"),
+        (
+            {NODA_CREAM + ".json": (302, SITE + "/collections/topuklu-ayakkabi"),
+             "/collections/topuklu-ayakkabi": (200, "{}")},
+            "transport_error",
+        ),
+    ],
+    ids=["html", "no-variants", "redirect-to-collection"],
+)
+def test_offer_check_does_not_turn_broken_response_into_out_of_stock(routes, code):
+    from apps.scrapers.base.offers import OfferVerificationError
+
+    with pytest.raises(OfferVerificationError) as error:
+        _offer_parser(routes).check_offer(_offer_context())
+
+    assert error.value.error.code.value == code
+
+
+def test_card_refresh_opens_only_the_saved_color():
+    parser = _parser()
+
+    product = parser.parse_product_detail(SITE + NODA_BLACK, include_sibling_variants=False)
+
+    assert parser.requests == [(NODA_BLACK + ".json", "")]
+    assert product.external_id == "seniorah-P-057-09-C"
+    assert list(_variants(product)) == ["Siyah"]
+
+
+# --- настройка в «Конфигурациях парсеров» --------------------------------------
+
+
+@pytest.mark.django_db
+def test_migration_creates_disabled_schedule_config_once():
+    import importlib
+
+    from django.apps import apps as django_apps
+
+    migration = importlib.import_module("apps.scrapers.migrations.0033_seniorah_scraper_config")
+    ScraperConfig.objects.filter(parser_class="seniorah").delete()
+    migration.create_config(django_apps, None)
+    assert not ScraperConfig.objects.filter(parser_class="seniorah").exists()  # нет «Обуви» — ничего
+
+    shoes = Category.objects.create(name="Обувь", slug="shoes")
+    migration.create_config(django_apps, None)
+    config = ScraperConfig.objects.get(parser_class="seniorah")
+    assert (config.name, config.base_url, config.default_category) == ("seniorah", SITE, shoes)
+    assert config.is_enabled is True and config.sync_enabled is False and config.use_proxy is False
+    assert config.is_multibrand is False and config.max_images_per_product == 8
+
+    config.sync_enabled = True
+    config.save()
+    migration.create_config(django_apps, None)  # ручная запись не перезаписывается
+    assert ScraperConfig.objects.filter(parser_class="seniorah").count() == 1
+    assert ScraperConfig.objects.get(parser_class="seniorah").sync_enabled is True

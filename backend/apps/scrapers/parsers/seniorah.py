@@ -26,10 +26,22 @@ from collections import Counter
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote, unquote, urljoin, urlparse
 
+import httpx
+
 from apps.catalog.utils.tr_vocab import normalize_ascii_text, translate_turkish_color
 
 from ..base.catalog_state import CatalogTraversalState
 from ..base.listing_snapshot import listing_fingerprint
+from ..base.offers import (
+    MalformedOfferResponse,
+    OfferCheckContext,
+    OfferCheckErrorCode,
+    OfferCheckResult,
+    OfferNotFound,
+    OfferSourceUnavailable,
+    result_from_scraped_product,
+    translate_offer_check_errors,
+)
 from ..base.scraper import (
     BaseScraper,
     CategoryPageNotFoundError,
@@ -403,7 +415,15 @@ class SeniorahParser(BaseScraper):
 
     # --- карточка ------------------------------------------------------------
 
-    def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
+    def parse_product_detail(
+        self,
+        product_url: str,
+        *,
+        include_sibling_variants: bool = True,
+    ) -> Optional[ScrapedProduct]:
+        """Модель целиком (цвета — из всего каталога, ещё 2 запроса) или, при
+        ``include_sibling_variants=False`` (обновление карточки при открытии), только
+        этот цвет — один запрос."""
         match = self.PRODUCT_PATH_RE.match(self._path(product_url))
         if not match:
             return None
@@ -417,7 +437,58 @@ class SeniorahParser(BaseScraper):
             self.unmapped[clean_text(str(row.get("title") or ""))[:60]] += 1
             self.logger.warning("Seniorah: вид обуви не узнан по названию, товар не загружен: %s", product_url)
             return None
-        return self._build_product(self._model_rows(row))
+        return self._build_product(self._model_rows(row) if include_sibling_variants else [row])
+
+    # --- проверка наличия ----------------------------------------------------
+
+    @translate_offer_check_errors
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """Один запрос ``/products/<handle>.json`` сохранённого цвета; каталог не грузится.
+
+        404 — Shopify удалил товар (цвет), «не найден». Сменился адрес — Shopify
+        переводит старый на новый, сверяется номер товара: другой товар — «не найден»,
+        чужой не подставляем. Редирект не на товар — сбой источника. Наличие —
+        «есть/нет» по размеру, точный остаток не храним.
+        """
+        match = self.PRODUCT_PATH_RE.match(self._path(offer.canonical_url))
+        if not match:
+            raise OfferNotFound(offer.canonical_url)
+        url = f"{self._product_url(match.group(1))}.json"
+        try:
+            text, final_url = self._make_offer_request(url, include_final_url=True)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise OfferNotFound(offer.canonical_url) from exc
+            raise
+        if not self.PRODUCT_PATH_RE.match(self._path(final_url).removesuffix(".json")):
+            raise OfferSourceUnavailable(
+                OfferCheckErrorCode.TRANSPORT_ERROR,
+                f"Seniorah: redirect away from product page to {final_url}",
+                retryable=True,
+            )
+        try:
+            data = json.loads(text)
+        except ValueError:
+            raise ScraperAccessBlockedError(source="Seniorah", status_code=403, url=url)
+        row = data.get("product") if isinstance(data, dict) else None
+        if not isinstance(row, dict) or not isinstance(row.get("variants"), list):
+            raise MalformedOfferResponse()
+        variant = self._build_color_variant(row, sort_order=0)
+        if offer.variant_key and variant["external_id"] != offer.variant_key:
+            raise OfferNotFound(offer.canonical_url)
+        scraped = ScrapedProduct(
+            name=clean_text(str(row.get("title") or "")),
+            price=variant["price"],
+            currency="TRY",
+            url=variant["external_url"],
+            external_id=offer.external_product_id,
+            sku=variant["sku"],
+            is_available=variant["is_available"],
+            stock_quantity=variant["stock_quantity"],
+            attributes={"fashion_variants": [variant]},
+            source=self.get_name(),
+        )
+        return result_from_scraped_product(offer, scraped, exact_stock=False)
 
     def _build_product(self, rows: List[Dict[str, Any]]) -> Optional[ScrapedProduct]:
         first = rows[0]

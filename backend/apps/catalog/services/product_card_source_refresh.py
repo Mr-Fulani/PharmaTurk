@@ -85,7 +85,7 @@ CACHE_VERSION = "v1"
 REFERENCE_ONLY_SOURCES = frozenset({"ilacfiyati"})
 SINGLE_OFFER_REFRESH_SOURCES = frozenset({"akakce"})
 # Обновление карточки открывает только цвет предложения, а не всю группу цветов.
-SINGLE_COLOR_REFRESH_SOURCES = frozenset({"flo", "superstep"})
+SINGLE_COLOR_REFRESH_SOURCES = frozenset({"flo", "superstep", "seniorah"})
 # Сколько запросов к источнику может сделать одно обновление карточки.
 REFRESH_REQUEST_CHAIN = {"superstep": 3}
 FASHION_PRODUCT_TYPES = frozenset(
