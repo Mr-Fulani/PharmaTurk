@@ -7,12 +7,14 @@
 
 Меняются только SEO title / description / keywords (RU и EN); название (H1) не меняется. Пачки по 200,
 бэкап — только SEO-поля и SEO лога (apps/ai/services/supplement_seo_refresh.py). Перед --restore текущие
-значения тех же строк сохраняются в <файл>.before-restore.jsonl.
+значения тех же строк сохраняются в <файл>.before-restore-<время>.jsonl. Существующий файл бэкапа
+не перезаписывается.
 """
 
 import json
 
 from django.core.management.base import BaseCommand, CommandError
+from django.utils import timezone
 
 from apps.ai.services.supplement_seo_refresh import restore_backup, run
 from apps.catalog.models import Product
@@ -31,7 +33,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options["restore"]:
-            snapshot = f"{options['restore']}.before-restore.jsonl"
+            # Своё имя у каждого снимка: повторный возврат не затирает прежний снимок.
+            snapshot = f"{options['restore']}.before-restore-{timezone.now():%Y%m%d-%H%M%S-%f}.jsonl"
             restored = restore_backup(options["restore"], snapshot)
             self.stdout.write(f"Возвращено строк: {restored} из {options['restore']}; что было до возврата — {snapshot}.")
             return
@@ -44,7 +47,12 @@ class Command(BaseCommand):
             products = products.filter(id__in=[int(x) for x in options["ids"].split(",") if x.strip()])
         ids = list(products.values_list("id", flat=True))
         if options["apply"]:
-            with open(options["backup"], "w") as backup:
+            # «x»: существующий бэкап не перезаписывается — в нём прежнее SEO уже записанных товаров.
+            try:
+                backup = open(options["backup"], "x")
+            except FileExistsError:
+                raise CommandError(f"Файл бэкапа уже есть: {options['backup']} — укажите новый.")
+            with backup:
                 stats, examples = run(ids, apply=True, backup=backup, show=options["show"])
         else:
             stats, examples = run(ids, show=options["show"])

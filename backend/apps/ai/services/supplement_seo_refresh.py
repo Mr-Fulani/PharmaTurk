@@ -23,6 +23,7 @@ SEO БАДа (title, description, keywords) собирает ``supplement_conten
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -150,7 +151,7 @@ class ObjectChange:
     label: str
     pk: int
     locale: str
-    old: dict[str, str]
+    old: dict[str, Optional[str]]  # как в базе, байт в байт: restore возвращает его без изменений
     new: dict[str, str]
 
 
@@ -159,6 +160,7 @@ class ProductPlan:
     product_id: int
     reason: str = ""
     log_id: Optional[int] = None
+    domain_pk: Optional[int] = None
     new: dict = field(default_factory=dict)
     changes: list[ObjectChange] = field(default_factory=list)
     kept_manual: int = 0
@@ -227,10 +229,10 @@ def _plan(product_id: int, batch: _Batch) -> ProductPlan:
     if not new:
         plan.reason = "название правлено"
         return plan
-    plan.log_id, plan.new = source["id"], new
+    plan.log_id, plan.domain_pk, plan.new = source["id"], batch.domains[product_id], new
     for label, pk, locale, current in batch.targets[product_id]:
         target = new[locale]
-        old = {f: str(current[f] or "").strip() for f in SEO_FIELDS}
+        old = {f: str(current[f] or "").strip() for f in SEO_FIELDS}  # только для сравнения
         if old == target:
             continue
         # Хоть одно поле правлено вручную — объект целиком остаётся (иначе og_title ≠ meta_title).
@@ -241,7 +243,7 @@ def _plan(product_id: int, batch: _Batch) -> ProductPlan:
         if manual:
             plan.kept_manual += 1
             continue
-        plan.changes.append(ObjectChange(label, pk, locale, old, target))
+        plan.changes.append(ObjectChange(label, pk, locale, {f: current[f] for f in SEO_FIELDS}, target))
     return plan
 
 
@@ -300,6 +302,24 @@ def _write(plan: ProductPlan, backup: Optional[TextIO]) -> None:
     attrs["seo_translations"] = seo
     attrs[_REBUILT_KEY] = timezone.now().isoformat()
     Log.objects.filter(pk=plan.log_id).update(extracted_attributes=attrs, generated_seo_title=plan.new["ru"]["meta_title"][:70])
+    _touch(plan.product_id, plan.domain_pk)
+
+
+def _touch(product_id: Optional[int], domain_pk: Optional[int]) -> None:
+    """update() не трогает auto_now ``updated_at``, а lastmod sitemap БАДов берётся из
+    ``SupplementProduct.updated_at`` (SitemapProductsView): новое SEO должно попасть в sitemap."""
+    now = timezone.now()
+    if domain_pk:
+        _model(DOMAIN_LABEL).objects.filter(pk=domain_pk).update(updated_at=now)
+    if product_id:
+        _model(PRODUCT_LABEL).objects.filter(pk=product_id).update(updated_at=now)
+
+
+def _sync(handle: Optional[TextIO]) -> None:
+    """Бэкап пачки — на диск до коммита пачки: после OOM/SIGKILL хвост записанной пачки не теряется."""
+    if handle is not None:
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def run(
@@ -334,16 +354,17 @@ def run(
                 if apply:
                     _write(plan, backup)
                     stats["записано"] += 1
+            _sync(backup)
     return stats, examples
 
 
 def restore_backup(path: str, snapshot_path: str) -> int:
     """Вернуть строки из бэкапа (только SEO-поля и SEO лога) пачками; текущие значения тех же строк —
-    сначала в ``snapshot_path``."""
+    сначала в ``snapshot_path`` (новый файл: существующий не перезаписывается)."""
     with open(path) as handle:
         rows = [json.loads(line) for line in handle if line.strip()]
     restored = 0
-    with open(snapshot_path, "w") as snapshot:
+    with open(snapshot_path, "x") as snapshot:
         for start in range(0, len(rows), BATCH_SIZE):
             with transaction.atomic():
                 for row in rows[start:start + BATCH_SIZE]:
@@ -376,5 +397,19 @@ def restore_backup(path: str, snapshot_path: str) -> int:
                             continue
                         snapshot.write(json.dumps({"model": row["model"], "pk": row["pk"], "fields": current}, ensure_ascii=False) + "\n")
                         model.objects.filter(pk=row["pk"]).update(**row["fields"])
+                        _touch_restored(row["model"], row["pk"])
                     restored += 1
+                _sync(snapshot)
     return restored
+
+
+def _touch_restored(label: str, pk: int) -> None:
+    """После возврата SEO lastmod в sitemap тоже меняется (см. ``_touch``)."""
+    if label == DOMAIN_LABEL:
+        _touch(None, pk)
+    elif label == PRODUCT_LABEL:
+        _touch(pk, None)
+    elif label == "catalog.supplementproducttranslation":
+        _touch(None, _model(label).objects.filter(pk=pk).values_list("product_id", flat=True).first())
+    elif label == "catalog.producttranslation":
+        _touch(_model(label).objects.filter(pk=pk).values_list("product_id", flat=True).first(), None)

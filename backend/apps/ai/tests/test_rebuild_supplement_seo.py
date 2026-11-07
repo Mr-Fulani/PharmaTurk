@@ -91,7 +91,8 @@ def test_rebuild_writes_new_seo_and_restore_returns_everything(tmp_path):
     call_command("rebuild_supplement_seo", "--restore", str(backup))
     assert _seo_state(supplement, log) == before
     # П. 5: текущее состояние перед возвратом сохранено.
-    assert (tmp_path / "before.jsonl.before-restore.jsonl").read_text().strip()
+    snapshots = list(tmp_path.glob("before.jsonl.before-restore-*.jsonl"))
+    assert len(snapshots) == 1 and snapshots[0].read_text().strip()
     # После возврата значения снова «из лога» — следующий прогон их перепишет, а не сочтёт ручными.
     assert refresh.run([pid])[0]["к изменению"] == 1
 
@@ -164,3 +165,68 @@ def test_rebuild_requires_backup_and_target():
         call_command("rebuild_supplement_seo", "--all", "--apply")
     with pytest.raises(CommandError):
         call_command("rebuild_supplement_seo")
+
+
+@pytest.mark.django_db
+def test_existing_backup_and_snapshot_are_not_overwritten(tmp_path):
+    """Ревью #333 (третье), п. 1: перезапуск с тем же --backup не теряет прежнее SEO, двойной возврат —
+    два снимка."""
+    supplement, _log = _processed_with_old_seo()
+    pid = str(supplement.base_product_id)
+    backup = tmp_path / "before.jsonl"
+    call_command("rebuild_supplement_seo", "--ids", pid, "--apply", "--backup", str(backup))
+    content = backup.read_text()
+    with pytest.raises(CommandError, match="уже есть"):
+        call_command("rebuild_supplement_seo", "--ids", pid, "--apply", "--backup", str(backup))
+    assert backup.read_text() == content
+    call_command("rebuild_supplement_seo", "--restore", str(backup))
+    call_command("rebuild_supplement_seo", "--restore", str(backup))
+    assert len(list(tmp_path.glob("before.jsonl.before-restore-*.jsonl"))) == 2
+
+
+@pytest.mark.django_db
+def test_backup_reaches_disk_before_each_batch_commits(tmp_path, monkeypatch):
+    """П. 2: flush + fsync бэкапа внутри транзакции пачки — после OOM хвост записанной пачки не теряется."""
+    from django.db import transaction
+
+    monkeypatch.setattr(refresh, "BATCH_SIZE", 1)
+    calls = []
+    monkeypatch.setattr(refresh.os, "fsync", lambda fd: calls.append(transaction.get_connection().in_atomic_block))
+    first, _ = _processed_with_old_seo("mega-farma-1")
+    second, _ = _processed_with_old_seo("mega-farma-2")
+    with open(tmp_path / "b.jsonl", "w") as backup:
+        refresh.run([first.base_product_id, second.base_product_id], apply=True, backup=backup)
+    # Тест сам идёт в транзакции, поэтому проверяется, что fsync — по разу на пачку и внутри неё.
+    assert len(calls) == 2 and all(calls)
+
+
+@pytest.mark.django_db
+def test_restore_returns_values_byte_for_byte(tmp_path):
+    """П. 3: пробелы по краям — как были; сравнение с логом их не учитывает."""
+    supplement, _log = _processed_with_old_seo()
+    spaced = f"  {OLD_TITLE} "
+    supplement.translations.filter(locale="ru").update(meta_title=spaced)
+    backup = tmp_path / "before.jsonl"
+    call_command("rebuild_supplement_seo", "--ids", str(supplement.base_product_id), "--apply", "--backup", str(backup))
+    assert supplement.translations.get(locale="ru").meta_title != spaced
+    call_command("rebuild_supplement_seo", "--restore", str(backup))
+    assert supplement.translations.get(locale="ru").meta_title == spaced
+
+
+@pytest.mark.django_db
+def test_rebuild_bumps_updated_at_for_sitemap(tmp_path):
+    """П. 4: lastmod sitemap БАДов — SupplementProduct.updated_at; update() его сам не трогает."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    supplement, _log = _processed_with_old_seo()
+    past = timezone.now() - timedelta(days=30)
+    type(supplement).objects.filter(pk=supplement.pk).update(updated_at=past)
+    Product.objects.filter(pk=supplement.base_product_id).update(updated_at=past)
+    call_command(
+        "rebuild_supplement_seo", "--ids", str(supplement.base_product_id), "--apply", "--backup", str(tmp_path / "b.jsonl")
+    )
+    supplement.refresh_from_db()
+    assert supplement.updated_at > past
+    assert Product.objects.get(pk=supplement.base_product_id).updated_at > past
