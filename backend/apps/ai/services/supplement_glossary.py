@@ -253,6 +253,15 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "peynir alti suyu": ("молочная сыворотка", "whey", S),
     # Пилот 4: «Melaloyka Yağı» — транслитерацией, «Yumurta zarı» — «скорлупа», «Büyük Meyveli Vaksiniyum» —
     # «черника», «nem verici: gliserol» — «загуститель».
+    # Пилот 3 на проде 07.11.2026: «Tribulus» — «пузырник», «Honry/Horny Goat Weed» латиницей, «Menakuino 7» —
+    # как есть, «Balık Jelatini» — «рыбья желатина», «Krom Pikolinat» — «хромом пиколинатом».
+    # «якорцы» отдельным вариантом: «экстракт якорцев стелющихся» — основа «стелющие» в родительном не находится.
+    "tribulus": ("якорцы стелющиеся / якорцы / трибулус", "tribulus", S),
+    "horny goat weed": ("горянка / эпимедиум", "horny goat weed / epimedium", S),
+    "honry goat weed": ("горянка / эпимедиум", "horny goat weed / epimedium", S),
+    "menakuino": ("менахинон / витамин K2", "menaquinone / vitamin K2", S),
+    "balik jelatini": ("рыбий желатин", "fish gelatin", S),
+    "krom pikolinat": ("пиколинат хрома", "chromium picolinate", S),
     "melaloyka": ("чайное дерево", "tea tree", S),
     "yumurta zari": ("мембрана яичной скорлупы", "eggshell membrane", S),
     "buyuk meyveli vaksiniyum": ("клюква крупноплодная", "cranberry", S),
