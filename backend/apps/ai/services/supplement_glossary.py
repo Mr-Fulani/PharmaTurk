@@ -262,6 +262,16 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "menakuino": ("менахинон / витамин K2", "menaquinone / vitamin K2", S),
     "balik jelatini": ("рыбий желатин", "fish gelatin", S),
     "krom pikolinat": ("пиколинат хрома", "chromium picolinate", S),
+    # Пилот 4 на проде 07.11.2026: «parlatıcı» — «подсластитель», «akgünlük» — транслит, «dil altı» —
+    # «дилатационный», «Magnezyum Taurat» — «Тауррат», «sitrat» — «ситрат».
+    "parlatici": ("глазирователь / глазирующий агент / глазирующее вещество / полирующий агент / глянцеватель",
+                  "glazing agent / polishing agent / glaze", S),
+    "akgunluk": ("босвеллия / ладан", "boswellia / frankincense", S),
+    "dil alti": ("под язык / подъязычный", "sublingual / under the tongue", S),
+    "dilaltina": ("под язык / подъязычный", "sublingual / under the tongue", S),
+    "dil altina": ("под язык / подъязычный", "sublingual / under the tongue", S),
+    "taurat": ("таурат", "taurate", S),
+    "sitrat": ("цитрат", "citrate", S),
     "melaloyka": ("чайное дерево", "tea tree", S),
     "yumurta zari": ("мембрана яичной скорлупы", "eggshell membrane", S),
     "buyuk meyveli vaksiniyum": ("клюква крупноплодная", "cranberry", S),
@@ -293,7 +303,7 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "mandalina": ("мандарин", "mandarin", D),
     "muz": ("банан", "banana", D),
     "cilek": ("клубника", "strawberry", D),
-    "ahududu": ("малина", "raspberry", D),
+    "ahududu": ("малина", "raspberry", S),  # пилот 4 на проде: «вкус ахмудовый»
     "visne": ("вишня", "sour cherry", D),
     "seftali": ("персик", "peach", D),
     "kayisi": ("абрикос", "apricot", D),
@@ -377,7 +387,6 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "enerji": ("для энергии / энергия", "energy", D),
     "asit": ("кислота", "acid", D),
     "asitleri": ("кислоты", "acids", D),
-    "sitrat": ("цитрат", "citrate", D),
     "bisglisinat": ("бисглицинат", "bisglycinate", D),
     "pikolinat": ("пиколинат", "picolinate", D),
     "malat": ("малат", "malate", D),
