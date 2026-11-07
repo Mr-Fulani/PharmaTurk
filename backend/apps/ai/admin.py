@@ -420,8 +420,18 @@ class AIProcessingLogForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             self.fields["title_reviewed"].initial = moderator_reviewed_title(self.instance, attrs)
             self.fields["description_reviewed"].initial = moderator_reviewed_description(self.instance, attrs)
-            seo_translations = attrs.get("seo_translations") or {}
+            from apps.ai.services.supplement_seo_refresh import seo_translations_with_rebuilt
+
+            seo_translations = seo_translations_with_rebuilt(attrs)
             seo_en = seo_translations.get("en") or attrs.get("seo_en") or {}
+            # SEO пересборки БАДов — в RU-полях формы: иначе сохранение формы вернуло бы прежнее SEO лога.
+            rebuilt_ru = ((attrs.get("supplement_seo_rebuilt") or {}).get("ru") or {}) if isinstance(attrs, dict) else {}
+            if rebuilt_ru:
+                self.initial["generated_seo_title"] = rebuilt_ru.get("meta_title") or ""
+                self.initial["generated_seo_description"] = rebuilt_ru.get("meta_description") or ""
+                self.initial["generated_keywords"] = [
+                    k.strip() for k in str(rebuilt_ru.get("meta_keywords") or "").split(",") if k.strip()
+                ]
             self.fields["generated_en_title"].initial = seo_en.get("generated_title") or ""
             self.fields["generated_en_description"].initial = seo_en.get("generated_description") or ""
             self.fields["og_title"].initial = seo_en.get("og_title") or ""
@@ -588,7 +598,11 @@ class AIProcessingLogForm(forms.ModelForm):
         obj = super().save(commit=commit)
         if obj.pk:
             attrs = dict(obj.extracted_attributes or {})
-            seo_translations = dict(attrs.get("seo_translations") or {})
+            # SEO пересборки БАДов переносится в seo_translations: дальше правда — форма модератора.
+            from apps.ai.services.supplement_seo_refresh import seo_translations_with_rebuilt
+
+            seo_translations = seo_translations_with_rebuilt(attrs)
+            attrs.pop("supplement_seo_rebuilt", None)
             seo_ru = dict(seo_translations.get("ru") or {})
             seo_en = dict(seo_translations.get("en") or attrs.get("seo_en") or {})
             # RU-поля формы — единственный редактируемый источник истины.

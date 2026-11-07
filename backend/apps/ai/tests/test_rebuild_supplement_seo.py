@@ -50,6 +50,7 @@ def _seo_state(supplement, log):
         "log_seo": log.extracted_attributes["seo_translations"],
         "log_title": log.generated_seo_title,
         "log_rebuilt": log.extracted_attributes.get("supplement_seo_rebuilt_at"),
+        "log_rebuilt_seo": log.extracted_attributes.get("supplement_seo_rebuilt"),
     }
 
 
@@ -76,7 +77,10 @@ def test_rebuild_writes_new_seo_and_restore_returns_everything(tmp_path):
     assert after["domain"]["meta_title"] == after["translations"]["en"]["meta_title"]
     # Product — копия SEO домена, как при синхронизации.
     assert after["product"]["meta_title"] == after["product"]["seo_title"] == after["domain"]["meta_title"]
-    assert after["log_seo"]["ru"]["meta_title"] == after["translations"]["ru"]["meta_title"]
+    # SEO лога не переписывается (доказательство для оставленных объектов), новое — отдельным ключом.
+    assert after["log_seo"] == before["log_seo"]
+    log.refresh_from_db()
+    assert log.extracted_attributes["supplement_seo_rebuilt"]["ru"]["meta_title"] == after["translations"]["ru"]["meta_title"]
     assert after["log_rebuilt"]
     assert supplement.translations.get(locale="ru").name == name_before  # название (H1) не меняется
     # Повтор — менять нечего.
@@ -85,7 +89,9 @@ def test_rebuild_writes_new_seo_and_restore_returns_everything(tmp_path):
     # Ревью #333, п. 4: в бэкапе только SEO-поля, без описания и цены.
     rows = [json.loads(line) for line in backup.read_text().splitlines()]
     keys = {key for row in rows for key in row["fields"]}
-    assert keys <= set(refresh.PRODUCT_SEO_FIELDS) | {"seo_translations", "generated_seo_title", "supplement_seo_rebuilt_at"}
+    assert keys <= set(refresh.PRODUCT_SEO_FIELDS) | {
+        "seo_translations", "generated_seo_title", "supplement_seo_rebuilt_at", "supplement_seo_rebuilt",
+    }
 
     # Ревью #333, п. 2: возвращается всё — RU, EN, домен, Product и SEO лога.
     call_command("rebuild_supplement_seo", "--restore", str(backup))
@@ -289,3 +295,108 @@ def test_admin_history_seo_edit_protects_product_with_flag():
     assert stats["пропущено: SEO правлено в админке"] == 1
     # Без флага история админки не читается — поведение прежнее.
     assert refresh.run([pid])[0]["пропущено: SEO правлено в админке"] == 0
+
+
+def _legacy_ru_on_site(supplement, log):
+    """Как у 7540 после 07.11: лог собран новым кодом, а RU на сайте — прежним (до #333) из тех же частей,
+    со сроком доставки после замены 28.10."""
+    data = log.raw_llm_response["rule_content"]["supplement"]
+    name = supplement.translations.get(locale="ru").name
+    legacy = refresh.legacy_seo(*refresh._parts(data, name))["ru"]
+    description = next(d for d in legacy["meta_description"] if "7–14" in d or "доставка" not in d)
+    values = {
+        "meta_title": next(iter(legacy["meta_title"])), "og_title": next(iter(legacy["og_title"])),
+        "meta_description": description, "og_description": description,
+        "meta_keywords": next(iter(legacy["meta_keywords"])),
+    }
+    supplement.translations.filter(locale="ru").update(**values)
+    return values
+
+
+@pytest.mark.django_db
+def test_site_built_by_previous_code_is_auto_with_flag(tmp_path):
+    supplement = _supplement()
+    generator = _generator([ANSWER])
+    log = _process(generator, supplement)
+    generator.apply_log_to_product(log)
+    log.refresh_from_db()
+    values = _legacy_ru_on_site(supplement, log)
+    assert values["meta_title"] == "Мега-Фарма (MEGA-FARMA) Бетаглюкан — купить из Турции"
+    # Новый код отличается ключевыми словами: «бетаглюкан из Турции» вместо «Мега-Фарма из Турции».
+    assert values["meta_keywords"] != supplement.translations.get(locale="en").meta_keywords
+    pid = supplement.base_product_id
+    stats, examples = refresh.run([pid])
+    # Без флага такой товар не «уже как в коде», а «оставлен как правленый вручную» — с полями в примере.
+    assert stats["уже как в коде"] == 0
+    assert examples and examples[0].manual_fields
+    stats, _examples = refresh.run([pid], legacy_as_auto=True)
+    assert stats["к изменению"] == 1 and stats["объектов правлено вручную (оставлены)"] == 0
+
+
+@pytest.mark.django_db
+def test_partial_write_keeps_log_evidence_for_objects_left_alone(tmp_path):
+    """Прежняя версия переписывала SEO лога обеих локалей при частичной записи — у оставленного объекта
+    пропадало доказательство, и он навсегда становился «ручным»."""
+    supplement, _log = _processed_with_old_seo()
+    pid = supplement.base_product_id
+    ru = supplement.translations.get(locale="ru")
+    logged_description = ru.meta_description
+    supplement.translations.filter(locale="ru").update(meta_description="Временная правка модератора.")
+    with open(tmp_path / "b.jsonl", "w") as backup:
+        refresh.run([pid], apply=True, backup=backup)
+    assert supplement.translations.get(locale="ru").meta_title == OLD_TITLE  # RU оставлен
+    # Модератор вернул прежний текст — RU снова «из лога» и пересобирается.
+    supplement.translations.filter(locale="ru").update(meta_description=logged_description)
+    stats, _examples = refresh.run([pid])
+    assert stats["к изменению"] == 1 and stats["объектов правлено вручную (оставлены)"] == 0
+
+
+@pytest.mark.django_db
+def test_reapply_moderation_and_admin_form_use_rebuilt_seo(tmp_path):
+    """Ревью #335: SEO лога после пересборки — прежнее; применение, модерация и форма лога берут новое."""
+    from apps.ai.admin import AIProcessingLogForm
+    from apps.ai.services.moderation import build_change_preview
+
+    supplement, log = _processed_with_old_seo()
+    pid = supplement.base_product_id
+    with open(tmp_path / "b.jsonl", "w") as backup:
+        refresh.run([pid], apply=True, backup=backup)
+    log.refresh_from_db()
+    rebuilt = log.extracted_attributes["supplement_seo_rebuilt"]
+    assert log.extracted_attributes["seo_translations"]["ru"]["meta_title"] == OLD_TITLE  # лог не переписан
+    assert refresh.seo_translations_with_rebuilt(log.extracted_attributes)["ru"]["meta_title"] == rebuilt["ru"]["meta_title"]
+
+    # Модерация не показывает прежнее SEO как «предложенное».
+    rows = build_change_preview(log)
+    proposed = {(row.section, row.label): row.proposed for row in rows}
+    assert proposed[("SEO RU", "SEO title")] == rebuilt["ru"]["meta_title"]
+    assert OLD_TITLE not in proposed.values()
+
+    # Повторное применение лога (поле пустое — перезапись разрешена) пишет новое, а не прежнее SEO.
+    from apps.ai.models import AIProcessingLog, AIProcessingStatus
+
+    supplement.translations.filter(locale="ru").update(meta_title="")
+    AIProcessingLog.objects.filter(pk=log.pk).update(status=AIProcessingStatus.COMPLETED)
+    log.refresh_from_db()
+    _generator([ANSWER]).apply_log_to_product(log)
+    assert supplement.translations.get(locale="ru").meta_title == rebuilt["ru"]["meta_title"]
+
+    # Форма лога в админке показывает новое SEO в RU-полях.
+    form = AIProcessingLogForm(instance=log)
+    assert form.initial["generated_seo_title"] == rebuilt["ru"]["meta_title"]
+    assert form.initial["generated_seo_description"] == rebuilt["ru"]["meta_description"]
+
+    # Сохранение формы без правок SEO: новое SEO переносится в seo_translations, ключ пересборки снимается.
+    data = {}
+    for name, bound in ((name, form[name]) for name in form.fields):
+        value = bound.value()
+        if value is None or value is False:
+            continue
+        data[name] = value
+    bound_form = AIProcessingLogForm(instance=log, data=data)
+    assert bound_form.is_valid(), bound_form.errors
+    saved = bound_form.save()
+    saved.refresh_from_db()
+    assert "supplement_seo_rebuilt" not in saved.extracted_attributes
+    assert saved.extracted_attributes["seo_translations"]["ru"]["meta_title"] == rebuilt["ru"]["meta_title"]
+    assert saved.extracted_attributes["seo_translations"]["en"]["meta_title"] == rebuilt["en"]["meta_title"]

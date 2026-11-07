@@ -3019,7 +3019,10 @@ class ContentGenerator:
                         if img.get(key):
                             attrs[key] = img[key]
 
-        seo_translations = dict(attrs.get('seo_translations') or {})
+        # С SEO пересборки БАДов поверх (rebuild_supplement_seo): иначе повтор вернул бы прежнее SEO лога.
+        from apps.ai.services.supplement_seo_refresh import seo_translations_with_rebuilt
+
+        seo_translations = seo_translations_with_rebuilt(attrs)
         seo_ru = dict(seo_translations.get('ru') or {})
         seo_en = dict(seo_translations.get('en') or {})
         clean_size_prose = (

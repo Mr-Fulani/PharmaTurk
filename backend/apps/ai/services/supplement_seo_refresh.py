@@ -27,7 +27,7 @@ import os
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Iterable, Optional, TextIO
+from typing import Any, Iterable, Optional, TextIO
 
 from django.apps import apps
 from django.db import transaction
@@ -47,6 +47,10 @@ LOG_LABEL = "ai.aiprocessinglog"
 DOMAIN_LABEL = "catalog.supplementproduct"
 PRODUCT_LABEL = "catalog.product"
 _REBUILT_KEY = "supplement_seo_rebuilt_at"
+# Что записала пересборка: отдельно от seo_translations лога. Прежняя версия команды переписывала
+# seo_translations обеих локалей, даже когда часть объектов оставалась, — и пропадало доказательство,
+# что их SEO записано обработкой (7540, 7694, 7377 после прогонов 07.11.2026).
+_REBUILT_SEO_KEY = "supplement_seo_rebuilt"
 # Чем применение лога заполняет поле, если в seo_translations его нет (ContentGenerator.apply_log_to_product).
 _COUNTERPART = {"og_title": "meta_title", "og_description": "meta_description"}
 _GENERATED = {
@@ -65,6 +69,24 @@ LEGACY_EDITS = (
 )
 # Следы правки SEO в истории админки (LogEntry): поля SEO и названия их полей в форме.
 _ADMIN_SEO_RE = re.compile(r"meta|\bog[ _]|seo|мета", re.IGNORECASE)
+
+
+def seo_translations_with_rebuilt(attrs: Any) -> dict:
+    """SEO лога с тем, что записала пересборка (``supplement_seo_rebuilt``) поверх: на карточке именно оно.
+
+    Нужно повторному применению лога и модерации — иначе они вернут или покажут как «предложенное»
+    прежнее SEO лога (ревью #335).
+    """
+    attrs = attrs if isinstance(attrs, dict) else {}
+    seo = {
+        locale: dict(values) for locale, values in (attrs.get("seo_translations") or {}).items()
+        if isinstance(values, dict)
+    }
+    rebuilt = attrs.get(_REBUILT_SEO_KEY)
+    for locale, values in (rebuilt.items() if isinstance(rebuilt, dict) else ()):
+        if isinstance(values, dict):
+            seo[locale] = {**seo.get(locale, {}), **values}
+    return seo
 
 
 def _model(label: str):
@@ -140,16 +162,18 @@ def _load(product_ids: list[int], lock: bool, admin_history: bool = False) -> _B
         .annotate(
             supplement=KeyTransform("supplement", KeyTransform("rule_content", "raw_llm_response")),
             seo=KeyTransform("seo_translations", "extracted_attributes"),
+            rebuilt=KeyTransform(_REBUILT_SEO_KEY, "extracted_attributes"),
         )
         .values(
             "id", "product_id", "generated_title", "generated_seo_title", "generated_seo_description",
-            "generated_keywords", "supplement", "seo",
+            "generated_keywords", "supplement", "seo", "rebuilt",
         )
         .order_by("-id")
     )
     for row in log_rows:
         row["supplement"] = row["supplement"] if isinstance(row["supplement"], dict) else {}
         row["seo"] = row["seo"] if isinstance(row["seo"], dict) else {}
+        row["rebuilt"] = row["rebuilt"] if isinstance(row["rebuilt"], dict) else {}
         batch.logs.setdefault(row["product_id"], []).append(row)
     if admin_history:
         batch.admin_seo_edits = _admin_seo_edits(batch, {pk: pid for pid, pk in batch.domains.items()}, domain_tr, product_tr)
@@ -207,6 +231,8 @@ class ProductPlan:
     new: dict = field(default_factory=dict)
     changes: list[ObjectChange] = field(default_factory=list)
     kept_manual: int = 0
+    # (модель, локаль, поле, значение) — почему объект оставлен: для показа
+    manual_fields: list[tuple[str, str, str, str]] = field(default_factory=list)
 
 
 def _logged_name(log: dict) -> str:
@@ -220,19 +246,110 @@ def _with_legacy_edits(value: str) -> str:
     return value
 
 
-def _candidates(logs: list[dict], locale: str, name: str, legacy_as_auto: bool = False) -> set[str]:
-    """Что могла записать в поле какая-либо обработка товара (и разовые правки в базе — ``legacy_as_auto``)."""
+def _candidates(
+    logs: list[dict], locale: str, name: str, legacy_as_auto: bool = False, legacy_code: Optional[dict] = None
+) -> set[str]:
+    """Что могла записать в поле какая-либо обработка товара или пересборка; с ``legacy_as_auto`` — ещё
+    разовые правки в базе и вывод прежнего кода из тех же частей лога (``legacy_code``)."""
     values = set()
     for log in logs:
-        seo = log["seo"].get(locale) if isinstance(log["seo"].get(locale), dict) else {}
-        for key in (name, _COUNTERPART.get(name)):
-            if key:
-                values.add(_keywords_text(seo.get(key)) if key == "meta_keywords" else str(seo.get(key) or "").strip())
+        for source in (log["seo"], log["rebuilt"]):
+            seo = source.get(locale) if isinstance(source.get(locale), dict) else {}
+            for key in (name, _COUNTERPART.get(name)):
+                if key:
+                    values.add(_keywords_text(seo.get(key)) if key == "meta_keywords" else str(seo.get(key) or "").strip())
         values.add(_keywords_text(log[_GENERATED[name]]) if name == "meta_keywords" else str(log[_GENERATED[name]] or "").strip())
+    if legacy_as_auto:
+        values |= set((legacy_code or {}).get(locale, {}).get(name, ()))
     values.discard("")
     if legacy_as_auto:
         values |= {_with_legacy_edits(value) for value in values}
     return values
+
+
+# ── Прежний код (до SEO-ядра, PR #333) ───────────────────────────────────────
+# Копия build_seo до c61cb9d7 — только для распознавания: SEO, которое он собрал из тех же частей лога,
+# записано кодом, а не вручную, даже если запись об этом в логе не сохранилась.
+_LEGACY_TEXTS = {
+    "ru": {
+        "buy": " — купить из Турции", "turkey": " из Турции", "info": "Описание и состав на русском.",
+        "keyword_turkey": "{brand} из Турции", "keyword_buy": "{brand} купить", "supplement": "БАД",
+        "baby": "детское питание",
+    },
+    "en": {
+        "buy": " — buy from Turkey", "turkey": " from Turkey", "info": "Description and ingredients in English.",
+        "keyword_turkey": "{brand} Turkey", "keyword_buy": "buy {brand}", "supplement": "food supplement",
+        "baby": "baby food",
+    },
+}
+_LEGACY_ORDERS = {
+    "ru": ("Заявка менеджеру, доставка 7–21 рабочий день.", "Заявка менеджеру, доставка 7–14 дней."),
+    "en": ("Send a request, delivery in 7–21 business days.", "Send a request, delivery in 7–14 days."),
+}
+
+
+def legacy_seo(brand: str, brand_ru: str, product: dict, pack: Any, baby_food: bool = False) -> dict[str, dict]:
+    """{локаль: {поле: {значения}}} — что собрал бы прежний build_seo (оба срока доставки)."""
+    sc = supplement_content
+    result: dict[str, dict] = {}
+    for locale in ("ru", "en"):
+        texts = dict(_LEGACY_TEXTS[locale])
+        if baby_food:
+            texts["supplement"] = texts["baby"]
+        core = str(product.get(locale) or "").strip()
+        pack_text = getattr(pack, locale, "") if pack else ""
+        cyrillic = brand_ru if locale == "ru" and brand_ru and brand_ru.lower() != brand.lower() else ""
+        short = core.split(", ")[0]
+        heads = [f"{cyrillic} ({brand})", brand] if cyrillic else [brand]
+        names = [sc.assemble_title(head, core, "", locale) for head in heads]
+        candidates = []
+        first = re.split(r" (?:и|с|со|and|with) ", short)[0]
+        for head, name in zip(heads, names):
+            if pack_text:
+                candidates.append(f"{name}, {pack_text}{texts['buy']}")
+            candidates += [name + texts["buy"], name + texts["turkey"]]
+            for part in dict.fromkeys((short, first)):
+                part_name = sc.assemble_title(head, part, "", locale)
+                candidates += [part_name + texts["buy"], part_name + texts["turkey"]]
+        candidates += names
+        title = next((c for c in candidates if len(c) <= sc.SEO_TITLE_MAX), None) or sc._fit(names[-1], sc.SEO_TITLE_MAX)
+        leads = []
+        for name in names:
+            leads += [f"{name}, {pack_text}{texts['turkey']}." if pack_text else f"{name}{texts['turkey']}.", f"{name}{texts['turkey']}."]
+        lead = next((c for c in leads if len(c) <= sc.SEO_DESCRIPTION_MAX), None) or sc._fit(leads[-1], sc.SEO_DESCRIPTION_MAX - 1) + "."
+        descriptions = set()
+        for order in _LEGACY_ORDERS[locale]:
+            description = lead
+            for sentence in (texts["info"], order):
+                if len(description) + 1 + len(sentence) <= sc.SEO_DESCRIPTION_MAX:
+                    description = f"{description} {sentence}"
+            descriptions.add(description)
+        core_keyword = short if locale == "en" else short[:1].lower() + short[1:]
+        specific = bool(short) and not sc.is_generic(short, locale)
+        shown = cyrillic or brand
+        keywords = [
+            brand, cyrillic, f"{shown} {core_keyword}" if specific else "", core_keyword if specific else "",
+            texts["keyword_turkey"].format(brand=shown), texts["keyword_buy"].format(brand=shown),
+            f"{texts['supplement']} {core_keyword}" if specific else texts["supplement"],
+        ]
+        result[locale] = {
+            "meta_title": {title}, "og_title": {title},
+            "meta_description": descriptions, "og_description": descriptions,
+            "meta_keywords": {", ".join(list(dict.fromkeys(k for k in keywords if k))[:8])},
+        }
+    return result
+
+
+def _parts(data: dict, name: str) -> Optional[tuple]:
+    """(бренд названия, бренд кириллицей, «что это», фасовка, детское питание) из части лога."""
+    product_text = data.get("product") if isinstance(data.get("product"), dict) else {}
+    if not product_text.get("ru"):
+        return None
+    pack_data = data.get("pack") if isinstance(data.get("pack"), dict) else {}
+    pack_ru, pack_en = str(pack_data.get("ru") or ""), str(pack_data.get("en") or "")
+    pack = type("Pack", (), {"ru": pack_ru, "en": pack_en})() if pack_ru or pack_en else None
+    brand = title_brand(str(data.get("brand") or ""), name, product_text["ru"])
+    return brand, str(data.get("brand_ru") or ""), product_text, pack, bool(data.get("baby_food"))
 
 
 def _new_values(data: dict, name: str, description: str) -> Optional[dict]:
@@ -284,6 +401,15 @@ def _plan(product_id: int, batch: _Batch, legacy_as_auto: bool = False) -> Produ
     if product_id in batch.admin_seo_edits:
         plan.reason = "SEO правлено в админке"
         return plan
+    # Прежний код из частей каждого лога этого названия: по ним SEO на сайте могло быть собрано раньше.
+    legacy_code: dict = {}
+    if legacy_as_auto:
+        for log in logs:
+            parts = _parts(log["supplement"], name) if log["supplement"] and _logged_name(log) == name else None
+            if parts:
+                for locale, fields in legacy_seo(*parts).items():
+                    for key, values in fields.items():
+                        legacy_code.setdefault(locale, {}).setdefault(key, set()).update(values)
     for label, pk, locale, current in batch.targets[product_id]:
         target = new[locale]
         old = {f: str(current[f] or "").strip() for f in SEO_FIELDS}  # только для сравнения
@@ -292,10 +418,11 @@ def _plan(product_id: int, batch: _Batch, legacy_as_auto: bool = False) -> Produ
         # Хоть одно поле правлено вручную — объект целиком остаётся (иначе og_title ≠ meta_title).
         manual = [
             f for f in SEO_FIELDS
-            if old[f] and old[f] != target[f] and old[f] not in _candidates(logs, locale, f, legacy_as_auto)
+            if old[f] and old[f] != target[f] and old[f] not in _candidates(logs, locale, f, legacy_as_auto, legacy_code)
         ]
         if manual:
             plan.kept_manual += 1
+            plan.manual_fields += [(label, locale, f, old[f]) for f in manual]
             continue
         plan.changes.append(ObjectChange(label, pk, locale, {f: current[f] for f in SEO_FIELDS}, target))
     return plan
@@ -315,6 +442,7 @@ def _backup_rows(plan: ProductPlan, product_row: Optional[dict], log_row: dict) 
             "seo_translations": attrs.get("seo_translations"),
             "generated_seo_title": log_row["generated_seo_title"],
             _REBUILT_KEY: attrs.get(_REBUILT_KEY),
+            _REBUILT_SEO_KEY: attrs.get(_REBUILT_SEO_KEY),
         },
     })
     return rows
@@ -349,13 +477,11 @@ def _write(plan: ProductPlan, backup: Optional[TextIO]) -> None:
         _model(change.label).objects.filter(pk=change.pk).update(**change.new)
     if domain_change is not None:
         Product.objects.filter(pk=plan.product_id).update(**_product_mirror(domain_change.new))
+    # SEO лога не переписывается: оно — доказательство для объектов, оставленных как есть.
     attrs = dict(log_row["extracted_attributes"] or {})
-    seo = dict(attrs.get("seo_translations") or {})
-    for locale in ("ru", "en"):
-        seo[locale] = {**dict(seo.get(locale) or {}), **plan.new[locale]}
-    attrs["seo_translations"] = seo
+    attrs[_REBUILT_SEO_KEY] = {locale: dict(plan.new[locale]) for locale in ("ru", "en")}
     attrs[_REBUILT_KEY] = timezone.now().isoformat()
-    Log.objects.filter(pk=plan.log_id).update(extracted_attributes=attrs, generated_seo_title=plan.new["ru"]["meta_title"][:70])
+    Log.objects.filter(pk=plan.log_id).update(extracted_attributes=attrs)
     _touch(plan.product_id, plan.domain_pk)
 
 
@@ -380,7 +506,8 @@ def run(
     product_ids: Iterable[int], *, apply: bool = False, backup: Optional[TextIO] = None, show: int = 10,
     stats: Optional[Counter] = None, legacy_as_auto: bool = False,
 ) -> tuple[Counter, list[ProductPlan]]:
-    """План (и запись при ``apply``) пачками по ``BATCH_SIZE``; возвращает счётчики и до ``show`` примеров.
+    """План (и запись при ``apply``) пачками по ``BATCH_SIZE``; возвращает счётчики и до ``show`` примеров
+    (изменения и объекты, оставленные как правленые вручную, с полями).
 
     ``legacy_as_auto`` — значения логов с разовыми правками ``LEGACY_EDITS`` тоже считаются записанными
     обработкой; товары с правкой SEO в истории админки (LogEntry) при этом пропускаются целиком.
@@ -402,12 +529,15 @@ def run(
                     continue
                 if plan.kept_manual:
                     stats["объектов правлено вручную (оставлены)"] += plan.kept_manual
+                    if len(examples) < show:
+                        examples.append(plan)
                 if not plan.changes:
-                    stats["уже как в коде"] += 1
+                    # Товар, у которого все отличия — «ручные», — не «уже как в коде» (07.11.2026: 7540 и др.).
+                    stats["товаров: всё оставлено как правленое вручную" if plan.kept_manual else "уже как в коде"] += 1
                     continue
                 stats["к изменению"] += 1
                 stats["объектов"] += len(plan.changes)
-                if len(examples) < show:
+                if len(examples) < show and plan not in examples:
                     examples.append(plan)
                 if apply:
                     _write(plan, backup)
@@ -438,13 +568,15 @@ def restore_backup(path: str, snapshot_path: str) -> int:
                             "seo_translations": attrs.get("seo_translations"),
                             "generated_seo_title": current["generated_seo_title"],
                             _REBUILT_KEY: attrs.get(_REBUILT_KEY),
+                            _REBUILT_SEO_KEY: attrs.get(_REBUILT_SEO_KEY),
                         }}, ensure_ascii=False) + "\n")
                         fields = row["fields"]
                         attrs["seo_translations"] = fields["seo_translations"]
-                        if fields.get(_REBUILT_KEY):
-                            attrs[_REBUILT_KEY] = fields[_REBUILT_KEY]
-                        else:
-                            attrs.pop(_REBUILT_KEY, None)
+                        for key in (_REBUILT_KEY, _REBUILT_SEO_KEY):
+                            if fields.get(key):
+                                attrs[key] = fields[key]
+                            else:
+                                attrs.pop(key, None)
                         model.objects.filter(pk=row["pk"]).update(
                             extracted_attributes=attrs, generated_seo_title=fields["generated_seo_title"]
                         )

@@ -70,6 +70,9 @@ class Command(BaseCommand):
                     self.stdout.write(f"  {change.label}[ru].meta_title: {change.old['meta_title']!r}\n    → {change.new['meta_title']!r}")
                     self.stdout.write(f"  {change.label}[ru].meta_description: → {change.new['meta_description']!r}")
                     break
+            # Почему объект оставлен: поле и значение, которого нет ни в логах, ни в выводе кода.
+            for label, locale, name, value in plan.manual_fields[:5]:
+                self.stdout.write(f"  оставлено {label}[{locale}].{name}: {value!r}")
         self.stdout.write("\n" + json.dumps(dict(stats), ensure_ascii=False))
         if not options["apply"]:
             self.stdout.write("Только показ: для записи — --apply --backup <файл>.")
