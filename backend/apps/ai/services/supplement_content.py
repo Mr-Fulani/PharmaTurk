@@ -574,7 +574,8 @@ _ACRONYMS_RE = re.compile(r"\b(cla|epa|dha|msm|gaba|hmb|pqq|nadh)\b", re.IGNOREC
 
 
 def _block_wording(value: str) -> str:
-    value = re.sub(r"\s{2,}", " ", value.replace("*", "")).strip()
+    # Звёздочка сноски — у слова или в начале фразы; «2*1 капсула» не трогаем (ревью #331).
+    value = re.sub(r"\s{2,}", " ", re.sub(r"(?<!\d)\*+|\*+(?!\d)", "", value)).strip()
     return _ACRONYMS_RE.sub(lambda m: m.group(1).upper(), value)
 
 
@@ -1240,7 +1241,8 @@ def _brand_latin(paragraphs: Any, brand_ru: str, brand: str) -> Any:
     (7474, 7536, пилот 3 на проде)."""
     if not brand_ru or not brand:
         return paragraphs
-    swap = lambda text: re.sub(re.escape(brand_ru), brand, str(text or ""), flags=re.IGNORECASE)  # noqa: E731
+    # Целым словом: brand_ru «Нау» не трогает «научно» (ревью #331).
+    swap = lambda text: re.sub(rf"(?<!\w){re.escape(brand_ru)}(?!\w)", brand, str(text or ""), flags=re.IGNORECASE)  # noqa: E731
     return [swap(item) for item in paragraphs] if isinstance(paragraphs, list) else swap(paragraphs)
 
 

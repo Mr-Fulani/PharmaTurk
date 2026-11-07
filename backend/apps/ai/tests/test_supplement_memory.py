@@ -215,6 +215,8 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         ("Omega-3 (3)", "Омега-3 (3)", "Omega-3 (3)", []),
         # Пилот 3 на проде 07.11.2026: растения и вещества словаря, возраст-опечатка источника.
         ("Tribulus Terrestris Extract", "Экстракт пузырника", "Tribulus extract", ["supplement_ingredient_mistranslated"]),
+        # Перевод, который подсказывает словарь, в родительном падеже — верен (ревью #331).
+        ("Tribulus Terrestris Extract", "Экстракт якорцев стелющихся", "Tribulus terrestris extract", []),
         ("Honry Goat Weed Extract", "Экстракт травы Honry Goat Weed", "Honry Goat Weed extract",
          ["supplement_ingredient_mistranslated"]),
         ("Menakuino 7", "Menakuino 7", "Menakuino 7", ["supplement_ingredient_mistranslated"]),
@@ -582,9 +584,16 @@ def test_composition_without_table_headers_prose_and_second_copies(text, composi
         # NUTRAXIN QUICK-SLIM 7423: «* Kafein içerir» — отдельная фраза, без звёздочки.
         ("Kullanım Şekli:\nGünde 3 defa 1 tablet kullanılması önerilir. * Kafein içerir.",
          {"usage": ["Günde 3 defa 1 tablet kullanılması önerilir."]}),
-        # POREGE 7533: сводка через тире — не компонент.
+        # POREGE 7533: сводка через «--» — остаётся компонент после неё.
         ("Ürün Bileşimi:\nPropolis - Karamürver - Melaloyka Yağı -- Su, Propolis Ekstresi, Kara Mürver Ekstresi",
-         {"composition": ["Propolis Ekstresi", "Kara Mürver Ekstresi"]}),
+         {"composition": ["Su", "Propolis Ekstresi", "Kara Mürver Ekstresi"]}),
+        # Компонент с тире — не сводка (ревью #331).
+        ("İçindekiler: D-Mannoz, Kızılcık Ekstresi - Vaccinium macrocarpon - %25 PAC, Jelatin",
+         {"composition": ["D-Mannoz", "Kızılcık Ekstresi - Vaccinium macrocarpon - %25 PAC", "Jelatin"]}),
+        # Способ применения с заглавных — не строка таблицы (ревью #331).
+        ("Kullanım Şekli:\nGünlük 1 Kapsül Su İle Alınız", {"usage": ["Günlük 1 Kapsül Su İle Alınız"]}),
+        ("Kullanım Şekli:\nHer Gün 1 Tablet Su İle Alınız", {"usage": ["Her Gün 1 Tablet Su İle Alınız"]}),
+        ("Kullanım Şekli:\nYetişkinler İçin Günlük 2 Tablet", {"usage": ["Yetişkinler İçin Günlük 2 Tablet"]}),
     ],
 )
 def test_pilot3_usage_rows_footnotes_and_summary_items(text, expected):
@@ -610,6 +619,13 @@ def test_partial_composition_with_actives_only_in_dose_table_is_hidden():
         "ingredients": "Ürün Bileşimi:\nL askorbik asit, Mikrokristalin selüloz, Silikon dioksit, Magnezyum stearat",
     }
     assert "composition" in sm.section_parts(single)
+    # Вещества названы по-химически, в таблице — по-витаминному: состав полный (ревью #331).
+    chemical = {
+        "product_info": "Her 1 kapsülde\nVitamin D3\n25 µg\nVitamin K2\n75 µg",
+        "ingredients": "İçindekiler: Kolekalsiferol, Menakinon-7, Mikrokristalin selüloz, Silikon dioksit, "
+                       "Magnezyum stearat, Jelatin, Gliserin",
+    }
+    assert "composition" in sm.section_parts(chemical)
 
 
 def test_prose_composition_is_marked_hidden_in_stats():
@@ -760,6 +776,9 @@ def test_pilot3_model_text_brand_turkish_brackets_and_block_wording():
     assert sc._brand_latin(["Натурес Баунти — пищевая добавка."], "Натурес Баунти", "NATURES BOUNTY") == [
         "NATURES BOUNTY — пищевая добавка."
     ]
+    # Только целым словом (ревью #331).
+    assert sc._brand_latin("Нау — научно обоснованная формула.", "Нау", "NOW") == "NOW — научно обоснованная формула."
+    assert sc._block_wording("2*1 капсула в день*") == "2*1 капсула в день"
     # NUTRAXIN 7455: «Cla», висящие звёздочки; SUNJOY 7377: «таблетка» у капсул.
     blocks = sm.SupplementBlocks(
         ru={"composition": ["Cla (конъюгированная линолевая кислота)", "Говяжий желатин*"],

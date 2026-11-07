@@ -360,6 +360,10 @@ def _split_top_level(text: str) -> list[str]:
     items.append("".join(current))
     result = []
     for item in items:
+        # Сводка через «--» перед первым компонентом: «Propolis - Karamürver - Melaloyka Yağı -- Su» (POREGE 7533) —
+        # остаётся компонент после «--»; «Kızılcık Ekstresi - Vaccinium macrocarpon - %25 PAC» — компонент (#331).
+        if "--" in item:
+            item = item.rsplit("--", 1)[1]
         # Сноска, приклеенная к компоненту: «Kolekalsiferol. Formülasyonda kaplama maddesi olarak kullanılan
         # bileşenin ticari markasıdır» (PHARMATON 7265) — компонент без сноски.
         # Только после целого слова, вне скобок и если хвост — предложение со сказуемым («… markasıdır»):
@@ -381,8 +385,7 @@ def _split_top_level(text: str) -> list[str]:
             or "takviye edici gida" in folded
             # Заголовок, а не компонент: «Aktif Bileşenler», «Bileşen», «Ürün Detayları», «2 Kapsülde».
             or re.fullmatch(r"(?:(?:aktif|yardimci) )?bilesen(?:ler)?|urun detaylari|\d+ \w+(?:de|da|te|ta)", folded)
-            # Сводка через тире «Propolis - Karamürver - Melaloyka Yağı -- Su» (POREGE 7533) — заголовок, не компонент.
-            or "--" in item or item.count(" - ") >= 2
+
             # «Adı», «Miktarı», «Her 1 tablette», «Her kapsülde», «Günlük Doz2 kapsül», «%BRD» (пилот 2 на проде).
             or re.fullmatch(r"adi|miktari?|her\s+(?:\d+\s*)?\w+|gunluk ?doz.*|%?\s*brd\W*|rda", folded)
         ):
@@ -412,7 +415,13 @@ def _table_row(sentence: str) -> bool:
     words = [word for word in re.findall(r"[^\W\d_]+", sentence) if len(word) > 2]
     if re.search(r"[.!]$", sentence.strip()) or len(words) < 3:
         return False
-    if re.search(r"\bgunde\b|\bdefa\b|\bkez\b|\d\s*[x×]\s*\d|yemek|ogun|kahvalti|tercihen|sabah|aksam", fold_tr(sentence)):
+    # Доза, «günlük / her gün» или глагол приёма — способ применения, даже с заглавных: «Günlük 1 Kapsül Su İle
+    # Alınız», «Her Gün 1 Tablet …» (ревью #331).
+    if re.search(
+        r"\bgunde\b|\bgunluk\b|\bher gun\b|\bdefa\b|\bkez\b|\d\s*[x×]\s*\d|yemek|ogun|kahvalti|tercihen|sabah|aksam|"
+        r"\d+\s*(?:kapsul|tablet|sase|olcek|damla|ml)|alin|kullan|tuket",
+        fold_tr(sentence),
+    ):
         return False
     return sum(word[0].isupper() for word in words) / len(words) >= 0.6
 
@@ -627,7 +636,10 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
         actives = _dose_table_actives(sections)
         listed = fold_tr(" ".join(composition))
         covered = [name for name in actives if any(word in listed for word in name.split() if len(word) >= 4)]
-        if len(actives) >= 2 and len(covered) < len(actives) / 2:
+        # Скрываем, только если действующих в «Составе» меньше, чем веществ в таблице: «Kolekalsiferol, Menakinon-7»
+        # против «Vitamin D3 / Vitamin K2» — полный состав, названный по-химически (ревью #331).
+        non_excipients = sum(not _is_excipient(fold_tr(item)) for item in composition)
+        if len(actives) >= 2 and len(covered) < len(actives) / 2 and non_excipients < len(actives):
             parts["composition"] = []
             hidden["composition"] = "partial_list"
     if parts["composition"] and all(_is_excipient(fold_tr(item)) for item in parts["composition"]):

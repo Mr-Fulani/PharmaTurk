@@ -255,7 +255,8 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     # «черника», «nem verici: gliserol» — «загуститель».
     # Пилот 3 на проде 07.11.2026: «Tribulus» — «пузырник», «Honry/Horny Goat Weed» латиницей, «Menakuino 7» —
     # как есть, «Balık Jelatini» — «рыбья желатина», «Krom Pikolinat» — «хромом пиколинатом».
-    "tribulus": ("якорцы стелющиеся / трибулус", "tribulus", S),
+    # «якорцы» отдельным вариантом: «экстракт якорцев стелющихся» — основа «стелющие» в родительном не находится.
+    "tribulus": ("якорцы стелющиеся / якорцы / трибулус", "tribulus", S),
     "horny goat weed": ("горянка / эпимедиум", "horny goat weed / epimedium", S),
     "honry goat weed": ("горянка / эпимедиум", "horny goat weed / epimedium", S),
     "menakuino": ("менахинон / витамин K2", "menaquinone / vitamin K2", S),
