@@ -183,6 +183,21 @@ def moderator_reviewed_title(log, attrs: dict[str, Any]) -> bool:
     )
 
 
+def moderator_reviewed_description(log, attrs: dict[str, Any]) -> bool:
+    """Модератор подтвердил именно текущие RU/EN-описания лога (``moderator_description_review``).
+
+    Нужна для причин, которые от текста не зависят: детское питание БАДов (``supplement_baby_food_review``)
+    без неё не применилось бы никогда (ревью #332). Новое описание снова проходит все проверки.
+    """
+    review = attrs.get("moderator_description_review")
+    if not isinstance(review, dict):
+        return False
+    translations = attrs.get("seo_translations") if isinstance(attrs.get("seo_translations"), dict) else {}
+    en = (translations.get("en") or {}).get("generated_description") if isinstance(translations.get("en"), dict) else ""
+    ru = _clean_text(getattr(log, "generated_description", ""))
+    return bool(ru) and _clean_text(review.get("ru")) == ru and _clean_text(review.get("en")) == _clean_text(en)
+
+
 def moderator_reviewed_medicine_fields(attrs: dict[str, Any]) -> set[str]:
     """Разделы лекарства с решением «Проверено — применить как есть».
 
@@ -995,8 +1010,11 @@ class SemanticValidator:
         # БАД: число из названия источника пропало в названии, в описании — число
         # не из источника или обещание лечения. Такое поле не применяется.
         if product_type == "supplements":
+            description_reviewed = moderator_reviewed_description(log, attrs)
+            if description_reviewed:
+                report.moderator_reviewed_fields.add("description")
             for field_name, reasons in supplement_content.log_problems(log).items():
-                if field_name == "title" and title_reviewed:
+                if (field_name == "title" and title_reviewed) or (field_name == "description" and description_reviewed):
                     continue
                 report.rejected_fields.add(field_name)
                 report.reasons.extend(reasons)
