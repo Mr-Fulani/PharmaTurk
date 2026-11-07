@@ -28,7 +28,7 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 
-from apps.catalog.utils.tr_vocab import normalize_ascii_text, translate_turkish_color
+from apps.catalog.utils.tr_vocab import COLOR_DETAIL_SEPARATOR, normalize_ascii_text, translate_turkish_color
 
 from ..base.catalog_state import CatalogTraversalState
 from ..base.listing_snapshot import listing_fingerprint
@@ -200,7 +200,9 @@ class SeniorahParser(BaseScraper):
         """``P-057-09-C-BROWN/1924…`` → ``P-057-09-C-BROWN``; у одного артикула сайта
         нет «/» перед штрихкодом (``P-057-09-C-BROWN1924214362770``). İ — латинская I."""
         head = str(sku or "").strip().split("/", 1)[0]
-        return re.sub(r"\d{10,}$", "", head).strip("-").replace("İ", "I").upper()
+        # «T-15-30-TAŞ-BLACK»: турецкие буквы — латиницей, иначе код модели обрезался до «TA».
+        head = head.upper().translate(str.maketrans("İŞÇĞÖÜ", "ISCGOU"))
+        return re.sub(r"\d{10,}$", "", head).strip("-")
 
     @classmethod
     def split_sku(cls, sku: Any) -> Tuple[str, str]:
@@ -497,6 +499,7 @@ class SeniorahParser(BaseScraper):
         variants = [variant for variant in variants if variant["sizes"]]
         if not variants:
             return None
+        self._distinct_colors(variants)
         primary = next((v for v in variants if v["is_available"]), variants[0])
         all_sizes: List[str] = []
         for variant in variants:
@@ -627,8 +630,69 @@ class SeniorahParser(BaseScraper):
         if index is not None:
             return title.split()[index]
         sku = next((v.get("sku") for v in row.get("variants") or [] if isinstance(v, dict) and v.get("sku")), "")
-        color = cls.split_sku(sku)[1]
-        return "-".join(part.capitalize() for part in color.split("-") if part not in cls.SKU_TONE_PREFIXES)
+        return cls._sku_color_tr(cls.split_sku(sku)[1])
+
+    # Код цвета артикула → турецкое слово словаря («GOLDEN» — «Altın»): английские слова в
+    # общий словарь не добавляются, SuperStep по нему вырезает турецкие слова из расцветок.
+    SKU_COLOR_TR = {
+        "BLACK": "Siyah", "WHITE": "Beyaz", "BEIGE": "Bej", "BROWN": "Kahverengi", "CREAM": "Krem",
+        "CREM": "Krem", "RED": "Kırmızı", "KHAKI": "Haki", "TABA": "Taba", "VIZON": "Vizon",
+        "YELLOW": "Sarı", "PINK": "Pembe", "GOLD": "Altın", "GOLDEN": "Altın", "SILVER": "Gümüş",
+        "PLATINUM": "Platin", "COLORS": "Renkli", "FUSHIA": "Fuşya", "FUCHSIA": "Fuşya",
+        "ORANGE": "Turuncu", "BLUE": "Mavi", "NAVY": "Lacivert", "GREY": "Gri", "GRAY": "Gri",
+        "GREEN": "Yeşil", "PURPLE": "Mor", "BORDO": "Bordo", "BURGUNDY": "Bordo",
+    }
+    SKU_TONE_TR = {"D": "Koyu", "L": "Açık"}
+
+    @classmethod
+    def _sku_color_tr(cls, code: str) -> str:
+        """«D-RED» / «D.RED» → «Bordo», «L-TABA» → «Açık-Taba», «BLACK-PLATINUM» → «Siyah-Platin»."""
+        parts = [part for part in re.split(r"[-.]", code) if part]
+        words: List[str] = []
+        tone = ""
+        for part in parts:
+            if part in cls.SKU_TONE_TR:
+                tone = part
+                continue
+            word = cls.SKU_COLOR_TR.get(part, part.capitalize())
+            if tone == "D" and part == "RED":
+                word, tone = "Bordo", ""
+            if tone:
+                words.append(cls.SKU_TONE_TR[tone])
+                tone = ""
+            words.append(word)
+        return "-".join(words)
+
+    TONE_EN = {"acik": "Light", "koyu": "Dark"}
+
+    @classmethod
+    def _distinct_colors(cls, variants: List[Dict[str, Any]]) -> None:
+        """Цвета модели, которые на сайте переводятся одинаково («Siyah», «Siyah-Bej» и
+        «Siyah-Gri» — все «Черный»), получают уточнение через « · », как у SuperStep:
+        основа — первый цвет составного, уточнение — все части по-английски
+        («Siyah · Black-Beige» → «Черный · Black-Beige»)."""
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for variant in variants:
+            groups.setdefault(translate_turkish_color(variant["color"], "ru") or variant["color"], []).append(variant)
+        for group in groups.values():
+            if len(group) < 2:
+                continue
+            for variant in group:
+                parts = [part for part in re.split(r"[-/]", variant["color"]) if part]
+                colors = [part for part in parts if normalize_ascii_text(part) not in cls.TONE_EN]
+                english = "-".join(
+                    cls.TONE_EN.get(normalize_ascii_text(part)) or translate_turkish_color(part, "en") or part
+                    for part in parts
+                )
+                base = colors[0] if colors else variant["color"]
+                variant["color"] = f"{base}{COLOR_DETAIL_SEPARATOR}{english}"[:50]
+            details = [variant["color"] for variant in group]
+            for variant in group:
+                if details.count(variant["color"]) > 1:  # два одинаковых цвета — по коду артикула
+                    variant["color"] = f"{variant['color']} {variant['mpn'].rpartition('-')[2]}"[:50]
+        for variant in variants:
+            name = variant["display_name"].rpartition(" - ")[0] or variant["display_name"]
+            variant["display_name"] = clean_text(f"{name} - {variant['color']}")
 
     @classmethod
     def _model_name(cls, rows: List[Dict[str, Any]]) -> str:

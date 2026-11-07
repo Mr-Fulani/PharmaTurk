@@ -67,6 +67,9 @@ class ProductFacts:
     russian_name: str = ""
     untranslated: list[str] = field(default_factory=list)
     has_variants: bool = False
+    # Различитель названий моделей без имени (Seniorah): «каблук 10 см» и ещё одно описание.
+    heel: tuple[str, str] | None = None
+    extra_descriptor: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Снимок для input_data лога (для разбора в админке)."""
@@ -81,6 +84,47 @@ class ProductFacts:
             "volume": self.volume[1] if self.volume else "",
             "untranslated": self.untranslated,
         }
+
+
+_HEEL_KIND_SUFFIX = "на каблуке"
+
+
+def _refine_heel_kind(facts: ProductFacts) -> None:
+    """«Туфли на каблуке» + «на низком каблуке» → «туфли на низком каблуке»: уточнение
+    каблука переходит в тип, а не повторяет его в конце названия."""
+    kind = facts.kind
+    if kind is None or not kind.ru.endswith(_HEEL_KIND_SUFFIX):
+        return
+    heel = next(
+        (
+            pair for pair in facts.descriptors
+            if pair[0] != _HEEL_KIND_SUFFIX and (pair[0].endswith(" каблуке") or pair[0] == "на танкетке")
+        ),
+        None,
+    )
+    if heel is None:
+        return
+    base_ru = kind.ru[: -len(_HEEL_KIND_SUFFIX)]
+    if kind.en == "Heels":
+        en = "Wedges" if heel[1] == "Wedge" else f"{heel[1]}s"
+    else:
+        en = kind.en.replace("Heeled", heel[1])
+    facts.kind = Kind(f"{base_ru}{heel[0]}", kind.gender, en, kind.generic)
+    facts.descriptors.remove(heel)
+
+
+_HEEL_HEIGHT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*cm", re.IGNORECASE)
+
+
+def _heel_phrase(raw: Any, kind: Kind | None) -> tuple[str, str] | None:
+    """«10 cm» у обуви на каблуке → («каблук 10 см», «10 cm heel»); ниже 3 см — не каблук."""
+    match = _HEEL_HEIGHT_RE.search(str(raw or "").replace("\xa0", " "))
+    if not match or kind is None or ("каблук" not in kind.ru and "шпильк" not in kind.ru and "ботильон" not in kind.ru):
+        return None
+    value = match.group(1).replace(".", ",")
+    if float(value.replace(",", ".")) < 3:
+        return None
+    return f"каблук {value} см", f"{value.replace(',', '.')} cm heel"
 
 
 def _attrs(input_data: dict[str, Any]) -> dict[str, Any]:
@@ -583,6 +627,13 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
         fragrance_type = vocab.fold(attrs.get("fragrance_type"))
         facts.kind = vocab.KINDS.get(fragrance_type, facts.kind)
 
+    if product_type == "shoes":
+        _refine_heel_kind(facts)
+        if product_source(product) == "seniorah" and not facts.model:
+            # У магазина модели без имени («Cilt Bilek Bağlı Kadın Topuklu Ayakkabı» — две
+            # разные модели): различают деталь, которую срезал лимит, и высота каблука.
+            facts.extra_descriptor = True
+            facts.heel = _heel_phrase(attrs.get("heel_height"), facts.kind)
     if facts.audience is None:
         facts.audience = vocab.AUDIENCE.get(vocab.fold(attrs.get("gender")))
     if facts.has_variants or product_type == "perfumery":

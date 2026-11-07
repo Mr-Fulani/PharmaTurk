@@ -90,3 +90,29 @@ def test_manual_rename_is_kept(tree):
     call_command("ensure_demand_categories", "--apply", "--backup", "/dev/null")
 
     assert Category.objects.get(slug="slides").name == "Слайды и шлёпанцы"
+
+
+def test_same_name_under_parent_is_reported_not_created(tree, tmp_path):
+    """«Балетки», заведённые руками под другим slug, не роняют транзакцию unique_together."""
+    casual = Category.objects.get(slug="casual-shoes")
+    _category("baletki-manual", "Балетки", casual)
+
+    call_command("ensure_demand_categories", "--apply", "--backup", str(tmp_path / "b.json"))
+
+    assert not Category.objects.filter(slug="ballet-flats").exists()
+    assert Category.objects.filter(slug="heels").exists()
+
+
+def test_show_lists_ballet_flats_outside_casual_shoes(tree, capsys):
+    from apps.catalog.models import Product
+
+    shoes = Category.objects.get(slug="dress-shoes")
+    Product.objects.create(
+        name="Женские балетки Lacoste", slug="lacoste-baletki", category=shoes, product_type="shoes",
+        price=1, currency="TRY", external_id="flo-1", external_data={},
+    )
+
+    call_command("ensure_demand_categories")
+
+    out = capsys.readouterr().out
+    assert "Товары «балетк…» вне casual-shoes: 1" in out and "Женские балетки Lacoste" in out

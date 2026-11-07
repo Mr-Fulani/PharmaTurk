@@ -93,6 +93,8 @@ def _variants(product):
         # у одного размера сайта нет «/» перед штрихкодом
         ("P-057-09-C-BROWN1924214362770", ("P-057-09-C", "BROWN")),
         ("P-17-72K-KOT-JEANS-TABA/1", ("P-17-72K-KOT-JEANS", "TABA")),
+        # турецкие буквы в коде — латиницей, а не обрезком «T-15-30-TA»
+        ("T-15-30-TAŞ-BLACK/1", ("T-15-30-TAS", "BLACK")),
     ],
 )
 def test_sku_splits_into_model_and_color(sku, expected):
@@ -574,3 +576,39 @@ def test_migration_creates_disabled_schedule_config_once():
     migration.create_config(django_apps, None)  # ручная запись не перезаписывается
     assert ScraperConfig.objects.filter(parser_class="seniorah").count() == 1
     assert ScraperConfig.objects.get(parser_class="seniorah").sync_enabled is True
+
+
+@pytest.mark.parametrize(
+    "code, expected",
+    [("GOLDEN", "Altın"), ("D-RED", "Bordo"), ("D.RED", "Bordo"), ("L-TABA", "Açık-Taba"),
+     ("BLACK-PLATINUM", "Siyah-Platin"), ("FUSHIA", "Fuşya"), ("NUDE", "Nude")],
+)
+def test_color_from_sku_is_a_turkish_dictionary_word(code, expected):
+    assert SeniorahParser._sku_color_tr(code) == expected
+
+
+def test_same_russian_colors_inside_model_get_a_detail():
+    """«Siyah», «Siyah-Bej» — оба «Черный» на сайте: уточнение через « · », как у SuperStep."""
+    from apps.catalog.utils.tr_vocab import translate_turkish_color
+
+    variants = [
+        {"color": color, "display_name": f"Dimity {color} Kadın Spor Ayakkabı - {color}", "mpn": f"P-002-4-{code}"}
+        for color, code in (("Beyaz", "WHITE"), ("Siyah", "BLACK"), ("Siyah-Bej", "BLACK-BEIGE"), ("Siyah-Gri", "BLACK"))
+    ]
+    SeniorahParser._distinct_colors(variants)
+
+    assert [v["color"] for v in variants] == ["Beyaz", "Siyah · Black", "Siyah · Black-Beige", "Siyah · Black-Gray"]
+    assert [translate_turkish_color(v["color"], "ru") for v in variants] == [
+        "Белый", "Черный · Black", "Черный · Black-Beige", "Черный · Black-Gray",
+    ]
+    assert variants[2]["display_name"] == "Dimity Siyah-Bej Kadın Spor Ayakkabı - Siyah · Black-Beige"
+
+
+def test_compound_colors_keep_the_main_color():
+    """«platin», «fuşya» добавлены как запасные: «Siyah-Platin» — по-прежнему «Черный» (ревью #336)."""
+    from apps.catalog.utils.tr_vocab import translate_turkish_color
+
+    assert translate_turkish_color("Siyah-Platin", "ru") == "Черный"
+    assert translate_turkish_color("Siyah-Fuşya", "ru") == "Черный"
+    assert translate_turkish_color("Platin", "ru") == "Платиновый"
+    assert translate_turkish_color("Fuşya", "en") == "Fuchsia"

@@ -351,11 +351,6 @@ KINDS: dict[str, Kind] = {
     "terlik": _k("шлепанцы", PL, "Slippers"),
     "terligi": _k("шлепанцы", PL, "Slippers"),
     "clog": _k("сабо", PL, "Clogs"),
-    # женская обувь Seniorah (07.11.2026)
-    "sabo": _k("сабо", PL, "Clogs"),
-    "mantar terlik": _k("шлепанцы на пробковой подошве", PL, "Cork Slides"),
-    "ev terligi": _k("домашние тапочки", PL, "House Slippers"),
-    "sabo ev terligi": _k("домашние тапочки", PL, "House Slippers"),
     "deniz ayakkabisi": _k("аквашузы", PL, "Water Shoes"),
     "bot": _k("ботинки", PL, "Boots"),
     "botu": _k("ботинки", PL, "Boots"),
@@ -370,17 +365,6 @@ KINDS: dict[str, Kind] = {
     "slip on": _k("слипоны", PL, "Slip-Ons"),
     "slip-on": _k("слипоны", PL, "Slip-Ons"),
     "babet": _k("балетки", PL, "Ballet Flats"),
-    "balerin": _k("балетки", PL, "Ballet Flats"),
-    "topuklu ayakkabi": _k("туфли на каблуке", PL, "Heels"),
-    "topuklu bot": _k("ботильоны", PL, "Heeled Ankle Boots"),
-    "yarim bot": _k("ботильоны", PL, "Ankle Boots"),
-    "yarim bot bootie": _k("ботильоны", PL, "Ankle Boots"),
-    "bootie": _k("ботильоны", PL, "Ankle Boots"),
-    "topuklu cizme": _k("сапоги на каблуке", PL, "Heeled Boots"),
-    "cizmesi": _k("сапоги", PL, "Boots"),
-    "kovboy cizme": _k("казаки", PL, "Cowboy Boots"),
-    "kovboy cizmesi": _k("казаки", PL, "Cowboy Boots"),
-    "binici cizmesi": _k("сапоги в стиле райдер", PL, "Riding Boots"),
     "ayakkabi": _k("обувь", F, "Shoes", generic=True),
     "ayakkabisi": _k("обувь", F, "Shoes", generic=True),
     # аксессуары
@@ -484,6 +468,22 @@ SHOE_KINDS: dict[str, Kind] = {
     # «Diz Üstü Uzun Kadın Çizme» — ботфорты: так их и ищут
     "diz ustu": _k("ботфорты", PL, "Over-the-Knee Boots"),
     "stiletto": _k("туфли на шпильке", PL, "Stilettos"),
+    # «Balerin Yaka Bluz» у LCW, «Balerin Etek» у Zara — не балетки, поэтому только у обуви
+    "balerin": _k("балетки", PL, "Ballet Flats"),
+    "sabo": _k("сабо", PL, "Clogs"),
+    "mantar terlik": _k("шлепанцы на пробковой подошве", PL, "Cork Slides"),
+    "ev terligi": _k("домашние тапочки", PL, "House Slippers"),
+    "sabo ev terligi": _k("домашние тапочки", PL, "House Slippers"),
+    "topuklu ayakkabi": _k("туфли на каблуке", PL, "Heels"),
+    "topuklu bot": _k("ботильоны", PL, "Heeled Ankle Boots"),
+    "yarim bot": _k("ботильоны", PL, "Ankle Boots"),
+    "yarim bot bootie": _k("ботильоны", PL, "Ankle Boots"),
+    "bootie": _k("ботильоны", PL, "Ankle Boots"),
+    "topuklu cizme": _k("сапоги на каблуке", PL, "Heeled Boots"),
+    "cizmesi": _k("сапоги", PL, "Boots"),
+    "kovboy cizme": _k("казаки", PL, "Cowboy Boots"),
+    "kovboy cizmesi": _k("казаки", PL, "Cowboy Boots"),
+    "binici cizmesi": _k("сапоги в стиле райдер", PL, "Riding Boots"),
 }
 SHOE_DESCRIPTORS: dict[str, tuple[str, str]] = {
     # материал верха
@@ -560,6 +560,9 @@ SHOE_DESCRIPTORS: dict[str, tuple[str, str]] = {
     "lastik detayli": ("с резинкой", "Elastic"),
     # отделка
     "tasli": ("со стразами", "Embellished"),
+    # «Parlak Taşlı Sandalet» (FLO): блестящие стразы; одно «Parlak» — не глянец, в название не идёт
+    "parlak tasli": ("с блестящими стразами", "Sparkly Rhinestone"),
+    "parlak": ("", ""),
     "kristal tasli": ("со стразами", "Embellished"),
     "fiyonk": ("с бантом", "Bow"),
     "fiyonk detayli": ("с бантом", "Bow"),
@@ -913,10 +916,24 @@ _ENGLISH_VOCAB_WORDS = frozenset(
 )
 TURKISH_TITLE_WORDS = frozenset(
     key
-    for mapping in (COLORS, DESCRIPTORS, AUDIENCE, KINDS, SHOE_KINDS, SHOE_DESCRIPTORS)
+    for mapping in (COLORS, DESCRIPTORS, AUDIENCE, KINDS)
     for key in mapping
     if " " not in key and "-" not in key and key not in _ENGLISH_VOCAB_WORDS
 )
+# Слова только обувного словаря: у одежды LCW «Saten», «Toka», «Sik» в готовом названии
+# не считаются непереведёнными, пока словарь не расширен для одежды (ревью #336).
+SHOE_TITLE_WORDS = frozenset(
+    key
+    for mapping in (SHOE_KINDS, SHOE_DESCRIPTORS)
+    for key in mapping
+    if " " not in key and "-" not in key and key not in _ENGLISH_VOCAB_WORDS
+) - TURKISH_TITLE_WORDS
+
+
+def turkish_title_words(product_type: str = "") -> frozenset[str]:
+    """Турецкие слова словарей, которых не должно быть в готовом названии этого типа."""
+    return TURKISH_TITLE_WORDS | SHOE_TITLE_WORDS if product_type == "shoes" else TURKISH_TITLE_WORDS
+
 
 # Канонический материал аксессуара (RU из attribute_specs) → фраза названия.
 MATERIAL_PHRASES: dict[str, tuple[str, str]] = {
@@ -1084,14 +1101,18 @@ def translate_furniture_finish(raw: str | None) -> tuple[str, str] | None:
     return "/".join(ru_parts), "/".join(en_parts)
 
 
-@lru_cache(maxsize=1)
-def generic_title_words() -> frozenset[str]:
+@lru_cache(maxsize=4)
+def generic_title_words(product_type: str = "") -> frozenset[str]:
     """Словарные слова (тип, цвет, пол, описание) и линейки магазина — не бренд/модель.
 
     Слова из фраз тоже: «GÜNEŞ GÖZLÜĞÜ» в названии Zara — тип, а не модель.
+    Обувные словари — только у обуви.
     """
     words = set()
-    for mapping in (KINDS, COLORS, AUDIENCE, DESCRIPTORS, COLOR_MODIFIERS, SHOE_KINDS, SHOE_DESCRIPTORS):
+    mappings = [KINDS, COLORS, AUDIENCE, DESCRIPTORS, COLOR_MODIFIERS]
+    if product_type == "shoes":
+        mappings += [SHOE_KINDS, SHOE_DESCRIPTORS]
+    for mapping in mappings:
         for key in mapping:
             words.update(key.split())
     return frozenset(words | COLOR_NOISE | STORE_LINE_WORDS | GENERIC_NAME_WORDS)

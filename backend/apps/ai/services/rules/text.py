@@ -66,7 +66,8 @@ def _title_descriptors(facts: ProductFacts) -> list[tuple[str, str]]:
     descriptors = [pair for pair in facts.descriptors if pair[0].split()[-1] not in kind_words]
     materials = [pair for pair in descriptors if pair[0].startswith("из ")]
     others = [pair for pair in descriptors if not pair[0].startswith("из ")]
-    chosen = set((materials + others)[:TITLE_DESCRIPTORS_MAX])
+    limit = TITLE_DESCRIPTORS_MAX + (1 if facts.extra_descriptor else 0)
+    chosen = set((materials + others)[:limit])
     return [pair for pair in descriptors if pair in chosen]
 
 
@@ -108,7 +109,7 @@ def build_titles(facts: ProductFacts, *, ignore_untranslated: bool = False) -> d
     ru_parts.extend(ru for ru, _ in _title_descriptors(facts))
     ru = " ".join(part for part in ru_parts if part)
 
-    for amount in (facts.volume, facts.pack):
+    for amount in (facts.volume, facts.pack, facts.heel):
         if amount:
             ru = f"{ru}, {amount[0]}"
     if facts.color:
@@ -126,7 +127,7 @@ def _english_title(facts: ProductFacts, *, with_color: bool = True) -> str:
     parts.extend(en for _, en in _title_descriptors(facts))
     parts.append(facts.kind.en)
     en = " ".join(part for part in parts if part)
-    for amount in (facts.volume, facts.pack):
+    for amount in (facts.volume, facts.pack, facts.heel):
         if amount:
             en = f"{en}, {amount[1]}"
     if facts.color and with_color:
