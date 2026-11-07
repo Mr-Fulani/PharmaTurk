@@ -55,6 +55,16 @@ _GENERATED = {
     "meta_keywords": "generated_keywords",
 }
 _LINE_NUMBER_RE = re.compile(r"\d[\d/.,]*\+?")
+# Разовые правки SEO БАДов прямо в базе, мимо логов (флаг ``legacy_as_auto``). 28.10.2026 по решению
+# владельца (Merchant Center) срок доставки заменён bulk_update в Product, SupplementProduct и переводах
+# (бэкап ~/ai-pilot/out/supp-721-backup.json), а в логах остался прежний — без этой замены такое SEO
+# похоже на ручную правку (07.11.2026: 5 333 объекта остались со старым шаблоном).
+LEGACY_EDITS = (
+    ("доставка 7–21 рабочий день", "доставка 7–14 дней"),
+    ("delivery in 7–21 business days", "delivery in 7–14 days"),
+)
+# Следы правки SEO в истории админки (LogEntry): поля SEO и названия их полей в форме.
+_ADMIN_SEO_RE = re.compile(r"meta|\bog[ _]|seo|мета", re.IGNORECASE)
 
 
 def _model(label: str):
@@ -82,9 +92,10 @@ class _Batch:
     targets: dict[int, list[tuple[str, int, str, dict]]] = field(default_factory=dict)  # (модель, pk, локаль, SEO)
     domains: dict[int, int] = field(default_factory=dict)  # product_id → pk домена
     logs: dict[int, list[dict]] = field(default_factory=dict)
+    admin_seo_edits: set[int] = field(default_factory=set)  # product_id с правкой SEO в админке
 
 
-def _load(product_ids: list[int], lock: bool) -> _Batch:
+def _load(product_ids: list[int], lock: bool, admin_history: bool = False) -> _Batch:
     Product = _model(PRODUCT_LABEL)
     Domain = _model(DOMAIN_LABEL)
     DomainTr = _model("catalog.supplementproducttranslation")
@@ -140,7 +151,39 @@ def _load(product_ids: list[int], lock: bool) -> _Batch:
         row["supplement"] = row["supplement"] if isinstance(row["supplement"], dict) else {}
         row["seo"] = row["seo"] if isinstance(row["seo"], dict) else {}
         batch.logs.setdefault(row["product_id"], []).append(row)
+    if admin_history:
+        batch.admin_seo_edits = _admin_seo_edits(batch, {pk: pid for pid, pk in batch.domains.items()}, domain_tr, product_tr)
     return batch
+
+
+def _admin_seo_edits(batch: _Batch, domain_to_product: dict, domain_tr: list[dict], product_tr: list[dict]) -> set[int]:
+    """Товары, у которых в истории админки есть правка SEO: домена (вместе с переводами в инлайнах),
+    перевода, товара. Такой товар считается правленым вручную целиком."""
+    from django.contrib.admin.models import CHANGE, LogEntry
+    from django.contrib.contenttypes.models import ContentType
+
+    owners: dict[tuple[int, str], int] = {}
+    for label, rows in (
+        (DOMAIN_LABEL, [(pk, pid) for pk, pid in domain_to_product.items()]),
+        (PRODUCT_LABEL, [(pid, pid) for pid in batch.domains]),
+        ("catalog.supplementproducttranslation", [(r["id"], domain_to_product[r["product_id"]]) for r in domain_tr]),
+        ("catalog.producttranslation", [(r["id"], r["product_id"]) for r in product_tr if r["product_id"] in batch.domains]),
+    ):
+        content_type = ContentType.objects.get_for_model(_model(label))
+        for pk, pid in rows:
+            owners[(content_type.id, str(pk))] = pid
+    if not owners:
+        return set()
+    entries = LogEntry.objects.filter(
+        action_flag=CHANGE,
+        content_type_id__in={key[0] for key in owners},
+        object_id__in={key[1] for key in owners},
+    ).values_list("content_type_id", "object_id", "change_message")
+    return {
+        owners[(content_type_id, object_id)]
+        for content_type_id, object_id, message in entries
+        if (content_type_id, object_id) in owners and _ADMIN_SEO_RE.search(str(message or ""))
+    }
 
 
 # ── План ─────────────────────────────────────────────────────────────────────
@@ -171,8 +214,14 @@ def _logged_name(log: dict) -> str:
     return str(seo_ru.get("generated_title") or log["generated_title"] or "").strip()
 
 
-def _candidates(logs: list[dict], locale: str, name: str) -> set[str]:
-    """Что могла записать в поле какая-либо обработка товара."""
+def _with_legacy_edits(value: str) -> str:
+    for old, new in LEGACY_EDITS:
+        value = value.replace(old, new)
+    return value
+
+
+def _candidates(logs: list[dict], locale: str, name: str, legacy_as_auto: bool = False) -> set[str]:
+    """Что могла записать в поле какая-либо обработка товара (и разовые правки в базе — ``legacy_as_auto``)."""
     values = set()
     for log in logs:
         seo = log["seo"].get(locale) if isinstance(log["seo"].get(locale), dict) else {}
@@ -181,6 +230,8 @@ def _candidates(logs: list[dict], locale: str, name: str) -> set[str]:
                 values.add(_keywords_text(seo.get(key)) if key == "meta_keywords" else str(seo.get(key) or "").strip())
         values.add(_keywords_text(log[_GENERATED[name]]) if name == "meta_keywords" else str(log[_GENERATED[name]] or "").strip())
     values.discard("")
+    if legacy_as_auto:
+        values |= {_with_legacy_edits(value) for value in values}
     return values
 
 
@@ -211,7 +262,7 @@ def _new_values(data: dict, name: str, description: str) -> Optional[dict]:
     }
 
 
-def _plan(product_id: int, batch: _Batch) -> ProductPlan:
+def _plan(product_id: int, batch: _Batch, legacy_as_auto: bool = False) -> ProductPlan:
     plan = ProductPlan(product_id)
     if product_id not in batch.domains:
         plan.reason = "нет доменной записи БАДа"
@@ -230,6 +281,9 @@ def _plan(product_id: int, batch: _Batch) -> ProductPlan:
         plan.reason = "название правлено"
         return plan
     plan.log_id, plan.domain_pk, plan.new = source["id"], batch.domains[product_id], new
+    if product_id in batch.admin_seo_edits:
+        plan.reason = "SEO правлено в админке"
+        return plan
     for label, pk, locale, current in batch.targets[product_id]:
         target = new[locale]
         old = {f: str(current[f] or "").strip() for f in SEO_FIELDS}  # только для сравнения
@@ -238,7 +292,7 @@ def _plan(product_id: int, batch: _Batch) -> ProductPlan:
         # Хоть одно поле правлено вручную — объект целиком остаётся (иначе og_title ≠ meta_title).
         manual = [
             f for f in SEO_FIELDS
-            if old[f] and old[f] != target[f] and old[f] not in _candidates(logs, locale, f)
+            if old[f] and old[f] != target[f] and old[f] not in _candidates(logs, locale, f, legacy_as_auto)
         ]
         if manual:
             plan.kept_manual += 1
@@ -324,9 +378,13 @@ def _sync(handle: Optional[TextIO]) -> None:
 
 def run(
     product_ids: Iterable[int], *, apply: bool = False, backup: Optional[TextIO] = None, show: int = 10,
-    stats: Optional[Counter] = None,
+    stats: Optional[Counter] = None, legacy_as_auto: bool = False,
 ) -> tuple[Counter, list[ProductPlan]]:
-    """План (и запись при ``apply``) пачками по ``BATCH_SIZE``; возвращает счётчики и до ``show`` примеров."""
+    """План (и запись при ``apply``) пачками по ``BATCH_SIZE``; возвращает счётчики и до ``show`` примеров.
+
+    ``legacy_as_auto`` — значения логов с разовыми правками ``LEGACY_EDITS`` тоже считаются записанными
+    обработкой; товары с правкой SEO в истории админки (LogEntry) при этом пропускаются целиком.
+    """
     if apply and backup is None:
         raise ValueError("запись только с бэкапом")
     stats = Counter() if stats is None else stats
@@ -335,9 +393,9 @@ def run(
     for start in range(0, len(ids), BATCH_SIZE):
         chunk = ids[start:start + BATCH_SIZE]
         with transaction.atomic():
-            batch = _load(chunk, lock=apply)
+            batch = _load(chunk, lock=apply, admin_history=legacy_as_auto)
             for product_id in chunk:
-                plan = _plan(product_id, batch)
+                plan = _plan(product_id, batch, legacy_as_auto)
                 stats["товаров"] += 1
                 if plan.reason:
                     stats[f"пропущено: {plan.reason}"] += 1
