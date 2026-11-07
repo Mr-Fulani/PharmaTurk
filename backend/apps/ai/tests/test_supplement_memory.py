@@ -985,3 +985,5 @@ def test_supplement_card_gets_memory_blocks_and_model_is_told_not_to_retell_them
     assert result["rule_content"]["supplement"]["memory_texts"]["ru"][1] == "Способ применения: По 1 штуке в день, разжёвывая."
     assert result["rule_content"]["description_source"] == "llm+memory"
     assert result["rule_content"]["supplement"]["memory"]["translated"] == 8
+    # Есть «Способ применения» — в SEO обещается инструкция на русском (SEO-ядро 07.11.2026).
+    assert "Инструкция на русском" in result["content"]["ru"]["seo_description"]
