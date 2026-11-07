@@ -22,6 +22,8 @@ reports/seniorah-feasibility-2026-11-07.md.
 
 import json
 import re
+import threading
+import time
 from collections import Counter
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote, unquote, urljoin, urlparse
@@ -29,6 +31,7 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 import httpx
 
 from apps.catalog.utils.tr_vocab import COLOR_DETAIL_SEPARATOR, normalize_ascii_text, translate_turkish_color
+from apps.http_errors import SourceRateLimitedError, raise_for_blocked_status
 
 from ..base.catalog_state import CatalogTraversalState
 from ..base.listing_snapshot import listing_fingerprint
@@ -111,8 +114,18 @@ class SeniorahParser(BaseScraper):
     )
     MEASURE_MARKERS = ("olcusu", "olculer", "olcu ")
 
+    # Shopify отвечает 429 уже на четвёртый лёгкий запрос за 10 минут с одного IP (проба
+    # на проде 08.11.2026): между любыми запросами процесса — не меньше 2,5 с, на 429/503 —
+    # повтор с ожиданием (Retry-After или 30/60/120 с), потом понятная остановка.
+    MIN_REQUEST_INTERVAL = 2.5
+    RATE_LIMIT_STATUSES = frozenset({429, 503})
+    RATE_LIMIT_WAITS = (30, 60, 120)
+    MAX_RETRY_AFTER = 300
+    _request_lock = threading.Lock()
+    _last_request_at = 0.0  # общий для процесса: проверки наличия создают парсер на каждую
+
     def __init__(self, base_url: str = "https://seniorah.com", **kwargs):
-        super().__init__(base_url=base_url, delay_range=(1, 2), **kwargs)
+        super().__init__(base_url=base_url, delay_range=(2.5, 4), **kwargs)
         self.client.headers.update(
             {
                 "Accept": "application/json, text/plain, */*",
@@ -156,6 +169,69 @@ class SeniorahParser(BaseScraper):
 
     def _product_url(self, handle: str) -> str:
         return f"{self.base_url}/products/{quote(handle, safe='-')}"
+
+    def _throttle(self) -> None:
+        """Пауза с прошлого запроса к магазину в этом процессе: не меньше MIN_REQUEST_INTERVAL
+        (или «Минимальной задержки» настроек, если она больше)."""
+        interval = max(self.MIN_REQUEST_INTERVAL, float(self.delay_range[0] or 0))
+        with self._request_lock:
+            wait = SeniorahParser._last_request_at + interval - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            SeniorahParser._last_request_at = time.monotonic()
+
+    @classmethod
+    def _retry_after(cls, response: httpx.Response) -> Optional[float]:
+        try:
+            seconds = float(response.headers.get("Retry-After", ""))
+        except ValueError:
+            return None
+        return min(max(seconds, 0.0), cls.MAX_RETRY_AFTER)
+
+    def _make_request(self, url: str, **kwargs) -> Optional[str]:
+        """Запрос каталога: 404 — None; 429/503 — повтор с ожиданием, затем
+        ``SourceRateLimitedError``; сбой сети — до ``max_retries`` повторов, как в базе."""
+        if not url.startswith(("http://", "https://")):
+            url = urljoin(self.base_url, url)
+        network_errors = 0
+        rate_limited = 0
+        while True:
+            self._throttle()
+            self.logger.info("Запрос к %s", url)
+            try:
+                response = self.client.get(url, **kwargs)
+            except httpx.TransportError:
+                network_errors += 1
+                if network_errors > self.max_retries:
+                    raise
+                time.sleep(2 ** network_errors)
+                continue
+            if response.status_code in self.RATE_LIMIT_STATUSES:
+                if rate_limited >= len(self.RATE_LIMIT_WAITS):
+                    raise SourceRateLimitedError(
+                        source="Seniorah", status_code=response.status_code, url=url, attempts=rate_limited + 1,
+                    )
+                wait = self._retry_after(response)
+                wait = self.RATE_LIMIT_WAITS[rate_limited] if wait is None else wait
+                rate_limited += 1
+                self.logger.warning(
+                    "Seniorah: HTTP %s на %s — жду %s с (повтор %s из %s)",
+                    response.status_code, url, wait, rate_limited, len(self.RATE_LIMIT_WAITS),
+                )
+                time.sleep(wait)
+                continue
+            raise_for_blocked_status(status_code=response.status_code, url=str(response.url or url), source="Seniorah")
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            self.last_response_url = str(response.url or url)
+            return response.text
+
+    def _make_offer_request(self, url: str, **kwargs):
+        """Проверка наличия — одна попытка (повторы и паузы решает сервис), но не чаще
+        MIN_REQUEST_INTERVAL с прошлого запроса к магазину."""
+        self._throttle()
+        return super()._make_offer_request(url, **kwargs)
 
     def _fetch_json(self, url: str) -> Optional[Dict[str, Any]]:
         """JSON ответа; None — 404. HTML вместо JSON — защита сайта, обход останавливается."""

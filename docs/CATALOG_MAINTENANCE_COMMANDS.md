@@ -216,7 +216,12 @@ manage.py retire_stale_domain_records --limit 0 --apply --backup /backups/stale-
 ```bash
 manage.py ensure_demand_categories                                          # показ
 manage.py ensure_demand_categories --apply --backup /backups/demand-categories.json
+manage.py ensure_demand_categories --only heels,ballet-flats --apply --backup /backups/heels.json
 ```
+
+`--only` — только перечисленные slug (новые разделы и переименования), остальное не трогается:
+так заводятся «Туфли на каблуке» и «Балетки», пока флиски, рюкзаки, термосы и переименования
+ждут решения владельца. Незнакомый slug — ошибка со списком допустимых.
 
 Бэкап — на томе `/backups` (как у `retire_stale_domain_records`): `/tmp` контейнера
 `run --rm` пропадает вместе с ним. В бэкапе — прежние название, описание, мета и переводы

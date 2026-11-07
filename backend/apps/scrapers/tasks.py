@@ -11,6 +11,8 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from apps.http_errors import SourceRateLimitedError
+
 from .base.offers import OfferVerificationError
 from .base.scraper import CategoryPageNotFoundError, ScraperAccessBlockedError
 from .models import (
@@ -1221,7 +1223,7 @@ def run_scraper_task(
     except ScraperAccessBlockedError as e:
         # Постоянный 401/403 не исправится повтором через минуту: показываем причину
         # администратору и не создаём лишнюю нагрузку на защищаемый сайт.
-        error_msg = f"Доступ к источнику отклонён: {e}"
+        error_msg = str(e) if isinstance(e, SourceRateLimitedError) else f"Доступ к источнику отклонён: {e}"
         logger.error(error_msg)
         if site_task:
             SiteScraperTask.objects.filter(id=site_task.id).update(

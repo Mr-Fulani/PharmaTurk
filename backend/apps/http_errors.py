@@ -25,6 +25,24 @@ class ExternalAccessBlockedError(RuntimeError):
         super().__init__(f"{source} {reason} (HTTP {status_code}, {host})")
 
 
+class SourceRateLimitedError(ExternalAccessBlockedError):
+    """Источник ограничил частоту запросов (HTTP 429/503), и повторы с ожиданием не помогли.
+
+    Временное состояние магазина, а не поломка парсера: задача останавливается с понятной
+    причиной, повтор — позже.
+    """
+
+    def __init__(self, *, source: str, status_code: int, url: str, attempts: int):
+        host = urlparse(url).netloc or url
+        super().__init__(
+            f"{source}: магазин ограничил запросы (HTTP {status_code}, {host}) — "
+            f"{attempts} попытки с ожиданием не помогли, повторите позже",
+            source=source,
+            status_code=status_code,
+            url=url,
+        )
+
+
 class PaidAccessUnavailableError(ExternalAccessBlockedError):
     """Платный провайдер доступа (Bright Data) отказал сам, а не магазин.
 
