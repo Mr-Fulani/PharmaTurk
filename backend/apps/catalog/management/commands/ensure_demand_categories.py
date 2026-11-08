@@ -14,6 +14,10 @@ title/description и тексты посадочной страницы со с�
 
     manage.py ensure_demand_categories                                          # показ
     manage.py ensure_demand_categories --apply --backup /backups/demand-categories.json
+    manage.py ensure_demand_categories --only heels,ballet-flats --apply --backup /backups/heels.json
+
+``--only`` — только перечисленные slug (новые разделы и переименования): остальное ждёт
+решения владельца.
 """
 import json
 
@@ -75,13 +79,18 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true", help="Записать изменения.")
         parser.add_argument("--backup", default="", help="JSON-файл бэкапа (обязателен с --apply).")
+        parser.add_argument(
+            "--only",
+            default="",
+            help="Только эти slug через запятую (например heels,ballet-flats); без него — все.",
+        )
 
     def handle(self, *args, **options):
         apply = options["apply"]
         if apply and not options["backup"]:
             raise CommandError("С --apply нужен --backup <файл>.")
 
-        creates, renames, taken = self._plan()
+        creates, renames, taken = self._plan(self._only(options["only"]))
         for parent, slug, name_ru in taken:
             self.stdout.write(
                 f"! «{name_ru}» уже есть в «{parent.name}» ({parent.slug}) под другим slug — {slug} не создаю"
@@ -109,11 +118,25 @@ class Command(BaseCommand):
             f"Создано разделов: {len(creates)}, переименовано: {len(renames)}. Бэкап: {options['backup']}"
         ))
 
-    def _plan(self):
+    @staticmethod
+    def _only(raw):
+        """Набор slug из ``--only`` или None (все). Незнакомый slug — ошибка, а не тишина."""
+        slugs = {slug.strip() for slug in str(raw or "").split(",") if slug.strip()}
+        if not slugs:
+            return None
+        known = {row[1] for row in NEW_CATEGORIES} | {row[0] for row in RENAMES}
+        unknown = sorted(slugs - known)
+        if unknown:
+            raise CommandError(f"Неизвестные slug в --only: {', '.join(unknown)}. Есть: {', '.join(sorted(known))}.")
+        return slugs
+
+    def _plan(self, only=None):
         missing_parents = []
         creates = []
         taken = []
         for parent_slug, slug, *names in NEW_CATEGORIES:
+            if only is not None and slug not in only:
+                continue
             if Category.objects.filter(slug=slug).exists():
                 continue
             parent = Category.objects.filter(slug=parent_slug).first()
@@ -131,6 +154,7 @@ class Command(BaseCommand):
         renames = [
             (category, old, new, description)
             for slug, old, new, description in RENAMES
+            if only is None or slug in only
             for category in Category.objects.filter(slug=slug, name=old)
         ]
         return creates, renames, taken

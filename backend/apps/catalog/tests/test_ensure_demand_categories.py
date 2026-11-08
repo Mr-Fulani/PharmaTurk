@@ -116,3 +116,21 @@ def test_show_lists_ballet_flats_outside_casual_shoes(tree, capsys):
 
     out = capsys.readouterr().out
     assert "Товары «балетк…» вне casual-shoes: 1" in out and "Женские балетки Lacoste" in out
+
+
+def test_only_creates_selected_slugs(tree, tmp_path):
+    """Флиски, рюкзаки, термосы и переименования ждут решения владельца — --only их не трогает."""
+    call_command("ensure_demand_categories", "--only", "heels,ballet-flats", "--apply", "--backup", str(tmp_path / "h.json"))
+
+    assert set(Category.objects.filter(slug__in=["heels", "ballet-flats"]).values_list("slug", flat=True)) == {
+        "heels", "ballet-flats",
+    }
+    assert not Category.objects.filter(slug__in=["fleece", "backpacks", "thermoses"]).exists()
+    assert Category.objects.get(slug="slides").name == "Слайды"
+    saved = json.loads((tmp_path / "h.json").read_text(encoding="utf-8"))
+    assert sorted(saved["created"]) == ["ballet-flats", "heels"] and saved["renamed"] == []
+
+
+def test_only_rejects_unknown_slug(tree):
+    with pytest.raises(CommandError, match="heel"):
+        call_command("ensure_demand_categories", "--only", "heel")

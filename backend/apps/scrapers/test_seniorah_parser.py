@@ -31,6 +31,19 @@ from apps.scrapers.test_superstep_parser import _catalog_slugs
 
 FIXTURES = Path(__file__).parent / "test_fixtures" / "seniorah"
 SITE = "https://seniorah.com"
+
+
+@pytest.fixture(autouse=True)
+def no_waits(monkeypatch):
+    """Паузы парсера (2,5 с между запросами, 30/60/120 с на 429) — без настоящего сна."""
+    from apps.scrapers.parsers import seniorah
+
+    waits = []
+    monkeypatch.setattr(seniorah.time, "sleep", waits.append)
+    monkeypatch.setattr(seniorah.SeniorahParser, "_last_request_at", 0.0)
+    return waits
+
+
 NODA_BLACK = "/products/siyah-cilt-lastik-detayli-kadin-topuklu-ayakkabi"
 
 
@@ -612,3 +625,85 @@ def test_compound_colors_keep_the_main_color():
     assert translate_turkish_color("Siyah-Fuşya", "ru") == "Черный"
     assert translate_turkish_color("Platin", "ru") == "Платиновый"
     assert translate_turkish_color("Fuşya", "en") == "Fuchsia"
+
+
+# --- ограничение частоты запросов (429) ----------------------------------------
+
+
+def _http_parser(responses):
+    """Парсер, которому магазин отвечает по очереди заданными ответами."""
+    import httpx
+
+    parser = SeniorahParser()
+    parser.requests = []
+    queue = list(responses)
+
+    def handle(request):
+        parser.requests.append(unquote(request.url.path))
+        status, body, headers = queue.pop(0)
+        return httpx.Response(status, text=body, headers=headers, request=request)
+
+    parser.client.close()
+    parser.client = httpx.Client(transport=httpx.MockTransport(handle))
+    return parser
+
+
+CARD = json.dumps({"product": _catalog()["products"][5]})
+
+
+def test_rate_limit_is_retried_after_waiting(no_waits):
+    parser = _http_parser([(429, "", {}), (503, "", {"Retry-After": "7"}), (200, CARD, {})])
+
+    assert json.loads(parser._make_request(SITE + NODA_BLACK + ".json"))["product"]["id"] == 8857996198115
+
+    assert len(parser.requests) == 3
+    assert 30 in no_waits and 7.0 in no_waits  # 30 с — по умолчанию, 7 с — по Retry-After
+
+
+def test_rate_limit_after_all_retries_stops_with_clear_reason(no_waits):
+    from apps.http_errors import SourceRateLimitedError
+
+    parser = _http_parser([(429, "", {})] * 4)
+
+    with pytest.raises(SourceRateLimitedError) as error:
+        parser.parse_product_detail(SITE + NODA_BLACK)
+
+    assert len(parser.requests) == 4  # первая попытка и три повтора, больше не стучимся
+    assert [wait for wait in no_waits if wait >= 30] == [30, 60, 120]
+    assert "магазин ограничил запросы (HTTP 429, seniorah.com)" in str(error.value)
+
+
+def test_requests_are_at_least_two_and_a_half_seconds_apart(no_waits):
+    from apps.scrapers.parsers import seniorah
+
+    parser = _http_parser([(200, CARD, {}), (200, CARD, {})])
+    seniorah.SeniorahParser._last_request_at = seniorah.time.monotonic()
+
+    parser._make_request(SITE + NODA_BLACK + ".json")
+
+    assert no_waits and 2.4 < no_waits[0] <= 2.5
+    assert SeniorahParser().delay_range == (2.5, 4)
+
+
+@pytest.mark.django_db
+def test_rate_limited_session_ends_with_reason_and_keeps_config_active(monkeypatch):
+    from apps.http_errors import SourceRateLimitedError
+
+    shoes = Category.objects.create(name="Обувь", slug="shoes-rl")
+    config = ScraperConfig.objects.create(
+        name="seniorah-rl", parser_class="seniorah", base_url=SITE, default_category=shoes,
+    )
+
+    def limited(self, url, **kwargs):
+        raise SourceRateLimitedError(source="Seniorah", status_code=429, url=url, attempts=4)
+
+    monkeypatch.setattr(SeniorahParser, "_make_request", limited)
+
+    with pytest.raises(SourceRateLimitedError):
+        ScraperIntegrationService().run_scraper(config, start_url=SITE + "/collections/spor-ayakkabi", max_products=20)
+
+    session = ScrapingSession.objects.get(scraper_config=config)
+    assert session.status == "failed"
+    assert "магазин ограничил запросы" in session.error_message
+    config.refresh_from_db()
+    assert config.status == "active"  # временный лимит магазина — не «Ошибка» парсера

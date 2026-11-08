@@ -60,6 +60,7 @@ from .base.scraper import (
     _json_safe_scraped_value,
 )
 from apps.catalog.services import CatalogNormalizer, build_image_alt_text
+from apps.http_errors import SourceRateLimitedError
 from apps.catalog.utils.tr_vocab import (
     match_turkish_product_term,
     normalize_ascii_text as normalize_tr_ascii_text,
@@ -1086,6 +1087,20 @@ class ScraperIntegrationService:
             session.status = "failed"
             session.finished_at = timezone.now()
             session.error_message = f"Страница снята у источника (HTTP 404/410), парсер исправен: {e}"
+            session.save()
+            self._update_scraper_stats(
+                scraper_config, session, success=False, source_item_gone=True,
+            )
+            raise
+
+        except SourceRateLimitedError as e:
+            # Магазин ограничил частоту запросов (429/503), повторы с ожиданием не помогли:
+            # временное состояние источника, а не поломка парсера — «Ошибку» в настройки
+            # не ставим, сессия завершается с понятной причиной.
+            self.logger.warning("Парсер %s: %s", scraper_config.name, e)
+            session.status = "failed"
+            session.finished_at = timezone.now()
+            session.error_message = str(e)
             session.save()
             self._update_scraper_stats(
                 scraper_config, session, success=False, source_item_gone=True,
