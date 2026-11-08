@@ -1,18 +1,26 @@
 import logging
+import re
+from datetime import timedelta
 
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Case, Exists, IntegerField, OuterRef, Q, Value, When
+from django.db.models import Case, Exists, F, Func, IntegerField, OuterRef, Prefetch, Q, Value, When
+from django.db.models.functions import Right
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
+from django.utils.text import Truncator
 from django.utils.translation import gettext_lazy as _
 
+from apps.catalog.admin_media import render_media_preview, resolve_media_url
+from apps.catalog.services.product_resolve import build_canonical_path
 from apps.users.models import User
 
+from .cart_reminders import PLACEHOLDER_EMAIL_SUFFIX, site_url
+from .contacts import PHONE_MATCH_DIGITS, phone_tail, telegram_username, whatsapp_number
 from .models import (
     Cart,
     CartItem,
@@ -254,12 +262,63 @@ class CartItemAdmin(admin.ModelAdmin):
     )
 
 
-class OrderItemInline(admin.TabularInline):
+def _item_image_url(product) -> str:
+    """Главное фото товара, иначе главное/первое из галереи (images предзагружены)."""
+    url = resolve_media_url(product, 'main_image_file', 'main_image')
+    if url:
+        return url
+    images = list(product.images.all())
+    image = next((i for i in images if i.is_main), images[0] if images else None)
+    return resolve_media_url(image, 'image_file', 'image_url') if image else ''
+
+
+def _new_tab_link(url: str, label):
+    return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', url, label)
+
+
+class OrderItemLinksMixin:
+    """Превью товара и ссылки «на сайте / в источнике / в админке» для позиций заказа."""
+
+    @admin.display(description=_('Фото'))
+    def item_preview(self, obj):
+        product = obj.product if obj else None
+        url = _item_image_url(product) if product else ''
+        return render_media_preview(url, max_width=60, max_height=60) if url else '—'
+
+    @admin.display(description=_('Ссылки'))
+    def item_links(self, obj):
+        if not obj:
+            return '—'
+        product = obj.product
+        links = []
+        if product and product.slug:
+            # Заказанная расцветка/вариант — теневой Product со slug «<тип>-<вариант>», которого
+            # на сайте нет; карточка открывается по slug варианта (как ссылка из корзины).
+            # У украшений slug теневого товара — уже slug родителя.
+            slug = product.slug
+            if product.product_type != 'jewelry':
+                slug = (product.external_data or {}).get('source_variant_slug') or slug
+            path = build_canonical_path(product.product_type, slug)
+            links.append(_new_tab_link(f'{site_url()}{path}', _('На сайте')))
+        # Ссылка, сохранённая при оформлении; у старых позиций — текущая ссылка товара
+        source = obj.source_url or (product.external_url if product else '')
+        if source.startswith(('https://', 'http://')):
+            links.append(_new_tab_link(source, _('В источнике')))
+        if product:
+            links.append(_new_tab_link(
+                reverse('admin:catalog_product_change', args=[product.pk]), _('В админке'),
+            ))
+        return format_html_join(' · ', '{}', ((link,) for link in links)) if links else '—'
+
+
+class OrderItemInline(OrderItemLinksMixin, admin.TabularInline):
     """Инлайн для позиций заказа."""
     model = OrderItem
     extra = 0
     autocomplete_fields = ('product',)
     readonly_fields = (
+        'item_preview',
+        'item_links',
         'price',
         'total',
         'source_parser',
@@ -268,7 +327,9 @@ class OrderItemInline(admin.TabularInline):
         'supplier_confirmation_required',
     )
     fields = (
+        'item_preview',
         'product',
+        'item_links',
         'product_name',
         'chosen_size',
         'price',
@@ -279,6 +340,9 @@ class OrderItemInline(admin.TabularInline):
         'source_checked_at',
         'supplier_confirmation_required',
     )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('product').prefetch_related('product__images')
 
 
 PS = Order.ProcessingStatus
@@ -342,22 +406,126 @@ class AssignedToFilter(admin.SimpleListFilter):
         return queryset
 
 
+# «Висит долго» в списке: «Новая» дольше суток с создания, «В работе» дольше 3 дней без изменений
+# (по updated_at). Пороги выбраны по умолчанию, владелец числа не называл.
+NEW_STALE_AFTER = timedelta(hours=24)
+IN_PROGRESS_STALE_AFTER = timedelta(days=3)
+
+# Сколько позиций показывать в колонке «Состав», остальные — «+N»
+ITEMS_SHOWN = 3
+
+# Последние цифры телефона в базе — для поиска других заявок клиента
+_PHONE_TAIL_SQL = Right(
+    Func(F('contact_phone'), Value(r'\D'), Value(''), Value('g'), function='REGEXP_REPLACE'),
+    PHONE_MATCH_DIGITS,
+)
+
+
+def _client_email(order) -> str:
+    email = (order.contact_email or '').strip()
+    return '' if email.lower().endswith(PLACEHOLDER_EMAIL_SUFFIX) else email
+
+
+def _client_orders(queryset, order):
+    """Другие заявки того же клиента: тот же пользователь, телефон, ник или email."""
+    q = Q()
+    if order.user_id:
+        q |= Q(user_id=order.user_id)
+    tail = phone_tail(order.contact_phone)
+    # «0000000000», «1111111111» и т. п. — заглушки, а не номер: не склеивать по ним чужих клиентов
+    if tail and len(set(tail)) >= 3:
+        q |= Q(phone_tail=tail)
+    username = (order.contact_username or '').strip().lstrip('@')
+    if username:
+        # Ник — в том же канале: Telegram «ivan_p» и WhatsApp «ivan_p» — разные люди
+        q |= Q(contact_channel=order.contact_channel) & (
+            Q(contact_username__iexact=username) | Q(contact_username__iexact=f'@{username}')
+        )
+    email = _client_email(order)
+    if email:
+        q |= Q(contact_email__iexact=email)
+    if not q:
+        return queryset.none()
+    return queryset.annotate(phone_tail=_PHONE_TAIL_SQL).filter(q).exclude(pk=order.pk)
+
+
+def _orders_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return 'заявка'
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return 'заявки'
+    return 'заявок'
+
+
+def _contact_links(order, short=False):
+    """Telegram / WhatsApp / звонок / email; канал, выбранный клиентом, — жирным."""
+    channel = order.contact_channel
+    tg = telegram_username(order.contact_username) if channel == 'telegram' else ''
+    phone = (order.contact_phone or '').strip()
+    phone_wa = whatsapp_number(phone)
+    digits = re.sub(r'\D', '', phone)
+    # Номер с понятным кодом страны — в международном виде, иначе как ввёл клиент
+    tel = f'+{phone_wa}' if phone_wa else (('+' if phone.startswith('+') else '') + digits if digits else '')
+    wa = (whatsapp_number(order.contact_username) if channel == 'whatsapp' else '') or phone_wa
+    email = _client_email(order)
+    candidates = (
+        ('telegram', tg and f'https://t.me/{tg}', 'TG', 'Telegram', True),
+        ('whatsapp', wa and f'https://wa.me/{wa}', 'WA', 'WhatsApp', True),
+        ('phone', tel and f'tel:{tel}', '☎', _('Позвонить'), False),
+        ('email', email and f'mailto:{email}', '✉', 'Email', False),
+    )
+    links = []
+    for key, href, short_label, label, new_tab in candidates:
+        if not href:
+            continue
+        weight = 700 if key == channel else 400
+        target = format_html(' target="_blank" rel="noopener noreferrer"') if new_tab else ''
+        links.append(format_html(
+            '<a href="{}"{} style="font-weight:{};white-space:nowrap">{}</a>',
+            href, target, weight, short_label if short else label,
+        ))
+    return format_html_join(' · ', '{}', ((link,) for link in links)) if links else '—'
+
+
+class ClientOrdersFilter(admin.SimpleListFilter):
+    """Заявки того же клиента, что у заявки ?client_of=<id> (ссылка со страницы заявки)."""
+
+    title = _('клиент')
+    parameter_name = 'client_of'
+
+    def _order(self):
+        value = self.value()
+        if value and value.isdecimal():
+            return Order.objects.filter(pk=int(value)).first()
+        return None
+
+    def lookups(self, request, model_admin):
+        order = self._order()
+        # Пункт есть только при переходе по ссылке: иначе фильтр не применится
+        return [(str(order.pk), _('Другие заявки клиента %(number)s') % {'number': order.number})] if order else []
+
+    def queryset(self, request, queryset):
+        order = self._order()
+        return _client_orders(queryset, order) if order else queryset
+
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Админка для заказов."""
     list_display = (
-        'number', 'processing_badge', 'assigned_to_name', 'import_restriction_badge', 'user', 'status',
-        'total_amount', 'currency', 'contact_phone', 'contact_channel', 'payment_method', 'created_at',
+        'number', 'processing_badge', 'assigned_to_name', 'import_restriction_badge', 'items_summary', 'user',
+        'status', 'total_amount', 'currency', 'contact_phone', 'contact_channel', 'contact_links_short',
+        'payment_method', 'created_at',
     )
     list_filter = (
-        ProcessingStatusFilter, AssignedToFilter, 'status', 'currency', 'payment_method', 'payment_status',
-        'promo_code', 'created_at',
+        ProcessingStatusFilter, AssignedToFilter, ClientOrdersFilter, 'status', 'currency', 'payment_method',
+        'payment_status', 'promo_code', 'created_at',
     )
     list_select_related = ('user', 'assigned_to')
     search_fields = ('number', 'user__email', 'contact_name', 'contact_phone', 'promo_code__code')
     readonly_fields = (
         'number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url',
-        'import_restriction_banner', 'processing_history',
+        'import_restriction_banner', 'processing_history', 'contact_links', 'client_orders_link',
     )
     actions = ('take_in_work', 'mark_waiting_client', 'mark_done')
 
@@ -365,7 +533,10 @@ class OrderAdmin(admin.ModelAdmin):
         (_('Обработка заявки'), {'fields': ('processing_status', 'assigned_to', 'processing_history')}),
         (None, {'fields': ('number', 'import_restriction_banner', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
-        (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
+        (_('Contact'), {'fields': (
+            'contact_links', 'client_orders_link',
+            'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username',
+        )}),
         (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method', 'tracking_number', 'tracking_url')}),
         (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
         (_('Additional'), {'fields': ('comment',)}),
@@ -377,8 +548,9 @@ class OrderAdmin(admin.ModelAdmin):
     @staticmethod
     def _restricted_items(obj):
         """Позиции с лекарствами, запрещёнными к ввозу в РФ/СНГ (TD-024): доставку решает менеджер."""
+        # Позиции с product__medicine_item предзагружены в get_queryset — без запроса на строку
         return [
-            item for item in obj.items.select_related('product__medicine_item')
+            item for item in obj.items.all()
             if item.product_id and getattr(getattr(item.product, 'medicine_item', None), 'import_restricted_countries', '')
         ]
 
@@ -429,8 +601,18 @@ class OrderAdmin(admin.ModelAdmin):
         return form
 
     def get_queryset(self, request):
-        # Ранг нужен колонке «Обработка» для сортировки по клику
-        return super().get_queryset(request).annotate(processing_rank=_processing_rank())
+        # Ранг нужен колонке «Обработка» для сортировки по клику; позиции с товаром и фото —
+        # колонке «Состав» одним запросом на страницу
+        items = (
+            OrderItem.objects.select_related('product__medicine_item')
+            .prefetch_related('product__images')
+            .order_by('pk')
+        )
+        return (
+            super().get_queryset(request)
+            .annotate(processing_rank=_processing_rank())
+            .prefetch_related(Prefetch('items', queryset=items))
+        )
 
     def get_ordering(self, request):
         # Выражение, а не имя аннотации: эту сортировку берут и формы других админок со ссылкой
@@ -440,10 +622,71 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.display(description=_('Обработка'), ordering='processing_rank')
     def processing_badge(self, obj):
         bg, fg = PROCESSING_COLORS.get(obj.processing_status, ('#e2e3e5', '#41464b'))
-        return format_html(
+        badge = format_html(
             '<span style="padding:2px 8px;border-radius:6px;background:{};color:{};font-weight:600;white-space:nowrap;">'
             '{}</span>', bg, fg, obj.get_processing_status_display(),
         )
+        stale = self._stale_for(obj)
+        if stale is None:
+            return badge
+        hours = int(stale.total_seconds() // 3600)
+        age = f'{hours} ч' if hours < 48 else f'{hours // 24} д'
+        return format_html(
+            '{}<br><span title="{}" style="display:inline-block;margin-top:3px;padding:1px 6px;border-radius:6px;'
+            'background:#dc3545;color:#fff;font-weight:700;white-space:nowrap;">⏰ висит {}</span>',
+            badge, _('Новая дольше суток или «В работе» без изменений дольше 3 дней'), age,
+        )
+
+    @staticmethod
+    def _stale_for(obj):
+        """Сколько заявка «висит», если дольше порога; иначе None."""
+        now = timezone.now()
+        if obj.processing_status == PS.NEW and obj.created_at and now - obj.created_at > NEW_STALE_AFTER:
+            return now - obj.created_at
+        if obj.processing_status == PS.IN_PROGRESS and obj.updated_at and now - obj.updated_at > IN_PROGRESS_STALE_AFTER:
+            return now - obj.updated_at
+        return None
+
+    @admin.display(description=_('Состав'))
+    def items_summary(self, obj):
+        items = list(obj.items.all())  # предзагружены в get_queryset
+        if not items:
+            return '—'
+        rows = []
+        for item in items[:ITEMS_SHOWN]:
+            url = _item_image_url(item.product) if item.product else ''
+            thumb = format_html(
+                '<img src="{}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;">', url,
+            ) if url else format_html('<span style="display:inline-block;width:32px;"></span>')
+            rows.append((thumb, item.product_name, Truncator(item.product_name).chars(32), item.quantity))
+        more = len(items) - ITEMS_SHOWN
+        tail = format_html('<div style="color:#666;">+{}</div>', more) if more > 0 else ''
+        return format_html(
+            '{}{}',
+            format_html_join(
+                '', '<div style="display:flex;align-items:center;gap:6px;margin:2px 0;white-space:nowrap;">'
+                '{}<span title="{}">{} ×{}</span></div>', rows,
+            ),
+            tail,
+        )
+
+    @admin.display(description=_('Связь'))
+    def contact_links_short(self, obj):
+        return _contact_links(obj, short=True)
+
+    @admin.display(description=_('Связаться'))
+    def contact_links(self, obj):
+        return _contact_links(obj) if obj and obj.pk else '—'
+
+    @admin.display(description=_('Другие заявки клиента'))
+    def client_orders_link(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        count = _client_orders(Order.objects.all(), obj).count()
+        if not count:
+            return _('Других заявок нет')
+        url = f"{reverse('admin:orders_order_changelist')}?{ClientOrdersFilter.parameter_name}={obj.pk}"
+        return _new_tab_link(url, f'У этого клиента ещё {count} {_orders_word(count)}')
 
     @admin.display(description=_('Ответственный'), ordering='assigned_to__email')
     def assigned_to_name(self, obj):
@@ -507,12 +750,14 @@ class OrderAdmin(admin.ModelAdmin):
 
 
 @admin.register(OrderItem)
-class OrderItemAdmin(admin.ModelAdmin):
+class OrderItemAdmin(OrderItemLinksMixin, admin.ModelAdmin):
     """Админка для позиций заказа."""
     autocomplete_fields = ('product',)
     list_display = (
+        'item_preview',
         'order',
         'product',
+        'item_links',
         'product_name',
         'chosen_size',
         'price',
@@ -530,6 +775,8 @@ class OrderItemAdmin(admin.ModelAdmin):
     )
     ordering = ('order',)
     readonly_fields = (
+        'item_preview',
+        'item_links',
         'price',
         'total',
         'source_parser',
@@ -548,6 +795,13 @@ class OrderItemAdmin(admin.ModelAdmin):
         'source_checked_at',
         'supplier_confirmation_required',
     )
+
+    def get_queryset(self, request):
+        return (
+            super().get_queryset(request)
+            .select_related('order', 'product')
+            .prefetch_related('product__images')
+        )
 
 
 @admin.register(PromoCode)
