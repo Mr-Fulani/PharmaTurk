@@ -581,9 +581,34 @@ class Order(models.Model):
         DELIVERED = "delivered", _("Доставлен")
         CANCELLED = "cancelled", _("Отменен")
 
+    class ProcessingStatus(models.TextChoices):
+        """Отметка для менеджеров в админке: клиент её не видит, сообщений не получает."""
+        NEW = "new", _("Новая")
+        IN_PROGRESS = "in_progress", _("В работе")
+        WAITING_CLIENT = "waiting_client", _("Ответили клиенту — ждём")
+        DONE = "done", _("Обработана")
+        CANCELLED = "cancelled", _("Отменена")
+
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Пользователь"))
     number = models.CharField(_("Номер заказа"), max_length=32, unique=True)
     status = models.CharField(_("Статус"), max_length=32, choices=OrderStatus.choices, default=OrderStatus.NEW)
+    processing_status = models.CharField(
+        _("Обработка"),
+        max_length=16,
+        choices=ProcessingStatus.choices,
+        default=ProcessingStatus.NEW,
+        db_index=True,
+        help_text=_("Для менеджеров: клиент эту отметку не видит и сообщений о ней не получает."),
+    )
+    assigned_to = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_orders",
+        limit_choices_to={"is_staff": True},
+        verbose_name=_("Ответственный"),
+    )
 
     # Суммы
     subtotal_amount = models.DecimalField(_("Сумма товаров"), max_digits=12, decimal_places=2, default=0)
@@ -634,6 +659,32 @@ class Order(models.Model):
 
     def __str__(self) -> str:
         return f"Заказ #{self.number}"
+
+
+class OrderProcessingEvent(models.Model):
+    """Журнал обработки заявки: кто и когда менял отметку «Обработка» и ответственного."""
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="processing_events", verbose_name=_("Заказ"))
+    actor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name=_("Кто изменил"),
+    )
+    old_status = models.CharField(_("Было"), max_length=16, choices=Order.ProcessingStatus.choices)
+    new_status = models.CharField(_("Стало"), max_length=16, choices=Order.ProcessingStatus.choices)
+    old_assigned_to = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name=_("Был ответственный"),
+    )
+    new_assigned_to = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name=_("Стал ответственный"),
+    )
+    created_at = models.DateTimeField(_("Когда"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изменение обработки заявки")
+        verbose_name_plural = _("Изменения обработки заявок")
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.order_id}: {self.old_status} → {self.new_status}"
 
 
 class OrderItem(models.Model):
