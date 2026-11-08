@@ -218,6 +218,7 @@ docker-compose за nginx и Cloudflare.
 6. **Аналитика событий** (view_item, add_to_cart, generate_lead, contact_click…) не ломается молча: события шлются только через хелперы `lib/gtm.ts` (GA4 + цели Метрики), новое событие — сразу тест в `gtm.test.mjs` и строка в `docs/ANALYTICS_EVENTS.md`; проверка на сайте — DebugView GA4 и `?_ym_debug=1` (GTM не загружается). Заявка менеджеру — `generate_lead`, не `purchase`.
 7. **Фиды (YML и т.п.)** меняются вместе с моделью товара: добавил поле/тип — проверь, что фиды и sitemap его учитывают.
 8. **Сообщения клиенту по инициативе сайта** (напоминания о Списке заявки и будущие рассылки) — только вошедшим клиентам на подтверждённый email или привязанный Telegram; выключатель в админке (по умолчанию выключено), отписка в каждом сообщении (ссылка + `List-Unsubscribe`, `/stop` в боте) и в профиле; без «купить» — сайт не продаёт лекарства; ссылки с UTM. Образец — [CART_REMINDERS.md](CART_REMINDERS.md).
+9. **Работа менеджеров с заявкой — отдельно от клиентского статуса.** «Обработка» (`Order.processing_status`), ответственный и журнал `OrderProcessingEvent` — только для админки: клиенту не уходят и `status` не трогают. Менять их только через `apps/orders/processing.py` (или `OrderAdmin.save_model`), чтобы в истории остались кто и когда; `QuerySet.update()` журнал обходит. Новое значение «Обработки» — в `PROCESSING_RANK` и `PROCESSING_COLORS` админки и в [ORDER_PROCESSING.md](ORDER_PROCESSING.md).
 
 ## 6. Git
 

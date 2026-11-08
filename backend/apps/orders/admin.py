@@ -3,13 +3,15 @@ import logging
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Exists, OuterRef
+from django.db.models import Case, Exists, IntegerField, OuterRef, Q, Value, When
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
+
+from apps.users.models import User
 
 from .models import (
     Cart,
@@ -21,6 +23,7 @@ from .models import (
     PromoCode,
     SourcingRequest,
 )
+from .processing import auto_assign, change_processing, log_processing_change
 from .tasks import notify_order_status_changed
 
 logger = logging.getLogger(__name__)
@@ -278,22 +281,88 @@ class OrderItemInline(admin.TabularInline):
     )
 
 
+PS = Order.ProcessingStatus
+# Порядок в списке по умолчанию: сначала то, что ждёт менеджера
+PROCESSING_RANK = {PS.NEW: 0, PS.IN_PROGRESS: 1, PS.WAITING_CLIENT: 2, PS.DONE: 3, PS.CANCELLED: 4}
+OPEN_PROCESSING = (PS.NEW, PS.IN_PROGRESS, PS.WAITING_CLIENT)
+# Фон и цвет текста метки «Обработка»
+PROCESSING_COLORS = {
+    PS.NEW: ('#f8d7da', '#842029'),
+    PS.IN_PROGRESS: ('#fff3cd', '#664d03'),
+    PS.WAITING_CLIENT: ('#cfe2ff', '#084298'),
+    PS.DONE: ('#d1e7dd', '#0f5132'),
+    PS.CANCELLED: ('#e2e3e5', '#41464b'),
+}
+
+
+def _processing_rank():
+    return Case(
+        *(When(processing_status=status, then=Value(rank)) for status, rank in PROCESSING_RANK.items()),
+        output_field=IntegerField(),
+    )
+
+
+def _staff_name(user) -> str:
+    if user is None:
+        return '—'
+    return user.get_full_name() or user.email or user.username
+
+
+class ProcessingStatusFilter(admin.SimpleListFilter):
+    title = _('обработка')
+    parameter_name = 'processing'
+
+    def lookups(self, request, model_admin):
+        return [('open', _('Не закрытые (новые, в работе, ждём)')), *PS.choices]
+
+    def queryset(self, request, queryset):
+        if self.value() == 'open':
+            return queryset.filter(processing_status__in=OPEN_PROCESSING)
+        if self.value() in PS.values:
+            return queryset.filter(processing_status=self.value())
+        return queryset
+
+
+class AssignedToFilter(admin.SimpleListFilter):
+    title = _('ответственный')
+    parameter_name = 'assigned'
+
+    def lookups(self, request, model_admin):
+        people = User.objects.filter(assigned_orders__isnull=False).distinct().order_by('email')
+        return [('me', _('Мои')), ('none', _('Без ответственного')), *((str(u.pk), _staff_name(u)) for u in people)]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == 'me':
+            return queryset.filter(assigned_to=request.user)
+        if value == 'none':
+            return queryset.filter(assigned_to__isnull=True)
+        if value and value.isdecimal():
+            return queryset.filter(assigned_to_id=int(value))
+        return queryset
+
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Админка для заказов."""
     list_display = (
-        'number', 'import_restriction_badge', 'user', 'status', 'total_amount', 'currency', 'contact_phone',
-        'contact_channel', 'payment_method', 'created_at',
+        'number', 'processing_badge', 'assigned_to_name', 'import_restriction_badge', 'user', 'status',
+        'total_amount', 'currency', 'contact_phone', 'contact_channel', 'payment_method', 'created_at',
     )
-    list_filter = ('status', 'currency', 'payment_method', 'payment_status', 'promo_code', 'created_at')
+    list_filter = (
+        ProcessingStatusFilter, AssignedToFilter, 'status', 'currency', 'payment_method', 'payment_status',
+        'promo_code', 'created_at',
+    )
+    list_select_related = ('user', 'assigned_to')
     search_fields = ('number', 'user__email', 'contact_name', 'contact_phone', 'promo_code__code')
-    ordering = ('-created_at',)
     readonly_fields = (
         'number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url',
-        'import_restriction_banner',
+        'import_restriction_banner', 'processing_history',
     )
-    
+    actions = ('take_in_work', 'mark_waiting_client', 'mark_done')
+
     fieldsets = (
+        (_('Обработка заявки'), {'fields': ('processing_status', 'assigned_to', 'processing_history')}),
         (None, {'fields': ('number', 'import_restriction_banner', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
@@ -339,8 +408,98 @@ class OrderAdmin(admin.ModelAdmin):
             rows,
         )
 
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        field = form.base_fields.get('assigned_to')
+        if field is not None:
+            # Ответственный — по имени; создавать и править пользователей отсюда не нужно
+            field.label_from_instance = _staff_name
+            widget = field.widget
+            widget.can_add_related = widget.can_change_related = widget.can_delete_related = False
+            widget.can_view_related = False
+            # Сотрудники плюс текущий ответственный, даже если у него сняли доступ в админку:
+            # иначе заявку не сохранить, пока не сменят ответственного
+            current = obj.assigned_to_id if obj else None
+            field.queryset = User.objects.filter(Q(is_staff=True) | Q(pk=current)).order_by('first_name', 'email')
+        # Страница, открытая до «Взять в работу» коллеги, не должна откатить его отметку:
+        # «изменено» считаем от значения на момент открытия страницы (скрытое поле), а не от базы
+        for name in ('processing_status', 'assigned_to'):
+            if name in form.base_fields:
+                form.base_fields[name].show_hidden_initial = True
+        return form
+
+    def get_queryset(self, request):
+        # Ранг нужен колонке «Обработка» для сортировки по клику
+        return super().get_queryset(request).annotate(processing_rank=_processing_rank())
+
+    def get_ordering(self, request):
+        # Выражение, а не имя аннотации: эту сортировку берут и формы других админок со ссылкой
+        # на заказ (позиции заказа, криптоплатежи), где аннотации нет
+        return (_processing_rank().asc(), '-created_at')
+
+    @admin.display(description=_('Обработка'), ordering='processing_rank')
+    def processing_badge(self, obj):
+        bg, fg = PROCESSING_COLORS.get(obj.processing_status, ('#e2e3e5', '#41464b'))
+        return format_html(
+            '<span style="padding:2px 8px;border-radius:6px;background:{};color:{};font-weight:600;white-space:nowrap;">'
+            '{}</span>', bg, fg, obj.get_processing_status_display(),
+        )
+
+    @admin.display(description=_('Ответственный'), ordering='assigned_to__email')
+    def assigned_to_name(self, obj):
+        return _staff_name(obj.assigned_to)
+
+    @admin.display(description=_('История обработки'))
+    def processing_history(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        events = obj.processing_events.select_related('actor', 'old_assigned_to', 'new_assigned_to')
+        rows = []
+        for event in events:
+            parts = []
+            if event.old_status != event.new_status:
+                parts.append(f'{event.get_old_status_display()} → {event.get_new_status_display()}')
+            if event.old_assigned_to_id != event.new_assigned_to_id:
+                parts.append(f'ответственный: {_staff_name(event.new_assigned_to)}')
+            when = timezone.localtime(event.created_at).strftime('%d.%m.%Y %H:%M')
+            rows.append((when, _staff_name(event.actor), '; '.join(parts)))
+        if not rows:
+            return _('Пока не менялась')
+        return format_html(
+            '<ul style="margin:0;padding-left:18px">{}</ul>',
+            format_html_join('', '<li>{} — <b>{}</b>: {}</li>', rows),
+        )
+
+    def _run_processing_action(self, request, queryset, status, take=False):
+        changed = change_processing(queryset.values_list('pk', flat=True), actor=request.user, status=status, take=take)
+        self.message_user(request, _('Изменено заявок: %(count)s') % {'count': changed})
+
+    @admin.action(description=_('Взять в работу (я ответственный)'), permissions=['change'])
+    def take_in_work(self, request, queryset):
+        self._run_processing_action(request, queryset, PS.IN_PROGRESS, take=True)
+
+    @admin.action(description=_('Отметить: ответили клиенту — ждём'), permissions=['change'])
+    def mark_waiting_client(self, request, queryset):
+        self._run_processing_action(request, queryset, PS.WAITING_CLIENT)
+
+    @admin.action(description=_('Отметить обработанной'), permissions=['change'])
+    def mark_done(self, request, queryset):
+        self._run_processing_action(request, queryset, PS.DONE)
+
     def save_model(self, request, obj, form, change):
+        changed_data = getattr(form, 'changed_data', [])
+        old = (PS.NEW, None)
+        if change:
+            old = Order.objects.filter(pk=obj.pk).values_list('processing_status', 'assigned_to_id').first() or old
+            # Страница могла быть открыта до действия из списка: нетронутые поля берём из базы,
+            # а не из устаревшей формы, иначе «Взять в работу» коллеги откатится
+            if 'processing_status' not in changed_data:
+                obj.processing_status = old[0]
+            if 'assigned_to' not in changed_data:
+                obj.assigned_to_id = old[1]
+        auto_assign(obj, actor=request.user, old_status=old[0])
         super().save_model(request, obj, form, change)
+        log_processing_change(obj, actor=request.user, old_status=old[0], old_assigned_to_id=old[1])
         # Менеджер сменил статус — уведомляем клиента (Telegram/email) после коммита
         if change and 'status' in getattr(form, 'changed_data', []):
             order_id = obj.pk
