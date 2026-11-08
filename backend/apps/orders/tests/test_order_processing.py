@@ -195,7 +195,7 @@ def test_changelist_and_change_page_render(client, rf, plain_static):
 
 @pytest.mark.django_db
 def test_migration_marks_existing_orders():
-    migration = importlib.import_module("apps.orders.migrations.0020_order_processing")
+    migration = importlib.import_module("apps.orders.migrations.0021_mark_existing_orders_processing")
     now = timezone.now()
     fresh = _order()
     old = _order()
