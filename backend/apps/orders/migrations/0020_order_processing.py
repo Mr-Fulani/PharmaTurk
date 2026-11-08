@@ -57,5 +57,10 @@ class Migration(migrations.Migration):
                 'ordering': ['-created_at', '-id'],
             },
         ),
+        migrations.AlterField(
+            model_name='order',
+            name='status',
+            field=models.CharField(choices=[('new', 'Новый'), ('pending_payment', 'Ожидает оплаты'), ('paid', 'Оплачен'), ('processing', 'В обработке'), ('shipped', 'Отправлен'), ('delivered', 'Доставлен'), ('cancelled', 'Отменен')], default='new', max_length=32, verbose_name='Статус для клиента'),
+        ),
         migrations.RunPython(mark_existing_orders, migrations.RunPython.noop),
     ]

@@ -591,7 +591,7 @@ class Order(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Пользователь"))
     number = models.CharField(_("Номер заказа"), max_length=32, unique=True)
-    status = models.CharField(_("Статус"), max_length=32, choices=OrderStatus.choices, default=OrderStatus.NEW)
+    status = models.CharField(_("Статус для клиента"), max_length=32, choices=OrderStatus.choices, default=OrderStatus.NEW)
     processing_status = models.CharField(
         _("Обработка"),
         max_length=16,

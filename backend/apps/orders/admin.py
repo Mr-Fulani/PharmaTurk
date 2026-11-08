@@ -355,10 +355,7 @@ class OrderAdmin(admin.ModelAdmin):
     actions = ('take_in_work', 'mark_waiting_client', 'mark_done')
 
     fieldsets = (
-        (_('Обработка заявки'), {
-            'fields': ('processing_status', 'assigned_to', 'processing_history'),
-            'description': _('Для менеджеров: клиент эту отметку не видит и сообщений о ней не получает.'),
-        }),
+        (_('Обработка заявки'), {'fields': ('processing_status', 'assigned_to', 'processing_history')}),
         (None, {'fields': ('number', 'import_restriction_banner', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
@@ -403,6 +400,17 @@ class OrderAdmin(admin.ModelAdmin):
             'в страну из списка не отправлять без решения ответственного.<ul style="margin:6px 0 0 18px">{}</ul></div>',
             rows,
         )
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        field = form.base_fields.get('assigned_to')
+        if field is not None:
+            # Ответственный — по имени; создавать и править пользователей отсюда не нужно
+            field.label_from_instance = _staff_name
+            widget = field.widget
+            widget.can_add_related = widget.can_change_related = widget.can_delete_related = False
+            widget.can_view_related = False
+        return form
 
     def get_queryset(self, request):
         # Как ModelAdmin.get_queryset, но сортировка идёт после аннотации ранга
