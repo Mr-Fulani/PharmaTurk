@@ -214,21 +214,56 @@ def test_migration_marks_existing_orders():
     assert statuses[touched.pk] == PS.IN_PROGRESS
 
 
+def _change_form_data(page):
+    """Данные формы так, как их отправит браузер со страницы, открытой в момент GET."""
+    form = page.context["adminform"].form
+    data = {"_save": "Сохранить"}
+    for name, field in form.fields.items():
+        value = form[name].value()
+        data[name] = "" if value is None else value
+        if field.show_hidden_initial:
+            data[f"initial-{name}"] = data[name]
+    for inline in page.context["inline_admin_formsets"]:
+        management = inline.formset.management_form
+        for name in management.fields:
+            data[management.add_prefix(name)] = management[name].value()
+    return data
+
+
 @pytest.mark.django_db
-def test_stale_change_page_does_not_undo_colleagues_action(rf):
-    """Страница открыта до «Взять в работу» коллеги; сохранение клиентского статуса её не откатывает."""
+def test_stale_change_page_does_not_undo_colleagues_action(client, rf, plain_static):
+    """Страница открыта до «Взять в работу» коллеги; её сохранение не откатывает отметку коллеги."""
     me, colleague = _staff("op-stale-me"), _staff("op-stale-colleague")
     order = _order()
-    stale = Order.objects.get(pk=order.pk)  # то, что пришло в форме: «Новая», без ответственного
+    client.force_login(me)
+    url = f"/admin/orders/order/{order.pk}/change/"
+    data = _change_form_data(client.get(url))  # «Новая», без ответственного
+
     _admin().take_in_work(_request(rf, colleague), Order.objects.filter(pk=order.pk))
+    data["comment"] = "уточнить адрес"
+    response = client.post(url, data)
 
-    stale.comment = "уточнить адрес"
-    form = SimpleNamespace(changed_data=["comment"])
-    _admin().save_model(_request(rf, me), stale, form, change=True)
-
+    assert response.status_code == 302, response.context["adminform"].form.errors
     order.refresh_from_db()
     assert (order.processing_status, order.assigned_to, order.comment) == (PS.IN_PROGRESS, colleague, "уточнить адрес")
     assert order.processing_events.count() == 1
+
+
+@pytest.mark.django_db
+def test_change_page_post_sets_processing_and_logs(client, plain_static):
+    me = _staff("op-post-me")
+    order = _order()
+    client.force_login(me)
+    url = f"/admin/orders/order/{order.pk}/change/"
+    data = _change_form_data(client.get(url))
+    data["processing_status"] = PS.WAITING_CLIENT
+
+    response = client.post(url, data)
+
+    assert response.status_code == 302, response.context["adminform"].form.errors
+    order.refresh_from_db()
+    assert (order.processing_status, order.assigned_to) == (PS.WAITING_CLIENT, me)
+    assert order.processing_events.get().new_status == PS.WAITING_CLIENT
 
 
 @pytest.mark.django_db

@@ -421,6 +421,11 @@ class OrderAdmin(admin.ModelAdmin):
             # иначе заявку не сохранить, пока не сменят ответственного
             current = obj.assigned_to_id if obj else None
             field.queryset = User.objects.filter(Q(is_staff=True) | Q(pk=current)).order_by('first_name', 'email')
+        # Страница, открытая до «Взять в работу» коллеги, не должна откатить его отметку:
+        # «изменено» считаем от значения на момент открытия страницы (скрытое поле), а не от базы
+        for name in ('processing_status', 'assigned_to'):
+            if name in form.base_fields:
+                form.base_fields[name].show_hidden_initial = True
         return form
 
     def get_queryset(self, request):
