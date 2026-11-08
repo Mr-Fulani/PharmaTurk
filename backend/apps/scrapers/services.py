@@ -89,6 +89,7 @@ from apps.catalog.utils.parser_media_handler import (
     source_url_fingerprint,
 )
 from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG, ensure_brand_category
+from apps.catalog.utils.parsed_originals import collect_parsed_originals
 from apps.catalog.utils.default_variant import default_fashion_variant
 from apps.catalog.utils.old_price import source_old_price
 from apps.catalog.services.cross_source_duplicates import (
@@ -912,6 +913,9 @@ class ScraperIntegrationService:
             )
         return attrs
 
+    # Оригиналы products/parsed/, перенесённые за прогон в читаемые пути, удаляются
+    # в его конце, а не копятся до ночной cleanup_orphaned_media (08.11.2026).
+    @collect_parsed_originals()
     def run_scraper(
         self,
         scraper_config: ScraperConfig,

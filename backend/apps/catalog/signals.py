@@ -76,6 +76,7 @@ from .models import (
     UnderwearVariant,
     UnderwearVariantImage,
 )
+from .utils.parsed_originals import PENDING_ATTR, note_resaved_original, remember_saved_instance
 
 logger = logging.getLogger(__name__)
 
@@ -452,8 +453,10 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                         pass
                     # Не удаляем parsed-источник из pre_save: в этот момент новая
                     # строка ещё не записана, а тот же источник может понадобиться
-                    # главной картинке/варианту. Его пакетно и безопасно подчищает
-                    # _sweep_parsed_orphans после завершения задачи парсинга.
+                    # главной картинке/варианту. Пару «оригинал → копия» запоминаем,
+                    # после записи строки она попадает в сбор прогона парсера, и
+                    # оригинал удаляется в конце прогона (utils/parsed_originals.py).
+                    note_resaved_original(instance, field_name, path)
                     logger.info(f"Re-saved parsed {field_name} to readable path for {instance.__class__.__name__}")
                 else:
                     if "/products/parsed/" in ("/" + path) and not default_storage.exists(path):
@@ -467,6 +470,14 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                     logger.info(f"Set {field_name} from internal URL: {path}")
             except Exception as e:
                 logger.warning(f"Failed to set internal path for {instance.__class__.__name__}: {e}")
+
+
+@receiver(post_save, dispatch_uid="catalog_resaved_parsed_originals")
+def remember_resaved_parsed_originals(sender, instance, raw=False, **kwargs):
+    """Строка с копией parsed-медиа записана — оригинал можно удалить в конце прогона."""
+    if raw or PENDING_ATTR not in instance.__dict__:
+        return
+    remember_saved_instance(instance)
 
 
 @receiver(pre_save, sender=ClothingProductImage)

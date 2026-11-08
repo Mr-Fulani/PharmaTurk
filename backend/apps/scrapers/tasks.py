@@ -11,6 +11,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from apps.catalog.utils.parsed_originals import collect_parsed_originals
 from apps.http_errors import SourceRateLimitedError
 
 from .base.offers import OfferVerificationError
@@ -1734,6 +1735,7 @@ def _finish_stub_refresh_session(
     acks_late=True,
     reject_on_worker_lost=True,
 )
+@collect_parsed_originals()  # фото заглушек переносятся в читаемые пути, оригиналы — удалить
 def run_stub_refresh_task(
     self,
     site_task_id: int,
