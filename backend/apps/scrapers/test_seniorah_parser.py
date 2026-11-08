@@ -707,3 +707,13 @@ def test_rate_limited_session_ends_with_reason_and_keeps_config_active(monkeypat
     assert "магазин ограничил запросы" in session.error_message
     config.refresh_from_db()
     assert config.status == "active"  # временный лимит магазина — не «Ошибка» парсера
+
+
+def test_requests_identify_as_bot_without_browser_disguise():
+    """08.11.2026: на заголовки «браузера» Seniorah отвечал 429 на каждый запрос."""
+    parser = SeniorahParser()
+    headers = {key.lower(): value for key, value in parser.client.headers.items()}
+    assert headers["user-agent"] == SeniorahParser.BOT_USER_AGENT
+    assert headers["accept-encoding"] == "gzip, deflate"
+    assert not {"referer", "upgrade-insecure-requests", "cache-control"} & headers.keys()
+    assert not any(key.startswith("sec-fetch") for key in headers)
