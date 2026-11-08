@@ -11,8 +11,11 @@ from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
+from apps.catalog.admin_media import render_media_preview, resolve_media_url
+from apps.catalog.services.product_resolve import build_canonical_path
 from apps.users.models import User
 
+from .cart_reminders import site_url
 from .models import (
     Cart,
     CartItem,
@@ -254,12 +257,57 @@ class CartItemAdmin(admin.ModelAdmin):
     )
 
 
-class OrderItemInline(admin.TabularInline):
+def _item_image_url(product) -> str:
+    """Главное фото товара, иначе главное/первое из галереи (images предзагружены)."""
+    url = resolve_media_url(product, 'main_image_file', 'main_image')
+    if url:
+        return url
+    images = list(product.images.all())
+    image = next((i for i in images if i.is_main), images[0] if images else None)
+    return resolve_media_url(image, 'image_file', 'image_url') if image else ''
+
+
+def _new_tab_link(url: str, label):
+    return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', url, label)
+
+
+class OrderItemLinksMixin:
+    """Превью товара и ссылки «на сайте / в источнике / в админке» для позиций заказа."""
+
+    @admin.display(description=_('Фото'))
+    def item_preview(self, obj):
+        product = obj.product if obj else None
+        url = _item_image_url(product) if product else ''
+        return render_media_preview(url, max_width=60, max_height=60) if url else '—'
+
+    @admin.display(description=_('Ссылки'))
+    def item_links(self, obj):
+        if not obj:
+            return '—'
+        product = obj.product
+        links = []
+        if product and product.slug:
+            path = build_canonical_path(product.product_type, product.slug)
+            links.append(_new_tab_link(f'{site_url()}{path}', _('На сайте')))
+        # Ссылка, сохранённая при оформлении; у старых позиций — текущая ссылка товара
+        source = obj.source_url or (product.external_url if product else '')
+        if source.startswith(('https://', 'http://')):
+            links.append(_new_tab_link(source, _('В источнике')))
+        if product:
+            links.append(_new_tab_link(
+                reverse('admin:catalog_product_change', args=[product.pk]), _('В админке'),
+            ))
+        return format_html_join(' · ', '{}', ((link,) for link in links)) if links else '—'
+
+
+class OrderItemInline(OrderItemLinksMixin, admin.TabularInline):
     """Инлайн для позиций заказа."""
     model = OrderItem
     extra = 0
     autocomplete_fields = ('product',)
     readonly_fields = (
+        'item_preview',
+        'item_links',
         'price',
         'total',
         'source_parser',
@@ -268,7 +316,9 @@ class OrderItemInline(admin.TabularInline):
         'supplier_confirmation_required',
     )
     fields = (
+        'item_preview',
         'product',
+        'item_links',
         'product_name',
         'chosen_size',
         'price',
@@ -279,6 +329,9 @@ class OrderItemInline(admin.TabularInline):
         'source_checked_at',
         'supplier_confirmation_required',
     )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('product').prefetch_related('product__images')
 
 
 PS = Order.ProcessingStatus
@@ -507,12 +560,14 @@ class OrderAdmin(admin.ModelAdmin):
 
 
 @admin.register(OrderItem)
-class OrderItemAdmin(admin.ModelAdmin):
+class OrderItemAdmin(OrderItemLinksMixin, admin.ModelAdmin):
     """Админка для позиций заказа."""
     autocomplete_fields = ('product',)
     list_display = (
+        'item_preview',
         'order',
         'product',
+        'item_links',
         'product_name',
         'chosen_size',
         'price',
@@ -530,6 +585,8 @@ class OrderItemAdmin(admin.ModelAdmin):
     )
     ordering = ('order',)
     readonly_fields = (
+        'item_preview',
+        'item_links',
         'price',
         'total',
         'source_parser',
@@ -548,6 +605,13 @@ class OrderItemAdmin(admin.ModelAdmin):
         'source_checked_at',
         'supplier_confirmation_required',
     )
+
+    def get_queryset(self, request):
+        return (
+            super().get_queryset(request)
+            .select_related('order', 'product')
+            .prefetch_related('product__images')
+        )
 
 
 @admin.register(PromoCode)
