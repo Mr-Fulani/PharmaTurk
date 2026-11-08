@@ -226,10 +226,11 @@ def test_client_orders_count_link_and_filter(client, plain_static):
     same = [
         _order(user=buyer, contact_phone="1111111111"),            # тот же пользователь
         _order(contact_phone="8 (912) 247 68 66"),                  # тот же номер в другом виде
-        _order(contact_username="@IVAN_PETROV", contact_phone="1"),  # ник без регистра и @
+        _order(contact_channel="telegram", contact_username="@IVAN_PETROV", contact_phone="1"),  # ник без регистра и @
         _order(contact_email="ivan@example.test", contact_phone="2"),
     ]
     _order(contact_phone="+7 999 000 11 22")  # чужая
+    _order(contact_channel="whatsapp", contact_username="ivan_petrov", contact_phone="3")  # ник в другом канале
 
     html = str(_order_admin().client_orders_link(current))
     assert "У этого клиента ещё 4 заявки" in html
@@ -242,6 +243,15 @@ def test_client_orders_count_link_and_filter(client, plain_static):
 
     alone = _order(contact_phone="5", contact_channel="", contact_username="")
     assert str(_order_admin().client_orders_link(alone)) == "Других заявок нет"
+
+    # Заглушки вместо номера не склеивают чужих клиентов
+    stub = _order(contact_phone="0000000000")
+    _order(contact_phone="+0 000 000 0000")
+    assert str(_order_admin().client_orders_link(stub)) == "Других заявок нет"
+
+    # Неверный ?client_of не роняет список
+    for bad in ("abc", "999999999"):
+        assert client.get(f"/admin/orders/order/?client_of={bad}").status_code in (200, 302)
 
 
 @pytest.mark.django_db
@@ -282,6 +292,32 @@ def test_items_summary_shows_three_and_more_without_query_per_order(rf):
     assert "Позиция 0 ×1" in html and "Позиция 2 ×3" in html and "Позиция 3" not in html
     assert "+2" in html
     assert 'src="https://img.example.test/0.jpg"' in html
+
+
+@pytest.mark.django_db
+def test_order_list_queries_do_not_grow_with_rows(client, plain_static):
+    """Вся страница списка: число запросов не зависит от числа заявок (Состав, Ввоз, Связь)."""
+    me = User.objects.create_user(username="io-n1", email="n1@example.test", password="x", is_staff=True, is_superuser=True)
+    client.force_login(me)
+
+    def add_orders(n):
+        for _ in range(n):
+            order = _order(contact_channel="telegram", contact_username="ivan_petrov")
+            for _ in range(2):
+                product = _product()
+                ProductImage.objects.create(product=product, image_url="https://img.example.test/g.jpg")
+                OrderItem.objects.create(order=order, product=product, product_name="Товар", price=Decimal("1"),
+                                         quantity=1, total=Decimal("1"))
+
+    def count_queries():
+        with CaptureQueriesContext(connection) as queries:
+            assert client.get("/admin/orders/order/").status_code == 200
+        return len(queries)
+
+    add_orders(2)
+    few = count_queries()
+    add_orders(5)
+    assert count_queries() == few
 
 
 @pytest.mark.django_db

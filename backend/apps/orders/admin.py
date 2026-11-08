@@ -432,11 +432,15 @@ def _client_orders(queryset, order):
     if order.user_id:
         q |= Q(user_id=order.user_id)
     tail = phone_tail(order.contact_phone)
-    if tail:
+    # «0000000000», «1111111111» и т. п. — заглушки, а не номер: не склеивать по ним чужих клиентов
+    if tail and len(set(tail)) >= 3:
         q |= Q(phone_tail=tail)
     username = (order.contact_username or '').strip().lstrip('@')
     if username:
-        q |= Q(contact_username__iexact=username) | Q(contact_username__iexact=f'@{username}')
+        # Ник — в том же канале: Telegram «ivan_p» и WhatsApp «ivan_p» — разные люди
+        q |= Q(contact_channel=order.contact_channel) & (
+            Q(contact_username__iexact=username) | Q(contact_username__iexact=f'@{username}')
+        )
     email = _client_email(order)
     if email:
         q |= Q(contact_email__iexact=email)
@@ -544,8 +548,9 @@ class OrderAdmin(admin.ModelAdmin):
     @staticmethod
     def _restricted_items(obj):
         """Позиции с лекарствами, запрещёнными к ввозу в РФ/СНГ (TD-024): доставку решает менеджер."""
+        # Позиции с product__medicine_item предзагружены в get_queryset — без запроса на строку
         return [
-            item for item in obj.items.select_related('product__medicine_item')
+            item for item in obj.items.all()
             if item.product_id and getattr(getattr(item.product, 'medicine_item', None), 'import_restricted_countries', '')
         ]
 
@@ -598,7 +603,11 @@ class OrderAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         # Ранг нужен колонке «Обработка» для сортировки по клику; позиции с товаром и фото —
         # колонке «Состав» одним запросом на страницу
-        items = OrderItem.objects.select_related('product').prefetch_related('product__images').order_by('pk')
+        items = (
+            OrderItem.objects.select_related('product__medicine_item')
+            .prefetch_related('product__images')
+            .order_by('pk')
+        )
         return (
             super().get_queryset(request)
             .annotate(processing_rank=_processing_rank())
