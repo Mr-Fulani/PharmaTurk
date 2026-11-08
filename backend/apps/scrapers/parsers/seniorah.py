@@ -114,9 +114,12 @@ class SeniorahParser(BaseScraper):
     )
     MEASURE_MARKERS = ("olcusu", "olculer", "olcu ")
 
-    # Shopify отвечает 429 уже на четвёртый лёгкий запрос за 10 минут с одного IP (проба
-    # на проде 08.11.2026): между любыми запросами процесса — не меньше 2,5 с, на 429/503 —
-    # повтор с ожиданием (Retry-After или 30/60/120 с), потом понятная остановка.
+    # Между любыми запросами процесса — не меньше 2,5 с, на 429/503 — повтор с ожиданием
+    # (Retry-After или 30/60/120 с), потом понятная остановка.
+    # Представляемся честно ботом Mudaroba, без маскировки под браузер: на заголовки
+    # «браузера» (случайный User-Agent, Referer google, Sec-Fetch-*) магазин отвечал 429
+    # на каждый запрос, а честному боту — 200 (проба на проде 08.11.2026).
+    BOT_USER_AGENT = "MudarobaBot/1.0 (+https://mudaroba.com/about-us)"
     MIN_REQUEST_INTERVAL = 2.5
     RATE_LIMIT_STATUSES = frozenset({429, 503})
     RATE_LIMIT_WAITS = (30, 60, 120)
@@ -126,15 +129,18 @@ class SeniorahParser(BaseScraper):
 
     def __init__(self, base_url: str = "https://seniorah.com", **kwargs):
         super().__init__(base_url=base_url, delay_range=(2.5, 4), **kwargs)
-        self.client.headers.update(
-            {
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
-                # Shopify на «br» отвечает brotli: без пакета brotli httpx отдаёт байты
-                # вместо JSON (пилот 07.11.2026 — «защита» на каждом запросе).
-                "Accept-Encoding": "gzip, deflate",
-            }
-        )
+        self.user_agent = self.BOT_USER_AGENT
+        self.default_headers = {
+            "User-Agent": self.BOT_USER_AGENT,
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
+            # Shopify на «br» отвечает brotli: без пакета brotli httpx отдаёт байты
+            # вместо JSON (пилот 07.11.2026 — «защита» на каждом запросе).
+            "Accept-Encoding": "gzip, deflate",
+        }
+        # Заменяем заголовки «браузера» базового клиента целиком, а не дополняем.
+        self.client.headers.clear()
+        self.client.headers.update(self.default_headers)
         self.unmapped: Counter = Counter()
         self._groups: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
