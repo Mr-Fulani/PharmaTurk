@@ -13,8 +13,8 @@ from django.contrib.admin.sites import AdminSite
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.utils import timezone
 
-from apps.orders.admin import OrderAdmin
-from apps.orders.models import Order, OrderProcessingEvent
+from apps.orders.admin import OrderAdmin, OrderItemAdmin
+from apps.orders.models import Order, OrderItem, OrderProcessingEvent
 from apps.users.models import User
 
 PS = Order.ProcessingStatus
@@ -201,6 +201,7 @@ def test_migration_marks_existing_orders():
     old = _order()
     cancelled = _order(status=Order.OrderStatus.CANCELLED)
     delivered = _order(status=Order.OrderStatus.DELIVERED)
+    touched = _order(status=Order.OrderStatus.PROCESSING)
     Order.objects.filter(pk__in=[old.pk, cancelled.pk]).update(created_at=now - timedelta(days=30))
 
     migration.mark_existing_orders(django_apps, None)
@@ -210,3 +211,81 @@ def test_migration_marks_existing_orders():
     assert statuses[old.pk] == PS.DONE
     assert statuses[cancelled.pk] == PS.CANCELLED
     assert statuses[delivered.pk] == PS.DONE
+    assert statuses[touched.pk] == PS.IN_PROGRESS
+
+
+@pytest.mark.django_db
+def test_stale_change_page_does_not_undo_colleagues_action(rf):
+    """Страница открыта до «Взять в работу» коллеги; сохранение клиентского статуса её не откатывает."""
+    me, colleague = _staff("op-stale-me"), _staff("op-stale-colleague")
+    order = _order()
+    stale = Order.objects.get(pk=order.pk)  # то, что пришло в форме: «Новая», без ответственного
+    _admin().take_in_work(_request(rf, colleague), Order.objects.filter(pk=order.pk))
+
+    stale.comment = "уточнить адрес"
+    form = SimpleNamespace(changed_data=["comment"])
+    _admin().save_model(_request(rf, me), stale, form, change=True)
+
+    order.refresh_from_db()
+    assert (order.processing_status, order.assigned_to, order.comment) == (PS.IN_PROGRESS, colleague, "уточнить адрес")
+    assert order.processing_events.count() == 1
+
+
+@pytest.mark.django_db
+def test_admin_created_order_is_logged(rf):
+    me = _staff("op-creator")
+    obj = Order(number="OP-CREATE", total_amount=Decimal("1"), currency="RUB", contact_name="К", contact_phone="1",
+                processing_status=PS.IN_PROGRESS)
+    _admin().save_model(_request(rf, me), obj, SimpleNamespace(changed_data=["processing_status"]), change=False)
+
+    event = obj.processing_events.get()
+    assert (event.old_status, event.new_status, event.new_assigned_to) == (PS.NEW, PS.IN_PROGRESS, me)
+
+
+@pytest.mark.django_db
+def test_view_only_staff_has_no_processing_actions(rf):
+    from django.contrib.auth.models import Permission
+
+    viewer = User.objects.create_user(username="op-viewer", email="op-viewer@example.test", password="x", is_staff=True)
+    viewer.user_permissions.add(Permission.objects.get(codename="view_order"))
+    actions = _admin().get_actions(_request(rf, viewer))
+    assert not {"take_in_work", "mark_waiting_client", "mark_done"} & set(actions)
+
+
+@pytest.mark.django_db
+def test_assignee_choices_keep_current_even_without_staff_access(rf):
+    me = _staff("op-form-me")
+    former = User.objects.create_user(username="op-former", email="op-former@example.test", password="x")
+    outsider = User.objects.create_user(username="op-outsider", email="op-outsider@example.test", password="x")
+    order = _order(assigned_to=former)
+
+    form_class = _admin().get_form(_request(rf, me), order)
+    choices = set(form_class.base_fields["assigned_to"].queryset)
+    assert me in choices and former in choices and outsider not in choices
+
+
+@pytest.mark.django_db
+def test_odd_assigned_filter_value_does_not_crash(rf):
+    me = _staff("op-odd")
+    _order()
+    request = _request(rf, me, data={"assigned": "²"})
+    cl = _admin().get_changelist_instance(request)
+    assert cl.get_queryset(request).count() == 1
+
+
+@pytest.mark.django_db
+def test_other_admins_with_order_link_still_open(client, rf, plain_static):
+    """Сортировка заказов по «Обработке» не ломает формы, где выбирают заказ (позиции, криптоплатежи)."""
+    me = _staff("op-related")
+    order = _order()
+    item = OrderItem.objects.create(order=order, product_name="Товар", price=Decimal("1"), quantity=1, total=Decimal("1"))
+
+    field = OrderItemAdmin(OrderItem, AdminSite()).formfield_for_foreignkey(
+        OrderItem._meta.get_field("order"), _request(rf, me)
+    )
+    assert list(field.queryset) == [order]
+
+    client.force_login(me)
+    assert client.get(f"/admin/orders/orderitem/{item.pk}/change/").status_code == 200
+    assert client.get("/admin/orders/order/?o=2").status_code == 200
+    assert client.get("/admin/payments/cryptopayment/add/").status_code == 200

@@ -3,7 +3,7 @@ import logging
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Case, Exists, IntegerField, OuterRef, Value, When
+from django.db.models import Case, Exists, IntegerField, OuterRef, Q, Value, When
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.urls import path, reverse
@@ -295,6 +295,13 @@ PROCESSING_COLORS = {
 }
 
 
+def _processing_rank():
+    return Case(
+        *(When(processing_status=status, then=Value(rank)) for status, rank in PROCESSING_RANK.items()),
+        output_field=IntegerField(),
+    )
+
+
 def _staff_name(user) -> str:
     if user is None:
         return '—'
@@ -330,7 +337,7 @@ class AssignedToFilter(admin.SimpleListFilter):
             return queryset.filter(assigned_to=request.user)
         if value == 'none':
             return queryset.filter(assigned_to__isnull=True)
-        if value and value.isdigit():
+        if value and value.isdecimal():
             return queryset.filter(assigned_to_id=int(value))
         return queryset
 
@@ -410,20 +417,20 @@ class OrderAdmin(admin.ModelAdmin):
             widget = field.widget
             widget.can_add_related = widget.can_change_related = widget.can_delete_related = False
             widget.can_view_related = False
+            # Сотрудники плюс текущий ответственный, даже если у него сняли доступ в админку:
+            # иначе заявку не сохранить, пока не сменят ответственного
+            current = obj.assigned_to_id if obj else None
+            field.queryset = User.objects.filter(Q(is_staff=True) | Q(pk=current)).order_by('first_name', 'email')
         return form
 
     def get_queryset(self, request):
-        # Как ModelAdmin.get_queryset, но сортировка идёт после аннотации ранга
-        qs = self.model._default_manager.get_queryset().annotate(
-            processing_rank=Case(
-                *(When(processing_status=status, then=Value(rank)) for status, rank in PROCESSING_RANK.items()),
-                output_field=IntegerField(),
-            )
-        )
-        return qs.order_by(*self.get_ordering(request))
+        # Ранг нужен колонке «Обработка» для сортировки по клику
+        return super().get_queryset(request).annotate(processing_rank=_processing_rank())
 
     def get_ordering(self, request):
-        return ('processing_rank', '-created_at')
+        # Выражение, а не имя аннотации: эту сортировку берут и формы других админок со ссылкой
+        # на заказ (позиции заказа, криптоплатежи), где аннотации нет
+        return (_processing_rank().asc(), '-created_at')
 
     @admin.display(description=_('Обработка'), ordering='processing_rank')
     def processing_badge(self, obj):
@@ -462,27 +469,32 @@ class OrderAdmin(admin.ModelAdmin):
         changed = change_processing(queryset.values_list('pk', flat=True), actor=request.user, status=status, take=take)
         self.message_user(request, _('Изменено заявок: %(count)s') % {'count': changed})
 
-    @admin.action(description=_('Взять в работу (я ответственный)'))
+    @admin.action(description=_('Взять в работу (я ответственный)'), permissions=['change'])
     def take_in_work(self, request, queryset):
         self._run_processing_action(request, queryset, PS.IN_PROGRESS, take=True)
 
-    @admin.action(description=_('Отметить: ответили клиенту — ждём'))
+    @admin.action(description=_('Отметить: ответили клиенту — ждём'), permissions=['change'])
     def mark_waiting_client(self, request, queryset):
         self._run_processing_action(request, queryset, PS.WAITING_CLIENT)
 
-    @admin.action(description=_('Отметить обработанной'))
+    @admin.action(description=_('Отметить обработанной'), permissions=['change'])
     def mark_done(self, request, queryset):
         self._run_processing_action(request, queryset, PS.DONE)
 
     def save_model(self, request, obj, form, change):
-        old = None
+        changed_data = getattr(form, 'changed_data', [])
+        old = (PS.NEW, None)
         if change:
-            old = Order.objects.filter(pk=obj.pk).values_list('processing_status', 'assigned_to_id').first()
-        if old:
-            auto_assign(obj, actor=request.user, old_status=old[0])
+            old = Order.objects.filter(pk=obj.pk).values_list('processing_status', 'assigned_to_id').first() or old
+            # Страница могла быть открыта до действия из списка: нетронутые поля берём из базы,
+            # а не из устаревшей формы, иначе «Взять в работу» коллеги откатится
+            if 'processing_status' not in changed_data:
+                obj.processing_status = old[0]
+            if 'assigned_to' not in changed_data:
+                obj.assigned_to_id = old[1]
+        auto_assign(obj, actor=request.user, old_status=old[0])
         super().save_model(request, obj, form, change)
-        if old:
-            log_processing_change(obj, actor=request.user, old_status=old[0], old_assigned_to_id=old[1])
+        log_processing_change(obj, actor=request.user, old_status=old[0], old_assigned_to_id=old[1])
         # Менеджер сменил статус — уведомляем клиента (Telegram/email) после коммита
         if change and 'status' in getattr(form, 'changed_data', []):
             order_id = obj.pk

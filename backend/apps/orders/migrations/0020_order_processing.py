@@ -16,6 +16,8 @@ def mark_existing_orders(apps, schema_editor):
     Order = apps.get_model('orders', 'Order')
     Order.objects.filter(status='cancelled').update(processing_status='cancelled')
     Order.objects.filter(status__in=('shipped', 'delivered')).update(processing_status='done')
+    # Свежие, с которыми менеджер уже работал по клиентскому статусу
+    Order.objects.filter(status__in=('pending_payment', 'paid', 'processing')).update(processing_status='in_progress')
     Order.objects.exclude(status='cancelled').filter(created_at__lt=timezone.now() - OPEN_WINDOW).update(
         processing_status='done'
     )
@@ -32,7 +34,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='order',
             name='assigned_to',
-            field=models.ForeignKey(blank=True, limit_choices_to={'is_staff': True}, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='assigned_orders', to=settings.AUTH_USER_MODEL, verbose_name='Ответственный'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='assigned_orders', to=settings.AUTH_USER_MODEL, verbose_name='Ответственный'),
         ),
         migrations.AddField(
             model_name='order',

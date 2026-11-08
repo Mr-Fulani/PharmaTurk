@@ -606,7 +606,6 @@ class Order(models.Model):
         null=True,
         blank=True,
         related_name="assigned_orders",
-        limit_choices_to={"is_staff": True},
         verbose_name=_("Ответственный"),
     )
 
