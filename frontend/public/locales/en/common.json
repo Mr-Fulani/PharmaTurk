@@ -824,7 +824,7 @@
   "popular_brands": "Popular Brands",
   "all_brands": "All Brands",
   "brands_description": "Choose a brand to see products. Video and external media are supported.",
-  "brands_page_title": "Brands — Mudaroba",
+  "brands_page_title": "Brands | Mudaroba",
   "brands_page_description": "Popular brands from Turkey: clothing, shoes, electronics, accessories and health products.",
   "all_categories": "All Categories",
   "categories_section_title": "Product Categories",
@@ -1713,5 +1713,6 @@
   "drug_faq_delivery_a": "Delivery from Turkey takes 7–21 business days. The manager gives the exact time in the quote.",
   "drug_faq_order_q": "How do I order {{heading}}?",
   "drug_faq_order_a": "The site does not sell medicines. Click “Add to request” on the page of the form you need or send the name to a manager. The manager checks availability, quotes the cost with delivery and agrees on payment — you pay only after the quote.",
-  "drug_faq_order_link": "More on the “How to order medicines from Turkey” page."
+  "drug_faq_order_link": "More on the “How to order medicines from Turkey” page.",
+  "product_title_from_turkey": "from Turkey"
 }

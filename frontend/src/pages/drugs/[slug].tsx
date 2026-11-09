@@ -20,8 +20,8 @@ import { limitTitle } from '../../lib/seoText'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 import { getInternalApiUrl } from '../../lib/urls'
 
-// SEO.tsx дописывает « — Mudaroba»: вместе title не длиннее 80 символов (DEVELOPMENT_RULES §1.10)
-const META_TITLE_MAX = 80 - ` — ${SITE_NAME}`.length
+// SEO.tsx дописывает « | Mudaroba»: вместе title не длиннее 80 символов (DEVELOPMENT_RULES §1.10)
+const META_TITLE_MAX = 80 - ` | ${SITE_NAME}`.length
 const META_DESCRIPTION_MAX = 200
 
 interface DrugGroupPageProps {

@@ -61,7 +61,8 @@ export default function SEO({
   const ruUrl = `${SITE_URL}${pathPart}`
   const enUrl = `${SITE_URL}/en${pathPart}`
 
-  const fullTitle = `${title} — ${SITE_NAME}`
+  // Разделитель « | » — как у главной, категорий и товаров (ТЗ SEO и ИИ-поиск, задача 6)
+  const fullTitle = `${title} | ${SITE_NAME}`
   const ogImageUrl = ogImage || `${SITE_URL}/og-default.jpg`
 
   // Нормализуем structuredData в массив

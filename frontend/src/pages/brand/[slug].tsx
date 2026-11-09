@@ -293,7 +293,7 @@ function BrandPageContent({
   const metaTitle = limitTitle(`${t('brand_meta_title', '{{brand}} из Турции{{categories}}', {
     brand: localizedBrandName,
     categories: titleCategories ? `: ${titleCategories}` : '',
-  })}${pageLabel} — Mudaroba`, 80)
+  })}${pageLabel} | Mudaroba`, 80)
   // Описания брендов короткие («Немецкий спортивный бренд.») — дополняем категориями и доставкой
   const brandCategoryNames = [...categories]
     .sort((a, b) => (b.product_count || 0) - (a.product_count || 0))

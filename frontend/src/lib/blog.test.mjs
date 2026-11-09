@@ -27,8 +27,8 @@ test('у каждой статьи оба языка, мета в предела
     for (const locale of LOCALES) {
       const article = item[locale]
       assert.ok(article.title && article.lead && article.sections.length, `${item.slug} ${locale}`)
-      // SEO.tsx дописывает « — Mudaroba»: всего не больше 80 символов
-      assert.ok(article.metaTitle.length <= 80 - ' — Mudaroba'.length, `${item.slug} ${locale} title ${article.metaTitle.length}`)
+      // SEO.tsx дописывает « | Mudaroba»: всего не больше 80 символов
+      assert.ok(article.metaTitle.length <= 80 - ' | Mudaroba'.length, `${item.slug} ${locale} title ${article.metaTitle.length}`)
       assert.ok(article.description.length <= 200, `${item.slug} ${locale} description ${article.description.length}`)
       assert.ok(article.faq.length >= 3, `${item.slug} ${locale} faq`)
     }

@@ -29,6 +29,47 @@ export function limitTitle(title, maxLength) {
   return `${truncateAtWord(head, maxLength - suffix.length)}${suffix}`
 }
 
+// Хвостовые служебные слова, на которых нельзя обрывать укороченное описание
+const DANGLING_WORDS = new Set(['и', 'в', 'во', 'на', 'с', 'со', 'для', 'из', 'от', 'до', 'по', 'к', 'о', 'об', 'у', 'за', 'без', 'and', 'for', 'with', 'of', 'the', 'a', 'an', 'in', 'on', 'to', 'from', 'by'])
+
+// Предлог, союз, знак препинания или притяжательное «Men's» — после них нужно слово
+const isDanglingWord = (word) =>
+  DANGLING_WORDS.has(word.toLowerCase()) || /^[,;:.–—-]+$/.test(word) || /['’]s$/i.test(word)
+
+/**
+ * Единый title карточки товара (ТЗ «SEO и видимость в ИИ-поиске», задача 6):
+ * «… из Турции | Mudaroba» / «… from Turkey | Mudaroba».
+ * - title с названием сайта не меняется (шаблон «Название | Категория | Mudaroba»);
+ * - «из Турции» не дописывается, если Турция уже упомянута;
+ * - слова из title не убираются, пока всё укладывается в max (80, DEVELOPMENT_RULES §1.10):
+ *   у большинства карточек уже «— купить с доставкой из Турции», и срезать их до ~65 символов
+ *   значило бы терять запросы; длиннее — укорачивается описательная часть после « - » / « — »,
+ *   а не название, затем title без «из Турции», и только потом limitTitle.
+ */
+export function withProductTitleSuffix(title, { fromTurkey, siteName, max = 80 }) {
+  const clean = String(title || '').replace(/\s+/g, ' ').trim()
+  if (!clean || clean.toLowerCase().includes(String(siteName).toLowerCase())) return clean
+  const brand = `${TITLE_SEPARATOR}${siteName}`
+  const build = (text, withTurkey = true) =>
+    `${text}${withTurkey && !/турц|turk|türk/i.test(text) ? ` ${fromTurkey}` : ''}${brand}`
+  if (build(clean).length <= max) return build(clean)
+
+  const parts = clean.match(/^(.+?)(\s[-–—]\s)(.+)$/)
+  if (parts) {
+    const [, name, separator, description] = parts
+    const words = description.split(' ')
+    while (words.length > 0) {
+      words.pop()
+      while (words.length > 0 && isDanglingWord(words[words.length - 1])) words.pop()
+      // Одно оставшееся слово («Stylish», «купить») смысла не несёт — описание убираем целиком
+      const shortened = words.length > 1 ? `${name}${separator}${words.join(' ').replace(/[\s,;:]+$/, '')}` : name
+      if (build(shortened).length <= max) return build(shortened)
+    }
+  }
+  if (build(clean, false).length <= max) return build(clean, false)
+  return `${limitTitle(clean, max - brand.length)}${brand}`
+}
+
 /** Короткое описание (< minLength) дополняет шаблонной фразой отдельным предложением. */
 export function appendSentenceIfShort(text, sentence, minLength = 70) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim()

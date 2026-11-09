@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { appendSentenceIfShort, buildCategoryDescription, limitTitle, productImageAlt, splitSeoText, truncateAtWord } from './seoText.js'
+import { appendSentenceIfShort, buildCategoryDescription, limitTitle, productImageAlt, splitSeoText, truncateAtWord, withProductTitleSuffix } from './seoText.js'
 
 test('short text is returned as is with collapsed whitespace', () => {
   assert.equal(truncateAtWord('  Аспирин   500  ', 200), 'Аспирин 500')
@@ -103,4 +103,55 @@ test('product image alt uses the page-language name, not the stored Turkish alt'
   assert.equal(productImageAlt({ name, storedAlt, index: 1 }), `${name} — фото 2`)
   assert.equal(productImageAlt({ name: 'Sneakers', storedAlt, index: 2, photoLabel: 'photo' }), 'Sneakers — photo 3')
   assert.equal(productImageAlt({ name: '', storedAlt, index: 1 }), storedAlt)
+})
+
+const RU = { fromTurkey: 'из Турции', siteName: 'Mudaroba' }
+const EN = { fromTurkey: 'from Turkey', siteName: 'Mudaroba' }
+
+test('title товара: дописывается «из Турции | Mudaroba», слова не убираются, пока влезает в 80', () => {
+  assert.equal(withProductTitleSuffix('Свитшот LC Waikiki', RU), 'Свитшот LC Waikiki из Турции | Mudaroba')
+  assert.equal(
+    withProductTitleSuffix('Свитшот LC Waikiki - стильная одежда для мужчин', RU),
+    'Свитшот LC Waikiki - стильная одежда для мужчин из Турции | Mudaroba',
+  )
+  assert.equal(
+    withProductTitleSuffix("LC Waikiki Sweatshirt - Stylish Men's Clothing", EN),
+    "LC Waikiki Sweatshirt - Stylish Men's Clothing from Turkey | Mudaroba",
+  )
+  // «купить с доставкой из Турции» сохраняется: 62 + 11 ≤ 80
+  assert.equal(
+    withProductTitleSuffix('Мужская футболка Tommy Hilfiger — купить с доставкой из Турции', RU),
+    'Мужская футболка Tommy Hilfiger — купить с доставкой из Турции | Mudaroba',
+  )
+})
+
+test('title товара: Турция уже есть — только « | Mudaroba»; сайт уже есть — без изменений', () => {
+  assert.equal(
+    withProductTitleSuffix('Мирена (MIRENA, левоноргестрел), внутриматочная система из Турции', RU),
+    'Мирена (MIRENA, левоноргестрел), внутриматочная система из Турции | Mudaroba',
+  )
+  assert.equal(withProductTitleSuffix('Кроссовки | Обувь | Mudaroba', RU), 'Кроссовки | Обувь | Mudaroba')
+  assert.equal(withProductTitleSuffix('', RU), '')
+})
+
+test('title товара длиннее 80: режется описание (Турция остаётся), не название; «Men\'s» не висит', () => {
+  const long = 'Двухместный диван-кровать IKEA LYCKSELE LÖVÅS — купить с доставкой и сборкой по выгодной цене'
+  const result = withProductTitleSuffix(long, RU)
+  assert.ok(result.length <= 80, result)
+  assert.ok(result.startsWith('Двухместный диван-кровать IKEA LYCKSELE LÖVÅS'))
+  assert.ok(result.endsWith('из Турции | Mudaroba'), result)
+  assert.equal(
+    withProductTitleSuffix("Very Long Brand Name Cotton Sweatshirt Hoodie Model 2026 - Stylish Men's Clothing", EN),
+    'Very Long Brand Name Cotton Sweatshirt Hoodie Model 2026 from Turkey | Mudaroba',
+  )
+})
+
+test('title товара без описательной части длиннее 80: сначала без «из Турции», потом обрезка', () => {
+  const long = 'Очень длинное название товара без разделителя описания примерно на семьдесят символов'
+  const result = withProductTitleSuffix(long, RU)
+  assert.ok(result.length <= 80, result)
+  assert.ok(result.endsWith(' | Mudaroba'))
+  const huge = 'Х'.repeat(10) + ' ' + 'слово '.repeat(20)
+  const cut = withProductTitleSuffix(huge, RU)
+  assert.ok(cut.length <= 80 && cut.endsWith('… | Mudaroba'), cut)
 })
