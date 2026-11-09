@@ -67,9 +67,59 @@ def is_real_barcode(barcode: str) -> bool:
     return bool(barcode) and not barcode.startswith(PLACEHOLDER_BARCODE_PREFIX)
 
 
-def _manufacturer(product) -> str:
-    value = _attrs(product).get("manufacturer") or getattr(_domain(product), "manufacturer", "") or ""
-    return " ".join(_WORD_RE.findall(ilacfiyati_twins._fold(value)))
+def manufacturer_key(value: str) -> frozenset:
+    """Слова фирмы без регистра и турецких букв; TEB — не производитель, а служба ввоза
+    (страница TEB есть у любого импортного препарата), поэтому для неё пусто."""
+    words = _WORD_RE.findall(ilacfiyati_twins._fold(value))
+    return frozenset() if not words or words[0] == "teb" else frozenset(words)
+
+
+@dataclass
+class PairSide:
+    """Что сравнивается у одной карточки пары (из базы или из публичных данных)."""
+
+    page: ilacfiyati_twins.TwinPage  # турецкое название, цена, наличие, адрес источника
+    barcode: str = ""
+    manufacturer: str = ""
+    currency: str = ""
+
+
+def compare_sides(keep: PairSide, hide: PairSide, *, product_type: str, same_page: bool = False) -> str:
+    """Почему ``hide`` может быть другим товаром, чем ``keep``; пусто — полный дубль.
+
+    ``same_page`` — старый адрес источника скрываемой отдаёт 301 на адрес оставляемой
+    (проверено человеком при сборе списка): это одна страница, а штрихкод, фирма и цена
+    скрываемой устарели, их не сравниваем. Название сравнивается всегда.
+    """
+    reason = ilacfiyati_twins.mismatch_reason(keep.page, hide.page)
+    if reason:
+        return reason
+    if not same_page:
+        if product_type == "medicines" and keep.barcode and hide.barcode and keep.barcode != hide.barcode:
+            # Другой штрихкод лекарства (и другой служебный номер 1111111…) — бывает и другая
+            # упаковка или регистрация: решает человек.
+            return f"разные штрихкоды: {keep.barcode} / {hide.barcode}"
+        keep_maker, hide_maker = manufacturer_key(keep.manufacturer), manufacturer_key(hide.manufacturer)
+        if keep_maker and hide_maker and not (keep_maker <= hide_maker or hide_maker <= keep_maker):
+            return f"разные производители: {keep.manufacturer} / {hide.manufacturer}"
+    if hide.page.has_price and not keep.page.has_price:
+        return "у скрываемой есть цена, у оставляемой нет"
+    if hide.page.is_available and not keep.page.is_available:
+        return "оставляемая не в наличии, скрываемая в наличии"
+    if (not same_page and product_type == "medicines" and keep.page.has_price and hide.page.has_price
+            and (keep.page.price, keep.currency) != (hide.page.price, hide.currency)):
+        # Цены лекарств регулируются: другая цена — скорее другая упаковка.
+        return "разные цены"
+    return ""
+
+
+def side_from_product(product) -> PairSide:
+    return PairSide(
+        page=ilacfiyati_twins.page_from_product(product),
+        barcode=source_barcode(product),
+        manufacturer=str(_attrs(product).get("manufacturer") or getattr(_domain(product), "manufacturer", "") or ""),
+        currency=product.currency or "",
+    )
 
 
 def _is_shown(product) -> bool:
@@ -81,11 +131,7 @@ def _is_stub(product) -> bool:
     return _external(product).get("is_stub") is True
 
 
-def _price(page) -> tuple:
-    return (page.price, getattr(page.product, "currency", "") or "")
-
-
-def pair_problem(keep, hide) -> str:
+def pair_problem(keep, hide, *, same_page: bool = False) -> str:
     """Почему пару нельзя скрыть автоматически; пусто — полный дубль, ``hide`` скрывается."""
     if keep.pk == hide.pk:
         return "один и тот же товар"
@@ -101,30 +147,11 @@ def pair_problem(keep, hide) -> str:
         return "оставляемая — заглушка аналога, на сайте не видна"
     if _is_stub(hide):
         return "скрываемая — заглушка аналога, на сайте не видна"
-    keep_page = ilacfiyati_twins.page_from_product(keep)
-    hide_page = ilacfiyati_twins.page_from_product(hide)
     if not _external(keep).get("source_name") or not _external(hide).get("source_name"):
         return "нет турецкого названия источника"
-    reason = ilacfiyati_twins.mismatch_reason(keep_page, hide_page)
-    if reason:
-        return reason
-    keep_barcode, hide_barcode = source_barcode(keep), source_barcode(hide)
-    if (keep.product_type == "medicines" and is_real_barcode(keep_barcode) and is_real_barcode(hide_barcode)
-            and keep_barcode != hide_barcode):
-        # Разные штрихкоды лекарства — бывает и другая упаковка: решает человек.
-        return f"разные штрихкоды: {keep_barcode} / {hide_barcode}"
-    keep_maker, hide_maker = _manufacturer(keep), _manufacturer(hide)
-    if keep_maker and hide_maker and keep_maker != hide_maker:
-        return "разные производители"
-    if hide_page.has_price and not keep_page.has_price:
-        return "у скрываемой есть цена, у оставляемой нет"
-    if hide_page.is_available and not keep_page.is_available:
-        return "оставляемая не в наличии, скрываемая в наличии"
-    if (keep.product_type == "medicines" and keep_page.has_price and hide_page.has_price
-            and _price(keep_page) != _price(hide_page)):
-        # Цены лекарств регулируются: другая цена — скорее другая упаковка.
-        return "разные цены"
-    return ""
+    return compare_sides(
+        side_from_product(keep), side_from_product(hide), product_type=keep.product_type, same_page=same_page,
+    )
 
 
 @dataclass
@@ -135,18 +162,18 @@ class PairDecision:
     reason: str
 
 
-def decide_pairs(pairs: list[tuple[int, int]]) -> tuple[list[PairDecision], list[tuple[int, int, str]]]:
-    """Решения по парам (keep_id, hide_id) и пары, товаров которых нет в базе."""
+def decide_pairs(pairs: list[tuple]) -> tuple[list[PairDecision], list[tuple[int, int, str]]]:
+    """Решения по парам (keep_id, hide_id[, same_page]) и пары, товаров которых нет в базе."""
     from apps.catalog.models import Product
 
-    ids = {pk for pair in pairs for pk in pair}
-    products = Product.objects.in_bulk(ids)
-    keep_ids = {keep_id for keep_id, _hide_id in pairs}
+    pairs = [(pair[0], pair[1], bool(pair[2]) if len(pair) > 2 else False) for pair in pairs]
+    products = Product.objects.in_bulk({pk for keep_id, hide_id, _same in pairs for pk in (keep_id, hide_id)})
+    keep_ids = {keep_id for keep_id, _hide_id, _same in pairs}
     hide_counts: dict[int, int] = {}
-    for _keep_id, hide_id in pairs:
+    for _keep_id, hide_id, _same in pairs:
         hide_counts[hide_id] = hide_counts.get(hide_id, 0) + 1
     decisions, missing = [], []
-    for keep_id, hide_id in pairs:
+    for keep_id, hide_id, same_page in pairs:
         keep, hide = products.get(keep_id), products.get(hide_id)
         if keep is None or hide is None:
             missing.append((keep_id, hide_id, "товара нет в базе"))
@@ -156,7 +183,7 @@ def decide_pairs(pairs: list[tuple[int, int]]) -> tuple[list[PairDecision], list
         elif hide_counts[hide_id] > 1:
             reason = "скрываемая встречается в нескольких парах"
         else:
-            reason = pair_problem(keep, hide)
+            reason = pair_problem(keep, hide, same_page=same_page)
         decisions.append(PairDecision(keep, hide, REVIEW if reason else HIDE, reason or "полный дубль"))
     return decisions, missing
 

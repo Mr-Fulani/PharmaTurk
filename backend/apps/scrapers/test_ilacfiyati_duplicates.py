@@ -95,11 +95,42 @@ def test_two_real_barcodes_of_medicine_go_to_review():
 
 
 @pytest.mark.django_db
-def test_placeholder_barcode_is_not_compared():
-    keep = _product("febuxt-40-mg-30-tablet", name="FEBUXT 40 MG 30 TABLET", price=Decimal("10"),
-                    barcode="8699000000001")
-    other = _product("febuxt-40-mg-30-tablet-2", name="FEBUXT 40 MG 30 TABLET", barcode="1111111100001")
+def test_other_placeholder_number_goes_to_review_but_empty_barcode_does_not():
+    keep = _product("pralatrexate-20-mg-ml-2", name="PRALATREXATE 20 MG/ML", price=Decimal("10"),
+                    barcode="1111111103223")
+    other = _product("pralatrexate-20-mg-ml", name="PRALATREXATE 20 MG/ML", barcode="1111111101895")
+    assert _problem(keep, other) == "разные штрихкоды: 1111111103223 / 1111111101895"
+    MedicineProduct.objects.filter(base_product=other).update(barcode="")
+    Product.objects.filter(pk=other.pk).update(external_data={**other.external_data, "attributes": {}})
     assert _problem(keep, other) == ""
+
+
+@pytest.mark.django_db
+def test_teb_page_and_longer_firm_name_are_same_manufacturer():
+    # Страница фирмы и страница TEB одного импортного препарата (служебный номер общий).
+    keep = _product("felbamate-400-mg-100-tablets", name="FELBAMATE 400 MG 100 TABLETS", price=Decimal("365"),
+                    barcode="1111111101085", manufacturer="İbn-İ Sina Sağlık Sosyal Güvenlik Merkezi")
+    teb = _product("felbamate-400-mg-100-tablets-2", name="FELBAMATE 400 MG 100 TABLETS", barcode="1111111101085",
+                   manufacturer="Teb Yurt Dışından İlaç Temini Birimi")
+    short = _product("felbamate-400-mg-100-tablets-3", name="FELBAMATE 400 MG 100 TABLETS", barcode="1111111101085",
+                     manufacturer="İbn-i Sina")
+    assert _problem(keep, teb) == ""
+    assert _problem(keep, short) == ""
+
+
+@pytest.mark.django_db
+def test_renamed_source_page_ignores_stale_barcode_firm_and_price():
+    # Старый адрес «contra-k-…-granul-2» отдаёт 301 на «…-3»: у старой записи штрихкод и фирма устарели.
+    keep = _product("contra-k-880-mg-g-granul-3", name="CONTRA-K 880 MG/G GRANUL", price=Decimal("1452.47"),
+                    barcode="8682983334048", manufacturer="Diapharma")
+    old = _product("contra-k-880-mg-g-granul-2", name="CONTRA-K 880 MG/G GRANUL", price=Decimal("1400"),
+                   barcode="8699783240011", manufacturer="Gen İlaç")
+    assert _problem(keep, old).startswith("разные штрихкоды")
+    keep.refresh_from_db()
+    old.refresh_from_db()
+    assert dups.pair_problem(keep, old, same_page=True) == ""
+    other = _product("contra-k-440-mg-g-granul", name="CONTRA-K 440 MG/G GRANUL", barcode="8682983334048")
+    assert "числа" in dups.pair_problem(keep, other, same_page=True)
 
 
 @pytest.mark.django_db
@@ -109,7 +140,7 @@ def test_placeholder_barcode_is_not_compared():
         ({"price": Decimal("289.77")}, {"price": Decimal("300")}, "разные цены"),
         ({}, {"price": Decimal("289.77")}, "у скрываемой есть цена, у оставляемой нет"),
         ({"price": Decimal("289.77"), "available": False}, {}, "оставляемая не в наличии, скрываемая в наличии"),
-        ({"price": Decimal("289.77")}, {"manufacturer": "Other Pharma"}, "разные производители"),
+        ({"price": Decimal("289.77")}, {"manufacturer": "Other Pharma"}, "разные производители: Recordati / Other Pharma"),
     ],
 )
 def test_medicine_discrepancies_go_to_review(keep_kwargs, hide_kwargs, reason):
@@ -139,7 +170,7 @@ def test_supplement_with_other_barcode_and_price_is_a_duplicate():
 def test_chain_and_repeated_hide_go_to_review():
     keep, hide = _medicine_pair()
     third = _product("aknetrent-10-mg-yumusak-jelatin-30-kapsul-3")
-    decisions, missing = dups.decide_pairs([(keep.pk, hide.pk), (hide.pk, third.pk), (keep.pk, 999999)])
+    decisions, missing = dups.decide_pairs([(keep.pk, hide.pk), (hide.pk, third.pk, True), (keep.pk, 999999)])
 
     assert [(d.action, d.reason) for d in decisions] == [
         (dups.REVIEW, "скрываемая оставляется в другой паре"),

@@ -1,7 +1,8 @@
 """Дубли лекарств и БАДов ilacfiyati по списку пар (показ по умолчанию).
 
 Правило — apps.scrapers.ilacfiyati_duplicates, описание — docs/ILACFIYATI_DUPLICATES.md.
-CSV пар: колонки keep_id и hide_id (остальные колонки не читаются). Каждая пара
+CSV пар: колонки keep_id и hide_id; необязательная same_source_page = 1, если старый адрес
+источника скрываемой отдаёт 301 на адрес оставляемой (остальные колонки не читаются). Каждая пара
 перепроверяется по базе: «скрыть» — полный дубль, «сомнительно» — любое расхождение,
 такие пары не трогаются. Ничего не удаляется.
 
@@ -27,12 +28,15 @@ from apps.scrapers import ilacfiyati_twins
 ACTION_TITLES = {dups.HIDE: "скрыть", dups.REVIEW: "сомнительно"}
 
 
-def _read_pairs(path: str) -> list[tuple[int, int]]:
+def _read_pairs(path: str) -> list[tuple[int, int, bool]]:
     with open(path, encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         if not {"keep_id", "hide_id"} <= set(reader.fieldnames or ()):
             raise CommandError(f"В {path} нужны колонки keep_id и hide_id.")
-        return [(int(row["keep_id"]), int(row["hide_id"])) for row in reader if row["keep_id"] and row["hide_id"]]
+        return [
+            (int(row["keep_id"]), int(row["hide_id"]), str(row.get("same_source_page") or "").strip() == "1")
+            for row in reader if row["keep_id"] and row["hide_id"]
+        ]
 
 
 def _favorites(products: list) -> Counter:
