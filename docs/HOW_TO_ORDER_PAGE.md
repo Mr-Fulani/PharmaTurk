@@ -42,7 +42,8 @@ sitemap (`sitemaps/[section].tsx`, секция static) приоритет ст�
   «подбор лекарств по фото». En: «how to order medicines from Turkey», «medicines from
   Europe delivery», «dental products for clinics», «prescription medicines from abroad».
 - FAQ в JSON-LD строится из того же массива, что и видимый блок — ответы совпадают.
-- Сроки доставки взяты со страницы `/delivery` (авиа 3–7 дней, наземная 7–14).
+- Сроки доставки (с 09.11.2026, подтверждено владельцем): лекарства — 7–21 рабочий день, БАДы и
+  другие товары — 7–14 дней от 5 $ (как на карточках). Раньше были «авиа 3–7, наземная 7–14».
 
 ## Баннеры
 
