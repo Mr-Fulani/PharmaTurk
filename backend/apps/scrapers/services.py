@@ -292,6 +292,14 @@ def get_or_create_scraped_brand(raw, product_type: Optional[str] = None):
 ILACFIYATI_PREVIOUS_URLS_KEY = "ilacfiyati_previous_urls"
 
 
+def _ilacfiyati_canonical_url(url: str) -> str:
+    """Адрес страницы ilacfiyati без www, вкладки, параметров и «/» в конце — для сравнения."""
+    parsed = urlparse(str(url or ""))
+    parts = [part for part in parsed.path.split("/") if part][:2]
+    host = (parsed.hostname or "").removeprefix("www.")
+    return f"https://{host}/{'/'.join(parts)}" if host and parts else str(url or "").rstrip("/")
+
+
 def _ilacfiyati_page_regex(url_marker: str) -> str:
     """Адрес именно этой страницы: «/ilaclar/x» не должен находить чужую «/ilaclar/x-2»."""
     return re.escape(url_marker) + r"([/?#]|$)"
@@ -2557,11 +2565,13 @@ class ScraperIntegrationService:
             page = ilacfiyati_twins.page_from_product(product)
             if ilacfiyati_twins.mismatch_reason(page, new_page):
                 continue
-            if page.has_price and new_page.has_price and (page.price, product.currency or "") != (
+            if page.has_price != new_page.has_price or (page.has_price and (page.price, product.currency or "") != (
                 new_page.price, new_currency or product.currency or "",
-            ):
-                continue  # другая цена — возможно, другая упаковка: решает правило близнецов
-            if scraped_product.url in self._ilacfiyati_previous_urls(product):
+            )):
+                # Другая цена (или у одной её нет) — возможно, другая упаковка или страница TEB
+                # «0,00 TL»: решает правило близнецов, иначе товар с ценой стал бы «по запросу».
+                continue
+            if _ilacfiyati_canonical_url(scraped_product.url) in self._ilacfiyati_previous_urls(product):
                 # С этого адреса товар уже переехал, а страница снова открылась — живы обе:
                 # адрес назад не переносим (иначе он прыгал бы между страницами).
                 continue
@@ -2572,19 +2582,29 @@ class ScraperIntegrationService:
     def _ilacfiyati_previous_urls(product: Product) -> list:
         external = product.external_data if isinstance(product.external_data, dict) else {}
         previous = external.get(ILACFIYATI_PREVIOUS_URLS_KEY)
-        return list(previous) if isinstance(previous, list) else []
+        return [_ilacfiyati_canonical_url(url) for url in previous] if isinstance(previous, list) else []
 
     def _move_ilacfiyati_page(self, session, scraped_product: ScrapedProduct, product: Product):
         """Перенос товара на новый адрес той же страницы источника и обновление по ней."""
         from apps.catalog.models import ProductSourceOffer
 
-        old_external_id = str(product.external_id or "")
-        previous = [url for url in self._ilacfiyati_previous_urls(product) if url != scraped_product.url]
-        if product.external_url and product.external_url not in previous:
-            previous.append(product.external_url)
-        external = dict(product.external_data) if isinstance(product.external_data, dict) else {}
-        external[ILACFIYATI_PREVIOUS_URLS_KEY] = previous[-5:]
         with transaction.atomic():
+            # Свежая строка под блокировкой: снимок из поиска мог устареть (товар скрыли,
+            # записали пометку) — перенос не затирает чужую запись и не трогает скрытый товар.
+            product = Product.objects.select_for_update().get(pk=product.pk)
+            if not product.is_active:
+                scraped_product._medicine_import_skip_reason = (
+                    f"товар {product.pk} с тем же штрихкодом скрыт во время обработки — решит следующий проход"
+                )
+                return "skipped", None
+            old_external_id = str(product.external_id or "")
+            new_url = _ilacfiyati_canonical_url(scraped_product.url)
+            previous = [url for url in self._ilacfiyati_previous_urls(product) if url != new_url]
+            old_url = _ilacfiyati_canonical_url(product.external_url)
+            if old_url and old_url not in previous:
+                previous.append(old_url)
+            external = dict(product.external_data) if isinstance(product.external_data, dict) else {}
+            external[ILACFIYATI_PREVIOUS_URLS_KEY] = previous[-5:]
             # Обновление перечитывает товар из БД — новый адрес пишем в обе записи заранее.
             Product.objects.filter(pk=product.pk).update(
                 external_id=scraped_product.external_id, external_data=external,

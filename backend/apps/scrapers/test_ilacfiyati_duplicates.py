@@ -483,3 +483,28 @@ def test_parser_takes_address_of_page_after_redirect():
     assert parser._redirected_product_url(old, old + "/") == old
     assert parser._redirected_product_url(old, "https://ilacfiyati.com/ilaclar") == old  # не карточка
     assert parser._redirected_product_url(old, "") == old
+
+
+@pytest.mark.django_db
+def test_priceless_page_does_not_take_address_of_priced_product():
+    from apps.scrapers.services import ScraperIntegrationService
+
+    _product("vigrande-50-mg-4-tablet", name="VIGRANDE 50 MG 4 TABLET", price=Decimal("66.74"),
+             barcode="8699525091641")
+    priceless = _scraped("vigrande-50-mg-4-tablet-2", name="VIGRANDE 50 MG 4 TABLET", barcode="8699525091641")
+    assert ScraperIntegrationService()._find_ilacfiyati_moved_page(priceless) is None
+
+
+@pytest.mark.django_db
+def test_previous_address_is_compared_in_canonical_form():
+    from apps.scrapers.services import ScraperIntegrationService
+
+    shown = _product("vigrande-50-mg-4-tablet-2", name="VIGRANDE 50 MG 4 TABLET", price=Decimal("66.74"),
+                     barcode="8699525091641")
+    Product.objects.filter(pk=shown.pk).update(external_data={
+        **shown.external_data,
+        "ilacfiyati_previous_urls": ["https://www.ilacfiyati.com/ilaclar/vigrande-50-mg-4-tablet/esdegeri/"],
+    })
+    page_a = _scraped("vigrande-50-mg-4-tablet", name="VIGRANDE 50 MG 4 TABLET", barcode="8699525091641",
+                      price=Decimal("66.74"))
+    assert ScraperIntegrationService()._find_ilacfiyati_moved_page(page_a) is None
