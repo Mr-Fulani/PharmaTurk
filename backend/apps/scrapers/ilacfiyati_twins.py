@@ -337,15 +337,21 @@ def hide_twin(product, keep, *, marker_key: str = TWIN_OF_KEY) -> list[str]:
     from apps.catalog.services.product_resolve import RESOLVE_CACHE_PREFIX
 
     domain = domain_model(product.product_type)
-    external = dict(product.external_data) if isinstance(product.external_data, dict) else {}
-    external[marker_key] = keep.pk
     with transaction.atomic():
+        # Свежий external_data под блокировкой: парсер мог записать его после снимка вызывающего.
+        current = Product.objects.select_for_update().get(pk=product.pk)
+        list(domain.objects.select_for_update().filter(base_product_id=product.pk).values_list("pk", flat=True))
+        external = dict(current.external_data) if isinstance(current.external_data, dict) else {}
+        external[marker_key] = keep.pk
         Product.objects.filter(pk=product.pk).update(
             is_active=False, external_data=external, updated_at=timezone.now(),
         )
         domain.objects.filter(base_product_id=product.pk).update(is_active=False)
-        slugs = {product.slug}
+        slugs = {current.slug}
         slugs.update(domain.objects.filter(base_product_id=product.pk).values_list("slug", flat=True))
+        # Прежние адреса скрытого (старые slug) вели на него, а он скрыт: resolve делает один
+        # переход, и они отдали бы 404 — переводим и их на оставленный.
+        slugs.update(ProductSlugHistory.objects.filter(product_id=product.pk).values_list("old_slug", flat=True))
         slugs.discard("")
         slugs.discard(None)
         # Адрес снятой страницы ведёт на преемника (DEVELOPMENT_RULES §5.3–5.4), а не в 404.

@@ -33,10 +33,13 @@ def _read_pairs(path: str) -> list[tuple[int, int, bool]]:
         reader = csv.DictReader(fh)
         if not {"keep_id", "hide_id"} <= set(reader.fieldnames or ()):
             raise CommandError(f"В {path} нужны колонки keep_id и hide_id.")
-        return [
-            (int(row["keep_id"]), int(row["hide_id"]), str(row.get("same_source_page") or "").strip() == "1")
-            for row in reader if row["keep_id"] and row["hide_id"]
-        ]
+        try:
+            return [
+                (int(row["keep_id"]), int(row["hide_id"]), str(row.get("same_source_page") or "").strip() == "1")
+                for row in reader if row["keep_id"] and row["hide_id"]
+            ]
+        except ValueError as exc:
+            raise CommandError(f"В {path} id не число: {exc}") from exc
 
 
 def _favorites(products: list) -> Counter:
@@ -122,9 +125,14 @@ class Command(BaseCommand):
         backup = [dups.backup_row(decision.hide, decision.keep) for decision in to_hide]
         with open(options["backup"], "w", encoding="utf-8") as fh:
             json.dump(backup, fh, ensure_ascii=False, indent=1, default=str)
+        hidden_count = 0
         for decision in to_hide:
-            dups.hide_duplicate(decision.hide, decision.keep)
-        self.stdout.write(self.style.SUCCESS(f"Скрыто: {len(to_hide)}. Бэкап: {options['backup']}"))
+            reason = dups.hide_checked(decision.keep.pk, decision.hide.pk, same_page=decision.same_page)
+            if reason:
+                self.stdout.write(f"не скрыт {decision.hide.pk}: за время показа изменилось — {reason}")
+            else:
+                hidden_count += 1
+        self.stdout.write(self.style.SUCCESS(f"Скрыто: {hidden_count}. Бэкап: {options['backup']}"))
 
     def _restore(self, path: str, *, apply: bool):
         with open(path, encoding="utf-8") as fh:
@@ -134,5 +142,11 @@ class Command(BaseCommand):
         if not apply:
             self.stdout.write(f"Показ отката: {len(backup)} товаров. Для записи: --restore {path} --apply.")
             return
-        restored = sum(dups.restore_row(row) for row in backup)
+        restored = 0
+        for row in backup:
+            reason = dups.restore_row(row)
+            if reason:
+                self.stdout.write(f"не возвращён {row['product_id']}: {reason}")
+            else:
+                restored += 1
         self.stdout.write(self.style.SUCCESS(f"Возвращено: {restored} из {len(backup)}."))

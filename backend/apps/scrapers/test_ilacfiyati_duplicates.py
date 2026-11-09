@@ -220,7 +220,13 @@ def test_apply_hides_redirects_and_restore_returns(tmp_path):
     assert response.data["redirect_permanent"] is True
     [row] = json.loads(backup.read_text(encoding="utf-8"))
     assert (row["product_id"], row["keep_id"], row["is_active"]) == (hide.pk, keep.pk, True)
-    assert dups.DUPLICATE_OF_KEY not in row["external_data"]
+    assert "aknetrent-old" in row["slugs"]
+    # Прежний адрес скрытого тоже ведёт на оставленный, а не в 404.
+    old = APIClient().get("/api/catalog/products/resolve/aknetrent-old")
+    assert old.data["canonical_path"] == f"/product/{keep.slug}"
+
+    # Парсер обновил скрытый товар, пока он был скрыт: откат это не затирает.
+    Product.objects.filter(pk=hide.pk).update(external_data={**hide.external_data, "source_description": "новое"})
 
     call_command("hide_ilacfiyati_duplicates", restore=str(backup))  # показ отката ничего не меняет
     assert _domain_active(hide) == (False, False)
@@ -229,6 +235,7 @@ def test_apply_hides_redirects_and_restore_returns(tmp_path):
 
     assert _domain_active(hide) == (True, True)
     assert dups.DUPLICATE_OF_KEY not in hide.external_data
+    assert hide.external_data["source_description"] == "новое"
     assert not ProductSlugHistory.objects.filter(old_slug=hide_slug).exists()
     assert ProductSlugHistory.objects.get(old_slug="aknetrent-old").product_id == hide.pk
 
@@ -269,7 +276,7 @@ def _scraped(slug, *, name=AKNETRENT_10, barcode="8699559190038", price=None, in
     from apps.scrapers.base.scraper import ScrapedProduct
 
     scraped = ScrapedProduct(
-        name=name, price=price, url=f"https://ilacfiyati.com/ilaclar/{slug}", external_id=slug,
+        name=name, price=price, currency="TRY", url=f"https://ilacfiyati.com/ilaclar/{slug}", external_id=slug,
         barcode=barcode, source="ilacfiyati", is_available=not inactive,
         attributes={"barcode": barcode, "manufacturer": "Recordati"},
     )
@@ -355,3 +362,124 @@ def test_source_url_lookup_does_not_take_repeat_page_for_its_prefix():
     assert service._find_ilacfiyati_medicine_product_by_source_url(
         _scraped("aknetrent-10-mg-yumusak-jelatin-30-kapsul-2"),
     ) == repeat
+
+
+@pytest.mark.django_db
+def test_restore_skips_product_hidden_later_for_other_reason(tmp_path):
+    keep, hide = _medicine_pair()
+    backup = tmp_path / "before.json"
+    call_command("hide_ilacfiyati_duplicates", pairs=_pairs_csv(tmp_path, (keep, hide)), apply=True,
+                 backup=str(backup))
+    hide.refresh_from_db()
+    external = {k: v for k, v in hide.external_data.items() if k != dups.DUPLICATE_OF_KEY}
+    Product.objects.filter(pk=hide.pk).update(external_data={**external, "ilacfiyati_twin_of": keep.pk})
+
+    call_command("hide_ilacfiyati_duplicates", restore=str(backup), apply=True)
+
+    assert _domain_active(hide) == (False, False)
+
+
+@pytest.mark.django_db
+def test_apply_rechecks_pair_under_lock():
+    keep, hide = _medicine_pair()
+    # После показа оставляемую скрыли (например, правилом близнецов) — скрываемую не трогаем.
+    Product.objects.filter(pk=keep.pk).update(is_active=False)
+
+    assert dups.hide_checked(keep.pk, hide.pk, same_page=False) == "оставляемая скрыта"
+    assert _domain_active(hide) == (True, True)
+
+
+@pytest.mark.django_db
+def test_favorites_counted_for_domain_card():
+    from apps.scrapers.management.commands.hide_ilacfiyati_duplicates import _favorites
+
+    keep, hide = _medicine_pair()
+    medicine = MedicineProduct.objects.get(base_product=hide)
+    Favorite.objects.create(session_key="f1", content_type=ContentType.objects.get_for_model(MedicineProduct),
+                            object_id=medicine.pk)
+    Favorite.objects.create(session_key="f2", content_type=ContentType.objects.get_for_model(Product),
+                            object_id=hide.pk)
+    assert _favorites([hide])[hide.pk] == 2
+
+
+@pytest.mark.django_db
+def test_passive_page_does_not_take_address_of_shown_product(monkeypatch):
+    # «…-2» Pasif с тем же штрихкодом и названием: показанный товар не переезжает и не снимается.
+    shown = _product("aknetrent-10-mg-yumusak-jelatin-30-kapsul", price=Decimal("289.77"), barcode="8699559190038")
+    service = _service_without_create(monkeypatch)
+
+    assert service._process_single_product(
+        None, _scraped("aknetrent-10-mg-yumusak-jelatin-30-kapsul-2", inactive=True),
+    ) == ("skipped", None)
+    shown.refresh_from_db()
+    assert shown.external_id == "aknetrent-10-mg-yumusak-jelatin-30-kapsul"
+    assert shown.is_available
+
+
+@pytest.mark.django_db
+def test_two_live_pages_do_not_pull_address_back_and_forth(monkeypatch):
+    from apps.scrapers.services import ScraperIntegrationService
+
+    shown = _product("vigrande-50-mg-4-tablet", name="VIGRANDE 50 MG 4 TABLET", price=Decimal("66.74"),
+                     barcode="8699525091641")
+    service = ScraperIntegrationService()
+    monkeypatch.setattr(service, "_create_new_product", lambda *a, **k: pytest.fail("копия не должна заводиться"))
+    page_b = _scraped("vigrande-50-mg-4-tablet-2", name="VIGRANDE 50 MG 4 TABLET", barcode="8699525091641",
+                      price=Decimal("66.74"))
+    service._process_single_product(None, page_b)
+    shown.refresh_from_db()
+    assert shown.external_id == "vigrande-50-mg-4-tablet-2"
+
+    # Старая страница снова открылась (живы обе): адрес назад не переносится, копия не заводится
+    # (та же цена — правило близнецов пропускает вторую страницу).
+    page_a = _scraped("vigrande-50-mg-4-tablet", name="VIGRANDE 50 MG 4 TABLET", barcode="8699525091641",
+                      price=Decimal("66.74"))
+    assert service._process_single_product(None, page_a) == ("skipped", None)
+    shown.refresh_from_db()
+    assert shown.external_id == "vigrande-50-mg-4-tablet-2"
+
+
+@pytest.mark.django_db
+def test_other_price_with_same_barcode_is_not_moved():
+    from apps.scrapers.services import ScraperIntegrationService
+
+    _product("vigrande-50-mg-4-tablet", name="VIGRANDE 50 MG 4 TABLET", price=Decimal("66.74"),
+             barcode="8699525091641")
+    other_price = _scraped("vigrande-50-mg-4-tablet-2", name="VIGRANDE 50 MG 4 TABLET", barcode="8699525091641",
+                           price=Decimal("80"))
+    assert ScraperIntegrationService()._find_ilacfiyati_moved_page(other_price) is None
+
+
+@pytest.mark.django_db
+def test_move_is_rolled_back_when_update_refuses(monkeypatch):
+    from apps.scrapers.services import ScraperIntegrationService
+
+    shown = _product("adeleks-4-mg-2-ml-ampul-6-ampul-2", name="ADELEKS 4 MG/2 ML 6 AMPUL",
+                     price=Decimal("152.63"), barcode="8685119899022")
+    service = ScraperIntegrationService()
+
+    def refuse(_session, scraped, product, **_kwargs):
+        scraped._medicine_import_skip_reason = "конфликт категории"
+        return "skipped", product
+
+    monkeypatch.setattr(service, "_update_existing_product", refuse)
+    service._process_single_product(
+        None, _scraped("adeleks-4-mg-2-ml-ampul-6-ampul", name="ADELEKS 4 MG/2 ML 6 AMPUL", barcode="8685119899022",
+                       price=Decimal("152.63")),
+    )
+    shown.refresh_from_db()
+    assert shown.external_id == "adeleks-4-mg-2-ml-ampul-6-ampul-2"
+    assert MedicineProduct.objects.get(base_product=shown).external_id != "adeleks-4-mg-2-ml-ampul-6-ampul"
+
+
+def test_parser_takes_address_of_page_after_redirect():
+    from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
+
+    parser = IlacFiyatiParser.__new__(IlacFiyatiParser)
+    parser.logger = __import__("logging").getLogger("test")
+    old = "https://ilacfiyati.com/ilaclar/adeleks-4-mg-6-ampul-2"
+    new = "https://ilacfiyati.com/ilaclar/adeleks-4-mg-6-ampul"
+    assert parser._redirected_product_url(old, new) == new
+    assert parser._redirected_product_url(old, old + "/") == old
+    assert parser._redirected_product_url(old, "https://ilacfiyati.com/ilaclar") == old  # не карточка
+    assert parser._redirected_product_url(old, "") == old

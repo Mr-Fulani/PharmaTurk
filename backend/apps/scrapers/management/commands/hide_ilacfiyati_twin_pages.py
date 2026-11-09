@@ -96,7 +96,11 @@ class Command(BaseCommand):
         backup = []
         for decision in to_hide:
             product = decision.page.product
-            slugs = sorted({product.slug, *medicine_slugs.get(product.pk, [])} - {"", None})
+            slugs = sorted({
+                product.slug, *medicine_slugs.get(product.pk, []),
+                # прежние адреса скрываемого: hide_twin переводит их на оставленный
+                *ProductSlugHistory.objects.filter(product_id=product.pk).values_list("old_slug", flat=True),
+            } - {"", None})
             backup.append({
                 "product_id": product.pk,
                 "keep_id": decision.keep.pk,

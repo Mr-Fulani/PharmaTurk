@@ -288,6 +288,10 @@ def get_or_create_scraped_brand(raw, product_type: Optional[str] = None):
     return brand
 
 
+# Прежние адреса товара ilacfiyati, с которых он переехал на новый (источник переименовал страницу).
+ILACFIYATI_PREVIOUS_URLS_KEY = "ilacfiyati_previous_urls"
+
+
 def _ilacfiyati_page_regex(url_marker: str) -> str:
     """Адрес именно этой страницы: «/ilaclar/x» не должен находить чужую «/ilaclar/x-2»."""
     return re.escape(url_marker) + r"([/?#]|$)"
@@ -2489,25 +2493,16 @@ class ScraperIntegrationService:
                     similar_product,
                 )
 
-        moved_product = self._find_ilacfiyati_moved_page(scraped_product)
-        if moved_product is not None:
-            # Тот же товар источника под новым адресом (источник переименовал страницу,
-            # старый адрес отдаёт 301): обновляем его и переносим адрес, копию «…-2» не заводим.
-            # Обновление перечитывает товар из БД — новый адрес пишем в обе записи заранее.
-            Product.objects.filter(pk=moved_product.pk).update(external_id=scraped_product.external_id)
-            MedicineProduct.objects.filter(base_product_id=moved_product.pk).update(
-                external_id=scraped_product.external_id,
-            )
-            moved_product.external_id = scraped_product.external_id
-            return self._update_existing_product(
-                session, scraped_product, moved_product, source_identity_match=True,
-            )
-
         if self._is_ilacfiyati(scraped_product) and getattr(scraped_product, "source_inactive", False):
             # Снятый препарат («İlaç Durumu: Pasif»; часто старая страница «…-2» со старым
             # штрихкодом) новым товаром не заводим — как строку PASİF в «Только изменения».
+            # До переноса адреса: снятая страница не должна забрать адрес показанного товара.
             scraped_product._medicine_import_skip_reason = "снят у источника (İlaç Durumu: Pasif), новый товар не заводим"
             return "skipped", None
+
+        moved_product = self._find_ilacfiyati_moved_page(scraped_product)
+        if moved_product is not None:
+            return self._move_ilacfiyati_page(session, scraped_product, moved_product)
 
         twin_decisions = self._ilacfiyati_twin_decisions(scraped_product)
         for decision in twin_decisions:
@@ -2557,10 +2552,58 @@ class ScraperIntegrationService:
         if not ilacfiyati_duplicates.is_real_barcode(barcode):
             return None
         new_page = ilacfiyati_twins.page_from_scraped(scraped_product)
+        new_currency = str(scraped_product.currency or "")
         for product in ilacfiyati_twins.active_twins(barcode):
-            if not ilacfiyati_twins.mismatch_reason(ilacfiyati_twins.page_from_product(product), new_page):
-                return product
+            page = ilacfiyati_twins.page_from_product(product)
+            if ilacfiyati_twins.mismatch_reason(page, new_page):
+                continue
+            if page.has_price and new_page.has_price and (page.price, product.currency or "") != (
+                new_page.price, new_currency or product.currency or "",
+            ):
+                continue  # другая цена — возможно, другая упаковка: решает правило близнецов
+            if scraped_product.url in self._ilacfiyati_previous_urls(product):
+                # С этого адреса товар уже переехал, а страница снова открылась — живы обе:
+                # адрес назад не переносим (иначе он прыгал бы между страницами).
+                continue
+            return product
         return None
+
+    @staticmethod
+    def _ilacfiyati_previous_urls(product: Product) -> list:
+        external = product.external_data if isinstance(product.external_data, dict) else {}
+        previous = external.get(ILACFIYATI_PREVIOUS_URLS_KEY)
+        return list(previous) if isinstance(previous, list) else []
+
+    def _move_ilacfiyati_page(self, session, scraped_product: ScrapedProduct, product: Product):
+        """Перенос товара на новый адрес той же страницы источника и обновление по ней."""
+        from apps.catalog.models import ProductSourceOffer
+
+        old_external_id = str(product.external_id or "")
+        previous = [url for url in self._ilacfiyati_previous_urls(product) if url != scraped_product.url]
+        if product.external_url and product.external_url not in previous:
+            previous.append(product.external_url)
+        external = dict(product.external_data) if isinstance(product.external_data, dict) else {}
+        external[ILACFIYATI_PREVIOUS_URLS_KEY] = previous[-5:]
+        with transaction.atomic():
+            # Обновление перечитывает товар из БД — новый адрес пишем в обе записи заранее.
+            Product.objects.filter(pk=product.pk).update(
+                external_id=scraped_product.external_id, external_data=external,
+            )
+            MedicineProduct.objects.filter(base_product_id=product.pk).update(
+                external_id=scraped_product.external_id,
+            )
+            # Предложение старого адреса больше не действует (новое запишет этот же проход).
+            ProductSourceOffer.objects.filter(
+                product_id=product.pk, external_product_id=old_external_id, is_active=True,
+            ).update(is_active=False)
+            product.external_id = scraped_product.external_id
+            product.external_data = external
+            action, updated = self._update_existing_product(
+                session, scraped_product, product, source_identity_match=True,
+            )
+            if getattr(scraped_product, "_medicine_import_skip_reason", None):
+                transaction.set_rollback(True)  # обновление отказало — адрес не переносим
+        return action, updated
 
     def _ilacfiyati_twin_decisions(self, scraped_product: ScrapedProduct) -> list:
         """Решения по новой странице ilacfiyati и показанным товарам с тем же штрихкодом."""

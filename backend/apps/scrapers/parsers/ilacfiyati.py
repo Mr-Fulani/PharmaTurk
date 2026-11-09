@@ -404,6 +404,18 @@ class IlacFiyatiParser(BaseScraper):
             )
         return urls
 
+    def _redirected_product_url(self, requested_url: str, final_url: str) -> str:
+        """Адрес карточки после 301: источник переименовывает страницы, и старый адрес
+        ведёт на новый. Товар — это конечная страница: иначе содержимое страницы B
+        сохранялось бы под адресом A (вторым товаром). Редирект не на карточку не берём."""
+        if not final_url:
+            return requested_url
+        final_url = self._canonical_product_url(final_url)
+        if not self.is_product_url(final_url) or final_url == self._canonical_product_url(requested_url):
+            return requested_url
+        self.logger.info("IlacFiyati: %s ведёт на %s — карточка сохраняется по новому адресу", requested_url, final_url)
+        return final_url
+
     def _card_is_inactive(self, soup: BeautifulSoup) -> bool:
         """Карточка показывает «İlaç Durumu: Pasif» — препарат снят с рынка."""
         for label in soup.select(".info-card__label"):
@@ -965,7 +977,7 @@ class IlacFiyatiParser(BaseScraper):
             html = None
             if check_gone:
                 try:
-                    html = self._make_offer_request(url)
+                    html, final_url = self._make_offer_request(url, include_final_url=True)
                 except httpx.HTTPStatusError as exc:
                     if exc.response.status_code in (404, 410):
                         self.change_tracker.mark_url_gone(url, reason="not_found")
@@ -976,7 +988,9 @@ class IlacFiyatiParser(BaseScraper):
                 if self._card_is_inactive(BeautifulSoup(html, "html.parser")):
                     self.change_tracker.mark_url_gone(url, reason="inactive")
                     return None
-            detail = self.parse_product_detail(url, html=html)
+            detail = self.parse_product_detail(
+                self._redirected_product_url(url, final_url) if html is not None else url, html=html,
+            )
             if not detail.is_available:
                 # Ссылка sitemap без строки листинга: пассивные товары, которых
                 # у нас нет, не заводим — как и строку PASİF.
@@ -1085,7 +1099,9 @@ class IlacFiyatiParser(BaseScraper):
         try:
             self.logger.info(f"Парсинг деталей товара: {product_url}")
             if html is None:
+                self.last_response_url = ""
                 html = self._make_request(product_url)
+                product_url = self._redirected_product_url(product_url, self.last_response_url)
             if not html:
                 raise IlacFiyatiSourceError(
                     f"IlacFiyati вернул пустую карточку: {product_url}"

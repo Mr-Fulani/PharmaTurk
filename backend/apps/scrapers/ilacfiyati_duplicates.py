@@ -160,6 +160,7 @@ class PairDecision:
     hide: object
     action: str  # HIDE | REVIEW
     reason: str
+    same_page: bool = False
 
 
 def decide_pairs(pairs: list[tuple]) -> tuple[list[PairDecision], list[tuple[int, int, str]]]:
@@ -184,7 +185,7 @@ def decide_pairs(pairs: list[tuple]) -> tuple[list[PairDecision], list[tuple[int
             reason = "скрываемая встречается в нескольких парах"
         else:
             reason = pair_problem(keep, hide, same_page=same_page)
-        decisions.append(PairDecision(keep, hide, REVIEW if reason else HIDE, reason or "полный дубль"))
+        decisions.append(PairDecision(keep, hide, REVIEW if reason else HIDE, reason or "полный дубль", same_page))
     return decisions, missing
 
 
@@ -194,13 +195,16 @@ def backup_row(hide, keep) -> dict:
 
     domain = ilacfiyati_twins.domain_model(hide.product_type)
     domain_rows = list(domain.objects.filter(base_product_id=hide.pk).values("pk", "is_active", "slug"))
-    slugs = sorted({hide.slug, *(row["slug"] for row in domain_rows)} - {"", None})
+    slugs = sorted({
+        hide.slug, *(row["slug"] for row in domain_rows),
+        # прежние адреса скрываемого: скрытие переводит их на оставленный
+        *ProductSlugHistory.objects.filter(product_id=hide.pk).values_list("old_slug", flat=True),
+    } - {"", None})
     return {
         "product_id": hide.pk,
         "product_type": hide.product_type,
         "keep_id": keep.pk,
         "is_active": hide.is_active,
-        "external_data": hide.external_data,
         "domain_is_active": [{"pk": row["pk"], "is_active": row["is_active"]} for row in domain_rows],
         "slug_history_before": list(
             ProductSlugHistory.objects.filter(old_slug__in=slugs).values("old_slug", "product_id", "product_type")
@@ -209,21 +213,27 @@ def backup_row(hide, keep) -> dict:
     }
 
 
-def restore_row(row: dict) -> bool:
-    """Вернуть товар из строки бэкапа: показ, прежний external_data и старые адреса.
+def restore_row(row: dict) -> str:
+    """Вернуть товар из строки бэкапа: показ и прежние адреса. Пусто — возвращён, иначе — почему нет.
 
-    Возвращает False, если товара уже нет. QuerySet.update — как при скрытии.
+    Возвращается только товар, который до сих пор скрыт этой командой (пометка с тем же
+    оставленным): скрытый потом по другой причине (близнец, вручную) не показывается.
+    external_data не заменяется снимком — парсер мог обновить его, пока товар был скрыт:
+    снимается только пометка. QuerySet.update — как при скрытии.
     """
     from apps.catalog.models import Product, ProductSlugHistory
     from apps.catalog.services.product_resolve import RESOLVE_CACHE_PREFIX
 
-    if not Product.objects.filter(pk=row["product_id"]).exists():
-        return False
     domain = ilacfiyati_twins.domain_model(row["product_type"])
     with transaction.atomic():
-        Product.objects.filter(pk=row["product_id"]).update(
-            is_active=row["is_active"], external_data=row["external_data"],
-        )
+        product = Product.objects.select_for_update().filter(pk=row["product_id"]).first()
+        if product is None:
+            return "товара нет в базе"
+        external = dict(product.external_data) if isinstance(product.external_data, dict) else {}
+        if external.get(DUPLICATE_OF_KEY) != row["keep_id"]:
+            return "товар не скрыт этой командой (пометки нет) — не трогаем"
+        external.pop(DUPLICATE_OF_KEY)
+        Product.objects.filter(pk=product.pk).update(is_active=row["is_active"], external_data=external)
         for item in row["domain_is_active"]:
             domain.objects.filter(pk=item["pk"]).update(is_active=item["is_active"])
         ProductSlugHistory.objects.filter(old_slug__in=row["slugs"]).delete()
@@ -232,8 +242,24 @@ def restore_row(row: dict) -> bool:
                 ProductSlugHistory.objects.create(**item)
         for slug in row["slugs"]:
             cache.delete(RESOLVE_CACHE_PREFIX + slug)
-    return True
+    return ""
 
 
-def hide_duplicate(hide, keep) -> list[str]:
-    return ilacfiyati_twins.hide_twin(hide, keep, marker_key=DUPLICATE_OF_KEY)
+def hide_checked(keep_id: int, hide_id: int, *, same_page: bool) -> str:
+    """Скрыть ``hide_id``, перепроверив пару под блокировкой строк; пусто — скрыт, иначе причина.
+
+    Между показом и записью парсер или другая команда могли изменить товары (скрыть
+    оставляемый, поменять цену) — решение принимается заново по свежим данным.
+    """
+    from apps.catalog.models import Product
+
+    with transaction.atomic():
+        locked = Product.objects.select_for_update().in_bulk(sorted({keep_id, hide_id}))
+        keep, hide = locked.get(keep_id), locked.get(hide_id)
+        if keep is None or hide is None:
+            return "товара нет в базе"
+        reason = pair_problem(keep, hide, same_page=same_page)
+        if reason:
+            return reason
+        ilacfiyati_twins.hide_twin(hide, keep, marker_key=DUPLICATE_OF_KEY)
+    return ""
