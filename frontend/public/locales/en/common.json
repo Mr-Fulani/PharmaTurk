@@ -1714,5 +1714,17 @@
   "drug_faq_order_q": "How do I order {{heading}}?",
   "drug_faq_order_a": "The site does not sell medicines. Click “Add to request” on the page of the form you need or send the name to a manager. The manager checks availability, quotes the cost with delivery and agrees on payment — you pay only after the quote.",
   "drug_faq_order_link": "More on the “How to order medicines from Turkey” page.",
-  "product_title_from_turkey": "from Turkey"
+  "product_title_from_turkey": "from Turkey",
+  "hto_faq_q11": "How do I order supplements and vitamins from Turkey?",
+  "hto_faq_a11": "Find the supplement in the catalog and click “Add to request” on its page, or send the name, a link or a photo via the form. The manager confirms availability and the total price with delivery; you pay only after confirmation. Delivery from Turkey takes 7–14 days, from $5.",
+  "hto_faq_q12": "Can I receive medicines from Turkey in Russia?",
+  "hto_faq_a12": "Yes, for personal use: an individual does not need a license or a Roszdravnadzor permit. The exception is medicines with narcotic, psychotropic and potent substances: separate rules apply to them. More in the “Importing medicines” section of the “Delivery and payment” page.",
+  "hto_supp_title": "How to order supplements and vitamins from Turkey",
+  "hto_supp_text": "Supplements and vitamins from Turkish manufacturers are ordered like other catalog products — through a request to a manager.",
+  "hto_supp_point1": "Find the supplement in the catalog and click “Add to request” on its page — or send the name, a link or a photo via the form on this page",
+  "hto_supp_point2": "The manager confirms availability and the total price with delivery; you pay only after confirmation",
+  "hto_supp_point3": "Delivery from Turkey takes 7–14 days, from $5; the manager confirms the exact cost",
+  "hto_supp_link": "Supplements and vitamins catalog",
+  "footer_how_to_order": "How to order",
+  "supplement_how_to_order_link": "How to order supplements from Turkey"
 }
