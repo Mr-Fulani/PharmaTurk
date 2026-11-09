@@ -10,6 +10,10 @@
 оригинал, если одновременно:
 
 - ключ лежит в ``products/parsed/<парсер>/`` и не защищён ``_is_protected_path``;
+- это не видео (папка ``videos/`` или расширение видео): запас на случай, если старый
+  parsed-URL видео всё же попадёт в поле товара. Повторный прогон берёт свои файлы
+  прошлого прохода по parsed-URL (``_stored_media_reuse``), а в главное фото и видео
+  товара пишет их читаемую копию (``ScraperIntegrationService._reused_copy``);
 - копия лежит вне ``products/parsed/`` и есть в хранилище;
 - ни одно поле БД на оригинал не ссылается (``referenced_media_paths``: те же
   FileField/URLField, что у ``cleanup_orphaned_media``, плюс текстовые поля с медиа);
@@ -103,6 +107,7 @@ def _delete_resaved_originals(pairs: dict[str, str]) -> int:
 
     from apps.catalog.models import Product
     from apps.catalog.tasks import _is_protected_path, _normalize_media_path
+    from apps.catalog.utils.storage_paths import detect_media_type
     from apps.catalog.utils.media_references import MediaReferenceCheckError, referenced_media_paths
     from apps.scrapers.models import ScrapingSession
 
@@ -123,6 +128,8 @@ def _delete_resaved_originals(pairs: dict[str, str]) -> int:
             or _is_protected_path(parsed_key)
             or not readable_key
             or PARSED_ROOT in readable_key
+            or "/videos/" in parsed_key
+            or detect_media_type(parsed_key) == "video"
         ):
             continue
         by_parser[match.group(1)][parsed_key] = readable_key

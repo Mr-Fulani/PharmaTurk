@@ -2158,6 +2158,11 @@ class ScraperIntegrationService:
                 attributes[key] = url_map[val]
 
     @staticmethod
+    def _reused_copy(scraped_product: ScrapedProduct, url: Any) -> Any:
+        """Parsed-URL прошлого прохода, взятый без скачивания → его читаемая копия."""
+        return (getattr(scraped_product, "_reused_copies", None) or {}).get(url, url)
+
+    @staticmethod
     def _media_owner_product(scraped_product: ScrapedProduct) -> Optional[Product]:
         """Товар, чьи медиа прошлых проходов берутся до _process_single_product.
 
@@ -2348,6 +2353,18 @@ class ScraperIntegrationService:
             # Другим владельцам — только существующие файлы, не parsed-ключи прошлых проходов.
             shared_source_to_r2.update(stored_copies)
             self._remap_attribute_urls(attributes, url_map)
+            # Свой файл прошлого прохода взят по parsed-URL (по нему галерея узнаёт строку),
+            # а оригинал после переноса удалён (utils/parsed_originals.py): в главное фото
+            # и видео товара пишется читаемая копия (_reused_copy).
+            scraped_product._reused_copies = {
+                reuse_map[url]: stored_copies[url] for url in reuse_map if url in stored_copies
+            }
+            for key in ("video_url", "video_urls"):
+                value = attributes.get(key)
+                if isinstance(value, str):
+                    attributes[key] = self._reused_copy(scraped_product, value)
+                elif isinstance(value, list):
+                    attributes[key] = [self._reused_copy(scraped_product, x) for x in value]
 
         # Медиа цветовых вариантов: IKEA (furniture_variants — отдельные sprCode под одной
         # карточкой мебели) и одежда/обувь (fashion_variants — LCW, FLO, Zara, Bershka,
@@ -4138,7 +4155,9 @@ class ScraperIntegrationService:
         if not is_variant_update:
             # Обновляем изображения, если их нет
             if not existing_product.main_image and scraped_product.images:
-                main_image_url = self._get_first_image_url(scraped_product.images)
+                main_image_url = self._reused_copy(
+                    scraped_product, self._get_first_image_url(scraped_product.images)
+                )
                 if main_image_url:
                     existing_product.main_image = main_image_url
                     updated = True
@@ -4147,7 +4166,10 @@ class ScraperIntegrationService:
             if not existing_product.video_url:
                 first_vid = None
                 if scraped_product.images:
-                    first_vid = self.catalog_normalizer._first_video_url_from_images(scraped_product.images)
+                    first_vid = self._reused_copy(
+                        scraped_product,
+                        self.catalog_normalizer._first_video_url_from_images(scraped_product.images),
+                    )
                 if first_vid:
                     existing_product.video_url = first_vid
                     updated = True

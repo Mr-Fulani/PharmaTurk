@@ -409,3 +409,55 @@ def test_second_identical_pass_reuses_stored_product_gallery(monkeypatch):
     assert downloads == []
     assert _gallery_rows(product) == stored
     assert result["skipped"] == 1
+
+
+@pytest.mark.django_db
+def test_second_pass_after_originals_deleted_writes_readable_copies(
+    monkeypatch, django_capture_on_commit_callbacks
+):
+    """Оригиналы products/parsed/ удалены в конце прохода (utils/parsed_originals.py):
+    второй проход берёт свои файлы по parsed-URL и не пишет их в главное фото и видео."""
+    from unittest.mock import patch
+
+    from apps.catalog.utils.parsed_originals import collect_parsed_originals
+
+    downloads = _fake_downloads(monkeypatch)
+    session, _ = _lcw_session("media-pipeline-deleted-originals")
+    product = _accessory("lcw-pipe-8")
+    images = [f"{CDN}/gone-{i}.jpg" for i in range(2)]
+    parsed = [
+        get_parsed_media_upload_path(
+            "lcw", "image", f"lcw-lcw-pipe-8-{i}-{source_url_fingerprint(url)}.jpg"
+        )
+        for i, url in enumerate(images)
+    ]
+    with patch("apps.catalog.utils.parsed_originals._MIN_PRODUCTS", 1):
+        with collect_parsed_originals():
+            with django_capture_on_commit_callbacks(execute=True):
+                _accessory_pass(session, "lcw-pipe-8", images)
+    assert not any(default_storage.exists(key) for key in parsed)
+    # Пустые главное фото и видео второй проход заполняет заново. Ручная отметка «главное»
+    # у строки галереи не даёт нормализатору самому заменить битое главное фото.
+    Product.objects.filter(pk=product.pk).update(main_image="", main_image_file="", video_url="")
+    domain = product.domain_item
+    type(domain).objects.filter(pk=domain.pk).update(main_image="", main_image_file="")
+    domain.gallery_images.filter(sort_order=0).update(is_main=True)
+    downloads.clear()
+
+    scraped = ScrapedProduct(
+        name="Kemer",
+        price=10,
+        currency="TRY",
+        source="lcw",
+        external_id="lcw-pipe-8",
+        url="https://www.lcw.com/kemer-o-lcw-pipe-8",
+        images=list(images),
+        attributes={"video_url": images[1]},
+    )
+    ScraperIntegrationService()._process_scraped_products(session, [scraped])
+
+    assert downloads == []
+    product.refresh_from_db()
+    for url in (product.main_image, product.video_url):
+        assert url and "/products/parsed/" not in url
+        assert default_storage.exists(url.split("/media/", 1)[-1])

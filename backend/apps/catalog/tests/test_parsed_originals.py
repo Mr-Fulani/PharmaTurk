@@ -262,3 +262,17 @@ def test_run_scraper_deletes_originals_at_its_end():
         with pytest.raises(ValueError):
             ScraperIntegrationService().run_scraper(config)
     delete.assert_called_once_with({})
+
+
+def test_video_original_is_kept(supplement):
+    """Повторный прогон может записать старый parsed-URL видео в пустой video_url товара."""
+    video = "products/parsed/superstep/sneakers/videos/superstep-orig-0-0123456789ab.mp4"
+    readable = "products/supplements/bad-originals-test/video-copy.mp4"
+    default_storage.save(video, ContentFile(b"video"))
+    default_storage.save(readable, ContentFile(b"video"))
+    try:
+        assert delete_resaved_originals({video: readable}) == 0
+        assert default_storage.exists(video)
+    finally:
+        default_storage.delete(video)
+        default_storage.delete(readable)
