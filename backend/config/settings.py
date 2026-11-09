@@ -1095,6 +1095,9 @@ FRONTEND_SITE_URL = env("FRONTEND_SITE_URL", default="").rstrip("/") or SITE_URL
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="") or env("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME", default="")
 TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")
+# Заявки и «Найдём товар» — в канал/группу менеджеров; пусто — в TELEGRAM_CHAT_ID.
+# Технические уведомления (парсеры, мониторинг, уборка медиа) остаются в TELEGRAM_CHAT_ID.
+TELEGRAM_ORDERS_CHAT_ID = env("TELEGRAM_ORDERS_CHAT_ID", default="")
 TELEGRAM_WEBHOOK_SECRET = env("TELEGRAM_WEBHOOK_SECRET", default="")
 PRODUCTION_WATCHDOG_ENABLED = env.bool("PRODUCTION_WATCHDOG_ENABLED", default=False)
 PRODUCTION_WATCHDOG_BASE_URL = env(

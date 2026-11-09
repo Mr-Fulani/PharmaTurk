@@ -53,6 +53,14 @@ def _stale_anonymous_carts(cutoff):
     ).filter(~Exists(recent_items))
 
 
+def _orders_chat_id() -> str:
+    """Куда слать заявки менеджерам: TELEGRAM_ORDERS_CHAT_ID (канал/группа), иначе TELEGRAM_CHAT_ID."""
+    return (
+        str(getattr(settings, "TELEGRAM_ORDERS_CHAT_ID", "") or "").strip()
+        or str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "").strip()
+    )
+
+
 @app.task(name="orders.cleanup_stale_anonymous_carts")
 def cleanup_stale_anonymous_carts(
     days: int | None = None,
@@ -584,7 +592,7 @@ def notify_new_order_telegram(
         return
 
     bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
-    admin_chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+    admin_chat_id = _orders_chat_id()
 
     user = order.user
     user_chat_id = ""
@@ -728,12 +736,12 @@ def notify_new_order_telegram(
 
 @app.task(bind=True, max_retries=TELEGRAM_MAX_RETRIES)
 def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0) -> None:
-    """Уведомляет менеджера (TELEGRAM_CHAT_ID) о заявке «Найдём товар по ссылке или фото»."""
+    """Уведомляет менеджеров (TELEGRAM_ORDERS_CHAT_ID, иначе TELEGRAM_CHAT_ID) о заявке «Найдём товар по ссылке или фото»."""
     from .models import SourcingRequest
     from .services import CONTACT_CHANNEL_TRANSLATIONS, translate_method
 
     bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
-    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+    chat_id = _orders_chat_id()
     if not bot_token or not chat_id:
         return
     try:

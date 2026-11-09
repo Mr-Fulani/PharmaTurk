@@ -191,3 +191,27 @@ def test_admin_session_cookie_does_not_require_csrf():
     response = client.post(URL, _payload(), format="multipart")
 
     assert response.status_code == 201, response.data
+
+
+@pytest.mark.django_db
+def test_telegram_notification_goes_to_orders_chat_when_set(settings):
+    """Заявки — в канал менеджеров (TELEGRAM_ORDERS_CHAT_ID), технические уведомления остаются в TELEGRAM_CHAT_ID."""
+    from types import SimpleNamespace
+
+    from apps.orders.tasks import _orders_chat_id, notify_sourcing_request_telegram
+
+    settings.TELEGRAM_BOT_TOKEN = "token"
+    settings.TELEGRAM_CHAT_ID = "admin-chat"
+    settings.TELEGRAM_ORDERS_CHAT_ID = "-1001234567890"
+    req = SourcingRequest.objects.create(
+        source_url="https://example.com/item_1",
+        contact_name="Анна",
+        contact_channel="telegram",
+        contact_username="anna_tg",
+    )
+    with patch("apps.orders.tasks.requests.post", return_value=SimpleNamespace(ok=True, status_code=200)) as post:
+        notify_sourcing_request_telegram.run(req.pk)
+    assert post.call_args.kwargs["json"]["chat_id"] == "-1001234567890"
+
+    settings.TELEGRAM_ORDERS_CHAT_ID = ""
+    assert _orders_chat_id() == "admin-chat"
