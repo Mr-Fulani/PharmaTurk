@@ -18,5 +18,10 @@ Disallow: /en/auth
 
 # CSS/JS в /_next/ должны быть доступны поисковым роботам для рендеринга страниц.
 
+# Яндекс: рекламные и счётчиковые метки не меняют страницу — не обходить её копии с ними
+# (utm_* стоят в ссылках YML-фида ВК и напоминаний о заявке, ysclid/yclid добавляет сам Яндекс).
+# Параметры сайта (page, sort, фильтры, q) сюда не добавлять — у них свои canonical/noindex.
+Clean-param: utm_source&utm_medium&utm_campaign&utm_content&utm_term&yclid&ysclid&gclid&fbclid&_openstat
+
 # Sitemap
 Sitemap: https://mudaroba.com/sitemap.xml
