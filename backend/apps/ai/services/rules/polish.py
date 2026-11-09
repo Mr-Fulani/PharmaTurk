@@ -14,17 +14,27 @@ from apps.ai.services.rules import vocab
 # Обороты-«вода», которые модель пишет вопреки промпту: «… подходит для повседневной носки»,
 # «Цвет нейтрален и легко сочетается с джинсами». Вырезается оборот вместе с союзом перед ним;
 # предложение целиком — только если без оборота в нём ничего не осталось.
-# Глагол после «и»: «… для повседневной носки и добавляет образу …» — не продолжение «для».
+# Глагол после «и»: «… для повседневной носки и добавляет образу …» — не продолжение «для»;
+# и с наречием: «… и легко сочетается с …» (партия 4 SuperStep 09.11.2026: «Подходит для легко сочетается»).
 _VERB = r"[а-яё]+(?:ет|ит|ют|ят|ут|ат|ется|ится|ются|ятся|ются)\b"
+_ADVERB_VERB = rf"(?:[а-яё]+о\s+)?{_VERB}"
+# Перечисление после запятой: «для повседневной носки, школы и спорта» → «для школы и спорта».
+# Только если дальше — занятие или место в родительном падеже: «, мягкая подошва и сетка
+# обеспечивают …», «, хорошо держит форму и …» — самостоятельная часть, а не перечисление.
+_LIST_AFTER_COMMA = (
+    r",\s*(?=(?:[а-яё]+(?:ых|их|ого|его)\s+){0,2}(?:школы|учёбы|учебы|работы|офиса|дома|города|прогулок|прогулки|"
+    r"поездок|поездки|путешествий|отдыха|досуга|спорта|игр|занятий|занятия|тренировок|тренировки|бега|фитнеса|"
+    r"зала|походов|выходных|праздников|вечеринок|встреч|образов|casual)\b)"
+)
 _EVERYDAY_RE = {
     "ru": re.compile(
         r"(?P<lead>,\s*а\s+также\s+|,\s*|\s+и\s+)?"
-        r"(?P<verb>(?:(?:идеально|отлично|хорошо)\s+)?(?:подход\w+|подойд\w+|предназначен\w*|создан\w*|рассчитан\w*|удобн\w*|идеальн\w*)\s+"
-        r"|дела\w+\s+(?:[а-яё]+\s+)?подходящ\w*\s+)?"
+        r"(?P<verb>(?:(?:идеально|отлично|хорошо)\s+)?(?:подход\w+|подойд\w+|предназначен\w*|создан\w*|разработан\w*|сшит\w*|рассчитан\w*|удобн\w*|идеальн\w*)\s+"
+        r"|дела\w+\s+(?:[а-яё]+\s+)?(?:подходящ|удобн)\w*\s+)?"
         r"(?:как\s+)?для\s+повседневн\w*\s+(?:(?:и\s+)?[а-яё]+\s+)?(?:носки|образ\w*|использовани\w*|стил\w*)"
         r"(?:\s+в\s+городе|\s+по\s+городу|,\s*в\s+том\s+числе\s+[^.,;!?]*)?"
         rf"(?:(?P<both>,\s*так\s+и\s+(?=для|в|на|при)|,\s*а\s+также\s+(?=для|в|на|при))"
-        rf"|(?P<tail>\s+и\s+(?!{_VERB})(?=[а-яё]))|\s+и(?=\s+{_VERB}))?",
+        rf"|(?P<tail>\s+и\s+(?!{_ADVERB_VERB})(?=[а-яё]))|(?P<list>{_LIST_AFTER_COMMA})|\s+и(?=\s+{_ADVERB_VERB}))?",
         re.IGNORECASE,
     ),
     "en": re.compile(
@@ -36,7 +46,8 @@ _EVERYDAY_RE = {
 # «сочетается с …», но не «в сочетании с другими каркасами PAX» (факт у IKEA).
 _PAIRING_RE = {
     "ru": re.compile(
-        r"(?:,\s*|\s+и\s+)?(?:(?:легко|отлично|хорошо|гармонично|удачно|органично|стильно|удобно|позволя\w+|можно)\s+)?"
+        # «позволяет легко сочетать её с …» — целиком, иначе остаётся «Дизайн позволяет.»
+        r"(?:,\s*|\s+и\s+)?(?:(?:позволя\w+|можно)\s+)?(?:(?:легко|отлично|хорошо|гармонично|удачно|органично|стильно|удобно)\s+)?"
         r"сочета(?:ется|ются|ет|ют|ть)\b(?:\s+[а-яё]+){0,2}\s+с\s+"
         # «с разными/другими …» — только вещи и стиль: «с другими модулями» у IKEA — факт.
         r"(?:джинс|брюк|чинос|шорт|юбк|плать|повседневн\w+"
@@ -208,13 +219,54 @@ def _is_empty(text: str) -> bool:
     return True
 
 
+# После вырезки сказуемого остаётся подлежащее без глагола: «Ткань сохраняет форму, а нейтральный
+# бежевый цвет.», «Брюки Anta цвета хаки — модель.» Хвост из прилагательных и общих слов убирается;
+# «Цвет — серый.», «а крой свободный» — факт (в конце не общее слово).
+_ORPHAN_TAIL_RE = re.compile(r"(?P<dash>\s+[—–])?(?(dash)|,\s*(?:а|но))\s+([^,;:—–.!?…]+?)\s*([.!?…]?)$", re.IGNORECASE)
+# После тире — только сама вещь: «… — кожаные кроссовки», «а верх — чёрный цвет» — факт.
+_ORPHAN_DASH_HEADS = frozenset({"модель", "вещь", "изделие", "товар"})
+
+
+def _drop_orphan_tail(text: str, original: str) -> str:
+    match = _ORPHAN_TAIL_RE.search(text)
+    if not match or not text[: match.start()].strip():
+        return text
+    # Хвост — подлежащее, у которого вырезано продолжение: в исходном предложении за ним шли слова.
+    if not re.search(re.escape(match.group(0).rstrip(" .!?…")) + r"\s*[^\s.!?…]", original):
+        return text
+    words = [word.lower() for word in re.findall(r"[^\W\d_]+", match.group(2))]
+    heads = _ORPHAN_DASH_HEADS if match.group("dash") else _GENERIC_WORDS
+    if words and words[-1] in heads and all(
+        word in _GENERIC_WORDS or (_ADJECTIVE_RE.search(word) and word not in _NOT_ADJECTIVES) for word in words
+    ):
+        return text[: match.start()].rstrip() + (match.group(3) or "")
+    return text
+
+
 def _without_filler(sentence: str, locale: str) -> str:
     def everyday(match: re.Match) -> str:
+        # Сказуемое («подходит», «удобна») остаётся, если без него предложение ломается (партия 4
+        # SuperStep 09.11.2026): дальше зависимые слова («подходит для повседневной носки активными
+        # детьми»), предлог («удобна для повседневной носки, в школе и на улице») или двоеточие в
+        # середине («Модель подходит для повседневной носки: …» → «Модель: …»). Без сказуемого
+        # «для повседневной носки» — обстоятельство, вырезается всегда.
+        rest = match.string[match.end() :]
+        continued = match.group("both") or match.group("tail") or match.groupdict().get("list")
+        if match.group("verb") and not (continued or re.search(r"\s(?:и|and)$", match.group(0))):
+            clean_end = re.match(r"\s*(?:$|[.!?…;)]|,(?!\s*(?:в|во|на)\s))", rest)
+            # «Лёгкая и удобная, подходит для повседневной носки в тёплую погоду» → «… удобная в тёплую погоду»
+            after_comma = (match.group("lead") or "").strip() == "," and re.match(r"\s+(?:в|во|на)\s", rest)
+            colon_at_start = rest.lstrip().startswith(":") and not match.string[: match.start()].strip()
+            if not (clean_end or after_comma or colon_at_start):
+                return match.group(0)
         lead = " " if (match.group("lead") or "").strip() in ("", ",") else match.group("lead")
+        # Запятая перед «подходит» остаётся: «Цвет белый, подходит для спорта», а не «Цвет белый подходит …».
+        kept_lead = (match.group("lead") or " ") if match.group("verb") else lead
         if match.group("both"):  # «подходит как для повседневной носки, так и для особых случаев» → «подходит для …»
-            return f"{lead}{match.group('verb') or ''}"
-        if match.group("tail"):  # «для повседневной носки и бега» → «для бега»
-            return f"{lead}{match.group('verb') or ''}{'для' if locale == 'ru' else 'for'} "
+            return f"{kept_lead}{match.group('verb') or ''}"
+        if match.group("tail") or match.groupdict().get("list"):
+            # «для повседневной носки и бега» → «для бега»; «для повседневной носки, школы и спорта» → «для школы и спорта»
+            return f"{kept_lead}{match.group('verb') or ''}{'для' if locale == 'ru' else 'for'} "
         return ""
 
     cleaned = sentence
@@ -236,6 +288,7 @@ def _without_filler(sentence: str, locale: str) -> str:
                 return ""  # «особенно в жаркую погоду или в офисе.» — ни начала, ни факта
             cleaned = _LEAD_JOINER_RE.sub("", _FRAGMENT_START_RE.sub("", cleaned).strip())
             cleaned = cleaned[:1].upper() + cleaned[1:]
+        cleaned = _drop_orphan_tail(cleaned, sentence)
         if _is_empty(cleaned.rstrip(".!?…")):
             return ""
         if cleaned[-1] not in ".!?…":

@@ -1041,17 +1041,26 @@ SHOE_MATERIALS: dict[str, tuple[str, str]] = {
 def translate_composition(raw: str | None) -> tuple[str, str] | None:
     """«%100 PAMUK» / «%95 Pamuk %5 Elastan» → («100% хлопок», «100% cotton»)."""
     text = fold(raw)
-    parts = re.findall(r"%\s*(\d{1,3})\s+([a-z ]+?)(?=\s*%|,|$)", text)
+    # Конец волокна — и «;» / «.» / «/%»: «İçerik: %86 Poliamid %14 Elastan; Menşei: Çin», «%80 pamuk/%20 polyester»
+    # (SuperStep) давали «86% полиамид» без эластана (партия 4, 09.11.2026).
+    parts = re.findall(r"%\s*(\d{1,3})\s+([a-z ]+?)(?=\s*%|[,;.]|/\s*%|$)", text)
     if not parts:
         return None
-    ru_parts, en_parts = [], []
+    ru_parts, en_parts, total = [], [], 0
     for percent, fiber in parts:
-        name = FIBERS.get(fiber.strip())
+        # «astarı ise %100 polyesterdir» — связка «-dir» после волокна.
+        name = FIBERS.get(fiber.strip()) or FIBERS.get(re.sub(r"[dt][iu]r$", "", fiber.strip()))
         if name is None:
             return None
         ru_parts.append(f"{percent}% {name[0]}")
         en_parts.append(f"{percent}% {name[1]}")
-    return ", ".join(ru_parts), ", ".join(en_parts)
+        total += int(percent)
+        if total == 100:
+            # Первая часть вещи (корпус): «Gövde: %80 pamuk/%20 polyester. Cep: %100 pamuk» — без кармана,
+            # иначе «80% хлопок, 20% полиэстер, 100% хлопок» читается как смесь.
+            return ", ".join(ru_parts), ", ".join(en_parts)
+    # Меньше 100 % — часть волокон не разобрана («%40 polyester/viskon»): неполный состав хуже никакого.
+    return None
 
 
 def translate_shoe_material(raw: str | None) -> tuple[str, str] | None:
