@@ -69,7 +69,7 @@ LEGACY_EDITS = (
     ("delivery in 7–21 business days", "delivery in 7–14 days"),
 )
 # 09.11.2026 срок БАДов снова заменён в базе (команда replace_delivery_terms, ``delivery_terms``) —
-# «авиа 3–7, наземная 7–14, морем 20–45 дней»; в логах остался прежний.
+# «… доставка 3–14 дней» (короткая форма «авиа 3–7, наземная 7–14, морем 20–45 дней»); в логах — прежний.
 # Следы правки SEO в истории админки (LogEntry): поля SEO и названия их полей в форме.
 _ADMIN_SEO_RE = re.compile(r"meta|\bog[ _]|seo|мета", re.IGNORECASE)
 
@@ -252,7 +252,7 @@ def _with_legacy_edits(value: str) -> str:
 def _legacy_variants(value: str) -> set[str]:
     """Значение лога после разовых правок в базе: 28.10 (7–14 дней) и 09.11 (``replace_delivery_terms``)."""
     edited = _with_legacy_edits(value)
-    return {edited, replace_terms(value, supplements=True), replace_terms(edited, supplements=True)}
+    return {edited, replace_terms(value, supplements=True, short=True), replace_terms(edited, supplements=True, short=True)}
 
 
 def _candidates(

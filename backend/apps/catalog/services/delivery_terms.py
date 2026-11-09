@@ -17,46 +17,54 @@ TERMS = {
     "en": "air 3–7, ground 7–14, sea 20–45 days",
 }
 # Предложение в SEO-описаниях карточек, которое собирает код (medicine_seo, supplement_content). Описание
-# карточки — до 160 знаков, полная фраза вытесняла бы вещество и «инструкцию»; 3–45 дней — от авиа до моря,
-# той же длины, что прежнее «Заявка менеджеру, доставка 7–14 дней.». Полные сроки — на страницах и в FAQ.
+# карточки — до 160 знаков, полная фраза вытесняла бы вещество и «инструкцию»; короткая форма «3–14 дней»
+# (решение владельца 09.11.2026) той же длины, что прежнее «… 7–14 дней.». Полные сроки — на страницах и в FAQ.
 ORDER_SENTENCE = {
-    "ru": "Заявка менеджеру, доставка 3–45 дней.",
-    "en": "Send a request, delivery in 3–45 days.",
+    "ru": "Заявка менеджеру, доставка 3–14 дней.",
+    "en": "Send a request, delivery in 3–14 days.",
 }
-# Внутри фразы вместо прежнего срока: «доставка 7–21 рабочий день» → «доставка 3–45 дней (авиа …)»
-_SPAN = {
-    "ru": "3–45 дней (авиа 3–7, наземная 7–14, морем 20–45)",
-    "en": "3–45 days (air 3–7, ground 7–14, sea 20–45)",
-}
-# В описаниях для поиска (meta/og/seo description) — без расшифровки
-_SPAN_SHORT = {"ru": "3–45 дней", "en": "3–45 days"}
+# В описаниях для поиска (meta/og/seo description) — короткая форма
+SHORT = {"ru": "3–14 дней", "en": "3–14 days"}
 
-# Предложения, которые прежний код ставил в SEO целиком
-_OLD_ORDER_SENTENCES = (
-    ("Заявка менеджеру, доставка 7–21 рабочий день.", ORDER_SENTENCE["ru"]),
-    ("Send a request, delivery in 7–21 business days.", ORDER_SENTENCE["en"]),
-    ("Заявка менеджеру, доставка 7–14 дней.", ORDER_SENTENCE["ru"]),
-    ("Send a request, delivery in 7–14 days.", ORDER_SENTENCE["en"]),
-)
-_MEDICINE_PATTERNS = (
-    ("ru", re.compile(r"7[–-]21 рабоч(?:ий|их) д(?:ень|ня|ней)")),
-    ("en", re.compile(r"7[–-]21 (?:business|working) days")),
-)
-# «7–14 дней» у БАДов — только срок доставки (тексты разделов и SEO карточек БАДов); «от 5 $» у БАДов не пишем
-_SUPPLEMENT_PATTERNS = (
-    ("ru", re.compile(r"7[–-]14 (?:дней|дня)(?:, от 5 \$)?")),
-    ("en", re.compile(r"7[–-]14 days(?:, from \$5)?")),
-)
+# Прежний срок: лекарства — всегда, БАДы — ещё и «7–14 дней» (только срок доставки; «от 5 $» у БАДов не пишем)
+_MEDICINE_RANGE = {"ru": r"7[–-]21 рабоч(?:ий|их) д(?:ень|ня|ней)", "en": r"7[–-]21 (?:business|working) days"}
+_SUPPLEMENT_RANGE = {"ru": r"7[–-]14 (?:дней|дня)(?:, от 5 \$)?", "en": r"7[–-]14 days(?:, from \$5)?"}
+# Полная форма без диапазона впереди: «доставка 7–21 рабочий день» → «доставка: авиа 3–7, …»,
+# «посылка идёт 7–21 рабочий день» → «посылка: авиа 3–7, …»; после тире — просто фраза.
+_VERBS = {
+    "ru": r"занимает|займёт|длится|идёт|идут|приходит|доставляются|находится|будет в пути",
+    "en": r"takes|take|arrive|arrives|is in transit for|is",
+}
+_PREPOSITIONS = {"ru": r"за|в течение", "en": r"in|within"}
+
+
+def _full(locale: str, range_re: str) -> list[tuple[re.Pattern, str]]:
+    terms = TERMS[locale]
+    return [
+        # «Parcels take 7–21 business days to arrive», «the parcel spends 7–21 working days in transit»
+        (re.compile(rf"\s+takes?\s+{range_re}\s+to arrive"), f": {terms}"),
+        (re.compile(rf"\bspends\s+{range_re}\s+in transit"), f"is in transit: {terms}"),
+        # «Срок доставки — 7–21 рабочий день», «Allow 7–21 working days» — подставить фразу как есть
+        (re.compile(rf"(—\s*|\b(?:Allow|allow|закладывайте|Ожидание посылки —)\s*){range_re}"), rf"\g<1>{terms}"),
+        (
+            re.compile(rf"(?:\s+(?:{_VERBS[locale]}))?(?:\s+(?:{_PREPOSITIONS[locale]}))?\s+{range_re}"),
+            f": {terms}",
+        ),
+    ]
 
 
 def replace_terms(text: str, *, supplements: bool = False, short: bool = False) -> str:
     """Прежние сроки доставки → новые. ``supplements`` — текст БАДа: ещё и «7–14 дней»;
-    ``short`` — описание для поиска: «3–45 дней» без расшифровки, чтобы не выйти за 200 знаков."""
+    ``short`` — описание для поиска: «3–14 дней», чтобы не выйти за 200 знаков; прежнее предложение
+    кода «Заявка менеджеру, доставка 7–21 рабочий день.» становится ``ORDER_SENTENCE``."""
     if not text:
         return text
-    for old, new in _OLD_ORDER_SENTENCES:
-        text = text.replace(old, new)
-    spans = _SPAN_SHORT if short else _SPAN
-    for locale, pattern in _MEDICINE_PATTERNS + (_SUPPLEMENT_PATTERNS if supplements else ()):
-        text = pattern.sub(spans[locale], text)
+    for locale in ("ru", "en"):
+        ranges = [_MEDICINE_RANGE[locale]] + ([_SUPPLEMENT_RANGE[locale]] if supplements else [])
+        for range_re in ranges:
+            if short:
+                text = re.sub(range_re, SHORT[locale], text)
+                continue
+            for pattern, replacement in _full(locale, range_re):
+                text = pattern.sub(replacement, text)
     return text

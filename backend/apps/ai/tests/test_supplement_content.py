@@ -225,7 +225,7 @@ def test_seo_mentions_russian_directions_only_with_usage_block():
         "OCEAN EXTRAMAG", "Оушен Экстрамаг", {"ru": "Пищевая добавка", "en": "Food Supplement"},
         sc.parse_pack("X 120 tablet"), usage=True,
     )["ru"]["seo_description"]
-    assert long.endswith("Инструкция на русском. Заявка менеджеру, доставка 3–45 дней."), long
+    assert long.endswith("Инструкция на русском. Заявка менеджеру, доставка 3–14 дней."), long
     # Детское питание — способ приготовления.
     baby = sc.build_seo("APTAMIL", "", {"ru": "Смесь 3", "en": "Formula 3"}, None, baby_food=True, usage=True)
     assert "состав и способ приготовления" in baby["ru"]["seo_description"]

@@ -11,27 +11,37 @@ from apps.catalog.services.delivery_terms import ORDER_SENTENCE, replace_terms
 
 
 def test_code_sentences_and_other_wordings_are_replaced():
-    assert replace_terms("X из Турции. Заявка менеджеру, доставка 7–21 рабочий день.") == (
-        "X из Турции. Заявка менеджеру, доставка 3–45 дней."
+    # Описания карточек (короткая форма): прежнее предложение кода → ORDER_SENTENCE
+    assert replace_terms("X из Турции. Заявка менеджеру, доставка 7–21 рабочий день.", short=True) == (
+        "X из Турции. " + ORDER_SENTENCE["ru"]
     )
-    assert replace_terms("X from Turkey. Send a request, delivery in 7–14 days.") == (
+    assert replace_terms("X from Turkey. Send a request, delivery in 7–14 days.", supplements=True, short=True) == (
         "X from Turkey. " + ORDER_SENTENCE["en"]
     )
-    assert replace_terms("Посылка идёт 7–21 рабочий день.") == (
-        "Посылка идёт 3–45 дней (авиа 3–7, наземная 7–14, морем 20–45)."
+    assert replace_terms("Allow 7–21 working days.", short=True) == "Allow 3–14 days."
+    # Тексты страниц: полная форма без диапазона впереди
+    assert replace_terms("Заявка, доставка 7–21 рабочий день.") == "Заявка, доставка: авиа 3–7, наземная 7–14, морем 20–45 дней."
+    assert replace_terms("Посылка идёт 7–21 рабочий день.") == "Посылка: авиа 3–7, наземная 7–14, морем 20–45 дней."
+    assert replace_terms("Срок доставки — 7–21 рабочий день.") == "Срок доставки — авиа 3–7, наземная 7–14, морем 20–45 дней."
+    assert replace_terms("Send a request; delivery takes 7–21 business days.") == (
+        "Send a request; delivery: air 3–7, ground 7–14, sea 20–45 days."
     )
-    assert replace_terms("Allow 7–21 working days.", short=True) == "Allow 3–45 days."
+    assert replace_terms("A parcel spends 7–21 working days in transit.") == (
+        "A parcel is in transit: air 3–7, ground 7–14, sea 20–45 days."
+    )
     # «7–14 дней» — только у БАДов, и без «от 5 $»
     assert replace_terms("Доставка занимает 7–14 дней.") == "Доставка занимает 7–14 дней."
     assert replace_terms("Доставка занимает 7–14 дней, от 5 $.", supplements=True) == (
-        "Доставка занимает 3–45 дней (авиа 3–7, наземная 7–14, морем 20–45)."
+        "Доставка: авиа 3–7, наземная 7–14, морем 20–45 дней."
     )
 
 
 def test_replacement_is_idempotent():
     for text in ("Посылка идёт 7–21 рабочий день.", "Доставка занимает 7–14 дней.", "Delivery in 7–14 days."):
-        once = replace_terms(text, supplements=True)
-        assert replace_terms(once, supplements=True) == once
+        for short in (False, True):
+            once = replace_terms(text, supplements=True, short=short)
+            assert "7–21" not in once
+            assert replace_terms(once, supplements=True, short=short) == once
 
 
 def _product(product_type, slug, description):
@@ -61,10 +71,10 @@ def test_command_shows_by_default_then_applies_and_restores(tmp_path):
     medicine.refresh_from_db()
     supplement.refresh_from_db()
     clothing.refresh_from_db()
-    assert medicine.meta_description == "M из Турции. Заявка менеджеру, доставка 3–45 дней."
-    assert supplement.meta_description == "S из Турции. Заявка менеджеру, доставка 3–45 дней."
+    assert medicine.meta_description == "M из Турции. Заявка менеджеру, доставка 3–14 дней."
+    assert supplement.meta_description == "S из Турции. Заявка менеджеру, доставка 3–14 дней."
     assert clothing.meta_description == "Футболка. Доставка 7–14 дней, от 5 $."
-    assert ProductTranslation.objects.get(product=medicine).meta_description == "M. Send a request, delivery in 3–45 days."
+    assert ProductTranslation.objects.get(product=medicine).meta_description == "M. Send a request, delivery in 3–14 days."
     rows = [json.loads(line) for line in backup.read_text(encoding="utf-8").splitlines()]
     assert {row["model"] for row in rows} == {"catalog.Product", "catalog.ProductTranslation"}
 
@@ -106,9 +116,9 @@ def test_category_migration_changes_only_medicine_and_supplement_trees():
     migration.forwards(django_apps, None)
     for row in (cardio, supp, clothes):
         row.refresh_from_db()
-    assert cardio.meta_description == "Заявка, доставка 3–45 дней."
-    assert cardio.seo_text == "Посылка идёт 3–45 дней (авиа 3–7, наземная 7–14, морем 20–45)."
-    assert supp.seo_text == "Доставка занимает 3–45 дней (авиа 3–7, наземная 7–14, морем 20–45)."
+    assert cardio.meta_description == "Заявка, доставка 3–14 дней."
+    assert cardio.seo_text == "Посылка: авиа 3–7, наземная 7–14, морем 20–45 дней."
+    assert supp.seo_text == "Доставка: авиа 3–7, наземная 7–14, морем 20–45 дней."
     assert clothes.seo_text == "Доставка занимает 7–14 дней."
 
 

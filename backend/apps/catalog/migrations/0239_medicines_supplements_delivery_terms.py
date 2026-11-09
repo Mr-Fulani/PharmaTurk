@@ -4,8 +4,8 @@
 
 Прежние сроки: лекарства «7–21 рабочий день» (миграция 0222 и правки в админке), БАДы «7–14 дней»
 (тексты разделов от 27.10.2026, «Доставка занимает 7–14 дней»). Меняются только эти формулировки
-срока — дословно, остальной текст как был: «доставка 7–21 рабочий день» → «доставка 3–45 дней (авиа 3–7,
-наземная 7–14, морем 20–45)»; в описании для поиска (до 200 знаков) — «доставка 3–45 дней».
+срока — дословно, остальной текст как был: «доставка 7–21 рабочий день» → «доставка: авиа 3–7, наземная
+7–14, морем 20–45 дней»; в описании для поиска (до 200 знаков) — «доставка 3–14 дней».
 Правила — копия ``apps/catalog/services/delivery_terms.py`` на 09.11.2026 (миграция не зависит от кода).
 Баннер «Доставка из Турции» на главной: «7–21 рабочий день: авиа, авто или морем» → «авиа 3–7, наземная
 7–14, морем 20–45 дней» (только дословно совпадающая строка).
@@ -16,19 +16,52 @@ import re
 from django.db import migrations
 
 SEO_FIELDS = ('h1', 'meta_title', 'meta_description', 'seo_text')
-SPAN = {
-    'ru': '3–45 дней (авиа 3–7, наземная 7–14, морем 20–45)',
-    'en': '3–45 days (air 3–7, ground 7–14, sea 20–45)',
+TERMS = {
+    "ru": "авиа 3–7, наземная 7–14, морем 20–45 дней",
+    "en": "air 3–7, ground 7–14, sea 20–45 days",
 }
-SPAN_SHORT = {'ru': '3–45 дней', 'en': '3–45 days'}
-MEDICINE_PATTERNS = (
-    ('ru', re.compile(r'7[–-]21 рабоч(?:ий|их) д(?:ень|ня|ней)')),
-    ('en', re.compile(r'7[–-]21 (?:business|working) days')),
-)
-SUPPLEMENT_PATTERNS = (
-    ('ru', re.compile(r'7[–-]14 (?:дней|дня)(?:, от 5 \$)?')),
-    ('en', re.compile(r'7[–-]14 days(?:, from \$5)?')),
-)
+SHORT = {"ru": "3–14 дней", "en": "3–14 days"}
+# Прежний срок: лекарства — всегда, БАДы — ещё и «7–14 дней» (только срок доставки; «от 5 $» у БАДов не пишем)
+_MEDICINE_RANGE = {"ru": r"7[–-]21 рабоч(?:ий|их) д(?:ень|ня|ней)", "en": r"7[–-]21 (?:business|working) days"}
+_SUPPLEMENT_RANGE = {"ru": r"7[–-]14 (?:дней|дня)(?:, от 5 \$)?", "en": r"7[–-]14 days(?:, from \$5)?"}
+# Полная форма без диапазона впереди: «доставка 7–21 рабочий день» → «доставка: авиа 3–7, …»,
+# «посылка идёт 7–21 рабочий день» → «посылка: авиа 3–7, …»; после тире — просто фраза.
+_VERBS = {
+    "ru": r"занимает|займёт|длится|идёт|идут|приходит|доставляются|находится|будет в пути",
+    "en": r"takes|take|arrive|arrives|is in transit for|is",
+}
+_PREPOSITIONS = {"ru": r"за|в течение", "en": r"in|within"}
+
+
+def _full(locale, range_re):
+    terms = TERMS[locale]
+    return [
+        # «Parcels take 7–21 business days to arrive», «the parcel spends 7–21 working days in transit»
+        (re.compile(rf"\s+takes?\s+{range_re}\s+to arrive"), f": {terms}"),
+        (re.compile(rf"\bspends\s+{range_re}\s+in transit"), f"is in transit: {terms}"),
+        # «Срок доставки — 7–21 рабочий день», «Allow 7–21 working days» — подставить фразу как есть
+        (re.compile(rf"(—\s*|\b(?:Allow|allow|закладывайте|Ожидание посылки —)\s*){range_re}"), rf"\g<1>{terms}"),
+        (
+            re.compile(rf"(?:\s+(?:{_VERBS[locale]}))?(?:\s+(?:{_PREPOSITIONS[locale]}))?\s+{range_re}"),
+            f": {terms}",
+        ),
+    ]
+
+
+def replace_terms(text, supplements=False, short=False):
+    """Прежние сроки доставки → новые. ``supplements`` — текст БАДа: ещё и «7–14 дней»;
+    ``short`` — описание для поиска: «3–14 дней», чтобы не выйти за 200 знаков."""
+    if not text:
+        return text
+    for locale in ("ru", "en"):
+        ranges = [_MEDICINE_RANGE[locale]] + ([_SUPPLEMENT_RANGE[locale]] if supplements else [])
+        for range_re in ranges:
+            if short:
+                text = re.sub(range_re, SHORT[locale], text)
+                continue
+            for pattern, replacement in _full(locale, range_re):
+                text = pattern.sub(replacement, text)
+    return text
 
 
 BANNER_TEXTS = (
@@ -37,15 +70,6 @@ BANNER_TEXTS = (
 )
 BANNER_MODELS = ('Banner', 'BannerTranslation', 'BannerMedia', 'BannerMediaTranslation')
 BANNER_FIELDS = ('title', 'description', 'link_text')
-
-
-def replace_terms(text, supplements=False, short=False):
-    if not text:
-        return text
-    spans = SPAN_SHORT if short else SPAN
-    for locale, pattern in MEDICINE_PATTERNS + (SUPPLEMENT_PATTERNS if supplements else ()):
-        text = pattern.sub(spans[locale], text)
-    return text
 
 
 def _tree(Category, root_slug):
