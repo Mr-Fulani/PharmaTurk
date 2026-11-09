@@ -236,14 +236,24 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
     footerSettings?.instagram_url,
     footerSettings?.vk_url,
     footerSettings?.whatsapp_url,
-  ].filter(Boolean) as string[]
+  ]
+    .filter(Boolean)
+    // В настройках футера WhatsApp записан как http://wa.me/… — в разметке только https
+    .map((url) => (url as string).replace(/^http:\/\//i, 'https://'))
 
   const organizationSchema = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: 'Mudaroba',
     url: siteUrl,
-    logo: `${siteUrl}/logo.svg`,
+    // TODO(owner): черновик описания — на согласование владельцу
+    description: t(
+      'home_org_description',
+      'Mudaroba — интернет-магазин товаров из Турции: одежда, обувь, мебель, косметика и БАДы турецких брендов, а также подбор лекарств по заявке. Заказ оформляется через менеджера, оплата — после подтверждения заказа.'
+    ),
+    // Google просит растровый логотип от 112×112; SVG остаётся в интерфейсе
+    logo: `${siteUrl}/logo-512.png`,
+    // TODO(owner): email, address и areaServed — только после подтверждения владельцем
     contactPoint: {
       '@type': 'ContactPoint',
       telephone: footerSettings?.phone || '+90-552-582-14-97',
