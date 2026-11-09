@@ -78,6 +78,12 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "yag asitleri": ("жирные кислоты", "fatty acids", S),
     "amino asit": ("аминокислоты", "amino acids", S),
     "koenzim q10": ("коэнзим Q10", "coenzyme Q10", S),
+    # Дубли БАДов 08.11.2026: «KETENCİK YAĞI» (рыжик) — «лён», «касторовое», «кунжут»; «NAR ÇİÇEĞİ» — «масло
+    # семян граната»; «KOENZİM QH» (убихинол) — просто «Коэнзим Q10».
+    "ketencik yagi": ("масло рыжика / рыжиковое масло", "camelina oil", S),
+    "ketencik": ("рыжик (камелина)", "camelina", S),
+    "nar cicegi": ("цветки граната / цветков граната", "pomegranate flower / pomegranate blossom", S),
+    "koenzim qh": ("убихинол", "ubiquinol", S),
     "tibbi mantar": ("лекарственные грибы", "medicinal mushrooms", S),
     "deniz yosunu": ("морские водоросли", "seaweed", S),
     "turuncgil bioflavonoidleri": ("цитрусовые биофлавоноиды", "citrus bioflavonoids", S),

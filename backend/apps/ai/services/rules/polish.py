@@ -134,6 +134,18 @@ _FILE_FIXES = (
     (re.compile(r"\bфайле\b", re.IGNORECASE), "сетке"),
     (re.compile(r"\bфайл\b", re.IGNORECASE), "сетка"),
 )
+# «TABAN: Poli» у FLO (Gezer) — полимер, как в SHOE_MATERIALS; модель писала «Подошва из поли» / «Poly sole»
+# и «поливинилхлорид» (09.11.2026). ПВХ здесь не правится: у FLO бывает и настоящий «PVC» в источнике.
+_POLI_FIXES = {
+    "ru": (
+        (re.compile(r"\b([Ии]з)\s+поли\b(?![\w-])"), r"\1 полимера"),
+        (re.compile(r"\b([Пп]одошва)\s+поли\b(?![\w-])"), r"\1 из полимера"),
+    ),
+    "en": (
+        (re.compile(r"\b([Pp])oly(\s+sole|\s+outsole)\b"), r"\1olymer\2"),
+        (re.compile(r"\b(of|from)\s+poly\b(?![\w-])", re.IGNORECASE), r"\1 polymer"),
+    ),
+}
 
 # Английские слова ключей словаря («Slim Fit», «Crew Neck»): в описании — не турецкая вставка.
 _ENGLISH_WORDS = frozenset({
@@ -302,6 +314,9 @@ def polish_description(text: str, locale: str, product_type: str = "") -> str:
         return text
     if locale == "ru":
         for pattern, replacement in _RU_FIXES + (_FILE_FIXES if product_type in _MESH_TYPES else ()):
+            text = pattern.sub(replacement, text)
+    if product_type == "shoes":
+        for pattern, replacement in _POLI_FIXES[locale]:
             text = pattern.sub(replacement, text)
     parts = re.split(r"(<[^>]+>)", text)
     for index, part in enumerate(parts):

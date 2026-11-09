@@ -8,6 +8,7 @@ import pytest
 
 from apps.ai.models import AIProcessingLog, AIProcessingStatus, AITranslationMemory
 from apps.ai.services import supplement_content as sc
+from apps.ai.services import supplement_glossary as sg
 from apps.ai.services.content_generator import ContentGenerator
 from apps.ai.services.quality_checker import get_moderation_reasons
 from apps.ai.services.result_applier import AIResultApplier
@@ -104,7 +105,18 @@ def _process(generator, supplement):
         ("X KAPSUL 21 tablet", "21 таблетка", "21 tablets"),
         (SOURCE, "150 мл", "150 ml"),
         ("INOVIT MULTIVITAMIN ICEREN EFERVESAN TABLET 20 tablet", "20 шипучих таблеток", "20 effervescent tablets"),
-        ("ZADE VITAL ASPIR YAGI YUMUSAK KAPSUL 600 mg 60 kapsül/HDPE şişe", "60 мягких капсул", "60 soft capsules"),
+        ("ZADE VITAL ASPIR YAGI YUMUSAK KAPSUL 600 mg 60 kapsül/HDPE şişe", "60 мягких капсул во флаконе HDPE",
+         "60 soft capsules in an HDPE bottle"),
+        # Дубли БАДов 08.11.2026: одно масло в блистерах, во флаконе и во флаконе HDPE — разные товары.
+        ("ZADE VITAL RUSEYM YAGI KAPSUL 60 kapsül/blister", "60 капсул в блистерах", "60 capsules in blisters"),
+        ("ZADE VITAL RUSEYM YAGI KAPSUL 60 kapsül/şişe", "60 капсул во флаконе", "60 capsules in a bottle"),
+        ("ZADE VITAL KETEN TOHUMU YAGI BITKISEL KAPSUL 30 kapsül/blister", "30 растительных капсул в блистерах",
+         "30 vegetable capsules in blisters"),
+        ("VIAPECIA OMEGA 3 PORTAKAL AROMALI CIGNENEBILIR KAPSUL 60 kapsül", "60 жевательных капсул",
+         "60 chewable capsules"),
+        ("NEMIX PASCAL BURUN YIKAMA KITI 20 poşet+1 araç", "20 пакетиков + 1 устройство", "20 bags + 1 device"),
+        ("NEMIX PASCAL BURUN YIKAMA KITI 20 poşet", "20 пакетиков", "20 bags"),
+        ("MOORE ALFA LIPOIK ASIT ICEREN BITKISEL EKSTRE TABLET 30 tablet", "30 таблеток", "30 tablets"),
         ("CLAUSY PROBIYOTIK - YETISKIN 10x5 ml flakon", "10 флаконов по 5 мл", "10 vials × 5 ml"),
         ("OPTIFIBRE SASE 10x5 g saşe", "10 саше по 5 г", "10 sachets × 5 g"),
         ("SMA OPTIPRO PROBIYOTIK 2 (6-12 AY) DEVAM SUTU 800 g toz", "800 г", "800 g"),
@@ -480,3 +492,58 @@ def test_latin_product_line_and_brand_words_are_not_rejected():
     )
     assert sc.clean_paragraph("BIOXCIN поддерживает здоровье волос.", booster) == ""
     assert sc.description_problems("<p>BIOXCIN BEAUTY BOOSTER в таблетках.</p>", booster) == []
+
+
+# --- дубли БАДов 08.11.2026: ошибки перевода и бренд ---
+
+
+def test_camelina_pomegranate_flower_and_ubiquinol_are_in_glossary():
+    assert sg.glossary_for("ZADE VITAL KETENCIK YAGI") == {"KETENCIK YAGI": "масло рыжика / рыжиковое масло | camelina oil"}
+    assert sg.found_terms("ZADE VITAL NAR CICEGI YAGI KAPSUL") == ["nar cicegi", "yagi"]
+    assert sg.found_terms("NATURALNEST KOENZIM QH KAPSUL") == ["koenzim qh"]
+    # Неверные названия с сайта — проверка их находит, верные проходят.
+    assert sg.missing_terms("ZADE VITAL KETENCIK YAGI", "Льняное масло", "Flaxseed Oil") == ["ketencik yagi"]
+    assert sg.missing_terms("ZADE VITAL KETENCIK YAGI", "Касторовое масло", "Castor Oil") == ["ketencik yagi"]
+    assert sg.missing_terms("ZADE VITAL KETENCIK YAGI", "Масло рыжика", "Camelina Oil") == []
+    assert sg.missing_terms("ZADE VITAL NAR CICEGI YAGI", "Масло семян граната", "Pomegranate Seed Oil") == ["nar cicegi"]
+    assert sg.missing_terms("ZADE VITAL NAR CICEGI YAGI", "Масло цветков граната", "Pomegranate Flower Oil") == []
+    assert sg.missing_terms("NATURALNEST KOENZIM QH KAPSUL", "Коэнзим Q10", "Coenzyme Q10") == ["koenzim qh"]
+    assert sg.missing_terms("NEPTUNE KOENZIM QH UBIKINOL ICEREN", "Коэнзим Q10 Убихинол", "Coenzyme Q10 Ubiquinol") == []
+    assert sg.missing_terms("ZADE VITAL RUSEYM YAGI", "Масло шиповника", "Rosehip Oil") == ["ruseym yagi"]
+    # «KETEN TOHUMU» (лён) рыжиком не становится.
+    assert sg.found_terms("TABIA KETEN TOHUMU YAGI") == ["keten tohumu", "yagi"]
+
+
+def test_brand_does_not_take_first_word_of_glossary_phrase():
+    assert sc._brand("OCEAN KOENZIM", "OCEAN KOENZIM QH TAKVIYE EDICI GIDA 30 kapsül") == ("OCEAN", True)
+    assert sc._brand("ZADE VITAL", "ZADE VITAL KETENCIK YAGI 100 ml şişe") == ("ZADE VITAL", True)
+
+
+def test_vegetable_capsule_words_are_cut_from_product():
+    pack = sc.parse_pack("ZADE VITAL KETEN TOHUMU YAGI BITKISEL KAPSUL 30 kapsül/blister")
+    assert sc._without_piece_form("Масло семян льна, растительные капсулы", pack, "ru") == "Масло семян льна"
+    assert sc._without_piece_form("Масло семян льна в растительных капсулах", pack, "ru") == "Масло семян льна"
+    assert sc._without_piece_form("Flaxseed Oil Vegetable Capsules", pack, "en") == "Flaxseed Oil"
+    assert sc.assemble_title("ZADE VITAL", "Масло семян льна", pack.ru, "ru") == (
+        "ZADE VITAL Масло семян льна, 30 растительных капсул в блистерах"
+    )
+
+
+def test_bare_pack_from_model_is_cut_when_pack_has_container_or_device():
+    # Ревью 09.11.2026: «Масло черного тмина, 60 капсул» при фасовке «60 капсул во флаконе» давало «…, 60, 60 капсул…».
+    pack = sc.parse_pack("ZADE VITAL COREK OTU YAGI KAPSUL 60 kapsül/şişe")
+    assert sc._without_piece_form("Масло черного тмина, 60 капсул", pack, "ru") == "Масло черного тмина"
+    assert sc._without_piece_form("Black Seed Oil, 60 capsules", pack, "en") == "Black Seed Oil"
+    pack = sc.parse_pack("AFYE BETA GLUKAN TAKVIYE EDICI GIDA BITKISEL KAPSUL 60 kapsül")
+    assert sc._without_piece_form("Бета-глюкан, 60 капсул", pack, "ru") == "Бета-глюкан"
+    pack = sc.parse_pack("NEMIX PASCAL BURUN YIKAMA KITI 20 poşet+1 araç")
+    assert sc._without_piece_form("Набор для промывания носа, 20 пакетиков", pack, "ru") == "Набор для промывания носа"
+    # Другое число — не фасовка: «Омега-3 1000 мг» и «Витамин D3 60 мкг» остаются.
+    assert sc._without_piece_form("Витамин D3 1000 МЕ", pack, "ru") == "Витамин D3 1000 МЕ"
+    pack = sc.parse_pack("VIAPECIA BIOTIN CIGNENEBILIR KAPSUL 5000 mcg 60 kapsül")
+    assert sc._without_piece_form("Биотин в жевательных капсулах", pack, "ru") == "Биотин"
+    assert sc._without_piece_form("Biotin Chewable Capsules", pack, "en") == "Biotin"
+
+
+def test_chewable_gel_is_not_chewable_capsule():
+    assert sc.parse_pack("OCEAN GUMMIES MULTIVITAMIN ADULT CIGNENEBILIR JEL 60 kapsül").ru == "60 капсул"

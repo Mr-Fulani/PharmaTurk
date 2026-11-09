@@ -82,6 +82,10 @@ _PIECE_MODIFIERS = (
     ("efervesan", "tablet", "шипучих", "effervescent"),
     ("cignenebilir", "tablet", "жевательных", "chewable"),
     ("cigneme", "tablet", "жевательных", "chewable"),
+    # «VIAPECIA … ÇİĞNENEBİLİR KAPSÜL 60 kapsül» на сайте было «60 капсул»; «BİTKİSEL KAPSÜL» у ZADE VITAL —
+    # отдельный товар рядом с обычными капсулами (дубли БАДов 08.11.2026).
+    ("cignenebilir(?! jel)", "capsule", "жевательных", "chewable"),  # «ÇİĞNENEBİLİR JEL … kapsül» — мармелад
+    ("bitkisel kapsul", "capsule", "растительных", "vegetable"),
     ("film kapli", "tablet", "покрытых оболочкой", "film-coated"),
     ("yumusak", "capsule", "мягких", "soft"),
     ("softjel", "capsule", "мягких", "soft"),
@@ -103,7 +107,14 @@ _PACK_RE = re.compile(
     rf"(?<![\d.,])(?P<count>{_NUMBER})\s*(?:x\s*(?P<size>{_NUMBER})\s*)?"
     # «60 Böğürtlen Aromalı Çiğnenebilir Jel Form» — вкус между числом и формой; «20 poşet+1 araç» — набор.
     r"(?P<unit>(?:[a-z]+ ){0,2}cignenebilir jel(?: form)?|jel form|cigneme tableti?|efervesan tablet|stick sase|[a-zа-яё]+)"
-    rf"(?P<tail>(?:\s*/?\s*{_CONTAINERS}\b)*)(?:\s*\+\s*\d+\s*arac)?\s*$"
+    rf"(?P<tail>(?:\s*/?\s*{_CONTAINERS}\b)*)(?:\s*\+\s*(?P<device>\d+)\s*arac)?\s*$"
+)
+# Тара штучной фасовки пишется: у ZADE VITAL и SEVEN BERRY одно и то же масло продаётся «60 kapsül/blister»,
+# «60 kapsül/şişe» и «60 kapsül/HDPE şişe» по разной цене, а названия на сайте совпадали (дубли БАДов 08.11.2026).
+_PIECE_CONTAINERS = (
+    ("hdpe sise", "во флаконе HDPE", "in an HDPE bottle"),
+    ("sise", "во флаконе", "in a bottle"),
+    ("blister", "в блистерах", "in blisters"),
 )
 
 
@@ -184,6 +195,15 @@ def parse_pack(name: Any) -> Optional[Pack]:
         ru, en = _pieces(size, unit, modifier)
         return Pack(f"{_number_ru(count)} уп. по {ru}", f"{_number_en(count)} × {en}", source, piece=unit)
     ru, en = _pieces(count, unit, modifier)
+    tail = " ".join(tail_words)
+    container = next(((c_ru, c_en) for word, c_ru, c_en in _PIECE_CONTAINERS if re.search(rf"\b{word}\b", tail)), None)
+    if container:
+        ru, en = f"{ru} {container[0]}", f"{en} {container[1]}"
+    if match.group("device"):
+        # «20 poşet+1 araç» (NEMIX PASCAL): набор с устройством — отдельный товар от «20 poşet».
+        device = match.group("device")
+        ru = f"{ru} + {device} {ru_plural(device, 'устройство', 'устройства', 'устройств')}"
+        en = f"{en} + {device} {'device' if device == '1' else 'devices'}"
     return _with_leading_pack(Pack(ru, en, source, piece=unit), original, folded, match.start())
 
 
@@ -1138,6 +1158,12 @@ def _brand(answer: Any, source_name: str) -> tuple[str, bool]:
     # оставалось турецкое «SASE» (очередь модерации 27.10.2026).
     while len(candidate) > 1 and key(candidate[-1]) in _BRAND_FORM_WORDS:
         candidate = candidate[:-1]
+    # Последнее слово бренда начинает сочетание словаря со следующим словом названия: «OCEAN KOENZIM» при
+    # «OCEAN KOENZIM QH …» — в названии оставалось «Коэнзим Q10» без убихинола (дубли БАДов 08.11.2026).
+    while 1 < len(candidate) < len(words) and (
+        f"{key(candidate[-1])} {key(words[len(candidate)])}" in supplement_glossary.GLOSSARY
+    ):
+        candidate = candidate[:-1]
     if candidate and len(candidate) < len(words) and [key(w) for w in words[: len(candidate)]] == [
         key(w) for w in candidate
     ]:
@@ -1257,8 +1283,9 @@ def _translated(text: Any, locale: str, source_name: str = "") -> str:
 # Фасовка уже в названии: в конце «что это» лишние её повтор («Пробиотик, 10 капсул»)
 # и форма штучной фасовки («пастилки», «шипучие таблетки», «жевательные»).
 _PIECE_FORM_TAIL_RE = re.compile(
-    r"(?:^|,\s*|\s+)(?:жевательн\w*|шипуч\w*|мягк\w*|капсул\w*|таблет\w*|пастил\w*|саше|"
-    r"chewable|effervescent|soft|capsules?|tablets?|lozenges?|sachets?)$",
+    r"(?:^|,\s*|\s+)(?:жевательн\w*|шипуч\w*|мягк\w*|(?:в\s+)?(?:(?:растительн|мягк|жевательн)\w*\s+)?капсул\w*|"
+    r"таблет\w*|пастил\w*|саше|chewable|effervescent|soft|"
+    r"(?:in\s+)?(?:(?:vegetable|veggie|soft|chewable)\s+)?capsules?|tablets?|lozenges?|sachets?)$",
     re.IGNORECASE,
 )
 _GENERIC_PRODUCT = {"ru": "пищевая добавка", "en": "Food Supplement"}
@@ -1271,6 +1298,15 @@ def _without_piece_form(text: str, pack: Optional[Pack], locale: str) -> str:
     tail = getattr(pack, locale, "")
     if tail and text.lower().endswith(tail.lower()):
         text = text[: -len(tail)].rstrip(" ,")
+    count = re.match(r"\d+(?:[.,]\d+)?", tail or "")
+    if pack.piece and count:
+        # Модель пишет фасовку без тары и признака («…, 60 капсул» при «60 капсул во флаконе», «20 пакетиков» при
+        # «20 пакетиков + 1 устройство») — иначе в названии «…, 60, 60 капсул во флаконе» (ревью 09.11.2026).
+        text = re.sub(
+            rf"(?:,\s*|\s+){re.escape(count.group(0))}\s+(?:[^\W\d_]+\s+){{0,2}}"
+            r"(?:капсул|таблет|пакетик|саше|пастил|флакон|capsul|tablet|bag|sachet|lozeng|vial)\w*$",
+            "", text, flags=re.IGNORECASE,
+        ).rstrip(" ,")
     while pack.piece:
         shorter = _PIECE_FORM_TAIL_RE.sub("", text).strip(" ,")
         if shorter == text:
