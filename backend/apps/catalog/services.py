@@ -1217,7 +1217,8 @@ class CatalogNormalizer:
             for obj in [product, target] if is_domain else [product]:
                 update_fields = []
                 if hasattr(obj, 'video_url') and not obj.video_url:
-                    obj.video_url = preferred_main_video_url
+                    # parsed-URL прошлого прохода → читаемая копия строки: оригинал удаляется.
+                    obj.video_url = promoted_by_source.get(preferred_main_video_url) or preferred_main_video_url
                     update_fields.append("video_url")
                 if update_fields:
                     obj.save(update_fields=update_fields)
