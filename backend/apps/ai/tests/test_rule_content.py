@@ -1213,8 +1213,8 @@ def test_seniorah_description_cilt_is_never_genuine_leather():
 @pytest.mark.parametrize("advice", ["Tam kalıptır. Kendi numaranızı tercih edebilirsiniz.", "Tamkalıptır.", "Tam kalıptır kendi numaranızı tercih ediniz."])
 def test_seniorah_description_tam_kalip_is_true_to_size(advice):
     description = _seniorah("Kitten Cilt Kısa İnce Topuklu Kadın Ayakkabı", {"material": "Cilt", "size_advice": advice})
-    assert "Полномерные — берите свой обычный размер." in description["ru"]
-    assert "True to size" in description["en"]
+    assert "Полномерные, по размерной сетке — выбирайте как обычно." in description["ru"]
+    assert "Standard fit" in description["en"]
     assert "колодк" not in description["ru"] and "стоп" not in description["ru"]
 
 
@@ -1227,7 +1227,7 @@ def test_seniorah_description_facts_and_details():
     assert ru.startswith("Женские туфли на каблуке Seniorah Ankle из экокожи")
     assert "перфорацией" in ru and "пряжк" not in ru  # «Zımbalı» — перфорация, застёжки не выдумываем
     assert "Стелька: анатомическая." in ru and "Высота каблука: 5 см." in ru
-    assert "Обхват по щиколотке (37 размер): 33 см." in ru and "Высота с каблуком (37 размер): 23,5 см." in ru
+    assert "Обхват по щиколотке (EU 37): 33 см." in ru and "Высота с каблуком (EU 37): 23,5 см." in ru
     assert "Heel height: 5 cm." in description["en"]
 
 
@@ -1295,3 +1295,18 @@ def test_seniorah_heel_range_and_details_not_repeated():
     description = _seniorah("Ankle Cilt Zımbalı Sivri Burun Kadın Topuklu Ayakkabı", {"material": "Cilt", "heel_height": "5-6 cm"})
     assert "Высота каблука: 5–6 см." in description["ru"] and "Heel height: 5–6 cm." in description["en"]
     assert description["ru"].count("с перфорацией") == 1
+
+
+def test_seniorah_description_survives_size_inventory_filter():
+    """Фильтр «размер + число» (strip_size_inventory_sentences) на проде 09.11.2026 срезал обхваты и
+    «полномерные»: описание Seniorah не должно в нём терять строк."""
+    from apps.ai.services.size_inventory import strip_size_inventory_sentences
+
+    description = _seniorah(
+        "Alpha Cilt Kadın Çizme", {"material": "Cilt", "heel_height": "4 cm", "size_advice": "Tam kalıptır."},
+        slug="boots-classic",
+        source=SENIORAH_SOURCE + "\n37 numara için baldır ölçüsü: 39 cm",
+    )
+    for locale in ("ru", "en"):
+        assert strip_size_inventory_sentences(description[locale]) == description[locale]
+    assert "Обхват голенища (EU 37): 39 см." in description["ru"] and "Полномерные" in description["ru"]
