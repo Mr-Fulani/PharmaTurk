@@ -263,7 +263,6 @@ def test_apply_reapplies_name_written_by_previous_ai_apply(generator, category, 
     assert f"{edited.pk}: название менялось" in out.getvalue()
 
 
-
 def test_apply_keeps_title_reviewed_by_moderator(generator, category, tmp_path):
     """Название, исправленное модератором в логе и применённое, — ручное: --force его не перезаписывает."""
     product = _product("seniorah-P-3", category)
