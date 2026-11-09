@@ -1041,12 +1041,15 @@ SHOE_MATERIALS: dict[str, tuple[str, str]] = {
 def translate_composition(raw: str | None) -> tuple[str, str] | None:
     """«%100 PAMUK» / «%95 Pamuk %5 Elastan» → («100% хлопок», «100% cotton»)."""
     text = fold(raw)
-    parts = re.findall(r"%\s*(\d{1,3})\s+([a-z ]+?)(?=\s*%|,|$)", text)
+    # Конец волокна — и «;» / «.» / «/»: «İçerik: %86 Poliamid %14 Elastan; Menşei: Çin», «%80 pamuk/%20 polyester»
+    # (SuperStep) давали «86% полиамид» без эластана (партия 4, 09.11.2026).
+    parts = re.findall(r"%\s*(\d{1,3})\s+([a-z ]+?)(?=\s*%|[,;./]|$)", text)
     if not parts:
         return None
     ru_parts, en_parts = [], []
     for percent, fiber in parts:
-        name = FIBERS.get(fiber.strip())
+        # «astarı ise %100 polyesterdir» — связка «-dir» после волокна.
+        name = FIBERS.get(fiber.strip()) or FIBERS.get(re.sub(r"[dt][iu]r$", "", fiber.strip()))
         if name is None:
             return None
         ru_parts.append(f"{percent}% {name[0]}")
