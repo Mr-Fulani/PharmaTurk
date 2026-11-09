@@ -11,6 +11,9 @@ import {
   SCHEMA_RETURN_POLICY,
   SCHEMA_SHIPPING_COUNTRIES,
   buildSchemaImages,
+  isOwnDomainImage,
+  pickOwnDomainImage,
+  preferOwnDomainImages,
   buildSchemaShippingDetails,
 } from './productAvailability.js'
 
@@ -128,4 +131,21 @@ test('return policy covers every shipping country', () => {
 test('schema images: main first, unique, at most 10', () => {
   assert.deepEqual(buildSchemaImages(['a', 'b', 'a', '', null, 'c']), ['a', 'b', 'c'])
   assert.equal(buildSchemaImages(Array.from({ length: 15 }, (_, i) => `img${i}`)).length, 10)
+})
+
+test('картинки разметки: чужой CDN убирается, если есть свои копии; своих нет — список как есть', () => {
+  const site = 'https://mudaroba.com'
+  const cdn = 'https://img-lcwaikiki.mncdn.com/pim/a.jpg'
+  const own1 = 'https://mudaroba.com/api/catalog/proxy-media/?path=products%2Fa.jpg'
+  const own2 = 'https://cdn.mudaroba.com/products/b.jpg'
+  assert.equal(isOwnDomainImage(own1, site), true)
+  assert.equal(isOwnDomainImage(own2, site), true)
+  assert.equal(isOwnDomainImage(cdn, site), false)
+  assert.equal(isOwnDomainImage('https://evilmudaroba.com/x.jpg', site), false)
+  assert.equal(isOwnDomainImage('not a url', site), false)
+  assert.deepEqual(preferOwnDomainImages([cdn, own1, own2], site), [own1, own2])
+  assert.deepEqual(preferOwnDomainImages([cdn], site), [cdn])
+  assert.equal(pickOwnDomainImage(cdn, [own1, own2], site), own1)
+  assert.equal(pickOwnDomainImage(cdn, [], site), cdn)
+  assert.equal(pickOwnDomainImage(own2, [own1], site), own2)
 })
