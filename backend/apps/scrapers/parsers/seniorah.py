@@ -94,7 +94,8 @@ class SeniorahParser(BaseScraper):
     SUPPORTS_CATALOG_STATE = True
     SUPPORTS_LISTING_GUARD = True
     # Меняется при смене состава отпечатка строки — все модели загрузятся заново.
-    LISTING_FINGERPRINT_VERSION = 1
+    # 2 — обхваты в attributes["measurements"] (09.11.2026): уже загруженные модели перечитываются.
+    LISTING_FINGERPRINT_VERSION = 2
 
     PAGE_SIZE = 250  # максимум Shopify
     # Предохранитель: столько страниц всего каталога (250 × 40 = 10 тыс. товаров).
@@ -115,7 +116,7 @@ class SeniorahParser(BaseScraper):
     MEASURE_MARKERS = ("olcusu", "olculer", "olcu ")
     # Обхваты для 37 размера — в атрибуты: описание товара после записи русской карточки
     # уже не турецкое, а повторная обработка берёт их отсюда (пилот 09.11.2026).
-    MEASURE_KEYS = (("baldir", "calf"), ("bilek", "ankle"), ("boy", "height"))
+    MEASURE_KEYS = (("baldir", "calf"), ("bilek", "ankle"), ("topuk dahil", "height"))
 
     # Между любыми запросами процесса — не меньше 2,5 с, на 429/503 — повтор с ожиданием
     # (Retry-After или 30/60/120 с), потом понятная остановка.
@@ -829,7 +830,10 @@ class SeniorahParser(BaseScraper):
                     label_key == "not" and "olcu" in normalize_ascii_text(value)
                 ):
                     result["lines"].append(f"{clean_text(label)}: {value}")
-                    measure = next((key for word, key in cls.MEASURE_KEYS if word in label_key.split()), None)
+                    words = f" {label_key} "
+                    measure = next((key for word, key in cls.MEASURE_KEYS if f" {word} " in words), None)
+                    if measure == "height" and " boy " not in words:
+                        measure = None
                     if measure and label_key.startswith("37 numara") and re.search(r"\d", value):
                         result.setdefault("measurements", {}).setdefault(measure, value)
                     continue

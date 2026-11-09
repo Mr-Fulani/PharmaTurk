@@ -203,18 +203,25 @@ class Command(BaseCommand):
 
     @staticmethod
     def _applied_titles(logs):
-        """Товар → (название последнего применённого лога, его id)."""
+        """Товар → (название последнего полностью применённого лога, его id).
+
+        Название, проверенное и правленное модератором в логе (``moderator_title_review``), —
+        ручное: такой лог не даёт права перезаписать название (ревью #349)."""
         rows = (
             AIProcessingLog.objects.filter(
                 product_id__in=[log.product_id for log in logs],
-                application_status__in=[AIApplicationStatus.APPLIED, AIApplicationStatus.PARTIAL],
+                application_status=AIApplicationStatus.APPLIED,
+                generated_title__gt="",
             )
-            .exclude(generated_title="")
             .order_by("product_id", "-id")
             .distinct("product_id")
-            .values_list("product_id", "generated_title", "id")
+            .values_list("product_id", "generated_title", "id", "extracted_attributes")
         )
-        return {product_id: (title, pk) for product_id, title, pk in rows}
+        return {
+            product_id: (title.strip(), pk)
+            for product_id, title, pk, attrs in rows
+            if not (isinstance(attrs, dict) and attrs.get("moderator_title_review"))
+        }
 
     def _apply(self, products, options):
         latest = list(
@@ -241,7 +248,7 @@ class Command(BaseCommand):
             if name == str((log.input_data or {}).get("name") or ""):
                 return False
             title, applied_id = applied_titles.get(log.product_id, ("", 0))
-            return not (name == title and applied_id < log.pk)
+            return not (title and name.strip() == title and applied_id < log.pk)
 
         manual = [log for log in logs if renamed_by_hand(log)]
         logs = [log for log in logs if log not in manual]

@@ -261,3 +261,26 @@ def test_apply_reapplies_name_written_by_previous_ai_apply(generator, category, 
 
     assert fresh.pk in generator.applied and fresh_edited.pk not in generator.applied
     assert f"{edited.pk}: название менялось" in out.getvalue()
+
+
+
+def test_apply_keeps_title_reviewed_by_moderator(generator, category, tmp_path):
+    """Название, исправленное модератором в логе и применённое, — ручное: --force его не перезаписывает."""
+    product = _product("seniorah-P-3", category)
+    _log(
+        product, application_status="applied", generated_title="Туфли, правка модератора",
+        extracted_attributes={"moderator_title_review": {"ru": "Туфли, правка модератора"}},
+    )
+    Product.objects.filter(pk=product.pk).update(name="Туфли, правка модератора")
+    fresh = AIProcessingLog.objects.create(
+        product=product, processing_type="full", status=AIProcessingStatus.COMPLETED,
+        input_data={"name": "Cilt Kadın Topuklu Ayakkabı"},
+    )
+    out = StringIO()
+
+    call_command(
+        "source_ai_cards", "--source", "seniorah", "--apply", "--since", "2026-11-05",
+        "--backup", str(tmp_path / "rows.json.gz"), stdout=out,
+    )
+
+    assert fresh.pk not in generator.applied and f"{product.pk}: название менялось" in out.getvalue()
