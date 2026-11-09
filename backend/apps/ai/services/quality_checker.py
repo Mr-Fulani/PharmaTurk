@@ -23,6 +23,8 @@ _META_DESCRIPTION = re.compile(
 )
 # Доля кожи в составе одежды: «Materyal: %57 Deri, %43 Sentetik İnek derisi» у футболок и шорт Jordan
 # (SuperStep, партия 4, 09.11.2026) — ошибка источника, модель переводит дословно «57% кожа».
+# У обуви и сумок смешанный верх («70% натуральная кожа, 30% текстиль») — норма.
+_CLOTHING_TYPES = frozenset({"clothing", "underwear", "headwear", "islamic_clothing"})
 _PARTIAL_LEATHER = re.compile(r"(?<![\d,.])[1-9]\d?\s*%\s*(?:[а-яё]+(?:ая|ой|ый|ий)\s+){0,2}кож", re.IGNORECASE)
 
 
@@ -90,7 +92,7 @@ def get_moderation_reasons(
             log.generated_description, f"{facts.get('brand') or ''} {facts.get('model') or ''}"
         ):
             reasons.append("description_untranslated")
-        if (product_type or input_data.get("product_type")) in RULE_PRODUCT_TYPES and _PARTIAL_LEATHER.search(
+        if (product_type or input_data.get("product_type")) in _CLOTHING_TYPES and _PARTIAL_LEATHER.search(
             re.sub(r"<[^>]+>", " ", log.generated_description or "")
         ):
             reasons.append("material_suspect")

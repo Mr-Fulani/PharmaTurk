@@ -19,11 +19,12 @@ from apps.ai.services.rules import vocab
 _VERB = r"[а-яё]+(?:ет|ит|ют|ят|ут|ат|ется|ится|ются|ятся|ются)\b"
 _ADVERB_VERB = rf"(?:[а-яё]+о\s+)?{_VERB}"
 # Перечисление после запятой: «для повседневной носки, школы и спорта» → «для школы и спорта».
-# Не перечисление: союз, предлог, местоимение, причастие или глагол («, сочетающая …», «, в школе …»).
+# Только если дальше — занятие или место в родительном падеже: «, мягкая подошва и сетка
+# обеспечивают …», «, хорошо держит форму и …» — самостоятельная часть, а не перечисление.
 _LIST_AFTER_COMMA = (
-    r",\s*(?!(?:а|но|и|или|что|чтобы|котор\w*|так|как|он|она|оно|они|это|в|во|на|при|с|со|по|например|особенно)\b)"
-    r"(?![а-яё]*(?:щ|вш)(?:ий|ая|ее|ие|его|ей|ую|им|их|ими)\b)"
-    rf"(?!{_VERB})(?=[а-яё][а-яё-]*[^.!?…]*?\s+и\s)"
+    r",\s*(?=(?:[а-яё]+(?:ых|их|ого|его)\s+){0,2}(?:школы|учёбы|учебы|работы|офиса|дома|города|прогулок|прогулки|"
+    r"поездок|поездки|путешествий|отдыха|досуга|спорта|игр|занятий|занятия|тренировок|тренировки|бега|фитнеса|"
+    r"зала|походов|выходных|праздников|вечеринок|встреч|образов|casual)\b)"
 )
 _EVERYDAY_RE = {
     "ru": re.compile(
@@ -221,18 +222,24 @@ def _is_empty(text: str) -> bool:
 # После вырезки сказуемого остаётся подлежащее без глагола: «Ткань сохраняет форму, а нейтральный
 # бежевый цвет.», «Брюки Anta цвета хаки — модель.» Хвост из прилагательных и общих слов убирается;
 # «Цвет — серый.», «а крой свободный» — факт (в конце не общее слово).
-_ORPHAN_TAIL_RE = re.compile(r"(?:,\s*(?:а|но)|\s+[—–])\s+([^,;:—–.!?…]+?)\s*([.!?…]?)$", re.IGNORECASE)
+_ORPHAN_TAIL_RE = re.compile(r"(?P<dash>\s+[—–])?(?(dash)|,\s*(?:а|но))\s+([^,;:—–.!?…]+?)\s*([.!?…]?)$", re.IGNORECASE)
+# После тире — только сама вещь: «… — кожаные кроссовки», «а верх — чёрный цвет» — факт.
+_ORPHAN_DASH_HEADS = frozenset({"модель", "вещь", "изделие", "товар"})
 
 
-def _drop_orphan_tail(text: str) -> str:
+def _drop_orphan_tail(text: str, original: str) -> str:
     match = _ORPHAN_TAIL_RE.search(text)
     if not match or not text[: match.start()].strip():
         return text
-    words = [word.lower() for word in re.findall(r"[^\W\d_]+", match.group(1))]
-    if words and words[-1] in _GENERIC_WORDS and all(
+    # Хвост — подлежащее, у которого вырезано продолжение: в исходном предложении за ним шли слова.
+    if not re.search(re.escape(match.group(0).rstrip(" .!?…")) + r"\s*[^\s.!?…]", original):
+        return text
+    words = [word.lower() for word in re.findall(r"[^\W\d_]+", match.group(2))]
+    heads = _ORPHAN_DASH_HEADS if match.group("dash") else _GENERIC_WORDS
+    if words and words[-1] in heads and all(
         word in _GENERIC_WORDS or (_ADJECTIVE_RE.search(word) and word not in _NOT_ADJECTIVES) for word in words
     ):
-        return text[: match.start()].rstrip() + (match.group(2) or "")
+        return text[: match.start()].rstrip() + (match.group(3) or "")
     return text
 
 
@@ -281,7 +288,7 @@ def _without_filler(sentence: str, locale: str) -> str:
                 return ""  # «особенно в жаркую погоду или в офисе.» — ни начала, ни факта
             cleaned = _LEAD_JOINER_RE.sub("", _FRAGMENT_START_RE.sub("", cleaned).strip())
             cleaned = cleaned[:1].upper() + cleaned[1:]
-        cleaned = _drop_orphan_tail(cleaned)
+        cleaned = _drop_orphan_tail(cleaned, sentence)
         if _is_empty(cleaned.rstrip(".!?…")):
             return ""
         if cleaned[-1] not in ".!?…":
