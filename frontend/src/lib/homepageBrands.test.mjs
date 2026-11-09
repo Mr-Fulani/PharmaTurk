@@ -56,7 +56,11 @@ function loadHome({ ssrFails = false, clientGet, ssrBrandDelay = 0 } = {}) {
   const exports = {}
   vm.runInNewContext(compiled, {
     exports,
-    require: (name) => modules[name] ?? (name === '../lib/homepageBrands' ? require('./homepageBrands.js') : () => null),
+    require: (name) => modules[name] ?? (
+      name === '../lib/homepageBrands' ? require('./homepageBrands.js')
+        : name === '../lib/homeFacts' ? require('./homeFacts.js')
+          : () => null
+    ),
     console: { log() {}, error() {} },
   })
   return { ...exports, effects, updates, requests, ssrRequests }
@@ -84,6 +88,8 @@ test('успешный SSR сохраняет приоритет закрепл�
   const home = loadHome()
   const result = await home.getServerSideProps({ locale: 'ru', res: { setHeader() {} } })
   assert.deepEqual(Array.from(result.props.brands, (brand) => brand.id), [2, 1])
+  // Блок «Как работает Mudaroba»: брендов с товарами из того же ответа
+  assert.equal(result.props.brandsCount, 2)
   home.default({ brands: result.props.brands, categories: [] })
   home.effects.forEach((effect) => effect())
   assert.equal(home.requests.length, 0)

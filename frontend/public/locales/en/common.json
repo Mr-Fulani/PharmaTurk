@@ -1690,5 +1690,16 @@
   "footer_istanbul_delivery": "Medicine delivery in Istanbul",
   "delivery_istanbul_title": "In Istanbul?",
   "delivery_istanbul_text": "We deliver medicines and supplements from Istanbul pharmacies to your hotel or address.",
-  "home_org_description": "Mudaroba is an online store of products from Turkey: clothing, shoes, furniture, cosmetics and supplements from Turkish brands, plus medicine sourcing on request. Orders are placed through a manager, and payment is made after the order is confirmed."
+  "home_org_description": "Mudaroba is an online store of products from Turkey: clothing, shoes, furniture, cosmetics and supplements from Turkish brands, plus medicine sourcing on request. Orders are placed through a manager, and payment is made after the order is confirmed.",
+  "home_facts_title": "How Mudaroba works",
+  "home_facts_catalog_title": "What we sell",
+  "home_facts_catalog_text": "Mudaroba is an online store of products from Turkey. The catalog has more than {{products}} products from {{brands}} brands: clothing and shoes, furniture, cosmetics and perfume, supplements and vitamins, plus a reference of medicines from Turkish pharmacies.",
+  "home_facts_catalog_text_short": "Mudaroba is an online store of products from Turkey: clothing and shoes, furniture, cosmetics and perfume, supplements and vitamins, plus a reference of medicines from Turkish pharmacies.",
+  "home_facts_order_title": "How to order",
+  "home_facts_order_text": "There is no online payment on the site. Add products to your request and send it, or message a manager on Telegram or WhatsApp. The manager checks availability and the price with the seller in Turkey, confirms the total with delivery and agrees on a payment method. You pay only after the order is confirmed.",
+  "home_facts_medicines_title": "Medicines",
+  "home_facts_medicines_text": "The site does not sell medicines: prices on product pages are reference prices of Turkish pharmacies. On request, a manager sources the medicine, checks availability and quotes the cost with delivery. Prescription medicines are used only as prescribed by a doctor.",
+  "home_facts_delivery_title": "Delivery",
+  "home_facts_delivery_text": "We deliver to Russia and CIS countries. Delivery from Turkey takes 7–21 business days; the manager gives the exact time in the quote. In Istanbul, a courier brings medicines and supplements to your hotel or home within the day, for orders from 1,000 lira. Our team is based in Istanbul.",
+  "home_facts_link_how_to_order": "How to order medicines from Turkey"
 }
