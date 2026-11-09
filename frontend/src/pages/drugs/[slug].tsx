@@ -7,6 +7,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import SEO from '../../components/SEO'
 import DrugGroupView, { DrugGroup, DrugGroupForm } from '../../components/DrugGroupView'
 import {
+  buildDrugGroupFaq,
   buildDrugGroupSchemas,
   drugGroupHeading,
   drugGroupTranslation,
@@ -68,6 +69,8 @@ export default function DrugGroupPage({ group, forms }: DrugGroupPageProps) {
       META_DESCRIPTION_MAX,
     )
 
+  const faq = buildDrugGroupFaq({ heading, priceText, forms, t })
+
   const breadcrumbs = [
     { href: '/', label: t('breadcrumb_home', 'Главная') },
     { href: '/categories/medicines', label: t('hto_breadcrumb_medicines', 'Лекарства') },
@@ -80,7 +83,7 @@ export default function DrugGroupPage({ group, forms }: DrugGroupPageProps) {
         title={metaTitle}
         description={metaDescription}
         canonical={path}
-        structuredData={buildDrugGroupSchemas({ siteUrl: SITE_URL, localePrefix, breadcrumbs })}
+        structuredData={buildDrugGroupSchemas({ siteUrl: SITE_URL, localePrefix, breadcrumbs, faq })}
       />
       <DrugGroupView
         group={group}
@@ -93,6 +96,7 @@ export default function DrugGroupPage({ group, forms }: DrugGroupPageProps) {
         usageSummary={tr.usage_summary || ''}
         seoText={tr.seo_text || ''}
         breadcrumbs={breadcrumbs}
+        faq={faq}
       />
     </>
   )

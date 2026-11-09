@@ -1701,5 +1701,17 @@
   "home_facts_medicines_text": "The site does not sell medicines: prices on product pages are reference prices of Turkish pharmacies. On request, a manager sources the medicine, checks availability and quotes the cost with delivery. Prescription medicines are used only as prescribed by a doctor.",
   "home_facts_delivery_title": "Delivery",
   "home_facts_delivery_text": "We deliver to Russia and CIS countries. Delivery from Turkey takes 7–21 business days; the manager gives the exact time in the quote. In Istanbul, a courier brings medicines and supplements to your hotel or home within the day, for orders from 1,000 lira. Our team is based in Istanbul.",
-  "home_facts_link_how_to_order": "How to order medicines from Turkey"
+  "home_facts_link_how_to_order": "How to order medicines from Turkey",
+  "drug_faq_title": "Questions and answers",
+  "drug_faq_price_q": "How much does {{heading}} cost?",
+  "drug_faq_price_a": "The price of {{heading}} in Turkey starts from {{price}}. This is a reference retail price of Turkish pharmacies and may change. The manager gives the total cost with delivery in the quote after your request.",
+  "drug_faq_price_a_none": "The price of {{heading}} is on request: after your request, a manager checks availability and quotes the cost with delivery.",
+  "drug_faq_forms_q": "What forms is {{heading}} available in?",
+  "drug_faq_forms_a": "Forms and strengths on the site: {{forms}}.",
+  "drug_faq_forms_a_more": "Forms and strengths on the site: {{forms}} and {{rest}} more.",
+  "drug_faq_delivery_q": "How long does delivery take?",
+  "drug_faq_delivery_a": "Delivery from Turkey takes 7–21 business days. The manager gives the exact time in the quote.",
+  "drug_faq_order_q": "How do I order {{heading}}?",
+  "drug_faq_order_a": "The site does not sell medicines. Click “Add to request” on the page of the form you need or send the name to a manager. The manager checks availability, quotes the cost with delivery and agrees on payment — you pay only after the quote.",
+  "drug_faq_order_link": "More on the “How to order medicines from Turkey” page."
 }

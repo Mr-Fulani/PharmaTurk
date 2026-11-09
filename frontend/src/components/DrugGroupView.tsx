@@ -50,6 +50,14 @@ interface DrugGroupViewProps {
   usageSummary: string
   seoText: string
   breadcrumbs: Array<{ href: string; label: string }>
+  /** Вопросы и ответы — те же, что в FAQPage (buildDrugGroupFaq) */
+  faq: DrugGroupFaqItem[]
+}
+
+export interface DrugGroupFaqItem {
+  question: string
+  answer: string
+  link?: { href: string; label: string }
 }
 
 function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'neutral' | 'warning' | 'info' }) {
@@ -90,6 +98,7 @@ export default function DrugGroupView({
   usageSummary,
   seoText,
   breadcrumbs,
+  faq,
 }: DrugGroupViewProps) {
   const { t } = useTranslation('common')
   const { locale = 'ru' } = useRouter()
@@ -178,6 +187,30 @@ export default function DrugGroupView({
               <p>{t('drug_group_doctor_note', 'Препарат применяют по назначению врача. Информация на странице не заменяет консультацию специалиста.')}</p>
             </div>
           </div>
+
+          {faq.length > 0 && (
+            <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6">
+              <h2 className="mb-4 text-xl font-semibold text-main">{t('drug_faq_title', 'Вопросы и ответы')}</h2>
+              <div className="space-y-4">
+                {faq.map((item) => (
+                  <div key={item.question}>
+                    <h3 className="mb-1 font-semibold text-main">{item.question}</h3>
+                    <p className="leading-relaxed text-main">
+                      {item.answer}
+                      {item.link && (
+                        <>
+                          {' '}
+                          <Link href={item.link.href} className="text-[var(--accent)] underline-offset-2 hover:underline">
+                            {item.link.label}
+                          </Link>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <CategoryLandingBlock
             linkGroups={[
