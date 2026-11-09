@@ -242,11 +242,12 @@ def test_changes_sitemap_stage_opens_new_and_checks_missing(monkeypatch):
     monkeypatch.setattr(parser, "fetch_sitemap_product_urls", lambda url: [THERMO])
     monkeypatch.setattr("apps.scrapers.parsers.ilacfiyati.time.sleep", lambda seconds: None)
 
-    def offer_request(url):
+    def offer_request(url, include_final_url=False):
         if url == gone_404:
             request = httpx.Request("GET", url)
             raise httpx.HTTPStatusError("404", request=request, response=httpx.Response(404, request=request))
-        return PASIF_CARD_HTML if url == pasif else "<html>aktif</html>"
+        html = PASIF_CARD_HTML if url == pasif else "<html>aktif</html>"
+        return (html, url) if include_final_url else html
 
     opened = []
 
