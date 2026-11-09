@@ -14,16 +14,24 @@ test('robots advertises the canonical sitemap index', () => {
 
 test('robots: Clean-param для Яндекса — только метки, без параметров самого сайта', () => {
   const lines = robots.match(/^\s*Clean-param:.*$/gim) || []
-  assert.equal(lines.length, 1)
-  // Яндекс ограничивает правило 500 символами
-  assert.ok(lines[0].length <= 500)
-  const params = lines[0].replace(/^\s*Clean-param:\s*/i, '').split(/\s+/)[0].split('&')
+  assert.ok(lines.length > 0)
+  // page/sort/фильтры/поиск меняют содержимое (их обрабатывают canonical и noindex),
+  // поэтому в правиле допустимы только метки из этого списка
+  const tracking = new Set([
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+    'yclid', 'ysclid', 'gclid', 'fbclid', '_openstat',
+  ])
+  const params = []
+  for (const line of lines) {
+    // Яндекс ограничивает правило 500 символами
+    assert.ok(line.length <= 500)
+    params.push(...line.replace(/^\s*Clean-param:\s*/i, '').split(/\s+/)[0].split('&'))
+  }
+  for (const name of params) {
+    assert.ok(tracking.has(name), `не метка: ${name}`)
+  }
   for (const name of ['utm_source', 'utm_medium', 'utm_campaign', 'yclid', 'ysclid']) {
     assert.ok(params.includes(name), name)
-  }
-  // page/sort/фильтры/поиск меняют содержимое — их обрабатывают canonical и noindex
-  for (const name of ['page', 'sort', 'q', 'query', 'brand', 'brand_id', 'next']) {
-    assert.ok(!params.includes(name), name)
   }
 })
 
