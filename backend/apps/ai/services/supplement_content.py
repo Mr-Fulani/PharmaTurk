@@ -84,7 +84,7 @@ _PIECE_MODIFIERS = (
     ("cigneme", "tablet", "жевательных", "chewable"),
     # «VIAPECIA … ÇİĞNENEBİLİR KAPSÜL 60 kapsül» на сайте было «60 капсул»; «BİTKİSEL KAPSÜL» у ZADE VITAL —
     # отдельный товар рядом с обычными капсулами (дубли БАДов 08.11.2026).
-    ("cignenebilir", "capsule", "жевательных", "chewable"),
+    ("cignenebilir(?! jel)", "capsule", "жевательных", "chewable"),  # «ÇİĞNENEBİLİR JEL … kapsül» — мармелад
     ("bitkisel kapsul", "capsule", "растительных", "vegetable"),
     ("film kapli", "tablet", "покрытых оболочкой", "film-coated"),
     ("yumusak", "capsule", "мягких", "soft"),
@@ -1283,8 +1283,9 @@ def _translated(text: Any, locale: str, source_name: str = "") -> str:
 # Фасовка уже в названии: в конце «что это» лишние её повтор («Пробиотик, 10 капсул»)
 # и форма штучной фасовки («пастилки», «шипучие таблетки», «жевательные»).
 _PIECE_FORM_TAIL_RE = re.compile(
-    r"(?:^|,\s*|\s+)(?:жевательн\w*|шипуч\w*|мягк\w*|(?:в\s+)?(?:растительн\w*\s+)?капсул\w*|таблет\w*|пастил\w*|"
-    r"саше|chewable|effervescent|soft|(?:in\s+)?(?:vegetable\s+|veggie\s+)?capsules?|tablets?|lozenges?|sachets?)$",
+    r"(?:^|,\s*|\s+)(?:жевательн\w*|шипуч\w*|мягк\w*|(?:в\s+)?(?:(?:растительн|мягк|жевательн)\w*\s+)?капсул\w*|"
+    r"таблет\w*|пастил\w*|саше|chewable|effervescent|soft|"
+    r"(?:in\s+)?(?:(?:vegetable|veggie|soft|chewable)\s+)?capsules?|tablets?|lozenges?|sachets?)$",
     re.IGNORECASE,
 )
 _GENERIC_PRODUCT = {"ru": "пищевая добавка", "en": "Food Supplement"}
@@ -1297,6 +1298,15 @@ def _without_piece_form(text: str, pack: Optional[Pack], locale: str) -> str:
     tail = getattr(pack, locale, "")
     if tail and text.lower().endswith(tail.lower()):
         text = text[: -len(tail)].rstrip(" ,")
+    count = re.match(r"\d+(?:[.,]\d+)?", tail or "")
+    if pack.piece and count:
+        # Модель пишет фасовку без тары и признака («…, 60 капсул» при «60 капсул во флаконе», «20 пакетиков» при
+        # «20 пакетиков + 1 устройство») — иначе в названии «…, 60, 60 капсул во флаконе» (ревью 09.11.2026).
+        text = re.sub(
+            rf"(?:,\s*|\s+){re.escape(count.group(0))}\s+(?:[^\W\d_]+\s+){{0,2}}"
+            r"(?:капсул|таблет|пакетик|саше|пастил|флакон|capsul|tablet|bag|sachet|lozeng|vial)\w*$",
+            "", text, flags=re.IGNORECASE,
+        ).rstrip(" ,")
     while pack.piece:
         shorter = _PIECE_FORM_TAIL_RE.sub("", text).strip(" ,")
         if shorter == text:

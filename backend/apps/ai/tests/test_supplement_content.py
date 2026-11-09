@@ -527,3 +527,23 @@ def test_vegetable_capsule_words_are_cut_from_product():
     assert sc.assemble_title("ZADE VITAL", "Масло семян льна", pack.ru, "ru") == (
         "ZADE VITAL Масло семян льна, 30 растительных капсул в блистерах"
     )
+
+
+def test_bare_pack_from_model_is_cut_when_pack_has_container_or_device():
+    # Ревью 09.11.2026: «Масло черного тмина, 60 капсул» при фасовке «60 капсул во флаконе» давало «…, 60, 60 капсул…».
+    pack = sc.parse_pack("ZADE VITAL COREK OTU YAGI KAPSUL 60 kapsül/şişe")
+    assert sc._without_piece_form("Масло черного тмина, 60 капсул", pack, "ru") == "Масло черного тмина"
+    assert sc._without_piece_form("Black Seed Oil, 60 capsules", pack, "en") == "Black Seed Oil"
+    pack = sc.parse_pack("AFYE BETA GLUKAN TAKVIYE EDICI GIDA BITKISEL KAPSUL 60 kapsül")
+    assert sc._without_piece_form("Бета-глюкан, 60 капсул", pack, "ru") == "Бета-глюкан"
+    pack = sc.parse_pack("NEMIX PASCAL BURUN YIKAMA KITI 20 poşet+1 araç")
+    assert sc._without_piece_form("Набор для промывания носа, 20 пакетиков", pack, "ru") == "Набор для промывания носа"
+    # Другое число — не фасовка: «Омега-3 1000 мг» и «Витамин D3 60 мкг» остаются.
+    assert sc._without_piece_form("Витамин D3 1000 МЕ", pack, "ru") == "Витамин D3 1000 МЕ"
+    pack = sc.parse_pack("VIAPECIA BIOTIN CIGNENEBILIR KAPSUL 5000 mcg 60 kapsül")
+    assert sc._without_piece_form("Биотин в жевательных капсулах", pack, "ru") == "Биотин"
+    assert sc._without_piece_form("Biotin Chewable Capsules", pack, "en") == "Biotin"
+
+
+def test_chewable_gel_is_not_chewable_capsule():
+    assert sc.parse_pack("OCEAN GUMMIES MULTIVITAMIN ADULT CIGNENEBILIR JEL 60 kapsül").ru == "60 капсул"
