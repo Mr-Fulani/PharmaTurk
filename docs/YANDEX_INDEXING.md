@@ -39,8 +39,11 @@
   числами — вкладка «Исключённые», она недоступна.
 - **Дубли лекарств**: в поиске обе страницы одного препарата — `thiola-100-mg-100-tablet` и
   `thiola-100-mg-100-tb`, `loniten-…-tablet-…` и `loniten-…-tb-…` (одинаковый title, у каждой
-  свой canonical). Это «близнецы» ilacfiyati: [ILACFIYATI_TWIN_PAGES.md](ILACFIYATI_TWIN_PAGES.md),
-  [ILACFIYATI_DUPLICATES.md](ILACFIYATI_DUPLICATES.md) (PR #348, на проде ещё нужен `--apply`).
+  свой canonical; 09.11 обе пары отвечают 200). Это «близнецы» ilacfiyati
+  ([ILACFIYATI_TWIN_PAGES.md](ILACFIYATI_TWIN_PAGES.md)). В списках `hide_ilacfiyati_duplicates`
+  (138 пар скрыты 09.11) и в 129 сомнительных их нет. LONITEN стоит в отчёте
+  `reports/ilacfiyati-twin-pages-2026-11-04.md` в разделе «что будет скрыто» — это команда
+  `hide_ilacfiyati_twin_pages`; THIOLA нет ни в одном списке — проверить отдельно.
 - Ограничений и нарушений нет («Безопасность и нарушения» — «Нет ограничений»).
 - Рекомендации диагностики (обе с 08.04.2026): регион сайта не задан; организации нет в
   Яндекс Бизнесе.
