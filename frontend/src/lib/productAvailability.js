@@ -77,6 +77,40 @@ export function buildSchemaImages(urls, max = 10) {
   return [...new Set((urls || []).filter(Boolean))].slice(0, max)
 }
 
+/** Картинка лежит на нашем домене (mudaroba.com или его поддомен, например cdn.). */
+export function isOwnDomainImage(url, siteUrl) {
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    const own = new URL(siteUrl).hostname.toLowerCase()
+    return host === own || host.endsWith(`.${own}`)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Картинки для JSON-LD: свои (копии в R2 через proxy-media) — первыми. Если своих хотя бы две,
+ * галерея уже скопирована, и чужой CDN (img-lcwaikiki.mncdn.com и т. п.) — это дубль главного
+ * фото: его не отдаём. Своих меньше двух (галерея ещё на чужом CDN) — чужие остаются после своих,
+ * чтобы Merchant Center не потерял ракурсы.
+ * ТЗ «SEO и видимость в ИИ-поиске», задача 7; сам прокси и картинки в интерфейсе не меняются.
+ */
+export function preferOwnDomainImages(urls, siteUrl) {
+  const list = (urls || []).filter(Boolean)
+  const own = list.filter((url) => isOwnDomainImage(url, siteUrl))
+  if (own.length >= 2) return own
+  return [...own, ...list.filter((url) => !isOwnDomainImage(url, siteUrl))]
+}
+
+/**
+ * og:image: своя картинка как есть, чужая — первая своя из кандидатов (кроме GIF), если такая
+ * есть.
+ */
+export function pickOwnDomainImage(primary, candidates, siteUrl) {
+  if (!primary || isOwnDomainImage(primary, siteUrl)) return primary
+  return (candidates || []).find((url) => url && !/\.gif\b/i.test(url) && isOwnDomainImage(url, siteUrl)) || primary
+}
+
 // Условия страницы /returns: 14 дней с момента получения, возврат почтой, обратную
 // доставку оплачивает покупатель (магазин берёт её на себя только при браке).
 // Страны — прежние и все страны доставки.

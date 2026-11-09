@@ -7,6 +7,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import SEO from '../../components/SEO'
 import DrugGroupView, { DrugGroup, DrugGroupForm } from '../../components/DrugGroupView'
 import {
+  buildDrugGroupFaq,
   buildDrugGroupSchemas,
   drugGroupHeading,
   drugGroupTranslation,
@@ -19,8 +20,8 @@ import { limitTitle } from '../../lib/seoText'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 import { getInternalApiUrl } from '../../lib/urls'
 
-// SEO.tsx дописывает « — Mudaroba»: вместе title не длиннее 80 символов (DEVELOPMENT_RULES §1.10)
-const META_TITLE_MAX = 80 - ` — ${SITE_NAME}`.length
+// SEO.tsx дописывает « | Mudaroba»: вместе title не длиннее 80 символов (DEVELOPMENT_RULES §1.10)
+const META_TITLE_MAX = 80 - ` | ${SITE_NAME}`.length
 const META_DESCRIPTION_MAX = 200
 
 interface DrugGroupPageProps {
@@ -68,6 +69,8 @@ export default function DrugGroupPage({ group, forms }: DrugGroupPageProps) {
       META_DESCRIPTION_MAX,
     )
 
+  const faq = buildDrugGroupFaq({ heading, priceText, forms, t })
+
   const breadcrumbs = [
     { href: '/', label: t('breadcrumb_home', 'Главная') },
     { href: '/categories/medicines', label: t('hto_breadcrumb_medicines', 'Лекарства') },
@@ -80,7 +83,7 @@ export default function DrugGroupPage({ group, forms }: DrugGroupPageProps) {
         title={metaTitle}
         description={metaDescription}
         canonical={path}
-        structuredData={buildDrugGroupSchemas({ siteUrl: SITE_URL, localePrefix, breadcrumbs })}
+        structuredData={buildDrugGroupSchemas({ siteUrl: SITE_URL, localePrefix, breadcrumbs, faq })}
       />
       <DrugGroupView
         group={group}
@@ -93,6 +96,7 @@ export default function DrugGroupPage({ group, forms }: DrugGroupPageProps) {
         usageSummary={tr.usage_summary || ''}
         seoText={tr.seo_text || ''}
         breadcrumbs={breadcrumbs}
+        faq={faq}
       />
     </>
   )

@@ -1,0 +1,46 @@
+# Mudaroba
+
+> Mudaroba (mudaroba.com) — интернет-магазин товаров из Турции: одежда, обувь, мебель, косметика, БАДы и справочник лекарств турецких аптек. Онлайн-оплаты нет: заказ — это заявка менеджеру, способ оплаты согласуется с менеджером после подтверждения заказа. Доставка по всему миру, в первую очередь в Россию и страны СНГ.
+
+Сайт на русском (основной язык) и английском (адреса с префиксом /en). Лекарства сайт не продаёт: цены в карточках — справочные цены турецких аптек, препарат подбирают по заявке. Рецептурные препараты применяют только по назначению врача.
+
+## Каталог
+
+- [Все категории](https://mudaroba.com/categories): разделы каталога
+- [Лекарства](https://mudaroba.com/categories/medicines): справочник турецких лекарств с ценами аптек и инструкциями
+- [БАДы и витамины](https://mudaroba.com/categories/supplements)
+- [Одежда](https://mudaroba.com/categories/clothing)
+- [Обувь](https://mudaroba.com/categories/shoes)
+- [Мебель](https://mudaroba.com/categories/furniture)
+- [Парфюмерия](https://mudaroba.com/categories/perfumery)
+
+## Бренды
+
+- [Все бренды](https://mudaroba.com/brands): турецкие бренды и производители
+
+## Справочник препаратов
+
+- Страницы препаратов: все формы, цены аптек, кратко о применении — например, [Мажезик (флурбипрофен)](https://mudaroba.com/drugs/majezik), [Арвелес (декскетопрофен)](https://mudaroba.com/drugs/arveles), [Дафлон](https://mudaroba.com/drugs/daflon)
+- [Блог](https://mudaroba.com/blog): турецкие аналоги лекарств, правила ввоза лекарств из Турции, как проверить турецкое лекарство
+
+## Доставка и как заказать
+
+- [Как заказать лекарства из Турции](https://mudaroba.com/how-to-order-medicines): заявка, подбор, расчёт, оплата после расчёта, доставка
+- [Доставка и оплата](https://mudaroba.com/delivery): сроки и способы доставки, ввоз лекарств — вопросы и ответы
+- [Доставка лекарств по Стамбулу](https://mudaroba.com/dostavka-lekarstv-stambul): курьер в отель или домой в течение дня
+- [Возврат товара](https://mudaroba.com/returns)
+
+## Контакты
+
+- [О нас](https://mudaroba.com/about-us)
+- [Отзывы клиентов](https://mudaroba.com/testimonials)
+- Telegram: https://t.me/mudaroba
+- Телефон и WhatsApp: +90 552 582 14 97
+
+## English
+
+- [Home](https://mudaroba.com/en): products from Turkey, ordering via a manager
+- [Categories](https://mudaroba.com/en/categories)
+- [Brands](https://mudaroba.com/en/brands)
+- [How to order medicines from Turkey](https://mudaroba.com/en/how-to-order-medicines)
+- [Delivery and payment](https://mudaroba.com/en/delivery)

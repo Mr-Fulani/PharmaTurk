@@ -32,7 +32,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
   const canonicalUrl = `${siteUrl}${localePrefix}${brandsPath}`
   const ruUrl = `${siteUrl}${brandsPath}`
   const enUrl = `${siteUrl}/en${brandsPath}`
-  const pageTitle = t('brands_page_title', 'Бренды — Mudaroba')
+  const pageTitle = t('brands_page_title', 'Бренды | Mudaroba')
   const pageDescription = t('brands_page_description', 'Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья.')
 
   return (

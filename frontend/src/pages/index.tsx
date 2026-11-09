@@ -23,6 +23,8 @@ import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalized
 import { safeJsonLd } from '../lib/sanitizeHtml'
 import { getSingleFlight } from '../lib/api'
 import { selectHomepageBrands } from '../lib/homepageBrands'
+import { countBrandsWithProducts, countCatalogProducts, roundDownToThousands } from '../lib/homeFacts'
+import HomeFactsBlock from '../components/HomeFactsBlock'
 
 // Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle, добавляем fallback (Skeleton) для предотвращения CLS
 const PopularProductsCarousel = dynamic(() => import('../components/PopularProductsCarousel'), { 
@@ -86,12 +88,14 @@ interface HomePageProps {
   afterPopularBanners: any[]
   footerSettings: any
   showTestimonialsSection: boolean
+  /** Брендов с товарами — для блока «Как работает Mudaroba» */
+  brandsCount?: number
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands: initialBrands, categories, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, showTestimonialsSection }: HomePageProps) {
+export default function Home({ brands: initialBrands, categories, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, showTestimonialsSection, brandsCount = 0 }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
@@ -236,14 +240,25 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
     footerSettings?.instagram_url,
     footerSettings?.vk_url,
     footerSettings?.whatsapp_url,
-  ].filter(Boolean) as string[]
+  ]
+    .filter(Boolean)
+    // В настройках футера WhatsApp записан как http://wa.me/… — в разметке только https
+    .map((url) => (url as string).replace(/^http:\/\//i, 'https://'))
 
   const organizationSchema = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: 'Mudaroba',
     url: siteUrl,
-    logo: `${siteUrl}/logo.svg`,
+    // TODO(owner): черновик описания — на согласование владельцу
+    description: t(
+      'home_org_description',
+      'Mudaroba — интернет-магазин товаров из Турции: одежда, обувь, мебель, косметика и БАДы турецких брендов, а также подбор лекарств по заявке. Заказ оформляется через менеджера, способ оплаты согласуется с менеджером. Доставка по всему миру, в первую очередь в Россию и страны СНГ.'
+    ),
+    // Google просит растровый логотип от 112×112; SVG остаётся в интерфейсе
+    logo: `${siteUrl}/logo-512.png`,
+    // Контакты — только те, что уже есть на сайте (футер); адрес не указываем (решение владельца 09.11.2026)
+    ...(footerSettings?.email && { email: footerSettings.email }),
     contactPoint: {
       '@type': 'ContactPoint',
       telephone: footerSettings?.phone || '+90-552-582-14-97',
@@ -554,6 +569,12 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
           </div>
 
           {showTestimonialsSection && <DeferredSection><TestimonialsCarousel /></DeferredSection>}
+
+          {/* «Как работает Mudaroba» — серверный текст для поисковиков и ИИ-ассистентов, перед футером */}
+          <HomeFactsBlock
+            productsCount={roundDownToThousands(countCatalogProducts(categories))}
+            brandsCount={brandsCount}
+          />
         </div>
       </main>
     </>
@@ -574,10 +595,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // дольше 5 секунд: не отдаём заведомо пустой блок при нормальном медленном ответе.
     const brandsPromise = axios.get(getInternalApiUrl('catalog/brands?page_size=1000'), {
       timeout: 15000,
-    }).then(({ data }) => selectHomepageBrands(data)).catch((error) => {
+    }).then(({ data }) => ({ brands: selectHomepageBrands(data), brandsCount: countBrandsWithProducts(data) })).catch((error) => {
       context.res?.setHeader('Cache-Control', 'private, no-store')
       console.error('Error loading brands:', error)
-      return [] as Brand[]
+      return { brands: [] as Brand[], brandsCount: 0 }
     })
 
     let firstBannerImageUrl: string | null = null
@@ -620,7 +641,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       // Оставляем выключенным по умолчанию
     }
 
-    const brands = await brandsPromise
+    const { brands, brandsCount } = await brandsPromise
 
     console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count ?? 0} товаров, медиа: ${!!b.card_media_url})`))
 
@@ -676,6 +697,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     return {
       props: {
         brands,
+        brandsCount,
         categories: uniqueCategories,
         firstBannerImageUrl,
         firstBannerTitle,

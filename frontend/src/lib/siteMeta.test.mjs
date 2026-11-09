@@ -10,7 +10,7 @@ const compiled = ts.transpileModule(source, {
 const meta = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
 
 test('withSiteName appends the site name once', () => {
-  assert.equal(meta.withSiteName('Доставка и оплата'), 'Доставка и оплата — Mudaroba')
+  assert.equal(meta.withSiteName('Доставка и оплата'), 'Доставка и оплата | Mudaroba')
 })
 
 test('withSiteName does not duplicate a site name already present in CMS titles', () => {

@@ -12,6 +12,8 @@ import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components
 import {
   SCHEMA_RETURN_POLICY,
   buildSchemaImages,
+  pickOwnDomainImage,
+  preferOwnDomainImages,
   buildSchemaShippingDetails,
   canPublishSchemaOffer,
   shouldPublishProductSchema,
@@ -51,7 +53,7 @@ import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { safeJsonLd, sanitizeRichHtml } from '../../lib/sanitizeHtml'
-import { limitTitle, productImageAlt, truncateAtWord } from '../../lib/seoText'
+import { limitTitle, productImageAlt, truncateAtWord, withProductTitleSuffix } from '../../lib/seoText'
 import { drugGroupHeading } from '../../lib/drugGroup'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ProductFeedbackTab, QuestionSummary, ReviewSummary } from '../../components/ProductReviews'
@@ -1487,13 +1489,21 @@ export default function ProductPage({
   ), META_DESCRIPTION_MAX_LENGTH)
 
   // Названия из постов Instagram доходят до 200+ символов — режем title по слову
-  const metaTitle = limitTitle((
+  const baseMetaTitle = ((
     apiTranslation?.meta_title || 
     apiTranslation?.og_title || 
     (product.translations && product.translations.length > 0 ? '' : product.meta_title) || 
     (product.translations && product.translations.length > 0 ? '' : product.og_title) || 
     ''
-  ).trim() || defaultMetaTitle, META_TITLE_MAX_LENGTH)
+  ).trim() || defaultMetaTitle)
+  // Единый шаблон «… из Турции | Mudaroba» (ТЗ SEO и ИИ-поиск, задача 6); услуги — как были
+  const metaTitle = isService
+    ? limitTitle(baseMetaTitle, META_TITLE_MAX_LENGTH)
+    : withProductTitleSuffix(baseMetaTitle, {
+      fromTurkey: t('product_title_from_turkey', 'из Турции'),
+      siteName: SITE_NAME,
+      max: META_TITLE_MAX_LENGTH,
+    })
 
   const metaDescription = truncateAtWord(stripHtmlToPlainText(
     apiTranslation?.meta_description ||
@@ -1515,14 +1525,13 @@ export default function ProductPage({
       ? resolved
       : `${siteUrl}${resolved.startsWith('/') ? resolved : `/${resolved}`}`
   }
-  const ogImage = toAbsoluteMediaUrl(rawOgImage)
+  const galleryImageUrls = gallerySource
+    .filter((img) => !img.isVideo && normalizeMediaValue(img.image_url))
+    .map((img) => toAbsoluteMediaUrl(normalizeMediaValue(img.image_url) as string))
+  // og:image и JSON-LD — с нашего домена, если в галерее есть своя копия фото
+  const ogImage = pickOwnDomainImage(toAbsoluteMediaUrl(rawOgImage), galleryImageUrls, siteUrl)
   // Все фото галереи — для Merchant Center («изображения на предложение»), главное первым
-  const schemaImages = buildSchemaImages([
-    ogImage,
-    ...gallerySource
-      .filter((img) => !img.isVideo && normalizeMediaValue(img.image_url))
-      .map((img) => toAbsoluteMediaUrl(normalizeMediaValue(img.image_url) as string)),
-  ])
+  const schemaImages = buildSchemaImages(preferOwnDomainImages([ogImage, ...galleryImageUrls], siteUrl))
   const availability = resolveSchemaAvailability({
     availabilityStatus: product.availability_status,
     isAvailable: product.is_available,
@@ -2906,6 +2915,18 @@ export default function ProductPage({
                       : current)
                   }}
                 />
+              )}
+
+              {/* Ссылка на раздел про БАДы в гайде «Как заказать» (запрос «как заказать бады из Турции») */}
+              {isSupplement && (
+                <Link
+                  href="/how-to-order-medicines#supplements"
+                  prefetch={false}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                >
+                  {t('supplement_how_to_order_link', 'Как заказать БАДы из Турции')}
+                  <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+                </Link>
               )}
 
             </div>
