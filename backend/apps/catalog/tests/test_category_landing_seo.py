@@ -151,7 +151,7 @@ def test_facts_contain_only_nonempty_sections_and_real_brands(catalog):
     assert facts["brands"] == ["Solgar", "Venatura"]
     assert "Витамин B комплекс 0" in facts["product_examples"]
     assert facts["is_supplements"] is True
-    assert facts["delivery"] == "доставка 7–14 дней"
+    assert facts["delivery"] == "доставка: авиа 3–7, наземная 7–14, морем 20–45 дней"
     assert facts["manager_checks"] == "наличие"
 
 

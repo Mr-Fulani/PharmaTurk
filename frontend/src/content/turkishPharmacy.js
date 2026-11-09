@@ -3,7 +3,7 @@
 // TODO(owner): все тексты — черновик на согласование. Проверить факты о системе аптек Турции
 // (частные, без государственных сетей, единые цены на лекарства).
 // Решения владельца 09.11.2026: доставка по всему миру, в первую очередь Россия и СНГ; лекарства —
-// 7–21 рабочий день; способ оплаты не обещаем — согласуется с менеджером.
+// авиа 3–7, наземная 7–14, морем 20–45 дней (решение владельца 09.11.2026); способ оплаты не обещаем — согласуется с менеджером.
 // Mudaroba — не аптека: не писать «аптека онлайн», «без рецепта», «купить» (тест turkishPharmacy.test.mjs).
 
 import { buildBreadcrumbSchema, buildFaqSchema } from '../lib/blog.js'
@@ -19,7 +19,7 @@ export const TURKISH_PHARMACY = {
   ru: {
     metaTitle: 'Аптека в Турции: цены на лекарства, поиск и заказ препаратов',
     metaDescription:
-      'Аптеки Турции (eczane, дежурные nöbetçi), цены TİTCK и каталог из 12 тысяч лекарств. Как заказать препарат из турецкой аптеки: заявка без регистрации, доставка в Россию и СНГ 7–21 рабочий день.',
+      'Аптеки Турции (eczane, nöbetçi), цены TİTCK, каталог 12 тысяч лекарств. Заказ из турецкой аптеки без регистрации, доставка в Россию и СНГ: авиа 3–7, наземная 7–14, морем 20–45 дней.',
     breadcrumbMedicines: 'Лекарства',
     breadcrumb: 'Аптеки Турции',
     h1: 'Аптеки Турции: как устроены, цены на лекарства и как заказать',
@@ -99,7 +99,7 @@ export const TURKISH_PHARMACY = {
             type: 'ul',
             items: [
               ['Доставка — по всему миру, в первую очередь в Россию и страны СНГ, включая Казахстан и Узбекистан.'],
-              ['Срок доставки лекарств — 7–21 рабочий день, стоимость менеджер называет в расчёте.'],
+              ['Срок доставки лекарств: авиа 3–7, наземная 7–14, морем 20–45 дней; стоимость менеджер называет в расчёте.'],
               ['Препараты строгого учёта (наркотические и психотропные) мы не доставляем. У препаратов, ввоз которых в отдельные страны запрещён или ограничен законом, на сайте есть метка «Ввоз ограничен»: в эти страны доставку без согласования с менеджером не выполняем. Что можно ввозить — в статье ', link('/blog/pravila-vvoza-lekarstv-iz-turcii', 'о правилах ввоза лекарств'), '.'],
               ['Если вы в Стамбуле — ', link('/dostavka-lekarstv-stambul', 'привезём лекарство из аптеки в отель или домой'), ' в течение дня.'],
             ],
@@ -127,7 +127,7 @@ export const TURKISH_PHARMACY = {
       },
       {
         q: 'Можно ли заказать лекарство из турецкой аптеки с доставкой в Россию?',
-        a: 'Да, через заявку менеджеру. Доставка — по всему миру, в первую очередь в Россию и страны СНГ, срок для лекарств — 7–21 рабочий день. Препараты строгого учёта не доставляем, а препараты с меткой «Ввоз ограничен» — только после согласования с менеджером.',
+        a: 'Да, через заявку менеджеру. Доставка — по всему миру, в первую очередь в Россию и страны СНГ, срок для лекарств: авиа 3–7, наземная 7–14, морем 20–45 дней. Препараты строгого учёта не доставляем, а препараты с меткой «Ввоз ограничен» — только после согласования с менеджером.',
       },
       {
         q: 'Как найти дежурную аптеку в Турции ночью?',
@@ -155,7 +155,7 @@ export const TURKISH_PHARMACY = {
   en: {
     metaTitle: 'Pharmacy in Turkey: Medicine Prices, Search and Ordering',
     metaDescription:
-      'Pharmacies in Turkey (eczane, nöbetçi), TİTCK reference prices and a catalog of 12,000 medicines. Ordering from a Turkish pharmacy: no sign-up, delivery to Russia and the CIS in 7–21 business days.',
+      'Pharmacies in Turkey (eczane, nöbetçi), TİTCK prices, a catalog of 12,000 medicines. Order from a Turkish pharmacy, no sign-up; delivery to Russia and the CIS: air 3–7, ground 7–14, sea 20–45 days.',
     breadcrumbMedicines: 'Medicines',
     breadcrumb: 'Pharmacies in Turkey',
     h1: 'Pharmacies in Turkey: How They Work, Medicine Prices and Ordering',
@@ -235,7 +235,7 @@ export const TURKISH_PHARMACY = {
             type: 'ul',
             items: [
               ['Delivery is worldwide, primarily to Russia and the CIS countries, including Kazakhstan and Uzbekistan.'],
-              ['Medicines are delivered in 7–21 working days; the manager gives the delivery cost in the quote.'],
+              ['Medicine delivery: air 3–7, ground 7–14, sea 20–45 days; the manager gives the delivery cost in the quote.'],
               ['We do not deliver strictly controlled medicines (narcotic and psychotropic). Medicines whose import to some countries is prohibited or restricted by law are marked “Import restricted” on the site: we do not ship them to those countries without agreement with a manager. What may be imported — see the article on ', link('/blog/pravila-vvoza-lekarstv-iz-turcii', 'rules for importing medicines'), '.'],
               ['If you are in Istanbul, ', link('/dostavka-lekarstv-stambul', 'we deliver medicines from a pharmacy to your hotel or home'), ' the same day.'],
             ],
@@ -263,7 +263,7 @@ export const TURKISH_PHARMACY = {
       },
       {
         q: 'Can I order a medicine from a Turkish pharmacy with delivery abroad?',
-        a: 'Yes, through a request to a manager. Delivery is worldwide, primarily to Russia and the CIS; medicines take 7–21 working days. We do not deliver strictly controlled medicines, and medicines marked “Import restricted” only after agreement with a manager.',
+        a: 'Yes, through a request to a manager. Delivery is worldwide, primarily to Russia and the CIS; medicines take air 3–7, ground 7–14, sea 20–45 days. We do not deliver strictly controlled medicines, and medicines marked “Import restricted” only after agreement with a manager.',
       },
       {
         q: 'How do I find a duty pharmacy in Turkey at night?',

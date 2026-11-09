@@ -13,6 +13,7 @@ import re
 from typing import Any, Optional, Sequence
 
 from apps.ai.services.medicine_reference import fold_tr
+from apps.catalog.services.delivery_terms import ORDER_SENTENCE
 
 BRAND_NAMESPACE = "medicine_brand"
 SEO_TITLE_MAX = 70
@@ -32,7 +33,7 @@ _TEXTS = {
         "controlled": "Препарат строгого учёта, отпускается по специальному рецепту.",
         "cold": "Хранение и перевозка при 2–8 °C.",
         "instruction": "Инструкция на русском.",
-        "order": "Заявка менеджеру, доставка 7–21 рабочий день.",
+        "order": ORDER_SENTENCE["ru"],
         "restricted": "Ввоз в {countries} ограничен.",
         "and": "и",
         "keyword_turkey": "{brand} из Турции",
@@ -46,7 +47,7 @@ _TEXTS = {
         "controlled": "Controlled medicine, dispensed on a special prescription.",
         "cold": "Store and ship at 2–8 °C.",
         "instruction": "Patient leaflet in English.",
-        "order": "Send a request, delivery in 7–21 business days.",
+        "order": ORDER_SENTENCE["en"],
         "restricted": "Import to {countries} is restricted.",
         "and": "and",
         "keyword_turkey": "{brand} Turkey",

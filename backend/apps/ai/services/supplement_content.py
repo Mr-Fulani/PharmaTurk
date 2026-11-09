@@ -33,6 +33,7 @@ from apps.ai.models import AIProcessingLog
 from apps.ai.services import supplement_brands, supplement_glossary, supplement_memory, translation_memory
 from apps.ai.services.medicine_reference import fold_tr, ru_plural, translate_reference_field
 from apps.ai.services.medicine_title import CYRILLIC_RE, looks_like_source_name
+from apps.catalog.services.delivery_terms import ORDER_SENTENCE
 from apps.ai.services.ownership import SOURCE_NAME_KEY
 from apps.catalog.product_semantics import looks_untranslated_turkish
 
@@ -869,7 +870,7 @@ _SEO_TEXTS = {
         "info_usage": "Инструкция на русском: состав и способ применения.",
         "info_usage_baby": "Инструкция на русском: состав и способ приготовления.",
         "info_usage_short": "Инструкция на русском.",
-        "order": "Заявка менеджеру, доставка 7–14 дней.",
+        "order": ORDER_SENTENCE["ru"],
         "keyword_turkey": "{brand} из Турции",
         "keyword_usage": "{brand} инструкция на русском",
         "keyword_buy": "{brand} купить",
@@ -883,7 +884,7 @@ _SEO_TEXTS = {
         "info_usage": "Directions in English: ingredients and how to take.",
         "info_usage_baby": "Directions in English: ingredients and preparation.",
         "info_usage_short": "Directions in English.",
-        "order": "Send a request, delivery in 7–14 days.",
+        "order": ORDER_SENTENCE["en"],
         "keyword_turkey": "{brand} Turkey",
         "keyword_usage": "{brand} directions",
         "keyword_buy": "buy {brand}",

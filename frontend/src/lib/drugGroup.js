@@ -93,7 +93,7 @@ export function buildDrugGroupFaq({ heading, priceText, forms, t }) {
   faq.push(
     {
       question: t('drug_faq_delivery_q', 'Сколько идёт доставка?'),
-      answer: t('drug_faq_delivery_a', 'Доставка из Турции — 7–21 рабочий день. Точный срок менеджер называет в расчёте.'),
+      answer: t('drug_faq_delivery_a', 'Доставка из Турции: авиа 3–7, наземная 7–14, морем 20–45 дней. Точный срок менеджер называет в расчёте.'),
     },
     {
       question: t('drug_faq_order_q', 'Как заказать {{heading}}?', { heading }),

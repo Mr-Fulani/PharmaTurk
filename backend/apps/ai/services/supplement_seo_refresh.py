@@ -36,6 +36,7 @@ from django.utils import timezone
 
 from apps.ai.services import supplement_content
 from apps.ai.services.medicine_refresh import _keywords_text
+from apps.catalog.services.delivery_terms import replace_terms
 
 BATCH_SIZE = 200
 SEO_FIELDS = ("meta_title", "og_title", "meta_description", "og_description", "meta_keywords")
@@ -67,6 +68,8 @@ LEGACY_EDITS = (
     ("доставка 7–21 рабочий день", "доставка 7–14 дней"),
     ("delivery in 7–21 business days", "delivery in 7–14 days"),
 )
+# 09.11.2026 срок БАДов снова заменён в базе (команда replace_delivery_terms, ``delivery_terms``) —
+# «авиа 3–7, наземная 7–14, морем 20–45 дней»; в логах остался прежний.
 # Следы правки SEO в истории админки (LogEntry): поля SEO и названия их полей в форме.
 _ADMIN_SEO_RE = re.compile(r"meta|\bog[ _]|seo|мета", re.IGNORECASE)
 
@@ -246,6 +249,12 @@ def _with_legacy_edits(value: str) -> str:
     return value
 
 
+def _legacy_variants(value: str) -> set[str]:
+    """Значение лога после разовых правок в базе: 28.10 (7–14 дней) и 09.11 (``replace_delivery_terms``)."""
+    edited = _with_legacy_edits(value)
+    return {edited, replace_terms(value, supplements=True), replace_terms(edited, supplements=True)}
+
+
 def _candidates(
     logs: list[dict], locale: str, name: str, legacy_as_auto: bool = False, legacy_code: Optional[dict] = None
 ) -> set[str]:
@@ -263,7 +272,7 @@ def _candidates(
         values |= set((legacy_code or {}).get(locale, {}).get(name, ()))
     values.discard("")
     if legacy_as_auto:
-        values |= {_with_legacy_edits(value) for value in values}
+        values |= {variant for value in values for variant in _legacy_variants(value)}
     return values
 
 

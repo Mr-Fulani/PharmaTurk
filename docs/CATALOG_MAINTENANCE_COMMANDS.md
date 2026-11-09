@@ -301,3 +301,24 @@ queryset, не `instance.delete()` (тот удалит и `Product`; файлы
 головных уборов и исламской одежды (их нет в `domain_sync._get_domain_map`) — у таких типов
 запись создаёт парсер (`ScraperIntegrationService._get_*_product`), а прежняя снимается
 `retire_stale_domain_records` (27.10.2026 так переносились боксеры Zara).
+
+## `replace_delivery_terms`
+
+Сроки доставки в уже записанных SEO-описаниях лекарств и БАДов (решение владельца 09.11.2026: у
+лекарств и БАДов «авиа 3–7, наземная 7–14, морем 20–45 дней», как на `/delivery`). Генераторы SEO
+уже пишут «Заявка менеджеру, доставка 3–45 дней.»; команда меняет прежние «… 7–21 рабочий день.»
+(лекарства), «… 7–14 дней.» (БАДы) и другие формулировки срока на «3–45 дней» (правила —
+`apps/catalog/services/delivery_terms.py`). Поля `seo_description`, `meta_description`,
+`og_description` у `Product` (medicines/supplements), `ProductTranslation`, `MedicineProduct`,
+`SupplementProduct` и их переводов. Одежду, обувь и прочее не трогает, логи AI — тоже.
+
+```bash
+manage.py replace_delivery_terms                     # показ: товаров и записей к изменению, примеры
+manage.py replace_delivery_terms --apply --backup /backups/delivery-terms-YYYYMMDD.jsonl
+manage.py replace_delivery_terms --restore /backups/delivery-terms-YYYYMMDD.jsonl
+```
+
+Запись — пачками по 500 под блокировкой строк, только изменённые поля через `update()`. `--restore`
+возвращает поле, только если его не меняли после записи. Тексты разделов, подборок и `/drugs`
+меняет миграция `catalog/0239`.
+

@@ -2877,7 +2877,10 @@ export default function ProductPage({
               {/* Сроки и цена доставки — как в разметке Offer (shipping_rates есть у всего, кроме мебели, лекарств и услуг) */}
               {shippingRates && !isService && (
                 <p className="text-xs leading-relaxed text-main opacity-75">
-                  {t('product_delivery_note', 'Доставка из Турции: 7–14 дней, от 5 $. Точную сумму подтвердит менеджер')}
+                  {isSupplement
+                    // БАДы — сроки как у лекарств (решение владельца 09.11.2026); shippingDetails в Offer пока прежние
+                    ? t('supplement_delivery_note', 'Доставка из Турции: авиа 3–7, наземная 7–14, морем 20–45 дней. Точную сумму подтвердит менеджер')
+                    : t('product_delivery_note', 'Доставка из Турции: 7–14 дней, от 5 $. Точную сумму подтвердит менеджер')}
                 </p>
               )}
 

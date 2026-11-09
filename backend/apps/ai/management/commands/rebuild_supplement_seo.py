@@ -32,7 +32,7 @@ class Command(BaseCommand):
         parser.add_argument("--show", type=int, default=10, help="Сколько примеров показать")
         parser.add_argument(
             "--treat-legacy-as-auto", action="store_true",
-            help="SEO с разовой правкой в базе (28.10: «доставка 7–21 рабочий день» → «7–14 дней») — тоже "
+            help="SEO с разовой правкой в базе (28.10: «7–21 рабочий день» → «7–14 дней»; 09.11: → «авиа 3–7, …») — тоже "
                  "автоматическое; товары с правкой SEO в истории админки пропускаются",
         )
 

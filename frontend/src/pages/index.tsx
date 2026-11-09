@@ -237,12 +237,12 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
   const pageDescription = factsProductsCount > 0 && metaBrandsCount > 0
     ? t(
         'home_meta_description',
-        '{{products}}+ позиций и {{brands}}+ брендов из Турции: лекарства, БАДы, косметика, одежда, обувь, мебель. Доставка в Россию, СНГ и по миру — 7–21 рабочий день. Заявка без регистрации, связь в Telegram и WhatsApp.',
+        '{{products}}+ позиций и {{brands}}+ брендов из Турции: лекарства, БАДы, косметика, одежда, обувь, мебель. Доставка в Россию, СНГ и по миру. Заявка без регистрации, связь в Telegram и WhatsApp.',
         { products: formatCount(factsProductsCount, router.locale), brands: formatCount(metaBrandsCount, router.locale) }
       )
     : t(
         'home_meta_description_short',
-        'Лекарства, БАДы, косметика, одежда, обувь и мебель из Турции. Доставка в Россию, СНГ и по миру — 7–21 рабочий день. Заявка без регистрации: менеджер проверит наличие и цену.'
+        'Лекарства, БАДы, косметика, одежда, обувь и мебель из Турции. Доставка в Россию, СНГ и по миру. Заявка без регистрации: менеджер проверит наличие и цену, связь в Telegram и WhatsApp.'
       )
   const ogImageUrl = `${siteUrl}${defaultOgImagePath(router.locale)}`
   const ogImageAlt = defaultOgImageAlt(router.locale)
