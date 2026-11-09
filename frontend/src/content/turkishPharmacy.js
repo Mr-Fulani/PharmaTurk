@@ -6,25 +6,25 @@
 // 7–21 рабочий день; способ оплаты не обещаем — согласуется с менеджером.
 // Mudaroba — не аптека: не писать «аптека онлайн», «без рецепта», «купить» (тест turkishPharmacy.test.mjs).
 
-import { getBlogArticle } from './blog/articles.js'
 import { buildBreadcrumbSchema, buildFaqSchema } from '../lib/blog.js'
 
 export const TURKISH_PHARMACY_PATH = '/turetskaya-apteka'
 
 const link = (href, text) => ({ href, text })
 
-const BLOG_SLUGS = ['top-tureckih-lekarstv', 'tureckie-analogi-lekarstv', 'pravila-vvoza-lekarstv-iz-turcii', 'kak-proverit-tureckoe-lekarstvo']
+// Статьи блога в «Полезных ссылках»: заголовки берёт getServerSideProps (тексты статей не идут в бандл)
+export const TURKISH_PHARMACY_BLOG_SLUGS = ['top-tureckih-lekarstv', 'tureckie-analogi-lekarstv', 'pravila-vvoza-lekarstv-iz-turcii', 'kak-proverit-tureckoe-lekarstvo']
 
 export const TURKISH_PHARMACY = {
   ru: {
-    metaTitle: 'Аптека в Турции: цены на лекарства, как найти и заказать',
+    metaTitle: 'Аптека в Турции: цены на лекарства, поиск и заказ препаратов',
     metaDescription:
       'Как называются и работают аптеки в Турции (eczane, дежурные nöbetçi), справочные цены TİTCK на турецкие лекарства и как заказать препарат из турецкой аптеки с доставкой в Россию и СНГ.',
     breadcrumbMedicines: 'Лекарства',
     breadcrumb: 'Аптеки Турции',
     h1: 'Аптеки Турции: как устроены, цены на лекарства и как заказать',
     lead:
-      'Турецкая аптека — eczane. Цены на лекарства в ней утверждает государство, а часть препаратов отпускают только по рецепту. Рассказываем, как устроены аптеки в Турции, откуда берутся цены и как заказать лекарство из турецкой аптеки, если вы не в Турции.',
+      'Турецкая аптека — eczane. Цены на лекарства в Турции регулирует государство, а часть препаратов отпускают только по рецепту. Рассказываем, как устроены аптеки в Турции, откуда берутся цены и как заказать лекарство из турецкой аптеки, если вы не в Турции.',
     notice:
       'Mudaroba — не аптека и лекарства не продаёт. На сайте собраны справочные цены турецких аптек, а заказ идёт через заявку менеджеру: он проверяет наличие, цену и возможность доставки.',
     searchLabel: 'Найти лекарство на сайте',
@@ -39,16 +39,16 @@ export const TURKISH_PHARMACY = {
         heading: 'Как называется аптека в Турции и как она устроена',
         blocks: [
           { type: 'p', parts: ['Аптека по-турецки — eczane (эджзане), фармацевт — eczacı. Аптеку легко узнать по вывеске с красной буквой «E».'] },
-          { type: 'p', parts: ['Аптеки в Турции частные: открыть аптеку может только фармацевт, и больших аптечных сетей, как в России, нет. Государственных аптек для всех покупателей тоже нет — аптеки при государственных больницах обслуживают пациентов самой больницы. Поэтому аптеки различаются не ценами на лекарства, а наличием препаратов.'] },
-          { type: 'p', parts: ['Ночью, в выходные и праздники работает дежурная аптека — nöbetçi eczane. Её адрес вывешивают на двери закрытых аптек района и публикуют на сайтах палат фармацевтов (Eczacı Odası).'] },
+          { type: 'p', parts: ['Аптеки в Турции частные: открыть аптеку может только фармацевт, и больших аптечных сетей, как в России, нет. Государственных аптек для всех покупателей тоже нет — аптеки при государственных больницах, как правило, обслуживают пациентов самой больницы. Поэтому аптеки различаются не столько ценами на лекарства, сколько наличием препаратов.'] },
+          { type: 'p', parts: ['Ночью, в воскресенье и в праздники работает дежурная аптека — nöbetçi eczane. Её адрес вывешивают на двери закрытых аптек района и публикуют на сайтах палат фармацевтов (Eczacı Odası).'] },
         ],
       },
       {
         id: 'prices',
         heading: 'Цены в аптеках Турции',
         blocks: [
-          { type: 'p', parts: ['Цены на лекарства в Турции регулирует государство. Агентство по лекарственным средствам и медицинским изделиям TİTCK публикует списки цен, и один и тот же препарат в разных аптеках стоит одинаково. Поэтому «дешёвых аптек» почти нет — различаться могут цены на косметику, БАДы и товары для ухода.'] },
-          { type: 'p', parts: ['Цены на сайте — справочные. Они взяты из еженедельных списков Министерства здравоохранения Турции и TİTCK: это рекомендованные розничные цены для аптек, они могут меняться и быть неактуальными. Цену на сегодня покажет кнопка «Узнать актуальную цену» на странице лекарства или назовёт менеджер.'] },
+          { type: 'p', parts: ['Цены на лекарства в Турции регулирует государство. Агентство по лекарственным средствам и медицинским изделиям TİTCK публикует списки цен, поэтому один и тот же препарат в разных аптеках обычно стоит одинаково. «Дешёвых аптек» почти нет — заметнее различаются цены на косметику, БАДы и товары для ухода.'] },
+          { type: 'p', parts: ['Цены на сайте — справочные. Они взяты из еженедельных списков Министерства здравоохранения Турции и TİTCK: это рекомендованные розничные цены для аптек, они могут меняться и быть неактуальными. Обновлённую справочную цену покажет кнопка «Узнать актуальную цену» на странице лекарства, итоговую сумму менеджер назовёт в расчёте.'] },
         ],
       },
       {
@@ -76,9 +76,9 @@ export const TURKISH_PHARMACY = {
             type: 'ul',
             items: [
               ['Найдите препарат на сайте и нажмите «В заявку» — или напишите менеджеру.'],
-              ['Менеджер проверит наличие в аптеках, актуальную цену, нужен ли рецепт и можно ли отправить препарат в вашу страну.'],
+              ['Менеджер проверит наличие в аптеках, актуальную цену, требования к рецепту и можно ли доставить препарат в вашу страну.'],
               ['Вы получите расчёт: цена препарата, доставка и срок. Способ оплаты согласуете с менеджером, оплата — только после расчёта.'],
-              ['Менеджер выкупает препарат в турецкой аптеке и отправляет его вам.'],
+              ['Менеджер организует покупку препарата в турецкой аптеке и доставку к вам.'],
             ],
           },
           { type: 'p', parts: ['Подробно — на странице ', link('/how-to-order-medicines', '«Как заказать лекарства из Турции»'), '.'] },
@@ -88,7 +88,7 @@ export const TURKISH_PHARMACY = {
         id: 'prescription',
         heading: 'Рецептурные препараты',
         blocks: [
-          { type: 'p', parts: ['Часть лекарств в Турции отпускают только по рецепту врача — у таких препаратов на сайте есть пометка «Отпускается по рецепту». Рецептурный препарат применяют только по назначению врача. Какие документы нужны для конкретного препарата, скажет менеджер.'] },
+          { type: 'p', parts: ['Часть лекарств в Турции отпускают только по рецепту врача — у таких препаратов на сайте есть пометка «Отпускается по рецепту». Рецептурный препарат применяют только по назначению врача. Требования зависят от препарата и страны доставки — менеджер расскажет о них до расчёта.'] },
         ],
       },
       {
@@ -100,7 +100,7 @@ export const TURKISH_PHARMACY = {
             items: [
               ['Доставка — по всему миру, в первую очередь в Россию и страны СНГ, включая Казахстан и Узбекистан.'],
               ['Срок доставки лекарств — 7–21 рабочий день, стоимость менеджер называет в расчёте.'],
-              ['Препараты с контролируемыми веществами отмечены на сайте меткой «Ввоз ограничен». Что можно ввозить и какие документы нужны — в статье ', link('/blog/pravila-vvoza-lekarstv-iz-turcii', 'о правилах ввоза лекарств'), '.'],
+              ['Препараты строгого учёта (наркотические и психотропные) мы не доставляем. У препаратов, ввоз которых в отдельные страны запрещён или ограничен законом, на сайте есть метка «Ввоз ограничен»: в эти страны доставку без согласования с менеджером не выполняем. Что можно ввозить — в статье ', link('/blog/pravila-vvoza-lekarstv-iz-turcii', 'о правилах ввоза лекарств'), '.'],
               ['Если вы в Стамбуле — ', link('/dostavka-lekarstv-stambul', 'привезём лекарство из аптеки в отель или домой'), ' в течение дня.'],
             ],
           },
@@ -111,11 +111,11 @@ export const TURKISH_PHARMACY = {
     faq: [
       {
         q: 'Как называется аптека в Турции?',
-        a: 'Аптека по-турецки — eczane (эджзане), фармацевт — eczacı. Аптеку узнают по вывеске с красной буквой «E». Дежурная аптека, которая работает ночью и в выходные, называется nöbetçi eczane.',
+        a: 'Аптека по-турецки — eczane (эджзане), фармацевт — eczacı. Аптеку узнают по вывеске с красной буквой «E». Дежурная аптека, которая работает ночью, в воскресенье и в праздники, называется nöbetçi eczane.',
       },
       {
         q: 'Есть ли в Турции государственные аптеки?',
-        a: 'Для обычных покупателей — нет. Аптеки в Турции частные, открыть аптеку может только фармацевт. Аптеки при государственных больницах обслуживают пациентов больницы.',
+        a: 'Для обычных покупателей — нет. Аптеки в Турции частные, открыть аптеку может только фармацевт. Аптеки при государственных больницах, как правило, обслуживают пациентов больницы.',
       },
       {
         q: 'Одинаковые ли цены на лекарства в разных аптеках Турции?',
@@ -127,11 +127,11 @@ export const TURKISH_PHARMACY = {
       },
       {
         q: 'Можно ли заказать лекарство из турецкой аптеки с доставкой в Россию?',
-        a: 'Да, через заявку менеджеру. Доставка — по всему миру, в первую очередь в Россию и страны СНГ, срок для лекарств — 7–21 рабочий день. Препараты с контролируемыми веществами отправляют по особым правилам: менеджер скажет, возможна ли доставка в вашу страну.',
+        a: 'Да, через заявку менеджеру. Доставка — по всему миру, в первую очередь в Россию и страны СНГ, срок для лекарств — 7–21 рабочий день. Препараты строгого учёта не доставляем, а препараты с меткой «Ввоз ограничен» — только после согласования с менеджером.',
       },
       {
         q: 'Как найти дежурную аптеку в Турции ночью?',
-        a: 'Ищите дежурную аптеку — nöbetçi eczane. Её адрес вывешивают на двери закрытых аптек района и публикуют на сайтах палат фармацевтов. В Стамбуле можно написать нам — привезём лекарство в отель или домой.',
+        a: 'Ищите дежурную аптеку — nöbetçi eczane. Её адрес вывешивают на двери закрытых аптек района и публикуют на сайтах палат фармацевтов.',
       },
       {
         q: 'Есть ли турецкая аптека в Москве, Алматы или Ташкенте?',
@@ -143,32 +143,31 @@ export const TURKISH_PHARMACY = {
       },
     ],
     usefulTitle: 'Полезные ссылки',
-    usefulPages: [
+    useful: [
       link('/categories/medicines', 'Каталог лекарств из Турции'),
       link('/how-to-order-medicines', 'Как заказать лекарства из Турции'),
       link('/dostavka-lekarstv-stambul', 'Доставка лекарств по Стамбулу'),
-      link('/delivery', 'Доставка и оплата'),
     ],
     contactsTitle: 'Остались вопросы? Напишите менеджеру',
     contactsText: 'Ответим, есть ли препарат в аптеках Турции, сколько он стоит и как его доставить.',
     vkLabel: 'ВКонтакте',
   },
   en: {
-    metaTitle: 'Pharmacy in Turkey: Medicine Prices, How to Find and Order',
+    metaTitle: 'Pharmacy in Turkey: Medicine Prices, Search and Ordering',
     metaDescription:
       'How pharmacies in Turkey work (eczane, nöbetçi duty pharmacies), reference TİTCK prices for Turkish medicines and how to order a medicine from a Turkish pharmacy with worldwide delivery.',
     breadcrumbMedicines: 'Medicines',
     breadcrumb: 'Pharmacies in Turkey',
     h1: 'Pharmacies in Turkey: How They Work, Medicine Prices and Ordering',
     lead:
-      'A Turkish pharmacy is called an eczane. Medicine prices there are set by the state, and some medicines are dispensed only on prescription. Here is how pharmacies in Turkey work, where the prices come from and how to order a medicine from a Turkish pharmacy if you are not in Turkey.',
+      'A Turkish pharmacy is called an eczane. Medicine prices in Turkey are regulated by the state, and some medicines are dispensed only on prescription. Here is how pharmacies in Turkey work, where the prices come from and how to order a medicine from a Turkish pharmacy if you are not in Turkey.',
     notice:
       'Mudaroba is not a pharmacy and does not sell medicines. The site lists reference prices of Turkish pharmacies, and orders go through a request to a manager who checks availability, the price and whether delivery is possible.',
     searchLabel: 'Find a medicine on the site',
     searchPlaceholder: 'For example, MAJEZIK or ibuprofen',
     searchButton: 'Search',
-    searchHint: 'Searches the site catalogue by brand name or active substance.',
-    ctaCatalog: 'Medicine catalogue',
+    searchHint: 'Searches the site catalog by brand name or active substance.',
+    ctaCatalog: 'Medicine catalog',
     ctaHowTo: 'How to order',
     sections: [
       {
@@ -176,16 +175,16 @@ export const TURKISH_PHARMACY = {
         heading: 'What a pharmacy is called in Turkey and how it works',
         blocks: [
           { type: 'p', parts: ['A pharmacy in Turkish is an eczane, and a pharmacist is an eczacı. Pharmacies are easy to spot by the sign with a red letter “E”.'] },
-          { type: 'p', parts: ['Pharmacies in Turkey are private: only a pharmacist can open one, and there are no large pharmacy chains. There are no state pharmacies for the general public either — pharmacies in state hospitals serve the hospital’s own patients. So pharmacies differ not in medicine prices but in what they have in stock.'] },
-          { type: 'p', parts: ['At night, at weekends and on holidays a duty pharmacy is open — a nöbetçi eczane. Its address is posted on the doors of closed pharmacies in the area and on the websites of the chambers of pharmacists (Eczacı Odası).'] },
+          { type: 'p', parts: ['Pharmacies in Turkey are private: only a pharmacist can open one, and there are no large pharmacy chains. There are no state pharmacies for the general public either — pharmacies in state hospitals usually serve the hospital’s own patients. So pharmacies differ less in medicine prices than in what they have in stock.'] },
+          { type: 'p', parts: ['At night, on Sundays and on holidays a duty pharmacy is open — a nöbetçi eczane. Its address is posted on the doors of closed pharmacies in the area and on the websites of the chambers of pharmacists (Eczacı Odası).'] },
         ],
       },
       {
         id: 'prices',
         heading: 'Prices in Turkish pharmacies',
         blocks: [
-          { type: 'p', parts: ['Medicine prices in Turkey are regulated by the state. The Turkish Medicines and Medical Devices Agency (TİTCK) publishes price lists, and the same medicine costs the same in every pharmacy. That is why there are hardly any “cheap pharmacies” — prices may differ only for cosmetics, supplements and personal care products.'] },
-          { type: 'p', parts: ['Prices on the site are for reference. They come from the weekly lists of the Turkish Ministry of Health and TİTCK: these are recommended retail prices for pharmacies, they change and may be out of date. The “Check current price” button on a medicine page or a manager will give you today’s price.'] },
+          { type: 'p', parts: ['Medicine prices in Turkey are regulated by the state. The Turkish Medicines and Medical Devices Agency (TİTCK) publishes price lists, so the same medicine usually costs the same in every pharmacy. There are hardly any “cheap pharmacies” — prices differ more for cosmetics, supplements and personal care products.'] },
+          { type: 'p', parts: ['Prices on the site are for reference. They come from the weekly lists of the Turkish Ministry of Health and TİTCK: these are recommended retail prices for pharmacies, they change and may be out of date. The “Check current price” button on a medicine page shows the updated reference price, and the manager gives the final amount in the quote.'] },
         ],
       },
       {
@@ -198,11 +197,11 @@ export const TURKISH_PHARMACY = {
               ['By the brand name as printed on the pack: ', link('/drugs/majezik', 'MAJEZIK'), ', ARVELES, DAFLON.'],
               ['By the active substance: “ibuprofen”, “dexketoprofen”.'],
               ['By a photo of the pack — with the camera button in the site search.'],
-              ['By sections of the ', link('/categories/medicines', 'medicine catalogue'), ': painkillers, cold and flu, heart, skin and more.'],
+              ['By sections of the ', link('/categories/medicines', 'medicine catalog'), ': painkillers, cold and flu, heart, skin and more.'],
               ['Looking for a replacement for a familiar medicine? See the ', link('/blog/tureckie-analogi-lekarstv', 'table of Turkish equivalents'), ' — medicines with the same active substance.'],
             ],
           },
-          { type: 'p', parts: ['Could not find it? Send the name, a link or a photo of the pack to a manager via the ', link('/how-to-order-medicines#sourcing', 'request form'), ': we will check availability in Turkish pharmacies.'] },
+          { type: 'p', parts: ['Can’t find it? Send the name, a link or a photo of the pack to a manager via the ', link('/how-to-order-medicines#sourcing', 'request form'), ': we will check availability in Turkish pharmacies.'] },
         ],
       },
       {
@@ -213,9 +212,9 @@ export const TURKISH_PHARMACY = {
             type: 'ul',
             items: [
               ['Find the medicine on the site and press “Add to request” — or message a manager.'],
-              ['The manager checks availability in pharmacies, the current price, whether a prescription is needed and whether the medicine can be sent to your country.'],
+              ['The manager checks availability in pharmacies, the current price, prescription requirements and whether the medicine can be delivered to your country.'],
               ['You get a quote: the medicine, delivery and timing. You agree the payment method with the manager; payment only after the quote.'],
-              ['The manager purchases the medicine from a Turkish pharmacy and sends it to you.'],
+              ['The manager arranges the purchase from a Turkish pharmacy and delivery to you.'],
             ],
           },
           { type: 'p', parts: ['More details on the ', link('/how-to-order-medicines', '“How to order medicines from Turkey”'), ' page.'] },
@@ -225,7 +224,7 @@ export const TURKISH_PHARMACY = {
         id: 'prescription',
         heading: 'Prescription medicines',
         blocks: [
-          { type: 'p', parts: ['Some medicines in Turkey are dispensed only on a doctor’s prescription — such medicines are marked “Prescription Required” on the site. A prescription medicine should only be used as a doctor prescribes. The manager will tell you which documents a specific medicine needs.'] },
+          { type: 'p', parts: ['Some medicines in Turkey are dispensed only on a doctor’s prescription — such medicines are marked “Prescription Required” on the site. A prescription medicine should only be used as a doctor prescribes. Requirements depend on the medicine and the destination country — the manager explains them before the quote.'] },
         ],
       },
       {
@@ -235,9 +234,9 @@ export const TURKISH_PHARMACY = {
           {
             type: 'ul',
             items: [
-              ['Delivery is worldwide, first of all to Russia and the CIS countries, including Kazakhstan and Uzbekistan.'],
+              ['Delivery is worldwide, primarily to Russia and the CIS countries, including Kazakhstan and Uzbekistan.'],
               ['Medicines are delivered in 7–21 working days; the manager gives the delivery cost in the quote.'],
-              ['Medicines with controlled substances are marked “Import restricted” on the site. What may be imported and which documents are needed — see the article on ', link('/blog/pravila-vvoza-lekarstv-iz-turcii', 'rules for importing medicines'), '.'],
+              ['We do not deliver strictly controlled medicines (narcotic and psychotropic). Medicines whose import to some countries is prohibited or restricted by law are marked “Import restricted” on the site: we do not ship them to those countries without agreement with a manager. What may be imported — see the article on ', link('/blog/pravila-vvoza-lekarstv-iz-turcii', 'rules for importing medicines'), '.'],
               ['If you are in Istanbul, ', link('/dostavka-lekarstv-stambul', 'we deliver medicines from a pharmacy to your hotel or home'), ' the same day.'],
             ],
           },
@@ -248,11 +247,11 @@ export const TURKISH_PHARMACY = {
     faq: [
       {
         q: 'What is a pharmacy called in Turkey?',
-        a: 'A pharmacy in Turkish is an eczane, and a pharmacist is an eczacı. Pharmacies have a sign with a red letter “E”. A duty pharmacy that is open at night and at weekends is called a nöbetçi eczane.',
+        a: 'A pharmacy in Turkish is an eczane, and a pharmacist is an eczacı. Pharmacies have a sign with a red letter “E”. A duty pharmacy that is open at night, on Sundays and on holidays is called a nöbetçi eczane.',
       },
       {
         q: 'Are there state pharmacies in Turkey?',
-        a: 'Not for the general public. Pharmacies in Turkey are private, and only a pharmacist can open one. Pharmacies in state hospitals serve the hospital’s patients.',
+        a: 'Not for the general public. Pharmacies in Turkey are private, and only a pharmacist can open one. Pharmacies in state hospitals usually serve the hospital’s patients.',
       },
       {
         q: 'Are medicine prices the same in all Turkish pharmacies?',
@@ -260,15 +259,15 @@ export const TURKISH_PHARMACY = {
       },
       {
         q: 'Is Mudaroba a Turkish pharmacy?',
-        a: 'No. Mudaroba is not a pharmacy and does not sell medicines. The site is a catalogue of Turkish medicines with reference TİTCK prices and leaflets in English, and orders go through a request to a manager who checks availability and the price and arranges delivery.',
+        a: 'No. Mudaroba is not a pharmacy and does not sell medicines. The site is a catalog of Turkish medicines with reference TİTCK prices and leaflets in English, and orders go through a request to a manager who checks availability and the price and arranges delivery.',
       },
       {
         q: 'Can I order a medicine from a Turkish pharmacy with delivery abroad?',
-        a: 'Yes, through a request to a manager. Delivery is worldwide, first of all to Russia and the CIS; medicines take 7–21 working days. Medicines with controlled substances are sent under special rules: the manager will tell you whether delivery to your country is possible.',
+        a: 'Yes, through a request to a manager. Delivery is worldwide, primarily to Russia and the CIS; medicines take 7–21 working days. We do not deliver strictly controlled medicines, and medicines marked “Import restricted” only after agreement with a manager.',
       },
       {
         q: 'How do I find a duty pharmacy in Turkey at night?',
-        a: 'Look for a duty pharmacy — a nöbetçi eczane. Its address is posted on the doors of closed pharmacies in the area and on the websites of the chambers of pharmacists. In Istanbul you can message us — we deliver medicines to your hotel or home.',
+        a: 'Look for a duty pharmacy — a nöbetçi eczane. Its address is posted on the doors of closed pharmacies in the area and on the websites of the chambers of pharmacists.',
       },
       {
         q: 'Is there a Turkish pharmacy in Moscow, Almaty or Tashkent?',
@@ -280,26 +279,20 @@ export const TURKISH_PHARMACY = {
       },
     ],
     usefulTitle: 'Useful links',
-    usefulPages: [
-      link('/categories/medicines', 'Catalogue of medicines from Turkey'),
+    useful: [
+      link('/categories/medicines', 'Catalog of medicines from Turkey'),
       link('/how-to-order-medicines', 'How to order medicines from Turkey'),
       link('/dostavka-lekarstv-stambul', 'Medicine delivery in Istanbul'),
-      link('/delivery', 'Delivery and payment'),
     ],
-    contactsTitle: 'Questions left? Message a manager',
+    contactsTitle: 'Still have questions? Message a manager',
     contactsText: 'We will tell you whether the medicine is available in Turkish pharmacies, how much it costs and how to deliver it.',
     vkLabel: 'VK',
   },
 }
 
-/** Тексты страницы для локали (неизвестная — RU) + ссылки на статьи блога с их заголовками. */
+/** Тексты страницы для локали (неизвестная — RU). */
 export function turkishPharmacyContent(locale) {
-  const content = TURKISH_PHARMACY[locale] || TURKISH_PHARMACY.ru
-  const lang = TURKISH_PHARMACY[locale] ? locale : 'ru'
-  const articles = BLOG_SLUGS.map((slug) => getBlogArticle(slug, lang))
-    .filter(Boolean)
-    .map((article) => link(`/blog/${article.slug}`, article.title))
-  return { ...content, useful: [...content.usefulPages, ...articles] }
+  return TURKISH_PHARMACY[locale] || TURKISH_PHARMACY.ru
 }
 
 /** Хлебные крошки: Главная → Лекарства → Аптеки Турции (те же, что видны на странице). */

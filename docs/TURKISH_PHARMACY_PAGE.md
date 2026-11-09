@@ -14,7 +14,7 @@ Mudaroba — не аптека и лекарства не продаёт. Поэ
 |---|---|
 | Страница, SSR, контакты из настроек футера | `frontend/src/pages/turetskaya-apteka.tsx` |
 | Тексты ru/en, FAQ, ссылки, JSON-LD (`FAQPage` + `BreadcrumbList`) | `frontend/src/content/turkishPharmacy.js` |
-| Проверки (длина меты, запрещённые слова, ссылки, FAQPage = видимые вопросы, sitemap, футер) | `frontend/src/lib/turkishPharmacy.test.mjs` |
+| Проверки (длина меты, запрещённые слова во всех строках, препараты строгого учёта, ссылки, FAQPage, sitemap, футер) | `frontend/src/lib/turkishPharmacy.test.mjs` |
 | Ссылка в футере (после «Доставки лекарств по Стамбулу») | `components/Footer.tsx`, ключ `footer_turkish_pharmacy` |
 | Sitemap: секция static, `monthly`, 0.8 | `pages/sitemaps/[section].tsx` |
 
@@ -24,8 +24,8 @@ Mudaroba — не аптека и лекарства не продаёт. Поэ
 
 ## Структура и SEO
 
-- title: «Аптека в Турции: цены на лекарства, как найти и заказать — Mudaroba»; en —
-  «Pharmacy in Turkey: Medicine Prices, How to Find and Order — Mudaroba».
+- title: «Аптека в Турции: цены на лекарства, поиск и заказ препаратов — Mudaroba»; en —
+  «Pharmacy in Turkey: Medicine Prices, Search and Ordering — Mudaroba».
 - H1: «Аптеки Турции: как устроены, цены на лекарства и как заказать»; en — «Pharmacies in
   Turkey: How They Work, Medicine Prices and Ordering».
 - H2: как называется и устроена аптека (eczane, eczacı, частные аптеки, nöbetçi eczane); цены
@@ -34,7 +34,13 @@ Mudaroba — не аптека и лекарства не продаёт. Поэ
   менеджером); рецептурные препараты; доставка; вопросы и ответы (8); полезные ссылки; контакты.
 - Поле поиска — обычная GET-форма на `/search?query=…` (`/en/search` на en), работает без JS.
 - Ссылки: `/categories/medicines`, `/how-to-order-medicines` (+ `#sourcing`),
-  `/dostavka-lekarstv-stambul`, `/delivery`, `/drugs/majezik`, 4 статьи блога.
+  `/dostavka-lekarstv-stambul`, `/drugs/majezik`, 4 статьи блога (заголовки берёт
+  getServerSideProps — тексты статей не попадают в бандл страницы). На `/delivery` не
+  ссылаемся: там названы способы оплаты и другие сроки (3–7, 7–14, 20–45 дней).
+- Препараты строгого учёта не доставляем; с меткой «Ввоз ограничен» — только по согласованию
+  с менеджером (как на странице Стамбула и в баннере карточки `import_restricted_banner`).
+- Цены: «регулирует государство, обычно одинаковые»; кнопка «Узнать актуальную цену»
+  показывает обновлённую справочную цену, итоговую сумму называет менеджер.
 - Контакты: WhatsApp, Telegram, ВКонтакте, Instagram, email — из настроек футера в админке;
   пустые не выводятся.
 

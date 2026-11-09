@@ -7,7 +7,9 @@ import { ArrowRight, Info, Mail, MessageCircle, Search, Send } from 'lucide-reac
 
 import SEO from '../components/SEO'
 import { ArticleBlock, Block, FaqList } from '../components/BlogArticleBody'
+import { getBlogArticle } from '../content/blog/articles'
 import {
+  TURKISH_PHARMACY_BLOG_SLUGS,
   TURKISH_PHARMACY_PATH,
   buildTurkishPharmacySchemas,
   turkishPharmacyBreadcrumbs,
@@ -16,6 +18,7 @@ import {
 import { fetchFooterSettings } from '../lib/footerSettings'
 import { SITE_URL } from '../lib/siteMeta'
 
+type UsefulLink = { href: string; text: string }
 type Contacts = { email: string; whatsapp_url: string; telegram_url: string; vk_url: string; instagram_url: string }
 
 const card = 'rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm sm:p-6'
@@ -24,7 +27,7 @@ const ctaPrimary =
 const ctaSecondary =
   'inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-6 py-3.5 text-base font-semibold text-main transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]'
 
-export default function TurkishPharmacyPage({ contacts }: { contacts: Contacts }) {
+export default function TurkishPharmacyPage({ contacts, articles }: { contacts: Contacts; articles: UsefulLink[] }) {
   const { t } = useTranslation('common')
   const { locale = 'ru', defaultLocale = 'ru' } = useRouter()
   const localePrefix = locale === defaultLocale ? '' : `/${locale}`
@@ -86,6 +89,7 @@ export default function TurkishPharmacyPage({ contacts }: { contacts: Contacts }
                 type="search"
                 name="query"
                 required
+                aria-describedby="pharmacy-search-hint"
                 placeholder={content.searchPlaceholder}
                 className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-base text-main outline-none focus:border-[var(--accent)]"
               />
@@ -94,18 +98,18 @@ export default function TurkishPharmacyPage({ contacts }: { contacts: Contacts }
                 {content.searchButton}
               </button>
             </div>
-            <p className="mt-2 text-sm text-main/60">{content.searchHint}</p>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <Link href="/categories/medicines" className={ctaSecondary}>
-                {content.ctaCatalog}
-                <ArrowRight className="h-5 w-5" aria-hidden="true" />
-              </Link>
-              <Link href="/how-to-order-medicines" className={ctaSecondary}>
-                {content.ctaHowTo}
-                <ArrowRight className="h-5 w-5" aria-hidden="true" />
-              </Link>
-            </div>
+            <p id="pharmacy-search-hint" className="mt-2 text-sm text-main/60">{content.searchHint}</p>
           </form>
+          <div className="mx-auto mt-4 flex max-w-3xl flex-col gap-3 sm:flex-row sm:justify-center">
+            <Link href="/categories/medicines" className={ctaSecondary}>
+              {content.ctaCatalog}
+              <ArrowRight className="h-5 w-5" aria-hidden="true" />
+            </Link>
+            <Link href="/how-to-order-medicines" className={ctaSecondary}>
+              {content.ctaHowTo}
+              <ArrowRight className="h-5 w-5" aria-hidden="true" />
+            </Link>
+          </div>
 
           <div className="mt-10 space-y-6">
             {content.sections.map((section) => (
@@ -123,7 +127,7 @@ export default function TurkishPharmacyPage({ contacts }: { contacts: Contacts }
             <aside className={`${card} h-fit`}>
               <h2 className="text-xl font-semibold text-main">{content.usefulTitle}</h2>
               <ul className="mt-4 space-y-3">
-                {content.useful.map((item) => (
+                {[...content.useful, ...articles].map((item) => (
                   <li key={item.href}>
                     <Link href={item.href} className="group flex items-center justify-between gap-3 text-main transition-colors hover:text-[var(--accent)]">
                       <span>{item.text}</span>
@@ -165,8 +169,14 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const locale = ctx.locale ?? 'ru'
   // Контакты — из настроек футера (админка); пустые не выводятся, ошибка API страницу не ломает
   const footer = await fetchFooterSettings()
+  const lang = locale === 'en' ? 'en' : 'ru'
+  const articles: UsefulLink[] = TURKISH_PHARMACY_BLOG_SLUGS.flatMap((slug) => {
+    const article = getBlogArticle(slug, lang)
+    return article ? [{ href: `/blog/${article.slug}`, text: article.title }] : []
+  })
   return {
     props: {
+      articles,
       contacts: {
         email: footer.email || '',
         whatsapp_url: footer.whatsapp_url || '',

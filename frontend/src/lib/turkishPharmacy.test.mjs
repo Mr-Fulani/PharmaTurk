@@ -5,6 +5,7 @@ import test from 'node:test'
 import { BLOG_ARTICLES } from '../content/blog/articles.js'
 import {
   TURKISH_PHARMACY,
+  TURKISH_PHARMACY_BLOG_SLUGS,
   TURKISH_PHARMACY_PATH,
   buildTurkishPharmacySchemas,
   turkishPharmacyBreadcrumbs,
@@ -16,7 +17,7 @@ const LOCALES = ['ru', 'en']
 // Сайт не аптека и лекарства не продаёт (DEVELOPMENT_RULES §1.9, ограничения SEO-ядра)
 const BANNED = [
   'без рецепта', 'без назначения', 'купить', 'аптека онлайн', 'онлайн-аптек', 'интернет-аптек',
-  'without a prescription', 'without prescription', 'over the counter', 'buy ', 'online pharmacy',
+  'without a prescription', 'without prescription', 'over the counter', 'online pharmacy',
   'режим работы',
 ]
 const groupSlugs = [...(await readFile(new URL('../../../backend/apps/catalog/migrations/0225_medicine_group_texts.py', import.meta.url), 'utf8'))
@@ -54,8 +55,10 @@ test('главные запросы кластера есть в мете и н�
 
 test('тексты не выдают сайт за аптеку и не обещают выдачу без рецепта', () => {
   for (const locale of LOCALES) {
-    const text = articleText(asArticle(TURKISH_PHARMACY[locale])).toLowerCase()
+    // Все строки страницы: мета, поиск, кнопки, разделы, FAQ, ссылки, контакты
+    const text = JSON.stringify(TURKISH_PHARMACY[locale]).toLowerCase()
     for (const phrase of BANNED) assert.ok(!text.includes(phrase), `${locale}: «${phrase}»`)
+    assert.doesNotMatch(text, /\bbuy/, `${locale}: buy`)
   }
   assert.match(TURKISH_PHARMACY.ru.notice, /не аптека и лекарства не продаёт/)
   assert.match(TURKISH_PHARMACY.en.notice, /not a pharmacy and does not sell medicines/)
@@ -66,7 +69,19 @@ test('сроки и оплата — только подтверждённые �
     const text = JSON.stringify(TURKISH_PHARMACY[locale])
     assert.match(text, /7–21/)
     assert.doesNotMatch(text, /наличн|cash|банковск|bank card|crypto|крипт/i)
+    // /delivery называет способы оплаты и другие сроки — со страницы на неё не ссылаемся
+    assert.ok(!TURKISH_PHARMACY[locale].useful.some((item) => item.href === '/delivery'))
   }
+})
+
+test('препараты строгого учёта не доставляем, «Ввоз ограничен» — только по согласованию (как Стамбул и баннер карточки)', () => {
+  const ru = JSON.stringify(TURKISH_PHARMACY.ru)
+  assert.match(ru, /Препараты строгого учёта \(наркотические и психотропные\) мы не доставляем/)
+  assert.match(ru, /без согласования с менеджером не выполняем/)
+  const en = JSON.stringify(TURKISH_PHARMACY.en)
+  assert.match(en, /We do not deliver strictly controlled medicines/)
+  assert.match(en, /without agreement with a manager/)
+  for (const text of [ru, en]) assert.doesNotMatch(text, /особым правилам|special rules/)
 })
 
 test('ссылки ведут на свои страницы без /ru и /en', () => {
@@ -84,8 +99,9 @@ test('ссылки ведут на свои страницы без /ru и /en',
     for (const required of ['/categories/medicines', '/how-to-order-medicines', '/dostavka-lekarstv-stambul', '/blog/pravila-vvoza-lekarstv-iz-turcii']) {
       assert.ok(hrefs.includes(required), `${locale}: нет ссылки ${required}`)
     }
-    assert.equal(content.useful.filter((item) => item.href.startsWith('/blog/')).length, 4)
   }
+  assert.equal(TURKISH_PHARMACY_BLOG_SLUGS.length, 4)
+  for (const slug of TURKISH_PHARMACY_BLOG_SLUGS) assert.ok(blogSlugs.includes(slug), slug)
 })
 
 test('JSON-LD: FAQPage слово в слово с видимыми вопросами, крошки с префиксом только у en', () => {
