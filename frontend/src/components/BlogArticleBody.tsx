@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 
 type Part = string | { href: string; text: string }
-type Block =
+export type Block =
   | { type: 'p'; parts: Part[] }
   | { type: 'ul'; items: Part[][] }
   | { type: 'table'; head: string[]; rows: Part[][][] }
@@ -38,7 +38,7 @@ function Parts({ parts }: { parts: Part[] }) {
   )
 }
 
-function ArticleBlock({ block }: { block: Block }) {
+export function ArticleBlock({ block }: { block: Block }) {
   if (block.type === 'p') {
     return (
       <p className="mb-4 leading-relaxed text-main last:mb-0">

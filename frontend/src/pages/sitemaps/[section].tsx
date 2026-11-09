@@ -36,6 +36,7 @@ async function buildStaticUrls(today: string, failures: Failures): Promise<Sitem
     ['/brands', '/brands', 'weekly', 0.7],
     ['/how-to-order-medicines', '/how-to-order-medicines', 'monthly', 0.8],
     ['/dostavka-lekarstv-stambul', '/dostavka-lekarstv-stambul', 'monthly', 0.8],
+    ['/turetskaya-apteka', '/turetskaya-apteka', 'monthly', 0.8],
     ['/testimonials', '/testimonials', 'weekly', 0.6],
     ['/delivery', '/delivery', 'monthly', 0.6],
     ['/returns', '/returns', 'monthly', 0.5],

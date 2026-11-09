@@ -62,6 +62,7 @@
 - [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) — безопасный backfill характеристик мебели;
 - [AUTO_PARTS_AI_DESIGN.md](AUTO_PARTS_AI_DESIGN.md) — дизайн домена автозапчастей: OEM-номера, применимость, обработка без LLM;
 - [HOW_TO_ORDER_PAGE.md](HOW_TO_ORDER_PAGE.md) — страница «Как заказать»: разделы, SEO, позиция баннеров `how_to_order`;
+- [TURKISH_PHARMACY_PAGE.md](TURKISH_PHARMACY_PAGE.md) — страница «Аптеки Турции» `/turetskaya-apteka`: кластер «аптека в Турции», тексты, FAQPage, поиск, футер;
 - [MEDICINE_LANDING_PAGES.md](MEDICINE_LANDING_PAGES.md) — посадочные страницы медикаментов: SEO подкатегорий и корня, 17 подборок по правилам АТХ/формы, адреса, админка;
 - [MEDICINE_DRUG_PAGES_AND_BLOG.md](MEDICINE_DRUG_PAGES_AND_BLOG.md) — страницы препаратов `/drugs/<slug>` (бренд и все формы), блог, отчёт по товарам со спросом, микроразметка;
 - [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md) — скорость страницы бренда: замеры, детоаст `external_data`, частичные индексы 0217, `view=card`;

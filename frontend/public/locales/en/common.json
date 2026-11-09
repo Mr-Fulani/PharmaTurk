@@ -1688,6 +1688,7 @@
   "import_restricted_seo_description": "{{name}}: reference information and patient leaflet. Import to {{countries}} is prohibited or restricted by law.",
   "footer_useful_articles": "Useful articles",
   "footer_istanbul_delivery": "Medicine delivery in Istanbul",
+  "footer_turkish_pharmacy": "Pharmacies in Turkey",
   "delivery_istanbul_title": "In Istanbul?",
   "delivery_istanbul_text": "We deliver medicines and supplements from Istanbul pharmacies to your hotel or address."
 }
