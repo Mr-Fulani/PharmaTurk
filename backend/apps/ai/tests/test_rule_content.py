@@ -1256,6 +1256,7 @@ def test_seniorah_plan_uses_template_without_model_or_memory(monkeypatch):
     )
     assert plan.description_source == "template"
     assert "натуральн" not in plan.descriptions["ru"] and "Полномерные" in plan.descriptions["ru"]
+    assert plan.missing_titles == []  # название и описание — без вызова модели
 
 
 def test_seniorah_title_material_conflict_skips_upper():
@@ -1263,3 +1264,34 @@ def test_seniorah_title_material_conflict_skips_upper():
     ru = _seniorah("Veraloaf Kadın Rugan Loafer Ayakkabı", {"material": "Süet", "lining": "Cilt"}, slug="loafers")["ru"]
     assert "Верх:" not in ru and "Подкладка: экокожа." in ru
     assert "Верх: замша." in _seniorah("Veraloaf Kadın Süet Loafer Ayakkabı", {"material": "Süet"}, slug="loafers")["ru"]
+
+
+@pytest.mark.parametrize(
+    "advice",
+    ["Tam kalıp değildir, bir numara büyük alınız.", "Dar kalıptır, tam kalıp isteyenler bir büyük almalı.",
+     "Tam kalıptır ancak geniş ayaklar bir numara büyük almalı."],
+)
+def test_seniorah_size_advice_with_caveat_is_not_true_to_size(advice):
+    """Ревью: подстрока «tam kalıp» с отрицанием давала противоположный совет."""
+    assert "Полномерные" not in _seniorah("Kitten Cilt Kadın Ayakkabı", {"material": "Cilt", "size_advice": advice})["ru"]
+
+
+def test_seniorah_bare_deri_and_title_conflict_are_not_genuine_leather():
+    """Голое «Deri» у Seniorah неоднозначно (натуральная — «Gerçek deri»); «Hakiki Deri» в названии при
+    «Cilt» в характеристиках — противоречие: «Верх» не пишется."""
+    bare = _seniorah("Mellow Kadın Terlik", {"material": "Deri", "lining": "Deri"}, slug="slides")["ru"]
+    assert "Верх:" not in bare and "Подкладка:" not in bare
+    conflict = _seniorah("Ankle Hakiki Deri Kadın Topuklu Ayakkabı", {"material": "Cilt"})["ru"]
+    assert "Верх: экокожа" not in conflict and "Верх:" not in conflict
+
+
+def test_seniorah_description_without_title_starts_with_kind():
+    ru = _seniorah("İrene Taşlı Saten Kadın Spor Ayakkabı", {"material": "Taşlı Saten", "heel_height": "8 CM"}, slug="sneakers")["ru"]
+    assert ru.startswith("Женские кроссовки Seniorah.") or ru.startswith("Женские кроссовки Seniorah ")
+    assert "Высота каблука: 8 см." in ru
+
+
+def test_seniorah_heel_range_and_details_not_repeated():
+    description = _seniorah("Ankle Cilt Zımbalı Sivri Burun Kadın Topuklu Ayakkabı", {"material": "Cilt", "heel_height": "5-6 cm"})
+    assert "Высота каблука: 5–6 см." in description["ru"] and "Heel height: 5–6 cm." in description["en"]
+    assert description["ru"].count("с перфорацией") == 1

@@ -196,31 +196,49 @@ SENIORAH_MEASURES = (
 )
 # Материал в названии против «Dış materyal»: у Veraloaf «Siyah Rugan Loafer» в характеристиках
 # «Süet» (ошибка магазина) — какой верен, не угадываем, строку «Верх» не пишем.
-SENIORAH_TITLE_MATERIALS = ("rugan", "suet", "saten", "kroko", "cilt", "gercek deri")
+SENIORAH_TITLE_MATERIALS = ("rugan", "suet", "saten", "kroko", "cilt", "deri")
 SENIORAH_INSOLES = {"anatomik": ("анатомическая", "anatomic"), "anotomik": ("анатомическая", "anatomic")}
-_SENIORAH_CM_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*cm")
+_SENIORAH_CM_RE = re.compile(r"(\d+(?:[.,]\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?)\s*cm", re.IGNORECASE)
+# Голое «Deri» у Seniorah неоднозначно: натуральную кожу магазин подписывает «Gerçek deri».
+_SENIORAH_BARE_DERI_RE = re.compile(r"(?<!gercek )(?<!hakiki )\bderi\b")
+# «Tam kalıptır …» — полномерные; «Tam kalıp değildir, bir numara büyük alınız» — нет.
+_SENIORAH_TRUE_TO_SIZE_RE = re.compile(r"^\s*tam ?kalip")
+_SENIORAH_SIZE_CAVEATS = ("degil", "buyuk", "kucuk", "dar ")
 
 
 def _cm(value: str, locale: str) -> str:
     match = _SENIORAH_CM_RE.search(str(value or "").replace("\xa0", " "))
     if not match:
         return ""
-    number = match.group(1).replace(".", ",") if locale == "ru" else match.group(1).replace(",", ".")
+    number = re.sub(r"\s*[-–]\s*", "–", match.group(1))
+    number = number.replace(".", ",") if locale == "ru" else number.replace(",", ".")
     return f"{number} {'см' if locale == 'ru' else 'cm'}"
+
+
+def _seniorah_material(value: tuple[str, str] | None, raw: Any) -> tuple[str, str] | None:
+    return None if value is None or _SENIORAH_BARE_DERI_RE.search(vocab.fold(raw)) else value
 
 
 def build_seniorah_description(
     facts: ProductFacts, titles: dict[str, str], attrs: dict, source_text: str, name: str = "",
 ) -> dict[str, str]:
     """Описание Seniorah из характеристик: верх, подкладка, стелька, каблук, обхваты, «полномерные»,
-    детали из названия. Незнакомое или противоречивое значение не переводится наугад — строка пропускается."""
-    ru = [f"{titles['ru'].split(', ')[0]}."] if titles.get("ru") else []
-    en = [f"{titles['en'].split(', ')[0]}."] if titles.get("en") else []
+    детали из названия. Незнакомое или противоречивое значение не переводится наугад — строка пропускается.
+    Без названия первая фраза — тип товара («Женские сандалии Seniorah.»), а не пустота."""
+    if titles.get("ru"):
+        ru = [f"{titles['ru'].split(', ')[0]}."]
+    else:
+        ru = [f"{_capitalize(_ru_head(facts))} {facts.brand}".strip() + "."] if facts.kind else []
+    if titles.get("en"):
+        en = [f"{titles['en'].split(', ')[0]}."]
+    else:
+        en = [f"{facts.brand} {facts.audience[1] if facts.audience else ''} {facts.kind.en}".replace("  ", " ").strip() + "."] if facts.kind else []
     title, material = vocab.fold(name), vocab.fold(attrs.get("material"))
-    upper = facts.upper
+    upper = _seniorah_material(facts.upper, attrs.get("material"))
     if any(word in title and word not in material for word in SENIORAH_TITLE_MATERIALS):
         upper = None
-    for label_ru, label_en, value in (("Верх", "Upper", upper), ("Подкладка", "Lining", facts.lining)):
+    lining = _seniorah_material(facts.lining, attrs.get("lining"))
+    for label_ru, label_en, value in (("Верх", "Upper", upper), ("Подкладка", "Lining", lining)):
         if value:
             ru.append(f"{label_ru}: {value[0]}.")
             en.append(f"{label_en}: {value[1]}.")
@@ -238,11 +256,14 @@ def build_seniorah_description(
         if match:
             ru.append(f"{label_ru} (37 размер): {_cm(match.group(1), 'ru')}.")
             en.append(f"{label_en} (size 37): {_cm(match.group(1), 'en')}.")
-    details = [pair for pair in facts.descriptors if pair[0] and not pair[0].startswith("из ")]
+    # Детали, которых нет в первой фразе (название срезает их до двух-трёх).
+    lead = ru[0] if ru else ""
+    details = [pair for pair in facts.descriptors if pair[0] and not pair[0].startswith("из ") and pair[0] not in lead]
     if details:
         ru.append(f"Особенности: {', '.join(pair[0] for pair in details)}.")
         en.append(f"Details: {', '.join(pair[1].lower() for pair in details)}.")
-    if "tam kalip" in vocab.fold(attrs.get("size_advice")).replace("tamkalip", "tam kalip"):
+    advice = vocab.fold(attrs.get("size_advice"))
+    if _SENIORAH_TRUE_TO_SIZE_RE.match(advice) and not any(word in f"{advice} " for word in _SENIORAH_SIZE_CAVEATS):
         ru.append("Полномерные — берите свой обычный размер.")
         en.append("True to size — order your usual size.")
     ru.append(FACT_DESCRIPTION_TAIL["ru"])
