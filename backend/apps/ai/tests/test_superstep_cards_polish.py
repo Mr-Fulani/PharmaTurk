@@ -484,3 +484,16 @@ def test_partial_leather_in_clothing_goes_to_moderation():
     log.input_data = {"product_type": "shoes"}
     log.generated_description = "<p>Кеды с верхом из кожи. Верх: 70% натуральная кожа, 30% текстиль. Подошва резиновая, стелька мягкая и удобная.</p>"
     assert "material_suspect" not in get_moderation_reasons(log)
+
+
+def test_flo_poli_sole_is_polymer_not_half_translated():
+    # FLO Gezer «TABAN: Poli» (09.11.2026): «Подошва из поли» / «Poly sole» — полимер; настоящий PVC не трогается.
+    assert polish_description("Подошва из поли, высота каблука 3 см.", "ru", "shoes") == (
+        "Подошва из полимера, высота каблука 3 см."
+    )
+    assert polish_description("Poly sole, heel height 3 cm.", "en", "shoes") == "Polymer sole, heel height 3 cm."
+    assert polish_description("The sole is made of poly.", "en", "shoes") == "The sole is made of polymer."
+    assert polish_description("Подошва из полимера (поли), лёгкая.", "ru", "shoes") == "Подошва из полимера (поли), лёгкая."
+    assert polish_description("Подошва выполнена из ПВХ.", "ru", "shoes") == "Подошва выполнена из ПВХ."
+    assert polish_description("Polyester upper, poly-cotton lining.", "en", "shoes") == "Polyester upper, poly-cotton lining."
+    assert polish_description("Корпус из поли, лёгкий.", "ru", "furniture") == "Корпус из поли, лёгкий."
