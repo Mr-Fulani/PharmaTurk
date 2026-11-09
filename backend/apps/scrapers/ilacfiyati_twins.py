@@ -319,30 +319,39 @@ def duplicate_barcode_groups() -> dict[str, list]:
     return {barcode: active_twins(barcode) for barcode, count in sorted(counts.items()) if count > 1}
 
 
-def hide_twin(product, keep) -> list[str]:
-    """Скрыть близнеца: is_active=False у Product и MedicineProduct, его адрес — 301 на ``keep``.
+def domain_model(product_type: str):
+    """Доменная модель лекарства или БАДа ilacfiyati."""
+    from apps.catalog.models import MedicineProduct, SupplementProduct
+
+    return {"medicines": MedicineProduct, "supplements": SupplementProduct}[product_type]
+
+
+def hide_twin(product, keep, *, marker_key: str = TWIN_OF_KEY) -> list[str]:
+    """Скрыть близнеца: is_active=False у Product и доменной карточки (лекарство или БАД),
+    его адрес — 301 на ``keep``; в external_data[marker_key] — pk оставленного.
 
     Возвращает slug, записанные в ProductSlugHistory. QuerySet.update — как у «Неактуальных
     товаров»: save() доменной карточки синхронизировал бы её в Product (DEVELOPMENT_RULES §3.13).
     """
-    from apps.catalog.models import MedicineProduct, Product, ProductSlugHistory
+    from apps.catalog.models import Product, ProductSlugHistory
     from apps.catalog.services.product_resolve import RESOLVE_CACHE_PREFIX
 
+    domain = domain_model(product.product_type)
     external = dict(product.external_data) if isinstance(product.external_data, dict) else {}
-    external[TWIN_OF_KEY] = keep.pk
+    external[marker_key] = keep.pk
     with transaction.atomic():
         Product.objects.filter(pk=product.pk).update(
             is_active=False, external_data=external, updated_at=timezone.now(),
         )
-        MedicineProduct.objects.filter(base_product_id=product.pk).update(is_active=False)
+        domain.objects.filter(base_product_id=product.pk).update(is_active=False)
         slugs = {product.slug}
-        slugs.update(MedicineProduct.objects.filter(base_product_id=product.pk).values_list("slug", flat=True))
+        slugs.update(domain.objects.filter(base_product_id=product.pk).values_list("slug", flat=True))
         slugs.discard("")
         slugs.discard(None)
         # Адрес снятой страницы ведёт на преемника (DEVELOPMENT_RULES §5.3–5.4), а не в 404.
         for slug in sorted(slugs):
             ProductSlugHistory.objects.update_or_create(
-                old_slug=slug, defaults={"product_id": keep.pk, "product_type": "medicines"},
+                old_slug=slug, defaults={"product_id": keep.pk, "product_type": product.product_type},
             )
             cache.delete(RESOLVE_CACHE_PREFIX + slug)
     product.is_active = False

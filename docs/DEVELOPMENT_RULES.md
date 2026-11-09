@@ -186,7 +186,11 @@ docker-compose за nginx и Cloudflare.
    `ProductSlugHistory`); сомнение (разные числа или слова названия, состав, цены) — на
    проверку человеку, не объединять. Код, который ставит лекарству `is_active=True`,
    не возвращает товары с `external_data["ilacfiyati_twin_of"]`
-   ([ILACFIYATI_TWIN_PAGES.md](ILACFIYATI_TWIN_PAGES.md)).
+   ([ILACFIYATI_TWIN_PAGES.md](ILACFIYATI_TWIN_PAGES.md)) и
+   `external_data["ilacfiyati_duplicate_of"]`. Страница с тем же настоящим штрихкодом и
+   названием — тот же товар под новым адресом (адрес переносится, копия «…-2» не
+   заводится), новая карточка «Pasif» товаром не становится, адрес источника сравнивается
+   целиком, не «содержит» ([ILACFIYATI_DUPLICATES.md](ILACFIYATI_DUPLICATES.md)).
 17. **Поиск товаров — только через `apps/catalog/product_search.py`** (`filter_by_search`,
    `order_by_relevance`), не `name__icontains`: до 05.11.2026 поиск смотрел только в
    `Product.name`, и производители, переводы, МНН, штрихкоды, «омега 3», «US Polo» не
