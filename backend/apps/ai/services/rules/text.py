@@ -254,8 +254,10 @@ def build_seniorah_description(
     for pattern, label_ru, label_en in SENIORAH_MEASURES:
         match = re.search(rf"37 numara icin {pattern}\s*:\s*([0-9.,]+\s*cm)", text)
         if match:
-            ru.append(f"{label_ru} (37 размер): {_cm(match.group(1), 'ru')}.")
-            en.append(f"{label_en} (size 37): {_cm(match.group(1), 'en')}.")
+            # Без слова «размер»: strip_size_inventory_sentences вырезает фразы «размер + число»
+            # как обещание наличия (на проде 09.11.2026 обхваты и «полномерные» пропали).
+            ru.append(f"{label_ru} (EU 37): {_cm(match.group(1), 'ru')}.")
+            en.append(f"{label_en} (EU 37): {_cm(match.group(1), 'en')}.")
     # Детали, которых нет в первой фразе (название срезает их до двух-трёх).
     lead = ru[0] if ru else ""
     details = [pair for pair in facts.descriptors if pair[0] and not pair[0].startswith("из ") and pair[0] not in lead]
@@ -264,8 +266,8 @@ def build_seniorah_description(
         en.append(f"Details: {', '.join(pair[1].lower() for pair in details)}.")
     advice = vocab.fold(attrs.get("size_advice"))
     if _SENIORAH_TRUE_TO_SIZE_RE.match(advice) and not any(word in f"{advice} " for word in _SENIORAH_SIZE_CAVEATS):
-        ru.append("Полномерные — берите свой обычный размер.")
-        en.append("True to size — order your usual size.")
+        ru.append("Полномерные, по размерной сетке — выбирайте как обычно.")
+        en.append("Standard fit — order as usual.")
     ru.append(FACT_DESCRIPTION_TAIL["ru"])
     en.append(FACT_DESCRIPTION_TAIL["en"])
     return {"ru": " ".join(ru), "en": " ".join(en)}
