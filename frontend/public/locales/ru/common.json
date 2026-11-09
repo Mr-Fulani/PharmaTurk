@@ -1637,6 +1637,7 @@
   "import_restricted_seo_description": "{{name}}: справочная информация и инструкция. Ввоз в {{countries}} запрещён или ограничен законом.",
   "footer_useful_articles": "Полезные статьи",
   "footer_istanbul_delivery": "Доставка лекарств по Стамбулу",
+  "footer_turkish_pharmacy": "Аптеки Турции",
   "delivery_istanbul_title": "Вы в Стамбуле?",
   "delivery_istanbul_text": "Привезём лекарства и БАДы из аптек Стамбула в отель или по адресу."
 }
