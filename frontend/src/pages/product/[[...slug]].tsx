@@ -2917,6 +2917,18 @@ export default function ProductPage({
                 />
               )}
 
+              {/* Ссылка на раздел про БАДы в гайде «Как заказать» (запрос «как заказать бады из Турции») */}
+              {isSupplement && (
+                <Link
+                  href="/how-to-order-medicines#supplements"
+                  prefetch={false}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                >
+                  {t('supplement_how_to_order_link', 'Как заказать БАДы из Турции')}
+                  <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              )}
+
             </div>
 
             {/* Безопасность и сервис */}
