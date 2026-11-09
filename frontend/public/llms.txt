@@ -44,5 +44,3 @@
 - [Brands](https://mudaroba.com/en/brands)
 - [How to order medicines from Turkey](https://mudaroba.com/en/how-to-order-medicines)
 - [Delivery and payment](https://mudaroba.com/en/delivery)
-
-<!-- TODO(owner): черновик на согласование; после проверки удалить эту строку -->

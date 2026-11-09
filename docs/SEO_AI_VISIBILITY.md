@@ -20,8 +20,8 @@ description, canonical, hreflang, H1, типы JSON-LD), robots.txt, sitemap.
 | 4 | сделано | `lib/drugGroup.js` (`buildDrugGroupFaq`), `DrugGroupView.tsx`, ключи `drug_faq_*` | «Вопросы и ответы» видны, FAQPage совпадает слово в слово (тест + проверка HTML); дата обновления и источник под инструкцией уже были |
 | 5 | частично | `pages/index.tsx`, `public/logo-512.png`, ключ `home_org_description` | description, PNG 512×512 (200, image/png), WhatsApp по https; email, address, areaServed ждут владельца |
 | 6 | сделано (с отклонением) | `lib/seoText.js` (`withProductTitleSuffix`), `SEO.tsx`, `siteMeta.ts`, бренды | таблица ниже; слова до ~65 знаков не режем — см. ниже |
-| 7 | сделано для товаров с копией фото | `lib/productAvailability.js`, карточка товара | свитшот: og:image и все 6 image — mudaroba.com (было 7 с одним чужим CDN-дублем) |
-| 8 | сделано | `public/llms.txt` | 200, `text/plain; charset=UTF-8`, middleware нет |
+| 7 | сделано для товаров с копией фото (чужой CDN убирается, когда своих фото ≥ 2; иначе остаётся после своих, чтобы не терять ракурсы) | `lib/productAvailability.js`, карточка товара | свитшот: og:image и все 6 image — mudaroba.com (было 7 с одним чужим CDN-дублем) |
+| 8 | сделано | `public/llms.txt` (черновик TODO(owner) — пометка только здесь, в публичном файле её нет) | 200, `text/plain; charset=UTF-8`, middleware нет |
 | 9 | уже было + цифры | — | см. «Sitemap» |
 | 10 | только отчёт | — | см. «Описания товаров» |
 

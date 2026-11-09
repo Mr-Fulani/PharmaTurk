@@ -290,10 +290,12 @@ function BrandPageContent({
     ? ` — ${t('pagination_page_label', 'Страница {{page}}', { page: currentPage })}`
     : ''
   const titleCategories = brandTitleCategories(categories, router.locale, t('brand_title_medicines', 'лекарства'))
-  const metaTitle = limitTitle(`${t('brand_meta_title', '{{brand}} из Турции{{categories}}', {
+  // Номер страницы и « | Mudaroba» не режутся: иначе у ?page=N title совпал бы с первой страницей
+  const metaTitleSuffix = `${pageLabel} | Mudaroba`
+  const metaTitle = `${limitTitle(t('brand_meta_title', '{{brand}} из Турции{{categories}}', {
     brand: localizedBrandName,
     categories: titleCategories ? `: ${titleCategories}` : '',
-  })}${pageLabel} | Mudaroba`, 80)
+  }), 80 - metaTitleSuffix.length)}${metaTitleSuffix}`
   // Описания брендов короткие («Немецкий спортивный бренд.») — дополняем категориями и доставкой
   const brandCategoryNames = [...categories]
     .sort((a, b) => (b.product_count || 0) - (a.product_count || 0))

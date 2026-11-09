@@ -89,21 +89,26 @@ export function isOwnDomainImage(url, siteUrl) {
 }
 
 /**
- * Картинки для JSON-LD: если среди них есть фото с нашего домена (копии в R2 через
- * proxy-media), чужие CDN (img-lcwaikiki.mncdn.com и т. п.) не отдаём — обычно это та же
- * главная фотография, что и первая в галерее. Своих нет — список как есть, без потери фото.
+ * Картинки для JSON-LD: свои (копии в R2 через proxy-media) — первыми. Если своих хотя бы две,
+ * галерея уже скопирована, и чужой CDN (img-lcwaikiki.mncdn.com и т. п.) — это дубль главного
+ * фото: его не отдаём. Своих меньше двух (галерея ещё на чужом CDN) — чужие остаются после своих,
+ * чтобы Merchant Center не потерял ракурсы.
  * ТЗ «SEO и видимость в ИИ-поиске», задача 7; сам прокси и картинки в интерфейсе не меняются.
  */
 export function preferOwnDomainImages(urls, siteUrl) {
   const list = (urls || []).filter(Boolean)
   const own = list.filter((url) => isOwnDomainImage(url, siteUrl))
-  return own.length > 0 ? own : list
+  if (own.length >= 2) return own
+  return [...own, ...list.filter((url) => !isOwnDomainImage(url, siteUrl))]
 }
 
-/** og:image: своя картинка как есть, чужая — первая своя из кандидатов, если такая есть. */
+/**
+ * og:image: своя картинка как есть, чужая — первая своя из кандидатов (кроме GIF), если такая
+ * есть.
+ */
 export function pickOwnDomainImage(primary, candidates, siteUrl) {
   if (!primary || isOwnDomainImage(primary, siteUrl)) return primary
-  return (candidates || []).find((url) => url && isOwnDomainImage(url, siteUrl)) || primary
+  return (candidates || []).find((url) => url && !/\.gif\b/i.test(url) && isOwnDomainImage(url, siteUrl)) || primary
 }
 
 // Условия страницы /returns: 14 дней с момента получения, возврат почтой, обратную

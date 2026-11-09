@@ -32,6 +32,9 @@ export function limitTitle(title, maxLength) {
 // Хвостовые служебные слова, на которых нельзя обрывать укороченное описание
 const DANGLING_WORDS = new Set(['и', 'в', 'во', 'на', 'с', 'со', 'для', 'из', 'от', 'до', 'по', 'к', 'о', 'об', 'у', 'за', 'без', 'and', 'for', 'with', 'of', 'the', 'a', 'an', 'in', 'on', 'to', 'from', 'by'])
 
+// «Турции», «турецкий», «Turkey», «Turkish», «Türkiye»; турецкое «Turkuaz» (бирюзовый) — не Турция
+const MENTIONS_TURKEY = /турц|турец|turkey|turkish|türkiye/i
+
 // Предлог, союз, знак препинания или притяжательное «Men's» — после них нужно слово
 const isDanglingWord = (word) =>
   DANGLING_WORDS.has(word.toLowerCase()) || /^[,;:.–—-]+$/.test(word) || /['’]s$/i.test(word)
@@ -48,10 +51,12 @@ const isDanglingWord = (word) =>
  */
 export function withProductTitleSuffix(title, { fromTurkey, siteName, max = 80 }) {
   const clean = String(title || '').replace(/\s+/g, ' ').trim()
-  if (!clean || clean.toLowerCase().includes(String(siteName).toLowerCase())) return clean
+  if (!clean) return clean
+  // Шаблон «Название | Категория | Mudaroba» и title из API с названием сайта — только предел длины
+  if (clean.toLowerCase().includes(String(siteName).toLowerCase())) return limitTitle(clean, max)
   const brand = `${TITLE_SEPARATOR}${siteName}`
   const build = (text, withTurkey = true) =>
-    `${text}${withTurkey && !/турц|turk|türk/i.test(text) ? ` ${fromTurkey}` : ''}${brand}`
+    `${text}${withTurkey && !MENTIONS_TURKEY.test(text) ? ` ${fromTurkey}` : ''}${brand}`
   if (build(clean).length <= max) return build(clean)
 
   const parts = clean.match(/^(.+?)(\s[-–—]\s)(.+)$/)

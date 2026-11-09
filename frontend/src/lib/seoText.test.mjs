@@ -131,6 +131,14 @@ test('title товара: Турция уже есть — только « | Mud
     'Мирена (MIRENA, левоноргестрел), внутриматочная система из Турции | Mudaroba',
   )
   assert.equal(withProductTitleSuffix('Кроссовки | Обувь | Mudaroba', RU), 'Кроссовки | Обувь | Mudaroba')
+  // Длинный шаблон с сайтом по-прежнему режется до 80, хвост « | Категория | Mudaroba» сохраняется
+  const longDefault = `${'Очень длинное название из поста Instagram '.repeat(3).trim()} | Одежда | Mudaroba`
+  const limited = withProductTitleSuffix(longDefault, RU)
+  assert.ok(limited.length <= 80, limited)
+  assert.ok(limited.endsWith('… | Одежда | Mudaroba'), limited)
+  // «турецкий» — Турция уже есть; «Turkuaz» (бирюзовый) — нет
+  assert.equal(withProductTitleSuffix('Турецкий кофе Mehmet Efendi', RU), 'Турецкий кофе Mehmet Efendi | Mudaroba')
+  assert.equal(withProductTitleSuffix('Turkuaz Elbise', EN), 'Turkuaz Elbise from Turkey | Mudaroba')
   assert.equal(withProductTitleSuffix('', RU), '')
 })
 

@@ -145,7 +145,13 @@ test('картинки разметки: чужой CDN убирается, ес
   assert.equal(isOwnDomainImage('not a url', site), false)
   assert.deepEqual(preferOwnDomainImages([cdn, own1, own2], site), [own1, own2])
   assert.deepEqual(preferOwnDomainImages([cdn], site), [cdn])
+  // Главное фото своё, галерея ещё на чужом CDN — ракурсы не теряются, своё первым
+  const cdn2 = 'https://img-lcwaikiki.mncdn.com/pim/b.jpg'
+  assert.deepEqual(preferOwnDomainImages([own1, cdn, cdn2], site), [own1, cdn, cdn2])
+  assert.deepEqual(preferOwnDomainImages([cdn, own1, cdn2], site), [own1, cdn, cdn2])
   assert.equal(pickOwnDomainImage(cdn, [own1, own2], site), own1)
+  const gif = 'https://mudaroba.com/api/catalog/proxy-media/?path=products%2Fmain-g.gif'
+  assert.equal(pickOwnDomainImage(cdn, [gif, own2], site), own2)
   assert.equal(pickOwnDomainImage(cdn, [], site), cdn)
   assert.equal(pickOwnDomainImage(own2, [own1], site), own2)
 })

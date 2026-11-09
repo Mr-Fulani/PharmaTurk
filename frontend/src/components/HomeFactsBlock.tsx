@@ -5,7 +5,7 @@ import { useTranslation } from 'next-i18next'
 import { formatCount } from '../lib/homeFacts'
 
 interface HomeFactsBlockProps {
-  /** Товаров в каталоге, округлено вниз до тысяч; 0 — фраза без чисел */
+  /** Позиций в каталоге (товары и справочник лекарств), вниз до тысяч; 0 — фраза без чисел */
   productsCount: number
   /** Брендов с товарами; 0 — фраза без чисел */
   brandsCount: number
@@ -29,7 +29,7 @@ export default function HomeFactsBlock({ productsCount, brandsCount }: HomeFacts
     {
       title: t('home_facts_catalog_title', 'Что продаётся'),
       text: hasCounts
-        ? t('home_facts_catalog_text', 'Mudaroba — интернет-магазин товаров из Турции. В каталоге больше {{products}} товаров, брендов — {{brands}}: одежда и обувь, мебель, косметика и парфюмерия, БАДы и витамины, а также справочник лекарств из турецких аптек.', {
+        ? t('home_facts_catalog_text', 'Mudaroba — интернет-магазин товаров из Турции. В каталоге больше {{products}} позиций, брендов — {{brands}}: одежда и обувь, мебель, косметика и парфюмерия, БАДы и витамины, а также справочник лекарств из турецких аптек.', {
             products: formatCount(productsCount, locale),
             brands: formatCount(brandsCount, locale),
           })
