@@ -113,6 +113,9 @@ class SeniorahParser(BaseScraper):
         ("size_advice", ("kalip bilgisi",)),
     )
     MEASURE_MARKERS = ("olcusu", "olculer", "olcu ")
+    # Обхваты для 37 размера — в атрибуты: описание товара после записи русской карточки
+    # уже не турецкое, а повторная обработка берёт их отсюда (пилот 09.11.2026).
+    MEASURE_KEYS = (("baldir", "calf"), ("bilek", "ankle"), ("boy", "height"))
 
     # Между любыми запросами процесса — не меньше 2,5 с, на 429/503 — повтор с ожиданием
     # (Retry-After или 30/60/120 с), потом понятная остановка.
@@ -826,6 +829,9 @@ class SeniorahParser(BaseScraper):
                     label_key == "not" and "olcu" in normalize_ascii_text(value)
                 ):
                     result["lines"].append(f"{clean_text(label)}: {value}")
+                    measure = next((key for word, key in cls.MEASURE_KEYS if word in label_key.split()), None)
+                    if measure and label_key.startswith("37 numara") and re.search(r"\d", value):
+                        result.setdefault("measurements", {}).setdefault(measure, value)
                     continue
             elif cls._is_size_advice(line):
                 result.setdefault("size_advice", line)

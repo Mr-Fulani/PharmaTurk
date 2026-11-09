@@ -190,9 +190,9 @@ def build_fact_description(facts: ProductFacts, titles: dict[str, str]) -> dict[
 # писали «натуральная кожа» вместо экокожи «Cilt» и «цельная колодка» вместо «Tam kalıp»).
 # Натуральную кожу магазин подписывает «Gerçek deri» — её различает translate_shoe_material.
 SENIORAH_MEASURES = (
-    (r"baldir olcusu", "Обхват голенища", "Calf circumference"),
-    (r"bilek olcusu", "Обхват по щиколотке", "Ankle circumference"),
-    (r"(?:topuk dahil boy olcusu|boy olcusu topuk dahil)", "Высота с каблуком", "Height incl. heel"),
+    ("calf", r"baldir olcusu", "Обхват голенища", "Calf circumference"),
+    ("ankle", r"bilek olcusu", "Обхват по щиколотке", "Ankle circumference"),
+    ("height", r"(?:topuk dahil boy olcusu|boy olcusu topuk dahil)", "Высота с каблуком", "Height incl. heel"),
 )
 # Материал в названии против «Dış materyal»: у Veraloaf «Siyah Rugan Loafer» в характеристиках
 # «Süet» (ошибка магазина) — какой верен, не угадываем, строку «Верх» не пишем.
@@ -250,14 +250,18 @@ def build_seniorah_description(
     if heel_ru:
         ru.append(f"Высота каблука: {heel_ru}.")
         en.append(f"Heel height: {heel_en}.")
+    # Обхваты — из атрибутов парсера (attributes["measurements"]), иначе из турецкого описания:
+    # после записи карточки описание товара уже русское.
     text = vocab.fold(source_text)
-    for pattern, label_ru, label_en in SENIORAH_MEASURES:
+    measurements = attrs.get("measurements") if isinstance(attrs.get("measurements"), dict) else {}
+    for key, pattern, label_ru, label_en in SENIORAH_MEASURES:
         match = re.search(rf"37 numara icin {pattern}\s*:\s*([0-9.,]+\s*cm)", text)
-        if match:
+        value = str(measurements.get(key) or (match.group(1) if match else ""))
+        if _cm(value, "ru"):
             # Без слова «размер»: strip_size_inventory_sentences вырезает фразы «размер + число»
             # как обещание наличия (на проде 09.11.2026 обхваты и «полномерные» пропали).
-            ru.append(f"{label_ru} (EU 37): {_cm(match.group(1), 'ru')}.")
-            en.append(f"{label_en} (EU 37): {_cm(match.group(1), 'en')}.")
+            ru.append(f"{label_ru} (EU 37): {_cm(value, 'ru')}.")
+            en.append(f"{label_en} (EU 37): {_cm(value, 'en')}.")
     # Детали, которых нет в первой фразе (название срезает их до двух-трёх).
     lead = ru[0] if ru else ""
     details = [pair for pair in facts.descriptors if pair[0] and not pair[0].startswith("из ") and pair[0] not in lead]
