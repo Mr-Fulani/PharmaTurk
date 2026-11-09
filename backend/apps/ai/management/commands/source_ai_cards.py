@@ -31,7 +31,7 @@ from django.db import close_old_connections, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.ai.models import AIModerationQueue, AIProcessingLog, AIProcessingStatus
+from apps.ai.models import AIApplicationStatus, AIModerationQueue, AIProcessingLog, AIProcessingStatus
 from apps.ai.services.bulk_ops import select_products_for_ai
 from apps.ai.services.content_generator import ContentGenerator
 from apps.catalog.models import Product
@@ -201,6 +201,28 @@ class Command(BaseCommand):
                                 objects.update({(item._meta.label, item.pk): item for item in sub.all()})
         return objects
 
+    @staticmethod
+    def _applied_titles(logs):
+        """Товар → (название последнего полностью применённого лога, его id).
+
+        Название, проверенное и правленное модератором в логе (``moderator_title_review``), —
+        ручное: такой лог не даёт права перезаписать название (ревью #349)."""
+        rows = (
+            AIProcessingLog.objects.filter(
+                product_id__in=[log.product_id for log in logs],
+                application_status=AIApplicationStatus.APPLIED,
+                generated_title__gt="",
+            )
+            .order_by("product_id", "-id")
+            .distinct("product_id")
+            .values_list("product_id", "generated_title", "id", "extracted_attributes")
+        )
+        return {
+            product_id: (title.strip(), pk)
+            for product_id, title, pk, attrs in rows
+            if not (isinstance(attrs, dict) and attrs.get("moderator_title_review"))
+        }
+
     def _apply(self, products, options):
         latest = list(
             self._logs(products.filter(is_active=True), options)
@@ -217,8 +239,18 @@ class Command(BaseCommand):
             self.stdout.write("Нет черновиков «Завершено» с этой даты.")
             return
         # Название, правленное после обработки, не перезаписываем: снимок лога защищает
-        # только описание, SEO и переводы. Такие товары — в админку.
-        manual = [log for log in logs if (log.product.name or "") != str((log.input_data or {}).get("name") or "")]
+        # только описание, SEO и переводы. Такие товары — в админку. Название, записанное
+        # прошлым применением AI (повторный --run --force), — не ручная правка (Seniorah, 09.11.2026).
+        applied_titles = self._applied_titles(logs)
+
+        def renamed_by_hand(log):
+            name = log.product.name or ""
+            if name == str((log.input_data or {}).get("name") or ""):
+                return False
+            title, applied_id = applied_titles.get(log.product_id, ("", 0))
+            return not (title and name.strip() == title and applied_id < log.pk)
+
+        manual = [log for log in logs if renamed_by_hand(log)]
         logs = [log for log in logs if log not in manual]
         for log in manual:
             self.stdout.write(f"  {log.product_id}: название менялось после обработки — пропущен (лог {log.pk})")

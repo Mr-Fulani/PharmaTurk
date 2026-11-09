@@ -717,3 +717,22 @@ def test_requests_identify_as_bot_without_browser_disguise():
     assert headers["accept-encoding"] == "gzip, deflate"
     assert not {"referer", "upgrade-insecure-requests", "cache-control"} & headers.keys()
     assert not any(key.startswith("sec-fetch") for key in headers)
+
+
+def test_measurements_go_to_attributes():
+    """Обхваты для 37 размера — атрибутом: после записи карточки описание товара уже русское."""
+    html = (
+        "<p>İç mataryel: Sıcak astar</p><p>37 numara için bilek ölçüsü: 28 cm</p>"
+        "<p>37 numara için baldır ölçüsü: 39 cm</p><p>37 numara için boy ölçüsü topuk dahil: 45.5 cm</p>"
+        "<p>Not: Bu ölçüler 37 numara için dir .Numara büyüdükce ölçüler 0,5 cm büyür.</p>"
+    )
+    assert SeniorahParser._features(html)["measurements"] == {"ankle": "28 cm", "calf": "39 cm", "height": "45.5 cm"}
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["37 numara için topuk boy ölçüsü: 8 cm", "37 numara için konç boy ölçüsü: 20 cm", "Topuk boy: 4 cm"],
+)
+def test_other_heights_are_not_height_with_heel(line):
+    """«Высота с каблуком» — только «topuk dahil … boy»: высота каблука или голенища — не она."""
+    assert "height" not in (SeniorahParser._features(f"<p>{line}</p>").get("measurements") or {})

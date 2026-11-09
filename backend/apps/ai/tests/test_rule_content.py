@@ -1310,3 +1310,15 @@ def test_seniorah_description_survives_size_inventory_filter():
     for locale in ("ru", "en"):
         assert strip_size_inventory_sentences(description[locale]) == description[locale]
     assert "Обхват голенища (EU 37): 39 см." in description["ru"] and "Полномерные" in description["ru"]
+
+
+def test_seniorah_measurements_from_attributes_when_description_is_russian():
+    """Повторная обработка пилота: описание товара уже русское, обхваты — из атрибутов парсера."""
+    ru = _seniorah(
+        "Alpha Cilt Kadın Çizme",
+        {"material": "Cilt", "measurements": {"calf": "39 cm", "ankle": "28 cm", "height": "45.5 cm"}},
+        slug="boots-classic",
+        source="Женские сапоги Seniorah Alpha из экокожи. Верх: экокожа.",
+    )["ru"]
+    assert "Обхват голенища (EU 37): 39 см." in ru and "Обхват по щиколотке (EU 37): 28 см." in ru
+    assert "Высота с каблуком (EU 37): 45,5 см." in ru
