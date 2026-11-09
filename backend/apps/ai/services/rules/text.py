@@ -186,6 +186,70 @@ def build_fact_description(facts: ProductFacts, titles: dict[str, str]) -> dict[
     return result
 
 
+# Seniorah: описание — только характеристики магазина, собранные кодом (черновики Claude 09.11.2026
+# писали «натуральная кожа» вместо экокожи «Cilt» и «цельная колодка» вместо «Tam kalıp»).
+# Натуральную кожу магазин подписывает «Gerçek deri» — её различает translate_shoe_material.
+SENIORAH_MEASURES = (
+    (r"baldir olcusu", "Обхват голенища", "Calf circumference"),
+    (r"bilek olcusu", "Обхват по щиколотке", "Ankle circumference"),
+    (r"(?:topuk dahil boy olcusu|boy olcusu topuk dahil)", "Высота с каблуком", "Height incl. heel"),
+)
+# Материал в названии против «Dış materyal»: у Veraloaf «Siyah Rugan Loafer» в характеристиках
+# «Süet» (ошибка магазина) — какой верен, не угадываем, строку «Верх» не пишем.
+SENIORAH_TITLE_MATERIALS = ("rugan", "suet", "saten", "kroko", "cilt", "gercek deri")
+SENIORAH_INSOLES = {"anatomik": ("анатомическая", "anatomic"), "anotomik": ("анатомическая", "anatomic")}
+_SENIORAH_CM_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*cm")
+
+
+def _cm(value: str, locale: str) -> str:
+    match = _SENIORAH_CM_RE.search(str(value or "").replace("\xa0", " "))
+    if not match:
+        return ""
+    number = match.group(1).replace(".", ",") if locale == "ru" else match.group(1).replace(",", ".")
+    return f"{number} {'см' if locale == 'ru' else 'cm'}"
+
+
+def build_seniorah_description(
+    facts: ProductFacts, titles: dict[str, str], attrs: dict, source_text: str, name: str = "",
+) -> dict[str, str]:
+    """Описание Seniorah из характеристик: верх, подкладка, стелька, каблук, обхваты, «полномерные»,
+    детали из названия. Незнакомое или противоречивое значение не переводится наугад — строка пропускается."""
+    ru = [f"{titles['ru'].split(', ')[0]}."] if titles.get("ru") else []
+    en = [f"{titles['en'].split(', ')[0]}."] if titles.get("en") else []
+    title, material = vocab.fold(name), vocab.fold(attrs.get("material"))
+    upper = facts.upper
+    if any(word in title and word not in material for word in SENIORAH_TITLE_MATERIALS):
+        upper = None
+    for label_ru, label_en, value in (("Верх", "Upper", upper), ("Подкладка", "Lining", facts.lining)):
+        if value:
+            ru.append(f"{label_ru}: {value[0]}.")
+            en.append(f"{label_en}: {value[1]}.")
+    insole = SENIORAH_INSOLES.get(vocab.fold(attrs.get("insole")).split(" ")[0]) if attrs.get("insole") else None
+    if insole:
+        ru.append(f"Стелька: {insole[0]}.")
+        en.append(f"Insole: {insole[1]}.")
+    heel_ru, heel_en = _cm(attrs.get("heel_height"), "ru"), _cm(attrs.get("heel_height"), "en")
+    if heel_ru:
+        ru.append(f"Высота каблука: {heel_ru}.")
+        en.append(f"Heel height: {heel_en}.")
+    text = vocab.fold(source_text)
+    for pattern, label_ru, label_en in SENIORAH_MEASURES:
+        match = re.search(rf"37 numara icin {pattern}\s*:\s*([0-9.,]+\s*cm)", text)
+        if match:
+            ru.append(f"{label_ru} (37 размер): {_cm(match.group(1), 'ru')}.")
+            en.append(f"{label_en} (size 37): {_cm(match.group(1), 'en')}.")
+    details = [pair for pair in facts.descriptors if pair[0] and not pair[0].startswith("из ")]
+    if details:
+        ru.append(f"Особенности: {', '.join(pair[0] for pair in details)}.")
+        en.append(f"Details: {', '.join(pair[1].lower() for pair in details)}.")
+    if "tam kalip" in vocab.fold(attrs.get("size_advice")).replace("tamkalip", "tam kalip"):
+        ru.append("Полномерные — берите свой обычный размер.")
+        en.append("True to size — order your usual size.")
+    ru.append(FACT_DESCRIPTION_TAIL["ru"])
+    en.append(FACT_DESCRIPTION_TAIL["en"])
+    return {"ru": " ".join(ru), "en": " ".join(en)}
+
+
 def _sentences(description: str) -> list[str]:
     plain = re.sub(r"<[^>]+>", " ", str(description or ""))
     plain = re.sub(r"\s+", " ", plain).strip()

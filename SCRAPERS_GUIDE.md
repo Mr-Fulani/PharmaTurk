@@ -1076,7 +1076,8 @@ JSON без прокси и без защиты: `/products.json` (весь ка
 - Наличие — «есть/нет» по размеру; цена — цена размера в наличии; `compare_at_price`
   на сайте почти всегда равна цене, зачёркнутая — только если она выше.
 - Описание — строки характеристик (материал верха и подкладки, каблук, обхват,
-  «Kalıp bilgisi»), рекламные абзацы не берутся; `material`, `lining`, `heel_height`,
+  «Kalıp bilgisi»), рекламные абзацы не берутся; русское описание карточки собирает код
+  (`build_seniorah_description`, docs/SEO_NONMEDICAL_PRODUCTS.md), Claude его не пишет; `material`, `lining`, `heel_height`,
   `size_advice` — в атрибуты.
 - Раздел — по виду обуви в названии (`SENIORAH_CATEGORY_ROUTES`): туфли на каблуке
   (`heels`), балетки (`ballet-flats`), лоферы, ботильоны (`ankle-boots`), сапоги,

@@ -29,6 +29,7 @@ from apps.ai.services.rules.facts import (
 from apps.ai.services.rules.text import (
     TURKISH_LEFTOVER_RE,
     build_fact_description,
+    build_seniorah_description,
     build_seo,
     build_titles,
     is_thin_source,
@@ -169,7 +170,15 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     description_source = "llm"
     memory_hit = None
     thin_source = is_thin_source(source_text, str(input_data.get("name") or ""), facts)
-    if thin_source:
+    if source == "seniorah":
+        # Только характеристики магазина — кодом, без модели и памяти переводов (09.11.2026).
+        descriptions = build_seniorah_description(
+            facts, titles, input_data.get("attributes") if isinstance(input_data.get("attributes"), dict) else {},
+            str(raw_source or ""),
+            str(input_data.get("name") or ""),
+        )
+        description_source = "template"
+    elif thin_source:
         descriptions = build_fact_description(facts, titles)
         if len(descriptions) == 2:
             description_source = "template"

@@ -12,7 +12,13 @@ from apps.ai.services.result_applier import AIResultApplier
 from apps.ai.services.rules import vocab
 from apps.ai.services.rules.facts import ProductFacts, _brand_from_description, clean_source_text, collect_facts, parse_name
 from apps.ai.services.rules.pipeline import _dynamic_attributes, plan_rule_content
-from apps.ai.services.rules.text import build_fact_description, build_seo, build_titles, is_thin_source
+from apps.ai.services.rules.text import (
+    build_fact_description,
+    build_seniorah_description,
+    build_seo,
+    build_titles,
+    is_thin_source,
+)
 from apps.ai.services.semantic_validator import SemanticValidator
 from apps.ai.services.size_inventory import extract_sizes_from_input, size_inventory_block_reason
 from apps.catalog.models import (
@@ -1175,3 +1181,85 @@ def test_seniorah_models_without_name_get_heel_and_third_detail():
     # Модель с именем и чужие источники — как раньше: два описания, без каблука.
     assert titles("Kitten Cilt Kısa İnce Topuklu Kadın Ayakkabı", "heels", "3 cm", "seniorah-P-057-01-C").endswith("Kitten из экокожи")
     assert "каблук 10" not in titles("Cilt Bilek Bağlı Kadın Topuklu Ayakkabı", "heels", "10 cm", "flo-123")
+
+
+SENIORAH_SOURCE = (
+    "İç materyal: Cilt\nDış materyal: Cilt\nTopuk boyu: 5 cm\n"
+    "37 numara için bilek ölçüsü: 33 cm\n37 numara için topuk dahil boy ölçüsü: 23,5 cm\n"
+    "Kalıp bilgisi: Tam kalıptır. Kendi numaranızı tercih edebilirsiniz."
+)
+
+
+def _seniorah(name, attrs, slug="heels", source=SENIORAH_SOURCE):
+    product = SimpleNamespace(
+        product_type="shoes", category=SimpleNamespace(slug=slug), domain_item=None, external_id="seniorah-P-057-06-C",
+    )
+    attrs = {"gender": "women", **attrs}
+    facts = collect_facts(product, {"name": name, "brand": "Seniorah", "attributes": attrs, "description": source})
+    return build_seniorah_description(facts, build_titles(facts), attrs, source, name)
+
+
+def test_seniorah_description_cilt_is_never_genuine_leather():
+    """Черновики Claude 09.11.2026: «Cilt» → «натуральная кожа». Натуральную кожу магазин пишет «Gerçek deri»."""
+    text = _seniorah("Ankle Cilt Zımbalı Sivri Burun Kadın Topuklu Ayakkabı",
+                     {"material": "Cilt", "lining": "Cilt", "heel_height": "5 cm", "size_advice": "Tam kalıptır."})["ru"]
+    assert "Верх: экокожа." in text and "Подкладка: экокожа." in text
+    assert "натуральн" not in text
+    genuine = _seniorah("Kleopatra Taşlı Metalik Cilt Kadın Terlik",
+                        {"material": "Metalik Cilt/Taşlı", "lining": "Gerçek deri"}, slug="slides")["ru"]
+    assert "Подкладка: натуральная кожа." in genuine and "Верх: натуральн" not in genuine
+
+
+@pytest.mark.parametrize("advice", ["Tam kalıptır. Kendi numaranızı tercih edebilirsiniz.", "Tamkalıptır.", "Tam kalıptır kendi numaranızı tercih ediniz."])
+def test_seniorah_description_tam_kalip_is_true_to_size(advice):
+    description = _seniorah("Kitten Cilt Kısa İnce Topuklu Kadın Ayakkabı", {"material": "Cilt", "size_advice": advice})
+    assert "Полномерные — берите свой обычный размер." in description["ru"]
+    assert "True to size" in description["en"]
+    assert "колодк" not in description["ru"] and "стоп" not in description["ru"]
+
+
+def test_seniorah_description_facts_and_details():
+    description = _seniorah(
+        "Ankle Cilt Zımbalı Sivri Burun Kadın Topuklu Ayakkabı",
+        {"material": "Cilt", "lining": "Cilt", "heel_height": "5 cm", "insole": "Anatomik fus pet", "size_advice": "Tam kalıptır."},
+    )
+    ru = description["ru"]
+    assert ru.startswith("Женские туфли на каблуке Seniorah Ankle из экокожи")
+    assert "перфорацией" in ru and "пряжк" not in ru  # «Zımbalı» — перфорация, застёжки не выдумываем
+    assert "Стелька: анатомическая." in ru and "Высота каблука: 5 см." in ru
+    assert "Обхват по щиколотке (37 размер): 33 см." in ru and "Высота с каблуком (37 размер): 23,5 см." in ru
+    assert "Heel height: 5 cm." in description["en"]
+
+
+def test_seniorah_unknown_material_is_skipped_not_guessed():
+    ru = _seniorah("Cilt Kadın Babet", {"material": "Yeni Malzeme"}, slug="ballet-flats")["ru"]
+    assert "Верх" not in ru
+
+
+@pytest.mark.django_db
+def test_seniorah_plan_uses_template_without_model_or_memory(monkeypatch):
+    from apps.ai.services.rules import memory as rule_memory
+    from apps.catalog.models import Category
+
+    monkeypatch.setattr(rule_memory, "lookup", lambda *args, **kwargs: pytest.fail("память переводов не нужна"))
+    category = Category.objects.create(name="Туфли на каблуке", slug="heels-x")
+    product = SimpleNamespace(
+        id=1, pk=1, product_type="shoes", category=category, category_id=category.pk, domain_item=None,
+        external_id="seniorah-P-057-06-C", brand=None, name="Ankle Cilt Zımbalı Sivri Burun Kadın Topuklu Ayakkabı",
+    )
+    plan = plan_rule_content(
+        product,
+        {"name": product.name, "brand": "Seniorah", "description": SENIORAH_SOURCE,
+         "attributes": {"gender": "women", "material": "Cilt", "lining": "Cilt", "heel_height": "5 cm",
+                        "size_advice": "Tam kalıptır."}},
+        "full",
+    )
+    assert plan.description_source == "template"
+    assert "натуральн" not in plan.descriptions["ru"] and "Полномерные" in plan.descriptions["ru"]
+
+
+def test_seniorah_title_material_conflict_skips_upper():
+    """Veraloaf «Siyah Rugan Loafer», а в характеристиках «Dış materyal: Süet» — ошибка магазина."""
+    ru = _seniorah("Veraloaf Kadın Rugan Loafer Ayakkabı", {"material": "Süet", "lining": "Cilt"}, slug="loafers")["ru"]
+    assert "Верх:" not in ru and "Подкладка: экокожа." in ru
+    assert "Верх: замша." in _seniorah("Veraloaf Kadın Süet Loafer Ayakkabı", {"material": "Süet"}, slug="loafers")["ru"]
