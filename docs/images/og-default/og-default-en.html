@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<style>
+@font-face{font-family:Ink;src:url('../../../frontend/public/fonts/InkVerse.otf');}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1200px;height:630px;overflow:hidden}
+body{background:#fdf3e7;font-family:Ink,'Helvetica Neue',Arial,sans-serif;color:#1f2433;position:relative}
+.sky{position:absolute;inset:0}
+.left{position:absolute;left:64px;top:56px;width:640px}
+.brand{display:flex;align-items:center;gap:16px;margin-bottom:34px}
+.brand svg{width:60px;height:60px}
+.brand span{font-size:34px;font-weight:700;letter-spacing:3px;color:#b91c1c}
+h1{font-size:60px;line-height:1.07;font-weight:800;letter-spacing:-0.5px}
+h1 em{font-style:normal;color:#365bd4}
+.sub{font-size:28px;margin-top:16px;color:#3b4256}
+.facts{display:flex;gap:14px;margin-top:34px}
+.chip{background:#fff;border-radius:18px;padding:14px 20px;box-shadow:0 2px 0 #ead8c2}
+.chip b{display:block;font-size:32px;color:#365bd4;line-height:1.1}
+.chip i{display:block;font-style:normal;font-size:19px;color:#4b5266;margin-top:2px}
+.foot{position:absolute;left:64px;bottom:44px;font-size:22px;color:#3b4256}
+.foot b{color:#1f2433}
+</style></head><body>
+<svg class="sky" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- силуэт Стамбула -->
+  <g fill="#f3dfc5">
+    <circle cx="1080" cy="110" r="56" fill="#fbdcae"/>
+    <rect x="760" y="250" width="14" height="230"/><polygon points="760,250 767,200 774,250"/>
+    <rect x="1130" y="230" width="14" height="250"/><polygon points="1130,230 1137,180 1144,230"/>
+    <path d="M800 480 V380 Q800 300 900 290 Q1000 300 1000 380 V480Z"/>
+    <path d="M1000 480 V410 Q1000 360 1060 352 Q1120 360 1120 410 V480Z"/>
+    <rect x="896" y="250" width="8" height="40"/>
+  </g>
+  <rect x="0" y="560" width="1200" height="70" fill="#efdcc4"/>
+  <!-- маршрут самолёта -->
+  <path d="M760 200 Q900 120 1030 190" fill="none" stroke="#9db4fb" stroke-width="4" stroke-dasharray="10 10"/>
+  <g transform="translate(1030 190) rotate(25)">
+    <path d="M-26 0 L26 0 L34 -4 L26 -8 L-10 -8Z M-4 -6 L10 -30 L18 -30 L12 -6Z M-4 0 L10 22 L18 22 L12 0Z M-24 -6 L-30 -20 L-22 -20 L-14 -6Z" fill="#4371f7"/>
+  </g>
+  <!-- коробка-посылка -->
+  <g transform="translate(800 330)">
+    <rect x="0" y="40" width="260" height="190" rx="10" fill="#d9a066"/>
+    <rect x="0" y="40" width="260" height="46" rx="10" fill="#c98a4f"/>
+    <rect x="112" y="40" width="36" height="190" fill="#e8bb86"/>
+    <rect x="22" y="130" width="74" height="54" rx="6" fill="#fff"/>
+    <rect x="32" y="142" width="54" height="6" rx="3" fill="#c7cbd6"/>
+    <rect x="32" y="156" width="40" height="6" rx="3" fill="#c7cbd6"/>
+    <rect x="32" y="170" width="48" height="6" rx="3" fill="#c7cbd6"/>
+  </g>
+  <!-- коробка лекарства -->
+  <g transform="translate(830 250)">
+    <rect x="0" y="0" width="120" height="130" rx="8" fill="#fff" stroke="#e3e6ee" stroke-width="3"/>
+    <rect x="0" y="0" width="120" height="30" rx="8" fill="#4371f7"/>
+    <rect x="44" y="52" width="32" height="64" rx="6" fill="#22a05a"/>
+    <rect x="28" y="68" width="64" height="32" rx="6" fill="#22a05a"/>
+  </g>
+  <!-- банка БАДа -->
+  <g transform="translate(965 225)">
+    <rect x="8" y="0" width="74" height="28" rx="6" fill="#f08a2c"/>
+    <rect x="0" y="24" width="90" height="132" rx="16" fill="#fff" stroke="#e3e6ee" stroke-width="3"/>
+    <rect x="0" y="62" width="90" height="54" fill="#ffe3c7"/>
+    <circle cx="45" cy="89" r="16" fill="#f08a2c"/>
+  </g>
+  <!-- капсулы -->
+  <g transform="translate(1085 300) rotate(-30)"><rect x="0" y="0" width="64" height="26" rx="13" fill="#4371f7"/><rect x="32" y="0" width="32" height="26" rx="13" fill="#fff" stroke="#4371f7" stroke-width="3"/></g>
+  <g transform="translate(740 330) rotate(25)"><rect x="0" y="0" width="56" height="24" rx="12" fill="#f08a2c"/><rect x="28" y="0" width="28" height="24" rx="12" fill="#fff" stroke="#f08a2c" stroke-width="3"/></g>
+  <!-- пакет покупок -->
+  <g transform="translate(1075 380)">
+    <path d="M22 26 Q22 0 42 0 Q62 0 62 26" fill="none" stroke="#b91c1c" stroke-width="7"/>
+    <rect x="0" y="22" width="84" height="108" rx="8" fill="#dc2626"/>
+    <path d="M18 74h12l9-20 12 34 12-34 9 20h10" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
+<div class="left">
+  <div class="brand">
+    <svg viewBox="0 0 512 512"><defs><linearGradient id="g" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse"><stop stop-color="#dc2626"/><stop offset="1" stop-color="#991b1b"/></linearGradient></defs><rect width="512" height="512" rx="128" fill="url(#g)"/><path d="M90 294h45L186 166l70 192 70-192 51 128h45" fill="none" stroke="#fff" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>MUDAROBA</span>
+  </div>
+  <h1>Medicines, supplements &amp; goods <em>from Turkey</em></h1>
+  <div class="sub">delivered to Russia, the CIS and worldwide</div>
+  <div class="facts">
+    <div class="chip"><b>25,000+</b><i>items</i></div>
+    <div class="chip"><b>800+</b><i>brands</i></div>
+    <div class="chip"><b>7–21</b><i>days delivery</i></div>
+  </div>
+</div>
+<div class="foot">No sign-up request — a manager checks stock and price · <b>mudaroba.com</b></div>
+</body></html>

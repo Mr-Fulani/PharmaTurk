@@ -34,6 +34,13 @@ export function roundDownToThousands(value) {
   return Math.floor(number / 1000) * 1000
 }
 
+/** Брендов для мета-описания главной «800+ брендов»: вниз до сотен (883 → 800), меньше сотни — 0. */
+export function roundDownToHundreds(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 100) return 0
+  return Math.floor(number / 100) * 100
+}
+
 /** 27000 → «27 000» (ru, неразрывный пробел) / «27,000» (en); одинаково на сервере и в браузере. */
 export function formatCount(value, locale) {
   const separator = locale === 'en' ? ',' : ' '

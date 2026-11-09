@@ -35,7 +35,7 @@ export default function HowToOrderMedicinesPage({ contacts, banners }: { contact
     <>
       <SEO
         title={t('hto_meta_title', 'Как заказать лекарства из Турции и Европы — БАДы, заявка и доставка')}
-        description={t('hto_meta_description', 'Заказ лекарств и БАДов из Турции и Европы по заявке: подбор и проверка наличия, расчёт, оплата после расчёта, доставка в Россию, СНГ и по всему миру. Стоматологические препараты для клиник.')}
+        description={t('hto_meta_description', 'Как заказать лекарства и БАДы из Турции и Европы: заявка без регистрации, менеджер проверит наличие и цену, оплата после расчёта. Доставка в Россию и СНГ 7–21 рабочий день. Telegram, WhatsApp, почта.')}
         canonical={PAGE_PATH}
         structuredData={buildHowToOrderSchemas({ siteUrl: SITE_URL, localePrefix, faqs, breadcrumbs })}
       />

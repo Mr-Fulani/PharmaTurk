@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { safeJsonLd } from '../lib/sanitizeHtml'
+import { defaultOgImageAlt, defaultOgImagePath } from '../lib/ogImage'
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || 'Mudaroba'
@@ -14,6 +15,8 @@ export interface SEOProps {
   canonical?: string
   /** URL OG изображения */
   ogImage?: string
+  /** Подпись к OG изображению (og:image:alt); без неё у своей картинки — подпись картинки по умолчанию */
+  ogImageAlt?: string
   /** noindex — для страниц поиска, корзины, профиля */
   noindex?: boolean
   /** JSON-LD структурированные данные */
@@ -44,6 +47,7 @@ export default function SEO({
   description,
   canonical,
   ogImage,
+  ogImageAlt,
   noindex = false,
   structuredData,
   ogType = 'website',
@@ -63,7 +67,8 @@ export default function SEO({
 
   // Разделитель « | » — как у главной, категорий и товаров (ТЗ SEO и ИИ-поиск, задача 6)
   const fullTitle = `${title} | ${SITE_NAME}`
-  const ogImageUrl = ogImage || `${SITE_URL}/og-default.jpg`
+  const ogImageUrl = ogImage || `${SITE_URL}${defaultOgImagePath(locale)}`
+  const ogImageAltText = ogImageAlt || (ogImage ? fullTitle : defaultOgImageAlt(locale))
 
   // Нормализуем structuredData в массив
   const schemas = structuredData
@@ -96,13 +101,16 @@ export default function SEO({
       <meta property="og:type" content={ogType} />
       <meta property="og:locale" content={ogLocale} />
       <meta property="og:image" content={ogImageUrl} />
+      {!ogImage && <meta property="og:image:type" content="image/jpeg" />}
       <meta property="og:image:width" content="1200" />
       <meta property="og:image:height" content="630" />
+      <meta property="og:image:alt" content={ogImageAltText} />
 
       {/* Twitter Card */}
       <meta name="twitter:title" content={fullTitle} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:image" content={ogImageUrl} />
+      <meta name="twitter:image:alt" content={ogImageAltText} />
 
       {/* JSON-LD структурированные данные */}
       {schemas.map((schema, idx) => (

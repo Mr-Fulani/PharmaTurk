@@ -19,7 +19,7 @@ export const TURKISH_PHARMACY = {
   ru: {
     metaTitle: 'Аптека в Турции: цены на лекарства, поиск и заказ препаратов',
     metaDescription:
-      'Как называются и работают аптеки в Турции (eczane, дежурные nöbetçi), справочные цены TİTCK на турецкие лекарства и как заказать препарат из турецкой аптеки с доставкой в Россию и СНГ.',
+      'Аптеки Турции (eczane, дежурные nöbetçi), цены TİTCK и каталог из 12 тысяч лекарств. Как заказать препарат из турецкой аптеки: заявка без регистрации, доставка в Россию и СНГ 7–21 рабочий день.',
     breadcrumbMedicines: 'Лекарства',
     breadcrumb: 'Аптеки Турции',
     h1: 'Аптеки Турции: как устроены, цены на лекарства и как заказать',
@@ -155,7 +155,7 @@ export const TURKISH_PHARMACY = {
   en: {
     metaTitle: 'Pharmacy in Turkey: Medicine Prices, Search and Ordering',
     metaDescription:
-      'How pharmacies in Turkey work (eczane, nöbetçi duty pharmacies), reference TİTCK prices for Turkish medicines and how to order a medicine from a Turkish pharmacy with worldwide delivery.',
+      'Pharmacies in Turkey (eczane, nöbetçi), TİTCK reference prices and a catalog of 12,000 medicines. Ordering from a Turkish pharmacy: no sign-up, delivery to Russia and the CIS in 7–21 business days.',
     breadcrumbMedicines: 'Medicines',
     breadcrumb: 'Pharmacies in Turkey',
     h1: 'Pharmacies in Turkey: How They Work, Medicine Prices and Ordering',

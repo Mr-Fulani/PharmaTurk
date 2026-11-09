@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { countBrandsWithProducts, countCatalogProducts, formatCount, roundDownToThousands } from './homeFacts.js'
+import { countBrandsWithProducts, countCatalogProducts, formatCount, roundDownToHundreds, roundDownToThousands } from './homeFacts.js'
 
 test('товары считаются по корневым категориям без услуг', () => {
   const categories = [
@@ -33,4 +33,11 @@ test('разделитель разрядов по языку', () => {
   assert.equal(formatCount(27000, 'ru'), '27 000')
   assert.equal(formatCount(27000, 'en'), '27,000')
   assert.equal(formatCount(883, 'ru'), '883')
+})
+
+test('бренды для мета-описания — вниз до сотен', () => {
+  assert.equal(roundDownToHundreds(883), 800)
+  assert.equal(roundDownToHundreds(100), 100)
+  assert.equal(roundDownToHundreds(99), 0)
+  assert.equal(roundDownToHundreds(undefined), 0)
 })

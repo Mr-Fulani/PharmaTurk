@@ -174,3 +174,43 @@ Mudaroba», возврат, политика, о нас) хранятся в б�
   в аналитике — переходы с chatgpt.com, claude.ai, gemini.google.com, perplexity.ai.
 - После выкатки: Rich Results Test и validator.schema.org на главной, `/drugs/majezik`,
   `/categories/painkillers`, свитшоте и «Мирене» (локально их не прогнать — нужен публичный адрес).
+
+## Превью и описания для ИИ-поиска (09.11.2026, после выкатки #350)
+
+Жалоба владельца: ChatGPT называет Mudaroba вторым из пяти сервисов, но без картинки, с
+размытым описанием и старыми сроками «авиа 3–7, наземная 7–14»; Perplexity и Алиса не называют.
+
+Проверено на проде:
+- `og:image` есть на всех ключевых страницах, отдаётся 200 `image/jpeg` 134 КБ, 1200×630;
+  ботам OAI-SearchBot, ChatGPT-User, PerplexityBot, Perplexity-User, YandexBot, facebookexternalhit,
+  TelegramBot страница и картинка отдают 200, `X-Robots-Tag` нет, robots.txt открыт. GPTBot (обучение)
+  получает 403 — так задумано. С адресов самих ИИ-компаний проверить нельзя — только в отчёте
+  Cloudflare AI Crawl Control (задача владельцу).
+- Причины, которые были в нашей власти: картинка на английском («Global Export. Trusted Worldwide»)
+  с выдуманными банками «MUDAROBA PHARMA» и без русских слов; нет `og:image:alt`, `og:locale` и
+  `image` в разметке `Organization` на главной; описание главной общее, у «Доставки» в описании
+  «банковский перевод, криптовалюта». Сроки «авиа 3–7, наземная 7–14» ChatGPT берёт из блока
+  «Способы доставки» на `/delivery` (ключи `delivery_air_desc`, `delivery_ground_desc`) и абзаца из
+  базы «3–7 рабочих дней по стране» — в этом PR не менялись, ждут решения.
+- Конкуренты: Shopping Turkey — «оригинальные турецкие лекарства… выкуп из аптек», картинка
+  сгенерирована; Т—Ж — og:image 1080 px; CDEK Forward — og-картинка + эмодзи в описании;
+  `og:image:alt` есть только у Turkpidya. Ничего особенного у них нет — превью у ChatGPT зависит от
+  его собственного обхода, а не только от тегов.
+
+Сделано:
+- Новая картинка-превью ru/en (`og-default.jpg`, `og-default-en.jpg`, исходник и пересборка —
+  [images/og-default/README.md](images/og-default/README.md)); `lib/ogImage.js` выбирает по языку.
+- `SEO.tsx`: `og:image:alt`, `twitter:image:alt`, у картинки по умолчанию — `og:image:type`.
+- Главная: `og:locale`, `og:image:type`, `og:image:alt`, `twitter:image:alt`, `image` в
+  `Organization`; описание с числами из API — «27 000+ позиций и 800+ брендов» (`roundDownToThousands`,
+  `roundDownToHundreds`), без чисел — ключ `home_meta_description_short`.
+- Описания (≤ 200, факты: число позиций, страны, 7–21 рабочий день / 7–14 дней от 5 $, заявка без
+  регистрации, менеджер проверяет наличие и цену, Telegram/WhatsApp, Стамбул в течение дня):
+  главная, `/how-to-order-medicines` (`hto_meta_description`), `/turetskaya-apteka`
+  (`content/turkishPharmacy.js`), `/delivery` (миграция `pages/0008`, ещё и title), разделы
+  «Медикаменты» и «БАДы» (миграция `catalog/0238`, «около 13 тысяч» → «около 12 тысяч»: в sitemap
+  12 342). Миграции меняют только дословно совпадающий прежний текст — правки из админки не трогают.
+- Способ оплаты нигде не обещан: «оплата после расчёта», «способ согласуется с менеджером».
+
+Отчёт владельцу про Perplexity и Алису (внешние упоминания, Яндекс Бизнес, отзовики):
+`reports/ai-visibility-offsite-plan-2026-11-09.md`.
