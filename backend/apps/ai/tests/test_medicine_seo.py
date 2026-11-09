@@ -20,7 +20,7 @@ def test_seo_title_has_cyrillic_brand_inn_form_and_turkey():
     assert seo["en"]["seo_title"] == "MAJEZIK (flurbiprofen) 100 mg, film-coated tablets from Turkey"
     assert seo["ru"]["seo_description"] == (
         "Мажезик (MAJEZIK, флурбипрофен) 100 мг, таблетки из Турции. Отпускается по рецепту. "
-        "Инструкция на русском. Заявка менеджеру, доставка 7–21 рабочий день."
+        "Инструкция на русском. Заявка менеджеру, доставка 3–14 дней."
     )
     assert seo["ru"]["keywords"] == [
         "MAJEZIK", "Мажезик", "флурбипрофен", "таблетки", "Мажезик из Турции", "Мажезик инструкция",

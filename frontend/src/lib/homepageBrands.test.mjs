@@ -59,6 +59,7 @@ function loadHome({ ssrFails = false, clientGet, ssrBrandDelay = 0 } = {}) {
     require: (name) => modules[name] ?? (
       name === '../lib/homepageBrands' ? require('./homepageBrands.js')
         : name === '../lib/homeFacts' ? require('./homeFacts.js')
+        : name === '../lib/ogImage' ? require('./ogImage.js')
           : () => null
     ),
     console: { log() {}, error() {} },

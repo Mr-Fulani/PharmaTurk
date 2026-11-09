@@ -59,7 +59,9 @@ export const SCHEMA_SHIPPING_COUNTRIES = ['KZ', 'UZ', 'AZ', 'TR', 'AE', 'US', ..
 // Доставка 7–14 дней (сборка заказа 1–2 дня + в пути 6–12), 5 $ в валюте цены Offer:
 // Google требует ту же валюту, что у price. Суммы по валютам — из resolve
 // (shipping_rates, по курсу сайта); у мебели, лекарств и услуг их нет — без доставки.
-export function buildSchemaShippingDetails(shippingRates, currency) {
+// БАДы (решение владельца 09.11.2026): в разметке срок авиа — 3–7 дней (сборка 1–2 + в пути 2–5),
+// ставка та же.
+export function buildSchemaShippingDetails(shippingRates, currency, { supplement = false } = {}) {
   const value = shippingRates?.[String(currency || '').toUpperCase()]
   if (!value) return undefined
   const days = (minValue, maxValue) => ({ '@type': 'QuantitativeValue', minValue, maxValue, unitCode: 'DAY' })
@@ -67,7 +69,7 @@ export function buildSchemaShippingDetails(shippingRates, currency) {
     '@type': 'OfferShippingDetails',
     shippingRate: { '@type': 'MonetaryAmount', value: Number(value), currency: String(currency).toUpperCase() },
     shippingDestination: SCHEMA_SHIPPING_COUNTRIES.map((addressCountry) => ({ '@type': 'DefinedRegion', addressCountry })),
-    deliveryTime: { '@type': 'ShippingDeliveryTime', handlingTime: days(1, 2), transitTime: days(6, 12) },
+    deliveryTime: { '@type': 'ShippingDeliveryTime', handlingTime: days(1, 2), transitTime: supplement ? days(2, 5) : days(6, 12) },
   }
 }
 

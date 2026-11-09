@@ -64,7 +64,7 @@ export default function DrugGroupPage({ group, forms }: DrugGroupPageProps) {
         group.prescription ? t('drug_group_prescription', 'Отпускается по рецепту.') : '',
         group.cold_chain ? t('drug_group_cold_chain', 'Хранение и перевозка при 2–8 °C.') : '',
         priceText ? t('drug_group_meta_price', 'Цена от {{price}}.', { price: priceText }) : '',
-        t('drug_group_meta_order', 'Заявка менеджеру, доставка 7–21 рабочий день.'),
+        t('drug_group_meta_order', 'Заявка менеджеру, доставка 3–14 дней.'),
       ],
       META_DESCRIPTION_MAX,
     )

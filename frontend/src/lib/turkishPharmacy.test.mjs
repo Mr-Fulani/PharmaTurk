@@ -67,7 +67,7 @@ test('тексты не выдают сайт за аптеку и не обещ
 test('сроки и оплата — только подтверждённые владельцем', () => {
   for (const locale of LOCALES) {
     const text = JSON.stringify(TURKISH_PHARMACY[locale])
-    assert.match(text, /7–21/)
+    assert.match(text, locale === 'en' ? /air 3–7, ground 7–14, sea 20–45 days/ : /авиа 3–7, наземная 7–14, морем 20–45 дней/)
     assert.doesNotMatch(text, /наличн|cash|банковск|bank card|crypto|крипт/i)
     // /delivery называет способы оплаты и другие сроки — со страницы на неё не ссылаемся
     assert.ok(!TURKISH_PHARMACY[locale].useful.some((item) => item.href === '/delivery'))

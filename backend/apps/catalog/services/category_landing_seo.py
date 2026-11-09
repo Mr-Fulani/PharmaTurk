@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import Count
 
 from apps.catalog.models import Category, CategoryTranslation, Product
+from apps.catalog.services.delivery_terms import TERMS
 
 SEO_FIELDS = ("h1", "meta_title", "meta_description", "seo_text")
 LOCALES = ("ru", "en")
@@ -28,7 +29,8 @@ PLACEHOLDER_BRANDS = {"другое", "other", "diğer", "diger"}
 # Корни разделов, где менеджер в заявке уточняет ещё размер и цвет.
 SIZE_COLOR_ROOTS = {"clothing", "shoes", "underwear", "headwear", "islamic-clothing"}
 
-# Корни разделов, где у товара есть сроки доставки на сайте (БАДы: 7–14 дней, решение владельца 28.10.2026).
+# Корни разделов, где у товара есть сроки доставки на сайте (БАДы: «авиа 3–7, наземная 7–14, морем 20–45 дней»,
+# решение владельца 09.11.2026; до этого 7–14 дней с 28.10.2026).
 DELIVERY_DAYS_ROOTS = {"supplements"}
 
 SYSTEM_PROMPT = """Ты пишешь SEO-тексты посадочных страниц разделов интернет-витрины Mudaroba (mudaroba.com).
@@ -211,7 +213,7 @@ def collect_facts(category):
         "brands": brands,
         "product_examples": examples,
         "is_supplements": root == "supplements",
-        "delivery": "доставка 7–14 дней" if root in DELIVERY_DAYS_ROOTS else "",
+        "delivery": f"доставка: {TERMS['ru']}" if root in DELIVERY_DAYS_ROOTS else "",
         "manager_checks": "наличие, размер и цвет" if root in SIZE_COLOR_ROOTS else "наличие",
     }
 

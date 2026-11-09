@@ -271,6 +271,22 @@ def test_legacy_delivery_edit_is_auto_only_with_flag(tmp_path):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("logged_delivery", ["доставка 7–21 рабочий день", "доставка 7–14 дней"])
+def test_delivery_terms_replaced_in_db_is_auto_with_flag(logged_delivery):
+    """09.11: replace_delivery_terms заменил срок в базе на «3–14 дней», в логе — прежний (7–21 или 7–14)."""
+    supplement, log = _processed_with_old_seo()
+    _with_legacy_delivery(supplement, log)
+    logged = f"Мега-Фарма (MEGA-FARMA) Бетаглюкан из Турции. Заявка менеджеру, {logged_delivery}."
+    log.generated_seo_description = logged
+    log.save(update_fields=["generated_seo_description"])
+    site = "Мега-Фарма (MEGA-FARMA) Бетаглюкан из Турции. Заявка менеджеру, доставка 3–14 дней."
+    supplement.translations.filter(locale="ru").update(meta_description=site, og_description=site)
+    pid = supplement.base_product_id
+    assert refresh.run([pid])[0]["объектов правлено вручную (оставлены)"] == 1
+    assert refresh.run([pid], legacy_as_auto=True)[0]["объектов правлено вручную (оставлены)"] == 0
+
+
+@pytest.mark.django_db
 def test_admin_history_seo_edit_protects_product_with_flag():
     from django.contrib.admin.models import CHANGE, LogEntry
     from django.contrib.auth import get_user_model

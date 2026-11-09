@@ -2024,7 +2024,7 @@ export default function CategoryPage({
                         }
                         subtitle={effectiveProductType === 'medicines' ? (product as any).active_ingredient : undefined}
                         note={effectiveProductType === 'medicines' && !(product as any).import_restricted_countries?.length
-                          ? t('medicine_card_delivery_note', 'Из Турции · 7–21 дн.')
+                          ? t('medicine_card_delivery_note', 'Из Турции · 3–14 дн.')
                           : undefined}
                         importRestrictedCountries={(product as any).import_restricted_countries}
                       />

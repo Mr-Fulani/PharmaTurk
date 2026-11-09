@@ -23,7 +23,8 @@ import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalized
 import { safeJsonLd } from '../lib/sanitizeHtml'
 import { getSingleFlight } from '../lib/api'
 import { selectHomepageBrands } from '../lib/homepageBrands'
-import { countBrandsWithProducts, countCatalogProducts, roundDownToThousands } from '../lib/homeFacts'
+import { countBrandsWithProducts, countCatalogProducts, formatCount, roundDownToHundreds, roundDownToThousands } from '../lib/homeFacts'
+import { defaultOgImageAlt, defaultOgImagePath } from '../lib/ogImage'
 import HomeFactsBlock from '../components/HomeFactsBlock'
 
 // Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle, добавляем fallback (Skeleton) для предотвращения CLS
@@ -230,10 +231,21 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
   // Главная EN живёт на /en (без слэша): /en/ отвечает 308 и не годится для hreflang
   const enUrl = `${siteUrl}/en`
   const pageTitle = t('home_meta_title', 'Товары из Турции с доставкой: лекарства, БАДы, одежда, обувь | Mudaroba')
-  const pageDescription = t(
-    'home_meta_description',
-    'Mudaroba — товары из Турции с доставкой: лекарства, БАДы, косметика, одежда, обувь и мебель. Актуальные цены, заказ через менеджера.'
-  )
+  // Числа — из тех же ответов API, что и блок «Как работает Mudaroba»; нет чисел — описание без них
+  const factsProductsCount = roundDownToThousands(countCatalogProducts(categories))
+  const metaBrandsCount = roundDownToHundreds(brandsCount)
+  const pageDescription = factsProductsCount > 0 && metaBrandsCount > 0
+    ? t(
+        'home_meta_description',
+        '{{products}}+ позиций и {{brands}}+ брендов из Турции: лекарства, БАДы, косметика, одежда, обувь, мебель. Доставка в Россию, СНГ и по миру. Заявка без регистрации, связь в Telegram и WhatsApp.',
+        { products: formatCount(factsProductsCount, router.locale), brands: formatCount(metaBrandsCount, router.locale) }
+      )
+    : t(
+        'home_meta_description_short',
+        'Лекарства, БАДы, косметика, одежда, обувь и мебель из Турции. Доставка в Россию, СНГ и по миру. Заявка без регистрации: менеджер проверит наличие и цену, связь в Telegram и WhatsApp.'
+      )
+  const ogImageUrl = `${siteUrl}${defaultOgImagePath(router.locale)}`
+  const ogImageAlt = defaultOgImageAlt(router.locale)
 
   const sameAs = [
     footerSettings?.telegram_url,
@@ -257,6 +269,8 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
     ),
     // Google просит растровый логотип от 112×112; SVG остаётся в интерфейсе
     logo: `${siteUrl}/logo-512.png`,
+    // Картинка-превью сайта — та же, что og:image
+    image: ogImageUrl,
     // Контакты — только те, что уже есть на сайте (футер); адрес не указываем (решение владельца 09.11.2026)
     ...(footerSettings?.email && { email: footerSettings.email }),
     contactPoint: {
@@ -339,13 +353,17 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
         <meta property="og:description" content={pageDescription} />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="website" />
-        <meta property="og:image" content={`${siteUrl}/og-default.jpg`} />
+        <meta property="og:locale" content={router.locale === 'en' ? 'en_US' : 'ru_RU'} />
+        <meta property="og:image" content={ogImageUrl} />
+        <meta property="og:image:type" content="image/jpeg" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content={ogImageAlt} />
         <meta name="twitter:title" content={pageTitle} />
         <meta name="twitter:description" content={pageDescription} />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:image" content={`${siteUrl}/og-default.jpg`} />
+        <meta name="twitter:image" content={ogImageUrl} />
+        <meta name="twitter:image:alt" content={ogImageAlt} />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
@@ -572,7 +590,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
 
           {/* «Как работает Mudaroba» — серверный текст для поисковиков и ИИ-ассистентов, перед футером */}
           <HomeFactsBlock
-            productsCount={roundDownToThousands(countCatalogProducts(categories))}
+            productsCount={factsProductsCount}
             brandsCount={brandsCount}
           />
         </div>

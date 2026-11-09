@@ -119,6 +119,14 @@ test('shipping details: 5 $ in the offer currency, 7–14 days, owner countries'
   assert.ok(!countries.includes('RU'))
 })
 
+test('shipping details for supplements: air 3–7 days, same rate', () => {
+  const details = buildSchemaShippingDetails({ RUB: '402.50', USD: '5.00' }, 'RUB', { supplement: true })
+  assert.deepEqual(details.shippingRate, { '@type': 'MonetaryAmount', value: 402.5, currency: 'RUB' })
+  const { handlingTime, transitTime } = details.deliveryTime
+  assert.equal(handlingTime.minValue + transitTime.minValue, 3)
+  assert.equal(handlingTime.maxValue + transitTime.maxValue, 7)
+})
+
 test('no shipping details without a rate in the offer currency (furniture, missing rate)', () => {
   assert.equal(buildSchemaShippingDetails(null, 'USD'), undefined)
   assert.equal(buildSchemaShippingDetails({ USD: '5.00' }, 'KZT'), undefined)
