@@ -1358,3 +1358,61 @@ def test_log_problems_flag_judge_findings():
     assert "supplement_judge" in sc.log_problems(log(flagged))["description"]
     assert "supplement_judge" not in sc.log_problems(log({"problems": []})).get("description", [])
     assert "supplement_judge" not in sc.log_problems(log(None)).get("description", [])
+
+
+def test_wave1b_parsing_numbers_phones_free_from_and_tails():
+    # Голое число после вещества (12182, 9842) убирается; «Polisorbat 80», «Omega 3», «kcenzim 010» — нет.
+    text = "İçindekiler: Feverfew Ekxtraktı 83, Glukozamin Hcl 40, Polisorbat 80, Omega 3, Lactobacillus plantarum 299"
+    assert sm.section_parts({"product_info": text})["composition"] == [
+        "Feverfew Ekxtraktı", "Glukozamin Hcl", "Polisorbat 80", "Omega 3", "Lactobacillus plantarum 299",
+    ]
+    # Хвост-фраза после компонента: возраст с цифры (12158), торговая марка в кавычках (12061).
+    text = "İçindekiler: Zeytinyağı, Kolekalsiferol. 11 yaş ve üzeri bireylerin kullanımına yöneliktir"
+    assert sm.section_parts({"product_info": text})["composition"] == ["Zeytinyağı", "Kolekalsiferol"]
+    text = "İçindekiler: D-biotin, Topaklanmayı önleyici (Silikon dioksit.) “Vitamins by DSM – Quali® is a trademark of DSM”"
+    assert sm.section_parts({"product_info": text})["composition"] == ["D-biotin", "Topaklanmayı önleyici (Silikon dioksit.)"]
+    # Фраза-описание на «-dır» в составе (11717, 10005).
+    text = "İçerik: 500 mg Üzüm Çekirdeği Yağı, Sığır jelatini.\nÜzüm çekirdeği yağı, Omega 6 ve Omega 9 yağ asitlerini içeren değerli bir yağdır."
+    assert sm.section_parts({"product_info": text})["composition"] == ["500 mg Üzüm Çekirdeği Yağı", "Sığır jelatini"]
+    # Телефон службы поддержки и «… içermez» в способе применения (12138, 12151) — не указания.
+    text = ("Kullanım Şekli:\nGünde 1 kapsül alınız.\nDetaylı bilgi için; 0312 285 23 24 ve ya 0850 222 33 44 arayınız.\n"
+            "Velavit Glutatyon Saşe; soya, maya, süt ürünleri, şeker ve GDO'lu bileşenler içermez.")
+    assert sm.section_parts({"product_info": text})["usage"] == ["Günde 1 kapsül alınız."]
+    # Маркер «- » посреди строки (9835).
+    text = "Muhafaza Koşulları:\nÇocukların erişemeyeceği yerlerde saklayınız. - 25°C altında saklayınız."
+    assert all(not item.startswith("-") for item in sm.section_parts({"product_info": text})["storage"])
+
+
+@pytest.mark.parametrize(
+    "source, ru, en, problems",
+    [
+        ("Günde 1 puf kullanılır.", "1 пуф в день.", "1 puff a day.", ["supplement_ingredient_mistranslated", "ru_untranslated"]),
+        ("Günde 1 puf kullanılır.", "1 впрыск в день.", "1 puff a day.", []),
+        ("Bifidobacterium bifidum powder", "Bifidobacterium bifidum powder", "Bifidobacterium bifidum powder",
+         ["ru_untranslated"]),
+        ("11 yaş ve üzeri yetişkin kadınlar günde 1 tablet", "Взрослым и детям от 11 лет женщинам по 1 таблетке в день",
+         "Women aged 11 and over: 1 tablet a day", ["ru_grammar"]),
+        ("Yetişkin kadınlar günde 1 tablet", "Взрослым женщинам по 1 таблетке в день", "Adult women: 1 tablet a day", []),
+    ],
+)
+def test_wave1b_line_problems(source, ru, en, problems):
+    found = sm.line_problems(source, ru, en)
+    assert [p for p in found if p in (*sm.LINE_PROBLEMS, *sm.SOURCE_PROBLEMS)] == problems
+
+
+def test_wave1b_description_checks():
+    source = "Her 2 kapsülde: Sitikolin 500 mg"
+    assert sc.dose_per_portion_suspicious("<p>Цитиколин 500 мг в одной капсуле.</p>", source)
+    assert not sc.dose_per_portion_suspicious("<p>Состав на 2 капсулы: цитиколин 500 мг.</p>", source)
+    assert not sc.dose_per_portion_suspicious("<p>Цитиколин 500 мг в одной капсуле.</p>", "Her kapsülde 500 mg")
+
+    def log(blocks):
+        return SimpleNamespace(
+            raw_llm_response={"rule_content": {"supplement": {"brand": "X", "memory_texts": {"ru": blocks}}}},
+            input_data={"name": "X KAPSUL 30 kapsül"}, extracted_attributes={}, generated_title="",
+            generated_description="".join(f"<p>{text}</p>" for text in blocks),
+        )
+    assert "supplement_untranslated" in sc.log_problems(log(["Состав: Bifidobacterium lactis powder, инулин."]))["description"]
+    assert "supplement_untranslated" not in sc.log_problems(log(["Состав: Bifidobacterium lactis, инулин."])).get(
+        "description", []
+    )

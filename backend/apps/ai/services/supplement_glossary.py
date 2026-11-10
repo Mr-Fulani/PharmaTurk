@@ -310,6 +310,8 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "sari kantaron": ("зверобой", "St. John's wort", S),
     "karamuk": ("барбарис", "barberry", S),
     "tatli kasigi": ("десертная ложка", "dessert spoon", S),
+    # Волна 1б: «1 puf» — «1 пуф».
+    "puf": ("впрыск / нажатие / впрыскивание", "puff / spray", S),
     "melaloyka": ("чайное дерево", "tea tree", S),
     "yumurta zari": ("мембрана яичной скорлупы", "eggshell membrane", S),
     "buyuk meyveli vaksiniyum": ("клюква крупноплодная", "cranberry", S),
