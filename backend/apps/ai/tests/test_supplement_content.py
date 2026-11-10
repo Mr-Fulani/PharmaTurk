@@ -549,11 +549,14 @@ def test_chewable_gel_is_not_chewable_capsule():
     assert sc.parse_pack("OCEAN GUMMIES MULTIVITAMIN ADULT CIGNENEBILIR JEL 60 kapsül").ru == "60 капсул"
 
 
-def test_code_intro_instead_of_model_paragraph():
-    assert sc.code_intro("SOLGAR Витамин C 1000 мг, 90 таблеток", "ru") == "SOLGAR Витамин C 1000 мг, 90 таблеток — пищевая добавка."
-    assert sc.code_intro("INFLAMAX, пищевая добавка, 60 капсул", "ru") == "INFLAMAX, пищевая добавка, 60 капсул."
-    assert sc.code_intro("SOLGAR Vitamin C 1000 mg, 90 tablets", "en") == "SOLGAR Vitamin C 1000 mg, 90 tablets is a food supplement."
-    assert sc.code_intro("", "ru") == ""
+def test_code_intro_is_built_from_source_brand_and_pack_only():
+    # Волна 1б (10.11.2026): сгенерированное название в первую строку не попадает — только бренд и фасовка.
+    pack = sc.parse_pack("SOLGAR VITAMIN C 1000 MG TABLET 90 tablet")
+    assert sc.code_intro("SOLGAR", pack, "ru") == "SOLGAR — пищевая добавка, 90 таблеток."
+    assert sc.code_intro("SOLGAR", pack, "en") == "SOLGAR — food supplement, 90 tablets."
+    assert sc.code_intro("SOLGAR", None, "ru") == "SOLGAR — пищевая добавка."
+    assert sc.code_intro("", pack, "ru") == "Пищевая добавка, 90 таблеток."
+    assert sc.code_intro("", None, "ru") == ""
 
 
 @pytest.mark.django_db
@@ -563,7 +566,7 @@ def test_variant_b_drops_model_paragraph_when_switched_off(settings):
     settings.AI_CONFIG = {**settings.AI_CONFIG, "SUPPLEMENT_MODEL_PARAGRAPH": False}
     log = _process(_generator([ANSWER]), _supplement())
     first = log.generated_description.split("</p>", 1)[0]
-    assert first == f"<p>{log.generated_title} — пищевая добавка."
+    assert first == "<p>MEGA-FARMA — пищевая добавка, 150 мл."
     for paragraph in ANSWER["description"]["ru"]:
         assert paragraph[:40] not in log.generated_description
     assert log.generated_description.endswith(f"<p>{sc.DISCLAIMER['ru']}</p>")

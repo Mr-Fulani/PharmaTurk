@@ -423,6 +423,22 @@ def dose_suspicious(description: Any) -> bool:
 _PAGE_TITLE_PACK_RE = re.compile(r"\b(?:[1-9]\d|\d{3,})\s*(?:tablet|kapsul|sase|pastil|sachet|capsule)\w*\b")
 
 
+# Доза из таблицы «на 2 капсулы» на карточке — «в одной капсуле» (11525, 10362, волна 1б на проде 10.11.2026).
+# При сомнении — на модерацию: порция источника от 2 штук и в описании — доза на одну штуку.
+_SOURCE_PORTION_RE = re.compile(
+    r"\b[2-9]\s*(?:kapsul|tablet|sase|olcek|pastil|form)\w*?(?:de|da|te|ta)\b|\b[2-9]\s*(?:kapsul|tablet|sase|olcek|pastil)"
+    r"\w*\s+icin\b|\bher\s+[2-9]\s+(?:kapsul|tablet|sase|olcek|pastil)|\(\s*[2-9]\s*(?:kapsul|tablet|sase|olcek|pastil)\w*\s*\)"
+)
+_PER_ONE_RE = re.compile(
+    r"(?i)(?:в|на)\s+(?:одн(?:ой|у)|1)\s+(?:капсул|таблетк|саше|пастилк|мерн)\w*|\bв\s+(?:каждой\s+)?(?:капсуле|таблетке)\b"
+)
+
+
+def dose_per_portion_suspicious(description: Any, source: Any) -> bool:
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", str(description or "")))
+    return bool(_SOURCE_PORTION_RE.search(fold_tr(source)) and _PER_ONE_RE.search(plain))
+
+
 def source_page_mismatch(source_name: Any, sections: dict[str, str]) -> bool:
     """Страница источника о другом товаре: по ссылке «VITASENT EFF C1000 … 20 tablet» — «Velavit V-Colostrum
     Lozenges 15 Pastil» (9491, пилот 5 на проде: на карточке шипучих таблеток было «1 пастилку в день»).
@@ -792,18 +808,21 @@ def model_paragraph_enabled() -> bool:
     return bool(settings.AI_CONFIG.get("SUPPLEMENT_MODEL_PARAGRAPH", True))
 
 
-_CODE_INTRO = {"ru": "{title} — пищевая добавка.", "en": "{title} is a food supplement."}
+_CODE_INTRO = {"ru": "пищевая добавка", "en": "food supplement"}
 
 
-def code_intro(title: str, locale: str) -> str:
-    """Вводная строка кодом вместо абзаца модели: название товара и что это за продукт."""
-    title = str(title or "").strip()
-    if not title:
+def code_intro(brand: str, pack: Optional[Pack], locale: str) -> str:
+    """Вводная строка кодом вместо абзаца модели: бренд из названия источника и фасовка из его разбора.
+
+    Сгенерированное название сюда не попадает: на волне 1б (10.11.2026) в нём были выдумки модели («в блистерах»,
+    «по 12 г», «со вкусом апельсина») — 27 из 70 ошибок описаний. Нечего собрать — строки нет.
+    """
+    brand = str(brand or "").strip()
+    pack_text = getattr(pack, locale, "") if pack is not None else ""
+    if not brand and not pack_text:
         return ""
-    # «INFLAMAX, пищевая добавка, 60 капсул» — что это, уже в названии.
-    if re.search(r"(?i)пищевая добавка|food supplement", title):
-        return f"{title}."
-    return _CODE_INTRO[locale].format(title=title)
+    head = f"{brand} — {_CODE_INTRO[locale]}" if brand else _CODE_INTRO[locale].capitalize()
+    return f"{head}, {pack_text}." if pack_text else f"{head}."
 
 
 def build_description(
@@ -1108,6 +1127,11 @@ def log_problems(log) -> dict[str, list[str]]:
         description.append("supplement_source_mismatch")
     if dose_suspicious(getattr(log, "generated_description", "")):
         description.append("supplement_dose_suspicious")
+    if dose_per_portion_suspicious(getattr(log, "generated_description", ""), source):
+        description.append("supplement_dose_per_portion")
+    # Непереведённое слово в блоках памяти: «powder», «Magnezyum», «Devil's Claw» (волна 1б на проде).
+    if any(supplement_memory.UNTRANSLATED_WORD_RE.search(html.unescape(text)) for text in memory_texts.get("ru") or []):
+        description.append("supplement_untranslated")
     # Находка судьи — до отметки «Описание проверено модератором» (её учитывает semantic_validator).
     if supplement_judge.flagged((rule_content.get("supplement") or {}).get("judge")):
         description.append("supplement_judge")
@@ -1557,7 +1581,7 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
     # Вариант «б» (решение владельца, по умолчанию выключен): без вводного абзаца модели — строка из названия
     # и блоки памяти. На волне 1 (10.11.2026) в этом абзаце были выдумки, сломанная грамматика и повторы.
     if not model_paragraph_enabled():
-        description = {locale: code_intro(titles[locale], locale) for locale in ("ru", "en")}
+        description = {locale: code_intro(brand, pack, locale) for locale in ("ru", "en")}
     descriptions = {
         locale: build_description(
             _brand_latin(description.get(locale), brand_ru, title_brand), locale, baby_food=baby_food,

@@ -207,7 +207,7 @@ def memory_text_claim(text: str) -> bool:
 _STORAGE_TOPIC_RE = re.compile(_STANDARD_STORAGE_RE.pattern + r"|derece|isig|isik|\bnem|sicaklik|dondur|buzdolab|ambalaj")
 # «… gibi potansiyel alerjenleri içermez», «… kullanılmamıştır» — не предупреждение, модель пересказывает это в
 # описании (пилот 05.11.2026: одна фраза дважды); «… içerebilir» остаётся.
-_FREE_FROM_RE = re.compile(r"icermez|kullanilmamistir")
+_FREE_FROM_RE = re.compile(r"icermez|icermemektedir|bulunmamaktadir|kullanilmamistir")
 # Экранированные символы, которые источник отдаёт текстом: «1u2019er tablet», «(600 u00b5g)».
 _ESCAPED_CHAR_RE = re.compile(r"u(2019|2018|00b5|00b0)")
 # Штаммы бактерий латиницей («Lactobacillus acidophilus- LA-5®», «Bifidobacterium- BB-12®») не переводятся.
@@ -231,15 +231,24 @@ TRANSLIT_RE = re.compile(
     # одноразовых саше» (tek kullanımlık), «джели»/«джелли» (jel) вместо «желе».
     r"кедиот|кадын|феррик|\bв тек\b|\bджел(?:ли|ь|и|ей|ям)\b|"
     # Повтор пилота 5: «со вкусом портакала (апельсина)» (SUNLIFE 7862).
-    r"портакал",
+    r"портакал|"
+    # Волна 1б: «1 пуф», «2 пуффа» (puf — впрыск).
+    r"\bпуфф?(?:а|ов|ы|ам|ами)?\b",
     re.IGNORECASE,
 )
+UNTRANSLATED_WORD_RE = re.compile(
+    r"\b(?:powder|extracts?|oils?|capsules?|tablets?|juice|roots?|leaf|leaves|seeds?|claw|flowers?|bark|fruits?|"
+    r"magnezyum|kalsiyum|[çc]inko|demir|vitamini|ekstres[ıi]|ekstrakt[ıi]|ya[ğg][ıi]|tozu|kaps[üu]l|tip)\b",
+    re.IGNORECASE,
+)
+# Телефон службы поддержки в тексте: «0850 …», «444 0 …», «0212 123 45 67» (EMODEX 12138, волна 1б).
+_PHONE_RE = re.compile(r"\b0?\(?\d{3}\)?[\s.-]\d{3}[\s.-]?\d{2}[\s.-]?\d{2}\b|\b444\s?\d\s?\d{3}\b|\b0850\b")
 # Единица — после числа: штаммы «GR-1», «ML-7» латиницей законны (ревью #327).
 _RU_LATIN_UNIT_RE = re.compile(r"\d\s*(?:mg|mcg|[µμ]g|ml|iu|gr|kcal|cfu)(?![A-Za-z])", re.IGNORECASE)
 
 
 def _skip_sentence(folded: str) -> bool:
-    return bool(_DISCLAIMER_DUPLICATE_RE.search(folded) or _PACKAGE_DATA_RE.search(folded))
+    return bool(_DISCLAIMER_DUPLICATE_RE.search(folded) or _PACKAGE_DATA_RE.search(folded) or _PHONE_RE.search(folded))
 
 
 # Переворот смысла, который не ловят проверки чисел и сдвига (ревью PR #313): запрет переведён разрешением,
@@ -347,6 +356,9 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
         or (ru.strip().lower() == source.strip().lower() and all(len(w) <= 3 and w.isalpha() for w in source.split()))
         # Как есть со строчной буквы — обрывок распознавания текста: «kcenzim 010» (OSENDE 7569); «Serenoa repens»,
         # «Q10» как есть — верно.
+        # Английское или турецкое слово источника как есть: «Bifidobacterium bifidum powder», «Magnezyum», «Devil's
+        # Claw» (волна 1б на проде 10.11.2026) — проверка «латиница не из источника» их пропускала.
+        or UNTRANSLATED_WORD_RE.search(ru)
         or (ru.strip() == source.strip() and source.strip()[:1].islower() and not _LATIN_STRAIN_RE.match(fold_tr(source))
             and not _LATIN_BINOMIAL_RE.fullmatch(source.strip()))
     ):
@@ -357,6 +369,9 @@ def line_problems(source: str, ru: str, en: str) -> list[str]:
         r"(?i)\b(?:принима|употребля|применя)\w*\s+(?:по\s+)?1\s+(?:\w+[ая]я\s+)?(?:таблетка|капсула|пастилка|конфета|ложка)\b",
         ru,
     ):
+        problems.append("ru_grammar")
+    # «Взрослым и детям от 11 лет женщинам» — склейка двух групп (волна 1б на проде 10.11.2026).
+    if re.search(r"(?i)\bлет\s+(?:женщинам|мужчинам)\b", ru):
         problems.append("ru_grammar")
     # Диапазон дважды: «bir-üç (1-3)» → «1–3 (1-3) капсулы» (SOLGAR 7256).
     # Только то же число: «D3 (1)» — сноска, не повтор (ревью #328).
@@ -433,7 +448,8 @@ def _split_top_level(text: str) -> list[str]:
         # Только после целого слова, вне скобок и если хвост — предложение со сказуемым («… markasıdır»):
         # «Bifidobacterium (B. Lactis BB-12) …», «Vit. C …», «Ekstr. Ginkgo …» — сокращения, «… konsantresi. Kapsül
         # kabuğu bileşenleri: sığır jelatini» — состав, не сноска (ревью #328).
-        sentence_tail = re.search(r"[^\W\d_]{4,}\.\s+(?=[A-ZÇĞİÖŞÜ])", item)
+        # «Kolekalsiferol. 11 yaş ve üzeri bireylerin kullanımına yöneliktir» — хвост может начинаться с цифры (12158).
+        sentence_tail = re.search(r"[^\W\d_]{4,}\.\s+(?=[A-ZÇĞİÖŞÜ0-9])", item)
         if (
             sentence_tail and len(item[sentence_tail.end():].split()) >= 4
             and item[:sentence_tail.start()].count("(") == item[:sentence_tail.start()].count(")")
@@ -443,7 +459,8 @@ def _split_top_level(text: str) -> list[str]:
         # Фраза в кавычках после последнего компонента: «Stevya (Stevia rebaudiana). “4-10 yaş grubu çocukların
         # kullanımına uygundur.”» (VENATURA 7978, пилот 5 на проде) — не компонент.
         quoted = re.search(r"[\s.]*[“\"«][^“”\"«»]{10,}[”\"»]?\s*$", item)
-        if quoted and re.search(r"(?:d[iu]r|t[iu]r)\W*$|kullanim", fold_tr(quoted.group(0))):
+        # «… silikon dioksit.) “Vitamins by DSM – Quali® is a trademark of DSM”» (12061, волна 1б) — тоже хвост.
+        if quoted and re.search(r"(?:d[iu]r|t[iu]r)\W*$|kullanim|trademark", fold_tr(quoted.group(0))):
             item = item[:quoted.start()]
         # Маркер списка «- Sambucus Nigra», «• Stevia» (COXIL 7544) и «•» вместо дефиса («DL•a-tokoferil», OSENDE 7569).
         # Невидимый пробел «Kolekalsiferol. \u200b» давал второй «холекальциферол» (VENATURA 9422, пилот 5).
@@ -451,6 +468,14 @@ def _split_top_level(text: str) -> list[str]:
         # Подпись, приклеенная к первому компоненту: «İçindekiler: Balık yağı» — на карточке «Состав: Состав: …» (9543).
         if re.match(r"icindekiler\s*:", fold_tr(item)):
             item = item.split(":", 1)[1].strip()
+        # «Feverfew Ekxtraktı 83», «Glukozamin Hcl 40» — число без единицы в конце компонента: код сырья или доля из
+        # таблицы (12182, 9842, волна 1б на проде). «Polisorbat 80», «Omega 3», штаммы «… 299v» — часть названия.
+        bare = re.fullmatch(r"(.*[^\W\d_]{3,})\s+([1-9]\d{1,2})", item)
+        if (
+            bare and not _LATIN_STRAIN_RE.match(fold_tr(item))
+            and fold_tr(bare.group(1)).split()[-1] not in ("polisorbat", "polysorbate", "tween", "omega", "tip", "type")
+        ):
+            item = bare.group(1)
         folded = fold_tr(item)
         # «FEROGLOBİN … İçeren Sıvı Takviye Edici Gıda - 200 ml» — название товара, а не компонент.
         if re.search(r"[^\W\d_]{2}", item) and not (
@@ -476,6 +501,11 @@ def _split_top_level(text: str) -> list[str]:
             or (len(folded.split()) >= 3 and re.search(r"(?:m[iu]st[iu]r|m[iu]sd[iu]r|maktadir|mektedir)$", folded))
             # «tatlandırıcı ve renklendirici içermez» (12273) — свойство, а не компонент.
             or (len(folded.split()) >= 2 and re.search(r"\bicermez$", folded))
+            # Волна 1б на проде: «PhytO₂X™ … özel bir karışımdır» (10005), «Vitamins by DSM – Quali® is a trademark of
+            # DSM» (12061), «11 yaş ve üzeri bireyler için uygundur» (12158) — фразы, а не компоненты.
+            or (len(folded.split()) >= 4 and re.search(r"(?:d[iu]r|t[iu]r)$", folded))
+            or re.search(r"\btrademark\b|\bis an?\b", folded)
+            or (re.search(r"\byas", folded) and re.search(r"uygun|kullanim", folded))
         ):
             result.append(item)
     return result
@@ -518,6 +548,8 @@ def _sentences(text: str) -> list[str]:
     # «*** Takviye edici gıdalar …» — сноска источника; без звёздочек фраза совпадает с той же без сноски.
     # «- Tavsiye edilen günlük porsiyonu aşmayınız.» — маркер списка; на карточке было «Предупреждения: - БАДы … - Не
     # превышайте …» (MAGGUMMY 9835, волна 1 на проде 10.11.2026).
+    # «… saklayınız. - 25°C altında …» — маркер посреди строки: граница предложения (MAGGUMMY 9835, волна 1б).
+    text = re.sub(r"(?<=[.!?])\s+[-•–]\s+", " ", text)
     return [
         re.sub(r"^[-•–]\s+", "", part.strip().lstrip("* ")) for part in _SENTENCE_SPLIT_RE.split(text)
         if re.search(r"[^\W\d_]{2}", part)
@@ -717,7 +749,9 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 if target == "usage":
                     # «… günde 2 kapsül;» — часть закончена, «;» в конце — точка (ревью #332: строка пропадала).
                     sentence = re.sub(r"\s*;\s*$", ".", sentence)
-                if target in ("warnings", "storage") and _FREE_FROM_RE.search(folded):
+                # «… soya, maya içermez» в способе применения — не указание (12151, волна 1б): на карточке было «не
+                # содержит соевых, дрожжей» в «Способе применения».
+                if target in ("usage", "warnings", "storage") and _FREE_FROM_RE.search(folded):
                     continue
                 if target == "storage" and not _STORAGE_TOPIC_RE.search(folded):
                     # «Tavsiye edilen günlük porsiyonu aşmayın» под подписью хранения — предупреждение.
