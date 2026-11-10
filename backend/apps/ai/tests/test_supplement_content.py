@@ -613,3 +613,49 @@ def test_wave1c_turkish_letters_in_blocks_go_to_moderation():
             generated_description="".join(f"<p>{text}</p>" for text in blocks),
         )
     assert "supplement_untranslated" in sc.log_problems(log(["Состав: краситель: AQUA POLİSH f WHİTE."]))["description"]
+
+
+def test_wave1d_wording_semicolon_bad_gender():
+    # «; » после возрастной группы или «доза» — «: » (11624, 12226); «1 саше; следует» (12323).
+    assert sc._fix_translit("Для детей от 4 до 10 лет; 1–2 раза в день.") == "Для детей от 4 до 10 лет: 1–2 раза в день."
+    assert sc._fix_translit("Рекомендуемая суточная доза; взрослым 1 тюбик.") == "Рекомендуемая суточная доза: взрослым 1 тюбик."
+    assert sc._fix_translit("Детям 1 саше; следует добавить в йогурт.") == "Детям 1 саше следует добавить в йогурт."
+    assert sc._fix_translit("Для детей в возрасте 4–10 лет; предпочтительно после еды.") == (
+        "Для детей в возрасте 4–10 лет: предпочтительно после еды."
+    )
+    assert sc._fix_translit("Предназначено для взрослых и детей от 11 лет; рекомендуется 1 капсула.") == (
+        "Предназначено для взрослых и детей от 11 лет: рекомендуется 1 капсула."
+    )
+    # Ревью #365: перечисление в предупреждениях и новая фраза — не трогаем.
+    assert sc._fix_translit("Не рекомендуется детям до 12 лет; беременным и кормящим женщинам.") == (
+        "Не рекомендуется детям до 12 лет; беременным и кормящим женщинам."
+    )
+    assert sc._fix_translit("Для детей до 3 лет; хранить в недоступном месте.") == "Для детей до 3 лет; хранить в недоступном месте."
+    assert sc._fix_translit("Не превышайте рекомендуемую суточную дозу; хранить в сухом месте.") == (
+        "Не превышайте рекомендуемую суточную дозу; хранить в сухом месте."
+    )
+    # Отрицательные: «;» между фразами и после других слов не трогаем.
+    assert sc._fix_translit("Утром 1 капсула; вечером 1 капсула.") == "Утром 1 капсула; вечером 1 капсула."
+    assert sc._fix_translit("1 саше; растворить в воде.") == "1 саше; растворить в воде."
+    # «Данное БАД предназначено» → «Данная БАД предназначена» (12255); «Данное средство» — нет.
+    assert sc._fix_translit("Данное БАД предназначено для взрослых.") == "Данная БАД предназначена для взрослых."
+    assert sc._fix_translit("Данное средство предназначено для взрослых.") == "Данное средство предназначено для взрослых."
+
+
+def test_wave1d_source_numbers_conflict():
+    # mg в названии/заголовке страницы и mcg в таблице у того же числа (10033, 7350) — на модерацию.
+    secs = {"product_info": "NaturalNest Koenzim Q10 100 mg\nKoenzim Q10 100 mcg"}
+    assert sc.source_numbers_conflict("<p>Коэнзим Q10 100 мкг.</p>", "NATURALNEST KOENZIM Q10 KAPSUL 30 kapsül", secs)
+    assert sc.source_numbers_conflict(
+        "", "SOLGAR FOLATE TABLET 400 mg 50 tablet", {"product_info": "Solgar Folate 400 mcg 50 Tablet\nFolik asit 400 mcg"}
+    )
+    # Отрицательные: то же число у разных веществ в таблице; mg в названии и mg в таблице.
+    assert not sc.source_numbers_conflict(
+        "", "X KAPSUL 30 kapsül", {"product_info": "X Takviye 30 Kapsül\nÇinko 10 mg\nD3 vitamini 10 mcg"}
+    )
+    assert not sc.source_numbers_conflict("", "X KAPSUL 100 mg 30 kapsül", {"product_info": "Koenzim Q10 100 mg"})
+    # Диапазон источника, а в описании только нижняя граница (10232, 11584).
+    secs = {"product_info": "11 yaş üstü çocuklar 500 ml\nYetişkinler 500-1000 ml"}
+    assert sc.source_numbers_conflict("<p>Детям и взрослым от 11 лет — 500 мл.</p>", "X 8x12 g saşe", secs)
+    assert not sc.source_numbers_conflict("<p>Взрослым — 500–1000 мл.</p>", "X 8x12 g saşe", secs)
+    assert not sc.source_numbers_conflict("<p>По 1 саше в день.</p>", "X 8x12 g saşe", secs)
