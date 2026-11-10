@@ -115,7 +115,8 @@ Production Compose публикует только Nginx: порты `80` и `44
 работать, когда в `nginx/tls/` на сервере лежат Cloudflare Origin Certificate и
 `origin-tls.inc` (копия `nginx/origin-tls.inc.example`); без них Nginx работает
 только на `80`. Пошагово, включая Cloudflare Full (strict) и Hetzner Cloud
-Firewall: [docs/PROD_ORIGIN_SECURITY.md](docs/PROD_ORIGIN_SECURITY.md).
+Firewall: [docs/PROD_ORIGIN_SECURITY.md](docs/PROD_ORIGIN_SECURITY.md). На проде на
+10.11.2026 режим SSL в Cloudflare — Flexible, «Always Use HTTPS» включён.
 
 Текущий Nginx сохраняет входящий `X-Forwarded-Proto=https`, иначе использует
 собственный `$scheme`. Django доверяет этому заголовку. Это корректно только

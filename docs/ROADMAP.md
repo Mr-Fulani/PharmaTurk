@@ -4,7 +4,8 @@
 кода, конфигурации, документации и эксплуатационного состояния. **22 октября
 2026 года** отмечено сделанное в сентябре–октябре (раздел «Завершено в октябре
 2026», P1.5, P1.6); **24 октября** — медикаменты (P1.9 и «Завершено в октябре»);
-остальные разделы — по сверке 21 августа.
+**10 ноября** — SEO и ИИ-поиск 09–10.11 («Завершено в ноябре 2026»), IndexNow (P3),
+режим SSL Cloudflare; остальные разделы — по сверке 21 августа.
 
 Этот документ разделяет:
 
@@ -308,13 +309,30 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
 
 ## P3 — продуктовые улучшения
 
-- IndexNow для Bing и Яндекса — код готов 02.11.2026 ([INDEXNOW.md](INDEXNOW.md)),
-  после релиза с миграцией `catalog/0234` включает владелец (`INDEXNOW_ENABLED=true`);
+- ~~IndexNow для Bing и Яндекса~~ — на проде включён 02.11.2026 ([INDEXNOW.md](INDEXNOW.md));
 - Google Merchant feed поверх уже существующего YML-контракта;
 - Core Web Vitals/CrUX и Search Console monitoring;
 - автоматизированная проверка ru/en structured data;
 - quality dashboard рекомендаций и визуального поиска;
 - SLO для checkout, платежей и freshness каталога.
+
+## Завершено в ноябре 2026
+
+- **SEO и видимость в ИИ-поиске (09–10.11, релизы e3e16715 и 745bba62)** —
+  [SEO_AI_VISIBILITY.md](SEO_AI_VISIBILITY.md):
+  - #350: `public/llms.txt`, блок «Как работает Mudaroba» на главной, «Вопросы и ответы» +
+    FAQPage на страницах препаратов, `Organization` на главной, «Как заказать» с БАДами и Россией,
+    абзац «Оплата» на `/delivery` без онлайн-оплаты (миграция `pages/0007`);
+  - #351: страница «Аптеки Турции» `/turetskaya-apteka` ([TURKISH_PHARMACY_PAGE.md](TURKISH_PHARMACY_PAGE.md));
+  - #352: `Clean-param` для меток в `robots.txt` ([YANDEX_INDEXING.md](YANDEX_INDEXING.md));
+  - #353: картинки-превью ru/en (`og-default.jpg`, `og-default-en.jpg`, `lib/ogImage.js`,
+    [images/og-default/README.md](images/og-default/README.md)), описание главной с числами; единые
+    сроки лекарств и БАДов «авиа 3–7, наземная 7–14, морем 20–45 дней» (коротко — «3–14 дней»),
+    у прочих товаров — «7–14 дней»; `delivery_terms.py`, миграции `catalog/0238`, `0239`,
+    `pages/0008`, `0009`, команда `replace_delivery_terms` (на проде 14 090 карточек);
+  - #354: пустые товарные секции не в индексе `/sitemap.xml`, «Войти» в отзывах — кнопка.
+- **Вне кода (10.11)** — «Always Use HTTPS» в Cloudflare, карточка в Яндекс Бизнесе (на
+  модерации), проверка 404 и запросы индексации в Search Console.
 
 ## Завершено в октябре 2026
 
@@ -326,7 +344,8 @@ Next.js/analytics. Ввести nonce/hash-based CSP сначала в report-on
   сумма ≤ 7 ГиБ (PR #100, #101, #104, #108, [PROD_MEMORY.md](PROD_MEMORY.md));
   байты картинок больше не пишутся в Redis (#89); проверка места перед pull и
   очистка старых образов после деплоя (#88, [PROD_DISK_AND_REDIS.md](PROD_DISK_AND_REDIS.md)).
-- **Origin и обслуживание базы** — Cloudflare Full (strict) на 443, ночная чистка
+- **Origin и обслуживание базы** — порт 443 и Origin Certificate для Cloudflare Full (strict)
+  в коде (на 10.11.2026 в Cloudflare режим Flexible — TD-043), ночная чистка
   сессий и логов парсеров (PR #103, в main вместе с #102;
   [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md), [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md));
   ответы 500 не кэшируются Cloudflare (#115); Beat по crontab (МСК) вместо

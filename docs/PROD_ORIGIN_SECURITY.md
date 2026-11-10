@@ -4,6 +4,15 @@
 контейнере `mudaroba-nginx-1`, репозиторий на сервере
 `~/turk-export/PharmaTurk`.
 
+## Состояние на 2026-11-10
+
+- В панели Cloudflare режим SSL/TLS зоны — **Flexible**: Cloudflare ходит к серверу по HTTP
+  на порт 80, участок Cloudflare → сервер не шифруется. Full (strict) по шагам ниже сейчас не включён;
+  код (порт 443, `nginx/tls/`) готов. Включать — только с владельцем: нужен Origin Certificate
+  на сервере. Открытый пункт — TD-043 в [TECH_DEBT.md](TECH_DEBT.md).
+- «Always Use HTTPS» включён владельцем 10.11.2026: посетитель по `http://` получает 301 на
+  https прямо от Cloudflare.
+
 ## Что было на 2026-10-19
 
 - Cloudflare ходит к серверу по HTTP на порт 80 (режим **Flexible**): участок

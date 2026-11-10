@@ -25,8 +25,8 @@
 | [TECH_DEBT.md](TECH_DEBT.md) | реестр подтверждённого открытого технического долга | актуализирован 2026-10-22 (раздел за октябрь 2026) |
 | [SOURCE_OFFER_CART_VERIFICATION_PLAN.md](SOURCE_OFFER_CART_VERIFICATION_PLAN.md) | рабочий план проверки цены и наличия первоисточника в корзине и checkout | активен с 2026-08-27 |
 | [STALE_PRODUCTS.md](STALE_PRODUCTS.md) | «Неактуальные товары» в админке: скрыть и удалить вместе с файлами только по решению владельца, предохранители, журнал и восстановление | 2026-10-28 |
-| [SEO_AI_VISIBILITY.md](SEO_AI_VISIBILITY.md) | ТЗ «SEO и видимость в ИИ-поиске» (09.11.2026): что было, что сделано, что ждёт решения владельца; блок фактов на главной, FAQ препаратов, llms.txt, title, картинки; цифры по sitemap и описаниям | 2026-11-09 |
-| [YANDEX_INDEXING.md](YANDEX_INDEXING.md) | Почему Яндекс почти не индексирует сайт (09.11.2026): сбой Яндекса с 7 октября, данные Вебмастера, проверка сайта роботом, Clean-param, что нажимать в Вебмастере | 2026-11-09 |
+| [SEO_AI_VISIBILITY.md](SEO_AI_VISIBILITY.md) | ТЗ «SEO и видимость в ИИ-поиске» (09.11.2026): что было, что сделано, что ждёт решения владельца; блок фактов на главной, FAQ препаратов, llms.txt, title, картинки-превью ru/en, единые сроки доставки; что сделано вне кода 10.11 (Cloudflare, Яндекс Бизнес, Search Console) | 2026-11-10 |
+| [YANDEX_INDEXING.md](YANDEX_INDEXING.md) | Почему Яндекс почти не индексирует сайт (09.11.2026): сбой Яндекса с 7 октября, данные Вебмастера, проверка сайта роботом, Clean-param, что нажимать в Вебмастере и что уже сделано (переобход, Яндекс Бизнес, Always Use HTTPS) | 2026-11-10 |
 | [INDEXNOW.md](INDEXNOW.md) | IndexNow для Bing и Яндекса: какие страницы товаров уходят (без изменений цены), ключ, дневной предел, включение и проверка | 2026-11-02 |
 | [PRODUCT_SEARCH.md](PRODUCT_SEARCH.md) | поиск товаров на сайте: подготовленный текст товара (`ProductSearchIndex`), нормализация, поиск по словам, порядок по точности, «Показать ещё», пересчёт и команда `rebuild_product_search_index`, выкатка и откат | 2026-11-05 |
 | [PRODUCT_SEARCH_EXPLAIN_2026-11-05.md](PRODUCT_SEARCH_EXPLAIN_2026-11-05.md) | скорость поиска после инцидента 05.11.2026: EXPLAIN было/стало и готовые SQL (COUNT и страница) для проверки на проде только чтением | 2026-11-05 |
@@ -41,7 +41,7 @@
 | [DB_BACKUP.md](DB_BACKUP.md) | ежедневный бэкап базы в отдельный бакет R2, проверка, включение и восстановление с нуля на новом сервере | 2026-10-19 |
 | [PROD_MEMORY.md](PROD_MEMORY.md) | лимиты памяти контейнеров, брокер и кэш в разных Redis, swap, применение без потери очередей | после инцидента 2026-10-19 |
 | [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md) | ночная чистка сессий Django и логов парсеров, первая чистка, VACUUM / VACUUM FULL и их блокировки; autovacuum таблиц товаров после массовых правок | снимок 2026-10-19, autovacuum — 2026-10-21 |
-| [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict) с Origin Certificate на 443, закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-10-19 |
+| [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict) с Origin Certificate на 443 (код готов; на 10.11 в Cloudflare — Flexible), закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-11-10 |
 | [SECURITY_CSP.md](SECURITY_CSP.md) | CSP в режиме Report-Only, приёмник `/api/csp-report/`, refresh JWT в HttpOnly cookie, шаги перехода в enforce (TD-018/TD-033) | 2026-10-24 |
 | [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md) | под root: обновления ОС и Docker, swap, журнал systemd, перезагрузка в тихий час | 2026-10-19 |
 | [AUDIT_2026-10-19_PARSERS_CATALOG.md](AUDIT_2026-10-19_PARSERS_CATALOG.md) | почему не запускаются Instagram/UmmaLand/Akakce, товары без картинки и цены, сброс интервалов beat при деплое | отчёт 2026-10-19 |
@@ -53,7 +53,7 @@
 | [DEPLOY.md](../DEPLOY.md) | production deployment и rollback | проверен 2026-08-21, актуализирован 2026-10-22 (бэкап в R2, origin 443, Redis) |
 | [scripts/release/README.md](../scripts/release/README.md) | скрипты релиза: проверка, миграции, выкладка, откат, сокращённый backend-релиз | актуализирован 2026-10-18 |
 | [MANAGEMENT_COMMANDS.md](MANAGEMENT_COMMANDS.md) | справочник management-команд, которые не описаны в тематических доках; устаревшие помечены | 2026-10-22 |
-| [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) | правила SEO, backend/frontend и e-commerce | актуализирован 2026-10-23 |
+| [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) | правила SEO, backend/frontend и e-commerce | актуализирован 2026-11-10 |
 | AUDIT_2026-10-15_SEO_GROWTH.md | аудит качества, SEO и воронки 15.10: P0 (фейковая карта в checkout, аналитика, заявка на лекарства, Rx-разметка, картинки под Disallow, сырой контент, пустые категории) закрыты к 17.10 | локальный отчёт владельца, в репозиторий не коммитится (`.gitignore`) |
 
 ## Доменная документация
@@ -65,6 +65,7 @@
 - [AUTO_PARTS_AI_DESIGN.md](AUTO_PARTS_AI_DESIGN.md) — дизайн домена автозапчастей: OEM-номера, применимость, обработка без LLM;
 - [HOW_TO_ORDER_PAGE.md](HOW_TO_ORDER_PAGE.md) — страница «Как заказать»: разделы, SEO, позиция баннеров `how_to_order`;
 - [TURKISH_PHARMACY_PAGE.md](TURKISH_PHARMACY_PAGE.md) — страница «Аптеки Турции» `/turetskaya-apteka`: кластер «аптека в Турции», тексты, FAQPage, поиск, футер;
+- [images/og-default/README.md](images/og-default/README.md) — картинка-превью сайта (og:image) ru/en: что на ней, где используется (`lib/ogImage.js`), как пересобрать;
 - [MEDICINE_LANDING_PAGES.md](MEDICINE_LANDING_PAGES.md) — посадочные страницы медикаментов: SEO подкатегорий и корня, 17 подборок по правилам АТХ/формы, адреса, админка;
 - [MEDICINE_DRUG_PAGES_AND_BLOG.md](MEDICINE_DRUG_PAGES_AND_BLOG.md) — страницы препаратов `/drugs/<slug>` (бренд и все формы), блог, отчёт по товарам со спросом, микроразметка;
 - [BRAND_PAGE_PERFORMANCE.md](BRAND_PAGE_PERFORMANCE.md) — скорость страницы бренда: замеры, детоаст `external_data`, частичные индексы 0217, `view=card`;
