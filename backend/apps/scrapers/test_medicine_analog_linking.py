@@ -147,7 +147,11 @@ def test_medicine_analogs_are_saved_and_matched_by_barcode():
     ).exists()
 
     analog_medicine.refresh_from_db()
-    assert analog_medicine.active_ingredient == "Asiklovir"
+    # Готовая (не заглушка) карточка аналога вещество родителя не получает: своё она
+    # берёт со своей страницы. Чужая запись в пустом поле позже расходилась с источником,
+    # и парсер пропускал карточку целиком (active_ingredient_conflict, 10.11.2026).
+    # Код АТХ из самой строки аналога по-прежнему записывается.
+    assert analog_medicine.active_ingredient == ""
     assert analog_medicine.atc_code == "D06BB03"
     assert analog_medicine.sgk_equivalent_code == "E007D"
 

@@ -12,6 +12,7 @@ def medicine(category, slug, field, *, own, base, stub=False):
         name=slug.upper(), slug=slug, category=category, price=100, currency="TRY", atc_code=field,
         external_data={"source": "ilacfiyati"},
     )
+    item.refresh_from_db()  # base_product создаётся при сохранении
     data = {"source": "ilacfiyati", "is_stub": stub}
     MedicineProduct.objects.filter(pk=item.pk).update(
         external_data={**data, "attributes": {"atc_code": own} if own else {}},
