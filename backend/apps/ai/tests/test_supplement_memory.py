@@ -187,8 +187,9 @@ def test_list_of_only_excipients_is_not_called_composition_and_package_data_is_d
         # Пилот 4: подсказка словаря целиком, турецкое слово в переводе; бренд и латынь с опечаткой источника — верно.
         ("Propolis", "прополис | propolis", "propolis", ["ru_untranslated"]),
         # Пилот на проде 06.11: латинские единицы в русском, «сафлор» без масла, «Убиквинол».
+        # Волна 1в: «ölçek» — мерная ложка по словарю.
         ("Günde 2 ölçek 10 ml kullanılır.", "По 2 мерные ёмкости по 10 ml в день.", "2 scoops of 10 ml a day.",
-         ["ru_untranslated"]),
+         ["supplement_ingredient_mistranslated", "ru_untranslated"]),
         ("Aspir yağı", "сафлор", "safflower", ["supplement_ingredient_mistranslated"]),
         ("Ubikinol (Koenzim Q10) 200 mg", "Убиквинол (Коэнзим Q10) 200 мг", "Ubiquinol (Coenzyme Q10) 200 mg",
          ["supplement_ingredient_mistranslated"]),
@@ -1416,3 +1417,30 @@ def test_wave1b_description_checks():
     assert "supplement_untranslated" not in sc.log_problems(log(["Состав: Bifidobacterium lactis, инулин."])).get(
         "description", []
     )
+
+
+def test_wave1c_composition_roles_other_ingredients_and_excipients():
+    # «Kıvam arttırıcı; Gliserol (E422)» — назначение склеивается с веществом (NATUWELL 10315).
+    text = "İçindekiler: Deiyonize su, Kıvam arttırıcı; Gliserol (E422), Koruyucu; Sodyum benzoat (E211)"
+    assert sm.section_parts({"product_info": text})["composition"] == [
+        "Deiyonize su", "Kıvam arttırıcı: Gliserol (E422)", "Koruyucu: Sodyum benzoat (E211)",
+    ]
+    # «Diğer İçerikler» — вспомогательные вещества, не «Состав» (11964).
+    text = "İçerik: Metilkobalamin\nDiğer İçerikler: Mikrokristalin Selüloz, Mannitol, Kiraz Aroması"
+    parts = sm.section_parts({"product_info": text})
+    assert parts["composition"] == ["Metilkobalamin"]
+    assert parts["excipients"] == ["Mikrokristalin Selüloz", "Mannitol", "Kiraz Aroması"]
+    # Краситель и разрыхлитель оболочки — вспомогательные: список из одних них не «Состав» (10210).
+    text = "İçindekiler: Mikrokristalin Selüloz, Kroskarmelloz Sodyum, Titanyum dioksit, Demir oksit"
+    parts = sm.section_parts({"product_info": text})
+    assert "composition" not in parts and len(parts["excipients"]) == 4
+
+
+def test_wave1c_olcek_glossary():
+    assert "supplement_ingredient_mistranslated" in sm.line_problems(
+        "Günde 1 defa 1 ölçek (5 ml).", "1 раз в день 1 мерный стаканчик (5 мл).", "1 measuring cup (5 ml) once a day."
+    )
+    assert sm.line_problems("Günde 1 defa 1 ölçek (5 ml).", "1 раз в день 1 мерная ложка (5 мл).",
+                            "1 scoop (5 ml) once a day.") == []
+    assert sm.line_problems("Günde 1 ölçek kabı (10 ml).", "1 мерный стаканчик (10 мл) в день.",
+                            "1 measuring cup (10 ml) a day.") == []

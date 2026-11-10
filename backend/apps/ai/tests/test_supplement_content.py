@@ -570,3 +570,46 @@ def test_variant_b_drops_model_paragraph_when_switched_off(settings):
     for paragraph in ANSWER["description"]["ru"]:
         assert paragraph[:40] not in log.generated_description
     assert log.generated_description.endswith(f"<p>{sc.DISCLAIMER['ru']}</p>")
+
+
+def test_wave1c_intro_brand_wording_units_and_percent():
+    # Бренд до первого слова словаря, «with», «vitamin»; «PLUS» — часть бренда; без двойной точки (волна 1в).
+    pieces = sc.parse_pack("OCEAN GUMMIES VITAMIN D3 ICEREN TAKVIYE EDICI GIDA CIGNENEBILIR JEL 1000 IU 60 jel")
+    assert not sc.code_intro("OCEAN GUMMIES", pieces, "ru").endswith("..")
+    assert sc._intro_brand("VENATURA LIPOZOMAL") == "VENATURA"
+    assert sc._intro_brand("NATURALNEST MAGNEZYUM PLUS") == "NATURALNEST"
+    assert sc._intro_brand("DOPPELHERZ VITAMIN C, CINKO") == "DOPPELHERZ"
+    assert sc._intro_brand("VELAVIT V-FIRSTECT WITH") == "VELAVIT V-FIRSTECT"
+    assert sc._intro_brand("MDC BETA GLUKAN") == "MDC"
+    assert sc._intro_brand("ACTIVE PLUS") == "ACTIVE PLUS"
+    assert sc._intro_brand("ZADE VITAL") == "ZADE VITAL"
+    # «5 впрыска», NE/RE/α-TE, турецкий процент, точка внутри скобки.
+    assert sc._fix_translit("по 2 (600 мкг) или 5 (1500 мкг) впрыска в день") == "по 2 (600 мкг) или 5 (1500 мкг) впрысков в день"
+    assert sc._fix_translit("Витамин B3 - 5 мг NE, витамин A - 200 мкг RE, витамин E - 4 мг α-TE") == (
+        "Витамин B3 - 5 мг НЭ, витамин A - 200 мкг РЭ, витамин E - 4 мг α-ТЭ"
+    )
+    assert sc._fix_translit("Streptococcus salivarius K12 ( %5), 50% сока") == "Streptococcus salivarius K12 (5 %), 50% сока"
+    # Ревью #364: русская запись процента не меняется; обозначение внутри названия — тоже.
+    for text, expected in (
+        ("Куркумин 95 % 500 мг", "Куркумин 95 % 500 мг"),
+        ("экстракт 95% 500 мг", "экстракт 95% 500 мг"),
+        ("%5 сока", "5 % сока"),
+        ("K12 ( %5)", "K12 (5 %)"),
+        ("%0,5 масла", "0,5 % масла"),
+        ("10 мг RE-форма, 5 мг NEX", "10 мг RE-форма, 5 мг NEX"),
+    ):
+        assert sc._fix_translit(text) == expected, text
+    assert sc._block_wording("агент (соли жирных кислот и диоксид кремния.)") == "агент (соли жирных кислот и диоксид кремния)"
+    assert sc._block_wording("ладанник (Cistus creticus L.), сок (воды, молока и т. п.)") == (
+        "ладанник (Cistus creticus L.), сок (воды, молока и т. п.)"
+    )
+
+
+def test_wave1c_turkish_letters_in_blocks_go_to_moderation():
+    def log(blocks):
+        return SimpleNamespace(
+            raw_llm_response={"rule_content": {"supplement": {"brand": "X", "memory_texts": {"ru": blocks}}}},
+            input_data={"name": "X TABLET 30 tablet"}, extracted_attributes={}, generated_title="",
+            generated_description="".join(f"<p>{text}</p>" for text in blocks),
+        )
+    assert "supplement_untranslated" in sc.log_problems(log(["Состав: краситель: AQUA POLİSH f WHİTE."]))["description"]

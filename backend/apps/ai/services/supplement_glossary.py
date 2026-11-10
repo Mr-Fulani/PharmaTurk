@@ -312,6 +312,9 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "tatli kasigi": ("десертная ложка", "dessert spoon", S),
     # Волна 1б: «1 puf» — «1 пуф».
     "puf": ("впрыск / нажатие / впрыскивание", "puff / spray", S),
+    # Волна 1в: «1 ölçek (5 ml)» — «мерный стаканчик» вместо мерной ложки (9500); «ölçek kabı» — мерный стаканчик.
+    "olcek kabi": ("мерный стаканчик / мерный колпачок", "measuring cup", S),
+    "olcek": ("мерная ложка", "scoop / measuring spoon", S),
     "melaloyka": ("чайное дерево", "tea tree", S),
     "yumurta zari": ("мембрана яичной скорлупы", "eggshell membrane", S),
     "buyuk meyveli vaksiniyum": ("клюква крупноплодная", "cranberry", S),
