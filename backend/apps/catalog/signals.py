@@ -427,9 +427,11 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
         else:
             # Если URL внутренний (cdn.mudaroba.com), извлекаем ключ хранилища.
             try:
-                from urllib.parse import urlparse
+                from urllib.parse import unquote, urlparse
                 from django.core.files.storage import default_storage
-                path = _normalize_storage_key_for_file_field(urlparse(url).path)
+                # Ключ в хранилище — без %-кодировки: «MILITARY%20GREEN» в адресе — это
+                # «MILITARY GREEN» в R2 (код цвета SuperStep с пробелом, 10.11.2026).
+                path = _normalize_storage_key_for_file_field(unquote(urlparse(url).path))
                 if not path:
                     return
                 # Если файл в generic parsed-папке (products/parsed/...) — пересохраняем
