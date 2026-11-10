@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 
 from apps.catalog.card_payload import compact_card_product_payload
 from apps.catalog.models import ClothingProduct, ShoeProduct
-from apps.catalog.tests.test_brand_storefront_performance import _medicine, medicine_brand  # noqa: F401
+from apps.catalog.tests.test_brand_storefront_performance import _medicine
 from apps.catalog.tests.test_domain_variant_queries import DOMAINS, _add_products, _brand_with_category
 from apps.catalog.views import ClothingProductViewSet, ShoeProductViewSet
 from apps.feedback.review_aggregates import attach_review_aggregates
@@ -152,11 +152,11 @@ def test_source_variant_exclusion_uses_partial_index(rf, viewset, model):
 
 
 @pytest.mark.django_db
-def test_medicine_brand_card_page_does_not_grow(medicine_brand):
+def test_medicine_brand_card_page_does_not_grow():
     """Лекарства без своих картинок берут их у теневого Product — prefetch, не запрос на товар."""
     from apps.catalog.models import ProductImage
 
-    brand, category = medicine_brand
+    brand, category, _ = _brand_with_category("medicines")
     client = APIClient()
     url = f"/api/catalog/brands/{brand.slug}/products"
 
