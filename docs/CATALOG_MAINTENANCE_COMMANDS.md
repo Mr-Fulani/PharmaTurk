@@ -322,3 +322,6 @@ manage.py replace_delivery_terms --restore /backups/delivery-terms-YYYYMMDD.json
 возвращает поле, только если его не меняли после записи. Тексты разделов, подборок и `/drugs`
 меняет миграция `catalog/0239`.
 
+На проде 10.11.2026 (релиз 745bba62): `--apply` записал 14 090 товаров (лекарства 6 808, БАДы 7 282),
+116 256 полей; бэкап — `~/backups/ai-pilot/delivery-terms-20261110.jsonl.gz`; повторный показ — 0.
+
