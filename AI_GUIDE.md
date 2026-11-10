@@ -401,6 +401,9 @@ manage.py source_ai_cards --source superstep --report --since 2026-11-07       #
 manage.py source_ai_cards --source superstep --apply --since 2026-11-07T07:00 \
     --backup /home/deploy/backups/superstep-rows-$(date +%Y%m%d-%H%M).json.gz  # только «Завершено»
 manage.py source_ai_cards --restore /home/deploy/backups/superstep-rows-….json.gz  # откат применения
+manage.py source_ai_cards --source superstep --fix-text fixes.json             # показать правку фраз черновиков
+manage.py source_ai_cards --source superstep --fix-text fixes.json \
+    --backup /home/deploy/backups/superstep-fix-$(date +%Y%m%d-%H%M).json      # записать правку
 ```
 
 - Только Claude: при `AI_OPENAI_ENABLED=true` `--run` не запускается (запасной путь `LLMClient` ушёл бы
@@ -417,6 +420,14 @@ manage.py source_ai_cards --restore /home/deploy/backups/superstep-rows-….json
   админке. Товар, чьё название поменяли после `--run`, пропускается с пометкой.
 - Откат: `--restore <бэкап>` в одной транзакции удаляет строки из `.created.json` и возвращает строки
   бэкапа. Логи AI остаются «Применено»; чтобы применить заново, нужен новый `--run --force`.
+- Правка фраз черновиков до `--apply` — только `--fix-text <файл>` (JSON `{"id товара": [["было",
+  "стало"], …]}`) или форма лога в админке. Применение пишет русский перевод товара из
+  `seo_translations.ru` лога, а `--run` уже положил описание в память переводов: правка одного
+  `generated_description` скриптом до сайта не доходит (10.11.2026, на страницах остались «military
+  green», «вырез-бисёр»). `--fix-text` меняет фразу в описании и SEO-описании лога, в
+  `seo_translations.ru` (описание, meta, og) и в записях памяти этого лога. Фраза должна встречаться в
+  описании ровно один раз, иначе товар пропускается. Без `--backup` только показ; с `--backup` — новый
+  файл с прежними текстами. Обрезанное «…» SEO-описание, где фраза разрезана, проверять на странице.
 - На проде запускать в отдельном контейнере из образа backend (≤ 6 потоков, `--memory 2g`, сети
   `mudaroba_data` и `mudaroba_edge` — без внешней сети Claude недоступен), через `nohup`, не в
   `/tmp` контейнера сайта. С 01:00 до 06:30 МСК `--run` и `--apply` отказываются запускаться.

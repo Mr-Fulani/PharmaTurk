@@ -283,3 +283,58 @@ def test_apply_keeps_title_reviewed_by_moderator(generator, category, tmp_path):
     )
 
     assert fresh.pk not in generator.applied and f"{product.pk}: название менялось" in out.getvalue()
+
+
+def test_fix_text_reaches_ru_translation_and_memory(generator, category, tmp_path):
+    # 10.11.2026: правка только generated_description не доходила до сайта — применение берёт
+    # русский перевод из seo_translations.ru, а память отдаёт старый текст следующим партиям.
+    from apps.ai.models import AITranslationMemory
+
+    product = _product("superstep-fix", category)
+    old = "<p>Футболка. Крой: вырез-бисёр, мягкая ткань.</p>"
+    log = _log(
+        product,
+        generated_description=old,
+        generated_seo_description="Футболка: вырез-бисёр…",
+        extracted_attributes={
+            "seo_translations": {
+                "ru": {"generated_description": old, "meta_description": "Футболка: вырез-бисёр…"},
+                "en": {"generated_description": "<p>T-shirt.</p>"},
+            }
+        },
+    )
+    memory = AITranslationMemory.objects.create(
+        namespace="product_description:1", source_hash="h", source_text="tr", ru_text=old, source_log=log
+    )
+    fixes = tmp_path / "fixes.json"
+    fixes.write_text(json.dumps({str(product.pk): [["вырез-бисёр", "круглый вырез"]]}), encoding="utf-8")
+
+    call_command("source_ai_cards", source="superstep", fix_text=str(fixes), stdout=StringIO())
+    log.refresh_from_db()
+    assert "бисёр" in log.generated_description  # без --backup только показ
+
+    backup = tmp_path / "fix-backup.json"
+    call_command("source_ai_cards", source="superstep", fix_text=str(fixes), backup=str(backup), stdout=StringIO())
+    log.refresh_from_db()
+    memory.refresh_from_db()
+    seo_ru = log.extracted_attributes["seo_translations"]["ru"]
+    assert "круглый вырез" in log.generated_description and "бисёр" not in log.generated_description
+    assert "бисёр" not in seo_ru["generated_description"] and "бисёр" not in seo_ru["meta_description"]
+    assert "бисёр" not in log.generated_seo_description and "бисёр" not in memory.ru_text
+    assert log.extracted_attributes["seo_translations"]["en"] == {"generated_description": "<p>T-shirt.</p>"}
+    saved = json.loads(backup.read_text(encoding="utf-8"))
+    assert saved[0]["generated_description"] == old and saved[0]["memory"] == {str(memory.pk): old}
+
+
+def test_fix_text_skips_draft_without_exact_phrase(generator, category, tmp_path):
+    product = _product("superstep-fix2", category)
+    log = _log(product, generated_description="<p>Без фразы.</p>")
+    fixes = tmp_path / "fixes.json"
+    fixes.write_text(json.dumps({str(product.pk): [["вырез-бисёр", "круглый вырез"]]}), encoding="utf-8")
+    out = StringIO()
+    call_command(
+        "source_ai_cards", source="superstep", fix_text=str(fixes), backup=str(tmp_path / "b.json"), stdout=out
+    )
+    log.refresh_from_db()
+    assert log.generated_description == "<p>Без фразы.</p>"
+    assert "пропущен" in out.getvalue() and not (tmp_path / "b.json").exists()
