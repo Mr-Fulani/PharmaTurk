@@ -66,9 +66,11 @@ LINE_SYSTEM_PROMPT = (
 # раздела («Ürün Adı», «Özet Bilgi») закрывает текущий блок.
 _LABELS = {
     "composition": (
-        "urun bilesimi", "urun bilesenleri", "icerik", "icerigi", "icindekiler", "diger icerikler",
+        "urun bilesimi", "urun bilesenleri", "icerik", "icerigi", "icindekiler",
         "bilesenler", "bilesimi",
     ),
+    # «Diğer İçerikler» — прочие (вспомогательные) вещества; на карточке был «Состав» без B12 (11964, волна 1в).
+    "excipients": ("diger icerikler", "diger bilesenler"),
     "usage": (
         "kullanim sekli", "kullanim onerisi", "onerilen kullanim", "tavsiye edilen kullanim",
         "gunluk kullanim dozu", "kullanim talimati", "kullanim",
@@ -105,6 +107,8 @@ _EXCIPIENT_RE = re.compile(
     r"silikon dioksit|magnezyum stearat|mikrokristalin|hidroksipropil)"
     # Оболочка таблетки (NUTRAXIN, пилот 3).
     r"|selul|polietilen|polivinil|metakrilat|polioksietilen|yag asitlerinin|\btalk\b|izomalt|pancar koku"
+    # Краситель и разрыхлители оболочки (10210, волна 1в).
+    r"|titanyum dioksit|demir oksit|kroskarmeloz|kroskarmelloz|krospovidon|stearik asit|nisasta glikolat"
 )
 
 
@@ -415,6 +419,13 @@ def _without_unclosed_brackets(text: str) -> str:
     return re.sub(r"(: |\s)\s+", r"\1", "".join(out))
 
 
+_ROLE_ONLY_RE = re.compile(
+    r"(?:yardimci bilesen(?:ler)?|kivam artt?irici|koruyucu(?:lar)?|tatlandirici(?:lar)?|renklendirici(?:ler)?|"
+    r"aroma verici|topaklanmayi onleyici(?:ler)?|nem verici|asitlik duzenleyici(?:ler)?|stabilizor|emulgator|"
+    r"hacim artt?irici|antioksidan|jellestirici|parlatici|dolgu maddesi|kaplama ajani)"
+)
+
+
 def _split_top_level(text: str) -> list[str]:
     """Список состава → компоненты: запятая или точка с запятой вне скобок."""
     # Незакрытая скобка источника («Multivitamin ve Mineral Karışımı(%3,77) [Vitamin C(…), …» без «]») склеивала
@@ -508,7 +519,17 @@ def _split_top_level(text: str) -> list[str]:
             or (re.search(r"\byas", folded) and re.search(r"uygun|kullanim", folded))
         ):
             result.append(item)
-    return result
+    # «Kıvam arttırıcı; Gliserol (E422)» — назначение отдельной частью: на карточке «загуститель, Глицерин»
+    # (NATUWELL 10315, волна 1в). Склеиваем «назначение: вещество».
+    merged: list[str] = []
+    for item in result:
+        if merged and _ROLE_ONLY_RE.fullmatch(fold_tr(merged[-1]).strip(" :")):
+            merged[-1] = f"{merged[-1].strip(' :')}: {item}"
+        else:
+            merged.append(item)
+    if merged and _ROLE_ONLY_RE.fullmatch(fold_tr(merged[-1]).strip(" :")):
+        merged.pop()
+    return merged
 
 
 def _split_dose_and_prohibition(sentence: str) -> list[str]:
@@ -635,12 +656,14 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
     фразой («… içerir», «A, C, E»)."""
     parts: dict[str, list[str]] = {kind: [] for kind in BLOCK_KINDS}
     hidden: dict[str, str] = {}
+    other_items: list[str] = []
     for text in sections.values():
         current: Optional[str] = None
         list_seen = False  # в составе уже была строка-список «A, B, C»
         composition_start = 0  # с какого компонента начался состав текущей подписи
         filled = False  # у текущей подписи уже есть текст
         open_part: Optional[tuple[str, int]] = None  # предложение без точки в конце — его продолжение ниже
+        other_list = False  # текущая подпись — «Diğer İçerikler»
         lines = [
             line for line in (
                 normalize_source_text(_ESCAPED_CHAR_RE.sub(lambda m: chr(int(m.group(1), 16)), raw))
@@ -666,6 +689,9 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
             open_part = None
             kind, rest, is_label = _label(line)
             if is_label:
+                # «Diğer İçerikler» разбирается как список состава, а части уходят во вспомогательные (ниже).
+                other_list = kind == "excipients"
+                kind = "composition" if other_list else kind
                 current, list_seen, filled = kind, False, False
                 composition_start = len(parts["composition"])
                 if not rest:
@@ -710,6 +736,8 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                     current = None
                 list_seen = list_seen or len(items) > 1
                 parts["composition"].extend(items)
+                if other_list:
+                    other_items.extend(items)
                 continue
             sentences = _sentences(line)
             if current == "usage":
@@ -761,6 +789,10 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 if target:
                     parts[target].append(sentence)
                     open_part = None if re.search(r"[.!?;:]$", sentence) else (target, len(parts[target]) - 1)
+    moved = [item for item in other_items if item in parts["composition"]]
+    if moved:
+        parts["composition"] = [item for item in parts["composition"] if item not in moved]
+        parts["excipients"] = [*parts["excipients"], *moved]
     # Способ применения без дозы и кратности — «11 yaş ve üzeri yetişkinlerin kullanımına uygundur» (ACTIVE PLUS 7768):
     # блок неполный, не показываем (пилот 4 на проде).
     if parts["usage"] and not any(_USAGE_DOSE_RE.search(fold_tr(item)) for item in parts["usage"]):

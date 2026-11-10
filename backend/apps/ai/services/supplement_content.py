@@ -523,6 +523,19 @@ def _fix_translit(text: str, locale: str = "ru") -> str:
         )
         text = _ALPHA_RE.sub(r"\1-α-", text)
         text = _TWO_FEMININE_RE.sub(r"\1ве\2", _ONE_FEMININE_RE.sub(r"\1дна\2", text))
+        # «5 впрыска» — согласование с числом (волна 1в на проде).
+        text = re.sub(
+            r"\b(\d+)(\s+\([^()]*\))?\s+впрыск(?:а|ов)?\b",
+            lambda m: f"{m.group(1)}{m.group(2) or ''} " + ru_plural(m.group(1), "впрыск", "впрыска", "впрысков"),
+            text,
+        )
+        # Эквиваленты витаминов: «5 мг NE», «200 мкг RE», «4 мг α-TE» → НЭ, РЭ, α-ТЭ (10055, 11443).
+        text = re.sub(r"(?<=мг|кг)\s+(?:α-TE|a-TE)\b", " α-ТЭ", text)
+        text = re.sub(r"(?<=мг|кг)\s+NE\b", " НЭ", text)
+        text = re.sub(r"(?<=мг|кг)\s+RE\b", " РЭ", text)
+        # Турецкая запись процента «( %5)», «%0,5» → «(5 %)» (штаммы как есть, 9839).
+        text = re.sub(r"\(\s*%\s?(\d+(?:[.,]\d+)?)\s*\)", r"(\1 %)", text)
+        text = re.sub(r"(?<![\d.,])%\s?(\d+(?:[.,]\d+)?)", r"\1 %", text)
         # «Одна саше», «Каждый саше» — саше среднего рода (волна 1 на проде).
         text = re.sub(r"\b([Оо])дна(\s+саше)\b", r"\1дно\2", text)
         text = re.sub(r"\b([Кк])аждый(\s+саше)\b", r"\1аждое\2", text)
@@ -748,6 +761,9 @@ _ACRONYMS_RE = re.compile(r"\b(cla|epa|dha|msm|gaba|hmb|pqq|nadh|zma)\b", re.IGN
 
 def _block_wording(value: str, locale: str = "ru") -> str:
     value = _fix_translit(value, locale)
+    # «… (магниевые соли жирных кислот и диоксид кремния.).» — точка источника внутри скобки (9758, 12061).
+    # Сокращения «L.)», «т. п.)» остаются — только после слова из четырёх и более строчных букв.
+    value = re.sub(r"(?<=[а-яёa-z]{4})\.\s*\)", ")", value)
     # Звёздочка сноски — у слова или в начале фразы; «2*1 капсула» не трогаем (ревью #331).
     value = re.sub(r"\s{2,}", " ", re.sub(r"(?<!\d)\*+|\*+(?!\d)", "", value)).strip()
     return _ACRONYMS_RE.sub(lambda m: m.group(1).upper(), value)
@@ -809,6 +825,27 @@ def model_paragraph_enabled() -> bool:
 
 
 _CODE_INTRO = {"ru": "пищевая добавка", "en": "food supplement"}
+# Бренд модели может захватить слова названия: «VENATURA LIPOZOMAL», «NATURALNEST MAGNEZYUM PLUS», «VELAVIT
+# V-FIRSTECT WITH», «DOPPELHERZ VITAMIN C, CINKO …» (волна 1в на проде 10.11.2026) — в строке бренд до первого
+# слова словаря, «with», «vitamin» или запятой; первое слово остаётся всегда.
+_INTRO_STOP_WORDS = frozenset({"with", "ve", "and", "vitamin", "icin"})  # «PLUS» — часть брендов: ACTIVE PLUS
+
+
+def _intro_brand(brand: Any) -> str:
+    words = str(brand or "").split()
+    kept = words[:1]
+    for word in words[1:]:
+        folded = fold_tr(word).strip(",;:.")
+        if folded in _INTRO_STOP_WORDS or folded in supplement_glossary.GLOSSARY or kept[-1].endswith(","):
+            # «MDC BETA GLUKAN»: «beta glukan» / «betaglukan» — слово словаря, «BETA» тоже не бренд.
+            previous = fold_tr(kept[-1]).strip(",;:.")
+            if len(kept) > 1 and (
+                f"{previous} {folded}" in supplement_glossary.GLOSSARY or f"{previous}{folded}" in supplement_glossary.GLOSSARY
+            ):
+                kept.pop()
+            break
+        kept.append(word)
+    return " ".join(kept).rstrip(",;:")
 
 
 def code_intro(brand: str, pack: Optional[Pack], locale: str) -> str:
@@ -817,8 +854,8 @@ def code_intro(brand: str, pack: Optional[Pack], locale: str) -> str:
     Сгенерированное название сюда не попадает: на волне 1б (10.11.2026) в нём были выдумки модели («в блистерах»,
     «по 12 г», «со вкусом апельсина») — 27 из 70 ошибок описаний. Нечего собрать — строки нет.
     """
-    brand = str(brand or "").strip()
-    pack_text = getattr(pack, locale, "") if pack is not None else ""
+    brand = _intro_brand(brand)
+    pack_text = (getattr(pack, locale, "") if pack is not None else "").rstrip(".")
     if not brand and not pack_text:
         return ""
     head = f"{brand} — {_CODE_INTRO[locale]}" if brand else _CODE_INTRO[locale].capitalize()
@@ -1130,7 +1167,11 @@ def log_problems(log) -> dict[str, list[str]]:
     if dose_per_portion_suspicious(getattr(log, "generated_description", ""), source):
         description.append("supplement_dose_per_portion")
     # Непереведённое слово в блоках памяти: «powder», «Magnezyum», «Devil's Claw» (волна 1б на проде).
-    if any(supplement_memory.UNTRANSLATED_WORD_RE.search(html.unescape(text)) for text in memory_texts.get("ru") or []):
+    # Турецкие буквы в блоке: «краситель: AQUA POLİSH f WHİTE» (12263, волна 1в).
+    if any(
+        supplement_memory.UNTRANSLATED_WORD_RE.search(html.unescape(text)) or re.search(r"[İıŞşĞğ]", html.unescape(text))
+        for text in memory_texts.get("ru") or []
+    ):
         description.append("supplement_untranslated")
     # Находка судьи — до отметки «Описание проверено модератором» (её учитывает semantic_validator).
     if supplement_judge.flagged((rule_content.get("supplement") or {}).get("judge")):
