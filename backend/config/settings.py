@@ -1041,6 +1041,13 @@ AI_CONFIG = {
     'MODEL': env("AI_MODEL", default="gpt-4o-mini"),
     # Основная модель текста при заданном ANTHROPIC_API_KEY; MODEL (OpenAI) — запасная.
     'ANTHROPIC_MODEL': env("AI_ANTHROPIC_MODEL", default="claude-haiku-5-5"),
+    # Судья описаний БАДов (apps/ai/services/supplement_judge.py): второй запрос к Claude, только модерация.
+    'SUPPLEMENT_JUDGE': env.bool("AI_SUPPLEMENT_JUDGE", default=True),
+    # Модель судьи; пусто — ANTHROPIC_MODEL (Haiku). Проба Opus 5.5 — 10.11.2026.
+    'SUPPLEMENT_JUDGE_MODEL': env("AI_SUPPLEMENT_JUDGE_MODEL", default=""),
+    # Вариант «б»: False — описание БАДа без вводного абзаца модели (строка из названия + блоки памяти).
+    # Включает владелец; по умолчанию абзац модели остаётся.
+    'SUPPLEMENT_MODEL_PARAGRAPH': env.bool("AI_SUPPLEMENT_MODEL_PARAGRAPH", default=True),
     'VISION_MODEL': env("AI_VISION_MODEL", default="gpt-4o-mini"),
     'EMBEDDING_MODEL': env("AI_EMBEDDING_MODEL", default="text-embedding-3-small"),
     # USD за 1M токенов; cached_input — цена кэшированной части промпта.
@@ -1051,6 +1058,7 @@ AI_CONFIG = {
             "gpt-4o-mini": {"input": 0.15, "cached_input": 0.075, "output": 0.60},
             "gpt-4o": {"input": 2.50, "cached_input": 1.25, "output": 10.00},
             "claude-haiku-5-5": {"input": 0.10, "cached_input": 0.01, "output": 0.50},
+            "claude-opus-5-5": {"input": 4.00, "cached_input": 0.20, "output": 20.00},
             "text-embedding-3-small": {"input": 0.02, "output": 0},
         },
     ),

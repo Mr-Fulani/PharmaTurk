@@ -29,8 +29,12 @@ import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from django.conf import settings
+
 from apps.ai.models import AIProcessingLog
-from apps.ai.services import supplement_brands, supplement_glossary, supplement_memory, translation_memory
+from apps.ai.services import (
+    supplement_brands, supplement_glossary, supplement_judge, supplement_memory, translation_memory,
+)
 from apps.ai.services.medicine_reference import fold_tr, ru_plural, translate_reference_field
 from apps.ai.services.medicine_title import CYRILLIC_RE, looks_like_source_name
 from apps.catalog.services.delivery_terms import ORDER_SENTENCE
@@ -394,6 +398,31 @@ _NAME_COMMON_WORDS = frozenset({
 })
 
 
+# Доза, опасная или невозможная для БАДа: «витамин D 500 мкг» — это % нормы из таблицы (21248), «селен 55 мг» —
+# опечатка источника вместо мкг (10220). Волна 1 на проде 10.11.2026.
+_MCG_RE = re.compile(r"(\d+(?:[ \u00a0]\d{3})*(?:[.,]\d+)?)\s*мкг")
+_SELENIUM_MG_RE = re.compile(r"(?i)селен\w*\D{0,30}?(\d+(?:[.,]\d+)?)\s*мг\b|(\d+(?:[.,]\d+)?)\s*мг\s+селен")
+
+
+def _number(text: str) -> float:
+    return float(re.sub(r"[ \u00a0]", "", text).replace(",", "."))
+
+
+def dose_suspicious(description: Any) -> bool:
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", str(description or "")))
+    # Пункт перечня — до запятой: «витамин D3 10 мкг, медь 1000 мкг» — 1000 мкг у меди (8020).
+    for item in re.split(r"[;:]|,(?!\d)|\.(?!\d)", plain):
+        if re.search(r"(?i)витамин\w*\s+D|холекальцифер", item) and any(
+            _number(match.group(1)) >= 250 for match in _MCG_RE.finditer(item)
+        ):
+            return True
+    return any(_number(match.group(1) or match.group(2)) >= 1 for match in _SELENIUM_MG_RE.finditer(plain))
+
+
+# Фасовка — от 10 штук: «2 saat sonra 1 tablet» в первой строке — способ применения, не название (7089).
+_PAGE_TITLE_PACK_RE = re.compile(r"\b(?:[1-9]\d|\d{3,})\s*(?:tablet|kapsul|sase|pastil|sachet|capsule)\w*\b")
+
+
 def source_page_mismatch(source_name: Any, sections: dict[str, str]) -> bool:
     """Страница источника о другом товаре: по ссылке «VITASENT EFF C1000 … 20 tablet» — «Velavit V-Colostrum
     Lozenges 15 Pastil» (9491, пилот 5 на проде: на карточке шипучих таблеток было «1 пастилку в день»).
@@ -404,14 +433,16 @@ def source_page_mismatch(source_name: Any, sections: dict[str, str]) -> bool:
     lines = [line.strip() for line in str(sections.get("product_info") or "").split("\n") if line.strip()]
     first = next((line for line in lines if not line.endswith(":")), "")
     pack = parse_pack(first) if first else None
-    if pack is None or not pack.piece:
+    # «Velavit Viva BRNX 60 Tablet ve Viva CLRX HEDİYE» — название набора: фасовка не в конце строки (10251, волна 1).
+    if (pack is None or not pack.piece) and not _PAGE_TITLE_PACK_RE.search(fold_tr(first)):
         return False
     page = re.sub(r"[^a-z0-9]", "", fold_tr(first))
     words = [
         word for word in re.findall(r"[a-z0-9]+", fold_tr(source_name))
         if len(word) >= 4 and not word.isdigit() and word not in _NAME_COMMON_WORDS
     ]
-    return bool(words) and not any(word in page for word in words)
+    # Начало слова: опечатка страницы «Methllife» при «METHYLIFE» в названии — тот же товар (9688).
+    return bool(words) and not any(word[:4] in page for word in words)
 
 
 def _without_source_words(sentence: str, source_name: str) -> str:
@@ -476,6 +507,9 @@ def _fix_translit(text: str, locale: str = "ru") -> str:
         )
         text = _ALPHA_RE.sub(r"\1-α-", text)
         text = _TWO_FEMININE_RE.sub(r"\1ве\2", _ONE_FEMININE_RE.sub(r"\1дна\2", text))
+        # «Одна саше», «Каждый саше» — саше среднего рода (волна 1 на проде).
+        text = re.sub(r"\b([Оо])дна(\s+саше)\b", r"\1дно\2", text)
+        text = re.sub(r"\b([Кк])аждый(\s+саше)\b", r"\1аждое\2", text)
     return text
 
 
@@ -752,6 +786,24 @@ def has_usage_paragraph(texts: Any) -> bool:
     return any(
         html.unescape(re.sub(r"<[^>]+>", "", str(text))).lstrip().startswith(f"{title}:") for text in paragraphs
     )
+
+
+def model_paragraph_enabled() -> bool:
+    return bool(settings.AI_CONFIG.get("SUPPLEMENT_MODEL_PARAGRAPH", True))
+
+
+_CODE_INTRO = {"ru": "{title} — пищевая добавка.", "en": "{title} is a food supplement."}
+
+
+def code_intro(title: str, locale: str) -> str:
+    """Вводная строка кодом вместо абзаца модели: название товара и что это за продукт."""
+    title = str(title or "").strip()
+    if not title:
+        return ""
+    # «INFLAMAX, пищевая добавка, 60 капсул» — что это, уже в названии.
+    if re.search(r"(?i)пищевая добавка|food supplement", title):
+        return f"{title}."
+    return _CODE_INTRO[locale].format(title=title)
 
 
 def build_description(
@@ -1054,6 +1106,11 @@ def log_problems(log) -> dict[str, list[str]]:
         description.append("supplement_source_suspicious")
     if source_name and source_page_mismatch(source_name, source_sections(input_data, limit=None)):
         description.append("supplement_source_mismatch")
+    if dose_suspicious(getattr(log, "generated_description", "")):
+        description.append("supplement_dose_suspicious")
+    # Находка судьи — до отметки «Описание проверено модератором» (её учитывает semantic_validator).
+    if supplement_judge.flagged((rule_content.get("supplement") or {}).get("judge")):
+        description.append("supplement_judge")
     # Транслит турецкого слова в описании («экстракт акгюнлюк», «вкус ахмудовый») и детское питание (HIPP 1:
     # «последующая … с рождения», шаги приготовления без начала) — всегда человеку (пилот 4 на проде).
     if supplement_memory.TRANSLIT_RE.search(re.sub(r"<[^>]+>", " ", str(getattr(log, "generated_description", "") or ""))):
@@ -1497,6 +1554,10 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
         for locale in ("ru", "en")
     }
     description = answer.get("description") if isinstance(answer.get("description"), dict) else {}
+    # Вариант «б» (решение владельца, по умолчанию выключен): без вводного абзаца модели — строка из названия
+    # и блоки памяти. На волне 1 (10.11.2026) в этом абзаце были выдумки, сломанная грамматика и повторы.
+    if not model_paragraph_enabled():
+        description = {locale: code_intro(titles[locale], locale) for locale in ("ru", "en")}
     descriptions = {
         locale: build_description(
             _brand_latin(description.get(locale), brand_ru, title_brand), locale, baby_food=baby_food,
@@ -1505,6 +1566,14 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
         )
         for locale in ("ru", "en")
     }
+    # Судья сверяет готовое RU описание с источником и только отправляет на модерацию (волна 1 на проде).
+    judge = None
+    if supplement_judge.enabled() and descriptions["ru"]:
+        judge = supplement_judge.judge(
+            source_name, source_sections(input_data, limit=None), descriptions["ru"],
+            skip=(DISCLAIMER["ru"], BABY_DISCLAIMER["ru"]),
+        )
+        _add_usage(result, judge)
     serving = answer.get("serving") if isinstance(answer.get("serving"), dict) else {}
     seo = build_seo(
         title_brand, brand_ru, product_text, pack, baby_food=baby_food, usage=has_usage_paragraph(memory_texts["ru"])
@@ -1543,6 +1612,7 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
             "memory": blocks.stats,
             # Для log_problems: эти абзацы проверены по частям при переводе.
             "memory_texts": memory_texts if any(memory_texts.values()) else {},
+            "judge": judge,
         },
     }
     return result
