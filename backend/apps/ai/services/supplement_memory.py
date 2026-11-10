@@ -229,7 +229,9 @@ TRANSLIT_RE = re.compile(
     r"тауррат|"
     # Пилот 5 на проде 10.11.2026: «кедиотуа» (kediotu), «кадына» (kadıntuzluğu), «Феррик натрия ЭДТА», «в тек
     # одноразовых саше» (tek kullanımlık), «джели»/«джелли» (jel) вместо «желе».
-    r"кедиот|кадын|феррик|\bв тек\b|\bджел(?:ли|ь|и|ей|ям)\b",
+    r"кедиот|кадын|феррик|\bв тек\b|\bджел(?:ли|ь|и|ей|ям)\b|"
+    # Повтор пилота 5: «со вкусом портакала (апельсина)» (SUNLIFE 7862).
+    r"портакал",
     re.IGNORECASE,
 )
 # Единица — после числа: штаммы «GR-1», «ML-7» латиницей законны (ревью #327).
@@ -263,6 +265,11 @@ def _negated(ru: str, en: str) -> bool:
 
 _EMPTY_STOMACH_RE = re.compile(r"\bac\b.*karn")  # «aç karnına», «aç ya da tok karnına»
 _FULL_STOMACH_RE = re.compile(r"\btok karn")
+_DURING_MEAL_RE = re.compile(r"\byemek (?:zamani|sirasinda|ile)\b|\byemek(?:ler)?le\b|\bogun(?:ler)?le\b")
+_OTHER_MEAL_TIME_RE = re.compile(r"\b(?:yemek|ogun)\w*\s+(?:sonra|once|arasi|aralarinda)|\btok karn|\bac\b.*karn")
+_RU_DURING_MEAL_RE = re.compile(r"во время (?:еды|при[её]ма пищи)|(?:вместе )?с едой|с пищей", re.IGNORECASE)
+_EN_DURING_MEAL_RE = re.compile(r"\bwith (?:a )?(?:meal|food)s?\b|\bduring (?:a )?meals?\b|\bat mealtimes?\b",
+                                re.IGNORECASE)
 _AGE_UNDER_RE = re.compile(r"\byas\w*\s+(?:alti|altinda|kucuk)")  # «12 yaş altı», «15 yaşından küçüklerde»
 _AGE_OVER_RE = re.compile(r"\byas\w*\s+(?:ve\s+)?(?:ustu|uzeri|ustundeki|buyuk)")  # «11 yaş ve üzeri»
 _RU_UNDER_RE = re.compile(r"младше|моложе|(?<![а-яё])до\s+\d|менее|меньше|не достиг", re.IGNORECASE)
@@ -292,6 +299,13 @@ def _meaning_problems(folded_source: str, ru: str, en: str) -> list[str]:
         problems.append("meal_timing_mistranslated")
     # «tok karnına» — после еды, а модель писала «натощак» (пилот 3, дважды).
     if full and not empty and ("натощак" in ru.lower() or "empty stomach" in en.lower()):
+        problems.append("meal_timing_mistranslated")
+    # «tercihen yemek zamanı» — во время еды, а в памяти было «предпочтительно после еды» (все SOLGAR, волна 1 на
+    # проде 10.11.2026).
+    if (
+        _DURING_MEAL_RE.search(folded_source) and not _OTHER_MEAL_TIME_RE.search(folded_source)
+        and (not (_RU_DURING_MEAL_RE.search(ru) and _EN_DURING_MEAL_RE.search(en)) or "после еды" in ru.lower())
+    ):
         problems.append("meal_timing_mistranslated")
     under, over = _AGE_UNDER_RE.search(folded_source), _AGE_OVER_RE.search(folded_source)
     if under and not over and not (_RU_UNDER_RE.search(ru) and _EN_UNDER_RE.search(en)):
@@ -432,8 +446,11 @@ def _split_top_level(text: str) -> list[str]:
         if quoted and re.search(r"(?:d[iu]r|t[iu]r)\W*$|kullanim", fold_tr(quoted.group(0))):
             item = item[:quoted.start()]
         # Маркер списка «- Sambucus Nigra», «• Stevia» (COXIL 7544) и «•» вместо дефиса («DL•a-tokoferil», OSENDE 7569).
-        # Невидимый пробел «Kolekalsiferol. ​» давал второй «холекальциферол» (VENATURA 9422, пилот 5).
-        item = re.sub(r"^\s*[-•–]\s+", "", item).replace("•", "-").strip(" .*​‌‍﻿")
+        # Невидимый пробел «Kolekalsiferol. \u200b» давал второй «холекальциферол» (VENATURA 9422, пилот 5).
+        item = re.sub(r"^\s*[-•–]\s+", "", item).replace("•", "-").strip(" .*\u200b\u200c\u200d\ufeff")
+        # Подпись, приклеенная к первому компоненту: «İçindekiler: Balık yağı» — на карточке «Состав: Состав: …» (9543).
+        if re.match(r"icindekiler\s*:", fold_tr(item)):
+            item = item.split(":", 1)[1].strip()
         folded = fold_tr(item)
         # «FEROGLOBİN … İçeren Sıvı Takviye Edici Gıda - 200 ml» — название товара, а не компонент.
         if re.search(r"[^\W\d_]{2}", item) and not (
@@ -448,6 +465,17 @@ def _split_top_level(text: str) -> list[str]:
 
             # «Adı», «Miktarı», «Her 1 tablette», «Her kapsülde», «Günlük Doz2 kapsül», «%BRD» (пилот 2 на проде).
             or re.fullmatch(r"adi|miktari?|her\s+(?:\d+\s*)?\w+|gunluk ?doz.*|%?\s*brd\W*|rda", folded)
+            # Заголовки таблиц: «Aktif İçerikler», «Etkin Maddeler», «Ürün İçerik Tablosu», «Beslenme Referans Değeri»
+            # (на карточках «Состав: Активные ингредиенты.», волна 1 на проде 10.11.2026).
+            or re.fullmatch(
+                r"(?:aktif|etk[ie]n|yardimci) (?:icerik\w*|madde\w*|bilesen\w*)|(?:urun )?icerik (?:tablosu|adi|bilgisi)|"
+                r"beslenme referans deger\w*|bilesim adi",
+                folded,
+            )
+            # Фраза этикетки вместо компонента: «Şeker ilave edilmemiştir», «Soğuk su balıklarından elde edilmiştir».
+            or (len(folded.split()) >= 3 and re.search(r"(?:m[iu]st[iu]r|m[iu]sd[iu]r|maktadir|mektedir)$", folded))
+            # «tatlandırıcı ve renklendirici içermez» (12273) — свойство, а не компонент.
+            or (len(folded.split()) >= 2 and re.search(r"\bicermez$", folded))
         ):
             result.append(item)
     return result
@@ -488,7 +516,12 @@ def _table_row(sentence: str) -> bool:
 
 def _sentences(text: str) -> list[str]:
     # «*** Takviye edici gıdalar …» — сноска источника; без звёздочек фраза совпадает с той же без сноски.
-    return [part.strip().lstrip("* ") for part in _SENTENCE_SPLIT_RE.split(text) if re.search(r"[^\W\d_]{2}", part)]
+    # «- Tavsiye edilen günlük porsiyonu aşmayınız.» — маркер списка; на карточке было «Предупреждения: - БАДы … - Не
+    # превышайте …» (MAGGUMMY 9835, волна 1 на проде 10.11.2026).
+    return [
+        re.sub(r"^[-•–]\s+", "", part.strip().lstrip("* ")) for part in _SENTENCE_SPLIT_RE.split(text)
+        if re.search(r"[^\W\d_]{2}", part)
+    ]
 
 
 def _label_kind(label: str) -> Optional[str]:
@@ -634,7 +667,8 @@ def _section_parts(sections: dict[str, str]) -> tuple[dict[str, list[str]], dict
                 # Состав фразой: «Koenzim Q10, E, B3, B5, B12 … Vitaminleri, Biotin ve Selenyum içerir» (DOPPELHERZ
                 # 7300) — «E», «B3» отдельными частями бессмысленны, а без них состав неполный.
                 pieces = [piece.strip(" .*") for piece in re.split(r"[,;]", line)]
-                if re.search(r"\bicerir\W*$", fold_tr(line)) or any(re.fullmatch(r"[A-Za-z]\d{0,2}", p) for p in pieces):
+                # «… %60 oranında Omega-3 yağ asitlerini içeren balık yağı ihtiva eder» (10170, волна 1) — тоже фраза.
+                if re.search(r"\b(?:icerir|ihtiva eder|icermektedir)\W*$", fold_tr(line)) or any(re.fullmatch(r"[A-Za-z]\d{0,2}", p) for p in pieces):
                     del parts["composition"][composition_start:]
                     hidden["composition"] = "prose_list"
                     current = None

@@ -1238,3 +1238,67 @@ def test_pilot5_source_page_of_other_product():
         extracted_attributes={}, generated_title="", generated_description="<p>Шипучие таблетки.</p>",
     )
     assert "supplement_source_mismatch" in sc.log_problems(log)["description"]
+
+
+@pytest.mark.parametrize(
+    "source, ru, en, problems",
+    [
+        # Волна 1 на проде 10.11.2026: «tercihen yemek zamanı» — во время еды, в памяти было «после еды» (SOLGAR).
+        ("Yetişkinler için, tercihen yemek zamanı, günde bir (1) kapsül",
+         "Для взрослых, предпочтительно после еды, 1 капсула в день.",
+         "For adults, preferably after a meal, 1 capsule a day.", ["meal_timing_mistranslated"]),
+        ("Yetişkinler için, tercihen yemek zamanı, günde bir (1) kapsül",
+         "Для взрослых, предпочтительно во время еды, 1 капсула в день.",
+         "For adults, preferably with a meal, 1 capsule a day.", []),
+        ("Günde 1 tablet yemekle birlikte alınız.", "По 1 таблетке в день вместе с едой.", "1 tablet a day with food.", []),
+        ("Günde 1 tablet yemeklerden sonra alınız.", "По 1 таблетке в день после еды.", "1 tablet a day after meals.", []),
+        # Растения и меры словаря.
+        ("Göz otu ekstresi", "Экстракт говяжьего глаза", "Eyebright extract", ["supplement_ingredient_mistranslated"]),
+        ("Su teresi ekstresi", "Экстракт кресс-салата водяного", "Watercress extract", []),
+        ("Günde 1 tatlı kaşığı", "По 1 чайной ложке в день", "1 dessert spoon a day", ["supplement_ingredient_mistranslated"]),
+        ("Kimyon (Cuminum cyminum) Sabit Yağı", "Тмин (Cuminum cyminum) — жирное масло", "Cumin (Cuminum cyminum) fixed oil",
+         ["supplement_ingredient_mistranslated"]),
+    ],
+)
+def test_wave1_line_problems(source, ru, en, problems):
+    found = sm.line_problems(source, ru, en)
+    assert [p for p in found if p in (*sm.LINE_PROBLEMS, *sm.SOURCE_PROBLEMS)] == problems
+
+
+def test_wave1_composition_headers_phrases_and_markers():
+    # Заголовки таблиц вместо компонентов: «Состав: Активные ингредиенты.» (11434), «Таблица состава продукта» (10311).
+    for header in ("Aktif İçerikler", "Ürün İçerik Tablosu, Aktif İçerikler", "Etkin Maddeler", "İçerik Adı",
+                   "Beslenme Referans Değeri"):
+        assert "composition" not in sm.section_parts({"product_info": f"İçindekiler: {header}"}), header
+    # Фраза этикетки вместо компонента; компоненты рядом остаются.
+    text = "İçindekiler: Propolis ekstraktı, saf su, tatlandırıcı ve renklendirici içermez"
+    assert sm.section_parts({"product_info": text})["composition"] == ["Propolis ekstraktı", "saf su"]
+    text = "İçindekiler: Ekinezya, Biotin, Zarbee’s Wellness Bal ile tatlandırılmıştır"
+    assert sm.section_parts({"product_info": text})["composition"] == ["Ekinezya", "Biotin"]
+    # «İçindekiler:» внутри первого компонента — «Состав: Состав: …» (9543).
+    text = "Ürün Bileşimi:\nİçindekiler: Balık yağı, Zeytinyağı"
+    assert sm.section_parts({"product_info": text})["composition"] == ["Balık yağı", "Zeytinyağı"]
+    # Маркеры списка в предупреждениях (9835).
+    text = "Uyarılar:\n- Tavsiye edilen günlük porsiyonu aşmayınız.\n- Takviye edici gıdalar normal bir beslenmenin yerine geçmez."
+    assert all(not item.startswith("-") for item in sm.section_parts({"product_info": text})["warnings"])
+
+
+def test_wave1_card_checks():
+    # Опасные дозы: % нормы вместо мкг (21248), опечатка «mg» у селена (10220); медь 1000 мкг рядом с D3 — нет.
+    assert sc.dose_suspicious("<p>В одном саше 1000 мг кальция, 500 мкг (1000 МЕ) витамина D и 15 мг цинка.</p>")
+    assert sc.dose_suspicious("<p>В таблетке витамин C 1000 мг, селен 55 мг и цинк 10 мг.</p>")
+    assert not sc.dose_suspicious("<p>Кальций 800 мг, витамин D3 10 мкг, медь 1000 мкг, селен 50 мкг.</p>")
+    assert not sc.dose_suspicious("<p>Витамин D3 25 мкг (1000 МЕ), селенит натрия 0,1 мг.</p>")
+    # Набор другой марки по ссылке (10251) и опечатка своей страницы (9688).
+    assert sc.source_page_mismatch(
+        "VITASENT KERATIN WITH BIOTIN 60 tablet", {"product_info": "Velavit Viva BRNX 60 Tablet ve Viva CLRX HEDİYE"}
+    )
+    assert not sc.source_page_mismatch(
+        "NBTLIFE METHYLIFE TAKVIYE EDICI GIDA 30 kapsül", {"product_info": "NBT İlaç Methllife Takviye Edici Gıda 30 Kapsül"}
+    )
+    assert not sc.source_page_mismatch(
+        "MAGNIMORE PLUS TAKVIYE EDICI GIDA 30 tablet", {"product_info": "Sabah öğünden 2 saat sonra 1 tablet alınız."}
+    )
+    # Род «саше», транслит «портакал».
+    assert sc.clean_paragraph("Одна саше в день. Каждый саше содержит 5 г.") == "Одно саше в день. Каждое саше содержит 5 г."
+    assert sm.TRANSLIT_RE.search("со вкусом портакала (апельсина)")
