@@ -5,6 +5,8 @@
     manage.py source_ai_cards --source superstep --report --since 2026-11-07
     manage.py source_ai_cards --source superstep --apply --since 2026-11-07T07:00 --backup ~/backups/ss-rows.json.gz
     manage.py source_ai_cards --restore ~/backups/ss-rows.json.gz         # откат применения из бэкапа
+    manage.py source_ai_cards --source superstep --fix-text fixes.json    # показать правку фраз черновиков
+    manage.py source_ai_cards --source superstep --fix-text fixes.json --backup ~/backups/ss-fix.json  # записать
 
 Черновик — обычный лог AI (полная обработка без применения): название, SEO и атрибуты
 собирают правила (apps/ai/services/rules), описание пишет модель и кладёт в память
@@ -31,7 +33,13 @@ from django.db import close_old_connections, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.ai.models import AIApplicationStatus, AIModerationQueue, AIProcessingLog, AIProcessingStatus
+from apps.ai.models import (
+    AIApplicationStatus,
+    AIModerationQueue,
+    AIProcessingLog,
+    AIProcessingStatus,
+    AITranslationMemory,
+)
 from apps.ai.services.bulk_ops import select_products_for_ai
 from apps.ai.services.content_generator import ContentGenerator
 from apps.catalog.models import Product
@@ -42,6 +50,8 @@ MAX_WORKERS = 6
 BACKUP_RELATIONS = ("translations", "dynamic_attributes", "sizes", "variants")
 MOSCOW = ZoneInfo("Europe/Moscow")
 NIGHT_START, NIGHT_END = time(1, 0), time(6, 30)
+# Русский перевод товара при применении берётся из seo_translations.ru, а не из generated_description.
+RU_SEO_FIELDS = ("generated_description", "meta_description", "og_description")
 
 
 class Command(BaseCommand):
@@ -58,6 +68,11 @@ class Command(BaseCommand):
         mode.add_argument("--report", action="store_true", help="Итог по логам источника")
         mode.add_argument("--apply", action="store_true", help="Применить черновики «Завершено» (нужны --since и --backup)")
         mode.add_argument("--restore", metavar="BACKUP", help="Вернуть строки из бэкапа --apply и удалить созданные им")
+        mode.add_argument(
+            "--fix-text",
+            metavar="FILE",
+            help="Заменить фразы в черновиках: JSON {id товара: [[было, стало], …]}; без --backup только показ",
+        )
         parser.add_argument("--backup", help="Новый файл бэкапа строк перед применением (.json или .json.gz)")
         parser.add_argument("--since", help="Логи с этого момента: ГГГГ-ММ-ДД или ГГГГ-ММ-ДДTЧЧ:ММ (МСК)")
 
@@ -73,7 +88,9 @@ class Command(BaseCommand):
             products = products.filter(id__in=self._ids(options["ids"]))
         if options["run"] or options["apply"]:
             self._check_night()
-        if options["apply"]:
+        if options["fix_text"]:
+            self._fix_text(products, options)
+        elif options["apply"]:
             if not options["since"] or not options["backup"]:
                 raise CommandError("--apply требует --since (с какого момента логи) и --backup <файл>")
             self._apply(products, options)
@@ -284,6 +301,85 @@ class Command(BaseCommand):
             f"Применено: {dict(result)}; новых строк: {len(created)} (список — {options['backup']}.created.json). "
             f"Откат: source_ai_cards --restore {options['backup']}"
         )
+
+    def _fix_text(self, products, options):
+        """Правка черновика во всех русских местах: описание и SEO лога, seo_translations.ru, память.
+
+        Применение берёт русский перевод из seo_translations.ru, а память отдаёт старый текст
+        следующим партиям: правка одного generated_description на сайт не доходит (10.11.2026).
+        """
+        try:
+            with open(options["fix_text"], encoding="utf-8") as handle:
+                fixes = {int(pid): [tuple(pair) for pair in pairs] for pid, pairs in json.load(handle).items()}
+        except (OSError, ValueError, TypeError) as exc:
+            raise CommandError(f"--fix-text: {exc}") from None
+        write = bool(options["backup"])
+        if write:
+            self._check_night()
+        logs = {
+            log.product_id: log
+            for log in self._logs(products.filter(id__in=list(fixes)), options)
+            .filter(status=AIProcessingStatus.COMPLETED)
+            .order_by("product_id", "-id")
+            .distinct("product_id")
+        }
+
+        def fix(text, pairs):
+            for old, new in pairs:
+                text = text.replace(old, new)
+            return text
+
+        changes = []
+        for pid, pairs in fixes.items():
+            log = logs.get(pid)
+            if log is None:
+                self.stdout.write(f"  {pid}: нет черновика «Завершено» — пропущен")
+                continue
+            missing = [old for old, _new in pairs if (log.generated_description or "").count(old) != 1]
+            if missing:
+                self.stdout.write(f"  {pid}: фраза не встречается в описании ровно один раз — пропущен: {missing[0]!r}")
+                continue
+            seo_ru = dict(((log.extracted_attributes or {}).get("seo_translations") or {}).get("ru") or {})
+            memory = list(AITranslationMemory.objects.filter(source_log=log))
+            changes.append((log, pairs, seo_ru, memory))
+            self.stdout.write(f"  {pid} (лог {log.pk}): замен {len(pairs)}, записей памяти {len(memory)}")
+        if not write or not changes:
+            self.stdout.write(f"К правке: {len(changes)} из {len(fixes)}" + ("" if write else " (показ, для записи нужен --backup)"))
+            return
+        with open(options["backup"], "x", encoding="utf-8") as handle:
+            json.dump(
+                [
+                    {
+                        "log": log.pk,
+                        "generated_description": log.generated_description,
+                        "generated_seo_description": log.generated_seo_description,
+                        "seo_ru": {key: seo_ru.get(key) for key in RU_SEO_FIELDS},
+                        "memory": {row.pk: row.ru_text for row in memory},
+                    }
+                    for log, _pairs, seo_ru, memory in changes
+                ],
+                handle,
+                ensure_ascii=False,
+            )
+        with transaction.atomic():
+            for log, pairs, seo_ru, memory in changes:
+                log.generated_description = fix(log.generated_description, pairs)
+                if log.generated_seo_description:
+                    log.generated_seo_description = fix(log.generated_seo_description, pairs)
+                attrs = dict(log.extracted_attributes or {})
+                translations = dict(attrs.get("seo_translations") or {})
+                for key in RU_SEO_FIELDS:
+                    if isinstance(seo_ru.get(key), str):
+                        seo_ru[key] = fix(seo_ru[key], pairs)
+                if seo_ru:
+                    translations["ru"] = seo_ru
+                    attrs["seo_translations"] = translations
+                    log.extracted_attributes = attrs
+                log.save(update_fields=["generated_description", "generated_seo_description", "extracted_attributes"])
+                for row in memory:
+                    row.ru_text = fix(row.ru_text, pairs)
+                    row.save(update_fields=["ru_text"])
+        self.stdout.write(f"Исправлено черновиков: {len(changes)} из {len(fixes)}. Бэкап: {options['backup']}")
 
     def _restore(self, backup):
         opener = gzip.open if backup.endswith(".gz") else open
