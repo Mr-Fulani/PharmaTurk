@@ -146,7 +146,7 @@ def judge(
     if not str(description_ru or "").strip():
         return {**result, "problems": [], "cost_usd": 0.0, "tokens": {}}
     try:
-        client = client or ClaudeClient()
+        client = client or ClaudeClient(model=settings.AI_CONFIG.get("SUPPLEMENT_JUDGE_MODEL") or None)
         text, response = _ask(client, user_prompt(source_name, sections, description_ru, skip))
         answer = json.loads(text)
     except (ClaudeUnavailable, ValueError) as exc:
