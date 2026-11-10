@@ -266,3 +266,32 @@ class TestNewAdminUploadProtection:
 
         assert not hasattr(signals, "auto_download_testimonial_media")
         assert not hasattr(signals, "_download_and_save")
+
+
+def test_internal_parsed_url_with_encoded_space_uses_decoded_storage_key():
+    """Адрес parsed-файла с %20 (код цвета SuperStep «T24F108010.MILITARY GREEN»):
+    ключ в R2 — с пробелом, иначе копия не создаётся и фото остаётся в parsed/."""
+    from apps.catalog.signals import _auto_download_impl
+
+    instance = MagicMock()
+    instance.image_url = (
+        "https://cdn.mudaroba.com/products/parsed/superstep/shirts/images/"
+        "superstep-variant-T24F108010.MILITARY%20GREEN-0-c7.jpg"
+    )
+    instance.image_file = MagicMock()
+    instance.image_file.name = ""
+    key = "products/parsed/superstep/shirts/images/superstep-variant-T24F108010.MILITARY GREEN-0-c7.jpg"
+
+    storage = MagicMock()
+    storage.exists.side_effect = lambda path: path == key
+    storage.open.return_value.__enter__.return_value.read.return_value = b"img"
+    with patch("apps.catalog.signals.is_internal_storage_url", return_value=True), \
+         patch("apps.catalog.signals._file_missing_from_storage", return_value=True), \
+         patch("django.core.files.storage.default_storage", storage), \
+         patch("apps.catalog.signals.note_resaved_original") as noted:
+        _auto_download_impl(instance)
+
+    storage.open.assert_called_once_with(key)
+    instance.image_file.save.assert_called_once()
+    assert instance.image_file.save.call_args.args[0] == "superstep-variant-T24F108010.MILITARY GREEN-0-c7.jpg"
+    noted.assert_called_once_with(instance, "image_file", key)
