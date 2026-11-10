@@ -226,7 +226,10 @@ _LATIN_WORD_RE = re.compile(r"[A-Za-z]{4,}")
 # принимается, описание с ним — на модерацию (пилот 4 на проде 07.11.2026).
 TRANSLIT_RE = re.compile(
     r"акгюнл|ахуду|ахмуд|маниот|дилатацион|сарымсак|зенджефил|зердечал|кекик|адачай|ыхламур|мюрвер|ысырган|кушбурну|"
-    r"тауррат",
+    r"тауррат|"
+    # Пилот 5 на проде 10.11.2026: «кедиотуа» (kediotu), «кадына» (kadıntuzluğu), «Феррик натрия ЭДТА», «в тек
+    # одноразовых саше» (tek kullanımlık), «джели»/«джелли» (jel) вместо «желе».
+    r"кедиот|кадын|феррик|\bв тек\b|\bджел(?:ли|ь|и|ей|ям)\b",
     re.IGNORECASE,
 )
 # Единица — после числа: штаммы «GR-1», «ML-7» латиницей законны (ревью #327).
@@ -273,6 +276,14 @@ def _meaning_problems(folded_source: str, ru: str, en: str) -> list[str]:
     # «1 yaş ve üzeri yetişkinlerin» — опечатка «11»; «Взрослым и детям от 1 года» опасно (VIAPECIA 7524, пилот 3).
     if re.search(r"(?<![\d,.])[1-3]\s*yas\w*\s+(?:ve\s+)?(?:uzeri|ustu)\s+yetiskin", folded_source):
         problems.append("age_suspicious")
+    # «günde 3 defa 12er çiğnenebilir form» детям — опечатка «1-2'şer»; на карточке было «по 12 жевательных форм
+    # 3 раза в день» (PHYTORELIEF JUNIOR 7838, пилот 5 на проде). Десяток штук за приём — источник подозрителен.
+    if re.search(
+        r"(?<![\d,.–-])(?:1\d|[2-9]\d)\s*'?\s*(?:ser|sar|er|ar)\b\s+(?:[a-z]+\s+){0,2}?"
+        r"(?:tablet|kapsul|form|pastil|sase|olcek|draje|kaplet)",
+        folded_source,
+    ):
+        problems.append("dose_suspicious")
     if _NEGATION_RE.search(folded_source) and not _negated(ru, en):
         problems.append("negation_lost")
     empty, full = _EMPTY_STOMACH_RE.search(folded_source), _FULL_STOMACH_RE.search(folded_source)
@@ -415,8 +426,14 @@ def _split_top_level(text: str) -> list[str]:
             and re.search(r"(?:d[iu]r|t[iu]r)\W*$", fold_tr(item[sentence_tail.end():]))
         ):
             item = item[:sentence_tail.end()].rstrip().rstrip(".")
+        # Фраза в кавычках после последнего компонента: «Stevya (Stevia rebaudiana). “4-10 yaş grubu çocukların
+        # kullanımına uygundur.”» (VENATURA 7978, пилот 5 на проде) — не компонент.
+        quoted = re.search(r"[\s.]*[“\"«][^“”\"«»]{10,}[”\"»]?\s*$", item)
+        if quoted and re.search(r"(?:d[iu]r|t[iu]r)\W*$|kullanim", fold_tr(quoted.group(0))):
+            item = item[:quoted.start()]
         # Маркер списка «- Sambucus Nigra», «• Stevia» (COXIL 7544) и «•» вместо дефиса («DL•a-tokoferil», OSENDE 7569).
-        item = re.sub(r"^\s*[-•–]\s+", "", item).replace("•", "-").strip(" .*")
+        # Невидимый пробел «Kolekalsiferol. ​» давал второй «холекальциферол» (VENATURA 9422, пилот 5).
+        item = re.sub(r"^\s*[-•–]\s+", "", item).replace("•", "-").strip(" .*​‌‍﻿")
         folded = fold_tr(item)
         # «FEROGLOBİN … İçeren Sıvı Takviye Edici Gıda - 200 ml» — название товара, а не компонент.
         if re.search(r"[^\W\d_]{2}", item) and not (
@@ -712,7 +729,7 @@ LINE_PROBLEMS = (
     "meal_timing_mistranslated", "age_mistranslated",
 )
 # Не ошибка перевода, а подозрительный источник: повтор перевода не поможет, нужен человек.
-SOURCE_PROBLEMS = ("age_suspicious",)
+SOURCE_PROBLEMS = ("age_suspicious", "dose_suspicious")
 
 
 def _translate(units: list[str], llm) -> tuple[dict, dict, dict]:
@@ -777,7 +794,9 @@ def _remember(accepted: dict[str, dict[str, str]], log, replace: frozenset = fro
 
 
 # Оборванная фраза («Hamile ve emziren kadınlar,»): блок с ней не показывается, лучше без блока, чем неполный.
-_FRAGMENT_RE = re.compile(r"(?:,|\b(?:ve|veya|ile|ya da))$")
+# Оборванный компонент «Kalsiyum L-Askorbat, Hidroksi» (OSENDE 7992, пилот 5 на проде) — тоже: на карточке было
+# «Состав: Кальций L-аскорбат, Гидрокси.».
+_FRAGMENT_RE = re.compile(r"(?:,|\b(?:ve|veya|ile|ya da))$|^(?:hidroksi|metil|etil|propil|karboksi|poli)$")
 
 
 def translate_blocks(sections: dict[str, str], llm, log=None) -> tuple[SupplementBlocks, dict[str, Any]]:

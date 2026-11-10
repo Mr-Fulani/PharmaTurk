@@ -1155,3 +1155,86 @@ def test_review_332_card_wording():
     assert set(hints) == {"AHUDUDU"}
     # Желательное: «Dil altına» раздельно.
     assert "dil altina" in supplement_glossary.found_terms("Dil altına 1 puf")
+
+
+@pytest.mark.parametrize(
+    "source, ru, en, problems",
+    [
+        # Пилот 5 на проде 10.11.2026: переводы памяти и модели с ошибкой по словарю.
+        ("Ayva suyu", "Яблочный сок", "Apple juice", ["supplement_ingredient_mistranslated"]),
+        ("Ayva suyu", "Айвовый сок", "Quince juice", []),
+        ("Doğası değiştirilmiş kollajen tip II", "Нативный коллаген типа II", "Native type II collagen",
+         ["supplement_ingredient_mistranslated"]),
+        ("Doğası değiştirilmiş kollajen tip II", "Денатурированный коллаген типа II", "Denatured type II collagen", []),
+        ("Stevya Gluten", "Stevya Gluten", "Stevya Gluten", ["supplement_ingredient_mistranslated"]),
+        ("Kediotu Kökü Ekstresi", "Экстракт корня кедиотуа", "Valerian root extract",
+         ["supplement_ingredient_mistranslated", "ru_untranslated"]),
+        ("Kediotu Kökü Ekstresi", "Экстракт корня валерианы", "Valerian root extract", []),
+        ("Ferrik sodyum EDTA", "Феррик натрия ЭДТА", "Ferric sodium EDTA",
+         ["supplement_ingredient_mistranslated", "ru_untranslated"]),
+        ("Ferrik sodyum EDTA", "Натрия железа (III) ЭДТА", "Ferric sodium EDTA", []),
+        # PHYTORELIEF JUNIOR 7838: «12er» детям — опечатка «1-2'şer», источник подозрителен.
+        ("4-10 yaş arası çocuklar için günde 3 defa 12er çiğnenebilir form kullanılması önerilir.",
+         "Детям 4–10 лет — по 12 жевательных форм 3 раза в день.", "Children 4–10: 12 chewables 3 times a day.",
+         ["dose_suspicious"]),
+        ("Günde 3 defa 1-2'şer tablet alınız.", "По 1–2 таблетки 3 раза в день.", "1–2 tablets 3 times a day.", []),
+        ("Günde 2 defa 10'ar damla alınız.", "По 10 капель 2 раза в день.", "10 drops twice a day.", []),
+    ],
+)
+def test_pilot5_line_problems(source, ru, en, problems):
+    found = sm.line_problems(source, ru, en)
+    assert [p for p in found if p in (*sm.LINE_PROBLEMS, *sm.SOURCE_PROBLEMS)] == problems
+
+
+def test_pilot5_composition_parsing():
+    # VENATURA 9422: невидимый пробел после точки давал второй «холекальциферол».
+    text = "İçindekiler: Zeytinyağı, Kolekalsiferol.\nİçindekiler: Zeytinyağı, Kolekalsiferol. ​"
+    assert sm.section_parts({"product_info": text})["composition"] == ["Zeytinyağı", "Kolekalsiferol"]
+    # VENATURA 7978: фраза в кавычках после последнего компонента — не компонент.
+    text = ("İçindekiler: Saf su, Stevya (Stevia rebaudiana). “4-10 yaş grubu çocukların kullanımına uygundur.”")
+    assert sm.section_parts({"product_info": text})["composition"] == ["Saf su", "Stevya (Stevia rebaudiana)"]
+    # Кавычки в названии компонента остаются.
+    text = "İçindekiler: Maltodekstrin, “Tip II” kollajen"
+    assert sm.section_parts({"product_info": text})["composition"] == ["Maltodekstrin", "“Tip II” kollajen"]
+
+
+@pytest.mark.django_db
+def test_pilot5_cut_component_keeps_composition_out():
+    # OSENDE 7992: «Kalsiyum L-Askorbat, Hidroksi» — оборванный компонент, на карточке было «… Гидрокси.».
+    blocks, _usage = sm.translate_blocks({"product_info": "İçindekiler: Kalsiyum L-Askorbat, Hidroksi"}, None)
+    assert blocks.stats["fragments"] == ["Hidroksi"] and "composition" in blocks.stats["incomplete_blocks"]
+
+
+def test_pilot5_card_wording_and_translit():
+    # OTAVIT 7869, IMUNEKS 7912: числительное в роде.
+    assert sc.clean_paragraph("Один капля содержит 25 мкг.") == "Одна капля содержит 25 мкг."
+    assert sc.clean_paragraph("Два таблетки содержат 1056 GDU.") == "Две таблетки содержат 1056 GDU."
+    assert sc.clean_paragraph("Два жевательные таблетки в день.") == "Две жевательные таблетки в день."
+    assert sc.clean_paragraph("Один капсульный блистер, два раза в день.") == "Один капсульный блистер, два раза в день."
+    # Транслит в описании модели: «джели», «в тек одноразовых саше», «Феррик», «кадына» — на модерацию.
+    for text in ("Каждая джель упакована отдельно.", "в форме джелли", "Порошок в тек одноразовых саше.",
+                 "Феррик натрия ЭДТА.", "Экстракт кадыны."):
+        assert sm.TRANSLIT_RE.search(text), text
+    for text in ("Жевательное желе.", "Желатиновая капсула.", "Текст на упаковке."):
+        assert not sm.TRANSLIT_RE.search(text), text
+    # Модели подсказывается «лютеин» при опечатке источника «glutein» и папоротник вместо «плаунка».
+    hints = sc._section_glossary({"product_info": "Kapsül multivitamin, mineral, glutein ve omega-3. Löykotomos Eğreltisi"})
+    assert {"GLUTEIN", "LOYKOTOMOS"} <= set(hints)
+
+
+def test_pilot5_source_page_of_other_product():
+    # 9491: по ссылке VITASENT — страница «Velavit V-Colostrum Lozenges 15 Pastil».
+    name = "VITASENT EFF C1000 ORANGE PORTAKAL AROMALI EFERVESAN TABLET 20 tablet"
+    other = {"product_info": "Velavit V-Colostrum Lozenges 15 Pastil\nColostrum, Zencefil ve Zerdeçal İçeren Pastil."}
+    assert sc.source_page_mismatch(name, other)
+    # Своя страница: слово названия слитно («Promen K» — PROMENK), фасовка другая, первая строка — подпись.
+    assert not sc.source_page_mismatch("PROMENK SASE 30 saşe", {"product_info": "Neupharma Promen K 30 Saşe"})
+    assert not sc.source_page_mismatch("REVOMIX MEN MULTIVITAMIN KAPSUL 60 kapsül", {"product_info": "Revomix Men 30 Kapsül"})
+    assert not sc.source_page_mismatch("IMUNEKS PLUS KAPSUL 30 kapsül", {"product_info": "Ürün Açıklaması\nİmuneks"})
+    assert not sc.source_page_mismatch("NATURES BOUNTY LUTEIN 50 kapsül", {"product_info": "Lutein 6 mg"})
+    log = SimpleNamespace(
+        raw_llm_response={"rule_content": {"supplement": {"brand": "VITASENT"}}},
+        input_data={"name": name, "attributes": {"source_tabs": {"product_info": {"text": other["product_info"]}}}},
+        extracted_attributes={}, generated_title="", generated_description="<p>Шипучие таблетки.</p>",
+    )
+    assert "supplement_source_mismatch" in sc.log_problems(log)["description"]
