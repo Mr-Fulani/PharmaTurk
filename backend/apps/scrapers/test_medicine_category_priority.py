@@ -288,20 +288,35 @@ def full_snapshot(base, domain):
 
 
 @pytest.mark.parametrize("target", ["root", "cardio", None])
-@pytest.mark.parametrize("field,value", [
-    ("atc_code", "N05BA01"), ("barcode", "9999999999999"),
-    ("active_ingredient", "Different ingredient"),
+@pytest.mark.parametrize("field,value,source_barcode", [
+    ("barcode", "9999999999999", "1234567890123"),
+    # Штрихкод источника не подтверждает упаковку (его нет или он служебный) —
+    # расхождение ATC или вещества по-прежнему пропускает карточку целиком.
+    ("atc_code", "N05BA01", ""),
+    ("active_ingredient", "Different ingredient", ""),
+    ("atc_code", "N05BA01", "1111111111116"),
 ])
 def test_full_pipeline_conflict_skips_all_card_and_offer_writes_and_downloads(
-    catalog, monkeypatch, settings, target, field, value,
+    catalog, monkeypatch, settings, target, field, value, source_barcode,
 ):
     from unittest.mock import Mock
 
     settings.SOURCE_OFFER_RECORDING_ENABLED = True
     base, domain = existing_card(catalog)
+    if source_barcode.startswith("1111111"):
+        data = deepcopy(base.external_data)
+        data["attributes"]["barcode"] = source_barcode
+        Product.objects.filter(pk=base.pk).update(external_data=data)
+        MedicineProduct.objects.filter(pk=domain.pk).update(external_data=data, barcode=source_barcode)
     before = full_snapshot(base, domain)
     run = real_session(catalog, target)
-    item = scraped(price=999, images=["https://example.test/unwanted-new-image.jpg"])
+    item = scraped(
+        price=999, images=["https://example.test/unwanted-new-image.jpg"], barcode=source_barcode,
+    )
+    if source_barcode:
+        item.attributes["barcode"] = source_barcode
+    else:
+        item.attributes.pop("barcode")
     item.attributes[field] = value
     service = ScraperIntegrationService()
     download = Mock(side_effect=AssertionError("Conflict must not download media"))
@@ -314,6 +329,97 @@ def test_full_pipeline_conflict_skips_all_card_and_offer_writes_and_downloads(
     download.assert_not_called()
     offer.assert_not_called()
     assert f"{field}_conflict" in ScrapedProductLog.objects.get(session=run).message
+
+
+@pytest.mark.parametrize("target", ["root", "cardio", None])
+@pytest.mark.parametrize("field,stale", [
+    ("atc_code", "M02AA13"), ("active_ingredient", "Another ingredient"),
+])
+def test_identity_conflict_with_same_barcode_updates_only_price_and_stock(
+    catalog, monkeypatch, target, field, stale,
+):
+    """Как на проде 10.11.2026: поле карточки расходится с источником, штрихкод тот же."""
+    from unittest.mock import Mock
+
+    base, domain = existing_card(catalog, base_category="cardio")
+    MedicineProduct.objects.filter(pk=domain.pk).update(**{field: stale})
+    before = full_snapshot(base, domain)
+    run = real_session(catalog, target)
+    item = scraped(
+        name="New source name", description="New source description", brand="New source brand",
+        price=999, is_available=False, images=["https://example.test/unwanted-new-image.jpg"],
+        analogs=[{"name": "Unwanted analog", "url": "https://ilacfiyati.com/ilaclar/unwanted-analog"}],
+    )
+    item.attributes.update(active_ingredient="Keep ingredient", nfc_code="NEW", dosage_form="syrup")
+    service = ScraperIntegrationService()
+    download = Mock(side_effect=AssertionError("Price-only update must not download media"))
+    monkeypatch.setattr(service, "_download_parsed_media_urls", download)
+    result = service._process_scraped_products(run, [item])
+    assert result == {"found": 1, "created": 0, "updated": 1, "skipped": 0, "errors": 0}
+    after = full_snapshot(base, domain)
+    for part in ("base", "domain"):
+        assert after[part]["price"] == 999 and after[part]["is_available"] is False
+        for key in ("name", "slug", "description", "category_id", "brand_id", "external_id",
+                    "external_url", "main_image", "meta_title", "currency"):
+            assert after[part][key] == before[part][key], key
+        assert after[part]["external_data"]["attributes"] == before[part]["external_data"]["attributes"]
+    assert after["base"]["last_synced_at"] is not None
+    assert after["base"]["seo_title"] == "Keep SEO"
+    for key in ("atc_code", "active_ingredient", "barcode", "nfc_code", "dosage_form", "manufacturer"):
+        assert after["domain"][key] == before["domain"][key], key
+    for part in ("images", "translations", "base_translations"):
+        assert after[part] == before[part]
+    assert Product.objects.count() == 1
+    download.assert_not_called()
+    message = ScrapedProductLog.objects.get(session=run).message
+    assert f"{field}_conflict" in message and "только цена и наличие" in message
+    assert "Пропущен" not in message
+
+
+def test_upgraded_analog_stub_takes_identity_from_its_own_source_card(catalog):
+    """Заглушка аналога наследует ATC и вещество родителя — полная карточка их заменяет.
+
+    Иначе следующий проход видел расхождение поля с источником и пропускал карточку.
+    """
+    base, domain = existing_card(catalog, atc="M02AA13")
+    data = {**base.external_data, "is_stub": True}
+    data["attributes"] = {**data["attributes"], "is_stub": True}
+    Product.objects.filter(pk=base.pk).update(external_data=data)
+    MedicineProduct.objects.filter(pk=domain.pk).update(external_data=data)
+    run = real_session(catalog)
+    service = ScraperIntegrationService()
+    own = {"atc_code": "M01AE01", "barcode": "1234567890123", "active_ingredient": "Own ingredient"}
+    first = service._process_scraped_products(run, [scraped(attributes=dict(own))])
+    domain.refresh_from_db()
+    assert first["updated"] == 1 and first["errors"] == 0
+    assert domain.atc_code == "M01AE01" and domain.active_ingredient == "Own ingredient"
+    second = service._process_scraped_products(run, [scraped(price=555, attributes=dict(own))])
+    base.refresh_from_db()
+    assert second["updated"] == 1 and base.price == 555
+    assert not ScrapedProductLog.objects.filter(session=run, message__contains="conflict").exists()
+
+
+def test_parent_identity_is_not_copied_to_existing_full_analog_card(catalog):
+    """ATC и вещество родителя достаются только заглушке, а не готовой карточке аналога."""
+    base, domain = existing_card(catalog)
+    MedicineProduct.objects.filter(pk=domain.pk).update(atc_code="", active_ingredient="")
+    parent = Product.objects.create(
+        name="Parent medicine", slug="parent-medicine", product_type="medicines",
+        external_id="parent-medicine", external_data={"source": "ilacfiyati"},
+    )
+    MedicineProduct.objects.filter(base_product=parent).update(
+        atc_code="M02AA13", active_ingredient="Parent ingredient",
+    )
+    parent = Product.objects.get(pk=parent.pk)
+    item = scraped(external_id="parent-medicine", analogs=[{
+        "name": base.name, "url": base.external_url, "external_id": base.external_id,
+        "barcode": "1234567890123",
+    }])
+    with scraping_in_progress_context():
+        ScraperIntegrationService()._process_medicine_analogs(parent, item, None)
+    domain.refresh_from_db()
+    assert domain.atc_code == "" and domain.active_ingredient == ""
+    assert parent.medicine_item.analogs.filter(analog_product=domain).exists()
 
 
 @pytest.mark.parametrize("missing", [None, "", "  ", [], {}])

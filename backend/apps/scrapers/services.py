@@ -1815,6 +1815,11 @@ class ScraperIntegrationService:
                         f"Пропущен без изменений: {scraped_product._medicine_import_skip_reason}"
                         if getattr(scraped_product, "_medicine_import_skip_reason", None)
                         else f"Товар {action}{getattr(scraped_product, '_ilacfiyati_twin_review', '')}"
+                        + (
+                            "; обновлены только цена и наличие: штрихкод совпал, но ATC или вещество"
+                            f" карточки расходятся с источником ({scraped_product._medicine_price_only_reason})"
+                            if getattr(scraped_product, "_medicine_price_only_reason", None) else ""
+                        )
                     ),
                     scraped_data=scraped_product.to_dict(),
                 )
@@ -4055,6 +4060,7 @@ class ScraperIntegrationService:
         updated = False
         content_changed = False
         remove_from_sale = False
+        stub_upgraded = False
         gone_review = None
         prepared_attrs = self._prepare_scraped_attributes(scraped_product, existing_product.product_type)
         should_repair_ilacfiyati_external_id = self._should_repair_ilacfiyati_external_id(
@@ -4099,12 +4105,26 @@ class ScraperIntegrationService:
                         scraped_product, existing_product, is_variant_update=is_variant_update,
                     )
             except MedicineCategoryConflict as exc:
-                # Saving Product would otherwise overwrite the domain assignment.
+                if not exc.price_refresh_allowed:
+                    # Saving Product would otherwise overwrite the domain assignment.
+                    self.logger.warning(
+                        "Medicine import skipped: product=%s reason=%s", existing_product.pk, exc
+                    )
+                    scraped_product._medicine_import_skip_reason = str(exc)
+                    return "skipped", existing_product
+                # Упаковка та же (штрихкод), расходится ATC или вещество: до 10.11.2026
+                # такая карточка пропускалась целиком и месяцами стояла со старой ценой.
+                # Дальше идёт копия ответа без содержимого — меняются только цена,
+                # наличие и служебные отметки синхронизации.
                 self.logger.warning(
-                    "Medicine import skipped: product=%s reason=%s", existing_product.pk, exc
+                    "Medicine import: price and stock only: product=%s reason=%s",
+                    existing_product.pk, exc,
                 )
-                scraped_product._medicine_import_skip_reason = str(exc)
-                return "skipped", existing_product
+                scraped_product._medicine_price_only_reason = str(exc)
+                scraped_product = self._medicine_price_only_copy(scraped_product, existing_product)
+                prepared_attrs = {}
+                medicine_root = None
+                should_repair_ilacfiyati_external_id = False
 
         if getattr(scraped_product, "_medicine_media_deferred", False):
             self._normalize_scraped_media(session, scraped_product, product=existing_product)
@@ -4381,6 +4401,7 @@ class ScraperIntegrationService:
                     existing_product.external_data["is_stub"] = False
                     self._increment_session_counter(session, "analog_stubs_upgraded")
                     updated = True
+                    stub_upgraded = True
 
         # Всё значимое выше уже выставило updated=True (цена/наличие/описание/медиа-ссылки/
         # категория/варианты/is_stub). Фиксируем это как реальное изменение ДО служебных
@@ -4428,6 +4449,8 @@ class ScraperIntegrationService:
             updated = False
 
         # Обновляем доменные и общие атрибуты (ISBN, medicine-коды и т.д.)
+        if stub_upgraded:
+            self._replace_stub_inherited_identity(existing_product, prepared_attrs)
         if prepared_attrs:
             if self._update_product_attributes(
                 existing_product, prepared_attrs, session=session
@@ -4489,6 +4512,44 @@ class ScraperIntegrationService:
             existing_product.refresh_from_db(fields=["is_available", "external_data"])
 
         return ("updated" if content_changed else "skipped"), existing_product
+
+    @staticmethod
+    def _medicine_price_only_copy(scraped_product: ScrapedProduct, existing_product: Product) -> ScrapedProduct:
+        """Ответ источника без содержимого: только цена, валюта, наличие и остаток."""
+        item = ScrapedProduct(
+            name="",
+            description=None,
+            price=scraped_product.price,
+            old_price=getattr(scraped_product, "old_price", None),
+            currency=scraped_product.currency,
+            url=existing_product.external_url or scraped_product.url,
+            external_id=existing_product.external_id or scraped_product.external_id,
+            barcode=scraped_product.barcode,
+            is_available=scraped_product.is_available,
+            stock_quantity=scraped_product.stock_quantity,
+            source=scraped_product.source,
+            scraped_at=scraped_product.scraped_at,
+        )
+        for flag in ("price_unpublished", "source_inactive"):
+            setattr(item, flag, getattr(scraped_product, flag, False))
+        return item
+
+    def _replace_stub_inherited_identity(self, product: Product, attrs: Dict[str, Any]) -> None:
+        """Заглушка аналога стала полной карточкой: ATC и вещество — свои, из источника.
+
+        Заглушка получает их от родительского препарата (_process_medicine_analogs), а
+        _update_medicine_attributes заполняет только пустые поля. Чужой код оставался в
+        поле, и следующий проход пропускал карточку: «atc_code_conflict».
+        """
+        medicine = self._get_medicine_product(product)
+        changed = False
+        for field, max_len in (("atc_code", 100), ("active_ingredient", 300)):
+            value = str(attrs.get(field) or "").strip()[:max_len]
+            if value and getattr(medicine, field) != value:
+                setattr(medicine, field, value)
+                changed = True
+        if changed:
+            medicine.save()
 
     def _clear_product_domain_cache(self, product: Product) -> None:
         fields_cache = getattr(getattr(product, "_state", None), "fields_cache", None)
@@ -5143,14 +5204,19 @@ class ScraperIntegrationService:
                     if existing:
                         med = self._get_medicine_product(existing)
                         updated = False
+                        # ATC и вещество родителя — только заглушке (полная карточка их
+                        # заменит своими). У готовой карточки чужой код в пустом поле
+                        # позже расходился с источником, и парсер её пропускал.
+                        inherit = (existing.external_data or {}).get("is_stub") is True
+                        own_atc_code = analog_atc_code or (atc_code if inherit else "")
                         if analog_barcode and not med.barcode:
                             med.barcode = analog_barcode[:100]
                             updated = True
-                        if active_ingredient and not med.active_ingredient:
+                        if inherit and active_ingredient and not med.active_ingredient:
                             med.active_ingredient = active_ingredient
                             updated = True
-                        if (analog_atc_code or atc_code) and not med.atc_code:
-                            med.atc_code = (analog_atc_code or atc_code)[:100]
+                        if own_atc_code and not med.atc_code:
+                            med.atc_code = own_atc_code[:100]
                             updated = True
                         if analog_sgk_code and not med.sgk_equivalent_code:
                             med.sgk_equivalent_code = analog_sgk_code[:100]
