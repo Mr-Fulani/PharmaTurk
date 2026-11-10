@@ -29,6 +29,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from django.conf import settings
+
 from apps.ai.models import AIProcessingLog
 from apps.ai.services import (
     supplement_brands, supplement_glossary, supplement_judge, supplement_memory, translation_memory,
@@ -786,6 +788,24 @@ def has_usage_paragraph(texts: Any) -> bool:
     )
 
 
+def model_paragraph_enabled() -> bool:
+    return bool(settings.AI_CONFIG.get("SUPPLEMENT_MODEL_PARAGRAPH", True))
+
+
+_CODE_INTRO = {"ru": "{title} — пищевая добавка.", "en": "{title} is a food supplement."}
+
+
+def code_intro(title: str, locale: str) -> str:
+    """Вводная строка кодом вместо абзаца модели: название товара и что это за продукт."""
+    title = str(title or "").strip()
+    if not title:
+        return ""
+    # «INFLAMAX, пищевая добавка, 60 капсул» — что это, уже в названии.
+    if re.search(r"(?i)пищевая добавка|food supplement", title):
+        return f"{title}."
+    return _CODE_INTRO[locale].format(title=title)
+
+
 def build_description(
     paragraphs: Any, locale: str, *, baby_food: bool = False, source_name: str = "", blocks: Optional[list[str]] = None,
     covered: tuple = (),
@@ -1534,6 +1554,10 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
         for locale in ("ru", "en")
     }
     description = answer.get("description") if isinstance(answer.get("description"), dict) else {}
+    # Вариант «б» (решение владельца, по умолчанию выключен): без вводного абзаца модели — строка из названия
+    # и блоки памяти. На волне 1 (10.11.2026) в этом абзаце были выдумки, сломанная грамматика и повторы.
+    if not model_paragraph_enabled():
+        description = {locale: code_intro(titles[locale], locale) for locale in ("ru", "en")}
     descriptions = {
         locale: build_description(
             _brand_latin(description.get(locale), brand_ru, title_brand), locale, baby_food=baby_food,

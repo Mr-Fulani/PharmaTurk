@@ -1045,6 +1045,9 @@ AI_CONFIG = {
     'SUPPLEMENT_JUDGE': env.bool("AI_SUPPLEMENT_JUDGE", default=True),
     # Модель судьи; пусто — ANTHROPIC_MODEL (Haiku). Проба Opus 5.5 — 10.11.2026.
     'SUPPLEMENT_JUDGE_MODEL': env("AI_SUPPLEMENT_JUDGE_MODEL", default=""),
+    # Вариант «б»: False — описание БАДа без вводного абзаца модели (строка из названия + блоки памяти).
+    # Включает владелец; по умолчанию абзац модели остаётся.
+    'SUPPLEMENT_MODEL_PARAGRAPH': env.bool("AI_SUPPLEMENT_MODEL_PARAGRAPH", default=True),
     'VISION_MODEL': env("AI_VISION_MODEL", default="gpt-4o-mini"),
     'EMBEDDING_MODEL': env("AI_EMBEDDING_MODEL", default="text-embedding-3-small"),
     # USD за 1M токенов; cached_input — цена кэшированной части промпта.
