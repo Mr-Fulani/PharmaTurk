@@ -278,6 +278,23 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     "dil altina": ("под язык / подъязычный", "sublingual / under the tongue", S),
     "taurat": ("таурат", "taurate", S),
     "sitrat": ("цитрат", "citrate", S),
+    # Пилот 5 на проде 10.11.2026: «Ayva suyu» — «яблочный сок» в памяти, «Doğası değiştirilmiş kollajen» —
+    # «нативный» (наоборот), «Kediotu» — «кедиотуа», «Kadıntuzluğu» — «кадына», «Ferrik» — «феррик»,
+    # «Löykotomos Eğreltisi» — «плаунок», «Stevya Gluten» как есть, «glutein» (опечатка «lutein») — «глютен»,
+    # «Tek Kullanımlık Toz» — «в тек одноразовых саше».
+    "ayva": ("айва", "quince", S),
+    "dogasi degistirilmis": ("денатурированный", "denatured", S),
+    "dogasi degistirilmemis": ("неденатурированный / нативный", "undenatured / native", S),
+    "kediotu": ("валериана", "valerian", S),
+    "kedi otu": ("валериана", "valerian", S),
+    "kadintuzlugu": ("барбарис", "barberry", S),
+    "kadin tuzlugu": ("барбарис", "barberry", S),
+    "ferrik": ("трёхвалентное железо / железа", "ferric", S),
+    # Латынь в RU не из источника отклоняется (`ru_latin_not_in_source`) — подсказка кириллицей.
+    "loykotomos": ("папоротник полиподиум / папоротник", "Polypodium leucotomos / fern", S),
+    "stevya": ("стевия", "stevia", S),
+    "glutein": ("лютеин", "lutein", S),
+    "tek kullanimlik": ("одноразовый", "single-use", D),
     "melaloyka": ("чайное дерево", "tea tree", S),
     "yumurta zari": ("мембрана яичной скорлупы", "eggshell membrane", S),
     "buyuk meyveli vaksiniyum": ("клюква крупноплодная", "cranberry", S),

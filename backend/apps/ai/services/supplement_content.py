@@ -386,6 +386,33 @@ def is_baby_food(source_name: Any) -> bool:
     return bool(_BABY_FOOD_RE.search(fold_tr(source_name)))
 
 
+# Типовые слова названия: совпадение по ним не говорит, что страница о том же товаре.
+_NAME_COMMON_WORDS = frozenset({
+    "takviye", "edici", "gida", "iceren", "tablet", "kapsul", "efervesan", "aromali", "vitamin", "vitamini", "sase",
+    "damla", "sprey", "sise", "yumusak", "jelatin", "cignenebilir", "pastil", "sivi", "surup", "plus", "forte",
+})
+
+
+def source_page_mismatch(source_name: Any, sections: dict[str, str]) -> bool:
+    """Страница источника о другом товаре: по ссылке «VITASENT EFF C1000 … 20 tablet» — «Velavit V-Colostrum
+    Lozenges 15 Pastil» (9491, пилот 5 на проде: на карточке шипучих таблеток было «1 пастилку в день»).
+
+    Первая строка «Ürün Bilgisi» — название с штучной фасовкой, и ни одного слова названия товара в ней нет.
+    Страницы без названия в первой строке («Ürün Açıklaması», «Vitamin D3-1000 IU») не проверяются.
+    """
+    lines = [line.strip() for line in str(sections.get("product_info") or "").split("\n") if line.strip()]
+    first = next((line for line in lines if not line.endswith(":")), "")
+    pack = parse_pack(first) if first else None
+    if pack is None or not pack.piece:
+        return False
+    page = re.sub(r"[^a-z0-9]", "", fold_tr(first))
+    words = [
+        word for word in re.findall(r"[a-z0-9]+", fold_tr(source_name))
+        if len(word) >= 4 and not word.isdigit() and word not in _NAME_COMMON_WORDS
+    ]
+    return bool(words) and not any(word in page for word in words)
+
+
 def _without_source_words(sentence: str, source_name: str) -> str:
     """Предложение без латинских слов названия: «BOOST», «BP+ CONTROL» — бренд, а не обещание."""
     words = set(re.findall(r"[a-z0-9]+", fold_tr(source_name)))
@@ -423,6 +450,10 @@ _EN_TRANSLIT_FIXES = ((re.compile(r"\bHELAL\b"), "halal"),)
 _SALT_GENITIVE = {"магний": "магния", "кальций": "кальция", "цинк": "цинка", "калий": "калия", "железо": "железа"}
 _SALT_ORDER_RE = re.compile(r"(?i)\b(магний|кальций|цинк|калий|железо)\s+(цитрат|бисглицинат|глицинат|таурат)\b")
 _ALPHA_RE = re.compile(r"\b(DL|D|L)-a-(?=токоферол)")
+# Числительное не в роде: «Один капля», «Два таблетки» (OTAVIT 7869, IMUNEKS 7912, пилот 5 на проде).
+_FEMININE_PIECE = r"(?:\w+(?:ая|ые|ых)\s+)?(?:капл|таблетк|капсул|пастилк|ложк|порци|конфет)[аыияю]\b"
+_ONE_FEMININE_RE = re.compile(rf"\b([Оо])дин(\s+{_FEMININE_PIECE})")
+_TWO_FEMININE_RE = re.compile(rf"\b([Дд])ва(\s+{_FEMININE_PIECE})")
 
 
 def _fix_translit(text: str, locale: str = "ru") -> str:
@@ -443,6 +474,7 @@ def _fix_translit(text: str, locale: str = "ru") -> str:
             text,
         )
         text = _ALPHA_RE.sub(r"\1-α-", text)
+        text = _TWO_FEMININE_RE.sub(r"\1ве\2", _ONE_FEMININE_RE.sub(r"\1дна\2", text))
     return text
 
 
@@ -1019,6 +1051,8 @@ def log_problems(log) -> dict[str, list[str]]:
     rejected = [*(memory.get("rejected") or {}).values(), *(memory.get("memory_rejected") or {}).values()]
     if any(set(reasons) & set(supplement_memory.SOURCE_PROBLEMS) for reasons in rejected):
         description.append("supplement_source_suspicious")
+    if source_name and source_page_mismatch(source_name, source_sections(input_data, limit=None)):
+        description.append("supplement_source_mismatch")
     # Транслит турецкого слова в описании («экстракт акгюнлюк», «вкус ахмудовый») и детское питание (HIPP 1:
     # «последующая … с рождения», шаги приготовления без начала) — всегда человеку (пилот 4 на проде).
     if supplement_memory.TRANSLIT_RE.search(re.sub(r"<[^>]+>", " ", str(getattr(log, "generated_description", "") or ""))):
