@@ -31,6 +31,7 @@ from .models import (
     SportsProduct, SportsProductTranslation, SportsProductImage, SportsVariant, SportsVariantImage,
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
 )
+from .card_payload import limit_serializer_to_card_fields
 from .seo_defaults import build_catalog_item_seo_defaults, resolve_book_seo_value
 from .utils.default_variant import default_fashion_variant
 from .utils.media_path import normalize_duplicated_media_path
@@ -341,7 +342,13 @@ def _resolve_video_file_url(file_field, request):
     return _resolve_file_url(file_field, request)
 
 
-def serialize_product_for_card(product, request, *, hide_counts=True, context=None):
+def _serializer_data(serializer, card_fields):
+    if card_fields:
+        limit_serializer_to_card_fields(serializer)
+    return serializer.data
+
+
+def serialize_product_for_card(product, request, *, hide_counts=True, context=None, card_fields=False):
     """
     Сериализует товар для карточки с учётом типа (shoes, clothing и т.д.).
     Используется в recommendations API, чтобы возвращать active_variant_price,
@@ -351,6 +358,9 @@ def serialize_product_for_card(product, request, *, hide_counts=True, context=No
     context — общий для всех товаров списка: батч-кэши категорий и брендов
     (CategorySerializer/BrandSerializer) живут в нём и считаются один раз
     на список, а не на товар.
+
+    card_fields=True — считать только поля карточки (ответ потом сжимается
+    compact_card_product_payload): без SEO, атрибутов и вложенных бренда/категории.
     """
     # Card payloads never expose brand counters. Passing this through every
     # domain serializer avoids an expensive per-brand products_count query
@@ -364,43 +374,43 @@ def serialize_product_for_card(product, request, *, hide_counts=True, context=No
     if isinstance(product, AccessoryProduct):
         base_product = getattr(product, 'base_product', None)
         if base_product is not None:
-            return ProductCardSerializer(base_product, context=ctx).data
+            return _serializer_data(ProductCardSerializer(base_product, context=ctx), card_fields)
     if isinstance(product, ClothingProduct):
-        return ClothingProductSerializer(product, context=ctx).data
+        return _serializer_data(ClothingProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, ShoeProduct):
-        return ShoeProductSerializer(product, context=ctx).data
+        return _serializer_data(ShoeProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, ElectronicsProduct):
-        return ElectronicsProductSerializer(product, context=ctx).data
+        return _serializer_data(ElectronicsProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, FurnitureProduct):
-        return FurnitureProductSerializer(product, context=ctx).data
+        return _serializer_data(FurnitureProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, JewelryProduct):
-        return JewelryProductSerializer(product, context=ctx).data
+        return _serializer_data(JewelryProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, PerfumeryProduct):
-        return PerfumeryProductSerializer(product, context=ctx).data
+        return _serializer_data(PerfumeryProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, MedicineProduct):
-        return MedicineProductSerializer(product, context=ctx).data
+        return _serializer_data(MedicineProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, SupplementProduct):
-        return SupplementProductSerializer(product, context=ctx).data
+        return _serializer_data(SupplementProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, MedicalEquipmentProduct):
-        return MedicalEquipmentProductSerializer(product, context=ctx).data
+        return _serializer_data(MedicalEquipmentProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, TablewareProduct):
-        return TablewareProductSerializer(product, context=ctx).data
+        return _serializer_data(TablewareProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, AccessoryProduct):
-        return AccessoryProductSerializer(product, context=ctx).data
+        return _serializer_data(AccessoryProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, IncenseProduct):
-        return IncenseProductSerializer(product, context=ctx).data
+        return _serializer_data(IncenseProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, SportsProduct):
-        return SportsProductSerializer(product, context=ctx).data
+        return _serializer_data(SportsProductSerializer(product, context=ctx), card_fields)
     if isinstance(product, AutoPartProduct):
-        return AutoPartProductSerializer(product, context=ctx).data
+        return _serializer_data(AutoPartProductSerializer(product, context=ctx), card_fields)
     try:
         from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
         if isinstance(product, HeadwearProduct):
-            return HeadwearProductSerializer(product, context=ctx).data
+            return _serializer_data(HeadwearProductSerializer(product, context=ctx), card_fields)
         if isinstance(product, UnderwearProduct):
-            return UnderwearProductSerializer(product, context=ctx).data
+            return _serializer_data(UnderwearProductSerializer(product, context=ctx), card_fields)
         if isinstance(product, IslamicClothingProduct):
-            return IslamicClothingProductSerializer(product, context=ctx).data
+            return _serializer_data(IslamicClothingProductSerializer(product, context=ctx), card_fields)
     except Exception:
         pass
     # Shadow Product с книгами: тот же payload, что в списке /catalog/books/ (video_url, варианты, …)
@@ -408,8 +418,8 @@ def serialize_product_for_card(product, request, *, hide_counts=True, context=No
     if pt == 'books':
         book = getattr(product, 'book_item', None)
         if book:
-            return BookProductSerializer(book, context=ctx).data
-    return ProductCardSerializer(product, context=ctx).data
+            return _serializer_data(BookProductSerializer(book, context=ctx), card_fields)
+    return _serializer_data(ProductCardSerializer(product, context=ctx), card_fields)
 
 
 class CategoryTranslationSerializer(serializers.ModelSerializer):
