@@ -589,6 +589,16 @@ def test_wave1c_intro_brand_wording_units_and_percent():
         "Витамин B3 - 5 мг НЭ, витамин A - 200 мкг РЭ, витамин E - 4 мг α-ТЭ"
     )
     assert sc._fix_translit("Streptococcus salivarius K12 ( %5), 50% сока") == "Streptococcus salivarius K12 (5 %), 50% сока"
+    # Ревью #364: русская запись процента не меняется; обозначение внутри названия — тоже.
+    for text, expected in (
+        ("Куркумин 95 % 500 мг", "Куркумин 95 % 500 мг"),
+        ("экстракт 95% 500 мг", "экстракт 95% 500 мг"),
+        ("%5 сока", "5 % сока"),
+        ("K12 ( %5)", "K12 (5 %)"),
+        ("%0,5 масла", "0,5 % масла"),
+        ("10 мг RE-форма, 5 мг NEX", "10 мг RE-форма, 5 мг NEX"),
+    ):
+        assert sc._fix_translit(text) == expected, text
     assert sc._block_wording("агент (соли жирных кислот и диоксид кремния.)") == "агент (соли жирных кислот и диоксид кремния)"
     assert sc._block_wording("ладанник (Cistus creticus L.), сок (воды, молока и т. п.)") == (
         "ладанник (Cistus creticus L.), сок (воды, молока и т. п.)"
