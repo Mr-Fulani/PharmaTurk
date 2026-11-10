@@ -9,10 +9,15 @@ from apps.catalog.essential_oils import essential_oil_category, essential_oil_ca
 from apps.catalog.medicine_taxonomy import propose_medicine_category
 from apps.catalog.models import Category, MedicineProduct
 from apps.catalog.supplement_taxonomy import supplement_category_slug, supplement_substance_slug
+from apps.scrapers.ilacfiyati_duplicates import is_real_barcode
 
 
 class MedicineCategoryConflict(Exception):
     """An ambiguous medicine import requires review instead of partial writes."""
+
+    # Настоящий штрихкод источника совпал со штрихкодом карточки, расходится только
+    # ATC или вещество: упаковка та же — цену и наличие обновить можно, остальное нет.
+    price_refresh_allowed = False
 
 
 def _mapping(value):
@@ -62,15 +67,23 @@ def _validate_identity(scraped, existing, medicine):
         # («amoksisilin» против «Amoksisilin trihidrat» в карточке аналога):
         # сверяем только собственный штрихкод аналога.
         fields = ("barcode",)
+    same_package = False
     for field in fields:
-        values = [attrs.get(field), *(data.get(field) for data in stored)]
+        fresh = [attrs.get(field)]
+        values = [data.get(field) for data in stored]
         if medicine is not None:
             values.append(getattr(medicine, field))
         if field == "barcode":
-            values.append(scraped.barcode)
+            fresh.append(scraped.barcode)
+        fresh = {_normalized(value, field) for value in fresh if str(value or "").strip()}
         known = {_normalized(value, field) for value in values if str(value or "").strip()}
-        if len(known) > 1:
-            raise MedicineCategoryConflict(f"{field}_conflict")
+        if len(fresh | known) > 1:
+            conflict = MedicineCategoryConflict(f"{field}_conflict")
+            conflict.price_refresh_allowed = same_package
+            raise conflict
+        if field == "barcode":
+            # Служебный номер «1111111…» источник ставит разным упаковкам.
+            same_package = bool(fresh) and fresh == known and is_real_barcode(next(iter(fresh)))
 
 
 def validate_existing_medicine(scraped, existing, *, is_variant_update=False):
@@ -109,6 +122,7 @@ def prepare_medicine_category_mapping(session, scraped):
     """
     scraped.__dict__.pop("_medicine_category_root", None)
     scraped.__dict__.pop("_medicine_import_skip_reason", None)
+    scraped.__dict__.pop("_medicine_price_only_reason", None)
     scraped.__dict__.pop("_medicine_media_deferred", None)
     if str(scraped.source or "").strip().lower() != "ilacfiyati":
         return False
