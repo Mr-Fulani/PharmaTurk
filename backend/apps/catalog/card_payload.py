@@ -1,5 +1,7 @@
 """Pure helpers for keeping list-card API payloads small and stable."""
 
+from rest_framework import serializers
+
 CARD_PRODUCT_FIELDS = (
     'id', 'base_product_id', 'name', 'slug', 'description', 'product_type',
     'price', 'price_formatted', 'old_price', 'old_price_formatted',
@@ -106,3 +108,24 @@ def compact_card_product_payload(row):
             if isinstance(author, dict)
         ]
     return compact
+
+
+def limit_serializer_to_card_fields(serializer):
+    """Оставляет в сериализаторе товара только поля карточки.
+
+    Ответ ``view=card`` всё равно сжимается до CARD_PRODUCT_FIELDS
+    (compact_card_product_payload). Без этой правки полный сериализатор сначала
+    считал выброшенные поля — вложенные категорию и бренд со счётчиками, SEO,
+    атрибуты с переводами ключей: у обуви ~200 SQL на страницу из 12 товаров.
+    Вложенный бренд карточке нужен только ради id — его заменяет brand_id.
+    """
+    target = getattr(serializer, 'child', serializer)
+    if not isinstance(target, serializers.ModelSerializer):
+        return serializer
+    fields = target.fields
+    if 'brand' in fields and 'brand_id' not in fields:
+        fields['brand_id'] = serializers.IntegerField(read_only=True)
+    for name in list(fields):
+        if name not in CARD_PRODUCT_FIELDS:
+            fields.pop(name)
+    return serializer

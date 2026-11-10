@@ -122,6 +122,7 @@ from .serializers import (
 )
 from .card_payload import compact_card_product_payload
 from .product_resolution import (
+    CardListFieldsMixin,
     SmartSlugLookupMixin,
     get_public_variant as _get_public_variant,
     resolve_active_variant_from_request as _resolve_active_variant_from_request,
@@ -368,6 +369,28 @@ def _apply_brand_filter(queryset, request):
             q_other |= models.Q(brand_id=other_brand_id)
         return queryset.filter(q_other)
     return queryset.filter(brand_id__in=brand_ids)
+
+
+def _exclude_source_variants(queryset):
+    """Исключает копии вариантов подзапросом по частичному индексу 0217.
+
+    Условие ``external_data ? …`` в основном запросе заставляло COUNT, фасеты
+    и выборку страницы читать дамп парсера у каждой строки раздела (обувь:
+    пять таких проходов на ответ). Подзапрос читает маленький индекс
+    ``<таблица>_source_variant_idx``; его предикат совпадает с source_variant_q().
+    """
+    model = queryset.model
+    return queryset.exclude(id__in=model.objects.filter(source_variant_q()).values('id'))
+
+
+def _defer_card_dumps(queryset, request):
+    """view=card: дампы парсеров (external_data) карточке не нужны — не читаем их.
+
+    Queryset обязан делать select_related('base_product').
+    """
+    if request.query_params.get('view') != 'card':
+        return queryset
+    return queryset.defer('external_data', 'base_product__external_data')
 
 
 def _apply_attr_filters(queryset, request):
@@ -1005,6 +1028,9 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         'category__translations',
         'brand__translations',
         'base_product__translations',
+        # Карточка без своих картинок берёт их у теневого Product (лекарства,
+        # БАДы): без prefetch — два запроса на товар.
+        'base_product__images',
         'book_authors__author',
         'book_genres__genre',
     )
@@ -1025,7 +1051,13 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         field_names = {field.name for field in model._meta.get_fields()}
 
         if model is Product:
-            queryset = queryset.exclude(non_public_shadow_product_q())
+            # Тем же приёмом, что у доменов ниже: условие `?` в основном запросе
+            # детоастило дампы всех теневых Product бренда (на копии — 0.23 с у
+            # бренда с 800 лекарствами). Подзапрос читает индекс 0217
+            # catalog_product_nonpublic_id_idx.
+            queryset = queryset.exclude(
+                id__in=Product.objects.filter(non_public_shadow_product_q()).values('id')
+            )
         else:
             # Служебные строки исключаются подзапросом по id, а не условием на
             # external_data в основном запросе: планировщик проверял `?` по
@@ -1106,7 +1138,7 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             current = field.related_model
         return True
 
-    def _hydrate_brand_products(self, model, ids: list[int]):
+    def _hydrate_brand_products(self, model, ids: list[int], card_view: bool = False):
         """Догружает связи только для позиций итоговой страницы."""
         field_names = {field.name for field in model._meta.get_fields()}
         queryset = model.objects.filter(id__in=ids)
@@ -1115,6 +1147,12 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             select_related.append('category__parent__parent')
         if select_related:
             queryset = queryset.select_related(*select_related)
+        if card_view and model is not Product:
+            # Поля карточки доменных товаров не читают дампы парсеров. Теневой
+            # Product книг читает (ISBN, превью видео) — его не трогаем.
+            queryset = queryset.defer('external_data')
+            if 'base_product' in select_related and model is not BookProduct:
+                queryset = queryset.defer('base_product__external_data')
         prefetch_related = [
             name for name in self.BRAND_CARD_PREFETCH
             if self._is_valid_relation_path(model, name)
@@ -1296,6 +1334,7 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
         ordering = request.query_params.get('ordering') or 'newest'
         sort_field, descending = self.BRAND_PRODUCT_ORDERING.get(ordering, self.BRAND_PRODUCT_ORDERING['newest'])
+        card_view = request.query_params.get('view') == 'card'
 
         # Фаза 1: только (значение сортировки, id) по каждой модели — без prefetch.
         entries: list[tuple] = []
@@ -1325,7 +1364,7 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             ids_by_label.setdefault(label, []).append(pk)
         objects_by_key = {}
         for label, ids in ids_by_label.items():
-            for pk, obj in self._hydrate_brand_products(model_by_label[label], ids).items():
+            for pk, obj in self._hydrate_brand_products(model_by_label[label], ids, card_view).items():
                 objects_by_key[(label, pk)] = obj
         page_items = [
             objects_by_key[(label, pk)]
@@ -1354,7 +1393,6 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         # view=card (витрина бренда) — только поля карточки, как у категорий:
         # полные инструкции лекарств раздували страницу до 0.8 МБ, а вложенные
         # бренд и категория со счётчиками карточке не нужны.
-        card_view = request.query_params.get('view') == 'card'
         # Один context на страницу: дерево категорий, их счётчики и бренд
         # считаются один раз, а не для каждого товара (24 GROUP BY по всей
         # catalog_product — ~1 с на странице).
@@ -1364,7 +1402,9 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         serializer_context = {'request': request, 'hide_counts': card_view}
         results = []
         for product in page_items:
-            row = serialize_product_for_card(product, request, context=serializer_context)
+            row = serialize_product_for_card(
+                product, request, context=serializer_context, card_fields=card_view
+            )
             if card_view:
                 results.append(compact_card_product_payload(row))
                 continue
@@ -2394,7 +2434,7 @@ class ClothingCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
         return Response(serializer.data)
 
 
-class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class ClothingProductViewSet(SmartSlugLookupMixin, CardListFieldsMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами одежды."""
 
     permission_classes = [AllowAny]
@@ -2422,14 +2462,15 @@ class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vie
     
     def get_queryset(self):
         """Фильтрация товаров одежды по параметрам."""
-        queryset = ClothingProduct.objects.filter(is_active=True).exclude(
-            models.Q(external_data__has_key='source_variant_id') |
-            models.Q(external_data__has_key='source_variant_slug')
-        ).prefetch_related(
+        queryset = _exclude_source_variants(
+            ClothingProduct.objects.filter(is_active=True)
+        ).select_related('category__parent__parent', 'brand', 'base_product').prefetch_related(
             'images',
+            'translations',
             'variants',
             'variants__images',
         )
+        queryset = _defer_card_dumps(queryset, self.request)
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -2603,7 +2644,7 @@ class ShoeCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class ShoeProductViewSet(SmartSlugLookupMixin, CardListFieldsMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами обуви."""
 
     permission_classes = [AllowAny]
@@ -2631,10 +2672,9 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
     
     def get_queryset(self):
         """Фильтрация товаров обуви по параметрам."""
-        queryset = ShoeProduct.objects.filter(is_active=True).exclude(
-            models.Q(external_data__has_key='source_variant_id') |
-            models.Q(external_data__has_key='source_variant_slug')
-        ).select_related('category', 'brand', 'base_product').prefetch_related(
+        queryset = _exclude_source_variants(
+            ShoeProduct.objects.filter(is_active=True)
+        ).select_related('category__parent__parent', 'brand', 'base_product').prefetch_related(
             'images',
             'variants',
             'variants__images',
@@ -2646,6 +2686,7 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
             'brand__translations',
             'base_product__translations',
         )
+        queryset = _defer_card_dumps(queryset, self.request)
 
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -2817,7 +2858,7 @@ class ElectronicsCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelVie
         return Response(serializer.data)
 
 
-class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class ElectronicsProductViewSet(SmartSlugLookupMixin, CardListFieldsMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами электроники."""
 
     permission_classes = [AllowAny]
@@ -2841,7 +2882,10 @@ class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, 
     
     def get_queryset(self):
         """Фильтрация товаров электроники по параметрам."""
-        queryset = ElectronicsProduct.objects.filter(is_active=True)
+        queryset = ElectronicsProduct.objects.filter(is_active=True).select_related(
+            'category__parent__parent', 'brand', 'base_product',
+        ).prefetch_related('images', 'translations')
+        queryset = _defer_card_dumps(queryset, self.request)
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -2924,7 +2968,7 @@ class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, 
         return Response(serializer.data)
 
 
-class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class JewelryProductViewSet(SmartSlugLookupMixin, CardListFieldsMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для товаров украшений (с вариантами и размерами)."""
 
     permission_classes = [AllowAny]
@@ -2945,9 +2989,12 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
         return ordering_map.get(ordering, ordering)
 
     def get_queryset(self):
-        queryset = JewelryProduct.objects.filter(is_active=True).prefetch_related(
-            'images', 'variants', 'variants__images',
+        queryset = JewelryProduct.objects.filter(is_active=True).select_related(
+            'category__parent__parent', 'brand', 'base_product',
+        ).prefetch_related(
+            'images', 'translations', 'variants', 'variants__images',
         )
+        queryset = _defer_card_dumps(queryset, self.request)
         def parse_multi_param(param_name: str) -> list[str]:
             raw_list = self.request.query_params.getlist(param_name) or []
             if not raw_list:
@@ -3071,7 +3118,7 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
         return Response(serializer.data)
 
 
-class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class FurnitureProductViewSet(SmartSlugLookupMixin, CardListFieldsMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами мебели."""
 
     permission_classes = [AllowAny]
@@ -3110,9 +3157,12 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
     
     def get_queryset(self):
         """Фильтрация товаров мебели по параметрам."""
-        queryset = FurnitureProduct.objects.filter(is_active=True).prefetch_related(
-            'images', 'variants', 'variants__images',
+        queryset = FurnitureProduct.objects.filter(is_active=True).select_related(
+            'category__parent__parent', 'brand', 'base_product',
+        ).prefetch_related(
+            'images', 'translations', 'variants', 'variants__images',
         )
+        queryset = _defer_card_dumps(queryset, self.request)
 
         def parse_multi_param(param_name: str) -> list[str]:
             raw_list = (
@@ -4522,7 +4572,7 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
 #        ПРОСТЫЕ ДОМЕНЫ (Волна 2) — ViewSets
 # ─────────────────────────────────────────────────────────────
 
-class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
+class _SimpleDomainViewSet(SmartSlugLookupMixin, CardListFieldsMixin, viewsets.ReadOnlyModelViewSet):
     """Базовый ViewSet для простых доменов без вариантов."""
 
     permission_classes = [AllowAny]
@@ -4573,6 +4623,21 @@ class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         if self._has_relation_path(queryset.model, 'category__parent__parent'):
             queryset = queryset.select_related('category__parent__parent')
         if not self._card_requested():
+            if self._card_list_requested():
+                # Домены с вариантами (головные уборы, бельё, исламская одежда)
+                # сериализуются полным сериализатором, урезанным до полей
+                # карточки: бренд и base_product — для наценки и видео,
+                # дампы парсеров не читаем.
+                relation_names = {field.name for field in queryset.model._meta.get_fields()}
+                for relation in ('brand', 'base_product'):
+                    if relation in relation_names:
+                        queryset = queryset.select_related(relation)
+                if 'base_product' in relation_names:
+                    queryset = queryset.defer('external_data', 'base_product__external_data')
+                queryset = queryset.prefetch_related(*(
+                    path for path in ('images', 'base_product__images')
+                    if self._has_relation_path(queryset.model, path)
+                ))
             return queryset
 
         # Class-level querysets for detail endpoints can carry broad prefetches.

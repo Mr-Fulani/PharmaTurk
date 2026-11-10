@@ -2,7 +2,25 @@
 
 from apps.feedback.review_aggregates import attach_review_aggregates
 
-from .card_payload import compact_card_product_payload
+from .card_payload import compact_card_product_payload, limit_serializer_to_card_fields
+
+
+class CardListFieldsMixin:
+    """Список ``view=card`` сериализует только поля карточки (limit_serializer_to_card_fields)."""
+
+    def _card_list_requested(self):
+        request = getattr(self, 'request', None)
+        return (
+            getattr(self, 'action', None) == 'list'
+            and request is not None
+            and request.query_params.get('view') == 'card'
+        )
+
+    def get_serializer(self, *args, **kwargs):
+        serializer = super().get_serializer(*args, **kwargs)
+        if self._card_list_requested():
+            limit_serializer_to_card_fields(serializer)
+        return serializer
 
 
 def get_public_variant(variant_model, slug):
