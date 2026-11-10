@@ -30,7 +30,9 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from apps.ai.models import AIProcessingLog
-from apps.ai.services import supplement_brands, supplement_glossary, supplement_memory, translation_memory
+from apps.ai.services import (
+    supplement_brands, supplement_glossary, supplement_judge, supplement_memory, translation_memory,
+)
 from apps.ai.services.medicine_reference import fold_tr, ru_plural, translate_reference_field
 from apps.ai.services.medicine_title import CYRILLIC_RE, looks_like_source_name
 from apps.catalog.services.delivery_terms import ORDER_SENTENCE
@@ -1086,6 +1088,9 @@ def log_problems(log) -> dict[str, list[str]]:
         description.append("supplement_source_mismatch")
     if dose_suspicious(getattr(log, "generated_description", "")):
         description.append("supplement_dose_suspicious")
+    # Находка судьи — до отметки «Описание проверено модератором» (её учитывает semantic_validator).
+    if supplement_judge.flagged((rule_content.get("supplement") or {}).get("judge")):
+        description.append("supplement_judge")
     # Транслит турецкого слова в описании («экстракт акгюнлюк», «вкус ахмудовый») и детское питание (HIPP 1:
     # «последующая … с рождения», шаги приготовления без начала) — всегда человеку (пилот 4 на проде).
     if supplement_memory.TRANSLIT_RE.search(re.sub(r"<[^>]+>", " ", str(getattr(log, "generated_description", "") or ""))):
@@ -1537,6 +1542,14 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
         )
         for locale in ("ru", "en")
     }
+    # Судья сверяет готовое RU описание с источником и только отправляет на модерацию (волна 1 на проде).
+    judge = None
+    if supplement_judge.enabled() and descriptions["ru"]:
+        judge = supplement_judge.judge(
+            source_name, source_sections(input_data, limit=None), descriptions["ru"],
+            skip=(DISCLAIMER["ru"], BABY_DISCLAIMER["ru"]),
+        )
+        _add_usage(result, judge)
     serving = answer.get("serving") if isinstance(answer.get("serving"), dict) else {}
     seo = build_seo(
         title_brand, brand_ru, product_text, pack, baby_food=baby_food, usage=has_usage_paragraph(memory_texts["ru"])
@@ -1575,6 +1588,7 @@ def run_supplement_content(product, input_data: dict, llm, log_entry=None) -> di
             "memory": blocks.stats,
             # Для log_problems: эти абзацы проверены по частям при переводе.
             "memory_texts": memory_texts if any(memory_texts.values()) else {},
+            "judge": judge,
         },
     }
     return result

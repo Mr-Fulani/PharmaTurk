@@ -1302,3 +1302,59 @@ def test_wave1_card_checks():
     # Род «саше», транслит «портакал».
     assert sc.clean_paragraph("Одна саше в день. Каждый саше содержит 5 г.") == "Одно саше в день. Каждое саше содержит 5 г."
     assert sm.TRANSLIT_RE.search("со вкусом портакала (апельсина)")
+
+
+def _judge_client(answer=None, exc=None):
+    class Messages:
+        calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if exc:
+                raise exc
+            usage = SimpleNamespace(input_tokens=1000, cache_read_input_tokens=0, cache_creation_input_tokens=0,
+                                    output_tokens=200)
+            return SimpleNamespace(stop_reason="end_turn", usage=usage,
+                                   content=[SimpleNamespace(type="text", text=json.dumps(answer))])
+
+    return SimpleNamespace(model="claude-haiku-5-5", client=SimpleNamespace(messages=Messages()))
+
+
+def test_supplement_judge_flags_only_confident_findings_and_fails_closed():
+    from apps.ai.services import supplement_judge as sj
+
+    answer = {"problems": [
+        {"kind": "перевод", "quote": "после еды", "source": "yemek zamanı", "error": "во время еды", "confidence": 4},
+        {"kind": "стиль", "quote": "x", "source": "y", "error": "z", "confidence": 5},
+    ]}
+    client = _judge_client(answer)
+    result = sj.judge("SOLGAR X 30 kapsül", {"product_info": "Tercihen yemek zamanı"},
+                      "<p>Принимать после еды.</p><p>Дисклеймер.</p>", skip=("Дисклеймер.",), client=client)
+    assert [p["kind"] for p in result["problems"]] == ["перевод"] and sj.flagged(result)
+    request = client.client.messages.calls[-1]
+    # Только Claude с адаптивными размышлениями и схемой ответа; дисклеймер судье не показывается.
+    assert request["thinking"] == {"type": "adaptive"} and request["output_config"]["format"]["type"] == "json_schema"
+    assert "Дисклеймер" not in request["messages"][0]["content"]
+    assert result["cost_usd"] == round((1000 * 0.10 + 200 * 0.50) / 1_000_000, 6)
+    # Сомнение модели (confidence 1) — не на модерацию; ошибка запроса — на модерацию.
+    low = sj.judge("X", {}, "<p>Текст.</p>", client=_judge_client({"problems": [
+        {"kind": "число", "quote": "a", "source": "b", "error": "c", "confidence": 1}]}))
+    assert not sj.flagged(low)
+    import anthropic
+
+    failed = sj.judge("X", {}, "<p>Текст.</p>", client=_judge_client(exc=anthropic.APIConnectionError(request=None)))
+    assert "error" in failed and sj.flagged(failed)
+    assert not sj.flagged(None) and not sj.flagged({"problems": []})
+
+
+def test_log_problems_flag_judge_findings():
+    def log(judge):
+        return SimpleNamespace(
+            raw_llm_response={"rule_content": {"supplement": {"brand": "SOLGAR", "judge": judge}}},
+            input_data={"name": "SOLGAR X 30 kapsül"}, extracted_attributes={}, generated_title="",
+            generated_description="<p>SOLGAR — капсулы.</p>",
+        )
+    flagged = {"problems": [{"kind": "перевод", "quote": "a", "source": "b", "error": "c", "confidence": 3}]}
+    assert "supplement_judge" in sc.log_problems(log(flagged))["description"]
+    assert "supplement_judge" not in sc.log_problems(log({"problems": []})).get("description", [])
+    assert "supplement_judge" not in sc.log_problems(log(None)).get("description", [])

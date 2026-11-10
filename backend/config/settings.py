@@ -1041,6 +1041,8 @@ AI_CONFIG = {
     'MODEL': env("AI_MODEL", default="gpt-4o-mini"),
     # Основная модель текста при заданном ANTHROPIC_API_KEY; MODEL (OpenAI) — запасная.
     'ANTHROPIC_MODEL': env("AI_ANTHROPIC_MODEL", default="claude-haiku-5-5"),
+    # Судья описаний БАДов (apps/ai/services/supplement_judge.py): второй запрос к Claude, только модерация.
+    'SUPPLEMENT_JUDGE': env.bool("AI_SUPPLEMENT_JUDGE", default=True),
     'VISION_MODEL': env("AI_VISION_MODEL", default="gpt-4o-mini"),
     'EMBEDDING_MODEL': env("AI_EMBEDDING_MODEL", default="text-embedding-3-small"),
     # USD за 1M токенов; cached_input — цена кэшированной части промпта.
