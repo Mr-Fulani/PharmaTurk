@@ -315,6 +315,14 @@ GLOSSARY: dict[str, tuple[str, str, str]] = {
     # Волна 1в: «1 ölçek (5 ml)» — «мерный стаканчик» вместо мерной ложки (9500); «ölçek kabı» — мерный стаканчик.
     "olcek kabi": ("мерный стаканчик / мерный колпачок", "measuring cup", S),
     "olcek": ("мерная ложка", "scoop / measuring spoon", S),
+    # Волна 1г на проде 10.11.2026: «Kiraz Aroması» — «вкус вишни» (11964), «rodiola tozu» — «корень родиолы» (10306),
+    # «Klorofil Bakır Kompleksi» — «хлорофиллин медно-натриевый» (10121), «Maltitol» как есть (12147), «pastil» —
+    # «леденец» (11729). «shot» — не в словаре: «IMMUNE SHOT» в названиях; «шот» ловит TRANSLIT_RE.
+    "kiraz": ("черешня", "sweet cherry", S),
+    "rodiola tozu": ("порошок родиолы", "rhodiola powder", S),
+    "klorofil bakir kompleksi": ("медный комплекс хлорофилла / хлорофилла медный комплекс", "copper chlorophyll complex", S),
+    "maltitol": ("мальтит / мальтитол", "maltitol", S),
+    "pastil": ("пастилка / пастилки", "lozenge / pastille", S),
     "melaloyka": ("чайное дерево", "tea tree", S),
     "yumurta zari": ("мембрана яичной скорлупы", "eggshell membrane", S),
     "buyuk meyveli vaksiniyum": ("клюква крупноплодная", "cranberry", S),

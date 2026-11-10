@@ -237,7 +237,9 @@ TRANSLIT_RE = re.compile(
     # Повтор пилота 5: «со вкусом портакала (апельсина)» (SUNLIFE 7862).
     r"портакал|"
     # Волна 1б: «1 пуф», «2 пуффа» (puf — впрыск).
-    r"\bпуфф?(?:а|ов|ы|ам|ами)?\b",
+    r"\bпуфф?(?:а|ов|ы|ам|ами)?\b|"
+    # Волна 1г: «1 шот в день» (shot — порция, 21234).
+    r"\bшот(?:а|ов|ы)?\b",
     re.IGNORECASE,
 )
 UNTRANSLATED_WORD_RE = re.compile(
@@ -479,6 +481,11 @@ def _split_top_level(text: str) -> list[str]:
         # Подпись, приклеенная к первому компоненту: «İçindekiler: Balık yağı» — на карточке «Состав: Состав: …» (9543).
         if re.match(r"icindekiler\s*:", fold_tr(item)):
             item = item.split(":", 1)[1].strip()
+        # «Hydroxypropylmethyl Cellulose Bitkisel kapsül» — материал и что из него (12182, 9966, волна 1г): на карточке
+        # «Гидроксипропилметилцеллюлоза растительная капсула» → «Bitkisel kapsül (Hydroxypropylmethyl Cellulose)».
+        capsule = re.fullmatch(r"(.*(?:sel[üu]loz|cellulose)\w*)\s+(bitkisel\s+kaps[üu]l)", item, re.IGNORECASE)
+        if capsule:
+            item = f"{capsule.group(2)} ({capsule.group(1).strip()})"
         # «Feverfew Ekxtraktı 83», «Glukozamin Hcl 40» — число без единицы в конце компонента: код сырья или доля из
         # таблицы (12182, 9842, волна 1б на проде). «Polisorbat 80», «Omega 3», штаммы «… 299v» — часть названия.
         bare = re.fullmatch(r"(.*[^\W\d_]{3,})\s+([1-9]\d{1,2})", item)

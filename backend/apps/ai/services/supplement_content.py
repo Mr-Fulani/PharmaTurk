@@ -439,6 +439,34 @@ def dose_per_portion_suspicious(description: Any, source: Any) -> bool:
     return bool(_SOURCE_PORTION_RE.search(fold_tr(source)) and _PER_ONE_RE.search(plain))
 
 
+# Противоречие чисел самого источника (волна 1г на проде): «Koenzim Q10 100 mg» в названии и «100 mcg» в таблице
+# (10033); «11 yaş üstü çocuklar 500 ml» и «Yetişkinler 500-1000 ml», а на карточке только «500 мл» (10232, 11584).
+_MASS_UNITS = {"mg": "mg", "mcg": "mcg", "µg": "mcg", "μg": "mcg", "ug": "mcg"}
+_MASS_RE = re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)?)\s*(mcg|µg|μg|ug|mg)\b", re.IGNORECASE)
+_RANGE_RE = re.compile(r"(?<![\d.,])(\d+)\s*[-–]\s*(\d+)\s*(ml|mg|g)\b", re.IGNORECASE)
+_RU_UNITS = {"ml": "мл", "mg": "мг", "g": "г"}
+
+
+def source_numbers_conflict(description: Any, source_name: Any, sections: dict[str, str]) -> bool:
+    text = " ".join(sections.values())
+    # Название — из каталога и заголовок страницы («NaturalNest Koenzim Q10 100 mg», 10033).
+    lines = [line.strip() for line in str(sections.get("product_info") or "").split("\n") if line.strip()]
+    page_title = next((line for line in lines if not line.endswith(":")), "")
+    in_name = {(m.group(1), _MASS_UNITS[m.group(2).lower()]) for m in _MASS_RE.finditer(f"{source_name or ''} {page_title}")}
+    # Таблица — текст без строк-заголовков (заголовок повторяется на странице).
+    body = " ".join(line for value in sections.values() for line in str(value).split("\n") if line.strip() != page_title)
+    in_text = {(m.group(1), _MASS_UNITS[m.group(2).lower()]) for m in _MASS_RE.finditer(body)}
+    if any((number, "mcg" if unit == "mg" else "mg") in in_text and (number, unit) not in in_text
+           for number, unit in in_name):
+        return True
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", str(description or "")))
+    for match in _RANGE_RE.finditer(text):
+        low, high, unit = match.group(1), match.group(2), _RU_UNITS[match.group(3).lower()]
+        if re.search(rf"(?<![\d.,–-]){low}\s*{unit}\b", plain) and not re.search(rf"(?<![\d.,]){high}\b", plain):
+            return True
+    return False
+
+
 def source_page_mismatch(source_name: Any, sections: dict[str, str]) -> bool:
     """Страница источника о другом товаре: по ссылке «VITASENT EFF C1000 … 20 tablet» — «Velavit V-Colostrum
     Lozenges 15 Pastil» (9491, пилот 5 на проде: на карточке шипучих таблеток было «1 пастилку в день»).
@@ -538,6 +566,12 @@ def _fix_translit(text: str, locale: str = "ru") -> str:
         text = re.sub(r"\(\s*%\s?(\d+(?:[.,]\d+)?)\s*\)", r"(\1 %)", text)
         # «95 % 500 мг» — русская запись с пробелом: число перед «%» (и через пробел) — не турецкий процент (ревью #364).
         text = re.sub(r"(?<![\d.,])(?<![\d.,]\s)%\s?(\d+(?:[.,]\d+)?)", r"\1 %", text)
+        # «Для детей от 4 до 10 лет; 1–2 раза в день», «Рекомендуемая суточная доза; взрослым» — «;» источника
+        # после группы или подписи, а не граница фраз (11624, 11868, 12226, волна 1г); «1 саше; следует» (12323).
+        text = re.sub(r"(\bлет|\bдоза)\s*;\s*", r"\1: ", text)
+        text = re.sub(r"(\d\s+саше)\s*;\s*(?=следует)", r"\1 ", text)
+        # «Данное БАД предназначено» — БАД здесь «добавка» (12255).
+        text = re.sub(r"\b([Дд])анное БАД предназначено\b", r"\1анная БАД предназначена", text)
         # «Одна саше», «Каждый саше» — саше среднего рода (волна 1 на проде).
         text = re.sub(r"\b([Оо])дна(\s+саше)\b", r"\1дно\2", text)
         text = re.sub(r"\b([Кк])аждый(\s+саше)\b", r"\1аждое\2", text)
@@ -830,7 +864,9 @@ _CODE_INTRO = {"ru": "пищевая добавка", "en": "food supplement"}
 # Бренд модели может захватить слова названия: «VENATURA LIPOZOMAL», «NATURALNEST MAGNEZYUM PLUS», «VELAVIT
 # V-FIRSTECT WITH», «DOPPELHERZ VITAMIN C, CINKO …» (волна 1в на проде 10.11.2026) — в строке бренд до первого
 # слова словаря, «with», «vitamin» или запятой; первое слово остаётся всегда.
-_INTRO_STOP_WORDS = frozenset({"with", "ve", "and", "vitamin", "icin"})  # «PLUS» — часть брендов: ACTIVE PLUS
+# «PLUS» — часть брендов (ACTIVE PLUS); английские слова («SUDA COLLAGEN», «NBL PROBIOTIC») — линейки, не режем:
+# «VENATURA CRANBERRY» (9610, волна 1г) остаётся — список обрезал бы 10 верных строк.
+_INTRO_STOP_WORDS = frozenset({"with", "ve", "and", "vitamin", "icin"})
 
 
 def _intro_brand(brand: Any) -> str:
@@ -1166,6 +1202,10 @@ def log_problems(log) -> dict[str, list[str]]:
         description.append("supplement_source_mismatch")
     if dose_suspicious(getattr(log, "generated_description", "")):
         description.append("supplement_dose_suspicious")
+    if source_name and source_numbers_conflict(
+        getattr(log, "generated_description", ""), source_name, source_sections(input_data, limit=None)
+    ):
+        description.append("supplement_source_numbers_conflict")
     if dose_per_portion_suspicious(getattr(log, "generated_description", ""), source):
         description.append("supplement_dose_per_portion")
     # Непереведённое слово в блоках памяти: «powder», «Magnezyum», «Devil's Claw» (волна 1б на проде).

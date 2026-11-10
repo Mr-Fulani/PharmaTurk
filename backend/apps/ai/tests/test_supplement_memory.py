@@ -1444,3 +1444,28 @@ def test_wave1c_olcek_glossary():
                             "1 scoop (5 ml) once a day.") == []
     assert sm.line_problems("Günde 1 ölçek kabı (10 ml).", "1 мерный стаканчик (10 мл) в день.",
                             "1 measuring cup (10 ml) a day.") == []
+
+
+def test_wave1d_capsule_order_glossary_and_shot():
+    # «Hydroxypropylmethyl Cellulose Bitkisel kapsül» → «Bitkisel kapsül (…)» (12182, 9966); без «bitkisel» — как есть.
+    text = "İçindekiler: Ginkgo Ekstraktı, Hydroxypropylmethyl Cellulose Bitkisel kapsül"
+    assert sm.section_parts({"product_info": text})["composition"] == [
+        "Ginkgo Ekstraktı", "Bitkisel kapsül (Hydroxypropylmethyl Cellulose)",
+    ]
+    text = "İçindekiler: Ginkgo Ekstraktı, Hidroksipropil metil selüloz"
+    assert sm.section_parts({"product_info": text})["composition"] == ["Ginkgo Ekstraktı", "Hidroksipropil metil selüloz"]
+    # Словарь: черешня, порошок родиолы, мальтит, пастилка — неверный перевод не принимается, верный — да.
+    for source, wrong, right in (
+        ("Kiraz Aroması", "Вкус вишни", "Ароматизатор черешни"),
+        ("rodiola tozu", "корень родиолы", "порошок родиолы"),
+        ("kıvam artırıcı Maltitol", "загуститель Maltitol", "загуститель мальтит"),
+        ("Günde 3 defa 1 pastil", "по 1 леденец 3 раза в день", "по 1 пастилке 3 раза в день"),
+    ):
+        assert "supplement_ingredient_mistranslated" in sm.line_problems(source, wrong, wrong), source
+        assert "supplement_ingredient_mistranslated" not in sm.line_problems(source, right, {
+            "Kiraz Aroması": "Sweet cherry flavour", "rodiola tozu": "rhodiola powder",
+            "kıvam artırıcı Maltitol": "thickener maltitol", "Günde 3 defa 1 pastil": "1 lozenge 3 times a day",
+        }[source]), source
+    # «1 шот» — транслит; «шоты» в других словах — нет.
+    assert sm.TRANSLIT_RE.search("1 шот в день")
+    assert not sm.TRANSLIT_RE.search("шотландский виски")
