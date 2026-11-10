@@ -244,6 +244,10 @@ def test_supplement_thousands_with_space_match_source():
     assert title_problems("OSENDE Коллаген 10 000 Плюс, жидкость, 30 туб по 40 мл",
                           "OSENDE COLLAGEN 10.000 PLUS TAKVIYE EDICI GIDA 30x40 ml tüp") == []
     assert title_problems("NAME 30 капсул", "NAME 500 mg 30 kapsül") == ["supplement_title_number_lost"]
+    # Круг 6 модерации (10.11.2026): «B12 500» и «Q10 100» — обозначение и доза, а не тысячи.
+    assert title_problems("SOLGAR Витамин B12 500 мкг, 50 капсул", "SOLGAR VITAMIN B12 KAPSUL 500 mcg 50 kapsül") == []
+    assert title_problems("VENATURA Коэнзим Q10 100 мг, 30 капсул",
+                          "VENATURA COQ-10 KOENZIM Q10 ICEREN TAKVIYE EDICI GIDA 100 mg 30 kapsül") == []
 
 
 def test_cycle2_vitamin_ve_flavour_short_description_and_address():

@@ -301,7 +301,8 @@ _POWER_RE = re.compile(r"(\d)\s*[x×]\s*10(\d{1,2})(?!\d)", re.IGNORECASE)
 
 
 # «62 500 МЕ», «10 000» — тысячи через пробел (так пишет RU): одно число (очередь 27.10.2026).
-_SPACED_THOUSANDS_RE = re.compile(r"(?<![\d.,])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?![\d.,]?\d)")
+# Число вплотную после буквы — обозначение: «B12 500 мкг», «Q10 100 мг» — не «12 500» (круг 6, 10.11.2026).
+_SPACED_THOUSANDS_RE = re.compile(r"(?<![\w.,])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?![\d.,]?\d)")
 
 
 def _numbers(text: Any, spaced_thousands: bool = False) -> set[str]:
