@@ -338,3 +338,19 @@ def test_fix_text_skips_draft_without_exact_phrase(generator, category, tmp_path
     log.refresh_from_db()
     assert log.generated_description == "<p>Без фразы.</p>"
     assert "пропущен" in out.getvalue() and not (tmp_path / "b.json").exists()
+
+
+def test_fix_text_skips_replacement_overflowing_seo_description(generator, category, tmp_path):
+    # 11.11.2026: замена удлинила SEO-описание за 160 знаков — запись падала целиком (DataError).
+    product = _product("superstep-fix3", category)
+    seo = "Шорты " + "а" * 136 + " outdoor-шорты."  # 157 знаков, после замены 163
+    log = _log(product, generated_description="<p>Женские outdoor-шорты.</p>", generated_seo_description=seo)
+    fixes = tmp_path / "fixes.json"
+    fixes.write_text(json.dumps({str(product.pk): [["outdoor-шорты", "туристические шорты"]]}), encoding="utf-8")
+    out = StringIO()
+    call_command(
+        "source_ai_cards", source="superstep", fix_text=str(fixes), backup=str(tmp_path / "b.json"), stdout=out
+    )
+    log.refresh_from_db()
+    assert log.generated_seo_description == seo and "outdoor" in log.generated_description
+    assert "длиннее 160" in out.getvalue() and not (tmp_path / "b.json").exists()
