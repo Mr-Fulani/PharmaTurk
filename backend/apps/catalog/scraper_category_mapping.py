@@ -194,3 +194,25 @@ def _resolve_product_type(category: Category) -> Optional[str]:
         product_type = (current_cat.slug or "").replace("-", "_")
 
     return product_type or None
+
+
+def route_categories(route) -> dict:
+    """Активные разделы маршрута парсера {slug: Category} — только того же типа, что корень.
+
+    Маршрут — slug от точного раздела к корню («tracksuits», «suits», «clothing»). Раздел
+    с таким slug, лежащий под другим корнем, пропускается: «Спортивные костюмы»
+    (``tracksuits``) оказались в «Спорттоварах», и до 11.11.2026 костюмы SuperStep
+    сохранялись спорттоварами — без цветов и размеров. Корня в каталоге нет — без проверки.
+    """
+    route = [str(slug) for slug in route or []]
+    found = {
+        category.slug: category
+        for category in Category.objects.filter(slug__in=route, is_active=True).select_related(
+            "category_type", "parent__category_type", "parent__parent__category_type",
+        )
+    }
+    root = found.get(route[-1]) if route else None
+    if root is None:
+        return found
+    root_type = _resolve_product_type(root)
+    return {slug: category for slug, category in found.items() if _resolve_product_type(category) == root_type}
