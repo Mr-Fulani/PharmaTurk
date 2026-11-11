@@ -256,8 +256,12 @@ def _repeated_phrase(text):
     return None
 
 
-def validate_texts(texts):
-    """Список проблем ответа модели; пустой — можно показывать на пилоте/писать."""
+def validate_texts(texts, allow_empty=False):
+    """Список проблем ответа модели; пустой — можно показывать на пилоте/писать.
+
+    allow_empty — пустое поле не ошибка: тексты, написанные вручную без SEO-текста и H1
+    (услуги), запись такие поля просто пропускает.
+    """
     problems = []
     for locale in LOCALES:
         values = texts.get(locale) or {}
@@ -265,7 +269,8 @@ def validate_texts(texts):
         for field in SEO_FIELDS:
             value = (values.get(field) or "").strip()
             if not value:
-                problems.append(f"{locale}.{field}: пусто")
+                if not allow_empty:
+                    problems.append(f"{locale}.{field}: пусто")
                 continue
             match = forbidden.search(value)
             if match:

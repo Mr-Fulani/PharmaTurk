@@ -196,6 +196,8 @@ export default function ProductReviews({
   onQuestionSummaryChange?: (summary: QuestionSummary) => void
 }) {
   const { t, i18n } = useTranslation('common')
+  // Услуга — не товар: свои подписи вкладок и примечания
+  const isService = productType === 'uslugi'
   const { user } = useAuth()
   const router = useRouter()
   const [reviews, setReviews] = useState<ReviewResponse | null>(null)
@@ -368,7 +370,7 @@ export default function ProductReviews({
   return (
     <section id="product-reviews" className="relative mt-12 scroll-mt-24 border-t border-gray-200 pt-7 dark:border-gray-700">
       <span id="product-questions" className="absolute -top-24" aria-hidden="true" />
-      <div role="tablist" aria-label={t('product_feedback_tabs_label', 'Отзывы и вопросы о товаре')} className="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-700">
+      <div role="tablist" aria-label={isService ? t('service_feedback_tabs_label', 'Отзывы и вопросы об услуге') : t('product_feedback_tabs_label', 'Отзывы и вопросы о товаре')} className="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-700">
         {(['reviews', 'questions'] as ProductFeedbackTab[]).map((tab) => {
           const selected = activeTab === tab
           const count = tab === 'reviews' ? (reviews?.reviews_count || 0) : (questions?.questions_count || 0)
@@ -385,8 +387,8 @@ export default function ProductReviews({
             >
               <span>
                 {tab === 'reviews'
-                  ? t('product_reviews_tab', 'Отзывы о товаре')
-                  : t('product_questions_tab', 'Вопросы о товаре')}
+                  ? (isService ? t('service_reviews_tab', 'Отзывы об услуге') : t('product_reviews_tab', 'Отзывы о товаре'))
+                  : (isService ? t('service_questions_tab', 'Вопросы об услуге') : t('product_questions_tab', 'Вопросы о товаре'))}
               </span>
               <span className={`ml-2 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-white/20 text-white ring-1 ring-inset ring-white/40' : 'bg-gray-200 text-gray-700 group-hover:bg-blue-100 group-hover:text-blue-700 dark:bg-gray-700 dark:text-gray-200 dark:group-hover:bg-blue-900 dark:group-hover:text-blue-200'}`}>{count}</span>
             </button>
@@ -532,7 +534,9 @@ export default function ProductReviews({
                 )
               })}
             </div>
-            <p className="mt-8 text-sm leading-relaxed text-gray-500 dark:text-gray-400">{t('product_reviews_verified_note', 'Отзывы могут оставлять только пользователи, купившие товар. Так формируется честный рейтинг.')}</p>
+            <p className="mt-8 text-sm leading-relaxed text-gray-500 dark:text-gray-400">{isService
+              ? t('service_reviews_verified_note', 'Отзывы могут оставлять только клиенты, заказавшие эту услугу. Так мы формируем честный рейтинг.')
+              : t('product_reviews_verified_note', 'Отзывы могут оставлять только пользователи, купившие товар. Так формируется честный рейтинг.')}</p>
           </aside>
         </div>
       ) : (

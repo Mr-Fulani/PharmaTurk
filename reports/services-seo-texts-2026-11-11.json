@@ -1,0 +1,308 @@
+[
+ {
+  "slug": "uslugi",
+  "name_en": "Services",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Услуги в Стамбуле: ремонт, клининг, кондиционеры, переезд | Mudaroba",
+    "meta_description": "Ремонт, кондиционеры, клининг и переезд в Стамбуле, миграционные консультации и медицинский туризм в Турции, разработка сайтов. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Services in Istanbul: Renovation, Cleaning, AC, Moving | Mudaroba",
+    "meta_description": "Renovation, AC, cleaning and moving help in Istanbul, immigration advice and medical tourism in Turkey, web development. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-renovation",
+  "name_en": "Renovation & Repair",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Ремонт квартир и помещений в Стамбуле под ключ | Mudaroba",
+    "meta_description": "Ремонт квартир и коммерческих помещений в Стамбуле: работы под ключ, покраска стен и потолков, ремонт кухни. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Apartment & Commercial Renovation in Istanbul | Mudaroba",
+    "meta_description": "Turnkey renovation of apartments and commercial premises in Istanbul, wall and ceiling painting, kitchen renovation. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-apartment-renovation",
+  "name_en": "Apartment Renovation",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Ремонт квартир в Стамбуле: ремонт кухни под ключ | Mudaroba",
+    "meta_description": "Ремонт квартир в Стамбуле. Сейчас в разделе — ремонт кухни под ключ: плитка, мебель, сантехника. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Apartment Renovation in Istanbul: Turnkey Kitchens | Mudaroba",
+    "meta_description": "Apartment renovation in Istanbul. Currently in this section: turnkey kitchen renovation with tiles, cabinets and plumbing. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-room-repair",
+  "name_en": "Room-by-Room Repair",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Ремонт отдельных комнат в Стамбуле: кухня под ключ | Mudaroba",
+    "meta_description": "Ремонт отдельных комнат в Стамбуле. Сейчас в разделе — ремонт кухни под ключ: плитка, мебель, сантехника. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Room-by-Room Renovation in Istanbul: Kitchens | Mudaroba",
+    "meta_description": "Single-room renovation in Istanbul. Currently in this section: turnkey kitchen renovation with tiles, cabinets and plumbing. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-kitchen-renovation",
+  "name_en": "Kitchen Renovation",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Ремонт кухни под ключ в Стамбуле | Mudaroba",
+    "meta_description": "Ремонт кухни под ключ в Стамбуле: демонтаж, плитка, столешница, кухонный гарнитур, сантехника, свет и розетки. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Turnkey Kitchen Renovation in Istanbul | Mudaroba",
+    "meta_description": "Turnkey kitchen renovation in Istanbul: tiles, countertop, cabinets, plumbing, lighting and sockets. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-electrical",
+  "name_en": "Electrical Works",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Электрик в Стамбуле: проводка, розетки, электрощит | Mudaroba",
+    "meta_description": "Электромонтаж в квартире, доме или офисе в Стамбуле: замена проводки, розетки, освещение, сборка электрощита. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Electrician in Istanbul: Wiring, Sockets, Panels | Mudaroba",
+    "meta_description": "Electrical work for apartments, houses and offices in Istanbul: rewiring, sockets, lighting, panel assembly. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-wiring",
+  "name_en": "Wiring Installation",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Замена и монтаж проводки в Стамбуле | Mudaroba",
+    "meta_description": "Замена и монтаж электропроводки в Стамбуле: проводка, розетки, освещение, электрощит — в квартире, доме или офисе. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Wiring Installation & Rewiring in Istanbul | Mudaroba",
+    "meta_description": "Wiring installation and rewiring in Istanbul: sockets, lighting and panel assembly for apartments, houses and offices. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-climate",
+  "name_en": "Climate Equipment",
+  "texts": {
+   "ru": {
+    "h1": "Монтаж и обслуживание климатической техники",
+    "meta_title": "Кондиционеры и котлы Kombi в Стамбуле: монтаж, чистка | Mudaroba",
+    "meta_description": "В Стамбуле: установка и демонтаж кондиционеров, их мытьё и обслуживание, установка газового котла Kombi. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "Climate Equipment Installation and Service",
+    "meta_title": "AC & Kombi Boiler Installation in Istanbul | Mudaroba",
+    "meta_description": "In Istanbul: air conditioner installation and removal, AC cleaning and maintenance, Kombi gas boiler installation. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-ac",
+  "name_en": "Air Conditioners",
+  "texts": {
+   "ru": {
+    "h1": "Установка и обслуживание кондиционеров",
+    "meta_title": "Установка и чистка кондиционеров в Стамбуле | Mudaroba",
+    "meta_description": "Установка сплит-кондиционеров в квартирах, домах и офисах Стамбула, демонтаж, мытьё и обслуживание бытовых кондиционеров. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "Air Conditioner Installation and Service",
+    "meta_title": "Air Conditioner Installation & Cleaning in Istanbul | Mudaroba",
+    "meta_description": "Split air conditioner installation in apartments, houses and offices in Istanbul, removal, cleaning and maintenance. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-ac-cleaning",
+  "name_en": "AC Cleaning & Maintenance",
+  "texts": {
+   "ru": {
+    "h1": "Чистка и обслуживание кондиционеров",
+    "meta_title": "Чистка и мытьё кондиционеров в Стамбуле | Mudaroba",
+    "meta_description": "Профессиональное мытьё и обслуживание бытовых кондиционеров в Стамбуле. Напишите менеджеру Mudaroba — уточним детали, время и стоимость работ.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "Air Conditioner Cleaning & Maintenance",
+    "meta_title": "Air Conditioner Cleaning in Istanbul | Mudaroba",
+    "meta_description": "Professional cleaning and maintenance of home air conditioners in Istanbul. Message a Mudaroba manager to discuss the details, timing and price.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-water-heaters",
+  "name_en": "Water Heaters",
+  "texts": {
+   "ru": {
+    "h1": "Установка бойлеров и газовых котлов",
+    "meta_title": "Бойлеры и котлы Kombi в Стамбуле: установка | Mudaroba",
+    "meta_description": "Установка и подключение газовых котлов Kombi в Стамбуле для отопления квартиры и горячей воды. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "Water Heater and Gas Boiler Installation",
+    "meta_title": "Water Heaters & Kombi Boilers in Istanbul: Installation | Mudaroba",
+    "meta_description": "Installation and connection of Kombi gas boilers in Istanbul for apartment heating and hot water. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-boiler-install",
+  "name_en": "Water Heater Installation",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Установка газового котла Kombi в Стамбуле | Mudaroba",
+    "meta_description": "Установка и подключение газового котла Kombi в Стамбуле: выбор места установки, проверка подвода воды и газа, монтаж котла. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Kombi Gas Boiler Installation in Istanbul | Mudaroba",
+    "meta_description": "Kombi gas boiler installation in Istanbul: choosing the location, checking water and gas connections, mounting the boiler. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-insulation",
+  "name_en": "Insulation Works",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Утепление и гидроизоляция в Стамбуле | Mudaroba",
+    "meta_description": "Изоляционные работы в Стамбуле. Сейчас в разделе — ремонт ванной под ключ с гидроизоляцией мокрых зон и плиткой. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Insulation & Waterproofing in Istanbul | Mudaroba",
+    "meta_description": "Insulation work in Istanbul. Currently in this section: turnkey bathroom renovation with wet-zone waterproofing and tiling. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-waterproofing",
+  "name_en": "Waterproofing",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Гидроизоляция в Стамбуле: ванная и санузел | Mudaroba",
+    "meta_description": "Гидроизоляция в Стамбуле. Сейчас в разделе — ремонт ванной под ключ: гидроизоляция мокрых зон, плитка, сантехника. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Waterproofing in Istanbul: Bathrooms and WCs | Mudaroba",
+    "meta_description": "Waterproofing in Istanbul. Currently in this section: turnkey bathroom renovation with wet-zone waterproofing, tiling, plumbing. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-bathroom-waterproofing",
+  "name_en": "Bathroom",
+  "texts": {
+   "ru": {
+    "h1": "Гидроизоляция ванной и санузла",
+    "meta_title": "Гидроизоляция и ремонт ванной в Стамбуле | Mudaroba",
+    "meta_description": "Ремонт ванной и санузла в Стамбуле под ключ: демонтаж, сантехника и электрика, гидроизоляция мокрых зон, плитка. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "Bathroom and WC Waterproofing",
+    "meta_title": "Bathroom Waterproofing & Renovation in Istanbul | Mudaroba",
+    "meta_description": "Turnkey bathroom and WC renovation in Istanbul: plumbing and electrical preparation, wet-zone waterproofing, tiling. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "svc-other",
+  "name_en": "Other Services",
+  "texts": {
+   "ru": {
+    "h1": "",
+    "meta_title": "Клининг, химчистка мебели и переезд в Стамбуле | Mudaroba",
+    "meta_description": "Русскоязычный клининг, мытьё окон, химчистка мягкой мебели на дому и помощь с переездом в Стамбуле. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "",
+    "meta_title": "Cleaning, Upholstery Care & Moving in Istanbul | Mudaroba",
+    "meta_description": "Russian-speaking cleaning, window cleaning, at-home upholstery cleaning and moving help in Istanbul. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ },
+ {
+  "slug": "web-developer",
+  "name_en": "Web Developer",
+  "texts": {
+   "ru": {
+    "h1": "Разработка сайтов, ботов и приложений",
+    "meta_title": "Разработка сайтов и Telegram-ботов под ключ | Mudaroba",
+    "meta_description": "Разработка под ключ: корпоративные сайты, интернет-магазины, каталоги, личные кабинеты, Telegram-боты — от идеи до запуска. Стоимость уточнит менеджер Mudaroba.",
+    "seo_text": ""
+   },
+   "en": {
+    "h1": "Website, Bot and App Development",
+    "meta_title": "Website, Online Shop & Telegram Bot Development | Mudaroba",
+    "meta_description": "Turnkey web development: corporate websites, online shops, catalogues, client accounts and Telegram bots, from idea to launch. Ask a Mudaroba manager for a quote.",
+    "seo_text": ""
+   }
+  }
+ }
+]

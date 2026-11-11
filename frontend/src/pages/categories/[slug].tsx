@@ -1650,6 +1650,8 @@ export default function CategoryPage({
     return `${baseTitle} — ${pageLabel}`
   }, [currentCategory, titleText, pageName, isDefaultLocale, collection, landingSeo, currentPage, catalogSeo.hasFilters, router.locale])
 
+  // Услуга — не товар: без «с доставкой», счётчик «N услуг», свой хвост и подписи.
+  const isServiceCategory = categoryType === 'uslugi'
   // Описание для поиска и превью: короткие описания категорий («Кроссовки») дополняем
   // числом товаров и главными подкатегориями (buildCategoryDescription).
   const metaDescription = useMemo(() => {
@@ -1663,18 +1665,22 @@ export default function CategoryPage({
     )
     return buildCategoryDescription({
       base,
-      lead: t('category_meta_lead', '{{category}} из Турции с доставкой', { category: pageName || '' }),
+      lead: isServiceCategory
+        ? (pageName || '')
+        : t('category_meta_lead', '{{category}} из Турции с доставкой', { category: pageName || '' }),
       countText: totalCount > 0
-        ? t('category_meta_count', {
+        ? t(isServiceCategory ? 'service_category_meta_count' : 'category_meta_count', {
           count: totalCount,
           formattedCount: totalCount.toLocaleString(router.locale === 'en' ? 'en-US' : 'ru-RU'),
-          defaultValue: '{{formattedCount}} товаров',
+          defaultValue: isServiceCategory ? '{{formattedCount}} услуг' : '{{formattedCount}} товаров',
         })
         : '',
       subcategories: subcategoryNames,
-      tail: t('category_meta_tail', 'Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba'),
+      tail: isServiceCategory
+        ? t('service_category_meta_tail', 'Опишите задачу — менеджер Mudaroba подберёт исполнителя и назовёт стоимость')
+        : t('category_meta_tail', 'Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba'),
     })
-  }, [currentCategory, localizedCategoryDescription, pageName, t, isDefaultLocale, displaySubcategories, router.locale, totalCount, collection, landingSeo])
+  }, [currentCategory, localizedCategoryDescription, pageName, t, isDefaultLocale, displaySubcategories, router.locale, totalCount, collection, landingSeo, isServiceCategory])
 
   // Превью в соцсетях и мессенджерах — то же развёрнутое описание, а не одно слово
   const ogDescription = metaDescription
@@ -1815,7 +1821,8 @@ export default function CategoryPage({
         title={landingSeo?.h1 || pageName}
         description={collection ? null : localizedCategoryDescription}
         totalCount={totalCount}
-        categorySlug={routeSlug}
+        categorySlug={isServiceCategory ? 'uslugi' : routeSlug}
+        countLabel={isServiceCategory ? t('services_found', 'НАЙДЕНО УСЛУГ') : undefined}
         worksHref={!collection && currentCategory?.portfolio_items && currentCategory.portfolio_items.length > 0
           ? `/categories/${routeSlug}/works`
           : null}

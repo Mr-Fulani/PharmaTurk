@@ -212,3 +212,24 @@ def test_apply_command_refuses_draft_with_problems(catalog, tmp_path):
     with pytest.raises(CommandError, match="lsv-vitamins"):
         call_command("category_landing_seo", "apply", "--file", str(draft), "--backup", str(tmp_path / "b.json"))
     assert not CategoryTranslation.objects.filter(category=catalog.vitamins).exists()
+
+
+def test_allow_empty_skips_blank_fields_but_keeps_other_checks():
+    partial = _texts(ru__h1="", ru__seo_text="", en__h1="", en__seo_text="")
+    assert validate_texts(partial) != []
+    assert validate_texts(partial, allow_empty=True) == []
+    assert validate_texts(_texts(ru__seo_text="", ru__meta_title="Без окончания"), allow_empty=True) != []
+
+
+@pytest.mark.django_db
+def test_apply_command_allow_empty_writes_only_given_fields(catalog, tmp_path):
+    texts = _texts(ru__h1="", ru__seo_text="", en__h1="", en__seo_text="")
+    draft = tmp_path / "draft.json"
+    draft.write_text(json.dumps([{"slug": "lsv-vitamins", "name_en": "Vitamins", "texts": texts}], ensure_ascii=False))
+    args = ["category_landing_seo", "apply", "--file", str(draft), "--backup", str(tmp_path / "b.json")]
+    with pytest.raises(CommandError, match="lsv-vitamins"):
+        call_command(*args)
+    call_command(*args, "--allow-empty")
+    ru = CategoryTranslation.objects.get(category=catalog.vitamins, locale="ru")
+    assert ru.meta_title == texts["ru"]["meta_title"] and ru.meta_description == texts["ru"]["meta_description"]
+    assert ru.h1 == "" and ru.seo_text == ""
