@@ -339,6 +339,11 @@ class Command(BaseCommand):
             if missing:
                 self.stdout.write(f"  {pid}: фраза не встречается в описании ровно один раз — пропущен: {missing[0]!r}")
                 continue
+            # SEO-описание лога — поле на 160 знаков: длинная замена роняла всю запись (11.11.2026).
+            seo_limit = AIProcessingLog._meta.get_field("generated_seo_description").max_length
+            if len(fix(log.generated_seo_description or "", pairs)) > seo_limit:
+                self.stdout.write(f"  {pid}: после правки SEO-описание длиннее {seo_limit} знаков — пропущен, сократите замену")
+                continue
             seo_ru = dict(((log.extracted_attributes or {}).get("seo_translations") or {}).get("ru") or {})
             memory = list(AITranslationMemory.objects.filter(source_log=log))
             changes.append((log, pairs, seo_ru, memory))
