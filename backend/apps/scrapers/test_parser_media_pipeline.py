@@ -359,6 +359,48 @@ def test_colour_rows_saved_from_source_urls_are_reused_without_download(monkeypa
     assert _variant_rows(product) == stored
 
 
+@pytest.mark.django_db(transaction=True)
+def test_changed_colour_gallery_keeps_copies_of_rows_saved_from_source_urls(monkeypatch):
+    """У цвета добавилось фото — галерея пересобирается. Строки, сохранённые сигналом из
+    внешнего URL, приходят с тем же URL: раньше pre_save качал их заново, а при отказе
+    источника (403, таймаут) строка оставалась со ссылкой на сайт продавца без копии."""
+    # transaction=True: удаление файлов после delete() идёт сразу, как на проде без atomic.
+    downloads = _fake_downloads(monkeypatch)
+    signal_downloads = _signal_downloads(monkeypatch)  # источник не отдаёт файл сигналу
+    session, category = _lcw_session("media-pipeline-changed-gallery")
+    product = _clothing(category, "lcw-pipe-9")
+    variant = ClothingVariant.objects.create(
+        product=product.domain_item, name="Tişört - Renk 0", color="Renk 0", external_id="lcw-pipe-9-red",
+        price=100, currency="TRY", is_active=True, is_available=True,
+    )
+    red = [f"{CDN}/changed-red-{i}.jpg" for i in range(2)]
+    keys = []
+    for index, url in enumerate(red):
+        key = default_storage.save(
+            f"products/clothing/changed/{source_url_fingerprint(url)}.jpg", ContentFile(_image_for(url))
+        )
+        keys.append(key)
+        ClothingVariantImage.objects.create(
+            variant=variant, image_url=url, image_file=key, sort_order=index, is_main=index == 0,
+        )
+    # Главные фото цвета и карточки — на файле галереи, как их оставил прошлый проход.
+    ScraperIntegrationService()._dedupe_main_into_gallery(product)
+    added = f"{CDN}/changed-red-new.jpg"
+    blue = [f"{CDN}/changed-blue-0.jpg"]
+
+    _clothing_pass(session, "lcw-pipe-9", red + [added], blue)
+
+    assert signal_downloads == []
+    assert sorted(downloads) == sorted([added] + blue)
+    rows = list(
+        ClothingVariantImage.objects.filter(variant=variant).order_by("sort_order")
+        .values_list("image_url", "image_file")
+    )
+    assert len(rows) == 3
+    assert [image_file for _, image_file in rows[:2]] == keys
+    assert all(image_file and default_storage.exists(image_file) for _, image_file in rows)
+
+
 def _accessory(external_id):
     category, product_type = resolve_category_and_product_type("Kemer")
     return Product.objects.create(
