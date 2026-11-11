@@ -81,6 +81,7 @@ from apps.catalog.constants import get_or_create_root_category
 from apps.catalog.scraper_category_mapping import (
     _resolve_product_type,
     resolve_category_and_product_type,
+    route_categories,
 )
 from apps.catalog.ikea_category_mapping import resolve_ikea_category
 from apps.catalog.utils.parser_media_handler import (
@@ -1927,7 +1928,7 @@ class ScraperIntegrationService:
         if source in ("superstep", "seniorah") and (category is None or category.parent_id is None):
             attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
             route = [str(slug) for slug in attrs.get(f"{source}_category_slugs") or []]
-            found = {c.slug: c for c in Category.objects.filter(slug__in=route, is_active=True)}
+            found = route_categories(route)
             slug = next((slug for slug in route if slug in found), None)
             if slug:
                 scraped_product.category = slug

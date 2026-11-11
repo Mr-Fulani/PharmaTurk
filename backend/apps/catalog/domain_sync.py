@@ -264,6 +264,12 @@ def _copy_children(rows, relation, parent, *, sort_start=None) -> int:
     return len(copies)
 
 
+def _ordered(manager):
+    """Строки по порядку сайта; у простых вариантов (спорттовары, автозапчасти) поля порядка нет."""
+    has_sort = any(field.name == "sort_order" for field in manager.model._meta.concrete_fields)
+    return manager.order_by("sort_order", "pk") if has_sort else manager.order_by("pk")
+
+
 def _move_domain_media(stale, target, *, dry_run: bool) -> dict:
     """Переносит в target галерею stale и его варианты (или их фото, если у target вариантов нет)."""
     source_variants = _child_relation(type(stale), _VARIANT_RELATIONS)
@@ -273,18 +279,18 @@ def _move_domain_media(stale, target, *, dry_run: bool) -> dict:
 
     variants = []
     if source_variants:
-        variants = list(getattr(stale, source_variants[0]).order_by("sort_order", "pk"))
+        variants = list(_ordered(getattr(stale, source_variants[0])))
     copy_variants = bool(
         variants and target_variants
         and not getattr(target, target_variants[0]).exists()
     )
 
-    gallery_rows = list(getattr(stale, source_gallery[0]).order_by("sort_order", "pk")) if source_gallery else []
+    gallery_rows = list(_ordered(getattr(stale, source_gallery[0]))) if source_gallery else []
     if not copy_variants:
         for variant in variants:
             images = _child_relation(type(variant), ("images",))
             if images:
-                gallery_rows.extend(getattr(variant, images[0]).order_by("sort_order", "pk"))
+                gallery_rows.extend(_ordered(getattr(variant, images[0])))
 
     new_gallery_rows = []
     if target_gallery:

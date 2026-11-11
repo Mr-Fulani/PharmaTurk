@@ -795,6 +795,91 @@ def test_service_takes_most_specific_existing_category_over_root_task():
     assert product._category_override.slug == "t-shirts"
 
 
+def _tracksuit(route=("tracksuits", "suits", "clothing")):
+    return ScrapedProduct(
+        name="Nike Club Erkek Eşofman Takımı",
+        category=route[0],
+        source="superstep",
+        attributes={"superstep_category_slugs": list(route)},
+    )
+
+
+@pytest.mark.django_db
+def test_clothing_route_never_lands_in_sports_section():
+    """Решение владельца 11.11.2026: спорттовары — снаряды и предметы, не одежда. Раздел
+    ``tracksuits`` лежал под «Спорттоварами», и костюмы сохранялись спорттоварами."""
+    sports = Category.objects.create(name="Спорттовары", slug="sports")
+    sportswear = Category.objects.create(name="Спортивная одежда и обувь", slug="sportswear-footwear", parent=sports)
+    tracksuits = Category.objects.create(name="Спортивные костюмы", slug="tracksuits", parent=sportswear)
+    clothing = Category.objects.create(name="Одежда", slug="clothing")
+    suits = Category.objects.create(name="Костюмы", slug="suits", parent=clothing)
+    session = SimpleNamespace(target_category=None, scraper_config=SimpleNamespace(default_category=None))
+    service = ScraperIntegrationService()
+
+    product = _tracksuit()
+    service._apply_category_mapping(session, product)
+    assert product._category_override == suits
+
+    # Раздел перенесли в одежду — костюмы идут в него.
+    Category.objects.filter(pk=tracksuits.pk).update(parent=suits)
+    product = _tracksuit()
+    service._apply_category_mapping(session, product)
+    assert product._category_override == tracksuits
+
+    # Снаряд остаётся спорттоваром.
+    balls = Category.objects.create(name="Мячи", slug="basketball-balls", parent=sports)
+    ball = _tracksuit(("basketball-balls", "basketball", "team-sports", "sports"))
+    service._apply_category_mapping(session, ball)
+    assert ball._category_override == balls
+
+
+def test_only_equipment_subgroups_route_to_sports():
+    """В «Спорттовары» ведут только подгруппы снарядов и предметов: новая строка таблицы
+    с одеждой или обувью под корнем ``sports`` — ошибка."""
+    from apps.scrapers.parsers.superstep import SUPERSTEP_SUBGROUP_CATEGORIES
+
+    to_sports = {
+        key for key, route in SUPERSTEP_SUBGROUP_CATEGORIES.items()
+        for variant in (route.values() if isinstance(route, dict) else [route]) if variant[-1] == "sports"
+    }
+
+    assert to_sports == {
+        "basketbol topu", "dizlik", "kolluk", "tekmelik", "yuzucu gozlugu", "yuzme aksesuari",
+        "spor aksesuarlari", "antrenman aksesuari", "havlu",
+    }
+
+
+def test_route_slugs_are_not_shared_between_catalog_roots():
+    """Slug маршрута, объявленный в дереве двух корней, достаётся тому, кого сидер создал
+    последним. Известный случай — ``tracksuits`` (одежда и спорттовары): его закрывает
+    проверка типа в ``route_categories``; новых быть не должно."""
+    import ast
+    from pathlib import Path
+
+    from apps.catalog import constants
+    from apps.scrapers.parsers.superstep import SUPERSTEP_SUBGROUP_CATEGORIES
+
+    declared = {}
+
+    def walk(node, tree_name):
+        if isinstance(node, (ast.List, ast.Tuple)):
+            head = node.elts[:5]
+            if len(head) == 5 and all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in head):
+                declared.setdefault(head[2].value, set()).add(tree_name)
+            for element in node.elts:
+                walk(element, tree_name)
+
+    for statement in ast.parse(Path(constants.__file__).read_text(encoding="utf-8")).body:
+        if isinstance(statement, ast.Assign) and getattr(statement.targets[0], "id", "").endswith("_SUBCATEGORIES"):
+            walk(statement.value, statement.targets[0].id)
+    route_slugs = {
+        slug for route in SUPERSTEP_SUBGROUP_CATEGORIES.values()
+        for variant in (route.values() if isinstance(route, dict) else [route]) for slug in variant
+    }
+
+    assert {slug for slug in route_slugs if len(declared.get(slug, ())) > 1} == {"tracksuits"}
+
+
 @pytest.mark.django_db
 def test_product_without_catalog_section_is_not_loaded():
     """Нет ни одного раздела маршрута — товар не уходит в раздел задачи или

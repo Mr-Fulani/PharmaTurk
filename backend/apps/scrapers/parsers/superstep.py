@@ -200,7 +200,10 @@ SUPERSTEP_SUBGROUP_CATEGORIES: Dict[str, Any] = {
     "boyunluk": ("snoods", "scarves-shawls", "accessories"),
     "eldiven": ("acc-gloves", "accessories"),
     "sac bandi": ("acc-headbands", "hair-accessories", "accessories"),
-    # Спорттовары
+    # Лыжные перчатки — одежда, а не снаряд (решение владельца 11.11.2026).
+    "kayak eldiveni": ("acc-gloves", "accessories"),
+    # Спорттовары — только снаряды и предметы. Раздел маршрута под чужим корнем сервис
+    # пропускает (``route_categories``): ``tracksuits`` лежал под «Спорттоварами».
     "basketbol topu": ("basketball-balls", "basketball", "team-sports", "sports"),
     "dizlik": ("sports",),
     "kolluk": ("sports",),
@@ -209,7 +212,6 @@ SUPERSTEP_SUBGROUP_CATEGORIES: Dict[str, Any] = {
     "yuzme aksesuari": ("swimming", "water-sports", "sports"),
     "spor aksesuarlari": ("fitness-accessories", "fitness-gym", "sports"),
     "antrenman aksesuari": ("fitness-accessories", "fitness-gym", "sports"),
-    "kayak eldiveni": ("winter-sports", "sports"),
     "havlu": ("sports",),
     # Посуда
     "termos": ("thermoses", "drinkware", "tableware"),

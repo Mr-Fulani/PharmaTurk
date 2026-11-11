@@ -29,7 +29,7 @@ docker exec mudaroba-backend-1 poetry run python manage.py <команда> [ф�
 
 | Документ | Команды |
 | --- | --- |
-| [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) | `repair_broken_media`, `assign_manufacturer_brands`, `repair_flo_brands`, `clear_heuristic_old_prices`, `recalc_colour_prices`, `repair_lcw_names`, `retire_stale_domain_records`, `move_essential_oils_from_supplements`, `replace_delivery_terms` |
+| [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) | `repair_broken_media`, `assign_manufacturer_brands`, `repair_flo_brands`, `clear_heuristic_old_prices`, `recalc_colour_prices`, `repair_lcw_names`, `retire_stale_domain_records`, `move_essential_oils_from_supplements`, `move_clothing_out_of_sports`, `replace_delivery_terms` |
 | [MEDICINE_PARSER_CATEGORIES.md](MEDICINE_PARSER_CATEGORIES.md) | `repair_medicine_atc_codes` — чужой код АТХ в поле лекарства (показ по умолчанию, `--apply --backup`, откат `--restore`) |
 | [CROSS_SOURCE_DUPLICATES.md](CROSS_SOURCE_DUPLICATES.md) | `resolve_cross_source_duplicates` — одинаковые товары FLO ↔ SuperStep (показ по умолчанию, `--apply --backup`, откат `--unhide-all`) |
 | [ILACFIYATI_TWIN_PAGES.md](ILACFIYATI_TWIN_PAGES.md) | `hide_ilacfiyati_twin_pages` — две страницы ilacfiyati одного препарата (показ по умолчанию, `--csv`, `--apply --backup`) |
