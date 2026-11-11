@@ -152,9 +152,12 @@ docker-compose за nginx и Cloudflare.
    (`attributes["inditex_category_slugs"]`), и категория задачи из ветки «Одежда»
    не делает их одеждой. Категория задачи парсера другого типа существующему товару не
    ставится (кроме лекарств): тип она не меняет, товар оказался бы чужим разделу
-   (`_category_changes_domain`). Смена типа без `Product.save()` — так, как это делает
-   `move_essential_oils_from_supplements`: `save()` синхронизирует из новой доменной записи
-   пустые SEO. См. [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md).
+   (`_category_changes_domain`). Маршрут парсера (SuperStep, Seniorah) берёт только раздел
+   того же типа, что его корень (`route_categories`): одежда не попадает в «Спорттовары»,
+   даже если раздел с её slug лежит под ними (`tracksuits` до 11.11.2026); «Спорттовары» —
+   снаряды и предметы, не одежда и не обувь. Смена типа без `Product.save()` — так, как это делает
+   `move_essential_oils_from_supplements` и `move_clothing_out_of_sports`: `save()` синхронизирует
+   из новой доменной записи пустые SEO. См. [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md).
 14. **Файл медиа удаляется только после проверки ссылок, закрытой при сбое.** Копия
    медиа товаров хранит пропавший файл только 30 дней ([DB_BACKUP.md](DB_BACKUP.md)) и
    проверку не заменяет: код, который удаляет файл из R2, проверяет ссылки через
