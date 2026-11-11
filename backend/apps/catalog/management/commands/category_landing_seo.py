@@ -42,6 +42,10 @@ class Command(BaseCommand):
         apply.add_argument("--backup", required=True, help="Куда записать прежние значения полей.")
         apply.add_argument("--overwrite", action="store_true", help="Перезаписывать непустые поля.")
         apply.add_argument("--dry-run", action="store_true", help="Показать изменения без записи.")
+        apply.add_argument(
+            "--allow-empty", action="store_true",
+            help="Не считать пустое поле ошибкой (ручные тексты без SEO-текста и H1); пустые поля не пишутся.",
+        )
 
     def handle(self, *args, **options):
         if options["action"] == "generate":
@@ -101,7 +105,10 @@ class Command(BaseCommand):
         only = set(_csv(options["slugs"]))
         if only:
             entries = [entry for entry in entries if entry["slug"] in only]
-        with_problems = [entry["slug"] for entry in entries if validate_texts(entry["texts"])]
+        with_problems = [
+            entry["slug"] for entry in entries
+            if validate_texts(entry["texts"], allow_empty=options["allow_empty"])
+        ]
         if with_problems:
             raise CommandError(f"Есть замечания проверки, исправьте файл: {', '.join(with_problems)}")
 

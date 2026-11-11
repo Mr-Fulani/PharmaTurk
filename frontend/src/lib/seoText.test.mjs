@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+
+import i18next from 'i18next'
 
 import { appendSentenceIfShort, buildCategoryDescription, limitTitle, productImageAlt, splitSeoText, truncateAtWord, withProductTitleSuffix } from './seoText.js'
 
@@ -162,4 +165,85 @@ test('title товара без описательной части длинне
   const huge = 'Х'.repeat(10) + ' ' + 'слово '.repeat(20)
   const cut = withProductTitleSuffix(huge, RU)
   assert.ok(cut.length <= 80 && cut.endsWith('… | Mudaroba'), cut)
+})
+
+// Шаблон описания раздела: строки берутся из локалей, формы числа — как на сайте (i18next).
+const metaLocales = Object.fromEntries(await Promise.all(['ru', 'en'].map(async (locale) => [
+  locale,
+  JSON.parse(await readFile(new URL(`../../public/locales/${locale}/common.json`, import.meta.url), 'utf8')),
+])))
+const metaI18n = i18next.createInstance()
+await metaI18n.init({
+  lng: 'ru',
+  resources: { ru: { translation: metaLocales.ru }, en: { translation: metaLocales.en } },
+  interpolation: { escapeValue: false },
+})
+const metaCount = (locale, key, count) => metaI18n.getFixedT(locale)(key, { count, formattedCount: String(count) })
+
+test('service category description: no delivery, counts services, own tail (RU/EN)', () => {
+  assert.deepEqual(
+    [1, 2, 5, 11, 21, 104].map((n) => metaCount('ru', 'service_category_meta_count', n)),
+    ['1 услуга', '2 услуги', '5 услуг', '11 услуг', '21 услуга', '104 услуги']
+  )
+  assert.deepEqual(
+    [1, 2, 16].map((n) => metaCount('en', 'service_category_meta_count', n)),
+    ['1 service', '2 services', '16 services']
+  )
+  const ru = buildCategoryDescription({
+    base: '',
+    lead: 'Кондиционеры',
+    countText: metaCount('ru', 'service_category_meta_count', 2),
+    subcategories: ['Установка кондиционера', 'Демонтаж кондиционера'],
+    tail: metaLocales.ru.service_category_meta_tail,
+  })
+  assert.equal(
+    ru,
+    'Кондиционеры — 2 услуги: Установка кондиционера, Демонтаж кондиционера. ' +
+      'Опишите задачу — менеджер Mudaroba подберёт исполнителя и назовёт стоимость.'
+  )
+  const en = buildCategoryDescription({
+    base: '',
+    lead: 'Air Conditioners',
+    countText: metaCount('en', 'service_category_meta_count', 2),
+    subcategories: ['AC Installation', 'AC Removal'],
+    tail: metaLocales.en.service_category_meta_tail,
+  })
+  assert.equal(
+    en,
+    'Air Conditioners — 2 services: AC Installation, AC Removal. ' +
+      'Describe your task — a Mudaroba manager will find a contractor and quote the price.'
+  )
+  for (const text of [ru, en, metaLocales.ru.services_found, metaLocales.en.services_found]) {
+    assert.doesNotMatch(text, /товар|доставк|оригинал|product|deliver|original/i)
+  }
+})
+
+test('goods category description template is unchanged', () => {
+  assert.equal(metaLocales.ru.category_meta_lead, '{{category}} из Турции с доставкой')
+  assert.equal(metaLocales.ru.category_meta_tail, 'Оригинальные товары, актуальные цены, заказ через менеджера Mudaroba')
+  assert.equal(metaLocales.en.category_meta_lead, '{{category}} from Turkey with delivery')
+  assert.equal(metaLocales.en.category_meta_tail, 'Original products, current prices, ordering via a Mudaroba manager')
+  assert.deepEqual(
+    [1, 3, 5, 21].map((n) => metaCount('ru', 'category_meta_count', n)),
+    ['1 товар', '3 товара', '5 товаров', '21 товар']
+  )
+  assert.deepEqual([1, 16].map((n) => metaCount('en', 'category_meta_count', n)), ['1 product', '16 products'])
+  assert.equal(metaLocales.ru.products_found, 'НАЙДЕНО ТОВАРОВ')
+  assert.equal(metaLocales.en.products_found, 'PRODUCTS FOUND')
+})
+
+test('pages pick the service wording by product type, not by name', async () => {
+  const [categoryPage, productPage, reviews] = await Promise.all([
+    readFile(new URL('../pages/categories/[slug].tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../pages/product/[[...slug]].tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../components/ProductReviews.tsx', import.meta.url), 'utf8'),
+  ])
+  assert.match(categoryPage, /const isServiceCategory = categoryType === 'uslugi'/)
+  assert.match(categoryPage, /t\(isServiceCategory \? 'service_category_meta_count' : 'category_meta_count'/)
+  assert.match(categoryPage, /isServiceCategory\s*\? t\('service_category_meta_tail'[^\n]*\n\s*: t\('category_meta_tail'/)
+  // У услуги в разметке нет артикула и «в наличии», в og — не «product»
+  assert.match(productPage, /\.\.\.\(!isService && \{ sku: resolveSchemaSku/)
+  assert.match(productPage, /\.\.\.\(!isService && \{ availability \}\)/)
+  assert.match(productPage, /og:type" content=\{isService \? 'website' : 'product'\}/)
+  assert.match(reviews, /const isService = productType === 'uslugi'/)
 })

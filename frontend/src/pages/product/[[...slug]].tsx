@@ -1571,7 +1571,8 @@ export default function ProductPage({
     ...(productType === 'books' && product.pages != null && { numberOfPages: product.pages }),
     ...(isMedicine && product.active_ingredient && { activeIngredient: product.active_ingredient }),
     ...(isMedicine && product.manufacturer && { manufacturer: { '@type': 'Organization', name: product.manufacturer } }),
-    sku: resolveSchemaSku({ slug: product.slug, productType, id: product.id }),
+    // Услуга — не товар: без артикула и «в наличии»
+    ...(!isService && { sku: resolveSchemaSku({ slug: product.slug, productType, id: product.id }) }),
     ...(seoBrandName && productType !== 'books' && productType !== 'uslugi' && { brand: { '@type': 'Brand', name: seoBrandName } }),
     ...(hasRatingForSchema && {
       aggregateRating: {
@@ -1591,7 +1592,7 @@ export default function ProductPage({
         '@type': 'Offer',
         price: priceForSchema,
         priceCurrency: currencyForSchema || 'USD',
-        availability,
+        ...(!isService && { availability }),
         url: canonicalUrl,
         priceValidUntil,
         ...(productType !== 'uslugi' && {
@@ -1693,7 +1694,7 @@ export default function ProductPage({
         <meta property="og:title" content={metaTitle} />
         <meta property="og:description" content={metaDescription} />
         <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:type" content="product" />
+        <meta property="og:type" content={isService ? 'website' : 'product'} />
         <meta property="og:image" content={ogImage} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={metaTitle} />
