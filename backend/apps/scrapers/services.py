@@ -3112,11 +3112,21 @@ class ScraperIntegrationService:
 
         # Новые строки — до удаления старых: post_delete удаляет файл без ссылок,
         # а новые строки могут ссылаться на ту же читаемую копию.
+        # Строка, сохранённая сигналом из внешнего URL, приходит с тем же URL
+        # (_stored_media_reuse): её файл переходит новой строке. Без этого pre_save
+        # качал файл заново, а при отказе источника (403, таймаут) строка оставалась
+        # со ссылкой на сайт продавца без своей копии.
+        stored_files = {
+            row.image_url: row.image_file.name
+            for row in existing
+            if row.image_url and getattr(row.image_file, "name", "")
+        }
         saved_images = []
         for index, url in enumerate(resolved_urls):
             image = image_model(
                 variant=variant,
                 image_url=url,
+                image_file=stored_files.get(url),
                 alt_text=build_image_alt_text(product_name, index=index, color=color),
                 sort_order=index,
                 is_main=index == 0,

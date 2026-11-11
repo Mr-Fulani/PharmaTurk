@@ -1,10 +1,10 @@
 # Обслуживание каталога: битые медиа, бренды производителей и FLO, старые цены, цены цветов, названия LCW, смена типа
 
-В документе девять команд. Все по умолчанию работают в режиме dry-run (только отчёт),
+В документе десять команд. Все по умолчанию работают в режиме dry-run (только отчёт),
 данные меняют только с `--apply`. Отчёт и бэкап у них разные:
 
-- `repair_broken_media` и `assign_manufacturer_brands` пишут CSV-отчёт (`/tmp/...`,
-  путь можно задать через `--report`);
+- `repair_broken_media`, `download_hotlinked_gallery_images` и `assign_manufacturer_brands`
+  пишут CSV-отчёт (`/tmp/...`, путь можно задать через `--report`);
 - `repair_flo_brands` пишет CSV-отчёт, а с `--apply` — ещё и бэкап прежних брендов
   (`/tmp/flo_brands_backup_<время>.json`, product_id → brand_id);
 - `clear_heuristic_old_prices`, `recalc_colour_prices`, `retire_stale_domain_records`,
@@ -41,6 +41,44 @@ manage.py repair_broken_media --apply            # всё, включая пер
 
 С 2026-10-20 перескрейп больше не пишет прежнюю цену в `old_price`
 (см. `clear_heuristic_old_prices` ниже).
+
+## `download_hotlinked_gallery_images`
+
+Фото галереи, которое показывается прямо с сайта продавца: у строки внешний `image_url`
+и пустой `image_file`. Своей копии нет, страница товара вставляет адрес продавца в `<img>`,
+а CDN продавца отвечает 403 на запросы со страниц mudaroba.com (LC Waikiki; без `Referer` — 200).
+`repair_broken_media` такую строку битой не считает: она ищет только пропавшие файлы R2.
+
+Команда скачивает файл в наше хранилище (`image_file`), сериализаторы отдают файл раньше
+`image_url`. Сам `image_url` не меняется — по нему повторный парсинг узнаёт строку и не
+качает фото заново. Проверяются все галереи товаров и вариантов (`*ProductImage`,
+`*VariantImage`); строки с адресом нашего хранилища не трогаются.
+
+| result в отчёте | что значит |
+|---|---|
+| `would_download` | без `--apply`: строка будет скачана |
+| `downloaded` | файл сохранён, в колонке `image_file` — его ключ |
+| `failed:<причина>` | источник не отдал картинку (`http_403`, `not_image:…`, `error:…`), строка не изменена |
+| `needs_proxy` | фото Zara (`static.zara.net`), запуск был без `--zara-via-proxy` |
+
+```bash
+manage.py download_hotlinked_gallery_images                                        # отчёт, сеть не трогается
+manage.py download_hotlinked_gallery_images --host img-lcwaikiki.mncdn.com --apply  # LC Waikiki
+manage.py download_hotlinked_gallery_images --host static.zara.net --zara-via-proxy --apply
+```
+
+Фото Zara качаются только с `--zara-via-proxy` — через `SCRAPER_PROXY_URL` (платный прокси
+Bright Data, запуск только с согласия владельца). Остальные хосты — напрямую, с браузерным
+`User-Agent` и без `Referer`. Откат: по колонкам `model`/`pk` отчёта очистить `image_file`
+(до запуска поле было пустым).
+
+Откуда такие строки (11.11.2026: `HeadwearVariantImage` 8, `UnderwearVariantImage` 55 — LCW,
+`ClothingVariantImage` 123 — Zara): pre_save-сигнал автоскачивания при отказе источника
+сохраняет строку без файла и не сообщает об этом, а галереи вариантов головных уборов
+и белья до 16.06.2026 к сигналу не были подключены. Повторный парсинг чинит такую строку,
+только если цвет ещё есть у продавца. С 11.11.2026 при пересборке галереи цвета файл
+прежней строки переходит новой (`_sync_variant_images`) — заново с сайта продавца он не
+качается.
 
 ## `assign_manufacturer_brands`
 
