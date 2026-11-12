@@ -1739,5 +1739,16 @@
   "hto_supp_link": "Supplements and vitamins catalog",
   "footer_how_to_order": "How to order",
   "supplement_how_to_order_link": "How to order supplements from Turkey",
-  "hto_timing_point5": "We deliver worldwide, first of all to Russia and CIS countries — the manager gives the delivery time and cost in the quote"
+  "hto_timing_point5": "We deliver worldwide, first of all to Russia and CIS countries — the manager gives the delivery time and cost in the quote",
+  "section_nav_label": "Catalog sections",
+  "section_nav_medicines": "Medicines",
+  "section_nav_supplements": "Supplements & vitamins",
+  "section_nav_clothing": "Clothing",
+  "section_nav_shoes": "Shoes",
+  "section_nav_islamic_clothing": "Islamic clothing",
+  "section_nav_furniture": "Furniture",
+  "section_nav_perfumery": "Perfumery",
+  "section_nav_accessories": "Accessories",
+  "section_nav_all": "All sections",
+  "header_catalog": "Catalog"
 }

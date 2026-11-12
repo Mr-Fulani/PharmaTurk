@@ -9,7 +9,7 @@ import test from 'node:test'
 const css = await readFile(new URL('../../styles/globals.css', import.meta.url), 'utf8')
 
 const SKINS = ['iznik', 'green']
-const PALETTE = ['--bg', '--text', '--text-strong', '--surface', '--border', '--accent', '--accent-strong', '--accent-soft', '--accent-muted', '--text-hover', '--card-bg']
+const PALETTE = ['--bg', '--text', '--text-strong', '--surface', '--border', '--accent', '--accent-strong', '--accent-soft', '--accent-muted', '--text-hover', '--card-bg', '--nav-bg', '--nav-text', '--nav-accent']
 const FONTS = ['--font-body', '--font-plain']
 
 function block(selector) {

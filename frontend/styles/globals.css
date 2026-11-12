@@ -39,6 +39,10 @@
   --font-body: 'InkVerse', 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-plain: 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --card-bg: var(--surface);
+  /* Строка разделов под шапкой: фон, текст и подчёркивание открытого раздела */
+  --nav-bg: #3b2a1c;
+  --nav-text: #fffdfa;
+  --nav-accent: #f6c445;
 }
 
 /* Темы оформления «Изник» и «Зелёная аптека»: те же переменные с другими значениями.
@@ -76,6 +80,9 @@ html[data-skin='iznik']:not(.dark) {
   --accent-muted: #c9d3ee;
   --text-hover: #07747a;
   --card-bg: #ffffff;
+  --nav-bg: #0f2460;
+  --nav-text: #ffffff;
+  --nav-accent: #45c4c9;
 }
 
 html[data-skin='green'] {
@@ -94,6 +101,9 @@ html[data-skin='green']:not(.dark) {
   --accent-muted: #cfe5d9;
   --text-hover: #0f5a47;
   --card-bg: #ffffff;
+  --nav-bg: #0a3d31;
+  --nav-text: #ffffff;
+  --nav-accent: #f0b23e;
 }
 
 .dark {
@@ -105,6 +115,9 @@ html[data-skin='green']:not(.dark) {
   --danger: #fb923c;
   --danger-soft: rgba(251, 146, 60, 0.12);
   --text-hover: #e9d8c7;
+  --nav-bg: #111d33;
+  --nav-text: #e5e7eb;
+  --nav-accent: #7aa2ff;
 }
 
 /* Пароль в тёмной теме: читаемые символы */
@@ -279,6 +292,26 @@ a:hover {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--accent-muted);
+}
+
+/* Закреплённое название магазина в шапке (Header.tsx): буквы проявляются один раз
+   при открытии страницы — те же сдвиг, наклон и задержка, что у подписи по наведению. */
+@keyframes logo-pinned-letter-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px) rotate(-8deg);
+  }
+}
+
+.logo-pinned-letter {
+  display: inline-block;
+  animation: logo-pinned-letter-in 0.28s ease-out backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-pinned-letter {
+    animation: none;
+  }
 }
 
 /* Полоска навигации (components/NavigationProgress.tsx) */
