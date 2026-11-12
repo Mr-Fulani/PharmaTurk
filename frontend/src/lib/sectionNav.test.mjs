@@ -47,3 +47,17 @@ test('название в шапке закреплено на широком э
   assert.match(css, /\.logo-pinned-letter\s*{[^}]*animation: logo-pinned-letter-in/)
   assert.match(css, /prefers-reduced-motion: reduce\)\s*{\s*\.logo-pinned-letter\s*{\s*animation: none/)
 })
+
+test('подвал: колонка «Каталог» добавлена, прежние блоки и подсказка о криптовалюте на месте', async () => {
+  const footer = await read('src/components/Footer.tsx')
+  assert.ok(footer.includes('NAV_SECTIONS.map'), 'нет колонки разделов')
+  // Подсказка о криптовалюте — текст из настроек у картинки способов оплаты.
+  assert.ok(footer.includes('/footer-payments.webp') && footer.includes('{cryptoText}'))
+  for (const href of ['/about-us', '/returns', '/delivery', '/privacy', '/how-to-order-medicines', '/dostavka-lekarstv-stambul', '/turetskaya-apteka', '/blog', '/testimonials', '/categories']) {
+    assert.ok(footer.includes(`href="${href}"`), `в подвале нет ссылки ${href}`)
+  }
+  for (const icon of ['/telegram.svg', '/whatsapp.svg', '/vk.svg', '/instagram.svg']) assert.ok(footer.includes(icon))
+  assert.ok(footer.includes('href={`tel:${phone}`}') && footer.includes('href={`mailto:${email}`}'))
+  // На широком экране — четыре колонки и карточка отзывов пятой.
+  assert.ok(footer.includes('lg:grid-cols-4 xl:grid-cols-5'))
+})
