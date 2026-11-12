@@ -7,15 +7,10 @@ module.exports = {
   ],
   theme: {
     extend: {
-      // Ширина страницы — общая переменная из globals.css (docs/DESIGN_THEMES.md, «Ширина страницы»):
-      // на ноутбуке прежние 72rem / 80rem, на больших мониторах — шире и одинаково для всех страниц.
+      // Ширина страницы — общая переменная из globals.css (docs/DESIGN_THEMES.md, «Большие мониторы»).
       maxWidth: {
         page: 'var(--page-max)',
         'page-wide': 'var(--page-max-wide)',
-      },
-      // Большие мониторы: 3xl — Full HD и шире.
-      screens: {
-        '3xl': '1920px',
       },
     },
   },

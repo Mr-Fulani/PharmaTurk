@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'next-i18next'
 import { getSiteOrigin, buildProductUrl } from '../lib/urls'
 import { buildMaxShareUrl } from '../lib/shareHelpers'
+import { pageZoom } from '../lib/pageWidth'
 
 interface ShareButtonProps {
   title: string
@@ -155,10 +156,13 @@ export default function ShareButton({
   const updateMenuPosition = useCallback(() => {
     if (!triggerRef.current) return
 
+    // Меню рисуется в position: fixed: на большом мониторе страница увеличена (zoom),
+    // поэтому координаты окна переводим в пиксели страницы.
     const rect = triggerRef.current.getBoundingClientRect()
+    const zoom = pageZoom()
     setMenuCenter({
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
+      x: (rect.left + rect.width / 2) / zoom,
+      y: (rect.top + rect.height / 2) / zoom,
     })
   }, [])
 

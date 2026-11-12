@@ -20,7 +20,7 @@ export default function Custom404() {
       </div>
       <style jsx>{`
         .errorPage {
-          min-height: 100vh;
+          min-height: calc(100vh / var(--page-zoom, 1));
           background-color: #111111;
           overflow: hidden;
           display: flex;

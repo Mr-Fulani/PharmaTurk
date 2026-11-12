@@ -135,7 +135,8 @@ export default function CategoryHero({
         .hero-image {
           position: fixed;
           inset: 0;
-          width: 100vw;
+          /* На большом мониторе страница увеличена (--page-zoom): ширина окна в пикселях страницы. */
+            width: calc(100vw / var(--page-zoom, 1));
           /* Запас по высоте: hero начинается ниже шапки, а fixed-картинка
              прибита к верху вьюпорта — без запаса низ hero остаётся полосой
              фонового цвета, пока страница не проскроллена на высоту шапки.
@@ -191,7 +192,8 @@ export default function CategoryHero({
 
           .hero-image {
             position: fixed;
-            width: 100vw;
+            /* На большом мониторе страница увеличена (--page-zoom): ширина окна в пикселях страницы. */
+            width: calc(100vw / var(--page-zoom, 1));
             height: calc(var(--hero-height) + var(--hero-bleed-top) + 1rem);
             object-position: 58% 58%;
           }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import { getSingleFlight } from '../lib/api'
 import type { FooterSettingsData } from '../lib/footerSettings'
+import { pageZoom } from '../lib/pageWidth'
 
 type ContactItem = {
   key: string
@@ -93,8 +94,8 @@ function clampPosition(x: number, y: number) {
   const safeMargin = getSafeMargin()
 
   return {
-    x: Math.min(Math.max(x, safeMargin), window.innerWidth - safeMargin),
-    y: Math.min(Math.max(y, safeMargin), window.innerHeight - safeMargin),
+    x: Math.min(Math.max(x, safeMargin), window.innerWidth / pageZoom() - safeMargin),
+    y: Math.min(Math.max(y, safeMargin), window.innerHeight / pageZoom() - safeMargin),
   }
 }
 
@@ -109,8 +110,8 @@ function getDefaultPosition() {
   const safeMargin = getSafeMargin()
 
   return {
-    x: window.innerWidth - safeMargin,
-    y: window.innerHeight - safeMargin,
+    x: window.innerWidth / pageZoom() - safeMargin,
+    y: window.innerHeight / pageZoom() - safeMargin,
   }
 }
 
@@ -240,8 +241,10 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
       const dragState = dragStateRef.current
       if (!dragState.active || dragState.pointerId !== event.pointerId) return
 
-      const deltaX = event.clientX - dragState.startX
-      const deltaY = event.clientY - dragState.startY
+      // На большом мониторе страница увеличена (zoom): указатель идёт в пикселях экрана,
+      // а положение виджета — в пикселях страницы.
+      const deltaX = (event.clientX - dragState.startX) / pageZoom()
+      const deltaY = (event.clientY - dragState.startY) / pageZoom()
 
       if (!dragState.moved && Math.hypot(deltaX, deltaY) >= DRAG_THRESHOLD) {
         dragState.moved = true

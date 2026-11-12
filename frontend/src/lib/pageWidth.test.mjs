@@ -2,12 +2,13 @@ import assert from 'node:assert/strict'
 import { readdir, readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { WIDE_SCREEN, wideMasonryColumns } from './pageWidth.js'
+import { BIG_SCREEN_FROM, BIG_SCREEN_MAX_ZOOM, LAPTOP_WIDTH, bigScreenZoom } from './pageWidth.js'
 
-// Ширина страницы на больших мониторах (docs/DESIGN_THEMES.md, «Ширина страницы»).
+// Большие мониторы: страница как на ноутбуке, только крупнее (docs/DESIGN_THEMES.md, «Большие мониторы»).
 
 const root = new URL('../../', import.meta.url)
 const read = (path) => readFile(new URL(path, root), 'utf8')
+const css = await read('styles/globals.css')
 
 async function sources(dir = 'src/') {
   const files = []
@@ -18,50 +19,62 @@ async function sources(dir = 'src/') {
   return files
 }
 
-test('ширина страницы задана одной парой переменных: ноутбук прежний, большие мониторы шире и одинаково', async () => {
-  const css = await read('styles/globals.css')
-  assert.match(css, /:root \{\s*--page-max: 72rem;\s*--page-max-wide: 80rem;\s*\}/)
-  assert.match(css, new RegExp(`@media \\(min-width: ${WIDE_SCREEN}px\\) \\{\\s*:root \\{\\s*--page-max: 90rem;\\s*--page-max-wide: 90rem;`))
-  // 90rem = 1440 px, минус боковые отступы — не шире баннера (1400 px): контент и баннеры главной одной ширины.
-  assert.match(await read('src/components/BannerCarousel.module.css'), /\.container \{[^}]*max-width: 1400px;/)
-
-  const config = await read('tailwind.config.js')
-  assert.ok(config.includes("page: 'var(--page-max)'") && config.includes("'page-wide': 'var(--page-max-wide)'"))
-  assert.ok(config.includes(`'3xl': '${WIDE_SCREEN}px'`))
+test('масштаб: до 1919 px его нет, дальше ширина окна / 1440, не больше двух раз', () => {
+  assert.equal(bigScreenZoom(1440), 1)
+  assert.equal(bigScreenZoom(1919), 1)
+  assert.equal(bigScreenZoom(1920), 1.3333)
+  assert.equal(bigScreenZoom(2560), 1.7778)
+  assert.equal(bigScreenZoom(3840), BIG_SCREEN_MAX_ZOOM)
 })
 
-test('страницы не задают свою ширину контейнера в обход общей', async () => {
+test('ступени масштаба в стилях совпадают с формулой и идут по возрастанию', () => {
+  const steps = [...css.matchAll(/@media \(min-width: (\d+)px\) \{\s*:root \{\s*--page-zoom: ([\d.]+);/g)].map((match) => [Number(match[1]), Number(match[2])])
+  assert.ok(steps.length >= 6)
+  assert.equal(steps[0][0], BIG_SCREEN_FROM)
+  assert.equal(steps.at(-1)[1], BIG_SCREEN_MAX_ZOOM)
+  let previous = 0
+  for (const [width, zoom] of steps) {
+    assert.ok(width > previous, 'ступени не по возрастанию — сработала бы меньшая')
+    assert.equal(zoom, bigScreenZoom(width), `ступень ${width}px`)
+    // Между ступенями содержимое не шире окна: страница шириной width / zoom ≥ 1440 px.
+    assert.ok(width / zoom >= LAPTOP_WIDTH - 1)
+    previous = width
+  }
+  assert.match(css, /--page-zoom: 1;/)
+  assert.match(css, new RegExp(`@media \\(min-width: ${BIG_SCREEN_FROM}px\\) \\{\\s*html \\{\\s*zoom: var\\(--page-zoom\\);`))
+})
+
+test('ширина страницы одна на всех экранах: расширения и лишних колонок для больших мониторов нет', async () => {
+  assert.match(css, /:root \{\s*--page-max: 72rem;\s*--page-max-wide: 80rem;\s*\}/)
+  assert.equal(css.split('--page-max:').length - 1, 1, 'ширину страницы меняет ещё какое-то правило')
   const offenders = []
   for (const file of await sources()) {
-    if (/max-w-(6xl|7xl|screen-xl|screen-2xl)\b/.test(await read(file))) offenders.push(file)
+    const source = await read(file)
+    if (/max-w-(6xl|7xl|screen-xl|screen-2xl)\b|\b3xl:|\b4xl:/.test(source)) offenders.push(file)
   }
-  assert.deepEqual(offenders, [], 'контейнер страницы — max-w-page или max-w-page-wide')
+  assert.deepEqual(offenders, [], 'контейнер страницы — max-w-page или max-w-page-wide, без отдельной вёрстки для больших мониторов')
 })
 
-test('шапка, строка разделов, подвал и главная стоят на общей ширине', async () => {
-  for (const file of ['src/components/Header.tsx', 'src/components/SectionNav.tsx', 'src/components/Footer.tsx', 'src/pages/index.tsx']) {
-    assert.match(await read(file), /mx-auto (w-full |flex )?max-w-page /, `${file}: нет общей ширины`)
+test('высота экрана и ширина окна при масштабе делятся на масштаб', async () => {
+  // Каждый размер в vh, который встречается в классах, перекрыт в правилах большого монитора.
+  const used = new Set()
+  for (const file of await sources()) {
+    for (const match of (await read(file)).matchAll(/(?:^|[\s"'`])((?:[a-z]+:)?(?:min-h|max-h|h)-(?:screen|\[[^\]\s]*vh[^\]\s]*\]))/g)) used.add(match[1])
   }
+  assert.ok(used.has('min-h-screen'))
+  for (const cls of used) {
+    const selector = `.${cls.replace(/[:[\]()]/g, '\\$&')} {`
+    assert.ok(css.includes(selector), `класс ${cls} при масштабе вырастет выше экрана — добавьте правило в globals.css`)
+  }
+  assert.ok((await read('src/components/CategoryHero.tsx')).split('width: calc(100vw / var(--page-zoom, 1));').length - 1 === 2)
+  assert.ok((await read('src/pages/404.tsx')).includes('min-height: calc(100vh / var(--page-zoom, 1));'))
 })
 
-test('кладка «Все бренды» и «Все категории»: три колонки на ноутбуке, больше на большом мониторе', async () => {
-  assert.equal(wideMasonryColumns(1440), 3)
-  assert.equal(wideMasonryColumns(1919), 3)
-  assert.equal(wideMasonryColumns(1920), 4)
-  assert.equal(wideMasonryColumns(2560), 4)
-  for (const file of ['src/pages/brands/index.tsx', 'src/pages/categories/index.tsx']) {
-    const page = await read(file)
-    assert.ok(page.includes('breakpointCols={{ default: desktopColumns, 1024: 3, 768: 2, 640: 1 }}'), `${file}: колонки не из хука`)
-  }
-  // Сервер и первый кадр — три колонки: на ноутбуке и телефоне вёрстка после загрузки не перестраивается.
-  assert.ok((await read('src/hooks/useWideMasonryColumns.ts')).includes('useState(3)'))
-})
-
-test('сетки товаров добавляют колонку на большом мониторе', async () => {
-  for (const [file, cls] of [
-    ['src/pages/categories/[slug].tsx', 'lg:grid-cols-3 3xl:grid-cols-4'],
-    ['src/pages/brand/[slug].tsx', 'lg:grid-cols-3 3xl:grid-cols-4'],
-    ['src/pages/favorites.tsx', 'lg:grid-cols-3 3xl:grid-cols-4'],
-    ['src/pages/search.tsx', 'lg:grid-cols-4 3xl:grid-cols-5'],
-  ]) assert.ok((await read(file)).includes(cls), `${file}: нет ${cls}`)
+test('координаты окна переводятся в пиксели страницы там, где код ставит элементы сам', async () => {
+  const widget = await read('src/components/ContactWidget.tsx')
+  assert.equal(widget.split('window.innerWidth / pageZoom()').length - 1, 2)
+  assert.equal(widget.split('window.innerHeight / pageZoom()').length - 1, 2)
+  assert.ok(widget.includes('(event.clientX - dragState.startX) / pageZoom()') && widget.includes('(event.clientY - dragState.startY) / pageZoom()'))
+  const share = await read('src/components/ShareButton.tsx')
+  assert.ok(share.includes('x: (rect.left + rect.width / 2) / zoom') && share.includes('y: (rect.top + rect.height / 2) / zoom'))
 })
