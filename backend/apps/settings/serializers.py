@@ -2,7 +2,7 @@
 
 from django.conf import settings
 from rest_framework import serializers
-from .models import FooterSettings
+from .models import FooterSettings, HomeBlock
 
 
 class FooterSettingsSerializer(serializers.ModelSerializer):
@@ -28,3 +28,10 @@ class FooterSettingsSerializer(serializers.ModelSerializer):
         """Базовый URL сайта для ссылок на страницы (политика, доставка и т.д.)."""
         return getattr(settings, 'COMPANY_SITE_URL', 'https://mudaroba.com').rstrip('/')
 
+
+class HomeBlockSerializer(serializers.ModelSerializer):
+    """Блок главной: ключ и признак показа; порядок задаёт место в списке."""
+
+    class Meta:
+        model = HomeBlock
+        fields = ["key", "is_enabled"]
