@@ -436,7 +436,7 @@ export default function ProductCard({
 
   return (
     <div
-      className="group relative flex h-full flex-col gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-[0_2px_10px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.16)] dark:hover:border-gray-600"
+      className="group relative flex h-full flex-col gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card-bg)] p-2 shadow-[0_2px_10px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.16)] dark:hover:border-gray-600"
       onPointerLeave={resetVariantPreview}
     >
       <Link 

@@ -33,6 +33,67 @@
   --danger-soft: #fff1ea;
   /* Тёплый ховер для текста */
   --text-hover: #b06a3c;
+  /* Роли, которые меняет тема оформления (docs/DESIGN_THEMES.md). Здесь — «Кремовая»,
+     прежний вид сайта: основной шрифт InkVerse, поля ввода и длинный текст — Poppins,
+     карточка товара — на фоне блоков. */
+  --font-body: 'InkVerse', 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-plain: 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --card-bg: var(--surface);
+}
+
+/* Темы оформления «Изник» и «Зелёная аптека»: те же переменные с другими значениями.
+   Тему включает атрибут data-skin на <html>; без атрибута действует «Кремовая» из :root.
+   Цвета темы — только для светлого режима: у тёмного (.dark) набор пока общий.
+   Шрифты тем лежат в /fonts/ и скачиваются, только когда тема включена. */
+@font-face {
+  font-family: 'Onest';
+  src: url('/fonts/Onest-v1.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Golos Text';
+  src: url('/fonts/GolosText-v1.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+html[data-skin='iznik'] {
+  --font-body: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-plain: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+html[data-skin='iznik']:not(.dark) {
+  --bg: #ffffff;
+  --text: #101a3a;
+  --text-strong: #0b1330;
+  --surface: #f2f5fb;
+  --border: #d8dfee;
+  --accent: #1c3d94;
+  --accent-strong: #0f2460;
+  --accent-soft: #e7ecf8;
+  --accent-muted: #c9d3ee;
+  --text-hover: #07747a;
+  --card-bg: #ffffff;
+}
+
+html[data-skin='green'] {
+  --font-body: 'Golos Text', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-plain: 'Golos Text', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+html[data-skin='green']:not(.dark) {
+  --bg: #fafcf9;
+  --text: #12241d;
+  --text-strong: #0a1a14;
+  --surface: #e4f1ea;
+  --border: #dbe6df;
+  --accent: #0f5a47;
+  --accent-strong: #0a3d31;
+  --accent-soft: #e4f1ea;
+  --accent-muted: #cfe5d9;
+  --text-hover: #0f5a47;
+  --card-bg: #ffffff;
 }
 
 .dark {
@@ -173,7 +234,7 @@
 /* Базовые вспомогательные стили */
 html, body {
   @apply p-0 m-0;
-  font-family: 'InkVerse', 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-body);
   background-color: var(--bg);
   color: var(--text);
   transition: background-color 0.2s ease, color 0.2s ease;
@@ -182,7 +243,7 @@ html, body {
 
 /* Использование чистого шрифта для полей ввода (улучшение читаемости логинов/паролей/адресов) */
 input, textarea, select {
-  font-family: 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-plain);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
