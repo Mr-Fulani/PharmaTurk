@@ -34,6 +34,8 @@ import HomeCategoryWorlds, { type CategoryTile } from '../components/HomeCategor
 
 // «Аптека» на главной: лекарства и БАДы; остальные разделы — «Гардероб и дом»
 const PHARMACY_SLUGS = ['medicines', 'supplements']
+// Ширина карточки бренда на главной: четыре в ряд, от 1024 px — шесть (промежуток 1rem).
+const BRAND_TILE_BASIS = 'basis-[calc((100%_-_3rem)/4)] lg:basis-[calc((100%_-_5rem)/6)]'
 
 // Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle, добавляем fallback (Skeleton) для предотвращения CLS
 const PopularProductsCarousel = dynamic(() => import('../components/PopularProductsCarousel'), { 
@@ -447,8 +449,10 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
             </span>
           </div>
         </div>
-        {/* Десктоп: ровный ряд одинаковых карточек; выбор и порядок брендов — из админки */}
-        <div className="hidden w-full grid-cols-4 gap-4 md:grid lg:grid-cols-6">
+        {/* Десктоп: ровный ряд одинаковых карточек; выбор и порядок брендов — из админки.
+            Ряд на flex, а не на grid: последняя карточка «Все бренды» растягивается на остаток
+            строки, поэтому при любом числе брендов и колонок в ряду нет пустой ячейки. */}
+        <div className="hidden w-full flex-wrap gap-4 md:flex">
           {brands.map((brand) => {
             const mediaUrl = brand.card_media_url || brand.logo
             const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
@@ -456,7 +460,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
               <Link
                 key={brand.id}
                 href={`/brand/${brand.slug}`}
-                className="relative isolate aspect-[4/3] rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
+                className={`${BRAND_TILE_BASIS} relative isolate aspect-[4/3] shrink-0 grow-0 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group`}
               >
                 <div className="absolute inset-0 z-0 overflow-hidden">
                   {renderMedia(withListingImageMaxWidth(mediaUrl || '', 450) || placeholderUrl, brand.name, placeholderUrl, '(max-width: 1023px) calc((100vw - 96px) / 4), 180px')}
@@ -484,13 +488,14 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
               </Link>
             )
           })}
-        </div>
-        <div className="mt-6 hidden md:flex justify-center">
           <Link
             href="/brands"
-            className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
+            className={`${BRAND_TILE_BASIS} group flex min-h-[72px] grow items-center justify-center gap-2 rounded-xl bg-[var(--accent-soft)] px-4 text-base font-semibold text-[var(--accent)] transition-colors duration-200 hover:bg-[var(--accent)] hover:text-white`}
           >
             {t('all_brands', 'Все бренды')}
+            <svg aria-hidden="true" className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-6-6 6 6-6 6" />
+            </svg>
           </Link>
         </div>
       </section>
