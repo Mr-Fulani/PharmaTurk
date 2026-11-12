@@ -37,10 +37,12 @@ test('строка разделов не закреплена и не меняе
 
 test('название в шапке закреплено на широком экране одним CSS и не сдвигает строку', async () => {
   const header = await read('src/components/Header.tsx')
-  const wide = '[@media(min-width:1024px)_and_(hover:hover)_and_(pointer:fine)]'
+  // От 1280 px: на 1024–1279 px у вошедшего пользователя названию и «Каталогу» не хватает места.
+  const wide = '[@media(min-width:1280px)_and_(hover:hover)_and_(pointer:fine)]'
   // Одно и то же условие прячет подпись по наведению и показывает закреплённое название.
   assert.ok(header.includes(`overflow-hidden ${wide}:hidden`))
   assert.ok(header.includes(`hidden items-end whitespace-nowrap ${wide}:flex`))
+  assert.ok(header.includes('hover:text-white xl:inline-flex'), 'кнопка «Каталог» должна появляться с той же ширины')
   // Буквы проявляются CSS-анимацией: название в HTML с первой отрисовки, без ожидания скриптов.
   assert.ok(header.includes('className="logo-pinned-letter"'))
   const css = await read('styles/globals.css')

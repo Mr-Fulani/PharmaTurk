@@ -326,7 +326,7 @@ export default function Header() {
               transition={prefersReducedMotion
                 ? { duration: 0.18 }
                 : { duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className="pointer-events-none flex items-center overflow-hidden [@media(min-width:1024px)_and_(hover:hover)_and_(pointer:fine)]:hidden"
+              className="pointer-events-none flex items-center overflow-hidden [@media(min-width:1280px)_and_(hover:hover)_and_(pointer:fine)]:hidden"
             >
               <m.div
                 initial={false}
@@ -369,13 +369,14 @@ export default function Header() {
                 </m.sup>
               </m.div>
             </m.div>
-            {/* Широкий экран с мышью: название стоит рядом со знаком всегда (решение владельца
-                12.11.2026). Только CSS: место занято с первой отрисовки, буквы проявляются один
+            {/* Широкий экран (от 1280 px) с мышью: название стоит рядом со знаком всегда (решение
+                владельца 12.11.2026). На 1024–1279 px у вошедшего пользователя на него и кнопку
+                «Каталог» не хватает места: поле поиска сжимается до нуля. Только CSS: место занято с первой отрисовки, буквы проявляются один
                 раз при открытии страницы (logo-pinned-letter в globals.css) — без сдвига вёрстки
                 и без ожидания framer-motion. На телефоне остаётся подпись по нажатию выше. */}
             <span
               aria-hidden="true"
-              className={`pointer-events-none ml-2.5 hidden items-end whitespace-nowrap [@media(min-width:1024px)_and_(hover:hover)_and_(pointer:fine)]:flex ${isDark ? 'text-slate-50' : 'text-gray-900'}`}
+              className={`pointer-events-none ml-2.5 hidden items-end whitespace-nowrap [@media(min-width:1280px)_and_(hover:hover)_and_(pointer:fine)]:flex ${isDark ? 'text-slate-50' : 'text-gray-900'}`}
             >
               <span className="flex items-center text-xl font-black leading-none tracking-[0.08em]">
                 {logoLetters.map((letter, index) => (
@@ -390,7 +391,7 @@ export default function Header() {
           <Link
             href="/categories"
             onClick={() => setShowSuggestions(false)}
-            className="hidden flex-shrink-0 items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-[var(--accent-strong)] hover:text-white lg:inline-flex"
+            className="hidden flex-shrink-0 items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-[var(--accent-strong)] hover:text-white xl:inline-flex"
           >
             <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="4" y="4" width="7" height="7" rx="1" />
