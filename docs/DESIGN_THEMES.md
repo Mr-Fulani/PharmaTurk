@@ -50,6 +50,8 @@
 | `--bg`, `--text`, `--text-strong` | фон страницы и текст |
 | `--surface`, `--border` | фон блоков (шапка, панели, фильтры) и линии |
 | `--card-bg` | фон карточки товара в списках; в «Кремовой» равен `--surface` |
+| `--card-radius`, `--card-shadow`, `--card-shadow-hover` | скругление и тень карточки товара в списках (тень — класс `product-card` в `globals.css`: `shadow-[var(--…)]` Tailwind принимает за цвет тени) |
+| `--badge-bg`, `--badge-text`, `--badge-ring` | плашка «Хит» на карточке: в «Кремовой» розовая, как раньше |
 | `--accent`, `--accent-strong`, `--accent-soft`, `--accent-muted` | кнопки, ссылки, выделение |
 | `--text-hover` | цвет ссылки при наведении |
 | `--font-body` | основной шрифт |

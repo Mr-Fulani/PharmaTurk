@@ -9,7 +9,7 @@ import test from 'node:test'
 const css = await readFile(new URL('../../styles/globals.css', import.meta.url), 'utf8')
 
 const SKINS = ['iznik', 'green']
-const PALETTE = ['--bg', '--text', '--text-strong', '--surface', '--border', '--accent', '--accent-strong', '--accent-soft', '--accent-muted', '--text-hover', '--card-bg']
+const PALETTE = ['--bg', '--text', '--text-strong', '--surface', '--border', '--accent', '--accent-strong', '--accent-soft', '--accent-muted', '--text-hover', '--card-bg', '--card-radius', '--card-shadow', '--card-shadow-hover', '--badge-bg', '--badge-text', '--badge-ring']
 const FONTS = ['--font-body', '--font-plain']
 
 function block(selector) {
@@ -44,10 +44,18 @@ for (const skin of SKINS) {
   })
 }
 
+test('плашка «Хит» на карточке берёт цвета темы, а не розовый', async () => {
+  const card = await readFile(new URL('../components/ProductCard.tsx', import.meta.url), 'utf8')
+  assert.ok(!/(bg|text|ring)-pink-\d/.test(card), 'в карточке остался жёстко заданный розовый')
+  assert.ok(card.includes('bg-[var(--badge-bg)]') && card.includes('text-[var(--badge-text)]') && card.includes('ring-[var(--badge-ring)]'))
+})
+
 test('цвет из переменной темы используется без модификатора прозрачности', async () => {
   for (const file of ['ProductCard.tsx', 'PopularProductsCarousel.tsx']) {
     const source = await readFile(new URL(`../components/${file}`, import.meta.url), 'utf8')
     assert.ok(source.includes('bg-[var(--card-bg)]'), `${file}: карточка не на --card-bg`)
+    assert.ok(source.includes('product-card ') && source.includes('rounded-[var(--card-radius)]'), `${file}: скругление и тень карточки должны идти от темы`)
+    assert.ok(!/shadow-\[var\(--card-shadow/.test(source), `${file}: Tailwind принимает shadow-[var(--…)] за цвет — тень задаёт класс product-card`)
     assert.ok(!/\[var\(--card-bg\)\]\/\d/.test(source), `${file}: --card-bg с прозрачностью Tailwind не сгенерирует`)
   }
 })
