@@ -135,6 +135,17 @@
   opacity: 0.9;
 }
 
+/* В темах «Изник» и «Зелёная аптека» кнопка — акцентом темы; в «Кремовой» остаётся прежний градиент. */
+:global(html:is([data-skin='iznik'], [data-skin='green']):not(.dark)) .btnAccept {
+  background: var(--accent);
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+:global(html:is([data-skin='iznik'], [data-skin='green']):not(.dark)) .btnAccept:hover {
+  background: var(--accent-strong);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
 .btnReject {
   background: transparent;
   color: var(--text, #3b2a1c);

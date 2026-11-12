@@ -5,6 +5,14 @@
 export const THEMES = /** @type {const} */ (['cream', 'iznik', 'green'])
 export const DEFAULT_THEME = 'cream'
 
+// Цвет панели браузера на телефоне (<meta name="theme-color">) — акцент темы.
+// У «Кремовой» — прежний фиолетовый: её вид не меняется.
+export const THEME_BROWSER_COLOR = /** @type {const} */ ({
+  cream: '#4c1d95',
+  iznik: '#1c3d94',
+  green: '#0f5a47',
+})
+
 // Шрифт, который страница темы показывает первым: его предзагрузка убирает сдвиг
 // вёрстки при подмене системного шрифта. Пути совпадают с @font-face в globals.css.
 export const THEME_FONT_PRELOAD = /** @type {const} */ ({

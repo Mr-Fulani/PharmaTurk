@@ -260,6 +260,59 @@ html[data-skin='green']:not(.dark) {
   --tw-ring-color: var(--accent) !important;
 }
 
+/* Раскрывающиеся разделы инструкции на странице товара. В «Кремовой» — прежние тёплые
+   оттенки, в остальных темах — фон блоков и акцент темы; в ночном режиме — прежние серые. */
+:root {
+  --accordion-bg: #fff8e7;
+  --accordion-bg-hover: #fff5dc;
+  --accordion-open-bg: #fffbf0;
+  --accordion-border: #e5e7eb;
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) {
+  --accordion-bg: var(--surface);
+  --accordion-bg-hover: var(--accent-soft);
+  --accordion-open-bg: var(--card-bg);
+  --accordion-border: var(--border);
+}
+.dark {
+  --accordion-bg: #1f2937;
+  --accordion-bg-hover: #374151;
+  --accordion-open-bg: #111827;
+  --accordion-border: #374151;
+}
+
+/* В темах «Изник» и «Зелёная аптека» фиолетовое (выбранное фото и вариант товара, кнопки
+   страницы «Заявка отправлена», тени) — акцент темы. В «Кремовой» и в ночном режиме
+   фиолетовое остаётся как было, поэтому правила привязаны к теме, а не общие. */
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.border-violet-500, .border-violet-600, .hover\:border-violet-300:hover, .hover\:border-violet-400:hover, .focus\:border-violet-500:focus) {
+  border-color: var(--accent);
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.border-violet-100, .border-purple-100) {
+  border-color: var(--border);
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.ring-violet-200, .ring-violet-300) {
+  --tw-ring-color: var(--accent-muted);
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) .bg-violet-600 {
+  background-color: var(--accent);
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) .hover\:bg-violet-700:hover {
+  background-color: var(--accent-strong);
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.bg-violet-50, .bg-purple-100) {
+  background-color: var(--accent-soft);
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.text-violet-500, .text-purple-600) {
+  color: var(--accent);
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.shadow-violet-600\/30, .shadow-violet-500\/40, .shadow-violet-100\/60, .shadow-violet-100\/70) {
+  --tw-shadow-color: color-mix(in srgb, var(--accent) 14%, transparent);
+  --tw-shadow: var(--tw-shadow-colored);
+}
+html:is([data-skin='iznik'], [data-skin='green']):not(.dark) .from-violet-50\/60 {
+  --tw-gradient-from: var(--surface) var(--tw-gradient-from-position);
+}
+
 /* Базовые вспомогательные стили */
 html, body {
   @apply p-0 m-0;
