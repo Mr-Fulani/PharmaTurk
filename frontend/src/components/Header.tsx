@@ -289,7 +289,7 @@ export default function Header() {
           ? 'border-[#1f2a3d] bg-[#0a1222] shadow-[0_10px_40px_rgba(0,0,0,0.6)]'
           : 'border-[var(--border)] bg-[var(--surface)] shadow-md'
       }`}>
-      <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
+      <div className="mx-auto w-full max-w-page px-3 sm:px-6">
         <div className={`flex items-center justify-between gap-3 transition-all duration-300 ${scrolled ? 'py-1.5' : 'py-3'}`}>
           <Link
             href="/"

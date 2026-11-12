@@ -660,7 +660,7 @@ export default function ProfilePage() {
 
   if (authLoading || loading) {
     return (
-      <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-page px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex justify-center items-center min-h-[400px]">
           <div className="text-lg text-gray-600">{t('profile_loading')}</div>
         </div>
@@ -681,7 +681,7 @@ export default function ProfilePage() {
         <title>{`${t('profile_title')} — ${SITE_NAME}`}</title>
         <meta name="robots" content="noindex, nofollow" />
       </Head>
-      <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-page px-4 py-8 sm:px-6 lg:px-8">
         {/* Заголовок */}
         <h1 className="text-3xl font-bold text-gray-900 mb-8">{t('profile_title')}</h1>
 

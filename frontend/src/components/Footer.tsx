@@ -150,7 +150,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
 
   return (
     <footer suppressHydrationWarning data-analytics-placement="footer" className="mt-10 border-t border-main shadow-xl transition-colors duration-200 dark:bg-[#0c1628] dark:border-[#1f2a3d] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.55)]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
-      <div className="mx-auto max-w-6xl px-3 sm:px-6 py-10 text-sm text-main">
+      <div className="mx-auto max-w-page px-3 sm:px-6 py-10 text-sm text-main">
         <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
           <div className="text-center sm:text-left">
             <div className="mb-2 text-base font-semibold text-main">Mudaroba<sup className="text-[0.6em] font-medium ml-0.5 opacity-80">TM</sup></div>

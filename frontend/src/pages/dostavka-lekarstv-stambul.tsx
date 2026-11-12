@@ -220,7 +220,7 @@ export default function IstanbulDeliveryPage({ contacts }: { contacts: Contacts 
         structuredData={buildIstanbulDeliverySchemas({ siteUrl: SITE_URL, localePrefix, content, siteName: SITE_NAME })}
       />
       <main className="min-h-screen overflow-x-hidden bg-page text-main">
-        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-8">
+        <div className="mx-auto max-w-page px-4 py-4 sm:px-6 sm:py-8">
           <nav aria-label={t('breadcrumbs', 'Хлебные крошки')} className="mb-6 flex flex-wrap items-center gap-2 text-sm text-main">
             <Link href="/" className="transition-colors hover:text-[var(--accent)]">{t('breadcrumb_home', 'Главная')}</Link>
             <span className="text-main/60">/</span>

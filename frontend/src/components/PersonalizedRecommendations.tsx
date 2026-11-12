@@ -69,7 +69,7 @@ export default function PersonalizedRecommendations() {
   if (loading) {
     return (
       <section className="py-8">
-        <div className="mx-auto max-w-6xl px-4">
+        <div className="mx-auto max-w-page px-4">
           <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
             {t('recommended_for_you', 'Вам может понравиться')}
           </h2>
@@ -95,7 +95,7 @@ export default function PersonalizedRecommendations() {
 
   return (
     <section className="py-8">
-      <div className="mx-auto max-w-6xl px-4">
+      <div className="mx-auto max-w-page px-4">
         <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
           {basedOn === 'your_history'
             ? t('recommended_for_you', 'Вам может понравиться')

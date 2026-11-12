@@ -1354,7 +1354,7 @@ export default function ProductPage({
   const markAddedToCart = useCallback(() => setAddedToCart(true), [])
 
   if (!product) {
-    return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
+    return <div className="mx-auto max-w-page p-6">{t('not_found', 'Товар не найден')}</div>
   }
 
   // Получаем числовое значение цены для расчетов
@@ -1717,7 +1717,7 @@ export default function ProductPage({
           dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbSchema) }}
         />
       </Head>
-      <div className="mx-auto max-w-6xl px-3 pt-3 pb-0 sm:py-3 flex items-center justify-between">
+      <div className="mx-auto max-w-page px-3 pt-3 pb-0 sm:py-3 flex items-center justify-between">
         {/* Звенья переносятся целиком; звено длиннее строки (обычно название товара) обрезается многоточием — полное есть в H1 */}
         <nav className="min-w-0 text-sm text-main flex flex-wrap items-center gap-2">
           {breadcrumbs.map((item, idx) => {
@@ -1737,7 +1737,7 @@ export default function ProductPage({
           })}
         </nav>
       </div>
-      <main className="mx-auto max-w-6xl px-3 pt-0 pb-8 sm:py-8">
+      <main className="mx-auto max-w-page px-3 pt-0 pb-8 sm:py-8">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.3fr_1fr] md:items-start">
           <div className="flex flex-col md:sticky md:top-6 md:self-start">
             <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-22rem)]">

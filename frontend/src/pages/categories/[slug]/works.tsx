@@ -127,7 +127,7 @@ export default function CategoryWorksPage({
         ]}
       />
 
-      <div className="mx-auto max-w-7xl px-3 pt-5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-page-wide px-3 pt-5 sm:px-6 lg:px-8">
         <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm text-main">
           {breadcrumbs.map((item, idx) => {
             const last = idx === breadcrumbs.length - 1
@@ -147,7 +147,7 @@ export default function CategoryWorksPage({
         </nav>
       </div>
 
-      <div className="mx-auto max-w-7xl px-3 pt-8 pb-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-page-wide px-3 pt-8 pb-4 sm:px-6 lg:px-8">
         <h1 className="text-3xl font-extrabold tracking-tight text-[var(--text-strong)] sm:text-4xl lg:text-5xl">
           {t('service_portfolio_page_title', 'Все кейсы и примеры')}
         </h1>
