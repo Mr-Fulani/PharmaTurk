@@ -5,6 +5,14 @@
 export const THEMES = /** @type {const} */ (['cream', 'iznik', 'green'])
 export const DEFAULT_THEME = 'cream'
 
+// Цвет панели браузера на телефоне (<meta name="theme-color">) — акцент темы.
+// У «Кремовой» — прежний фиолетовый: её вид не меняется.
+export const THEME_BROWSER_COLOR = /** @type {const} */ ({
+  cream: '#4c1d95',
+  iznik: '#1c3d94',
+  green: '#0f5a47',
+})
+
 // Шрифт, который страница темы показывает первым: его предзагрузка убирает сдвиг
 // вёрстки при подмене системного шрифта. Пути совпадают с @font-face в globals.css.
 export const THEME_FONT_PRELOAD = /** @type {const} */ ({
@@ -13,9 +21,10 @@ export const THEME_FONT_PRELOAD = /** @type {const} */ ({
   green: '/fonts/GolosText-v1.woff2',
 })
 
-// Порядок по умолчанию — порядок главной до появления настройки (миграция settings.0005).
+// Порядок по умолчанию — как в админке после миграций settings.0005 и 0007.
 export const HOME_BLOCK_KEYS = /** @type {const} */ ([
   'main_banner',
+  'benefits',
   'brands',
   'banner_after_brands',
   'categories',
@@ -40,7 +49,7 @@ export function normalizeTheme(value) {
 /**
  * Ключи блоков главной, которые нужно показать, в порядке показа.
  * Неизвестные ключи отбрасываются; блок, которого нет в ответе (ещё без записи
- * в админке), показывается после перечисленных.
+ * в админке), показывается на своём месте по умолчанию.
  * @returns {HomeBlockKey[]}
  */
 export function visibleHomeBlocks(blocks) {
@@ -52,7 +61,14 @@ export function visibleHomeBlocks(blocks) {
       listed.set(block.key, block.is_enabled !== false)
     }
   }
-  const order = [...listed.keys(), ...HOME_BLOCK_KEYS.filter((key) => !listed.has(key))]
+  const order = [...listed.keys()]
+  HOME_BLOCK_KEYS.forEach((key, index) => {
+    if (listed.has(key)) return
+    // Блок без записи встаёт после своего соседа по умолчанию, а не в конец страницы:
+    // так новый блок («Строка преимуществ») оказывается под баннером и со старым бэкендом.
+    const previous = HOME_BLOCK_KEYS.slice(0, index).reverse().find((candidate) => order.includes(candidate))
+    order.splice(previous ? order.indexOf(previous) + 1 : 0, 0, key)
+  })
   return order.filter((key) => listed.get(key) !== false)
 }
 

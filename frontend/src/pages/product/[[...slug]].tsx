@@ -2355,7 +2355,7 @@ export default function ProductPage({
 
               <div className="flex flex-wrap gap-2 mt-2">
                 {product.is_featured && (
-                  <span className="rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
+                  <span className="rounded-md bg-[var(--badge-bg)] px-2 py-0.5 text-xs font-medium text-[var(--badge-text)] dark:bg-pink-900/40 dark:text-pink-300">
                     {t('product_featured', 'Хит')}
                   </span>
                 )}
@@ -3082,11 +3082,7 @@ export default function ProductPage({
               return (
                 <div
                   key={section.id}
-                  className="rounded-lg border dark:border-gray-700 overflow-hidden w-full"
-                  style={{
-                    borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
-                    backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7'
-                  }}
+                  className="rounded-lg border border-[var(--accordion-border)] bg-[var(--accordion-bg)] overflow-hidden w-full"
                 >
                   <button
                     onClick={() => {
@@ -3095,16 +3091,7 @@ export default function ProductPage({
                         return { ...prev, [`_is_${section.id}_expanded`]: !isExpanded } as any
                       })
                     }}
-                    className="w-full flex items-center justify-between p-4 text-left transition-colors"
-                    style={{
-                      backgroundColor: 'transparent'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = theme === 'dark' ? '#374151' : '#FFF5DC'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent'
-                    }}
+                    className="w-full flex items-center justify-between p-4 text-left transition-colors hover:bg-[var(--accordion-bg-hover)]"
                   >
                     <span
                       className="font-medium"
@@ -3124,11 +3111,7 @@ export default function ProductPage({
                   </button>
                   {isExpanded && (
                     <div
-                      className="border-t dark:border-gray-700 p-6"
-                      style={{
-                        borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
-                        backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0'
-                      }}
+                      className="border-t border-[var(--accordion-border)] bg-[var(--accordion-open-bg)] p-6"
                     >
                       <div className="prose max-w-none dark:prose-invert">
                         <div

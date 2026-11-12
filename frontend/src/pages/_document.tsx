@@ -1,6 +1,6 @@
 import Document, { Html, Head, Main, NextScript, DocumentContext, DocumentInitialProps } from 'next/document'
 import { PHASE_PRODUCTION_BUILD } from 'next/constants'
-import { THEMES, THEME_FONT_PRELOAD, DEFAULT_THEME } from '../lib/siteAppearance'
+import { THEMES, THEME_BROWSER_COLOR, THEME_FONT_PRELOAD, DEFAULT_THEME } from '../lib/siteAppearance'
 import type { Theme } from '../lib/siteAppearance'
 import { fetchSiteAppearance } from '../lib/siteAppearanceServer'
 
@@ -46,7 +46,7 @@ class MyDocument extends Document<MyDocumentProps> {
 
           {/* Базовые мета-теги. og:url/og:type/canonical/hreflang задаются постранично — здесь не дублировать */}
           <meta httpEquiv="Content-Language" content={locale} />
-          <meta name="theme-color" content="#4c1d95" />
+          <meta name="theme-color" content={THEME_BROWSER_COLOR[skin || DEFAULT_THEME]} />
           <meta name="application-name" content={siteName} />
           <meta property="og:site_name" content={siteName} />
           <meta name="twitter:card" content="summary_large_image" />
