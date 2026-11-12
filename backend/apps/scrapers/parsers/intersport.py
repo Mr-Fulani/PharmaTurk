@@ -214,6 +214,23 @@ INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     "kosu telefon bandi": _RUNNING,
 }
 
+# Вид спорта товара (``integration_aktivite``) → раздел. Уточняет раздел «за неимением
+# точного»: мяч без вида в названии, шлем, ракетка.
+INTERSPORT_ACTIVITY_ROUTES: Dict[str, Tuple[str, ...]] = {
+    "FOOTBALL": _FOOTBALL,
+    "BASKETBALL": _BASKETBALL,
+    "VOLLEYBALL": _VOLLEYBALL,
+    "TENNIS": _TENNIS,
+    "PADEL": _RACKET,
+    "SWIMMING": _SWIMMING,
+    "WINTERSPORT": _WINTER,
+    "OUTDOOR": _OUTDOOR,
+    "RUNNING": _RUNNING,
+    "BOXING": _MARTIAL,
+}
+# Разделы, которые вид спорта уточняет.
+_GENERIC_PLACEMENTS = frozenset({"sports", "team-sports", "racket-sports"})
+
 _NAME_PHRASES = sorted(INTERSPORT_NAME_ROUTES, key=lambda phrase: (-len(phrase.split()), -len(phrase)))
 
 # Разделы «за неимением точного» — видны в отчёте прогона.
@@ -267,6 +284,26 @@ class IntersportParser(AkinonParser):
         if key not in INTERSPORT_SUBGROUP_ROUTES:
             return subgroup, ()
         return subgroup, intersport_name_route(name) or INTERSPORT_SUBGROUP_ROUTES[key]
+
+    def _category_route(self, product: Dict[str, Any], variants: Any = None) -> Tuple[str, Tuple[str, ...]]:
+        subgroup, route = super()._category_route(product, variants)
+        activity = str((product.get("attributes") or {}).get("integration_aktivite") or "")
+        return subgroup, self.refine_by_activity(subgroup, route, activity)
+
+    @staticmethod
+    def refine_by_activity(subgroup: Any, route: Tuple[str, ...], activity: Any) -> Tuple[str, ...]:
+        """Общий раздел уточняется видом спорта товара.
+
+        «Bolle Atmos Pure … Kask» — шлем без слова «лыжный» в названии, но вид спорта у
+        магазина — зимний: в «Шлемы» зимних видов, а не в корень «Спорттовары» (пилот
+        12.11.2026). Шлем для скейта («Günlük») остаётся в корне: своего раздела у него нет.
+        """
+        if not route or route[0] not in _GENERIC_PLACEMENTS:
+            return route
+        activity = str(activity or "").upper()
+        if akinon_key(subgroup) == "kask" and activity == "WINTERSPORT":
+            return ("winter-helmets", *_WINTER_GEAR)
+        return INTERSPORT_ACTIVITY_ROUTES.get(activity, route)
 
     def parse_categories(self) -> List[Dict[str, Any]]:
         """Подгруппы инвентаря трёх разделов — ссылками с фильтром подгруппы.

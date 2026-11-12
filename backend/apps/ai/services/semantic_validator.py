@@ -554,9 +554,16 @@ def _contains_phrase(text: str, phrase: str) -> bool:
 
 
 _KIND_TAIL_RE = re.compile(r"\s(?:с|со|with|для|for|из)\s")
+# Как ещё модель называет эти виды: «Детские плавательные очки», «Basketball Ball»
+# (верные карточки SuperStep, партия 9, ушли на модерацию 12.11.2026).
+_SPORTS_KIND_SYNONYMS = {
+    "ru": frozenset({"плавательные очки"}),
+    "en": frozenset({"basketball ball", "football ball", "volleyball ball"}),
+}
 # Виды спортивного инвентаря из словаря правил (нормализованные).
 _SPORTS_KIND_TEXTS = {
     locale: frozenset(_normalized(getattr(kind, locale)) for kind in SPORTS_KINDS.values())
+    | _SPORTS_KIND_SYNONYMS[locale]
     for locale in ("ru", "en")
 }
 

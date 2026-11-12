@@ -1,25 +1,36 @@
 import Document, { Html, Head, Main, NextScript, DocumentContext, DocumentInitialProps } from 'next/document'
+import { PHASE_PRODUCTION_BUILD } from 'next/constants'
+import { THEMES, THEME_FONT_PRELOAD, DEFAULT_THEME } from '../lib/siteAppearance'
+import type { Theme } from '../lib/siteAppearance'
+import { fetchSiteAppearance } from '../lib/siteAppearanceServer'
 
 const rawGa4Id = process.env.NEXT_PUBLIC_GA4_ID || ''
 const GA4_ID = /^G-[A-Z0-9]+$/i.test(rawGa4Id) ? rawGa4Id : ''
 
 interface MyDocumentProps extends DocumentInitialProps {
   locale?: string
+  /** Тема оформления; у статически собранных страниц (404) её нет — ставит _app */
+  skin?: Theme
 }
 
 class MyDocument extends Document<MyDocumentProps> {
   static async getInitialProps(ctx: DocumentContext): Promise<MyDocumentProps> {
     const initialProps = await Document.getInitialProps(ctx)
     const locale = ctx.locale || 'ru'
-    return { ...initialProps, locale }
+    // В страницу, собранную при сборке (404), тему не запекаем: настройка меняется в админке.
+    if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) return { ...initialProps, locale }
+    // ?skin=<тема> — предпросмотр темы до включения; адрес с параметром кэшируется отдельно.
+    const preview = THEMES.find((theme) => theme === ctx.query?.skin)
+    const skin = preview || (await fetchSiteAppearance()).theme
+    return { ...initialProps, locale, skin }
   }
 
   render() {
     const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Mudaroba'
-    const { locale = 'ru' } = this.props
+    const { locale = 'ru', skin } = this.props
 
     return (
-      <Html lang={locale}>
+      <Html lang={locale} data-skin={skin}>
         <Head>
           <meta charSet="utf-8" />
 
@@ -28,10 +39,10 @@ class MyDocument extends Document<MyDocumentProps> {
           <link rel="dns-prefetch" href="https://i.pinimg.com" />
           <link rel="dns-prefetch" href="https://www.youtube-nocookie.com" />
 
-          {/* Основной шрифт: без предзагрузки он приходил после первой отрисовки, и
+          {/* Основной шрифт темы: без предзагрузки он приходил после первой отрисовки, и
               подмена системного шрифта сдвигала вёрстку (CLS 0,13–0,31 на разделах
               и карточках). Путь совпадает с @font-face в globals.css. */}
-          <link rel="preload" href="/fonts/InkVerse-v2.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+          <link rel="preload" href={THEME_FONT_PRELOAD[skin || DEFAULT_THEME]} as="font" type="font/woff2" crossOrigin="anonymous" />
 
           {/* Базовые мета-теги. og:url/og:type/canonical/hreflang задаются постранично — здесь не дублировать */}
           <meta httpEquiv="Content-Language" content={locale} />

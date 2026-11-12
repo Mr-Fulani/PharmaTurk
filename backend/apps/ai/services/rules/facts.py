@@ -41,6 +41,7 @@ _HYPHEN_CODE_RE = re.compile(r"^(?=[A-Z-]*\d)[A-Z0-9]{2,}(?:-[A-Z0-9]+)+$", re.I
 # Строка материала LCW: «Kumaş: Suni Deri», «Kumaş Karışımı: 100% Deri».
 _MATERIAL_LINE_RE = re.compile(r"\b(?:Kumaş(?:\s+Karışımı)?|Materyal|Malzeme)\s*:\s*(?:%?\s*\d+\s*%?\s*)?([^\W\d_]+(?:\s+[^\W\d_]+)?)", re.IGNORECASE)
 _DIMENSIONS_RE = re.compile(r"\d+(?:[.,]\d+)?(?:[x×]\d+(?:[.,]\d+)?)+", re.IGNORECASE)
+_SEASON_RE = re.compile(r"\d{2}/\d{2}")
 # Подзаголовок IKEA в начале описания: «<h3>PAX gardırop, beyaz</h3>».
 _IKEA_SUBTITLE_RE = re.compile(r"^\s*<h3>([^<,]+)", re.IGNORECASE)
 # Турецкие строчные буквы бренда («Altınyıldız») → латиница: иначе название
@@ -295,6 +296,22 @@ def _extract_measure(text: str) -> tuple[str, tuple[str, str] | None]:
     return re.sub(r"\s+", " ", text[: match.start()] + " " + text[match.end() :]).strip(), measure
 
 
+# Объём меньше этого у инвентаря объёмом не считается.
+SPORTS_MIN_VOLUME_ML = 10
+_THICKNESS_RE = re.compile(
+    r"kal[ıi]nl[ıi][gğ]\w*\s+(\d+(?:[.,]\d+)?)\s*mm|(\d+(?:[.,]\d+)?)\s*mm\s+kal[ıi]nl[ıi]", re.IGNORECASE
+)
+
+
+def _description_thickness(source_text: str) -> tuple[str, str] | None:
+    """«… kalınlığı 10 mm olup …» → («толщина 10 мм», «10 mm thick»)."""
+    match = _THICKNESS_RE.search(source_text or "")
+    if not match:
+        return None
+    amount = match.group(1) or match.group(2)
+    return f"толщина {amount.replace('.', ',')} мм", f"{amount.replace(',', '.')} mm thick"
+
+
 def _is_model_token(token: str) -> bool:
     """Латинский токен бренда/модели/кода: без турецких букв."""
     stripped = token.strip("()[],.;:")
@@ -311,14 +328,17 @@ def is_supplier_code(token: str) -> bool:
     stripped = token.strip("()[],.;:")
     digits = sum(char.isdigit() for char in stripped)
     long_code = digits >= 3 and len(stripped) >= 12 and stripped.isalnum()
-    return (digits >= 4 or long_code) and not _DIMENSIONS_RE.fullmatch(stripped)
+    # «26/27» — сезон («adidas TFF 26/27»), а не артикул.
+    return (digits >= 4 or long_code) and not _DIMENSIONS_RE.fullmatch(stripped) and not _SEASON_RE.fullmatch(stripped)
 
 
-def drop_codes(tokens: list[str], *, leading_number: bool = False) -> list[str]:
+def drop_codes(tokens: list[str], *, leading_number: bool = False, numeric_models: bool = False) -> list[str]:
     """Убирает артикулы, короткие коды цвета за ними («DM0DM22546 BDS») и проценты состава («%100»).
 
     ``leading_number`` — первый токен стоит сразу за брендом: четыре цифры там —
     модель («New Balance 9060», «New Balance 2002»), а не артикул.
+    ``numeric_models`` — спортивный инвентарь: четыре цифры — всегда номер модели
+    («Pro Touch Pro 1000» и «Pro 2000» — разные ракетки, «Everlast 1910»).
     """
     result: list[str] = []
     after_sku = False
@@ -327,7 +347,9 @@ def drop_codes(tokens: list[str], *, leading_number: bool = False) -> list[str]:
         stripped = token.strip("()[],.;:")
         # Четыре цифры сразу за словом модели — номер модели («Emr 1830»),
         # отдельно («Tişört 4480», «Sandalet 5003») — артикул. Пустой токен — разрыв.
-        model_number = stripped.isdigit() and len(stripped) == 4 and (previous_kept or (leading_number and position == 0))
+        model_number = stripped.isdigit() and len(stripped) == 4 and (
+            numeric_models or previous_kept or (leading_number and position == 0)
+        )
         # Размер «M» в «PC-7315 M Kahve». Только латиница: русские «с», «в», «и» в LLM-названии — слова.
         single_letter = len(stripped) == 1 and stripped.isascii() and stripped.isalpha()
         if not stripped or single_letter or "%" in stripped or (is_supplier_code(stripped) and not model_number) or (
@@ -406,12 +428,19 @@ def _strip_brand(text: str, brand: str) -> str:
 
 def parse_name(name: str, facts: ProductFacts) -> None:
     """Разбор турецкого названия на тип, пол, описательные слова, цвет и модель."""
-    text, volume = _extract_volume(_clean_name(name))
+    text, volume = _clean_name(name), None
+    sports = facts.product_type == "sports"
+    amount = _VOLUME_RE.search(text)
+    # У инвентаря «3 Ml» — не объём: «Salomon S/view 3 Ml» — маска с многослойной линзой
+    # (пилот Intersport 12.11.2026: «Горнолыжная маска Salomon S/view, 3 мл»). Объём бутылки,
+    # фляги или спрея («750 ml») остаётся.
+    if not (sports and amount and float(amount.group(2).replace(",", ".")) < SPORTS_MIN_VOLUME_ML):
+        text, volume = _extract_volume(text)
     if facts.brand:
         text = _strip_brand(text, facts.brand)
     if volume:
         facts.volume = volume
-    if facts.product_type == "sports":
+    if sports:
         text, facts.measure = _extract_measure(text)
         text = re.sub(r"\b(\d+)(l[iıuü])\b", r"\1'\2", text)  # «3lü Tenis Topu» — упаковка, как «3'lü»
     pack = _PACK_RE.search(text)
@@ -426,10 +455,14 @@ def parse_name(name: str, facts: ProductFacts) -> None:
     mappings = [(vocab.KINDS, "kind"), (vocab.AUDIENCE, "audience"), (vocab.DESCRIPTORS, "descriptor")]
     if facts.product_type == "shoes":
         mappings += [(vocab.SHOE_KINDS, "kind"), (vocab.SHOE_DESCRIPTORS, "descriptor")]
-    if facts.product_type == "sports":
+    if sports:
         mappings += [(vocab.SPORTS_KINDS, "kind"), (vocab.SPORTS_DESCRIPTORS, "descriptor")]
+    plain_words = vocab.generic_title_words("sports") | vocab.SPORTS_PLAIN_TURKISH_WORDS if sports else frozenset()
     model: list[str] = []
     kinds: list[Kind] = []
+    # Инвентарь: латинское слово-вид («Grip», «Bone») и место в модели, куда оно вернётся,
+    # если видом товара окажется другое слово.
+    kind_words: list[tuple[int, str, Kind]] = []
     index = 0
     while index < len(tokens):
         token, key = tokens[index], folded[index].strip("()[],.;:")
@@ -448,6 +481,8 @@ def parse_name(name: str, facts: ProductFacts) -> None:
             target = "color" if length else None
         if target == "kind":
             kinds.append(value)
+            if sports and length == 1 and key in vocab.SPORTS_ENGLISH_KIND_WORDS:
+                kind_words.append((len(model), token, value))
         elif target == "audience":
             facts.audience = value
         elif target == "descriptor" and value[0]:
@@ -470,20 +505,33 @@ def parse_name(name: str, facts: ProductFacts) -> None:
             model.append(token)
         elif _is_strong_model_token(token) or (not seen_vocab and not descriptive and _is_model_token(token)):
             model.append(token)
+        elif sports and token.isascii() and key.isalpha() and len(key) > 1 and key not in plain_words:
+            # Инвентарь: латинское слово после вида или цвета — часть модели («adidas TFF 26/27
+            # Beyaz Unisex Competition Futbol Topu», «Force 290 Beyaz Lite»), а не турецкое слово:
+            # турецкие слова видов, цветов и описаний словарь знает (пилот Intersport 12.11.2026).
+            if token not in model:  # «Deluxe Chinning Bar … Deluxe Barfiks Çubuğu»
+                model.append(token)
         else:
             facts.untranslated.append(token)
             if model and model[-1]:
                 model.append("")
         index += 1
     specific = [kind for kind in kinds if not kind.generic]
-    if specific:
+    if sports and kinds:
+        # Турецкое название инвентаря кончается видом товара: «McKinley Active Grip … Kayak
+        # Takımı» — лыжи, а не обмотка «Grip»; «… Light Bone Futbol Topu» — мяч, а не шапочка.
+        facts.kind = specific[-1] if specific else kinds[-1]
+        for position, word, kind in reversed(kind_words):
+            if kind is not facts.kind:
+                model.insert(position, word)
+    elif specific:
         facts.kind = specific[0]
     elif kinds:
         facts.kind = kinds[0]
     # Номер сразу за брендом («New Balance 9060 Lifestyle») — модель только у брендов с
     # числовыми моделями; у остальных («Pierre Cardin 6205») — артикул.
     leading_number = vocab.fold(facts.brand) in vocab.NUMERIC_MODEL_BRANDS and bool(model) and bool(tokens) and model[0] == tokens[0]
-    facts.model = " ".join(drop_codes(model, leading_number=leading_number)).strip(" &/+")
+    facts.model = " ".join(drop_codes(model, leading_number=leading_number, numeric_models=sports)).strip(" &/+")
 
 
 def _starts_vocab(folded: list[str], index: int) -> bool:
@@ -672,6 +720,10 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
             facts.heel = _heel_phrase(attrs.get("heel_height"), facts.kind)
     if facts.audience is None:
         facts.audience = vocab.AUDIENCE.get(vocab.fold(attrs.get("gender")))
+    if product_type == "sports" and facts.measure is None and not facts.model:
+        # Модели без имени («Energetics Unisex Siyah Yoga Matı» — два разных коврика): различает
+        # толщина из описания магазина, если она там есть.
+        facts.measure = _description_thickness(source_text)
     if product_type == "sports" and facts.audience == vocab.AUDIENCE["unisex"]:
         facts.audience = None  # «мяч унисекс» не говорят; «детские», «женские» остаются
     if facts.has_variants or product_type == "perfumery":

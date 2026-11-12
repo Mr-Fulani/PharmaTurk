@@ -331,9 +331,9 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
               return (
                 <div
                   key={buildProductIdentityKey(product, product.product_type)}
-                  className="group relative flex h-full w-44 flex-shrink-0 snap-start flex-col gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card-bg)] p-2 shadow-[0_2px_10px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.16)] dark:hover:border-gray-600 md:w-60"
+                  className="product-card group relative flex h-full w-44 flex-shrink-0 snap-start flex-col gap-2 rounded-[var(--card-radius)] border border-[var(--border)] bg-[var(--card-bg)] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 dark:hover:border-gray-600 md:w-60"
                 >
-                  <div className="relative block w-full aspect-[4/5] overflow-hidden bg-gray-100/50 rounded-xl">
+                  <div className="relative block w-full aspect-[4/5] overflow-hidden bg-gray-100/50 rounded-[calc(var(--card-radius)-4px)]">
                     <Link
                       href={buildProductUrl(product.product_type || 'medicines', product.slug)}
                       aria-label={localizedName}

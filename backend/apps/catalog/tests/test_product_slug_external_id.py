@@ -123,6 +123,17 @@ def test_ru_slugify_uses_yandex_transliteration():
             "Nike Elite Tournament 7 No Unisex Turuncu Basketbol Topu", "sports",
             "basketbolnyy-myach-nike-elite-tournament-13424-0195",
         ),
+        # Пилот Intersport 12.11.2026: слова модели после вида товара — в адресе.
+        (
+            "adidas TFF 26/27 Beyaz Unisex Competition Futbol Topu", "sports",
+            "futbolnyy-myach-adidas-tff-2627-competition-13424-0195",
+        ),
+        # Название с непереведённым словом («Lig») напишет модель, но адрес — с видом товара,
+        # а не «adidas-tff-…».
+        (
+            "adidas Türkiye TFF 26/27 Lig Beyaz Futbol Topu", "sports",
+            "futbolnyy-myach-adidas-tff-2627-turtsiya-13424-0195",
+        ),
     ],
 )
 def test_superstep_sports_and_tableware_slugs_have_no_turkish_words(name, category, slug):
