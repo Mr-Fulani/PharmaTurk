@@ -580,7 +580,8 @@ class MySiteParser(BaseScraper):
 - **общий (родительский) парсер для нескольких сайтов делайте абстрактным** —
   не реализуйте в нём `get_name`/`get_supported_domains`, тогда регистрируются
   только конкретные наследники. Так сделан `InditexSiblingParser` (общая база
-  Bershka, Pull&Bear и Massimo Dutti).
+  Bershka, Pull&Bear и Massimo Dutti). Годится и любой другой абстрактный метод:
+  у `AkinonParser` (общая база SuperStep) это раскладка `subgroup_route`.
 
 ### Шаг 3: Создать ScraperConfig в Admin
 
@@ -641,6 +642,8 @@ run_scraper_task.delay(task_id=1)
    копипастой. Пример: Bershka, Pull&Bear и Massimo Dutti работают на одном
    API Inditex (`/itxrest` + Akamai), поэтому общее вынесено в абстрактный
    `InditexSiblingParser`, а наследники задают только магазин, домен и формат URL.
+   Так же устроены магазины платформы Akinon: общее — в `AkinonParser`
+   (`parsers/akinon.py`), у наследника (SuperStep) — ключ источника, сайт и раскладка.
 5. **Прокси:** сейчас один глобальный `SCRAPER_PROXY_URL` + флаг `use_proxy` в
    конфиге (см. 6.5). Когда разным источникам понадобятся разные прокси/страны —
    выносим `proxy_url` в `ScraperConfig` (поле на уровне источника).
@@ -882,7 +885,12 @@ Product URL никогда не считается следующим chunk: и�
 ### 6.5.2. SuperStep (`superstep.com.tr`) — обувь, одежда, аксессуары
 
 `SuperstepParser` — мультибрендовый магазин на платформе Akinon (~15 тыс.
-моделей, 90 брендов). Защиты нет, прокси не нужен: любая страница с
+моделей, 90 брендов). Общая для магазинов Akinon часть — обход раздела, карточка,
+цвета и размеры, цены, проверка наличия — в абстрактном `AkinonParser`
+(`parsers/akinon.py`); наследник задаёт ключ источника (`SOURCE` — имя парсера,
+приставка `external_id` и атрибутов `<source>_subgroup`, `<source>_category_slugs`,
+`<source>_color_ids`), адрес сайта и раскладку по нашим разделам (`subgroup_route`).
+В `superstep.py` — только таблица раскладки SuperStep и поправки по названию и бренду. Защиты нет, прокси не нужен: любая страница с
 `?format=json` отдаёт данные JSON-ом. Пауза между запросами 1,5–3 с. План и
 исследование сайта — `reports/superstep-parser-plan-2026-11-04.md`.
 
@@ -2457,6 +2465,8 @@ docker compose up -d
 | Парсер Zara | `backend/apps/scrapers/parsers/zara.py` |
 | Парсер Akakçe | `backend/apps/scrapers/parsers/akakce.py` |
 | Парсер LC Waikiki | `backend/apps/scrapers/parsers/lcw.py` |
+| Общий парсер магазинов Akinon | `backend/apps/scrapers/parsers/akinon.py` |
+| Парсер SuperStep (раскладка) | `backend/apps/scrapers/parsers/superstep.py` |
 | Сервис интеграции | `backend/apps/scrapers/services.py` |
 | Модели ScraperConfig/Task | `backend/apps/scrapers/models.py` |
 | Admin парсеров | `backend/apps/scrapers/admin.py` |
