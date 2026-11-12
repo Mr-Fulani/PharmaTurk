@@ -1518,7 +1518,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
         /* Длинный текст отзыва — читаемым шрифтом, декоративный InkVerse остаётся в заголовках */
         :global(.testimonial-quote) {
-          font-family: 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+          font-family: var(--font-plain);
           text-transform: none;
           letter-spacing: normal;
         }

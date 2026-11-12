@@ -75,6 +75,7 @@
 - [CATEGORY_MARKUP_INHERITANCE.md](CATEGORY_MARKUP_INHERITANCE.md) — наследование товарной наценки: бренд → категория → родитель → глобальная;
 - [brand-counts-cache.md](brand-counts-cache.md) — счётчики товаров брендов: снимок в кэше, Beat раз в 60 с;
 - [ANALYTICS_EVENTS.md](ANALYTICS_EVENTS.md) — согласие, события GA4/Метрики и цели, как проверять;
+- [DESIGN_THEMES.md](DESIGN_THEMES.md) — темы оформления («Кремовая», «Изник», «Зелёная аптека»): переменные, шрифты, правила;
 - [HYDRATION_ERRORS_GUIDE.md](HYDRATION_ERRORS_GUIDE.md) — диагностика hydration;
 - [TZ_SEO_PERF_FIXES.md](TZ_SEO_PERF_FIXES.md) — архивное ТЗ и отчёт SEO/performance от 2026-06-12;
 - [frontend/LOCALIZATION_GUIDE.md](../frontend/LOCALIZATION_GUIDE.md) — локализация frontend;
