@@ -37,9 +37,10 @@ def test_volume_in_litres_and_ounces_is_not_model(name, ru):
 
 @pytest.mark.django_db
 def test_model_is_still_required():
-    # Модель «IceFlow» по-прежнему нужна в названии.
+    # Объём не считается моделью, но модель с цифрой («H2O») по-прежнему нужна в названии.
+    # Слова вроде «IceFlow» (смешанный регистр, без цифр) моделью не считаются и раньше.
     reasons = _reasons(
-        "Stanley The IceFlow Flip Straw 2.0 Tumbler 0.89L Mor Termos", {"ru": "Термос Stanley 0,89 л"},
+        "Stanley The Quencher H2O FlowState Tumbler 1.18L Mor Termos", {"ru": "Термос Stanley Quencher 1,18 л"},
         "tableware", "Stanley", "s-model",
     )
     assert "title_identity_lost" in reasons
