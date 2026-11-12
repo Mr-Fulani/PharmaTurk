@@ -877,6 +877,9 @@ DESCRIPTORS: dict[str, tuple[str, str]] = {
     "orta destekli": ("средней поддержки", "Medium Support"),
     "yuksek destekli": ("сильной поддержки", "High Support"),
     "pedli": ("с чашками", "Padded"),
+    # Термосы Stanley (SuperStep, 12.11.2026): «Quencher Pipetli», «Klasik Vakumlu».
+    "pipetli": ("с трубочкой", "with Straw"),
+    "vakumlu": ("вакуумный", "Vacuum"),
     "full-zip": ("на молнии", "Full-Zip"),
     "full zip": ("на молнии", "Full-Zip"),
     "zip up": ("на молнии", "Zip-Up"),

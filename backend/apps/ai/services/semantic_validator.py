@@ -498,17 +498,30 @@ def _title_has_turkish_words(title: Any) -> bool:
 # Одежда, обувь и аксессуары: LLM-название с турецким словом словаря без турецких букв
 # («Мужские шлёпанцы Crocs Crocband Krem», «сандалии Siyah Lastikli») — партия FLO 27.10.2026.
 _APPAREL_TITLE_TYPES = frozenset({"clothing", "shoes", "underwear", "headwear", "islamic_clothing", "accessories"})
+# Посуда и спорттовары идут мимо правил (rules/facts.RULE_PRODUCT_TYPES), название пишет LLM:
+# «Термос Stanley Quencher Pipetli 1.18 L», «Полотенце UNITED4 Mor», «пистолет Sunnylife Köpek Balığı»,
+# «Stanley The Quencher ProTour Flip Straw Tumbler 1.18L» уходили на сайт (партия 9 SuperStep 12.11.2026).
+_NO_RULES_TITLE_TYPES = frozenset({"sports", "tableware"})
+_TITLE_VOCAB_TYPES = _APPAREL_TITLE_TYPES | _NO_RULES_TITLE_TYPES
+# Без «ç»: она бывает и во французских названиях («Garçon»).
+_TURKISH_TITLE_LETTERS_RE = re.compile(r"[ĞİŞğış]")
 
 
-def _apparel_title_turkish_words(title: Any, product) -> bool:
-    words = {fold(word.strip("()[],.;:")) for word in str(title or "").split()} & turkish_title_words(
-        getattr(product, "product_type", "")
-    )
-    if not words:
+def _apparel_title_turkish_words(title: Any, product, locale: str = "ru") -> bool:
+    product_type = getattr(product, "product_type", "")
+    title_words = [word.strip("()[],.;:") for word in str(title or "").split()]
+    words = {fold(word) for word in title_words} & turkish_title_words(product_type)
+    if not words and product_type not in _NO_RULES_TITLE_TYPES:
         return False
     # Бренд читается только здесь: «Mavi» — бренд, а не цвет.
-    brand = getattr(getattr(product, "brand", None), "name", "")
-    return bool(words - set(fold(brand).split()))
+    brand_words = set(fold(getattr(getattr(product, "brand", None), "name", "")).split())
+    if words - brand_words:
+        return True
+    if product_type not in _NO_RULES_TITLE_TYPES:
+        return False
+    if any(_TURKISH_TITLE_LETTERS_RE.search(word) and fold(word) not in brand_words for word in title_words):
+        return True
+    return locale == "ru" and not CYRILLIC_RE.search(str(title or ""))
 
 
 def _normalized(value: Any) -> str:
@@ -558,7 +571,9 @@ _TURKISH_ONLY_LETTERS_RE = re.compile(r"[ÇĞİŞçğış]")
 # набор флаконов («2 × 100 мл»).
 # Обрывок артикула: «Мужская футболка -SHIRT1 из хлопка» (старый санитайзер резал «BASIC-T-SHIRT1»).
 _CODE_SCRAP_RE = re.compile(r"(?:^|\s)-[A-Za-z0-9]*\d")
-_VOLUME_TOKEN_RE = re.compile(r"(?:\d+X)?\d+(?:[.,]\d+)?(?:ML|GR|G|CM|MM|KG)|\d+X\d+(?:[.,]\d+)?")
+# «0.89L», «1,18 LT», «20oz» у термосов: токенизатор режет «0.89L» по точке на «89L» —
+# в RU-названии «0,89 л» его нет, и 35 термосов Stanley уходили в title_identity_lost (12.11.2026).
+_VOLUME_TOKEN_RE = re.compile(r"(?:\d+X)?\d+(?:[.,]\d+)?(?:ML|GR|G|CM|MM|KG|LT|L|OZ)|\d+X\d+(?:[.,]\d+)?")
 
 
 def _without_marks(token: str) -> str:
@@ -1132,7 +1147,7 @@ class SemanticValidator:
                 report.reasons.append("title_code_scrap")
                 break
             if _title_has_turkish_words(title) or (
-                product_type in _APPAREL_TITLE_TYPES and _apparel_title_turkish_words(title, product)
+                product_type in _TITLE_VOCAB_TYPES and _apparel_title_turkish_words(title, product, locale)
             ) or (
                 locale == "ru"
                 and product_type == "supplements"
