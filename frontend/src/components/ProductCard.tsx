@@ -336,7 +336,7 @@ export default function ProductCard({
           )}
           {variantPreviewOverlay}
           {badge && (
-            <span className="absolute left-2 top-2 z-10 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
+            <span className="absolute left-2 top-2 z-10 rounded-md bg-[var(--badge-bg)] px-2 py-0.5 text-xs font-medium text-[var(--badge-text)] ring-1 ring-[var(--badge-ring)]">
               {badge}
             </span>
           )}
@@ -436,12 +436,12 @@ export default function ProductCard({
 
   return (
     <div
-      className="group relative flex h-full flex-col gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card-bg)] p-2 shadow-[0_2px_10px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.16)] dark:hover:border-gray-600"
+      className="product-card group relative flex h-full flex-col gap-2 rounded-[var(--card-radius)] border border-[var(--border)] bg-[var(--card-bg)] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 dark:hover:border-gray-600"
       onPointerLeave={resetVariantPreview}
     >
       <Link 
         href={href || buildProductUrl(productType, slug)}
-        className="relative block w-full aspect-[4/5] rounded-xl overflow-hidden bg-gray-100/50"
+        className="relative block w-full aspect-[4/5] rounded-[calc(var(--card-radius)-4px)] overflow-hidden bg-gray-100/50"
       >
         {/* Приоритет медиа: видео/youtube/ambient/gif выше галереи; галерея (с автосвайпом) — ниже */}
         {youtubeIdForCard ? (
@@ -513,12 +513,12 @@ export default function ProductCard({
               </span>
             )}
             {badge && (
-              <span className="rounded-md bg-pink-100/90 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
+              <span className="rounded-md bg-[color-mix(in_srgb,var(--badge-bg)_90%,transparent)] backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-[var(--badge-text)] ring-1 ring-[var(--badge-ring)]">
                 {badge}
               </span>
             )}
             {isFeatured && !badge && (
-              <span className="rounded-md bg-pink-100/90 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
+              <span className="rounded-md bg-[color-mix(in_srgb,var(--badge-bg)_90%,transparent)] backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-[var(--badge-text)] ring-1 ring-[var(--badge-ring)]">
                 {t('product_featured', 'Хит')}
               </span>
             )}
