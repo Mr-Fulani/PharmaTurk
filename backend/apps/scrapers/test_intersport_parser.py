@@ -98,6 +98,14 @@ def test_parser_is_registered_for_site_domain():
         ("Firefly Phoenix III Erkek Siyah Buz Hokeyi Pateni", "ice-skates"),
         ("McKinley Ampato 10.2 Yeşil Outdoor Çadır", "tents"),
         ("Led Lenser Neo 1R Unisex Siyah Koşu Kafa Lambası", "flashlights"),
+        ("McKinley Faro Tbl Unisex Beyaz Kamp Masası", "outdoor-hiking"),
+        ("Pro Touch HARLEM 2000 - BB Set Beyaz Basketbol Potası", "basketball-hoops"),
+        ("Pro Touch Pro 1000 Siyah Masa Tenis Raketi", "table-tennis-paddles"),
+        # Nike Mercurial магазин подписывает «Futbol Dizlik» — это щитки.
+        ("Nike Mercurial Hardshell Unisex Lacivert Futbol Dizlik", "shin-guards"),
+        ("Nike Strength Training Unisex Siyah Ağırlık Kemeri", "weightlifting-belts"),
+        ("adidas Koşu Unisex Siyah Koşu Kemeri", "running-belts"),
+        ("Energetics Yoga Cork Kahverengi Mat", "yoga-mats"),
     ],
 )
 def test_section_comes_from_product_kind_in_name(name, slug):
@@ -116,8 +124,11 @@ def test_only_equipment_subgroups_are_loaded():
     assert route("Eldiven", "Nike Pacer Lightweight Rg Unisex Siyah Koşu Eldiveni", "Nike", "")[1] == ()
     # Вид в названии не распознан — раздел подгруппы.
     assert route("Bone", "Speedo Pace Cap Unisex Pembe Bone", "Speedo", "")[1][0] == "swim-caps"
-    # В «Spor Aksesuarları» лежат и щитки: раздел — по названию.
+    # В «Spor Aksesuarları» лежат и щитки: раздел — по названию. Наушники и прочее без
+    # нашего раздела из этой сборной подгруппы не берутся.
     assert route("Spor Aksesuarları", "Nike Charge Unisex Siyah Futbol Tekmeliği", "Nike", "")[1][0] == "shin-guards"
+    assert route("Spor Aksesuarları", "Shokz Openfit 2 Plus Unisex Siyah Kulaklık", "Shokz", "")[1] == ()
+    assert route("Spor Aksesuarları", "McKinley Unisex Siyah Kayak & Snowboard", "McKinley", "")[1] == ()
 
 
 def test_every_route_ends_in_sports_root():

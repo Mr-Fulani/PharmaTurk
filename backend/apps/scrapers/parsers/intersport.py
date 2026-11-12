@@ -50,7 +50,8 @@ _SPORTS = ("sports",)
 
 # Подгруппа сайта (``integration_alt_grup``) → раздел, если вид товара в названии
 # не распознан. Пустой маршрут — подгруппа смешанная (перчатки для бега и
-# вратарские в одной «Eldiven»): без вида в названии товар не берётся.
+# вратарские в одной «Eldiven»; в «Spor Aksesuarları» — щитки, палатки, наушники
+# и свистки): без вида в названии товар не берётся.
 INTERSPORT_SUBGROUP_ROUTES: Dict[str, Tuple[str, ...]] = {
     "futbol topu": ("football-balls", *_FOOTBALL),
     "basketbol topu": ("basketball-balls", *_BASKETBALL),
@@ -71,13 +72,13 @@ INTERSPORT_SUBGROUP_ROUTES: Dict[str, Tuple[str, ...]] = {
     "raket": _RACKET,
     "tenis raketi": ("tennis-rackets", *_TENNIS),
     "tenis aksesuari": _TENNIS,
-    "antrenman aksesuari": _FITNESS,
-    "spor aksesuarlari": _FITNESS,
+    "antrenman aksesuari": (),
+    "spor aksesuarlari": (),
     "fitness eldiveni": ("fitness-gloves", *_FITNESS),
     "atlama ipi": ("jump-ropes", *_FITNESS),
     "mat": ("yoga-mats", *_FITNESS),
-    "agirlik": _STRENGTH,
-    "agirlik ekipmani": _STRENGTH,
+    "agirlik": _FITNESS,
+    "agirlik ekipmani": (),
     "boks eldiveni": ("boxing-gloves", *_MARTIAL),
     "bandaj": ("hand-wraps", "martial-arts-protective-gear", *_MARTIAL),
     "kayak & snowboard": _WINTER,
@@ -95,6 +96,10 @@ INTERSPORT_SUBGROUP_ROUTES: Dict[str, Tuple[str, ...]] = {
 INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     # мячи
     "amerikan futbol topu": _TEAM,
+    "amerikan futbolu topu": _TEAM,
+    "basketbol potasi": ("basketball-hoops", *_BASKETBALL),
+    "basketbol filesi": _BASKETBALL,
+    "duduk": _TEAM,
     "futbol topu": ("football-balls", *_FOOTBALL),
     "basketbol topu": ("basketball-balls", *_BASKETBALL),
     "voleybol topu": ("volleyball-balls", *_VOLLEYBALL),
@@ -102,6 +107,7 @@ INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     "top pompasi": _TEAM,
     "pompa ucu": _TEAM,
     "masa tenisi topu": ("table-tennis-balls", *_TABLE_TENNIS),
+    "masa tenis topu": ("table-tennis-balls", *_TABLE_TENNIS),
     "tenis topu": ("tennis-balls", *_TENNIS),
     "badminton topu": ("shuttlecocks", *_BADMINTON),
     "padel topu": _RACKET,
@@ -110,6 +116,7 @@ INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     "parmak topu": _FITNESS,
     # ракетки
     "masa tenisi raketi": ("table-tennis-paddles", *_TABLE_TENNIS),
+    "masa tenis raketi": ("table-tennis-paddles", *_TABLE_TENNIS),
     "masa tenisi": _TABLE_TENNIS,
     "tenis raketi": ("tennis-rackets", *_TENNIS),
     "tenis raket": ("tennis-rackets", *_TENNIS),
@@ -119,10 +126,12 @@ INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     "padel raketi": _RACKET,
     "padel raket": _RACKET,
     "padel gribi": _RACKET,
+    "overgrip": _TENNIS,
     # командные игры: защита
     "tekmelik": ("shin-guards", *_FOOTBALL),
     "tekmeligi": ("shin-guards", *_FOOTBALL),
-    "futbol dizlik": _FOOTBALL,
+    # Nike Mercurial Lite/Hardshell магазин подписывает «Futbol Dizlik» — это щитки.
+    "futbol dizlik": ("shin-guards", *_FOOTBALL),
     "kaleci eldiveni": _FOOTBALL,
     "voleybol dizlik": ("volleyball-knee-pads", *_VOLLEYBALL),
     "voleybol dizligi": ("volleyball-knee-pads", *_VOLLEYBALL),
@@ -142,6 +151,8 @@ INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     "paddle board": ("surf-boards", "surfing-sup", "water-sports", "sports"),
     # фитнес
     "yoga mati": ("yoga-mats", *_FITNESS),
+    "mat": ("yoga-mats", *_FITNESS),
+    "agirlik": _FITNESS,
     "atlama ipi": ("jump-ropes", *_FITNESS),
     "dambil": ("dumbbells", *_STRENGTH),
     "kettlebell": ("kettlebells", *_STRENGTH),
@@ -156,6 +167,16 @@ INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     "pilates bandi": ("resistance-bands", *_FITNESS),
     "direnc bandi": ("resistance-bands", *_FITNESS),
     "barfiks cubugu": _STRENGTH,
+    "agirlik kemeri": ("weightlifting-belts", *_FITNESS),
+    "pilates bant seti": ("resistance-bands", *_FITNESS),
+    "pilates halkasi": _FITNESS,
+    "el yayi": _FITNESS,
+    "egzersiz aleti": _FITNESS,
+    "sinav standi": _FITNESS,
+    "masaj aksesuari": _FITNESS,
+    "oturma minderi": _FITNESS,
+    "pilates topu pompasi": _FITNESS,
+    "sisirme pompasi": _FITNESS,
     "dirsek korumaligi": _FITNESS,
     "bilek korumaligi": _FITNESS,
     "bel korumaligi": _FITNESS,
@@ -186,6 +207,9 @@ INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     "cadir": ("tents", *_OUTDOOR),
     "kafa lambasi": ("flashlights", *_OUTDOOR),
     "yuruyus batonu": ("trekking-poles", *_OUTDOOR),
+    "kamp masasi": _OUTDOOR,
+    "kosu kemeri": ("running-belts", *_RUNNING),
+    "kol bandi": _RUNNING,
     "kosu kolluk": _RUNNING,
     "kosu telefon bandi": _RUNNING,
 }
