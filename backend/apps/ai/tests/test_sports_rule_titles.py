@@ -17,7 +17,7 @@ from apps.ai.services.rules.facts import (
 )
 from apps.ai.services.rules.text import build_titles
 from apps.ai.services.semantic_validator import SemanticValidator
-from apps.catalog.models import Brand, Category, Product
+from apps.catalog.models import Brand, Category, CategoryTranslation, Product
 
 
 def _titles(name, brand, category=None, **attributes):
@@ -153,11 +153,17 @@ def test_intersport_text_is_cleaned_like_superstep():
 # --- проверка смысла: вид инвентаря и чужие разделы ---------------------------------
 
 
-def _reasons(name, title, category_slug, category_name, parent=None):
+def _reasons(name, title, category_slug, category_name, parent=None, locale="ru", preloaded=False):
     sports, _ = Category.objects.get_or_create(slug="sports", defaults={"name": "Спорттовары"})
     accessories, _ = Category.objects.get_or_create(slug="accessories", defaults={"name": "Аксессуары"})
     Category.objects.get_or_create(slug="acc-gloves", defaults={"name": "Перчатки", "parent": accessories})
     Category.objects.get_or_create(slug="eyewear", defaults={"name": "Очки", "parent": accessories})
+    Category.objects.get_or_create(
+        slug="sunglasses", defaults={"name": "Солнцезащитные очки", "parent": accessories},
+    )
+    # «Ball» — английское название раздела шариковых дезодорантов (как на проде).
+    ball_deodorants, _ = Category.objects.get_or_create(slug="deodorant-ball", defaults={"name": "Шариковые"})
+    CategoryTranslation.objects.get_or_create(category=ball_deodorants, locale="en", defaults={"name": "Ball"})
     category, _ = Category.objects.get_or_create(
         slug=category_slug, defaults={"name": category_name, "parent": parent or sports},
     )
@@ -165,7 +171,8 @@ def _reasons(name, title, category_slug, category_name, parent=None):
     product = Product.objects.create(
         name=name, slug=f"sp-{abs(hash(name))}", product_type="sports", category=category, brand=brand,
     )
-    return SemanticValidator().validate(product, generated_titles={"ru": title}, dynamic_attributes=[]).reasons
+    validator = SemanticValidator.with_preloaded_categories() if preloaded else SemanticValidator()
+    return validator.validate(product, generated_titles={locale: title}, dynamic_attributes=[]).reasons
 
 
 @pytest.mark.django_db
@@ -188,3 +195,55 @@ def test_plain_accessory_title_in_sports_section_is_still_a_mismatch():
     assert "title_category_mismatch" in _reasons(
         "Nike Pacer Unisex Siyah Eldiven", "Перчатки Nike Pacer, черные", "football", "Футбол",
     )
+
+
+# Верные карточки SuperStep (партия 9, 12.11.2026) ушли на модерацию из-за этой проверки.
+@pytest.fixture
+def sports_tree():
+    """Разделы как на проде: «Плавание → Очки для плавания», «Баскетбол → Баскетбольные мячи»."""
+    sports, _ = Category.objects.get_or_create(slug="sports", defaults={"name": "Спорттовары"})
+    for parent_slug, parent_name, parent_en, slug, name, en in (
+        ("swimming", "Плавание", "Swimming", "swimming-goggles", "Очки для плавания", "Swimming goggles"),
+        ("basketball", "Баскетбол", "Basketball", "basketball-balls", "Баскетбольные мячи", "Basketball balls"),
+    ):
+        parent = Category.objects.create(slug=parent_slug, name=parent_name, parent=sports)
+        CategoryTranslation.objects.create(category=parent, locale="en", name=parent_en)
+        child = Category.objects.create(slug=slug, name=name, parent=parent)
+        CategoryTranslation.objects.create(category=child, locale="en", name=en)
+
+
+_SWIMMING_GOGGLES = ("Speedo Jet Çocuk Mavi Yüzücü Gözlüğü", "swimming-goggles", "Очки для плавания")
+_SWIMMING = ("Sunnylife Çocuk Yüzücü Gözlüğü", "swimming", "Плавание")
+_BASKETBALL_BALLS = ("Jordan Championship 7 No Turuncu Basketbol Topu", "basketball-balls", "Баскетбольные мячи")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("preloaded", [False, True])
+@pytest.mark.parametrize(
+    "title, locale, section",
+    [
+        ("Детские очки для плавания Speedo Jet, синие", "ru", _SWIMMING_GOGGLES),
+        ("Детские плавательные очки Sunnylife", "ru", _SWIMMING_GOGGLES),
+        ("Детские плавательные очки Sunnylife", "ru", _SWIMMING),
+        ("Jordan Championship 7 Basketball Ball", "en", _BASKETBALL_BALLS),
+    ],
+)
+def test_superstep_batch9_sports_titles_are_not_mismatch(sports_tree, title, locale, section, preloaded):
+    name, slug, section_name = section
+    reasons = _reasons(name, title, slug, section_name, locale=locale, preloaded=preloaded)
+    assert "title_category_mismatch" not in reasons
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("preloaded", [False, True])
+@pytest.mark.parametrize(
+    "title, section",
+    [
+        ("Солнцезащитные очки Speedo Jet, синие", _SWIMMING_GOGGLES),
+        ("Детские солнцезащитные очки Sunnylife", _SWIMMING),
+        ("Очки Sunnylife, синие", _SWIMMING),
+    ],
+)
+def test_sunglasses_in_swimming_section_are_still_a_mismatch(sports_tree, title, section, preloaded):
+    name, slug, section_name = section
+    assert "title_category_mismatch" in _reasons(name, title, slug, section_name, preloaded=preloaded)
