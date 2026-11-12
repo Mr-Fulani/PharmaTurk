@@ -1098,8 +1098,9 @@ SuperStep (`integration_*`, `previous_price`, скидка «в корзине»
   вида спорта; шлем («Kask») с видом спорта «зимние» — в «Шлемы» зимних видов, даже если в
   названии нет слова «лыжный» («Bolle Atmos Pure»). Шлем для скейта остаётся в корне.
 - **Бренд — как пишет производитель** (`AkinonParser.BRAND_ALIASES`, общий с SuperStep):
-  подпись магазина «Mc Kinley» → «McKinley», «TNF» → «The North Face», «Led Lenser» →
-  «Ledlenser». Запись каталога «Mc Kinley» переименована миграцией `scrapers/0036`.
+  подпись магазина «Mc Kinley» → «McKinley». Запись каталога «Mc Kinley» переименована
+  миграцией `scrapers/0036`. Новый псевдоним добавлять вместе с переименованием записи
+  каталога, иначе появится второй бренд.
 - **Все маршруты — в «Спорттовары»** (тесты `test_every_route_ends_in_sports_root`,
   `test_route_slugs_are_declared_under_sports_only`). Спорттовары — без вариантов цвета:
   каждый цвет — своя карточка `intersport-<код цвета модели>`, размеры — в `attributes.sizes`.

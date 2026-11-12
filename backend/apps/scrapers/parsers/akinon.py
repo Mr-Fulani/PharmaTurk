@@ -1015,7 +1015,7 @@ class AkinonParser(BaseScraper):
     # Аббревиатуры брендов, которые пишутся капсом.
     BRAND_ABBREVIATIONS = frozenset({"UGG", "EA7", "DC", "HUF", "ASICS", "DKNY", "BOSS", "NBA", "NFL", "MLB"})
     # Подпись бренда у магазина → как пишет производитель (и как бренд записан в каталоге).
-    BRAND_ALIASES = {"mc kinley": "McKinley", "tnf": "The North Face", "led lenser": "Ledlenser"}
+    BRAND_ALIASES = {"mc kinley": "McKinley"}
 
     def _brand(self, product: Dict[str, Any]) -> str:
         """Бренд; капс («STANLEY», «LEVI'S») — в обычный регистр без турецкой
