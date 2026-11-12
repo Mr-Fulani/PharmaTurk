@@ -497,7 +497,8 @@ SPORTS_KINDS: dict[str, Kind] = {
     "tenis grip": _k("обмотка для ракетки", F, "Racket Grip"),
     "padel raket grip": _k("обмотка для ракетки", F, "Racket Grip"),
     "padel gribi": _k("обмотка для ракетки", F, "Racket Grip"),
-    "grip": _k("обмотка для ракетки", F, "Racket Grip"),
+    # «Grip», «Bone», «Mat» — и английские слова моделей и цветов: общие, уступают виду в конце названия.
+    "grip": _k("обмотка для ракетки", F, "Racket Grip", generic=True),
     # защита
     "tekmelik": _k("щитки", PL, "Shin Guards"),
     "tekmeligi": _k("щитки", PL, "Shin Guards"),
@@ -526,7 +527,7 @@ SPORTS_KINDS: dict[str, Kind] = {
     "gozluk": _k("очки", PL, "Goggles", generic=True),
     "gozlugu": _k("очки", PL, "Goggles", generic=True),
     "bugu onleyici sprey": _k("спрей-антифог для очков", M, "Anti-Fog Spray"),
-    "bone": _k("шапочка для плавания", F, "Swim Cap"),
+    "bone": _k("шапочка для плавания", F, "Swim Cap", generic=True),
     "bonesi": _k("шапочка для плавания", F, "Swim Cap"),
     "havuz bonesi": _k("шапочка для плавания", F, "Swim Cap"),
     "yuzucu bonesi": _k("шапочка для плавания", F, "Swim Cap"),
@@ -556,6 +557,9 @@ SPORTS_KINDS: dict[str, Kind] = {
     "karin kasi egzersiz aleti": _k("тренажёр для пресса", M, "Ab Trainer"),
     "el egzersiz aleti": _k("кистевой эспандер", M, "Hand Exerciser"),
     "masaj aksesuari": _k("массажный ролик", M, "Massage Roller"),
+    "oturma minderi": _k("балансировочная подушка", F, "Balance Cushion"),
+    "pilates topu pompasi": _k("насос для гимнастического мяча", M, "Gym Ball Pump"),
+    "pilates topu sisirme pompasi": _k("насос для гимнастического мяча", M, "Gym Ball Pump"),
     "antrenman eldiveni": _k("перчатки для фитнеса", PL, "Training Gloves"),
     "antreman eldiveni": _k("перчатки для фитнеса", PL, "Training Gloves"),
     "fitness eldiveni": _k("перчатки для фитнеса", PL, "Training Gloves"),
@@ -604,9 +608,16 @@ SPORTS_DESCRIPTORS: dict[str, tuple[str, str]] = {
     "silikon": ("из силикона", "Silicone"),
     "sent. deri": ("из синтетической кожи", "Synthetic Leather"),
     # допустимые, но не выносимые в название
+    "dikisli": ("с прошитыми швами", "Stitched"),
+    # «Nike Türkiye 26/27», «adidas Türkiye TFF 26/27»: мячи сборной и лиги Турции.
+    "turkiye": ("Турция", "Türkiye"),
     "antrenman": ("", ""),
     "seti": ("", ""),
     "numara": ("", ""),
+    # Размер в конце названия («… Bilek Korumalığı Xs») — не модель.
+    "xs": ("", ""),
+    "xl": ("", ""),
+    "xxl": ("", ""),
     # «Nike Mercurial Lite Unisex Yeşil Spor Aksesuarları» — щитки: вид — по разделу.
     "aksesuari": ("", ""),
     "aksesuarlari": ("", ""),
@@ -1108,6 +1119,15 @@ SHOE_TITLE_WORDS = frozenset(
 ) - TURKISH_TITLE_WORDS
 
 
+# Турецкие слова без турецких букв, которых нет в словарях: латинское слово названия инвентаря
+# вне этого списка и словарей — часть модели («Competition», «Lite», «Mini»), а не турецкое.
+SPORTS_PLAIN_TURKISH_WORDS = frozenset(
+    """ve ile icin veya cift tek adet boy renk model takim takimi urun urunu aksesuar ekipman ekipmani
+    lig kupa final sezon mac maci oyun oyunu saha salon acik kapali yetiskin genc bay bayan
+    kemer kemeri bant bandi halka cubuk ip top topu canta kilif kapak aparat aleti alet stand""".split()
+)
+# Виды спортивного словаря, которые совпадают с английскими словами моделей и цветов.
+SPORTS_ENGLISH_KIND_WORDS = frozenset({"bone", "snorkel", "kettlebell", "mat", "grip"})
 # Слова только спортивного словаря; «Bone», «Snorkel», «Kettlebell», «Mat», «Grip» — и английские
 # слова: EN-названия «Yoga Mat», «Racket Grip» уходили в модерацию (пилот Intersport 12.11.2026).
 SPORTS_TITLE_WORDS = frozenset(
@@ -1115,7 +1135,7 @@ SPORTS_TITLE_WORDS = frozenset(
     for mapping in (SPORTS_KINDS, SPORTS_DESCRIPTORS)
     for key in mapping
     if " " not in key and "-" not in key and "/" not in key
-    and key not in _ENGLISH_VOCAB_WORDS | {"bone", "snorkel", "kettlebell", "mat", "grip"}
+    and key not in _ENGLISH_VOCAB_WORDS | SPORTS_ENGLISH_KIND_WORDS
 ) - TURKISH_TITLE_WORDS
 
 
