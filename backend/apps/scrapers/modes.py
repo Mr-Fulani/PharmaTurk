@@ -71,6 +71,18 @@ PARSER_MODES = {
             "их число в «Причине остановки» чанка."
         ),
     },
+    "intersport": {
+        "label": "Intersport",
+        "product": "https://www.intersport.com.tr/urun/<название>/dn3611-010/",
+        "category": "https://www.intersport.com.tr/erkek-spor-ekipmanlari/?attributes_integration_alt_grup=257",
+        "site": "подгруппы инвентаря трёх разделов (мужской, женский, детский) — ~90 ссылок по одной странице",
+        "note": (
+            "Без прокси. Только спортивный инвентарь: обувь и одежда не загружаются (число — в «Причине "
+            "остановки»). Раздел читается одной страницей (страницы «?page=» магазин закрыл для роботов), "
+            "поэтому ссылку раздела брать с фильтром подгруппы. Товар, который уже есть из SuperStep, "
+            "второй раз не создаётся."
+        ),
+    },
     "seniorah": {
         "label": "Seniorah",
         "product": "https://seniorah.com/products/<название>",

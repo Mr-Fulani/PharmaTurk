@@ -107,6 +107,14 @@ import datetime
 BRAND_CLEAR_PRODUCT_TYPES = {"books"}
 DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
 SCRAPER_TASK_SEEN_TTL = 7 * 24 * 60 * 60
+# Парсер сам выбирает раздел товара (``attributes["<source>_category_slugs"]``).
+SELF_ROUTED_SOURCES = frozenset({"superstep", "intersport", "seniorah"})
+# Магазины одного владельца с общими кодами товаров: «intersport-J1008254.855» и
+# «superstep-J1008254.855» — один и тот же мяч. Новый товар не создаётся, если он
+# уже есть на сайте от соседа. Касается товаров без вариантов цвета (спорттовары,
+# посуда): у обуви и одежды код карточки — модель, их сводит поиск дублей
+# (docs/CROSS_SOURCE_DUPLICATES.md).
+SIBLING_STORE_SOURCES = {"intersport": ("superstep",), "superstep": ("intersport",)}
 
 
 def _price_refresh_disabled_source_keys() -> set[str]:
@@ -1747,6 +1755,29 @@ class ScraperIntegrationService:
                 ]
             )
 
+    @staticmethod
+    def _sibling_store_product(scraped_product: ScrapedProduct) -> str:
+        """``external_id`` того же товара у магазина-соседа или пусто.
+
+        Только для нового товара: свой, уже загруженный, обновляется как обычно.
+        Сосед, снятый с сайта (``is_active=False``), не мешает загрузить товар.
+        """
+        source = str(scraped_product.source or "").strip().lower()
+        own = str(scraped_product.external_id or "")
+        siblings = SIBLING_STORE_SOURCES.get(source)
+        if not siblings or not own.startswith(f"{source}-"):
+            return ""
+        if Product.objects.filter(external_id=own).exists():
+            return ""
+        code = own[len(source) + 1:]
+        candidates = [f"{sibling}-{code}" for sibling in siblings]
+        return (
+            Product.objects.filter(external_id__in=candidates, is_active=True)
+            .values_list("external_id", flat=True)
+            .first()
+            or ""
+        )
+
     def _process_scraped_products(
         self, session: ScrapingSession, products: List[ScrapedProduct]
     ) -> Dict[str, int]:
@@ -1768,6 +1799,20 @@ class ScraperIntegrationService:
                         product_name=scraped_product.name,
                         action="skipped",
                         message=f"Не разложено (не загружен): {unrouted}",
+                        scraped_data=scraped_product.to_dict(),
+                    )
+                    continue
+                sibling = self._sibling_store_product(scraped_product)
+                if sibling:
+                    # Тот же товар уже есть от магазина-соседа: второй карточки не создаём.
+                    results["skipped"] += 1
+                    ScrapedProductLog.objects.create(
+                        session=session,
+                        external_id=scraped_product.external_id,
+                        external_url=scraped_product.url,
+                        product_name=scraped_product.name,
+                        action="skipped",
+                        message=f"Уже есть из другого магазина (не загружен): {sibling}",
                         scraped_data=scraped_product.to_dict(),
                     )
                     continue
@@ -1920,12 +1965,12 @@ class ScraperIntegrationService:
                 scraped_product._category_override = flo_category
                 return
 
-        # SuperStep и Seniorah раскладывают товар сами — по подгруппе источника
-        # или виду обуви в названии. Корень в задаче или категория по умолчанию
+        # SuperStep, Intersport и Seniorah раскладывают товар сами — по подгруппе
+        # источника или виду товара в названии. Корень в задаче или категория по умолчанию
         # их не перебивают, явно выбранная подкатегория — да. Нет точного раздела
         # в каталоге — ближайший родитель; нет ни одного — товар не загружается
         # (не в раздел задачи «наугад»).
-        if source in ("superstep", "seniorah") and (category is None or category.parent_id is None):
+        if source in SELF_ROUTED_SOURCES and (category is None or category.parent_id is None):
             attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
             route = [str(slug) for slug in attrs.get(f"{source}_category_slugs") or []]
             found = route_categories(route)
@@ -1936,7 +1981,7 @@ class ScraperIntegrationService:
             else:
                 scraped_product._unrouted_reason = (
                     f"нет активного раздела каталога для подгруппы "
-                    f"«{attrs.get('superstep_subgroup') or scraped_product.name or '—'}» "
+                    f"«{attrs.get(f'{source}_subgroup') or scraped_product.name or '—'}» "
                     f"({', '.join(route) or 'маршрут пуст'})"
                 )
             return

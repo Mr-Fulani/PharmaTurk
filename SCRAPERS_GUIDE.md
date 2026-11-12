@@ -643,7 +643,7 @@ run_scraper_task.delay(task_id=1)
    API Inditex (`/itxrest` + Akamai), поэтому общее вынесено в абстрактный
    `InditexSiblingParser`, а наследники задают только магазин, домен и формат URL.
    Так же устроены магазины платформы Akinon: общее — в `AkinonParser`
-   (`parsers/akinon.py`), у наследника (SuperStep) — ключ источника, сайт и раскладка.
+   (`parsers/akinon.py`), у наследника (SuperStep, Intersport) — ключ источника, сайт и раскладка.
 5. **Прокси:** сейчас один глобальный `SCRAPER_PROXY_URL` + флаг `use_proxy` в
    конфиге (см. 6.5). Когда разным источникам понадобятся разные прокси/страны —
    выносим `proxy_url` в `ScraperConfig` (поле на уровне источника).
@@ -697,6 +697,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `lcw` | `LcwParser` | lcw.com, www.lcw.com |
 | `flo` | `FloParser` | flo.com.tr, www.flo.com.tr |
 | `superstep` | `SuperstepParser` | superstep.com.tr, www.superstep.com.tr |
+| `intersport` | `IntersportParser` | intersport.com.tr, www.intersport.com.tr |
 | `bershka` | `BershkaParser` | bershka.com, www.bershka.com |
 | `pullandbear` | `PullAndBearParser` | pullandbear.com, www.pullandbear.com |
 | `massimodutti` | `MassimoDuttiParser` | massimodutti.com, www.massimodutti.com |
@@ -1073,6 +1074,46 @@ bags-wallets 12, …»
 
 Тесты контракта: `backend/apps/scrapers/test_superstep_parser.py` (ответы —
 `test_fixtures/superstep/`).
+
+### 6.5.2a. Intersport Турция (`intersport.com.tr`) — спортивный инвентарь
+
+`IntersportParser` — наследник `AkinonParser`: тот же владелец и те же поля товара, что у
+SuperStep (`integration_*`, `previous_price`, скидка «в корзине»), защиты нет, прокси не
+нужен, пауза 1,5–3 с. Исследование и решение владельца 12.11.2026 —
+`reports/empty-sections-and-decathlon-2026-11-12.md`.
+
+- **Только инвентарь.** Обувь и одежда Intersport — те же модели, что уже приходят из
+  SuperStep и FLO; они не загружаются. Товар берётся, если его подгруппа сайта
+  (`integration_alt_grup`) есть в `INTERSPORT_SUBGROUP_ROUTES`. Раздел у нас — по виду
+  товара в названии (`INTERSPORT_NAME_ROUTES`, самая длинная фраза побеждает): подгруппы
+  сайта смешаны — в «Top» лежат волейбольные, теннисные и гимнастические мячи, в «Spor
+  Aksesuarları» — щитки, палатки, лыжные маски, наушники и свистки. Вид не распознан —
+  раздел подгруппы; у смешанных подгрупп («Eldiven», «Kolluk», «Korumalık», «Spor
+  Aksesuarları», «Antrenman Aksesuarı») раздела по умолчанию нет: беговые перчатки и
+  наушники не берутся. Всё остальное — в отчёте прогона «не разложено». Таблицы сверены
+  на 480 настоящих строках сайта 12.11.2026: без раздела остаются ~10 (наушники,
+  беговые перчатки, поясные сумки).
+- **Все маршруты — в «Спорттовары»** (тесты `test_every_route_ends_in_sports_root`,
+  `test_route_slugs_are_declared_under_sports_only`). Спорттовары — без вариантов цвета:
+  каждый цвет — своя карточка `intersport-<код цвета модели>`, размеры — в `attributes.sizes`.
+- **Обход без `?page=`.** robots.txt магазина закрывает страницы `?page=` и `?page_size=`.
+  `FOLLOW_PAGINATION = False`: раздел читается одной страницей (72 строки). Раздел
+  инвентаря режется фильтром подгруппы — `…/erkek-spor-ekipmanlari/?attributes_integration_alt_grup=257`;
+  «Весь сайт» (`parse_categories`) сам строит такие ссылки для трёх разделов (мужской,
+  женский, детский) по фильтру «Kategori» страницы. Раздел, который не поместился, останавливается с
+  причиной «не поместился на одну страницу» — нужна более узкая ссылка.
+- **Двойники SuperStep.** Код цвета модели (`integration_model_renk`) и штрихкод у двух
+  магазинов одинаковые, цены — разные. Новый товар не создаётся, если на сайте уже есть
+  активный товар соседа с тем же кодом (`SIBLING_STORE_SOURCES` в `services.py`:
+  `intersport-J1008254.855` ↔ `superstep-J1008254.855`; строка лога — «Уже есть из другого
+  магазина»). Свой, уже загруженный товар обновляется как обычно. Правило «показывать более
+  дорогое» (FLO ↔ SuperStep) на спорттовары не распространяется: оно работает по вариантам цвета.
+- **Настройка** — миграция `scrapers/0035` (строка «intersport», мультибрендовый магазин,
+  раздел по умолчанию «Спорттовары», автосинхронизация выключена). В списки проверки
+  цены при открытии карточки и ночной сверки источник не добавлен — после пилота.
+- Адрес нового товара — русское название транслитом и код (`RU_TITLE_SLUG_SOURCES`).
+
+Тесты: `backend/apps/scrapers/test_intersport_parser.py` (ответы — `test_fixtures/intersport/`).
 
 ### 6.5.3. Seniorah (`seniorah.com`) — женская обувь
 
@@ -2467,6 +2508,7 @@ docker compose up -d
 | Парсер LC Waikiki | `backend/apps/scrapers/parsers/lcw.py` |
 | Общий парсер магазинов Akinon | `backend/apps/scrapers/parsers/akinon.py` |
 | Парсер SuperStep (раскладка) | `backend/apps/scrapers/parsers/superstep.py` |
+| Парсер Intersport (инвентарь, раскладка) | `backend/apps/scrapers/parsers/intersport.py` |
 | Сервис интеграции | `backend/apps/scrapers/services.py` |
 | Модели ScraperConfig/Task | `backend/apps/scrapers/models.py` |
 | Admin парсеров | `backend/apps/scrapers/admin.py` |
