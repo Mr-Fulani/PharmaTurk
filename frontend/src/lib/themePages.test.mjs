@@ -6,11 +6,11 @@ import { THEMES, THEME_BROWSER_COLOR } from './siteAppearance.js'
 
 // Страницы товара, заявки и служебные в темах «Изник» и «Зелёная аптека»
 // (docs/DESIGN_THEMES.md, «Что ещё красит тема»). Правила привязаны к теме:
-// «Кремовая» и ночной режим должны остаться как были.
+// «Кремовая» — и днём, и ночью — должна остаться как была.
 
 const read = (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8')
 const css = await read('styles/globals.css')
-const SKINNED = "html:is([data-skin='iznik'], [data-skin='green']):not(.dark)"
+const SKINNED = "html:is([data-skin='iznik'], [data-skin='green'])"
 
 test('разделы инструкции на странице товара берут цвета из переменных темы', async () => {
   const names = ['--accordion-bg', '--accordion-bg-hover', '--accordion-open-bg', '--accordion-border']
@@ -27,7 +27,7 @@ test('разделы инструкции на странице товара б�
   assert.ok(!/#FFF8E7|#FFF5DC|#FFFBF0/i.test(product), 'на странице товара остался жёстко заданный тёплый фон')
 })
 
-test('фиолетовое сводится к акценту только в темах, не в «Кремовой» и не ночью', () => {
+test('фиолетовое сводится к акценту только в темах, не в «Кремовой»', () => {
   const rules = [...css.matchAll(/^(.*violet-[^{]*)\{/gm)].map((match) => match[1].trim())
   const themed = rules.filter((selector) => selector.startsWith('html'))
   assert.ok(themed.length >= 8)
@@ -58,4 +58,45 @@ test('цвет панели браузера: акцент темы, у «Кре
 test('плашка «Хит» на странице товара — из тех же переменных, что на карточке товара', async () => {
   const product = await read('src/pages/product/[[...slug]].tsx')
   assert.ok(product.includes('bg-[var(--badge-bg)]') && product.includes('text-[var(--badge-text)]'))
+})
+
+// Ночной режим тем (решение владельца 13.11.2026: у каждой темы свой).
+const NIGHT = ['--bg', '--text', '--text-strong', '--surface', '--border', '--accent', '--accent-strong', '--accent-soft', '--accent-muted', '--text-hover', '--card-radius', '--card-shadow', '--card-shadow-hover', '--badge-bg', '--badge-text', '--badge-ring', '--accordion-bg', '--accordion-bg-hover', '--accordion-open-bg']
+
+function block(selector) {
+  const start = css.indexOf(`${selector} {`)
+  assert.notEqual(start, -1, `нет блока ${selector}`)
+  return css.slice(start, css.indexOf('}', start))
+}
+const value = (body, name) => body.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1]
+
+function luminance(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+function contrast(a, b) {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+for (const skin of ['iznik', 'green']) {
+  test(`тема ${skin}: ночной набор задан целиком и читается`, () => {
+    const night = block(`html[data-skin='${skin}'].dark`)
+    const day = block(`html[data-skin='${skin}']:not(.dark)`)
+    assert.deepEqual([...night.matchAll(/(--[a-z-]+)\s*:/g)].map((match) => match[1]).sort(), [...NIGHT].sort())
+    // Основной текст на фоне и на блоках — не ниже 7:1.
+    assert.ok(contrast(value(night, '--text'), value(night, '--bg')) >= 7)
+    assert.ok(contrast(value(night, '--text'), value(night, '--surface')) >= 7)
+    // Акцент — и текст на тёмном фоне, и фон кнопки с белой подписью: не ниже 4:1 в обе стороны.
+    assert.ok(contrast(value(night, '--accent'), value(night, '--bg')) >= 4)
+    assert.ok(contrast('#ffffff', value(night, '--accent')) >= 4)
+    // Светлые плашки и форма карточки ночью те же, что днём (так устроен и общий ночной режим).
+    for (const name of ['--accent-soft', '--accent-muted', '--card-radius', '--badge-bg', '--badge-text', '--badge-ring']) {
+      assert.equal(value(night, name), value(day, name), `${name} ночью отличается от дневного`)
+    }
+  })
+}
+
+test('у «Кремовой» ночной набор общий: отдельного блока нет', () => {
+  assert.ok(!css.includes("html[data-skin='cream'].dark"))
 })
