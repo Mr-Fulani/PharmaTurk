@@ -163,6 +163,59 @@ def test_route_slugs_are_declared_under_sports_only():
     assert {slug: declared.get(slug) for slug in slugs if declared.get(slug) != {"SPORTS_SUBCATEGORIES"}} == {}
 
 
+def test_helmet_without_ski_word_goes_to_winter_section_by_activity():
+    """Пилот 12.11.2026: «Bolle Atmos Pure … Kask» лежал в корне «Спорттовары»."""
+    refine = IntersportParser.refine_by_activity
+    helmet = IntersportParser.subgroup_route("Kask", "Bolle Atmos Pure 59-62cm Unisex Siyah Kask", "Bolle", "")[1]
+    assert helmet == ("sports",)
+    assert refine("Kask", helmet, "WINTERSPORT")[0] == "winter-helmets"
+    # Шлем для скейта («Günlük») — своего раздела нет, остаётся в корне.
+    assert refine("Kask", helmet, "SPORTSTYLE") == ("sports",)
+    # Мяч без вида в названии — в раздел своего вида спорта; точный раздел не трогается.
+    assert refine("Top", ("team-sports", "sports"), "VOLLEYBALL")[0] == "volleyball"
+    assert refine("Futbol Topu", ("football-balls", "football", "team-sports", "sports"), "TENNIS")[0] == "football-balls"
+    assert refine("Eldiven", (), "RUNNING") == ()
+
+
+def test_card_route_uses_activity_of_the_product():
+    card = json.loads(_fixture("card_jordan_J1008254_855.json"))
+    card["product"]["name"] = "Bolle Atmos Pure 59-62cm Unisex Siyah Kask"
+    card["product"]["attributes"]["integration_aktivite"] = "WINTERSPORT"
+    card["product"]["attributes_kwargs"]["integration_alt_grup"] = {"label": "Kask", "value": "162"}
+    product = _parser({JORDAN: json.dumps(card)}).parse_product_detail(SITE + JORDAN)
+
+    assert product.category == "winter-helmets"
+    assert product.attributes["intersport_category_slugs"][-2:] == ["winter-sports", "sports"]
+
+
+def test_brand_is_spelled_as_manufacturer_writes_it():
+    """Магазин подписывает «Mc Kinley» — в каталоге бренд «McKinley» (миграция scrapers/0036)."""
+    card = json.loads(_fixture("card_jordan_J1008254_855.json"))
+    card["product"]["attributes_kwargs"]["integration_alt_marka"] = {"label": "Mc Kinley", "value": "MCKINLEY"}
+    assert _parser({JORDAN: json.dumps(card)}).parse_product_detail(SITE + JORDAN).brand == "McKinley"
+
+
+@pytest.mark.django_db
+def test_migration_renames_mckinley_brand_once():
+    import importlib
+
+    from django.apps import apps as django_apps
+
+    from apps.catalog.models import Brand
+
+    migration = importlib.import_module("apps.scrapers.migrations.0036_rename_mckinley_brand")
+    brand = Brand.objects.create(name="Mc Kinley", slug="mc-kinley")
+    migration.rename(django_apps, None)
+    brand.refresh_from_db()
+    assert (brand.name, brand.slug) == ("McKinley", "mc-kinley")  # адрес бренда прежний
+
+    # Бренд «McKinley» уже есть — второй с тем же именем не появляется.
+    other = Brand.objects.create(name="Mc Kinley", slug="mc-kinley-2")
+    migration.rename(django_apps, None)
+    other.refresh_from_db()
+    assert other.name == "Mc Kinley"
+
+
 # --- категории сайта ---------------------------------------------------------------
 
 

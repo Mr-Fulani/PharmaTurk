@@ -211,7 +211,13 @@ def ru_title_slug_base(name: str, brand: str, product_type: str, category, attri
 
     product = SimpleNamespace(product_type=product_type or "", category=category, variants=None, domain_item=None)
     facts = collect_facts(product, {"name": name, "brand": brand or "", "attributes": {"gender": (attributes or {}).get("gender")}})
-    text = build_titles(facts)["ru"].split(", ")[0] or f"{facts.brand} {facts.model}".strip()
+    # Непереведённое слово мешает названию, но не адресу: вид товара, бренд и модель известны —
+    # «futbolnyy-myach-adidas-tff-…», а не «adidas-tff-…» (пилот Intersport 12.11.2026).
+    text = (
+        build_titles(facts)["ru"].split(", ")[0]
+        or build_titles(facts, ignore_untranslated=True)["ru"].split(", ")[0]
+        or f"{facts.brand} {facts.model}".strip()
+    )
     return ru_slugify(text) if text else ""
 
 

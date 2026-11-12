@@ -1014,6 +1014,8 @@ class AkinonParser(BaseScraper):
 
     # Аббревиатуры брендов, которые пишутся капсом.
     BRAND_ABBREVIATIONS = frozenset({"UGG", "EA7", "DC", "HUF", "ASICS", "DKNY", "BOSS", "NBA", "NFL", "MLB"})
+    # Подпись бренда у магазина → как пишет производитель (и как бренд записан в каталоге).
+    BRAND_ALIASES = {"mc kinley": "McKinley"}
 
     def _brand(self, product: Dict[str, Any]) -> str:
         """Бренд; капс («STANLEY», «LEVI'S») — в обычный регистр без турецкой
@@ -1021,6 +1023,7 @@ class AkinonParser(BaseScraper):
         ASICS) не трогаем. Существующий бренд каталог находит без учёта
         регистра (``get_or_create_scraped_brand``) и пишет как в базе."""
         brand = self._attr_label(product, "integration_alt_marka")
+        brand = self.BRAND_ALIASES.get(akinon_key(brand), brand)
         if not brand.isupper():
             return brand
         words = []
