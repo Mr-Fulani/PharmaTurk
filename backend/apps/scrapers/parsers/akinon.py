@@ -91,6 +91,9 @@ class AkinonParser(BaseScraper):
     VARIANT_ROOTS = frozenset({"shoes", "clothing", "underwear", "headwear"})
     # Предохранитель: максимум цветов на одну карточку (защита от аномалий).
     MAX_COLOR_VARIANTS = 12
+    # False — магазин закрыл страницы ``?page=`` в robots.txt: раздел читается
+    # одной страницей, а не поместившийся останавливается с причиной.
+    FOLLOW_PAGINATION = True
 
     def __init__(self, base_url: str = "", **kwargs):
         super().__init__(base_url=base_url or self.SITE_URL, delay_range=(1.5, 3), **kwargs)
@@ -252,7 +255,7 @@ class AkinonParser(BaseScraper):
                     subgroup = label
                     break
         attrs = product.get("attributes") or {}
-        gender = self._map_gender(attrs.get("integration_cinsiyet"))
+        gender = self._gender(attrs)
         kids_gender = {"BOYS": "boys", "GIRLS": "girls"}.get(str(attrs.get("integration_erp_cinsiyet") or "").upper(), "")
         return self.subgroup_route(subgroup, product.get("name"), self._brand(product), gender, kids_gender)
 
@@ -471,6 +474,13 @@ class AkinonParser(BaseScraper):
             self.next_start_page = page + 1
             after = result_count() if result_count else yielded
             stalled = state.finish_page(identities, page, after > before or settled_on_page > 0)
+            if has_next and not self.FOLLOW_PAGINATION:
+                self.has_more_pages = False
+                self.stop_reason = (
+                    f"Раздел не поместился на одну страницу: всего {pagination.get('total_count')} строк, "
+                    f"загружены первые {len(tiles)}. Нужна более узкая ссылка раздела."
+                )
+                break
             if not has_next or stalled:
                 self.has_more_pages = False
                 self.stop_reason = (
@@ -572,7 +582,7 @@ class AkinonParser(BaseScraper):
         is_available = any(v["is_available"] for v in variants)
         attributes: Dict[str, Any] = {
             "color": primary["color"],
-            "gender": self._map_gender(attrs.get("integration_cinsiyet")),
+            "gender": self._gender(attrs),
             "sizes": all_sizes,
             f"{self.SOURCE}_subgroup": subgroup,
             f"{self.SOURCE}_category_slugs": list(route),
@@ -1092,6 +1102,13 @@ class AkinonParser(BaseScraper):
         else:
             shown = cls._price(product.get("retail_price"))
         return price, (shown if price and shown and shown > price else None)
+
+    # Атрибуты пола по порядку: у Intersport ``integration_cinsiyet`` пуст, пол — в фильтре.
+    GENDER_KEYS: Tuple[str, ...] = ("integration_cinsiyet",)
+
+    @classmethod
+    def _gender(cls, attrs: Dict[str, Any]) -> str:
+        return next((gender for gender in (cls._map_gender(attrs.get(key)) for key in cls.GENDER_KEYS) if gender), "")
 
     @staticmethod
     def _map_gender(value: Any) -> str:
