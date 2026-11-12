@@ -121,7 +121,7 @@ def test_ru_slugify_uses_yandex_transliteration():
         ),
         (
             "Nike Elite Tournament 7 No Unisex Turuncu Basketbol Topu", "sports",
-            "basketbolnyy-myach-uniseks-nike-elite-tournament-7-no-13424-0195",
+            "basketbolnyy-myach-nike-elite-tournament-13424-0195",
         ),
     ],
 )

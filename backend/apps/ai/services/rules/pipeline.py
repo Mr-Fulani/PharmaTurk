@@ -19,6 +19,7 @@ from apps.ai.services.rules import memory, vocab
 from apps.ai.services.rules.polish import polish_description, turkish_leftovers
 from apps.ai.services.rules.facts import (
     RULE_PRODUCT_TYPES,
+    SUPERSTEP_TEXT_SOURCES,
     ProductFacts,
     clean_source_text,
     collect_facts,
@@ -161,7 +162,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
     raw_source = input_data.get("raw_description") or input_data.get("description")
     prompt_text = (
         superstep_prompt_text(raw_source, str(input_data.get("name") or "").strip())[:SOURCE_TEXT_LIMIT]
-        if source == "superstep"
+        if source in SUPERSTEP_TEXT_SOURCES
         else source_text
     )
     namespace = memory.namespace_for(product.category_id)
@@ -195,7 +196,7 @@ def plan_rule_content(product, input_data: dict[str, Any], processing_type: str)
         if memory_hit:
             descriptions = {"ru": memory_hit["ru"], "en": memory_hit["en"]}
             description_source = "memory"
-    if not descriptions and source == "superstep" and source_text and not prompt_text:
+    if not descriptions and source in SUPERSTEP_TEXT_SOURCES and source_text and not prompt_text:
         # Без названия и полей шаблона фактов не осталось — описание из фактов, а не пересказ названия.
         descriptions = build_fact_description(facts, titles)
         description_source = "template" if len(descriptions) == 2 else "llm"
@@ -230,13 +231,13 @@ def _user_prompt(product, plan: RulePlan, input_data: dict[str, Any]) -> str:
         "need_titles": plan.missing_titles,
         # SuperStep: турецкое название нужно модели, только если она пишет название; иначе у неё есть
         # titles, а название из источника она переносила в описание (карточки 06.11.2026).
-        "product_name": None if plan.source == "superstep" and not plan.missing_titles else input_data.get("name"),
+        "product_name": None if plan.source in SUPERSTEP_TEXT_SOURCES and not plan.missing_titles else input_data.get("name"),
         "brand": facts.brand or input_data.get("brand"),
         "category_path": (input_data.get("category_context") or {}).get("category_path"),
         "product_kind": {"ru": facts.kind.ru, "en": facts.kind.en} if facts.kind else None,
         "titles": {locale: title for locale, title in plan.titles.items() if title},
         "facts": {key: value for key, value in facts.as_dict().items() if value},
-        "source_text": plan.prompt_text if plan.source == "superstep" else plan.source_text,
+        "source_text": plan.prompt_text if plan.source in SUPERSTEP_TEXT_SOURCES else plan.source_text,
     }
     return "Данные о товаре (недоверенные):\n" + json.dumps(payload, ensure_ascii=False)
 

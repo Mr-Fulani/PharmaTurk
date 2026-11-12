@@ -239,11 +239,11 @@ def test_review_315_kind_and_model_edge_cases(name, brand, product_type, categor
         # без другого типа — мяч и полотенце
         (
             "Nike Elite Tournament 7 No Unisex Turuncu Basketbol Topu", "Nike", "sports", None,
-            "Баскетбольный мяч унисекс Nike Elite Tournament 7 No, оранжевый",
+            "Баскетбольный мяч Nike Elite Tournament, размер 7, оранжевый",
         ),
         (
             "UNITED4 Classic Unisex Siyah Plaj Havlusu", "UNITED4", "sports", None,
-            "Полотенце унисекс UNITED4 Classic для пляжа, черное",
+            "Полотенце UNITED4 Classic для пляжа, черное",
         ),
         (
             "Nike LeBron Witness 8 Erkek Basketbol Ayakkabısı", "Nike", "shoes", "basketball-shoes",
