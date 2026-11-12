@@ -21,11 +21,12 @@ function Tile({ tile, fill = false }: { tile: CategoryTile; fill?: boolean }) {
   return (
     <Link
       href={tile.href}
-      className="group flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card-bg)] transition-colors duration-200 hover:border-[var(--accent)]"
+      className="group flex flex-col"
     >
-      <div className={`relative aspect-[4/3] overflow-hidden bg-gray-100 ${fill ? 'lg:aspect-auto lg:min-h-[120px] lg:flex-1' : ''}`}>{tile.media}</div>
+      {/* Без рамки и подложки: картинка со скруглением, подпись прямо на фоне блока. */}
+      <div className={`relative aspect-[4/3] overflow-hidden rounded-xl bg-gray-100 transition-shadow duration-200 group-hover:shadow-md ${fill ? 'lg:aspect-auto lg:min-h-[120px] lg:flex-1' : ''}`}>{tile.media}</div>
       {/* В узкой плитке (четыре в ряд) длинное название и число в одну строку не помещаются — число уходит под название. */}
-      <div className={`flex items-baseline justify-between gap-2 px-3 py-2.5 ${fill ? '' : 'lg:flex-col lg:justify-start lg:gap-0.5'}`}>
+      <div className={`flex items-baseline justify-between gap-2 px-1 pb-1 pt-2 ${fill ? '' : 'lg:flex-col lg:justify-start lg:gap-0.5'}`}>
         <h3 className="min-w-0 text-sm font-semibold leading-tight text-[var(--text-strong)] group-hover:text-[var(--accent)]">{tile.name}</h3>
         <span className="flex-none text-xs tabular-nums text-main opacity-70">{tile.count}</span>
       </div>
@@ -35,7 +36,8 @@ function Tile({ tile, fill = false }: { tile: CategoryTile; fill?: boolean }) {
 
 /**
  * Разделы на главной двумя блоками: «Аптека» (лекарства и БАДы) и «Гардероб и дом»
- * (всё остальное). Плитки одного размера, подпись под картинкой; картинки — карточки
+ * (всё остальное). Оба блока — на мягком фоне без рамок, плитки тоже без рамок (замечание
+ * владельца 13.11.2026). Плитки одного размера, подпись под картинкой; картинки — карточки
  * разделов из админки. Разделы, которым не хватило плитки, идут строкой ссылок:
  * пустые разделы не скрываются.
  */
@@ -60,7 +62,7 @@ export default function HomeCategoryWorlds({ pharmacy, goods, others }: { pharma
           </p>
         </div>
       )}
-      <div className="rounded-2xl border border-[var(--border)] p-4 md:p-6">
+      <div className="rounded-2xl bg-[var(--surface)] p-4 md:p-6">
         <h2 className="text-2xl font-bold text-[var(--text-strong)] md:text-3xl">{t('home_world_goods_title', 'Гардероб и дом')}</h2>
         <p className="mt-1 text-sm text-main opacity-80">{t('home_world_goods_text', 'Одежда, обувь и товары для дома турецких и мировых брендов')}</p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

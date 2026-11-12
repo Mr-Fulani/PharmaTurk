@@ -78,3 +78,20 @@ test('JSON-LD статьи: Article, FAQPage по видимым вопроса�
   assert.equal(crumbs['@type'], 'BreadcrumbList')
   assert.equal(crumbs.itemListElement[0].item, 'https://mudaroba.com/en')
 })
+
+test('страница списка статей: видимые крошки, баннер из админки и «Читать статью» на обоих языках', async () => {
+  const page = await readFile(new URL('../pages/blog/index.tsx', import.meta.url), 'utf8')
+  // Крошки видны на странице и остаются в JSON-LD (BreadcrumbList).
+  assert.ok(page.includes("<nav aria-label={t('breadcrumbs', 'Хлебные крошки')}"))
+  assert.ok(page.includes('structuredData={buildBreadcrumbSchema({ siteUrl: SITE_URL, localePrefix, breadcrumbs })}'))
+  // Баннер — тот же компонент, что на главной, данные с сервера; баннера нет — блока нет.
+  assert.ok(page.includes("import BannerCarousel from '../../components/BannerCarouselMedia'"))
+  assert.match(page, /\{banners\.length > 0 && \(\s*<div className="mt-10">\s*<BannerCarousel position="after_brands" initialBanners=\{banners\} \/>/)
+  assert.ok(page.includes("params: { position: 'after_brands' }"))
+  // Баннер стоит после списка статей: первый экран — заголовок и статьи.
+  assert.ok(page.indexOf('</ul>') < page.indexOf('<BannerCarousel'))
+  for (const locale of LOCALES) {
+    const strings = JSON.parse(await readFile(new URL(`../../public/locales/${locale}/common.json`, import.meta.url), 'utf8'))
+    assert.ok(strings.blog_read_article, `${locale}: нет перевода blog_read_article`)
+  }
+})
