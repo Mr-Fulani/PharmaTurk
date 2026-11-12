@@ -73,6 +73,7 @@
 - [PERFORMANCE_CWV_2026-10.md](PERFORMANCE_CWV_2026-10.md) — Core Web Vitals на телефоне: как мерить (PageSpeed, локальный A/B с прокси `/api`), замеры до/после, что отвергли, что осталось;
 - [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md) — битые медиа (`repair_broken_media`), бренды производителей лекарств/БАДов, бренды FLO вместо «Другое» (`repair_flo_brands`), доменные записи прежнего типа после смены типа товара (`retire_stale_domain_records`), эфирные масла PHYTOIL из БАДов в «Эфирные масла» (`move_essential_oils_from_supplements`), одежда из «Спорттоваров» в одежду (`move_clothing_out_of_sports`), ложные зачёркнутые цены (`clear_heuristic_old_prices`), названия LC Waikiki (`repair_lcw_names`);
 - [CATEGORY_MARKUP_INHERITANCE.md](CATEGORY_MARKUP_INHERITANCE.md) — наследование товарной наценки: бренд → категория → родитель → глобальная;
+- [HOME_BLOCKS.md](HOME_BLOCKS.md) — тема оформления и блоки главной в админке: экраны, ключи блоков, API `settings/appearance`, перенос галочки блока отзывов;
 - [brand-counts-cache.md](brand-counts-cache.md) — счётчики товаров брендов: снимок в кэше, Beat раз в 60 с;
 - [ANALYTICS_EVENTS.md](ANALYTICS_EVENTS.md) — согласие, события GA4/Метрики и цели, как проверять;
 - [DESIGN_THEMES.md](DESIGN_THEMES.md) — темы оформления («Кремовая», «Изник», «Зелёная аптека»): переменные, шрифты, правила;

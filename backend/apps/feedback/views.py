@@ -14,7 +14,8 @@ import logging
 import os
 import uuid
 from api.authentication import JWTSafeAuthentication
-from .models import ProductQuestion, ProductReview, ProductReviewMedia, Testimonial, TestimonialSectionSettings
+from apps.settings.models import HomeBlock
+from .models import ProductQuestion, ProductReview, ProductReviewMedia, Testimonial
 from .review_policy import can_user_review
 from .serializers import (
     ProductReviewSerializer,
@@ -574,6 +575,6 @@ class TestimonialSectionSettingsView(APIView):
         responses={200: TestimonialSectionSettingsSerializer},
     )
     def get(self, request, *args, **kwargs):
-        settings_obj = TestimonialSectionSettings.load()
-        serializer = TestimonialSectionSettingsSerializer(settings_obj)
-        return Response(serializer.data)
+        # Показ блока на главной задаётся в «Главная — Блоки» (apps.settings.HomeBlock);
+        # адрес оставлен для фронтенда, который ещё читает галочку отсюда.
+        return Response({"show_on_homepage": HomeBlock.is_shown(HomeBlock.Key.TESTIMONIALS)})

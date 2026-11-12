@@ -1,12 +1,13 @@
 """Представления для настроек сайта."""
 
-from rest_framework import viewsets
+from rest_framework import serializers, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema
+from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema, inline_serializer
 
-from .models import FooterSettings
-from .serializers import FooterSettingsSerializer
+from .models import FooterSettings, HomeBlock, SiteAppearance
+from .serializers import FooterSettingsSerializer, HomeBlockSerializer
 
 
 class FooterSettingsViewSet(viewsets.ReadOnlyModelViewSet):
@@ -27,3 +28,29 @@ class FooterSettingsViewSet(viewsets.ReadOnlyModelViewSet):
         settings = FooterSettings.load()
         serializer = self.get_serializer(settings)
         return Response(serializer.data)
+
+
+class SiteAppearanceView(APIView):
+    """Оформление сайта для фронтенда: тема и блоки главной в порядке показа."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Тема оформления и блоки главной",
+        responses={
+            200: inline_serializer(
+                name="SiteAppearance",
+                fields={
+                    "theme": serializers.ChoiceField(choices=SiteAppearance.Theme.choices),
+                    "home_blocks": HomeBlockSerializer(many=True),
+                },
+            )
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        return Response(
+            {
+                "theme": SiteAppearance.load().theme,
+                "home_blocks": HomeBlockSerializer(HomeBlock.objects.all(), many=True).data,
+            }
+        )
