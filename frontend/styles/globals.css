@@ -54,7 +54,7 @@
 
 /* Темы оформления «Изник» и «Зелёная аптека»: те же переменные с другими значениями.
    Тему включает атрибут data-skin на <html>; без атрибута действует «Кремовая» из :root.
-   Цвета темы — только для светлого режима: у тёмного (.dark) набор пока общий.
+   Здесь — дневные цвета тем; ночные — ниже, в блоках html[data-skin='…'].dark.
    Шрифты тем лежат в /fonts/ и скачиваются, только когда тема включена. */
 @font-face {
   font-family: 'Onest';
@@ -273,15 +273,65 @@ html[data-skin='green']:not(.dark) {
   --tw-ring-color: var(--accent) !important;
 }
 
+/* Ночной режим тем «Изник» и «Зелёная аптека» (решение владельца 13.11.2026: у каждой темы
+   свой). У «Кремовой» ночной набор прежний — общий .dark выше. Тема меняет ночью то же,
+   что и общий .dark, — фон, блоки, рамки, текст — и свой акцент; он светлее дневного:
+   читается и как текст на тёмном фоне, и как фон кнопки с белой подписью.
+   --accent-soft и --accent-muted остаются светлыми, как днём: на них стоят светлые
+   плашки и выбранные пункты с тёмным текстом (так устроен и общий ночной режим).
+   Скругление карточки и плашка «Хит» — те же, что днём. */
+html[data-skin='iznik'].dark {
+  --bg: #0a1022;
+  --text: #dfe5f4;
+  --text-strong: #ffffff;
+  --surface: #121a33;
+  --border: #27325a;
+  --accent: #4b6fd6;
+  --accent-strong: #3d5fc4;
+  --accent-soft: #e7ecf8;
+  --accent-muted: #c9d3ee;
+  --text-hover: #5fd0d4;
+  --card-radius: 0.5rem;
+  --card-shadow: none;
+  --card-shadow-hover: 0 8px 22px rgba(0, 0, 0, 0.45);
+  --badge-bg: #e3f4f4;
+  --badge-text: #07747a;
+  --badge-ring: #b6e3e5;
+  --accordion-bg: var(--surface);
+  --accordion-bg-hover: var(--border);
+  --accordion-open-bg: var(--bg);
+}
+html[data-skin='green'].dark {
+  --bg: #0b1410;
+  --text: #dfeae4;
+  --text-strong: #ffffff;
+  --surface: #12211b;
+  --border: #23382f;
+  --accent: #1c8a69;
+  --accent-strong: #177558;
+  --accent-soft: #e4f1ea;
+  --accent-muted: #cfe5d9;
+  --text-hover: #6fd3ae;
+  --card-radius: 1.125rem;
+  --card-shadow: none;
+  --card-shadow-hover: 0 10px 26px rgba(0, 0, 0, 0.45);
+  --badge-bg: #fff1d6;
+  --badge-text: #7a4b00;
+  --badge-ring: #f3d9a4;
+  --accordion-bg: var(--surface);
+  --accordion-bg-hover: var(--border);
+  --accordion-open-bg: var(--bg);
+}
+
 /* Раскрывающиеся разделы инструкции на странице товара. В «Кремовой» — прежние тёплые
-   оттенки, в остальных темах — фон блоков и акцент темы; в ночном режиме — прежние серые. */
+   оттенки днём и прежние серые ночью; в остальных темах — фон блоков и акцент темы. */
 :root {
   --accordion-bg: #fff8e7;
   --accordion-bg-hover: #fff5dc;
   --accordion-open-bg: #fffbf0;
   --accordion-border: #e5e7eb;
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) {
+html:is([data-skin='iznik'], [data-skin='green']) {
   --accordion-bg: var(--surface);
   --accordion-bg-hover: var(--accent-soft);
   --accordion-open-bg: var(--card-bg);
@@ -295,34 +345,34 @@ html:is([data-skin='iznik'], [data-skin='green']):not(.dark) {
 }
 
 /* В темах «Изник» и «Зелёная аптека» фиолетовое (выбранное фото и вариант товара, кнопки
-   страницы «Заявка отправлена», тени) — акцент темы. В «Кремовой» и в ночном режиме
+   страницы «Заявка отправлена», тени) — акцент темы, днём и ночью. В «Кремовой»
    фиолетовое остаётся как было, поэтому правила привязаны к теме, а не общие. */
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.border-violet-500, .border-violet-600, .hover\:border-violet-300:hover, .hover\:border-violet-400:hover, .focus\:border-violet-500:focus) {
+html:is([data-skin='iznik'], [data-skin='green']) :is(.border-violet-500, .border-violet-600, .hover\:border-violet-300:hover, .hover\:border-violet-400:hover, .focus\:border-violet-500:focus) {
   border-color: var(--accent);
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.border-violet-100, .border-purple-100) {
+html:is([data-skin='iznik'], [data-skin='green']) :is(.border-violet-100, .border-purple-100) {
   border-color: var(--border);
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.ring-violet-200, .ring-violet-300) {
+html:is([data-skin='iznik'], [data-skin='green']) :is(.ring-violet-200, .ring-violet-300) {
   --tw-ring-color: var(--accent-muted);
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) .bg-violet-600 {
+html:is([data-skin='iznik'], [data-skin='green']) .bg-violet-600 {
   background-color: var(--accent);
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) .hover\:bg-violet-700:hover {
+html:is([data-skin='iznik'], [data-skin='green']) .hover\:bg-violet-700:hover {
   background-color: var(--accent-strong);
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.bg-violet-50, .bg-purple-100) {
+html:is([data-skin='iznik'], [data-skin='green']) :is(.bg-violet-50, .bg-purple-100) {
   background-color: var(--accent-soft);
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.text-violet-500, .text-purple-600) {
+html:is([data-skin='iznik'], [data-skin='green']) :is(.text-violet-500, .text-purple-600) {
   color: var(--accent);
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) :is(.shadow-violet-600\/30, .shadow-violet-500\/40, .shadow-violet-100\/60, .shadow-violet-100\/70) {
+html:is([data-skin='iznik'], [data-skin='green']) :is(.shadow-violet-600\/30, .shadow-violet-500\/40, .shadow-violet-100\/60, .shadow-violet-100\/70) {
   --tw-shadow-color: color-mix(in srgb, var(--accent) 14%, transparent);
   --tw-shadow: var(--tw-shadow-colored);
 }
-html:is([data-skin='iznik'], [data-skin='green']):not(.dark) .from-violet-50\/60 {
+html:is([data-skin='iznik'], [data-skin='green']) .from-violet-50\/60 {
   --tw-gradient-from: var(--surface) var(--tw-gradient-from-position);
 }
 
