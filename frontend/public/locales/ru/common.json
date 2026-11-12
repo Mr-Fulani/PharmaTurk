@@ -1705,5 +1705,16 @@
   "hto_supp_link": "Каталог БАДов и витаминов",
   "footer_how_to_order": "Как заказать",
   "supplement_how_to_order_link": "Как заказать БАДы из Турции",
-  "hto_timing_point5": "Доставляем по всему миру, в первую очередь в Россию и страны СНГ — срок и стоимость доставки менеджер называет в расчёте"
+  "hto_timing_point5": "Доставляем по всему миру, в первую очередь в Россию и страны СНГ — срок и стоимость доставки менеджер называет в расчёте",
+  "section_nav_label": "Разделы каталога",
+  "section_nav_medicines": "Лекарства",
+  "section_nav_supplements": "БАДы и витамины",
+  "section_nav_clothing": "Одежда",
+  "section_nav_shoes": "Обувь",
+  "section_nav_islamic_clothing": "Исламская одежда",
+  "section_nav_furniture": "Мебель",
+  "section_nav_perfumery": "Парфюмерия",
+  "section_nav_accessories": "Аксессуары",
+  "section_nav_all": "Все разделы",
+  "header_catalog": "Каталог"
 }
