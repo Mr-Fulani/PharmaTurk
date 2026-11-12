@@ -462,6 +462,181 @@ CATEGORY_KINDS: dict[str, Kind] = {
     "bed-bases": _k("основание кровати", N, "Bed Base"),
 }
 
+# Только для спорттоваров (инвентарь Intersport и SuperStep, 12.11.2026): у одежды эти слова
+# значат другое («Bone» — цвет Nike, «Mat» — матовый, «Top» — топ). Виды — так, как их ищут:
+# «горнолыжная маска», «очки для плавания», «боксёрские перчатки».
+SPORTS_KINDS: dict[str, Kind] = {
+    # мячи
+    "amerikan futbol topu": _k("мяч для американского футбола", M, "American Football"),
+    "amerikan futbolu topu": _k("мяч для американского футбола", M, "American Football"),
+    "hentbol topu": _k("гандбольный мяч", M, "Handball"),
+    "tenis topu": _k("теннисные мячи", PL, "Tennis Balls"),
+    "tenis topu seti": _k("теннисные мячи", PL, "Tennis Balls"),
+    "masa tenisi topu": _k("мячи для настольного тенниса", PL, "Table Tennis Balls"),
+    "masa tenis topu": _k("мячи для настольного тенниса", PL, "Table Tennis Balls"),
+    "badminton topu": _k("воланы для бадминтона", PL, "Shuttlecocks"),
+    "padel topu": _k("мячи для падела", PL, "Padel Balls"),
+    "pilates topu": _k("мяч для пилатеса", M, "Pilates Ball"),
+    "jimnastik topu": _k("гимнастический мяч", M, "Gym Ball"),
+    "parmak topu": _k("кистевой эспандер-мяч", M, "Hand Exercise Ball"),
+    "top pompasi": _k("насос для мячей", M, "Ball Pump"),
+    "pompa ucu": _k("иглы для насоса", PL, "Pump Needles"),
+    "basketbol potasi": _k("баскетбольное кольцо со щитом", N, "Basketball Hoop"),
+    "basketbol filesi": _k("сетка для баскетбольного кольца", F, "Basketball Net"),
+    "duduk": _k("свисток", M, "Whistle"),
+    # ракетки
+    "tenis raketi": _k("теннисная ракетка", F, "Tennis Racket"),
+    "tenis raket": _k("теннисная ракетка", F, "Tennis Racket"),
+    "masa tenisi raketi": _k("ракетка для настольного тенниса", F, "Table Tennis Paddle"),
+    "masa tenis raketi": _k("ракетка для настольного тенниса", F, "Table Tennis Paddle"),
+    "masa tenisi ag seti": _k("сетка для настольного тенниса", F, "Table Tennis Net Set"),
+    "badminton raketi": _k("ракетка для бадминтона", F, "Badminton Racket"),
+    "badminton seti": _k("набор для бадминтона", M, "Badminton Set"),
+    "padel raketi": _k("ракетка для падела", F, "Padel Racket"),
+    "padel raket": _k("ракетка для падела", F, "Padel Racket"),
+    "tenis grip": _k("обмотка для ракетки", F, "Racket Grip"),
+    "padel raket grip": _k("обмотка для ракетки", F, "Racket Grip"),
+    "padel gribi": _k("обмотка для ракетки", F, "Racket Grip"),
+    "grip": _k("обмотка для ракетки", F, "Racket Grip"),
+    # защита
+    "tekmelik": _k("щитки", PL, "Shin Guards"),
+    "tekmeligi": _k("щитки", PL, "Shin Guards"),
+    "futbol tekmeligi": _k("футбольные щитки", PL, "Football Shin Guards"),
+    # Nike Mercurial Lite/Hardshell магазин подписывает «Futbol Dizlik» — это щитки.
+    "futbol dizlik": _k("футбольные щитки", PL, "Football Shin Guards"),
+    "dizlik": _k("наколенники", PL, "Knee Pads"),
+    "dizligi": _k("наколенники", PL, "Knee Pads"),
+    "voleybol dizlik": _k("волейбольные наколенники", PL, "Volleyball Knee Pads"),
+    "voleybol dizligi": _k("волейбольные наколенники", PL, "Volleyball Knee Pads"),
+    "voleybol kollugu": _k("волейбольные нарукавники", PL, "Volleyball Arm Sleeves"),
+    "voleybol dirsekligi": _k("волейбольные налокотники", PL, "Volleyball Elbow Pads"),
+    "kolluk": _k("нарукавники", PL, "Arm Sleeves"),
+    "kaleci eldiveni": _k("вратарские перчатки", PL, "Goalkeeper Gloves"),
+    "dirsek korumaligi": _k("налокотник", M, "Elbow Support"),
+    "bilek korumaligi": _k("фиксатор запястья", M, "Wrist Support"),
+    "bel korumaligi": _k("пояс для поддержки спины", M, "Waist Support"),
+    # плавание
+    "yuzucu gozlugu": _k("очки для плавания", PL, "Swimming Goggles"),
+    "havuz gozlugu": _k("очки для плавания", PL, "Swimming Goggles"),
+    "deniz gozlugu": _k("очки для плавания", PL, "Swimming Goggles"),
+    "yaris gozlugu": _k("стартовые очки для плавания", PL, "Racing Goggles"),
+    "yaris yuzucu gozlugu": _k("стартовые очки для плавания", PL, "Racing Goggles"),
+    "antrenman gozlugu": _k("очки для плавания", PL, "Swimming Goggles"),
+    # Общее слово: вид — по разделу («Speedo Biofuse 2.0 Unisex Siyah Gözlük» в «Очках для плавания»).
+    "gozluk": _k("очки", PL, "Goggles", generic=True),
+    "gozlugu": _k("очки", PL, "Goggles", generic=True),
+    "bugu onleyici sprey": _k("спрей-антифог для очков", M, "Anti-Fog Spray"),
+    "bone": _k("шапочка для плавания", F, "Swim Cap"),
+    "bonesi": _k("шапочка для плавания", F, "Swim Cap"),
+    "havuz bonesi": _k("шапочка для плавания", F, "Swim Cap"),
+    "yuzucu bonesi": _k("шапочка для плавания", F, "Swim Cap"),
+    "yuzme paleti": _k("ласты для плавания", PL, "Swim Fins"),
+    "snorkel": _k("трубка для плавания", F, "Snorkel"),
+    "snorkel seti": _k("набор для плавания: маска и трубка", M, "Snorkel Set"),
+    "maske snorkel seti": _k("набор для плавания: маска и трубка", M, "Mask and Snorkel Set"),
+    "burun tikaci": _k("зажим для носа", M, "Nose Clip"),
+    "kulak tikaci": _k("беруши для плавания", PL, "Swimming Ear Plugs"),
+    "paddle board": _k("SUP-доска", F, "Paddle Board"),
+    # фитнес
+    "yoga mati": _k("коврик для йоги", M, "Yoga Mat"),
+    "mat": _k("коврик", M, "Mat", generic=True),
+    "atlama ipi": _k("скакалка", F, "Jump Rope"),
+    "dambil": _k("гантель", F, "Dumbbell"),
+    "dambil seti": _k("набор гантелей", M, "Dumbbell Set"),
+    "kettlebell": _k("гиря", F, "Kettlebell"),
+    "bilek agirligi": _k("утяжелители для запястий", PL, "Wrist Weights"),
+    "ayak agirligi": _k("утяжелители для ног", PL, "Ankle Weights"),
+    "ayak bilek agirligi": _k("утяжелители для ног", PL, "Ankle Weights"),
+    "agirlik": _k("утяжелители", PL, "Weights", generic=True),
+    "agirlik kemeri": _k("пояс для тяжёлой атлетики", M, "Weightlifting Belt"),
+    "kosu kemeri": _k("пояс для бега", M, "Running Belt"),
+    "kol bandi": _k("чехол для телефона на руку", M, "Phone Armband"),
+    "telefon bandi": _k("чехол для телефона на руку", M, "Phone Armband"),
+    "sinav standi": _k("упоры для отжиманий", PL, "Push-Up Stands"),
+    "karin kasi egzersiz aleti": _k("тренажёр для пресса", M, "Ab Trainer"),
+    "el egzersiz aleti": _k("кистевой эспандер", M, "Hand Exerciser"),
+    "masaj aksesuari": _k("массажный ролик", M, "Massage Roller"),
+    "antrenman eldiveni": _k("перчатки для фитнеса", PL, "Training Gloves"),
+    "antreman eldiveni": _k("перчатки для фитнеса", PL, "Training Gloves"),
+    "fitness eldiveni": _k("перчатки для фитнеса", PL, "Training Gloves"),
+    "agirlik kaldirma kemeri": _k("пояс для тяжёлой атлетики", M, "Weightlifting Belt"),
+    "guc bant seti": _k("набор эспандеров", M, "Resistance Band Set"),
+    "fitness bandi": _k("фитнес-резинка", F, "Fitness Band"),
+    "pilates bandi": _k("лента для пилатеса", F, "Pilates Band"),
+    "pilates bant seti": _k("набор лент для пилатеса", M, "Pilates Band Set"),
+    "direnc bandi": _k("эспандер-лента", M, "Resistance Band"),
+    "barfiks cubugu": _k("турник", M, "Pull-Up Bar"),
+    "pilates halkasi": _k("кольцо для пилатеса", N, "Pilates Ring"),
+    "el yayi": _k("кистевой эспандер", M, "Hand Grip"),
+    # единоборства
+    "boks eldiveni": _k("боксёрские перчатки", PL, "Boxing Gloves"),
+    "boks koc eldiveni": _k("боксёрские лапы", PL, "Coaching Mitts"),
+    "kum torbasi": _k("боксёрский мешок", M, "Punching Bag"),
+    "el bandaji": _k("боксёрские бинты", PL, "Hand Wraps"),
+    "bandaj": _k("боксёрские бинты", PL, "Hand Wraps"),
+    # зимние виды
+    "kayak takimi": _k("горные лыжи с креплениями", PL, "Ski Set"),
+    "snowboard tahtasi": _k("сноуборд", M, "Snowboard"),
+    "kayak batonu": _k("лыжные палки", PL, "Ski Poles"),
+    "kayak baglama ekipmani": _k("лыжные крепления", PL, "Ski Bindings"),
+    "snowboard baglama ekipmani": _k("крепления для сноуборда", PL, "Snowboard Bindings"),
+    "snowboard botu": _k("ботинки для сноуборда", PL, "Snowboard Boots"),
+    "kask": _k("шлем", M, "Helmet", generic=True),
+    "kayak kaski": _k("горнолыжный шлем", M, "Ski Helmet"),
+    "snowboard kaski": _k("горнолыжный шлем", M, "Ski Helmet"),
+    "kayak/snowboard kaski": _k("горнолыжный шлем", M, "Ski Helmet"),
+    "ski helmet": _k("горнолыжный шлем", M, "Ski Helmet"),
+    "kayak gozlugu": _k("горнолыжная маска", F, "Ski Goggles"),
+    "snowboard gozlugu": _k("горнолыжная маска", F, "Ski Goggles"),
+    "kayak/snowboard gozlugu": _k("горнолыжная маска", F, "Ski Goggles"),
+    "buz hokeyi pateni": _k("хоккейные коньки", PL, "Ice Hockey Skates"),
+    "buz pateni": _k("коньки", PL, "Ice Skates"),
+    # туризм
+    "uyku tulumu": _k("спальный мешок", M, "Sleeping Bag"),
+    "cadir": _k("палатка", F, "Tent"),
+    "kafa lambasi": _k("налобный фонарь", M, "Headlamp"),
+    "yuruyus batonu": _k("палки для ходьбы", PL, "Walking Poles"),
+    "kamp masasi": _k("складной стол для кемпинга", M, "Camping Table"),
+    "kaykay": _k("скейтборд", M, "Skateboard"),
+}
+SPORTS_DESCRIPTORS: dict[str, tuple[str, str]] = {
+    "aynali": ("с зеркальными линзами", "Mirrored"),
+    "silikon": ("из силикона", "Silicone"),
+    "sent. deri": ("из синтетической кожи", "Synthetic Leather"),
+    # допустимые, но не выносимые в название
+    "antrenman": ("", ""),
+    "seti": ("", ""),
+    "numara": ("", ""),
+    # «Nike Mercurial Lite Unisex Yeşil Spor Aksesuarları» — щитки: вид — по разделу.
+    "aksesuari": ("", ""),
+    "aksesuarlari": ("", ""),
+}
+# Тип по разделу, когда в названии он общий («Kask» в «Шлемах» зимних видов) или его нет.
+CATEGORY_KINDS.update(
+    {
+        "football-balls": KINDS["futbol topu"],
+        "basketball-hoops": SPORTS_KINDS["basketbol potasi"],
+        "resistance-bands": SPORTS_KINDS["direnc bandi"],
+        "weightlifting-belts": SPORTS_KINDS["agirlik kemeri"],
+        "running-belts": SPORTS_KINDS["kosu kemeri"],
+        "basketball-balls": KINDS["basketbol topu"],
+        "volleyball-balls": KINDS["voleybol topu"],
+        "swimming-goggles": SPORTS_KINDS["yuzucu gozlugu"],
+        "swim-caps": SPORTS_KINDS["bone"],
+        "shin-guards": SPORTS_KINDS["tekmelik"],
+        "volleyball-knee-pads": SPORTS_KINDS["voleybol dizlik"],
+        "yoga-mats": SPORTS_KINDS["yoga mati"],
+        "jump-ropes": SPORTS_KINDS["atlama ipi"],
+        "boxing-gloves": SPORTS_KINDS["boks eldiveni"],
+        "fitness-gloves": SPORTS_KINDS["fitness eldiveni"],
+        "tennis-rackets": SPORTS_KINDS["tenis raketi"],
+        "winter-helmets": SPORTS_KINDS["kayak kaski"],
+        "winter-goggles": SPORTS_KINDS["kayak gozlugu"],
+        "sleeping-bags": SPORTS_KINDS["uyku tulumu"],
+        "tents": SPORTS_KINDS["cadir"],
+    }
+)
+
 # Только для обуви: в других типах эти слова значат другое («Cilt Bakım» — уход за кожей
 # лица, «Diz Üstü Etek» — юбка). Женская обувь Seniorah, 07.11.2026.
 SHOE_KINDS: dict[str, Kind] = {
@@ -933,9 +1108,23 @@ SHOE_TITLE_WORDS = frozenset(
 ) - TURKISH_TITLE_WORDS
 
 
+# Слова только спортивного словаря; «Bone», «Snorkel», «Kettlebell» — и английские слова.
+SPORTS_TITLE_WORDS = frozenset(
+    key
+    for mapping in (SPORTS_KINDS, SPORTS_DESCRIPTORS)
+    for key in mapping
+    if " " not in key and "-" not in key and "/" not in key
+    and key not in _ENGLISH_VOCAB_WORDS | {"bone", "snorkel", "kettlebell"}
+) - TURKISH_TITLE_WORDS
+
+
 def turkish_title_words(product_type: str = "") -> frozenset[str]:
     """Турецкие слова словарей, которых не должно быть в готовом названии этого типа."""
-    return TURKISH_TITLE_WORDS | SHOE_TITLE_WORDS if product_type == "shoes" else TURKISH_TITLE_WORDS
+    if product_type == "shoes":
+        return TURKISH_TITLE_WORDS | SHOE_TITLE_WORDS
+    if product_type == "sports":
+        return TURKISH_TITLE_WORDS | SPORTS_TITLE_WORDS
+    return TURKISH_TITLE_WORDS
 
 
 # Канонический материал аксессуара (RU из attribute_specs) → фраза названия.
@@ -1124,7 +1313,9 @@ def generic_title_words(product_type: str = "") -> frozenset[str]:
     mappings = [KINDS, COLORS, AUDIENCE, DESCRIPTORS, COLOR_MODIFIERS]
     if product_type == "shoes":
         mappings += [SHOE_KINDS, SHOE_DESCRIPTORS]
+    if product_type == "sports":
+        mappings += [SPORTS_KINDS, SPORTS_DESCRIPTORS]
     for mapping in mappings:
         for key in mapping:
-            words.update(key.split())
+            words.update(key.replace("/", " ").split())
     return frozenset(words | COLOR_NOISE | STORE_LINE_WORDS | GENERIC_NAME_WORDS)

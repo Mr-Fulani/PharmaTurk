@@ -26,7 +26,7 @@ from apps.ai.services.medicine_title import (
     title_brand,
 )
 from apps.ai.services.rules.facts import supplier_code_tokens
-from apps.ai.services.rules.vocab import fold, generic_title_words, turkish_title_words
+from apps.ai.services.rules.vocab import SPORTS_KINDS, fold, generic_title_words, turkish_title_words
 from apps.ai.services import supplement_content, supplement_glossary
 from apps.ai.services.size_inventory import (
     merge_confirmed_sizes,
@@ -498,7 +498,8 @@ def _title_has_turkish_words(title: Any) -> bool:
 # Одежда, обувь и аксессуары: LLM-название с турецким словом словаря без турецких букв
 # («Мужские шлёпанцы Crocs Crocband Krem», «сандалии Siyah Lastikli») — партия FLO 27.10.2026.
 _APPAREL_TITLE_TYPES = frozenset({"clothing", "shoes", "underwear", "headwear", "islamic_clothing", "accessories"})
-# Посуда и спорттовары идут мимо правил (rules/facts.RULE_PRODUCT_TYPES), название пишет LLM:
+# Посуда идёт мимо правил (rules/facts.RULE_PRODUCT_TYPES), у спорттоваров (в правилах с 12.11.2026)
+# название с незнакомым словом тоже пишет LLM:
 # «Термос Stanley Quencher Pipetli 1.18 L», «Полотенце UNITED4 Mor», «пистолет Sunnylife Köpek Balığı»,
 # «Stanley The Quencher ProTour Flip Straw Tumbler 1.18L» уходили на сайт (партия 9 SuperStep 12.11.2026).
 _NO_RULES_TITLE_TYPES = frozenset({"sports", "tableware"})
@@ -553,6 +554,24 @@ def _contains_phrase(text: str, phrase: str) -> bool:
 
 
 _KIND_TAIL_RE = re.compile(r"\s(?:с|со|with|для|for|из)\s")
+# Виды спортивного инвентаря из словаря правил (нормализованные).
+_SPORTS_KIND_TEXTS = {
+    locale: frozenset(_normalized(getattr(kind, locale)) for kind in SPORTS_KINDS.values())
+    for locale in ("ru", "en")
+}
+
+
+def _sports_kind_covers(title_text: str, alias: str, locale: str) -> bool:
+    """В названии стоит вид инвентаря, в который название чужого раздела входит как слово.
+
+    «Вратарские перчатки» — не «Перчатки» аксессуаров, «очки для плавания» — не «Очки»,
+    «боксёрские бинты» — не «Бинты» медтехники (инвентарь Intersport, 12.11.2026).
+    """
+    words = len(alias.split())
+    return any(
+        len(kind.split()) > words and _contains_phrase(kind, alias) and _contains_phrase(title_text, kind)
+        for kind in _SPORTS_KIND_TEXTS.get(locale, ())
+    )
 
 
 def _kind_text(title_text: str) -> str:
@@ -1219,6 +1238,12 @@ class SemanticValidator:
                     _normalized(fold_tr(getattr(getattr(product, "brand", None), "name", ""))),
                     conflicting_match,
                 )
+            ):
+                conflicting_match = ""
+            if (
+                product_type == "sports"
+                and conflicting_match
+                and _sports_kind_covers(_normalized(title), conflicting_match, locale)
             ):
                 conflicting_match = ""
             if conflicting_match:

@@ -21,6 +21,7 @@ RULE_PRODUCT_TYPES = frozenset(
         "accessories",
         "perfumery",
         "furniture",
+        "sports",
     }
 )
 # Заглушки бренда в каталоге: настоящий бренд ищем в названии/описании.
@@ -69,6 +70,8 @@ class ProductFacts:
     has_variants: bool = False
     # Различитель названий моделей без имени (Seniorah): «каблук 10 см» и ещё одно описание.
     heel: tuple[str, str] | None = None
+    # Спорттовары: вес, длина или размер мяча из названия — «2 кг», «65 см», «размер 7».
+    measure: tuple[str, str] | None = None
     extra_descriptor: bool = False
 
     def as_dict(self) -> dict[str, Any]:
@@ -169,6 +172,10 @@ _SUPERSTEP_META_FIELD_RE = re.compile(
 )
 
 
+# Магазины одного владельца с одним шаблоном текста карточки.
+SUPERSTEP_TEXT_SOURCES = frozenset({"superstep", "intersport"})
+
+
 def product_source(product: Any) -> str:
     """Источник товара по external_id: «superstep-B75806» → «superstep»."""
     return str(getattr(product, "external_id", "") or "").split("-", 1)[0].lower()
@@ -190,7 +197,7 @@ def superstep_prompt_text(raw: Any, name: str) -> str:
     текст (``clean_source_text``): названием с цветом отличаются тексты соседних цветов одной
     модели, и старые записи памяти остаются в силе.
     """
-    text = clean_source_text(raw, "superstep", keep_lines=True)
+    text = clean_source_text(raw, "superstep", keep_lines=True)  # у Intersport правила те же
     if len(name) > 10:
         text = text.replace(name, " ")
     text = _SUPERSTEP_META_FIELD_RE.sub(" ", text)
@@ -221,13 +228,13 @@ def clean_source_text(value: Any, source: str = "", *, keep_lines: bool = False)
     text = str(value or "")
     for _ in range(2):  # у части источников HTML экранирован дважды
         text = html.unescape(text)
-    if source == "superstep":
+    if source in SUPERSTEP_TEXT_SOURCES:
         text = _clean_superstep(text)
     if keep_lines:
         text = re.sub(r"<br\s*/?>|</(?:p|li|div|h[1-6]|tr|ul|ol)>", "\n", text, flags=re.IGNORECASE)
     spaces = r"[^\S\n]+" if keep_lines else r"\s+"
     text = re.sub(r"<[^>]+>", " ", text)
-    if source == "superstep":
+    if source in SUPERSTEP_TEXT_SOURCES:
         text = _cut_outfit_tips(re.sub(spaces, " ", text))
     text = re.sub(r"Ürün Kodu:\s*\S+", " ", text)
     text = re.sub(r"\bS\d{6,}\b", " ", text)
@@ -262,6 +269,30 @@ def _extract_volume(text: str) -> tuple[str, tuple[str, str] | None]:
     ru = f"{count} × {amount} мл" if count else f"{amount} мл"
     en = f"{count} × {amount.replace(',', '.')} ml" if count else f"{amount.replace(',', '.')} ml"
     return (text[: match.start()] + text[match.end() :]).strip(), (ru, en)
+
+
+# Спорттовары: «2Kg», «0,5Kg», «65cm», «55-59cm», «6 mm», «14OZ», «27 inç» и размер мяча
+# («7 No», «No 5», «7 Numara»). В название идёт первое найденное, по-русски.
+_MEASURE_UNITS = {"kg": ("кг", "kg"), "cm": ("см", "cm"), "mm": ("мм", "mm"), "oz": ("унций", "oz"), "inc": ("дюймов", "in")}
+_MEASURE_RE = re.compile(
+    r"(?<![\w.,])(\d+(?:[.,]\d+)?(?:\s*-\s*\d+(?:[.,]\d+)?)?)\s*(kg|cm|mm|oz|inç|inc)\b", re.IGNORECASE
+)
+_BALL_SIZE_RE = re.compile(r"(?<![\w.,])(?:(\d)\s*(?:no|numara)\b\.?|no\.?\s*(\d)(?![\w.,]))", re.IGNORECASE)
+
+
+def _extract_measure(text: str) -> tuple[str, tuple[str, str] | None]:
+    match = _MEASURE_RE.search(text)
+    if match:
+        amount = re.sub(r"\s*-\s*", "–", match.group(1))
+        ru_unit, en_unit = _MEASURE_UNITS[vocab.fold(match.group(2))]
+        measure = (f"{amount.replace('.', ',')} {ru_unit}", f"{amount.replace(',', '.')} {en_unit}")
+    else:
+        match = _BALL_SIZE_RE.search(text)
+        if not match:
+            return text, None
+        size = match.group(1) or match.group(2)
+        measure = (f"размер {size}", f"Size {size}")
+    return re.sub(r"\s+", " ", text[: match.start()] + " " + text[match.end() :]).strip(), measure
 
 
 def _is_model_token(token: str) -> bool:
@@ -380,6 +411,9 @@ def parse_name(name: str, facts: ProductFacts) -> None:
         text = _strip_brand(text, facts.brand)
     if volume:
         facts.volume = volume
+    if facts.product_type == "sports":
+        text, facts.measure = _extract_measure(text)
+        text = re.sub(r"\b(\d+)(l[iıuü])\b", r"\1'\2", text)  # «3lü Tenis Topu» — упаковка, как «3'lü»
     pack = _PACK_RE.search(text)
     if pack:
         facts.pack = (f"{pack.group(1)} шт.", f"{pack.group(1)}-Pack")
@@ -392,6 +426,8 @@ def parse_name(name: str, facts: ProductFacts) -> None:
     mappings = [(vocab.KINDS, "kind"), (vocab.AUDIENCE, "audience"), (vocab.DESCRIPTORS, "descriptor")]
     if facts.product_type == "shoes":
         mappings += [(vocab.SHOE_KINDS, "kind"), (vocab.SHOE_DESCRIPTORS, "descriptor")]
+    if facts.product_type == "sports":
+        mappings += [(vocab.SPORTS_KINDS, "kind"), (vocab.SPORTS_DESCRIPTORS, "descriptor")]
     model: list[str] = []
     kinds: list[Kind] = []
     index = 0
@@ -636,6 +672,8 @@ def collect_facts(product, input_data: dict[str, Any]) -> ProductFacts:
             facts.heel = _heel_phrase(attrs.get("heel_height"), facts.kind)
     if facts.audience is None:
         facts.audience = vocab.AUDIENCE.get(vocab.fold(attrs.get("gender")))
+    if product_type == "sports" and facts.audience == vocab.AUDIENCE["unisex"]:
+        facts.audience = None  # «мяч унисекс» не говорят; «детские», «женские» остаются
     if facts.has_variants or product_type == "perfumery":
         facts.color = None  # у парфюма цвет — флакон, в название не идёт
     elif facts.color is None and product_type != "furniture":
