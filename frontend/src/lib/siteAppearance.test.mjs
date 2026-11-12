@@ -31,11 +31,17 @@ test('блоки главной: порядок из админки, выклю�
   ]
   const visible = visibleHomeBlocks(blocks)
 
-  assert.deepEqual(visible.slice(0, 2), ['facts', 'main_banner'])
+  // Перечисленные блоки сохраняют порядок админки: «facts» первым, выше главного баннера.
+  assert.equal(visible[0], 'facts')
+  assert.ok(visible.indexOf('facts') < visible.indexOf('main_banner'))
+  // Блок без записи встаёт сразу после своего соседа по умолчанию.
+  assert.equal(visible[visible.indexOf('main_banner') + 1], 'benefits')
   assert.ok(!visible.includes('brands'))
   assert.ok(!visible.includes('promo_from_future'))
-  // Блок без записи в ответе не пропадает с главной.
+  // Блок без записи в ответе не пропадает с главной и встаёт на своё место по умолчанию.
   assert.ok(visible.includes('categories'))
+  const oldBackend = HOME_BLOCK_KEYS.filter((key) => key !== 'benefits').map((key) => ({ key, is_enabled: true }))
+  assert.deepEqual(visibleHomeBlocks(oldBackend), [...HOME_BLOCK_KEYS])
   assert.equal(new Set(visible).size, visible.length)
 })
 
@@ -61,7 +67,14 @@ test('темы и блоки совпадают с бэкендом и стил�
 
   const seed = await readFile(repo('backend/apps/settings/migrations/0005_seed_home_blocks.py'), 'utf8')
   const seeded = seed.slice(seed.indexOf('HOME_BLOCKS = ['), seed.indexOf(']', seed.indexOf('HOME_BLOCKS = [')))
-  assert.deepEqual([...seeded.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]), [...HOME_BLOCK_KEYS])
+  // Миграция 0007 добавила строку преимуществ сразу под главным баннером.
+  const benefits = await readFile(repo('backend/apps/settings/migrations/0007_seed_benefits_block.py'), 'utf8')
+  assert.match(benefits, /key="benefits", defaults=\{"sort_order": 15/)
+  const backendOrder = [...seeded.matchAll(/"([a-z_]+)"/g)].map((m) => m[1])
+  backendOrder.splice(1, 0, 'benefits')
+  assert.deepEqual(backendOrder, [...HOME_BLOCK_KEYS])
+  const keys = models.slice(models.indexOf('class Key('), models.indexOf('key = models.CharField'))
+  assert.deepEqual([...keys.matchAll(/= "([a-z_]+)",/g)].map((m) => m[1]).sort(), [...HOME_BLOCK_KEYS].sort())
 
   const css = await readFile(repo('frontend/styles/globals.css'), 'utf8')
   for (const skin of THEMES.filter((name) => name !== DEFAULT_THEME)) {

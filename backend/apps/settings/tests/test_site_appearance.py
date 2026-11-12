@@ -10,6 +10,10 @@ from apps.feedback import models as feedback_models
 from apps.settings.models import HomeBlock, SiteAppearance
 
 seed_migration = importlib.import_module("apps.settings.migrations.0005_seed_home_blocks")
+benefits_migration = importlib.import_module("apps.settings.migrations.0007_seed_benefits_block")
+
+# Порядок главной по умолчанию: блоки миграции 0005 и строка преимуществ (0007) под баннером.
+DEFAULT_HOME_BLOCKS = [seed_migration.HOME_BLOCKS[0], "benefits", *seed_migration.HOME_BLOCKS[1:]]
 
 APPEARANCE_URL = "/api/settings/appearance"
 TESTIMONIALS_URL = "/api/feedback/testimonials-section-settings"
@@ -36,14 +40,14 @@ def test_appearance_api_is_public_and_keeps_current_site_by_default():
     assert response.status_code == 200
     assert response.data["theme"] == "cream"
     # Порядок блоков — нынешний порядок главной; отзывы выключены, пока их не включили.
-    assert [block["key"] for block in response.data["home_blocks"]] == seed_migration.HOME_BLOCKS
+    assert [block["key"] for block in response.data["home_blocks"]] == DEFAULT_HOME_BLOCKS
     assert [block["key"] for block in response.data["home_blocks"] if not block["is_enabled"]] == ["testimonials"]
 
 
 @pytest.mark.django_db
 def test_every_home_block_key_is_seeded():
     # Новый ключ блока без миграции данных не появится ни в админке, ни в API.
-    assert sorted(seed_migration.HOME_BLOCKS) == sorted(HomeBlock.Key.values)
+    assert sorted(DEFAULT_HOME_BLOCKS) == sorted(HomeBlock.Key.values)
     assert set(HomeBlock.objects.values_list("key", flat=True)) == set(HomeBlock.Key.values)
 
 
@@ -88,14 +92,17 @@ def test_seed_carries_over_testimonials_checkbox_and_keeps_admin_edits():
 
     seed_migration.seed_home_blocks(django_apps, None)
 
+    benefits_migration.seed_benefits_block(django_apps, None)
+
     assert HomeBlock.is_shown("testimonials") is True
-    assert list(HomeBlock.objects.values_list("key", flat=True)) == seed_migration.HOME_BLOCKS
+    assert list(HomeBlock.objects.values_list("key", flat=True)) == DEFAULT_HOME_BLOCKS
 
     # Повторный запуск не возвращает блоки, которые выключили в админке.
     HomeBlock.objects.filter(key="brands").update(is_enabled=False, sort_order=999)
     seed_migration.seed_home_blocks(django_apps, None)
+    benefits_migration.seed_benefits_block(django_apps, None)
 
-    assert HomeBlock.objects.count() == len(seed_migration.HOME_BLOCKS)
+    assert HomeBlock.objects.count() == len(DEFAULT_HOME_BLOCKS)
     assert HomeBlock.objects.get(key="brands").sort_order == 999
     assert HomeBlock.is_shown("brands") is False
 

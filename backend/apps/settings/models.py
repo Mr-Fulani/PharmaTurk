@@ -98,6 +98,7 @@ class HomeBlock(models.Model):
 
     class Key(models.TextChoices):
         MAIN_BANNER = "main_banner", _("Баннер 1 — главный, вверху страницы")
+        BENEFITS = "benefits", _("Строка преимуществ — заявка, доставка, поиск по ссылке, возврат")
         BRANDS = "brands", _("Популярные бренды")
         BANNER_AFTER_BRANDS = "banner_after_brands", _("Баннер 2 — после брендов")
         CATEGORIES = "categories", _("Категории товаров")

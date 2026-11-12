@@ -20,7 +20,7 @@ import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
-import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
+import { getLocalizedCategoryName, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
 import { safeJsonLd } from '../lib/sanitizeHtml'
 import { getSingleFlight } from '../lib/api'
 import { selectHomepageBrands } from '../lib/homepageBrands'
@@ -29,6 +29,11 @@ import { defaultOgImageAlt, defaultOgImagePath } from '../lib/ogImage'
 import { fallbackAppearance } from '../lib/siteAppearance'
 import type { HomeBlockKey } from '../lib/siteAppearance'
 import HomeFactsBlock from '../components/HomeFactsBlock'
+import HomeBenefits from '../components/HomeBenefits'
+import HomeCategoryWorlds, { type CategoryTile } from '../components/HomeCategoryWorlds'
+
+// «Аптека» на главной: лекарства и БАДы; остальные разделы — «Гардероб и дом»
+const PHARMACY_SLUGS = ['medicines', 'supplements']
 
 // Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle, добавляем fallback (Skeleton) для предотвращения CLS
 const PopularProductsCarousel = dynamic(() => import('../components/PopularProductsCarousel'), { 
@@ -97,9 +102,6 @@ interface HomePageProps {
   brandsCount?: number
 }
 
-// @ts-ignore: нет типов для @egjs/react-grid
-import Masonry from 'react-masonry-css'
-
 export default function Home({ brands: initialBrands, categories, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, homeBlocks = fallbackAppearance().homeBlocks, brandsCount = 0 }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
@@ -126,8 +128,6 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
   }, [initialBrands, router.locale])
 
   const mobileBrandsRef = useRef<HTMLDivElement | null>(null)
-  const tileHeights = [280, 320, 360]
-  const brandTileHeights = [280, 320, 360]
 
   // Функция для получения цветов баннера по бренду
   const getBrandColors = (brandName: string) => {
@@ -212,7 +212,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
     return <FallbackMediaImage src={src} fallbackSrc={fallbackSrc || ''} alt={alt || ''} sizes={sizes} responsiveProxy />
   }
 
-  const preparedCategories = categories
+  const rootCategories = categories
     .filter((category) => category.parent === null || typeof category.parent === 'undefined')
     .map((category) => ({
       ...category,
@@ -226,7 +226,34 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
       if (countB !== countA) return countB - countA
       return (a.sort_order ?? 0) - (b.sort_order ?? 0)
     })
-    .slice(0, 14)
+  // Плитки — разделы с товарами (как раньше, до 14); остальные идут строкой ссылок.
+  const categoryName = (category: CategoryCard) =>
+    getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)
+  const GOODS_TILE_SIZES = '(max-width: 639px) calc((100vw - 72px) / 2), (max-width: 1023px) calc((100vw - 120px) / 3), 230px'
+  const PHARMACY_TILE_SIZES = '(max-width: 1023px) calc((100vw - 72px) / 2), 420px'
+  const toCategoryTile = (category: typeof rootCategories[number], sizes: string): CategoryTile => {
+    const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
+    return {
+      id: category.id,
+      href: `/categories/${category.displaySlug}`,
+      name: categoryName(category),
+      count: formatCount(category.products_count ?? 0, router.locale),
+      media: renderMedia(
+        withListingImageMaxWidth(category.card_media_url || '', 600) || placeholderUrl,
+        categoryName(category),
+        placeholderUrl,
+        sizes
+      ),
+    }
+  }
+  const tileCategories = rootCategories.slice(0, 14)
+  const isPharmacy = (category: CategoryCard) => PHARMACY_SLUGS.includes(mapCategoryToRouteSlug(category.slug))
+  const pharmacyTiles = tileCategories.filter(isPharmacy).map((category) => toCategoryTile(category, PHARMACY_TILE_SIZES))
+  const goodsTiles = tileCategories.filter((category) => !isPharmacy(category)).map((category) => toCategoryTile(category, GOODS_TILE_SIZES))
+  const otherCategoryLinks = rootCategories.slice(14).map((category) => ({
+    href: `/categories/${category.displaySlug}`,
+    name: categoryName(category),
+  }))
 
   const siteUrl = getSiteOrigin()
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
@@ -355,6 +382,9 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
         />
       </div>
     ),
+    // Строка преимуществ под главным баннером
+    // Ссылка на форму «Найдём товар» ниже на странице; блок выключен в админке — на ту же форму на странице «Как заказать».
+    benefits: <HomeBenefits sourcingHref={homeBlocks.includes('sourcing') ? '/#sourcing-block' : '/how-to-order-medicines#sourcing'} />,
     // Brands Section — горизонтальный скролл на мобильных, сетка на десктопе
     brands: (
       <section className="mb-12">
@@ -417,42 +447,36 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
             </span>
           </div>
         </div>
-        {/* Десктоп: сетка как у категорий */}
-        <Masonry
-          breakpointCols={{ default: 3, 1024: 3, 768: 3 }}
-          className="hidden md:flex w-full gap-4 md:gap-6"
-          columnClassName="flex flex-col gap-4 md:gap-6"
-        >
-          {brands.map((brand, idx) => {
+        {/* Десктоп: ровный ряд одинаковых карточек; выбор и порядок брендов — из админки */}
+        <div className="hidden w-full grid-cols-4 gap-4 md:grid lg:grid-cols-6">
+          {brands.map((brand) => {
             const mediaUrl = brand.card_media_url || brand.logo
             const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
-            const cardHeight = brandTileHeights[idx % brandTileHeights.length]
             return (
               <Link
                 key={brand.id}
                 href={`/brand/${brand.slug}`}
-                style={{ height: cardHeight }}
-                className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
+                className="relative isolate aspect-[4/3] rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
               >
                 <div className="absolute inset-0 z-0 overflow-hidden">
-                  {renderMedia(withListingImageMaxWidth(mediaUrl || '', 450) || placeholderUrl, brand.name, placeholderUrl, '(max-width: 1151px) calc((100vw - 96px) / 3), 352px')}
+                  {renderMedia(withListingImageMaxWidth(mediaUrl || '', 450) || placeholderUrl, brand.name, placeholderUrl, '(max-width: 1023px) calc((100vw - 96px) / 4), 180px')}
                 </div>
                 <div className="absolute inset-0 z-[1] bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
-                <div className="absolute inset-0 z-10 flex items-center justify-center p-4 md:p-6 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
+                <div className="absolute inset-0 z-10 flex items-center justify-center p-3 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
                   <div className="text-center text-white drop-shadow">
                     {brand.logo && (
-                      <div className="mb-2 md:mb-3 flex justify-center">
+                      <div className="mb-1.5 flex justify-center">
                         <img
                           src={resolveMediaUrl(brand.logo)}
                           alt={brand.name}
-                          className="pointer-events-none h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
+                          className="pointer-events-none h-7 w-auto object-contain filter brightness-0 invert"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none'
                           }}
                         />
                       </div>
                     )}
-                    <h3 className="text-xl md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
+                    <h3 className="text-base font-bold line-clamp-1">
                       {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
                     </h3>
                   </div>
@@ -460,7 +484,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
               </Link>
             )
           })}
-        </Masonry>
+        </div>
         <div className="mt-6 hidden md:flex justify-center">
           <Link
             href="/brands"
@@ -477,63 +501,8 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
         <BannerCarousel position="after_brands" initialBanners={afterBrandsBanners} />
       </div>
     ),
-    // Categories Section
-    categories: (
-      <section className="mb-12">
-        <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
-          {t('categories_section_title', 'Категории товаров')}
-        </h2>
-        <Masonry
-          breakpointCols={{ default: 3, 1024: 3, 768: 3, 640: 2, 0: 2 }}
-          className="flex w-full gap-4 md:gap-6"
-          columnClassName="flex flex-col gap-4 md:gap-6"
-        >
-          {preparedCategories.map((category, idx) => {
-            const cardHeight = tileHeights[idx % tileHeights.length]
-            const mediaUrl = category.card_media_url
-            const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
-            return (
-              <Link
-                key={category.id}
-                href={`/categories/${category.displaySlug}`}
-                style={{ height: cardHeight }}
-                className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
-              >
-                <div className="absolute inset-0 z-0 overflow-hidden">
-                  {renderMedia(
-                    withListingImageMaxWidth(mediaUrl || '', 600) || placeholderUrl,
-                    getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
-                    placeholderUrl,
-                    '(max-width: 640px) calc((100vw - 40px) / 2), (max-width: 767px) calc((100vw - 64px) / 3), (max-width: 1151px) calc((100vw - 96px) / 3), 352px'
-                  )}
-                </div>
-                <div className="absolute inset-0 z-[1] bg-black/35" />
-                <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
-                  <div className="text-center text-white drop-shadow">
-                    <h3 className="text-xl font-bold mb-1">
-                      {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
-                    </h3>
-                    {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale) && (
-                      <p className="hidden md:block text-sm opacity-90">
-                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            )
-          })}
-        </Masonry>
-        <div className="mt-6 flex justify-center">
-          <Link
-            href="/categories"
-            className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
-          >
-            {t('all_categories', 'Все категории')}
-          </Link>
-        </div>
-      </section>
-    ),
+    // Разделы: «Аптека» и «Гардероб и дом» — плитки одного размера с карточками из админки
+    categories: <HomeCategoryWorlds pharmacy={pharmacyTiles} goods={goodsTiles} others={otherCategoryLinks} />,
     // Баннер перед футером — SSR-данные исключают клиентский fetch и CLS
     banner_before_footer: (
       <div className="mb-12">
@@ -545,12 +514,15 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
       <DeferredSection><PopularProductsCarousel /></DeferredSection>
     ),
     // «Найдём любой товар из Турции по ссылке или фото» — после хитов, выше последнего баннера
+    // Якорь на обёртке: сама форма (её #sourcing) появляется в HTML только рядом с экраном.
     sourcing: (
-      <DeferredSection>
-        <div className="mb-12">
-          <SourcingRequestForm placement="home" />
-        </div>
-      </DeferredSection>
+      <div id="sourcing-block" className="scroll-mt-24">
+        <DeferredSection>
+          <div className="mb-12">
+            <SourcingRequestForm placement="home" />
+          </div>
+        </DeferredSection>
+      </div>
     ),
     // Вам может понравиться (RecSys)
     recommendations: (
