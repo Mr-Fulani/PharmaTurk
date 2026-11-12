@@ -376,21 +376,88 @@ html:is([data-skin='iznik'], [data-skin='green']) .from-violet-50\/60 {
   --tw-gradient-from: var(--surface) var(--tw-gradient-from-position);
 }
 
-/* Ширина страницы (классы max-w-page и max-w-page-wide). На ноутбуке — прежние значения:
-   72rem у шапки, главной, товара и 80rem у разделов и брендов. На больших мониторах
-   (замечание владельца 13.11.2026) контент шире и одинаков на всех страницах, чтобы
-   шапка и содержимое не «плясали» при переходах. 90rem = 1440 px: за вычетом боковых
-   отступов контент — 1392 px, чуть уже предела баннера (max-width 1400 px в
-   BannerCarousel.module.css). Шире баннер не растёт, и контент шире него стоял бы
-   вразнобой с баннерами главной. */
+/* Ширина страницы (классы max-w-page и max-w-page-wide): 72rem у шапки, главной, товара
+   и 80rem у разделов и брендов. */
 :root {
   --page-max: 72rem;
   --page-max-wide: 80rem;
 }
+
+/* Большие мониторы (решение владельца 13.11.2026): страница выглядит точно как на
+   ноутбуке, только крупнее. От 1920 px вся страница увеличивается так, будто окно
+   шириной 1440 px растянули на весь экран: те же колонки, та же доля экрана, крупнее
+   буквы, кнопки, картинки и баннеры. Масштаб = ширина окна / 1440, ступенями (zoom не
+   принимает деление длин во всех браузерах), не больше двух раз. До 1919 px масштаба нет.
+   Масштаб лежит в --page-zoom: его читают правила ниже и lib/pageWidth.js. */
+:root {
+  --page-zoom: 1;
+}
 @media (min-width: 1920px) {
   :root {
-    --page-max: 90rem;
-    --page-max-wide: 90rem;
+    --page-zoom: 1.3333;
+  }
+}
+@media (min-width: 2048px) {
+  :root {
+    --page-zoom: 1.4222;
+  }
+}
+@media (min-width: 2176px) {
+  :root {
+    --page-zoom: 1.5111;
+  }
+}
+@media (min-width: 2304px) {
+  :root {
+    --page-zoom: 1.6;
+  }
+}
+@media (min-width: 2432px) {
+  :root {
+    --page-zoom: 1.6889;
+  }
+}
+@media (min-width: 2560px) {
+  :root {
+    --page-zoom: 1.7778;
+  }
+}
+@media (min-width: 2720px) {
+  :root {
+    --page-zoom: 1.8889;
+  }
+}
+@media (min-width: 2880px) {
+  :root {
+    --page-zoom: 2;
+  }
+}
+@media (min-width: 1920px) {
+  html {
+    zoom: var(--page-zoom);
+  }
+  /* Единицы vh и vw считаются от настоящего окна и увеличиваются вместе со страницей:
+     «высота экрана» вышла бы выше экрана. Делим их на масштаб — как на ноутбуке. */
+  .min-h-screen {
+    min-height: calc(100vh / var(--page-zoom));
+  }
+  .min-h-\[80vh\] {
+    min-height: calc(80vh / var(--page-zoom));
+  }
+  .max-h-\[90vh\] {
+    max-height: calc(90vh / var(--page-zoom));
+  }
+  .max-h-\[60vh\] {
+    max-height: calc(60vh / var(--page-zoom));
+  }
+  .max-h-\[30vh\] {
+    max-height: calc(30vh / var(--page-zoom));
+  }
+  .md\:h-\[calc\(100vh-22rem\)\] {
+    height: calc(100vh / var(--page-zoom) - 22rem);
+  }
+  .lg\:max-h-\[calc\(100vh-100px\)\] {
+    max-height: calc(100vh / var(--page-zoom) - 100px);
   }
 }
 

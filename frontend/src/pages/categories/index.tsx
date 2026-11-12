@@ -7,7 +7,6 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
 import CardMasonryMedia from '../../components/CardMasonryMedia'
 import CategoryHero from '../../components/CategoryHero'
-import { useWideMasonryColumns } from '../../hooks/useWideMasonryColumns'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
 import SEO from '../../components/SEO'
 
@@ -36,7 +35,6 @@ interface Category {
 // @ts-ignore: нет типов для @egjs/react-grid
 export default function CategoriesPage({ categories, locale: propLocale }: { categories: Category[]; locale?: string }) {
   const { t } = useTranslation('common')
-  const desktopColumns = useWideMasonryColumns()
   const router = useRouter()
   const locale = router.locale || propLocale || 'ru'
 
@@ -66,7 +64,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
         {/* Cards grid */}
         <section className="max-w-page mx-auto px-4 sm:px-6 lg:px-8 pb-12">
           <Masonry
-            breakpointCols={{ default: desktopColumns, 1024: 3, 768: 2, 640: 1 }}
+            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
             className="flex w-full gap-6"
             columnClassName="flex flex-col gap-6"
           >

@@ -171,7 +171,7 @@ export default function SearchPage() {
               ) : null}
             </div>
           ) : (
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 3xl:grid-cols-5">
+            <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               {items.map((p) => {
                 const pt = p.product_type || 'medicines'
                 return (
