@@ -2,7 +2,8 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import dynamic from 'next/dynamic'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   getPlaceholderImageUrl,
   resolveMediaUrl,
@@ -25,6 +26,8 @@ import { getSingleFlight } from '../lib/api'
 import { selectHomepageBrands } from '../lib/homepageBrands'
 import { countBrandsWithProducts, countCatalogProducts, formatCount, roundDownToHundreds, roundDownToThousands } from '../lib/homeFacts'
 import { defaultOgImageAlt, defaultOgImagePath } from '../lib/ogImage'
+import { fallbackAppearance } from '../lib/siteAppearance'
+import type { HomeBlockKey } from '../lib/siteAppearance'
 import HomeFactsBlock from '../components/HomeFactsBlock'
 
 // Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle, добавляем fallback (Skeleton) для предотвращения CLS
@@ -88,7 +91,8 @@ interface HomePageProps {
   beforeFooterBanners: any[]
   afterPopularBanners: any[]
   footerSettings: any
-  showTestimonialsSection: boolean
+  /** Блоки главной, которые нужно показать, в порядке показа (настройка админки) */
+  homeBlocks?: HomeBlockKey[]
   /** Брендов с товарами — для блока «Как работает Mudaroba» */
   brandsCount?: number
 }
@@ -96,7 +100,7 @@ interface HomePageProps {
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands: initialBrands, categories, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, showTestimonialsSection, brandsCount = 0 }: HomePageProps) {
+export default function Home({ brands: initialBrands, categories, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, homeBlocks = fallbackAppearance().homeBlocks, brandsCount = 0 }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
@@ -340,6 +344,234 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
     }
   }, [brands.length])
 
+  // Блоки главной по ключам из админки («Главная — Блоки»): показ и порядок задаёт homeBlocks.
+  const homeBlockNodes: Record<HomeBlockKey, ReactNode> = {
+    // Главный баннер
+    main_banner: (
+      <div className="mb-12 relative">
+        <BannerCarousel
+          position="main"
+          initialBanners={mainBanners}
+        />
+      </div>
+    ),
+    // Brands Section — горизонтальный скролл на мобильных, сетка на десктопе
+    brands: (
+      <section className="mb-12">
+        <h2 className="hidden md:block text-2xl md:text-3xl font-bold text-main mb-8 text-center">
+          {t('popular_brands', 'Популярные бренды')}
+        </h2>
+        {/* Мобильные: горизонтальный скролл */}
+        <div
+          ref={mobileBrandsRef}
+          className="flex overflow-x-auto snap-x snap-mandatory gap-2 pb-4 hide-scrollbar -mr-3 pr-3 sm:-mr-4 sm:pr-4 md:hidden"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {brands.slice(0, 10).map((brand) => {
+            const mediaUrl = brand.card_media_url || brand.logo
+            const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
+            return (
+              <Link
+                key={brand.id}
+                href={`/brand/${brand.slug}`}
+                className="relative shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-gray-900 group"
+              >
+                {renderMedia(withListingImageMaxWidth(mediaUrl || '', 300) || placeholderUrl, brand.name, placeholderUrl, '96px')}
+                <div className="absolute inset-0 bg-black/40 hidden" />
+                <div className="absolute inset-0 hidden items-center justify-center p-2 z-10">
+                  <div className="text-center text-white drop-shadow w-full">
+                    {brand.logo ? (
+                      <div className="flex justify-center items-center w-full px-1">
+                        <img
+                          src={resolveMediaUrl(brand.logo)}
+                          alt={brand.name}
+                          className="pointer-events-none max-h-[36px] w-full object-contain filter brightness-0 invert"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <h3 className="text-xs font-bold line-clamp-2 leading-tight px-0.5">
+                        {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
+                      </h3>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            )
+          })}
+
+          {/* Кнопка "Все бренды" в конце свайпа */}
+          <div
+            className="relative flex flex-col items-center justify-center shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-[var(--surface-soft)] border border-[var(--border)]"
+            onClick={() => router.push('/brands')}
+          >
+            <div className="w-10 h-10 rounded-full bg-[var(--accent)] text-white flex items-center justify-center mb-2 shadow-md">
+              <svg className="w-5 h-5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+            <span className="text-[11px] font-bold text-center px-1 leading-tight uppercase text-main">
+              {t('all_brands', 'Все бренды')}
+            </span>
+          </div>
+        </div>
+        {/* Десктоп: сетка как у категорий */}
+        <Masonry
+          breakpointCols={{ default: 3, 1024: 3, 768: 3 }}
+          className="hidden md:flex w-full gap-4 md:gap-6"
+          columnClassName="flex flex-col gap-4 md:gap-6"
+        >
+          {brands.map((brand, idx) => {
+            const mediaUrl = brand.card_media_url || brand.logo
+            const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
+            const cardHeight = brandTileHeights[idx % brandTileHeights.length]
+            return (
+              <Link
+                key={brand.id}
+                href={`/brand/${brand.slug}`}
+                style={{ height: cardHeight }}
+                className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
+              >
+                <div className="absolute inset-0 z-0 overflow-hidden">
+                  {renderMedia(withListingImageMaxWidth(mediaUrl || '', 450) || placeholderUrl, brand.name, placeholderUrl, '(max-width: 1151px) calc((100vw - 96px) / 3), 352px')}
+                </div>
+                <div className="absolute inset-0 z-[1] bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
+                <div className="absolute inset-0 z-10 flex items-center justify-center p-4 md:p-6 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
+                  <div className="text-center text-white drop-shadow">
+                    {brand.logo && (
+                      <div className="mb-2 md:mb-3 flex justify-center">
+                        <img
+                          src={resolveMediaUrl(brand.logo)}
+                          alt={brand.name}
+                          className="pointer-events-none h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                          }}
+                        />
+                      </div>
+                    )}
+                    <h3 className="text-xl md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
+                      {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
+                    </h3>
+                  </div>
+                </div>
+              </Link>
+            )
+          })}
+        </Masonry>
+        <div className="mt-6 hidden md:flex justify-center">
+          <Link
+            href="/brands"
+            className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
+          >
+            {t('all_brands', 'Все бренды')}
+          </Link>
+        </div>
+      </section>
+    ),
+    // Баннер после брендов — SSR-данные исключают клиентский fetch и CLS
+    banner_after_brands: (
+      <div className="mb-12">
+        <BannerCarousel position="after_brands" initialBanners={afterBrandsBanners} />
+      </div>
+    ),
+    // Categories Section
+    categories: (
+      <section className="mb-12">
+        <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
+          {t('categories_section_title', 'Категории товаров')}
+        </h2>
+        <Masonry
+          breakpointCols={{ default: 3, 1024: 3, 768: 3, 640: 2, 0: 2 }}
+          className="flex w-full gap-4 md:gap-6"
+          columnClassName="flex flex-col gap-4 md:gap-6"
+        >
+          {preparedCategories.map((category, idx) => {
+            const cardHeight = tileHeights[idx % tileHeights.length]
+            const mediaUrl = category.card_media_url
+            const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
+            return (
+              <Link
+                key={category.id}
+                href={`/categories/${category.displaySlug}`}
+                style={{ height: cardHeight }}
+                className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+              >
+                <div className="absolute inset-0 z-0 overflow-hidden">
+                  {renderMedia(
+                    withListingImageMaxWidth(mediaUrl || '', 600) || placeholderUrl,
+                    getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
+                    placeholderUrl,
+                    '(max-width: 640px) calc((100vw - 40px) / 2), (max-width: 767px) calc((100vw - 64px) / 3), (max-width: 1151px) calc((100vw - 96px) / 3), 352px'
+                  )}
+                </div>
+                <div className="absolute inset-0 z-[1] bg-black/35" />
+                <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
+                  <div className="text-center text-white drop-shadow">
+                    <h3 className="text-xl font-bold mb-1">
+                      {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
+                    </h3>
+                    {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale) && (
+                      <p className="hidden md:block text-sm opacity-90">
+                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            )
+          })}
+        </Masonry>
+        <div className="mt-6 flex justify-center">
+          <Link
+            href="/categories"
+            className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
+          >
+            {t('all_categories', 'Все категории')}
+          </Link>
+        </div>
+      </section>
+    ),
+    // Баннер перед футером — SSR-данные исключают клиентский fetch и CLS
+    banner_before_footer: (
+      <div className="mb-12">
+        <BannerCarousel position="before_footer" initialBanners={beforeFooterBanners} />
+      </div>
+    ),
+    // Популярные товары
+    bestsellers: (
+      <DeferredSection><PopularProductsCarousel /></DeferredSection>
+    ),
+    // «Найдём любой товар из Турции по ссылке или фото» — после хитов, выше последнего баннера
+    sourcing: (
+      <DeferredSection>
+        <div className="mb-12">
+          <SourcingRequestForm placement="home" />
+        </div>
+      </DeferredSection>
+    ),
+    // Вам может понравиться (RecSys)
+    recommendations: (
+      <DeferredSection><PersonalizedRecommendations /></DeferredSection>
+    ),
+    // Баннер после популярных товаров — SSR-данные исключают клиентский fetch и CLS
+    banner_after_popular: (
+      <div className="mb-12">
+        <BannerCarousel position="after_popular_products" initialBanners={afterPopularBanners} />
+      </div>
+    ),
+    testimonials: <DeferredSection><TestimonialsCarousel /></DeferredSection>,
+    // «Как работает Mudaroba» — серверный текст для поисковиков и ИИ-ассистентов, перед футером
+    facts: (
+      <HomeFactsBlock
+        productsCount={factsProductsCount}
+        brandsCount={brandsCount}
+      />
+    ),
+  }
+
   return (
     <>
       <Head>
@@ -379,220 +611,9 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
       <main className="bg-page text-main min-h-screen transition-colors duration-200">
         <h1 className="sr-only">{t('home_h1', 'Товары из Турции с доставкой — Mudaroba')}</h1>
         <div className="mx-auto max-w-6xl px-3 sm:px-4 md:px-6 py-4 sm:py-8">
-          {/* Главный баннер */}
-          <div className="mb-12 relative">
-            <BannerCarousel
-              position="main"
-              initialBanners={mainBanners}
-            />
-          </div>
-
-          {/* Brands Section — горизонтальный скролл на мобильных, сетка на десктопе */}
-          <section className="mb-12">
-            <h2 className="hidden md:block text-2xl md:text-3xl font-bold text-main mb-8 text-center">
-              {t('popular_brands', 'Популярные бренды')}
-            </h2>
-            {/* Мобильные: горизонтальный скролл */}
-            <div
-              ref={mobileBrandsRef}
-              className="flex overflow-x-auto snap-x snap-mandatory gap-2 pb-4 hide-scrollbar -mr-3 pr-3 sm:-mr-4 sm:pr-4 md:hidden"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {brands.slice(0, 10).map((brand) => {
-                const mediaUrl = brand.card_media_url || brand.logo
-                const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
-                return (
-                  <Link
-                    key={brand.id}
-                    href={`/brand/${brand.slug}`}
-                    className="relative shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-gray-900 group"
-                  >
-                    {renderMedia(withListingImageMaxWidth(mediaUrl || '', 300) || placeholderUrl, brand.name, placeholderUrl, '96px')}
-                    <div className="absolute inset-0 bg-black/40 hidden" />
-                    <div className="absolute inset-0 hidden items-center justify-center p-2 z-10">
-                      <div className="text-center text-white drop-shadow w-full">
-                        {brand.logo ? (
-                          <div className="flex justify-center items-center w-full px-1">
-                            <img
-                              src={resolveMediaUrl(brand.logo)}
-                              alt={brand.name}
-                              className="pointer-events-none max-h-[36px] w-full object-contain filter brightness-0 invert"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none'
-                              }}
-                            />
-                          </div>
-                        ) : (
-                          <h3 className="text-xs font-bold line-clamp-2 leading-tight px-0.5">
-                            {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
-                          </h3>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
-
-              {/* Кнопка "Все бренды" в конце свайпа */}
-              <div
-                className="relative flex flex-col items-center justify-center shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-[var(--surface-soft)] border border-[var(--border)]"
-                onClick={() => router.push('/brands')}
-              >
-                <div className="w-10 h-10 rounded-full bg-[var(--accent)] text-white flex items-center justify-center mb-2 shadow-md">
-                  <svg className="w-5 h-5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-                <span className="text-[11px] font-bold text-center px-1 leading-tight uppercase text-main">
-                  {t('all_brands', 'Все бренды')}
-                </span>
-              </div>
-            </div>
-            {/* Десктоп: сетка как у категорий */}
-            <Masonry
-              breakpointCols={{ default: 3, 1024: 3, 768: 3 }}
-              className="hidden md:flex w-full gap-4 md:gap-6"
-              columnClassName="flex flex-col gap-4 md:gap-6"
-            >
-              {brands.map((brand, idx) => {
-                const mediaUrl = brand.card_media_url || brand.logo
-                const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
-                const cardHeight = brandTileHeights[idx % brandTileHeights.length]
-                return (
-                  <Link
-                    key={brand.id}
-                    href={`/brand/${brand.slug}`}
-                    style={{ height: cardHeight }}
-                    className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
-                  >
-                    <div className="absolute inset-0 z-0 overflow-hidden">
-                      {renderMedia(withListingImageMaxWidth(mediaUrl || '', 450) || placeholderUrl, brand.name, placeholderUrl, '(max-width: 1151px) calc((100vw - 96px) / 3), 352px')}
-                    </div>
-                    <div className="absolute inset-0 z-[1] bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
-                    <div className="absolute inset-0 z-10 flex items-center justify-center p-4 md:p-6 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
-                      <div className="text-center text-white drop-shadow">
-                        {brand.logo && (
-                          <div className="mb-2 md:mb-3 flex justify-center">
-                            <img
-                              src={resolveMediaUrl(brand.logo)}
-                              alt={brand.name}
-                              className="pointer-events-none h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none'
-                              }}
-                            />
-                          </div>
-                        )}
-                        <h3 className="text-xl md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
-                          {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
-                        </h3>
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
-            </Masonry>
-            <div className="mt-6 hidden md:flex justify-center">
-              <Link
-                href="/brands"
-                className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
-              >
-                {t('all_brands', 'Все бренды')}
-              </Link>
-            </div>
-          </section>
-
-          {/* Баннер после брендов — SSR-данные исключают клиентский fetch и CLS */}
-          <div className="mb-12">
-            <BannerCarousel position="after_brands" initialBanners={afterBrandsBanners} />
-          </div>
-
-          {/* Categories Section */}
-          <section className="mb-12">
-            <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
-              {t('categories_section_title', 'Категории товаров')}
-            </h2>
-            <Masonry
-              breakpointCols={{ default: 3, 1024: 3, 768: 3, 640: 2, 0: 2 }}
-              className="flex w-full gap-4 md:gap-6"
-              columnClassName="flex flex-col gap-4 md:gap-6"
-            >
-              {preparedCategories.map((category, idx) => {
-                const cardHeight = tileHeights[idx % tileHeights.length]
-                const mediaUrl = category.card_media_url
-                const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
-                return (
-                  <Link
-                    key={category.id}
-                    href={`/categories/${category.displaySlug}`}
-                    style={{ height: cardHeight }}
-                    className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
-                  >
-                    <div className="absolute inset-0 z-0 overflow-hidden">
-                      {renderMedia(
-                        withListingImageMaxWidth(mediaUrl || '', 600) || placeholderUrl,
-                        getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
-                        placeholderUrl,
-                        '(max-width: 640px) calc((100vw - 40px) / 2), (max-width: 767px) calc((100vw - 64px) / 3), (max-width: 1151px) calc((100vw - 96px) / 3), 352px'
-                      )}
-                    </div>
-                    <div className="absolute inset-0 z-[1] bg-black/35" />
-                    <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
-                      <div className="text-center text-white drop-shadow">
-                        <h3 className="text-xl font-bold mb-1">
-                          {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
-                        </h3>
-                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale) && (
-                          <p className="hidden md:block text-sm opacity-90">
-                            {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
-            </Masonry>
-            <div className="mt-6 flex justify-center">
-              <Link
-                href="/categories"
-                className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
-              >
-                {t('all_categories', 'Все категории')}
-              </Link>
-            </div>
-          </section>
-
-          {/* Баннер перед футером — SSR-данные исключают клиентский fetch и CLS */}
-          <div className="mb-12">
-            <BannerCarousel position="before_footer" initialBanners={beforeFooterBanners} />
-          </div>
-
-          {/* Популярные товары */}
-          <DeferredSection><PopularProductsCarousel /></DeferredSection>
-
-          {/* «Найдём любой товар из Турции по ссылке или фото» — после хитов, выше последнего баннера */}
-          <DeferredSection>
-            <div className="mb-12">
-              <SourcingRequestForm placement="home" />
-            </div>
-          </DeferredSection>
-
-          {/* Вам может понравиться (RecSys) */}
-          <DeferredSection><PersonalizedRecommendations /></DeferredSection>
-
-          {/* Баннер после популярных товаров — SSR-данные исключают клиентский fetch и CLS */}
-          <div className="mb-12">
-            <BannerCarousel position="after_popular_products" initialBanners={afterPopularBanners} />
-          </div>
-
-          {showTestimonialsSection && <DeferredSection><TestimonialsCarousel /></DeferredSection>}
-
-          {/* «Как работает Mudaroba» — серверный текст для поисковиков и ИИ-ассистентов, перед футером */}
-          <HomeFactsBlock
-            productsCount={factsProductsCount}
-            brandsCount={brandsCount}
-          />
+          {homeBlocks.map((key) => (
+            <Fragment key={key}>{homeBlockNodes[key]}</Fragment>
+          ))}
         </div>
       </main>
     </>
@@ -608,6 +629,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   try {
     const { getInternalApiUrl } = await import('../lib/urls')
     const { fetchFooterSettings } = await import('../lib/footerSettings')
+    const { fetchSiteAppearance } = await import('../lib/siteAppearanceServer')
 
     // Запускаем бренды вместе с остальными данными страницы. API может отвечать
     // дольше 5 секунд: не отдаём заведомо пустой блок при нормальном медленном ответе.
@@ -625,7 +647,6 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let afterBrandsBanners: any[] = []
     let beforeFooterBanners: any[] = []
     let afterPopularBanners: any[] = []
-    let showTestimonialsSection = false
 
     // Загружаем все позиции баннеров параллельно — устраняет 6,530мс задержку LCP
     try {
@@ -652,12 +673,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       // Не блокируем рендер — баннеры необязательны
     }
 
-    try {
-      const testimonialsSettingsRes = await axios.get(getInternalApiUrl('feedback/testimonials-section-settings'), { timeout: 3000 })
-      showTestimonialsSection = Boolean(testimonialsSettingsRes.data?.show_on_homepage)
-    } catch {
-      // Оставляем выключенным по умолчанию
-    }
+    // Показ и порядок блоков, включая отзывы, — настройка админки «Главная — Блоки».
+    const { homeBlocks } = await fetchSiteAppearance()
 
     const { brands, brandsCount } = await brandsPromise
 
@@ -724,7 +741,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         beforeFooterBanners,
         afterPopularBanners,
         footerSettings,
-        showTestimonialsSection,
+        homeBlocks,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }
@@ -743,7 +760,6 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         beforeFooterBanners: [],
         afterPopularBanners: [],
         footerSettings,
-        showTestimonialsSection: false,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }

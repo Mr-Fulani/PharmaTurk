@@ -12,7 +12,8 @@ import { ThemeProvider } from '../context/ThemeContext'
 import { useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useCartStore } from '../store/cart'
-import { initCartSession } from '../lib/api'
+import { getSingleFlight, initCartSession } from '../lib/api'
+import { normalizeTheme } from '../lib/siteAppearance'
 import { appWithTranslation } from 'next-i18next'
 import { useCookieConsent } from '../hooks/useCookieConsent'
 import { gtmPageView, handleContactLinkClick } from '../lib/gtm'
@@ -36,6 +37,17 @@ function App({ Component, pageProps }: AppProps) {
     initCartSession()
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Тему оформления ставит сервер (_document). У статически собранных страниц
+  // (404) атрибута нет — берём тему из настроек уже в браузере.
+  useEffect(() => {
+    if (document.documentElement.dataset.skin) return
+    getSingleFlight('/settings/appearance')
+      .then((response) => {
+        document.documentElement.dataset.skin = normalizeTheme(response.data?.theme)
+      })
+      .catch(() => undefined)
   }, [])
 
   // Отключаем автоматический скролл браузера и Next.js при навигации

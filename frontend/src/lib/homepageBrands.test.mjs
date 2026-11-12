@@ -40,6 +40,7 @@ function loadHome({ ssrFails = false, clientGet, ssrBrandDelay = 0 } = {}) {
     },
     '../lib/i18n': { getLocalizedBrandName: (_, name) => name },
     '../lib/footerSettings': { fetchFooterSettings: async () => ({}) },
+    '../lib/siteAppearanceServer': { fetchSiteAppearance: async () => require('./siteAppearance.js').fallbackAppearance() },
     '../lib/api': { getSingleFlight: async (...args) => {
       requests.push(args)
       return clientGet ? clientGet(...args) : { data: { results: inventory } }
@@ -60,6 +61,7 @@ function loadHome({ ssrFails = false, clientGet, ssrBrandDelay = 0 } = {}) {
       name === '../lib/homepageBrands' ? require('./homepageBrands.js')
         : name === '../lib/homeFacts' ? require('./homeFacts.js')
         : name === '../lib/ogImage' ? require('./ogImage.js')
+        : name === '../lib/siteAppearance' ? require('./siteAppearance.js')
           : () => null
     ),
     console: { log() {}, error() {} },
@@ -136,3 +138,22 @@ test('повторный пустой SSR-ответ не убирает вос�
   resolveRequest({ data: inventory })
   await new Promise(setImmediate)
 })
+
+function renderedBlockKeys(node, keys = []) {
+  if (!node || typeof node !== 'object') return keys
+  if (Array.isArray(node)) { node.forEach((child) => renderedBlockKeys(child, keys)); return keys }
+  if (require('./siteAppearance.js').HOME_BLOCK_KEYS.includes(node.key)) keys.push(node.key)
+  return renderedBlockKeys(node.props?.children, keys)
+}
+
+test('главная показывает блоки из настройки админки в её порядке', async () => {
+  const home = loadHome()
+  const { props } = await home.getServerSideProps({ locale: 'ru', res: { setHeader() {} } })
+  const byDefault = renderedBlockKeys(home.default({ ...props, categories: [] }))
+  assert.deepEqual(byDefault, props.homeBlocks)
+  assert.equal(byDefault[0], 'main_banner')
+
+  const custom = renderedBlockKeys(home.default({ ...props, categories: [], homeBlocks: ['facts', 'bestsellers', 'main_banner'] }))
+  assert.deepEqual(custom, ['facts', 'bestsellers', 'main_banner'])
+})
+
