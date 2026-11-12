@@ -24,7 +24,7 @@ export default function SectionNav() {
       className="relative z-10 -mt-3 bg-[var(--nav-bg)] pt-3 text-[var(--nav-text)]"
     >
       <div
-        className="mx-auto flex max-w-6xl items-stretch overflow-x-auto px-0 sm:px-3 [&::-webkit-scrollbar]:hidden"
+        className="mx-auto flex max-w-page items-stretch overflow-x-auto px-0 sm:px-3 [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: 'none' }}
       >
         {NAV_SECTIONS.map((section) => (

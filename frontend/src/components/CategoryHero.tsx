@@ -49,7 +49,7 @@ export default function CategoryHero({
         <span className="light-sweep" />
       </div>
 
-      <div className="relative mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
+      <div className="relative mx-auto max-w-page-wide px-3 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
           <div className="flex-1">
             {eyebrow ? (

@@ -8,6 +8,7 @@ import Masonry from 'react-masonry-css'
 import BannerCarousel from '../../components/BannerCarouselMedia'
 import CardMasonryMedia from '../../components/CardMasonryMedia'
 import CategoryHero from '../../components/CategoryHero'
+import { useWideMasonryColumns } from '../../hooks/useWideMasonryColumns'
 import { getSiteOrigin } from '../../lib/urls'
 import { getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../../lib/i18n'
 
@@ -24,6 +25,7 @@ interface Brand {
 
 export default function BrandsPage({ brands }: { brands: Brand[] }) {
   const { t } = useTranslation('common')
+  const desktopColumns = useWideMasonryColumns()
   const router = useRouter()
 
   const siteUrl = getSiteOrigin()
@@ -66,13 +68,13 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
           showWhatsapp={false}
         />
 
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">
+        <div className="max-w-page mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">
           <BannerCarousel position="main" />
         </div>
 
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <section className="max-w-page mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <Masonry
-            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
+            breakpointCols={{ default: desktopColumns, 1024: 3, 768: 2, 640: 1 }}
             className="flex w-full gap-6"
             columnClassName="flex flex-col gap-6"
           >

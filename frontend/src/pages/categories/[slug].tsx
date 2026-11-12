@@ -1829,7 +1829,7 @@ export default function CategoryPage({
       />
 
       {/* Breadcrumbs & View Toggles (Desktop) */}
-      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-3 pb-0 sm:py-3 flex items-center justify-between">
+      <div className="mx-auto max-w-page-wide px-3 sm:px-6 lg:px-8 pt-3 pb-0 sm:py-3 flex items-center justify-between">
         <nav className="text-sm text-main flex flex-wrap items-center gap-2">
           {breadcrumbs.map((item, idx) => {
             const isLast = idx === breadcrumbs.length - 1
@@ -1877,7 +1877,7 @@ export default function CategoryPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-0 pb-8 sm:py-8">
+      <div className="mx-auto max-w-page-wide px-3 sm:px-6 lg:px-8 pt-0 pb-8 sm:py-8">
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Sidebar */}
           <div className="lg:w-80 flex-shrink-0">
@@ -1958,7 +1958,7 @@ export default function CategoryPage({
                 <div
                   className={
                     (viewMode === 'grid'
-                      ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 mb-8'
+                      ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 3xl:grid-cols-4 gap-3 sm:gap-6 mb-8'
                       : 'space-y-4 mb-8') +
                     (loading ? ' opacity-40 pointer-events-none transition-opacity duration-150' : ' transition-opacity duration-150')
                   }

@@ -587,7 +587,7 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
 
       <main className="bg-page text-main min-h-screen transition-colors duration-200">
         <h1 className="sr-only">{t('home_h1', 'Товары из Турции с доставкой — Mudaroba')}</h1>
-        <div className="mx-auto max-w-6xl px-3 sm:px-4 md:px-6 py-4 sm:py-8">
+        <div className="mx-auto max-w-page px-3 sm:px-4 md:px-6 py-4 sm:py-8">
           {homeBlocks.map((key) => (
             <Fragment key={key}>{homeBlockNodes[key]}</Fragment>
           ))}

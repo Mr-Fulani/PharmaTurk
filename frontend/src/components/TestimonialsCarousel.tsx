@@ -1325,7 +1325,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   return (
     <section ref={sectionRef} className={`py-12 sm:py-16 ${className}`}>
       <LazyMotion features={domAnimation}>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="mx-auto max-w-page-wide px-4 sm:px-6">
           <div
             className="relative isolate overflow-hidden rounded-[2rem] border border-gray-200/80 bg-gradient-to-br from-slate-50 via-white to-red-50/70 px-4 py-7 shadow-[0_30px_100px_-55px_rgba(15,23,42,0.5)] sm:px-7 sm:py-9 dark:border-white/10 dark:from-slate-950 dark:via-gray-950 dark:to-red-950/20"
             onMouseEnter={() => setIsPointerOver(true)}

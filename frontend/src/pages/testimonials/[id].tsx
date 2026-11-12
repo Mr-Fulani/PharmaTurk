@@ -66,7 +66,7 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
       </Head>
 
       <main className="min-h-screen bg-gray-50 py-10">
-        <div className="mx-auto max-w-6xl px-4">
+        <div className="mx-auto max-w-page px-4">
           <div className="mb-6">
             <Link
               href="/testimonials"

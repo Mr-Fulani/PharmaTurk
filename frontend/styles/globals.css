@@ -376,6 +376,24 @@ html:is([data-skin='iznik'], [data-skin='green']) .from-violet-50\/60 {
   --tw-gradient-from: var(--surface) var(--tw-gradient-from-position);
 }
 
+/* Ширина страницы (классы max-w-page и max-w-page-wide). На ноутбуке — прежние значения:
+   72rem у шапки, главной, товара и 80rem у разделов и брендов. На больших мониторах
+   (замечание владельца 13.11.2026) контент шире и одинаков на всех страницах, чтобы
+   шапка и содержимое не «плясали» при переходах. 90rem = 1440 px: за вычетом боковых
+   отступов контент — 1392 px, чуть уже предела баннера (max-width 1400 px в
+   BannerCarousel.module.css). Шире баннер не растёт, и контент шире него стоял бы
+   вразнобой с баннерами главной. */
+:root {
+  --page-max: 72rem;
+  --page-max-wide: 80rem;
+}
+@media (min-width: 1920px) {
+  :root {
+    --page-max: 90rem;
+    --page-max-wide: 90rem;
+  }
+}
+
 /* Базовые вспомогательные стили */
 html, body {
   @apply p-0 m-0;

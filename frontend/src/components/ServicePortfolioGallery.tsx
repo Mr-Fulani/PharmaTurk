@@ -270,7 +270,7 @@ export default function ServicePortfolioGallery({
         />
       )}
 
-      <section className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-6 pb-2 sm:pt-8">
+      <section className="mx-auto max-w-page-wide px-3 sm:px-6 lg:px-8 pt-6 pb-2 sm:pt-8">
         <div className="rounded-[2rem] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-8 shadow-sm">
           {/* Section header */}
           {(title?.trim() || description?.trim()) && (

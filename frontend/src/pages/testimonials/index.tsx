@@ -677,7 +677,7 @@ export default function TestimonialsPage({
       )}
 
       <div className="min-h-screen bg-gray-50 py-12">
-        <div className="mx-auto max-w-6xl px-4">
+        <div className="mx-auto max-w-page px-4">
           <div className="mb-8">
             <div className="mb-4 flex flex-col items-center gap-4 text-center">
               <div className="max-w-3xl">
