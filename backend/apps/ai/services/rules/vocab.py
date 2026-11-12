@@ -1108,13 +1108,14 @@ SHOE_TITLE_WORDS = frozenset(
 ) - TURKISH_TITLE_WORDS
 
 
-# Слова только спортивного словаря; «Bone», «Snorkel», «Kettlebell» — и английские слова.
+# Слова только спортивного словаря; «Bone», «Snorkel», «Kettlebell», «Mat», «Grip» — и английские
+# слова: EN-названия «Yoga Mat», «Racket Grip» уходили в модерацию (пилот Intersport 12.11.2026).
 SPORTS_TITLE_WORDS = frozenset(
     key
     for mapping in (SPORTS_KINDS, SPORTS_DESCRIPTORS)
     for key in mapping
     if " " not in key and "-" not in key and "/" not in key
-    and key not in _ENGLISH_VOCAB_WORDS | {"bone", "snorkel", "kettlebell"}
+    and key not in _ENGLISH_VOCAB_WORDS | {"bone", "snorkel", "kettlebell", "mat", "grip"}
 ) - TURKISH_TITLE_WORDS
 
 

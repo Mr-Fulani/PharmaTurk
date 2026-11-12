@@ -406,7 +406,11 @@ def _strip_brand(text: str, brand: str) -> str:
 
 def parse_name(name: str, facts: ProductFacts) -> None:
     """Разбор турецкого названия на тип, пол, описательные слова, цвет и модель."""
-    text, volume = _extract_volume(_clean_name(name))
+    text, volume = _clean_name(name), None
+    if facts.product_type != "sports":
+        # У инвентаря «3 Ml» — не объём: «Salomon S/view 3 Ml» — маска с многослойной линзой
+        # (пилот Intersport 12.11.2026: «Горнолыжная маска Salomon S/view, 3 мл»).
+        text, volume = _extract_volume(text)
     if facts.brand:
         text = _strip_brand(text, facts.brand)
     if volume:

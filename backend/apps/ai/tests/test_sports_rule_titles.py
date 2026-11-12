@@ -141,7 +141,17 @@ def test_sports_words_do_not_touch_clothing():
     assert "bone" not in vocab.turkish_title_words("clothing") and "kask" not in vocab.turkish_title_words("clothing")
     assert "kask" in vocab.turkish_title_words("sports") and "tekmelik" in vocab.turkish_title_words("sports")
     # Английские слова, совпадающие с турецкими видами, в названии допустимы.
-    assert {"bone", "snorkel", "kettlebell"}.isdisjoint(vocab.turkish_title_words("sports"))
+    assert {"bone", "snorkel", "kettlebell", "mat", "grip"}.isdisjoint(vocab.turkish_title_words("sports"))
+
+
+def test_multilayer_lens_is_not_millilitres():
+    """Пилот 12.11.2026: «Salomon S/view 3 Ml» стал «…, 3 мл» — у инвентаря объёма в названии нет."""
+    assert _titles("Salomon S/view 3 Ml Unisex Mavi Kayak Gözlüğü", "Salomon") == {
+        "ru": "Горнолыжная маска Salomon S/view 3 Ml, синяя", "en": "Salomon S/view 3 Ml Ski Goggles, Blue",
+    }
+    facts = ProductFacts(product_type="perfumery")
+    parse_name("Loris 50 ml Erkek Parfüm", facts)
+    assert facts.volume == ("50 мл", "50 ml")
 
 
 def test_intersport_text_is_cleaned_like_superstep():
@@ -180,6 +190,18 @@ def _reasons(name, title, category_slug, category_name, parent=None):
 )
 def test_equipment_kind_is_not_mistaken_for_accessory_section(name, title, slug, section):
     assert "title_category_mismatch" not in _reasons(name, title, slug, section)
+
+
+@pytest.mark.django_db
+def test_english_title_with_mat_and_grip_is_not_untranslated():
+    """«Yoga Mat», «Racket Grip» — английские слова, а не турецкие «mat» и «grip» (2 модерации пилота)."""
+    yoga = Category.objects.create(name="Коврики для йоги", slug="yoga-mats")
+    brand = Brand.objects.create(name="Energetics", slug="energetics")
+    product = Product.objects.create(
+        name="Energetics Unisex Siyah Yoga Matı", slug="sp-yoga-mat", product_type="sports", category=yoga, brand=brand,
+    )
+    titles = {"ru": "Коврик для йоги Energetics, черный", "en": "Energetics Yoga Mat, Black"}
+    assert SemanticValidator().validate(product, generated_titles=titles, dynamic_attributes=[]).reasons == []
 
 
 @pytest.mark.django_db
