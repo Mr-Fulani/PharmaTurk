@@ -3,13 +3,14 @@ import { PHASE_PRODUCTION_BUILD } from 'next/constants'
 import { THEMES, THEME_BROWSER_COLOR, THEME_FONT_PRELOAD, DEFAULT_THEME } from '../lib/siteAppearance'
 import type { Theme } from '../lib/siteAppearance'
 import { fetchSiteAppearance } from '../lib/siteAppearanceServer'
+import { themeCatchUpScript } from '../lib/themeCatchUp'
 
 const rawGa4Id = process.env.NEXT_PUBLIC_GA4_ID || ''
 const GA4_ID = /^G-[A-Z0-9]+$/i.test(rawGa4Id) ? rawGa4Id : ''
 
 interface MyDocumentProps extends DocumentInitialProps {
   locale?: string
-  /** Тема оформления; у статически собранных страниц (404) её нет — ставит _app */
+  /** Тема оформления; у статически собранных страниц (404) её нет — ставит скрипт сверки темы */
   skin?: Theme
 }
 
@@ -47,6 +48,9 @@ class MyDocument extends Document<MyDocumentProps> {
           {/* Базовые мета-теги. og:url/og:type/canonical/hreflang задаются постранично — здесь не дублировать */}
           <meta httpEquiv="Content-Language" content={locale} />
           <meta name="theme-color" content={THEME_BROWSER_COLOR[skin || DEFAULT_THEME]} />
+          {/* Страница догоняет тему сама: HTML из кэша CDN может прийти со старой темой.
+              Стоит после предзагрузки шрифта и theme-color — скрипт их дополняет. lib/themeCatchUp.js */}
+          <script id="theme-catch-up" dangerouslySetInnerHTML={{ __html: themeCatchUpScript() }} />
           <meta name="application-name" content={siteName} />
           <meta property="og:site_name" content={siteName} />
           <meta name="twitter:card" content="summary_large_image" />
