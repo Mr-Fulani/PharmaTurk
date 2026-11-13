@@ -23,19 +23,21 @@ async function headersFor(nodeEnv) {
 
 function cspValue(rules) {
   const rule = rules.find((item) => item.source === '/:path*')
-  return rule?.headers.find((header) => header.key === 'Content-Security-Policy-Report-Only')?.value
+  return rule?.headers.find((header) => header.key === 'Content-Security-Policy')?.value
 }
 
-test('production pages send CSP only in Report-Only mode (TD-018)', async () => {
+test('production pages and auth pages enforce CSP, no Report-Only header (TD-033)', async () => {
   const rules = await headersFor('production')
   const keys = rules.flatMap((rule) => rule.headers.map((header) => header.key))
 
   assert.ok(cspValue(rules))
-  // Enforce — отдельным шагом (docs/SECURITY_CSP.md), сейчас ничего не блокируем.
-  assert.ok(!keys.includes('Content-Security-Policy'))
+  const authRule = rules.find((item) => item.source === '/auth/:path*')
+  assert.ok(authRule.headers.some((header) => header.key === 'Content-Security-Policy'))
+  // Откат — CSP_ENFORCE = false в next.config.js (docs/SECURITY_CSP.md); тогда этот тест упадёт.
+  assert.ok(!keys.includes('Content-Security-Policy-Report-Only'))
 })
 
-test('report-only CSP keeps analytics, Telegram login, CDN media and video embeds allowed', async () => {
+test('CSP keeps analytics, Telegram login, CDN media and video embeds allowed', async () => {
   const csp = cspValue(await headersFor('production'))
   const directive = (name) => csp.split('; ').find((part) => part.startsWith(`${name} `)) || ''
 
@@ -52,7 +54,7 @@ test('report-only CSP keeps analytics, Telegram login, CDN media and video embed
   assert.match(directive('connect-src'), /https:\/\/\*\.google-analytics\.com/)
   assert.equal(directive('object-src'), "object-src 'none'")
   assert.equal(directive('report-uri'), 'report-uri /api/csp-report/')
-  // В report-only браузер игнорирует эту директиву и пишет предупреждение в консоль.
+  // Сайт и так только на https (HSTS), директива не нужна.
   assert.ok(!csp.includes('upgrade-insecure-requests'))
 })
 
@@ -60,7 +62,7 @@ test('eval is allowed only on auth pages for the Telegram widget (TD-033)', asyn
   const rules = await headersFor('production')
   const directive = (csp) => csp.split('; ').find((part) => part.startsWith('script-src '))
   const authRule = rules.find((item) => item.source === '/auth/:path*')
-  const authCsp = authRule.headers.find((header) => header.key === 'Content-Security-Policy-Report-Only').value
+  const authCsp = authRule.headers.find((header) => header.key === 'Content-Security-Policy').value
 
   assert.doesNotMatch(directive(cspValue(rules)), /unsafe-eval/)
   assert.match(directive(authCsp), /'unsafe-eval'/)
