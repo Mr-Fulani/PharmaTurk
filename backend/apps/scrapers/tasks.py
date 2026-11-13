@@ -1506,9 +1506,44 @@ def _delete_in_batches(queryset, batch_size: int) -> int:
         deleted += by_model.get(model._meta.label, 0)
 
 
+# Чанк парсера живёт не дольше 2 ч (CELERY_TASK_ANNOTATIONS), разовые прогоны из
+# manage.py — часы. Сессия в «Ожидает»/«Выполняется» старше суток — след убитого
+# процесса (деплой, перезапуск воркера, OOM): сам он её уже не закроет.
+STALE_SESSION_HOURS = 24
+
+
+def close_stale_sessions(max_age_hours: int = STALE_SESSION_HOURS) -> int:
+    """Закрывает зависшие сессии парсинга статусом «Ошибка» с причиной; ничего не удаляет."""
+    from datetime import timedelta
+
+    from django.db.models import Case, Q, TextField, Value, When
+    from django.db.models.functions import Concat
+
+    now = timezone.now()
+    cutoff = now - timedelta(hours=max_age_hours)
+    reason = (
+        f"Прервано: сессия не завершилась за {max_age_hours} ч — процесс парсера её не "
+        "закрыл (перезапуск воркера или контейнера). Закрыта автоматически."
+    )
+    return ScrapingSession.objects.filter(
+        Q(started_at__lt=cutoff) | Q(started_at__isnull=True, created_at__lt=cutoff),
+        status__in=("pending", "running"),
+    ).update(
+        status="failed",
+        finished_at=now,
+        error_message=Case(
+            When(error_message="", then=Value(reason)),
+            default=Concat(F("error_message"), Value("\n" + reason), output_field=TextField()),
+            output_field=TextField(),
+        ),
+    )
+
+
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
 def cleanup_old_sessions(self, days_to_keep: int = 30, batch_size: int = 1000) -> Dict:
     """Задача: очистка старых сессий парсинга и логов товаров.
+
+    Перед удалением закрывает зависшие сессии (``close_stale_sessions``).
 
     Args:
         days_to_keep: Количество дней для хранения сессий и логов
@@ -1528,6 +1563,7 @@ def cleanup_old_sessions(self, days_to_keep: int = 30, batch_size: int = 1000) -
         from .models import ScrapedProductLog
 
         cutoff_date = timezone.now() - timedelta(days=days_to_keep)
+        closed_stale = close_stale_sessions()
 
         # Сначала логи (основной объём — scraped_data), затем сами сессии:
         # удаление сессии каскадом удаляет и её оставшиеся логи.
@@ -1542,11 +1578,15 @@ def cleanup_old_sessions(self, days_to_keep: int = 30, batch_size: int = 1000) -
             'status': 'success',
             'deleted_sessions': deleted_count,
             'deleted_logs': deleted_logs,
+            'closed_stale_sessions': closed_stale,
             'cutoff_date': cutoff_date.isoformat(),
             'timestamp': timezone.now().isoformat()
         }
 
-        logger.info(f"Очистка завершена: удалено {deleted_count} сессий и {deleted_logs} логов")
+        logger.info(
+            f"Очистка завершена: удалено {deleted_count} сессий и {deleted_logs} логов, "
+            f"закрыто зависших сессий: {closed_stale}"
+        )
         return result
 
     except Exception as e:
