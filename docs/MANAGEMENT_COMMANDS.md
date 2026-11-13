@@ -34,6 +34,7 @@ docker exec mudaroba-backend-1 poetry run python manage.py <команда> [ф�
 | [CROSS_SOURCE_DUPLICATES.md](CROSS_SOURCE_DUPLICATES.md) | `resolve_cross_source_duplicates` — одинаковые товары FLO ↔ SuperStep (показ по умолчанию, `--apply --backup`, откат `--unhide-all`) |
 | [ILACFIYATI_TWIN_PAGES.md](ILACFIYATI_TWIN_PAGES.md) | `hide_ilacfiyati_twin_pages` — две страницы ilacfiyati одного препарата (показ по умолчанию, `--csv`, `--apply --backup`) |
 | [ILACFIYATI_DUPLICATES.md](ILACFIYATI_DUPLICATES.md) | `hide_ilacfiyati_duplicates` — дубли лекарств и БАДов по списку пар (показ по умолчанию, `--csv`, `--apply --backup`, откат `--restore`) |
+| [DRUG_CHECK.md](DRUG_CHECK.md) | `load_drug_reference_files` — списки SKRS (TİTCK) и прайс склада для проверки лекарств (`--source`, `--force`, `--file`); каталог не меняет |
 | [CONTROLLED_SUBSTANCES.md](CONTROLLED_SUBSTANCES.md) | `refresh_import_restrictions` |
 | [SOURCE_OFFER_OPERATIONS_RUNBOOK.md](SOURCE_OFFER_OPERATIONS_RUNBOOK.md) | `audit_source_offer_rollout`, `discover_supplement_stock_offers` |
 | [FURNITURE_ATTRIBUTES_BACKFILL.md](FURNITURE_ATTRIBUTES_BACKFILL.md) | `backfill_furniture_attributes` |
