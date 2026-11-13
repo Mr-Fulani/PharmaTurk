@@ -149,7 +149,9 @@ def test_route_slugs_are_declared_in_catalog_tree():
 @pytest.mark.parametrize(
     "size, volume",
     [("0,47 LT", "470 ml"), ("0,35LT", "350 ml"), ("0.5L", "500 ml"), ("21 OZ", "621 ml"),
-     ("200 ml", "200 ml"), ("0.70", "700 ml"), ("50", ""), ("STD", ""), ("M", "")],
+     ("200 ml", "200 ml"), ("0.70", "700 ml"), ("50", ""), ("STD", ""), ("M", ""),
+     # Размер ручки теннисной ракетки — не литры (пилот 13.11.2026: «Dunlop … 2000 ml»).
+     ("2", ""), ("0", "")],
 )
 def test_volume_from_size_field(size, volume):
     assert spx_volume_ml(size) == volume

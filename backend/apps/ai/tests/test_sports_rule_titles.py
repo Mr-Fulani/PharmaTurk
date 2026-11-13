@@ -132,6 +132,17 @@ def test_generic_word_takes_kind_from_section():
     assert _titles("MASKARA EXTREME 3D KASK KILIFI", "Maskara", "winter-protective-gear")["ru"] == (
         "Чехол для шлема Maskara EXTREME 3D"
     )
+    # Виды SPX (пилот 13.11.2026): струны, корзина для мячей, ласты, футляр для очков.
+    assert _titles("Babolat Rpm Blast Unisex Siyah Kordaj Rulo", "Babolat", "tennis")["ru"] == (
+        "Струна для ракетки в бобине Babolat Rpm Blast, черная"
+    )
+    assert _titles("Unique Us Pete Sampras Ball Port 07 Unisex Tenis Top Sepeti", "Unique", "tennis")["ru"].startswith(
+        "Корзина для теннисных мячей"
+    )
+    assert _titles("Madwave Kısa Havuz Paleti 42-43 Unisex Mavi Palet", "Madwave", "swim-fins")["ru"] == (
+        "Короткие ласты для бассейна Madwave, синие"
+    )
+    assert _titles("Speedo Goggles Storage Black Unisex Gözlük Kabı", "Speedo", "swimming")["ru"].startswith("Футляр для очков")
     # Вид в названии не назван вовсе («… Spor Aksesuarları» у щитков) — тоже по разделу.
     assert _titles("Nike Mercurial Lite Unisex Yeşil Spor Aksesuarları", "Nike", "shin-guards")["ru"] == (
         "Щитки Nike Mercurial Lite, зеленые"
