@@ -97,6 +97,7 @@ def test_price_differences_with_source_and_warehouse_are_alerts(lists, web):
 
     assert results["skrs"].level == OK
     assert results["skrs"].status == "Активен с 29.01.2013"
+    assert results["skrs"].note == "Фирма: ATABAY KİMYA SANAYİ VE TİC. A.Ş."  # без «..»
     assert results["ilacfiyati"].level == ALERT
     assert "разница +10.0 %" in results["ilacfiyati"].note
     assert results["selcuk"].level == ALERT
