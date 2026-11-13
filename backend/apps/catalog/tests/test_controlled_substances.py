@@ -11,6 +11,7 @@ from apps.catalog.admin_wave2 import ImportRestrictionFilter, MedicineProductAdm
 from apps.catalog.models import Category, CategoryCollection, MedicineProduct, Product
 
 pytestmark = pytest.mark.django_db
+REAL_INDEX = controlled_substances._index
 
 REFERENCE = {
     "pregabalin": {
@@ -133,3 +134,24 @@ def test_half_cyrillic_abbreviation_is_not_untranslated_turkish():
     # Пилот 6, KLOROBEN: «ТÜFAM» с кириллической «Т» в переводе инструкции.
     assert not looks_untranslated_turkish("Сообщите в Турецкий центр фармаконадзора (ТÜFAM) по номеру 0 800 314 00 08.")
     assert looks_untranslated_turkish("Doktorunuza danışınız.")
+
+
+@pytest.mark.parametrize("active, countries", [
+    # Пропуски на проде 13.11.2026: новые написания и вещества вне справочника.
+    ("Klorfeniramin Maleat Psodoefedrin Hidroklorur Parasetamol", "KZ,RU,UZ"),
+    ("Ephedrine Hydrochloride", "KZ,RU,UZ"),
+    ("Clonidine Hydrochloride", "KZ,RU,UZ"),
+    ("Testosteron", "KZ,RU,UZ"),
+    ("Trihexyphenidyl Hydrochloride", "KZ,RU,UZ"),
+    ("Dextromethorphan Hydrobromide", "KZ,RU,UZ"),
+    ("Dextromethorphan Hydrobromide And Quinidine Sulfate", "KZ,RU,UZ"),
+    ("Oksikodon Hidroklorur", "KZ,RU,UZ"),
+    ("Tetrahydrocannabinol And Cannabidiol", "KZ,RU,UZ"),
+    # Не контролируются: апраклонидин, апоморфин; этомидат — только проект МВД.
+    ("Apraclonidine Hydrochloride", ""),
+    ("Apomorfin Hidroklorur", ""),
+    ("Etomidate", ""),
+])
+def test_reference_covers_spellings_seen_in_catalog(monkeypatch, active, countries):
+    monkeypatch.setattr(controlled_substances, "_index", REAL_INDEX)
+    assert controlled_substances.restrictions(active)[0] == countries

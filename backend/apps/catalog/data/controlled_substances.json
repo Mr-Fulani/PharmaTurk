@@ -5,7 +5,8 @@
   "tr_keys": [
    "psodoefedrin hidroklorur",
    "psodoefedrin sulfat",
-   "levosetirizin dihidroklorur psodoefedrin hidroklorur"
+   "levosetirizin dihidroklorur psodoefedrin hidroklorur",
+   "klorfeniramin maleat psodoefedrin hidroklorur parasetamol"
   ],
   "products": 61,
   "countries": {
@@ -35,7 +36,8 @@
   "inn_en": "ephedrine",
   "inn_ru": "эфедрин",
   "tr_keys": [
-   "efedrin hidroklorur"
+   "efedrin hidroklorur",
+   "ephedrine hydrochloride"
   ],
   "products": 4,
   "countries": {
@@ -227,7 +229,8 @@
   "inn_en": "clonidine",
   "inn_ru": "клонидин",
   "tr_keys": [
-   "clonidin"
+   "clonidin",
+   "clonidine hydrochloride"
   ],
   "products": 2,
   "countries": {
@@ -257,7 +260,8 @@
   "inn_en": "trihexyphenidyl",
   "inn_ru": "тригексифенидил",
   "tr_keys": [
-   "trihexyphenidyl"
+   "trihexyphenidyl",
+   "trihexyphenidyl hydrochloride"
   ],
   "products": 1,
   "countries": {
@@ -540,7 +544,8 @@
   "inn_ru": "тестостерон",
   "tr_keys": [
    "testosteron undekanoat",
-   "testesteron"
+   "testesteron",
+   "testosteron"
   ],
   "products": 5,
   "countries": {
@@ -583,6 +588,36 @@
   },
   "confidence": "high",
   "comment": "Внутриглазной раствор (S01EB02). В KZ и UZ не найден (список ядовитых веществ Узбекистана не проверялся)."
+ },
+ {
+  "inn_en": "oxycodone",
+  "inn_ru": "оксикодон",
+  "tr_keys": [
+   "oksikodon hidroklorur"
+  ],
+  "products": 4,
+  "countries": {
+   "RU": {
+    "list": "ПП 681, Список II (наркотические средства, оборот ограничен), «Оксикодон»",
+    "source": "https://www.consultant.ru/document/cons_doc_LAW_19243/12d5728155e8ea7c95e63fb6948f49a579e364d4/",
+    "edition": "ред. от 11.06.2025 № 880 (вступ. в силу 27.07.2025); КонсультантПлюс на 31.10.2026; текст совпадает с копией Росздравнадзора от 27.03.2026",
+    "note": "Пересылка в почтовых отправлениях, в том числе международных, запрещена (ФЗ-3 ст. 22). Ввоз — только по лицензии уполномоченными организациями (ФЗ-3 ст. 28)."
+   },
+   "KZ": {
+    "list": "ПП РК № 470, Таблица II, раздел А «Оксикодон»",
+    "source": "https://adilet.zan.kz/rus/docs/P1900000470",
+    "edition": "ПП РК от 03.07.2019 № 470, ред. от 24.02.2026 № 111",
+    "note": ""
+   },
+   "UZ": {
+    "list": "ПКМ № 330, Список II «Оксикодон»",
+    "source": "https://lex.uz/ru/docs/2815342",
+    "edition": "ПКМ РУз от 12.11.2015 № 330: Список I в ред. ПКМ от 08.04.2025 № 211; Список II в ред. ПКМ от 19.08.2023 № 399; Списки III и IV в ред. ПКМ от 27.10.2018 № 878; утрачивает силу с 12.01.2027",
+    "note": ""
+   }
+  },
+  "confidence": "medium",
+  "comment": "Добавлено 13.11.2026: товары OXOPANE появились после сверки полноты 31.10 (срез каталога 24.10). Оксикодон — в Списке I Единой конвенции 1961 г.; номера пунктов в национальных перечнях не сверены — проверить при декабрьской сверке."
  },
  {
   "inn_en": "fentanyl",
@@ -1294,7 +1329,9 @@
   "inn_en": "dextromethorphan",
   "inn_ru": "декстрометорфан",
   "tr_keys": [
-   "dekstrometorfan hidrobromur"
+   "dekstrometorfan hidrobromur",
+   "dextromethorphan hydrobromide",
+   "dextromethorphan hydrobromide and quinidine sulfate"
   ],
   "products": 3,
   "countries": {
@@ -1337,6 +1374,36 @@
   },
   "confidence": "medium",
   "comment": "В RU и KZ баклофена в списках нет. С 12.01.2027 уверенность для UZ высокая."
+ },
+ {
+  "inn_en": "tetrahydrocannabinol (nabiximols)",
+  "inn_ru": "тетрагидроканнабинол (набиксимолс)",
+  "tr_keys": [
+   "tetrahydrocannabinol and cannabidiol"
+  ],
+  "products": 1,
+  "countries": {
+   "RU": {
+    "list": "ПП 681, Список I (оборот запрещён), «Тетрагидроканнабинолы (все изомеры) и их производные»",
+    "source": "https://www.consultant.ru/document/cons_doc_LAW_19243/7ac9c85f0a0db1d3e34e809c298f55a60e6c891d/",
+    "edition": "ред. от 11.06.2025 № 880 (вступ. в силу 27.07.2025); КонсультантПлюс на 31.10.2026; текст совпадает с копией Росздравнадзора от 27.03.2026",
+    "note": "Пересылка в почтовых отправлениях запрещена (ФЗ-3 ст. 22)."
+   },
+   "KZ": {
+    "list": "ПП РК № 470, Таблица I, «Тетрагидроканнабинол, все его изомеры и их стереохимические варианты»",
+    "source": "https://adilet.zan.kz/rus/docs/P1900000470",
+    "edition": "ПП РК от 03.07.2019 № 470, ред. от 24.02.2026 № 111",
+    "note": ""
+   },
+   "UZ": {
+    "list": "ПКМ № 330, Список I, «Тетрагидроканнабинол (все изомеры)»; с 12.01.2027 — ПКМ № 359, Список I, п. 156",
+    "source": "https://lex.uz/ru/docs/2815342",
+    "edition": "ПКМ РУз от 12.11.2015 № 330: Список I в ред. ПКМ от 08.04.2025 № 211; Список II в ред. ПКМ от 19.08.2023 № 399; Списки III и IV в ред. ПКМ от 27.10.2018 № 878; утрачивает силу с 12.01.2027",
+    "note": ""
+   }
+  },
+  "confidence": "high",
+  "comment": "Добавлено 13.11.2026: SATIVEX (ТГК и каннабидиол, спрей). Позиции ТГК те же, что приведены в записи каннабидиола."
  },
  {
   "inn_en": "cannabidiol",
