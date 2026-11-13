@@ -1,10 +1,12 @@
 <style>
+  /* Цвет — на ячейках: у строк таблиц админки свой фон (tr:nth-child), он сильнее класса строки.
+     Цвет текста задан явно, чтобы в тёмной теме админки текст на светлом фоне читался. */
   .dc-table td, .dc-table th { padding: 6px 10px; vertical-align: top; }
-  .dc-ok { background: #d1e7dd; }
-  .dc-info { background: transparent; }
-  .dc-warn { background: #fff3cd; }
-  .dc-alert { background: #f8d7da; font-weight: 600; }
-  .dc-error { background: #e9ecef; color: #555; }
+  .dc-table tr.dc-ok td { background: #d1e7dd; color: #0f3d2a; }
+  .dc-table tr.dc-warn td { background: #fff3cd; color: #5c4400; }
+  .dc-table tr.dc-alert td { background: #f8d7da; color: #6a1a21; font-weight: 600; }
+  .dc-table tr.dc-error td { background: #e9ecef; color: #444; }
+  .dc-table tr.dc-ok td a, .dc-table tr.dc-warn td a, .dc-table tr.dc-alert td a, .dc-table tr.dc-error td a { color: inherit; text-decoration: underline; }
   .dc-ours { margin: 0 0 12px; }
   .dc-ours b { display: inline-block; min-width: 130px; }
 </style>

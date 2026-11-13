@@ -147,5 +147,5 @@ class SkrsSource(FileSource):
             )
             result.short = "SKRS: активен" + (f" ({reason})" if reason else "")
         if entry.firm:
-            result.note = (result.note + f" Фирма: {entry.firm}.").strip()
+            result.note = (result.note + f" Фирма: {entry.firm.rstrip('.')}.").strip()
         return result
