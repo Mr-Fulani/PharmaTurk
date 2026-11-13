@@ -111,10 +111,13 @@ def recompute_sort_ranks(model, batch_size: int = 1000) -> int:
     )
 
     # only(): external_data весит мегабайты на строку — не читаем его.
-    products = model.objects.filter(is_active=True).only(
+    fields = [
         "id", "price", "is_available", "is_featured", "main_image",
         "main_image_file", "base_product_id", "sort_rank",
-    )
+    ]
+    if any(field.name == "is_hospital" for field in model._meta.fields):
+        fields.append("is_hospital")
+    products = model.objects.filter(is_active=True).only(*fields)
     changed = []
     for product in products.iterator(chunk_size=batch_size):
         interest = (
@@ -122,7 +125,8 @@ def recompute_sort_ranks(model, batch_size: int = 1000) -> int:
             + domain_favorites.get(product.id, 0) * FAVORITE_WEIGHT
         )
         rank = compute_sort_rank(
-            has_price=bool(product.price),
+            # Больничный препарат — «цена по запросу», в разделе как товар без цены
+            has_price=bool(product.price) and not getattr(product, "is_hospital", False),
             is_available=product.is_available,
             is_featured=product.is_featured,
             interest=interest,

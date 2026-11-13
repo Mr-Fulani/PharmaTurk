@@ -105,6 +105,8 @@
   "product_details": "Details",
   "important_information": "Important information",
   "price_on_request": "Price on request",
+  "hospital_price_on_request": "Hospital medicine · price on request",
+  "hospital_medicine_hint": "This medicine is mainly used in hospitals. Add it to your request — a manager will confirm the price, availability and delivery options.",
   "section_daily_deals": "Deals of the day",
   "section_best_sellers": "Bestsellers",
   "trending_now": "Trending now",

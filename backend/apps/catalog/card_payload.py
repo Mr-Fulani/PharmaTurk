@@ -18,6 +18,8 @@ CARD_PRODUCT_FIELDS = (
     'active_ingredient', 'manufacturer',
     # Ввоз запрещён (TD-024): метка «Ввоз ограничен» на карточке
     'import_restricted_countries',
+    # Больничный препарат: плашка «Больничный препарат · цена по запросу»
+    'is_hospital',
 )
 
 CARD_IMAGE_FIELDS = (

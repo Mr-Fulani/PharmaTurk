@@ -681,6 +681,15 @@ def notify_new_order_telegram(
             admin_text += f"\n{channel_info}: {_md(handle)}"
         if order.comment:
             admin_text += f"\nКомментарий: {_md(order.comment)}"
+        # Больничные препараты и товары без цены: сумму называет менеджер (docs/HOSPITAL_MEDICINES.md)
+        try:
+            on_request = [item.product_name for item in order.items.all() if not item.price]
+        except Exception:
+            # Как у проверки лекарств: сбой списка позиций не держит уведомление менеджеру.
+            logger.warning("order_price_on_request_items_failed", exc_info=True)
+            on_request = []
+        if on_request:
+            admin_text += "\nЦена по запросу (в сумму не вошли): " + _md("; ".join(on_request))
         if drug_check_text is None:
             from apps.drug_check.service import order_check_text
 

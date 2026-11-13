@@ -210,6 +210,8 @@ def build_order_receipt_payload(order: Order, locale: str = 'ru') -> Dict[str, A
             "price": _decimal(item.price),
             "total": _decimal(item.total),
             "currency": currency,
+            # Больничный препарат / товар без цены — «по запросу» вместо 0.00
+            "price_on_request": not item.price,
         }
         for item in order.items.all()
     ]
@@ -312,6 +314,7 @@ RECEIPT_LABELS = {
         "total": "Итого",
         "footer": "Если у вас остались вопросы, просто ответьте на это письмо или напишите нам на",
         "thanks": "Благодарим за заказ!",
+        "on_request": "по запросу",
     },
     "en": {
         "title": "Order receipt #",
@@ -331,6 +334,7 @@ RECEIPT_LABELS = {
         "total": "Total",
         "footer": "If you have any questions, simply reply to this email or contact us at",
         "thanks": "Thank you for your order!",
+        "on_request": "on request",
     },
 }
 

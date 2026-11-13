@@ -183,10 +183,10 @@
                     <td style="padding:6px 0;font-weight:600;color:#2f2e57;font-size:14px;">{{item.product_name}}
                     </td>
                     <td style="padding:6px 0;color:#6e7191;font-size:14px;text-align:center;">{{item.quantity}}</td>
-                    <td style="padding:6px 0;color:#6e7191;font-size:14px;text-align:right;">{{item.price}}
-                      {{item.currency}}</td>
+                    <td style="padding:6px 0;color:#6e7191;font-size:14px;text-align:right;">{%if item.price_on_request%}{{labels.on_request}}{%else%}{{item.price}}
+                      {{item.currency}}{%endif%}</td>
                     <td style="padding:6px 0;font-weight:700;color:#2f2e57;font-size:14px;text-align:right;">
-                      {{item.total}} {{item.currency}}</td>
+                      {%if item.price_on_request%}{{labels.on_request}}{%else%}{{item.total}} {{item.currency}}{%endif%}</td>
                   </tr>
                   {%endfor%}
                 </tbody>

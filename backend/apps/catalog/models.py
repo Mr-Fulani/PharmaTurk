@@ -5344,6 +5344,14 @@ class MedicineProduct(AbstractDomainProduct):
         _("Ограничение ввоза: основание"), blank=True, default="",
         help_text=_("Вещество и список по каждой стране. Заполняется автоматически."),
     )
+    # Больничный препарат (решение владельца 13.11.2026): справочная карточка без цены —
+    # плашка «Больничный препарат · цена по запросу», цену называет менеджер
+    # (docs/HOSPITAL_MEDICINES.md).
+    is_hospital = models.BooleanField(
+        _("Больничный препарат"), default=False, db_index=True,
+        help_text=_("Цена на сайте не показывается: «цена по запросу», в заявке без суммы, "
+                    "не попадает в фиды и хиты."),
+    )
     nfc_code = models.CharField(
         _("NFC Код"), max_length=100, blank=True,
     )

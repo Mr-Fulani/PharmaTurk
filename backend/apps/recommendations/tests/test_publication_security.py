@@ -37,8 +37,10 @@ def test_public_selector_requires_published_and_available_product():
     sentinel = object()
     base_queryset = MagicMock()
     without_shadows = MagicMock()
+    without_stubs = MagicMock()
     base_queryset.exclude.return_value = without_shadows
-    without_shadows.exclude.return_value = sentinel
+    without_shadows.exclude.return_value = without_stubs
+    without_stubs.exclude.return_value = sentinel
 
     with patch.object(Product.objects, "filter", return_value=base_queryset) as product_filter:
         assert public_recommendation_products() is sentinel
@@ -46,6 +48,8 @@ def test_public_selector_requires_published_and_available_product():
     product_filter.assert_called_once_with(is_active=True, is_available=True)
     base_queryset.exclude.assert_called_once()
     without_shadows.exclude.assert_called_once()
+    # Больничные препараты (docs/HOSPITAL_MEDICINES.md) не рекомендуются
+    without_stubs.exclude.assert_called_once_with(medicine_item__is_hospital=True)
     assert is_public_recommendation_product(
         SimpleNamespace(is_active=True, is_available=True)
     )

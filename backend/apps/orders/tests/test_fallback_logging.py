@@ -51,6 +51,7 @@ def _product(**overrides):
         images=_no_images(),
         external_data={},
         get_all_prices=lambda: {},
+        medicine_item=SimpleNamespace(is_hospital=False),
     )
     data.update(overrides)
     return SimpleNamespace(**data)

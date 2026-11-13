@@ -507,6 +507,7 @@ function BrandPageContent({
                         isNew={product.is_new}
                         isFeatured={product.is_featured}
                         importRestrictedCountries={(product as { import_restricted_countries?: string[] }).import_restricted_countries}
+                        isHospital={Boolean((product as { is_hospital?: boolean }).is_hospital)}
                         rating={product.rating}
                         reviewsCount={product.reviews_count ?? undefined}
                         brandName={localizedBrandName}
