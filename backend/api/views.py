@@ -177,10 +177,11 @@ def _strip_query(value) -> str:
 
 
 class CspReportView(APIView):
-    """Приёмник отчётов Content-Security-Policy-Report-Only (TD-018).
+    """Приёмник отчётов Content-Security-Policy (TD-018, TD-033).
 
-    Пишет в лог ``csp`` директиву и заблокированный источник без query-строк
-    (там могут быть персональные данные). По логу решаем, когда включать enforce.
+    Пишет в лог ``csp`` и в таблицу ``CspViolation`` (лог контейнера пропадает при
+    выпуске) директиву и заблокированный источник без query-строк (там могут быть
+    персональные данные). Сводка — ``manage.py csp_violations``.
     """
 
     authentication_classes = []
@@ -190,18 +191,23 @@ class CspReportView(APIView):
 
     @extend_schema(exclude=True)
     def post(self, request: Request) -> Response:
+        from apps.monitoring.models import CspViolation
+
+        user_agent = str(request.META.get("HTTP_USER_AGENT") or "")[:200]
+        rows = []
         for violation in _csp_violations(request.data)[:20]:
-            csp_logger.warning(
-                "CSP violation: %s blocked %s on %s",
-                str(
-                    violation.get("effective-directive")
-                    or violation.get("effectiveDirective")
-                    or violation.get("violated-directive")
-                    or ""
-                )[:80],
-                _strip_query(violation.get("blocked-uri") or violation.get("blockedURL")),
-                _strip_query(violation.get("document-uri") or violation.get("documentURL")),
-            )
+            directive = str(
+                violation.get("effective-directive")
+                or violation.get("effectiveDirective")
+                or violation.get("violated-directive")
+                or ""
+            )[:80]
+            blocked = _strip_query(violation.get("blocked-uri") or violation.get("blockedURL"))
+            page = _strip_query(violation.get("document-uri") or violation.get("documentURL"))
+            csp_logger.warning("CSP violation: %s blocked %s on %s", directive, blocked, page)
+            rows.append(CspViolation(directive=directive, blocked=blocked, page=page, user_agent=user_agent))
+        if rows:
+            CspViolation.objects.bulk_create(rows)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
