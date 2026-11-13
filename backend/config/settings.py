@@ -369,6 +369,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.monitoring.tasks.check_media_backup",
         "schedule": crontab(hour=2, minute=30, day_of_week=0),
     },
+    # Отчёты CSP старше 30 дней (TD-033) — каждую ночь.
+    "monitoring-prune-csp-violations": {
+        "task": "apps.monitoring.tasks.prune_csp_violations",
+        "schedule": crontab(hour=4, minute=5),
+    },
     # Просроченные сессии Django (manage.py clearsessions) — каждую ночь.
     "users-clear-expired-sessions": {
         "task": "users.clear_expired_sessions",

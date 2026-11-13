@@ -10,6 +10,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.monitoring.models import CspViolation
 from apps.users.auth_cookies import REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH
 from apps.users.models import User
 
@@ -142,6 +143,12 @@ class CspReportTests(APITestCase):
         self.assertIn("https://evil.example/x.js", line)
         self.assertNotIn("secret", line)
         self.assertNotIn("email=", line)
+        # Лог контейнера пропадает при выпуске — отчёт хранится и в базе (TD-033).
+        row = CspViolation.objects.get()
+        self.assertEqual(
+            (row.directive, row.blocked, row.page),
+            ("script-src-elem", "https://evil.example/x.js", "https://mudaroba.com/cart"),
+        )
 
     def test_reporting_api_payload_and_garbage_are_accepted(self):
         body = [
@@ -166,3 +173,4 @@ class CspReportTests(APITestCase):
             "/api/csp-report/", data="not json", content_type="text/plain"
         )
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(list(CspViolation.objects.values_list("directive", flat=True)), ["img-src"])

@@ -20,6 +20,11 @@
 - `/api/csp-report/` (`api/views.py`, `CspReportView`) пишет в лог backend строку
   `CSP violation: <директива> blocked <источник> on <страница>` (логгер `csp`, без
   query-строк — там бывают персональные данные). Лимит — 20/мин и 300/сутки на IP.
+- С 13.11.2026 отчёты хранятся и в базе — таблица `CspViolation` (`apps/monitoring`, с User-Agent, без IP),
+  30 дней (ночная задача `prune_csp_violations`): лог контейнера пропадает при каждом выпуске, 13.11
+  так потерялись отчёты за 9 часов. Сводка:
+  `docker exec mudaroba-backend-1 /app/.venv/bin/python manage.py csp_violations --hours 24` —
+  директива, источник, раздел сайта и устройство (iPhone, Android, Windows, Mac).
 - Django Admin и `/api` эту политику не получают: их отдаёт backend через nginx.
 
 Разрешено политикой:
@@ -115,10 +120,20 @@
 через Telegram/Google до конца. Лог отчётов на проде за 12–13.11 из этой сессии не разобран (нет
 доступа к серверу) — смотреть командой из шага 1 ниже.
 
+## Первый день enforce 13.11.2026 (выпуск 86cca35c, 07:13 МСК)
+
+- Ручная проверка после выкатки (главная, `/auth`, бренд IKEA, мобильный размер — главная и карточка):
+  GA4, Метрика, видео баннеров, виджеты Telegram и Google работают, нарушений нет.
+- Лог backend за 07:13–16:11 потерян выпуском 4ddd8f86. По логу nginx за это время — 7 запросов на
+  `/api/csp-report/`, все с iPhone (Safari и Chrome iOS): 4 с главной, 3 с карточек лекарств из Google.
+  Содержимое не сохранилось. Фон до enforce тот же: 12.11 — 16 отчётов, из них 10 с iPhone, с тех же
+  страниц; единственный разобранный отчёт с iPhone (13.11 05:30) — `wsync` Метрики. Вероятно, это
+  синхронизация cookie Метрики в Safari (ITP), её мы не разрешаем. Проверить по таблице `CspViolation`.
+
 ## Как перейти в enforce (TD-033)
 
-1. **Неделя наблюдения.** После релиза смотреть лог:
-   `docker logs --since 24h mudaroba-backend-1 2>&1 | grep -o 'CSP violation: [^"]*' | sort | uniq -c | sort -rn | head -50`.
+1. **Неделя наблюдения.** После релиза смотреть сводку `manage.py csp_violations --hours 24` (см. выше;
+   до 13.11.2026 — только лог: `docker logs --since 24h mudaroba-backend-1 2>&1 | grep -o 'CSP violation: [^"]*' | sort | uniq -c | sort -rn | head -50`).
    Каждый повторяющийся источник: либо свой (добавить в `CSP_REPORT_ONLY`), либо
    мусор расширений браузера (`chrome-extension:`, `moz-extension:`, `safari-web-extension:` —
    игнорировать), либо реальная проблема.

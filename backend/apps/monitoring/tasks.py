@@ -277,3 +277,20 @@ def check_media_backup() -> dict:
         lock_key=MEDIA_BACKUP_LOCK_KEY,
         title="Копия медиа Mudaroba",
     )
+
+
+CSP_VIOLATIONS_KEEP_DAYS = 30
+
+
+@shared_task
+def prune_csp_violations() -> dict:
+    """Удалить отчёты CSP старше 30 дней (одним ``DELETE``)."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import CspViolation
+
+    cutoff = timezone.now() - timedelta(days=CSP_VIOLATIONS_KEEP_DAYS)
+    deleted, _ = CspViolation.objects.filter(created_at__lt=cutoff).delete()
+    return {"deleted_csp_violations": deleted}
