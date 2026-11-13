@@ -27,7 +27,7 @@
 | Что | Директива | Источники |
 |---|---|---|
 | GA4 (gtag), Consent Mode | script/connect | `www.googletagmanager.com`, `*.google-analytics.com`, `*.analytics.google.com`, `*.g.doubleclick.net`, `www.google.com` |
-| Яндекс Метрика | script/connect | `mc.yandex.ru`, `mc.yandex.com`, `yastatic.net` |
+| Яндекс Метрика и Вебвизор | script/connect/frame | все `mc.yandex.*` из справки Метрики (ru, com, kz, uz, md, by, com.tr и др.), `mc.webvisor.com`/`.org` (https и wss в connect), `yastatic.net`; добавлено 13.11.2026 после отчёта `mc.yandex.md` |
 | Вход через Telegram | script/frame/form | `telegram.org`, `oauth.telegram.org` |
 | Вход через Google | script/style/frame/connect | `accounts.google.com` |
 | Вход через VK ID (`@vkid/sdk`) | frame/connect | `id.vk.ru`, `id.vk.com` |

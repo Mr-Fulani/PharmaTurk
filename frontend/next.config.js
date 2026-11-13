@@ -12,11 +12,19 @@ const { i18n } = require('./next-i18next.config')
 // отдельном файле: production-образ копирует только next.config.js.
 const CSP_ENFORCE = true
 const CSP_HEADER = CSP_ENFORCE ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only'
+// Метрика ходит на региональные домены посетителя (mc.yandex.md, .kz, .uz…) и Вебвизор —
+// полный «Общий список адресов» из справки Метрики «Установка счетчика на сайт с CSP».
+// Отчёт 13.11.2026: connect-src/frame-src https://mc.yandex.md заблокированы у посетителя.
+const METRIKA_HOSTS = ['ru', 'az', 'by', 'co.il', 'com', 'com.am', 'com.ge', 'com.tr', 'ee', 'fr', 'kg', 'kz', 'lt', 'lv', 'md', 'tj', 'tm', 'uz']
+  .map((zone) => `mc.yandex.${zone}`)
+  .concat(['mc.webvisor.com', 'mc.webvisor.org'])
+const METRIKA = METRIKA_HOSTS.map((host) => ` https://${host}`).join('')
+const METRIKA_WSS = METRIKA_HOSTS.map((host) => ` wss://${host}`).join('')
 const buildCsp = ({ scriptExtra = '' } = {}) => [
   "default-src 'self'",
   // 'unsafe-inline': инлайн-скрипты Consent Mode, gtag, Метрики. Убрать — через nonce.
   `script-src 'self' 'unsafe-inline'${scriptExtra} https://www.googletagmanager.com https://*.google-analytics.com` +
-    ' https://mc.yandex.ru https://mc.yandex.com https://yastatic.net https://telegram.org' +
+    `${METRIKA} https://yastatic.net https://telegram.org` +
     ' https://accounts.google.com https://www.youtube.com https://static.cloudflareinsights.com' +
     ' https://challenges.cloudflare.com',
   // www.gstatic.com — стили встроенного в браузер Google-переводчика страницы.
@@ -28,13 +36,12 @@ const buildCsp = ({ scriptExtra = '' } = {}) => [
   "media-src 'self' blob: https://cdn.mudaroba.com https://www.ikea.com https://umma-land.com",
   "connect-src 'self' https://cdn.mudaroba.com https://*.google-analytics.com https://*.analytics.google.com" +
     ' https://*.googletagmanager.com https://*.g.doubleclick.net https://www.google.com' +
-    ' https://mc.yandex.ru https://mc.yandex.com https://accounts.google.com https://cloudflareinsights.com' +
+    `${METRIKA}${METRIKA_WSS} https://accounts.google.com https://cloudflareinsights.com` +
     // VK ID (@vkid/sdk на /auth): конфиг, статистика и окно входа.
     ' https://id.vk.ru https://id.vk.com',
   'frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com' +
     ' https://oauth.telegram.org https://accounts.google.com https://challenges.cloudflare.com' +
-    ' https://www.googletagmanager.com https://id.vk.ru https://id.vk.com' +
-    ' https://mc.yandex.ru https://mc.yandex.com',
+    ` https://www.googletagmanager.com https://id.vk.ru https://id.vk.com${METRIKA}`,
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

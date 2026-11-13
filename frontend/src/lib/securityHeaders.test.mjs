@@ -112,3 +112,17 @@ test('frontend never writes the refresh token into a JS-readable cookie', async 
   }
   assert.deepEqual(offenders, [])
 })
+
+test('report from 13.11.2026 is covered: regional Metrika domains and Webvisor', async () => {
+  const csp = cspValue(await headersFor('production'))
+  const directive = (name) => csp.split('; ').find((part) => part.startsWith(`${name} `)) || ''
+
+  for (const host of ['mc.yandex.md', 'mc.yandex.kz', 'mc.yandex.uz', 'mc.yandex.com.tr', 'mc.webvisor.org']) {
+    assert.ok(directive('connect-src').includes(`https://${host}`), host)
+    assert.ok(directive('connect-src').includes(`wss://${host}`), host)
+    assert.ok(directive('frame-src').includes(`https://${host}`), host)
+    assert.ok(directive('script-src').includes(`https://${host}`), host)
+  }
+  // Случайные домены wsync Метрики по-прежнему не разрешены.
+  assert.doesNotMatch(directive('script-src'), /https:\/\/\*\.ru|https:\/\/\*\.yandex/)
+})
