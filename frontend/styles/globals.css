@@ -149,36 +149,40 @@ html[data-skin='green']:not(.dark) {
   color-scheme: dark;
 }
 
-/* Читаемые формы оформления в тёмной теме */
-.dark .checkout-form label {
-  color: #111827;
+/* Оформление заявки ночью (`checkout-page` на <main> в pages/checkout.tsx): блоки, текст,
+   линии и поля — из ночного набора темы. Днём страница не меняется: правила только под `.dark`.
+   Светлые плашки с тёмным текстом (предупреждения amber) остаются как есть. */
+.dark .checkout-page {
+  color-scheme: dark;
 }
 
-.dark .checkout-form .text-gray-500,
-.dark .checkout-form .text-gray-600,
-.dark .checkout-form .text-gray-700 {
-  color: #111827 !important;
+.dark .checkout-page :is(.bg-white, .bg-gray-50, .bg-violet-50) {
+  background-color: var(--surface);
 }
 
-.dark .checkout-form .text-main {
-  color: #374151;
+.dark .checkout-page .bg-gray-200 {
+  background-color: var(--border);
 }
 
-.dark .checkout-form .hover-text-warm:hover {
-  color: var(--text-hover) !important;
+.dark .checkout-page :is(.hover\:bg-gray-50, .hover\:bg-gray-100):hover {
+  background-color: var(--bg);
 }
 
-.dark .checkout-form input,
-.dark .checkout-form select,
-.dark .checkout-form textarea {
-  background-color: #fef3c7;
-  border-color: #f59e0b;
-  color: #111827;
+.dark .checkout-page :is(.border-gray-200, .border-gray-300) {
+  border-color: var(--border);
 }
 
-.dark .checkout-form input::placeholder,
-.dark .checkout-form textarea::placeholder {
-  color: #6b7280;
+.dark .checkout-page .text-gray-900 {
+  color: var(--text-strong);
+}
+
+.dark .checkout-page :is(.text-gray-500, .text-gray-600, .text-gray-700) {
+  color: var(--text);
+}
+
+/* Поля — фон страницы темы. :where() без веса: подсветка ошибки (bg-[var(--danger-soft)]) сильнее. */
+:where(.dark .checkout-page) :where(input:not([type='checkbox'], [type='radio']), select, textarea) {
+  background-color: var(--bg);
 }
 
 /* Анимация подсветки поля с ошибкой */
@@ -194,14 +198,7 @@ html[data-skin='green']:not(.dark) {
 }
 
 .dark .checkout-default-badge {
-  background-color: #f5f3ff;
-  color: #111827;
-}
-
-.dark .checkout-address-save {
-  background-color: #fef3c7;
-  border-color: #f59e0b;
-  color: #111827;
+  background-color: var(--border);
 }
 
 /* Карточка товара в списках (ProductCard, «Хиты продаж»): тень задаёт тема.

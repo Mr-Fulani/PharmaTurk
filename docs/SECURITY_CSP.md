@@ -1,16 +1,22 @@
 # Content-Security-Policy и токены входа
 
-Актуально: **31 октября 2026 года** (TD-018, TD-033). Следующий шаг — enforce.
+Актуально: **13 ноября 2026 года** (TD-018, TD-033). CSP переведена в enforce; следующий шаг — nonce
+вместо `'unsafe-inline'`.
 
 ## Что сейчас работает
 
-### CSP в режиме Report-Only
+### CSP в режиме enforce
 
-- Заголовок `Content-Security-Policy-Report-Only` отдаёт Next.js для всех страниц
-  (`frontend/next.config.js`, константа `CSP_REPORT_ONLY`). Только production-сборка:
+- Заголовок `Content-Security-Policy` отдаёт Next.js для всех страниц
+  (`frontend/next.config.js`, `buildCsp`, константа `CSP_ENFORCE`). Только production-сборка:
   `next dev` нужен `eval` и HMR-сокеты.
-- Браузер **ничего не блокирует**: нарушение видно в консоли («[Report Only] Refused
-  to load…») и уходит на `POST /api/csp-report/`.
+- Браузер **блокирует** всё, что политика не разрешает: нарушение видно в консоли
+  («Refused to load…») и уходит на `POST /api/csp-report/`.
+- **Откат на Report-Only** (ничего не блокировать, только отчёты): в `frontend/next.config.js`
+  поставить `const CSP_ENFORCE = false` и выкатить frontend. Заголовок запекается в сборку
+  (`routes-manifest.json`), поэтому без пересборки образа frontend откат не действует.
+  Аварийно, без новой сборки — `scripts/release/rollback.sh` на прошлый выпуск (до 13.11.2026 он
+  Report-Only), но так откатится и всё остальное из выпуска.
 - `/api/csp-report/` (`api/views.py`, `CspReportView`) пишет в лог backend строку
   `CSP violation: <директива> blocked <источник> on <страница>` (логгер `csp`, без
   query-строк — там бывают персональные данные). Лимит — 20/мин и 300/сутки на IP.
@@ -90,6 +96,25 @@
   `www.ikea.com/pvid/…mp4` на `/brand/ikea` — 1 (видео 678 товаров IKEA и книг umma-land
   открываются с сайта источника; добавлены в `media-src`).
 
+## Проверка перед enforce 13.11.2026 (выпуск dace35bb)
+
+Ручной проход во встроенном браузере с принятыми cookie (GA4 и Метрика загружены), нарушения
+собирались `ReportingObserver` с `buffered: true`; контрольное нарушение (`object-src`) поймалось, т. е.
+способ работает. Три темы (`?skin=iznik|green|cream`), RU и EN:
+
+- главная с видео-баннерами `cdn.mudaroba.com`, шрифты тем (`/fonts/Onest-v1.woff2` и др.),
+  инлайн-скрипт `#theme-catch-up` (запрос `/api/settings/appearance` — свой домен);
+- разделы (лекарства, обувь, услуги), бренд IKEA, карточка лекарства и обуви, `/drugs/<slug>`;
+- поиск по слову и по фото (загрузка в `/api/upload/temp/`);
+- «Список заявки» с товаром и оформление заявки (без отправки);
+- `/auth` и `/en/auth` (виджеты Telegram и Google), переход «Войти» внутри сайта (страница
+  перезагружается, нарушения `eval` нет), `/profile` без входа (уводит на `/auth`);
+- блог и статья, «Как заказать», доставка, доставка по Стамбулу, `/turetskaya-apteka`, отзывы, 404.
+
+Нарушений нет ни на одной странице. Не проверено: профиль с входом (нужен вход в аккаунт) и сам вход
+через Telegram/Google до конца. Лог отчётов на проде за 12–13.11 из этой сессии не разобран (нет
+доступа к серверу) — смотреть командой из шага 1 ниже.
+
 ## Как перейти в enforce (TD-033)
 
 1. **Неделя наблюдения.** После релиза смотреть лог:
@@ -101,21 +126,26 @@
    видео-баннерами, категория, карточка товара (фото, видео, YouTube), корзина,
    оформление заявки, вход через Telegram и Google, страница 404, «Как заказать».
    Повторить с принятыми cookie (грузятся GA4 и Метрика).
-3. **Enforce.** В `next.config.js` сменить ключ заголовка на
-   `Content-Security-Policy` в обоих правилах, общем и `/auth/:path*` (политику оставить
-   прежней, `report-uri` оставить) и
-   обновить тест `src/lib/securityHeaders.test.mjs`. Релиз — обычный полный.
-   Откат — вернуть `-Report-Only` и выкатить.
+3. **Enforce** — сделано 13.11.2026: `CSP_ENFORCE = true` в `next.config.js` (оба правила, общее и
+   `/auth/:path*`, политика прежняя, `report-uri` остался), тест `src/lib/securityHeaders.test.mjs`.
+   После выкатки — сутки смотреть лог (шаг 1): теперь каждая строка — реально заблокированный
+   ресурс. Если ломается что-то у посетителей — откат (`CSP_ENFORCE = false`, см. выше) и разбор.
 4. **Ужесточение после enforce** — отдельными релизами, каждый снова через
-   Report-Only на неделю: nonce вместо `'unsafe-inline'` для скриптов (nonce
-   генерируется в `middleware` и передаётся в `_document`), сужение `img-src`,
-   перевод access-токена из JS-cookie.
+   Report-Only на неделю (вторым заголовком `Content-Security-Policy-Report-Only` с более строгой
+   политикой рядом с действующей):
+   - nonce вместо `'unsafe-inline'` в `script-src`: nonce генерируется на каждый запрос в
+     `middleware`, передаётся в `_document` и ставится на все инлайн-скрипты — Consent Mode
+     (`gtm-consent-default`), `#theme-catch-up`, инициализацию gtag и Метрики (`next/script`),
+     `__NEXT_DATA__`. Заголовок тогда задаёт `middleware`, а не `headers()` в `next.config.js`;
+     страницы с nonce не кэшируются Cloudflare целиком (`s-maxage`) — проверить, не теряем ли кэш;
+   - сужение `img-src`;
+   - перевод access-токена из JS-cookie.
 
 ## Проверка на проде
 
 ```bash
-curl -sI https://mudaroba.com/ | grep -i content-security-policy-report-only
+curl -sI https://mudaroba.com/ | grep -i '^content-security-policy'
 ```
 
-В DevTools → Console на страницах сайта не должно быть строк `[Report Only]` для
+В DevTools → Console на страницах сайта не должно быть строк «Refused to …» для
 своих ресурсов и сервисов из таблицы выше.

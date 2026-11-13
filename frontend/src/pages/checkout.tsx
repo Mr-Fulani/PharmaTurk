@@ -417,7 +417,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     return (
       <>
               <Head><title>{`${t('checkout_page_title', 'Оформление заказа')} — ${SITE_NAME}`}</title><meta name="robots" content="noindex, nofollow" /></Head>
-        <main className="mx-auto max-w-page px-4 py-8 sm:px-6 lg:px-8">
+        <main className="checkout-page mx-auto max-w-page px-4 py-8 sm:px-6 lg:px-8">
           <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12 text-center">
             <h3 className="text-lg font-semibold text-gray-900">{t('cart_empty', 'Корзина пуста')}</h3>
             <p className="mt-2 text-sm text-gray-600">{t('cart_empty_description', 'Добавьте товары в корзину, чтобы продолжить покупки')}</p>
@@ -435,7 +435,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   return (
     <>
             <Head><title>{`${t('checkout_page_title', 'Оформление заказа')} — ${SITE_NAME}`}</title><meta name="robots" content="noindex, nofollow" /></Head>
-      <main className="mx-auto max-w-page px-4 py-8 sm:px-6 lg:px-8">
+      <main className="checkout-page mx-auto max-w-page px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">{t('checkout_title', 'Оформление заказа')}</h1>
           {!authLoading && !user && (
@@ -1119,7 +1119,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   {t('checkout_items', 'Товары')} ({cart.payable_items_count ?? cart.items_count})
                 </h3>
                 {hasBlockingIssues && (
-                  <p className="mb-3 text-xs text-amber-800">
+                  <p className="mb-3 text-xs text-amber-800 dark:text-amber-200">
                     {t('cart_items_saved_total', 'Всего сохранено в корзине: {{count}}', {
                       count: cart.items_count,
                     })}
@@ -1144,7 +1144,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                         key={item.id}
                         className={`flex gap-3 rounded-lg border p-3 transition-colors ${
                           blocked
-                            ? 'border-amber-300 bg-amber-50'
+                            ? 'border-amber-300 bg-amber-50 dark:border-amber-600/50 dark:bg-amber-950/40'
                             : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
                         }`}
                       >
@@ -1179,7 +1179,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                             {localizedName}
                           </p>
                           {issueCode && (
-                            <p className={`mb-1 text-xs ${blocked ? 'text-amber-800' : 'text-blue-700'}`}>
+                            <p className={`mb-1 text-xs ${blocked ? 'text-amber-800 dark:text-amber-200' : 'text-blue-700 dark:text-blue-300'}`}>
                               {t(issueCopy.key, issueCopy.fallback)}
                             </p>
                           )}
@@ -1194,7 +1194,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                         </div>
                         <div className="text-right flex-shrink-0">
                           {blocked ? (
-                            <p className="text-xs font-semibold text-amber-800">
+                            <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
                               {t('cart_not_included_in_total', 'Не включено в итог')}
                             </p>
                           ) : (
