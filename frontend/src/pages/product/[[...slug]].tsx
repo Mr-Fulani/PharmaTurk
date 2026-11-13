@@ -514,6 +514,8 @@ interface Product {
   prescription_required?: boolean | null
   prescription_type?: string | null
   import_restricted_countries?: string[] | null
+  /** Больничный препарат: цена не показывается — «Больничный препарат · цена по запросу». */
+  is_hospital?: boolean
   volume?: string | null
   origin_country?: string | null
   usage_instructions?: string | null
@@ -1408,12 +1410,16 @@ export default function ProductPage({
 
   // Вычисляем общую сумму с учетом количества
   const totalPrice = priceValue !== null ? formatPrice(priceValue * quantity, currency, i18n.language) : null
+  const isHospital = Boolean(product.is_hospital)
+  const priceOnRequestLabel = isHospital
+    ? t('hospital_price_on_request', 'Больничный препарат · цена по запросу')
+    : t('price_on_request')
   const displayPrice = priceValue !== null
     ? `${formatPrice(priceValue, currency, i18n.language)} ${currency}`
-    : t('price_on_request')
+    : priceOnRequestLabel
   const displayTotalPrice = totalPrice !== null
     ? `${totalPrice} ${currency}`
-    : t('price_on_request')
+    : priceOnRequestLabel
 
   const sizeRequired = normalizedSizes.length > 0
   const hasProductVariants = variants.length > 0
@@ -2371,9 +2377,23 @@ export default function ProductPage({
                 )}
               </div>
             )}
-            <div className="mt-3 text-xl font-semibold text-red-600">
-              {displayPrice || t('price_on_request')}
-            </div>
+            {isHospital ? (
+              <div
+                className="mt-3 rounded-xl border border-[var(--accent-muted)] bg-[var(--accent-soft)] px-4 py-3"
+                role="note"
+              >
+                <div className="text-lg font-semibold text-[var(--accent-strong)]">
+                  {t('hospital_price_on_request', 'Больничный препарат · цена по запросу')}
+                </div>
+                <p className="mt-1 text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                  {t('hospital_medicine_hint', 'Препарат применяется в основном в больницах. Добавьте его в заявку — менеджер уточнит цену, наличие и возможность доставки.')}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3 text-xl font-semibold text-red-600">
+                {displayPrice || t('price_on_request')}
+              </div>
+            )}
             {importRestrictedCountries && (
               <div
                 className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-800 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-200"
@@ -2767,7 +2787,7 @@ export default function ProductPage({
               ) : (
                 (productType === 'medicines' || product.product_type === 'medicines') ? (
                   <>
-                    <MedicinePriceCheck
+                    {!isHospital && <MedicinePriceCheck
                       slug={product.slug}
                       onPriceUpdated={({ amount, currency: checkedCurrency }) => {
                         setProduct((current) => current
@@ -2779,7 +2799,7 @@ export default function ProductPage({
                             }
                           : current)
                       }}
-                    />
+                    />}
                     {/* Сайт не продаёт лекарства: товар попадает в заявку, итоговую цену и оплату согласует менеджер */}
                     <AddToCartButton
                       productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}

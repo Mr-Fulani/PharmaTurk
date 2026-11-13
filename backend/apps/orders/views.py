@@ -474,6 +474,11 @@ def _get_preferred_currency(request, fallback: str = 'RUB') -> str:
 def _get_product_price_for_currency(product, currency: str):
     from apps.catalog.utils.product_markup import apply_product_markup
 
+    from apps.catalog.hospital_medicines import is_hospital_product
+
+    # Больничный препарат — «цена по запросу»: позиция без суммы (docs/HOSPITAL_MEDICINES.md)
+    if is_hospital_product(product):
+        return Decimal("0")
     currency = (currency or 'RUB').upper()
     base_price = getattr(product, "price", None)
     base_currency = (getattr(product, "currency", None) or "RUB").upper()

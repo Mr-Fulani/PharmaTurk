@@ -256,6 +256,7 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     _domain_fieldset = (_('Специфика медикамента'), {
         'fields': (
             'drug_check_button',
+            'is_hospital',
             'manufacturer',
             'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
             'volume', 'origin_country',
@@ -272,7 +273,7 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     ]
     list_filter = [
         ImportRestrictionFilter, MedicineStubStatusFilter, AIStatusFilter, MediaEnrichmentStatusFilter, 'category',
-        'is_available', 'prescription_required',
+        'is_available', 'is_hospital', 'prescription_required',
         'dosage_form', 'is_new', 'created_at',
     ]
     inlines = [

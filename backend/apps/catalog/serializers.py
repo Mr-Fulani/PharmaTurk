@@ -1889,6 +1889,15 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         from .controlled_substances import product_restricted_countries
 
         return product_restricted_countries(obj)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Больничный препарат: «цена по запросу», цену не показываем (docs/HOSPITAL_MEDICINES.md)
+        from .hospital_medicines import hide_hospital_price, is_hospital_product
+
+        if is_hospital_product(instance):
+            hide_hospital_price(data)
+        return data
     
     def get_price_formatted(self, obj):
         request = self.context.get('request')
@@ -6001,7 +6010,13 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
         )
         if active_old is not None and "active_variant_old_price_formatted" in data:
             data["active_variant_old_price_formatted"] = f"{active_old} {active_old_currency}"
-        return _apply_product_markup_to_payload(data, instance)
+        data = _apply_product_markup_to_payload(data, instance)
+        # Больничный препарат: «цена по запросу», цену не показываем (docs/HOSPITAL_MEDICINES.md)
+        if getattr(instance, "is_hospital", False):
+            from .hospital_medicines import hide_hospital_price
+
+            hide_hospital_price(data)
+        return data
 
     def get_product_type(self, obj):
         raw = getattr(type(obj), '_domain_product_type', None)
@@ -6286,7 +6301,12 @@ class SimpleDomainCardSerializer(serializers.Serializer):
         restricted = getattr(instance, "import_restricted_countries", "")
         if restricted:
             data["import_restricted_countries"] = restricted.split(",")
-        return _apply_product_markup_to_payload(data, instance)
+        data = _apply_product_markup_to_payload(data, instance)
+        if getattr(instance, "is_hospital", False):
+            from .hospital_medicines import hide_hospital_price
+
+            hide_hospital_price(data)
+        return data
 
 # ─── МЕДИКАМЕНТЫ ───
 

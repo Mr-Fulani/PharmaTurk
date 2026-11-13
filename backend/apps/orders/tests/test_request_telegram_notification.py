@@ -75,3 +75,11 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         )
 
         self.assertIn("WhatsApp: +79990001122", texts["admin-chat"])
+
+    def test_admin_sees_items_with_price_on_request(self, select_related, telegram_post, *_):
+        # Больничный препарат / товар без цены: сумму называет менеджер (docs/HOSPITAL_MEDICINES.md)
+        items = [SimpleNamespace(product_name="IZOTONIK_500", price=0), SimpleNamespace(product_name="PAROL", price=50)]
+        texts = self._texts(select_related, telegram_post, _order(items=SimpleNamespace(all=lambda: items)))
+
+        self.assertIn("Цена по запросу (в сумму не вошли): IZOTONIK\\_500", texts["admin-chat"])
+        self.assertNotIn("PAROL", texts["admin-chat"])

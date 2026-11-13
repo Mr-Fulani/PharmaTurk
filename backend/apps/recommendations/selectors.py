@@ -30,6 +30,8 @@ def public_recommendation_products():
         Product.objects.filter(is_active=True, is_available=True)
         .exclude(_VARIANT_SHADOW_Q)
         .exclude(_MEDICINE_STUB_Q)
+        # Больничные препараты — справочные карточки без цены, не рекомендуются.
+        .exclude(medicine_item__is_hospital=True)
     )
 
 

@@ -2190,6 +2190,9 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         ).exclude(
             # Запрещённые к ввозу в РФ/СНГ не продвигаются (TD-024).
             medicine_item__import_restricted_countries__gt=''
+        ).exclude(
+            # Больничные препараты — справочные карточки, в хиты не попадают.
+            medicine_item__is_hospital=True
         ).select_related('category', 'brand', 'price_info').order_by('-created_at')
 
         featured_products = list(queryset[:limit])
@@ -4896,6 +4899,9 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         from apps.catalog.services.market_check_pricing import attach_public_market_price
 
         medicine = self.get_object()
+        if medicine.is_hospital:
+            # Больничный препарат — «цена по запросу», проверки цены нет (docs/HOSPITAL_MEDICINES.md)
+            return Response({"detail": "hospital_price_on_request"}, status=status.HTTP_404_NOT_FOUND)
         service = MedicineMarketCheckService()
 
         def serialize(check):

@@ -37,6 +37,10 @@ export interface CartItem {
   product_translations?: ProductTranslation[]
   /** Коды стран, куда ввоз препарата запрещён или ограничен (RU, KZ, UZ). */
   product_import_restricted_countries?: string[]
+  /** Цена не показывается: больничный препарат или товар без цены — сумму назовёт менеджер. */
+  price_on_request?: boolean
+  /** Больничный препарат (docs/HOSPITAL_MEDICINES.md). */
+  product_is_hospital?: boolean
   product_slug?: string
   product_variant_slug?: string
   product_parent_slug?: string

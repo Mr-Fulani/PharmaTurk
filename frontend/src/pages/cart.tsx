@@ -442,7 +442,11 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           </div>
                         ) : null}
                         <div className="mt-1 text-lg font-bold text-red-600">
-                              {formatMoney(item.price, item.currency, i18n.language)} {item.currency}
+                              {item.price_on_request
+                                ? (item.product_is_hospital
+                                  ? t('hospital_price_on_request', 'Больничный препарат · цена по запросу')
+                                  : t('price_on_request', 'Цена по запросу'))
+                                : <>{formatMoney(item.price, item.currency, i18n.language)} {item.currency}</>}
                         </div>
                         {restrictedCountries && (
                           <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="note">
@@ -579,7 +583,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                         <div className="flex items-center gap-3">
                           <div className="text-right">
                             <div className="text-sm text-gray-500">{t('cart_item_total', 'Итого')}</div>
-                            {blocked ? (
+                            {blocked || item.price_on_request ? (
                               <div className="text-sm font-semibold text-amber-800">
                                 {t('cart_not_included_in_total', 'Не включено в итог')}
                               </div>

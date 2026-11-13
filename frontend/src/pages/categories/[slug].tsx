@@ -2034,6 +2034,7 @@ export default function CategoryPage({
                           ? t('medicine_card_delivery_note', 'Из Турции · 3–14 дн.')
                           : undefined}
                         importRestrictedCountries={(product as any).import_restricted_countries}
+                        isHospital={Boolean((product as any).is_hospital)}
                       />
                     )
                   })}

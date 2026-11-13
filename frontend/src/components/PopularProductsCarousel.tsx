@@ -101,7 +101,8 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
 
           uniqueAllProducts = deduplicateFeaturedProducts([
             ...uniqueAllProducts,
-            ...productsList.map((product: Product) => ({
+            // Больничные препараты — справочные карточки без цены, в «Популярном» не показываем
+            ...productsList.filter((product: Product & { is_hospital?: boolean }) => !product.is_hospital).map((product: Product) => ({
               ...product,
               product_type: product.product_type || 'medicines',
             })),

@@ -81,6 +81,8 @@ interface ProductCardProps {
   note?: string | null
   /** Коды стран, куда ввоз препарата запрещён или ограничен (RU, KZ, UZ) — красная метка. */
   importRestrictedCountries?: string[] | null
+  /** Больничный препарат: вместо цены «Больничный препарат · цена по запросу» (docs/HOSPITAL_MEDICINES.md). */
+  isHospital?: boolean
 }
 
 export default function ProductCard({
@@ -118,6 +120,7 @@ export default function ProductCard({
   subtitle,
   note,
   importRestrictedCountries,
+  isHospital,
   isFeatured,
   hasManualMainImage = false,
   imageFit = 'cover'
@@ -250,6 +253,9 @@ export default function ProductCard({
   // «Новинка» ничего не говорит о препарате
   const showNewBadge = Boolean(isNew) && productType !== 'medicines'
   const importRestricted = importRestrictedCountries?.length ? importRestrictedCountries : null
+  const priceOnRequestLabel = isHospital
+    ? t('hospital_price_on_request', 'Больничный препарат · цена по запросу')
+    : t('price_on_request', 'Цена по запросу')
   const displaySubtitle = subtitle?.trim() || null
   const displayNote = note?.trim() || null
   const displayBrandName = brandName?.trim() || null
@@ -381,7 +387,7 @@ export default function ProductCard({
                       {formatMoney(price, currency, locale || i18n.language)}
                       <span>{getCurrencySymbol(currency)}</span>
                     </>
-                  ) : t('price_on_request', 'Цена по запросу')}
+                  ) : <span className={isHospital ? 'text-sm font-semibold' : undefined}>{priceOnRequestLabel}</span>}
                 </div>
                 {oldPrice && (
                   <div className="inline-flex items-center gap-1 text-sm text-gray-400">
@@ -575,7 +581,7 @@ export default function ProductCard({
                 {formatMoney(price, currency, locale || i18n.language)}
                 <span>{getCurrencySymbol(currency)}</span>
               </>
-            ) : t('price_on_request', 'Цена по запросу')}
+            ) : <span className={isHospital ? 'text-sm font-semibold' : undefined}>{priceOnRequestLabel}</span>}
           </span>
           {oldPrice && (
             <span className="inline-flex items-center gap-1 text-xs md:text-sm text-gray-400">

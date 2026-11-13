@@ -1188,12 +1188,16 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                               {t('checkout_qty', 'Кол-во')}: {item.quantity}
                             </span>
                             <span className="text-xs text-gray-500">
-                              {formatMoney(item.price, item.currency, i18n.language)} {item.currency} {t('checkout_per_item', 'за шт.')}
+                              {item.price_on_request
+                                ? (item.product_is_hospital
+                                  ? t('hospital_price_on_request', 'Больничный препарат · цена по запросу')
+                                  : t('price_on_request', 'Цена по запросу'))
+                                : <>{formatMoney(item.price, item.currency, i18n.language)} {item.currency} {t('checkout_per_item', 'за шт.')}</>}
                             </span>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          {blocked ? (
+                          {blocked || item.price_on_request ? (
                             <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
                               {t('cart_not_included_in_total', 'Не включено в итог')}
                             </p>

@@ -38,6 +38,7 @@ interface Product {
   is_new?: boolean
   translations?: ProductTranslation[]
   base_product_id?: number | null
+  is_hospital?: boolean
   gender?: string | null
   saving_percent?: number | null
   saving_amount?: number | null
@@ -113,6 +114,7 @@ export default function SimilarProducts({
                 is_new: false,
                 is_featured: false,
                 is_available: analog.is_available,
+                is_hospital: Boolean(analog.is_hospital),
                 saving_percent: analog.saving_percent,
                 saving_amount: analog.saving_amount,
               }))
@@ -314,6 +316,7 @@ export default function SimilarProducts({
                 reviewsCount={product.reviews_count ?? undefined}
                 translations={product.translations}
                 locale={i18n.language}
+                isHospital={product.is_hospital}
               />
             </div>
           )

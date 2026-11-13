@@ -104,6 +104,8 @@
   "product_details": "Подробнее",
   "important_information": "Важная информация",
   "price_on_request": "Цена по запросу",
+  "hospital_price_on_request": "Больничный препарат · цена по запросу",
+  "hospital_medicine_hint": "Препарат применяется в основном в больницах. Добавьте его в заявку — менеджер уточнит цену, наличие и возможность доставки.",
   "section_daily_deals": "Товары дня",
   "section_best_sellers": "Хиты продаж",
   "trending_now": "Популярное сейчас",
