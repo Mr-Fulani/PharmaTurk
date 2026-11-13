@@ -40,6 +40,7 @@ _PRICE_BOUNDARY_RE = re.compile(
 _SIZE_TOKEN_RE = re.compile(
     r"(?<![A-Za-zА-Яа-яЁёÇĞİÖŞÜçğıöşü0-9])(?:"
     r"one[\s-]?size|tek[\s-]?beden|standard|"
+    r"(?:[2-9]xl|x{0,4}[sml])\s*[-–—/]\s*(?:[2-9]xl|x{0,4}[sml])|"
     r"[2-9]xl|x{1,4}[sml]|[sml]|"
     r"\d{2,3}[a-h]|"
     r"\d{1,3}(?:[.,]\d)?(?:\s*[-–—/]\s*\d{1,3}(?:[.,]\d)?)?"
@@ -99,6 +100,10 @@ def normalize_size_value(value: Any, product_type: str | None = None) -> str:
     if raw in {"ONESIZE", "ONE-SIZE", "STANDARD", "TEKBEDEN", "TEK-BEDEN"}:
         return "ONE SIZE"
     if re.fullmatch(r"(?:[2-9]XL|X{1,4}[SML]|[SML])", raw):
+        return raw
+    # Диапазон букв — один размер варианта у SuperStep: «S-M», «M/L», «XS/S», «L-XL».
+    # По буквам («S», «M», «L») он не совпадал с размерами вариантов → ambiguous_variant_sizes.
+    if re.fullmatch(r"(?:[2-9]XL|X{0,4}[SML])[-/](?:[2-9]XL|X{0,4}[SML])", raw):
         return raw
     if re.fullmatch(r"\d{2,3}[A-H]", raw):
         number = int(raw[:-1])
@@ -187,6 +192,9 @@ def _source_texts(input_data: dict[str, Any]) -> Iterable[str]:
 # «на манекене ростом 1.89 м … носит размер L») — не размеры товара: из-за них
 # 6 логов очереди 27.10.2026 ждали модерации с ambiguous_variant_sizes.
 _MANNEQUIN_RE = re.compile(r"manken|манекен|ростом", re.IGNORECASE)
+# Проценты состава («%57 polyester ve %43 deri … Standart beden») — не размеры:
+# у 7 кепок Goorin Bros 13.11.2026 в модерации стояли «57», «43», «41».
+_PERCENT_RE = re.compile(r"%\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*%")
 _MEASUREMENT_RE = re.compile(
     r"\d+(?:[.,]\d+)?\s*(?:cm|см|mm|мм|kg|кг|м)(?![A-Za-zА-Яа-яЁё])", re.IGNORECASE
 )
@@ -196,7 +204,7 @@ def _context_segments(text: str) -> Iterable[tuple[str, bool]]:
     for sentence in re.split(r"(?<=[.!?])\s+|\n+|#+", str(text or "")):
         if not sentence or not _SIZE_CONTEXT_RE.search(sentence) or _MANNEQUIN_RE.search(sentence):
             continue
-        sentence = _MEASUREMENT_RE.sub(" ", sentence)
+        sentence = _PERCENT_RE.sub(" ", _MEASUREMENT_RE.sub(" ", sentence))
         if _NEGATIVE_SIZE_RE.search(sentence):
             # Negative inventory claims must not make rows unavailable: that
             # decision is too destructive without a dedicated stock feed.

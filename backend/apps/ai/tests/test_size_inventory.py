@@ -94,6 +94,30 @@ def test_extracts_burkini_sizes_but_not_price():
     assert "3950" not in {row["size"] for row in rows}
 
 
+def test_letter_ranges_of_variants_stay_whole():
+    """SuperStep отдаёт размеры кепок и поло диапазонами: «S-M», «M/L», «L-XL»."""
+    rows = extract_sizes_from_input(
+        {"attributes": {"sizes": ["S-M", "M-L", "L-XL", "XS/S", "M/L", "2XL"]}},
+        "headwear",
+    )
+
+    assert [row["size"] for row in rows] == ["S-M", "M-L", "L-XL", "XS/S", "M/L", "2XL"]
+
+
+def test_composition_percent_is_not_a_size():
+    rows = extract_sizes_from_input(
+        {
+            "description": (
+                "Ayarlanabilir snapback tasarımı ile kişiye özel konfor %57 polyester ve "
+                "%43 deri karışımı kumaş yapısı Standart beden"
+            )
+        },
+        "headwear",
+    )
+
+    assert rows == []
+
+
 def test_source_price_is_not_misreported_as_lost_model_identity():
     tokens = _identity_tokens(
         "Удобные буркини Adasea. Остались размеры M, XL, 2XL. Стоимость 3950"
