@@ -19,9 +19,13 @@ async function sources(dir = 'src/') {
   return files
 }
 
-test('масштаб: до 1919 px его нет, дальше ширина окна / 1440, не больше двух раз', () => {
+test('масштаб: до 1759 px его нет (все MacBook), дальше ширина окна / 1440, не больше двух раз', () => {
   assert.equal(bigScreenZoom(1440), 1)
-  assert.equal(bigScreenZoom(1919), 1)
+  // MacBook Air 15″ — 1710 px, MacBook Pro 16″ — 1728 px: вид прежний.
+  assert.equal(bigScreenZoom(1710), 1)
+  assert.equal(bigScreenZoom(1728), 1)
+  assert.equal(bigScreenZoom(1759), 1)
+  assert.equal(bigScreenZoom(1760), 1.2222)
   assert.equal(bigScreenZoom(1920), 1.3333)
   assert.equal(bigScreenZoom(2560), 1.7778)
   assert.equal(bigScreenZoom(3840), BIG_SCREEN_MAX_ZOOM)
