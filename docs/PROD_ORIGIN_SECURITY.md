@@ -4,14 +4,16 @@
 контейнере `mudaroba-nginx-1`, репозиторий на сервере
 `~/turk-export/PharmaTurk`.
 
-## Состояние на 2026-11-10
+## Состояние на 2026-11-13
 
-- В панели Cloudflare режим SSL/TLS зоны — **Flexible**: Cloudflare ходит к серверу по HTTP
-  на порт 80, участок Cloudflare → сервер не шифруется. Full (strict) по шагам ниже сейчас не включён;
-  код (порт 443, `nginx/tls/`) готов. Включать — только с владельцем: нужен Origin Certificate
-  на сервере. Открытый пункт — TD-043 в [TECH_DEBT.md](TECH_DEBT.md).
+- Режим SSL/TLS зоны — **Full (strict)** с 13.11.2026 06:55 МСК (переключено по просьбе
+  владельца): Cloudflare ходит к серверу по HTTPS на 443 и проверяет сертификат.
+  Проксируемые записи зоны: `mudaroba.com` (A), `www` (CNAME), `cdn` (R2) — других нет.
+- На 443 — сертификат Let's Encrypt для `mudaroba.com` и `www.mudaroba.com` (первый выпущен
+  13.11.2026, до 11.02.2027), продление — cron пользователя `deploy` (шаг 4).
 - «Always Use HTTPS» включён владельцем 10.11.2026: посетитель по `http://` получает 301 на
   https прямо от Cloudflare.
+- Откат при ошибках 525/526: Cloudflare → SSL/TLS → Overview → Configure → **Flexible** → Save.
 
 ## Что было на 2026-10-19
 
@@ -50,50 +52,87 @@
 Порядок важен: сначала origin начинает отвечать по 443, потом Cloudflare
 переключается. До шага 5 сайт работает как раньше.
 
-### 1. Сертификат в Cloudflare (делает владелец)
+Сертификат — публичный **Let's Encrypt** (выбор владельца 13.11.2026): выпускается
+на сервере без секретов из панели Cloudflare, Full (strict) его принимает.
+Проверка домена — HTTP-01: Let's Encrypt запрашивает
+`http://mudaroba.com/.well-known/acme-challenge/<токен>` через Cloudflare (в любом
+режиме SSL), nginx отдаёт файл из `nginx/tls/acme/`. Редиректы на https и с `www`
+на основной домен Let's Encrypt проходит сам.
 
-1. dash.cloudflare.com → домен `mudaroba.com` → **SSL/TLS** → **Origin Server**
-   → **Create Certificate**.
-2. «Generate private key and CSR with Cloudflare», тип ключа **RSA (2048)**.
-3. Hostnames: `mudaroba.com`, `*.mudaroba.com` (по умолчанию). Срок: 15 лет.
-4. **Create**. Формат **PEM**. Скопируйте оба блока: **Origin Certificate** и
-   **Private Key**. Ключ показывается один раз — если закрыли окно, создайте
-   сертификат заново (старый можно отозвать там же).
+Всё на сервере — пользователь `deploy`, без root; certbot запускается образом
+`certbot/certbot` (версия в `scripts/ops/origin-cert.sh`). Файлы — в `nginx/tls/`
+(в `.gitignore`, `git status` остаётся чистым).
 
-Этот сертификат доверен только Cloudflare, браузеры его не примут — для
-связи Cloudflare → сервер этого и нужно.
-
-### 2. Файлы на сервере (`deploy`, без root)
+### 1. Вставка для проверки домена
 
 ```bash
 cd ~/turk-export/PharmaTurk
-nano nginx/tls/origin.pem   # вставить Origin Certificate целиком, с BEGIN/END
-nano nginx/tls/origin.key   # вставить Private Key
-chmod 600 nginx/tls/origin.key
-cp nginx/origin-tls.inc.example nginx/tls/origin-tls.inc
-openssl x509 -in nginx/tls/origin.pem -noout -subject -enddate
+cp nginx/acme-challenge.inc.example nginx/tls/acme-challenge.inc
+mkdir -p nginx/tls/acme/.well-known/acme-challenge
+docker exec mudaroba-nginx-1 nginx -t && docker exec mudaroba-nginx-1 nginx -s reload
+# проверка через Cloudflare
+echo ok > nginx/tls/acme/.well-known/acme-challenge/probe
+curl -sL http://mudaroba.com/.well-known/acme-challenge/probe   # ok
+rm nginx/tls/acme/.well-known/acme-challenge/probe
 ```
 
-`git status` должен остаться чистым: содержимое `nginx/tls/` в `.gitignore`.
-
-### 3. Релиз с PR #103 (в main попал вместе с #102; если ещё не задеплоен)
-
-Полный `deploy.sh` пересоздаёт nginx с портом 443 и каталогом `nginx/tls`.
-Затем смоук. Если файлы из шага 2 уже
-лежат, nginx сразу поднимется с TLS.
-
-### 4. Проверка и включение TLS в nginx
+### 2. Выпуск сертификата
 
 ```bash
-docker exec mudaroba-nginx-1 nginx -t && docker exec mudaroba-nginx-1 nginx -s reload
-# сертификат отдаётся (с сервера сам себе — доверенный адрес)
-curl -sk -o /dev/null -w '%{http_code}\n' --resolve mudaroba.com:443:127.0.0.1 https://mudaroba.com/api/health/
-echo | openssl s_client -connect 127.0.0.1:443 -servername mudaroba.com 2>/dev/null | openssl x509 -noout -issuer
+scripts/ops/origin-cert.sh issue
+ls -l nginx/tls/letsencrypt/live/mudaroba.com/
 ```
 
-Ожидается `200` и issuer с `CloudFlare Origin`. Если `nginx -t` ругается —
-reload не делать, сайт продолжает работать на старой конфигурации; удалить
-`nginx/tls/origin-tls.inc` и разобраться.
+Сертификат действует 90 дней. Лимиты Let's Encrypt — 5 одинаковых выпусков в
+неделю: при ошибке сначала разобраться, не повторять в цикле.
+
+### 3. Включение TLS в nginx
+
+nginx читает `origin.pem`/`origin.key` — это относительные ссылки на файлы certbot
+(они разрешаются и внутри контейнера):
+
+```bash
+cd nginx/tls
+ln -sfn letsencrypt/live/mudaroba.com/fullchain.pem origin.pem
+ln -sfn letsencrypt/live/mudaroba.com/privkey.pem origin.key
+cp ../origin-tls.inc.example origin-tls.inc
+cd ../..
+docker exec mudaroba-nginx-1 nginx -t && docker exec mudaroba-nginx-1 nginx -s reload
+```
+
+Если `nginx -t` ругается — reload не делать, сайт работает на старой
+конфигурации; удалить `nginx/tls/origin-tls.inc` и разобраться.
+
+### 4. Проверка 443 и продление
+
+```bash
+# с сервера сам себе (доверенный адрес); без -k — сертификат должен быть валиден
+curl -s -o /dev/null -w '%{http_code}\n' --resolve mudaroba.com:443:127.0.0.1 https://mudaroba.com/api/health/
+echo | openssl s_client -connect 127.0.0.1:443 -servername mudaroba.com 2>/dev/null | openssl x509 -noout -issuer -enddate
+# порт 80 (режим Flexible) работает как раньше
+curl -sI https://mudaroba.com/ | head -1
+```
+
+Ожидается `200`, issuer Let's Encrypt. С внешнего адреса 443 отвечает
+сертификатом, но запрос закрывается без ответа (444) — пускаются только адреса
+Cloudflare.
+
+Продление — cron пользователя `deploy` (`crontab -l`), дважды в день в 09:17 и
+15:17 UTC (вне ночного окна 01:00–06:30 МСК):
+
+```
+17 9,15 * * * $HOME/turk-export/PharmaTurk/scripts/ops/origin-cert.sh renew >> $HOME/origin-cert-renew.log 2>&1
+```
+
+certbot продлевает сертификат за 30 дней до срока; nginx перезагружается
+(`nginx -t` и `reload`, без перезапуска контейнера) только после продления.
+Проверить срок: шаг 4, `-enddate`. Если продление не прошло, в логе
+`~/origin-cert-renew.log` будет ошибка; до конца срока остаётся месяц попыток.
+
+**Другой вариант — Cloudflare Origin Certificate** (15 лет, без продления, но
+владелец выпускает его в SSL/TLS → Origin Server и сам кладёт
+`nginx/tls/origin.pem` и `origin.key` с правами 600, вместо ссылок из шага 3).
+Браузеры его не принимают, Cloudflare — да.
 
 ### 5. Переключение в Cloudflare (делает владелец)
 
@@ -118,12 +157,13 @@ docker exec mudaroba-nginx-1 sh -c "netstat -tn | grep -c ':443 '"
 Плюс смоук из `DEVELOPMENT_RULES.md` (главная, категория, карточка, поиск,
 корзина, `/sitemap.xml`). Ошибки 525/526 на сайте = Cloudflare не может
 установить TLS с origin: вернуть **Flexible** (действует за секунды) и
-проверить шаг 4.
+проверить шаг 4 (в том числе срок сертификата).
 
 Порт 80 оставить: в режиме Full Cloudflare ходит на 80 для HTTP-запросов
 посетителей, если «Always Use HTTPS» выключен.
 
-Откат: Cloudflare → **Flexible**; на сервере
+Откат: Cloudflare → **Flexible** (действует за секунды, сервер менять не нужно:
+порт 80 работает и при включённом 443). Полностью убрать TLS с сервера:
 `rm nginx/tls/origin-tls.inc && docker exec mudaroba-nginx-1 nginx -s reload`.
 
 ### 7. Необязательно: Authenticated Origin Pulls

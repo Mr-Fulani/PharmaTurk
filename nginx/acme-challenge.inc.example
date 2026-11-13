@@ -1,0 +1,10 @@
+# Let's Encrypt HTTP-01 for the origin certificate (Cloudflare Full (strict)).
+# Enable on the server:
+#   cp nginx/acme-challenge.inc.example nginx/tls/acme-challenge.inc
+# scripts/ops/origin-cert.sh writes tokens to nginx/tls/acme/.
+# Steps: docs/PROD_ORIGIN_SECURITY.md.
+location ^~ /.well-known/acme-challenge/ {
+    root /etc/nginx/tls/acme;
+    default_type text/plain;
+    try_files $uri =404;
+}
