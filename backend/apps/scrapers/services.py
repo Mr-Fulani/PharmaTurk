@@ -108,7 +108,7 @@ BRAND_CLEAR_PRODUCT_TYPES = {"books"}
 DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
 SCRAPER_TASK_SEEN_TTL = 7 * 24 * 60 * 60
 # Парсер сам выбирает раздел товара (``attributes["<source>_category_slugs"]``).
-SELF_ROUTED_SOURCES = frozenset({"superstep", "intersport", "seniorah"})
+SELF_ROUTED_SOURCES = frozenset({"superstep", "intersport", "seniorah", "spx"})
 # Магазины одного владельца с общими кодами товаров: «intersport-J1008254.855» и
 # «superstep-J1008254.855» — один и тот же мяч. Новый товар не создаётся, если он
 # уже есть на сайте от соседа. Касается товаров без вариантов цвета (спорттовары,

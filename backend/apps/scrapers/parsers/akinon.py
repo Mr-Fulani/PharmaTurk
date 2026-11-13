@@ -1,4 +1,4 @@
-"""Общий парсер магазинов на платформе Akinon (SuperStep, Intersport Турция).
+"""Общий парсер магазинов на платформе Akinon (SuperStep, Intersport Турция, SPX).
 
 Любая страница магазина с ``?format=json`` отдаёт данные готовым JSON, без
 браузера и без разбора HTML.
@@ -86,6 +86,13 @@ class AkinonParser(BaseScraper):
     COLOR_KEYS = ("integration_renk", "mp_color")
     SIZE_KEYS = ("integration_beden", "mp_size")
     BARCODE_KEYS = ("integration_yurt_disi_barkod", "mp_yurtdisi_barkod")
+    # Подгруппа, бренд, описание и название цвета: у SPX свои поля.
+    SUBGROUP_KEY = "integration_alt_grup"
+    BRAND_KEY = "integration_alt_marka"
+    DESCRIPTION_KEYS: Tuple[str, ...] = ("integration_kalem_icerik", "mp_description")
+    COLOR_NAME_KEYS: Tuple[str, ...] = (
+        "integration_renk_detay", "integration_hos_renk_detay", "integration_renk_tonu", "mp_color",
+    )
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
     # Корни, у которых есть модели вариантов цвета (остальные — цвет = карточка).
     VARIANT_ROOTS = frozenset({"shoes", "clothing", "underwear", "headwear"})
@@ -246,10 +253,10 @@ class AkinonParser(BaseScraper):
         ``integration_alt_grup`` (Nike 265-FN2713, зелёный цвет): тогда — подгруппа
         другого цвета той же модели (без запросов, из вариантов карточки), а
         если и её нет — по окончанию названия."""
-        subgroup = self._attr_label(product, "integration_alt_grup")
+        subgroup = self._attr_label(product, self.SUBGROUP_KEY)
         if not subgroup:
             for option in self._variant_options(variants, self.COLOR_KEYS):
-                row = ((option.get("product") or {}).get("attributes_kwargs") or {}).get("integration_alt_grup")
+                row = ((option.get("product") or {}).get("attributes_kwargs") or {}).get(self.SUBGROUP_KEY)
                 label = clean_text(str((row or {}).get("label") or "")) if isinstance(row, dict) else ""
                 if label and not label.isdigit():
                     subgroup = label
@@ -907,7 +914,7 @@ class AkinonParser(BaseScraper):
     def _color_name(self, product: Dict[str, Any]) -> str:
         """Название цвета; капс («MAVİ», «SİYAH») — в обычный вид, как у остальных."""
         attrs = product.get("attributes") or {}
-        keys = ("integration_renk_detay", "integration_hos_renk_detay", "integration_renk_tonu", "mp_color")
+        keys = self.COLOR_NAME_KEYS
         color = next((clean_text(str(attrs[key])) for key in keys if attrs.get(key) not in (None, "", "-")), "")
         if color.isupper():
             lowered = color.replace("İ", "i").replace("I", "ı").lower()
@@ -1022,7 +1029,7 @@ class AkinonParser(BaseScraper):
         замены I→ı (было бы «Nıke», «Tımberland»). Аббревиатуры (DKNY, UGG,
         ASICS) не трогаем. Существующий бренд каталог находит без учёта
         регистра (``get_or_create_scraped_brand``) и пишет как в базе."""
-        brand = self._attr_label(product, "integration_alt_marka")
+        brand = self._attr_label(product, self.BRAND_KEY)
         brand = self.BRAND_ALIASES.get(akinon_key(brand), brand)
         if not brand.isupper():
             return brand
@@ -1050,10 +1057,10 @@ class AkinonParser(BaseScraper):
             extra[f"{self.SOURCE}_basket_offers"] = offers
         return extra
 
-    @staticmethod
-    def _description(product: Dict[str, Any]) -> str:
+    @classmethod
+    def _description(cls, product: Dict[str, Any]) -> str:
         attrs = product.get("attributes") or {}
-        html = attrs.get("integration_kalem_icerik") or attrs.get("mp_description") or ""
+        html = next((attrs[key] for key in cls.DESCRIPTION_KEYS if attrs.get(key)), "")
         text = re.sub(r"<[^>]+>", " ", str(html))
         return clean_text(text)
 

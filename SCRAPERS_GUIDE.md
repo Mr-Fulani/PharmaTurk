@@ -643,7 +643,8 @@ run_scraper_task.delay(task_id=1)
    API Inditex (`/itxrest` + Akamai), поэтому общее вынесено в абстрактный
    `InditexSiblingParser`, а наследники задают только магазин, домен и формат URL.
    Так же устроены магазины платформы Akinon: общее — в `AkinonParser`
-   (`parsers/akinon.py`), у наследника (SuperStep, Intersport) — ключ источника, сайт и раскладка.
+   (`parsers/akinon.py`), у наследника (SuperStep, Intersport, SPX) — ключ источника, сайт,
+   раскладка и (у SPX) свои имена полей.
 5. **Прокси:** сейчас один глобальный `SCRAPER_PROXY_URL` + флаг `use_proxy` в
    конфиге (см. 6.5). Когда разным источникам понадобятся разные прокси/страны —
    выносим `proxy_url` в `ScraperConfig` (поле на уровне источника).
@@ -698,6 +699,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `flo` | `FloParser` | flo.com.tr, www.flo.com.tr |
 | `superstep` | `SuperstepParser` | superstep.com.tr, www.superstep.com.tr |
 | `intersport` | `IntersportParser` | intersport.com.tr, www.intersport.com.tr |
+| `spx` | `SpxParser` | spx.com.tr, www.spx.com.tr |
 | `bershka` | `BershkaParser` | bershka.com, www.bershka.com |
 | `pullandbear` | `PullAndBearParser` | pullandbear.com, www.pullandbear.com |
 | `massimodutti` | `MassimoDuttiParser` | massimodutti.com, www.massimodutti.com |
@@ -1122,6 +1124,45 @@ SuperStep (`integration_*`, `previous_price`, скидка «в корзине»
 - Адрес нового товара — русское название транслитом и код (`RU_TITLE_SLUG_SOURCES`).
 
 Тесты: `backend/apps/scrapers/test_intersport_parser.py` (ответы — `test_fixtures/intersport/`).
+
+### 6.5.2b. SPX — Sport Point Extreme (`spx.com.tr`) — спортивное снаряжение
+
+`SpxParser` — наследник `AkinonParser` (решение владельца 12.11.2026, тот же отчёт). Защиты нет,
+прокси не нужен, пауза 1,5–3 с. Поля товара — не как у SuperStep, поэтому у `AkinonParser`
+имена полей вынесены в атрибуты класса (`SUBGROUP_KEY`, `BRAND_KEY`, `DESCRIPTION_KEYS`,
+`COLOR_NAME_KEYS`, `COLOR_KEYS`, `SIZE_KEYS`, `GENDER_KEYS`):
+
+| Что | SuperStep / Intersport | SPX |
+| --- | --- | --- |
+| Подгруппа | `integration_alt_grup` | `integration_product_sub_group` (+ группа `integration_product_group`) |
+| Бренд | `integration_alt_marka` | `integration_brand` |
+| Описание | `integration_kalem_icerik` | `description_sol` |
+| Цвет / размер | `integration_renk` / `integration_beden` | `integration_color_code` / `integration_first_size` |
+| Штрихкод | `integration_yurt_disi_barkod` | `sku` товара |
+| Пол | «Erkek», «Unisex» | код: `UNI`, `ERK`, `KDN`, `U-CCK` |
+| Карточка (`spx-…`) | код цвета модели `integration_model_renk` | артикул `integration_item_code` + код цвета: `spx-465-S1.19764` |
+
+- **Только раздел «Ekipman»** (мужской, женский, детский: ~1 640 строк, ~780 разных товаров).
+  Раздел у нас — по подгруппе (`SPX_SUBGROUP_ROUTES`), а группа магазина её уточняет
+  (`SPX_GROUP_ROUTES`): «Kask» в группе «Tekerlekli Sporlar» — велосипедный шлем, а не
+  горнолыжный. Термосы, кружки и фляги — в «Посуда → Термосы», как у SuperStep. Смешанная
+  подгруппа «Çeşitli Aksesuar» берётся только по виду в названии (`SPX_NAME_ROUTES`: фонарь,
+  лопата, надувное кресло).
+- **Не загружаются**: одежда и обувь, наушники, складные ножи («çakı»), баллоны со сжатым газом
+  («cartridge»), экзоскелеты с аккумулятором (`SPX_SKIPPED_NAME_WORDS`) и Stanley
+  (`SPX_SKIPPED_BRANDS`: он уже есть из SuperStep, а штрихкодов у товаров SuperStep в базе нет —
+  одинаковые термосы не склеить). На выгрузке 13.11.2026: разложено 643 из 771, не берутся 128.
+- **Обход по страницам.** robots.txt закрывает фильтры (`*integration_*`, `category_ids`), но
+  не `?page=`: три раздела читаются по страницам (`FOLLOW_PAGINATION` — как у SuperStep).
+- **Различитель одинаковых названий** — из данных магазина. Объём из поля размера («0,47 LT»,
+  «21 OZ») — в название («… 470 ml») и не в размеры: кружки Stanley на 0,35 и 0,47 л иначе
+  назывались бы одинаково. Название без модели («Salice Unisex Goggle» — у восьми разных масок)
+  получает артикул после бренда: «Salice 105DARWF Unisex Goggle».
+- **Настройка** — миграция `scrapers/0037` (строка «spx», раздел по умолчанию «Спорттовары»,
+  автосинхронизация выключена). Адрес нового товара — русское название транслитом
+  (`RU_TITLE_SLUG_SOURCES`).
+
+Тесты: `backend/apps/scrapers/test_spx_parser.py` (ответы — `test_fixtures/spx/`).
 
 ### 6.5.3. Seniorah (`seniorah.com`) — женская обувь
 
@@ -2517,6 +2558,7 @@ docker compose up -d
 | Общий парсер магазинов Akinon | `backend/apps/scrapers/parsers/akinon.py` |
 | Парсер SuperStep (раскладка) | `backend/apps/scrapers/parsers/superstep.py` |
 | Парсер Intersport (инвентарь, раскладка) | `backend/apps/scrapers/parsers/intersport.py` |
+| Парсер SPX (снаряжение, раскладка) | `backend/apps/scrapers/parsers/spx.py` |
 | Сервис интеграции | `backend/apps/scrapers/services.py` |
 | Модели ScraperConfig/Task | `backend/apps/scrapers/models.py` |
 | Admin парсеров | `backend/apps/scrapers/admin.py` |

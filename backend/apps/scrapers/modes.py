@@ -83,6 +83,16 @@ PARSER_MODES = {
             "второй раз не создаётся."
         ),
     },
+    "spx": {
+        "label": "SPX",
+        "product": "https://www.spx.com.tr/oakley-mod1-pro-erkek-kask-antrasit-465-s1-19764/",
+        "category": "https://www.spx.com.tr/erkek/ekipman/",
+        "site": "три раздела «Ekipman» (мужской, женский, детский) — ~1 600 строк, ~70 страниц",
+        "note": (
+            "Без прокси. Только снаряжение: одежда, обувь, наушники, ножи, баллоны и экзоскелеты "
+            "не загружаются (число — в «Причине остановки»). Stanley не берётся — он уже есть из SuperStep."
+        ),
+    },
     "seniorah": {
         "label": "Seniorah",
         "product": "https://seniorah.com/products/<название>",

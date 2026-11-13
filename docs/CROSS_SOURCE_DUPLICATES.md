@@ -220,6 +220,11 @@ manage.py resolve_cross_source_duplicates --unhide-all --apply --backup /backups
 соседа с тем же кодом (`SIBLING_STORE_SOURCES`, `SCRAPERS_GUIDE.md` §6.5.2a). Обувь и одежду
 Intersport не загружает вовсе.
 
+**SPX ↔ SuperStep (термосы Stanley).** Владельцы разные, общего кода нет, а штрихкодов у
+термосов SuperStep в базе нет (13.11.2026: ни одного совпадения из 780 штрихкодов SPX). Чтобы
+одинаковые термосы не стояли на сайте дважды, SPX не загружает Stanley
+(`SPX_SKIPPED_BRANDS`, `SCRAPERS_GUIDE.md` §6.5.2b).
+
 **Почему LC Waikiki и Zara не подключены.** Оба магазина продают только свои бренды
 (LC Waikiki; Zara и другие марки Inditex — Bershka, Pull&Bear, Massimo Dutti), которых нет
 у FLO и SuperStep, — одинаковых товаров у них нет. К тому же их парсеры не берут ни
