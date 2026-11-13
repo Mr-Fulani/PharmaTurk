@@ -526,6 +526,9 @@ SPORTS_KINDS: dict[str, Kind] = {
     # Общее слово: вид — по разделу («Speedo Biofuse 2.0 Unisex Siyah Gözlük» в «Очках для плавания»).
     "gozluk": _k("очки", PL, "Goggles", generic=True),
     "gozlugu": _k("очки", PL, "Goggles", generic=True),
+    # SPX подписывает горнолыжные маски английским «Goggle» (13.11.2026): вид — по разделу.
+    "goggle": _k("маска", F, "Goggles", generic=True),
+    "goggles": _k("маска", F, "Goggles", generic=True),
     "bugu onleyici sprey": _k("спрей-антифог для очков", M, "Anti-Fog Spray"),
     "bone": _k("шапочка для плавания", F, "Swim Cap", generic=True),
     "bonesi": _k("шапочка для плавания", F, "Swim Cap"),
@@ -586,6 +589,7 @@ SPORTS_KINDS: dict[str, Kind] = {
     "snowboard baglama ekipmani": _k("крепления для сноуборда", PL, "Snowboard Bindings"),
     "snowboard botu": _k("ботинки для сноуборда", PL, "Snowboard Boots"),
     "kask": _k("шлем", M, "Helmet", generic=True),
+    "kask kilifi": _k("чехол для шлема", M, "Helmet Cover"),
     "kayak kaski": _k("горнолыжный шлем", M, "Ski Helmet"),
     "snowboard kaski": _k("горнолыжный шлем", M, "Ski Helmet"),
     "kayak/snowboard kaski": _k("горнолыжный шлем", M, "Ski Helmet"),
@@ -1127,7 +1131,7 @@ SPORTS_PLAIN_TURKISH_WORDS = frozenset(
     kemer kemeri bant bandi halka cubuk ip top topu canta kilif kapak aparat aleti alet stand""".split()
 )
 # Виды спортивного словаря, которые совпадают с английскими словами моделей и цветов.
-SPORTS_ENGLISH_KIND_WORDS = frozenset({"bone", "snorkel", "kettlebell", "mat", "grip"})
+SPORTS_ENGLISH_KIND_WORDS = frozenset({"bone", "snorkel", "kettlebell", "mat", "grip", "goggle", "goggles"})
 # Слова только спортивного словаря; «Bone», «Snorkel», «Kettlebell», «Mat», «Grip» — и английские
 # слова: EN-названия «Yoga Mat», «Racket Grip» уходили в модерацию (пилот Intersport 12.11.2026).
 SPORTS_TITLE_WORDS = frozenset(

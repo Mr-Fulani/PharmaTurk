@@ -123,6 +123,15 @@ def test_generic_word_takes_kind_from_section():
     assert _titles("Speedo Biofuse 2.0 Unisex Siyah Gözlük", "Speedo", "swimming-goggles")["ru"] == (
         "Очки для плавания Speedo Biofuse 2.0, черные"
     )
+    # SPX подписывает горнолыжные маски английским «Goggle»: слово не остаётся в модели.
+    titles = _titles("Oakley Line Miner Unisex Kırmızı Goggle", "Oakley", "winter-goggles")
+    assert (titles["ru"], titles["en"]) == (
+        "Горнолыжная маска Oakley Line Miner, красная", "Oakley Line Miner Ski Goggles, Red"
+    )
+    # Чехол на шлем — не шлем.
+    assert _titles("MASKARA EXTREME 3D KASK KILIFI", "Maskara", "winter-protective-gear")["ru"] == (
+        "Чехол для шлема Maskara EXTREME 3D"
+    )
     # Вид в названии не назван вовсе («… Spor Aksesuarları» у щитков) — тоже по разделу.
     assert _titles("Nike Mercurial Lite Unisex Yeşil Spor Aksesuarları", "Nike", "shin-guards")["ru"] == (
         "Щитки Nike Mercurial Lite, зеленые"
