@@ -6,14 +6,14 @@
 
 ## Состояние на 2026-11-13
 
-- В панели Cloudflare режим SSL/TLS зоны — **Flexible**: Cloudflare ходит к серверу по HTTP
-  на порт 80, участок Cloudflare → сервер не шифруется. Открытый пункт — TD-043 в
-  [TECH_DEBT.md](TECH_DEBT.md).
-- Сервер готов к **Full (strict)** (13.11.2026): nginx отдаёт на 443 сертификат Let's Encrypt
-  для `mudaroba.com` и `www.mudaroba.com`, продление — cron пользователя `deploy`. Осталось
-  переключение в панели Cloudflare (шаг 5, делает владелец).
+- Режим SSL/TLS зоны — **Full (strict)** с 13.11.2026 06:55 МСК (переключено по просьбе
+  владельца): Cloudflare ходит к серверу по HTTPS на 443 и проверяет сертификат.
+  Проксируемые записи зоны: `mudaroba.com` (A), `www` (CNAME), `cdn` (R2) — других нет.
+- На 443 — сертификат Let's Encrypt для `mudaroba.com` и `www.mudaroba.com` (первый выпущен
+  13.11.2026, до 11.02.2027), продление — cron пользователя `deploy` (шаг 4).
 - «Always Use HTTPS» включён владельцем 10.11.2026: посетитель по `http://` получает 301 на
   https прямо от Cloudflare.
+- Откат при ошибках 525/526: Cloudflare → SSL/TLS → Overview → Configure → **Flexible** → Save.
 
 ## Что было на 2026-10-19
 
