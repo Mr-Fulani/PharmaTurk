@@ -41,7 +41,7 @@
 | [DB_BACKUP.md](DB_BACKUP.md) | ежедневный бэкап базы в отдельный бакет R2, проверка, включение и восстановление с нуля на новом сервере | 2026-10-19 |
 | [PROD_MEMORY.md](PROD_MEMORY.md) | лимиты памяти контейнеров, брокер и кэш в разных Redis, swap, применение без потери очередей | после инцидента 2026-10-19 |
 | [PROD_DB_MAINTENANCE.md](PROD_DB_MAINTENANCE.md) | ночная чистка сессий Django и логов парсеров, первая чистка, VACUUM / VACUUM FULL и их блокировки; autovacuum таблиц товаров после массовых правок | снимок 2026-10-19, autovacuum — 2026-10-21 |
-| [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict) с Origin Certificate на 443 (код готов; на 10.11 в Cloudflare — Flexible), закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-11-10 |
+| [PROD_ORIGIN_SECURITY.md](PROD_ORIGIN_SECURITY.md) | Cloudflare Full (strict): сертификат Let's Encrypt на 443 и его продление (сервер готов 13.11; в Cloudflare пока Flexible), закрытие прямого доступа (Hetzner Cloud Firewall), IPv6-обход | 2026-11-13 |
 | [SECURITY_CSP.md](SECURITY_CSP.md) | CSP в режиме Report-Only, приёмник `/api/csp-report/`, refresh JWT в HttpOnly cookie, шаги перехода в enforce (TD-018/TD-033) | 2026-10-24 |
 | [PROD_ROOT_MAINTENANCE.md](PROD_ROOT_MAINTENANCE.md) | под root: обновления ОС и Docker, swap, журнал systemd, перезагрузка в тихий час | 2026-10-19 |
 | [AUDIT_2026-10-19_PARSERS_CATALOG.md](AUDIT_2026-10-19_PARSERS_CATALOG.md) | почему не запускаются Instagram/UmmaLand/Akakce, товары без картинки и цены, сброс интервалов beat при деплое | отчёт 2026-10-19 |

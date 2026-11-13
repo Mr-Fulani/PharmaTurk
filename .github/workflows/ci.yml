@@ -224,6 +224,8 @@ jobs:
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=mudaroba.com \
             -keyout "$tls/origin.key" -out "$tls/origin.pem" 2>/dev/null
           cp nginx/origin-tls.inc.example "$tls/origin-tls.inc"
+          cp nginx/acme-challenge.inc.example "$tls/acme-challenge.inc"
+          mkdir -p "$tls/acme"
           chmod -R a+rX "$tls"
           docker run --rm --network none \
             -v "$PWD/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro" \
