@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from apps.catalog.models import Category
 from apps.scrapers.models import ScrapedProductLog, ScraperConfig, ScrapingSession
-from apps.scrapers.tasks import cleanup_old_sessions
+from apps.scrapers.tasks import cleanup_old_sessions, close_stale_sessions
 
 
 def _session(config, age_days):
@@ -67,12 +67,67 @@ def test_nothing_to_delete_is_noop():
 
     assert result["deleted_logs"] == 0
     assert result["deleted_sessions"] == 0
+    assert result["closed_stale_sessions"] == 0
 
 
 @pytest.mark.parametrize("kwargs", [{"days_to_keep": 0}, {"batch_size": 0}, {"batch_size": 10_001}])
 def test_rejects_unsafe_arguments(kwargs):
     with pytest.raises(ValueError):
         cleanup_old_sessions.run(**kwargs)
+
+
+def _config():
+    category = Category.objects.create(name="Тест", slug="stale-test")
+    return ScraperConfig.objects.create(
+        name="stale-cfg", parser_class="lcw", base_url="https://e.com", default_category=category
+    )
+
+
+def _running(config, *, status="running", started_hours_ago=None, created_hours_ago=0, error=""):
+    session = ScrapingSession.objects.create(scraper_config=config, status=status, error_message=error)
+    now = timezone.now()
+    ScrapingSession.objects.filter(pk=session.pk).update(
+        created_at=now - timedelta(hours=created_hours_ago),
+        started_at=None if started_hours_ago is None else now - timedelta(hours=started_hours_ago),
+    )
+    return session
+
+
+@pytest.mark.django_db
+def test_closes_only_sessions_stuck_longer_than_a_day():
+    """Сессии убитых воркеров висели «Выполняется» неделями; живые и завершённые не трогаем."""
+    config = _config()
+    stuck = _running(config, started_hours_ago=30, created_hours_ago=30)
+    stuck_pending = _running(config, status="pending", created_hours_ago=48)
+    stuck_with_error = _running(config, started_hours_ago=72, created_hours_ago=72, error="Таймаут страницы 3")
+    alive = _running(config, started_hours_ago=3, created_hours_ago=30)
+    fresh_pending = _running(config, status="pending", created_hours_ago=2)
+    done = _running(config, status="completed", started_hours_ago=100, created_hours_ago=100)
+
+    assert close_stale_sessions() == 3
+
+    rows = {s.pk: s for s in ScrapingSession.objects.all()}
+    for session in (stuck, stuck_pending, stuck_with_error):
+        row = rows[session.pk]
+        assert row.status == "failed"
+        assert row.finished_at is not None
+        assert "Прервано: сессия не завершилась за 24 ч" in row.error_message
+    assert rows[stuck_with_error.pk].error_message.startswith("Таймаут страницы 3\nПрервано:")
+    assert rows[alive.pk].status == "running"
+    assert rows[fresh_pending.pk].status == "pending"
+    assert rows[done.pk].status == "completed" and rows[done.pk].error_message == ""
+    assert ScrapingSession.objects.count() == 6  # ничего не удалено
+
+
+@pytest.mark.django_db
+def test_nightly_cleanup_closes_stale_sessions():
+    config = _config()
+    stuck = _running(config, started_hours_ago=48, created_hours_ago=48)
+
+    result = cleanup_old_sessions.run(days_to_keep=30)
+
+    assert result["closed_stale_sessions"] == 1
+    assert ScrapingSession.objects.get(pk=stuck.pk).status == "failed"
 
 
 def test_cleanup_runs_nightly_by_crontab():
