@@ -100,3 +100,16 @@ for (const skin of ['iznik', 'green']) {
 test('у «Кремовой» ночной набор общий: отдельного блока нет', () => {
   assert.ok(!css.includes("html[data-skin='cream'].dark"))
 })
+
+test('оформление заявки ночью: блоки, текст и поля — из переменных темы, днём без изменений', async () => {
+  const page = await read('src/pages/checkout.tsx')
+  assert.equal((page.match(/<main className="checkout-page /g) || []).length, 2)
+  const rules = [...css.matchAll(/^([^{}\n]*\.checkout-page[^{}\n]*)\{([^}]*)\}/gm)]
+  assert.ok(rules.length >= 7, 'нет ночных правил страницы оформления')
+  for (const [, selector, body] of rules) {
+    assert.ok(selector.includes('.dark .checkout-page'), `правило не только для ночи: ${selector}`)
+    assert.ok(!/#[0-9a-f]{3,8}\b|rgb\(/i.test(body), `число вместо переменной темы: ${selector}`)
+  }
+  // Прежние «жёлтые» поля и тёмный текст на тёмном фоне не вернулись.
+  assert.ok(!css.includes('.checkout-form'), 'остались правила .checkout-form')
+})
