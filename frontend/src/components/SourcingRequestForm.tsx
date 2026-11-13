@@ -227,16 +227,17 @@ export default function SourcingRequestForm({ placement, initialComment = '', ti
       {heading}
       <div className="grid gap-6 rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm md:p-8 lg:grid-cols-5">
         {/* Как это работает */}
-        <aside className="lg:col-span-2">
+        {/* На широком экране шаги растягиваются на всю высоту формы: без пустоты под ними (замечание владельца 13.11.2026). */}
+        <aside className="lg:col-span-2 lg:flex lg:flex-col">
           <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-main/60">
             {t('sourcing_how_it_works', 'Как это работает')}
           </p>
-          <ol className="space-y-3">
+          <ol className="space-y-3 lg:flex lg:flex-1 lg:flex-col lg:gap-3 lg:space-y-0">
             {steps.map(({ Icon, title, text }, index) => (
-              <li key={title} className="relative flex gap-4 rounded-2xl bg-[var(--bg)] p-4">
-                {/* Пунктир между шагами — визуальная связка «1 → 2 → 3» */}
+              <li key={title} className="relative flex gap-4 rounded-2xl bg-[var(--bg)] p-4 lg:flex-1 lg:items-center">
+                {/* Пунктир между шагами — визуальная связка «1 → 2 → 3»; на широком экране карточки растянуты по высоте, пунктир не нужен */}
                 {index < steps.length - 1 && (
-                  <span aria-hidden className="absolute left-[2.35rem] top-[3.9rem] h-[calc(100%-2.6rem)] border-l-2 border-dashed border-[var(--accent)]/25" />
+                  <span aria-hidden className="absolute left-[2.35rem] top-[3.9rem] h-[calc(100%-2.6rem)] border-l-2 border-dashed border-[var(--accent)]/25 lg:hidden" />
                 )}
                 <span aria-hidden className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent-soft)] to-[var(--surface)] text-[var(--accent)] ring-1 ring-[var(--accent)]/15">
                   <Icon className="h-5 w-5" strokeWidth={1.8} />
