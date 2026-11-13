@@ -46,6 +46,7 @@ _WINTER = ("winter-sports", "sports")
 _WINTER_GEAR = ("winter-protective-gear", *_WINTER)
 _OUTDOOR = ("outdoor-hiking", "sports")
 _RUNNING = ("running-walking", "sports")
+_SKATE = ("skateboarding-roller", "sports")
 _SPORTS = ("sports",)
 
 # Подгруппа сайта (``integration_alt_grup``) → раздел, если вид товара в названии
@@ -85,7 +86,7 @@ INTERSPORT_SUBGROUP_ROUTES: Dict[str, Tuple[str, ...]] = {
     "kayak gozlugu": ("winter-goggles", *_WINTER_GEAR),
     "kask": _SPORTS,
     "paten": _SPORTS,
-    "kaykay": _SPORTS,
+    "kaykay": _SKATE,
     "uyku tulumu": ("sleeping-bags", *_OUTDOOR),
 }
 
@@ -212,6 +213,8 @@ INTERSPORT_NAME_ROUTES: Dict[str, Tuple[str, ...]] = {
     "kol bandi": _RUNNING,
     "kosu kolluk": _RUNNING,
     "kosu telefon bandi": _RUNNING,
+    # скейтбординг
+    "kaykay": _SKATE,
 }
 
 # Вид спорта товара (``integration_aktivite``) → раздел. Уточняет раздел «за неимением
@@ -296,13 +299,16 @@ class IntersportParser(AkinonParser):
 
         «Bolle Atmos Pure … Kask» — шлем без слова «лыжный» в названии, но вид спорта у
         магазина — зимний: в «Шлемы» зимних видов, а не в корень «Спорттовары» (пилот
-        12.11.2026). Шлем для скейта («Günlük») остаётся в корне: своего раздела у него нет.
+        12.11.2026). Шлем для скейта (вид спорта «SPORTSTYLE», Firefly Prostyle) — в «Скейтбординг и
+        ролики» (решение владельца 13.11.2026).
         """
         if not route or route[0] not in _GENERIC_PLACEMENTS:
             return route
         activity = str(activity or "").upper()
         if akinon_key(subgroup) == "kask" and activity == "WINTERSPORT":
             return ("winter-helmets", *_WINTER_GEAR)
+        if akinon_key(subgroup) == "kask" and activity == "SPORTSTYLE":
+            return _SKATE
         return INTERSPORT_ACTIVITY_ROUTES.get(activity, route)
 
     def parse_categories(self) -> List[Dict[str, Any]]:

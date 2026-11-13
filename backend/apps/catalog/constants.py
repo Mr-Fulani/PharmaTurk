@@ -2751,6 +2751,14 @@ SPORTS_SUBCATEGORIES = [
             ("Компрессионная одежда", "Compression Wear", "compression-wear", "Компрессионная одежда", "Compression wear"),
         ],
     ),
+    (
+        "Скейтбординг и ролики",
+        "Skateboarding & Roller",
+        "skateboarding-roller",
+        "Скейтборды, роликовые коньки и защита",
+        "Skateboards, roller skates and protective gear",
+        [],
+    ),
 ]
 
 # Исламская одежда: L2 с L3 подкатегориями

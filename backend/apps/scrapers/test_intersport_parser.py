@@ -169,12 +169,18 @@ def test_helmet_without_ski_word_goes_to_winter_section_by_activity():
     helmet = IntersportParser.subgroup_route("Kask", "Bolle Atmos Pure 59-62cm Unisex Siyah Kask", "Bolle", "")[1]
     assert helmet == ("sports",)
     assert refine("Kask", helmet, "WINTERSPORT")[0] == "winter-helmets"
-    # Шлем для скейта («Günlük») — своего раздела нет, остаётся в корне.
-    assert refine("Kask", helmet, "SPORTSTYLE") == ("sports",)
+    # Шлем для скейта (Firefly Prostyle) — в «Скейтбординг и ролики» (решение владельца 13.11.2026).
+    assert refine("Kask", helmet, "SPORTSTYLE") == ("skateboarding-roller", "sports")
     # Мяч без вида в названии — в раздел своего вида спорта; точный раздел не трогается.
     assert refine("Top", ("team-sports", "sports"), "VOLLEYBALL")[0] == "volleyball"
     assert refine("Futbol Topu", ("football-balls", "football", "team-sports", "sports"), "TENNIS")[0] == "football-balls"
     assert refine("Eldiven", (), "RUNNING") == ()
+
+
+def test_skateboards_go_to_skateboarding_section():
+    """Скейтборды лежали в корне «Спорттоваров» — своего раздела не было до 13.11.2026."""
+    for name in ("Firefly SKB 505 Mavi Kaykay", "Firefly PB 105 Çocuk Turuncu Kaykay"):
+        assert IntersportParser.subgroup_route("Kaykay", name, "Firefly", "")[1] == ("skateboarding-roller", "sports")
 
 
 def test_card_route_uses_activity_of_the_product():
