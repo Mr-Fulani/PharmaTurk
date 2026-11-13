@@ -204,8 +204,9 @@ def spx_volume_ml(size: Any) -> str:
         ml = amount
     elif unit == "oz":
         ml = amount * OUNCE_ML
-    elif unit in ("l", "lt") or amount < 5:
-        # Без единицы — литры («0.70»); целое число без единицы («50», «75») неясно.
+    elif unit in ("l", "lt") or (amount < 5 and re.search(r"[.,]", match.group(1))):
+        # Без единицы — литры, только дробь («0.70»): целое число («2» — размер ручки ракетки,
+        # «50», «75») объёмом не считаем (пилот 13.11.2026: «Dunlop … 2000 ml»).
         ml = amount * 1000
     else:
         return ""
@@ -318,7 +319,10 @@ class SpxParser(AkinonParser):
         product.name = spx_name_with_article(
             product.name, product.brand, product.attributes.get(f"{self.SOURCE}_subgroup"), self._manufacturer_article(product.sku)
         )
-        # Объём — не размер: в название (если его там нет) и из размеров.
+        # Объём — не размер: в название (если его там нет) и из размеров. Только у посуды
+        # (термосы, кружки, фляги): у ракетки размер ручки «2» — не литры.
+        if (product.attributes.get(f"{self.SOURCE}_category_slugs") or [""])[-1] != "tableware":
+            return product
         sizes = product.attributes.get("sizes") or []
         volumes = {spx_volume_ml(size) for size in sizes}
         if len(sizes) == 1 and len(volumes) == 1 and "" not in volumes:

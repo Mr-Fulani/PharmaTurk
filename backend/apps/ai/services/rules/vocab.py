@@ -497,6 +497,17 @@ SPORTS_KINDS: dict[str, Kind] = {
     "tenis grip": _k("обмотка для ракетки", F, "Racket Grip"),
     "padel raket grip": _k("обмотка для ракетки", F, "Racket Grip"),
     "padel gribi": _k("обмотка для ракетки", F, "Racket Grip"),
+    # SPX (13.11.2026): струны, корзины для мячей, пиклбол.
+    "kordaj": _k("струна для ракетки", F, "Racket String"),
+    "kordaj paket": _k("струна для ракетки", F, "Racket String Set"),
+    "kordaj rulo": _k("струна для ракетки в бобине", F, "Racket String Reel"),
+    "top sepeti": _k("корзина для мячей", F, "Ball Basket"),
+    "tenis top sepeti": _k("корзина для теннисных мячей", F, "Tennis Ball Basket"),
+    "tenis topu kova": _k("ведро для теннисных мячей", N, "Tennis Ball Bucket"),
+    "pickleball raket": _k("ракетка для пиклбола", F, "Pickleball Paddle"),
+    "pickleball raket seti": _k("набор для пиклбола", M, "Pickleball Set"),
+    "pickleball file": _k("сетка для пиклбола", F, "Pickleball Net"),
+    "pickleball top": _k("мячи для пиклбола", PL, "Pickleball Balls"),
     # «Grip», «Bone», «Mat» — и английские слова моделей и цветов: общие, уступают виду в конце названия.
     "grip": _k("обмотка для ракетки", F, "Racket Grip", generic=True),
     # защита
@@ -535,6 +546,15 @@ SPORTS_KINDS: dict[str, Kind] = {
     "havuz bonesi": _k("шапочка для плавания", F, "Swim Cap"),
     "yuzucu bonesi": _k("шапочка для плавания", F, "Swim Cap"),
     "yuzme paleti": _k("ласты для плавания", PL, "Swim Fins"),
+    # Общее слово: «Kısa Havuz Paleti … Palet» — вид из точного «короткие ласты для бассейна».
+    "palet": _k("ласты", PL, "Swim Fins", generic=True),
+    "havuz paleti": _k("ласты для бассейна", PL, "Pool Fins"),
+    "kisa havuz paleti": _k("короткие ласты для бассейна", PL, "Short Pool Fins"),
+    "yuzucu el paleti": _k("лопатки для плавания", PL, "Hand Paddles"),
+    "parmak paleti": _k("лопатки для пальцев", PL, "Finger Paddles"),
+    "yuzucu tahtasi": _k("доска для плавания", F, "Kickboard"),
+    "yuzme tahtasi": _k("доска для плавания", F, "Kickboard"),
+    "gozluk kabi": _k("футляр для очков", M, "Goggle Case"),
     "snorkel": _k("трубка для плавания", F, "Snorkel"),
     "snorkel seti": _k("набор для плавания: маска и трубка", M, "Snorkel Set"),
     "maske snorkel seti": _k("набор для плавания: маска и трубка", M, "Mask and Snorkel Set"),
