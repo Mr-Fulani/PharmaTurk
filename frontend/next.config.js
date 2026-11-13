@@ -5,10 +5,13 @@
 /** @type {import('next').NextConfig} */
 const { i18n } = require('./next-i18next.config')
 
-// CSP пока только Report-Only (TD-018, TD-033): браузер ничего не блокирует, нарушения
-// пишет в консоль и шлёт на /api/csp-report/ (лог backend «csp»). Переход в
-// enforce — отдельным шагом по docs/SECURITY_CSP.md. Политика здесь, а не в
+// CSP в режиме enforce с 13.11.2026 (TD-033): браузер блокирует всё, что не разрешено,
+// нарушения пишет в консоль и шлёт на /api/csp-report/ (лог backend «csp»).
+// Откат на Report-Only (ничего не блокировать, только отчёты) — CSP_ENFORCE = false
+// и пересборка frontend, см. docs/SECURITY_CSP.md. Политика здесь, а не в
 // отдельном файле: production-образ копирует только next.config.js.
+const CSP_ENFORCE = true
+const CSP_HEADER = CSP_ENFORCE ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only'
 const buildCsp = ({ scriptExtra = '' } = {}) => [
   "default-src 'self'",
   // 'unsafe-inline': инлайн-скрипты Consent Mode, gtag, Метрики. Убрать — через nonce.
@@ -42,12 +45,12 @@ const buildCsp = ({ scriptExtra = '' } = {}) => [
 
 // В dev Next нужен eval и HMR-сокеты — политика только для production-сборки.
 const securityHeaders = process.env.NODE_ENV === 'production'
-  ? [{ key: 'Content-Security-Policy-Report-Only', value: buildCsp() }]
+  ? [{ key: CSP_HEADER, value: buildCsp() }]
   : []
 // Виджет Telegram на /auth выполняет data-onauth через eval. Правило идёт после общего
 // и заменяет заголовок только на страницах входа.
 const authSecurityHeaders = process.env.NODE_ENV === 'production'
-  ? [{ key: 'Content-Security-Policy-Report-Only', value: buildCsp({ scriptExtra: " 'unsafe-eval'" }) }]
+  ? [{ key: CSP_HEADER, value: buildCsp({ scriptExtra: " 'unsafe-eval'" }) }]
   : []
 const nextConfig = {
   reactStrictMode: true,
