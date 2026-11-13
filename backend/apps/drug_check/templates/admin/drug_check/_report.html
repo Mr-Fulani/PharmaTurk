@@ -1,0 +1,30 @@
+{% load drug_check %}
+<div class="dc-ours">
+  {% if report.medicine %}
+    <div><b>Наша карточка:</b> <a href="{% url 'admin:catalog_medicineproduct_change' report.medicine.pk %}">{{ report.medicine.name }}</a></div>
+    <div><b>Штрихкод:</b> {{ report.barcode|default:"—" }}</div>
+    <div><b>Наша цена:</b> {% if report.medicine.price is not None %}{{ report.medicine.price|tl }}{% if report.medicine.currency != "TRY" %} {{ report.medicine.currency }}{% endif %}{% else %}нет{% endif %}</div>
+    <div><b>У нас:</b> {% if not report.medicine.is_active %}скрыт с сайта{% elif report.medicine.is_available %}в наличии{% else %}нет в наличии{% endif %}</div>
+  {% else %}
+    <div><b>Штрихкод:</b> {{ report.barcode }} — карточки у нас нет</div>
+  {% endif %}
+</div>
+<table class="dc-table">
+  <thead><tr><th>Источник</th><th>Статус</th><th>Цена</th><th>Дата цены</th><th>Пометка</th></tr></thead>
+  <tbody>
+  {% for r in report.results %}
+    <tr class="dc-{{ r.level }}">
+      <td>{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}{% if r.file_date %}<br><small>файл от {{ r.file_date|date:"d.m.Y" }}</small>{% endif %}</td>
+      <td>{{ r.status }}</td>
+      <td>{{ r.price|tl }}</td>
+      <td>{{ r.price_date|date:"d.m.Y" }}</td>
+      <td>{{ r.note }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="help">
+  Проверено {{ report.checked_at|date:"d.m.Y H:i" }}. Красное — расхождение, жёлтое — подсказка («нет у склада» не значит
+  «нет в Турции»), серое — проверить не удалось. Цены и наличие на сайте эта проверка не меняет.
+  {% if report.barcode %}Вручную: <a href="https://www.ilacrehberi.com/ilac-fiyatlari/{{ report.barcode }}/" target="_blank" rel="noopener noreferrer">ilacrehberi (история цен, «на рынке есть / нет»)</a>.{% endif %}
+</p>

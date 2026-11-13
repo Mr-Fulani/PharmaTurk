@@ -255,6 +255,7 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     admin_action_order = declared_admin_actions
     _domain_fieldset = (_('Специфика медикамента'), {
         'fields': (
+            'drug_check_button',
             'manufacturer',
             'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
             'volume', 'origin_country',
@@ -296,7 +297,18 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     ]
 
     def get_readonly_fields(self, request, obj=None):
-        return [*super().get_readonly_fields(request, obj), 'import_restriction_banner']
+        return [*super().get_readonly_fields(request, obj), 'import_restriction_banner', 'drug_check_button']
+
+    @admin.display(description=_('Проверка по источникам'))
+    def drug_check_button(self, obj):
+        # TD-044, docs/DRUG_CHECK.md: SKRS, IlacFiyati, склад; на сайте ничего не меняет.
+        if not obj or not obj.pk:
+            return '—'
+        return format_html(
+            '<a class="button" href="{}" target="_blank" rel="noopener">Проверить сейчас</a> '
+            '<span class="help">цена IlacFiyati сейчас, цена склада, статус SKRS — без изменений на сайте</span>',
+            reverse('admin:drug_check_medicine', args=[obj.pk]),
+        )
 
     @admin.display(description=_('Ввоз'), ordering='import_restricted_countries')
     def import_restriction_badge(self, obj):

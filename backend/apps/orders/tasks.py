@@ -573,6 +573,7 @@ def notify_new_order_telegram(
     locale: str = 'ru',
     customer_notified: bool = False,
     admin_steps_sent: int = 0,
+    drug_check_text: str | None = None,
 ) -> None:
     """Уведомляет (Telegram) о создании нового заказа.
     Может запускаться как Celery link после send_order_receipt_task — тогда первым аргументом
@@ -581,6 +582,8 @@ def notify_new_order_telegram(
     При временном сбое Telegram повторяется только сообщение менеджеру: покупателю задача
     пишет один раз (customer_notified), иначе после обрыва связи он получил бы дубль.
     Длинный текст менеджеру уходит по шагам, повтор продолжает с шага admin_steps_sent.
+    Итог проверки лекарств заявки (TD-044, ≤ 15 с) считается один раз и передаётся в повтор
+    (drug_check_text): текст и шаги на повторе те же.
     """
     if order_id is None:
         logger.warning("notify_new_order_telegram: order_id not provided")
@@ -678,6 +681,12 @@ def notify_new_order_telegram(
             admin_text += f"\n{channel_info}: {_md(handle)}"
         if order.comment:
             admin_text += f"\nКомментарий: {_md(order.comment)}"
+        if drug_check_text is None:
+            from apps.drug_check.service import order_check_text
+
+            drug_check_text = order_check_text(order)
+        if drug_check_text:
+            admin_text += "\n\n" + _md(drug_check_text)
         admin_steps = _tg_delivery_steps(admin_text, pdf_bytes, f"🧾 Чек к заказу `{order.number}`")
         try:
             for step_text, step_document in admin_steps[admin_steps_sent:]:
@@ -729,6 +738,7 @@ def notify_new_order_telegram(
                 "locale": locale,
                 "customer_notified": True,
                 "admin_steps_sent": admin_steps_sent,
+                "drug_check_text": drug_check_text,
             },
             countdown=30 * 2 ** self.request.retries,
         )
