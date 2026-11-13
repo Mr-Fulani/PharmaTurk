@@ -54,6 +54,7 @@ Beat только публикует задачи. Для исполнения �
 | `catalog-indexnow-submit` | `catalog.indexnow_submit` | каждый час в `:45` | `celery` | Новые, изменённые (название, описание, наличие, переводы — не цена) и снятые страницы товаров, RU и EN, — в IndexNow (Bing, Яндекс); не больше `INDEXNOW_DAILY_URL_LIMIT` URL в сутки; только при `INDEXNOW_ENABLED=true`. `docs/INDEXNOW.md`. |
 | `catalog-resolve-cross-source-duplicates` | `catalog.resolve_cross_source_duplicates` | ежедневно `07:05` | `celery` | Полный пересчёт одинаковых товаров FLO ↔ SuperStep: показан более дорогой, второй скрыт; только при `CROSS_SOURCE_DUPLICATES_ENABLED=true`. `docs/CROSS_SOURCE_DUPLICATES.md`. |
 | `catalog-stale-products-media-stats` | `catalog.stale_products_media_stats` | ежедневно `06:55` | `celery` | Для «Неактуальных товаров» — сколько файлов и МБ освободит удаление (общие файлы не в счёт); только с R2 и при наличии кандидатов. `docs/STALE_PRODUCTS.md`. |
+| `drug-check-load-reference-files` | `drug_check.load_reference_files` | среда `10:20` | `celery` | Скачивает новые файлы SKRS E-Reçete (TİTCK) и прайса склада и заменяет ими таблицу проверки лекарств; тот же файл повторно не качается, итог — в админке «Загрузки справочных файлов». Каталог не меняет. `docs/DRUG_CHECK.md`. |
 
 ### Обогащение медиа лекарств
 

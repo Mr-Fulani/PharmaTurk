@@ -2746,7 +2746,6 @@ SPORTS_SUBCATEGORIES = [
             ("Футболки", "T-Shirts", "sports-tshirts", "Спортивные футболки", "Sports T-shirts"),
             ("Шорты", "Shorts", "sports-shorts", "Спортивные шорты", "Sports shorts"),
             ("Леггинсы", "Leggings", "sports-leggings", "Спортивные леггинсы", "Sports leggings"),
-            ("Спортивные костюмы", "Tracksuits", "tracksuits", "Спортивные костюмы", "Tracksuits"),
             ("Куртки", "Jackets", "sports-jackets", "Спортивные куртки", "Sports jackets"),
             ("Кроссовки", "Sneakers", "sports-sneakers", "Спортивные кроссовки", "Sports sneakers"),
             ("Компрессионная одежда", "Compression Wear", "compression-wear", "Компрессионная одежда", "Compression wear"),

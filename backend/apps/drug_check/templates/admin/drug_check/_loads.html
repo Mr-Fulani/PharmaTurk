@@ -1,0 +1,5 @@
+<p class="help">Списки:
+{% for title, load in loads %}
+  {{ title }} — {% if load %}файл {{ load.file_name }}{% if load.file_date %} от {{ load.file_date|date:"d.m.Y" }}{% endif %}, загружен {{ load.created_at|date:"d.m.Y" }}{% else %}не загружен{% endif %}{% if not forloop.last %}; {% endif %}
+{% endfor %}
+(<a href="{% url 'admin:drug_check_drugreferenceload_changelist' %}">журнал загрузок</a>).</p>

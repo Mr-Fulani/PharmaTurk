@@ -1,0 +1,29 @@
+{% extends "admin/base_site.html" %}
+{% load drug_check %}
+{% block extrastyle %}{{ block.super }}{% include "admin/drug_check/_styles.html" %}{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › {{ title }}</div>{% endblock %}
+{% block content %}
+<form method="get" style="margin-bottom:16px">
+  <input type="text" name="q" value="{{ query }}" size="50" placeholder="Название (от 3 букв) или штрихкод" autofocus>
+  <input type="submit" value="Проверить">
+</form>
+<p class="help">Штрихкод — проверка по всем источникам (IlacFiyati: поиск и карточка, два запроса). Название — поиск в нашем каталоге и в списках SKRS и склада, без запросов наружу.</p>
+{% if report %}{% include "admin/drug_check/_report.html" %}{% endif %}
+{% if ours %}
+  <h2>У нас в каталоге</h2>
+  <table class="dc-table"><tbody>
+  {% for m in ours %}
+    <tr><td><a href="{% url 'admin:drug_check_medicine' m.pk %}">Проверить сейчас</a></td><td>{{ m.name }}</td><td>{{ m.barcode }}</td><td>{% if not m.is_active %}скрыт{% elif m.is_available %}в наличии{% else %}нет в наличии{% endif %}</td></tr>
+  {% endfor %}
+  </tbody></table>
+{% elif query and not report %}<p>В нашем каталоге не найдено.</p>{% endif %}
+{% if entries %}
+  <h2>В списках SKRS и склада</h2>
+  <table class="dc-table"><tbody>
+  {% for e in entries %}
+    <tr><td><a href="?q={{ e.barcode }}">{{ e.barcode }}</a></td><td>{{ e.name }}</td><td>{{ e.source_title }}</td><td>{{ e.get_status_display }}{% if e.status_date %} с {{ e.status_date|date:"d.m.Y" }}{% endif %}</td><td>{{ e.price|tl }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+{% endif %}
+{% include "admin/drug_check/_loads.html" %}
+{% endblock %}

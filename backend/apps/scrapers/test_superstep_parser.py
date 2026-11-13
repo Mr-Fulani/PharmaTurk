@@ -851,8 +851,8 @@ def test_only_equipment_subgroups_route_to_sports():
 
 def test_route_slugs_are_not_shared_between_catalog_roots():
     """Slug маршрута, объявленный в дереве двух корней, достаётся тому, кого сидер создал
-    последним. Известный случай — ``tracksuits`` (одежда и спорттовары): его закрывает
-    проверка типа в ``route_categories``; новых быть не должно."""
+    последним. ``tracksuits`` (одежда и спорттовары) до 13.11.2026 так попадал в «Спорттовары»;
+    дубль убран, проверка типа в ``route_categories`` осталась страховкой."""
     import ast
     from pathlib import Path
 
@@ -877,7 +877,7 @@ def test_route_slugs_are_not_shared_between_catalog_roots():
         for variant in (route.values() if isinstance(route, dict) else [route]) for slug in variant
     }
 
-    assert {slug for slug in route_slugs if len(declared.get(slug, ())) > 1} == {"tracksuits"}
+    assert {slug for slug in route_slugs if len(declared.get(slug, ())) > 1} == set()
 
 
 @pytest.mark.django_db
