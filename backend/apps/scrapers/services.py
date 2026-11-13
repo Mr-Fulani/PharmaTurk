@@ -53,6 +53,7 @@ from .base.listing_snapshot import ListingGuard, record_listing_snapshot
 from .base.offers import OfferGone, OfferNotFound
 from .listing_changes import mark_products_gone
 from . import ilacfiyati_duplicates, ilacfiyati_twins
+from .store_twins import hide_store_twin, is_pricier
 from .base.scraper import (
     CategoryPageNotFoundError,
     ScrapedProduct,
@@ -109,12 +110,17 @@ DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
 SCRAPER_TASK_SEEN_TTL = 7 * 24 * 60 * 60
 # Парсер сам выбирает раздел товара (``attributes["<source>_category_slugs"]``).
 SELF_ROUTED_SOURCES = frozenset({"superstep", "intersport", "seniorah", "spx"})
-# Магазины одного владельца с общими кодами товаров: «intersport-J1008254.855» и
-# «superstep-J1008254.855» — один и тот же мяч. Новый товар не создаётся, если он
-# уже есть на сайте от соседа. Касается товаров без вариантов цвета (спорттовары,
-# посуда): у обуви и одежды код карточки — модель, их сводит поиск дублей
+# Магазины с общими кодами товаров (артикул и цвет производителя): «intersport-J1008254.855»,
+# «superstep-J1008254.855» и «spx-J1008254.855» — один и тот же мяч. На сайте остаётся более
+# дорогой (решение владельца 13.11.2026, ``store_twins``): новый не создаётся, если у соседа
+# такой же не дешевле, а более дорогой новый скрывает соседа. Касается товаров без вариантов
+# цвета (спорттовары, посуда): у обуви и одежды код карточки — модель, их сводит поиск дублей
 # (docs/CROSS_SOURCE_DUPLICATES.md).
-SIBLING_STORE_SOURCES = {"intersport": ("superstep",), "superstep": ("intersport",)}
+SIBLING_STORE_SOURCES = {
+    "intersport": ("superstep", "spx"),
+    "superstep": ("intersport", "spx"),
+    "spx": ("intersport", "superstep"),
+}
 
 
 def _price_refresh_disabled_source_keys() -> set[str]:
@@ -1803,8 +1809,12 @@ class ScraperIntegrationService:
                     )
                     continue
                 sibling = self._sibling_store_product(scraped_product)
-                if sibling:
-                    # Тот же товар уже есть от магазина-соседа: второй карточки не создаём.
+                sibling_product = Product.objects.filter(external_id=sibling).first() if sibling else None
+                if sibling_product is not None and is_pricier(scraped_product.price, sibling_product.price):
+                    # Новый дороже: создаётся, а соседний скрывается после сохранения (ниже).
+                    scraped_product._store_twin_to_hide = sibling_product
+                elif sibling:
+                    # Тот же товар уже есть от магазина-соседа и не дешевле: второй карточки не создаём.
                     results["skipped"] += 1
                     ScrapedProductLog.objects.create(
                         session=session,
@@ -1812,7 +1822,7 @@ class ScraperIntegrationService:
                         external_url=scraped_product.url,
                         product_name=scraped_product.name,
                         action="skipped",
-                        message=f"Уже есть из другого магазина (не загружен): {sibling}",
+                        message=f"Уже есть из другого магазина, не дешевле (не загружен): {sibling}",
                         scraped_data=scraped_product.to_dict(),
                     )
                     continue
@@ -1833,6 +1843,14 @@ class ScraperIntegrationService:
                 self._record_source_offers(session, scraped_product, product)
                 if not getattr(scraped_product, "_medicine_import_skip_reason", None):
                     record_listing_snapshot(scraped_product, product)
+                twin = getattr(scraped_product, "_store_twin_to_hide", None)
+                if twin is not None and product is not None and action == "created":
+                    hidden_slugs = hide_store_twin(twin, product)
+                    self.logger.info(
+                        "Двойник %s скрыт: дороже новый %s; адреса %s ведут на него",
+                        twin.external_id, product.external_id, ", ".join(hidden_slugs),
+                    )
+
                 # Цены и наличие сохранены — сравнить с тем же товаром у другого продавца.
                 if (
                     product is not None
