@@ -1,0 +1,9 @@
+{% extends "admin/base_site.html" %}
+{% load drug_check %}
+{% block extrastyle %}{{ block.super }}{% include "admin/drug_check/_styles.html" %}{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:drug_check_lookup' %}">Проверка лекарств</a> › {{ title }}</div>{% endblock %}
+{% block content %}
+{% include "admin/drug_check/_report.html" %}
+{% include "admin/drug_check/_loads.html" %}
+<p><a href="{% url 'admin:drug_check_lookup' %}">Проверить другой препарат по названию или штрихкоду</a></p>
+{% endblock %}

@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     "apps.ai",
     "apps.recommendations",
     "apps.monitoring.apps.MonitoringConfig",
+    "apps.drug_check",
 ]
 
 # Кастомная модель пользователя
@@ -266,6 +267,11 @@ CELERY_TASK_ANNOTATIONS = {
         "time_limit": 2 * 60 * 60,
         "soft_time_limit": 115 * 60,
     },
+    # Две страницы и два файла по ~2 МБ; разбор книги — секунды.
+    "drug_check.load_reference_files": {
+        "time_limit": 10 * 60,
+        "soft_time_limit": 9 * 60,
+    },
     "apps.payments.tasks.create_coinremitter_invoice_request": {
         "time_limit": 90,
         "soft_time_limit": 75,
@@ -442,6 +448,12 @@ CELERY_BEAT_SCHEDULE = {
     "scrapers-weekly-duplicate-candidates": {
         "task": "apps.scrapers.tasks.find_and_merge_duplicates",
         "schedule": crontab(hour=4, minute=30, day_of_week=1),  # понедельник в 4:30
+    },
+    # TD-044: списки SKRS (TİTCK, выходит по вторникам) и прайс склада для проверки лекарств —
+    # среда 10:20, вне тихих часов. Только новые файлы, без прокси; каталог не меняется.
+    "drug-check-load-reference-files": {
+        "task": "drug_check.load_reference_files",
+        "schedule": crontab(hour=10, minute=20, day_of_week=3),
     },
     # Очистка неиспользуемых медиа из R2 раз в неделю: воскресенье 03:30, тихий
     # час, после recsys-sync-stale-nightly (02:15, ≤ 200 товаров, несколько минут).
