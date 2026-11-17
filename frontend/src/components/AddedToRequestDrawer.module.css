@@ -35,6 +35,9 @@
   display: flex;
   max-height: calc(90vh / var(--page-zoom, 1));
   flex-direction: column;
+  /* Край панели и рамки — из цвета текста темы: одной --border ночью почти не видно */
+  border-top: 1px solid var(--border);
+  border-top-color: color-mix(in srgb, var(--text) 30%, var(--bg));
   border-radius: 1rem 1rem 0 0;
   background: var(--bg);
   color: var(--text);
@@ -161,6 +164,7 @@
 .summary {
   margin: 0;
   border: 1px solid var(--border);
+  border-color: color-mix(in srgb, var(--text) 30%, var(--bg));
   border-radius: 0.6rem;
   background: var(--surface);
   padding: 0.7rem 0.875rem;
@@ -206,6 +210,7 @@
 
 .secondary {
   border: 1px solid var(--border);
+  border-color: color-mix(in srgb, var(--text) 50%, var(--bg));
   background: transparent;
   color: var(--text-strong);
 }
@@ -236,7 +241,9 @@
     width: 380px;
     max-width: 100%;
     max-height: none;
+    border-top: 0;
     border-left: 1px solid var(--border);
+    border-left-color: color-mix(in srgb, var(--text) 30%, var(--bg));
     border-radius: 0;
     box-shadow: -10px 0 30px rgba(0, 0, 0, 0.18);
     transform: translateX(100%);
