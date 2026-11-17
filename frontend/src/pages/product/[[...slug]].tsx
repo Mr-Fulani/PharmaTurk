@@ -1348,7 +1348,7 @@ export default function ProductPage({
     if (viewItemRef.current) gtmViewItem(...viewItemRef.current)
   }, [product?.slug])
 
-  // Липкая панель «цена + В заявку» на телефоне и ссылка «Оформить заявку» после добавления
+  // Липкая панель «цена + В заявку» на телефоне: после добавления её кнопка ведёт в Список заявки
   const actionBlockRef = useRef<HTMLDivElement>(null)
   const sizePickerRef = useRef<HTMLDivElement>(null)
   const [addedToCart, setAddedToCart] = useState(false)
@@ -2903,16 +2903,6 @@ export default function ProductPage({
                     ? t('supplement_delivery_note', 'Доставка из Турции: авиа 3–7, наземная 7–14, морем 20–45 дней. Точную сумму подтвердит менеджер')
                     : t('product_delivery_note', 'Доставка из Турции: 7–14 дней, от 5 $. Точную сумму подтвердит менеджер')}
                 </p>
-              )}
-
-              {addedToCart && !isService && (
-                <Link
-                  href="/cart"
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--accent)] px-4 py-3 text-sm font-semibold text-[var(--accent-strong)] transition-colors hover:bg-[var(--accent-soft)]"
-                >
-                  {t('added_go_to_request', 'Добавлено — оформить заявку')}
-                  <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-                </Link>
               )}
 
               {isSupplement && (

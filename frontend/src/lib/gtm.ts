@@ -206,6 +206,16 @@ export function gtmAddToCart(
   ymReachGoal(ymGoal)
 }
 
+/**
+ * Панель «Добавлено в заявку»: показ (view), «Оформить заявку» (checkout), «Продолжить выбор» (continue).
+ * В GA4 — событие added_drawer_<действие>, в Метрике — цель с тем же именем.
+ */
+export function gtmAddedDrawer(action: 'view' | 'checkout' | 'continue'): void {
+  const name = `added_drawer_${action}`
+  gtmEvent({ event: name })
+  ymReachGoal(name)
+}
+
 export function gtmAddToWishlist(item: GtmEcommerceItem, currency = 'USD'): void {
   gtmEvent({
     event: 'add_to_wishlist',
