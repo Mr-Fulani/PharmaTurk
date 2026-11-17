@@ -194,6 +194,18 @@ test('add_to_cart carries price and value; buy now has its own Metrika goal', (t
   assert.deepEqual(calls.ym, [[123, 'reachGoal', 'buy_now', undefined]])
 })
 
+test('added-to-request drawer: view and both buttons go to GA4 and Metrika', (t) => {
+  const calls = mockWindow(t)
+  gtm.gtmAddedDrawer('view')
+  gtm.gtmAddedDrawer('checkout')
+  gtm.gtmAddedDrawer('continue')
+
+  const names = ['added_drawer_view', 'added_drawer_checkout', 'added_drawer_continue']
+  assert.deepEqual(calls.gtag, names.map((name) => ['event', name, {}]))
+  assert.deepEqual(calls.ym, names.map((name) => [123, 'reachGoal', name, undefined]))
+  assert.deepEqual(window.dataLayer, names.map((event) => ({ event })))
+})
+
 test('add_to_wishlist goes to GA4 and Metrika', (t) => {
   const calls = mockWindow(t)
   gtm.gtmAddToWishlist({ item_id: 9, item_name: 'Y', item_category: 'clothing', price: 50 }, 'USD')

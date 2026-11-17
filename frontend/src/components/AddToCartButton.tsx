@@ -5,6 +5,7 @@ import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerificat
 import { isSoldOutCartError } from '../lib/cartStock'
 import { useCartStore } from '../store/cart'
 import { gtmAddToCart, type GtmEcommerceItem } from '../lib/gtm'
+import { addedToRequestStore, pickAddedItem, requestTotal } from '../lib/addedToRequest'
 import styles from './AddToCartButton.module.css'
 
 // Длительности синхронны с AddToCartButton.module.css: полёт товара (shirtFlight)
@@ -51,6 +52,7 @@ export default function AddToCartButton({
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const { refresh, setCartSummary } = useCartStore()
   const { t } = useTranslation('common')
 
@@ -164,6 +166,11 @@ export default function AddToCartButton({
       }
 
       setDone(true)
+      // Панель «Добавлено в заявку»: товар и сумма — из ответа сервера
+      addedToRequestStore.getState().open(
+        { item: pickAddedItem(response.data), total: requestTotal(response.data), trigger: buttonRef.current },
+        window.location.pathname,
+      )
       onAdded?.()
       resetTimerRef.current = setTimeout(() => {
         setDone(false)
@@ -209,6 +216,7 @@ export default function AddToCartButton({
   
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={add}
       disabled={loading || done}

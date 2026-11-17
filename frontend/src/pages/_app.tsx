@@ -7,6 +7,7 @@ import Footer from '../components/Footer'
 import SectionNav from '../components/SectionNav'
 import ContactWidget from '../components/ContactWidget'
 import CookieBanner from '../components/CookieBanner'
+import AddedToRequestDrawer from '../components/AddedToRequestDrawer'
 import NavigationProgress from '../components/NavigationProgress'
 import { AuthProvider } from '../context/AuthContext'
 import { ThemeProvider } from '../context/ThemeContext'
@@ -177,6 +178,9 @@ gtag('config', '${GA4_ID.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', { send_p
             <Footer initialSettings={(pageProps as Record<string, unknown>)?.footerSettings} />
           </div>
         )}
+
+        {/* Панель «Добавлено в заявку» — одна на все страницы, открывается кнопкой «В заявку» */}
+        <AddedToRequestDrawer />
 
         {/* Cookie Consent баннер — показывается всем пользователям */}
         <CookieBanner />
