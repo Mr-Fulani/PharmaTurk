@@ -5,7 +5,7 @@ import { getCartIssueCopy, getCartVerificationError } from '../lib/cartVerificat
 import { isSoldOutCartError } from '../lib/cartStock'
 import { useCartStore } from '../store/cart'
 import { gtmAddToCart, type GtmEcommerceItem } from '../lib/gtm'
-import { addedToRequestStore, pickAddedItem, requestTotal } from '../lib/addedToRequest'
+import { addedToRequestStore, pickAddedItem } from '../lib/addedToRequest'
 import styles from './AddToCartButton.module.css'
 
 // Длительности синхронны с AddToCartButton.module.css: полёт товара (shirtFlight)
@@ -166,9 +166,9 @@ export default function AddToCartButton({
       }
 
       setDone(true)
-      // Панель «Добавлено в заявку»: товар и сумма — из ответа сервера
+      // Панель «Добавлено в заявку»: позиции и сумма — из ответа сервера
       addedToRequestStore.getState().open(
-        { item: pickAddedItem(response.data), total: requestTotal(response.data), trigger: buttonRef.current },
+        { cart: response.data, addedId: pickAddedItem(response.data)?.id, trigger: buttonRef.current },
         window.location.pathname,
       )
       onAdded?.()

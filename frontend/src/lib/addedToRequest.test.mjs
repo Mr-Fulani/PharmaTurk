@@ -4,12 +4,14 @@ import test from 'node:test'
 
 import i18next from 'i18next'
 
-import { addedToRequestStore, drawerThumbUrl, isCartPath, pickAddedItem, requestTotal } from './addedToRequest.js'
+import {
+  addedToRequestStore, drawerRows, drawerThumbUrl, isCartPath, orderDrawerItems, pickAddedItem, requestTotal, undoAddParams,
+} from './addedToRequest.js'
 
 const state = () => addedToRequestStore.getState()
 
 test('drawer opens with the added item and closes keeping the content for the exit animation', () => {
-  const payload = { item: { id: 7, product_name: 'Кроссовки' }, total: null, trigger: null }
+  const payload = { cart: { items: [{ id: 7, product_name: 'Кроссовки' }] }, addedId: 7, trigger: null }
   state().open(payload, '/product/shoes/krossovki')
   assert.equal(state().isOpen, true)
   assert.equal(state().payload, payload)
@@ -22,7 +24,7 @@ test('drawer opens with the added item and closes keeping the content for the ex
 test('drawer does not open on the request list page', () => {
   state().close()
   for (const path of ['/cart', '/cart/', '/en/cart', '/cart?utm_source=cart_reminder']) {
-    state().open({ item: null }, path)
+    state().open({ cart: null }, path)
     assert.equal(state().isOpen, false, path)
   }
   assert.equal(isCartPath('/cartoon'), false)
@@ -82,7 +84,12 @@ test('request summary declines the number of items', () => {
 })
 
 test('every drawer string exists in both locales', () => {
-  for (const key of ['added_drawer_title', 'added_drawer_close', 'added_drawer_continue', 'added_drawer_note', 'go_to_request']) {
+  for (const key of [
+    'added_drawer_title', 'added_drawer_close', 'added_drawer_continue', 'added_drawer_note', 'go_to_request',
+    'added_drawer_removed', 'added_drawer_undo', 'added_drawer_error', 'added_drawer_undo_error',
+    'remove', 'cart_decrease_quantity', 'cart_increase_quantity', 'cart_empty', 'cart_empty_description',
+    'size', 'price_on_request',
+  ]) {
     assert.ok(locales.ru[key], `ru ${key}`)
     assert.ok(locales.en[key], `en ${key}`)
   }
@@ -102,4 +109,53 @@ test('drawer thumbnail asks for a small copy of our CDN photo and leaves other u
   ]) {
     assert.equal(drawerThumbUrl(url), url)
   }
+})
+
+test('auto-close stops for good after the first interaction and starts again on the next opening', () => {
+  state().open({ cart: { items: [] } }, '/')
+  assert.equal(state().engaged, false)
+  state().engage()
+  assert.equal(state().engaged, true)
+  state().close()
+  assert.equal(state().engaged, true)
+  state().open({ cart: { items: [] } }, '/')
+  assert.equal(state().engaged, false)
+  // на странице заявки панель не открывается и состояние не трогает
+  state().engage()
+  state().open({ cart: { items: [] } }, '/cart')
+  assert.equal(state().engaged, true)
+})
+
+const ids = (items) => items.map((item) => item.id)
+
+test('the just added item goes first, the rest keep the server order', () => {
+  const items = [{ id: 1 }, { id: 2 }, { id: 3 }]
+  assert.deepEqual(ids(orderDrawerItems(items, 3)), [3, 1, 2])
+  assert.deepEqual(ids(orderDrawerItems(items, undefined)), [1, 2, 3])
+  assert.deepEqual(orderDrawerItems(undefined, 3), [])
+})
+
+test('items do not jump after a change: the previous order wins, new items go to the end', () => {
+  // сервер после смены количества вернул позиции в другом порядке и добавил новую
+  const items = [{ id: 2 }, { id: 9 }, { id: 3 }, { id: 1 }]
+  assert.deepEqual(ids(orderDrawerItems(items, undefined, [3, 1, 2])), [3, 1, 2, 9])
+  // удалённая позиция просто пропадает из порядка
+  assert.deepEqual(ids(orderDrawerItems([{ id: 2 }, { id: 3 }], undefined, [3, 1, 2])), [3, 2])
+})
+
+test('a removed item leaves an undo row in its place', () => {
+  const removedItem = { id: 1, product: 55, quantity: 2, chosen_size: '38' }
+  const entry = { key: 'removed-1', item: removedItem, index: 1 }
+  const rows = drawerRows([{ id: 3 }, { id: 2 }], [entry])
+  assert.deepEqual(rows.map((row) => row.key), ['item-3', 'removed-1', 'item-2'])
+  assert.equal(rows[1].entry, entry)
+  assert.equal(rows[0].entry, null)
+  // заявка опустела — строка «Вернуть» остаётся единственной
+  assert.deepEqual(drawerRows([], [{ ...entry, index: 4 }]).map((row) => row.key), ['removed-1'])
+  assert.deepEqual(drawerRows(undefined), [])
+})
+
+test('undo re-adds the same product, size and quantity', () => {
+  assert.deepEqual(undoAddParams({ id: 1, product: 55, quantity: 2, chosen_size: '38' }), { product_id: '55', quantity: '2', size: '38' })
+  assert.deepEqual(undoAddParams({ id: 4, product: 7, quantity: 1, chosen_size: '' }), { product_id: '7', quantity: '1' })
 })

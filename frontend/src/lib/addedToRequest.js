@@ -52,17 +52,60 @@ export function drawerThumbUrl(url) {
   }
 }
 
+/** Сколько секунд на месте удалённой позиции стоит «Удалено · Вернуть», мс. */
+export const ADDED_DRAWER_UNDO_MS = 6000
+
 /**
- * open(payload, pathname): payload = { item, total, trigger } — позиция и сумма из ответа сервера
- * (чего в ответе нет, того нет и в панели), trigger — кнопка, на которую вернётся фокус.
+ * Порядок позиций в панели: только что добавленная — первой, остальные — как стояли
+ * (previousIds), новые — в порядке сервера. Сервер при смене количества обновляет updated_at,
+ * поэтому «добавленную» помним по id с момента открытия, а не ищем заново.
+ */
+export function orderDrawerItems(items, addedId, previousIds = []) {
+  const rank = (item) => {
+    if (item.id === addedId) return -1
+    const index = previousIds.indexOf(item.id)
+    return index === -1 ? Infinity : index
+  }
+  return (Array.isArray(items) ? items : [])
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => (rank(left.item) - rank(right.item)) || (left.index - right.index))
+    .map((entry) => entry.item)
+}
+
+/**
+ * Строки списка: позиции заявки и, на прежних местах, только что удалённые («Удалено · Вернуть»).
+ * removed = [{ key, item, index }] — index строки в момент удаления; у такой строки entry — эта запись.
+ */
+export function drawerRows(items, removed = []) {
+  const rows = (Array.isArray(items) ? items : []).map((item) => ({ key: `item-${item.id}`, item, entry: null }))
+  for (const entry of [...removed].sort((left, right) => left.index - right.index)) {
+    rows.splice(Math.min(entry.index, rows.length), 0, { key: entry.key, item: entry.item, entry })
+  }
+  return rows
+}
+
+/** «Вернуть» удалённую позицию = добавить тот же товар, размер и количество (тело /orders/cart/add). */
+export function undoAddParams(item) {
+  const params = { product_id: String(item.product), quantity: String(item.quantity) }
+  if (item.chosen_size) params.size = item.chosen_size
+  return params
+}
+
+/**
+ * open(payload, pathname): payload = { cart, addedId, trigger } — заявка из ответа сервера
+ * (чего в ответе нет, того нет и в панели), id добавленной позиции и кнопка, на которую вернётся фокус.
+ * engaged — человек занялся панелью (навёл, коснулся, прокрутил, перешёл с клавиатуры):
+ * автозакрытие больше не срабатывает до следующего открытия.
  */
 export const addedToRequestStore = createStore((set) => ({
   isOpen: false,
+  engaged: false,
   payload: null,
   open: (payload, pathname) => {
     if (isCartPath(pathname)) return
-    set({ isOpen: true, payload: payload || {} })
+    set({ isOpen: true, engaged: false, payload: payload || {} })
   },
+  engage: () => set({ engaged: true }),
   // payload остаётся: панель доигрывает уход с прежним содержимым
   close: () => set({ isOpen: false }),
 }))

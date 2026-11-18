@@ -207,10 +207,11 @@ export function gtmAddToCart(
 }
 
 /**
- * Панель «Добавлено в заявку»: показ (view), «Оформить заявку» (checkout), «Продолжить выбор» (continue).
+ * Панель «Добавлено в заявку»: показ (view), «Оформить заявку» (checkout), «Продолжить выбор» (continue),
+ * смена количества позиции (qty_change), удаление позиции (remove).
  * В GA4 — событие added_drawer_<действие>, в Метрике — цель с тем же именем.
  */
-export function gtmAddedDrawer(action: 'view' | 'checkout' | 'continue'): void {
+export function gtmAddedDrawer(action: 'view' | 'checkout' | 'continue' | 'qty_change' | 'remove'): void {
   const name = `added_drawer_${action}`
   gtmEvent({ event: name })
   ymReachGoal(name)
