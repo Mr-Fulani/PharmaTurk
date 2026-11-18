@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from apps.catalog.models import MedicineProduct
 
-from .sources import SOURCES
+from .sources import SOURCES, file_sources
 from .sources.base import ALERT, ERROR, LEVEL_ORDER, WARN, CheckContext, SourceResult
 
 logger = logging.getLogger(__name__)
@@ -69,9 +69,9 @@ def _context(medicine: MedicineProduct | None, barcode: str, deadline: float | N
     )
 
 
-def _run(ctx: CheckContext) -> list[SourceResult]:
+def _run(ctx: CheckContext, sources=None) -> list[SourceResult]:
     results = []
-    for source in SOURCES:
+    for source in SOURCES if sources is None else sources:
         try:
             results.append(source.check(ctx))
         except Exception:  # один сломанный источник не прячет остальные
@@ -92,6 +92,14 @@ def _run(ctx: CheckContext) -> list[SourceResult]:
 def check_medicine(medicine: MedicineProduct, *, deadline: float | None = None) -> DrugCheckReport:
     ctx = _context(medicine, "", deadline)
     return DrugCheckReport(barcode=ctx.barcode, medicine=medicine, results=_run(ctx), checked_at=timezone.now())
+
+
+def quick_check(medicine: MedicineProduct) -> DrugCheckReport:
+    """Только свои списки (SKRS, склад) — без запросов наружу; для панели в карточке лекарства."""
+    ctx = _context(medicine, "", None)
+    return DrugCheckReport(
+        barcode=ctx.barcode, medicine=medicine, results=_run(ctx, file_sources()), checked_at=timezone.now()
+    )
 
 
 def check_barcode(barcode: str, *, deadline: float | None = None) -> DrugCheckReport:

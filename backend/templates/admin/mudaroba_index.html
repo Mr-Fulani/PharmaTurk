@@ -1,0 +1,18 @@
+{% extends "admin/index.html" %}
+{% block extrastyle %}{{ block.super }}{% include "admin/drug_check/_styles.html" %}{% endblock %}
+{% block content %}
+{% if perms.catalog.view_medicineproduct %}
+<div class="module dc-index" id="drug-check-search">
+  <h2>Проверить лекарство: продаётся ли и какая цена</h2>
+  <div style="padding: 8px 12px;">
+    <form action="{% url 'admin:drug_check_lookup' %}" method="get">
+      <input type="text" name="q" placeholder="Название (от 3 букв) или штрихкод" aria-label="Название или штрихкод лекарства">
+      <button type="submit" class="dc-big-button">Проверить</button>
+    </form>
+    <p class="help">Государственный список SKRS, цена IlacFiyati сейчас, прайс склада. Работает и для препаратов,
+      которых нет на сайте. На сайте ничего не меняется.</p>
+  </div>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

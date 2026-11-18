@@ -1,0 +1,22 @@
+{% load drug_check %}
+<section class="dc-panel dc-panel--{{ report.level }}" aria-labelledby="dc-panel-title">
+  <div class="dc-panel__head">
+    <h2 id="dc-panel-title">Наличие и цена: проверка по источникам</h2>
+    <a class="dc-big-button" href="{{ check_url }}" target="_blank" rel="noopener">Проверить сейчас</a>
+  </div>
+  <p class="dc-panel__ours">
+    У нас: <b>{% if medicine.is_hospital %}цена по запросу (больничный){% elif medicine.price is not None %}{{ medicine.price|tl }}{% if medicine.currency != "TRY" %} {{ medicine.currency }}{% endif %}{% else %}без цены{% endif %}</b>,
+    <b>{% if not medicine.is_active %}скрыт с сайта{% elif medicine.is_available %}в наличии{% else %}нет в наличии{% endif %}</b>.
+  </p>
+  <ul class="dc-panel__list">
+    {% for r in report.results %}
+      <li class="dc-mark dc-mark--{{ r.level }}"><b>{{ r.title }}:</b> {{ r.status|lower }}{% if r.price is not None %}, {{ r.price|tl }}{% endif %}{% if r.level == "alert" or r.level == "warn" %} — {{ r.note }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+  <p class="help">
+    Выше — по спискам, загруженным раз в неделю{% for title, load in loads %}{% if load %}{% if forloop.first %} ({% endif %}{{ title }} от {{ load.file_date|date:"d.m.Y" }}{% if forloop.last %}){% else %}, {% endif %}{% endif %}{% endfor %}.
+    «Проверить сейчас» откроет в новой вкладке цену IlacFiyati на сегодня; там же можно принять цену или
+    отметить наличие. Без нажатия на сайте ничего не меняется.
+    Препарата нет на сайте? <a href="{{ lookup_url }}" target="_blank" rel="noopener">Проверить по названию или штрихкоду</a>.
+  </p>
+</section>

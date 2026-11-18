@@ -1,0 +1,18 @@
+{% extends "admin/base_site.html" %}
+{% load drug_check %}
+{% block extrastyle %}{{ block.super }}{% include "admin/drug_check/_styles.html" %}{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Начало</a> › <a href="{% url 'admin:catalog_medicineproduct_change' medicine.pk %}">{{ medicine.name }}</a> › Подтверждение</div>{% endblock %}
+{% block content %}
+<h2>Проверьте, что изменится</h2>
+<table class="dc-table">
+  <thead><tr><th></th><th>Было</th><th>Станет</th></tr></thead>
+  <tbody>{% for label, was, will in rows %}<tr><td>{{ label }}</td><td>{{ was }}</td><td><b>{{ will }}</b></td></tr>{% endfor %}</tbody>
+</table>
+<p class="help">{{ note }}</p>
+<form method="post">
+  {% csrf_token %}
+  {% for name, value in fields.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+  <button type="submit" class="dc-big-button">{{ submit }}</button>
+  <a class="dc-cancel" href="{% url 'admin:catalog_medicineproduct_change' medicine.pk %}">Отмена — ничего не менять</a>
+</form>
+{% endblock %}

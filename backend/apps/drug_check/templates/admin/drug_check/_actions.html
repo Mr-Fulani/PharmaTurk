@@ -1,0 +1,27 @@
+{% load drug_check %}
+{% if price_action or availability_action %}
+<section class="dc-actions">
+  <h2>Что сделать</h2>
+  <div class="dc-actions__row">
+    {% if price_action.offer %}
+      <form method="get" action="{% url 'admin:drug_check_price' report.medicine.pk %}">
+        <input type="hidden" name="token" value="{{ price_action.offer.token }}">
+        <button type="submit" class="dc-big-button">Принять цену {{ price_action.offer.label }}</button>
+      </form>
+      <p class="help">Цена IlacFiyati отличается от нашей. Будет показана страница «было → станет», ничего не меняется до подтверждения.</p>
+    {% elif price_action.note %}
+      <p class="dc-actions__note">{{ price_action.note }}</p>
+    {% endif %}
+  </div>
+  {% if availability_action %}
+  <div class="dc-actions__row">
+    <form method="get" action="{% url 'admin:drug_check_availability' report.medicine.pk %}">
+      <input type="hidden" name="to" value="{{ availability_action.to }}">
+      <button type="submit" class="dc-big-button dc-big-button--secondary">{{ availability_action.label }}</button>
+    </form>
+    <p class="help">Сейчас у нас: {% if report.medicine.is_available %}в наличии{% else %}нет в наличии{% endif %}. Источники: {{ availability_action.hint }}.</p>
+  </div>
+  {% endif %}
+  <p class="help">Цена склада — только для сведения: у склада свой прайс, в карточку её не принимаем.</p>
+</section>
+{% endif %}

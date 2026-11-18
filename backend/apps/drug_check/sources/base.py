@@ -66,6 +66,7 @@ class SourceResult:
     level: str = INFO
     status: str = ""  # «Активен с 29.01.2013», «Есть в прайсе», «Нет в списке»
     price: Decimal | None = None
+    currency: str = "TRY"
     price_date: date | None = None
     note: str = ""  # пояснение для менеджера
     short: str = ""  # одна фраза для Telegram

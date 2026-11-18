@@ -1,0 +1,4 @@
+{% extends "admin/change_form.html" %}
+{% load drug_check %}
+{% block extrastyle %}{{ block.super }}{% include "admin/drug_check/_styles.html" %}{% endblock %}
+{% block form_top %}{{ block.super }}{% if original.pk %}{% drug_check_panel original %}{% endif %}{% endblock %}

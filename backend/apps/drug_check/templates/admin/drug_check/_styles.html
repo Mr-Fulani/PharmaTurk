@@ -9,4 +9,33 @@
   .dc-table tr.dc-ok td a, .dc-table tr.dc-warn td a, .dc-table tr.dc-alert td a, .dc-table tr.dc-error td a { color: inherit; text-decoration: underline; }
   .dc-ours { margin: 0 0 12px; }
   .dc-ours b { display: inline-block; min-width: 130px; }
+  /* Панель в карточке лекарства и кнопки — на переменных админки, чтобы работало в светлой и тёмной теме. */
+  .dc-panel { border: 2px solid var(--primary, #79aec8); border-left-width: 8px; border-radius: 6px;
+              padding: 12px 16px; margin: 0 0 20px; background: var(--darkened-bg, #f8f8f8); }
+  .dc-panel--alert { border-color: #d63c47; }
+  .dc-panel--warn { border-color: #e0a800; }
+  .dc-panel--ok { border-color: #2e8b57; }
+  .dc-panel__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .dc-panel__head h2 { margin: 0; font-size: 1.15rem; color: var(--body-fg, #333); background: none; padding: 0; text-transform: none; }
+  .dc-panel__ours { margin: 8px 0 4px; font-size: 0.95rem; }
+  .dc-panel__list { margin: 4px 0 8px; padding: 0; list-style: none; }
+  .dc-panel__list li { padding: 2px 0 2px 10px; margin: 2px 0; border-left: 4px solid var(--hairline-color, #ccc); list-style: none; }
+  .dc-mark--alert { border-left-color: #d63c47 !important; }
+  .dc-mark--warn { border-left-color: #e0a800 !important; }
+  .dc-mark--ok { border-left-color: #2e8b57 !important; }
+  .dc-mark--error { border-left-color: #999 !important; }
+  .dc-big-button { display: inline-block; padding: 10px 18px; border: 0; border-radius: 6px; cursor: pointer;
+                   background: var(--button-bg, #417690); color: var(--button-fg, #fff) !important;
+                   font-size: 0.95rem; font-weight: 600; text-decoration: none !important; }
+  .dc-big-button:hover, .dc-big-button:focus { background: var(--button-hover-bg, #205067); }
+  .dc-big-button--secondary { background: var(--default-button-bg, #205067); }
+  .dc-actions { margin: 18px 0; padding: 12px 16px; border: 1px solid var(--hairline-color, #ddd); border-radius: 6px; }
+  .dc-actions h2 { margin: 0 0 8px; }
+  .dc-actions__row { margin: 0 0 12px; }
+  .dc-actions__row form { display: inline-block; margin: 0 0 4px; }
+  .dc-actions__note { font-weight: 600; margin: 0; }
+  .dc-cancel { margin-left: 16px; }
+  .dc-index { margin: 0 0 20px; }
+  .dc-index form { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .dc-index input[type=text] { flex: 1 1 280px; min-width: 0; padding: 8px 10px; font-size: 1rem; }
 </style>

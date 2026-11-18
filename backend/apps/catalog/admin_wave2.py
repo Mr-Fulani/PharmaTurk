@@ -255,7 +255,6 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     admin_action_order = declared_admin_actions
     _domain_fieldset = (_('Специфика медикамента'), {
         'fields': (
-            'drug_check_button',
             'is_hospital',
             'manufacturer',
             'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
@@ -266,8 +265,10 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
             'import_restriction_banner',
         ),
     })
+    # Панель «Наличие и цена: проверка по источникам» над полями (TD-044, docs/DRUG_CHECK.md).
+    change_form_template = 'admin/drug_check/medicine_change_form.html'
     list_display = [
-        'name', 'import_restriction_badge', 'stub_status', 'get_ai_status', 'get_media_enrichment_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
+        'name', 'drug_check_link', 'import_restriction_badge', 'stub_status', 'get_ai_status', 'get_media_enrichment_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
         'prescription_required', 'price', 'old_price',
         'is_available', 'is_new', 'created_at',
     ]
@@ -298,16 +299,14 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     ]
 
     def get_readonly_fields(self, request, obj=None):
-        return [*super().get_readonly_fields(request, obj), 'import_restriction_banner', 'drug_check_button']
+        return [*super().get_readonly_fields(request, obj), 'import_restriction_banner']
 
-    @admin.display(description=_('Проверка по источникам'))
-    def drug_check_button(self, obj):
-        # TD-044, docs/DRUG_CHECK.md: SKRS, IlacFiyati, склад; на сайте ничего не меняет.
-        if not obj or not obj.pk:
-            return '—'
+    @admin.display(description=_('Проверка'))
+    def drug_check_link(self, obj):
+        # TD-044, docs/DRUG_CHECK.md: SKRS, IlacFiyati, склад; открывается в новой вкладке.
         return format_html(
-            '<a class="button" href="{}" target="_blank" rel="noopener">Проверить сейчас</a> '
-            '<span class="help">цена IlacFiyati сейчас, цена склада, статус SKRS — без изменений на сайте</span>',
+            '<a class="button" href="{}" target="_blank" rel="noopener" '
+            'title="Наличие и цена по источникам: SKRS, IlacFiyati, склад">Проверить</a>',
             reverse('admin:drug_check_medicine', args=[obj.pk]),
         )
 
