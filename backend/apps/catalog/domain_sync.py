@@ -398,3 +398,105 @@ def retire_stale_domain_records(product, *, dry_run: bool = False) -> list:
         })
         logger.info("Product pk=%s: прежняя доменная запись снята %s", product.pk, report[-1])
     return report
+
+
+# --- Галерея из «Товаров» → галерея карточки раздела -------------------------
+# Парсеры пишут дополнительные фото в галерею доменной записи, её читает страница
+# товара. Владелец меняет фото и в общей таблице «Товары» (ProductImage) — эти правки
+# до страницы не доходили (KADCYLA, 17.11.2026). Переносим построчно и только то, что
+# изменено в форме: остальные фото карточки раздела (от парсера) остаются как были.
+
+_GALLERY_SYNC_FIELDS = ("image_file", "image_url", "alt_text", "sort_order", "is_main")
+
+
+def base_gallery_snapshot(product) -> dict:
+    """pk строки галереи Product → её значения (до и после сохранения формы)."""
+    return {
+        row.pop("pk"): {**row, "image_file": row["image_file"] or ""}
+        for row in product.images.values("pk", *_GALLERY_SYNC_FIELDS)
+    }
+
+
+def _snapshot_keys(values) -> set:
+    return {key for key in ((values or {}).get("image_file"), (values or {}).get("image_url")) if key}
+
+
+def _row_keys(row) -> set:
+    file_name = getattr(getattr(row, "image_file", None), "name", "") or ""
+    return {key for key in (file_name, getattr(row, "image_url", "") or "") if key}
+
+
+def sync_base_gallery_to_domain(product, before: dict) -> str:
+    """Переносит правки галереи Product (относительно снимка before) в галерею доменной записи.
+
+    Новая строка добавляется, изменённая (файл, адрес, alt, порядок, «главная») обновляет
+    свою пару, удалённая убирает свою пару. Пара ищется по имени файла или адресу картинки,
+    дубли не создаются. Пишем через update()/bulk_create — без сигналов и скачиваний; файлы
+    в хранилище не удаляются. Возвращает "variants", если правки не перенесены: у товара
+    есть варианты (цвета) со своими фото — страница показывает их, парсер общую галерею
+    таким товарам не пишет.
+    """
+    if not product or not product.pk:
+        return ""
+    external = getattr(product, "external_data", None) or {}
+    if external.get("source_variant_id") or external.get("source_variant_slug"):
+        return ""
+    after = base_gallery_snapshot(product)
+    changed = [(before.get(pk), values) for pk, values in after.items() if before.get(pk) != values]
+    removed = [values for pk, values in before.items() if pk not in after]
+    if not changed and not removed:
+        return ""
+
+    target_model = domain_models().get(str(product.product_type or "").replace("-", "_"))
+    target = target_model.objects.filter(base_product_id=product.pk).first() if target_model else None
+    relation = _child_relation(type(target), _GALLERY_RELATIONS) if target else None
+    if not relation:
+        return ""
+    variants = _child_relation(type(target), _VARIANT_RELATIONS)
+    for variant in getattr(target, variants[0]).all() if variants else []:
+        images = _child_relation(type(variant), ("images",))
+        if images and getattr(variant, images[0]).exists():
+            return "variants"
+
+    name, model, parent_field = relation
+    manager = getattr(target, name)
+    rows = list(manager.all())
+    fields = [
+        field for field in _GALLERY_SYNC_FIELDS
+        if any(f.name == field for f in model._meta.concrete_fields)
+    ]
+
+    def find(keys):
+        return next((row for row in rows if keys and keys & _row_keys(row)), None)
+
+    with transaction.atomic():
+        for old, values in changed:
+            new_keys = _snapshot_keys(values)
+            if not new_keys:
+                continue  # строка только с видео: в галереях разделов видео нет
+            row = find(_snapshot_keys(old)) or find(new_keys)
+            data = {field: values[field] for field in fields}
+            if row is None:
+                row = model.objects.bulk_create([model(**data, **{parent_field: target})])[0]
+                rows.append(row)
+            else:
+                model.objects.filter(pk=row.pk).update(**data)
+                for field, value in data.items():
+                    setattr(row, field, value)
+            if data.get("is_main"):
+                manager.exclude(pk=row.pk).update(is_main=False)
+
+        kept = set().union(*(_snapshot_keys(values) for values in after.values())) if after else set()
+        stale_pks = [
+            row.pk
+            for values in removed
+            for row in rows
+            if (_snapshot_keys(values) - kept) & _row_keys(row)
+        ]
+        if stale_pks:
+            from .signals import storage_deletes_suppressed
+
+            # Только строки: файл из хранилища убирает штатная проверка ссылок, не этот перенос.
+            with storage_deletes_suppressed():
+                manager.filter(pk__in=stale_pks).delete()
+    return ""

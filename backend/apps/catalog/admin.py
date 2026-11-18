@@ -1367,6 +1367,24 @@ class BaseProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, RunA
     
     inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeValueInline]
 
+    def save_formset(self, request, form, formset, change):
+        """Правки дополнительных фото переносятся в галерею карточки раздела — её читает страница товара."""
+        if formset.model is not ProductImage:
+            return super().save_formset(request, form, formset, change)
+        from .domain_sync import base_gallery_snapshot, sync_base_gallery_to_domain
+
+        before = base_gallery_snapshot(form.instance)
+        super().save_formset(request, form, formset, change)
+        if sync_base_gallery_to_domain(form.instance, before) == "variants":
+            self.message_user(
+                request,
+                _(
+                    "Дополнительные фото на страницу товара не перенесены: у этого товара фото "
+                    "хранятся у цветов (вариантов). Меняйте их в карточке раздела."
+                ),
+                level=messages.WARNING,
+            )
+
     def slug_preview(self, obj):
         """Предпросмотр slug."""
         if obj:
