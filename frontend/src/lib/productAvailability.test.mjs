@@ -12,6 +12,7 @@ import {
   SCHEMA_SHIPPING_COUNTRIES,
   buildSchemaImages,
   isOwnDomainImage,
+  linkPreviewImage,
   pickOwnDomainImage,
   preferOwnDomainImages,
   buildSchemaShippingDetails,
@@ -162,4 +163,24 @@ test('картинки разметки: чужой CDN убирается, ес
   assert.equal(pickOwnDomainImage(cdn, [gif, own2], site), own2)
   assert.equal(pickOwnDomainImage(cdn, [], site), cdn)
   assert.equal(pickOwnDomainImage(own2, [own1], site), own2)
+})
+
+test('link preview image is always a JPEG copy of our own picture', () => {
+  const site = 'https://mudaroba.com'
+  const jpeg = 'https://mudaroba.com/api/catalog/proxy-media/?path=products%2Fmedicines%2Fkadcyla%2Fmain-1.webp&max_width=800&format=jpeg'
+  assert.equal(linkPreviewImage('https://mudaroba.com/api/catalog/proxy-media/?path=products%2Fmedicines%2Fkadcyla%2Fmain-1.webp', site), jpeg)
+  assert.equal(linkPreviewImage('https://cdn.mudaroba.com/products/medicines/kadcyla/main-1.webp', site), jpeg)
+  assert.equal(
+    linkPreviewImage('https://cdn.mudaroba.com/products/shoes/a%20b/photo.JPG', site),
+    'https://mudaroba.com/api/catalog/proxy-media/?path=products%2Fshoes%2Fa%20b%2Fphoto.JPG&max_width=800&format=jpeg',
+  )
+  for (const url of [
+    'https://img-lcwaikiki.mncdn.com/a/b.jpg',
+    'https://cdn.mudaroba.com/products/x/anim.gif',
+    'https://mudaroba.com/api/catalog/proxy-media/?path=products%2Fx%2Fclip.mp4',
+    'https://mudaroba.com/product-placeholder.svg',
+    '',
+  ]) {
+    assert.equal(linkPreviewImage(url, site), url)
+  }
 })

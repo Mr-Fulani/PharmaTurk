@@ -12,6 +12,7 @@ import SupplementPurchasePanel, { SupplementMarketCheck } from '../../components
 import {
   SCHEMA_RETURN_POLICY,
   buildSchemaImages,
+  linkPreviewImage,
   pickOwnDomainImage,
   preferOwnDomainImages,
   buildSchemaShippingDetails,
@@ -1538,6 +1539,8 @@ export default function ProductPage({
   const ogImage = pickOwnDomainImage(toAbsoluteMediaUrl(rawOgImage), galleryImageUrls, siteUrl)
   // Все фото галереи — для Merchant Center («изображения на предложение»), главное первым
   const schemaImages = buildSchemaImages(preferOwnDomainImages([ogImage, ...galleryImageUrls], siteUrl))
+  // Превью ссылки — JPEG-копия: её показывают все мессенджеры (в JSON-LD остаётся оригинал)
+  const previewImage = linkPreviewImage(ogImage, siteUrl)
   const availability = resolveSchemaAvailability({
     availabilityStatus: product.availability_status,
     isAvailable: product.is_available,
@@ -1701,11 +1704,11 @@ export default function ProductPage({
         <meta property="og:description" content={metaDescription} />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content={isService ? 'website' : 'product'} />
-        <meta property="og:image" content={ogImage} />
+        <meta property="og:image" content={previewImage} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={metaTitle} />
         <meta name="twitter:description" content={metaDescription} />
-        <meta name="twitter:image" content={ogImage} />
+        <meta name="twitter:image" content={previewImage} />
         {shouldPublishProductSchema({
           type: productSchema['@type'],
           hasOffer: Boolean(productSchema.offers),
@@ -1824,7 +1827,7 @@ export default function ProductPage({
                           favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
                           cornerIcon={true}
                         />
-                        <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
+                        <ShareButton title={metaTitle} description={metaDescription} imageUrl={previewImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
                       </div>
                     </div>
                   )
@@ -1846,7 +1849,7 @@ export default function ProductPage({
                         favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
                         cornerIcon={true}
                       />
-                      <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
+                      <ShareButton title={metaTitle} description={metaDescription} imageUrl={previewImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
                     </div>
                   </div>
                 )}
@@ -2022,7 +2025,7 @@ export default function ProductPage({
                       <ShareButton
                         title={metaTitle}
                         description={metaDescription}
-                        imageUrl={ogImage}
+                        imageUrl={previewImage}
                         slug={product.slug}
                         productType={productType}
                         pageUrl={canonicalUrl}
@@ -2060,7 +2063,7 @@ export default function ProductPage({
                       <ShareButton
                         title={metaTitle}
                         description={metaDescription}
-                        imageUrl={ogImage}
+                        imageUrl={previewImage}
                         slug={product.slug}
                         productType={productType}
                         pageUrl={canonicalUrl}
