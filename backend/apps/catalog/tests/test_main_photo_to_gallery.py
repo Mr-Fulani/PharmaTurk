@@ -41,7 +41,12 @@ def offline(monkeypatch):
 
 
 @pytest.fixture
-def admin_client(client, django_user_model):
+def admin_client(client, django_user_model, settings):
+    # В CI DEBUG=0 и манифестное хранилище статики: без collectstatic шаблон админки падает.
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
     client.force_login(django_user_model.objects.create_superuser("photo-admin", "photo@example.com", "x" * 20))
     return client
 
