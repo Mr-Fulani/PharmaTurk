@@ -34,6 +34,25 @@ export function requestTotal(cart) {
 }
 
 /**
+ * Миниатюра позиции (72 px): корзина отдаёт фото из нашего CDN через proxy-image в полном
+ * размере (до 2000 px, ~160 КБ), а proxy-media по тому же пути умеет уменьшать (max_width).
+ * Чужие и уже уменьшаемые адреса не трогаем.
+ */
+export function drawerThumbUrl(url) {
+  try {
+    const parsed = new URL(url, 'https://mudaroba.com')
+    if (!/\/proxy-image\/?$/.test(parsed.pathname)) return url
+    const source = new URL(parsed.searchParams.get('url') || '')
+    if (source.hostname !== 'cdn.mudaroba.com') return url
+    const path = decodeURIComponent(source.pathname.replace(/^\/+/, ''))
+    if (!path) return url
+    return `/api/catalog/proxy-media/?path=${encodeURIComponent(path)}&max_width=192`
+  } catch {
+    return url
+  }
+}
+
+/**
  * open(payload, pathname): payload = { item, total, trigger } — позиция и сумма из ответа сервера
  * (чего в ответе нет, того нет и в панели), trigger — кнопка, на которую вернётся фокус.
  */

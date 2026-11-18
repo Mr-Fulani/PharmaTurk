@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import i18next from 'i18next'
 
-import { addedToRequestStore, isCartPath, pickAddedItem, requestTotal } from './addedToRequest.js'
+import { addedToRequestStore, drawerThumbUrl, isCartPath, pickAddedItem, requestTotal } from './addedToRequest.js'
 
 const state = () => addedToRequestStore.getState()
 
@@ -85,5 +85,21 @@ test('every drawer string exists in both locales', () => {
   for (const key of ['added_drawer_title', 'added_drawer_close', 'added_drawer_continue', 'added_drawer_note', 'go_to_request']) {
     assert.ok(locales.ru[key], `ru ${key}`)
     assert.ok(locales.en[key], `en ${key}`)
+  }
+})
+
+test('drawer thumbnail asks for a small copy of our CDN photo and leaves other urls alone', () => {
+  assert.equal(
+    drawerThumbUrl('https://mudaroba.com/api/catalog/proxy-image/?url=https%3A//cdn.mudaroba.com/products/shoes/a%20b/photo.jpg'),
+    '/api/catalog/proxy-media/?path=products%2Fshoes%2Fa%20b%2Fphoto.jpg&max_width=192',
+  )
+  for (const url of [
+    'https://mudaroba.com/api/catalog/proxy-image/?url=https%3A//scontent.cdninstagram.com/p.jpg',
+    '/api/catalog/proxy-media/?path=products%2Fa.jpg',
+    'https://example.com/a.jpg',
+    '/product-placeholder.svg',
+    '',
+  ]) {
+    assert.equal(drawerThumbUrl(url), url)
   }
 })

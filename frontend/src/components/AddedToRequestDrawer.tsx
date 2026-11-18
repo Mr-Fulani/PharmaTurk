@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { useStore } from 'zustand'
 import { CheckIcon, XMarkIcon } from '@heroicons/react/24/solid'
-import { ADDED_DRAWER_AUTO_CLOSE_MS, addedToRequestStore } from '../lib/addedToRequest'
+import { ADDED_DRAWER_AUTO_CLOSE_MS, addedToRequestStore, drawerThumbUrl } from '../lib/addedToRequest'
 import { gtmAddedDrawer } from '../lib/gtm'
 import { getLocalizedProductName } from '../lib/i18n'
 import { resolveMediaUrl } from '../lib/media'
@@ -153,7 +153,7 @@ export default function AddedToRequestDrawer() {
             <div className={styles.item}>
               {item.product_image_url && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img className={styles.image} src={resolveMediaUrl(item.product_image_url)} alt="" width={72} height={72} />
+                <img className={styles.image} src={drawerThumbUrl(resolveMediaUrl(item.product_image_url))} alt="" width={72} height={72} />
               )}
               <div className={styles.itemText}>
                 {name && <span className={styles.name}>{name}</span>}
