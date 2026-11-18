@@ -178,7 +178,9 @@ jobs:
         if: needs.scope.outputs.backend != 'false'
         run: |
           DESELECT=$(sed 's/^/--deselect /' ci-known-failures.txt | tr '\n' ' ')
-          poetry run pytest -q $DESELECT \
+          # faulthandler: если тест висит дольше 3 мин, в журнал попадает его стек
+          # (18.11.2026 набор дважды завис на ~24 % без единой подсказки).
+          poetry run pytest -q $DESELECT -o faulthandler_timeout=180 \
             --cov=api \
             --cov=apps \
             --cov=config \

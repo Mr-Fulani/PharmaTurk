@@ -42,7 +42,8 @@ class CurrencyRateService:
             raise ValueError(f"Unknown source: {source}")
         
         try:
-            response = self.session.get(self.API_ENDPOINTS[source])
+            # У requests.Session нет общего timeout — без явного значения запрос висит бесконечно
+            response = self.session.get(self.API_ENDPOINTS[source], timeout=(5, 20))
             response.raise_for_status()
             
             if source == 'centralbank_rf':
