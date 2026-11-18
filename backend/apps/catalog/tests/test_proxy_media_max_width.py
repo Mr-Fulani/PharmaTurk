@@ -217,3 +217,36 @@ def test_proxy_media_webp_conversion_does_not_store_image_bytes_in_cache(rf, sma
     assert Image.open(io.BytesIO(resp.content)).format == 'WEBP'
     assert resp['Cache-Control'] == 'public, max-age=2592000, immutable'
     mock_cache.set.assert_not_called()
+
+
+def test_proxy_media_format_jpeg_converts_transparent_webp_for_link_previews(rf):
+    """og:image: мессенджеры не все показывают WebP — превью отдаётся в JPEG (18.11.2026)."""
+    proxy_media = _proxy_media_view()
+    buf = io.BytesIO()
+    Image.new('RGBA', (1600, 1000), color=(10, 100, 200, 0)).save(buf, format='WEBP')
+
+    cache.clear()
+    mock_storage = MagicMock()
+    cm = MagicMock()
+    cm.__enter__.return_value = io.BytesIO(buf.getvalue())
+    cm.__exit__.return_value = None
+    mock_storage.open.return_value = cm
+
+    with override_settings(R2_PUBLIC_URL='https://test.r2.dev'):
+        with patch(
+            'apps.catalog.utils.media_path.resolve_existing_media_storage_key',
+            return_value='products/card_test.webp',
+        ):
+            with patch('django.core.files.storage.default_storage', mock_storage):
+                req = rf.get(
+                    '/api/catalog/proxy-media/',
+                    {'path': 'products/card_test.webp', 'max_width': '800', 'format': 'jpeg'},
+                )
+                resp = proxy_media(req)
+
+    assert resp.status_code == 200
+    assert resp['Content-Type'] == 'image/jpeg'
+    img = Image.open(io.BytesIO(resp.content))
+    assert img.format == 'JPEG'
+    assert img.size[0] == 800
+    assert img.getpixel((5, 5))[0] > 240  # прозрачный фон стал белым, а не чёрным

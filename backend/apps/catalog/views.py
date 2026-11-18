@@ -4156,6 +4156,7 @@ def proxy_media(request):
         # Уменьшение изображений для карточек в каталоге (?max_width= / ?w=, только jpeg/png/webp).
         if max_w_int and content_type in ('image/jpeg', 'image/png', 'image/webp'):
             webp_resized = None
+            as_jpeg = (request.GET.get('format') or '').lower() in ('jpeg', 'jpg')
             try:
                 with default_storage.open(resolved_path, 'rb') as rf:
                     img = Image.open(rf)
@@ -4171,13 +4172,21 @@ def proxy_media(request):
                             img = img.convert('RGB')
                     img.thumbnail((max_w_int, max_w_int * 4), Image.Resampling.LANCZOS)
                     out = io.BytesIO()
-                    img.save(out, format='WEBP', quality=80, method=2)
+                    if as_jpeg:
+                        # Превью ссылок (og:image): JPEG понимают все мессенджеры, WebP — не все.
+                        if img.mode != 'RGB':
+                            flat = Image.new('RGB', img.size, (255, 255, 255))
+                            flat.paste(img, mask=img.convert('RGBA').split()[-1])
+                            img = flat
+                        img.save(out, format='JPEG', quality=85, optimize=True)
+                    else:
+                        img.save(out, format='WEBP', quality=80, method=2)
                     webp_resized = out.getvalue()
             except Exception as resize_err:
                 logger.warning('proxy_media max_width для %s: %s', resolved_path, resize_err)
                 webp_resized = None
             if webp_resized is not None:
-                resp = HttpResponse(webp_resized, content_type='image/webp')
+                resp = HttpResponse(webp_resized, content_type='image/jpeg' if as_jpeg else 'image/webp')
                 resp['Content-Length'] = str(len(webp_resized))
                 resp['Cache-Control'] = 'public, max-age=2592000, immutable'
                 resp['Vary'] = 'Accept'

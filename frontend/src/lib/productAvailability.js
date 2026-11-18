@@ -113,6 +113,26 @@ export function pickOwnDomainImage(primary, candidates, siteUrl) {
   return (candidates || []).find((url) => url && !/\.gif\b/i.test(url) && isOwnDomainImage(url, siteUrl)) || primary
 }
 
+/**
+ * Превью ссылки (og:image, twitter:image, «Поделиться»): наша картинка — всегда JPEG до 800 px
+ * через proxy-media. WebP и тяжёлые оригиналы показывают не все мессенджеры (после замены фото
+ * на .webp превью пропадало, 18.11.2026). Чужие адреса, GIF и видео не трогаем.
+ */
+export function linkPreviewImage(url, siteUrl) {
+  try {
+    if (!url || !isOwnDomainImage(url, siteUrl)) return url
+    const parsed = new URL(url)
+    const site = new URL(siteUrl)
+    let path = ''
+    if (/\/proxy-media\/?$/.test(parsed.pathname)) path = parsed.searchParams.get('path') || ''
+    else if (parsed.hostname.toLowerCase() === `cdn.${site.hostname.toLowerCase()}`) path = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''))
+    if (!/\.(jpe?g|png|webp)$/i.test(path)) return url
+    return `${site.origin}/api/catalog/proxy-media/?path=${encodeURIComponent(path)}&max_width=800&format=jpeg`
+  } catch {
+    return url
+  }
+}
+
 // Условия страницы /returns: 14 дней с момента получения, возврат почтой, обратную
 // доставку оплачивает покупатель (магазин берёт её на себя только при браке).
 // Страны — прежние и все страны доставки.
