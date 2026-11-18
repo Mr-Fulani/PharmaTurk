@@ -426,6 +426,16 @@ def _row_keys(row) -> set:
     return {key for key in (file_name, getattr(row, "image_url", "") or "") if key}
 
 
+def _variants_have_photos(target) -> bool:
+    """У записи есть варианты (цвета) со своими фото — страница товара показывает их."""
+    variants = _child_relation(type(target), _VARIANT_RELATIONS)
+    for variant in getattr(target, variants[0]).all() if variants else []:
+        images = _child_relation(type(variant), ("images",))
+        if images and getattr(variant, images[0]).exists():
+            return True
+    return False
+
+
 def sync_base_gallery_to_domain(product, before: dict) -> str:
     """Переносит правки галереи Product (относительно снимка before) в галерею доменной записи.
 
@@ -452,11 +462,8 @@ def sync_base_gallery_to_domain(product, before: dict) -> str:
     relation = _child_relation(type(target), _GALLERY_RELATIONS) if target else None
     if not relation:
         return ""
-    variants = _child_relation(type(target), _VARIANT_RELATIONS)
-    for variant in getattr(target, variants[0]).all() if variants else []:
-        images = _child_relation(type(variant), ("images",))
-        if images and getattr(variant, images[0]).exists():
-            return "variants"
+    if _variants_have_photos(target):
+        return "variants"
 
     name, model, parent_field = relation
     manager = getattr(target, name)
@@ -499,4 +506,45 @@ def sync_base_gallery_to_domain(product, before: dict) -> str:
             # Только строки: файл из хранилища убирает штатная проверка ссылок, не этот перенос.
             with storage_deletes_suppressed():
                 manager.filter(pk__in=stale_pks).delete()
+    return ""
+
+
+def apply_main_photo_to_gallery(obj) -> str:
+    """Загруженное главное фото (Product или доменной записи) встаёт первым кадром галереи страницы.
+
+    Страница товара при непустой галерее главное фото отдельно не показывает (у парсерных
+    товаров это тот же кадр, что и первая картинка галереи), поэтому после замены главного
+    фото в админке на странице оставался прежний кадр. Правило:
+    - галерея пустая — ничего: страница и так покажет главное фото;
+    - файл уже есть в галерее — ничего (повторный вызов дублей не создаёт);
+    - есть картинка «главная» или картинка одна — в ней заменяется файл;
+    - картинок несколько и «главной» нет — фото добавляется новой «главной».
+    image_url строки не трогаем: по нему парсер узнаёт уже загруженный кадр и не добавляет
+    его заново; сериализаторы берут файл первым. Пишем через update()/bulk_create, файлы из
+    хранилища не удаляются. Вызывается только из форм админки — потоки парсеров не затронуты.
+    Возвращает "variants", если на странице показываются фото вариантов (цветов).
+    """
+    file_name = getattr(getattr(obj, "main_image_file", None), "name", "") or ""
+    if not obj or not obj.pk or not file_name:
+        return ""
+    from .models import Product
+
+    target = obj
+    if isinstance(obj, Product):
+        target_model = domain_models().get(str(obj.product_type or "").replace("-", "_"))
+        target = target_model.objects.filter(base_product_id=obj.pk).first() if target_model else None
+    relation = _child_relation(type(target), _GALLERY_RELATIONS) if target else None
+    if not relation:
+        return ""
+    name, model, parent_field = relation
+    rows = list(_ordered(getattr(target, name)))
+    if not rows or any(row.image_file and row.image_file.name == file_name for row in rows):
+        return ""
+    if _variants_have_photos(target):
+        return "variants"
+    main = next((row for row in rows if row.is_main), rows[0] if len(rows) == 1 else None)
+    if main is not None:
+        model.objects.filter(pk=main.pk).update(image_file=file_name, is_main=True)
+    else:
+        model.objects.bulk_create([model(image_file=file_name, is_main=True, sort_order=0, **{parent_field: target})])
     return ""

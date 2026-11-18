@@ -117,3 +117,13 @@ class AdminMediaHelpTextMixin:
         if extra_help and field:
             field.help_text = _append_help_text(getattr(field, "help_text", ""), extra_help)
         return field
+
+
+class MainMediaPreviewAdminMixin:
+    def main_media_preview(self, obj):
+        if not obj:
+            return _("Нет медиа")
+        image_url = resolve_media_url(obj, 'main_image_file', 'main_image') if hasattr(obj, 'main_image_file') else ""
+        video_url = resolve_media_url(obj, 'main_video_file', 'video_url') if hasattr(obj, 'main_video_file') else ""
+        return render_media_preview(image_url or video_url)
+    main_media_preview.short_description = _("Превью медиа")

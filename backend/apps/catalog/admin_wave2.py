@@ -8,7 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 from django.db import models as django_models
 
-from .admin_media import resolve_media_url, render_media_preview
+from .admin_media import MainMediaPreviewAdminMixin, resolve_media_url, render_media_preview
 
 from .models import (
     Category,
@@ -20,7 +20,7 @@ from .models import (
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
 )
-from .admin_base import AIStatusFilter, RunAIActionMixin, MediaEnrichmentStatusFilter, MediaEnrichmentMixin, ShadowProductCleanupAdminMixin
+from .admin_base import AIStatusFilter, RunAIActionMixin, MainPhotoGalleryAdminMixin, MediaEnrichmentStatusFilter, MediaEnrichmentMixin, ShadowProductCleanupAdminMixin
 
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ def _make_image_inline(model_class):
 #  Базовый Admin для простых доменов
 # ─────────────────────────────────────────────────────────────
 
-class _SimpleDomainAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
+class _SimpleDomainAdmin(MainMediaPreviewAdminMixin, MainPhotoGalleryAdminMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     """Базовый ModelAdmin для простых доменных моделей без вариантов."""
     ai_logs_prefetch_path = "base_product__ai_logs"
 
@@ -99,7 +99,7 @@ class _SimpleDomainAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin
     list_editable = ['price', 'old_price', 'is_available']
     search_fields = ['name', 'description', 'slug']
     prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ['slug_preview', 'created_at', 'updated_at']
+    readonly_fields = ['slug_preview', 'main_media_preview', 'created_at', 'updated_at']
 
     # Базовые fieldsets — домены расширяют через _domain_fieldset
     _base_fieldsets = (
@@ -120,7 +120,7 @@ class _SimpleDomainAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin
             'fields': ('is_featured', 'is_new'),
         }),
         (_('Медиа'), {
-            'fields': ('main_image', 'main_image_file'),
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
         }),
         (_('Внешние данные'), {
             'fields': ('external_id', 'external_url', 'external_data'),
