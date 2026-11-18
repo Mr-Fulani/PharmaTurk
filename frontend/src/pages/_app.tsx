@@ -8,6 +8,7 @@ import SectionNav from '../components/SectionNav'
 import ContactWidget from '../components/ContactWidget'
 import CookieBanner from '../components/CookieBanner'
 import AddedToRequestDrawer from '../components/AddedToRequestDrawer'
+import ConfirmDialog from '../components/ConfirmDialog'
 import NavigationProgress from '../components/NavigationProgress'
 import { AuthProvider } from '../context/AuthContext'
 import { ThemeProvider } from '../context/ThemeContext'
@@ -181,6 +182,9 @@ gtag('config', '${GA4_ID.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', { send_p
 
         {/* Панель «Добавлено в заявку» — одна на все страницы, открывается кнопкой «В заявку» */}
         <AddedToRequestDrawer />
+
+        {/* Окно подтверждения в стиле сайта вместо системного confirm() */}
+        <ConfirmDialog />
 
         {/* Cookie Consent баннер — показывается всем пользователям */}
         <CookieBanner />

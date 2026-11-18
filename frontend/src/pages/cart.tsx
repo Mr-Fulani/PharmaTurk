@@ -3,6 +3,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
 import api, { getSingleFlight } from '../lib/api'
+import { askConfirm } from '../lib/confirmDialog'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useCartStore } from '../store/cart'
 import {
@@ -176,10 +177,14 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     }
   }
 
-  const removeItem = async (itemId: number) => {
-    if (!confirm(t('cart_confirm_remove', 'Вы уверены, что хотите удалить этот товар из корзины?'))) {
-      return
-    }
+  const removeItem = async (itemId: number, name: string) => {
+    const accepted = await askConfirm({
+      title: t('confirm_remove_title', 'Удалить товар из заявки?'),
+      lines: name ? [name] : [],
+      acceptLabel: t('remove', 'Удалить'),
+      declineLabel: t('cancel', 'Отмена'),
+    })
+    if (!accepted) return
     setLoading(true)
     try {
       await api.delete(`/orders/cart/${itemId}/remove`)
@@ -192,9 +197,13 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   }
 
   const clearCart = async () => {
-    if (!confirm(t('cart_confirm_clear', 'Вы уверены, что хотите очистить корзину?'))) {
-      return
-    }
+    const accepted = await askConfirm({
+      title: t('confirm_clear_title', 'Очистить заявку?'),
+      lines: [t('confirm_clear_text', { count: cart.items_count, defaultValue: 'Товаров в заявке: {{count}}. Вернуть их будет нельзя.' })],
+      acceptLabel: t('confirm_clear_accept', 'Очистить'),
+      declineLabel: t('cancel', 'Отмена'),
+    })
+    if (!accepted) return
     setLoading(true)
     try {
       await api.post('/orders/cart/clear')
@@ -594,7 +603,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                             )}
                           </div>
                           <button
-                            onClick={() => removeItem(item.id)}
+                            onClick={() => removeItem(item.id, localizedName)}
                             disabled={loading}
                             className="rounded-md p-2 text-gray-400 transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] disabled:opacity-50"
                             aria-label={t('remove', 'Удалить')}
