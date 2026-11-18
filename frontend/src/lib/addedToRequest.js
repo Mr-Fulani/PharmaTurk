@@ -25,12 +25,39 @@ export function pickAddedItem(cart) {
   return added
 }
 
-/** Сумма заявки для плашки: только если сервер прислал положительное число. */
+/**
+ * Позиция ждёт проверки поставщика: её только что добавили, сервер ещё не сверял цену и наличие
+ * (verification_status «not_checked», is_payable false). Проверка идёт только на странице /cart;
+ * из панели её не запускаем — это запросы к поставщикам. Количество у такой позиции сервер
+ * менять разрешает (/orders/cart/<id>/update на статус не смотрит), это не «нет в наличии».
+ */
+export function isAwaitingCheck(item) {
+  return item?.is_payable === false && item?.verification_status === 'not_checked'
+}
+
+/**
+ * Сумма заявки для панели — только из чисел сервера. total_amount / final_amount сервера не
+ * включают позиции, ждущие проверки, поэтому их серверные total прибавляются: иначе сумма не
+ * сходится со списком. С промокодом так считать нельзя (скидка посчитана от неполной суммы) —
+ * тогда суммы нет, пока позиции не проверены. Позиции, исключённые по настоящей причине
+ * (нет в наличии и т. п.), в сумму не входят, как и у сервера.
+ */
 export function requestTotal(cart) {
-  const amount = cart?.final_amount ?? cart?.total_amount
-  const value = Number(amount)
-  if (!Number.isFinite(value) || value <= 0 || !cart?.currency) return null
-  return { amount, currency: cart.currency }
+  if (!cart?.currency) return null
+  const amount = cart.final_amount ?? cart.total_amount
+  const base = Number(amount)
+  if (!Number.isFinite(base)) return null
+  const awaiting = (Array.isArray(cart.items) ? cart.items : []).filter(isAwaitingCheck)
+  if (!awaiting.length) return base > 0 ? { amount, currency: cart.currency } : null
+  if (cart.promo_code) return null
+  let value = base
+  for (const item of awaiting) {
+    const total = Number(item.total)
+    if (!Number.isFinite(total)) return null
+    value += total
+  }
+  value = Math.round(value * 100) / 100
+  return value > 0 ? { amount: value, currency: cart.currency } : null
 }
 
 /**

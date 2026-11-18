@@ -5,7 +5,7 @@ import test from 'node:test'
 import i18next from 'i18next'
 
 import {
-  addedToRequestStore, drawerRows, drawerThumbUrl, isCartPath, orderDrawerItems, pickAddedItem, requestTotal, undoAddParams,
+  addedToRequestStore, drawerRows, drawerThumbUrl, isAwaitingCheck, isCartPath, orderDrawerItems, pickAddedItem, requestTotal, undoAddParams,
 } from './addedToRequest.js'
 
 const state = () => addedToRequestStore.getState()
@@ -158,4 +158,57 @@ test('a removed item leaves an undo row in its place', () => {
 test('undo re-adds the same product, size and quantity', () => {
   assert.deepEqual(undoAddParams({ id: 1, product: 55, quantity: 2, chosen_size: '38' }), { product_id: '55', quantity: '2', size: '38' })
   assert.deepEqual(undoAddParams({ id: 4, product: 7, quantity: 1, chosen_size: '' }), { product_id: '7', quantity: '1' })
+})
+
+// Ответ боевого сервера сразу после добавления: новая позиция ещё не проверена у поставщика
+const verified = (id, total) => ({ id, quantity: 1, total, is_payable: true, verification_status: 'verified' })
+const justAdded = (id, total) => ({ id, quantity: 1, total, is_payable: false, verification_status: 'not_checked' })
+
+test('a just added item is waiting for the supplier check, a really blocked one is not', () => {
+  assert.equal(isAwaitingCheck(justAdded(1, '100.00')), true)
+  assert.equal(isAwaitingCheck(verified(2, '100.00')), false)
+  // нет в наличии у поставщика — настоящая причина блокировки
+  assert.equal(isAwaitingCheck({ id: 3, is_payable: false, verification_status: 'blocked' }), false)
+  // проверка обязательности выключена: сервер считает позицию оплачиваемой
+  assert.equal(isAwaitingCheck({ id: 4, is_payable: true, verification_status: 'not_checked' }), false)
+  assert.equal(isAwaitingCheck(undefined), false)
+})
+
+test('the total includes items waiting for the check, so it matches the list', () => {
+  const cart = {
+    currency: 'TRY', total_amount: 62057, final_amount: 62057,
+    items: [verified(1, '62057.00'), justAdded(2, '1499.88')],
+  }
+  assert.deepEqual(requestTotal(cart), { amount: 63556.88, currency: 'TRY' })
+  // заявка из одной только что добавленной позиции: сервер прислал 0
+  assert.deepEqual(
+    requestTotal({ currency: 'RUB', total_amount: 0, final_amount: 0, items: [justAdded(1, '2477.00')] }),
+    { amount: 2477, currency: 'RUB' },
+  )
+  // без копеечных хвостов сложения
+  assert.deepEqual(
+    requestTotal({ currency: 'USD', final_amount: 0.1, items: [verified(1, '0.10'), justAdded(2, '0.20')] }),
+    { amount: 0.3, currency: 'USD' },
+  )
+})
+
+test('no total when it cannot be honest', () => {
+  const items = [verified(1, '1000.00'), justAdded(2, '500.00')]
+  // промокод: скидка сервера посчитана от неполной суммы
+  assert.equal(requestTotal({ currency: 'RUB', final_amount: 900, promo_code: { id: 1, code: 'X' }, items }), null)
+  // у ждущей позиции нет серверной суммы строки
+  assert.equal(requestTotal({ currency: 'RUB', final_amount: 1000, items: [verified(1, '1000.00'), justAdded(2, undefined)] }), null)
+  // позиция «цена по запросу» ждёт проверки: её строка 0, сумма — только из остальных
+  assert.deepEqual(
+    requestTotal({ currency: 'RUB', final_amount: 1000, items: [verified(1, '1000.00'), justAdded(2, '0.00')] }),
+    { amount: 1000, currency: 'RUB' },
+  )
+})
+
+test('an item excluded for a real reason is not added to the total', () => {
+  const outOfStock = { id: 2, quantity: 1, total: '500.00', is_payable: false, verification_status: 'blocked' }
+  assert.deepEqual(
+    requestTotal({ currency: 'RUB', final_amount: '1000.00', items: [verified(1, '1000.00'), outOfStock] }),
+    { amount: '1000.00', currency: 'RUB' },
+  )
 })

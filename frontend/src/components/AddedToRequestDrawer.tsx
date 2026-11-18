@@ -12,6 +12,7 @@ import {
   addedToRequestStore,
   drawerRows,
   drawerThumbUrl,
+  isAwaitingCheck,
   orderDrawerItems,
   pickAddedItem,
   requestTotal,
@@ -346,8 +347,9 @@ export default function AddedToRequestDrawer() {
                 }
                 const href = itemHref(item)
                 const rowBusy = busy === row.key
-                // Как на /cart: заблокированную позицию (кроме ожидающей подтверждения) менять нельзя
-                const quantityLocked = isBlockingCartItem(item) && !isSupplierConfirmationPending(item)
+                // Как на /cart: позицию, заблокированную по настоящей причине, менять нельзя.
+                // Только что добавленная ещё не проверена — это не причина, сервер менять разрешает
+                const quantityLocked = isBlockingCartItem(item) && !isAwaitingCheck(item) && !isSupplierConfirmationPending(item)
                 return (
                   <li
                     key={row.key}
