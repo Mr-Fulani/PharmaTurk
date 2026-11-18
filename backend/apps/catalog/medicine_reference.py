@@ -6,7 +6,7 @@ from django.db import models
 from django.db.models import Q
 
 from .models import MedicineProduct
-from .serializers import MedicineProductImageSerializer
+from .serializers import MedicineProductImageSerializer, _resolve_file_url
 
 
 logger = logging.getLogger(__name__)
@@ -157,7 +157,9 @@ def build_medicine_reference_payload(product, request, limit):
         if source_reference:
             matched_reference_ids.add(source_reference.pk)
 
-        main_image = analog.main_image or ""
+        # Как в карточке лекарства: загруженное фото главнее ссылки и галереи. Иначе в блоке
+        # аналогов оставалось прежнее фото после замены в админке (PROPOFOL-PF, 18.11.2026).
+        main_image = _resolve_file_url(getattr(analog, "main_image_file", None), request) or analog.main_image or ""
         if not main_image:
             first_gallery = analog.gallery_images.first()
             if first_gallery:
