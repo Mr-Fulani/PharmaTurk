@@ -9,6 +9,8 @@ class MudarobaAdminSite(AdminSite):
     site_header = "Mudaroba — Панель управления"
     site_title = "Mudaroba Admin"
     index_title = "Панель управления Mudaroba"
+    # Поле «Проверить лекарство» над списком разделов (TD-044, docs/DRUG_CHECK.md).
+    index_template = "admin/mudaroba_index.html"
 
     MEDIA_MODELS = frozenset(
         {
@@ -94,6 +96,7 @@ class MudarobaAdminSite(AdminSite):
     APP_GROUPS = {
         "ai": "AI-модуль",
         "auth": "Аутентификация",
+        "drug_check": "Проверка лекарств",
         "feedback": "Отзывы и вопросы",
         "marketing": "Маркетинг",
         "orders": "Заказы и корзины",
@@ -106,6 +109,7 @@ class MudarobaAdminSite(AdminSite):
 
     GROUP_LABELS = {
         "Товары каталога": "catalog_products",
+        "Проверка лекарств": "drug_check_group",
         "Изображения и медиа": "catalog_media",
         "Категории и справочники": "catalog_reference",
         "Варианты товаров": "catalog_variants",
@@ -186,6 +190,24 @@ class MudarobaAdminSite(AdminSite):
                     self.MEDIA_MODEL_ORDER.get(model.get("object_name", ""), 999),
                     str(model.get("name", "")),
                 )
+            )
+
+        drug_group = grouped.get("Проверка лекарств")
+        user = getattr(request, "user", None)
+        if drug_group and user is not None and user.has_perm("catalog.view_medicineproduct"):
+            # Отдельный пункт меню — поиск по названию или штрихкоду (TD-044).
+            from django.urls import reverse
+
+            drug_group["models"].insert(
+                0,
+                {
+                    "name": "Проверить лекарство (название или штрихкод)",
+                    "object_name": "DrugCheckLookup",
+                    "admin_url": reverse(f"{self.name}:drug_check_lookup"),
+                    "add_url": None,
+                    "view_only": True,
+                    "perms": {"view": True},
+                },
             )
 
         result = list(grouped.values())

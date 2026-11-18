@@ -137,6 +137,7 @@ class IlacFiyatiSource:
         except (InvalidOperation, ValueError):
             result.price = None
         currency = (scraped.currency or "TRY").upper()
+        result.currency = currency
         notes = []
         inactive = bool(getattr(scraped, "source_inactive", False))
         result.status = "Pasif (снят)" if inactive else "Aktif"
