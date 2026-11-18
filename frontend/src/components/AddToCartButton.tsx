@@ -6,6 +6,8 @@ import { isSoldOutCartError } from '../lib/cartStock'
 import { useCartStore } from '../store/cart'
 import { gtmAddToCart, type GtmEcommerceItem } from '../lib/gtm'
 import { addedToRequestStore, pickAddedItem } from '../lib/addedToRequest'
+import { addConflictOffer, addConflictRetryParams, askConfirm } from '../lib/confirmDialog'
+import { formatMoney } from '../lib/price'
 import styles from './AddToCartButton.module.css'
 
 // Длительности синхронны с AddToCartButton.module.css: полёт товара (shirtFlight)
@@ -54,7 +56,7 @@ export default function AddToCartButton({
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const { refresh, setCartSummary } = useCartStore()
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
 
   useEffect(() => {
     return () => {
@@ -99,48 +101,37 @@ export default function AddToCartButton({
       try {
         response = await postAdd()
       } catch (error: any) {
-        const conflict = getCartVerificationError(error)
-        const price = conflict?.verification?.public_price
-        const currency = conflict?.verification?.public_currency || ''
-        const available = Number(conflict?.verification?.available_quantity)
-        const issueCodes = new Set([
-          conflict?.code,
-          ...(conflict?.issues || []).map((issue) => issue.code),
-        ])
-        let retryResolvedConflict = false
-
-        if (
-          issueCodes.has('source_quantity_changed') &&
-          Number.isInteger(available) &&
-          available > 0
-        ) {
-          const accepted = window.confirm(
-            t(
-              'cart_confirm_quantity_change',
-              'У поставщика доступно {{quantity}} шт. Добавить доступное количество?',
-              { quantity: available },
-            ),
-          )
-          if (!accepted) return
-          body.set('quantity', String(available))
-          retryResolvedConflict = true
-        }
-        if (issueCodes.has('source_price_changed') && price != null && currency) {
-          const accepted = window.confirm(
-            t(
-              'cart_confirm_price_change',
-              'Цена изменилась на {{price}} {{currency}}. Добавить товар по новой цене?',
-              { price: String(price), currency },
-            ),
-          )
-          if (!accepted) return
-          body.set('acknowledged_price', String(price))
-          body.set('acknowledged_currency', currency)
-          retryResolvedConflict = true
-        }
-        if (!retryResolvedConflict) {
+        // Поставщик сообщил другую цену или меньшее количество: спрашиваем один раз окном сайта
+        const offer = addConflictOffer(getCartVerificationError(error))
+        if (!offer) {
           throw error
         }
+        const priceText = offer.price
+          ? `${formatMoney(offer.price, offer.currency, i18n.language)} ${offer.currency}`
+          : ''
+        const lines = []
+        if (offer.quantity) {
+          lines.push(t('confirm_add_quantity_text', 'У поставщика сейчас доступно {{count}} шт.', { count: offer.quantity }))
+        }
+        if (offer.price) {
+          lines.push(t('confirm_add_price_text', 'Новая цена — {{price}}.', { price: priceText }))
+        }
+        const accepted = await askConfirm({
+          title: offer.quantity && offer.price
+            ? t('confirm_add_both_title', 'Цена и количество изменились')
+            : offer.price
+              ? t('confirm_add_price_title', 'Цена изменилась')
+              : t('confirm_add_quantity_title', 'Доступно меньше, чем вы выбрали'),
+          lines,
+          acceptLabel: offer.quantity && offer.price
+            ? t('confirm_add_both_accept', 'Добавить {{count}} шт. по новой цене', { count: offer.quantity })
+            : offer.price
+              ? t('confirm_add_price_accept', 'Добавить по новой цене')
+              : t('confirm_add_quantity_accept', 'Добавить {{count}} шт.', { count: offer.quantity }),
+          declineLabel: t('confirm_add_decline', 'Не добавлять'),
+        })
+        if (!accepted) return
+        Object.entries(addConflictRetryParams(offer)).forEach(([key, value]) => body.set(key, String(value)))
         response = await postAdd()
       }
       const itemsCount = Number(response.data?.items_count)
