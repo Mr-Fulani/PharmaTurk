@@ -41,6 +41,12 @@ def offline(monkeypatch):
 
 
 @pytest.fixture
+def admin_client(client, django_user_model):
+    client.force_login(django_user_model.objects.create_superuser("photo-admin", "photo@example.com", "x" * 20))
+    return client
+
+
+@pytest.fixture
 def medicine():
     """Лекарство, которому в админке только что заменили главное фото."""
     category = Category.objects.get_or_create(slug="medicines", defaults={"name": "Medicine"})[0]
