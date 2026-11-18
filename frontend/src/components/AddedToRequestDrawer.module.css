@@ -33,7 +33,8 @@
   bottom: 0;
   left: 0;
   display: flex;
-  max-height: calc(90vh / var(--page-zoom, 1));
+  max-height: calc(85vh / var(--page-zoom, 1));
+  max-height: calc(85dvh / var(--page-zoom, 1));
   flex-direction: column;
   /* Край панели и рамки — из цвета текста темы: одной --border ночью почти не видно */
   border-top: 1px solid var(--border);
@@ -112,18 +113,40 @@
 }
 
 .body {
-  display: flex;
   min-height: 0;
   flex: 1;
-  flex-direction: column;
-  gap: 0.875rem;
   overflow-y: auto;
-  padding: 1rem;
+  overscroll-behavior: contain;
+  padding: 0.75rem 1rem;
 }
 
-.item {
+.list {
+  display: flex;
+  margin: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
   display: flex;
   gap: 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  padding: 0.6rem;
+  transition: opacity 0.15s ease;
+}
+
+/* Только что добавленная позиция: рамка акцентом и фон блока темы
+   (--accent-soft ночью остаётся светлым, светлый текст на нём не читается) */
+.row[data-added='true'] {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.row[data-busy='true'] {
+  opacity: 0.55;
 }
 
 .image {
@@ -155,10 +178,128 @@
   -webkit-line-clamp: 2;
 }
 
+a.name:hover {
+  color: var(--accent-strong);
+}
+
 .price {
   color: var(--text-strong);
   font-size: 1rem;
   font-weight: 700;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-color: color-mix(in srgb, var(--text) 50%, var(--bg));
+  border-radius: 0.6rem;
+}
+
+.step,
+.remove {
+  display: flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.step svg,
+.remove svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.step:hover:not(:disabled),
+.remove:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--accent-strong);
+}
+
+.step:disabled,
+.remove:disabled,
+.undo:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.quantity {
+  min-width: 2rem;
+  color: var(--text-strong);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.remove {
+  color: var(--text);
+}
+
+.rowError {
+  flex-basis: 100%;
+  margin: 0.15rem 0 0;
+  color: var(--danger);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.removedRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-color: color-mix(in srgb, var(--text) 30%, var(--bg));
+  border-radius: 0.75rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.removedText {
+  overflow: hidden;
+  min-width: 0;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.undo {
+  min-height: 2.75rem;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  padding: 0 0.75rem;
+  color: var(--accent-strong);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.undo:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.empty {
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
 }
 
 .summary {
@@ -167,7 +308,11 @@
   border-color: color-mix(in srgb, var(--text) 30%, var(--bg));
   border-radius: 0.6rem;
   background: var(--surface);
-  padding: 0.7rem 0.875rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.15rem 0.75rem;
+  padding: 0.6rem 0.875rem;
   color: var(--text-strong);
   font-size: 0.875rem;
   font-weight: 600;
@@ -221,7 +366,11 @@
 
 .close:focus-visible,
 .primary:focus-visible,
-.secondary:focus-visible {
+.secondary:focus-visible,
+.name:focus-visible,
+.step:focus-visible,
+.remove:focus-visible,
+.undo:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

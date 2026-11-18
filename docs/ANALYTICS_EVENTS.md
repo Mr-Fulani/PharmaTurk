@@ -54,7 +54,7 @@
 | `view_item_list` | категория (`categories/[slug].tsx`), бренд (`brand/[slug].tsx`) — хук `useViewItemList`, повтор того же списка не шлётся | item_list_id `category:<slug>` / `brand:<slug>`, item_list_name, items (item_id, название, тип, index) | — (e-commerce из dataLayer) |
 | `view_item` | карточка товара, один раз на товар | item_id, название, тип (`item_category`), бренд, цена, валюта карточки | — (e-commerce из dataLayer) |
 | `add_to_cart` («В заявку») | `AddToCartButton`, `BuyNowButton` | та же позиция, что во view_item + размер (`item_variant`), quantity, value = цена × кол-во | `add_to_cart` / `buy_now` |
-| `added_drawer_view`, `added_drawer_checkout`, `added_drawer_continue` | панель «Добавлено в заявку» (`AddedToRequestDrawer`): показ, кнопка «Оформить заявку», кнопка «Продолжить выбор» — хелпер `gtmAddedDrawer` | — | цели с теми же именами |
+| `added_drawer_view`, `added_drawer_checkout`, `added_drawer_continue`, `added_drawer_qty_change`, `added_drawer_remove` | панель «Добавлено в заявку» (`AddedToRequestDrawer`): показ, кнопка «Оформить заявку», кнопка «Продолжить выбор», успешная смена количества позиции («−» / «+»), успешное удаление позиции — хелпер `gtmAddedDrawer` | — | цели с теми же именами |
 | `add_to_wishlist` | `store/favorites.ts` после успешного добавления (все кнопки избранного) | item_id, название, тип, цена, валюта | `add_to_wishlist` |
 | `begin_checkout` | `checkout.tsx`, после загрузки непустой корзины | позиции, сумма, валюта корзины | `begin_checkout` |
 | `generate_lead` | заявка из корзины (`checkout.tsx`, после создания заказа) | `lead_source=order`, value, currency, transaction_id = номер заявки, payment_method | `generate_lead` + `order_request` (доход по цели: `order_price`, `currency`) |
@@ -128,7 +128,8 @@ GA4 (Администратор → ресурс Mudaroba):
 - Цели «JavaScript-событие»: `generate_lead`, `order_request`, `sourcing_request`,
   `add_to_cart`, `buy_now`, `add_to_wishlist`, `begin_checkout`, `search`,
   `click_whatsapp`, `click_telegram`, `click_phone`, `click_email`, `click_vk`,
-  `added_drawer_view`, `added_drawer_checkout`, `added_drawer_continue` (панель «Добавлено в заявку», с 18.11.2026).
+  `added_drawer_view`, `added_drawer_checkout`, `added_drawer_continue` (панель «Добавлено в заявку», с 18.11.2026),
+  `added_drawer_qty_change`, `added_drawer_remove` (список позиций в панели).
 
 ## Проверка
 
