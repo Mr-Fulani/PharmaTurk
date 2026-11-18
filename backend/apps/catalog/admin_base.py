@@ -405,3 +405,27 @@ class ShadowProductCleanupAdminMixin:
         super().delete_model(request, obj)
         if base_id:
             Product.objects.filter(pk=base_id).delete()
+
+
+class MainPhotoGalleryAdminMixin:
+    """Новое главное фото из формы сразу встаёт и в галерею страницы товара.
+
+    Страница товара при непустой галерее главное фото отдельно не показывает: первым идёт
+    кадр галереи. Без этого владельцу приходилось менять одно и то же фото дважды.
+    """
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        if "main_image_file" not in form.changed_data:
+            return
+        from .domain_sync import apply_main_photo_to_gallery
+
+        if apply_main_photo_to_gallery(form.instance) == "variants":
+            self.message_user(
+                request,
+                _(
+                    "Главное фото обновлено, но на странице товара показываются фото цветов "
+                    "(вариантов). Меняйте их в карточке раздела, у нужного цвета."
+                ),
+                level=messages.WARNING,
+            )

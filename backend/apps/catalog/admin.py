@@ -23,7 +23,7 @@ from .forms import (
     PRODUCT_CATEGORY_HELP,
 )
 from .admin_variant_ai import VariantAIAdminMixin
-from .admin_media import AdminMediaHelpTextMixin, resolve_media_url, render_media_preview
+from .admin_media import AdminMediaHelpTextMixin, MainMediaPreviewAdminMixin, resolve_media_url, render_media_preview
 from .admin_price import PublicCatalogPriceAdminMixin
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryCollection, CategoryCollectionTranslation, MedicineGroup, MedicineGroupTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
@@ -46,16 +46,6 @@ from .models import (
     # Валютные модели
     CurrencyRate, MarginSettings, ProductPrice, ServicePrice, CurrencyUpdateLog,
 )
-
-
-class MainMediaPreviewAdminMixin:
-    def main_media_preview(self, obj):
-        if not obj:
-            return _("Нет медиа")
-        image_url = resolve_media_url(obj, 'main_image_file', 'main_image') if hasattr(obj, 'main_image_file') else ""
-        video_url = resolve_media_url(obj, 'main_video_file', 'video_url') if hasattr(obj, 'main_video_file') else ""
-        return render_media_preview(image_url or video_url)
-    main_media_preview.short_description = _("Превью медиа")
 
 
 class TopLevelCategoryFilter(SimpleListFilter):
@@ -202,7 +192,7 @@ class ActiveRootFilter(SimpleListFilter):
         return queryset
 
 
-from .admin_base import AIStatusFilter, GlobalActivationActionsMixin, RunAIActionMixin, ShadowProductCleanupAdminMixin
+from .admin_base import AIStatusFilter, GlobalActivationActionsMixin, MainPhotoGalleryAdminMixin, RunAIActionMixin, ShadowProductCleanupAdminMixin
 
 
 PRODUCT_TRANSLATION_SEO_FIELDS = (
@@ -1297,7 +1287,7 @@ class ShoeVariantImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
 # RunAIActionMixin and get_ai_status are now imported from .admin_base
 
 
-class BaseProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, RunAIActionMixin, admin.ModelAdmin):
+class BaseProductAdmin(MainMediaPreviewAdminMixin, MainPhotoGalleryAdminMixin, AdminMediaHelpTextMixin, RunAIActionMixin, admin.ModelAdmin):
     """Базовый админ для товаров (используется прокси)."""
     form = ProductForm
     list_display = (
@@ -2617,7 +2607,7 @@ class ElectronicsCategoryAdmin(CategoryProductCountAdminMixin, admin.ModelAdmin)
 
 
 @admin.register(ElectronicsProduct)
-class ElectronicsProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, CategoryFieldFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
+class ElectronicsProductAdmin(MainMediaPreviewAdminMixin, MainPhotoGalleryAdminMixin, AdminMediaHelpTextMixin, CategoryFieldFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров электроники."""
     category_field_name = "device_type"
@@ -2807,7 +2797,7 @@ class JewelryVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(JewelryProduct)
-class JewelryProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, CategoryTypeFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
+class JewelryProductAdmin(MainMediaPreviewAdminMixin, MainPhotoGalleryAdminMixin, AdminMediaHelpTextMixin, CategoryTypeFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
     category_type_slug = "jewelry"

@@ -13,7 +13,8 @@ from .models import (
     BookVariant, BookVariantSize, BookVariantImage,
     ProductGenre, CategoryTranslation
 )
-from .admin_base import AIStatusFilter, RunAIActionMixin
+from .admin_base import AIStatusFilter, MainPhotoGalleryAdminMixin, RunAIActionMixin
+from .admin_media import MainMediaPreviewAdminMixin
 from .admin_variant_ai import VariantAIAdminMixin
 
 
@@ -85,7 +86,7 @@ class BookProductImageInline(admin.TabularInline):
     """Inline для изображений книги."""
     model = BookProductImage
     extra = 1
-    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'is_main', 'sort_order')
+    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
     readonly_fields = ('image_preview',)
     verbose_name = _('Изображение')
     verbose_name_plural = _('Изображения')
@@ -141,7 +142,7 @@ class BookVariantInline(admin.TabularInline):
 
 
 @admin.register(BookProduct)
-class BookProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class BookProductAdmin(MainMediaPreviewAdminMixin, MainPhotoGalleryAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров-книг."""
     ai_logs_prefetch_path = "base_product__ai_logs"
     list_display = [
@@ -156,7 +157,7 @@ class BookProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     list_editable = ['price', 'old_price', 'is_available', 'is_bestseller']
     search_fields = ['name', 'description', 'isbn', 'publisher']
     prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ['rating', 'reviews_count', 'slug_preview', 'created_at', 'updated_at']
+    readonly_fields = ['rating', 'reviews_count', 'slug_preview', 'main_media_preview', 'created_at', 'updated_at']
     
     fieldsets = (
         (_('Основное'), {
@@ -183,7 +184,7 @@ class BookProductAdmin(RunAIActionMixin, admin.ModelAdmin):
             'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Медиа'), {
-            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file'),
+            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'main_media_preview'),
             'description': _(
                 'Видео: можно указать URL; файл на shadow Product может подтянуться автоматически '
                 '(скачивание в фоне). Поля видео синхронизируются с базовым Product.'

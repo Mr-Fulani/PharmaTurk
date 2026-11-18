@@ -12,7 +12,8 @@ from .models import (
     Category,
     FRAGRANCE_TYPE_CHOICES, FRAGRANCE_FAMILY_CHOICES,
 )
-from .admin_base import RunAIActionMixin, ShadowProductCleanupAdminMixin
+from .admin_base import MainPhotoGalleryAdminMixin, RunAIActionMixin, ShadowProductCleanupAdminMixin
+from .admin_media import MainMediaPreviewAdminMixin, resolve_media_url, render_media_preview
 
 
 class PerfumeryCategoryFilter(admin.SimpleListFilter):
@@ -105,7 +106,14 @@ class PerfumeryProductImageInline(admin.TabularInline):
     """Inline для изображений товаров парфюмерии."""
     model = PerfumeryProductImage
     extra = 1
-    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order')
+    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
+    readonly_fields = ('image_preview',)
+
+    def image_preview(self, obj):
+        if obj:
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
+        return "-"
+    image_preview.short_description = _("Превью")
 
 
 class PerfumeryVariantInline(admin.TabularInline):
@@ -118,7 +126,7 @@ class PerfumeryVariantInline(admin.TabularInline):
 
 
 @admin.register(PerfumeryProduct)
-class PerfumeryProductAdmin(RunAIActionMixin, ShadowProductCleanupAdminMixin, admin.ModelAdmin):
+class PerfumeryProductAdmin(MainMediaPreviewAdminMixin, MainPhotoGalleryAdminMixin, RunAIActionMixin, ShadowProductCleanupAdminMixin, admin.ModelAdmin):
     """Админка для товаров парфюмерии."""
     list_display = (
         'name', 'slug', 'category_path', 'brand',
@@ -133,7 +141,7 @@ class PerfumeryProductAdmin(RunAIActionMixin, ShadowProductCleanupAdminMixin, ad
     search_fields = ('name', 'slug', 'description', 'external_id')
     ordering = ('-created_at',)
     list_select_related = ('category', 'category__parent', 'category__parent__parent', 'brand')
-    readonly_fields = ('slug', 'base_product', 'created_at', 'updated_at')
+    readonly_fields = ('slug', 'base_product', 'main_media_preview', 'created_at', 'updated_at')
     date_hierarchy = 'created_at'
     list_per_page = 25
     autocomplete_fields = ['category', 'brand']
@@ -162,7 +170,7 @@ class PerfumeryProductAdmin(RunAIActionMixin, ShadowProductCleanupAdminMixin, ad
             'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Медиа'), {
-            'fields': ('main_image', 'main_image_file'),
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
         }),
         (_('Флаги'), {
             'fields': ('is_active', 'is_new', 'is_featured'),
