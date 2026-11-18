@@ -1624,6 +1624,11 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         return self._resolve_localized_seo(obj, "og_description") or self.get_meta_description(obj)
 
     def get_og_image_url(self, obj):
+        # Загруженное главное фото главнее сохранённого og_image_url: тот пишется один раз при
+        # генерации карточки и после замены фото в админке показывал в превью ссылки старую
+        # картинку (KADCYLA, PROPOFOL-PF, 18.11.2026).
+        if getattr(getattr(obj, "main_image_file", None), "name", None):
+            return self.get_main_image_url(obj)
         return self._resolve_localized_seo(obj, "og_image_url") or self.get_main_image_url(obj)
 
     def get_translations(self, obj):
@@ -6191,6 +6196,11 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
         return self._resolve_localized_seo(obj, "og_description") or self.get_meta_description(obj)
 
     def get_og_image_url(self, obj):
+        # Загруженное главное фото главнее сохранённого og_image_url: тот пишется один раз при
+        # генерации карточки и после замены фото в админке показывал в превью ссылки старую
+        # картинку (KADCYLA, PROPOFOL-PF, 18.11.2026).
+        if getattr(getattr(obj, "main_image_file", None), "name", None):
+            return self.get_main_image_url(obj)
         return self._resolve_localized_seo(obj, "og_image_url") or self.get_main_image_url(obj)
 
 
