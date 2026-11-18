@@ -169,6 +169,15 @@ def ensure_domain_product_for_base(product):
         # там может стоять значение от AI или вручную выставленное.
         if hasattr(DomainModel, "stock_quantity") and kwargs.get("stock_quantity") is not None:
             update_dict["stock_quantity"] = kwargs["stock_quantity"]
+        # Загруженное главное фото: владелец меняет его и в «Товарах» (Product), и в карточке
+        # раздела. Обратное направление копирует файл (models._sync_to_base_product), а это — нет:
+        # витрина показывала новое фото, страница товара — старое (KADCYLA, 17.11.2026).
+        # Пустым файлом доменное фото не затираем.
+        base_file = getattr(getattr(product, "main_image_file", None), "name", "") or ""
+        if base_file and hasattr(DomainModel, "main_image_file"):
+            domain_file = getattr(getattr(domain, "main_image_file", None), "name", "") or ""
+            if domain_file != base_file:
+                update_dict["main_image_file"] = base_file
         # EN SEO поля (meta_title, og_title, …) не синхронизируем из Product при обновлении —
         # они заполняются AI и не должны перезаписываться данными из base Product.
         if update_dict:
