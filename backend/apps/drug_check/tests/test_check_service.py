@@ -78,8 +78,8 @@ def test_nexium_in_stock_but_passive_in_skrs_is_highlighted_and_catalog_untouche
     assert results["selcuk"].status == "Нет в прайсе"
     assert report.level == ALERT
     assert calls == [NEXIUM_URL]  # один запрос на товар
-    line = report.telegram_line()
-    assert line.startswith("• NEXIUM (эзомепразол) 40 мг, 14 таб.: ⚠️ SKRS: пассивен с 15.04.2025")
+    line = report.telegram_status()
+    assert line.startswith("⚠️ SKRS: пассивен с 15.04.2025")
     assert "IlacFiyati 202,15 TL (= наша)" in line
     assert "у склада нет" in line
     medicine.refresh_from_db()

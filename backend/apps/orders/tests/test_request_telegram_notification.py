@@ -30,6 +30,12 @@ def _order(**overrides):
     return SimpleNamespace(**data)
 
 
+def _item(**overrides):
+    data = dict(product_name="PAROL", product=None, chosen_size="", price="50.00", quantity=1, total="150.00")
+    data.update(overrides)
+    return SimpleNamespace(**data)
+
+
 @override_settings(TELEGRAM_BOT_TOKEN="test-token", TELEGRAM_CHAT_ID="admin-chat")
 @patch("apps.orders.tasks._load_receipt_pdf_from_storage", return_value=None)
 @patch("apps.orders.tasks.generate_and_save_receipt", return_value=("", None))
@@ -54,8 +60,18 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         self.assertIn("ivan@example.com", admin)
         self.assertIn("WhatsApp", admin)
         self.assertIn("Согласуется с менеджером", admin)
-        # Пользовательский ввод экранирован для parse_mode=Markdown
-        self.assertIn("Ivan\\_Petrov \\*VIP\\*", admin)
+        self.assertIn("<code>REQ-9</code>", admin)
+        self.assertIn("Итого: 150.00 RUB", admin)
+        self.assertEqual(telegram_post.call_args_list[0].kwargs["json"]["parse_mode"], "HTML")
+
+    def test_user_input_cannot_break_html_markup(self, select_related, telegram_post, *_):
+        order = _order(contact_name="Ivan <b>& Co</i>", comment='<a href="https://evil.example">жми</a> & _*`[')
+        texts = self._texts(select_related, telegram_post, order)
+
+        admin = texts["admin-chat"]
+        self.assertIn("Имя: Ivan &lt;b&gt;&amp; Co&lt;/i&gt;", admin)
+        self.assertIn('&lt;a href="https://evil.example"&gt;жми&lt;/a&gt; &amp; _*`[', admin)
+        self.assertNotIn("<a ", admin)
 
     def test_customer_is_told_manager_will_contact_them(self, select_related, telegram_post, *_):
         texts = self._texts(select_related, telegram_post, _order())
@@ -67,7 +83,7 @@ class RequestTelegramNotificationTests(SimpleTestCase):
             select_related, telegram_post, _order(contact_channel="telegram", contact_username="Ivan_Petrov")
         )
 
-        self.assertIn("Telegram: @Ivan\\_Petrov", texts["admin-chat"])
+        self.assertIn("Telegram: @Ivan_Petrov", texts["admin-chat"])
 
     def test_whatsapp_phone_is_shown_without_at(self, select_related, telegram_post, *_):
         texts = self._texts(
@@ -78,8 +94,31 @@ class RequestTelegramNotificationTests(SimpleTestCase):
 
     def test_admin_sees_items_with_price_on_request(self, select_related, telegram_post, *_):
         # Больничный препарат / товар без цены: сумму называет менеджер (docs/HOSPITAL_MEDICINES.md)
-        items = [SimpleNamespace(product_name="IZOTONIK_500", price=0), SimpleNamespace(product_name="PAROL", price=50)]
+        items = [_item(product_name="IZOTONIK_500", price=0, total=0), _item(product_name="PAROL", quantity=3)]
         texts = self._texts(select_related, telegram_post, _order(items=SimpleNamespace(all=lambda: items)))
 
-        self.assertIn("Цена по запросу (в сумму не вошли): IZOTONIK\\_500", texts["admin-chat"])
-        self.assertNotIn("PAROL", texts["admin-chat"])
+        admin = texts["admin-chat"]
+        self.assertIn("1. <b>IZOTONIK_500</b>\n1 шт. · цена по запросу", admin)
+        self.assertIn("Цена по запросу (в сумму не вошли): IZOTONIK_500\n", admin)
+        self.assertIn("2. <b>PAROL</b>\n3 шт. × 50.00 RUB = 150.00 RUB", admin)
+
+    def test_each_item_is_a_separate_paragraph_with_size(self, select_related, telegram_post, *_):
+        items = [_item(product_name="Кроссовки <Run & Go>", chosen_size="42"), _item(product_name="PAROL")]
+        texts = self._texts(select_related, telegram_post, _order(items=SimpleNamespace(all=lambda: items)))
+
+        admin = texts["admin-chat"]
+        self.assertIn(
+            "🛒 <b>Позиции</b>\n\n"
+            "1. <b>Кроссовки &lt;Run &amp; Go&gt;</b>\nРазмер: 42\n1 шт. · 50.00 RUB\n\n"
+            "2. <b>PAROL</b>\n1 шт. · 50.00 RUB\n\n"
+            "💰 <b>Итого: 150.00 RUB</b>",
+            admin,
+        )
+        # У обычного товара ссылок на проверку лекарств нет
+        self.assertNotIn("<a ", admin)
+
+    def test_broken_items_do_not_hold_the_message(self, select_related, telegram_post, *_):
+        texts = self._texts(select_related, telegram_post, _order(items=SimpleNamespace(all=lambda: [object()])))
+
+        self.assertIn("+79990000000", texts["admin-chat"])
+        self.assertNotIn("Позиции", texts["admin-chat"])
