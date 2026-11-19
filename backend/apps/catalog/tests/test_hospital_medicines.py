@@ -59,7 +59,7 @@ def test_hospital_medicine_in_sitemap_but_not_featured_or_recommended():
     hospital = _medicine("izotonik", is_hospital=True, is_featured=True)
     regular = _medicine("parol", is_featured=True)
 
-    featured = {row["slug"] for row in APIClient().get("/api/catalog/products/featured", {"limit": 20}).json()}
+    featured = {row["slug"] for row in APIClient().get("/api/catalog/products/medicine-reference", {"limit": 20}).json()}
     assert "parol" in featured and "izotonik" not in featured
 
     recommended = set(public_recommendation_products().values_list("id", flat=True))

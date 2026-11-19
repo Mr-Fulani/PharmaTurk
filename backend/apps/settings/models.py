@@ -28,7 +28,10 @@ class FooterSettings(models.Model):
         _("Текст про оплату криптовалютой"), 
         max_length=200, 
         blank=True,
-        default="Возможна оплата криптовалютой"
+        default=(
+            "Оплата — по согласованию с менеджером, возможна криптовалютой. "
+            "Относится к товарам, кроме лекарств: сведения о лекарствах — справочные."
+        ),
     )
     
     # Метаданные
@@ -104,6 +107,7 @@ class HomeBlock(models.Model):
         CATEGORIES = "categories", _("Категории товаров")
         BANNER_BEFORE_FOOTER = "banner_before_footer", _("Баннер 3 — после категорий")
         BESTSELLERS = "bestsellers", _("Хиты продаж")
+        MEDICINE_REFERENCE = "medicine_reference", _("«Часто ищут в справочнике лекарств» — лекарства с галочкой «Рекомендуемый»")
         SOURCING = "sourcing", _("«Найдём любой товар» — заявка по ссылке или фото")
         RECOMMENDATIONS = "recommendations", _("«Вам может понравиться» — по просмотрам покупателя")
         BANNER_AFTER_POPULAR = "banner_after_popular", _("Баннер 4 — после хитов")

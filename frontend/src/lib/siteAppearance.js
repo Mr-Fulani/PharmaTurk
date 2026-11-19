@@ -21,7 +21,7 @@ export const THEME_FONT_PRELOAD = /** @type {const} */ ({
   green: '/fonts/GolosText-v1.woff2',
 })
 
-// Порядок по умолчанию — как в админке после миграций settings.0005 и 0007.
+// Порядок по умолчанию — как в админке после миграций settings.0005, 0007 и 0009.
 export const HOME_BLOCK_KEYS = /** @type {const} */ ([
   'main_banner',
   'benefits',
@@ -30,6 +30,7 @@ export const HOME_BLOCK_KEYS = /** @type {const} */ ([
   'categories',
   'banner_before_footer',
   'bestsellers',
+  'medicine_reference',
   'sourcing',
   'recommendations',
   'banner_after_popular',

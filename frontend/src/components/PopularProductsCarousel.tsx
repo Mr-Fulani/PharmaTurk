@@ -101,11 +101,11 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
 
           uniqueAllProducts = deduplicateFeaturedProducts([
             ...uniqueAllProducts,
-            // Больничные препараты — справочные карточки без цены, в «Популярном» не показываем
-            ...productsList.filter((product: Product & { is_hospital?: boolean }) => !product.is_hospital).map((product: Product) => ({
+            // Лекарства — справочные карточки, в «Хиты продаж» не добираются
+            ...productsList.map((product: Product) => ({
               ...product,
               product_type: product.product_type || 'medicines',
-            })),
+            })).filter((product: Product) => product.product_type !== 'medicines'),
           ]) as Product[]
         } catch (error) {
           console.error('Failed to fetch latest products:', error)

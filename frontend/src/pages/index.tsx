@@ -42,6 +42,7 @@ const PopularProductsCarousel = dynamic(() => import('../components/PopularProdu
   ssr: false,
   loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
 })
+const MedicineReferenceBlock = dynamic(() => import('../components/MedicineReferenceBlock'), { ssr: false })
 const PersonalizedRecommendations = dynamic(() => import('../components/PersonalizedRecommendations'), { 
   ssr: false,
   loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
@@ -517,6 +518,10 @@ export default function Home({ brands: initialBrands, categories, mainBanners, a
     // Популярные товары
     bestsellers: (
       <DeferredSection><PopularProductsCarousel /></DeferredSection>
+    ),
+    // Справочный блок лекарств: без «хит», «купить» и кнопки «В заявку»
+    medicine_reference: (
+      <DeferredSection><MedicineReferenceBlock /></DeferredSection>
     ),
     // «Найдём любой товар из Турции по ссылке или фото» — после хитов, выше последнего баннера
     // Якорь на обёртке: сама форма (её #sourcing) появляется в HTML только рядом с экраном.
