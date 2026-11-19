@@ -25,17 +25,19 @@ def test_readiness_returns_200_when_database_is_available():
     cursor.execute.assert_called_once_with("SELECT 1;")
 
 
-def test_readiness_returns_503_when_database_is_unavailable():
+def test_readiness_returns_503_when_database_is_unavailable(caplog):
     request = APIRequestFactory().get("/api/health/")
     with (
         patch("api.views.connection.cursor", side_effect=RuntimeError("db down")),
         patch("api.views.cache") as cache,
+        caplog.at_level("WARNING", logger="api.views"),
     ):
         cache.get.return_value = "ok"
         response = HealthCheckView.as_view()(request)
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.data == {"status": "unavailable", "db": False, "cache": True}
+    assert "база недоступна (RuntimeError)" in caplog.text
 
 
 def test_readiness_returns_503_when_cache_is_unavailable():

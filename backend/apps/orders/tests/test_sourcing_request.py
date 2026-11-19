@@ -54,6 +54,20 @@ def test_guest_can_submit_request_by_link(_no_notifications):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_queue_failure_keeps_request_and_is_logged(_no_notifications, caplog):
+    """Очередь задач недоступна: заявка сохранена, покупатель видит успех, сбой в журнале."""
+    _no_notifications.side_effect = ConnectionError("redis://:secret@redis:6379/0 refused")
+
+    with caplog.at_level("ERROR", logger="apps.orders.views"):
+        response = APIClient().post(URL, _payload(), format="multipart")
+
+    assert response.status_code == 201, response.data
+    req = SourcingRequest.objects.get()
+    assert f"не поставлено в очередь (ConnectionError): id={req.pk}" in caplog.text
+    assert "secret" not in caplog.text
+
+
+@pytest.mark.django_db(transaction=True)
 def test_photo_is_normalized_to_jpeg(settings, tmp_path):
     settings.STORAGES = {
         **settings.STORAGES,

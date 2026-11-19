@@ -237,14 +237,16 @@ class HealthCheckView(APIView):
                 cursor.execute("SELECT 1;")
                 _ = cursor.fetchone()
             db_ok = True
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Health readiness: база недоступна (%s)", type(exc).__name__)
             db_ok = False
         cache_key = f"health:readiness:{uuid.uuid4().hex}"
         try:
             cache.set(cache_key, "ok", timeout=5)
             cache_ok = cache.get(cache_key) == "ok"
             cache.delete(cache_key)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Health readiness: кэш недоступен (%s)", type(exc).__name__)
             cache_ok = False
         ready = db_ok and cache_ok
         response_status = status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE

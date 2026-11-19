@@ -260,3 +260,23 @@ def test_guest_honeypot_does_not_create_order(guest_cart):
     assert response.status_code == 201
     assert Order.objects.count() == 0
     assert CartItem.objects.filter(pk=guest_cart.pk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_queue_failure_keeps_order_and_is_logged(request_state, caplog):
+    """Очередь задач недоступна: заявка создана, ответ 201, сбой уведомлений в журнале."""
+    user, item = request_state
+    broker_down = ConnectionError("redis://:secret@redis:6379/0 refused")
+
+    with patch(
+        "apps.orders.views.notify_new_order_telegram.delay", side_effect=broker_down
+    ), patch(
+        "apps.orders.views.send_order_receipt_task.delay", side_effect=broker_down
+    ), caplog.at_level("ERROR", logger="apps.orders.views"):
+        response = _post(user, item, _payload(payment_method="cod"))
+
+    assert response.status_code == 201, response.data
+    order = Order.objects.get()
+    assert f"notify_new_order_telegram не поставлено в очередь (ConnectionError): id={order.id}" in caplog.text
+    assert f"send_order_receipt_task не поставлено в очередь (ConnectionError): id={order.id}" in caplog.text
+    assert "secret" not in caplog.text

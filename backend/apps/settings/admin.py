@@ -1,11 +1,15 @@
 """Админ-интерфейс для настроек сайта."""
 
+import logging
+
 from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from .models import FooterSettings, HomeBlock, SiteAppearance
+
+logger = logging.getLogger(__name__)
 
 
 @admin.register(FooterSettings)
@@ -47,7 +51,7 @@ class FooterSettingsAdmin(admin.ModelAdmin):
             FooterSettings.load()
         except Exception:
             # Игнорируем ошибки при миграциях
-            pass
+            logger.warning("Настройки футера не загружены при открытии списка", exc_info=True)
         return super().changelist_view(request, extra_context)
     
     def save_model(self, request, obj, form, change):

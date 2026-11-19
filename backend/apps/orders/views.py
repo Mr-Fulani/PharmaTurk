@@ -227,6 +227,18 @@ from .throttles import (
 
 logger = logging.getLogger(__name__)
 
+
+def _enqueue_notification(task, *args, **kwargs) -> None:
+    """Ставит уведомление в очередь; сбой очереди не роняет уже созданную заявку."""
+    try:
+        task.delay(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001 - в тексте ошибки брокера бывает адрес с паролем
+        logger.error(
+            "Уведомление %s не поставлено в очередь (%s): id=%s",
+            task.name, type(exc).__name__, kwargs.get("order_id", args[0] if args else None),
+        )
+
+
 CART_ITEM_VERIFICATION_FIELDS = (
     'source_offer_id',
     'verification_status',
@@ -2151,11 +2163,15 @@ class OrderViewSet(viewsets.ViewSet):
             receipt_email = get_order_customer_email(order)
             if receipt_email:
                 transaction.on_commit(
-                    lambda: send_order_receipt_task.delay(order.id, receipt_email, locale=locale)
+                    lambda: _enqueue_notification(
+                        send_order_receipt_task, order.id, receipt_email, locale=locale
+                    )
                 )
             
             transaction.on_commit(
-                lambda: notify_new_order_telegram.delay(order_id=order.id, locale=locale)
+                lambda: _enqueue_notification(
+                    notify_new_order_telegram, order_id=order.id, locale=locale
+                )
             )
 
             return Response(OrderSerializer(order).data, status=201)
@@ -2178,5 +2194,7 @@ class SourcingRequestCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         user = request.user if getattr(request.user, 'is_authenticated', False) else None
         sourcing_request = serializer.save(user=user)
-        transaction.on_commit(lambda: notify_sourcing_request_telegram.delay(sourcing_request.pk))
+        transaction.on_commit(
+            lambda: _enqueue_notification(notify_sourcing_request_telegram, sourcing_request.pk)
+        )
         return Response({'id': sourcing_request.pk}, status=status.HTTP_201_CREATED)
