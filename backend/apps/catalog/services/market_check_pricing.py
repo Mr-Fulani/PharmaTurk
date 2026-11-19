@@ -15,7 +15,7 @@ from typing import Any
 from apps.catalog.utils.currency_converter import currency_converter
 from apps.catalog.utils.product_markup import (
     apply_product_markup,
-    get_effective_product_markup,
+    explain_product_markup,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,12 +64,17 @@ def attach_public_market_price(
             target_currency,
             apply_margin=True,
         )
-        display_amount = Decimal(str(apply_product_markup(with_pair_margin, product))).quantize(
+        display_amount = Decimal(
+            str(apply_product_markup(with_pair_margin, product, source_amount, source_currency))
+        ).quantize(
             Decimal("0.01"),
             rounding=ROUND_HALF_UP,
         )
         pair_margin = currency_converter.get_margin_rate(source_currency, target_currency)
-        product_markup, product_markup_source = get_effective_product_markup(product)
+        markup = explain_product_markup(product, source_amount, source_currency)
+        product_markup, product_markup_source = markup.percent, markup.source
+        if markup.scale is not None:  # процент по шкале не круглый
+            product_markup = product_markup.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except Exception:
         # A market observation remains useful even when a rate/config dependency is
         # temporarily unavailable. The client can fall back to the raw source price.

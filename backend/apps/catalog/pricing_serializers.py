@@ -4,7 +4,7 @@ import logging
 import re
 from decimal import Decimal, ROUND_HALF_UP
 
-from .utils.product_markup import get_effective_product_markup
+from .utils.product_markup import resolve_markup_rule
 
 
 logger = logging.getLogger(__name__)
@@ -46,8 +46,18 @@ def public_price(amount, from_currency, request, *, currency_resolver=None):
         return amount, source
 
 
+class _Markup(tuple):
+    """(процент, уровень) как раньше; rule — правило со шкалой, если она действует."""
+
+    rule = None
+
+
 def effective_product_markup(obj):
-    return get_effective_product_markup(obj)
+    rule = resolve_markup_rule(obj)
+    result = rule.resolve(getattr(obj, "price", None), getattr(obj, "currency", None))
+    markup = _Markup((result.percent, result.source))
+    markup.rule = rule if rule.steps else None
+    return markup
 
 
 def apply_markup_value(value, margin):
@@ -76,13 +86,27 @@ def apply_product_markup_to_payload(
     markup_resolver=None,
     value_transform=None,
     formatted_transform=None,
+    active_base=None,
 ):
-    """Apply product markup after currency conversion across a catalog payload."""
+    """Apply product markup after currency conversion across a catalog payload.
+
+    Со шкалой наценки процент зависит от цены источника, поэтому у каждого варианта
+    он свой; active_base — (цена, валюта) активного варианта или функция, которая их вернёт.
+    Без шкалы у всех полей один процент, как раньше.
+    """
     resolve_markup = markup_resolver or effective_product_markup
     transform_value = value_transform or apply_markup_value
     transform_formatted = formatted_transform or apply_markup_formatted
-    margin, source = resolve_markup(obj)
-    if margin <= 0:
+    markup = resolve_markup(obj)
+    margin, source = markup
+    rule = getattr(markup, "rule", None)
+    active_margin = margin
+    if rule is not None and active_base is not None:
+        # функция — чтобы без шкалы активный вариант не искался вовсе
+        base = active_base() if callable(active_base) else active_base
+        if base is not None and base[0] is not None:
+            active_margin = rule.resolve(*base).percent
+    if margin <= 0 and rule is None:
         data["product_markup_percent"] = Decimal("0")
         data["product_markup_source"] = None
         return data
@@ -90,23 +114,27 @@ def apply_product_markup_to_payload(
     for field in ("price", "old_price", "final_price_rub", "final_price_usd"):
         if field in data and data[field] is not None:
             data[field] = transform_value(data[field], margin)
-    for field in (
-        "price_formatted",
-        "old_price_formatted",
-        "active_variant_price",
-        "active_variant_old_price_formatted",
-    ):
+    for field in ("price_formatted", "old_price_formatted"):
         if field in data:
             data[field] = transform_formatted(data[field], margin)
+    for field in ("active_variant_price", "active_variant_old_price_formatted"):
+        if field in data:
+            data[field] = transform_formatted(data[field], active_margin)
 
     for collection_name in ("variants", "book_variants"):
-        for row in data.get(collection_name) or []:
+        rows = data.get(collection_name) or []
+        variant_bases = _variant_bases(obj, collection_name) if rule is not None and rows else {}
+        for row in rows:
+            row_margin = margin
+            base = variant_bases.get(str(row.get("id")))
+            if base is not None and base[0] is not None:
+                row_margin = rule.resolve(*base).percent
             for field in ("price", "old_price"):
                 if row.get(field) is not None:
-                    row[field] = transform_value(row[field], margin)
+                    row[field] = transform_value(row[field], row_margin)
             for field in ("price_formatted", "old_price_formatted"):
                 if field in row:
-                    row[field] = transform_formatted(row[field], margin)
+                    row[field] = transform_formatted(row[field], row_margin)
 
     current = data.get("current_price")
     if isinstance(current, dict) and current.get("amount") is not None:
@@ -124,6 +152,21 @@ def apply_product_markup_to_payload(
             if prices_info.get(field) is not None:
                 prices_info[field] = transform_value(prices_info[field], margin)
 
-    data["product_markup_percent"] = margin
+    data["product_markup_percent"] = margin if rule is None else Decimal(margin).quantize(Decimal("0.01"))
     data["product_markup_source"] = source
     return data
+
+
+def _variant_bases(obj, collection_name):
+    """{id варианта: (цена источника, валюта)} — для выбора ступени шкалы."""
+    manager = getattr(obj, collection_name, None)
+    if manager is None or not hasattr(manager, "all"):
+        return {}
+    product_currency = getattr(obj, "currency", None)
+    return {
+        str(variant.pk): (
+            getattr(variant, "price", None),
+            getattr(variant, "currency", None) or product_currency,
+        )
+        for variant in manager.all()
+    }

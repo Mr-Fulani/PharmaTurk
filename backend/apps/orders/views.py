@@ -516,13 +516,13 @@ def _get_product_price_for_currency(product, currency: str):
                 currency,
                 apply_margin=True,
             )
-            return apply_product_markup(price_with_margin, product)
+            return apply_product_markup(price_with_margin, product, base_price, base_currency)
         except Exception as exc:
             logger.warning(
                 "Product %s: price not converted %s to %s: %s: %s",
                 getattr(product, "pk", None), base_currency, currency, type(exc).__name__, exc,
             )
-            return apply_product_markup(base_price, product)
+            return apply_product_markup(base_price, product, base_price, base_currency)
     try:
         return apply_product_markup(0, product)
     except Exception as exc:

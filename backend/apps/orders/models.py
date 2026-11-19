@@ -128,6 +128,18 @@ class PromoCode(models.Model):
         return float(discount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
+def _source_price(prices, product):
+    """(цена источника, валюта) позиции — от неё выбирается ступень шкалы наценки."""
+    for currency, data in (prices or {}).items():
+        if data.get('is_base_price'):
+            amount = data.get('original_price')
+            if amount is None:
+                amount = data.get('converted_price')
+            if amount is not None:
+                return amount, currency
+    return getattr(product, 'price', None), getattr(product, 'currency', None)
+
+
 class Cart(models.Model):
     """Корзина товаров пользователя или гостя."""
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name="carts", verbose_name=_("Пользователь"))
@@ -205,7 +217,10 @@ class Cart(models.Model):
                     needs_product_markup = False
                 
                 from apps.catalog.utils.product_markup import apply_product_markup
-                public_price = apply_product_markup(price, item.product) if needs_product_markup else price
+                public_price = (
+                    apply_product_markup(price, item.product, lambda: _source_price(prices, item.product))
+                    if needs_product_markup else price
+                )
                 total += public_price * item.quantity
             except Exception as exc:
                 # Fallback к старому полю
@@ -551,7 +566,10 @@ class CartItem(models.Model):
                 needs_product_markup = False
             
             from apps.catalog.utils.product_markup import apply_product_markup
-            public_price = apply_product_markup(price, self.product) if needs_product_markup else price
+            public_price = (
+                apply_product_markup(price, self.product, lambda: _source_price(prices, self.product))
+                if needs_product_markup else price
+            )
             return round(public_price * self.quantity, 2)
         except Exception as exc:
             # Fallback к старому полю

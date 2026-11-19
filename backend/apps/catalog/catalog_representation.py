@@ -22,7 +22,16 @@ class LocalizedSeoMethodsMixin:
             # for tests and callers that patch the legacy pricing adapter.
             from .serializers import _apply_product_markup_to_payload
 
-            data = _apply_product_markup_to_payload(data, instance)
+            def active_base():
+                getter = getattr(self, "_get_active_variant", None)
+                variant = getter(instance) if callable(getter) else None
+                if variant is None or getattr(variant, "price", None) is None:
+                    return None
+                return variant.price, (
+                    getattr(variant, "currency", None) or getattr(instance, "currency", None)
+                )
+
+            data = _apply_product_markup_to_payload(data, instance, active_base=active_base)
 
         # This projection is DB-only and detail-only. List serializers therefore
         # acquire neither an N+1 query nor supplier HTTP requests.

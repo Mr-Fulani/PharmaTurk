@@ -929,9 +929,10 @@ class AllCategoriesAdmin(CategoryProductCountAdminMixin, AdminMediaHelpTextMixin
             'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image.'),
         }),
         (_('Наценка товара'), {
-            'fields': ('margin_percent',),
+            'fields': ('margin_percent', 'markup_scale'),
             'description': _(
-                'Накладывается поверх маржи валютной пары. Используется, если у бренда товара не задана своя наценка.'
+                'Накладывается поверх маржи валютной пары. Используется, если у бренда товара не задана своя наценка. '
+                'Если выбрана шкала, наценка берётся из неё по цене источника, а процент остаётся запасным.'
             ),
         }),
         (_('Доставка'), {
@@ -1864,7 +1865,7 @@ class ClothingVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, 
             if not data:
                 return None
             from .utils.product_markup import apply_product_markup
-            return apply_product_markup(data.get('price_with_margin'), obj.product)
+            return apply_product_markup(data.get('price_with_margin'), obj.product, price, currency)
         except Exception:
             return None
 
@@ -2034,7 +2035,9 @@ class ClothingProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, 
                 if not data:
                     return '-'
                 from .utils.product_markup import apply_product_markup
-                value = apply_product_markup(data.get('price_with_margin'), obj)
+                value = apply_product_markup(
+                    data.get('price_with_margin'), obj, effective_price, effective_currency
+                )
                 return str(value if value is not None else '-')
 
             rows.append(
@@ -2262,7 +2265,7 @@ class ShoeVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, Vari
             if not data:
                 return None
             from .utils.product_markup import apply_product_markup
-            return apply_product_markup(data.get('price_with_margin'), obj.product)
+            return apply_product_markup(data.get('price_with_margin'), obj.product, price, currency)
         except Exception:
             return None
 
@@ -2489,7 +2492,9 @@ class ShoeProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, Shad
                 if not data:
                     return '-'
                 from .utils.product_markup import apply_product_markup
-                value = apply_product_markup(data.get('price_with_margin'), obj)
+                value = apply_product_markup(
+                    data.get('price_with_margin'), obj, effective_price, effective_currency
+                )
                 return str(value if value is not None else '-')
 
             rows.append(
@@ -2911,7 +2916,9 @@ class JewelryProductAdmin(MainMediaPreviewAdminMixin, MainPhotoGalleryAdminMixin
                 if not data:
                     return '-'
                 from .utils.product_markup import apply_product_markup
-                value = apply_product_markup(data.get('price_with_margin'), obj)
+                value = apply_product_markup(
+                    data.get('price_with_margin'), obj, effective_price, effective_currency
+                )
                 return str(value if value is not None else '-')
 
             label = v.material or v.color or v.name or '-'

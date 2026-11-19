@@ -324,7 +324,9 @@ class CartSourceOfferPolicy:
                 target_currency,
                 apply_margin=True,
             )
-            public_price = apply_product_markup(price_with_margin, product)
+            public_price = apply_product_markup(
+                price_with_margin, product, source_price, source_currency
+            )
             return cls._money(public_price)
         except Exception:
             logger.exception(
