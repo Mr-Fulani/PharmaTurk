@@ -90,7 +90,12 @@ def test_examples_cover_both_sides_of_every_threshold():
 
 
 @pytest.fixture
-def admin_client(client, django_user_model):
+def admin_client(client, django_user_model, settings):
+    # страницы админки ссылаются на статику; в тестах манифеста collectstatic нет
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
     client.force_login(
         django_user_model.objects.create_superuser("scale-admin", "scale-admin@example.com", "x" * 20)
     )
