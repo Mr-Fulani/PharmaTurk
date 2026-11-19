@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 from rest_framework.test import APIClient
 
-from apps.catalog.models import Category, MedicineProduct, Product
+from apps.catalog.models import Category, MedicineProduct, MedicineProductImage, Product
 
 pytestmark = pytest.mark.django_db
 
@@ -41,3 +41,17 @@ def test_analog_block_uses_uploaded_main_photo():
     row = next(item for item in payload["results"] if item["slug"] == "propofol-b")
     assert "propofol-polifarma-main-new.webp" in row["main_image_url"]
     assert row["main_image_url"] == card["main_image_url"]
+
+
+def test_analog_block_uses_gallery_file_over_stale_link():
+    """19.11.2026: главное фото из админки встаёт файлом в кадр галереи, ссылка кадра прежняя."""
+    _medicine("propofol-a")
+    analog = _medicine("propofol-b")
+    MedicineProductImage.objects.create(
+        product=analog, image_url="https://example.com/old-gallery.jpg", image_file=NEW, is_main=True,
+    )
+
+    payload = APIClient().get("/api/catalog/medicines/products/propofol-a/analogs").json()
+
+    row = next(item for item in payload["results"] if item["slug"] == "propofol-b")
+    assert "propofol-polifarma-main-new.webp" in row["main_image_url"]

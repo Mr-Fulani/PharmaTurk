@@ -161,9 +161,12 @@ def build_medicine_reference_payload(product, request, limit):
         # аналогов оставалось прежнее фото после замены в админке (PROPOFOL-PF, 18.11.2026).
         main_image = _resolve_file_url(getattr(analog, "main_image_file", None), request) or analog.main_image or ""
         if not main_image:
-            first_gallery = analog.gallery_images.first()
-            if first_gallery:
-                main_image = first_gallery.image_url or ""
+            # Загруженный файл кадра главнее его ссылки: после замены фото в админке файл новый,
+            # а image_url строки остаётся прежним (19.11.2026).
+            gallery = list(analog.gallery_images.all())
+            picked = next((row for row in gallery if row.is_main), gallery[0] if gallery else None)
+            if picked:
+                main_image = _resolve_file_url(picked.image_file, request) or picked.image_url or ""
         if main_image and request and not main_image.startswith("http"):
             main_image = request.build_absolute_uri(main_image)
 
