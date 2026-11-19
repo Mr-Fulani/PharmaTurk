@@ -2221,6 +2221,8 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         ],
     )
     def medicine_reference(self, request):
+        from .hospital_medicines import HOSPITAL_WITHOUT_PRICE_Q
+
         queryset = Product.objects.filter(product_type='medicines').exclude(
             models.Q(external_data__has_key='is_stub') &
             models.Q(external_data__is_stub=True)
@@ -2228,8 +2230,8 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             # Запрещённые к ввозу в РФ/СНГ на главную не выносятся (TD-024).
             medicine_item__import_restricted_countries__gt=''
         ).exclude(
-            # Больничные препараты на главную не выносятся.
-            medicine_item__is_hospital=True
+            # Больничные препараты без цены на главную не выносятся.
+            HOSPITAL_WITHOUT_PRICE_Q
         )
         return self._featured_response(request, queryset)
 
@@ -4937,8 +4939,8 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         from apps.catalog.services.market_check_pricing import attach_public_market_price
 
         medicine = self.get_object()
-        if medicine.is_hospital:
-            # Больничный препарат — «цена по запросу», проверки цены нет (docs/HOSPITAL_MEDICINES.md)
+        if medicine.is_hospital and not medicine.price:
+            # Больничный препарат без цены — «цена по запросу», проверки цены нет (docs/HOSPITAL_MEDICINES.md)
             return Response({"detail": "hospital_price_on_request"}, status=status.HTTP_404_NOT_FOUND)
         service = MedicineMarketCheckService()
 

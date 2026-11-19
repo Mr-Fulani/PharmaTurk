@@ -7,6 +7,7 @@ import pytest
 from django.test import override_settings
 from rest_framework.test import APIClient, APIRequestFactory
 
+from apps.catalog.hospital_medicines import HOSPITAL_WITHOUT_PRICE_Q
 from apps.catalog.models import Product
 from apps.recommendations.models import ProductVector
 from apps.recommendations.selectors import (
@@ -48,8 +49,8 @@ def test_public_selector_requires_published_and_available_product():
     product_filter.assert_called_once_with(is_active=True, is_available=True)
     base_queryset.exclude.assert_called_once()
     without_shadows.exclude.assert_called_once()
-    # Больничные препараты (docs/HOSPITAL_MEDICINES.md) не рекомендуются
-    without_stubs.exclude.assert_called_once_with(medicine_item__is_hospital=True)
+    # Больничные препараты без цены (docs/HOSPITAL_MEDICINES.md) не рекомендуются
+    without_stubs.exclude.assert_called_once_with(HOSPITAL_WITHOUT_PRICE_Q)
     assert is_public_recommendation_product(
         SimpleNamespace(is_active=True, is_available=True)
     )

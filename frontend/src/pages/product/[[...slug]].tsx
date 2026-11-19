@@ -1412,6 +1412,8 @@ export default function ProductPage({
   // Вычисляем общую сумму с учетом количества
   const totalPrice = priceValue !== null ? formatPrice(priceValue * quantity, currency, i18n.language) : null
   const isHospital = Boolean(product.is_hospital)
+  // Больничный препарат без цены — «цена по запросу»; с ценой — обычная цена и подпись (docs/HOSPITAL_MEDICINES.md)
+  const hospitalPriceOnRequest = isHospital && priceValue === null
   const priceOnRequestLabel = isHospital
     ? t('hospital_price_on_request', 'Больничный препарат · цена по запросу')
     : t('price_on_request')
@@ -2383,7 +2385,7 @@ export default function ProductPage({
                 )}
               </div>
             )}
-            {isHospital ? (
+            {hospitalPriceOnRequest ? (
               <div
                 {...medicineNoSnippet}
                 className="mt-3 rounded-xl border border-[var(--accent-muted)] bg-[var(--accent-soft)] px-4 py-3"
@@ -2400,6 +2402,13 @@ export default function ProductPage({
               <div {...medicineNoSnippet} className="mt-3 text-xl font-semibold text-red-600">
                 {displayPrice || t('price_on_request')}
               </div>
+            )}
+            {isHospital && !hospitalPriceOnRequest && (
+              <p {...medicineNoSnippet} className="mt-1 text-sm leading-relaxed text-gray-700 dark:text-gray-300" role="note">
+                <span className="font-semibold text-[var(--accent-strong)]">{t('hospital_medicine', 'Больничный препарат')}</span>
+                {' · '}
+                {t('hospital_medicine_priced_hint', 'применяется в основном в больницах. Наличие и возможность доставки уточнит менеджер.')}
+              </p>
             )}
             {importRestrictedCountries && (
               <div
@@ -2794,7 +2803,7 @@ export default function ProductPage({
               ) : (
                 (productType === 'medicines' || product.product_type === 'medicines') ? (
                   <>
-                    {!isHospital && <MedicinePriceCheck
+                    {!hospitalPriceOnRequest && <MedicinePriceCheck
                       slug={product.slug}
                       onPriceUpdated={({ amount, currency: checkedCurrency }) => {
                         setProduct((current) => current

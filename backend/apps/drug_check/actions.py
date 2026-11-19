@@ -41,8 +41,6 @@ def price_action(report) -> dict:
     medicine = report.medicine
     if medicine is None:
         return {"offer": None, "note": ""}
-    if medicine.is_hospital:
-        return {"offer": None, "note": "Больничный препарат («цена по запросу») — цену не принимаем."}
     result = _ilacfiyati(report)
     if result is None or result.level == ERROR or result.price is None:
         return {"offer": None, "note": "Цену IlacFiyati получить не удалось — принимать нечего."}
@@ -106,7 +104,7 @@ def apply_price(medicine_id: int, offer: dict) -> tuple[MedicineProduct, Decimal
     with transaction.atomic():
         medicine = MedicineProduct.objects.select_for_update().get(pk=medicine_id)
         old_price, old_currency = medicine.price, (medicine.currency or "")
-        if medicine.is_hospital or (old_price == offer["price"] and old_currency.upper() == offer["currency"]):
+        if old_price == offer["price"] and old_currency.upper() == offer["currency"]:
             return None
         # Цены лекарств регулируются: прежняя цена — не «старая цена со скидкой».
         medicine.old_price = None

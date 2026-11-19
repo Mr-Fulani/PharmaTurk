@@ -24,14 +24,15 @@ def public_recommendation_products():
     active/available flags, exclude legacy per-variant shadow rows and medicine
     stubs that exist only to link analogs in the admin.
     """
+    from apps.catalog.hospital_medicines import HOSPITAL_WITHOUT_PRICE_Q
     from apps.catalog.models import Product
 
     return (
         Product.objects.filter(is_active=True, is_available=True)
         .exclude(_VARIANT_SHADOW_Q)
         .exclude(_MEDICINE_STUB_Q)
-        # Больничные препараты — справочные карточки без цены, не рекомендуются.
-        .exclude(medicine_item__is_hospital=True)
+        # Больничные препараты без цены («цена по запросу») не рекомендуются.
+        .exclude(HOSPITAL_WITHOUT_PRICE_Q)
     )
 
 

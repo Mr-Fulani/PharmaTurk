@@ -81,7 +81,7 @@ interface ProductCardProps {
   note?: string | null
   /** Коды стран, куда ввоз препарата запрещён или ограничен (RU, KZ, UZ) — красная метка. */
   importRestrictedCountries?: string[] | null
-  /** Больничный препарат: вместо цены «Больничный препарат · цена по запросу» (docs/HOSPITAL_MEDICINES.md). */
+  /** Больничный препарат: подпись у цены; без цены — «Больничный препарат · цена по запросу» (docs/HOSPITAL_MEDICINES.md). */
   isHospital?: boolean
 }
 
@@ -256,6 +256,8 @@ export default function ProductCard({
   const priceOnRequestLabel = isHospital
     ? t('hospital_price_on_request', 'Больничный препарат · цена по запросу')
     : t('price_on_request', 'Цена по запросу')
+  // Больничный препарат с ценой: цена как обычно, отметка — подпись рядом
+  const hospitalNote = isHospital && price ? t('hospital_medicine', 'Больничный препарат') : null
   const displaySubtitle = subtitle?.trim() || null
   const displayNote = note?.trim() || null
   const displayBrandName = brandName?.trim() || null
@@ -389,6 +391,7 @@ export default function ProductCard({
                     </>
                   ) : <span className={isHospital ? 'text-sm font-semibold' : undefined}>{priceOnRequestLabel}</span>}
                 </div>
+                {hospitalNote && <div className="text-xs text-[var(--text-weak)]">{hospitalNote}</div>}
                 {oldPrice && (
                   <div className="inline-flex items-center gap-1 text-sm text-gray-400">
                     <span className="line-through">
@@ -583,6 +586,7 @@ export default function ProductCard({
               </>
             ) : <span className={isHospital ? 'text-sm font-semibold' : undefined}>{priceOnRequestLabel}</span>}
           </span>
+          {hospitalNote && <span className="text-xs text-[var(--text-weak)]">{hospitalNote}</span>}
           {oldPrice && (
             <span className="inline-flex items-center gap-1 text-xs md:text-sm text-gray-400">
               <span className="line-through">
