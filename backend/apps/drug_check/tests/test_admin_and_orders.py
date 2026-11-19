@@ -10,7 +10,7 @@ import pytest
 from django.urls import reverse
 
 from apps.catalog.models import MedicineProduct, Product
-from apps.drug_check.service import order_check_text
+from apps.drug_check.service import lookup_query, order_checks
 from apps.drug_check.sources.selcuk import SelcukSource
 from apps.drug_check.sources.skrs import SkrsSource
 from apps.orders.models import Order, OrderItem
@@ -135,68 +135,122 @@ def _order_with(*products):
 
 
 @pytest.mark.django_db
-def test_order_text_lists_each_medicine_and_skips_other_goods(lists, web, nexium):
+def test_lookup_link_from_telegram_fills_the_search_field(admin_client, lists, web):
+    # Так приходит ссылка из сообщения о заявке: запрос закодирован в адресе
+    page = admin_client.get(reverse("admin:drug_check_lookup") + "?q=CRESTOR%205%20MG")
+
+    html = page.content.decode()
+    assert 'name="q" value="CRESTOR 5 MG"' in html
+    assert "CRESTOR 5 MG 28 FILM TABLET" in html
+
+
+@pytest.mark.django_db
+def test_lookup_query_is_real_barcode_or_turkish_source_name(nexium):
+    assert lookup_query(nexium) == "8699786040021"
+
+    nexium.barcode = "1111111111111"
+    nexium.external_data = {"source_name": "NEXIUM 40 MG 14 TABLET"}
+    assert lookup_query(nexium) == "NEXIUM 40 MG 14 TABLET"
+
+    nexium.external_data = {}
+    assert lookup_query(nexium) == "NEXIUM (эзомепразол) 40 мг, 14 таб."
+
+
+@pytest.mark.django_db
+def test_order_checks_cover_each_medicine_once_and_skip_other_goods(lists, web, nexium):
     other = Product.objects.create(name="Кроссовки", slug=f"shoe-{time.monotonic_ns()}", product_type="shoes",
                                    price=Decimal("10"), currency="TRY")
     order = _order_with(nexium.base_product, other, nexium.base_product)
 
-    text = order_check_text(order)
+    checks = order_checks(order)
 
-    lines = text.split("\n")
-    assert lines[0].startswith("🔎 Проверка лекарств")
-    assert len(lines) == 2
-    assert lines[1].startswith("• NEXIUM (эзомепразол) 40 мг, 14 таб.: ⚠️ SKRS: пассивен с 15.04.2025")
-    assert order_check_text(_order_with(other)) == ""
+    assert list(checks) == [str(nexium.pk)]
+    assert checks[str(nexium.pk)].startswith("⚠️ SKRS: пассивен с 15.04.2025")
+    assert order_checks(_order_with(other)) == {}
 
 
 @pytest.mark.django_db
-def test_order_text_stops_external_requests_after_time_budget(lists, web, nexium):
+def test_order_checks_stop_external_requests_after_time_budget(lists, web, nexium):
     _pages, calls = web
 
-    text = order_check_text(_order_with(nexium.base_product), seconds=0)
+    text = order_checks(_order_with(nexium.base_product), seconds=0)[str(nexium.pk)]
 
     assert "IlacFiyati: не успели проверить" in text
     assert "SKRS: пассивен с 15.04.2025" in text  # своя таблица — без сети, всегда есть
     assert calls == []
 
 
-def test_order_text_is_empty_when_items_cannot_be_read():
-    assert order_check_text(SimpleNamespace(pk=1)) == ""
+def test_order_checks_are_empty_when_items_cannot_be_read():
+    assert order_checks(SimpleNamespace(pk=1)) == {}
+
+
+def _send_order(post, settings, order, **kwargs):
+    settings.TELEGRAM_BOT_TOKEN = "test-token"
+    settings.TELEGRAM_CHAT_ID = "admin-chat"
+    settings.TELEGRAM_ORDERS_CHAT_ID = ""
+    settings.SITE_URL = "https://site.test"
+    post.return_value = SimpleNamespace(status_code=200, ok=True)
+
+    notify_new_order_telegram.run(order_id=order.id, **kwargs)
+
+    return [call.kwargs["json"]["text"] for call in post.call_args_list]
 
 
 @pytest.mark.django_db
 @patch("apps.orders.tasks._load_receipt_pdf_from_storage", return_value=None)
 @patch("apps.orders.tasks.generate_and_save_receipt", return_value=("", None))
 @patch("apps.orders.tasks.requests.post")
-def test_manager_telegram_message_ends_with_drug_check(post, _gen, _load, settings, lists, web, nexium):
-    settings.TELEGRAM_BOT_TOKEN = "test-token"
-    settings.TELEGRAM_CHAT_ID = "admin-chat"
-    settings.TELEGRAM_ORDERS_CHAT_ID = ""
-    post.return_value = SimpleNamespace(status_code=200, ok=True)
-    order = _order_with(nexium.base_product)
+def test_manager_telegram_message_has_check_and_links_under_the_medicine(
+    post, _gen, _load, settings, lists, web, nexium
+):
+    other = Product.objects.create(name="Кроссовки <Run & Go>", slug=f"shoe-{time.monotonic_ns()}",
+                                   product_type="shoes", price=Decimal("10"), currency="TRY")
+    MedicineProduct.objects.filter(pk=nexium.pk).update(is_hospital=True, import_restricted_countries="RU,KZ")
 
-    notify_new_order_telegram.run(order_id=order.id)
+    texts = _send_order(post, settings, _order_with(nexium.base_product, other))
 
-    texts = [call.kwargs["json"]["text"] for call in post.call_args_list]
     assert len(texts) == 1
-    assert "Новая заявка" in texts[0]
-    assert "🔎 Проверка лекарств" in texts[0]
-    assert "SKRS: пассивен с 15.04.2025" in texts[0]
+    check_url = "https://site.test" + reverse("admin:drug_check_medicine", args=[nexium.pk])
+    lookup_url = "https://site.test" + reverse("admin:drug_check_lookup") + "?q=8699786040021"
+    medicine, shoes = texts[0].split("\n\n")[3:5]
+    lines = medicine.split("\n")
+    assert lines[0] == "1. <b>NEXIUM (эзомепразол) 40 мг, 14 таб.</b>"
+    assert lines[1] == "1 шт. · 100.00 RUB"
+    assert lines[2] == "🏥 Больничный препарат · ⛔ Ввоз ограничен: RU, KZ"
+    assert lines[3].startswith("⚠️ SKRS: пассивен с 15.04.2025")
+    assert lines[4] == (
+        f'🔎 <a href="{check_url}">Проверить по источникам</a> · <a href="{lookup_url}">Поиск по штрихкоду</a>'
+    )
+    assert shoes == "2. <b>Кроссовки &lt;Run &amp; Go&gt;</b>\n1 шт. · 100.00 RUB"
+    assert post.call_args.kwargs["json"]["parse_mode"] == "HTML"
 
 
 @pytest.mark.django_db
 @patch("apps.orders.tasks._load_receipt_pdf_from_storage", return_value=None)
 @patch("apps.orders.tasks.generate_and_save_receipt", return_value=("", None))
 @patch("apps.orders.tasks.requests.post")
-def test_retry_reuses_drug_check_text_without_new_requests(post, _gen, _load, settings, web, nexium):
-    settings.TELEGRAM_BOT_TOKEN = "test-token"
-    settings.TELEGRAM_CHAT_ID = "admin-chat"
-    settings.TELEGRAM_ORDERS_CHAT_ID = ""
-    post.return_value = SimpleNamespace(status_code=200, ok=True)
+def test_lookup_link_encodes_turkish_name_when_barcode_is_not_real(post, _gen, _load, settings, web, nexium):
+    MedicineProduct.objects.filter(pk=nexium.pk).update(
+        barcode="", external_data={"source_name": 'ÇİBADREX %5 "FORTE" & 30 G'}
+    )
+
+    texts = _send_order(post, settings, _order_with(nexium.base_product))
+
+    assert (
+        'lookup/?q=%C3%87%C4%B0BADREX%20%255%20%22FORTE%22%20%26%2030%20G">Поиск по названию</a>' in texts[0]
+    )
+
+
+@pytest.mark.django_db
+@patch("apps.orders.tasks._load_receipt_pdf_from_storage", return_value=None)
+@patch("apps.orders.tasks.generate_and_save_receipt", return_value=("", None))
+@patch("apps.orders.tasks.requests.post")
+def test_retry_reuses_drug_checks_without_new_requests(post, _gen, _load, settings, web, nexium):
     _pages, calls = web
-    order = _order_with(nexium.base_product)
 
-    notify_new_order_telegram.run(order_id=order.id, drug_check_text="🔎 готовый итог")
+    texts = _send_order(
+        post, settings, _order_with(nexium.base_product), drug_checks={str(nexium.pk): "✅ готовый <итог>"}
+    )
 
-    assert "🔎 готовый итог" in post.call_args.kwargs["json"]["text"]
+    assert "\n✅ готовый &lt;итог&gt;\n🔎 <a href=" in texts[0]
     assert calls == []

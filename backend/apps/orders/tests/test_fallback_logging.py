@@ -389,7 +389,8 @@ class ProductPriceHelperTests(SimpleTestCase):
             price = _get_product_price_for_currency(product, "USD")
 
         self.assertEqual(price, Decimal("11"))
-        markup.assert_called_once_with(Decimal("10"), product)
+        # наценка накладывается один раз; цена источника и её валюта — для выбора ступени шкалы
+        markup.assert_called_once_with(Decimal("10"), product, Decimal("10"), "RUB")
         self.assertEqual(len(cm.output), 2)
         self.assertIn("RuntimeError: boom", cm.output[1])
 
