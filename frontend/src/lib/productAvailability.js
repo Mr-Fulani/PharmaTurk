@@ -56,19 +56,33 @@ const EU_COUNTRIES = [
 ]
 export const SCHEMA_SHIPPING_COUNTRIES = ['KZ', 'UZ', 'AZ', 'TR', 'AE', 'US', ...EU_COUNTRIES]
 
+// TD-048: Merchant Center принимает ставку доставки только в валюте страны назначения
+// («Неправильная валюта в информации о доставке» у 8,36 тыс. товаров: ставка в рублях для стран,
+// где рубль не ходит, а России в списке нет). Поэтому в разметку идут только те страны из списка
+// владельца, чья валюта совпадает с валютой цены; для рублей таких нет — блок доставки не выводим.
+const NON_EURO_EU_COUNTRIES = ['CZ', 'DK', 'HU', 'PL', 'RO', 'SE']
+const SHIPPING_COUNTRIES_BY_CURRENCY = {
+  USD: ['US'],
+  EUR: EU_COUNTRIES.filter((code) => !NON_EURO_EU_COUNTRIES.includes(code)),
+  TRY: ['TR'],
+  KZT: ['KZ'],
+}
+
 // Доставка 7–14 дней (сборка заказа 1–2 дня + в пути 6–12), 5 $ в валюте цены Offer:
-// Google требует ту же валюту, что у price. Суммы по валютам — из resolve
+// Google требует ту же валюту, что у price, и чтобы это была валюта страны назначения (TD-048). Суммы по валютам — из resolve
 // (shipping_rates, по курсу сайта); у мебели, лекарств и услуг их нет — без доставки.
 // БАДы (решение владельца 09.11.2026): в разметке срок авиа — 3–7 дней (сборка 1–2 + в пути 2–5),
 // ставка та же.
 export function buildSchemaShippingDetails(shippingRates, currency, { supplement = false } = {}) {
-  const value = shippingRates?.[String(currency || '').toUpperCase()]
-  if (!value) return undefined
+  const code = String(currency || '').toUpperCase()
+  const value = shippingRates?.[code]
+  const countries = SHIPPING_COUNTRIES_BY_CURRENCY[code]
+  if (!value || !countries) return undefined
   const days = (minValue, maxValue) => ({ '@type': 'QuantitativeValue', minValue, maxValue, unitCode: 'DAY' })
   return {
     '@type': 'OfferShippingDetails',
-    shippingRate: { '@type': 'MonetaryAmount', value: Number(value), currency: String(currency).toUpperCase() },
-    shippingDestination: SCHEMA_SHIPPING_COUNTRIES.map((addressCountry) => ({ '@type': 'DefinedRegion', addressCountry })),
+    shippingRate: { '@type': 'MonetaryAmount', value: Number(value), currency: code },
+    shippingDestination: countries.map((addressCountry) => ({ '@type': 'DefinedRegion', addressCountry })),
     deliveryTime: { '@type': 'ShippingDeliveryTime', handlingTime: days(1, 2), transitTime: supplement ? days(2, 5) : days(6, 12) },
   }
 }

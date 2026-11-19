@@ -218,7 +218,8 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                     media_items = json.loads(request.data['media_items'])
                 else:
                     media_items = request.data['media_items']
-            except:
+            except (TypeError, ValueError):
+                logger.warning("Отзыв: поле media_items не разобрано, медиа из него пропущены", exc_info=True)
                 media_items = []
         
         # Обработка медиа файлов из multipart/form-data

@@ -10,13 +10,15 @@ from apps.catalog.medicine_taxonomy import propose_medicine_category
 from apps.catalog.models import Category, MedicineProduct
 from apps.catalog.supplement_taxonomy import supplement_category_slug, supplement_substance_slug
 from apps.scrapers.ilacfiyati_duplicates import is_real_barcode
+from apps.scrapers.ilacfiyati_twins import _fold, _spelling
 
 
 class MedicineCategoryConflict(Exception):
     """An ambiguous medicine import requires review instead of partial writes."""
 
-    # Настоящий штрихкод источника совпал со штрихкодом карточки, расходится только
-    # ATC или вещество: упаковка та же — цену и наличие обновить можно, остальное нет.
+    # Упаковка та же — цену и наличие обновить можно, остальное нет: настоящий штрихкод
+    # источника совпал со штрихкодом карточки (расходится ATC, вещество или external_id)
+    # либо это та же страница источника, но товар у нас уже не лекарство.
     price_refresh_allowed = False
 
 
@@ -39,12 +41,50 @@ def merge_medicine_attributes(previous, fresh):
     return merged
 
 
+def _ingredient_word(word):
+    word = _spelling(word.replace("x", "ks"))
+    return "asid" if word in ("asit", "asidi") else word  # кислота: asit / asidi / acid
+
+
+# Соль, гидрат и служебные слова вещества не меняют: «Amoksisilin trihidrat» = «amoksisilin».
+# Эфиры (propiyonat, furoat, valerat…) сюда не входят — это разные препараты.
+_INGREDIENT_SALTS = frozenset(_ingredient_word(_fold(word)) for word in """
+    hcl hidroklorur hidroklorid hydrochloride dihidroklorur dihydrochloride hidrobromur hydrobromide
+    klorur chloride bromur bromide sodyum sodium disodyum disodium potasyum potassium dipotasyum
+    kalsiyum calcium magnezyum magnesium sulfat sulfate sulphate fosfat phosphate asetat acetate
+    maleat maleate fumarat fumarate hemifumarat tartarat tartrat tartrate bitartarat sitrat citrate
+    suksinat succinate besilat besylate mesilat mesylate tosilat nitrat nitrate laktat lactate
+    glukonat gluconate karbonat carbonate
+    hidrat hydrate monohidrat monohydrate dihidrat dihydrate trihidrat trihydrate tetrahidrat
+    pentahidrat hemihidrat hemihydrate seskihidrat anhidr anhidrus anhydrous susuz
+    baz base mikronize micronized olarak as
+""".split())
+_INGREDIENT_SPLIT_RE = re.compile(r"[+/;|&]|,(?!\d)|\b(?:ve|and|ile|with)\b")
+
+
+def ingredient_key(value):
+    """Состав без различий написания: набор веществ, у каждого — набор слов.
+
+    Не различаются регистр, турецкие буквы, порядок («A + B» = «B / A», «A ve B»),
+    турецкая и латинская запись («Amoksisilin» = «Amoxicillin»), соль и гидрат.
+    Вещество из одних «солевых» слов («Sodyum klorür») сравнивается целиком.
+    Пусто — состав неизвестен.
+    """
+    components = set()
+    for part in _INGREDIENT_SPLIT_RE.split(_fold(value)):
+        words = frozenset(_ingredient_word(word) for word in re.findall(r"[a-z0-9]+", part))
+        words = (words - _INGREDIENT_SALTS) or words
+        if words:
+            components.add(words)
+    return frozenset(components)
+
+
 def _normalized(value, field):
     value = str(value or "").strip()
     if field == "atc_code":
         return tuple(sorted(set(re.split(r"\s*[/,;|+]\s*", value.upper())))) if value else ()
     if field == "active_ingredient":
-        return " ".join(value.casefold().split())
+        return ingredient_key(value)
     return value
 
 
@@ -77,6 +117,9 @@ def _validate_identity(scraped, existing, medicine):
             fresh.append(scraped.barcode)
         fresh = {_normalized(value, field) for value in fresh if str(value or "").strip()}
         known = {_normalized(value, field) for value in values if str(value or "").strip()}
+        # «-» вместо вещества — значения нет, а не расхождение.
+        fresh.discard(frozenset())
+        known.discard(frozenset())
         if len(fresh | known) > 1:
             conflict = MedicineCategoryConflict(f"{field}_conflict")
             conflict.price_refresh_allowed = same_package
@@ -86,9 +129,39 @@ def _validate_identity(scraped, existing, medicine):
             same_package = bool(fresh) and fresh == known and is_real_barcode(next(iter(fresh)))
 
 
+def _source_page(url):
+    return [part for part in urlparse(str(url or "")).path.casefold().split("/") if part][:2]
+
+
+def _same_real_barcode(scraped, existing, medicine):
+    """Настоящий штрихкод источника — единственный и тот же, что записан у карточки."""
+    stored = [_mapping(_mapping(existing.external_data).get("attributes")).get("barcode")]
+    if medicine is not None:
+        stored += [
+            _mapping(_mapping(medicine.external_data).get("attributes")).get("barcode"),
+            medicine.barcode,
+        ]
+    fresh = {str(value).strip() for value in (_mapping(scraped.attributes).get("barcode"), scraped.barcode)
+             if str(value or "").strip()}
+    known = {str(value).strip() for value in stored if str(value or "").strip()}
+    return len(fresh) == 1 and fresh == known and is_real_barcode(next(iter(fresh)))
+
+
 def validate_existing_medicine(scraped, existing, *, is_variant_update=False):
     if is_variant_update or existing.product_type != "medicines":
-        raise MedicineCategoryConflict("variant_or_product_type_conflict")
+        conflict = MedicineCategoryConflict("variant_or_product_type_conflict")
+        if is_variant_update:
+            # Найден по адресу страницы, external_id другой (старая запись, страница-дубль):
+            # цена и наличие — только если штрихкод подтверждает ту же упаковку.
+            conflict.price_refresh_allowed = _same_real_barcode(
+                scraped, existing, MedicineProduct.objects.filter(base_product_id=existing.pk).first(),
+            )
+        else:
+            # Та же страница источника, но товар у нас не лекарство (БАД, косметика, масло
+            # после смены типа): лекарственные поля не пишем, цена и наличие — её же.
+            page = _source_page(scraped.url)
+            conflict.price_refresh_allowed = len(page) == 2 and page == _source_page(existing.external_url)
+        raise conflict
     attrs = _mapping(scraped.attributes)
     if attrs.get("is_stub") is True:
         raise MedicineCategoryConflict("incomplete_source_card")

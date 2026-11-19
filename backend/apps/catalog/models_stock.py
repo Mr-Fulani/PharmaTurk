@@ -150,3 +150,23 @@ class ProductDeletionLog(models.Model):
 
     def __str__(self):
         return f"{self.product_id}: {self.product_name}"
+
+
+class DeletedProductSlug(models.Model):
+    """Адрес товара, удалённого как неактуальный: вернувшийся товар получает его снова (TD-042).
+
+    Пишется при удалении (``stale_products._delete_one``), читается и стирается при создании
+    товара с тем же ``external_id`` (``CatalogNormalizer.normalize_product``).
+    """
+
+    external_id = models.CharField(_("Внешний ID"), max_length=500, unique=True)
+    slug = models.CharField(_("Адрес (slug)"), max_length=600)
+    old_slugs = models.JSONField(_("Прежние адреса"), default=list, blank=True)
+    created_at = models.DateTimeField(_("Удалён"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Адрес удалённого товара")
+        verbose_name_plural = _("Адреса удалённых товаров")
+
+    def __str__(self):
+        return f"{self.external_id} → {self.slug}"
