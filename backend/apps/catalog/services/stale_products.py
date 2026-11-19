@@ -35,7 +35,7 @@ from django.utils import timezone
 
 from apps.catalog.models import Product, ProductSourceOffer
 from apps.catalog.services.cross_source_duplicates import on_product_retired
-from apps.catalog.models_stock import SOURCE_TITLES, ProductDeletionLog, StaleProductCandidate
+from apps.catalog.models_stock import SOURCE_TITLES, DeletedProductSlug, ProductDeletionLog, StaleProductCandidate
 from apps.catalog.utils.media_references import MediaReferenceCheckError, media_reference_fields
 
 logger = logging.getLogger(__name__)
@@ -614,6 +614,18 @@ def _deletion_blocker(candidate: StaleProductCandidate, product: Product, object
     return ""
 
 
+def _remember_slugs(product: Product) -> None:
+    """Адреса удаляемого товара: вернётся у продавца — получит прежний адрес (TD-042)."""
+    if not product.external_id:
+        return
+    old = set(product.slug_history.values_list("old_slug", flat=True))
+    old.update(record.slug for record in domain_records(product))
+    old.discard(product.slug)
+    DeletedProductSlug.objects.update_or_create(
+        external_id=product.external_id, defaults={"slug": product.slug, "old_slugs": sorted(old)}
+    )
+
+
 def _delete_one(candidate: StaleProductCandidate, user, gateway: MediaGateway) -> ProductDeletionLog:
     from apps.catalog.signals import storage_deletes_suppressed
 
@@ -654,6 +666,7 @@ def _delete_one(candidate: StaleProductCandidate, user, gateway: MediaGateway) -
             objects_count=len(objects),
             files=files,
         )
+        _remember_slugs(product)
         with storage_deletes_suppressed():
             product.delete()
     return log
@@ -798,6 +811,10 @@ def restore_deletion(log: ProductDeletionLog, user=None, *, gateway: MediaGatewa
         with transaction.atomic():
             for deserialized in serializers.deserialize("json", rows):
                 deserialized.save()
+            # Товар вернулся со своим адресом и историей: запись на случай возврата не нужна.
+            DeletedProductSlug.objects.filter(
+                external_id__in=Product.objects.filter(pk=log.product_id).values("external_id")
+            ).delete()
     log.status = ProductDeletionLog.Status.RESTORED
     log.restored_at = timezone.now()
     log.restored_by = user

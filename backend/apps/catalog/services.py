@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
 
-from .models import Category, Brand, Product, ProductImage, PriceHistory
+from .models import Category, Brand, Product, ProductImage, PriceHistory, DeletedProductSlug, ProductSlugHistory
 from .scraper_category_mapping import resolve_category_and_product_type
 from apps.vapi.client import ProductData
 from apps.catalog.utils.old_price import source_old_price
@@ -768,6 +768,13 @@ class CatalogNormalizer:
         if deduped != slug and not Product.objects.filter(slug=deduped).exists():
             slug = deduped
         
+        # Товар удаляли как неактуальный, и он вернулся у продавца: прежний адрес, если свободен (TD-042).
+        returned = None
+        if external_id and not existing_products.exists():
+            returned = DeletedProductSlug.objects.filter(external_id=external_id).first()
+            if returned and not Product.objects.filter(slug=returned.slug).exists():
+                slug = returned.slug
+
         main_image_url = ""
         for media_url in product_data.images or []:
             if self._resolve_media_type(media_url) == "image":
@@ -801,6 +808,15 @@ class CatalogNormalizer:
         else:
             product = Product.objects.create(external_id=external_id, **defaults)
             created = True
+            if returned:
+                # Остальные прежние адреса переадресуют на новый; занятый живым товаром — его.
+                for old_slug in {returned.slug, *returned.old_slugs} - {product.slug}:
+                    if not Product.objects.filter(slug=old_slug).exists():
+                        ProductSlugHistory.objects.get_or_create(
+                            old_slug=old_slug,
+                            defaults={"product": product, "product_type": product.product_type or ""},
+                        )
+                returned.delete()
         
         # Обновляем stock_quantity если он есть в данных парсера
         if hasattr(product_data, 'metadata') and product_data.metadata:
