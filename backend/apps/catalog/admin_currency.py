@@ -1,7 +1,9 @@
 """Админ-панель для управления курсами валют и маржой."""
 
 from django.contrib import admin
-from django.utils.html import format_html
+from django.core.exceptions import ValidationError
+from django.forms.models import BaseInlineFormSet
+from django.utils.html import format_html, format_html_join
 from django.db.models import Count
 from django.urls import reverse
 from django.utils.safestring import mark_safe
@@ -9,7 +11,9 @@ from decimal import Decimal
 from .currency_models import (
     CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog,
     ProductVariantPrice, GlobalCurrencySettings, GlobalShippingSettings, ServicePrice,
+    MarkupScale, MarkupScaleStep,
 )
+from .utils.markup_scale import apply_scale, scale_examples
 from .admin_price import PublicCatalogPriceAdminMixin
 
 
@@ -850,3 +854,97 @@ class CurrencyUpdateLogAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+
+def _lira(value):
+    """12345.5 → «12 345,5»; без лишних нулей после запятой."""
+    text = f"{Decimal(str(value)).quantize(Decimal('0.01')):,.2f}"
+    whole, fraction = text.split(".")
+    fraction = fraction.rstrip("0")
+    whole = whole.replace(",", " ")
+    return f"{whole},{fraction}" if fraction else whole
+
+
+class MarkupScaleStepFormSet(BaseInlineFormSet):
+    """Шкала без дыр: есть хотя бы одна ступень, и первая начинается с 0."""
+
+    def clean(self):
+        super().clean()
+        starts = [
+            form.cleaned_data["price_from"]
+            for form in self.forms
+            if getattr(form, "cleaned_data", None)
+            and not form.cleaned_data.get("DELETE")
+            and form.cleaned_data.get("price_from") is not None
+        ]
+        if not starts:
+            raise ValidationError("Добавьте хотя бы одну ступень.")
+        if min(starts) != 0:
+            raise ValidationError("Первая ступень должна начинаться с 0 лир.")
+
+
+class MarkupScaleStepInline(admin.TabularInline):
+    model = MarkupScaleStep
+    formset = MarkupScaleStepFormSet
+    fields = ('price_from', 'price_to_display', 'percent')
+    readonly_fields = ('price_to_display',)
+    extra = 1
+
+    @admin.display(description='До, лир')
+    def price_to_display(self, obj):
+        if obj is None or obj.pk is None:
+            return "—"
+        following = (
+            MarkupScaleStep.objects.filter(scale_id=obj.scale_id, price_from__gt=obj.price_from)
+            .values_list('price_from', flat=True)
+            .first()
+        )
+        return _lira(following) if following is not None else "и выше"
+
+
+@admin.register(MarkupScale)
+class MarkupScaleAdmin(admin.ModelAdmin):
+    """Шкалы наценки по цене. К ценам сайта пока не подключены."""
+
+    list_display = ('name', 'steps_display', 'updated_at')
+    readonly_fields = ('examples_display',)
+    fields = ('name', 'examples_display')
+    inlines = [MarkupScaleStepInline]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('steps')
+
+    @admin.display(description='Ступени')
+    def steps_display(self, obj):
+        return "; ".join(
+            f"от {_lira(start)} — {percent.normalize():f} %" for start, percent in obj.step_pairs()
+        ) or "нет ступеней"
+
+    @admin.display(description='Примеры (после сохранения)')
+    def examples_display(self, obj):
+        steps = obj.step_pairs() if obj and obj.pk else []
+        if not steps:
+            return "Сохраните шкалу со ступенями — здесь появятся примеры расчёта."
+        rows = []
+        for price in scale_examples(steps):
+            result = apply_scale(steps, price)
+            note = (
+                "не дешевле предыдущей ступени"
+                if result.floor_applied
+                else f"ступень {result.step_percent.normalize():f} %"
+            )
+            rows.append((
+                _lira(price),
+                _lira(result.price_with_markup),
+                f"{result.percent.quantize(Decimal('0.1')).normalize():f}",
+                note,
+            ))
+        return format_html(
+            '<table><thead><tr><th>Цена источника, лир</th><th>Цена с наценкой, лир</th>'
+            '<th>Итоговая наценка, %</th><th>Откуда</th></tr></thead><tbody>{}</tbody></table>'
+            '<p>Правило границы: товар на новой ступени не может стоить дешевле самого дорогого '
+            'товара предыдущей. Шкала пока не подключена к ценам сайта.</p>',
+            format_html_join(
+                '', '<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>', rows
+            ),
+        )
