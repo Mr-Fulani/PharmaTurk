@@ -109,20 +109,33 @@ test('product schema without offer or rating is not published for Product and Dr
   assert.equal(shouldPublishProductSchema({ type: 'Service', hasOffer: false, hasRating: false }), true)
 })
 
-test('shipping details: 5 $ in the offer currency, 7–14 days, owner countries', () => {
-  const details = buildSchemaShippingDetails({ RUB: '402.50', USD: '5.00' }, 'rub')
-  assert.deepEqual(details.shippingRate, { '@type': 'MonetaryAmount', value: 402.5, currency: 'RUB' })
+test('shipping details: 5 $ in the offer currency, 7–14 days, only countries with that currency', () => {
+  const rates = { RUB: '402.50', USD: '5.00', EUR: '4.60', TRY: '170.00', KZT: '2600.00' }
+  const details = buildSchemaShippingDetails(rates, 'usd')
+  assert.deepEqual(details.shippingRate, { '@type': 'MonetaryAmount', value: 5, currency: 'USD' })
   const { handlingTime, transitTime } = details.deliveryTime
   assert.equal(handlingTime.minValue + transitTime.minValue, 7)
   assert.equal(handlingTime.maxValue + transitTime.maxValue, 14)
-  const countries = details.shippingDestination.map((region) => region.addressCountry)
-  for (const code of ['KZ', 'UZ', 'AZ', 'DE', 'TR', 'AE', 'US', 'FR']) assert.ok(countries.includes(code), code)
-  assert.ok(!countries.includes('RU'))
+  const countriesFor = (currency) =>
+    buildSchemaShippingDetails(rates, currency).shippingDestination.map((region) => region.addressCountry)
+  assert.deepEqual(countriesFor('USD'), ['US'])
+  assert.deepEqual(countriesFor('TRY'), ['TR'])
+  assert.deepEqual(countriesFor('KZT'), ['KZ'])
+  const euro = countriesFor('EUR')
+  for (const code of ['DE', 'FR', 'IT', 'BG']) assert.ok(euro.includes(code), code)
+  // В ЕС, но не в зоне евро — ставка в евро для них была бы «не той валютой».
+  for (const code of ['PL', 'CZ', 'SE', 'DK', 'HU', 'RO', 'US', 'TR', 'KZ']) assert.ok(!euro.includes(code), code)
+})
+
+// TD-048: «Неправильная валюта в информации о доставке» в Merchant Center.
+test('no shipping details for a rouble price: no destination country uses roubles', () => {
+  assert.equal(buildSchemaShippingDetails({ RUB: '402.50', USD: '5.00' }, 'RUB'), undefined)
+  assert.equal(buildSchemaShippingDetails({ RUB: '402.50' }, 'rub', { supplement: true }), undefined)
 })
 
 test('shipping details for supplements: air 3–7 days, same rate', () => {
-  const details = buildSchemaShippingDetails({ RUB: '402.50', USD: '5.00' }, 'RUB', { supplement: true })
-  assert.deepEqual(details.shippingRate, { '@type': 'MonetaryAmount', value: 402.5, currency: 'RUB' })
+  const details = buildSchemaShippingDetails({ RUB: '402.50', USD: '5.00' }, 'USD', { supplement: true })
+  assert.deepEqual(details.shippingRate, { '@type': 'MonetaryAmount', value: 5, currency: 'USD' })
   const { handlingTime, transitTime } = details.deliveryTime
   assert.equal(handlingTime.minValue + transitTime.minValue, 3)
   assert.equal(handlingTime.maxValue + transitTime.maxValue, 7)
