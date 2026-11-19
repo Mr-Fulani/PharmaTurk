@@ -2155,10 +2155,38 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
     
+    def _featured_response(self, request, queryset):
+        """Отмеченные «Рекомендуемый» карточки одним списком, без теней вариантов."""
+        try:
+            requested_limit = int(request.query_params.get('limit', 10))
+        except (TypeError, ValueError):
+            requested_limit = 10
+        limit = max(1, min(requested_limit, 20))
+
+        queryset = queryset.filter(
+            is_active=True,
+            is_featured=True,
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
+        ).select_related('category', 'brand', 'price_info').order_by('-created_at')
+
+        featured_products = list(queryset[:limit])
+        self._prefetch_card_relations(featured_products)
+        serializer = self.get_serializer(featured_products, many=True)
+        data = list(serializer.data)
+        if request.query_params.get('view') == 'card':
+            data = [self._compact_card_product(row) for row in data]
+            attach_review_aggregates(data)
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     @extend_schema(
         summary="Рекомендуемые товары",
-        description="Возвращает единый список рекомендуемых товаров без дублей доменных записей",
+        description=(
+            "Возвращает единый список рекомендуемых товаров без дублей доменных записей. "
+            "Лекарства сюда не попадают — для них справочный список medicine-reference."
+        ),
         parameters=[
             OpenApiParameter(
                 name="limit",
@@ -2171,38 +2199,39 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
     )
     def featured(self, request):
         """Return canonical Product rows for a mixed-category homepage list."""
-        try:
-            requested_limit = int(request.query_params.get('limit', 10))
-        except (TypeError, ValueError):
-            requested_limit = 10
-        limit = max(1, min(requested_limit, 20))
+        # Лекарства в «Хиты продаж» не попадают: карточки лекарств справочные
+        # (решение владельца 19.11.2026).
+        return self._featured_response(request, Product.objects.exclude(product_type='medicines'))
 
-        queryset = Product.objects.filter(
-            is_active=True,
-            is_featured=True,
-        ).exclude(
-            models.Q(external_data__has_key='source_variant_id') |
-            models.Q(external_data__has_key='source_variant_slug')
-        ).exclude(
-            models.Q(product_type='medicines') &
+    @action(detail=False, methods=['get'], url_path='medicine-reference', url_name='medicine-reference')
+    @extend_schema(
+        summary="Лекарства для справочного блока главной",
+        description=(
+            "Лекарства с галочкой «Рекомендуемый» — блок «Часто ищут в справочнике лекарств». "
+            "В ответе is_featured у них всегда false: это не хиты продаж."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="limit",
+                type=int,
+                required=False,
+                description="Количество лекарств (1–20)",
+                default=10,
+            ),
+        ],
+    )
+    def medicine_reference(self, request):
+        queryset = Product.objects.filter(product_type='medicines').exclude(
             models.Q(external_data__has_key='is_stub') &
             models.Q(external_data__is_stub=True)
         ).exclude(
-            # Запрещённые к ввозу в РФ/СНГ не продвигаются (TD-024).
+            # Запрещённые к ввозу в РФ/СНГ на главную не выносятся (TD-024).
             medicine_item__import_restricted_countries__gt=''
         ).exclude(
-            # Больничные препараты — справочные карточки, в хиты не попадают.
+            # Больничные препараты на главную не выносятся.
             medicine_item__is_hospital=True
-        ).select_related('category', 'brand', 'price_info').order_by('-created_at')
-
-        featured_products = list(queryset[:limit])
-        self._prefetch_card_relations(featured_products)
-        serializer = self.get_serializer(featured_products, many=True)
-        data = list(serializer.data)
-        if request.query_params.get('view') == 'card':
-            data = [self._compact_card_product(row) for row in data]
-            attach_review_aggregates(data)
-        return Response(data)
+        )
+        return self._featured_response(request, queryset)
 
     @action(detail=True, methods=['get'])
     @extend_schema(

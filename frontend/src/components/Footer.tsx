@@ -32,12 +32,17 @@ interface FooterSettings {
   footerLinks: StaticPageLink[]
 }
 
+// Текст об оплате по умолчанию (settings.FooterSettings): оплата относится к товарам, кроме лекарств.
+const CRYPTO_DEFAULT_RU = 'Оплата — по согласованию с менеджером, возможна криптовалютой. Относится к товарам, кроме лекарств: сведения о лекарствах — справочные.'
+// Прежний текст по умолчанию: пока он в базе (до миграции settings.0009), показываем новый.
+const CRYPTO_DEFAULTS_RU = [CRYPTO_DEFAULT_RU, 'Возможна оплата криптовалютой']
+
 export default function Footer({ initialSettings }: { initialSettings?: Partial<FooterSettings> }) {
   const { t, i18n } = useTranslation('common')
   const theme = useTheme()
   const envSupportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || ''
   const defaultLocation = t('footer_location', 'Стамбул, Турция')
-  const defaultCryptoText = t('footer_crypto_payment', 'Возможна оплата криптовалютой')
+  const defaultCryptoText = t('footer_crypto_payment', CRYPTO_DEFAULT_RU)
   
   const [settings, setSettings] = useState<FooterSettings>({
     phone: initialSettings?.phone || '+90 552 582 14 97',
@@ -47,7 +52,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
     whatsapp_url: initialSettings?.whatsapp_url || '',
     vk_url: initialSettings?.vk_url || '',
     instagram_url: initialSettings?.instagram_url || '',
-    crypto_payment_text: initialSettings?.crypto_payment_text || 'Возможна оплата криптовалютой',
+    crypto_payment_text: initialSettings?.crypto_payment_text || CRYPTO_DEFAULT_RU,
     footerLinks: []
   })
 
@@ -106,7 +111,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
         whatsapp_url: initialSettings.whatsapp_url || prev.whatsapp_url || '',
         vk_url: initialSettings.vk_url || prev.vk_url || '',
         instagram_url: initialSettings.instagram_url || prev.instagram_url || '',
-        crypto_payment_text: resolveValue(initialSettings.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
+        crypto_payment_text: resolveValue(initialSettings.crypto_payment_text, defaultCryptoText, CRYPTO_DEFAULT_RU),
         footerLinks: [] // не используем это поле - используем отдельный state
       }))
     }
@@ -127,7 +132,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
             whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
             vk_url: data.vk_url || prev.vk_url || '',
             instagram_url: data.instagram_url || prev.instagram_url || '',
-            crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
+            crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, CRYPTO_DEFAULT_RU),
           }))
         })
         .catch(err => console.error('Error fetching footer settings:', err))
@@ -140,11 +145,10 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   // Переводим прямо при рендере: если значение из базы — это русская строка по умолчанию,
   // заменяем на переведённую версию через t(). Это гарантирует перевод при SSR и после гидрации.
   const LOCATION_DEFAULT_RU = 'Стамбул, Турция'
-  const CRYPTO_DEFAULT_RU = 'Возможна оплата криптовалютой'
   const location = (settings.location === LOCATION_DEFAULT_RU || !settings.location)
     ? t('footer_location', LOCATION_DEFAULT_RU)
     : settings.location
-  const cryptoText = (settings.crypto_payment_text === CRYPTO_DEFAULT_RU || !settings.crypto_payment_text)
+  const cryptoText = (CRYPTO_DEFAULTS_RU.includes(settings.crypto_payment_text) || !settings.crypto_payment_text)
     ? t('footer_crypto_payment', CRYPTO_DEFAULT_RU)
     : settings.crypto_payment_text
 
@@ -167,14 +171,10 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   decoding="async"
                   className="h-28 w-auto transition-all duration-200 group-hover:scale-105 group-hover:brightness-110"
                 />
-                <div className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                  <div className="bg-[var(--text-strong)] dark:!bg-[#1f2937] text-[var(--bg)] dark:!text-white dark:border dark:border-gray-600 text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
-                    {cryptoText}
-                  </div>
-                  <div className="w-2 h-2 bg-[var(--text-strong)] dark:!bg-[#1f2937] dark:border-r dark:border-b dark:border-gray-600 rotate-45 absolute top-full left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
-                </div>
               </div>
             </div>
+            {/* Подпись видна всегда: на телефоне всплывающей подсказки нет */}
+            <p className="mt-2 text-xs text-main opacity-80">{cryptoText}</p>
           </div>
           <div className="text-center sm:text-left">
             <div className="mb-2 text-sm font-medium text-main">{t('header_catalog', 'Каталог')}</div>

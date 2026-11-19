@@ -72,6 +72,10 @@ test('темы и блоки совпадают с бэкендом и стил�
   assert.match(benefits, /key="benefits", defaults=\{"sort_order": 15/)
   const backendOrder = [...seeded.matchAll(/"([a-z_]+)"/g)].map((m) => m[1])
   backendOrder.splice(1, 0, 'benefits')
+  // Миграция 0009 добавила справочный блок лекарств сразу после хитов.
+  const medicineReference = await readFile(repo('backend/apps/settings/migrations/0009_seed_medicine_reference_footer_text.py'), 'utf8')
+  assert.match(medicineReference, /key="medicine_reference"/)
+  backendOrder.splice(backendOrder.indexOf('bestsellers') + 1, 0, 'medicine_reference')
   assert.deepEqual(backendOrder, [...HOME_BLOCK_KEYS])
   const keys = models.slice(models.indexOf('class Key('), models.indexOf('key = models.CharField'))
   assert.deepEqual([...keys.matchAll(/= "([a-z_]+)",/g)].map((m) => m[1]).sort(), [...HOME_BLOCK_KEYS].sort())

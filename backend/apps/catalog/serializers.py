@@ -31,7 +31,7 @@ from .models import (
     SportsProduct, SportsProductTranslation, SportsProductImage, SportsVariant, SportsVariantImage,
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
 )
-from .card_payload import limit_serializer_to_card_fields
+from .card_payload import hide_medicine_featured, limit_serializer_to_card_fields
 from .seo_defaults import build_catalog_item_seo_defaults, resolve_book_seo_value
 from .utils.default_variant import default_fashion_variant
 from .utils.media_path import normalize_duplicated_media_path
@@ -1902,7 +1902,7 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
 
         if is_hospital_product(instance):
             hide_hospital_price(data)
-        return data
+        return hide_medicine_featured(data)
     
     def get_price_formatted(self, obj):
         request = self.context.get('request')
@@ -2375,6 +2375,9 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         if obj.price is not None:
             return f"{obj.price} {obj.currency}"
         return None
+
+    def to_representation(self, instance):
+        return hide_medicine_featured(super().to_representation(instance))
 
 
 class CatalogStatsSerializer(serializers.Serializer):
@@ -6021,7 +6024,7 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
             from .hospital_medicines import hide_hospital_price
 
             hide_hospital_price(data)
-        return data
+        return hide_medicine_featured(data)
 
     def get_product_type(self, obj):
         raw = getattr(type(obj), '_domain_product_type', None)
@@ -6316,7 +6319,7 @@ class SimpleDomainCardSerializer(serializers.Serializer):
             from .hospital_medicines import hide_hospital_price
 
             hide_hospital_price(data)
-        return data
+        return hide_medicine_featured(data)
 
 # ─── МЕДИКАМЕНТЫ ───
 

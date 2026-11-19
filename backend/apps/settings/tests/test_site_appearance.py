@@ -11,9 +11,14 @@ from apps.settings.models import HomeBlock, SiteAppearance
 
 seed_migration = importlib.import_module("apps.settings.migrations.0005_seed_home_blocks")
 benefits_migration = importlib.import_module("apps.settings.migrations.0007_seed_benefits_block")
+medicine_reference_migration = importlib.import_module(
+    "apps.settings.migrations.0009_seed_medicine_reference_footer_text"
+)
 
-# Порядок главной по умолчанию: блоки миграции 0005 и строка преимуществ (0007) под баннером.
+# Порядок главной по умолчанию: блоки миграции 0005, строка преимуществ (0007) под баннером
+# и справочный блок лекарств (0009) сразу после хитов.
 DEFAULT_HOME_BLOCKS = [seed_migration.HOME_BLOCKS[0], "benefits", *seed_migration.HOME_BLOCKS[1:]]
+DEFAULT_HOME_BLOCKS.insert(DEFAULT_HOME_BLOCKS.index("bestsellers") + 1, "medicine_reference")
 
 APPEARANCE_URL = "/api/settings/appearance"
 TESTIMONIALS_URL = "/api/feedback/testimonials-section-settings"
@@ -93,6 +98,7 @@ def test_seed_carries_over_testimonials_checkbox_and_keeps_admin_edits():
     seed_migration.seed_home_blocks(django_apps, None)
 
     benefits_migration.seed_benefits_block(django_apps, None)
+    medicine_reference_migration.forwards(django_apps, None)
 
     assert HomeBlock.is_shown("testimonials") is True
     assert list(HomeBlock.objects.values_list("key", flat=True)) == DEFAULT_HOME_BLOCKS
@@ -101,10 +107,44 @@ def test_seed_carries_over_testimonials_checkbox_and_keeps_admin_edits():
     HomeBlock.objects.filter(key="brands").update(is_enabled=False, sort_order=999)
     seed_migration.seed_home_blocks(django_apps, None)
     benefits_migration.seed_benefits_block(django_apps, None)
+    medicine_reference_migration.forwards(django_apps, None)
 
     assert HomeBlock.objects.count() == len(DEFAULT_HOME_BLOCKS)
     assert HomeBlock.objects.get(key="brands").sort_order == 999
     assert HomeBlock.is_shown("brands") is False
+
+
+@pytest.mark.django_db
+def test_medicine_reference_block_follows_bestsellers_wherever_they_stand():
+    HomeBlock.objects.filter(key="medicine_reference").delete()
+    HomeBlock.objects.filter(key="bestsellers").update(sort_order=12)
+
+    medicine_reference_migration.forwards(django_apps, None)
+
+    keys = list(HomeBlock.objects.values_list("key", flat=True))
+    assert keys.index("medicine_reference") == keys.index("bestsellers") + 1
+
+
+@pytest.mark.django_db
+def test_footer_payment_text_default_is_replaced_and_own_text_is_kept():
+    from apps.settings.models import FooterSettings
+
+    footer = FooterSettings.objects.create(crypto_payment_text=medicine_reference_migration.OLD_PAYMENT_TEXT)
+    medicine_reference_migration.forwards(django_apps, None)
+    footer.refresh_from_db()
+    assert footer.crypto_payment_text == medicine_reference_migration.NEW_PAYMENT_TEXT
+    assert "кроме лекарств" in footer.crypto_payment_text
+    assert FooterSettings._meta.get_field("crypto_payment_text").default == footer.crypto_payment_text
+    assert len(footer.crypto_payment_text) <= 200
+
+    medicine_reference_migration.backwards(django_apps, None)
+    footer.refresh_from_db()
+    assert footer.crypto_payment_text == medicine_reference_migration.OLD_PAYMENT_TEXT
+
+    FooterSettings.objects.filter(pk=footer.pk).update(crypto_payment_text="Свой текст владельца")
+    medicine_reference_migration.forwards(django_apps, None)
+    footer.refresh_from_db()
+    assert footer.crypto_payment_text == "Свой текст владельца"
 
 
 @pytest.mark.django_db

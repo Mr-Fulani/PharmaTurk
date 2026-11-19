@@ -29,6 +29,18 @@ CARD_IMAGE_FIELDS = (
 )
 
 
+def hide_medicine_featured(data):
+    """Лекарство наружу никогда не «хит»: метка «Хит продаж» — торговое продвижение,
+    а карточки лекарств справочные (решение владельца 19.11.2026).
+
+    Флажок is_featured у лекарства в базе остаётся: по нему собирается справочный
+    блок главной «Часто ищут в справочнике лекарств» (docs/HOME_BLOCKS.md).
+    """
+    if data.get('product_type') == 'medicines' and data.get('is_featured'):
+        data['is_featured'] = False
+    return data
+
+
 def compact_card_product_payload(row):
     """Remove detail-only fields while preserving everything ProductCard uses."""
     if not isinstance(row, dict):

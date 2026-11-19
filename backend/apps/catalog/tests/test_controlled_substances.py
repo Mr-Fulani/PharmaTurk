@@ -59,7 +59,7 @@ def test_saved_medicine_is_marked_and_unmarked_with_its_substance():
 def test_restricted_medicine_is_not_featured_and_not_in_collections():
     restricted = _medicine("perge", "Pregabalin", is_featured=True)
     allowed = _medicine("lyrica-free", "Gabapentin", is_featured=True)
-    slugs = {row["slug"] for row in APIClient().get("/api/catalog/products/featured", {"limit": 20}).json()}
+    slugs = {row["slug"] for row in APIClient().get("/api/catalog/products/medicine-reference", {"limit": 20}).json()}
     assert allowed.slug in slugs and restricted.slug not in slugs
 
     root = Category.objects.get(slug="medicines")
