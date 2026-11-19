@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 import socket
 from datetime import timedelta
+from html import escape, unescape
+from urllib.parse import quote
 
 import requests
 from django.conf import settings
@@ -12,6 +15,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.core.mail.backends.smtp import EmailBackend
 from django.db import transaction
 from django.db.models import Exists, OuterRef
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.translation import gettext_lazy as _
@@ -29,6 +33,7 @@ TELEGRAM_MESSAGE_LIMIT = 4096
 # Около 20 тысяч знаков: комментарий заказа не ограничен, а одна заявка не должна завалить чат
 TELEGRAM_MAX_MESSAGE_PARTS = 5
 TELEGRAM_CUT_NOTICE = "\n\n… Дальше текст обрезан, полностью он в заявке в админке."
+SOURCING_LOOKUP_QUERY_LIMIT = 100
 
 from .models import Cart, CartItem, Order
 from .services import (
@@ -521,12 +526,52 @@ def _tg_fitting_end(text: str, limit: int) -> int:
     return len(text)
 
 
-def _split_tg_text(text: str) -> list[str]:
-    """Делит текст на сообщения Telegram, не ломая parse_mode=Markdown.
+def _tg_html_escape(value) -> str:
+    """Пользовательский ввод не должен ломать parse_mode=HTML."""
+    return escape(str(value or "-"), quote=False)
 
-    Разметка шаблона стоит в первых строках, а ввод покупателя экранирован, поэтому нельзя
-    только оторвать символ от обратного слеша перед ним: следующее сообщение открыло бы
-    разметку без конца, и Telegram ответил бы 400. Чистые пробелы Telegram тоже не принимает.
+
+def _tg_link(url: str, label: str) -> str:
+    return f'<a href="{escape(url)}">{escape(label, quote=False)}</a>'
+
+
+def _admin_url(name: str, *args, query: str = "") -> str:
+    """Абсолютный адрес страницы админки; вход — по сессии менеджера, токенов в адресе нет."""
+    url = settings.SITE_URL + reverse(name, args=args)
+    return f"{url}?q={quote(query, safe='')}" if query else url
+
+
+_TG_TAG_RE = re.compile(r"<(/?)\w+[^>]*>")
+
+
+def _tg_html_safe_end(text: str, end: int) -> int:
+    """Сдвигает разрез назад, если он попал в &-сущность, внутрь тега или между <b> и </b>."""
+    head = text[:end]
+    amp = head.rfind("&")
+    if amp != -1 and ";" not in head[amp:]:
+        head = head[:amp]
+    tag = head.rfind("<")
+    if tag != -1 and ">" not in head[tag:]:
+        head = head[:tag]
+    open_tags = []
+    for match in _TG_TAG_RE.finditer(head):
+        if not match.group(1):
+            open_tags.append(match.start())
+        elif open_tags:
+            open_tags.pop()
+    if open_tags:
+        head = head[:open_tags[0]]
+    # Пустая часть зациклила бы деление: тег длиннее сообщения шаблон не создаёт
+    return len(head) or end
+
+
+def _split_tg_text(text: str) -> list[str]:
+    """Делит текст на сообщения Telegram, не ломая parse_mode=HTML.
+
+    Ввод покупателя экранирован, теги ставит только шаблон. Разрез не должен попасть в
+    «&amp;», внутрь тега или ссылки: следующее сообщение открыло бы разметку без конца, и
+    Telegram ответил бы 400. Чистые пробелы Telegram тоже не принимает. Длина считается по
+    тексту с тегами — с запасом: Telegram считает её уже без них.
     """
     parts = []
     rest = text.strip()
@@ -540,8 +585,7 @@ def _split_tg_text(text: str) -> list[str]:
                 cut = rest.rfind(" ", end // 2, end)
             if cut != -1:
                 end = cut
-            if rest[end - 1] == "\\" and rest[end] in ("_", "*", "`", "["):
-                end -= 1
+            end = _tg_html_safe_end(rest, end)
         parts.append(rest[:end].rstrip())
         rest = rest[end:].lstrip()
         if is_last and rest:
@@ -555,14 +599,66 @@ def _tg_delivery_steps(text: str, attachment: bytes | None, short_caption: str) 
 
     Текст, который влезает в подпись, идёт подписью к вложению. Длинный — отдельными
     сообщениями, вложение с short_caption следом: подпись длиннее предела Telegram отвергает
-    ответом 400, и пропало бы всё. На повторе шаги те же, отправленные пропускаются по счётчику.
+    ответом 400, и пропало бы всё. Предел подписи Telegram считает по тексту без тегов.
+    На повторе шаги те же, отправленные пропускаются по счётчику.
     """
-    if attachment and _tg_length(text) <= TELEGRAM_CAPTION_LIMIT:
+    if attachment and _tg_length(unescape(_TG_TAG_RE.sub("", text))) <= TELEGRAM_CAPTION_LIMIT:
         return [(text, attachment)]
     steps = [(part, None) for part in _split_tg_text(text)]
     if attachment:
         steps.append((short_caption, attachment))
     return steps
+
+
+def _item_medicine(item):
+    product = item.product
+    if product is None or product.product_type != "medicines":
+        return None
+    return getattr(product, "medicine_item", None)
+
+
+def _order_item_blocks(order, drug_checks: dict) -> tuple[list[str], list[str]]:
+    """Позиции заявки абзацами (HTML) и названия позиций без цены."""
+    from apps.drug_check.service import lookup_query
+
+    h = _tg_html_escape
+    blocks, on_request = [], []
+    for index, item in enumerate(order.items.all(), start=1):
+        lines = [f"{index}. <b>{h(item.product_name)}</b>"]
+        if item.chosen_size:
+            lines.append(f"Размер: {h(item.chosen_size)}")
+        if not item.price:
+            on_request.append(item.product_name)
+            lines.append(f"{item.quantity} шт. · цена по запросу")
+        elif item.quantity == 1:
+            lines.append(f"1 шт. · {item.price} {order.currency}")
+        else:
+            lines.append(f"{item.quantity} шт. × {item.price} {order.currency} = {item.total} {order.currency}")
+        medicine = _item_medicine(item)
+        if medicine is not None:
+            labels = []
+            if medicine.is_hospital:
+                labels.append("🏥 Больничный препарат")
+            if medicine.import_restricted_countries:
+                countries = ", ".join(medicine.import_restricted_countries.split(","))
+                labels.append(f"⛔ Ввоз ограничен: {h(countries)}")
+            if labels:
+                lines.append(" · ".join(labels))
+            check = drug_checks.get(str(medicine.pk))
+            if check:
+                lines.append(h(check))
+            query = lookup_query(medicine)
+            lines.append(
+                "🔎 "
+                + _tg_link(_admin_url("admin:drug_check_medicine", medicine.pk), "Проверить по источникам")
+                + " · "
+                + _tg_link(
+                    _admin_url("admin:drug_check_lookup", query=query),
+                    "Поиск по штрихкоду" if query.isdigit() else "Поиск по названию",
+                )
+            )
+        blocks.append("\n".join(lines))
+    return blocks, on_request
 
 
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=TELEGRAM_MAX_RETRIES)
@@ -573,6 +669,7 @@ def notify_new_order_telegram(
     locale: str = 'ru',
     customer_notified: bool = False,
     admin_steps_sent: int = 0,
+    drug_checks: dict | None = None,
     drug_check_text: str | None = None,
 ) -> None:
     """Уведомляет (Telegram) о создании нового заказа.
@@ -583,7 +680,8 @@ def notify_new_order_telegram(
     пишет один раз (customer_notified), иначе после обрыва связи он получил бы дубль.
     Длинный текст менеджеру уходит по шагам, повтор продолжает с шага admin_steps_sent.
     Итог проверки лекарств заявки (TD-044, ≤ 15 с) считается один раз и передаётся в повтор
-    (drug_check_text): текст и шаги на повторе те же.
+    (drug_checks): текст и шаги на повторе те же. drug_check_text — прежний аргумент, его могут
+    нести повторы, поставленные до выкатки; не используется.
     """
     if order_id is None:
         logger.warning("notify_new_order_telegram: order_id not provided")
@@ -621,7 +719,13 @@ def notify_new_order_telegram(
             logger.error("Critical error during PDF regeneration for order %s: %s", order.number, gen_err)
             pdf_bytes = None
 
-    def _send_tg(chat_id: str, text: str, document: bytes | None = None, filename: str = "receipt.pdf"):
+    def _send_tg(
+        chat_id: str,
+        text: str,
+        document: bytes | None = None,
+        filename: str = "receipt.pdf",
+        parse_mode: str = "Markdown",
+    ):
         if not bot_token:
             logger.error("TELEGRAM_BOT_TOKEN is not set!")
             return
@@ -630,10 +734,16 @@ def notify_new_order_telegram(
             return
         if document:
             files = {"document": (filename, document, "application/pdf")}
-            data = {"chat_id": chat_id, "caption": text, "parse_mode": "Markdown"}
+            data = {"chat_id": chat_id, "caption": text, "parse_mode": parse_mode}
             resp = _post_telegram(bot_token, "sendDocument", data=data, files=files, timeout=20)
         else:
-            json_data = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+            # Без предпросмотра: у ссылки в админку им стала бы страница входа
+            json_data = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "disable_web_page_preview": True,
+            }
             resp = _post_telegram(bot_token, "sendMessage", json=json_data, timeout=10)
 
         if not resp.ok:
@@ -652,7 +762,7 @@ def notify_new_order_telegram(
         translate_method,
     )
 
-    _md = _tg_markdown_escape
+    h = _tg_html_escape
 
     is_request = order.payment_method == "manager"
 
@@ -664,42 +774,48 @@ def notify_new_order_telegram(
         payment_info = translate_method(order.payment_method, PAYMENT_METHOD_TRANSLATIONS, "ru")
         delivery_info = translate_method(order.shipping_method, SHIPPING_METHOD_TRANSLATIONS, "ru")
         channel_info = translate_method(order.contact_channel, CONTACT_CHANNEL_TRANSLATIONS, "ru")
-        admin_text = (
-            f"{'📝 *Новая заявка!*' if is_request else '📦 *Новый заказ!*'}\n"
-            f"Заказ: `{order.number}`\n"
-            f"Сумма: {order.total_amount} {order.currency}\n"
-            f"Оплата: {payment_info}\n"
-            f"Доставка: {delivery_info}\n"
-            f"Клиент: {_md(order.contact_name)}\n"
-            f"Телефон: {_md(order.contact_phone)}\n"
-            f"Email: {_md(order.contact_email)}\n"
-            f"Связаться через: {channel_info}"
-        )
+        if not isinstance(drug_checks, dict):
+            from apps.drug_check.service import order_checks
+
+            drug_checks = order_checks(order)
+        # Больничные препараты и товары без цены: сумму называет менеджер (docs/HOSPITAL_MEDICINES.md)
+        try:
+            item_blocks, on_request = _order_item_blocks(order, drug_checks)
+        except Exception:
+            # Как у проверки лекарств: сбой списка позиций не держит уведомление менеджеру.
+            logger.warning("order_telegram_items_failed", exc_info=True)
+            item_blocks, on_request = [], []
+
+        buyer = [
+            "👤 <b>Покупатель</b>",
+            f"Имя: {h(order.contact_name)}",
+            f"Телефон: {h(order.contact_phone)}",
+            f"Email: {h(order.contact_email)}",
+            f"Связаться через: {h(channel_info)}",
+        ]
         if order.contact_username:
             is_phone = order.contact_username.lstrip("+").isdigit()
             handle = order.contact_username if is_phone else f"@{order.contact_username}"
-            admin_text += f"\n{channel_info}: {_md(handle)}"
-        if order.comment:
-            admin_text += f"\nКомментарий: {_md(order.comment)}"
-        # Больничные препараты и товары без цены: сумму называет менеджер (docs/HOSPITAL_MEDICINES.md)
-        try:
-            on_request = [item.product_name for item in order.items.all() if not item.price]
-        except Exception:
-            # Как у проверки лекарств: сбой списка позиций не держит уведомление менеджеру.
-            logger.warning("order_price_on_request_items_failed", exc_info=True)
-            on_request = []
+            buyer.append(f"{h(channel_info)}: {h(handle)}")
+        total = [f"💰 <b>Итого: {order.total_amount} {order.currency}</b>"]
         if on_request:
-            admin_text += "\nЦена по запросу (в сумму не вошли): " + _md("; ".join(on_request))
-        if drug_check_text is None:
-            from apps.drug_check.service import order_check_text
-
-            drug_check_text = order_check_text(order)
-        if drug_check_text:
-            admin_text += "\n\n" + _md(drug_check_text)
-        admin_steps = _tg_delivery_steps(admin_text, pdf_bytes, f"🧾 Чек к заказу `{order.number}`")
+            total.append("Цена по запросу (в сумму не вошли): " + h("; ".join(on_request)))
+        total.append(f"Оплата: {h(payment_info)}")
+        total.append(f"Доставка: {h(delivery_info)}")
+        sections = [
+            f"{'📝 <b>Новая заявка</b>' if is_request else '📦 <b>Новый заказ</b>'} <code>{h(order.number)}</code>",
+            "\n".join(buyer),
+        ]
+        if item_blocks:
+            sections += ["🛒 <b>Позиции</b>", *item_blocks]
+        sections.append("\n".join(total))
+        if order.comment:
+            sections.append(f"💬 <b>Комментарий</b>\n{h(order.comment)}")
+        admin_text = "\n\n".join(sections)
+        admin_steps = _tg_delivery_steps(admin_text, pdf_bytes, f"🧾 Чек к заказу <code>{h(order.number)}</code>")
         try:
             for step_text, step_document in admin_steps[admin_steps_sent:]:
-                _send_tg(admin_chat_id, step_text, document=step_document, filename=filename)
+                _send_tg(admin_chat_id, step_text, document=step_document, filename=filename, parse_mode="HTML")
                 admin_steps_sent += 1
         except TelegramTemporaryError as exc:
             logger.warning("Telegram send error for order %s: %s", order.number, exc)
@@ -747,7 +863,7 @@ def notify_new_order_telegram(
                 "locale": locale,
                 "customer_notified": True,
                 "admin_steps_sent": admin_steps_sent,
-                "drug_check_text": drug_check_text,
+                "drug_checks": drug_checks,
             },
             countdown=30 * 2 ** self.request.retries,
         )
@@ -768,27 +884,36 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
     except SourcingRequest.DoesNotExist:
         return
 
-    md = _tg_markdown_escape
-    lines = [
-        "🔎 *Новая заявка на поиск товара*",
-        f"Заявка: `{req.pk}`",
-    ]
+    h = _tg_html_escape
+    wanted = ["🛍 <b>Что ищем</b>"]
     if req.source_url:
-        lines.append(f"Ссылка: {md(req.source_url)}")
+        wanted.append(f"Ссылка: {h(req.source_url)}")
     if req.comment:
-        lines.append(f"Комментарий: {md(req.comment)}")
-    lines.append(f"Количество: {req.quantity}")
-    lines.append(f"Клиент: {md(req.contact_name)}")
+        wanted.append(f"Комментарий: {h(req.comment)}")
+    wanted.append(f"Количество: {req.quantity}")
+    buyer = ["👤 <b>Покупатель</b>", f"Имя: {h(req.contact_name)}"]
     if req.contact_phone:
-        lines.append(f"Телефон: {md(req.contact_phone)}")
+        buyer.append(f"Телефон: {h(req.contact_phone)}")
     if req.contact_email:
-        lines.append(f"Email: {md(req.contact_email)}")
+        buyer.append(f"Email: {h(req.contact_email)}")
     channel_info = translate_method(req.contact_channel, CONTACT_CHANNEL_TRANSLATIONS, "ru")
-    lines.append(f"Связаться через: {channel_info}")
+    buyer.append(f"Связаться через: {h(channel_info)}")
     if req.contact_username:
         is_phone = req.contact_username.lstrip("+").isdigit()
-        lines.append(f"{channel_info}: {md(req.contact_username if is_phone else '@' + req.contact_username)}")
-    text = "\n".join(lines)
+        buyer.append(f"{h(channel_info)}: {h(req.contact_username if is_phone else '@' + req.contact_username)}")
+    # В окно поиска лекарств подставляется запрос покупателя — одной строкой, не длиннее поля поиска
+    query = " ".join((req.comment or "").split())[:SOURCING_LOOKUP_QUERY_LIMIT]
+    lookup = "💊 Если это лекарство: " + _tg_link(
+        _admin_url("admin:drug_check_lookup", query=query), "проверить по источникам"
+    )
+    text = "\n\n".join(
+        [
+            f"🔎 <b>Новая заявка на поиск товара</b> <code>{req.pk}</code>",
+            "\n".join(wanted),
+            "\n".join(buyer),
+            lookup,
+        ]
+    )
 
     photo = b""
     if req.image:
@@ -801,12 +926,12 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
                 req.pk, type(exc).__name__,
             )
     try:
-        for step_text, step_photo in _tg_delivery_steps(text, photo, f"Фото к заявке `{req.pk}`")[steps_sent:]:
+        for step_text, step_photo in _tg_delivery_steps(text, photo, f"Фото к заявке <code>{req.pk}</code>")[steps_sent:]:
             if step_photo:
                 resp = _post_telegram(
                     bot_token,
                     "sendPhoto",
-                    data={"chat_id": chat_id, "caption": step_text, "parse_mode": "Markdown"},
+                    data={"chat_id": chat_id, "caption": step_text, "parse_mode": "HTML"},
                     files={"photo": ("photo.jpg", step_photo, "image/jpeg")},
                     timeout=20,
                 )
@@ -814,7 +939,13 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
                 resp = _post_telegram(
                     bot_token,
                     "sendMessage",
-                    json={"chat_id": chat_id, "text": step_text, "parse_mode": "Markdown"},
+                    json={
+                        "chat_id": chat_id,
+                        "text": step_text,
+                        "parse_mode": "HTML",
+                        # Предпросмотр — только у ссылки покупателя, не у страницы входа в админку
+                        "disable_web_page_preview": not req.source_url,
+                    },
                     timeout=15,
                 )
             if not resp.ok:

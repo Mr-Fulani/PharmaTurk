@@ -1,6 +1,8 @@
 """Длинный текст заявки: Telegram режет подпись и сообщение, менеджер не теряет ни того ни другого."""
 
+import re
 from collections import Counter
+from html import unescape
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -12,8 +14,9 @@ from apps.orders.tasks import (
     TELEGRAM_MAX_MESSAGE_PARTS,
     TELEGRAM_MESSAGE_LIMIT,
     _split_tg_text,
+    _tg_html_escape,
     _tg_length,
-    _tg_markdown_escape,
+    _tg_link,
     notify_new_order_telegram,
     notify_sourcing_request_telegram,
 )
@@ -24,33 +27,28 @@ CUSTOMER = "555"
 PDF = b"%PDF-1.4 receipt"
 
 
+TAG_RE = re.compile(r"<(/?)(b|code|a)( href=\"[^\"<>]*\")?>")
+
+
 def _visible_length(text):
-    """Длина после разбора Markdown: так считает Telegram. Разметки шаблона в разобранном тексте нет."""
-    unescaped = text
-    for ch in ("_", "*", "`", "["):
-        unescaped = unescaped.replace("\\" + ch, "\0")
-    for ch in ("*", "`"):
-        unescaped = unescaped.replace(ch, "")
-    return _tg_length(unescaped)
+    """Длина после разбора HTML: так считает Telegram — без тегов, «&amp;» за один знак."""
+    return _tg_length(unescape(TAG_RE.sub("", text)))
 
 
-def _assert_valid_markdown(case, text):
-    """Правила разбора Telegram: `\\` экранирует только `_*`[`, у открытой сущности есть конец."""
-    index = 0
-    open_entity = ""
-    while index < len(text):
-        ch = text[index]
-        if open_entity:
-            if ch == open_entity:
-                open_entity = ""
-        elif ch == "\\" and text[index + 1:index + 2] in ("_", "*", "`", "["):
-            index += 1
-        elif ch in ("_", "*", "`"):
-            open_entity = ch
-        elif ch == "[":
-            case.fail(f"Неэкранированная ссылка: {text[index:index + 40]!r}")
-        index += 1
-    case.assertEqual(open_entity, "", f"Незакрытая разметка: {text[-60:]!r}")
+def _assert_valid_html(case, text):
+    """Правила разбора Telegram: «&» только в &amp; &lt; &gt; &quot;, «<» и «>» только в тегах, теги закрыты."""
+    plain = re.sub(r"&(amp|lt|gt|quot);", "", text)
+    case.assertNotIn("&", plain, f"Оборванная сущность: {text[:40]!r} … {text[-40:]!r}")
+    case.assertNotRegex(TAG_RE.sub("", plain), "[<>]", f"Оборванный тег: {text[:60]!r} … {text[-60:]!r}")
+    open_tag = ""
+    for closing, name, _href in TAG_RE.findall(plain):
+        if closing:
+            case.assertEqual(open_tag, name, f"Лишний закрывающий тег: {text[:60]!r}")
+            open_tag = ""
+        else:
+            case.assertEqual(open_tag, "", "Вложенные теги шаблон не использует")
+            open_tag = name
+    case.assertEqual(open_tag, "", f"Незакрытый тег: {text[-60:]!r}")
 
 
 class FakeTelegram:
@@ -173,13 +171,15 @@ class LongOrderTextTests(SimpleTestCase):
         self.assertEqual(Counter(texts).most_common(1)[0][1], 2)
         self.assertEqual(len(telegram.delivered(CUSTOMER)), 1)
 
-    def test_escaped_comment_is_valid_markdown_in_every_part(self, select_related, post, *_):
+    def test_escaped_comment_is_valid_html_in_every_part(self, select_related, post, *_):
         telegram = FakeTelegram(post)
 
-        self._run(select_related, "снэйк_кейс *звёзды* `код` [ссылка] \\ " * 400)
+        self._run(select_related, 'Тег <b>жирный</i> & "кавычки" &amp; <a href="x"> снэйк_кейс *звёзды* ' * 400)
 
-        for call in telegram.delivered():
-            _assert_valid_markdown(self, call.text)
+        calls = telegram.delivered()
+        self.assertGreater(len(calls), 2)
+        for call in calls:
+            _assert_valid_html(self, call.text)
 
 
 class SplitTextTests(SimpleTestCase):
@@ -194,15 +194,30 @@ class SplitTextTests(SimpleTestCase):
         self.assertGreater(len(parts), 1)
         self.assertEqual("\n".join(parts).split("\n"), lines)
 
-    def test_cut_never_separates_backslash_from_escaped_char(self):
-        for padding in range(4):
-            text = "а" * padding + _tg_markdown_escape("_" * 6000)
+    def test_cut_never_lands_inside_an_escaped_char(self):
+        for padding in range(5):
+            text = "а" * padding + _tg_html_escape("&" * 2000)
 
             parts = _split_tg_text(text)
 
             self.assertGreater(len(parts), 1)
+            self.assertEqual("".join(parts), text)
             for part in parts:
-                _assert_valid_markdown(self, part)
+                _assert_valid_html(self, part)
+
+    def test_cut_never_lands_inside_a_tag_or_a_link(self):
+        link = _tg_link("https://example.com/admin/drug_check/lookup/?q=NEXIUM%2040%20MG", "Проверить по источникам")
+        for separator in (" ", ""):
+            for padding in range(0, 120, 7):
+                text = "а" * padding + separator.join([f"<b>Позиция</b> {link}"] * 80)
+
+                parts = _split_tg_text(text)
+
+                self.assertGreater(len(parts), 1)
+                self.assertEqual(sum(part.count("</a>") for part in parts), 80)
+                for part in parts:
+                    self.assertLessEqual(_tg_length(part), TELEGRAM_MESSAGE_LIMIT)
+                    _assert_valid_html(self, part)
 
     def test_emoji_counts_as_two_units(self):
         parts = _split_tg_text("😀" * 3000)
@@ -261,10 +276,42 @@ class LongSourcingTextTests(SimpleTestCase):
 
         calls = telegram.delivered()
         self.assertEqual([call.method for call in calls], ["sendMessage", "sendPhoto"])
-        self.assertIn(_tg_markdown_escape(comment.strip()), calls[0].text)
+        self.assertIn(comment.strip(), calls[0].text)
         self.assertIn("+79990001122", calls[0].text)
         for call in calls:
-            _assert_valid_markdown(self, call.text)
+            _assert_valid_html(self, call.text)
+
+    @override_settings(SITE_URL="https://site.test")
+    def test_buyer_text_fills_the_drug_lookup_search_field(self, get_request, post):
+        telegram = FakeTelegram(post)
+
+        self._run(get_request, "Нужен  NEXIUM 40 mg\n& <аналог>?")
+
+        text = telegram.delivered()[0].text
+        self.assertIn(
+            '<a href="https://site.test/admin/drug_check/drugreferenceentry/lookup/'
+            '?q=%D0%9D%D1%83%D0%B6%D0%B5%D0%BD%20NEXIUM%2040%20mg%20%26%20%3C%D0%B0%D0%BD%D0%B0%D0%BB%D0%BE%D0%B3%3E%3F">'
+            "проверить по источникам</a>",
+            text,
+        )
+        self.assertIn("Комментарий: Нужен  NEXIUM 40 mg\n&amp; &lt;аналог&gt;?", text)
+        _assert_valid_html(self, text)
+
+    @override_settings(SITE_URL="https://site.test")
+    def test_long_buyer_text_is_cut_in_the_lookup_link(self, get_request, post):
+        telegram = FakeTelegram(post)
+
+        self._run(get_request, "я" * 500)
+
+        self.assertIn('lookup/?q=' + "%D1%8F" * 100 + '">', telegram.delivered()[0].text)
+
+    @override_settings(SITE_URL="https://site.test")
+    def test_request_without_text_links_to_the_empty_lookup(self, get_request, post):
+        telegram = FakeTelegram(post)
+
+        self._run(get_request, "")
+
+        self.assertIn('<a href="https://site.test/admin/drug_check/drugreferenceentry/lookup/">', telegram.delivered()[0].text)
 
     def test_failed_photo_retry_does_not_repeat_delivered_text(self, get_request, post):
         telegram = FakeTelegram(post, failures={2: 503})

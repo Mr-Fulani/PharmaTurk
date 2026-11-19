@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 ORDER_CHECK_SECONDS = 15  # на все лекарства заявки; дальше «не успели проверить»
 ORDER_MAX_MEDICINES = 10
-NAME_LIMIT = 70
 
 
 @dataclass
@@ -41,8 +40,8 @@ class DrugCheckReport:
         levels = [r.level for r in self.results] or [ERROR]
         return max(levels, key=LEVEL_ORDER.__getitem__)
 
-    def telegram_line(self) -> str:
-        """Одна строка на лекарство: «• NAME: ⚠️ SKRS: пассивен с …; IlacFiyati …; у склада нет»."""
+    def telegram_status(self) -> str:
+        """Итог одной фразой: «⚠️ SKRS: пассивен с …; IlacFiyati …; у склада нет»."""
         level = self.level
         if level in (ALERT, WARN):
             icon = "⚠️"
@@ -50,9 +49,14 @@ class DrugCheckReport:
             icon = "❔"
         else:
             icon = "✅"
-        name = self.name if len(self.name) <= NAME_LIMIT else self.name[: NAME_LIMIT - 1] + "…"
         details = "; ".join(r.short for r in self.results if r.short)
-        return f"• {name}: {icon} {details}"
+        return f"{icon} {details}"
+
+
+def lookup_query(medicine: MedicineProduct) -> str:
+    """Что подставить в окно поиска: настоящий штрихкод, иначе турецкое название источника."""
+    barcode = CheckContext(barcode=medicine.barcode or "").real_barcode
+    return barcode or str((medicine.external_data or {}).get("source_name") or medicine.name or "").strip()
 
 
 def _context(medicine: MedicineProduct | None, barcode: str, deadline: float | None) -> CheckContext:
@@ -128,28 +132,25 @@ def _order_medicines(order) -> list[MedicineProduct]:
     return medicines
 
 
-def order_check_text(order, *, seconds: float = ORDER_CHECK_SECONDS) -> str:
-    """Итог проверки лекарств заявки для сообщения менеджеру; пусто, если лекарств нет.
+def order_checks(order, *, seconds: float = ORDER_CHECK_SECONDS) -> dict[str, str]:
+    """Итоги проверки лекарств заявки для сообщения менеджеру: {id лекарства: итог одной фразой}.
 
+    Ключи — строки: словарь передаётся в повтор задачи Celery (JSON). Пусто, если лекарств нет.
     Время ограничено: что не успели — «не успели проверить», заявку и сообщение это не держит
-    дольше ``seconds`` (плюс один запрос, начатый до срока).
+    дольше ``seconds`` (плюс один запрос, начатый до срока). Проверяются первые
+    ``ORDER_MAX_MEDICINES`` препаратов, у остальных в сообщении только ссылка на проверку.
     """
     try:
         medicines = _order_medicines(order)
     except Exception:
         logger.warning("drug_check_order_items_failed", extra={"order": getattr(order, "pk", None)}, exc_info=True)
-        return ""
-    if not medicines:
-        return ""
+        return {}
     deadline = time.monotonic() + seconds
-    lines = ["🔎 Проверка лекарств (на сайте ничего не меняется):"]
+    checks = {}
     for medicine in medicines[:ORDER_MAX_MEDICINES]:
         try:
-            lines.append(check_medicine(medicine, deadline=deadline).telegram_line())
+            checks[str(medicine.pk)] = check_medicine(medicine, deadline=deadline).telegram_status()
         except Exception:
             logger.exception("drug_check_order_medicine_failed", extra={"medicine": medicine.pk})
-            lines.append(f"• {medicine.name[:NAME_LIMIT]}: ❔ не удалось проверить")
-    rest = len(medicines) - ORDER_MAX_MEDICINES
-    if rest > 0:
-        lines.append(f"…и ещё {rest} — проверьте в админке кнопкой «Проверить сейчас».")
-    return "\n".join(lines)
+            checks[str(medicine.pk)] = "❔ не удалось проверить"
+    return checks
