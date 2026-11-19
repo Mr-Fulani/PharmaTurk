@@ -202,18 +202,16 @@ def test_forged_or_foreign_price_token_is_refused(admin_client, lists, web, nexi
 
 
 @pytest.mark.django_db
-def test_hospital_medicine_gets_no_price_offer_and_post_is_refused(admin_client, lists, web, nexium):
-    token = _offer_token(admin_client, nexium)
+def test_hospital_medicine_price_is_offered_and_accepted_like_any_other(admin_client, lists, web, nexium):
+    """Цену больничного не скрываем (19.11.2026) — принимаем её так же, как у обычного лекарства."""
     MedicineProduct.objects.filter(pk=nexium.pk).update(is_hospital=True)
+    token = _offer_token(admin_client, nexium)
 
-    page = admin_client.get(reverse("admin:drug_check_medicine", args=[nexium.pk])).content.decode()
     response = admin_client.post(reverse("admin:drug_check_price", args=[nexium.pk]), {"token": token})
 
-    assert "цену не принимаем" in page
-    assert 'name="token"' not in page
     assert response.status_code == 302
     nexium.refresh_from_db()
-    assert nexium.price == Decimal("202.15")
+    assert nexium.price == Decimal("210.00")
 
 
 @pytest.mark.django_db

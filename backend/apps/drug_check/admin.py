@@ -106,9 +106,6 @@ class DrugReferenceEntryAdmin(admin.ModelAdmin):
         if offer is None:
             messages.error(request, "Проверка устарела или ссылка неверна — нажмите «Проверить сейчас» ещё раз.")
             return redirect(_change_url(medicine.pk))
-        if medicine.is_hospital:
-            messages.error(request, "Больничный препарат («цена по запросу») — цену не принимаем.")
-            return redirect(_change_url(medicine.pk))
         if request.method == "POST":
             applied = actions.apply_price(medicine.pk, offer)
             if applied is None:

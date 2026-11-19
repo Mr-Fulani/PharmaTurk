@@ -1897,11 +1897,11 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # Больничный препарат: «цена по запросу», цену не показываем (docs/HOSPITAL_MEDICINES.md)
-        from .hospital_medicines import hide_hospital_price, is_hospital_product
+        # Больничный препарат: справочная отметка, цена — как у любого лекарства (docs/HOSPITAL_MEDICINES.md)
+        from .hospital_medicines import is_hospital_product
 
         if is_hospital_product(instance):
-            hide_hospital_price(data)
+            data["is_hospital"] = True
         return hide_medicine_featured(data)
     
     def get_price_formatted(self, obj):
@@ -6019,11 +6019,9 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
         if active_old is not None and "active_variant_old_price_formatted" in data:
             data["active_variant_old_price_formatted"] = f"{active_old} {active_old_currency}"
         data = _apply_product_markup_to_payload(data, instance)
-        # Больничный препарат: «цена по запросу», цену не показываем (docs/HOSPITAL_MEDICINES.md)
+        # Больничный препарат: справочная отметка, цена — как у любого лекарства (docs/HOSPITAL_MEDICINES.md)
         if getattr(instance, "is_hospital", False):
-            from .hospital_medicines import hide_hospital_price
-
-            hide_hospital_price(data)
+            data["is_hospital"] = True
         return hide_medicine_featured(data)
 
     def get_product_type(self, obj):
@@ -6316,9 +6314,7 @@ class SimpleDomainCardSerializer(serializers.Serializer):
             data["import_restricted_countries"] = restricted.split(",")
         data = _apply_product_markup_to_payload(data, instance)
         if getattr(instance, "is_hospital", False):
-            from .hospital_medicines import hide_hospital_price
-
-            hide_hospital_price(data)
+            data["is_hospital"] = True
         return hide_medicine_featured(data)
 
 # ─── МЕДИКАМЕНТЫ ───

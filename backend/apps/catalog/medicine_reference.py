@@ -121,8 +121,7 @@ def build_medicine_reference_payload(product, request, limit):
             except Exception:
                 return float(price)
 
-    # Больничный препарат — «цена по запросу»: без цены и без «экономии» (docs/HOSPITAL_MEDICINES.md)
-    current_price = None if product.is_hospital else convert(
+    current_price = convert(
         product.price,
         product.currency or "TRY",
         product,
@@ -170,12 +169,12 @@ def build_medicine_reference_payload(product, request, limit):
         if main_image and request and not main_image.startswith("http"):
             main_image = request.build_absolute_uri(main_image)
 
-        analog_price = None if analog.is_hospital else convert(
+        analog_price = convert(
             analog.price,
             analog.currency or "TRY",
             analog,
         )
-        analog_old_price = None if analog.is_hospital else convert(
+        analog_old_price = convert(
             analog.old_price,
             analog.currency or "TRY",
             analog,
@@ -197,7 +196,7 @@ def build_medicine_reference_payload(product, request, limit):
                     round(analog_old_price, 2) if analog_old_price else None
                 ),
                 "original_price": (
-                    float(analog.price) if analog.price and not analog.is_hospital else None
+                    float(analog.price) if analog.price else None
                 ),
                 "is_hospital": analog.is_hospital,
                 "original_currency": analog.currency or "TRY",
@@ -220,7 +219,6 @@ def build_medicine_reference_payload(product, request, limit):
                 "source_reference_price": (
                     float(source_reference.reference_price)
                     if source_reference
-                    and not analog.is_hospital
                     and source_reference.reference_price is not None
                     else None
                 ),

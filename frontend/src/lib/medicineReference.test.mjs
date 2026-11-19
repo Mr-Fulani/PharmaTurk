@@ -50,8 +50,10 @@ test('страница лекарства: og:type не «product», цена и
   assert.ok(page.includes("og:type\" content={isService || isMedicine ? 'website' : 'product'}"))
   assert.ok(!page.includes('product:price'), 'мета цены для лекарств не отдаются')
   assert.ok(page.includes("const medicineNoSnippet = isMedicine ? { 'data-nosnippet': '' } : {}"))
-  // Цена (обычная и больничная), блок кнопок и нижняя панель телефона; сама страница индексируется.
-  assert.equal(page.split('{...medicineNoSnippet}').length - 1, 4)
+  // Цена (обычная и «цена по запросу» больничного), подпись «Больничный препарат» у цены,
+  // блок кнопок и нижняя панель телефона; сама страница индексируется.
+  assert.equal(page.split('{...medicineNoSnippet}').length - 1, 5)
+  assert.ok(page.includes('<p {...medicineNoSnippet} className="mt-1 text-sm leading-relaxed'))
   assert.ok(page.includes('<div ref={actionBlockRef} {...medicineNoSnippet}'))
   assert.ok(!/name="robots" content="[^"]*nosnippet/.test(page))
 })

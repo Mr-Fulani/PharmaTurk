@@ -957,14 +957,9 @@ class CartItemSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         from apps.catalog.hospital_medicines import is_hospital_product
 
-        # «Цена по запросу» вместо «0 ₽»: больничный препарат или товар без цены — сумму назовёт менеджер.
+        # «Цена по запросу» вместо «0 ₽» у товара без цены — сумму назовёт менеджер.
+        # У больничного препарата без цены подпись «Больничный препарат · цена по запросу».
         if is_hospital_product(instance.product):
-            for field in (
-                "old_price", "old_price_formatted", "converted_price_rub", "converted_price_usd",
-                "final_price_rub", "final_price_usd", "margin_percent_applied", "prices_in_currencies",
-            ):
-                if field in data:
-                    data[field] = None
             data["product_is_hospital"] = True
         data["price_on_request"] = not data.get("price")
         return data
@@ -1116,12 +1111,8 @@ class CartItemSerializer(serializers.ModelSerializer):
         return obj.price
 
     def get_price(self, obj):
-        from apps.catalog.hospital_medicines import is_hospital_product
         from apps.catalog.utils.product_markup import apply_product_markup
 
-        # Больничный препарат — «цена по запросу»: в заявке без суммы (docs/HOSPITAL_MEDICINES.md)
-        if is_hospital_product(obj.product):
-            return Decimal("0")
         if (
             getattr(settings, "SOURCE_OFFER_CART_ENFORCEMENT_ENABLED", False)
             and (

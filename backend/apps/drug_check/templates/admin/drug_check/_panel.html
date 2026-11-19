@@ -5,7 +5,7 @@
     <a class="dc-big-button" href="{{ check_url }}" target="_blank" rel="noopener">Проверить сейчас</a>
   </div>
   <p class="dc-panel__ours">
-    У нас: <b>{% if medicine.is_hospital %}цена по запросу (больничный){% elif medicine.price is not None %}{{ medicine.price|tl }}{% if medicine.currency != "TRY" %} {{ medicine.currency }}{% endif %}{% else %}без цены{% endif %}</b>,
+    У нас: <b>{% if medicine.price is not None %}{{ medicine.price|tl }}{% if medicine.currency != "TRY" %} {{ medicine.currency }}{% endif %}{% else %}без цены{% endif %}{% if medicine.is_hospital %} (больничный){% endif %}</b>,
     <b>{% if not medicine.is_active %}скрыт с сайта{% elif medicine.is_available %}в наличии{% else %}нет в наличии{% endif %}</b>.
   </p>
   <ul class="dc-panel__list">
