@@ -4,8 +4,12 @@ Serializer возвращает локализованные поля `title` и
 Ожидает, что в `context` передан ключ `lang` для выбора языка.
 """
 
+import logging
+
 from rest_framework import serializers
 from .models import Page
+
+logger = logging.getLogger(__name__)
 
 
 class PageSerializer(serializers.ModelSerializer):
@@ -46,6 +50,7 @@ class PageSerializer(serializers.ModelSerializer):
         try:
             return obj.og_image.url
         except Exception:
+            logger.warning("Страница %s: адрес og_image не получен", obj.pk, exc_info=True)
             return ""
 
     def get_content(self, obj: Page) -> str:  # pragma: no cover - trivial
