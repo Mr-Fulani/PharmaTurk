@@ -5,8 +5,11 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
 
-MIGRATE_FROM = [("orders", "0012_cartitem_pending_confirmation")]
-MIGRATE_TO = [("orders", "0013_supplement_pending_items_payable")]
+# Каталог откатывается до миграции, где у товара ещё есть колонка margin_percent_applied:
+# историческая модель Product пишет в неё, а миграция 0244 колонку удаляет.
+CATALOG_WITH_OLD_COLUMNS = ("catalog", "0243_deleted_product_slug")
+MIGRATE_FROM = [("orders", "0012_cartitem_pending_confirmation"), CATALOG_WITH_OLD_COLUMNS]
+MIGRATE_TO = [("orders", "0013_supplement_pending_items_payable"), CATALOG_WITH_OLD_COLUMNS]
 
 
 @pytest.mark.django_db(transaction=True)
