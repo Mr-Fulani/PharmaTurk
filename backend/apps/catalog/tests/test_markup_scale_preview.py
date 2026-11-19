@@ -21,9 +21,10 @@ def run(*args):
 
 
 def product(slug, price, product_type="shoes", **extra):
+    extra.setdefault("is_active", True)
     return Product(
         name=f"Preview {slug}", slug=f"preview-{slug}", product_type=product_type,
-        price=Decimal(price), currency="TRY", is_active=True, **extra,
+        price=Decimal(price), currency="TRY", **extra,
     )
 
 
