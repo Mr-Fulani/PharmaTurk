@@ -168,7 +168,8 @@ def test_telegram_notification_contains_contacts(settings):
     assert "Новая заявка на поиск товара" in text
     assert "+79990001122" in text
     assert "WhatsApp: @anna.wa" in text
-    assert "Анна\\_\\*" in text
+    assert "Имя: Анна_*" in text
+    assert post.call_args.kwargs["json"]["parse_mode"] == "HTML"
     assert post.call_args.args[0].endswith("sendMessage")
 
 
@@ -191,7 +192,7 @@ def test_telegram_notification_without_phone(settings):
 
     text = post.call_args.kwargs["json"]["text"]
     assert "Телефон" not in text
-    assert "Telegram: @anna\\_tg" in text
+    assert "Telegram: @anna_tg" in text
 
 
 @pytest.mark.django_db(transaction=True)
