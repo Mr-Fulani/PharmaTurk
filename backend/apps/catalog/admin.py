@@ -1326,7 +1326,7 @@ class BaseProductAdmin(MainMediaPreviewAdminMixin, MainPhotoGalleryAdminMixin, A
         }),
         (_('Цены и наличие'), {
             'fields': (
-                'price', 'currency', 'old_price', 'margin_percent_applied',
+                'price', 'currency', 'old_price',
                 'availability_status', 'is_available', 'stock_quantity',
                 'min_order_quantity', 'pack_quantity'
             )

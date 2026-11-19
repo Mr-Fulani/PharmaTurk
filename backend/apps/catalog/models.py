@@ -377,7 +377,7 @@ class Category(models.Model):
     is_active = models.BooleanField(_("Активна"), default=True)
     margin_percent = models.DecimalField(
         _("Маржа, %"), max_digits=5, decimal_places=2, default=0,
-        help_text=_("Процент наценки для категории; перекрывается на уровне бренда/товара")
+        help_text=_("Процент наценки для категории; перекрывается на уровне бренда")
     )
     shipping_calculation = models.CharField(
         _("Расчёт доставки"),
@@ -1702,9 +1702,6 @@ class Product(models.Model):
     )
     final_price_usd = models.DecimalField(
         _("Итоговая цена USD"), max_digits=12, decimal_places=2, null=True, blank=True
-    )
-    margin_percent_applied = models.DecimalField(
-        _("Применённая маржа, %"), max_digits=5, decimal_places=2, default=0
     )
     availability_status = models.CharField(
         _("Статус доступности"),
