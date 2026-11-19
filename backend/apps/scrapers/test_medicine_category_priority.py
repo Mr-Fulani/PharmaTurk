@@ -10,7 +10,9 @@ from apps.catalog.models import (
     MedicineProductTranslation, ProductTranslation,
 )
 from apps.scrapers.base.scraper import ScrapedProduct
-from apps.scrapers.medicine_categories import MedicineCategoryConflict, resolve_medicine_category
+from apps.scrapers.medicine_categories import (
+    MedicineCategoryConflict, ingredient_key, resolve_medicine_category,
+)
 from apps.scrapers.models import ScraperConfig, ScrapingSession, ScrapedProductLog
 from apps.scrapers.services import ScraperIntegrationService, scraping_in_progress_context
 
@@ -376,6 +378,135 @@ def test_identity_conflict_with_same_barcode_updates_only_price_and_stock(
     assert "Пропущен" not in message
 
 
+@pytest.mark.parametrize("ours,source", [
+    ("amoksisilin", "Amoksisilin trihidrat"),
+    ("AMOKSİSİLİN  TRİHİDRAT", "amoksisilin trihidrat"),
+    ("Amoksisilin + Klavulanik asit", "Klavulanik Asit / Amoksisilin Trihidrat"),
+    ("Parasetamol ve Kafein", "kafein, parasetamol"),
+    ("Amoxicillin and Clavulanic Acid", "Amoksisilin + Klavulanik asit"),
+    ("Paracetamol", "Parasetamol"),
+    ("Esomeprazol magnezyum dihidrat", "esomeprazol"),
+    ("Metformin HCl", "Metformin hidroklorür"),
+    ("Sodyum Klorür", "sodyum klorur"),
+])
+def test_same_substance_in_another_spelling_is_one_ingredient(ours, source):
+    assert ingredient_key(ours) == ingredient_key(source) != frozenset()
+
+
+@pytest.mark.parametrize("ours,source", [
+    ("amoksisilin", "Amoksisilin trihidrat + Potasyum klavulanat"),
+    ("Parasetamol", "İbuprofen"),
+    ("Sodyum klorür", "Potasyum klorür"),
+    ("Hidroklorotiyazid", "Hidrokortizon"),
+    ("Flutikazon propiyonat", "Flutikazon furoat"),
+    ("Vitamin B12", "Vitamin B6"),
+])
+def test_different_substances_stay_different(ours, source):
+    assert ingredient_key(ours) != ingredient_key(source)
+
+
+def test_russian_or_empty_ingredient_is_unknown_not_a_conflict():
+    assert ingredient_key("Ибупрофен") == ingredient_key("-") == frozenset()
+
+
+def test_same_substance_in_another_spelling_updates_whole_card(catalog):
+    """Как на проде: в поле «amoksisilin», в источнике «Amoksisilin trihidrat» — карточка пропускалась."""
+    base, domain = existing_card(catalog)
+    MedicineProduct.objects.filter(pk=domain.pk).update(active_ingredient="klavulanik asit + amoksisilin")
+    run = real_session(catalog)
+    item = scraped(price=999)
+    item.attributes.update(active_ingredient="Amoksisilin Trihidrat / Klavulanik Asit", barcode="")
+    item.barcode = ""  # штрихкод упаковку не подтверждает: до правки — полный пропуск
+    old = deepcopy(base.external_data)
+    old["attributes"]["active_ingredient"] = "AMOKSİSİLİN + KLAVULANİK ASİT"
+    Product.objects.filter(pk=base.pk).update(external_data=old)
+    MedicineProduct.objects.filter(pk=domain.pk).update(external_data=old)
+    result = ScraperIntegrationService()._process_scraped_products(run, [item])
+    assert result == {"found": 1, "created": 0, "updated": 1, "skipped": 0, "errors": 0}
+    base.refresh_from_db()
+    domain.refresh_from_db()
+    assert base.price == 999
+    assert base.external_data["attributes"]["active_ingredient"] == "Amoksisilin Trihidrat / Klavulanik Asit"
+    assert domain.active_ingredient == "klavulanik asit + amoksisilin"
+    assert "conflict" not in ScrapedProductLog.objects.get(session=run).message
+
+
+def _not_medicine(base):
+    Product.objects.filter(pk=base.pk).update(product_type="supplements")
+
+
+def test_same_page_of_not_medicine_updates_only_price_and_stock(catalog):
+    """Случай «а»: страница лекарства та же, но товар у нас уже не лекарство (БАД, масло)."""
+    base, domain = existing_card(catalog, base_category="cardio")
+    _not_medicine(base)
+    before = full_snapshot(base, domain)
+    run = real_session(catalog)
+    item = scraped(
+        name="New source name", description="New source description", brand="New source brand",
+        price=999, is_available=False, images=["https://example.test/unwanted-new-image.jpg"],
+    )
+    item.attributes.update(atc_code="N05BA01", active_ingredient="New ingredient", barcode="")
+    item.barcode = ""
+    result = ScraperIntegrationService()._process_scraped_products(run, [item])
+    assert result == {"found": 1, "created": 0, "updated": 1, "skipped": 0, "errors": 0}
+    after = full_snapshot(base, domain)
+    assert after["base"]["price"] == 999 and after["base"]["is_available"] is False
+    for key in ("name", "slug", "description", "category_id", "brand_id", "product_type", "external_id",
+                "external_url", "main_image", "currency"):
+        assert after["base"][key] == before["base"][key], key
+    assert after["base"]["external_data"]["attributes"] == before["base"]["external_data"]["attributes"]
+    # Лекарственная запись и её поля не тронуты.
+    assert after["domain"] == before["domain"]
+    assert after["images"] == before["images"]
+    message = ScrapedProductLog.objects.get(session=run).message
+    assert "variant_or_product_type_conflict" in message and "только цена и наличие" in message
+
+
+def test_not_medicine_found_by_id_on_another_page_is_skipped(catalog):
+    """Товар другого типа с тем же external_id, но чужой страницей — не та же упаковка."""
+    base, domain = existing_card(catalog)
+    _not_medicine(base)
+    Product.objects.filter(pk=base.pk).update(external_url="https://example.test/shop/category-priority-card")
+    before = full_snapshot(base, domain)
+    result = ScraperIntegrationService()._process_scraped_products(real_session(catalog), [scraped(price=999)])
+    assert result["skipped"] == 1 and result["errors"] == 0
+    assert full_snapshot(base, domain) == before
+
+
+@pytest.mark.parametrize("source_barcode,refreshed", [
+    ("1234567890123", True),    # та же упаковка
+    ("9999999999999", False),   # другая упаковка на том же адресе
+    ("", False),                # источник штрихкод не показал
+])
+def test_other_external_id_needs_same_barcode_for_price_and_stock(catalog, source_barcode, refreshed):
+    """Случай «б»: найден по адресу страницы, а external_id у карточки другой."""
+    base, domain = existing_card(catalog)
+    stale = {"external_id": "old-card-id", "external_url": "https://www.ilacfiyati.com/ilaclar/category-priority-card/"}
+    Product.objects.filter(pk=base.pk).update(**stale)
+    MedicineProduct.objects.filter(pk=domain.pk).update(**stale)
+    before = full_snapshot(base, domain)
+    run = real_session(catalog)
+    item = scraped(name="New source name", description="New source description", price=999, barcode=source_barcode)
+    item.attributes.update(barcode=source_barcode, nfc_code="NEW")
+    result = ScraperIntegrationService()._process_scraped_products(run, [item])
+    after = full_snapshot(base, domain)
+    message = ScrapedProductLog.objects.get(session=run).message
+    assert "variant_or_product_type_conflict" in message
+    assert Product.objects.count() == 1
+    if not refreshed:
+        assert result["skipped"] == 1 and result["errors"] == 0
+        assert after == before and "Пропущен" in message
+        return
+    assert result == {"found": 1, "created": 0, "updated": 1, "skipped": 0, "errors": 0}
+    assert "только цена и наличие" in message
+    for part in ("base", "domain"):
+        assert after[part]["price"] == 999
+        for key in ("name", "description", "external_id", "external_url", "category_id"):
+            assert after[part][key] == before[part][key], key
+        assert after[part]["external_data"]["attributes"] == before[part]["external_data"]["attributes"]
+    assert after["domain"]["nfc_code"] == before["domain"]["nfc_code"]
+
+
 def test_upgraded_analog_stub_takes_identity_from_its_own_source_card(catalog):
     """Заглушка аналога наследует ATC и вещество родителя — полная карточка их заменяет.
 
@@ -495,16 +626,14 @@ def test_partial_tab_dictionary_is_merged_without_erasing_old_sections(catalog):
     }
 
 
-@pytest.mark.parametrize("case", ["variant", "source_stub", "wrong_type"])
+@pytest.mark.parametrize("case", ["variant", "source_stub"])
 def test_unsafe_existing_medicine_payload_leaves_whole_card_unchanged(catalog, case):
     base, domain = existing_card(catalog)
     item = scraped(price=999)
     if case == "variant":
         item.attributes["source_variant_slug"] = "another-package"
-    elif case == "source_stub":
-        item.attributes["is_stub"] = True
     else:
-        Product.objects.filter(pk=base.pk).update(product_type="supplements")
+        item.attributes["is_stub"] = True
     before = full_snapshot(base, domain)
     result = ScraperIntegrationService()._process_scraped_products(real_session(catalog), [item])
     assert result["skipped"] == 1 and result["errors"] == 0

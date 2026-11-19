@@ -1880,8 +1880,8 @@ class ScraperIntegrationService:
                         if getattr(scraped_product, "_medicine_import_skip_reason", None)
                         else f"Товар {action}{getattr(scraped_product, '_ilacfiyati_twin_review', '')}"
                         + (
-                            "; обновлены только цена и наличие: штрихкод совпал, но ATC или вещество"
-                            f" карточки расходятся с источником ({scraped_product._medicine_price_only_reason})"
+                            "; обновлены только цена и наличие: упаковка та же, но карточка"
+                            f" расходится с источником ({scraped_product._medicine_price_only_reason})"
                             if getattr(scraped_product, "_medicine_price_only_reason", None) else ""
                         )
                     ),
@@ -4186,8 +4186,9 @@ class ScraperIntegrationService:
                     )
                     scraped_product._medicine_import_skip_reason = str(exc)
                     return "skipped", existing_product
-                # Упаковка та же (штрихкод), расходится ATC или вещество: до 10.11.2026
-                # такая карточка пропускалась целиком и месяцами стояла со старой ценой.
+                # Упаковка та же (штрихкод либо та же страница у товара другого типа),
+                # расходится ATC, вещество, external_id или тип: до 10.11.2026 такая
+                # карточка пропускалась целиком и месяцами стояла со старой ценой.
                 # Дальше идёт копия ответа без содержимого — меняются только цена,
                 # наличие и служебные отметки синхронизации.
                 self.logger.warning(
@@ -4199,6 +4200,7 @@ class ScraperIntegrationService:
                 prepared_attrs = {}
                 medicine_root = None
                 should_repair_ilacfiyati_external_id = False
+                is_variant_update = False
 
         if getattr(scraped_product, "_medicine_media_deferred", False):
             self._normalize_scraped_media(session, scraped_product, product=existing_product)
