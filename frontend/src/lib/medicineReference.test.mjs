@@ -44,3 +44,14 @@ test('подвал: подпись об оплате видна всегда и 
   const fromModel = [...model.matchAll(/^\s+"(Оплата — по согласованию[^"]*|Относится к товарам[^"]*)"/gm)].map((m) => m[1]).join('')
   assert.equal(fromModel, (await locale('ru')).footer_crypto_payment)
 })
+
+test('страница лекарства: og:type не «product», цена и кнопка заявки под data-nosnippet', async () => {
+  const page = await read('src/pages/product/[[...slug]].tsx')
+  assert.ok(page.includes("og:type\" content={isService || isMedicine ? 'website' : 'product'}"))
+  assert.ok(!page.includes('product:price'), 'мета цены для лекарств не отдаются')
+  assert.ok(page.includes("const medicineNoSnippet = isMedicine ? { 'data-nosnippet': '' } : {}"))
+  // Цена (обычная и больничная), блок кнопок и нижняя панель телефона; сама страница индексируется.
+  assert.equal(page.split('{...medicineNoSnippet}').length - 1, 4)
+  assert.ok(page.includes('<div ref={actionBlockRef} {...medicineNoSnippet}'))
+  assert.ok(!/name="robots" content="[^"]*nosnippet/.test(page))
+})

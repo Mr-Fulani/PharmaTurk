@@ -244,6 +244,6 @@ test('pages pick the service wording by product type, not by name', async () => 
   // У услуги в разметке нет артикула и «в наличии», в og — не «product»
   assert.match(productPage, /\.\.\.\(!isService && \{ sku: resolveSchemaSku/)
   assert.match(productPage, /\.\.\.\(!isService && \{ availability \}\)/)
-  assert.match(productPage, /og:type" content=\{isService \? 'website' : 'product'\}/)
+  assert.match(productPage, /og:type" content=\{isService \|\| isMedicine \? 'website' : 'product'\}/)
   assert.match(reviews, /const isService = productType === 'uslugi'/)
 })

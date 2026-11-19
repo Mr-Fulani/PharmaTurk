@@ -1457,6 +1457,9 @@ export default function ProductPage({
     product.description
   const isService = productType === 'uslugi'
   const isMedicine = productType === 'medicines' || product.product_type === 'medicines'
+  // Лекарства: цена и кнопка заявки не идут в сниппеты и автоисточник Google Merchant Center
+  // (data-nosnippet — способ из справки Google; работает на div/span/section).
+  const medicineNoSnippet = isMedicine ? { 'data-nosnippet': '' } : {}
   const isSupplement = productType === 'supplements' || product.product_type === 'supplements'
   // Ввоз запрещён или ограничен (TD-024): плашка у цены, SEO без доставки
   const importRestrictedCountries = isMedicine ? formatRestrictedCountries(product.import_restricted_countries, t) : ''
@@ -1703,7 +1706,7 @@ export default function ProductPage({
         <meta property="og:title" content={metaTitle} />
         <meta property="og:description" content={metaDescription} />
         <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:type" content={isService ? 'website' : 'product'} />
+        <meta property="og:type" content={isService || isMedicine ? 'website' : 'product'} />
         <meta property="og:image" content={previewImage} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={metaTitle} />
@@ -2382,6 +2385,7 @@ export default function ProductPage({
             )}
             {isHospital ? (
               <div
+                {...medicineNoSnippet}
                 className="mt-3 rounded-xl border border-[var(--accent-muted)] bg-[var(--accent-soft)] px-4 py-3"
                 role="note"
               >
@@ -2393,7 +2397,7 @@ export default function ProductPage({
                 </p>
               </div>
             ) : (
-              <div className="mt-3 text-xl font-semibold text-red-600">
+              <div {...medicineNoSnippet} className="mt-3 text-xl font-semibold text-red-600">
                 {displayPrice || t('price_on_request')}
               </div>
             )}
@@ -2758,7 +2762,7 @@ export default function ProductPage({
             )}
 
             {/* Кнопки действий */}
-            <div ref={actionBlockRef} className="mt-4 flex flex-col gap-3">
+            <div ref={actionBlockRef} {...medicineNoSnippet} className="mt-4 flex flex-col gap-3">
               {isService ? (
                 <>
                   {/* Для услуг — связь через мессенджеры, а не корзина */}
@@ -3184,6 +3188,7 @@ export default function ProductPage({
 
         <RelatedProductLinks links={relatedLinks} />
       </main >
+      <div {...medicineNoSnippet}>
       <MobileStickyBuyBar
         actionRef={actionBlockRef}
         sizeRef={sizePickerRef}
@@ -3211,6 +3216,7 @@ export default function ProductPage({
           />
         }
       />
+      </div>
     </>
   )
 }
