@@ -778,3 +778,53 @@ class ServicePrice(models.Model):
 
     def __str__(self):
         return f"{self.service.name} - {self.base_price} {self.base_currency}"
+
+
+class MarkupScale(models.Model):
+    """Шкала товарной наценки: процент зависит от цены источника в лирах."""
+
+    name = models.CharField(max_length=100, unique=True, verbose_name='Название')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = '💰 Шкала наценки'
+        verbose_name_plural = '💰 Наценки — Шкалы по цене'
+
+    def __str__(self):
+        return self.name
+
+    def step_pairs(self):
+        """Ступени как пары (от, процент) для apps.catalog.utils.markup_scale."""
+        return [(step.price_from, step.percent) for step in self.steps.all()]
+
+
+class MarkupScaleStep(models.Model):
+    """Ступень шкалы: с какой цены источника в лирах действует процент."""
+
+    scale = models.ForeignKey(
+        MarkupScale, on_delete=models.CASCADE, related_name='steps', verbose_name='Шкала'
+    )
+    price_from = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        verbose_name='От, лир',
+        help_text="Цена источника в лирах до наценок. Первая ступень начинается с 0.",
+    )
+    percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(500)],
+        verbose_name='Наценка, %',
+    )
+
+    class Meta:
+        ordering = ['price_from']
+        unique_together = ['scale', 'price_from']
+        verbose_name = 'ступень шкалы'
+        verbose_name_plural = 'ступени шкалы'
+
+    def __str__(self):
+        return f"от {self.price_from} лир — {self.percent}%"
