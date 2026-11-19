@@ -4527,6 +4527,8 @@ class ScraperIntegrationService:
         # Обновляем доменные и общие атрибуты (ISBN, medicine-коды и т.д.)
         if stub_upgraded:
             self._replace_stub_inherited_identity(existing_product, prepared_attrs)
+            # Заглушка аналога впервые получила карточку — для правила это новое лекарство.
+            self._flag_new_hospital_medicine(existing_product, scraped_product)
         if prepared_attrs:
             if self._update_product_attributes(
                 existing_product, prepared_attrs, session=session
@@ -5556,6 +5558,8 @@ class ScraperIntegrationService:
         # create-логики, включая очистку бренда для отдельных типов товаров.
         self._apply_authoritative_product_overrides(product, scraped_product)
 
+        self._flag_new_hospital_medicine(product, scraped_product)
+
         # Обрабатываем аналоги, если это медицина
         if product.product_type == "medicines" and self._has_medicine_analog_work(scraped_product):
             self._process_medicine_analogs(product, scraped_product, session)
@@ -5601,6 +5605,29 @@ class ScraperIntegrationService:
                 )
 
         return "created", product
+
+    def _flag_new_hospital_medicine(self, product: Product, scraped_product: ScrapedProduct) -> None:
+        """Новое лекарство IlacFiyati, похожее на больничное, получает «Больничный препарат».
+
+        Только при создании (TD-047): у существующих лекарств флажок парсер не ставит и не
+        снимает — ручная отметка владельца главнее. Правило — apps.catalog.hospital_rule.
+        """
+        if product.product_type != "medicines" or not self._is_ilacfiyati(scraped_product):
+            return
+        from apps.catalog.hospital_rule import hospital_medicine_group
+
+        attrs = scraped_product.attributes or {}
+        # У заглушки аналога ATC унаследован от родителя — ей верим только по названию.
+        atc_code = "" if attrs.get("is_stub") else attrs.get("atc_code")
+        group = hospital_medicine_group(scraped_product.name, atc_code)
+        if not group:
+            return
+        medicine = self._get_medicine_product(product)
+        if medicine.is_hospital:
+            return
+        MedicineProduct.objects.filter(pk=medicine.pk).update(is_hospital=True)
+        medicine.is_hospital = True
+        self.logger.info("Новое лекарство %s отмечено как больничное: %s", product.pk, group)
 
     def _update_scraper_stats(
         self,
