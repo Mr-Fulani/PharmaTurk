@@ -96,13 +96,16 @@ def _product_kind(product):
     )
 
 
-def resolve_markup_rule(product):
+def resolve_markup_rule(product, settings=None, scales=None):
     """Бренд → категория → ближайший заданный предок → глобальная настройка.
 
     На уровне категории и в глобальной настройке вместо процента может стоять шкала.
     Услуги под шкалу не идут; лекарства не идут под глобальную шкалу — только под ту,
     что выбрана у их категории. Фиксированный процент находится всегда: он действует,
     когда шкала неприменима (нет цены источника или курса к лире).
+
+    settings и scales подставляет только расчёт «что изменится» (markup_scale_preview),
+    чтобы примерить шкалу без записи в базу.
     """
     brand = getattr(product, "brand", None)
     brand_margin = getattr(brand, "margin_percent", None) if brand else None
@@ -127,31 +130,34 @@ def resolve_markup_rule(product):
         margin = getattr(category, "margin_percent", None)
         if margin is not None and Decimal(str(margin)) > 0:
             # Preserve the public API's existing source vocabulary.
-            return _with_scale(Decimal(str(margin)), "category", scale_id, scale_source)
+            return _with_scale(Decimal(str(margin)), "category", scale_id, scale_source, scales)
         try:
             category = getattr(category, "parent", None)
         except ObjectDoesNotExist:
             logger.warning("Category markup parent no longer exists for category %s", pk)
             break
 
-    from apps.catalog.currency_models import GlobalCurrencySettings
+    if settings is None:
+        from apps.catalog.currency_models import GlobalCurrencySettings
 
-    settings = GlobalCurrencySettings.load()
+        settings = GlobalCurrencySettings.load()
     if scales_allowed and scale_id is None and kind not in ("medicines", "medicineproduct"):
         global_scale = getattr(settings, "markup_scale_id", None)
         if global_scale:
             scale_id, scale_source = global_scale, "global"
     global_margin = Decimal(str(settings.default_margin_percentage))
     if global_margin > 0:
-        return _with_scale(global_margin, "global", scale_id, scale_source)
-    return _with_scale(Decimal("0"), None, scale_id, scale_source)
+        return _with_scale(global_margin, "global", scale_id, scale_source, scales)
+    return _with_scale(Decimal("0"), None, scale_id, scale_source, scales)
 
 
-def _with_scale(percent, source, scale_id, scale_source):
+def _with_scale(percent, source, scale_id, scale_source, scales=None):
     if scale_id:
-        from apps.catalog.currency_models import load_markup_scales
+        if scales is None:
+            from apps.catalog.currency_models import load_markup_scales
 
-        scale = load_markup_scales().get(scale_id)
+            scales = load_markup_scales()
+        scale = scales.get(scale_id)
         if scale and scale[1]:
             return MarkupRule(percent, source, scale_source, scale[0], scale[1])
     return MarkupRule(percent, source)
