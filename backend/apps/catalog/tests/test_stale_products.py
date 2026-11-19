@@ -11,8 +11,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.catalog.models import AccessoryProduct, ClothingVariant, Product, ProductImage, ProductSourceOffer
-from apps.catalog.models_stock import ProductDeletionLog, StaleProductCandidate
+from apps.catalog.models import AccessoryProduct, ClothingVariant, Product, ProductImage, ProductSlugHistory, ProductSourceOffer
+from apps.catalog.models_stock import DeletedProductSlug, ProductDeletionLog, StaleProductCandidate
 from apps.catalog.services import stale_products
 from apps.catalog.services.nightly_stock_check import NightlyStockCheckService
 from apps.catalog.services.product_card_source_refresh import ProductCardRefreshError
@@ -783,3 +783,87 @@ def test_staff_with_view_permission_cannot_run_owner_actions(client, settings, m
     candidate.refresh_from_db()
     assert candidate.status == StaleProductCandidate.Status.HIDDEN
     assert Product.objects.filter(pk=candidate.product_id, is_active=False).exists()
+
+
+# --- TD-042: вернувшийся у продавца товар получает прежний адрес ---------------------------
+
+
+def _returned(external_id, name="LCW tabak"):
+    from apps.catalog.services import CatalogNormalizer
+    from apps.vapi.client import ProductData
+
+    return CatalogNormalizer().normalize_product(
+        ProductData(
+            id=external_id, name=name, description="", price=100, currency="TRY", category="tableware",
+            brand="", images=[], url="https://www.lcw.com/urun-1-o-1", availability=True,
+            metadata={"source": "lcw", "attributes": {}},
+        )
+    )
+
+
+def _delete(product):
+    candidate = _candidate(product, hidden_days=20)
+    delete_candidates([candidate.pk], gateway=FakeGateway({}), recheck=lambda c: "gone")
+    assert not Product.objects.filter(pk=product.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("name", ["LCW tabak 1", "LCW yeni porselen tabak"])
+def test_returned_product_gets_its_address_back_even_with_new_name(name):
+    _catalog(20)
+    product = _product(1)
+    old_slug = product.slug
+    _delete(product)
+
+    again = _returned("lcw-1", name)
+
+    assert again.pk != product.pk and again.slug == old_slug
+    assert not DeletedProductSlug.objects.exists()
+
+
+@pytest.mark.django_db
+def test_returned_product_redirects_from_addresses_it_cannot_take_back(client):
+    _catalog(20)
+    product = _product(1)
+    first_slug = product.slug
+    product.slug = f"lcw-tabak-renamed-{uuid4().hex[:8]}"
+    product.save()
+    last_slug = product.slug
+    _delete(product)
+    # Последний адрес за это время занял другой товар — он остаётся его.
+    squatter = Product.objects.create(name="Чужой", slug=last_slug, product_type="tableware", price=1, currency="TRY")
+
+    again = _returned("lcw-1")
+
+    assert again.slug not in (first_slug, last_slug)
+    assert Product.objects.get(slug=last_slug).pk == squatter.pk
+    assert ProductSlugHistory.objects.get(old_slug=first_slug).product_id == again.pk
+    assert not ProductSlugHistory.objects.filter(old_slug=last_slug).exists()
+    response = client.get(f"/api/catalog/products/resolve/{first_slug}")
+    assert response.status_code == 200 and response.json()["payload"]["slug"] == again.slug
+
+
+@pytest.mark.django_db
+def test_other_product_does_not_get_deleted_products_address():
+    _catalog(20)
+    product = _product(1)
+    old_slug = product.slug
+    _delete(product)
+
+    other = _returned("lcw-777", "LCW tabak 1")
+
+    assert other.slug != old_slug
+    assert DeletedProductSlug.objects.get(external_id="lcw-1").slug == old_slug
+    assert not ProductSlugHistory.objects.filter(old_slug=old_slug).exists()
+
+
+@pytest.mark.django_db
+def test_restore_from_log_forgets_remembered_address():
+    _catalog(20)
+    product = _product(1)
+    _delete(product)
+    assert DeletedProductSlug.objects.filter(external_id="lcw-1").exists()
+
+    restore_deletion(ProductDeletionLog.objects.get(product_id=product.pk), gateway=FakeGateway({}))
+
+    assert not DeletedProductSlug.objects.exists()
