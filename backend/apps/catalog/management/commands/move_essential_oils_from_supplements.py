@@ -110,7 +110,8 @@ def without_supplement_keywords(value):
 def markup_after(product, category, section_markup):
     """Наценка товара в новом разделе; section_markup — как если бы её записали разделу essential-oils."""
     if section_markup is None:
-        return get_effective_product_markup(SimpleNamespace(brand=product.brand, category=category))[0]
+        moved = SimpleNamespace(brand=product.brand, category=category, product_type=product.product_type)
+        return get_effective_product_markup(moved, product.price, product.currency)[0]
     brand_margin, source = get_effective_product_markup(SimpleNamespace(brand=product.brand, category=None))
     if source == "brand":
         return brand_margin

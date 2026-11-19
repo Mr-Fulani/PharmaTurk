@@ -96,7 +96,7 @@ def build_medicine_reference_payload(product, request, limit):
         if currency_converter is None:
             from .utils.product_markup import apply_product_markup
 
-            return float(apply_product_markup(price, priced_product))
+            return float(apply_product_markup(price, priced_product, price, from_currency or "TRY"))
         try:
             _original, _converted, price_with_margin = (
                 currency_converter.convert_price(
@@ -108,7 +108,9 @@ def build_medicine_reference_payload(product, request, limit):
             )
             from .utils.product_markup import apply_product_markup
 
-            return float(apply_product_markup(price_with_margin, priced_product))
+            return float(apply_product_markup(
+                price_with_margin, priced_product, price, from_currency or "TRY"
+            ))
         except Exception:
             logger.exception(
                 "Failed to calculate public analog price for product_id=%s",
@@ -117,7 +119,7 @@ def build_medicine_reference_payload(product, request, limit):
             try:
                 from .utils.product_markup import apply_product_markup
 
-                return float(apply_product_markup(price, priced_product))
+                return float(apply_product_markup(price, priced_product, price, from_currency or "TRY"))
             except Exception:
                 return float(price)
 

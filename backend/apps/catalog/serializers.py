@@ -100,13 +100,14 @@ def _apply_markup_formatted(value, margin):
     )
 
 
-def _apply_product_markup_to_payload(data, obj):
+def _apply_product_markup_to_payload(data, obj, active_base=None):
     return _pricing_apply_product_markup_to_payload(
         data,
         obj,
         markup_resolver=_effective_product_markup,
         value_transform=_apply_markup_value,
         formatted_transform=_apply_markup_formatted,
+        active_base=active_base,
     )
 
 
@@ -6018,7 +6019,9 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
         )
         if active_old is not None and "active_variant_old_price_formatted" in data:
             data["active_variant_old_price_formatted"] = f"{active_old} {active_old_currency}"
-        data = _apply_product_markup_to_payload(data, instance)
+        data = _apply_product_markup_to_payload(
+            data, instance, active_base=(active_amount, active_source)
+        )
         # Больничный препарат: справочная отметка, цена — как у любого лекарства (docs/HOSPITAL_MEDICINES.md)
         if getattr(instance, "is_hospital", False):
             data["is_hospital"] = True

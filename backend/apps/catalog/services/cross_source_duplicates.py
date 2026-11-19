@@ -64,7 +64,7 @@ from apps.catalog.models import (
 )
 from apps.catalog.utils.default_variant import default_fashion_variant
 from apps.catalog.utils.old_price import source_old_price
-from apps.catalog.utils.product_markup import apply_markup_percent, get_effective_product_markup
+from apps.catalog.utils.product_markup import apply_markup_percent, resolve_markup_rule
 from apps.catalog.utils.tr_vocab import COLOR_DETAIL_SEPARATOR
 
 logger = logging.getLogger(__name__)
@@ -345,21 +345,25 @@ class CrossSourceDuplicateService:
     def _attach_site_prices(members: Iterable[Member]) -> None:
         """Цена на сайте = цена продавца × наценка карточки (одна на бренд + раздел)."""
         members = list(members)
-        margins: dict[tuple, Decimal] = {}
-        by_product: dict[int, Decimal] = {}
+        rules: dict[tuple, object] = {}
+        by_product: dict[int, object] = {}
         products = Product.objects.filter(pk__in={m.product_id for m in members}).select_related(
             "brand", "category"
         ).only(  # без тяжёлого external_data карточки
-            "id", "brand", "category", "brand__margin_percent", "category__margin_percent", "category__parent"
+            "id", "product_type", "brand", "category", "brand__margin_percent",
+            "category__margin_percent", "category__markup_scale", "category__parent"
         )
         for product in products:
-            key = (product.brand_id, product.category_id)
-            if key not in margins:
-                margins[key] = get_effective_product_markup(product)[0]
-            by_product[product.pk] = margins[key]
+            key = (product.brand_id, product.category_id, product.product_type)
+            if key not in rules:
+                rules[key] = resolve_markup_rule(product)
+            by_product[product.pk] = rules[key]
         for m in members:
+            rule = by_product.get(m.product_id)
             if m.price is not None:
-                m.site_price = apply_markup_percent(m.price, by_product.get(m.product_id, Decimal("0")))
+                # со шкалой процент зависит от цены продавца — у двух предложений он разный
+                percent = rule.resolve(m.price, m.currency).percent if rule else Decimal("0")
+                m.site_price = apply_markup_percent(m.price, percent)
 
     def _neighbour_ids(self, product_type: str, members: dict[int, Member]) -> set[int]:
         """Цвета другого продавца, которые могут совпасть с уже загруженными."""

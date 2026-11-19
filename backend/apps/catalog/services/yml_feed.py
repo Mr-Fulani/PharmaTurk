@@ -41,7 +41,7 @@ from django.utils import timezone
 
 from ..models import Category, Product
 from ..models_vk import VKCategoryMapping, YMLFeedSnapshot
-from ..utils.product_markup import apply_markup_percent, get_effective_product_markup
+from ..utils.product_markup import apply_markup_percent, resolve_markup_rule
 from .source_offer_catalog_projection import resolve_source_offer_catalog_availability
 from .yml_feed_pictures import load_picture_copies, picture_key
 
@@ -369,21 +369,31 @@ class _GenderResolver:
 
 class _MarkupResolver:
     """
-    Товарная наценка, как на сайте: бренд → категория → глобальная.
-    Наценка категории считается один раз на сборку — иначе запрос родителей на каждый товар.
+    Товарная наценка — общим правилом сайта (apps.catalog.utils.product_markup).
+    Правило категории считается один раз на сборку — иначе запрос родителей на каждый товар.
     """
 
     def __init__(self):
         self._by_category: dict = {}
 
-    def price_with_markup(self, amount, prod):
+    def _rule(self, prod):
         brand_margin = getattr(prod.brand, "margin_percent", None) if prod.brand else None
         if brand_margin is not None and Decimal(str(brand_margin)) > 0:
-            return apply_markup_percent(amount, Decimal(str(brand_margin)))
-        if prod.category_id not in self._by_category:
-            without_brand = SimpleNamespace(brand=None, category=prod.category)
-            self._by_category[prod.category_id] = get_effective_product_markup(without_brand)[0]
-        return apply_markup_percent(amount, self._by_category[prod.category_id])
+            return resolve_markup_rule(prod)
+        key = (prod.category_id, prod.product_type)
+        if key not in self._by_category:
+            without_brand = SimpleNamespace(
+                brand=None, category=prod.category, product_type=prod.product_type
+            )
+            self._by_category[key] = resolve_markup_rule(without_brand)
+        return self._by_category[key]
+
+    def price_with_markup(self, amount, prod, base_price=None, base_currency=None):
+        """base_price — цена источника (у варианта своя): от неё выбирается ступень шкалы."""
+        if base_price is None:
+            base_price, base_currency = prod.price, prod.currency
+        percent = self._rule(prod).resolve(base_price, base_currency or prod.currency).percent
+        return apply_markup_percent(amount, percent)
 
 
 def _iter_offers(products, site_url: str, use_picture_copies: bool = True) -> Iterator[str]:
@@ -551,7 +561,10 @@ def create_offer(parent, prod, site_url, vk_map,
     v_price = _variant_price_rub(variant) if variant else None
     raw_price = v_price or prod.get_price_in_currency("RUB") or prod.price or 0
     # Сайт показывает цену с товарной наценкой поверх наценки валютной пары — в фиде та же цена.
-    raw_price = (markups or _MarkupResolver()).price_with_markup(raw_price, prod)
+    base_price = getattr(variant, "price", None) if v_price else None
+    raw_price = (markups or _MarkupResolver()).price_with_markup(
+        raw_price, prod, base_price, getattr(variant, "currency", None) if base_price else None
+    )
     price_dec = Decimal(str(raw_price)).quantize(Decimal("0.01"))
     price_str = (
         str(int(price_dec))

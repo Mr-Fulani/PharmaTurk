@@ -214,7 +214,9 @@ class Command(BaseCommand):
         self.stdout.write("id | название | тип → тип | раздел → раздел | цена с наценкой до → после | ссылка источника")
         for product, target in plan:
             before = get_effective_product_markup(product)[0]
-            after = get_effective_product_markup(SimpleNamespace(brand=product.brand, category=target))[0]
+            # тип товара и цена источника нужны шкале наценки нового раздела
+            moved = SimpleNamespace(brand=product.brand, category=target, product_type=product.product_type)
+            after = get_effective_product_markup(moved, product.price, product.currency)[0]
             markup_changes += before != after
             self.stdout.write(
                 f"{product.pk} | {product.name} | {product.product_type} → {_resolve_product_type(target)} | "

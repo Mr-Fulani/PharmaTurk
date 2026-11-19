@@ -379,6 +379,18 @@ class Category(models.Model):
         _("Маржа, %"), max_digits=5, decimal_places=2, default=0,
         help_text=_("Процент наценки для категории; перекрывается на уровне бренда")
     )
+    markup_scale = models.ForeignKey(
+        "catalog.MarkupScale",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Шкала наценки по цене"),
+        help_text=_(
+            "Если выбрана — действует вместо процента категории и наследуется подкатегориями. "
+            "Наценка бренда по-прежнему сильнее."
+        ),
+    )
     shipping_calculation = models.CharField(
         _("Расчёт доставки"),
         max_length=16,

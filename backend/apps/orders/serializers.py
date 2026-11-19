@@ -1085,6 +1085,12 @@ class CartItemSerializer(serializers.ModelSerializer):
             "is_base_price": base_currency == target_currency,
         }
     
+    def _with_markup(self, amount, obj):
+        """Товарная наценка; ступень шкалы — по цене источника этой позиции."""
+        from apps.catalog.utils.product_markup import apply_product_markup
+
+        return apply_product_markup(amount, obj.product, lambda: self._get_base_price(obj))
+
     def _get_price_without_product_markup(self, obj):
         """Получает цену в предпочитаемой валюте."""
         request = self.context.get('request')
@@ -1143,7 +1149,9 @@ class CartItemSerializer(serializers.ModelSerializer):
             except Exception as exc:
                 _log_fallback("cart_item.observed_price_conversion", obj, exc)
                 return saved_price
-        return apply_product_markup(self._get_price_without_product_markup(obj), obj.product)
+        return apply_product_markup(
+            self._get_price_without_product_markup(obj), obj.product, lambda: self._get_base_price(obj)
+        )
 
     def get_total(self, obj):
         return (
@@ -1190,7 +1198,10 @@ class CartItemSerializer(serializers.ModelSerializer):
             )
             from apps.catalog.utils.product_markup import apply_product_markup
 
-            return apply_product_markup(price_with_margin, product)
+            # процент тот же, что у текущей цены позиции, — иначе исказится размер скидки
+            return apply_product_markup(
+                price_with_margin, product, lambda: self._get_base_price(obj)
+            )
         except Exception as exc:
             _log_fallback("cart_item.old_price", obj, exc)
             return old_price
@@ -1243,10 +1254,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     def get_final_price_rub(self, obj):
         """Получает финальную цену в RUB с маржой."""
         try:
-            from apps.catalog.utils.product_markup import apply_product_markup
-
             data = self._get_live_currency_data(obj, "RUB")
-            return apply_product_markup(data["price_with_margin"], obj.product) if data else None
+            return self._with_markup(data["price_with_margin"], obj) if data else None
         except Exception as exc:
             _log_fallback("cart_item.final_price_rub", obj, exc)
         return None
@@ -1254,10 +1263,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     def get_final_price_usd(self, obj):
         """Получает финальную цену в USD с маржой."""
         try:
-            from apps.catalog.utils.product_markup import apply_product_markup
-
             data = self._get_live_currency_data(obj, "USD")
-            return apply_product_markup(data["price_with_margin"], obj.product) if data else None
+            return self._with_markup(data["price_with_margin"], obj) if data else None
         except Exception as exc:
             _log_fallback("cart_item.final_price_usd", obj, exc)
         return None
@@ -1276,16 +1283,12 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_prices_in_currencies(self, obj):
         """Получает актуальные публичные цены во всех валютах."""
-        from apps.catalog.utils.product_markup import apply_product_markup
-
         prices = {}
         for currency in ("RUB", "USD", "KZT", "EUR", "TRY", "USDT"):
             try:
                 data = self._get_live_currency_data(obj, currency)
                 if data:
-                    data["price_with_margin"] = apply_product_markup(
-                        data["price_with_margin"], obj.product
-                    )
+                    data["price_with_margin"] = self._with_markup(data["price_with_margin"], obj)
                     prices[currency] = data
             except Exception as exc:
                 _log_fallback("cart_item.prices_in_currencies", obj, exc)

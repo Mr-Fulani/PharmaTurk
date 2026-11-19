@@ -13,9 +13,14 @@ from django.contrib.contenttypes.models import ContentType
 logger = logging.getLogger(__name__)
 
 
+# v2: у настроек появилось поле шкалы; запись из кэша старого выпуска его не содержит.
+GLOBAL_SETTINGS_CACHE_KEY = "global_currency_settings_v2"
+MARKUP_SCALES_CACHE_KEY = "markup_scales_v1"
+
+
 def _clear_margin_caches():
     """Сразу публикует новую маржу во всех расчётах текущего процесса."""
-    cache.delete("global_currency_settings")
+    cache.delete(GLOBAL_SETTINGS_CACHE_KEY)
     try:
         cache.incr("currency_margin_version")
     except (ValueError, TypeError):
@@ -95,6 +100,20 @@ class GlobalCurrencySettings(models.Model):
         )
     )
     
+    markup_scale = models.ForeignKey(
+        'catalog.MarkupScale',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Шкала наценки по цене',
+        help_text=(
+            "Если выбрана — вместо глобального процента наценка берётся из шкалы по цене источника. "
+            "На лекарства и услуги не действует: для них остаётся глобальный процент. "
+            "Бренд и категория со своим процентом или шкалой по-прежнему сильнее."
+        ),
+    )
+
     usdt_markup_percentage = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -206,11 +225,11 @@ class GlobalCurrencySettings(models.Model):
         """
         Загружает настройки из кэша. Если в кэше нет — берет из БД (или создает дефолтные).
         """
-        if obj := cache.get("global_currency_settings"):
+        if obj := cache.get(GLOBAL_SETTINGS_CACHE_KEY):
             return obj
             
         obj, created = cls.objects.get_or_create(pk=1)
-        cache.set("global_currency_settings", obj, timeout=60 * 60 * 24)  # Кэшируем на сутки
+        cache.set(GLOBAL_SETTINGS_CACHE_KEY, obj, timeout=60 * 60 * 24)  # Кэшируем на сутки
         return obj
 
 
@@ -795,6 +814,15 @@ class MarkupScale(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        cache.delete(MARKUP_SCALES_CACHE_KEY)
+
+    def delete(self, *args, **kwargs):
+        result = super().delete(*args, **kwargs)
+        cache.delete(MARKUP_SCALES_CACHE_KEY)
+        return result
+
     def step_pairs(self):
         """Ступени как пары (от, процент) для apps.catalog.utils.markup_scale."""
         return [(step.price_from, step.percent) for step in self.steps.all()]
@@ -828,3 +856,23 @@ class MarkupScaleStep(models.Model):
 
     def __str__(self):
         return f"от {self.price_from} лир — {self.percent}%"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        cache.delete(MARKUP_SCALES_CACHE_KEY)
+
+    def delete(self, *args, **kwargs):
+        result = super().delete(*args, **kwargs)
+        cache.delete(MARKUP_SCALES_CACHE_KEY)
+        return result
+
+
+def load_markup_scales():
+    """Все шкалы: {id: (название, ((от, процент), ...))}. Кэш сбрасывается при любой правке."""
+    scales = cache.get(MARKUP_SCALES_CACHE_KEY)
+    if scales is None:
+        scales = {}
+        for scale in MarkupScale.objects.prefetch_related('steps'):
+            scales[scale.pk] = (scale.name, tuple(scale.step_pairs()))
+        cache.set(MARKUP_SCALES_CACHE_KEY, scales, timeout=60 * 60 * 24)
+    return scales

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib import admin
 
 
@@ -9,18 +11,35 @@ class PublicCatalogPriceAdminMixin:
 
     @admin.display(description="Применённая маржа")
     def effective_product_markup_display(self, obj):
-        from .utils.product_markup import get_effective_product_markup
+        from .utils.product_markup import explain_product_markup
 
         product = self._markup_product(obj)
         if not product:
             return "Нет связанного товара или услуги"
-        margin, source = get_effective_product_markup(product)
         source_labels = {
             "brand": "бренд",
             "category": "категория",
             "global": "глобальная настройка",
         }
-        return f"{margin}% ({source_labels.get(source, 'не задана')})"
+        base_price = getattr(obj, "base_price", None)
+        if base_price is None:
+            markup = explain_product_markup(product)
+        else:
+            markup = explain_product_markup(product, base_price, getattr(obj, "base_currency", None))
+        label = source_labels.get(markup.source, 'не задана')
+        if markup.scale is None:
+            return f"{markup.percent}% ({label})"
+        scale = markup.scale
+        percent = markup.percent.quantize(Decimal("0.01")).normalize()
+        note = (
+            "сработало правило «не дешевле предыдущей ступени»"
+            if scale.floor_applied
+            else "процент ступени"
+        )
+        return (
+            f"{percent:f}% — шкала «{markup.scale_name}» ({label}), "
+            f"ступень от {scale.step_from.normalize():f} лир: {scale.step_percent.normalize():f}%, {note}"
+        )
 
     def _currency_pair_margin_summary_for_base(self, base_currency):
         from .currency_models import MarginSettings
@@ -85,7 +104,7 @@ class PublicCatalogPriceAdminMixin:
                 )
             except (TypeError, ValueError):
                 return None
-            return apply_product_markup(value, product)
+            return apply_product_markup(value, product, obj.base_price, base_currency)
 
         value = getattr(obj, f"{currency.lower()}_price", None)
         if value is None and currency == base_currency:
@@ -103,7 +122,7 @@ class PublicCatalogPriceAdminMixin:
             currency,
             {pair: pair_margin},
         )
-        return apply_product_markup(value, product)
+        return apply_product_markup(value, product, obj.base_price, base_currency)
 
     @admin.display(description="Цена в RUB с маржой")
     def public_rub_price(self, obj):
