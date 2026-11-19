@@ -72,3 +72,17 @@ def scale_examples(steps):
         if start > 0:
             points.update({start - 10, start + 10})
     return sorted(point for point in points if point > 0)
+
+
+def scale_floors(steps):
+    """Ступени с нижней планкой: [(от, процент, планка цены с наценкой в лирах)].
+
+    То же правило, что в apply_scale, в виде таблицы — для расчёта в SQL (фильтр по цене).
+    """
+    ordered = sorted((Decimal(str(start)), Decimal(str(percent))) for start, percent in steps)
+    result, floor = [], Decimal("0")
+    for index, (start, percent) in enumerate(ordered):
+        if index:
+            floor = max(floor, start * (1 + ordered[index - 1][1] / HUNDRED))
+        result.append((start, percent, floor))
+    return result

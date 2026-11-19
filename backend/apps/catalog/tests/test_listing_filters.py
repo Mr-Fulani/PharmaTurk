@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from apps.catalog import listing_filters
 from apps.catalog import views as catalog_views
-from apps.catalog.currency_models import ProductPrice
+from apps.catalog.currency_models import GlobalCurrencySettings, ProductPrice
 from apps.catalog.models import Category, ClothingProduct, Product
 from apps.catalog.utils.currency_converter import currency_converter
 
@@ -37,6 +37,17 @@ def make_product(slug, **fields):
 def make_clothing(slug, **fields):
     fields.setdefault("price", Decimal("100"))
     return ClothingProduct.objects.create(name=slug, slug=slug, **fields)
+
+
+@pytest.fixture(autouse=True)
+def no_product_markup(request):
+    """These tests cover currency conversion; markup has test_listing_filters_markup.py."""
+    if request.node.get_closest_marker("django_db") is None:
+        return
+    request.getfixturevalue("db")
+    settings = GlobalCurrencySettings.load()
+    settings.default_margin_percentage = Decimal("0")
+    settings.save()
 
 
 @pytest.fixture

@@ -3,10 +3,13 @@
 from decimal import Decimal, InvalidOperation
 
 from django.db import models
-from django.db.models import Case, F, Q, When
+from django.db.models import Case, DecimalField, ExpressionWrapper, F, Q, When
 from django.db.models.functions import Coalesce, Least
 
 from .models import Product
+from .utils.product_markup_sql import annotate_markup_factor
+
+MONEY = DecimalField(max_digits=20, decimal_places=4)
 
 
 def _get_preferred_currency(request) -> str:
@@ -82,20 +85,28 @@ def apply_price_filter(queryset, request):
     max_price = _parse_decimal(max_price_raw)
     if not min_price and not max_price:
         return queryset
+    # Покупатель видит цену с товарной наценкой (бренд → категория → глобальная, шкала по цене) —
+    # с ней и сравниваем границы фильтра.
+    queryset = annotate_markup_factor(queryset)
     if queryset.model is Product:
         price_expr = _resolve_price_filter_expression(queryset, request)
-        queryset = queryset.annotate(_price_filter_value=price_expr)
+        queryset = queryset.annotate(
+            _price_filter_value=ExpressionWrapper(price_expr * F('_markup_factor'), output_field=MONEY)
+        )
         if min_price is not None:
             queryset = queryset.filter(_price_filter_value__gte=min_price)
         if max_price is not None:
             queryset = queryset.filter(_price_filter_value__lte=max_price)
         return queryset
+    queryset = queryset.annotate(
+        _marked_price=ExpressionWrapper(F('price') * F('_markup_factor'), output_field=MONEY)
+    )
     preferred = _get_preferred_currency(request)
     if not preferred or not hasattr(queryset.model, 'currency'):
         if min_price is not None:
-            queryset = queryset.filter(price__gte=min_price)
+            queryset = queryset.filter(_marked_price__gte=min_price)
         if max_price is not None:
-            queryset = queryset.filter(price__lte=max_price)
+            queryset = queryset.filter(_marked_price__lte=max_price)
         return queryset
     from .utils.currency_converter import currency_converter
     currencies = list(
@@ -121,18 +132,18 @@ def apply_price_filter(queryset, request):
                 continue
             sub = models.Q(currency=currency_code)
             if min_price is not None:
-                sub &= models.Q(price__gte=(min_price / denom))
+                sub &= models.Q(_marked_price__gte=(min_price / denom))
             if max_price is not None:
-                sub &= models.Q(price__lte=(max_price / denom))
+                sub &= models.Q(_marked_price__lte=(max_price / denom))
             q |= sub
         except Exception:
             continue
     if min_price is not None or max_price is not None:
         null_currency = models.Q(currency__isnull=True)
         if min_price is not None:
-            null_currency &= models.Q(price__gte=min_price)
+            null_currency &= models.Q(_marked_price__gte=min_price)
         if max_price is not None:
-            null_currency &= models.Q(price__lte=max_price)
+            null_currency &= models.Q(_marked_price__lte=max_price)
         q |= null_currency
     if q:
         return queryset.filter(q)
