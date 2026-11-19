@@ -15,6 +15,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.text import Truncator
 from django.utils.translation import gettext_lazy as _
 
+from apps.catalog.admin_links import domain_record_prefetches, product_admin_url
 from apps.catalog.admin_media import render_media_preview, resolve_media_url
 from apps.catalog.services.product_resolve import build_canonical_path
 from apps.users.models import User
@@ -305,9 +306,7 @@ class OrderItemLinksMixin:
         if source.startswith(('https://', 'http://')):
             links.append(_new_tab_link(source, _('В источнике')))
         if product:
-            links.append(_new_tab_link(
-                reverse('admin:catalog_product_change', args=[product.pk]), _('В админке'),
-            ))
+            links.append(_new_tab_link(product_admin_url(product), _('В админке')))
         return format_html_join(' · ', '{}', ((link,) for link in links)) if links else '—'
 
 
@@ -342,7 +341,11 @@ class OrderItemInline(OrderItemLinksMixin, admin.TabularInline):
     )
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('product').prefetch_related('product__images')
+        return (
+            super().get_queryset(request)
+            .select_related('product')
+            .prefetch_related('product__images', *domain_record_prefetches('product'))
+        )
 
 
 PS = Order.ProcessingStatus
@@ -800,7 +803,7 @@ class OrderItemAdmin(OrderItemLinksMixin, admin.ModelAdmin):
         return (
             super().get_queryset(request)
             .select_related('order', 'product')
-            .prefetch_related('product__images')
+            .prefetch_related('product__images', *domain_record_prefetches('product'))
         )
 
 

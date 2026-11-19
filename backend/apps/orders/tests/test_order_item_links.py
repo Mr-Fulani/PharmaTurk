@@ -11,8 +11,9 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from apps.catalog.models import Product, ProductImage
-from apps.orders.admin import OrderAdmin, OrderItemInline
+from apps.catalog.domain_sync import domain_models
+from apps.catalog.models import MedicineProduct, Product, ProductImage, SupplementProduct
+from apps.orders.admin import OrderAdmin, OrderItemAdmin, OrderItemInline
 from apps.orders.contacts import whatsapp_number
 from apps.orders.models import Order, OrderItem
 from apps.users.models import User
@@ -64,9 +65,51 @@ def test_links_open_site_source_and_admin_in_new_tab():
 
     assert f'href="https://mudaroba.com/product/{product.slug}"' in html
     assert 'href="https://www.ilacfiyati.com/ilaclar/parol"' in html  # снимок при оформлении важнее
-    assert f'href="/admin/catalog/product/{product.pk}/change/"' in html
+    # Лекарство — страница лекарства: только на ней панель «Наличие и цена: проверка по источникам»
+    medicine = MedicineProduct.objects.get(base_product=product)
+    assert f'href="/admin/catalog/medicineproduct/{medicine.pk}/change/"' in html
+    assert f"/admin/catalog/product/{product.pk}/change/" not in html
     assert html.count('target="_blank" rel="noopener noreferrer"') == 3
     assert "На сайте" in html and "В источнике" in html and "В админке" in html
+
+
+@pytest.mark.django_db
+def test_admin_link_opens_supplement_page_for_supplement():
+    product = _product("supplements")
+    supplement = SupplementProduct.objects.get(base_product=product)
+
+    html = str(_inline().item_links(_item(product)))
+
+    assert f'href="/admin/catalog/supplementproduct/{supplement.pk}/change/"' in html
+
+
+@pytest.mark.django_db
+def test_admin_link_falls_back_to_common_card_without_domain_record():
+    # Заказанная расцветка — теневой товар без своей записи в разделе; тип без раздела — тоже
+    shadow = _product("shoes", slug="shoes-nike-air-red", external_data={"source_variant_slug": "nike-air-red"})
+    untyped = _product("uslugi")
+
+    for product in (shadow, untyped):
+        html = str(_inline().item_links(_item(product)))
+        assert f'href="/admin/catalog/product/{product.pk}/change/"' in html
+
+
+@pytest.mark.django_db
+def test_item_list_has_no_query_per_row(rf):
+    for product_type in ("medicines", "supplements", "medicines", "uslugi"):
+        _item(_product(product_type))
+    request = rf.get("/")
+    request.user = User(is_superuser=True, is_staff=True)
+    admin = OrderItemAdmin(OrderItem, AdminSite())
+
+    with CaptureQueriesContext(connection) as queries:
+        rows = list(admin.get_queryset(request))
+        html = "".join(str(admin.item_links(row)) for row in rows)
+
+    assert len(rows) == 4
+    assert html.count("/admin/catalog/medicineproduct/") == 2
+    # позиции с заказом и товаром + фото галерей + по запросу на раздел каталога, не на строку
+    assert len(queries) == 2 + len(domain_models())
 
 
 @pytest.mark.django_db
@@ -128,7 +171,8 @@ def test_inline_has_no_query_per_item(rf):
             inline.item_links(row)
 
     assert len(rows) == 4
-    assert len(queries) == 2  # позиции с товаром + фото галерей
+    # позиции с товаром + фото галерей + по запросу на раздел каталога, не на позицию
+    assert len(queries) == 2 + len(domain_models())
 
 
 @pytest.mark.django_db
