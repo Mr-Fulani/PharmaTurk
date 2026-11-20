@@ -1,0 +1,9 @@
+{% load i18n admin_urls catalog_admin_links %}
+{% block object-tools-items %}
+<li>
+    {% url opts|admin_urlname:'history' original.pk|admin_urlquote as history_url %}
+    <a href="{% add_preserved_filters history_url %}" class="historylink">{% translate "History" %}</a>
+</li>
+{% product_view_buttons_items original %}
+{% if has_absolute_url %}<li><a href="{{ absolute_url }}" class="viewsitelink">{% translate "View on site" %}</a></li>{% endif %}
+{% endblock %}
