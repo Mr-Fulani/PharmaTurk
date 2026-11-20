@@ -19,13 +19,30 @@ def django_db_modify_db_settings(django_db_modify_db_settings_parallel_suffix):
         settings.DATABASES["default"].setdefault("TEST", {})["TEMPLATE"] = template
 
 
-def pytest_collection_modifyitems(items):
-    """Тесты миграций — первыми: они самые долгие (до 1,5 мин каждый).
+def _is_transactional(item):
+    marker = item.get_closest_marker("django_db")
+    return bool(marker and marker.kwargs.get("transaction"))
 
-    При параллельном запуске долгие тесты в начале расходятся по воркерам, а в хвосте
-    очереди они доставались одному воркеру, и остальные простаивали (4 мин из 11).
+
+def pytest_collection_modifyitems(items):
+    """Долгие тесты миграций (до 1,5 мин каждый) — в начало блока транзакционных тестов.
+
+    pytest-django ставит транзакционные тесты после обычных: они очищают таблицы, а
+    обычные тесты читают данные, записанные миграциями (блоки главной и т.п.). Поэтому
+    раньше этого блока их двигать нельзя. Внутри блока долгие идут первыми, чтобы при
+    параллельном запуске разойтись по воркерам, а не достаться одному в самом конце.
     """
-    items.sort(key=lambda item: not item.path.name.endswith("_migration.py"))
+    first = next((i for i, item in enumerate(items) if _is_transactional(item)), None)
+    if first is None:
+        return
+    tail = items[first:]
+    slow = [
+        item
+        for item in tail
+        if item.path.name.endswith("_migration.py") and _is_transactional(item)
+    ]
+    slow_ids = {id(item) for item in slow}
+    items[first:] = slow + [item for item in tail if id(item) not in slow_ids]
 
 
 @pytest.fixture(autouse=True)
