@@ -189,7 +189,7 @@ jobs:
           # faulthandler: если тест висит дольше 3 мин, в журнал попадает его стек
           # (18.11.2026 набор дважды завис на ~24 % без единой подсказки).
           poetry run pytest -q $DESELECT -o faulthandler_timeout=180 \
-            -n 4 --dist worksteal --durations=30 \
+            -n 4 --maxschedchunk 1 --durations=30 \
             --cov=api \
             --cov=apps \
             --cov=config \

@@ -19,6 +19,15 @@ def django_db_modify_db_settings(django_db_modify_db_settings_parallel_suffix):
         settings.DATABASES["default"].setdefault("TEST", {})["TEMPLATE"] = template
 
 
+def pytest_collection_modifyitems(items):
+    """Тесты миграций — первыми: они самые долгие (до 1,5 мин каждый).
+
+    При параллельном запуске долгие тесты в начале расходятся по воркерам, а в хвосте
+    очереди они доставались одному воркеру, и остальные простаивали (4 мин из 11).
+    """
+    items.sort(key=lambda item: not item.path.name.endswith("_migration.py"))
+
+
 @pytest.fixture(autouse=True)
 def _isolate_test_cache(settings):
     """Тестовые данные не должны попадать в Redis работающего приложения."""
