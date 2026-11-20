@@ -77,6 +77,16 @@ def test_main_index_groups_media_and_catalog_without_changing_model_links():
     assert moderation["perms"] == {"view": True}
 
 
+def test_markup_scale_sits_in_prices_group():
+    site = MudarobaAdminSite(name="test_admin")
+    source_apps = [_app("catalog", "Каталог", _model("MarkupScale"), _model("MarginSettings"))]
+
+    with patch.object(AdminSite, "get_app_list", return_value=source_apps):
+        groups = site.get_app_list(request=object())
+
+    assert _models_by_group(groups) == {"Цены и валюты": ["MarkupScale", "MarginSettings"]}
+
+
 def test_app_index_keeps_django_native_grouping():
     source_apps = [_app("catalog", "Каталог", _model("ProductImage"))]
     site = MudarobaAdminSite(name="test_admin")

@@ -77,6 +77,7 @@ class MudarobaAdminSite(AdminSite):
                 "CurrencyUpdateLog",
                 "GlobalCurrencySettings",
                 "MarginSettings",
+                "MarkupScale",
                 "PriceHistory",
                 "ProductPrice",
                 "ProductVariantPrice",
