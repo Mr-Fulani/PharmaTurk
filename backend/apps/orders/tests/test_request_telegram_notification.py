@@ -99,6 +99,18 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         # Покупателю ссылки на самого себя не уходят
         self.assertNotIn("Написать", texts["555"])
 
+    def test_draft_is_in_the_language_of_the_request(self, select_related, telegram_post, *_):
+        select_related.return_value.get.return_value = _order(contact_name="Ivan")
+        telegram_post.return_value = SimpleNamespace(status_code=200, ok=True)
+        notify_new_order_telegram.run(order_id=9, locale="en")
+
+        admin = telegram_post.call_args_list[0].kwargs["json"]["text"]
+        draft = quote(contact_message("Ivan", "REQ-9", locale="en"), safe="")
+        self.assertIn("Hello%20Ivan%21", draft)
+        self.assertIn(f'<a href="https://wa.me/79990000000?text={draft}">WhatsApp</a>', admin)
+        # Само уведомление менеджеру остаётся русским
+        self.assertIn("Новая заявка", admin)
+
     def test_unclear_contact_gives_no_chat_links(self, select_related, telegram_post, *_):
         order = _order(contact_channel="telegram", contact_username="", contact_phone="0532 123 45 67")
         admin = self._texts(select_related, telegram_post, order)["admin-chat"]

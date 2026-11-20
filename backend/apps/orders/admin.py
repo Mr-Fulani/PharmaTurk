@@ -20,7 +20,14 @@ from apps.catalog.services.product_resolve import build_canonical_path
 from apps.users.models import User
 
 from .cart_reminders import PLACEHOLDER_EMAIL_SUFFIX, site_url
-from .contacts import PHONE_MATCH_DIGITS, contact_links, contact_message, contact_message_subject, phone_tail
+from .contacts import (
+    PHONE_MATCH_DIGITS,
+    contact_links,
+    contact_message,
+    contact_message_subject,
+    order_item_names,
+    phone_tail,
+)
 from .models import (
     Cart,
     CartItem,
@@ -463,11 +470,13 @@ def _contact_links(obj, short=False):
     """Telegram / WhatsApp / звонок / email с черновиком сообщения; выбранный клиентом канал — жирным."""
     sourcing = isinstance(obj, SourcingRequest)
     number = obj.pk if sourcing else obj.number
-    items = () if sourcing else [item.product_name for item in obj.items.all()]
+    # Язык оформления хранит только заявка «Найдём товар»; у заказа его нет — черновик русский
+    locale = obj.locale if sourcing else 'ru'
+    items = () if sourcing else order_item_names(obj.items.all(), locale)
     hrefs = contact_links(
         obj.contact_channel, obj.contact_username, obj.contact_phone, _client_email(obj),
-        contact_message(obj.contact_name, number, items, sourcing=sourcing),
-        contact_message_subject(number, sourcing=sourcing),
+        contact_message(obj.contact_name, number, items, sourcing=sourcing, locale=locale),
+        contact_message_subject(number, sourcing=sourcing, locale=locale),
     )
     labels = {
         'telegram': ('TG', 'Telegram', True),

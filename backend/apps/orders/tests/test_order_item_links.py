@@ -279,6 +279,11 @@ def test_sourcing_request_contact_links_carry_draft():
     assert f'href="https://t.me/anna_test?text={draft}"' in html
     assert f'href="https://wa.me/79990001122?text={draft}"' in html
 
+    req.locale = "en"
+    html = str(SourcingRequestAdmin(SourcingRequest, AdminSite()).contact_links(req))
+    draft = quote(contact_message("Анна", req.pk, sourcing=True, locale="en"), safe="")
+    assert "Hello%20" in draft and f'href="https://t.me/anna_test?text={draft}"' in html
+
 
 @pytest.mark.django_db
 def test_client_orders_count_link_and_filter(client, plain_static):

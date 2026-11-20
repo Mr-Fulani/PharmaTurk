@@ -82,32 +82,83 @@ MESSAGE_ITEMS_SHOWN = 5
 MESSAGE_ITEM_NAME_LIMIT = 50
 
 
-def contact_message(name: str, number, item_names=(), sourcing: bool = False) -> str:
-    """Текст, который подставляется в чат или письмо покупателю; отправляет менеджер сам.
+# Тексты утверждены владельцем 20.11.2026 — менять только по его слову. В них нет обещаний
+# оплаты на сайте и наличия, нет склада и поставщика.
+MESSAGE_TEXTS = {
+    "ru": {
+        "hello": "Здравствуйте!",
+        "hello_name": "Здравствуйте, {name}!",
+        "order": "Спасибо за заявку №{number}",
+        "sourcing": "Спасибо за заявку на поиск товара №{number}",
+        "more": " и ещё {more}",
+        "body": (
+            "{hello} Это Mudaroba. {thanks}. Пишем, чтобы уточнить детали и рассказать о стоимости, "
+            "сроках и порядке доставки. Когда вам удобно это обсудить?"
+        ),
+        "subject_order": "Заявка №{number} — Mudaroba",
+        "subject_sourcing": "Заявка на поиск товара №{number} — Mudaroba",
+    },
+    "en": {
+        "hello": "Hello!",
+        "hello_name": "Hello {name}!",
+        "order": "Thank you for your request No. {number}",
+        "sourcing": "Thank you for your product search request No. {number}",
+        "more": " and {more} more",
+        "body": (
+            "{hello} This is Mudaroba. {thanks}. We are writing to confirm the details and tell you about "
+            "the price, delivery time and how delivery works. When would be a good time to talk?"
+        ),
+        "subject_order": "Your request No. {number} — Mudaroba",
+        "subject_sourcing": "Your product search request No. {number} — Mudaroba",
+    },
+}
 
-    Текст утверждает владелец: без обещаний оплаты, наличия и сроков, без склада и поставщика.
-    """
+
+def message_locale(locale) -> str:
+    """Язык черновика: английский, если заявка оформлена на английском, иначе русский."""
+    return "en" if (locale or "").strip().lower().startswith("en") else "ru"
+
+
+def order_item_names(items, locale) -> list[str]:
+    """Названия позиций для черновика; в английском — перевод товара, если он есть (один запрос)."""
+    items = list(items)
+    translated = {}
+    product_ids = [item.product_id for item in items if getattr(item, "product_id", None)]
+    if message_locale(locale) == "en" and product_ids:
+        from apps.catalog.models import ProductTranslation
+
+        translated = dict(
+            ProductTranslation.objects.filter(product_id__in=product_ids, locale="en")
+            .exclude(name="")
+            .values_list("product_id", "name")
+        )
+    return [translated.get(getattr(item, "product_id", None)) or item.product_name for item in items]
+
+
+def contact_message(name: str, number, item_names=(), sourcing: bool = False, locale: str = "ru") -> str:
+    """Текст, который подставляется в чат или письмо покупателю; отправляет менеджер сам."""
+    texts = MESSAGE_TEXTS[message_locale(locale)]
     name = " ".join((name or "").split())
-    greeting = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
-    if sourcing:
-        what = f"Вы оставили заявку на поиск товара №{number}."
-    else:
+    thanks = texts["sourcing" if sourcing else "order"].format(number=number)
+    if not sourcing:
         names = [" ".join(str(item).split()) for item in item_names]
         names = [
             item if len(item) <= MESSAGE_ITEM_NAME_LIMIT else item[: MESSAGE_ITEM_NAME_LIMIT - 1].rstrip() + "…"
             for item in names
             if item
         ]
-        listed = "; ".join(names[:MESSAGE_ITEMS_SHOWN])
-        more = len(names) - MESSAGE_ITEMS_SHOWN
-        if more > 0:
-            listed += f" и ещё {more}"
-        what = f"Вы оставили заявку №{number}" + (f": {listed}." if listed else ".")
-    return f"{greeting} Это Mudaroba. {what} Готовы ответить на вопросы и уточнить детали."
+        if names:
+            thanks += ": " + "; ".join(names[:MESSAGE_ITEMS_SHOWN])
+            more = len(names) - MESSAGE_ITEMS_SHOWN
+            if more > 0:
+                thanks += texts["more"].format(more=more)
+    hello = texts["hello_name"].format(name=name) if name else texts["hello"]
+    return texts["body"].format(hello=hello, thanks=thanks)
 
 
-def contact_message_subject(number, sourcing: bool = False) -> str:
-    return f"Заявка на поиск товара №{number} — Mudaroba" if sourcing else f"Заявка №{number} — Mudaroba"
+def contact_message_subject(number, sourcing: bool = False, locale: str = "ru") -> str:
+    key = "subject_sourcing" if sourcing else "subject_order"
+    return MESSAGE_TEXTS[message_locale(locale)][key].format(number=number)
 
 
 def contact_links(channel: str, username: str, phone: str, email: str, text: str, subject: str) -> list[tuple[str, str]]:
