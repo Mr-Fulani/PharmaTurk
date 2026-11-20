@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import timedelta
 
 from django.contrib import admin, messages
@@ -21,7 +20,7 @@ from apps.catalog.services.product_resolve import build_canonical_path
 from apps.users.models import User
 
 from .cart_reminders import PLACEHOLDER_EMAIL_SUFFIX, site_url
-from .contacts import PHONE_MATCH_DIGITS, phone_tail, telegram_username, whatsapp_number
+from .contacts import PHONE_MATCH_DIGITS, contact_links, contact_message, contact_message_subject, phone_tail
 from .models import (
     Cart,
     CartItem,
@@ -460,28 +459,26 @@ def _orders_word(count: int) -> str:
     return 'заявок'
 
 
-def _contact_links(order, short=False):
-    """Telegram / WhatsApp / звонок / email; канал, выбранный клиентом, — жирным."""
-    channel = order.contact_channel
-    tg = telegram_username(order.contact_username) if channel == 'telegram' else ''
-    phone = (order.contact_phone or '').strip()
-    phone_wa = whatsapp_number(phone)
-    digits = re.sub(r'\D', '', phone)
-    # Номер с понятным кодом страны — в международном виде, иначе как ввёл клиент
-    tel = f'+{phone_wa}' if phone_wa else (('+' if phone.startswith('+') else '') + digits if digits else '')
-    wa = (whatsapp_number(order.contact_username) if channel == 'whatsapp' else '') or phone_wa
-    email = _client_email(order)
-    candidates = (
-        ('telegram', tg and f'https://t.me/{tg}', 'TG', 'Telegram', True),
-        ('whatsapp', wa and f'https://wa.me/{wa}', 'WA', 'WhatsApp', True),
-        ('phone', tel and f'tel:{tel}', '☎', _('Позвонить'), False),
-        ('email', email and f'mailto:{email}', '✉', 'Email', False),
+def _contact_links(obj, short=False):
+    """Telegram / WhatsApp / звонок / email с черновиком сообщения; выбранный клиентом канал — жирным."""
+    sourcing = isinstance(obj, SourcingRequest)
+    number = obj.pk if sourcing else obj.number
+    items = () if sourcing else [item.product_name for item in obj.items.all()]
+    hrefs = contact_links(
+        obj.contact_channel, obj.contact_username, obj.contact_phone, _client_email(obj),
+        contact_message(obj.contact_name, number, items, sourcing=sourcing),
+        contact_message_subject(number, sourcing=sourcing),
     )
+    labels = {
+        'telegram': ('TG', 'Telegram', True),
+        'whatsapp': ('WA', 'WhatsApp', True),
+        'phone': ('☎', _('Позвонить'), False),
+        'email': ('✉', 'Email', False),
+    }
     links = []
-    for key, href, short_label, label, new_tab in candidates:
-        if not href:
-            continue
-        weight = 700 if key == channel else 400
+    for key, href in hrefs:
+        short_label, label, new_tab = labels[key]
+        weight = 700 if key == obj.contact_channel else 400
         target = format_html(' target="_blank" rel="noopener noreferrer"') if new_tab else ''
         links.append(format_html(
             '<a href="{}"{} style="font-weight:{};white-space:nowrap">{}</a>',
@@ -866,11 +863,11 @@ class SourcingRequestAdmin(admin.ModelAdmin):
     list_filter = ('status', 'contact_channel', 'created_at')
     list_editable = ('status',)
     search_fields = ('contact_name', 'contact_phone', 'contact_email', 'contact_username', 'source_url', 'comment')
-    readonly_fields = ('user', 'image_preview', 'locale', 'created_at', 'updated_at')
+    readonly_fields = ('user', 'image_preview', 'contact_links', 'locale', 'created_at', 'updated_at')
     fieldsets = (
         (None, {'fields': ('status', 'manager_comment')}),
         (_('Request'), {'fields': ('source_url', 'image', 'image_preview', 'comment', 'quantity')}),
-        (_('Contact'), {'fields': ('user', 'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
+        (_('Contact'), {'fields': ('contact_links', 'user', 'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
         (_('Timestamps'), {'fields': ('locale', 'created_at', 'updated_at')}),
     )
 
@@ -885,3 +882,7 @@ class SourcingRequestAdmin(admin.ModelAdmin):
         if not obj.image:
             return '—'
         return format_html('<img src="{}" style="max-height:240px;max-width:320px" />', obj.image.url)
+
+    @admin.display(description=_('Связаться'))
+    def contact_links(self, obj):
+        return _contact_links(obj) if obj and obj.pk else '—'

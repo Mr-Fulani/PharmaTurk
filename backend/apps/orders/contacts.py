@@ -4,6 +4,7 @@
 """
 
 import re
+from urllib.parse import quote
 
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
@@ -71,3 +72,73 @@ def telegram_username(raw: str) -> str:
     """Ник Telegram без @ и t.me/; пусто, если не похож на ник."""
     username = (raw or "").strip().removeprefix("https://t.me/").removeprefix("t.me/").lstrip("@")
     return username if re.fullmatch(USERNAME_PATTERNS["telegram"][0], username) else ""
+
+
+# ─── Черновик сообщения покупателю ────────────────────────────────────────────
+
+# В черновик идут первые позиции и короткие названия: длинный адрес ссылки не откроется
+# и раздует уведомление в Telegram.
+MESSAGE_ITEMS_SHOWN = 5
+MESSAGE_ITEM_NAME_LIMIT = 50
+
+
+def contact_message(name: str, number, item_names=(), sourcing: bool = False) -> str:
+    """Текст, который подставляется в чат или письмо покупателю; отправляет менеджер сам.
+
+    Текст утверждает владелец: без обещаний оплаты, наличия и сроков, без склада и поставщика.
+    """
+    name = " ".join((name or "").split())
+    greeting = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
+    if sourcing:
+        what = f"Вы оставили заявку на поиск товара №{number}."
+    else:
+        names = [" ".join(str(item).split()) for item in item_names]
+        names = [
+            item if len(item) <= MESSAGE_ITEM_NAME_LIMIT else item[: MESSAGE_ITEM_NAME_LIMIT - 1].rstrip() + "…"
+            for item in names
+            if item
+        ]
+        listed = "; ".join(names[:MESSAGE_ITEMS_SHOWN])
+        more = len(names) - MESSAGE_ITEMS_SHOWN
+        if more > 0:
+            listed += f" и ещё {more}"
+        what = f"Вы оставили заявку №{number}" + (f": {listed}." if listed else ".")
+    return f"{greeting} Это Mudaroba. {what} Готовы ответить на вопросы и уточнить детали."
+
+
+def contact_message_subject(number, sourcing: bool = False) -> str:
+    return f"Заявка на поиск товара №{number} — Mudaroba" if sourcing else f"Заявка №{number} — Mudaroba"
+
+
+def contact_links(channel: str, username: str, phone: str, email: str, text: str, subject: str) -> list[tuple[str, str]]:
+    """Ссылки для связи с черновиком text: [(канал, адрес)]. Непонятный контакт — без ссылки.
+
+    Telegram — только если клиент выбрал Telegram: по нику, иначе по номеру с понятным кодом
+    страны (по номеру Telegram может не подставить текст). WhatsApp — номер из «Юзернейма»,
+    если клиент выбрал WhatsApp, иначе из «Телефона».
+    """
+    username = (username or "").strip()
+    phone = (phone or "").strip()
+    email = (email or "").strip()
+    phone_wa = whatsapp_number(phone)
+    tg = ""
+    if channel == "telegram":
+        tg = telegram_username(username)
+        if not tg or tg.isdigit():
+            # Вместо ника клиент вписал номер (или ничего): t.me/<цифры> вёл бы к чужому нику
+            number = whatsapp_number(username) or phone_wa
+            tg = f"+{number}" if number else ""
+    wa = (whatsapp_number(username) if channel == "whatsapp" else "") or phone_wa
+    digits = re.sub(r"\D", "", phone)
+    # Номер с понятным кодом страны — в международном виде, иначе как ввёл клиент
+    tel = f"+{phone_wa}" if phone_wa else (("+" if phone.startswith("+") else "") + digits if digits else "")
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+", email):
+        email = ""
+    query = quote(text, safe="")
+    candidates = (
+        ("telegram", tg and f"https://t.me/{tg}?text={query}"),
+        ("whatsapp", wa and f"https://wa.me/{wa}?text={query}"),
+        ("phone", tel and f"tel:{tel}"),
+        ("email", email and f"mailto:{quote(email, safe='@+')}?subject={quote(subject, safe='')}&body={query}"),
+    )
+    return [(key, href) for key, href in candidates if href]

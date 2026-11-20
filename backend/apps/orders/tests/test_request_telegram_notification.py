@@ -3,9 +3,11 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import quote
 
 from django.test import SimpleTestCase, override_settings
 
+from apps.orders.contacts import contact_message
 from apps.orders.tasks import notify_new_order_telegram
 
 
@@ -71,7 +73,38 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         admin = texts["admin-chat"]
         self.assertIn("Имя: Ivan &lt;b&gt;&amp; Co&lt;/i&gt;", admin)
         self.assertIn('&lt;a href="https://evil.example"&gt;жми&lt;/a&gt; &amp; _*`[', admin)
-        self.assertNotIn("<a ", admin)
+        self.assertNotIn("<a href=\"https://evil", admin)
+        # Единственная ссылка — «Написать» из шаблона; имя покупателя в её адресе закодировано
+        self.assertEqual(admin.count("<a "), 1)
+        self.assertIn(
+            '✍️ Написать: <a href="https://wa.me/79990000000?text=' + quote("Здравствуйте, Ivan <b>& Co</i>!", safe=""),
+            admin,
+        )
+
+    def test_admin_gets_chat_links_with_draft(self, select_related, telegram_post, *_):
+        items = [_item(product_name="Кроссовки <Run & Go>"), _item(product_name="PAROL")]
+        order = _order(
+            contact_name="Иван", contact_channel="telegram", contact_username="Ivan_Petrov",
+            items=SimpleNamespace(all=lambda: items),
+        )
+        texts = self._texts(select_related, telegram_post, order)
+        admin = texts["admin-chat"]
+
+        draft = quote(contact_message("Иван", "REQ-9", ["Кроссовки <Run & Go>", "PAROL"]), safe="")
+        self.assertIn(
+            f'✍️ Написать: <a href="https://t.me/Ivan_Petrov?text={draft}">Telegram</a>'
+            f' · <a href="https://wa.me/79990000000?text={draft}">WhatsApp</a>',
+            admin,
+        )
+        # Покупателю ссылки на самого себя не уходят
+        self.assertNotIn("Написать", texts["555"])
+
+    def test_unclear_contact_gives_no_chat_links(self, select_related, telegram_post, *_):
+        order = _order(contact_channel="telegram", contact_username="", contact_phone="0532 123 45 67")
+        admin = self._texts(select_related, telegram_post, order)["admin-chat"]
+
+        self.assertNotIn("Написать", admin)
+        self.assertIn("Телефон: 0532 123 45 67", admin)
 
     def test_customer_is_told_manager_will_contact_them(self, select_related, telegram_post, *_):
         texts = self._texts(select_related, telegram_post, _order())

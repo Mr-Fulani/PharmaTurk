@@ -169,6 +169,9 @@ def test_telegram_notification_contains_contacts(settings):
     assert "+79990001122" in text
     assert "WhatsApp: @anna.wa" in text
     assert "Имя: Анна_*" in text
+    # Ссылка на чат с черновиком; ник WhatsApp номером не является — берётся телефон
+    assert '✍️ Написать: <a href="https://wa.me/79990001122?text=%D0%97%D0%B4%D1%80' in text
+    assert "https://t.me" not in text
     assert post.call_args.kwargs["json"]["parse_mode"] == "HTML"
     assert post.call_args.args[0].endswith("sendMessage")
 

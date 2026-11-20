@@ -4,6 +4,7 @@
 from datetime import timedelta
 from decimal import Decimal
 from itertools import count
+from urllib.parse import quote
 
 import pytest
 from django.contrib.admin.sites import AdminSite
@@ -13,9 +14,9 @@ from django.utils import timezone
 
 from apps.catalog.domain_sync import domain_models
 from apps.catalog.models import MedicineProduct, Product, ProductImage, SupplementProduct
-from apps.orders.admin import OrderAdmin, OrderItemAdmin, OrderItemInline
-from apps.orders.contacts import whatsapp_number
-from apps.orders.models import Order, OrderItem
+from apps.orders.admin import OrderAdmin, OrderItemAdmin, OrderItemInline, SourcingRequestAdmin
+from apps.orders.contacts import contact_message, whatsapp_number
+from apps.orders.models import Order, OrderItem, SourcingRequest
 from apps.users.models import User
 
 _seq = count(1)
@@ -246,11 +247,17 @@ def test_whatsapp_number_rules(raw, expected):
 def test_contact_links_by_channel_and_fields():
     tg = _order(contact_channel="telegram", contact_username="@ivan_petrov", contact_phone="9122476866",
                 contact_email="ivan@example.test")
+    OrderItem.objects.create(order=tg, product_name="PAROL 500 mg", price=Decimal("50"), quantity=2, total=Decimal("100"))
     html = str(_order_admin().contact_links(tg))
-    assert 'href="https://t.me/ivan_petrov" target="_blank" rel="noopener noreferrer" style="font-weight:700' in html
-    assert 'href="https://wa.me/79122476866" target="_blank"' in html
+    # В чате и письме уже набран черновик: имя, номер заявки, позиции
+    draft = quote(contact_message("Клиент", tg.number, ["PAROL 500 mg"]), safe="")
+    assert (
+        f'href="https://t.me/ivan_petrov?text={draft}" target="_blank" rel="noopener noreferrer" style="font-weight:700'
+        in html
+    )
+    assert f'href="https://wa.me/79122476866?text={draft}" target="_blank"' in html
     assert 'href="tel:+79122476866"' in html
-    assert 'href="mailto:ivan@example.test"' in html
+    assert f'href="mailto:ivan@example.test?subject={quote("Заявка №" + tg.number + " — Mudaroba", safe="")}&amp;body={draft}"' in html
 
     unclear = _order(contact_channel="phone", contact_phone="0532 123 45 67", contact_email="x@mudaroba.local")
     html = str(_order_admin().contact_links(unclear))
@@ -258,7 +265,19 @@ def test_contact_links_by_channel_and_fields():
     assert 'href="tel:05321234567"' in html
 
     wa_nick = _order(contact_channel="whatsapp", contact_username="+90 532 123 45 67", contact_phone="05321234567")
-    assert 'href="https://wa.me/905321234567"' in str(_order_admin().contact_links(wa_nick))
+    assert 'href="https://wa.me/905321234567?text=' in str(_order_admin().contact_links(wa_nick))
+
+
+@pytest.mark.django_db
+def test_sourcing_request_contact_links_carry_draft():
+    req = SourcingRequest.objects.create(
+        source_url="https://example.com/item", contact_name="Анна", contact_phone="+79990001122",
+        contact_channel="telegram", contact_username="anna_test",
+    )
+    html = str(SourcingRequestAdmin(SourcingRequest, AdminSite()).contact_links(req))
+    draft = quote(contact_message("Анна", req.pk, sourcing=True), safe="")
+    assert f'href="https://t.me/anna_test?text={draft}"' in html
+    assert f'href="https://wa.me/79990001122?text={draft}"' in html
 
 
 @pytest.mark.django_db
