@@ -1,4 +1,23 @@
+import os
+
 import pytest
+
+
+@pytest.fixture(scope="session")
+def django_db_modify_db_settings(django_db_modify_db_settings_parallel_suffix):
+    """Тестовая база — копия уже промигрированной, если она указана в TEST_DB_TEMPLATE.
+
+    В CI отдельный шаг прогоняет все миграции с нуля на пустой базе, а каждый воркер
+    pytest-xdist копирует её (CREATE DATABASE … TEMPLATE) вместо повторного прогона
+    миграций. Схема та же, что после настоящего migrate: расширения, RunSQL-индексы и
+    данные RunPython на месте. Без переменной всё как раньше — база создаётся миграциями.
+    """
+    template = os.environ.get("TEST_DB_TEMPLATE")
+    if template:
+        from django.conf import settings
+
+        settings.DATABASES["default"].setdefault("TEST", {})["TEMPLATE"] = template
+
 
 
 @pytest.fixture(autouse=True)

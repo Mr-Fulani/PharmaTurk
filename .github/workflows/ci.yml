@@ -171,17 +171,25 @@ jobs:
           poetry run python scripts/flake8_quality_gate.py \
             --base-ref "${BASE_REF}" \
             --max-total 3030
+      # Все миграции с нуля на пустой базе: сломанная миграция останавливает сборку здесь.
+      # Эта же база — образец для тестов: каждый воркер pytest копирует её
+      # (TEST_DB_TEMPLATE в backend/conftest.py), а не прогоняет миграции заново.
+      - name: Migrate empty database from scratch
+        if: needs.scope.outputs.backend != 'false'
+        run: poetry run python manage.py migrate --noinput
       # ci-known-failures.txt — реестр известных падений, исключаемых из гейта.
       # Бейзлайн 2026-06-13: пуст (все 24 протухших теста починены).
       # Использовать только как временный карантин с задачей на починку.
       - name: pytest
         if: needs.scope.outputs.backend != 'false'
+        env:
+          TEST_DB_TEMPLATE: pharmaturk
         run: |
           DESELECT=$(sed 's/^/--deselect /' ci-known-failures.txt | tr '\n' ' ')
           # faulthandler: если тест висит дольше 3 мин, в журнал попадает его стек
           # (18.11.2026 набор дважды завис на ~24 % без единой подсказки).
           poetry run pytest -q $DESELECT -o faulthandler_timeout=180 \
-            -n 4 --durations=30 \
+            -n 4 --dist worksteal --durations=30 \
             --cov=api \
             --cov=apps \
             --cov=config \
