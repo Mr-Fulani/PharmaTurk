@@ -2050,6 +2050,7 @@ class OrderViewSet(viewsets.ViewSet):
             shipping_method=serializer.validated_data.get('shipping_method') or '',
             payment_method=serializer.validated_data.get('payment_method') or '',
             comment=serializer.validated_data.get('comment') or '',
+            locale=locale,
             status=Order.OrderStatus.PENDING_PAYMENT if is_crypto else Order.OrderStatus.NEW,
         )
 

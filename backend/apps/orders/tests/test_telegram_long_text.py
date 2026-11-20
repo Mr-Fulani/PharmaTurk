@@ -163,7 +163,8 @@ class LongOrderTextTests(SimpleTestCase):
     def test_failed_part_retry_resumes_from_that_part(self, select_related, post, *_):
         telegram = FakeTelegram(post, failures={2: 429})
 
-        self._run(select_related, "текст " * 2000)
+        # Слова разные: одинаковые части комментария не спутать с повтором отправки
+        self._run(select_related, " ".join(f"слово{index}" for index in range(1300)))
 
         calls = telegram.delivered()
         texts = [call.text for call in calls if call.method == "sendMessage"]
@@ -255,6 +256,7 @@ class LongSourcingTextTests(SimpleTestCase):
             contact_email="",
             contact_channel="whatsapp",
             contact_username="",
+            locale="",
             image=SimpleNamespace(open=lambda mode: BytesIO(b"jpeg-bytes")),
         )
         return notify_sourcing_request_telegram.apply(args=[4])
