@@ -14,7 +14,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.text import Truncator
 from django.utils.translation import gettext_lazy as _
 
-from apps.catalog.admin_links import domain_record_prefetches, product_admin_url
+from apps.catalog.admin_links import admin_button, domain_record_prefetches, product_admin_url
 from apps.catalog.admin_media import render_media_preview, resolve_media_url
 from apps.catalog.services.product_resolve import build_canonical_path
 from apps.users.models import User
@@ -76,7 +76,7 @@ class CartItemInline(admin.TabularInline):
 class CartAdmin(admin.ModelAdmin):
     """Админка для корзин."""
     autocomplete_fields = ('user', 'promo_code')
-    list_display = ('id', 'user', 'session_key', 'currency', 'items_count', 'total_amount', 'promo_code', 'reminder_sent_at', 'created_at')
+    list_display = ('id', 'user', 'session_key', 'currency', 'items_count', 'total_amount', 'promo_code', 'reminder_sent_at', 'created_at', 'updated_at')
     list_filter = ('currency', 'created_at', 'promo_code')
     search_fields = ('user__email', 'session_key', 'promo_code__code')
     ordering = ('-created_at',)
@@ -284,7 +284,7 @@ def _new_tab_link(url: str, label):
 
 
 class OrderItemLinksMixin:
-    """Превью товара и ссылки «на сайте / в источнике / в админке» для позиций заказа."""
+    """Превью товара и кнопки «карточка в админке / на сайте / у продавца» для позиций заказа."""
 
     @admin.display(description=_('Фото'))
     def item_preview(self, obj):
@@ -298,6 +298,8 @@ class OrderItemLinksMixin:
             return '—'
         product = obj.product
         links = []
+        if product:
+            links.append(admin_button(product_admin_url(product), _('Карточка в админке'), '📝', small=True))
         if product and product.slug:
             # Заказанная расцветка/вариант — теневой Product со slug «<тип>-<вариант>», которого
             # на сайте нет; карточка открывается по slug варианта (как ссылка из корзины).
@@ -306,14 +308,14 @@ class OrderItemLinksMixin:
             if product.product_type != 'jewelry':
                 slug = (product.external_data or {}).get('source_variant_slug') or slug
             path = build_canonical_path(product.product_type, slug)
-            links.append(_new_tab_link(f'{site_url()}{path}', _('На сайте')))
+            links.append(admin_button(f'{site_url()}{path}', _('На сайте'), '🌐', small=True))
         # Ссылка, сохранённая при оформлении; у старых позиций — текущая ссылка товара
         source = obj.source_url or (product.external_url if product else '')
         if source.startswith(('https://', 'http://')):
-            links.append(_new_tab_link(source, _('В источнике')))
-        if product:
-            links.append(_new_tab_link(product_admin_url(product), _('В админке')))
-        return format_html_join(' · ', '{}', ((link,) for link in links)) if links else '—'
+            links.append(admin_button(source, _('У продавца'), '🏪', small=True))
+        if not links:
+            return '—'
+        return format_html('<div class="mud-btn-row">{}</div>', format_html_join('', '{}', ((link,) for link in links)))
 
 
 class OrderItemInline(OrderItemLinksMixin, admin.TabularInline):
@@ -331,10 +333,11 @@ class OrderItemInline(OrderItemLinksMixin, admin.TabularInline):
         'source_checked_at',
         'supplier_confirmation_required',
     )
+    # Кнопки сразу после фото: на телефоне видны без прокрутки таблицы вбок, под названием позиции
     fields = (
         'item_preview',
-        'product',
         'item_links',
+        'product',
         'product_name',
         'chosen_size',
         'price',

@@ -1,0 +1,16 @@
+{# Плитки часто нужных разделов: config/admin_tiles.py, docs/ADMIN_HOME_TILES.md #}
+{% if home_tiles %}
+<ul class="mud-tiles" id="home-tiles">
+  {% for tile in home_tiles %}
+  <li>
+    <a class="mud-tile" href="{{ tile.url }}">
+      <span class="mud-tile__title"><span aria-hidden="true">{{ tile.icon }}</span> {{ tile.title }}</span>
+      {% if tile.value is not None %}<span class="mud-tile__value">{{ tile.value }}</span>{% endif %}
+      {% if tile.value is not None and tile.value_label %}<span class="mud-tile__label">{{ tile.value_label }}</span>{% endif %}
+      {% if tile.note %}<span class="mud-tile__label">{{ tile.note }}</span>{% endif %}
+      {% if tile.extra is not None %}<span class="mud-tile__extra">{{ tile.extra_label }}: <b>{{ tile.extra }}</b></span>{% endif %}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

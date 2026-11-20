@@ -9,7 +9,8 @@ class MudarobaAdminSite(AdminSite):
     site_header = "Mudaroba — Панель управления"
     site_title = "Mudaroba Admin"
     index_title = "Панель управления Mudaroba"
-    # Поле «Проверить лекарство» над списком разделов (TD-044, docs/DRUG_CHECK.md).
+    # Плитки частых разделов (docs/ADMIN_HOME_TILES.md) и поле «Проверить лекарство»
+    # над списком разделов (TD-044, docs/DRUG_CHECK.md).
     index_template = "admin/mudaroba_index.html"
 
     MEDIA_MODELS = frozenset(
@@ -135,6 +136,11 @@ class MudarobaAdminSite(AdminSite):
         "ProductImage": 2,
         "MarketingBannerMedia": 3,
     }
+
+    def index(self, request, extra_context=None):
+        from .admin_tiles import home_tiles
+
+        return super().index(request, {**(extra_context or {}), "home_tiles": home_tiles(self, request)})
 
     def _group_name(self, app_label, app_name, object_name):
         if object_name in self.MEDIA_MODELS:

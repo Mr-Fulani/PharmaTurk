@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+{% load admin_modify %}
+{# Кнопки карточки («На сайте», «У продавца», «История») — полосой под заголовком, на телефоне в столбик. #}
+{% block object-tools %}
+{% if change and not is_popup %}
+  <ul class="mud-btn-bar">
+    {% block object-tools-items %}
+      {% change_form_object_tools %}
+    {% endblock %}
+  </ul>
+{% endif %}
+{% endblock %}

@@ -71,7 +71,9 @@ def test_links_open_site_source_and_admin_in_new_tab():
     assert f'href="/admin/catalog/medicineproduct/{medicine.pk}/change/"' in html
     assert f"/admin/catalog/product/{product.pk}/change/" not in html
     assert html.count('target="_blank" rel="noopener noreferrer"') == 3
-    assert "На сайте" in html and "В источнике" in html and "В админке" in html
+    assert "На сайте" in html and "У продавца" in html and "Карточка в админке" in html
+    # Тот же вид кнопок, что на карточке товара; в таблице позиций — компактные
+    assert html.startswith('<div class="mud-btn-row">') and html.count('class="mud-btn mud-btn--small"') == 3
 
 
 @pytest.mark.django_db
@@ -194,6 +196,7 @@ def test_order_and_item_pages_show_links(client, plain_static):
         assert f"https://mudaroba.com/product/{product.slug}" in html, url
         assert "https://www.superstep.com.tr/urun/1" in html, url
         assert "https://img.example.test/main.jpg" in html, url
+        assert 'class="mud-btn mud-btn--small"' in html and ".mud-btn-row" in html, url  # кнопки и их стили
 
 
 @pytest.mark.django_db

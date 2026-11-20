@@ -1,4 +1,4 @@
-"""Кнопки «Посмотреть на сайте» и «Источник» вверху карточки товара в админке."""
+"""Кнопки «На сайте» и «У продавца» вверху карточки товара в админке."""
 from uuid import uuid4
 
 import pytest
@@ -38,8 +38,8 @@ def test_one_source():
     buttons = product_view_buttons(product)
 
     assert [(b["label"], b["url"]) for b in buttons] == [
-        ("Посмотреть на сайте", f"https://site.test/product/{product.slug}"),
-        ("Источник: lcwaikiki.com", "https://www.lcwaikiki.com/tr-TR/TR/urun/1"),
+        ("На сайте", f"https://site.test/product/{product.slug}"),
+        ("У продавца: lcwaikiki.com", "https://www.lcwaikiki.com/tr-TR/TR/urun/1"),
     ]
 
 
@@ -62,10 +62,10 @@ def test_several_sources_without_duplicates(django_assert_max_num_queries):
         labels = _labels(product)
 
     assert labels == [
-        "Посмотреть на сайте",
-        "Источник: flo.com.tr",
-        "Источник: flo.com.tr · 2",
-        "Источник: superstep.com.tr",
+        "На сайте",
+        "У продавца: flo.com.tr",
+        "У продавца: flo.com.tr · 2",
+        "У продавца: superstep.com.tr",
     ]
 
 
@@ -88,7 +88,7 @@ def test_more_sources_than_limit():
 def test_no_source():
     product = _product(external_url="ftp://example.com/x")
 
-    assert _labels(product) == ["Посмотреть на сайте"]
+    assert _labels(product) == ["На сайте"]
 
 
 @pytest.mark.django_db
@@ -96,7 +96,7 @@ def test_hidden_product_has_no_site_button():
     hidden = _product(is_active=False, external_url="https://www.flo.com.tr/urun/a")
     shadow = _product(external_data={"source_variant_slug": "x"})
 
-    assert _labels(hidden) == ["Источник: flo.com.tr"]
+    assert _labels(hidden) == ["У продавца: flo.com.tr"]
     assert _labels(shadow) == []
 
 
@@ -112,9 +112,9 @@ def test_medicine_record_uses_base_product_sources():
     buttons = product_view_buttons(medicine)
 
     assert [(b["label"], b["url"]) for b in buttons] == [
-        ("Посмотреть на сайте", f"https://site.test/product/{slug}"),
-        ("Источник: ilacfiyati.com", "https://ilacfiyati.com/ilaclar/x"),
-        ("Источник: ilacrehberi.com", "https://www.ilacrehberi.com/v/x"),
+        ("На сайте", f"https://site.test/product/{slug}"),
+        ("У продавца: ilacfiyati.com", "https://ilacfiyati.com/ilaclar/x"),
+        ("У продавца: ilacrehberi.com", "https://www.ilacrehberi.com/v/x"),
     ]
 
 
@@ -140,12 +140,24 @@ def test_buttons_on_admin_pages(client, django_user_model, settings):
         response = client.get(url)
         assert response.status_code == 200
         html = response.content.decode()
+        bar = html[html.index('<ul class="mud-btn-bar">'):html.index("</ul>", html.index('<ul class="mud-btn-bar">'))]
         assert (
-            f'<a href="https://site.test/product/{slug}" class="viewsitelink" target="_blank" '
-            'rel="noopener noreferrer"'
-        ) in html
-        assert "Источник: ilacfiyati.com" in html
+            f'<li><a href="https://site.test/product/{slug}" class="mud-btn" target="_blank" '
+            f'rel="noopener noreferrer" title="https://site.test/product/{slug}">'
+            '<span aria-hidden="true">🌐</span> На сайте</a></li>'
+        ) in bar
+        assert '<span aria-hidden="true">🏪</span> У продавца: ilacfiyati.com</a>' in bar
+        assert "<details" not in bar  # один продавец — обычная кнопка
+        assert 'class="mud-btn historylink"' in bar
+        assert bar.index("На сайте") < bar.index("У продавца") < bar.index("historylink")
+        assert ".mud-btn-bar" in html  # стили кнопок подключены
         assert 'href="https://ilacfiyati.com/ilaclar/x?a=&quot;&gt;&lt;b&gt;"' in html
+
+    # Несколько продавцов — одна кнопка с раскрывающимся списком, без JavaScript
+    _offer(medicine.base_product, "https://www.ilacrehberi.com/v/x", "x")
+    items = product_view_buttons_items(medicine)
+    assert items.count("<details") == 1 and items.count("<li>") == 2
+    assert items.index("<summary") < items.index("У продавца: ilacfiyati.com") < items.index("У продавца: ilacrehberi.com")
 
     # У не-товара и у новой записи кнопок нет
     assert product_view_buttons_items(admin) == ""

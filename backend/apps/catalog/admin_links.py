@@ -5,6 +5,7 @@
 """
 from django.db.models import Prefetch
 from django.urls import NoReverseMatch, reverse
+from django.utils.html import format_html
 
 from .domain_sync import domain_models
 
@@ -41,6 +42,15 @@ def product_admin_url(product) -> str:
 
 
 SOURCE_BUTTONS_LIMIT = 5
+
+
+def admin_button(url, label, icon, title="", small=False):
+    """Кнопка-ссылка админки, открывается в новой вкладке: единый вид на карточке товара и в заявке."""
+    return format_html(
+        '<a href="{}" class="mud-btn{}" target="_blank" rel="noopener noreferrer" title="{}">'
+        '<span aria-hidden="true">{}</span> {}</a>',
+        url, " mud-btn--small" if small else "", title, icon, label,
+    )
 
 
 def _base_product(obj):
@@ -87,7 +97,7 @@ def product_source_urls(obj) -> list[str]:
 
 
 def product_view_buttons(obj) -> list[dict]:
-    """Кнопки карточки товара в админке: «Посмотреть на сайте» и по кнопке на источник."""
+    """Кнопки карточки товара в админке: «На сайте» и по кнопке на продавца (kind: site, source, more)."""
     from urllib.parse import urlsplit
 
     from django.utils.translation import gettext as _
@@ -98,7 +108,7 @@ def product_view_buttons(obj) -> list[dict]:
     buttons = []
     site_url = product_site_url(obj)
     if site_url:
-        buttons.append({"url": site_url, "label": _("Посмотреть на сайте"), "title": site_url})
+        buttons.append({"kind": "site", "url": site_url, "label": _("На сайте"), "title": site_url})
     sources = product_source_urls(obj)
     seen = {}
     for url in sources[:SOURCE_BUTTONS_LIMIT]:
@@ -106,11 +116,15 @@ def product_view_buttons(obj) -> list[dict]:
         seen[domain] = seen.get(domain, 0) + 1
         # Несколько ссылок одного продавца (расцветки) различаются номером
         suffix = f" · {seen[domain]}" if seen[domain] > 1 else ""
-        buttons.append({"url": url, "label": _("Источник: %(domain)s") % {"domain": domain} + suffix, "title": url})
+        buttons.append({
+            "kind": "source", "url": url, "label": _("У продавца: %(domain)s") % {"domain": domain} + suffix,
+            "title": url,
+        })
     rest = len(sources) - SOURCE_BUTTONS_LIMIT
     if rest > 0:
         offers_url = reverse("admin:catalog_productsourceoffer_changelist")
         buttons.append({
+            "kind": "more",
             "url": f"{offers_url}?product__id__exact={product.pk}",
             "label": _("Ещё источников: %(count)s") % {"count": rest},
             "title": _("Все предложения источников этого товара"),

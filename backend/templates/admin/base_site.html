@@ -2,6 +2,8 @@
 
 {% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | Mudaroba Admin{% endblock %}
 
+{% block extrastyle %}{{ block.super }}{% include "admin/_mudaroba_styles.html" %}{% endblock %}
+
 {% block extrahead %}
     {{ block.super }}
     <link rel="icon" type="image/png" href="/favicon.png">
