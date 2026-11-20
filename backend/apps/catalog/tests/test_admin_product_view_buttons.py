@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from apps.catalog.admin_links import SOURCE_BUTTONS_LIMIT, product_view_buttons
 from apps.catalog.models import MedicineProduct, Product, ProductSourceOffer
+from apps.catalog.templatetags.catalog_admin_links import product_view_buttons_items
 
 
 @pytest.fixture(autouse=True)
@@ -118,8 +119,14 @@ def test_medicine_record_uses_base_product_sources():
 
 
 @pytest.mark.django_db
-def test_buttons_on_admin_pages(client, django_user_model):
-    client.force_login(django_user_model.objects.create_superuser("links-admin", "links@example.com", "x" * 20))
+def test_buttons_on_admin_pages(client, django_user_model, settings):
+    # В CI DEBUG=0 и манифестное хранилище статики: без collectstatic шаблон админки падает.
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+    admin = django_user_model.objects.create_superuser("links-admin", "links@example.com", "x" * 20)
+    client.force_login(admin)
     slug = f"lekarstvo-{uuid4().hex}"
     medicine = MedicineProduct.objects.create(
         name="Лекарство", slug=slug, external_url='https://ilacfiyati.com/ilaclar/x?a="><b>'
@@ -130,7 +137,9 @@ def test_buttons_on_admin_pages(client, django_user_model):
         reverse("admin:catalog_medicineproduct_change", args=[medicine.pk]),
         reverse("admin:catalog_product_change", args=[medicine.base_product_id]),
     ):
-        html = client.get(url).content.decode()
+        response = client.get(url)
+        assert response.status_code == 200
+        html = response.content.decode()
         assert (
             f'<a href="https://site.test/product/{slug}" class="viewsitelink" target="_blank" '
             'rel="noopener noreferrer"'
@@ -138,6 +147,6 @@ def test_buttons_on_admin_pages(client, django_user_model):
         assert "Источник: ilacfiyati.com" in html
         assert 'href="https://ilacfiyati.com/ilaclar/x?a=&quot;&gt;&lt;b&gt;"' in html
 
-    # У не-товара кнопок нет, страница открывается
-    offers = client.get(reverse("admin:catalog_productsourceoffer_changelist"))
-    assert offers.status_code == 200
+    # У не-товара и у новой записи кнопок нет
+    assert product_view_buttons_items(admin) == ""
+    assert product_view_buttons_items(None) == ""
