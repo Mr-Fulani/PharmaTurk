@@ -356,13 +356,21 @@ class OrderItemInline(OrderItemLinksMixin, admin.TabularInline):
 
 PS = Order.ProcessingStatus
 # Порядок в списке по умолчанию: сначала то, что ждёт менеджера
-PROCESSING_RANK = {PS.NEW: 0, PS.IN_PROGRESS: 1, PS.WAITING_CLIENT: 2, PS.DONE: 3, PS.CANCELLED: 4}
-OPEN_PROCESSING = (PS.NEW, PS.IN_PROGRESS, PS.WAITING_CLIENT)
+PROCESSING_RANK = {
+    PS.NEW: 0, PS.IN_PROGRESS: 1, PS.WAITING_CLIENT: 2, PS.PRICE_SENT: 3, PS.AGREED: 4, PS.PAID: 5,
+    PS.SHIPPED: 6, PS.DONE: 7, PS.CANCELLED: 8,
+}
+CLOSED_PROCESSING = (PS.DONE, PS.CANCELLED)
+OPEN_PROCESSING = tuple(status for status in PS if status not in CLOSED_PROCESSING)
 # Фон и цвет текста метки «Обработка»
 PROCESSING_COLORS = {
     PS.NEW: ('#f8d7da', '#842029'),
     PS.IN_PROGRESS: ('#fff3cd', '#664d03'),
     PS.WAITING_CLIENT: ('#cfe2ff', '#084298'),
+    PS.PRICE_SENT: ('#cff4fc', '#055160'),
+    PS.AGREED: ('#e0cffc', '#3d0a91'),
+    PS.PAID: ('#ffe5d0', '#653208'),
+    PS.SHIPPED: ('#d2f4ea', '#0a3622'),
     PS.DONE: ('#d1e7dd', '#0f5132'),
     PS.CANCELLED: ('#e2e3e5', '#41464b'),
 }
@@ -386,13 +394,29 @@ class ProcessingStatusFilter(admin.SimpleListFilter):
     parameter_name = 'processing'
 
     def lookups(self, request, model_admin):
-        return [('open', _('Не закрытые (новые, в работе, ждём)')), *PS.choices]
+        return [('open', _('Не закрытые (всё до «Завершена» и «Не состоялась»)')), *PS.choices]
 
     def queryset(self, request, queryset):
         if self.value() == 'open':
             return queryset.filter(processing_status__in=OPEN_PROCESSING)
         if self.value() in PS.values:
             return queryset.filter(processing_status=self.value())
+        return queryset
+
+
+class FailReasonFilter(admin.SimpleListFilter):
+    title = _('почему не состоялась')
+    parameter_name = 'reason'
+
+    def lookups(self, request, model_admin):
+        return [*Order.FailReason.choices, ('none', _('Причина не указана'))]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == 'none':
+            return queryset.filter(processing_status=PS.CANCELLED, processing_fail_reason='')
+        if value in Order.FailReason.values:
+            return queryset.filter(processing_status=PS.CANCELLED, processing_fail_reason=value)
         return queryset
 
 
@@ -415,10 +439,13 @@ class AssignedToFilter(admin.SimpleListFilter):
         return queryset
 
 
-# «Висит долго» в списке: «Новая» дольше суток с создания, «В работе» дольше 3 дней без изменений
-# (по updated_at). Пороги выбраны по умолчанию, владелец числа не называл.
+# «Висит долго» в списке: «Новая» дольше суток с создания; «В работе» и шаги ожидания (написали
+# клиенту, назвали цену, ждём оплату, закупаем) дольше 3 дней без изменений (по updated_at).
+# «Отправлено» не подсвечивается: доставка идёт до двух недель. Пороги выбраны по умолчанию,
+# владелец числа не называл.
 NEW_STALE_AFTER = timedelta(hours=24)
 IN_PROGRESS_STALE_AFTER = timedelta(days=3)
+STALE_WITHOUT_CHANGES = (PS.IN_PROGRESS, PS.WAITING_CLIENT, PS.PRICE_SENT, PS.AGREED, PS.PAID)
 
 # Сколько позиций показывать в колонке «Состав», остальные — «+N»
 ITEMS_SHOWN = 3
@@ -535,7 +562,8 @@ class OrderAdmin(admin.ModelAdmin):
         'payment_method', 'created_at',
     )
     list_filter = (
-        ProcessingStatusFilter, AssignedToFilter, ClientOrdersFilter, 'status', 'currency', 'payment_method',
+        ProcessingStatusFilter, FailReasonFilter, AssignedToFilter, ClientOrdersFilter,
+        'status', 'currency', 'payment_method',
         'payment_status', 'promo_code', 'created_at',
     )
     list_select_related = ('user', 'assigned_to')
@@ -544,10 +572,18 @@ class OrderAdmin(admin.ModelAdmin):
         'number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url',
         'import_restriction_banner', 'processing_history', 'contact_links', 'client_orders_link', 'locale',
     )
-    actions = ('take_in_work', 'mark_waiting_client', 'mark_done')
+    actions = (
+        'take_in_work', 'mark_waiting_client', 'mark_price_sent', 'mark_agreed', 'mark_paid',
+        'mark_shipped', 'mark_done',
+    )
+    # Числа у каждой закладки фильтров: сколько заявок в каждой отметке и по каждой причине
+    # (с учётом остальных выбранных фильтров, например «Дата создания»)
+    show_facets = admin.ShowFacets.ALWAYS
 
     fieldsets = (
-        (_('Обработка заявки'), {'fields': ('processing_status', 'assigned_to', 'processing_history')}),
+        (_('Обработка заявки'), {'fields': (
+            'processing_status', 'processing_fail_reason', 'assigned_to', 'processing_history',
+        )}),
         (None, {'fields': ('number', 'import_restriction_banner', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': (
@@ -612,7 +648,7 @@ class OrderAdmin(admin.ModelAdmin):
             field.queryset = User.objects.filter(Q(is_staff=True) | Q(pk=current)).order_by('first_name', 'email')
         # Страница, открытая до «Взять в работу» коллеги, не должна откатить его отметку:
         # «изменено» считаем от значения на момент открытия страницы (скрытое поле), а не от базы
-        for name in ('processing_status', 'assigned_to'):
+        for name in ('processing_status', 'processing_fail_reason', 'assigned_to'):
             if name in form.base_fields:
                 form.base_fields[name].show_hidden_initial = True
         return form
@@ -651,7 +687,7 @@ class OrderAdmin(admin.ModelAdmin):
         return format_html(
             '{}<br><span title="{}" style="display:inline-block;margin-top:3px;padding:1px 6px;border-radius:6px;'
             'background:#dc3545;color:#fff;font-weight:700;white-space:nowrap;">⏰ висит {}</span>',
-            badge, _('Новая дольше суток или «В работе» без изменений дольше 3 дней'), age,
+            badge, _('Новая дольше суток или шаг в работе без изменений дольше 3 дней'), age,
         )
 
     @staticmethod
@@ -660,7 +696,11 @@ class OrderAdmin(admin.ModelAdmin):
         now = timezone.now()
         if obj.processing_status == PS.NEW and obj.created_at and now - obj.created_at > NEW_STALE_AFTER:
             return now - obj.created_at
-        if obj.processing_status == PS.IN_PROGRESS and obj.updated_at and now - obj.updated_at > IN_PROGRESS_STALE_AFTER:
+        if (
+            obj.processing_status in STALE_WITHOUT_CHANGES
+            and obj.updated_at
+            and now - obj.updated_at > IN_PROGRESS_STALE_AFTER
+        ):
             return now - obj.updated_at
         return None
 
@@ -719,6 +759,8 @@ class OrderAdmin(admin.ModelAdmin):
             parts = []
             if event.old_status != event.new_status:
                 parts.append(f'{event.get_old_status_display()} → {event.get_new_status_display()}')
+            if event.old_reason != event.new_reason:
+                parts.append(f'причина: {event.get_new_reason_display() or "не указана"}')
             if event.old_assigned_to_id != event.new_assigned_to_id:
                 parts.append(f'ответственный: {_staff_name(event.new_assigned_to)}')
             when = timezone.localtime(event.created_at).strftime('%d.%m.%Y %H:%M')
@@ -738,28 +780,51 @@ class OrderAdmin(admin.ModelAdmin):
     def take_in_work(self, request, queryset):
         self._run_processing_action(request, queryset, PS.IN_PROGRESS, take=True)
 
-    @admin.action(description=_('Отметить: ответили клиенту — ждём'), permissions=['change'])
+    @admin.action(description=_('Отметить: написали клиенту — ждём ответа'), permissions=['change'])
     def mark_waiting_client(self, request, queryset):
         self._run_processing_action(request, queryset, PS.WAITING_CLIENT)
 
-    @admin.action(description=_('Отметить обработанной'), permissions=['change'])
+    @admin.action(description=_('Отметить: назвали цену — ждём решения'), permissions=['change'])
+    def mark_price_sent(self, request, queryset):
+        self._run_processing_action(request, queryset, PS.PRICE_SENT)
+
+    @admin.action(description=_('Отметить: клиент согласен — ждём оплату'), permissions=['change'])
+    def mark_agreed(self, request, queryset):
+        self._run_processing_action(request, queryset, PS.AGREED)
+
+    @admin.action(description=_('Отметить: оплачено — закупаем'), permissions=['change'])
+    def mark_paid(self, request, queryset):
+        self._run_processing_action(request, queryset, PS.PAID)
+
+    @admin.action(description=_('Отметить: отправлено'), permissions=['change'])
+    def mark_shipped(self, request, queryset):
+        self._run_processing_action(request, queryset, PS.SHIPPED)
+
+    @admin.action(description=_('Отметить завершённой'), permissions=['change'])
     def mark_done(self, request, queryset):
         self._run_processing_action(request, queryset, PS.DONE)
 
     def save_model(self, request, obj, form, change):
         changed_data = getattr(form, 'changed_data', [])
-        old = (PS.NEW, None)
+        old = (PS.NEW, None, '')
         if change:
-            old = Order.objects.filter(pk=obj.pk).values_list('processing_status', 'assigned_to_id').first() or old
+            old = Order.objects.filter(pk=obj.pk).values_list(
+                'processing_status', 'assigned_to_id', 'processing_fail_reason',
+            ).first() or old
             # Страница могла быть открыта до действия из списка: нетронутые поля берём из базы,
             # а не из устаревшей формы, иначе «Взять в работу» коллеги откатится
             if 'processing_status' not in changed_data:
                 obj.processing_status = old[0]
             if 'assigned_to' not in changed_data:
                 obj.assigned_to_id = old[1]
+            if 'processing_fail_reason' not in changed_data:
+                obj.processing_fail_reason = old[2]
         auto_assign(obj, actor=request.user, old_status=old[0])
         super().save_model(request, obj, form, change)
-        log_processing_change(obj, actor=request.user, old_status=old[0], old_assigned_to_id=old[1])
+        log_processing_change(
+            obj, actor=request.user,
+            old_status=old[0], old_assigned_to_id=old[1], old_reason=old[2],
+        )
         # Менеджер сменил статус — уведомляем клиента (Telegram/email) после коммита
         if change and 'status' in getattr(form, 'changed_data', []):
             order_id = obj.pk

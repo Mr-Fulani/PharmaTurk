@@ -603,9 +603,25 @@ class Order(models.Model):
         """Отметка для менеджеров в админке: клиент её не видит, сообщений не получает."""
         NEW = "new", _("Новая")
         IN_PROGRESS = "in_progress", _("В работе")
-        WAITING_CLIENT = "waiting_client", _("Ответили клиенту — ждём")
-        DONE = "done", _("Обработана")
-        CANCELLED = "cancelled", _("Отменена")
+        WAITING_CLIENT = "waiting_client", _("Написали клиенту — ждём ответа")
+        PRICE_SENT = "price_sent", _("Назвали цену — ждём решения")
+        AGREED = "agreed", _("Клиент согласен — ждём оплату")
+        PAID = "paid", _("Оплачено — закупаем")
+        SHIPPED = "shipped", _("Отправлено")
+        DONE = "done", _("Завершена")
+        CANCELLED = "cancelled", _("Не состоялась")
+
+    class FailReason(models.TextChoices):
+        """Почему заявка не состоялась — для статистики; только при отметке «Не состоялась»."""
+        NO_REPLY = "no_reply", _("Клиент не ответил")
+        EXPENSIVE = "expensive", _("Дорого")
+        SLOW = "slow", _("Долго")
+        OUT_OF_STOCK = "out_of_stock", _("Нет в наличии")
+        CANNOT_DELIVER = (
+            "cannot_deliver", _("Не можем доставить (страна, ограничение на ввоз, рецепт)")
+        )
+        CHANGED_MIND = "changed_mind", _("Передумал")
+        SPAM = "spam", _("Спам или тест")
 
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Пользователь"))
     number = models.CharField(_("Номер заказа"), max_length=32, unique=True)
@@ -617,6 +633,16 @@ class Order(models.Model):
         default=ProcessingStatus.NEW,
         db_index=True,
         help_text=_("Для менеджеров: клиент эту отметку не видит и сообщений о ней не получает."),
+    )
+    processing_fail_reason = models.CharField(
+        _("Почему не состоялась"),
+        max_length=16,
+        choices=FailReason.choices,
+        blank=True,
+        default="",
+        help_text=_(
+            "Только для отметки «Не состоялась»; при другой отметке очищается. Клиент не видит."
+        ),
     )
     assigned_to = models.ForeignKey(
         User,
@@ -674,6 +700,8 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         if self.status == self.OrderStatus.PAID and self.payment_status != "paid":
             self.payment_status = "paid"
+        if self.processing_status != self.ProcessingStatus.CANCELLED:
+            self.processing_fail_reason = ""
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -689,6 +717,12 @@ class OrderProcessingEvent(models.Model):
     )
     old_status = models.CharField(_("Было"), max_length=16, choices=Order.ProcessingStatus.choices)
     new_status = models.CharField(_("Стало"), max_length=16, choices=Order.ProcessingStatus.choices)
+    old_reason = models.CharField(
+        _("Была причина"), max_length=16, choices=Order.FailReason.choices, blank=True, default="",
+    )
+    new_reason = models.CharField(
+        _("Стала причина"), max_length=16, choices=Order.FailReason.choices, blank=True, default="",
+    )
     old_assigned_to = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name=_("Был ответственный"),
     )

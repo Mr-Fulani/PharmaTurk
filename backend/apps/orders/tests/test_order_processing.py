@@ -284,7 +284,7 @@ def test_view_only_staff_has_no_processing_actions(rf):
     viewer = User.objects.create_user(username="op-viewer", email="op-viewer@example.test", password="x", is_staff=True)
     viewer.user_permissions.add(Permission.objects.get(codename="view_order"))
     actions = _admin().get_actions(_request(rf, viewer))
-    assert not {"take_in_work", "mark_waiting_client", "mark_done"} & set(actions)
+    assert not {name for name in actions if name.startswith(("take_", "mark_"))}
 
 
 @pytest.mark.django_db
@@ -324,3 +324,190 @@ def test_other_admins_with_order_link_still_open(client, rf, plain_static):
     assert client.get(f"/admin/orders/orderitem/{item.pk}/change/").status_code == 200
     assert client.get("/admin/orders/order/?o=2").status_code == 200
     assert client.get("/admin/payments/cryptopayment/add/").status_code == 200
+
+
+# ── Шаги обработки и причина «Не состоялась» (20.11.2026) ──
+
+FR = Order.FailReason
+
+
+def test_processing_labels_keep_old_values_under_new_names():
+    assert dict(PS.choices) == {
+        "new": "Новая",
+        "in_progress": "В работе",
+        "waiting_client": "Написали клиенту — ждём ответа",
+        "price_sent": "Назвали цену — ждём решения",
+        "agreed": "Клиент согласен — ждём оплату",
+        "paid": "Оплачено — закупаем",
+        "shipped": "Отправлено",
+        "done": "Завершена",
+        "cancelled": "Не состоялась",
+    }
+    assert set(FR.values) == {
+        "no_reply", "expensive", "slow", "out_of_stock", "cannot_deliver", "changed_mind", "spam",
+    }
+    max_length = Order._meta.get_field("processing_status").max_length
+    assert all(len(value) <= max_length for value in [*PS.values, *FR.values])
+
+
+def test_stages_migration_changes_schema_only():
+    from django.db import migrations
+
+    migration = importlib.import_module("apps.orders.migrations.0023_order_processing_stages")
+    kinds = {type(operation) for operation in migration.Migration.operations}
+    assert kinds == {migrations.AddField, migrations.AlterField}
+
+
+def test_processing_is_not_in_public_order_api():
+    from apps.orders.serializers import OrderSerializer
+
+    fields = set(OrderSerializer.Meta.fields)
+    assert not {"processing_status", "processing_fail_reason", "assigned_to"} & fields
+
+
+@pytest.mark.django_db
+def test_open_filter_covers_every_step_before_closed_ones(rf):
+    me = _staff("op-stages-list")
+    orders = {status: _order(processing_status=status) for status in PS}
+    admin = _admin()
+
+    def numbers(params=None):
+        request = _request(rf, me, data=params)
+        cl = admin.get_changelist_instance(request)
+        return [o.number for o in cl.get_queryset(request)]
+
+    assert numbers() == [orders[status].number for status in PS]  # порядок списка — ход заявки
+    closed = {orders[PS.DONE].number, orders[PS.CANCELLED].number}
+    assert set(numbers({"processing": "open"})) == {o.number for o in orders.values()} - closed
+    for status in (PS.PRICE_SENT, PS.AGREED, PS.PAID, PS.SHIPPED):
+        assert numbers({"processing": status}) == [orders[status].number]
+
+
+@pytest.mark.django_db
+def test_new_step_actions_set_status_and_log(rf):
+    me = _staff("op-steps")
+    order = _order()
+    admin = _admin()
+    steps = [
+        ("mark_price_sent", PS.PRICE_SENT), ("mark_agreed", PS.AGREED), ("mark_paid", PS.PAID),
+        ("mark_shipped", PS.SHIPPED), ("mark_done", PS.DONE),
+    ]
+
+    with patch("apps.orders.admin.notify_order_status_changed.delay") as delay:
+        for action, status in steps:
+            getattr(admin, action)(_request(rf, me), Order.objects.filter(pk=order.pk))
+            order.refresh_from_db()
+            assert order.processing_status == status
+
+    delay.assert_not_called()  # клиенту ничего не уходит
+    assert order.status == Order.OrderStatus.NEW and order.payment_status == "unpaid"
+    assert [e.new_status for e in order.processing_events.order_by("pk")] == [s for _a, s in steps]
+
+
+@pytest.mark.django_db
+def test_change_page_sets_fail_reason_and_history_shows_it(client, plain_static):
+    me = _staff("op-reason")
+    order = _order(processing_status=PS.PRICE_SENT, assigned_to=me)
+    client.force_login(me)
+    url = f"/admin/orders/order/{order.pk}/change/"
+    data = _change_form_data(client.get(url))
+    data["processing_status"] = PS.CANCELLED
+    data["processing_fail_reason"] = FR.EXPENSIVE
+
+    response = client.post(url, data)
+
+    assert response.status_code == 302, response.context["adminform"].form.errors
+    order.refresh_from_db()
+    assert (order.processing_status, order.processing_fail_reason) == (PS.CANCELLED, FR.EXPENSIVE)
+    event = order.processing_events.get()
+    assert (event.old_reason, event.new_reason) == ("", FR.EXPENSIVE)
+    history = "Назвали цену — ждём решения → Не состоялась; причина: Дорого"
+    assert history in client.get(url).content.decode()
+
+    # причину можно поправить отдельно — это тоже попадает в историю
+    data = _change_form_data(client.get(url))
+    data["processing_fail_reason"] = FR.NO_REPLY
+    assert client.post(url, data).status_code == 302
+    order.refresh_from_db()
+    assert order.processing_fail_reason == FR.NO_REPLY
+    last = order.processing_events.order_by("-pk").first()
+    assert (last.old_status, last.new_status, last.old_reason, last.new_reason) == (
+        PS.CANCELLED, PS.CANCELLED, FR.EXPENSIVE, FR.NO_REPLY,
+    )
+
+
+@pytest.mark.django_db
+def test_fail_reason_is_cleared_when_status_is_not_failed(client, rf, plain_static):
+    me = _staff("op-reason-clear")
+    client.force_login(me)
+
+    # причина при другой отметке не сохраняется
+    order = _order()
+    url = f"/admin/orders/order/{order.pk}/change/"
+    data = _change_form_data(client.get(url))
+    data["processing_status"] = PS.IN_PROGRESS
+    data["processing_fail_reason"] = FR.SPAM
+    assert client.post(url, data).status_code == 302
+    order.refresh_from_db()
+    assert (order.processing_status, order.processing_fail_reason) == (PS.IN_PROGRESS, "")
+
+    # заявку вернули в работу действием из списка — причина очищена и это видно в истории
+    failed = _order(processing_status=PS.CANCELLED, processing_fail_reason=FR.SLOW, assigned_to=me)
+    _admin().take_in_work(_request(rf, me), Order.objects.filter(pk=failed.pk))
+    failed.refresh_from_db()
+    assert (failed.processing_status, failed.processing_fail_reason) == (PS.IN_PROGRESS, "")
+    event = failed.processing_events.get()
+    assert (event.old_reason, event.new_reason) == (FR.SLOW, "")
+
+
+@pytest.mark.django_db
+def test_fail_reason_filter(rf):
+    me = _staff("op-reason-filter")
+    expensive = _order(processing_status=PS.CANCELLED, processing_fail_reason=FR.EXPENSIVE)
+    unknown = _order(processing_status=PS.CANCELLED)  # старая «Отменена»: причина пустая
+    _order()
+    _order(processing_status=PS.DONE)
+    admin = _admin()
+
+    def numbers(params):
+        request = _request(rf, me, data=params)
+        cl = admin.get_changelist_instance(request)
+        return [o.number for o in cl.get_queryset(request)]
+
+    assert numbers({"reason": FR.EXPENSIVE}) == [expensive.number]
+    assert numbers({"reason": "none"}) == [unknown.number]
+    assert numbers({"reason": FR.SPAM}) == []
+
+
+@pytest.mark.django_db
+def test_stale_mark_covers_waiting_steps_but_not_shipped_or_closed():
+    old = timezone.now() - timedelta(days=4)
+    stale_for = OrderAdmin._stale_for
+
+    def aged(status):
+        order = _order(processing_status=status)
+        Order.objects.filter(pk=order.pk).update(updated_at=old)
+        order.refresh_from_db()
+        return order
+
+    for status in (PS.IN_PROGRESS, PS.WAITING_CLIENT, PS.PRICE_SENT, PS.AGREED, PS.PAID):
+        assert stale_for(aged(status)) is not None, status
+        assert stale_for(_order(processing_status=status)) is None, status  # свежая не висит
+    for status in (PS.SHIPPED, PS.DONE, PS.CANCELLED):
+        assert stale_for(aged(status)) is None, status
+
+
+@pytest.mark.django_db
+def test_changelist_shows_counts_per_status_and_reason(client, plain_static):
+    me = _staff("op-counts")
+    _order(processing_status=PS.CANCELLED, processing_fail_reason=FR.EXPENSIVE)
+    _order(processing_status=PS.CANCELLED, processing_fail_reason=FR.EXPENSIVE)
+    _order(processing_status=PS.PAID)
+    client.force_login(me)
+
+    body = client.get("/admin/orders/order/").content.decode()
+
+    assert "Оплачено — закупаем (1)" in body
+    assert "Не состоялась (2)" in body
+    assert "Дорого (2)" in body
+    assert "Причина не указана (0)" in body

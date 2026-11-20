@@ -20,15 +20,20 @@ def auto_assign(order: Order, *, actor, old_status: str) -> None:
         order.assigned_to = actor
 
 
-def log_processing_change(order: Order, *, actor, old_status: str, old_assigned_to_id) -> OrderProcessingEvent | None:
-    """Запись в журнал, если отметка или ответственный изменились; иначе None."""
-    if (order.processing_status, order.assigned_to_id) == (old_status, old_assigned_to_id):
+def log_processing_change(
+    order: Order, *, actor, old_status: str, old_assigned_to_id, old_reason: str = ""
+) -> OrderProcessingEvent | None:
+    """Запись в журнал, если отметка, причина отказа или ответственный изменились; иначе None."""
+    new = (order.processing_status, order.processing_fail_reason, order.assigned_to_id)
+    if new == (old_status, old_reason, old_assigned_to_id):
         return None
     return OrderProcessingEvent.objects.create(
         order=order,
         actor=actor,
         old_status=old_status,
         new_status=order.processing_status,
+        old_reason=old_reason,
+        new_reason=order.processing_fail_reason,
         old_assigned_to_id=old_assigned_to_id,
         new_assigned_to_id=order.assigned_to_id,
     )
@@ -40,11 +45,19 @@ def change_processing(order_ids, *, actor, status: str, take: bool = False) -> i
     with transaction.atomic():
         for order in Order.objects.select_for_update().filter(pk__in=list(order_ids)).order_by("pk"):
             old_status, old_assigned_to_id = order.processing_status, order.assigned_to_id
+            old_reason = order.processing_fail_reason
             order.processing_status = status
+            if status != Order.ProcessingStatus.CANCELLED:
+                order.processing_fail_reason = ""
             if take:
                 order.assigned_to = actor
             auto_assign(order, actor=actor, old_status=old_status)
-            if log_processing_change(order, actor=actor, old_status=old_status, old_assigned_to_id=old_assigned_to_id):
-                order.save(update_fields=["processing_status", "assigned_to", "updated_at"])
+            if log_processing_change(
+                order, actor=actor, old_status=old_status, old_assigned_to_id=old_assigned_to_id,
+                old_reason=old_reason,
+            ):
+                order.save(update_fields=[
+                    "processing_status", "processing_fail_reason", "assigned_to", "updated_at",
+                ])
                 changed += 1
     return changed
