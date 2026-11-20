@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 from django.urls import reverse
 
-from apps.catalog.models import MedicineProduct, Product
+from apps.catalog.models import MedicineProduct, Product, ShoeProduct
 from apps.drug_check.service import lookup_query, order_checks
 from apps.drug_check.sources.selcuk import SelcukSource
 from apps.drug_check.sources.skrs import SkrsSource
@@ -189,6 +189,7 @@ def _send_order(post, settings, order, **kwargs):
     settings.TELEGRAM_CHAT_ID = "admin-chat"
     settings.TELEGRAM_ORDERS_CHAT_ID = ""
     settings.SITE_URL = "https://site.test"
+    settings.FRONTEND_SITE_URL = "https://shop.test"
     post.return_value = SimpleNamespace(status_code=200, ok=True)
 
     notify_new_order_telegram.run(order_id=order.id, **kwargs)
@@ -221,7 +222,16 @@ def test_manager_telegram_message_has_check_and_links_under_the_medicine(
     assert lines[4] == (
         f'🔎 <a href="{check_url}">Проверить по источникам</a> · <a href="{lookup_url}">Поиск по штрихкоду</a>'
     )
-    assert shoes == "2. <b>Кроссовки &lt;Run &amp; Go&gt;</b>\n1 шт. · 100.00 RUB"
+    # У каждой позиции — строка ссылок: товар в админке и на сайте (источника у кроссовок нет)
+    assert lines[5].startswith(
+        '🔗 <a href="https://site.test' + reverse("admin:catalog_medicineproduct_change", args=[nexium.pk]) + '">'
+    )
+    shoe_url = reverse("admin:catalog_shoeproduct_change", args=[ShoeProduct.objects.get(base_product=other).pk])
+    assert shoes == (
+        "2. <b>Кроссовки &lt;Run &amp; Go&gt;</b>\n1 шт. · 100.00 RUB\n"
+        f'🔗 <a href="https://site.test{shoe_url}">В админке</a>'
+        f' · <a href="https://shop.test/product/shoes/{other.slug}">На сайте</a>'
+    )
     assert post.call_args.kwargs["json"]["parse_mode"] == "HTML"
 
 

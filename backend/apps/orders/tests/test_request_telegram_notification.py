@@ -74,8 +74,8 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         self.assertIn("Имя: Ivan &lt;b&gt;&amp; Co&lt;/i&gt;", admin)
         self.assertIn('&lt;a href="https://evil.example"&gt;жми&lt;/a&gt; &amp; _*`[', admin)
         self.assertNotIn("<a href=\"https://evil", admin)
-        # Единственная ссылка — «Написать» из шаблона; имя покупателя в её адресе закодировано
-        self.assertEqual(admin.count("<a "), 1)
+        # Ссылки — только из шаблона: заявка в админке и «Написать»; имя покупателя в адресе закодировано
+        self.assertEqual(admin.count("<a "), 2)
         self.assertIn(
             '✍️ Написать: <a href="https://wa.me/79990000000?text=' + quote("Здравствуйте, Ivan <b>& Co</i>!", safe=""),
             admin,
@@ -159,8 +159,8 @@ class RequestTelegramNotificationTests(SimpleTestCase):
             "💰 <b>Итого: 150.00 RUB</b>",
             admin,
         )
-        # У обычного товара ссылок на проверку лекарств нет: единственная ссылка — «Написать»
-        self.assertEqual(admin.count("<a "), 1)
+        # У обычного товара ссылок на проверку лекарств нет: только заявка в админке и «Написать»
+        self.assertEqual(admin.count("<a "), 2)
         self.assertNotIn("admin", admin.split("🛒")[1])
 
     def test_broken_items_do_not_hold_the_message(self, select_related, telegram_post, *_):
