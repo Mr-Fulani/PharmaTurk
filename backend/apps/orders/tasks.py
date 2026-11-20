@@ -631,13 +631,78 @@ def _item_medicine(item):
     return getattr(product, "medicine_item", None)
 
 
-def _order_item_blocks(order, drug_checks: dict) -> tuple[list[str], list[str]]:
+def _order_item_links(items) -> list[str]:
+    """Строка ссылок каждой позиции: «В админке · На сайте · Источник» (HTML); без товара — пусто.
+
+    Запросы — на заявку, а не на позицию: товары, их записи разделов и недостающие адреса продавцов.
+    """
+    from django.db.models import prefetch_related_objects
+
+    from apps.catalog.admin_links import domain_record_prefetches, product_admin_url, product_site_url
+    from apps.catalog.models import Product, ProductSourceOffer
+    from apps.catalog.services.product_resolve import build_canonical_path
+
+    products = {
+        product.pk: product
+        for product in Product.objects.filter(pk__in={item.product_id for item in items if item.product_id}).only(
+            "product_type", "slug", "is_active", "external_url", "external_data"
+        )
+    }
+    prefetch_related_objects(
+        list(products.values()),
+        *domain_record_prefetches(product_types={product.product_type for product in products.values()}),
+    )
+    # Адрес продавца из предложений источников — только товарам без своей ссылки, одним запросом
+    without_source = {
+        item.product_id
+        for item in items
+        if item.product_id in products and not (item.source_url or products[item.product_id].external_url)
+    }
+    offer_urls = {}
+    if without_source:
+        # Обратный порядок: в словаре остаётся первый по алфавиту адрес, как у кнопки в админке
+        offers = ProductSourceOffer.objects.filter(product_id__in=without_source).order_by("-canonical_url")
+        offer_urls = dict(offers.values_list("product_id", "canonical_url"))
+
+    lines = []
+    for item in items:
+        product = products.get(item.product_id)
+        if product is None:
+            lines.append("")
+            continue
+        links = [_tg_link(settings.SITE_URL + product_admin_url(product), "В админке")]
+        site_url = product_site_url(product)
+        variant_slug = (product.external_data or {}).get("source_variant_slug")
+        if not site_url and product.is_active and product.slug and product.product_type != "medicines":
+            # Заказанная расцветка — служебный товар: карточка открывается по slug варианта,
+            # у украшений — по своему slug (как «На сайте» в позициях заказа админки)
+            slug = product.slug if product.product_type == "jewelry" else variant_slug or product.slug
+            site_url = _site_url() + build_canonical_path(product.product_type, slug)
+        if site_url:
+            links.append(_tg_link(site_url, "На сайте"))
+        # Ссылка, сохранённая при оформлении; у старых позиций — текущая ссылка товара
+        source = item.source_url or product.external_url or offer_urls.get(product.pk, "")
+        if source.startswith(("https://", "http://")):
+            links.append(_tg_link(source, "Источник"))
+        lines.append("🔗 " + " · ".join(links))
+    return lines
+
+
+def _order_item_blocks(order, drug_checks: dict, with_links: bool = True) -> tuple[list[str], list[str]]:
     """Позиции заявки абзацами (HTML) и названия позиций без цены."""
     from apps.drug_check.service import lookup_query
 
     h = _tg_html_escape
     blocks, on_request = [], []
-    for index, item in enumerate(order.items.all(), start=1):
+    items = list(order.items.all())
+    link_lines = [""] * len(items)
+    if with_links:
+        try:
+            link_lines = _order_item_links(items)
+        except Exception:
+            # Сбой ссылок не убирает позиции из сообщения
+            logger.warning("order_telegram_item_links_failed", exc_info=True)
+    for index, (item, link_line) in enumerate(zip(items, link_lines), start=1):
         lines = [f"{index}. <b>{h(item.product_name)}</b>"]
         if item.chosen_size:
             lines.append(f"Размер: {h(item.chosen_size)}")
@@ -671,6 +736,8 @@ def _order_item_blocks(order, drug_checks: dict) -> tuple[list[str], list[str]]:
                     "Поиск по штрихкоду" if query.isdigit() else "Поиск по названию",
                 )
             )
+        if link_line:
+            lines.append(link_line)
         blocks.append("\n".join(lines))
     return blocks, on_request
 
@@ -820,16 +887,27 @@ def notify_new_order_telegram(
             total.append("Цена по запросу (в сумму не вошли): " + h("; ".join(on_request)))
         total.append(f"Оплата: {h(payment_info)}")
         total.append(f"Доставка: {h(delivery_info)}")
-        sections = [
-            f"{'📝 <b>Новая заявка</b>' if is_request else '📦 <b>Новый заказ</b>'} <code>{h(order.number)}</code>",
-            "\n".join(buyer),
-        ]
-        if item_blocks:
-            sections += ["🛒 <b>Позиции</b>", *item_blocks]
-        sections.append("\n".join(total))
-        if order.comment:
-            sections.append(f"💬 <b>Комментарий</b>\n{h(order.comment)}")
-        admin_text = "\n\n".join(sections)
+
+        def _admin_text(blocks):
+            sections = [
+                f"{'📝 <b>Новая заявка</b>' if is_request else '📦 <b>Новый заказ</b>'} <code>{h(order.number)}</code>\n"
+                + _tg_link(_admin_url("admin:orders_order_change", order.id), "Открыть заявку в админке"),
+                "\n".join(buyer),
+            ]
+            if blocks:
+                sections += ["🛒 <b>Позиции</b>", *blocks]
+            sections.append("\n".join(total))
+            if order.comment:
+                sections.append(f"💬 <b>Комментарий</b>\n{h(order.comment)}")
+            return "\n\n".join(sections)
+
+        admin_text = _admin_text(item_blocks)
+        if item_blocks and _split_tg_text(admin_text)[-1].endswith(TELEGRAM_CUT_NOTICE):
+            # Не помещается: сначала уходят строки ссылок позиций, потом режется текст заявки
+            try:
+                admin_text = _admin_text(_order_item_blocks(order, drug_checks, with_links=False)[0])
+            except Exception:
+                logger.warning("order_telegram_items_failed", exc_info=True)
         admin_steps = _tg_delivery_steps(admin_text, pdf_bytes, f"🧾 Чек к заказу <code>{h(order.number)}</code>")
         try:
             for step_text, step_document in admin_steps[admin_steps_sent:]:
@@ -929,7 +1007,8 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
     )
     text = "\n\n".join(
         [
-            f"🔎 <b>Новая заявка на поиск товара</b> <code>{req.pk}</code>",
+            f"🔎 <b>Новая заявка на поиск товара</b> <code>{req.pk}</code>\n"
+            + _tg_link(_admin_url("admin:orders_sourcingrequest_change", req.pk), "Открыть заявку в админке"),
             "\n".join(wanted),
             "\n".join(buyer),
             lookup,

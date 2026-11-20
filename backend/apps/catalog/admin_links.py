@@ -13,15 +13,18 @@ def _accessor(model) -> str:
     return model._meta.get_field("base_product").remote_field.get_accessor_name()
 
 
-def domain_record_prefetches(product_path: str = "") -> list:
+def domain_record_prefetches(product_path: str = "", product_types=None) -> list:
     """Предзагрузка доменных записей для product_admin_url: по запросу на тип, а не на строку списка.
 
     product_path — путь до товара от модели списка («product» для позиции заказа).
+    product_types — только эти типы товаров (по умолчанию все).
     """
     prefix = f"{product_path}__" if product_path else ""
+    wanted = None if product_types is None else {str(value or "").replace("-", "_") for value in product_types}
     return [
         Prefetch(f"{prefix}{_accessor(model)}", queryset=model.objects.only("pk", "base_product_id"))
-        for model in domain_models().values()
+        for product_type, model in domain_models().items()
+        if wanted is None or product_type in wanted
     ]
 
 
