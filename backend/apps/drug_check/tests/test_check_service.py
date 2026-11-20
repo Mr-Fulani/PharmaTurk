@@ -13,7 +13,7 @@ from apps.drug_check.sources.selcuk import SelcukSource
 from apps.drug_check.sources.skrs import SkrsSource
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
 
-from .fixtures import ilacfiyati_card, ilacfiyati_search, selcuk_xlsx, skrs_xlsx
+from .fixtures import PAROL, ilacfiyati_card, ilacfiyati_search, selcuk_xlsx, skrs_xlsx
 
 NEXIUM_URL = "https://ilacfiyati.com/ilaclar/nexium-40-mg-enterik-kapli-14-pellet-tablet"
 
@@ -78,10 +78,14 @@ def test_nexium_in_stock_but_passive_in_skrs_is_highlighted_and_catalog_untouche
     assert results["selcuk"].status == "Нет в прайсе"
     assert report.level == ALERT
     assert calls == [NEXIUM_URL]  # один запрос на товар
-    line = report.telegram_status()
-    assert line.startswith("⚠️ SKRS: пассивен с 15.04.2025")
-    assert "IlacFiyati 202,15 TL (= наша)" in line
-    assert "у склада нет" in line
+    assert report.telegram_status() == (
+        "⚠️ В реестре Турции: снят с продажи с 15.04.2025"
+        " · Цена продавца 202,15 TL — у нас в базе та же · У оптовика нет в прайсе"
+    )
+    # подсказка в админке — прежняя, с названиями источников
+    assert results["skrs"].short == "SKRS: пассивен с 15.04.2025"
+    assert results["ilacfiyati"].short == "IlacFiyati 202,15 TL (= наша)"
+    assert results["selcuk"].short == "у склада нет"
     medicine.refresh_from_db()
     assert (medicine.price, medicine.is_available, medicine.is_active) == (Decimal("202.15"), True, True)
 
@@ -213,3 +217,177 @@ def test_lists_not_loaded_are_reported(web):
     results = _by_key(report)
     assert results["skrs"].status == "Файл не загружен"
     assert results["selcuk"].level == ERROR
+
+
+# ── Итог в сообщении о заявке: простыми словами, без названий источников ──
+
+PAROL_URL = "https://ilacfiyati.com/ilaclar/parol-500-mg-30-tablet"
+
+
+def _parol(pages, source_price, **extra):
+    pages[PAROL_URL] = ilacfiyati_card(
+        name="PAROL 500 MG 30 TABLET", price=source_price, barcode="8699717010093"
+    )
+    data = dict(
+        name="PAROL 500 мг", barcode="8699717010093", price=Decimal("105.16"),
+        external_url=PAROL_URL,
+    )
+    data.update(extra)
+    return _medicine(**data)
+
+
+@pytest.mark.django_db
+def test_telegram_line_all_sources_agree(lists, web):
+    line = check_medicine(_parol(web[0], "105,16 TL")).telegram_status()
+
+    assert line == "✅ В реестре Турции: действует · Цена продавца 105,16 TL — у нас в базе та же"
+    for word in ("SKRS", "IlacFiyati", "склад", "наша"):
+        assert word not in line
+
+
+@pytest.mark.django_db
+def test_telegram_line_shows_the_price_that_differs_most(lists, web):
+    pages, _calls = web
+
+    # у нас 100,00: один источник даёт 110,00, другой 105,16 — показана дальняя, без названий
+    parol = _parol(pages, "110,00 TL", price=Decimal("100.00"))
+    grown = check_medicine(parol).telegram_status()
+    # у нас 120,00: 110,00 и 105,16 — дальняя 105,16
+    parol.price = Decimal("120.00")
+    fallen = check_medicine(parol).telegram_status()
+
+    active = "⚠️ В реестре Турции: действует"
+    assert grown == f"{active} · Цена продавца выросла: 110,00 TL, у нас в базе 100,00 TL"
+    assert fallen == f"{active} · Цена продавца снизилась: 105,16 TL, у нас в базе 120,00 TL"
+
+
+@pytest.mark.django_db
+def test_telegram_line_passive_with_reason_and_removed_at_seller(lists, web):
+    pages, _calls = web
+    url = "https://ilacfiyati.com/ilaclar/aklav"
+    pages[url] = ilacfiyati_card(
+        name="AKLAV", price="50,00 TL", barcode="8699591280063", status="Pasif"
+    )
+    medicine = _medicine(
+        name="AKLAV", barcode="8699591280063", price=Decimal("50.00"), external_url=url
+    )
+
+    assert check_medicine(medicine).telegram_status() == (
+        "⚠️ В реестре Турции: снят с продажи с 10.11.2026 (по данным İTS нет на рынке)"
+        " · Цена продавца 50,00 TL — у нас в базе та же"
+        " · У продавца помечен снятым с продажи · У оптовика нет в прайсе"
+    )
+
+
+@pytest.mark.django_db
+def test_telegram_line_active_but_listed_for_removal(web):
+    SkrsSource().load_content(
+        skrs_xlsx(to_passive=[PAROL[:8]]), file_name="skrs.xlsx", file_date=date(2026, 11, 10)
+    )
+    SelcukSource().load_content(
+        selcuk_xlsx(), file_name="WEBLISTE-13-10-2026.xlsx", file_date=date(2026, 10, 13)
+    )
+
+    line = check_medicine(_parol(web[0], "105,16 TL")).telegram_status()
+
+    assert line == (
+        "⚠️ В реестре Турции: действует, но в списке на снятие с продажи"
+        " · Цена продавца 105,16 TL — у нас в базе та же"
+    )
+
+
+@pytest.mark.django_db
+def test_telegram_line_not_in_registry_and_other_barcode_on_page(lists, web):
+    pages, _calls = web
+    url = "https://ilacfiyati.com/ilaclar/import"
+    pages[url] = ilacfiyati_card(name="IMPORT", price="10,00 TL", barcode="8699000000017")
+    medicine = _medicine(
+        name="IMPORT", barcode="8699000000024", price=Decimal("10.00"), external_url=url,
+        is_available=False,
+    )
+
+    assert check_medicine(medicine).telegram_status() == (
+        "⚠️ В реестре Турции не найден · Цена продавца 10,00 TL — у нас в базе та же"
+        " · На странице продавца другой штрихкод · У оптовика нет в прайсе"
+    )
+
+
+@pytest.mark.django_db
+def test_telegram_line_no_data_cases(lists, web):
+    pages, _calls = web
+    parol = _parol(pages, "105,16 TL")
+
+    # продавец не успел ответить, но цену дал прайс оптовика — про «не успели» не пишем
+    late_with_price = check_medicine(parol, deadline=time.monotonic()).telegram_status()
+    # цену не дал никто: не успели / страница не открылась / на странице цены нет
+    nexium = _medicine(is_available=False)
+    late = check_medicine(nexium, deadline=time.monotonic()).telegram_status()
+    unreachable = check_medicine(nexium).telegram_status()
+    pages[NEXIUM_URL] = ilacfiyati_card(price="0,00 TL")
+    no_price = check_medicine(nexium).telegram_status()
+    # у нас цены нет — сравнить не с чем
+    pages[NEXIUM_URL] = ilacfiyati_card()
+    nexium.price = None
+    not_compared = check_medicine(nexium).telegram_status()
+
+    passive = "В реестре Турции: снят с продажи с 15.04.2025"
+    assert late_with_price == (
+        "✅ В реестре Турции: действует · Цена продавца 105,16 TL — у нас в базе та же"
+    )
+    assert late == f"ℹ️ {passive} · Цену у продавца проверить не успели · У оптовика нет в прайсе"
+    assert unreachable == (
+        f"ℹ️ {passive} · Цену у продавца проверить не удалось: страница источника не открылась"
+        " (нет ответа или 404) · У оптовика нет в прайсе"
+    )
+    assert no_price == f"⚠️ {passive} · У продавца цена не указана · У оптовика нет в прайсе"
+    assert not_compared == (
+        f"ℹ️ {passive} · Цена продавца 202,15 TL — с ценой в базе не сравнить"
+        " · У оптовика нет в прайсе"
+    )
+
+
+@pytest.mark.django_db
+def test_telegram_line_not_produced_at_wholesaler(lists, web):
+    medicine = _medicine(
+        name="TOPAMAX", barcode="8699593095085", price=Decimal("855.85"), external_url="",
+        is_available=False,
+    )
+    web[0]["https://ilacfiyati.com/tum-urunler?q=8699593095085"] = ilacfiyati_search()
+
+    assert check_medicine(medicine).telegram_status() == (
+        "ℹ️ В реестре Турции не найден"
+        " · Цену у продавца проверить не удалось: по штрихкоду карточка не найдена"
+        " · У оптовика помечен «не производится»"
+    )
+
+
+@pytest.mark.django_db
+def test_telegram_line_without_barcode_lists_or_working_source(lists, web, monkeypatch):
+    no_barcode = _medicine(barcode="1111111234567", external_url="")
+    assert check_medicine(no_barcode).telegram_status() == (
+        "ℹ️ Реестр Турции: не проверить без штрихкода"
+        " · Цену у продавца проверить не удалось:"
+        " нет ссылки на карточку источника и настоящего штрихкода"
+        " · Прайс оптовика: не проверить без штрихкода"
+    )
+
+    def broken(self, ctx):
+        raise RuntimeError("boom")
+
+    for source in (SkrsSource, SelcukSource):
+        monkeypatch.setattr(source, "check", broken)
+    assert check_medicine(_medicine()).telegram_status() == (
+        "❔ Реестр Турции: проверить не удалось"
+        " · Цену у продавца проверить не удалось:"
+        " страница источника не открылась (нет ответа или 404)"
+        " · Прайс оптовика: проверить не удалось"
+    )
+
+
+@pytest.mark.django_db
+def test_telegram_line_when_lists_are_not_loaded(web):
+    web[0][NEXIUM_URL] = ilacfiyati_card()
+
+    assert check_medicine(_medicine()).telegram_status() == (
+        "ℹ️ Реестр Турции: список ещё не загружен · Цена продавца 202,15 TL — у нас в базе та же"
+    )

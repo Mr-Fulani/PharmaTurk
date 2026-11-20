@@ -53,6 +53,7 @@ def reason_ru(text: str) -> str:
 class SkrsSource(FileSource):
     key = "skrs"
     title = "SKRS (TİTCK)"
+    plain_title = "Реестр Турции"
     page_url = "https://www.titck.gov.tr/dinamikmodul/43"
     allowed_hosts = frozenset({"titck.gov.tr", "www.titck.gov.tr"})
 
@@ -131,6 +132,7 @@ class SkrsSource(FileSource):
             result.status = "Нет в списке"
             result.note = "Штрихкода нет ни среди активных, ни среди пассивных (импорт, новинка или старый)."
             result.short = "SKRS: нет в списке"
+            result.missing = "В реестре Турции не найден"
             return result
         since = fmt_date(entry.status_date)
         reason = reason_ru(entry.reason) if entry.reason else ""
@@ -139,6 +141,11 @@ class SkrsSource(FileSource):
             result.status = f"Пассивен с {since}" if since else "Пассивен"
             result.note = reason or "Препарат выключен из списка для рецептов: скорее всего, не продаётся."
             result.short = f"SKRS: пассивен с {since}" + (f" ({reason})" if reason else "")
+            result.plain = (
+                "В реестре Турции: снят с продажи"
+                + (f" с {since}" if since else "")
+                + (f" ({reason})" if reason else "")
+            )
         else:
             result.level = WARN if (ctx.our_available is False or reason) else OK
             result.status = f"Активен с {since}" if since else "Активен"
@@ -146,6 +153,10 @@ class SkrsSource(FileSource):
                 "У нас «нет в наличии», а в SKRS активен — возможно, зря скрыт." if ctx.our_available is False else ""
             )
             result.short = "SKRS: активен" + (f" ({reason})" if reason else "")
+            # У «активных» пояснение одно — «в списке на перевод в пассивные» (см. parse)
+            result.plain = "В реестре Турции: действует" + (
+                ", но в списке на снятие с продажи" if reason else ""
+            )
         if entry.firm:
             result.note = (result.note + f" Фирма: {entry.firm.rstrip('.')}.").strip()
         return result

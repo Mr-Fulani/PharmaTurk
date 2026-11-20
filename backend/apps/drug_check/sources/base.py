@@ -69,7 +69,11 @@ class SourceResult:
     currency: str = "TRY"
     price_date: date | None = None
     note: str = ""  # пояснение для менеджера
-    short: str = ""  # одна фраза для Telegram
+    short: str = ""  # одна фраза для подсказки в админке
+    # Для сообщения о заявке, простыми словами и без названий источников (service.telegram_status):
+    plain: str = ""  # фраза, которая показывается всегда
+    missing: str = ""  # «данных нет»; у источника цены не показывается, если цену дал другой
+    price_diff: Decimal | None = None  # цена источника минус наша, если их можно сравнить
     url: str = ""
     file_date: date | None = None
 
@@ -113,6 +117,20 @@ def price_short(label: str, theirs: Decimal | None, comparison: str | None) -> s
     return text
 
 
+def price_gap(
+    ours: Decimal | None, theirs: Decimal | None, comparison: str | None
+) -> Decimal | None:
+    """Разница для ``SourceResult.price_diff`` по итогу ``compare_price``; None — не сравнить."""
+    if comparison is None:
+        return None
+    return theirs - ours if comparison else Decimal("0")
+
+
+def price_not_compared(value: Decimal, currency: str = "TRY") -> str:
+    amount = fmt_price(value) if currency == "TRY" else f"{value:.2f} {currency}"
+    return f"Цена продавца {amount} — с ценой в базе не сравнить"
+
+
 def http_client(timeout: float) -> httpx.Client:
     # trust_env=False: без прокси из окружения — проверка ходит только напрямую.
     return httpx.Client(
@@ -128,6 +146,7 @@ class FileSource:
 
     key = ""
     title = ""
+    plain_title = ""  # как источник назван в сообщении о заявке
     page_url = ""
     allowed_hosts: frozenset[str] = frozenset()
 
@@ -250,12 +269,14 @@ class FileSource:
             result.status = "Файл не загружен"
             result.note = "Список ещё не загружали: load_drug_reference_files."
             result.short = f"{self.title}: файл не загружен"
+            result.missing = f"{self.plain_title}: список ещё не загружен"
             return result
         barcode = ctx.real_barcode
         if not barcode:
             result.status = "Сверить нельзя"
             result.note = "Нет настоящего штрихкода (пусто или служебный «1111111…»)."
             result.short = f"{self.title}: нет штрихкода"
+            result.missing = f"{self.plain_title}: не проверить без штрихкода"
             return result
         entry = DrugReferenceEntry.objects.filter(source=self.key, barcode=barcode).first()
         return self.describe(entry, ctx, result)
