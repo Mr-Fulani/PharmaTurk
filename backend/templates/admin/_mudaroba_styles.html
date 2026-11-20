@@ -1,0 +1,39 @@
+{# Плитки главной и кнопки-ссылки админки (docs/ADMIN_HOME_TILES.md). Цвета — переменные темы админки: светлая и тёмная. #}
+<style>
+  .mud-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;
+               margin: 0 0 20px; padding: 0; list-style: none; }
+  .mud-tiles li { margin: 0; padding: 0; list-style: none; }
+  /* На широком экране главная админки — колонка 600 px; плитки занимают ширину вместе с «Последними действиями» */
+  @media (min-width: 1025px) { .mud-tiles { width: min(1100px, calc(100vw - 80px)); } }
+  a.mud-tile:link, a.mud-tile:visited {
+    display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; height: 100%; min-height: 96px;
+    padding: 12px; border: 1px solid var(--hairline-color, #e8e8e8); border-top: 4px solid var(--primary, #79aec8);
+    border-radius: 8px; background: var(--darkened-bg, #f8f8f8); color: var(--body-fg, #333);
+    text-decoration: none; overflow-wrap: break-word; }
+  a.mud-tile:hover, a.mud-tile:focus { border-color: var(--link-fg, #417690); }
+  .mud-tile__title { font-size: 0.875rem; font-weight: 600; color: var(--link-fg, #417690); }
+  .mud-tile__value { font-size: 1.75rem; font-weight: 700; line-height: 1.2; color: var(--body-loud-color, #000); }
+  .mud-tile__label { font-size: 0.8125rem; color: var(--body-quiet-color, #666); }
+  .mud-tile__extra { margin-top: auto; padding-top: 6px; font-size: 0.8125rem; color: var(--body-fg, #333); }
+
+  .mud-btn-bar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: 0 0 16px; padding: 0; list-style: none; }
+  .mud-btn-bar li { margin: 0; padding: 0; list-style: none; }
+  .mud-btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mud-btn, a.mud-btn:link, a.mud-btn:visited {
+    display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 8px 14px;
+    border: 1px solid var(--border-color, #ccc); border-radius: 6px; background: var(--darkened-bg, #f8f8f8);
+    color: var(--body-fg, #333); font-size: 0.875rem; font-weight: 600; line-height: 1.25; text-decoration: none;
+    overflow-wrap: anywhere; cursor: pointer; }
+  .mud-btn:hover, .mud-btn:focus, a.mud-btn:hover, a.mud-btn:focus { border-color: var(--link-fg, #417690); color: var(--link-fg, #417690); }
+  a.mud-btn--small:link, a.mud-btn--small:visited { min-height: 36px; padding: 4px 10px; font-size: 0.8125rem; white-space: nowrap; }
+  .mud-btn-more > summary { list-style: none; }
+  .mud-btn-more > summary::-webkit-details-marker { display: none; }
+  .mud-btn-more > summary::after { content: "▾"; }
+  .mud-btn-more[open] > summary::after { content: "▴"; }
+  .mud-btn-more__list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  @media (max-width: 767px) {
+    .mud-btn-bar { flex-direction: column; align-items: stretch; }
+    .mud-btn-bar .mud-btn { width: 100%; }
+    .mud-btn-row { flex-direction: column; }
+  }
+</style>

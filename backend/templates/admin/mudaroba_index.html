@@ -1,6 +1,7 @@
 {% extends "admin/index.html" %}
 {% block extrastyle %}{{ block.super }}{% include "admin/drug_check/_styles.html" %}{% endblock %}
 {% block content %}
+{% include "admin/_home_tiles.html" %}
 {% if perms.catalog.view_medicineproduct %}
 <div class="module dc-index" id="drug-check-search">
   <h2>Проверить лекарство: продаётся ли и какая цена</h2>

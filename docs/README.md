@@ -88,7 +88,8 @@
 
 - [CRYPTO_PAYMENTS.md](../CRYPTO_PAYMENTS.md) — CoinRemitter и жизненный цикл криптоинвойса;
 - [notifications-and-receipts.md](notifications-and-receipts.md) — каналы уведомлений и PDF-чеки;
-- [ADMIN_PRODUCT_LINKS.md](ADMIN_PRODUCT_LINKS.md) — кнопки «Посмотреть на сайте» и «Источник» вверху карточки любого товара в админке;
+- [ADMIN_PRODUCT_LINKS.md](ADMIN_PRODUCT_LINKS.md) — кнопки «На сайте» и «У продавца» вверху карточки любого товара в админке;
+- [ADMIN_HOME_TILES.md](ADMIN_HOME_TILES.md) — плитки частых разделов на главной админки (заявки, пользователи, корзины, цены) и единый вид кнопок-ссылок;
 - [ORDER_PROCESSING.md](ORDER_PROCESSING.md) — обработка заявок в админке: отметка «Обработка», ответственный, история, фильтры;
 - [CART_REMINDERS.md](CART_REMINDERS.md) — напоминания о неотправленном Списке заявки: включение в админке, кому и когда, отписка, журнал;
 - [VK_YML_FEED.md](VK_YML_FEED.md) — YML-фид для ВК/Яндекса: фоновая сборка, ссылки разделов, фото в ВК, лимиты ВК и категории;
