@@ -1530,7 +1530,9 @@ export default function ProductPage({
     (product.translations && product.translations.length > 0 ? '' : product.meta_keywords) ||
     ''
   ).trim()
-  const rawOgImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || getPlaceholderImageUrl()
+  // Превью ссылки — то же фото, что на странице. og_image_url парсер заполнил один раз и при смене
+  // фото в админке его никто не обновляет: там оставалась старая картинка или удалённый файл.
+  const rawOgImage = activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || (product.og_image_url || '').trim() || getPlaceholderImageUrl()
   const toAbsoluteMediaUrl = (value: string) => {
     const resolved = resolveMediaUrl(value)
     return resolved.startsWith('http://') || resolved.startsWith('https://')
