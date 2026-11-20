@@ -5,9 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.catalog.domain_sync import MOVED_FROM_SUPPLEMENTS_KEY
 from apps.catalog.models import (
     Brand, Category, CategoryType, MedicineProduct, MedicineProductImage, Product,
-    MedicineProductTranslation, ProductTranslation,
+    MedicineProductTranslation, ProductTranslation, SupplementProduct,
 )
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.medicine_categories import (
@@ -919,3 +920,42 @@ def test_supplement_subcategory_task_does_not_return_moved_oil_to_supplements(oi
     assert result["updated"] == 1
     assert (existing.product_type, existing.category) == ("incense", oil_catalog["eucalyptus"])
     assert existing.price == 180
+
+
+MOVED_URL = "https://ilacfiyati.com/takviye-edici-gida/cacicol-goz-damlasi-5x0-33-ml-flakon"
+
+
+@pytest.mark.parametrize("target", ["vitamins", "supplements", None])
+def test_medicine_moved_from_supplements_is_not_returned_by_supplement_crawl(supplement_catalog, target):
+    """Глазные капли источник держит среди БАДов; у нас они перенесены в лекарства
+    (move_supplements_to_medicines). Обход раздела БАДов — с подразделом, корнем или без
+    категории в задаче — обновляет цену, но не возвращает тип и категорию, не создаёт второй
+    товар и не оживляет снятую запись БАДа."""
+    base = Product.objects.create(
+        name="CACICOL Капли для глаз", slug="cacicol-goz-damlasi", product_type="medicines",
+        category=supplement_catalog["root"], price=200, currency="TRY",
+        external_id="cacicol-goz-damlasi-5x0-33-ml-flakon", external_url=MOVED_URL,
+        external_data={"source": "ilacfiyati", MOVED_FROM_SUPPLEMENTS_KEY: "2026-11-20"},
+    )
+    retired = SupplementProduct.objects.bulk_create([SupplementProduct(
+        name=base.name, slug=base.slug, base_product=base, category=supplement_catalog["vitamins"],
+        price=200, currency="TRY", is_active=False,
+    )])[0]
+    item = supplement_scraped(
+        name="CACICOL GOZ DAMLASI 5x0,33 ml flakon", external_id=base.external_id, url=MOVED_URL, price=250,
+        attributes={"manufacturer": "Thea Pharma"},
+    )
+
+    result = ScraperIntegrationService()._process_scraped_products(
+        real_session(supplement_catalog, target=target), [item],
+    )
+
+    base.refresh_from_db()
+    retired.refresh_from_db()
+    assert (result["created"], result["updated"], result["errors"]) == (0, 1, 0)
+    assert (base.product_type, base.category, base.price) == ("medicines", supplement_catalog["root"], 250)
+    assert base.external_data[MOVED_FROM_SUPPLEMENTS_KEY] == "2026-11-20"
+    assert retired.is_active is False
+    assert SupplementProduct.objects.filter(base_product=base).count() == 1
+    assert MedicineProduct.objects.filter(base_product=base, is_active=True).count() == 1
+    assert Product.objects.filter(external_url=MOVED_URL).count() == 1

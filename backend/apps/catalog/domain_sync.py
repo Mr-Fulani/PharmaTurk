@@ -202,6 +202,11 @@ def ensure_domain_product_for_base(product):
 # бы товару старый тип и is_active=False. Файлы в хранилище не удаляются —
 # на них по-прежнему ссылаются обе записи.
 
+# Метка в Product.external_data: товар перенесён из БАДов в лекарства решением владельца
+# (move_supplements_to_medicines). Источник по-прежнему держит его среди БАДов, поэтому
+# категория задачи парсера не возвращает его обратно (scrapers.services._category_changes_domain).
+MOVED_FROM_SUPPLEMENTS_KEY = "moved_from_supplements"
+
 _VARIANT_RELATIONS = ("variants", "book_variants")
 _GALLERY_RELATIONS = ("images", "gallery_images")
 
