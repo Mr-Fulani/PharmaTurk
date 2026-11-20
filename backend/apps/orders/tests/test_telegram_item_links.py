@@ -9,7 +9,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from apps.catalog.models import MedicineProduct, Product, ProductSourceOffer, SupplementProduct
+from apps.catalog.models import AccessoryProduct, MedicineProduct, Product, ProductSourceOffer, SupplementProduct
 from apps.orders.models import Order, OrderItem, SourcingRequest
 from apps.orders.tasks import (
     TELEGRAM_CUT_NOTICE,
@@ -62,6 +62,12 @@ def _send(order):
         # Готовый итог проверки лекарств: без него задача пошла бы к источникам по сети
         notify_new_order_telegram.run(order_id=order.id, drug_checks={})
     return [call.kwargs["json"]["text"] for call in post.call_args_list]
+
+
+def _accessory_admin_url(product):
+    # Запись раздела «Аксессуары» у товара создаётся сама — «В админке» ведёт на неё
+    record = AccessoryProduct.objects.get(base_product=product)
+    return reverse("admin:catalog_accessoryproduct_change", args=[record.pk])
 
 
 def _link(url, label):
@@ -119,11 +125,11 @@ def test_product_without_source_and_hidden_product():
 
     first, second = text.split("\n\n")[3:5]
     assert first.split("\n")[-1] == (
-        "🔗 " + _link(ADMIN + reverse("admin:catalog_product_change", args=[plain.pk]), "В админке")
+        "🔗 " + _link(ADMIN + _accessory_admin_url(plain), "В админке")
         + " · " + _link(f"{SITE}/product/{plain.slug}", "На сайте")
     )
     assert second.split("\n")[-1] == (
-        "🔗 " + _link(ADMIN + reverse("admin:catalog_product_change", args=[hidden.pk]), "В админке")
+        "🔗 " + _link(ADMIN + _accessory_admin_url(hidden), "В админке")
         + " · " + _link("https://www.flo.com.tr/urun/a", "Источник")
     )
 
