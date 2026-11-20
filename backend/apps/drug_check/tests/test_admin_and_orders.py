@@ -165,7 +165,7 @@ def test_order_checks_cover_each_medicine_once_and_skip_other_goods(lists, web, 
     checks = order_checks(order)
 
     assert list(checks) == [str(nexium.pk)]
-    assert checks[str(nexium.pk)].startswith("⚠️ SKRS: пассивен с 15.04.2025")
+    assert checks[str(nexium.pk)].startswith("⚠️ В реестре Турции: снят с продажи с 15.04.2025")
     assert order_checks(_order_with(other)) == {}
 
 
@@ -175,8 +175,9 @@ def test_order_checks_stop_external_requests_after_time_budget(lists, web, nexiu
 
     text = order_checks(_order_with(nexium.base_product), seconds=0)[str(nexium.pk)]
 
-    assert "IlacFiyati: не успели проверить" in text
-    assert "SKRS: пассивен с 15.04.2025" in text  # своя таблица — без сети, всегда есть
+    assert "Цену у продавца проверить не успели" in text
+    # своя таблица — без сети, всегда есть
+    assert "В реестре Турции: снят с продажи с 15.04.2025" in text
     assert calls == []
 
 
@@ -218,7 +219,7 @@ def test_manager_telegram_message_has_check_and_links_under_the_medicine(
     assert lines[0] == "1. <b>NEXIUM (эзомепразол) 40 мг, 14 таб.</b>"
     assert lines[1] == "1 шт. · 100.00 RUB"
     assert lines[2] == "🏥 Больничный препарат · ⛔ Ввоз ограничен: RU, KZ"
-    assert lines[3].startswith("⚠️ SKRS: пассивен с 15.04.2025")
+    assert lines[3].startswith("⚠️ В реестре Турции: снят с продажи с 15.04.2025")
     assert lines[4] == (
         f'🔎 <a href="{check_url}">Проверить по источникам</a> · <a href="{lookup_url}">Поиск по штрихкоду</a>'
     )

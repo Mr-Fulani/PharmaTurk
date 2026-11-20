@@ -16,7 +16,18 @@ from decimal import Decimal, InvalidOperation
 from apps.drug_check.models import DrugReferenceEntry
 from apps.drug_check.xlsx import Workbook, XlsxError, barcode_from, cell, excel_date
 
-from .base import ALERT, OK, WARN, CheckContext, FileSource, SourceResult, compare_price, price_short
+from .base import (
+    ALERT,
+    OK,
+    WARN,
+    CheckContext,
+    FileSource,
+    SourceResult,
+    compare_price,
+    price_gap,
+    price_not_compared,
+    price_short,
+)
 
 SHEET = "WEBLISTE"
 BARCODE, NAME, PRICE, FIRM, PRICE_DATE = 0, 1, 2, 3, 4
@@ -34,6 +45,7 @@ def _price(value: str) -> Decimal | None:
 class SelcukSource(FileSource):
     key = "selcuk"
     title = "Склад (Selçuk)"
+    plain_title = "Прайс оптовика"
     page_url = "https://selcukecza.com.tr/sayfa/ilac-fiyat-ve-barkod-arama/ilac-ve-barkod-arama"
     allowed_hosts = frozenset({"selcukecza.com.tr", "www.selcukecza.com.tr"})
 
@@ -85,6 +97,7 @@ class SelcukSource(FileSource):
             result.status = "Нет в прайсе"
             result.note = "Подсказка, не приговор: склад возит не все препараты."
             result.short = "у склада нет"
+            result.plain = "У оптовика нет в прайсе"
             return result
         result.price = entry.price
         result.price_date = entry.price_date
@@ -93,6 +106,7 @@ class SelcukSource(FileSource):
             result.status = "Не производится"
             result.note = "Склад держит позицию в группе «не производится»."
             result.short = "склад: не производится"
+            result.plain = "У оптовика помечен «не производится»"
             return result
         comparison = compare_price(ctx.our_price, ctx.our_currency, entry.price)
         result.status = "Есть в прайсе"
@@ -100,4 +114,7 @@ class SelcukSource(FileSource):
         if comparison:
             result.note = f"Цена склада другая: {comparison}."
         result.short = price_short("склад", entry.price, comparison)
+        result.price_diff = price_gap(ctx.our_price, entry.price, comparison)
+        if comparison is None and entry.price is not None:
+            result.missing = price_not_compared(entry.price)
         return result

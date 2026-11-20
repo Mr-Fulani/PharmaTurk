@@ -20,7 +20,18 @@ from bs4 import BeautifulSoup
 from apps.catalog.services.medicine_market_check import MedicineMarketCheckService
 from apps.scrapers.models import ScraperConfig
 
-from .base import ALERT, ERROR, OK, WARN, CheckContext, SourceResult, compare_price, price_short
+from .base import (
+    ALERT,
+    ERROR,
+    OK,
+    WARN,
+    CheckContext,
+    SourceResult,
+    compare_price,
+    price_gap,
+    price_not_compared,
+    price_short,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +44,14 @@ class _NotChecked(Exception):
     """Проверить не удалось; текст — для менеджера."""
 
 
+class _OutOfTime(_NotChecked):
+    """Время на проверку заявки вышло до запроса."""
+
+
 class IlacFiyatiSource:
     key = "ilacfiyati"
     title = "IlacFiyati"
+    plain_title = "Цена продавца"
 
     @staticmethod
     def _parser():
@@ -71,7 +87,7 @@ class IlacFiyatiSource:
     def _fetch(parser, ctx: CheckContext, url: str) -> str:
         left = ctx.seconds_left()
         if left is not None and left < MIN_SECONDS:
-            raise _NotChecked("не успели проверить (время на проверку вышло)")
+            raise _OutOfTime("не успели проверить (время на проверку вышло)")
         parser.client.timeout = httpx.Timeout(REQUEST_TIMEOUT if left is None else min(REQUEST_TIMEOUT, left))
         html = parser._make_request(url)
         if not html:
@@ -119,6 +135,11 @@ class IlacFiyatiSource:
             result.status = "Не проверено"
             result.note = str(exc)
             result.short = f"IlacFiyati: {exc}"
+            result.missing = (
+                "Цену у продавца проверить не успели"
+                if isinstance(exc, _OutOfTime)
+                else f"Цену у продавца проверить не удалось: {exc}"
+            )
             return result
         except Exception as exc:
             logger.warning("drug_check_ilacfiyati_failed", extra={"url": result.url}, exc_info=True)
@@ -126,6 +147,7 @@ class IlacFiyatiSource:
             result.status = "Не проверено"
             result.note = f"источник не ответил или страница не разобралась ({type(exc).__name__})"
             result.short = "IlacFiyati: не удалось проверить"
+            result.missing = "Цену у продавца проверить не удалось"
             return result
         finally:
             if parser is not None and parser.client:
@@ -138,7 +160,7 @@ class IlacFiyatiSource:
             result.price = None
         currency = (scraped.currency or "TRY").upper()
         result.currency = currency
-        notes = []
+        notes, plain = [], []
         inactive = bool(getattr(scraped, "source_inactive", False))
         result.status = "Pasif (снят)" if inactive else "Aktif"
         level = OK
@@ -151,6 +173,7 @@ class IlacFiyatiSource:
         page_barcode = (scraped.barcode or "").strip()
         if ctx.real_barcode and page_barcode and page_barcode != ctx.real_barcode:
             notes.append(f"Штрихкод на странице другой: {page_barcode}.")
+            plain.append("На странице продавца другой штрихкод")
             level = ALERT
         comparison = compare_price(ctx.our_price, ctx.our_currency, result.price) if currency == "TRY" else None
         if currency != "TRY" and result.price is not None:
@@ -162,8 +185,14 @@ class IlacFiyatiSource:
         result.note = " ".join(notes)
         if result.price is not None:
             result.short = price_short("IlacFiyati", result.price, comparison)
+            result.price_diff = price_gap(ctx.our_price, result.price, comparison)
+            if comparison is None:
+                result.missing = price_not_compared(result.price, currency)
         else:
             result.short = "IlacFiyati: цены нет"
+            result.missing = "У продавца цена не указана"
         if inactive:
             result.short += ", Pasif"
+            plain.insert(0, "У продавца помечен снятым с продажи")
+        result.plain = " · ".join(plain)
         return result

@@ -16,12 +16,13 @@ from django.utils import timezone
 from apps.catalog.models import MedicineProduct
 
 from .sources import SOURCES, file_sources
-from .sources.base import ALERT, ERROR, LEVEL_ORDER, WARN, CheckContext, SourceResult
+from .sources.base import ALERT, ERROR, LEVEL_ORDER, WARN, CheckContext, SourceResult, fmt_price
 
 logger = logging.getLogger(__name__)
 
 ORDER_CHECK_SECONDS = 15  # на все лекарства заявки; дальше «не успели проверить»
 ORDER_MAX_MEDICINES = 10
+REGISTRY = "skrs"  # государственный реестр: его фраза в сообщении о заявке идёт первой
 
 
 @dataclass
@@ -40,17 +41,42 @@ class DrugCheckReport:
         levels = [r.level for r in self.results] or [ERROR]
         return max(levels, key=LEVEL_ORDER.__getitem__)
 
+    def _price_phrase(self) -> str:
+        """Одна фраза про цену: из сравнимых цен источников — та, что дальше от нашей."""
+        compared = [r for r in self.results if r.price_diff is not None]
+        if not compared:
+            return ""
+        result = max(compared, key=lambda r: abs(r.price_diff))
+        if not result.price_diff:
+            return f"Цена продавца {fmt_price(result.price)} — у нас в базе та же"
+        verb = "выросла" if result.price_diff > 0 else "снизилась"
+        ours = fmt_price(result.price - result.price_diff)
+        return f"Цена продавца {verb}: {fmt_price(result.price)}, у нас в базе {ours}"
+
     def telegram_status(self) -> str:
-        """Итог одной фразой: «⚠️ SKRS: пассивен с …; IlacFiyati …; у склада нет»."""
+        """Итог для менеджера простыми словами, без названий источников.
+
+        «✅ В реестре Турции: действует · Цена продавца 204,49 TL — у нас в базе та же».
+        Порядок: реестр, цена, замечания источников цены. Подробности — в окне проверки.
+        """
+        price = self._price_phrase()
+        registry, sellers, no_data = [], [], False
+        for result in self.results:
+            phrases = [result.plain]
+            if result.missing and (result.key == REGISTRY or not price):
+                phrases.append(result.missing)
+                no_data = True
+            (registry if result.key == REGISTRY else sellers).extend(p for p in phrases if p)
         level = self.level
         if level in (ALERT, WARN):
             icon = "⚠️"
         elif all(r.level == ERROR for r in self.results):
             icon = "❔"
+        elif no_data:
+            icon = "ℹ️"
         else:
             icon = "✅"
-        details = "; ".join(r.short for r in self.results if r.short)
-        return f"{icon} {details}"
+        return f"{icon} " + " · ".join([*registry, *([price] if price else []), *sellers])
 
 
 def lookup_query(medicine: MedicineProduct) -> str:
@@ -88,6 +114,7 @@ def _run(ctx: CheckContext, sources=None) -> list[SourceResult]:
                     status="Не проверено",
                     note="Ошибка проверки источника (подробности в журнале).",
                     short=f"{source.title}: не удалось проверить",
+                    missing=f"{source.plain_title}: проверить не удалось",
                 )
             )
     return results
@@ -133,7 +160,7 @@ def _order_medicines(order) -> list[MedicineProduct]:
 
 
 def order_checks(order, *, seconds: float = ORDER_CHECK_SECONDS) -> dict[str, str]:
-    """Итоги проверки лекарств заявки для сообщения менеджеру: {id лекарства: итог одной фразой}.
+    """Итоги проверки лекарств заявки для сообщения менеджеру: {id лекарства: итог одной строкой}.
 
     Ключи — строки: словарь передаётся в повтор задачи Celery (JSON). Пусто, если лекарств нет.
     Время ограничено: что не успели — «не успели проверить», заявку и сообщение это не держит
@@ -152,5 +179,5 @@ def order_checks(order, *, seconds: float = ORDER_CHECK_SECONDS) -> dict[str, st
             checks[str(medicine.pk)] = check_medicine(medicine, deadline=deadline).telegram_status()
         except Exception:
             logger.exception("drug_check_order_medicine_failed", extra={"medicine": medicine.pk})
-            checks[str(medicine.pk)] = "❔ не удалось проверить"
+            checks[str(medicine.pk)] = "❔ Проверить не удалось"
     return checks
