@@ -274,7 +274,7 @@ def test_order_draft_language_follows_checkout_language():
     ProductTranslation.objects.update_or_create(product=product, locale="en", defaults={"name": "Parol 500 mg"})
 
     def html_for(locale):
-        order = _order(locale=locale, contact_name="Ivan")
+        order = _order(locale=locale, contact_name="Ivan", contact_email="ivan@example.test")
         OrderItem.objects.create(order=order, product=product, product_name="Парол 500 мг", price=Decimal("1"),
                                  quantity=1, total=Decimal("1"))
         OrderItem.objects.create(order=order, product_name="Без перевода", price=Decimal("1"), quantity=1,
@@ -380,7 +380,8 @@ def test_items_summary_shows_three_and_more_without_query_per_order(rf):
     with CaptureQueriesContext(connection) as queries:
         rows = [str(admin.items_summary(o)) for o in admin.get_queryset(request)]
 
-    assert len(queries) == 3  # заказы + позиции с товаром + фото галерей
+    # заказы + позиции с товаром + фото галерей + переводы названий (для английского черновика)
+    assert len(queries) == 4
     html = rows[0]
     assert "Позиция 0 ×1" in html and "Позиция 2 ×3" in html and "Позиция 3" not in html
     assert "+2" in html
