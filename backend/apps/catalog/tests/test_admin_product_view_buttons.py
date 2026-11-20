@@ -118,7 +118,8 @@ def test_medicine_record_uses_base_product_sources():
 
 
 @pytest.mark.django_db
-def test_buttons_on_admin_pages(admin_client):
+def test_buttons_on_admin_pages(client, django_user_model):
+    client.force_login(django_user_model.objects.create_superuser("links-admin", "links@example.com", "x" * 20))
     slug = f"lekarstvo-{uuid4().hex}"
     medicine = MedicineProduct.objects.create(
         name="Лекарство", slug=slug, external_url='https://ilacfiyati.com/ilaclar/x?a="><b>'
@@ -129,7 +130,7 @@ def test_buttons_on_admin_pages(admin_client):
         reverse("admin:catalog_medicineproduct_change", args=[medicine.pk]),
         reverse("admin:catalog_product_change", args=[medicine.base_product_id]),
     ):
-        html = admin_client.get(url).content.decode()
+        html = client.get(url).content.decode()
         assert (
             f'<a href="https://site.test/product/{slug}" class="viewsitelink" target="_blank" '
             'rel="noopener noreferrer"'
@@ -138,5 +139,5 @@ def test_buttons_on_admin_pages(admin_client):
         assert 'href="https://ilacfiyati.com/ilaclar/x?a=&quot;&gt;&lt;b&gt;"' in html
 
     # У не-товара кнопок нет, страница открывается
-    offers = admin_client.get(reverse("admin:catalog_productsourceoffer_changelist"))
+    offers = client.get(reverse("admin:catalog_productsourceoffer_changelist"))
     assert offers.status_code == 200
