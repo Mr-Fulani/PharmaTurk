@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 from django.urls import reverse
 
+from apps.catalog.domain_sync import MOVED_FROM_SUPPLEMENTS_KEY
 from apps.catalog.models import MedicineProduct, Product, ShoeProduct
 from apps.drug_check.service import lookup_query, order_checks
 from apps.drug_check.sources.selcuk import SelcukSource
@@ -167,6 +168,18 @@ def test_order_checks_cover_each_medicine_once_and_skip_other_goods(lists, web, 
     assert list(checks) == [str(nexium.pk)]
     assert checks[str(nexium.pk)].startswith("⚠️ В реестре Турции: снят с продажи с 15.04.2025")
     assert order_checks(_order_with(other)) == {}
+
+
+@pytest.mark.django_db
+def test_order_checks_skip_medicine_moved_from_supplements(lists, web, nexium):
+    # Глазные капли и спреи, перенесённые из БАДов: в SKRS их нет — «нет в списке» было бы ложной тревогой.
+    Product.objects.filter(pk=nexium.base_product_id).update(
+        external_data={"source": "ilacfiyati", MOVED_FROM_SUPPLEMENTS_KEY: "2026-11-20"},
+    )
+    _pages, calls = web
+
+    assert order_checks(_order_with(Product.objects.get(pk=nexium.base_product_id))) == {}
+    assert calls == []
 
 
 @pytest.mark.django_db

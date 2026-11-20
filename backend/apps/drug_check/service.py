@@ -13,6 +13,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from apps.catalog.domain_sync import MOVED_FROM_SUPPLEMENTS_KEY
 from apps.catalog.models import MedicineProduct
 
 from .sources import SOURCES, file_sources
@@ -151,6 +152,10 @@ def _order_medicines(order) -> list[MedicineProduct]:
     for item in order.items.select_related("product__medicine_item__base_product").order_by("pk"):
         product = item.product
         if product is None or product.product_type != "medicines":
+            continue
+        if isinstance(product.external_data, dict) and product.external_data.get(MOVED_FROM_SUPPLEMENTS_KEY):
+            # Перенесён из БАДов (move_supplements_to_medicines): в списках лекарств его нет,
+            # «нет в списке» в сообщении о заявке было бы ложной тревогой. Ссылка на проверку остаётся.
             continue
         medicine = getattr(product, "medicine_item", None)
         if medicine is not None and medicine.pk not in seen:

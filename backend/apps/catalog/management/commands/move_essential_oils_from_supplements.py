@@ -107,6 +107,18 @@ def without_supplement_keywords(value):
     return ", ".join(kept) if len(kept) != len([item for item in items if item]) else value
 
 
+def strip_supplement_wording_from_translations(model, owner_pk):
+    """Убирает оговорку БАДа и «БАД …» из переводов товара или доменной записи (без save())."""
+    for row in model.objects.filter(product_id=owner_pk):
+        changes = {
+            "description": without_disclaimer(row.description),
+            "meta_keywords": without_supplement_keywords(row.meta_keywords),
+        }
+        changes = {field: value for field, value in changes.items() if value != getattr(row, field)}
+        if changes:
+            model.objects.filter(pk=row.pk).update(**changes)
+
+
 def markup_after(product, category, section_markup):
     """Наценка товара в новом разделе; section_markup — как если бы её записали разделу essential-oils."""
     if section_markup is None:
@@ -289,15 +301,8 @@ class Command(BaseCommand):
             category=category, is_featured=False, description=without_disclaimer(incense.description),
             meta_keywords=without_supplement_keywords(incense.meta_keywords),
         )
-        for model, owner in ((ProductTranslation, product.pk), (IncenseProductTranslation, incense.pk)):
-            for row in model.objects.filter(product_id=owner):
-                changes = {
-                    "description": without_disclaimer(row.description),
-                    "meta_keywords": without_supplement_keywords(row.meta_keywords),
-                }
-                changes = {field: value for field, value in changes.items() if value != getattr(row, field)}
-                if changes:
-                    model.objects.filter(pk=row.pk).update(**changes)
+        strip_supplement_wording_from_translations(ProductTranslation, product.pk)
+        strip_supplement_wording_from_translations(IncenseProductTranslation, incense.pk)
 
         product.refresh_from_db()
         report = retire_stale_domain_records(product)

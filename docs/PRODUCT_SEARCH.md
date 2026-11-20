@@ -183,7 +183,7 @@ BUFFERS)` SQL кода: «кр» COUNT 4,9 с → 42 мс, страница 5,0 
   удалении варианта или перевода — сигналы такие правки не видят. Это переименование бренда
   (в том числе **правка названия бренда или его перевода в админке** — сохраняется бренд, а не
   товары), `assign_manufacturer_brands`, разнос правки МНН (`propagate_inn_translations`),
-  `move_essential_oils_from_supplements`, переименование раздела, новые слова в `vocab.BRAND_RU`,
+  `move_essential_oils_from_supplements`, `move_supplements_to_medicines`, переименование раздела, новые слова в `vocab.BRAND_RU`,
   `vocab.KINDS` и памяти `medicine_brand`. После них — `rebuild_product_search_index --apply`.
   Товар, у которого строки индекса нет совсем (создан `bulk_create`), в поиск не попадает
   до пересчёта.

@@ -79,6 +79,7 @@ from apps.catalog.models import (
     ProductAuthor,
 )
 from apps.catalog.constants import get_or_create_root_category
+from apps.catalog.domain_sync import MOVED_FROM_SUPPLEMENTS_KEY
 from apps.catalog.scraper_category_mapping import (
     _resolve_product_type,
     resolve_category_and_product_type,
@@ -222,12 +223,18 @@ def _category_changes_domain(product: Product, category: Category) -> bool:
     Тип от категории задачи не меняется (кроме лекарств, signals.auto_set_product_type_from_category):
     перенесённое в «Эфирные масла» масло задача с разделом БАДов вернула бы в БАДы
     с типом incense. Смена типа — отдельным шагом (move_essential_oils_from_supplements).
+    Лекарство, перенесённое из БАДов владельцем (move_supplements_to_medicines), — не исключение:
+    подраздел БАДов в задаче вернул бы ему категорию БАДов, а сигнал — и тип.
     """
     current = str(product.product_type or "").replace("-", "_")
     target = _resolve_product_type(category)
     # Категория без типа даёт slug корня («existing-category-root») — это не другой тип.
     known = dict(Product.PRODUCT_TYPE_CHOICES)
-    return bool(current and current != "medicines" and target in known and target != current)
+    if current == "medicines" and not (
+        isinstance(product.external_data, dict) and product.external_data.get(MOVED_FROM_SUPPLEMENTS_KEY)
+    ):
+        return False
+    return bool(current and target in known and target != current)
 
 
 def _make_unique_brand_slug(name: str) -> str:

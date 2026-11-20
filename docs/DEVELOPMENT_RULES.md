@@ -159,8 +159,10 @@ docker-compose за nginx и Cloudflare.
    того же типа, что его корень (`route_categories`): одежда не попадает в «Спорттовары»,
    даже если раздел с её slug лежит под ними (`tracksuits` до 11.11.2026); «Спорттовары» —
    снаряды и предметы, не одежда и не обувь. Смена типа без `Product.save()` — так, как это делает
-   `move_essential_oils_from_supplements` и `move_clothing_out_of_sports`: `save()` синхронизирует
-   из новой доменной записи пустые SEO. См. [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md).
+   `move_essential_oils_from_supplements`, `move_supplements_to_medicines` и `move_clothing_out_of_sports`: `save()` синхронизирует
+   из новой доменной записи пустые SEO. Товар, перенесённый из БАДов в лекарства, несёт метку
+   `external_data["moved_from_supplements"]`: источник держит его среди БАДов, и код, который ставит
+   существующему товару категорию или проверяет лекарства по спискам, метку учитывает. См. [CATALOG_MAINTENANCE_COMMANDS.md](CATALOG_MAINTENANCE_COMMANDS.md).
 14. **Файл медиа удаляется только после проверки ссылок, закрытой при сбое.** Копия
    медиа товаров хранит пропавший файл только 30 дней ([DB_BACKUP.md](DB_BACKUP.md)) и
    проверку не заменяет: код, который удаляет файл из R2, проверяет ссылки через
