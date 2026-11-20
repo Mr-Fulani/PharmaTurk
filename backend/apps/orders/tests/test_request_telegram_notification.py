@@ -147,8 +147,9 @@ class RequestTelegramNotificationTests(SimpleTestCase):
             "💰 <b>Итого: 150.00 RUB</b>",
             admin,
         )
-        # У обычного товара ссылок на проверку лекарств нет
-        self.assertNotIn("<a ", admin)
+        # У обычного товара ссылок на проверку лекарств нет: единственная ссылка — «Написать»
+        self.assertEqual(admin.count("<a "), 1)
+        self.assertNotIn("admin", admin.split("🛒")[1])
 
     def test_broken_items_do_not_hold_the_message(self, select_related, telegram_post, *_):
         texts = self._texts(select_related, telegram_post, _order(items=SimpleNamespace(all=lambda: [object()])))
