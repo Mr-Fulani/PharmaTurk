@@ -4,6 +4,7 @@
 from datetime import timedelta
 from decimal import Decimal
 from itertools import count
+from urllib.parse import quote
 
 import pytest
 from django.contrib.admin.sites import AdminSite
@@ -12,10 +13,10 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.catalog.domain_sync import domain_models
-from apps.catalog.models import MedicineProduct, Product, ProductImage, SupplementProduct
-from apps.orders.admin import OrderAdmin, OrderItemAdmin, OrderItemInline
-from apps.orders.contacts import whatsapp_number
-from apps.orders.models import Order, OrderItem
+from apps.catalog.models import MedicineProduct, Product, ProductImage, ProductTranslation, SupplementProduct
+from apps.orders.admin import OrderAdmin, OrderItemAdmin, OrderItemInline, SourcingRequestAdmin
+from apps.orders.contacts import contact_message, whatsapp_number
+from apps.orders.models import Order, OrderItem, SourcingRequest
 from apps.users.models import User
 
 _seq = count(1)
@@ -246,11 +247,17 @@ def test_whatsapp_number_rules(raw, expected):
 def test_contact_links_by_channel_and_fields():
     tg = _order(contact_channel="telegram", contact_username="@ivan_petrov", contact_phone="9122476866",
                 contact_email="ivan@example.test")
+    OrderItem.objects.create(order=tg, product_name="PAROL 500 mg", price=Decimal("50"), quantity=2, total=Decimal("100"))
     html = str(_order_admin().contact_links(tg))
-    assert 'href="https://t.me/ivan_petrov" target="_blank" rel="noopener noreferrer" style="font-weight:700' in html
-    assert 'href="https://wa.me/79122476866" target="_blank"' in html
+    # В чате и письме уже набран черновик: имя, номер заявки, позиции
+    draft = quote(contact_message("Клиент", tg.number, ["PAROL 500 mg"]), safe="")
+    assert (
+        f'href="https://t.me/ivan_petrov?text={draft}" target="_blank" rel="noopener noreferrer" style="font-weight:700'
+        in html
+    )
+    assert f'href="https://wa.me/79122476866?text={draft}" target="_blank"' in html
     assert 'href="tel:+79122476866"' in html
-    assert 'href="mailto:ivan@example.test"' in html
+    assert f'href="mailto:ivan@example.test?subject={quote("Заявка №" + tg.number + " — Mudaroba", safe="")}&amp;body={draft}"' in html
 
     unclear = _order(contact_channel="phone", contact_phone="0532 123 45 67", contact_email="x@mudaroba.local")
     html = str(_order_admin().contact_links(unclear))
@@ -258,7 +265,49 @@ def test_contact_links_by_channel_and_fields():
     assert 'href="tel:05321234567"' in html
 
     wa_nick = _order(contact_channel="whatsapp", contact_username="+90 532 123 45 67", contact_phone="05321234567")
-    assert 'href="https://wa.me/905321234567"' in str(_order_admin().contact_links(wa_nick))
+    assert 'href="https://wa.me/905321234567?text=' in str(_order_admin().contact_links(wa_nick))
+
+
+@pytest.mark.django_db
+def test_order_draft_language_follows_checkout_language():
+    product = _product(name="Парол 500 мг")
+    ProductTranslation.objects.update_or_create(product=product, locale="en", defaults={"name": "Parol 500 mg"})
+
+    def html_for(locale):
+        order = _order(locale=locale, contact_name="Ivan", contact_email="ivan@example.test")
+        OrderItem.objects.create(order=order, product=product, product_name="Парол 500 мг", price=Decimal("1"),
+                                 quantity=1, total=Decimal("1"))
+        OrderItem.objects.create(order=order, product_name="Без перевода", price=Decimal("1"), quantity=1,
+                                 total=Decimal("1"))
+        return order, str(_order_admin().contact_links(order))
+
+    # Старая заявка: язык не записан — черновик русский, названия как в заявке
+    old, html = html_for("")
+    draft = quote(contact_message("Ivan", old.number, ["Парол 500 мг", "Без перевода"]), safe="")
+    assert quote("Здравствуйте, Ivan!", safe="") in draft and f"https://wa.me/79990001122?text={draft}" in html
+    assert quote(f"Заявка №{old.number} — Mudaroba", safe="") in html
+
+    english, html = html_for("en")
+    draft = quote(contact_message("Ivan", english.number, ["Parol 500 mg", "Без перевода"], locale="en"), safe="")
+    assert "Hello%20Ivan%21" in draft and f"https://wa.me/79990001122?text={draft}" in html
+    assert quote(f"Your request No. {english.number} — Mudaroba", safe="") in html
+
+
+@pytest.mark.django_db
+def test_sourcing_request_contact_links_carry_draft():
+    req = SourcingRequest.objects.create(
+        source_url="https://example.com/item", contact_name="Анна", contact_phone="+79990001122",
+        contact_channel="telegram", contact_username="anna_test",
+    )
+    html = str(SourcingRequestAdmin(SourcingRequest, AdminSite()).contact_links(req))
+    draft = quote(contact_message("Анна", req.pk, sourcing=True), safe="")
+    assert f'href="https://t.me/anna_test?text={draft}"' in html
+    assert f'href="https://wa.me/79990001122?text={draft}"' in html
+
+    req.locale = "en"
+    html = str(SourcingRequestAdmin(SourcingRequest, AdminSite()).contact_links(req))
+    draft = quote(contact_message("Анна", req.pk, sourcing=True, locale="en"), safe="")
+    assert "Hello%20" in draft and f'href="https://t.me/anna_test?text={draft}"' in html
 
 
 @pytest.mark.django_db
@@ -331,7 +380,8 @@ def test_items_summary_shows_three_and_more_without_query_per_order(rf):
     with CaptureQueriesContext(connection) as queries:
         rows = [str(admin.items_summary(o)) for o in admin.get_queryset(request)]
 
-    assert len(queries) == 3  # заказы + позиции с товаром + фото галерей
+    # заказы + позиции с товаром + фото галерей + переводы названий (для английского черновика)
+    assert len(queries) == 4
     html = rows[0]
     assert "Позиция 0 ×1" in html and "Позиция 2 ×3" in html and "Позиция 3" not in html
     assert "+2" in html
@@ -346,9 +396,10 @@ def test_order_list_queries_do_not_grow_with_rows(client, plain_static):
 
     def add_orders(n):
         for _ in range(n):
-            order = _order(contact_channel="telegram", contact_username="ivan_petrov")
+            order = _order(contact_channel="telegram", contact_username="ivan_petrov", locale="en")
             for _ in range(2):
                 product = _product()
+                ProductTranslation.objects.update_or_create(product=product, locale="en", defaults={"name": "Item"})
                 ProductImage.objects.create(product=product, image_url="https://img.example.test/g.jpg")
                 OrderItem.objects.create(order=order, product=product, product_name="Товар", price=Decimal("1"),
                                          quantity=1, total=Decimal("1"))

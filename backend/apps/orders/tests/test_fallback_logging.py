@@ -476,6 +476,7 @@ class NotificationFallbackTests(SimpleTestCase):
             contact_email="",
             contact_channel="phone",
             contact_username="",
+            locale="",
         )
         post.return_value = SimpleNamespace(ok=True, status_code=200)
 

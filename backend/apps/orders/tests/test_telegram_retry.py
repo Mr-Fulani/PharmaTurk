@@ -117,6 +117,7 @@ class SourcingRequestTelegramRetryTests(SimpleTestCase):
             contact_email="",
             contact_channel="whatsapp",
             contact_username="",
+            locale="",
             image=None,
         )
         return notify_sourcing_request_telegram.apply(args=[4])

@@ -35,6 +35,7 @@ TELEGRAM_MAX_MESSAGE_PARTS = 5
 TELEGRAM_CUT_NOTICE = "\n\n… Дальше текст обрезан, полностью он в заявке в админке."
 SOURCING_LOOKUP_QUERY_LIMIT = 100
 
+from .contacts import contact_links, contact_message, order_item_names
 from .models import Cart, CartItem, Order
 from .services import (
     build_order_receipt_payload,
@@ -610,6 +611,19 @@ def _tg_delivery_steps(text: str, attachment: bytes | None, short_caption: str) 
     return steps
 
 
+def _tg_write_line(obj, number, item_names=(), sourcing: bool = False, locale: str = "ru") -> str:
+    """Строка «Написать» со ссылками на чат покупателя; в чате уже набран черновик на языке заявки."""
+    hrefs = dict(
+        contact_links(
+            obj.contact_channel, obj.contact_username, obj.contact_phone, "",
+            contact_message(obj.contact_name, number, item_names, sourcing=sourcing, locale=locale), "",
+        )
+    )
+    # mailto: Telegram ссылкой не делает; письмо с черновиком открывается из админки
+    links = [_tg_link(hrefs[key], label) for key, label in (("telegram", "Telegram"), ("whatsapp", "WhatsApp")) if key in hrefs]
+    return "✍️ Написать: " + " · ".join(links) if links else ""
+
+
 def _item_medicine(item):
     product = item.product
     if product is None or product.product_type != "medicines":
@@ -781,10 +795,11 @@ def notify_new_order_telegram(
         # Больничные препараты и товары без цены: сумму называет менеджер (docs/HOSPITAL_MEDICINES.md)
         try:
             item_blocks, on_request = _order_item_blocks(order, drug_checks)
+            item_names = order_item_names(order.items.all(), locale)
         except Exception:
             # Как у проверки лекарств: сбой списка позиций не держит уведомление менеджеру.
             logger.warning("order_telegram_items_failed", exc_info=True)
-            item_blocks, on_request = [], []
+            item_blocks, on_request, item_names = [], [], []
 
         buyer = [
             "👤 <b>Покупатель</b>",
@@ -797,6 +812,9 @@ def notify_new_order_telegram(
             is_phone = order.contact_username.lstrip("+").isdigit()
             handle = order.contact_username if is_phone else f"@{order.contact_username}"
             buyer.append(f"{h(channel_info)}: {h(handle)}")
+        write_line = _tg_write_line(order, order.number, item_names, locale=locale)
+        if write_line:
+            buyer.append(write_line)
         total = [f"💰 <b>Итого: {order.total_amount} {order.currency}</b>"]
         if on_request:
             total.append("Цена по запросу (в сумму не вошли): " + h("; ".join(on_request)))
@@ -901,6 +919,9 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
     if req.contact_username:
         is_phone = req.contact_username.lstrip("+").isdigit()
         buyer.append(f"{h(channel_info)}: {h(req.contact_username if is_phone else '@' + req.contact_username)}")
+    write_line = _tg_write_line(req, req.pk, sourcing=True, locale=req.locale)
+    if write_line:
+        buyer.append(write_line)
     # В окно поиска лекарств подставляется запрос покупателя — одной строкой, не длиннее поля поиска
     query = " ".join((req.comment or "").split())[:SOURCING_LOOKUP_QUERY_LIMIT]
     lookup = "💊 Если это лекарство: " + _tg_link(

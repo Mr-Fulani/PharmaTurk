@@ -169,6 +169,15 @@ def test_telegram_notification_contains_contacts(settings):
     assert "+79990001122" in text
     assert "WhatsApp: @anna.wa" in text
     assert "Имя: Анна_*" in text
+    # Ссылка на чат с черновиком; ник WhatsApp номером не является — берётся телефон
+    assert '✍️ Написать: <a href="https://wa.me/79990001122?text=%D0%97%D0%B4%D1%80' in text
+    assert "https://t.me" not in text
+
+    # Заявка оформлена на английском — черновик английский
+    SourcingRequest.objects.filter(pk=req.pk).update(locale="en")
+    with patch("apps.orders.tasks.requests.post", return_value=SimpleNamespace(ok=True, status_code=200)) as post:
+        notify_sourcing_request_telegram.run(req.pk)
+    assert '<a href="https://wa.me/79990001122?text=Hello%20' in post.call_args.kwargs["json"]["text"]
     assert post.call_args.kwargs["json"]["parse_mode"] == "HTML"
     assert post.call_args.args[0].endswith("sendMessage")
 
