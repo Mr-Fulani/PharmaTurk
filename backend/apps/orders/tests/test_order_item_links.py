@@ -13,7 +13,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.catalog.domain_sync import domain_models
-from apps.catalog.models import MedicineProduct, Product, ProductImage, SupplementProduct
+from apps.catalog.models import MedicineProduct, Product, ProductImage, ProductTranslation, SupplementProduct
 from apps.orders.admin import OrderAdmin, OrderItemAdmin, OrderItemInline, SourcingRequestAdmin
 from apps.orders.contacts import contact_message, whatsapp_number
 from apps.orders.models import Order, OrderItem, SourcingRequest
@@ -269,6 +269,31 @@ def test_contact_links_by_channel_and_fields():
 
 
 @pytest.mark.django_db
+def test_order_draft_language_follows_checkout_language():
+    product = _product(name="Парол 500 мг")
+    ProductTranslation.objects.update_or_create(product=product, locale="en", defaults={"name": "Parol 500 mg"})
+
+    def html_for(locale):
+        order = _order(locale=locale, contact_name="Ivan")
+        OrderItem.objects.create(order=order, product=product, product_name="Парол 500 мг", price=Decimal("1"),
+                                 quantity=1, total=Decimal("1"))
+        OrderItem.objects.create(order=order, product_name="Без перевода", price=Decimal("1"), quantity=1,
+                                 total=Decimal("1"))
+        return order, str(_order_admin().contact_links(order))
+
+    # Старая заявка: язык не записан — черновик русский, названия как в заявке
+    old, html = html_for("")
+    draft = quote(contact_message("Ivan", old.number, ["Парол 500 мг", "Без перевода"]), safe="")
+    assert quote("Здравствуйте, Ivan!", safe="") in draft and f"https://wa.me/79990001122?text={draft}" in html
+    assert quote(f"Заявка №{old.number} — Mudaroba", safe="") in html
+
+    english, html = html_for("en")
+    draft = quote(contact_message("Ivan", english.number, ["Parol 500 mg", "Без перевода"], locale="en"), safe="")
+    assert "Hello%20Ivan%21" in draft and f"https://wa.me/79990001122?text={draft}" in html
+    assert quote(f"Your request No. {english.number} — Mudaroba", safe="") in html
+
+
+@pytest.mark.django_db
 def test_sourcing_request_contact_links_carry_draft():
     req = SourcingRequest.objects.create(
         source_url="https://example.com/item", contact_name="Анна", contact_phone="+79990001122",
@@ -370,9 +395,10 @@ def test_order_list_queries_do_not_grow_with_rows(client, plain_static):
 
     def add_orders(n):
         for _ in range(n):
-            order = _order(contact_channel="telegram", contact_username="ivan_petrov")
+            order = _order(contact_channel="telegram", contact_username="ivan_petrov", locale="en")
             for _ in range(2):
                 product = _product()
+                ProductTranslation.objects.update_or_create(product=product, locale="en", defaults={"name": "Item"})
                 ProductImage.objects.create(product=product, image_url="https://img.example.test/g.jpg")
                 OrderItem.objects.create(order=order, product=product, product_name="Товар", price=Decimal("1"),
                                          quantity=1, total=Decimal("1"))

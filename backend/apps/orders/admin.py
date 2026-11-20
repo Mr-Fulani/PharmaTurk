@@ -25,7 +25,7 @@ from .contacts import (
     contact_links,
     contact_message,
     contact_message_subject,
-    order_item_names,
+    message_locale,
     phone_tail,
 )
 from .models import (
@@ -466,13 +466,21 @@ def _orders_word(count: int) -> str:
     return 'заявок'
 
 
+def _draft_item_name(item, locale) -> str:
+    """Название позиции для черновика; в английском — перевод товара (в списке переводы подгружены заранее)."""
+    if locale == 'en' and item.product:
+        for translation in item.product.translations.all():
+            if translation.locale == 'en' and translation.name:
+                return translation.name
+    return item.product_name
+
+
 def _contact_links(obj, short=False):
     """Telegram / WhatsApp / звонок / email с черновиком сообщения; выбранный клиентом канал — жирным."""
     sourcing = isinstance(obj, SourcingRequest)
     number = obj.pk if sourcing else obj.number
-    # Язык оформления хранит только заявка «Найдём товар»; у заказа его нет — черновик русский
-    locale = obj.locale if sourcing else 'ru'
-    items = () if sourcing else order_item_names(obj.items.all(), locale)
+    locale = message_locale(obj.locale)
+    items = () if sourcing else [_draft_item_name(item, locale) for item in obj.items.all()]
     hrefs = contact_links(
         obj.contact_channel, obj.contact_username, obj.contact_phone, _client_email(obj),
         contact_message(obj.contact_name, number, items, sourcing=sourcing, locale=locale),
@@ -534,7 +542,7 @@ class OrderAdmin(admin.ModelAdmin):
     search_fields = ('number', 'user__email', 'contact_name', 'contact_phone', 'promo_code__code')
     readonly_fields = (
         'number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url',
-        'import_restriction_banner', 'processing_history', 'contact_links', 'client_orders_link',
+        'import_restriction_banner', 'processing_history', 'contact_links', 'client_orders_link', 'locale',
     )
     actions = ('take_in_work', 'mark_waiting_client', 'mark_done')
 
@@ -544,7 +552,7 @@ class OrderAdmin(admin.ModelAdmin):
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': (
             'contact_links', 'client_orders_link',
-            'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username',
+            'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username', 'locale',
         )}),
         (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method', 'tracking_number', 'tracking_url')}),
         (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
@@ -614,7 +622,7 @@ class OrderAdmin(admin.ModelAdmin):
         # колонке «Состав» одним запросом на страницу
         items = (
             OrderItem.objects.select_related('product__medicine_item')
-            .prefetch_related('product__images')
+            .prefetch_related('product__images', 'product__translations')
             .order_by('pk')
         )
         return (

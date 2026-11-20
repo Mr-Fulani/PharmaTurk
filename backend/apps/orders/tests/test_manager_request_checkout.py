@@ -88,6 +88,19 @@ def test_request_checkout_creates_manager_order_with_contact_channel(request_sta
     assert order.payment_method == "manager"
     assert order.status == Order.OrderStatus.NEW
     assert order.contact_channel == "telegram"
+    assert order.locale == "ru"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("sent, saved", [("en", "en"), ("tr", "ru"), ("", "ru")])
+def test_request_checkout_saves_site_language(request_state, sent, saved):
+    """Язык оформления остаётся у заявки: на нём черновик сообщения покупателю (только ru/en)."""
+    user, item = request_state
+
+    response = _post(user, item, _payload(locale=sent))
+
+    assert response.status_code == 201, response.data
+    assert Order.objects.get().locale == saved
 
 
 @pytest.mark.django_db(transaction=True)
