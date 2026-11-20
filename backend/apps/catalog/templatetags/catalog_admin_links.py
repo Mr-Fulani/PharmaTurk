@@ -1,6 +1,6 @@
 """Кнопки «Посмотреть на сайте» и «Источник» на странице товара в админке."""
 from django import template
-from django.utils.html import format_html, format_html_join
+from django.utils.html import format_html_join
 
 from apps.catalog.admin_links import product_view_buttons
 
