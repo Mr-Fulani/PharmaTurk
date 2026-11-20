@@ -19,7 +19,6 @@ def django_db_modify_db_settings(django_db_modify_db_settings_parallel_suffix):
         settings.DATABASES["default"].setdefault("TEST", {})["TEMPLATE"] = template
 
 
-
 @pytest.fixture(autouse=True)
 def _isolate_test_cache(settings):
     """Тестовые данные не должны попадать в Redis работающего приложения."""
