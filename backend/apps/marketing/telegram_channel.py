@@ -13,7 +13,7 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta
-from html import unescape
+from html import escape, unescape
 from urllib.parse import parse_qs, urlsplit
 
 import requests
@@ -21,7 +21,7 @@ from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.storage import default_storage
 from django.utils import timezone
-from django.utils.html import escape, strip_tags
+from django.utils.html import strip_tags
 
 from .models import TelegramChannelPost, TelegramChannelSettings, parse_publish_times
 
