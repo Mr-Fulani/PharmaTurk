@@ -7,6 +7,7 @@ import pytest
 from django.core.management import call_command
 
 from apps.ai.models import AIProcessingLog
+from apps.ai.services.medicine_memory import INN_NAMESPACE
 from apps.ai.services.medicine_refresh import _ingredient_stems, latest_applied_log, plan_refresh, worse_reasons
 from apps.ai.services.medicine_seo import BRAND_NAMESPACE
 from apps.ai.services.translation_memory import remember
@@ -206,3 +207,77 @@ def test_refresh_keeps_worse_name_and_still_writes_seo(tmp_path, capsys):
     log = latest_applied_log(product.id)
     assert log.generated_title == detailed["ru"]
     assert log.extracted_attributes["seo_translations"]["ru"]["meta_title"] == ru.meta_title
+
+
+def _refresh_output(medicine, tmp_path, capsys):
+    call_command(
+        "medicine_refresh_code_fields", "--ids", str(medicine.base_product.id),
+        "--apply", "--backup", str(tmp_path / "b.json"),
+    )
+    return capsys.readouterr().out
+
+
+def _reloaded(medicine):
+    products = type(medicine.base_product).objects.select_related("medicine_item")
+    return products.get(pk=medicine.base_product.pk)
+
+
+def test_refresh_takes_substance_from_corrected_card_field(tmp_path, capsys):
+    """TD-045: обработка шла с чужим веществом, поле карточки исправлено — всё по полю."""
+    remember(BRAND_NAMESPACE, {"MAJEZIK": {"ru": "Мажезик", "en": "MAJEZIK"}})
+    remember(INN_NAMESPACE, {"ketoprofen": {"ru": "Кетопрофен", "en": "Ketoprofen"}})
+    medicine = _published_majezik()
+    MedicineProduct.objects.filter(pk=medicine.pk).update(active_ingredient="Ketoprofen")
+
+    _refresh_output(medicine, tmp_path, capsys)
+
+    ru = MedicineProductTranslation.objects.get(product=medicine, locale="ru")
+    en = MedicineProductTranslation.objects.get(product=medicine, locale="en")
+    assert ru.name == "MAJEZIK (кетопрофен) 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт."
+    assert en.name.startswith("MAJEZIK (ketoprofen) 100 mg")
+    assert ru.meta_title == "Мажезик (MAJEZIK, кетопрофен) 100 мг, таблетки из Турции"
+    assert (ru.active_ingredient, en.active_ingredient) == ("Кетопрофен", "Ketoprofen")
+    product = _reloaded(medicine)
+    assert product.name == ru.name
+    assert plan_refresh(product, latest_applied_log(product.id), _generator(None))[0] == []
+
+
+def test_refresh_drops_foreign_substance_when_new_one_is_not_in_dictionary(tmp_path, capsys):
+    medicine = _published_majezik()
+    MedicineProduct.objects.filter(pk=medicine.pk).update(active_ingredient="Tenipozid")
+    before = MedicineProductTranslation.objects.get(product=medicine, locale="ru").active_ingredient
+
+    out = _refresh_output(medicine, tmp_path, capsys)
+
+    ru = MedicineProductTranslation.objects.get(product=medicine, locale="ru")
+    assert ru.name == "MAJEZIK 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт."
+    assert "флурбипрофен" not in ru.meta_title.lower()
+    assert ru.active_ingredient == before  # перевода нового вещества нет — строка ждёт словаря
+    assert '"оставлено, вещество: нет в словаре МНН": 1' in out
+
+
+def test_refresh_ignores_other_spelling_of_the_same_substance():
+    medicine = _published_majezik()
+    MedicineProduct.objects.filter(pk=medicine.pk).update(active_ingredient="FLURBİPROFEN sodyum")
+    product = _reloaded(medicine)
+
+    changes, _new, kept = plan_refresh(product, latest_applied_log(product.id), _generator(None))
+
+    assert kept == []
+    assert all(change.field not in ("name", "active_ingredient") for change in changes)
+
+
+def test_refresh_fixes_translated_substance_when_title_is_not_built_by_code(tmp_path, capsys):
+    remember(INN_NAMESPACE, {"ketoprofen": {"ru": "Кетопрофен", "en": "Ketoprofen"}})
+    medicine = _published_majezik()
+    log = latest_applied_log(medicine.base_product.id)
+    log.input_data = {**log.input_data, "name": "BRAIN-SPECT RADYOFARMASOTIK HAZIRLAMA KITI"}
+    log.save(update_fields=["input_data"])
+    MedicineProduct.objects.filter(pk=medicine.pk).update(active_ingredient="Ketoprofen")
+    name = MedicineProductTranslation.objects.get(product=medicine, locale="ru").name
+
+    out = _refresh_output(medicine, tmp_path, capsys)
+
+    ru = MedicineProductTranslation.objects.get(product=medicine, locale="ru")
+    assert (ru.name, ru.active_ingredient) == (name, "Кетопрофен")
+    assert '"название кодом не собирается": 1' in out
