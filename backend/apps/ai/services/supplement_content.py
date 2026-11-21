@@ -35,7 +35,7 @@ from apps.ai.models import AIProcessingLog
 from apps.ai.services import (
     supplement_brands, supplement_glossary, supplement_judge, supplement_memory, translation_memory,
 )
-from apps.ai.services.medicine_reference import fold_tr, ru_plural, translate_reference_field
+from apps.ai.services.medicine_reference import fold_tr, latin_tr, ru_plural, translate_reference_field
 from apps.ai.services.medicine_title import CYRILLIC_RE, looks_like_source_name
 from apps.catalog.services.delivery_terms import ORDER_SENTENCE
 from apps.ai.services.ownership import SOURCE_NAME_KEY
@@ -1028,6 +1028,7 @@ def is_generic(product: str, locale: str = "ru") -> bool:
 
 
 def assemble_title(brand: str, product: str, pack: str, locale: str) -> str:
+    brand = latin_tr(brand)  # «VİTAPUFF» → «VITAPUFF»: по латинице иначе не находится
     product = product.strip()
     if not product:
         head = brand
@@ -1089,7 +1090,7 @@ def build_seo(
 
     Бренд — как его ищут (``supplement_brands``); ``usage`` — на карточке есть «Способ применения».
     """
-    brand, brand_ru, brand_for_ru = supplement_brands.seo_brand(brand, brand_ru)
+    brand, brand_ru, brand_for_ru = map(latin_tr, supplement_brands.seo_brand(brand, brand_ru))
     result = {}
     for locale in ("ru", "en"):
         texts = dict(_SEO_TEXTS[locale])

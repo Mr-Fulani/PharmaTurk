@@ -8,7 +8,7 @@
 - `repair_flo_brands` пишет CSV-отчёт, а с `--apply` — ещё и бэкап прежних брендов
   (`/tmp/flo_brands_backup_<время>.json`, product_id → brand_id);
 - `clear_heuristic_old_prices`, `recalc_colour_prices`, `retire_stale_domain_records`,
-  `move_essential_oils_from_supplements`, `move_supplements_to_medicines`, `move_clothing_out_of_sports` и `ensure_demand_categories` с `--apply` требуют
+  `move_essential_oils_from_supplements`, `move_supplements_to_medicines`, `move_clothing_out_of_sports`, `latinize_turkish_names` и `ensure_demand_categories` с `--apply` требуют
   `--backup <файл.json>` со старыми значениями;
 - `repair_lcw_names` печатает замены в консоль, `--report` и `--backup` у неё нет —
   сохраните вывод, прежние названия есть только в нём.
@@ -502,3 +502,29 @@ manage.py replace_delivery_terms --restore /backups/delivery-terms-YYYYMMDD.json
 На проде 10.11.2026 (релиз 745bba62): `--apply` записал 14 090 товаров (лекарства 6 808, БАДы 7 282),
 116 256 полей; бэкап — `~/backups/ai-pilot/delivery-terms-20261110.jsonl.gz`; повторный показ — 0.
 
+## `latinize_turkish_names`
+
+Турецкие буквы в названии и SEO лекарств и БАДов → обычные латинские: İ→I, ı→i, Ş→S, ş→s,
+Ğ→G, ğ→g, Ç→C, ç→c, Ö→O, ö→o, Ü→U, ü→u. Бренд источника («LONGİVO», «VİTAPUFF») попадал в
+название как есть, и по латинице («LONGIVO») карточка хуже находилась в Google. С 21.11.2026
+сборка названия сама пишет бренд латиницей (`medicine_reference.latin_tr`, правило 10 раздела 3
+`docs/DEVELOPMENT_RULES.md`); команда исправляет записанное раньше.
+
+```bash
+manage.py latinize_turkish_names                                   # показ: было → станет
+manage.py latinize_turkish_names --ids 26254,16563                 # только эти Product
+manage.py latinize_turkish_names --apply --backup /backups/latinize-names.json
+manage.py rebuild_product_search_index --ids <id,…> --apply        # строку с id печатает команда
+```
+
+- Поля: название, meta/og title и description, ключевые слова — у записи лекарства или БАДа, её
+  переводов, базового `Product` и его переводов, и те же значения в последнем применённом логе
+  обработки (`generated_title`, `seo_translations`). Лог нужен, потому что `medicine_refresh_code_fields`
+  перезаписывает только то, что совпадает с логом: иначе название считалось бы ручной правкой.
+- Не трогаются: `external_data["source_name"]` (название источника для сверки парсера), slug,
+  описания и инструкции; скрытые карточки (`is_active=False`); карточки без переводов — у них в
+  названии турецкий оригинал целиком, им нужна обработка, а не замена букв. Сколько таких — в
+  строке «Не тронуто».
+- Запись — через `update()`, без сигналов; кэш адреса карточки сбрасывается.
+- Бэкап — список `{model, pk, fields}` с прежними значениями. Откат: для каждой строки
+  `Model.objects.filter(pk=…).update(**fields)`.

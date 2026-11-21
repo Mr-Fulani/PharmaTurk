@@ -107,6 +107,16 @@ docker-compose за nginx и Cloudflare.
    человека и привязано к проверенному тексту (`moderator_title_review`,
    `moderator_description_review` у БАДов,
    решение раздела `reviewed`) — новый AI-результат проверяется заново.
+   Бренд в названии и SEO лекарства и БАДа пишется обычной латиницей: турецкие
+   буквы источника заменяются (İ→I, ı→i, Ş→S, Ğ→G, Ç→C, Ö→O, Ü→U,
+   `medicine_reference.latin_tr`) — «LONGİVO» по запросу «LONGIVO» не находится.
+   Замена стоит там, где название собирается (`medicine_title._title_and_brand`,
+   `supplement_content.assemble_title` и `build_seo`) и где ответ модели
+   сохраняется (`ContentGenerator._sanitize_ai_content`); новый путь записи
+   названия проходит через `latin_tr`. Название источника
+   (`external_data["source_name"]`), метка `{BRAND}` памяти абзацев
+   (`paragraph_brand`) и slug остаются как есть. Записанное раньше исправляет
+   `latinize_turkish_names` (`docs/CATALOG_MAINTENANCE_COMMANDS.md`).
 11. **Парсеры не выдают «пустой успех».** Пропажа ожидаемого блока вёрстки или
    ключа API — ошибка источника, а не «каталог закончился»; одна снятая
    карточка (404/410) пропускается, а не обрывает обход. Цена 0 от источника —

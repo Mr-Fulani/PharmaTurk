@@ -63,6 +63,7 @@ from apps.ai.services.medicine_seo import (
 from apps.ai.services.medicine_reference import (
     CODE_FIELDS,
     build_reference_translations,
+    latin_tr,
     meaningful_special_notes,
     neutral_prescription_text,
     without_card_boilerplate,
@@ -2652,6 +2653,14 @@ class ContentGenerator:
                     )
             if bucket.get("generated_title") and input_data.get("product_type") not in ("medicines", "supplements"):
                 bucket["generated_title"] = self._strip_price_and_codes_from_title(bucket["generated_title"])
+            if input_data.get("product_type") in ("medicines", "supplements"):
+                # Бренд с турецкими буквами («LONGİVO», «VİTAPUFF») в названии и SEO — латиницей:
+                # иначе карточка не находится по латинице (21.11.2026).
+                for field in ("generated_title", "seo_title", "seo_description"):
+                    if isinstance(bucket.get(field), str):
+                        bucket[field] = latin_tr(bucket[field])
+                if isinstance(bucket.get("keywords"), list):
+                    bucket["keywords"] = [latin_tr(k) if isinstance(k, str) else k for k in bucket["keywords"]]
 
         had_attributes = isinstance(content.get("attributes"), dict)
         attrs = content.get("attributes") if had_attributes else {}
