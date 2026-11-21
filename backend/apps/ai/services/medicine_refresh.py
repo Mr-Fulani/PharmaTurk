@@ -7,6 +7,10 @@
 вручную после обработки, не трогается. Если новое название или SEO хуже текущего (турецкие
 слова, пропали форма, дозировка, вещество или русское описание), остаётся текущее.
 
+Вещество берётся из лога, а если поле вещества карточки позже исправлено по источнику на
+другое (TD-045) — из карточки. Тогда же меняется вещество в переводах, а название и SEO
+с прежним веществом заменяются, даже если новые в чём-то хуже.
+
 Где лежат значения: переводы ``MedicineProductTranslation`` (ru и en — своё название и SEO),
 базовый ``Product`` и доменный ``MedicineProduct`` (название — RU, SEO — EN, как пишет
 ``MedicineAIApplier``).
@@ -25,6 +29,7 @@ from django.utils import timezone
 from apps.ai.services.medicine_reference import fold_tr
 from apps.ai.services.medicine_title import title_brand
 from apps.ai.services.semantic_validator import _title_has_turkish_words
+from apps.scrapers.medicine_categories import ingredient_key, same_substances
 
 SEO_FIELDS = ("meta_title", "og_title", "meta_description", "og_description", "meta_keywords")
 
@@ -205,23 +210,43 @@ def latest_applied_log(product_id: int):
 
 
 def plan_refresh(product, log, generator) -> tuple[list[Change], Optional[dict], list[str]]:
-    """Изменения товара: (список, новые значения {"ru": …, "en": …}, что оставлено) или ([], None, []).
+    """Изменения товара: (список, новые значения {"ru": …, "en": …}, что оставлено).
+
+    Название кодом не собирается — новых значений нет (None), в списке только вещество переводов.
 
     Если новое название хуже текущего хотя бы в одном поле, все поля названия товара
     остаются текущими, так же и SEO; «что оставлено» — ["название: форма", "SEO: вещество"].
     """
     input_data = log.input_data or {}
-    code = generator._build_medicine_code_fields(input_data, allow_llm=False)
-    if not code.get("title") or not code.get("seo"):
-        return [], None, []
-    new = {locale: _code_values(code["title"], code["seo"], locale) for locale in ("ru", "en")}
-    logged = {locale: _logged_values(log, locale) for locale in ("ru", "en")}
-    source = str(input_data.get("name") or "").strip()
     domain = getattr(product, "medicine_item", None)
+    # TD-045: обработка шла с чужим веществом, поле карточки потом исправлено по источнику.
+    # Другая запись того же вещества («Sennozid A+B») — не исправление.
+    field = domain.active_ingredient if domain else ""
+    corrected = bool(
+        ingredient_key(field) and ingredient_key(input_data.get("active_ingredient"))
+        and not same_substances(field, input_data.get("active_ingredient"))
+    )
+    if corrected:
+        input_data = {**input_data, "active_ingredient": field}
+    code = generator._build_medicine_code_fields(input_data, allow_llm=False)
     targets = [(product, "ru", "en"), (domain, "ru", "en")] if domain else [(product, "ru", "en")]
     if domain:
         targets += [(t, t.locale, t.locale) for t in domain.translations.filter(locale__in=("ru", "en"))]
-    changes = []
+    changes, kept = [], {}
+    if corrected:
+        for obj, locale, _seo_locale in targets[2:]:
+            value = str(code[locale].get("active_ingredient") or "")[:300]
+            if not value:
+                kept["вещество: нет в словаре МНН"] = None
+            elif obj.active_ingredient != value:
+                changes.append(
+                    Change(obj, "active_ingredient", obj.active_ingredient, value, locale)
+                )
+    if not code.get("title") or not code.get("seo"):
+        return changes, None, list(kept)
+    new = {locale: _code_values(code["title"], code["seo"], locale) for locale in ("ru", "en")}
+    logged = {locale: _logged_values(log, locale) for locale in ("ru", "en")}
+    source = str(input_data.get("name") or "").strip()
     for obj, name_locale, seo_locale in targets:
         for field in ("name",) + SEO_FIELDS:
             if not hasattr(obj, field):
@@ -237,11 +262,21 @@ def plan_refresh(product, log, generator) -> tuple[list[Change], Optional[dict],
     # Вещество из полей товара тоже: МНН нет в памяти — у кода остаётся только турецкое написание.
     ingredient = _ingredient_stems(
         input_data.get("active_ingredient"), code["ru"].get("active_ingredient"), code["en"].get("active_ingredient"),
+    )
+    old_ingredient = _ingredient_stems(
+        (log.input_data or {}).get("active_ingredient"),
         *(getattr(obj, "active_ingredient", "") for obj, _name_locale, _seo_locale in targets),
     )
+    # Поле исправлено: название или SEO с прежним, чужим веществом заменяется,
+    # даже если новое в чём-то хуже.
+    foreign = old_ingredient - ingredient if corrected else set()
+    replaced = {_group(c.field) for c in changes if any(stem in fold_tr(c.old) for stem in foreign)}
+    if not corrected:
+        ingredient |= old_ingredient
     brand = title_brand(source)
-    kept = {}
     for change in changes:
+        if change.field == "active_ingredient" or _group(change.field) in replaced:
+            continue
         for reason in worse_reasons(change.field, change.locale, change.old, change.new, ingredient, brand):
             kept[f"{_group(change.field)}: {reason}"] = None
     # Число штук источника, которого нет среди штук нового названия.
@@ -253,7 +288,7 @@ def plan_refresh(product, log, generator) -> tuple[list[Change], Optional[dict],
 
 
 def _group(field: str) -> str:
-    return "название" if field == "name" else "SEO"
+    return {"name": "название", "active_ingredient": "вещество"}.get(field, "SEO")
 
 
 def apply_refresh(log, changes: list[Change], new: dict) -> None:
@@ -263,7 +298,7 @@ def apply_refresh(log, changes: list[Change], new: dict) -> None:
     следующий пересчёт снова сравнит их с тем, что записала обработка.
     """
     names = any(change.field == "name" for change in changes)
-    seo_written = any(change.field != "name" for change in changes)
+    seo_written = any(change.field in SEO_FIELDS for change in changes)
     with transaction.atomic():
         by_obj: dict[int, tuple[Any, set]] = {}
         for change in changes:

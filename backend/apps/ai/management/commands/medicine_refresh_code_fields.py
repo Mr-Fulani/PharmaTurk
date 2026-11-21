@@ -45,7 +45,8 @@ class Command(BaseCommand):
             changes, new, kept = plan_refresh(product, log, generator)
             if new is None:
                 stats["название кодом не собирается"] += 1
-                continue
+                if not changes and not kept:
+                    continue
             if kept:
                 stats["оставлено: новое хуже"] += 1
                 stats.update(f"оставлено, {reason}" for reason in kept)
@@ -60,7 +61,7 @@ class Command(BaseCommand):
         for product, _log, changes, _new in plans[: options["show"]]:
             self.stdout.write(f"\n{product.id} {product.slug}")
             for change in changes:
-                if change.field in ("name", "meta_title", "meta_description"):
+                if change.field in ("name", "meta_title", "meta_description", "active_ingredient"):
                     self.stdout.write(f"  {change.label}: {change.old[:90]!r} → {change.new[:90]!r}")
         for product, kept in kept_examples[: options["show"]]:
             self.stdout.write(f"\nоставлено {product.id} {product.slug}: {', '.join(kept)}")

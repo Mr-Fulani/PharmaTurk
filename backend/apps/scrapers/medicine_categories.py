@@ -79,6 +79,15 @@ def ingredient_key(value):
     return frozenset(components)
 
 
+def same_substances(first, second):
+    """Те же вещества, в том числе с другим делением на части: «Sennozid A + Sennozid B» и
+    «Sennozid A+B», «Metoklopramid Hidroklorür» и «Metoklopramid + Hidroklorur»."""
+    def words(value):
+        return frozenset(_ingredient_word(word) for word in re.findall(r"[a-z0-9]+", _fold(value)))
+
+    return ingredient_key(first) == ingredient_key(second) or words(first) == words(second)
+
+
 def _normalized(value, field):
     value = str(value or "").strip()
     if field == "atc_code":

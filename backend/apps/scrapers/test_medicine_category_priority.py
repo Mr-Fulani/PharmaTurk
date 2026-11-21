@@ -12,7 +12,7 @@ from apps.catalog.models import (
 )
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.medicine_categories import (
-    MedicineCategoryConflict, ingredient_key, resolve_medicine_category,
+    MedicineCategoryConflict, ingredient_key, resolve_medicine_category, same_substances,
 )
 from apps.scrapers.models import ScraperConfig, ScrapingSession, ScrapedProductLog
 from apps.scrapers.services import ScraperIntegrationService, scraping_in_progress_context
@@ -404,6 +404,20 @@ def test_same_substance_in_another_spelling_is_one_ingredient(ours, source):
 ])
 def test_different_substances_stay_different(ours, source):
     assert ingredient_key(ours) != ingredient_key(source)
+
+
+@pytest.mark.parametrize("ours,source,same", [
+    ("Sennozid A + Sennozid B", "Sennozid A+B", True),
+    ("Metoklopramid Hidroklorür", "Metoklopramid + Hidroklorur", True),
+    ("Eritromisin + Benzoil Peroksit", "Eritromisin + Benzoil + Peroksit", True),
+    ("Amoksisilin trihidrat", "amoxicillin", True),
+    ("Naltrexone Hydrochloride", "Tenipozid", False),
+    ("Alendronik Asit", "Alendronik Asit + Vitamin D3 (Kolekalsiferol)", False),
+    ("Kalsiyum karbonat + Vitamin D3", "Magnezyum sitrat + Vitamin D3", False),
+    ("Sodyum Sitrat + Gliserin + Sorbitol", "Gliserin + Sorbitol", False),
+])
+def test_same_substances_ignores_how_the_source_splits_them(ours, source, same):
+    assert same_substances(ours, source) is same
 
 
 def test_russian_or_empty_ingredient_is_unknown_not_a_conflict():
