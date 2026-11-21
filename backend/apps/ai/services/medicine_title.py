@@ -4,7 +4,8 @@
 «MAJEZIK 100 мг, таблетки, покрытые плёночной оболочкой, 15 шт.» /
 «MAJEZIK 100 mg, film-coated tablets, 15 pcs».
 
-Бренд — слова источника до первой дозировки/формы, как в источнике. Если в
+Бренд — слова источника до первой дозировки/формы, как в источнике, но турецкие
+буквы — латиницей («LONGİVO» → «LONGIVO», ``latin_tr``). Если в
 названии после бренда есть слово, которого нет в словаре форм и единиц,
 шаблон не строится (None) и остаётся название от модели.
 """
@@ -16,7 +17,7 @@ import re
 from functools import lru_cache
 from typing import Any, Optional
 
-from apps.ai.services.medicine_reference import _COUNT_UNITS, fold_tr, ru_plural
+from apps.ai.services.medicine_reference import _COUNT_UNITS, fold_tr, latin_tr, ru_plural
 from apps.ai.services.ownership import SOURCE_NAME_KEY
 
 # Турецкая форма (после fold_tr) → (RU, EN). Сравнение — по самой длинной фразе.
@@ -1150,8 +1151,9 @@ def _title_and_brand(name: str) -> tuple[Optional[dict[str, str]], tuple[str, ..
     for brand in (_title_brand_tokens(tokens), _brand_tokens(tokens, legacy=True)):
         title = _build_title(tokens, brand)
         if title:
-            return title, tuple(brand)
-    return None, tuple(_title_brand_tokens(tokens))
+            # Бренд источника с турецкими буквами («LONGİVO») на сайте пишется латиницей (21.11.2026).
+            return {locale: latin_tr(text) for locale, text in title.items()}, tuple(map(latin_tr, brand))
+    return None, tuple(map(latin_tr, _title_brand_tokens(tokens)))
 
 
 def _build_title(tokens: list[str], brand: list[str]) -> Optional[dict[str, str]]:

@@ -40,6 +40,18 @@ def fold_tr(value: Any) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+_TR_LATIN = str.maketrans("İıŞşĞğÇçÖöÜü", "IiSsGgCcOoUu")
+
+
+def latin_tr(value: Any) -> str:
+    """Турецкие буквы → обычные латинские, регистр сохраняется: «LONGİVO» → «LONGIVO».
+
+    Для названия и SEO на сайте: по латинице «LONGİVO» не находится. Название источника
+    (``external_data.source_name``) этим не меняется.
+    """
+    return unicodedata.normalize("NFC", str(value or "")).translate(_TR_LATIN).replace("̇", "")
+
+
 def _key(value: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", fold_tr(value))
 
