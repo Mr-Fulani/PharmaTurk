@@ -284,23 +284,45 @@ def iter_search_rows(product_ids: Optional[Iterable[int]] = None, *, batch_size:
 
 def _medicine_cyrillic_names(products) -> dict[int, list[str]]:
     """product_id → торговое название кириллицей из словаря ``medicine_brand`` (PR #167),
-    так же, как его пишет SEO лекарства (``content_generator``)."""
+    так же, как его пишет SEO лекарства (``content_generator``).
+
+    Бренд берётся из турецкого оригинала (``medicine_source_name``): ``name`` после
+    обработки — русское название с МНН в скобках («TYLOL (парацетамол) 500 мг…»),
+    бренд из него выходил «TYLOL парацетамол», и словарь его не находил.
+    """
+    from django.db.models.fields.json import KT
+
     from apps.ai.services.medicine_memory import peek
     from apps.ai.services.medicine_seo import BRAND_NAMESPACE, cyrillic_brand
-    from apps.ai.services.medicine_title import paragraph_brand, title_brand
+    from apps.ai.services.medicine_title import medicine_source_name, paragraph_brand, title_brand
 
-    brands = {
-        product.pk: (title_brand(product.name), paragraph_brand(product.name))
-        for product in products
-        if str(product.product_type or "") == "medicines"
-    }
-    keys = {key for pair in brands.values() for key in pair if key}
+    from .models import Product
+
+    names = {product.pk: product.name for product in products if str(product.product_type or "") == "medicines"}
+    if not names:
+        return {}
+    # Из external_data — только то, что читает medicine_source_name, а не весь JSON.
+    sources = Product.objects.filter(pk__in=names).values_list(
+        "pk",
+        KT("external_data__source_name"),
+        KT("external_data__attributes__barcode"),
+        KT("external_data__attributes__source_tabs__equivalents__text"),
+    )
+    brands = {}
+    for pk, source_name, barcode, equivalents in sources:
+        source = medicine_source_name(names[pk], {
+            "source_name": source_name,
+            "attributes": {"barcode": barcode, "source_tabs": {"equivalents": {"text": equivalents}}},
+        })[0]
+        # И по name тоже: у 16 карточек прода (21.11.2026) словарь находит бренд только так.
+        brands[pk] = [(title_brand(name), paragraph_brand(name)) for name in dict.fromkeys((source, names[pk]))]
+    keys = {key for pairs in brands.values() for pair in pairs for key in pair if key}
     found = peek(BRAND_NAMESPACE, keys) if keys else {}
     result = {}
-    for pk, (brand, short) in brands.items():
-        ru = cyrillic_brand(brand, short, found) if brand else ""
-        if ru:
-            result[pk] = [ru]
+    for pk, pairs in brands.items():
+        ru = [cyrillic_brand(brand, short, found) for brand, short in pairs if brand]
+        if any(ru):
+            result[pk] = [name for name in dict.fromkeys(ru) if name]
     return result
 
 
