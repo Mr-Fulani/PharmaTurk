@@ -128,13 +128,12 @@ def test_supplement_goes_to_queue_once():
 
 
 @pytest.mark.django_db
-def test_import_restricted_medicine_is_not_queued():
+def test_import_restricted_medicine_goes_to_queue():
+    """Решение владельца 21.11.2026: лекарства с меткой «Ввоз ограничен» в канал идут."""
     product = _medicine()
-    MedicineProduct.objects.filter(base_product=product).update(import_restricted_countries="RU,KZ")
-    product = Product.objects.get(pk=product.pk)
-    post, message = telegram_channel.enqueue(product)
-    assert post is None and "Ввоз ограничен" in message
-    assert not TelegramChannelPost.objects.exists()
+    MedicineProduct.objects.filter(base_product=product).update(import_restricted_countries="KZ,RU")
+    post, message = telegram_channel.enqueue(Product.objects.get(pk=product.pk))
+    assert post.status == Status.QUEUED and message == "Поставлен в очередь."
 
 
 @pytest.mark.django_db
@@ -334,11 +333,40 @@ def test_unexpected_failure_does_not_raise(conf, telegram):
 
 
 @pytest.mark.django_db
-def test_product_restricted_after_queueing_is_not_published(conf, telegram):
+def test_import_restricted_medicine_is_published_with_label(conf, telegram):
+    product = _medicine(rx=True)
+    MedicineProduct.objects.filter(base_product=product).update(
+        import_restricted_countries="KZ,RU,UZ"
+    )
+    post, _message = telegram_channel.enqueue(Product.objects.get(pk=product.pk))
+    assert telegram_channel.publish(post) == ""
+    post.refresh_from_db()
+    assert post.status == Status.PUBLISHED
+    caption = telegram.call_args.kwargs["data"]["caption"]
+    assert (
+        "⚠️ <b>Ввоз ограничен</b>: ввоз в Россию, Казахстан и Узбекистан запрещён или ограничен законом."
+        in caption
+    )
+    assert telegram_channel.RX_NOTE in caption
+    for word in ("купить", "заказ", "доставк"):
+        assert word not in caption.lower()
+
+
+@pytest.mark.django_db
+def test_import_restriction_label_lists_only_marked_countries():
     product = _medicine()
+    MedicineProduct.objects.filter(base_product=product).update(import_restricted_countries="KZ")
+    text = telegram_channel.build_post(Product.objects.get(pk=product.pk))["text"]
+    assert "⚠️ <b>Ввоз ограничен</b>: ввоз в Казахстан запрещён или ограничен законом." in text
+    assert "Ввоз ограничен" not in telegram_channel.build_post(_medicine())["text"]
+
+
+@pytest.mark.django_db
+def test_product_hidden_after_queueing_is_not_published(conf, telegram):
+    product = _supplement()
     post, _message = telegram_channel.enqueue(product)
-    MedicineProduct.objects.filter(base_product=product).update(import_restricted_countries="RU")
-    assert "Ввоз ограничен" in telegram_channel.publish(post)
+    SupplementProduct.objects.filter(base_product=product).update(is_active=False)
+    assert "скрыт" in telegram_channel.publish(post)
     post.refresh_from_db()
     assert post.status == Status.ERROR and not telegram.called
 
@@ -389,10 +417,10 @@ def test_schedule_publishes_one_post_per_time(conf, telegram):
 
 @pytest.mark.django_db
 def test_schedule_skips_blocked_product_and_takes_next(conf, telegram):
-    blocked = _medicine()
+    blocked = _supplement()
     bad, _m = telegram_channel.enqueue(blocked)
     good, _m = telegram_channel.enqueue(_supplement())
-    MedicineProduct.objects.filter(base_product=blocked).update(import_restricted_countries="RU")
+    SupplementProduct.objects.filter(base_product=blocked).update(is_active=False)
     assert telegram_channel.run_schedule(now=_at(10, 0)) == 1
     bad.refresh_from_db()
     good.refresh_from_db()

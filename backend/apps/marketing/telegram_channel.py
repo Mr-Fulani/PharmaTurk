@@ -70,8 +70,6 @@ def block_reason(product) -> str:
     item = domain_item(product)
     if item is None or not product_site_url(item):
         return "Товар скрыт на сайте — у него нет страницы."
-    if getattr(item, "import_restricted_countries", ""):
-        return "У препарата метка «Ввоз ограничен» — такие в канал не публикуются."
     return ""
 
 
@@ -143,6 +141,25 @@ def _short_description(html: str) -> str:
 def _hashtag(name: str) -> str:
     words = re.findall(r"[0-9A-Za-zА-Яа-яЁё]+", name or "")
     return "#" + "".join(word[:1].upper() + word[1:] for word in words) if words else ""
+
+
+# Как на карточке сайта (frontend/src/lib/importRestriction.js): порядок стран и винительный падеж.
+_RESTRICTED_COUNTRIES = (("RU", "Россию"), ("KZ", "Казахстан"), ("UZ", "Узбекистан"))
+
+
+def import_restriction_line(item) -> str:
+    """Метка «Ввоз ограничен» со странами — тем же текстом, что на карточке; пусто — метки нет.
+
+    Решение владельца 21.11.2026: такие лекарства в канал идут, пост несёт метку. Полная плашка
+    карточки («Доставку… не выполняем…», «Купить можно…») в пост не переносится: у лекарств в канале
+    нет слов о покупке и доставке.
+    """
+    codes = set(str(getattr(item, "import_restricted_countries", "") or "").split(","))
+    names = [name for code, name in _RESTRICTED_COUNTRIES if code in codes]
+    if not names:
+        return ""
+    countries = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} и {names[-1]}"
+    return f"⚠️ <b>Ввоз ограничен</b>: ввоз в {countries} запрещён или ограничен законом."
 
 
 def _category_names(card: dict) -> list[str]:
@@ -232,6 +249,7 @@ def build_post(product, today=None) -> dict:
         "\n".join(fact for fact in facts if fact),
         escape(_short_description(card.get("description")), quote=False),
         price_line,
+        import_restriction_line(item) if is_medicine else "",
         tail,
     ]
     text = "\n\n".join(block for block in blocks if block)
