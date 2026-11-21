@@ -322,6 +322,10 @@ FORM_PHRASES.update({
     "tek kullanimlik oral cozelti hazirlamak icin toz": (
         "порошок для приготовления раствора для приёма внутрь", "powder for oral solution"
     ),
+    # TYLOL HOT PEDIATRIK: в источнике «HAZIRLIK» вместо «HAZIRLAMAK» (21.11.2026).
+    "tek kullanimlik oral cozelti hazirlik icin toz": (
+        "порошок для приготовления раствора для приёма внутрь", "powder for oral solution"
+    ),
     "goz merhemi": ("глазная мазь", "eye ointment"),
     "yavas salimli film tablet": (
         "таблетки пролонгированного высвобождения, покрытые плёночной оболочкой",

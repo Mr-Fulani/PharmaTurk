@@ -92,7 +92,20 @@ def _fit(text: str, limit: int) -> str:
     return " ".join(words).rstrip(" ,—")
 
 
+# Написание, которым бренд ищут, если оно не совпадает с чтением латиницы: первое слово бренда →
+# кириллица. В рунете и аптеках СНГ — «тайлол хот», «тайлолфен хот» (как «тайленол»), словарь же
+# записал «Тилол», и карточки не находились по самому частому написанию (21.11.2026).
+BRAND_READINGS = {"TYLOL": "Тайлол", "TYLOLFEN": "Тайлолфен", "TYLOLHOT": "Тайлолхот"}
+
+
 def cyrillic_brand(brand: str, short: str, found: dict) -> str:
+    """Бренд названия кириллицей: словарь брендов, первое слово — по ``BRAND_READINGS``."""
+    ru = _dictionary_brand(brand, short, found)
+    reading = BRAND_READINGS.get(brand.split(" ", 1)[0].upper()) if ru else None
+    return " ".join([reading, *ru.split(" ")[1:]]) if reading else ru
+
+
+def _dictionary_brand(brand: str, short: str, found: dict) -> str:
     """Бренд названия кириллицей по словарю брендов (ключи — бренд абзацев ``short``).
 
     «MAJEZIK» → «Мажезик». Бренд названия длиннее: «PHYSIONEAL 40» → «Физионеал 40».
