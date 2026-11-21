@@ -20,7 +20,7 @@ from .models import (
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
 )
-from apps.marketing.admin_actions import TelegramChannelActionMixin
+from apps.marketing.admin_actions import TelegramChannelListMixin
 from .admin_base import AIStatusFilter, RunAIActionMixin, MainPhotoGalleryAdminMixin, MediaEnrichmentStatusFilter, MediaEnrichmentMixin, ShadowProductCleanupAdminMixin
 
 
@@ -248,7 +248,7 @@ class ImportRestrictionFilter(admin.SimpleListFilter):
 
 
 @admin.register(MedicineProduct)
-class MedicineProductAdmin(TelegramChannelActionMixin, _SimpleDomainAdmin, MediaEnrichmentMixin):
+class MedicineProductAdmin(TelegramChannelListMixin, _SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "medicines"
     declared_admin_actions = _SimpleDomainAdmin.declared_admin_actions + (
         "run_media_enrichment",
@@ -352,7 +352,7 @@ class MedicineProductAdmin(TelegramChannelActionMixin, _SimpleDomainAdmin, Media
 # ─────────────────────────────────────────────────────────────
 
 @admin.register(SupplementProduct)
-class SupplementProductAdmin(TelegramChannelActionMixin, _SimpleDomainAdmin, MediaEnrichmentMixin):
+class SupplementProductAdmin(TelegramChannelListMixin, _SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "supplements"
     declared_admin_actions = _SimpleDomainAdmin.declared_admin_actions + (
         "run_media_enrichment",
@@ -634,7 +634,7 @@ class AccessoryProductAdmin(_SimpleDomainAdmin):
 # ─────────────────────────────────────────────────────────────
 
 @admin.register(IncenseProduct)
-class IncenseProductAdmin(TelegramChannelActionMixin, _SimpleDomainAdmin):
+class IncenseProductAdmin(TelegramChannelListMixin, _SimpleDomainAdmin):
     _category_type_slug = "incense"
     declared_admin_actions = _SimpleDomainAdmin.declared_admin_actions + ("add_to_telegram_channel",)
     admin_action_order = declared_admin_actions

@@ -507,3 +507,53 @@ def test_admin_queue_and_settings_pages_open(admin_client, conf):
         ).status_code
         == 200
     )
+
+
+def _channel_rows(admin_client, value=""):
+    """Товары списка «БАДы» в админке с фильтром «Telegram-канал»."""
+    url = reverse("admin:catalog_supplementproduct_changelist")
+    response = admin_client.get(url, {"telegram_channel": value} if value else {})
+    assert response.status_code == 200
+    return response, {item.base_product_id for item in response.context["cl"].result_list}
+
+
+@pytest.mark.django_db
+def test_admin_list_column_and_filter_show_channel_state(admin_client, conf, telegram):
+    never, queued, published, failed = (_supplement() for _ in range(4))
+    telegram_channel.enqueue(queued)
+    done, _m = telegram_channel.enqueue(published)
+    telegram_channel.publish(done)
+    bad, _m = telegram_channel.enqueue(failed)
+    TelegramChannelPost.objects.filter(pk=bad.pk).update(status=Status.ERROR, error="нет фото")
+
+    response, everything = _channel_rows(admin_client)
+    assert everything == {never.pk, queued.pk, published.pk, failed.pk}
+    html = response.content.decode()
+    date = timezone.localtime(TelegramChannelPost.objects.get(pk=done.pk).published_at)
+    link = f'<a href="https://t.me/mudaroba_test/77" target="_blank" rel="noopener noreferrer">Опубликован {date:%d.%m.%Y}</a>'
+    assert link in html
+    assert "column-telegram_channel_status" in html and "В очереди" in html and "Ошибка" in html
+    for label in ("Не публиковался", "В очереди", "Опубликован", "Ошибка"):
+        assert label in html  # пункты фильтра
+
+    assert _channel_rows(admin_client, "none")[1] == {never.pk}
+    assert _channel_rows(admin_client, "queued")[1] == {queued.pk}
+    assert _channel_rows(admin_client, "published")[1] == {published.pk}
+    assert _channel_rows(admin_client, "error")[1] == {failed.pk}
+
+
+@pytest.mark.django_db
+def test_admin_list_column_does_not_query_per_row(admin_client, django_assert_num_queries):
+    from django.contrib import admin as django_admin
+
+    telegram_channel.enqueue(_supplement())
+    telegram_channel.enqueue(_supplement())
+    _supplement()
+    model_admin = django_admin.site._registry[SupplementProduct]
+    items = list(
+        _channel_rows(admin_client)[0].context["cl"].result_list
+    )  # строки настоящего списка
+    assert len(items) == 3
+    with django_assert_num_queries(0):
+        values = [model_admin.telegram_channel_status(item) for item in items]
+    assert sorted(values) == ["В очереди", "В очереди", "—"]
