@@ -1,6 +1,7 @@
-{% load i18n admin_urls catalog_admin_links %}
+{% load i18n admin_urls catalog_admin_links telegram_channel_admin %}
 {% block object-tools-items %}
 {% product_view_buttons_items original %}
+{% telegram_channel_button_item original %}
 <li>
     {% url opts|admin_urlname:'history' original.pk|admin_urlquote as history_url %}
     <a href="{% add_preserved_filters history_url %}" class="mud-btn historylink"><span aria-hidden="true">🕘</span> {% translate "History" %}</a>

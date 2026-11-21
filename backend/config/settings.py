@@ -411,6 +411,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "orders.remind_abandoned_carts",
         "schedule": crontab(minute=20),
     },
+    # Посты Telegram-канала по времени из настроек админки; выключено — задача ничего не делает.
+    "marketing-publish-telegram-channel": {
+        "task": "marketing.publish_telegram_channel",
+        "schedule": crontab(minute="*/10"),
+    },
     # Ограничиваем storage amplification от брошенных гостевых корзин.
     "orders-cleanup-stale-anonymous-carts": {
         "task": "orders.cleanup_stale_anonymous_carts",

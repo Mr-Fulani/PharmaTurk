@@ -1,0 +1,34 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div style="max-width:560px">
+  <p><strong>{{ product.name }}</strong></p>
+  {% if post %}
+    <p>Состояние: <strong>{{ post.get_status_display }}</strong>
+      {% if post.post_url %} · <a href="{{ post.post_url }}" target="_blank" rel="noopener noreferrer">открыть пост</a>{% endif %}
+      {% if post.published_at %} · {{ post.published_at|date:"d.m.Y H:i" }}{% endif %}
+    </p>
+    {% if post.error %}<p class="errornote">{{ post.error }}</p>{% endif %}
+  {% else %}
+    <p>В очереди канала этого товара ещё нет.</p>
+  {% endif %}
+
+  {% if reason %}
+    <p class="errornote">{{ reason }}</p>
+  {% else %}
+    <p>Так пост будет выглядеть в канале (фото — главное фото карточки, цена — на день публикации):</p>
+    <div style="border:1px solid var(--border-color, #d1d5db);border-radius:10px;padding:12px 14px;line-height:1.4;background:var(--body-bg, #fff)">
+      {{ post_html }}
+    </div>
+    <p style="margin-top:8px">Кнопка под постом: «{{ content.button_text }}» → <a href="{{ content.url }}" target="_blank" rel="noopener noreferrer">{{ content.url }}</a></p>
+    <form method="post" style="margin-top:14px">
+      {% csrf_token %}
+      <button type="submit" name="action" value="queue" class="button">В очередь канала</button>
+      <button type="submit" name="action" value="publish" class="button default"
+        onclick="return confirm('Опубликовать этот пост в канале прямо сейчас?')">Опубликовать сейчас</button>
+    </form>
+  {% endif %}
+  <p style="margin-top:18px"><a href="{{ queue_url }}">Очередь канала</a> · <a href="{{ settings_url }}">Настройки канала</a></p>
+</div>
+{% endblock %}
