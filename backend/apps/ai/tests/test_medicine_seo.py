@@ -145,3 +145,20 @@ def test_long_brand_title_falls_back_without_cutting_on_preposition():
     }
     seo = build_medicine_seo(title, "EXTRANEFROL", "Экстранефрол", None, "rx")
     assert seo["ru"]["seo_title"] == "Экстранефрол (EXTRANEFROL), раствор для перитонеального диализа"
+
+
+def test_cyrillic_brand_uses_the_spelling_people_search_for():
+    # В словаре на проде «Тилол Хот»; ищут «тайлол хот», «тайлолфен хот» (21.11.2026).
+    found = {
+        "TYLOL": {"ru": "Тилол"},
+        "TYLOL HOT": {"ru": "Тилол Хот"},
+        "TYLOLFEN HOT": {"ru": "Тилолфен Хот"},
+        "TYLOLHOT DAY": {"ru": "Тилолхот Дэй"},
+        "TYGEX": {"ru": "Тигекс"},
+    }
+    assert cyrillic_brand("TYLOL HOT", "TYLOL HOT", found) == "Тайлол Хот"
+    assert cyrillic_brand("TYLOL 6", "TYLOL", found) == "Тайлол 6"
+    assert cyrillic_brand("TYLOLFEN HOT", "", found) == "Тайлолфен Хот"
+    assert cyrillic_brand("TYLOLHOT DAY", "", found) == "Тайлолхот Дэй"
+    assert cyrillic_brand("TYGEX", "", found) == "Тигекс"
+    assert cyrillic_brand("TYLOL COLD", "TYLOL", found) == ""  # хвост латиницей — как раньше
