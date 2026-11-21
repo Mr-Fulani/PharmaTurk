@@ -28,6 +28,11 @@ def _site(settings, monkeypatch):
     monkeypatch.setattr(Product, "update_currency_prices", lambda *a, **k: None)
     settings.FRONTEND_SITE_URL = "https://mudaroba.com"
     settings.TELEGRAM_BOT_TOKEN = "token"
+    # Страницы админки в тестах — без манифеста собранной статики
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
 
 
 @pytest.fixture
@@ -53,6 +58,13 @@ def _fields(name, **extra):
     return data
 
 
+def _base(item):
+    """Товар в «Товарах»: связь с ним появляется после сохранения записи раздела."""
+    item.refresh_from_db()
+    assert item.base_product_id
+    return item.base_product
+
+
 def _supplement(**extra):
     item = SupplementProduct.objects.create(
         **_fields(
@@ -62,7 +74,7 @@ def _supplement(**extra):
             **extra,
         )
     )
-    return item.base_product
+    return _base(item)
 
 
 def _medicine(rx=False, **extra):
@@ -77,7 +89,7 @@ def _medicine(rx=False, **extra):
             **extra,
         )
     )
-    return item.base_product
+    return _base(item)
 
 
 def _tg_response(ok=True, status=200, description=""):
@@ -202,7 +214,7 @@ def test_post_without_price_has_no_price_line():
 @pytest.mark.django_db
 def test_essential_oil_post():
     item = IncenseProduct.objects.create(**_fields("PHYTOIL Вода лавандовая, 250 мл"))
-    text = telegram_channel.build_post(item.base_product)["text"]
+    text = telegram_channel.build_post(_base(item))["text"]
     assert "<b>PHYTOIL Вода лавандовая, 250 мл</b>" in text
     assert "Доставка из Турции: 7–14 дней" in text
     assert "Не является лекарством" not in text
