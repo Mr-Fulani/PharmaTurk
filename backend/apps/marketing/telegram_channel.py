@@ -87,7 +87,10 @@ def enqueue(product) -> tuple[TelegramChannelPost | None, str]:
         requeue(post)
         return post, "Снова поставлен в очередь."
     if post.status == TelegramChannelPost.Status.PUBLISHED:
-        return post, "Уже опубликован. Чтобы отправить ещё раз, верните его в очередь в разделе очереди."
+        return (
+            post,
+            "Уже опубликован. Чтобы отправить ещё раз, верните его в очередь в разделе очереди.",
+        )
     return post, "Уже в очереди."
 
 
@@ -110,8 +113,14 @@ def _card(item) -> dict:
     return dict(serialize_product_for_card(item, _SiteRequest(AnonymousUser(), "RUB", "ru")))
 
 
+def _clean(value) -> str:
+    """Значение поля карточки одной строкой (название и факты — не HTML, теги в них не вырезаются)."""
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
 def _plain(value) -> str:
-    return re.sub(r"\s+", " ", unescape(strip_tags(str(value or "")))).strip()
+    """Текст из HTML описания."""
+    return _clean(unescape(strip_tags(str(value or ""))))
 
 
 def _short_description(html: str) -> str:
@@ -144,7 +153,7 @@ def _category_names(card: dict) -> list[str]:
 
 
 def _fact(label: str, value) -> str:
-    text = _plain(value)
+    text = _clean(value)
     return f"▫️ {label}: {escape(text, quote=False)}" if text else ""
 
 
@@ -167,7 +176,7 @@ def build_post(product, today=None) -> dict:
     product_type = str(product.product_type or "").replace("-", "_")
     is_medicine = product_type == "medicines"
     is_rx = is_medicine and bool(card.get("prescription_required"))
-    name = escape(_plain(card.get("name") or product.name), quote=False)
+    name = escape(_clean(card.get("name") or product.name), quote=False)
     brand = (card.get("brand") or {}).get("name")
     categories = _category_names(card)
     date_text = (today or timezone.localdate()).strftime("%d.%m.%Y")
@@ -176,7 +185,9 @@ def build_post(product, today=None) -> dict:
         title = f"📋 <b>{name}</b>" if is_rx else f"<b>{name}</b>"
         subtitle = "Справочник лекарств · " + ("рецептурный препарат" if is_rx else "без рецепта")
         form = ", ".join(
-            part for part in (_plain(card.get("dosage_form")).lower(), _plain(card.get("volume"))) if part
+            part
+            for part in (_clean(card.get("dosage_form")).lower(), _clean(card.get("volume")))
+            if part
         )
         facts = [
             _fact("Действующее вещество", card.get("active_ingredient")),
@@ -224,7 +235,9 @@ def build_post(product, today=None) -> dict:
         tail,
     ]
     text = "\n\n".join(block for block in blocks if block)
-    if len(text) > CAPTION_LIMIT:  # длинное название и факты: описание — первое, чем можно пожертвовать
+    if (
+        len(text) > CAPTION_LIMIT
+    ):  # длинное название и факты: описание — первое, чем можно пожертвовать
         blocks[2] = ""
         text = "\n\n".join(block for block in blocks if block)
     return {
@@ -295,11 +308,17 @@ def _post_link(result: dict) -> str:
     if chat.get("username"):
         return f"https://t.me/{chat['username']}/{message_id}"
     chat_id = str(chat.get("id") or "")
-    return f"https://t.me/c/{chat_id.removeprefix('-100')}/{message_id}" if chat_id.startswith("-100") else ""
+    return (
+        f"https://t.me/c/{chat_id.removeprefix('-100')}/{message_id}"
+        if chat_id.startswith("-100")
+        else ""
+    )
 
 
 def _fail(post: TelegramChannelPost, error: str, *, keep_queued: bool = False) -> str:
-    post.status = TelegramChannelPost.Status.QUEUED if keep_queued else TelegramChannelPost.Status.ERROR
+    post.status = (
+        TelegramChannelPost.Status.QUEUED if keep_queued else TelegramChannelPost.Status.ERROR
+    )
     post.error = error[:1000]
     post.save(update_fields=["status", "error"])
     return error
@@ -355,7 +374,9 @@ def publish(post: TelegramChannelPost, *, by_schedule: bool = False) -> str:
     except ChannelPostError as exc:
         return _fail(post, str(exc))
     except TelegramTemporaryError as exc:
-        return _fail(post, f"Telegram временно недоступен ({exc}). Пост остался в очереди.", keep_queued=True)
+        return _fail(
+            post, f"Telegram временно недоступен ({exc}). Пост остался в очереди.", keep_queued=True
+        )
     except Exception as exc:  # задача расписания не должна падать из-за одной карточки
         logger.exception("Telegram channel post %s failed", post.pk)
         return _fail(post, f"Не удалось собрать или отправить пост: {type(exc).__name__}")
@@ -366,7 +387,9 @@ def publish(post: TelegramChannelPost, *, by_schedule: bool = False) -> str:
     post.message_id = result.get("message_id")
     post.post_url = _post_link(result)
     post.error = ""
-    post.save(update_fields=["status", "published_at", "by_schedule", "message_id", "post_url", "error"])
+    post.save(
+        update_fields=["status", "published_at", "by_schedule", "message_id", "post_url", "error"]
+    )
     return ""
 
 
@@ -394,12 +417,16 @@ def run_schedule(now=None) -> int:
         return 0
     if TelegramChannelPost.objects.filter(by_schedule=True, published_at__gte=slot).exists():
         return 0
-    queue = TelegramChannelPost.objects.filter(status=TelegramChannelPost.Status.QUEUED).select_related("product")
+    queue = TelegramChannelPost.objects.filter(
+        status=TelegramChannelPost.Status.QUEUED
+    ).select_related("product")
     for post in queue[:SLOT_ATTEMPTS]:
         publish(post, by_schedule=True)
         post.refresh_from_db()
         if post.status == TelegramChannelPost.Status.PUBLISHED:
             return 1
-        if post.status == TelegramChannelPost.Status.QUEUED:  # временный сбой — повтор в следующий запуск
+        if (
+            post.status == TelegramChannelPost.Status.QUEUED
+        ):  # временный сбой — повтор в следующий запуск
             return 0
     return 0

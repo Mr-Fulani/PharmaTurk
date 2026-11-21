@@ -13,7 +13,9 @@ class TelegramChannelActionMixin:
         added, skipped = 0, []
         for item in queryset.select_related("base_product"):
             product = item.base_product
-            post, message = enqueue(product) if product else (None, "У товара нет записи в «Товарах».")
+            post, message = (
+                enqueue(product) if product else (None, "У товара нет записи в «Товарах».")
+            )
             if post is not None and message == "Поставлен в очередь.":
                 added += 1
             else:
@@ -22,4 +24,6 @@ class TelegramChannelActionMixin:
         for line in skipped[:20]:
             self.message_user(request, line, messages.WARNING)
         if len(skipped) > 20:
-            self.message_user(request, f"…и ещё не поставлено: {len(skipped) - 20}", messages.WARNING)
+            self.message_user(
+                request, f"…и ещё не поставлено: {len(skipped) - 20}", messages.WARNING
+            )

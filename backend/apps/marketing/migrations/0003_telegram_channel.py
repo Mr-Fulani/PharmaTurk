@@ -14,7 +14,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="TelegramChannelSettings",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
                 (
                     "enabled",
                     models.BooleanField(
@@ -51,7 +56,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="TelegramChannelPost",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
                 (
                     "status",
                     models.CharField(
@@ -77,12 +87,23 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "queued_at",
-                    models.DateTimeField(default=django.utils.timezone.now, verbose_name="Поставлен в очередь"),
+                    models.DateTimeField(
+                        default=django.utils.timezone.now, verbose_name="Поставлен в очередь"
+                    ),
                 ),
-                ("published_at", models.DateTimeField(blank=True, null=True, verbose_name="Опубликован")),
+                (
+                    "published_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="Опубликован"),
+                ),
                 ("by_schedule", models.BooleanField(default=False, verbose_name="По расписанию")),
-                ("message_id", models.BigIntegerField(blank=True, null=True, verbose_name="Номер сообщения")),
-                ("post_url", models.URLField(blank=True, max_length=300, verbose_name="Ссылка на пост")),
+                (
+                    "message_id",
+                    models.BigIntegerField(blank=True, null=True, verbose_name="Номер сообщения"),
+                ),
+                (
+                    "post_url",
+                    models.URLField(blank=True, max_length=300, verbose_name="Ссылка на пост"),
+                ),
                 ("error", models.TextField(blank=True, verbose_name="Ошибка")),
                 (
                     "product",

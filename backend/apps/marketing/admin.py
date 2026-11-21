@@ -53,13 +53,28 @@ class TelegramChannelSettingsAdmin(admin.ModelAdmin):
 class TelegramChannelPostAdmin(admin.ModelAdmin):
     """Очередь канала. Товары добавляются со страницы товара или действием в списке товаров."""
 
-    list_display = ("product_link", "status", "position", "queued_at", "published_at", "post_link", "error_short")
+    list_display = (
+        "product_link",
+        "status",
+        "position",
+        "queued_at",
+        "published_at",
+        "post_link",
+        "error_short",
+    )
     list_editable = ("position",)
     list_filter = ("status", "by_schedule")
     search_fields = ("product__name", "product__slug")
     list_select_related = ("product",)
     readonly_fields = (
-        "product", "status", "queued_at", "published_at", "by_schedule", "message_id", "post_url", "error",
+        "product",
+        "status",
+        "queued_at",
+        "published_at",
+        "by_schedule",
+        "message_id",
+        "post_url",
+        "error",
     )
     fields = ("product", "position", *readonly_fields[1:])
     actions = ("publish_now", "return_to_queue")
@@ -76,7 +91,9 @@ class TelegramChannelPostAdmin(admin.ModelAdmin):
     def post_link(self, obj):
         if not obj.post_url:
             return "—"
-        return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">открыть</a>', obj.post_url)
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">открыть</a>', obj.post_url
+        )
 
     @admin.display(description="Ошибка")
     def error_short(self, obj):

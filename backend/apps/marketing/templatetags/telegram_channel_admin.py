@@ -1,4 +1,5 @@
 """Кнопка «Пост в Telegram-канал» на странице товара в админке."""
+
 from django import template
 from django.urls import reverse
 from django.utils.html import format_html
@@ -21,5 +22,7 @@ def telegram_channel_button_item(obj):
     url = reverse("admin:marketing_telegramchannelpost_product", args=[product.pk])
     return format_html(
         "<li>{}</li>",
-        admin_button(url, _("Пост в Telegram-канал"), "📣", _("Предпросмотр поста, очередь и публикация")),
+        admin_button(
+            url, _("Пост в Telegram-канал"), "📣", _("Предпросмотр поста, очередь и публикация")
+        ),
     )

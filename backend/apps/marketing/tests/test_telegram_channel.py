@@ -82,7 +82,10 @@ def _medicine(rx=False, **extra):
 
 def _tg_response(ok=True, status=200, description=""):
     payload = (
-        {"ok": True, "result": {"message_id": 77, "chat": {"id": -1001234, "username": "mudaroba_test"}}}
+        {
+            "ok": True,
+            "result": {"message_id": 77, "chat": {"id": -1001234, "username": "mudaroba_test"}},
+        }
         if ok
         else {"ok": False, "description": description}
     )
@@ -92,8 +95,9 @@ def _tg_response(ok=True, status=200, description=""):
 @pytest.fixture
 def telegram():
     """Заглушка Bot API и фото: в настоящий Telegram тесты не ходят."""
-    with patch("apps.orders.tasks._post_telegram", return_value=_tg_response()) as post, patch.object(
-        telegram_channel, "load_photo", return_value=b"jpeg"
+    with (
+        patch("apps.orders.tasks._post_telegram", return_value=_tg_response()) as post,
+        patch.object(telegram_channel, "load_photo", return_value=b"jpeg"),
     ):
         yield post
 
@@ -135,7 +139,9 @@ def test_hidden_product_is_not_queued():
 
 @pytest.mark.django_db
 def test_other_product_types_are_not_queued():
-    product = Product.objects.create(name="Кроссовки", slug=f"tg-{uuid4().hex[:8]}", product_type="shoes")
+    product = Product.objects.create(
+        name="Кроссовки", slug=f"tg-{uuid4().hex[:8]}", product_type="shoes"
+    )
     post, message = telegram_channel.enqueue(product)
     assert post is None and "только лекарства" in message
 
@@ -205,7 +211,9 @@ def test_essential_oil_post():
 @pytest.mark.django_db
 def test_text_is_escaped_for_telegram_html():
     product = _supplement()
-    SupplementProduct.objects.filter(base_product=product).update(name="A <b> & B", active_ingredient="x < y")
+    SupplementProduct.objects.filter(base_product=product).update(
+        name="A <b> & B", active_ingredient="x < y"
+    )
     text = telegram_channel.build_post(Product.objects.get(pk=product.pk))["text"]
     assert "A &lt;b&gt; &amp; B" in text and "x &lt; y" in text
 
@@ -229,8 +237,9 @@ def test_photo_is_converted_to_jpeg():
 def test_seller_placeholder_photo_is_rejected(monkeypatch):
     raw = _png()
     monkeypatch.setattr(telegram_channel, "PLACEHOLDER_PHOTO_MD5", {hashlib.md5(raw).hexdigest()})
-    with patch.object(telegram_channel, "_read_photo", return_value=raw), pytest.raises(
-        telegram_channel.ChannelPostError, match="заглушка"
+    with (
+        patch.object(telegram_channel, "_read_photo", return_value=raw),
+        pytest.raises(telegram_channel.ChannelPostError, match="заглушка"),
     ):
         telegram_channel.load_photo("https://cdn.example/x.png")
 
@@ -254,7 +263,10 @@ def test_publish_sends_photo_with_button(conf, telegram):
     assert (token, method) == ("token", "sendPhoto")
     assert kwargs["data"]["chat_id"] == "@mudaroba_test" and kwargs["data"]["parse_mode"] == "HTML"
     button = json.loads(kwargs["data"]["reply_markup"])["inline_keyboard"][0][0]
-    assert button["text"] == "Открыть на сайте" and "utm_source=telegram&utm_medium=channel" in button["url"]
+    assert (
+        button["text"] == "Открыть на сайте"
+        and "utm_source=telegram&utm_medium=channel" in button["url"]
+    )
     assert kwargs["files"]["photo"][1] == b"jpeg"
 
 
@@ -277,8 +289,9 @@ def test_published_product_is_not_sent_again_until_returned(conf, telegram):
 def test_telegram_refusal_becomes_error_status(conf):
     post, _message = telegram_channel.enqueue(_supplement())
     refusal = _tg_response(ok=False, status=400, description="Bad Request: chat not found")
-    with patch("apps.orders.tasks._post_telegram", return_value=refusal), patch.object(
-        telegram_channel, "load_photo", return_value=b"jpeg"
+    with (
+        patch("apps.orders.tasks._post_telegram", return_value=refusal),
+        patch.object(telegram_channel, "load_photo", return_value=b"jpeg"),
     ):
         error = telegram_channel.publish(post)
     post.refresh_from_db()
@@ -289,8 +302,9 @@ def test_telegram_refusal_becomes_error_status(conf):
 @pytest.mark.django_db
 def test_temporary_telegram_failure_keeps_post_queued(conf):
     post, _message = telegram_channel.enqueue(_supplement())
-    with patch("apps.orders.tasks._post_telegram", side_effect=TelegramTemporaryError("HTTP 502")), patch.object(
-        telegram_channel, "load_photo", return_value=b"jpeg"
+    with (
+        patch("apps.orders.tasks._post_telegram", side_effect=TelegramTemporaryError("HTTP 502")),
+        patch.object(telegram_channel, "load_photo", return_value=b"jpeg"),
     ):
         assert "временно недоступен" in telegram_channel.publish(post)
     post.refresh_from_db()
@@ -434,11 +448,22 @@ def test_admin_product_card_has_channel_button(admin_client):
     item = SupplementProduct.objects.get(base_product=product)
     page = admin_client.get(reverse("admin:catalog_supplementproduct_change", args=[item.pk]))
     assert page.status_code == 200
-    assert reverse("admin:marketing_telegramchannelpost_product", args=[product.pk]) in page.content.decode()
+    assert (
+        reverse("admin:marketing_telegramchannelpost_product", args=[product.pk])
+        in page.content.decode()
+    )
 
 
 @pytest.mark.django_db
 def test_admin_queue_and_settings_pages_open(admin_client, conf):
     telegram_channel.enqueue(_supplement())
-    assert admin_client.get(reverse("admin:marketing_telegramchannelpost_changelist")).status_code == 200
-    assert admin_client.get(reverse("admin:marketing_telegramchannelsettings_changelist"), follow=True).status_code == 200
+    assert (
+        admin_client.get(reverse("admin:marketing_telegramchannelpost_changelist")).status_code
+        == 200
+    )
+    assert (
+        admin_client.get(
+            reverse("admin:marketing_telegramchannelsettings_changelist"), follow=True
+        ).status_code
+        == 200
+    )
