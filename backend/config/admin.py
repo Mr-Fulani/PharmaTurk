@@ -187,6 +187,8 @@ class MudarobaAdminSite(AdminSite):
         "feedback": "Отзывы и вопросы",
         "marketing": "Маркетинг",
         "orders": "Заказы и корзины",
+        "otp_static": "Аутентификация",
+        "otp_totp": "Аутентификация",
         "pages": "Контент и настройки",
         "scrapers": "Парсеры",
         "settings": "Контент и настройки",
@@ -296,6 +298,33 @@ class MudarobaAdminSite(AdminSite):
                     "name": "Проверить лекарство (название или штрихкод)",
                     "object_name": "DrugCheckLookup",
                     "admin_url": reverse(f"{self.name}:drug_check_lookup"),
+                    "add_url": None,
+                    "view_only": True,
+                    "perms": {"view": True},
+                },
+            )
+
+        if user is not None and getattr(user, "is_staff", False):
+            # Второй фактор — в блоке «Аутентификация»: пункт включения виден каждому
+            # сотруднику, списки устройств — тем, у кого есть права на них.
+            from django.urls import reverse
+
+            auth_group = grouped.setdefault(
+                "Аутентификация",
+                {
+                    "name": "Аутентификация",
+                    "app_label": self.GROUP_LABELS["Аутентификация"],
+                    "app_url": "",
+                    "has_module_perms": True,
+                    "models": [],
+                },
+            )
+            auth_group["models"].insert(
+                0,
+                {
+                    "name": "Второй фактор: включить код из приложения",
+                    "object_name": "AdminTwoFactorSetup",
+                    "admin_url": reverse(f"{self.name}:two_factor"),
                     "add_url": None,
                     "view_only": True,
                     "perms": {"view": True},
