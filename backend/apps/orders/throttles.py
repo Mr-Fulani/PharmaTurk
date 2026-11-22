@@ -42,10 +42,12 @@ class CheckoutSustainedThrottle(TrustedUserOrProxyIPRateThrottle):
 
 
 class ReceiptEmailBurstThrottle(UserRateThrottle):
+    scope = "receipt_email_burst"
     rate = "3/hour"
 
 
 class ReceiptEmailSustainedThrottle(UserRateThrottle):
+    scope = "receipt_email_sustained"
     rate = "10/day"
 
 

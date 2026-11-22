@@ -1,5 +1,7 @@
+import hmac
 import logging
 import re
+from django.core.cache import cache
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
@@ -160,7 +162,9 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'is_verified', 'date_joined', 'last_login',
             'created_at', 'updated_at', 'total_orders', 'total_spent',
-            'user_email', 'user_username'
+            'user_email', 'user_username',
+            # Файл аватара меняется только через upload-avatar (проверка и пересжатие).
+            'avatar',
         ]
     
     def validate_email(self, value):
@@ -354,7 +358,12 @@ class UserPasswordChangeSerializer(serializers.Serializer):
         # Проверяем совпадение новых паролей
         if attrs['new_password'] != attrs['new_password_confirm']:
             raise serializers.ValidationError(_("Новые пароли не совпадают"))
-        
+
+        # Те же требования, что при регистрации: буквы и цифры
+        new_password = attrs['new_password']
+        if not (any(ch.isalpha() for ch in new_password) and any(ch.isdigit() for ch in new_password)):
+            raise serializers.ValidationError(_("Пароль должен содержать буквы и цифры"))
+
         return attrs
 
 
@@ -369,7 +378,17 @@ class UserEmailVerificationSerializer(serializers.Serializer):
         """Проверка кода подтверждения"""
         try:
             user = User.objects.get(email=attrs['email'])
-            if user.verification_code != attrs['verification_code']:
+            if not user.verification_code or not hmac.compare_digest(
+                user.verification_code, attrs['verification_code']
+            ):
+                # После пяти неверных попыток код сгорает: нужен новый.
+                failures_key = f'email_verify_failures:{user.pk}'
+                cache.add(failures_key, 0, timeout=15 * 60)
+                if user.verification_code and cache.incr(failures_key) >= 5:
+                    user.verification_code = ''
+                    user.verification_code_expires = None
+                    user.save(update_fields=['verification_code', 'verification_code_expires'])
+                    cache.delete(failures_key)
                 raise serializers.ValidationError(_("Неверный код подтверждения"))
             if user.verification_code_expires and user.verification_code_expires < timezone.now():
                 raise serializers.ValidationError(_("Код подтверждения истек"))
