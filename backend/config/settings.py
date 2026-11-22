@@ -603,7 +603,8 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "MVP API для интернет-магазина турецких товаров",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # Описание API — только сотрудникам, вошедшим в админку.
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "PREPROCESSING_HOOKS": ["api.schema.canonicalize_compatibility_routes"],
     "ENUM_NAME_OVERRIDES": {
         "AIProcessingStatusEnum": "apps.ai.models.AIProcessingStatus",

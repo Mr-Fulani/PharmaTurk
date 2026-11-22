@@ -30,7 +30,7 @@ from .serializers import (
 from .pagination import ReviewFeedPagination
 from .review_feed import build_review_feed_rows, serialize_review_feed_page
 from .tasks import notify_admin_product_question, notify_admin_product_review
-from .throttles import TESTIMONIAL_CREATE_THROTTLES
+from .throttles import PRODUCT_FEEDBACK_WRITE_THROTTLES, TESTIMONIAL_CREATE_THROTTLES
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +324,14 @@ class ReviewFeedView(APIView):
         return paginator.get_paginated_response(data)
 
 
+def _looks_like_video(uploaded) -> bool:
+    """MP4/MOV/M4V несут метку ``ftyp`` в байтах 4–8, WebM начинается с EBML."""
+    uploaded.seek(0)
+    head = uploaded.read(12)
+    uploaded.seek(0)
+    return head[4:8] == b"ftyp" or head[:4] == b"\x1a\x45\xdf\xa3"
+
+
 class ProductReviewViewSet(viewsets.ModelViewSet):
     authentication_classes = [JWTSafeAuthentication]
     queryset = ProductReview.objects.select_related("user").prefetch_related("media", "translations")
@@ -335,6 +343,11 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
         if self.action in {"create", "partial_update", "update", "destroy"}:
             return [IsAuthenticated()]
         return [AllowAny()]
+
+    def get_throttles(self):
+        if getattr(self, "action", None) in {"create", "partial_update", "update"}:
+            return [throttle() for throttle in PRODUCT_FEEDBACK_WRITE_THROTTLES]
+        return super().get_throttles()
 
     @staticmethod
     def _target(request):
@@ -415,6 +428,8 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
                     raise ValueError(f"Файл {uploaded.name} превышает лимит 50 МБ")
                 if extension not in {".mp4", ".webm", ".mov", ".m4v"}:
                     raise ValueError("Поддерживаются видео MP4, WebM и MOV")
+                if not _looks_like_video(uploaded):
+                    raise ValueError("Повреждённый или неподдерживаемый видеофайл")
                 media_type, max_size = ProductReviewMedia.MediaType.VIDEO, 50 * 1024 * 1024
             else:
                 raise ValueError("Разрешены только изображения и видео")
@@ -500,6 +515,11 @@ class ProductQuestionViewSet(viewsets.GenericViewSet):
 
     def get_permissions(self):
         return [IsAuthenticated()] if self.action == "create" else [AllowAny()]
+
+    def get_throttles(self):
+        if getattr(self, "action", None) == "create":
+            return [throttle() for throttle in PRODUCT_FEEDBACK_WRITE_THROTTLES]
+        return super().get_throttles()
 
     @staticmethod
     def _target(request):
