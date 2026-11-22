@@ -35,7 +35,7 @@ from apps.users.auth_cookies import (
     set_refresh_cookie,
 )
 from .authentication import JWTSafeAuthentication
-from .throttles import CSP_REPORT_THROTTLES, LOGIN_THROTTLES, TOKEN_THROTTLES
+from .throttles import CSP_REPORT_THROTTLES, LOGIN_THROTTLES, TOKEN_THROTTLES, TrustedIdentMixin
 
 
 logger = logging.getLogger(__name__)
@@ -274,11 +274,13 @@ class LivenessCheckView(APIView):
         return Response({"status": "ok"}, status=status.HTTP_200_OK)
 
 
-class TempImageUploadThrottle(AnonRateThrottle):
+class TempImageUploadThrottle(TrustedIdentMixin, AnonRateThrottle):
+    scope = "temp_upload_anon"
     rate = "10/min"
 
 
-class TempImageUploadUserThrottle(UserRateThrottle):
+class TempImageUploadUserThrottle(TrustedIdentMixin, UserRateThrottle):
+    scope = "temp_upload_user"
     rate = "30/min"
 
 

@@ -40,6 +40,14 @@ class TrustedProxyIPRateThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": ident}
 
 
+class TrustedIdentMixin:
+    """For DRF Anon/UserRateThrottle: identify anonymous clients by nginx's
+    X-Real-IP instead of the client-controlled X-Forwarded-For chain."""
+
+    def get_ident(self, request):
+        return get_trusted_client_ip(request)
+
+
 class LoginBurstThrottle(TrustedProxyIPRateThrottle):
     scope = "auth_login_burst"
     rate = "5/min"

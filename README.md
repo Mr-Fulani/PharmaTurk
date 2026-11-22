@@ -14,7 +14,7 @@ Mudaroba — двуязычная (ru/en) мультикатегорийная �
 | Django | 5.2.17 |
 | Django REST Framework | 3.18.0 |
 | Node.js | 22.23.2 |
-| Next.js | 15.5.28 (Pages Router) |
+| Next.js | 15.5.29 (Pages Router) |
 | PostgreSQL | 15.18 |
 | Redis | 7.4.10 |
 | Qdrant | 1.18.3 |
@@ -77,7 +77,7 @@ docker compose ps
 - frontend: <http://localhost:3001>;
 - backend API: <http://localhost:8000>;
 - Django Admin: <http://localhost:8000/admin/>;
-- OpenAPI UI: <http://localhost:8000/api/docs/>;
+- OpenAPI UI: <http://localhost:8000/api/docs/> (только для сотрудника, вошедшего в Django Admin);
 - readiness: <http://localhost:8000/api/health/>;
 - liveness: <http://localhost:8000/api/live/>;
 - PostgreSQL: `localhost:5433`;
