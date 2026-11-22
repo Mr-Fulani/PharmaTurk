@@ -157,3 +157,23 @@ def test_session_user_keeps_the_email_verified_field(staff):
     assert user.otp_device is not None
     # Сохранение пользователя из запроса (смена своего пароля и т. п.) не падает.
     user.save()
+
+
+@pytest.mark.django_db
+def test_second_factor_lives_in_the_authentication_block_in_russian(staff):
+    client = Client()
+    client.force_login(staff)
+
+    page = client.get("/admin/").content.decode()
+
+    assert "Второй фактор: включить код из приложения" in page
+    assert "/admin/two-factor/" in page
+    assert "Второй фактор: приложения сотрудников" in page
+    assert "Второй фактор: запасные коды сотрудников" in page
+    for english in ("TOTP devices", "Static devices", "Otp_Totp", "Otp_Static"):
+        assert english not in page
+
+    groups = {group["name"]: group for group in client.get("/admin/").context["app_list"]}
+    names = [model["object_name"] for model in groups["Аутентификация"]["models"]]
+    assert names[0] == "AdminTwoFactorSetup"
+    assert {"TOTPDevice", "StaticDevice"} <= set(names)
