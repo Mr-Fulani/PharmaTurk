@@ -80,6 +80,18 @@
   - **`R2_BOTO_MAX_POOL_CONNECTIONS`** (env, по умолчанию `64`) — `max_pool_connections`;
   - `connect_timeout=10`, `read_timeout=300`.
 
+**Кэш nginx и лимит промахов (22.11.2026):**
+
+- Ключ кэша `proxy_media` в `nginx/default.conf` собран только из `path`, `max_width`, `w`, `format`
+  и признака WebP. Посторонний параметр в адресе больше не даёт промах. Новый параметр, который
+  начнёт читать `proxy_media`, нужно добавить и в ключ (тест
+  `scripts/release/test_nginx_proxy_media_cache_key.py`). После выкатки старые записи кэша не
+  находятся и набираются заново — первые часы промахов больше обычного.
+- До Django доходят только промахи кэша и видео. Их не больше **300 в минуту с одного адреса**
+  посетителя (`_proxy_media_cache_miss_allowed`, `backend/apps/catalog/views.py`), дальше ответ 429 с
+  `Retry-After: 60`; nginx такие ответы не кэширует. Внутренние вызовы с частного адреса (SSR,
+  оптимизатор картинок Next) не ограничиваются.
+
 **Фронт** (`frontend/next.config.js`):
 
 - `experimental.proxyTimeout` из **`NEXT_PROXY_TIMEOUT_MS`** (по умолчанию `180000` мс) для rewrites `/api/*` → backend (длинные ответы прокси).
