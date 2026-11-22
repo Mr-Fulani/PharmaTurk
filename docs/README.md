@@ -89,6 +89,7 @@
 - [CRYPTO_PAYMENTS.md](../CRYPTO_PAYMENTS.md) — CoinRemitter и жизненный цикл криптоинвойса;
 - [notifications-and-receipts.md](notifications-and-receipts.md) — каналы уведомлений и PDF-чеки;
 - [ADMIN_PRODUCT_LINKS.md](ADMIN_PRODUCT_LINKS.md) — кнопки «На сайте» и «У продавца» вверху карточки любого товара в админке;
+- [ADMIN_TWO_FACTOR.md](ADMIN_TWO_FACTOR.md) — второй фактор входа в админку: код из приложения, запасные коды, включение сотрудником, сброс при потере телефона;
 - [ADMIN_HOME_TILES.md](ADMIN_HOME_TILES.md) — плитки частых разделов на главной админки (заявки, пользователи, корзины, цены) и единый вид кнопок-ссылок;
 - [ORDER_PROCESSING.md](ORDER_PROCESSING.md) — обработка заявок в админке: отметка «Обработка», ответственный, история, фильтры;
 - [CART_REMINDERS.md](CART_REMINDERS.md) — напоминания о неотправленном Списке заявки: включение в админке, кому и когда, отписка, журнал;

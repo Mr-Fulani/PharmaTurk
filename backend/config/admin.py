@@ -1,6 +1,13 @@
 """Конфигурация Django Admin и группировка главного меню."""
 
+from django.conf import settings
 from django.contrib.admin import AdminSite
+from django_otp import user_has_device
+
+
+def admin_otp_required(user) -> bool:
+    """Нужен ли этому сотруднику код второго фактора для входа в админку."""
+    return settings.ADMIN_OTP_REQUIRED or user_has_device(user)
 
 
 class MudarobaAdminSite(AdminSite):
@@ -12,6 +19,74 @@ class MudarobaAdminSite(AdminSite):
     # Плитки частых разделов (docs/ADMIN_HOME_TILES.md) и поле «Проверить лекарство»
     # над списком разделов (TD-044, docs/DRUG_CHECK.md).
     index_template = "admin/mudaroba_index.html"
+    # Форма входа с полем кода второго фактора (docs/ADMIN_TWO_FACTOR.md).
+    login_template = "admin/mudaroba_login.html"
+
+    def get_urls(self):
+        from django.urls import path
+
+        return [
+            path("two-factor/", self.admin_view(self.two_factor_view), name="two_factor"),
+            *super().get_urls(),
+        ]
+
+    def two_factor_view(self, request):
+        """Сотрудник сам включает второй фактор: устройство подтверждается
+        только верным кодом, поэтому остаться без входа нельзя."""
+        import base64
+        from io import BytesIO
+
+        import django_otp
+        from django.template.response import TemplateResponse
+        from django_otp.plugins.otp_static.models import StaticDevice, StaticToken
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+        from django_otp.qr import write_qrcode_image
+
+        user = request.user
+        context = {**self.each_context(request), "title": "Второй фактор входа"}
+        if user_has_device(user):
+            return TemplateResponse(request, "admin/mudaroba_two_factor.html", {**context, "enabled": True})
+
+        device, _created = TOTPDevice.objects.get_or_create(
+            user=user, confirmed=False, defaults={"name": "Приложение"}
+        )
+        if request.method == "POST":
+            token = (request.POST.get("otp_token") or "").replace(" ", "")
+            if token and device.verify_token(token):
+                device.confirmed = True
+                device.save(update_fields=["confirmed"])
+                backup = StaticDevice.objects.create(user=user, name="Запасные коды", confirmed=True)
+                backup_codes = [StaticToken.random_token() for _index in range(5)]
+                StaticToken.objects.bulk_create(
+                    StaticToken(device=backup, token=code) for code in backup_codes
+                )
+                django_otp.login(request, device)
+                request._admin_otp_allowed = True
+                return TemplateResponse(
+                    request,
+                    "admin/mudaroba_two_factor.html",
+                    {**context, "enabled": True, "backup_codes": backup_codes},
+                )
+            context["error"] = "Код не подошёл. Проверьте время на телефоне и введите новый код."
+
+        qr_image = BytesIO()
+        write_qrcode_image(device.config_url, qr_image)
+        context["qr_data_uri"] = "data:image/svg+xml;base64," + base64.b64encode(qr_image.getvalue()).decode()
+        context["secret_key"] = base64.b32encode(device.bin_key).decode()
+        return TemplateResponse(request, "admin/mudaroba_two_factor.html", context)
+
+    def has_permission(self, request):
+        if not super().has_permission(request):
+            return False
+        # Админка спрашивает права несколько раз за запрос — в базу один раз.
+        allowed = getattr(request, "_admin_otp_allowed", None)
+        if allowed is None:
+            user = request.user
+            # is_verified добавляет OTPMiddleware: сессия вошла с кодом.
+            is_verified = getattr(user, "is_verified", None)
+            allowed = bool(is_verified is not None and is_verified()) or not admin_otp_required(user)
+            request._admin_otp_allowed = allowed
+        return allowed
 
     MEDIA_MODELS = frozenset(
         {
