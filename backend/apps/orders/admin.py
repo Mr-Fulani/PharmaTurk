@@ -7,7 +7,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Case, Exists, F, Func, IntegerField, OuterRef, Prefetch, Q, Value, When
 from django.db.models.functions import Right
-from django.http import HttpResponseNotAllowed
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.utils import timezone
@@ -583,7 +583,7 @@ class OrderAdmin(admin.ModelAdmin):
     list_select_related = ('user', 'assigned_to')
     search_fields = ('number', 'user__email', 'contact_name', 'contact_phone', 'promo_code__code')
     readonly_fields = (
-        'number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url',
+        'number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_link',
         'import_restriction_banner', 'processing_history', 'contact_links', 'client_orders_link', 'locale',
         'kind', 'sourcing_details',
     )
@@ -606,7 +606,7 @@ class OrderAdmin(admin.ModelAdmin):
             'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username', 'locale',
         )}),
         (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method', 'tracking_number', 'tracking_url')}),
-        (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
+        (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_link')}),
         (_('Additional'), {'fields': ('comment',)}),
         (_('Timestamps'), {'fields': ('created_at', 'updated_at')}),
     )
@@ -661,6 +661,47 @@ class OrderAdmin(admin.ModelAdmin):
             'white-space:nowrap;">{}</span>', obj.get_kind_display(),
         )
 
+    @admin.display(description=_('Чек (PDF)'))
+    def receipt_link(self, obj):
+        if not obj or not obj.pk or not obj.receipt_url:
+            return '—'
+        return _new_tab_link(reverse('admin:orders_order_receipt_pdf', args=[obj.pk]), _('Открыть чек'))
+
+    def get_urls(self):
+        custom_urls = [
+            path(
+                '<int:pk>/receipt.pdf',
+                self.admin_site.admin_view(self.receipt_pdf_view),
+                name='orders_order_receipt_pdf',
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def receipt_pdf_view(self, request, pk):
+        """Чек отдаёт админка по правам, а не публичная ссылка CDN: в чеке ФИО,
+        адрес и состав заявки."""
+        from apps.catalog.utils.r2_utils import get_r2_client
+        from django.conf import settings
+
+        from .services import get_receipt_filename, get_receipt_storage_key
+
+        order = self.get_object(request, str(pk))
+        if order is None or not order.receipt_url:
+            raise Http404
+        if not self.has_view_permission(request, order):
+            raise PermissionDenied
+        try:
+            stored = get_r2_client().get_object(
+                Bucket=settings.R2_CONFIG['bucket_name'], Key=get_receipt_storage_key(order),
+            )
+        except Exception as exc:
+            logger.warning('Receipt PDF is unavailable for order_id=%s: %s', order.pk, type(exc).__name__)
+            raise Http404 from exc
+        response = HttpResponse(stored['Body'].read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{get_receipt_filename(order)}"'
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
     @admin.display(description=_('Что ищет клиент'))
     def sourcing_details(self, obj):
         req = SourcingRequest.objects.filter(order=obj).first() if obj and obj.pk else None
@@ -672,7 +713,8 @@ class OrderAdmin(admin.ModelAdmin):
         if req.image:
             rows.append((_('Фото'), format_html(
                 '<a href="{0}" target="_blank" rel="noopener noreferrer">'
-                '<img src="{0}" alt="" style="max-height:240px;max-width:320px"></a>', req.image.url,
+                '<img src="{0}" alt="" style="max-height:240px;max-width:320px"></a>',
+                reverse('admin:orders_sourcingrequest_photo', args=[req.pk]),
             )))
         if req.comment:
             rows.append((_('Комментарий клиента'), req.comment))
@@ -1030,7 +1072,7 @@ class SourcingRequestAdmin(admin.ModelAdmin):
     readonly_fields = ('user', 'image_preview', 'contact_links', 'locale', 'created_at', 'updated_at', 'state')
     fieldsets = (
         (None, {'fields': ('state', 'status', 'manager_comment')}),
-        (_('Request'), {'fields': ('source_url', 'image', 'image_preview', 'comment', 'quantity')}),
+        (_('Request'), {'fields': ('source_url', 'image_preview', 'comment', 'quantity')}),
         (_('Contact'), {'fields': ('contact_links', 'user', 'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
         (_('Timestamps'), {'fields': ('locale', 'created_at', 'updated_at')}),
     )
@@ -1058,7 +1100,36 @@ class SourcingRequestAdmin(admin.ModelAdmin):
     def image_preview(self, obj):
         if not obj.image:
             return '—'
-        return format_html('<img src="{}" style="max-height:240px;max-width:320px" />', obj.image.url)
+        return format_html(
+            '<img src="{}" style="max-height:240px;max-width:320px" />',
+            reverse('admin:orders_sourcingrequest_photo', args=[obj.pk]),
+        )
+
+    def get_urls(self):
+        custom_urls = [
+            path(
+                '<int:pk>/photo/',
+                self.admin_site.admin_view(self.photo_view),
+                name='orders_sourcingrequest_photo',
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def photo_view(self, request, pk):
+        """Фото клиента отдаёт админка по правам, а не публичная ссылка CDN."""
+        if not (self.has_view_permission(request) or request.user.has_perm('orders.view_order')):
+            raise PermissionDenied
+        req = SourcingRequest.objects.filter(pk=pk).first()
+        if req is None or not req.image:
+            raise Http404
+        try:
+            image_file = req.image.open('rb')
+        except Exception as exc:
+            logger.warning('Sourcing photo is unavailable for request_id=%s: %s', req.pk, type(exc).__name__)
+            raise Http404 from exc
+        response = FileResponse(image_file, content_type='image/jpeg')
+        response['Cache-Control'] = 'private, no-store'
+        return response
 
     @admin.display(description=_('Связаться'))
     def contact_links(self, obj):
