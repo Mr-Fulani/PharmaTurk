@@ -3,6 +3,17 @@
 from django.conf import settings
 from django.contrib.admin import AdminSite
 from django_otp import user_has_device
+from django_otp.middleware import OTPMiddleware
+
+
+class AdminOTPMiddleware(OTPMiddleware):
+    """OTPMiddleware без ``user.is_verified()``: у нашего User есть поле
+    ``is_verified`` (почта подтверждена), и штатный слой подменял его функцией
+    у каждого пользователя с сессией. Признак входа с кодом — ``user.otp_device``."""
+
+    @staticmethod
+    def _init_user_fields(user):
+        user.otp_device = None
 
 
 def admin_otp_required(user) -> bool:
@@ -82,9 +93,8 @@ class MudarobaAdminSite(AdminSite):
         allowed = getattr(request, "_admin_otp_allowed", None)
         if allowed is None:
             user = request.user
-            # is_verified добавляет OTPMiddleware: сессия вошла с кодом.
-            is_verified = getattr(user, "is_verified", None)
-            allowed = bool(is_verified is not None and is_verified()) or not admin_otp_required(user)
+            # otp_device ставит AdminOTPMiddleware: сессия вошла с кодом.
+            allowed = getattr(user, "otp_device", None) is not None or not admin_otp_required(user)
             request._admin_otp_allowed = allowed
         return allowed
 
