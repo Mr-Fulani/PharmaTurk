@@ -699,8 +699,9 @@ class OrderAdmin(admin.ModelAdmin):
         if not self._is_sourcing(order):
             return
         # Цена позиций вписана вручную: суммы позиций и заявки считаем от неё
+        # Запросом, а не order.items: у заявки со страницы позиции предзагружены до сохранения формы
         subtotal = Decimal('0')
-        for item in order.items.all():
+        for item in OrderItem.objects.filter(order=order):
             total = item.price * item.quantity
             if item.total != total:
                 item.total = total

@@ -87,7 +87,7 @@ def test_tiles_count_and_link(client, django_user_model):
     assert tiles["Проверка лекарства"]["url"] == reverse("admin:drug_check_lookup")
     # Плитки — над полем проверки лекарства и полным списком разделов, который остаётся
     assert html.index('id="home-tiles"') < html.index('id="drug-check-search"') < html.index('id="content-main"')
-    assert '<span class="mud-tile__value">2</span>' in html and ".mud-tiles" in html
+    assert '<span class="mud-tile__value">3</span>' in html and ".mud-tiles" in html
     # Ссылки плиток открываются; списки пользователей и корзин — с сортировкой по дате
     for tile in tiles.values():
         assert client.get(tile["url"]).status_code == 200, tile["url"]
