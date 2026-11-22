@@ -344,7 +344,7 @@ def test_processing_labels_keep_old_values_under_new_names():
         "cancelled": "Не состоялась",
     }
     assert set(FR.values) == {
-        "no_reply", "expensive", "slow", "out_of_stock", "cannot_deliver", "changed_mind", "spam",
+        "no_reply", "expensive", "slow", "out_of_stock", "not_found", "cannot_deliver", "changed_mind", "spam",
     }
     max_length = Order._meta.get_field("processing_status").max_length
     assert all(len(value) <= max_length for value in [*PS.values, *FR.values])

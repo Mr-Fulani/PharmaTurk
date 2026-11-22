@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.catalog.models import Product
 from apps.catalog.models_stock import StaleProductCandidate
-from apps.orders.models import Cart, CartItem, Order, SourcingRequest
+from apps.orders.models import Cart, CartItem, Order
 from config import admin_tiles
 
 
@@ -53,7 +53,9 @@ def test_tiles_count_and_link(client, django_user_model):
     Order.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=3))
     _order("HT000002")
     _order("HT000003", processing_status=Order.ProcessingStatus.DONE)
-    SourcingRequest.objects.create(contact_name="Клиент", contact_phone="+79990001122")
+    # «Найдём товар» ведётся в «Заказах»: открытая заявка этого типа и закрытая (в плитку не идёт)
+    _order("HT000004", kind=Order.Kind.SOURCING)
+    _order("HT000005", kind=Order.Kind.SOURCING, processing_status=Order.ProcessingStatus.CANCELLED)
     product = Product.objects.create(name="Товар", slug="ht-tovar", product_type="accessories")
     StaleProductCandidate.objects.create(
         product=product, parser_key="lcw", source_url="https://lcw.test/1",
@@ -72,9 +74,13 @@ def test_tiles_count_and_link(client, django_user_model):
         "Настройки цен и наценок", "Проверка лекарства", "Лекарства", "БАДы", "Ночная сверка наличия",
         "Неактуальные товары",
     ]
-    assert (tiles["Заявки"]["value"], tiles["Заявки"]["extra"]) == (2, 2)  # не закрытые; новые за сутки
+    assert (tiles["Заявки"]["value"], tiles["Заявки"]["extra"]) == (3, 4)  # не закрытые; новые за сутки
     assert tiles["Заявки"]["url"] == reverse("admin:orders_order_changelist") + "?processing=open"
     assert tiles["Найдём товар"]["value"] == 1
+    # По клику — все заявки этого типа, и закрытые тоже: при счётчике 0 список не пустой
+    assert tiles["Найдём товар"]["url"] == reverse("admin:orders_order_changelist") + "?kind__exact=sourcing"
+    listing = client.get(tiles["Найдём товар"]["url"])
+    assert sorted(order.number for order in listing.context["cl"].result_list) == ["HT000004", "HT000005"]
     assert (tiles["Пользователи"]["value"], tiles["Пользователи"]["extra"]) == (1, 1)
     assert (tiles["Списки заявки (корзины)"]["value"], tiles["Списки заявки (корзины)"]["extra"]) == (1, 2)
     assert tiles["Неактуальные товары"]["value"] == 1
@@ -82,7 +88,7 @@ def test_tiles_count_and_link(client, django_user_model):
     assert tiles["Проверка лекарства"]["url"] == reverse("admin:drug_check_lookup")
     # Плитки — над полем проверки лекарства и полным списком разделов, который остаётся
     assert html.index('id="home-tiles"') < html.index('id="drug-check-search"') < html.index('id="content-main"')
-    assert '<span class="mud-tile__value">2</span>' in html and ".mud-tiles" in html
+    assert '<span class="mud-tile__value">3</span>' in html and ".mud-tiles" in html
     # Ссылки плиток открываются; списки пользователей и корзин — с сортировкой по дате
     for tile in tiles.values():
         assert client.get(tile["url"]).status_code == 200, tile["url"]
@@ -106,7 +112,7 @@ def test_tiles_only_for_allowed_sections(client, django_user_model):
 
     tiles, html = _tiles(client)
 
-    assert list(tiles) == ["Заявки"]
+    assert list(tiles) == ["Заявки", "Найдём товар"]  # обе плитки ведут в «Заказы»
 
     django_user_model.objects.filter(username="tiles-admin").delete()
     _login(client, django_user_model)

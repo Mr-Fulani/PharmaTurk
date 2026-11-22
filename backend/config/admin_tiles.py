@@ -36,11 +36,15 @@ def _orders(url):
 
 
 def _sourcing(url):
-    from apps.orders.models import SourcingRequest
+    # Заявки «Найдём товар» ведутся в общем списке «Заказы» с типом «Найти товар».
+    # Число — не закрытые, а по клику открываются все (и закрытые): при нуле список не пустой
+    from apps.orders.admin import OPEN_PROCESSING
+    from apps.orders.models import Order
 
+    sourcing = Order.objects.filter(kind=Order.Kind.SOURCING)
     return {
-        "icon": "🔎", "title": "Найдём товар", "url": f"{url}?status__exact=new",
-        "value": _count(SourcingRequest.objects.filter(status=SourcingRequest.Status.NEW)), "value_label": "новых",
+        "icon": "🔎", "title": "Найдём товар", "url": f"{url}?kind__exact=sourcing",
+        "value": _count(sourcing.filter(processing_status__in=OPEN_PROCESSING)), "value_label": "не закрыто",
     }
 
 
@@ -103,7 +107,7 @@ def _drug_check(url):
 # (приложение, модель — по ней проверяется право просмотра, сборщик плитки) — в порядке показа
 TILES = (
     ("orders", "order", _orders),
-    ("orders", "sourcingrequest", _sourcing),
+    ("orders", "order", _sourcing),
     ("users", "user", _users),
     ("orders", "cart", _carts),
     ("catalog", "productprice", _link("💰", "Цены товаров", "цена каждого товара")),

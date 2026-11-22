@@ -979,6 +979,13 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
         req = SourcingRequest.objects.get(pk=request_id)
     except SourcingRequest.DoesNotExist:
         return
+    # Заявку ведут в «Заказах»: номер и ссылка — туда; у заявок без пары — прежняя страница
+    order = getattr(req, "order", None)
+    number = order.number if order else req.pk
+    admin_link = (
+        _admin_url("admin:orders_order_change", order.pk) if order
+        else _admin_url("admin:orders_sourcingrequest_change", req.pk)
+    )
 
     h = _tg_html_escape
     wanted = ["🛍 <b>Что ищем</b>"]
@@ -997,7 +1004,7 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
     if req.contact_username:
         is_phone = req.contact_username.lstrip("+").isdigit()
         buyer.append(f"{h(channel_info)}: {h(req.contact_username if is_phone else '@' + req.contact_username)}")
-    write_line = _tg_write_line(req, req.pk, sourcing=True, locale=req.locale)
+    write_line = _tg_write_line(req, number, sourcing=True, locale=req.locale)
     if write_line:
         buyer.append(write_line)
     # В окно поиска лекарств подставляется запрос покупателя — одной строкой, не длиннее поля поиска
@@ -1007,8 +1014,8 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
     )
     text = "\n\n".join(
         [
-            f"🔎 <b>Новая заявка на поиск товара</b> <code>{req.pk}</code>\n"
-            + _tg_link(_admin_url("admin:orders_sourcingrequest_change", req.pk), "Открыть заявку в админке"),
+            f"🔎 <b>Новая заявка на поиск товара</b> <code>{h(number)}</code>\n"
+            + _tg_link(admin_link, "Открыть заявку в админке"),
             "\n".join(wanted),
             "\n".join(buyer),
             lookup,
@@ -1026,7 +1033,7 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
                 req.pk, type(exc).__name__,
             )
     try:
-        for step_text, step_photo in _tg_delivery_steps(text, photo, f"Фото к заявке <code>{req.pk}</code>")[steps_sent:]:
+        for step_text, step_photo in _tg_delivery_steps(text, photo, f"Фото к заявке <code>{h(number)}</code>")[steps_sent:]:
             if step_photo:
                 resp = _post_telegram(
                     bot_token,
