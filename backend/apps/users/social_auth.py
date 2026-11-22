@@ -444,6 +444,16 @@ PROVIDERS: dict[str, type[SocialAuthProvider]] = {
 # ---------------------------------------------------------------------------
 
 
+def _blacklist_refresh_tokens(user) -> None:
+    from rest_framework_simplejwt.token_blacklist.models import (
+        BlacklistedToken,
+        OutstandingToken,
+    )
+
+    for token in OutstandingToken.objects.filter(user=user):
+        BlacklistedToken.objects.get_or_create(token=token)
+
+
 def get_or_create_social_user(
     provider: SocialAuthProvider,
     user_info: dict,
@@ -536,9 +546,13 @@ def get_or_create_social_user(
         if user:
             setattr(user, id_field, provider_id)
             update_fields = [id_field]
-            if not user.is_verified:
+            was_unverified = not user.is_verified
+            if was_unverified:
+                # Аккаунт на этот адрес мог заранее завести посторонний со своим
+                # паролем: пароль и выданные раньше токены больше не действуют.
                 user.is_verified = True
-                update_fields.append("is_verified")
+                user.set_unusable_password()
+                update_fields.extend(["is_verified", "password"])
             if first_name and not user.first_name:
                 user.first_name = first_name
                 update_fields.append("first_name")
@@ -548,6 +562,8 @@ def get_or_create_social_user(
             if avatar_url and not user.avatar and _assign_avatar_if_needed(user):
                 update_fields.append("avatar")
             user.save(update_fields=update_fields)
+            if was_unverified:
+                _blacklist_refresh_tokens(user)
             logger.info(
                 "Social login [%s]: linked to existing verified account user_id=%s",
                 provider.name,

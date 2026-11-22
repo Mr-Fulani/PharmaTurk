@@ -354,6 +354,7 @@ def test_factory_links_existing_email_only_with_explicit_true_assertion():
         is_verified=False,
         google_id=None,
         save=MagicMock(),
+        set_unusable_password=MagicMock(),
     )
 
     def filter_users(**criteria):
@@ -364,7 +365,9 @@ def test_factory_links_existing_email_only_with_explicit_true_assertion():
     manager.filter.side_effect = filter_users
     provider = SimpleNamespace(name="google", id_field="google_id")
 
-    with patch.object(social_auth.User, "objects", manager):
+    with patch.object(social_auth.User, "objects", manager), patch.object(
+        social_auth, "_blacklist_refresh_tokens"
+    ) as blacklist:
         result = social_auth.get_or_create_social_user(
             provider,
             {
@@ -380,7 +383,52 @@ def test_factory_links_existing_email_only_with_explicit_true_assertion():
     assert result is existing_user
     assert existing_user.google_id == "verified-provider-id"
     assert existing_user.is_verified is True
-    existing_user.save.assert_called_once_with(update_fields=["google_id", "is_verified"])
+    existing_user.save.assert_called_once_with(
+        update_fields=["google_id", "is_verified", "password"]
+    )
+    # Аккаунт мог заранее завести посторонний: его пароль и токены гасятся.
+    existing_user.set_unusable_password.assert_called_once_with()
+    blacklist.assert_called_once_with(existing_user)
+
+
+def test_factory_keeps_password_of_already_verified_account():
+    manager = MagicMock()
+    existing_user = SimpleNamespace(
+        id=12,
+        avatar=None,
+        first_name="Existing",
+        last_name="User",
+        email="person@example.com",
+        is_verified=True,
+        google_id=None,
+        save=MagicMock(),
+        set_unusable_password=MagicMock(),
+    )
+    manager.filter.side_effect = lambda **criteria: (
+        _QueryResult(first=existing_user)
+        if criteria == {"email__iexact": "person@example.com"}
+        else _QueryResult()
+    )
+    provider = SimpleNamespace(name="google", id_field="google_id")
+
+    with patch.object(social_auth.User, "objects", manager), patch.object(
+        social_auth, "_blacklist_refresh_tokens"
+    ) as blacklist:
+        social_auth.get_or_create_social_user(
+            provider,
+            {
+                "provider_id": "verified-provider-id",
+                "email": "person@example.com",
+                "email_verified": True,
+                "first_name": "",
+                "last_name": "",
+                "avatar_url": None,
+            },
+        )
+
+    existing_user.save.assert_called_once_with(update_fields=["google_id"])
+    existing_user.set_unusable_password.assert_not_called()
+    blacklist.assert_not_called()
 
 
 def test_factory_promotes_provider_account_after_verified_email_arrives():
