@@ -24,13 +24,15 @@ def _request(**meta):
 
 
 def test_public_visitor_is_counted_per_real_ip(views):
-    request = _request(HTTP_X_REAL_IP='203.0.113.9', HTTP_X_FORWARDED_FOR='198.51.100.1')
+    # Адрес настоящий публичный: учебные диапазоны (203.0.113.0/24 и т. п.)
+    # ipaddress считает частными, и лимит к ним не применяется.
+    request = _request(HTTP_X_REAL_IP='8.8.8.8', HTTP_X_FORWARDED_FOR='198.51.100.1')
 
     with patch.object(views, '_cache_miss_within_limit', return_value=False) as within:
         assert views._proxy_media_cache_miss_allowed(request) is False
 
     within.assert_called_once_with(
-        'proxy_media_miss', '203.0.113.9', views._PROXY_MEDIA_MISSES_PER_MINUTE
+        'proxy_media_miss', '8.8.8.8', views._PROXY_MEDIA_MISSES_PER_MINUTE
     )
 
 
