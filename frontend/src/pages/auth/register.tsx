@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { SITE_NAME } from '../../lib/siteMeta'
+import { sanitizeNextPath } from '../../lib/authRedirect'
 import AnimatedPasswordInput from '../../components/AnimatedPasswordInput'
 
 export default function RegisterPage() {
@@ -27,12 +28,8 @@ export default function RegisterPage() {
     try {
       await register(email, username, password)
       // Проверяем, есть ли параметр next для редиректа
-      const next = router.query.next as string
-      if (next && next.startsWith('/')) {
-        router.push(next)
-      } else {
-        router.push('/')
-      }
+      const next = sanitizeNextPath(router.query.next as string)
+      router.push(next || '/')
     } catch (e: any) {
       const data = e?.response?.data || {}
       const first = Object.values(data)[0] as any

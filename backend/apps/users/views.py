@@ -18,8 +18,7 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from datetime import timedelta
-import random
-import string
+import secrets
 import uuid
 import logging
 import os
@@ -654,10 +653,19 @@ class UserPasswordChangeView(APIView):
             user = request.user
             user.set_password(serializer.validated_data['new_password'])
             user.save()
-            
-            return Response({
-                'message': _('Пароль успешно изменен')
+
+            # Входы, выданные со старым паролем (в том числе на чужом
+            # устройстве), перестают продлеваться; это устройство получает новый.
+            from .social_auth import _blacklist_refresh_tokens
+
+            _blacklist_refresh_tokens(user)
+            tokens, refresh = auth_tokens_payload(user)
+            response = Response({
+                'message': _('Пароль успешно изменен'),
+                'tokens': tokens,
             })
+            set_refresh_cookie(response, refresh)
+            return response
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -734,7 +742,7 @@ class UserRequestVerificationCodeView(APIView):
                 {'detail': _('Email уже подтверждён')},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        code = ''.join(random.choices(string.digits, k=6))
+        code = ''.join(secrets.choice('0123456789') for _index in range(6))
         user.verification_code = code
         user.verification_code_expires = timezone.now() + timedelta(minutes=15)
         user.save()

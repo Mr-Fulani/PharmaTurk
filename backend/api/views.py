@@ -309,7 +309,28 @@ def _read_validated_temp_image(file_obj) -> tuple[bytes, str]:
     if len(data) > MAX_IMAGE_BYTES:
         raise ImageTooLargeError()
     validated = validate_image_bytes(data)
-    return data, FORMAT_EXTENSIONS[validated.format]
+    return _strip_image_metadata(data, validated.format), FORMAT_EXTENSIONS[validated.format]
+
+
+def _strip_image_metadata(data: bytes, image_format: str) -> bytes:
+    """Пересохранить фото без EXIF (геометка, модель телефона), сохранив поворот."""
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+
+    try:
+        with Image.open(BytesIO(data)) as image:
+            if not image.getexif():
+                return data
+            image = ImageOps.exif_transpose(image)
+            output = BytesIO()
+            options = {"quality": 90} if image_format in {"JPEG", "WEBP"} else {}
+            if image_format == "JPEG" and image.mode not in {"RGB", "L"}:
+                image = image.convert("RGB")
+            image.save(output, format=image_format, **options)
+    except Exception:
+        raise InvalidImageError() from None
+    return output.getvalue()
 
 
 class TempImageUploadView(APIView):

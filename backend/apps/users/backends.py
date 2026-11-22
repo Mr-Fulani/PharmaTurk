@@ -77,8 +77,15 @@ class MultiFieldAuthBackend(ModelBackend):
                 else:
                     # Не нашли по телефону - пробуем поиск по частичному совпадению
                     # (на случай, если номер хранится в другом формате)
+                    # Только полный номер и только однозначное совпадение: по короткой
+                    # строке цифр чужой аккаунт находиться не должен.
+                    digits = ''.join(ch for ch in cleaned_username if ch.isdigit())
                     try:
-                        user = User.objects.filter(phone_number__icontains=cleaned_username.lstrip('+')).first()
+                        matches = (
+                            list(User.objects.filter(phone_number__endswith=digits[-10:])[:2])
+                            if len(digits) >= 10 else []
+                        )
+                        user = matches[0] if len(matches) == 1 else None
                     except DatabaseError as exc:
                         logger.warning(
                             "Phone login lookup failed: %s: %s", type(exc).__name__, exc,
