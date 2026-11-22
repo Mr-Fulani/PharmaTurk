@@ -36,13 +36,14 @@ def _orders(url):
 
 
 def _sourcing(url):
-    # Заявки «Найдём товар» ведутся в общем списке «Заказы» с типом «Найти товар»
+    # Заявки «Найдём товар» ведутся в общем списке «Заказы» с типом «Найти товар».
+    # Число — не закрытые, а по клику открываются все (и закрытые): при нуле список не пустой
     from apps.orders.admin import OPEN_PROCESSING
     from apps.orders.models import Order
 
     sourcing = Order.objects.filter(kind=Order.Kind.SOURCING)
     return {
-        "icon": "🔎", "title": "Найдём товар", "url": f"{url}?kind__exact=sourcing&processing=open",
+        "icon": "🔎", "title": "Найдём товар", "url": f"{url}?kind__exact=sourcing",
         "value": _count(sourcing.filter(processing_status__in=OPEN_PROCESSING)), "value_label": "не закрыто",
     }
 

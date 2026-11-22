@@ -77,9 +77,10 @@ def test_tiles_count_and_link(client, django_user_model):
     assert (tiles["Заявки"]["value"], tiles["Заявки"]["extra"]) == (3, 4)  # не закрытые; новые за сутки
     assert tiles["Заявки"]["url"] == reverse("admin:orders_order_changelist") + "?processing=open"
     assert tiles["Найдём товар"]["value"] == 1
-    assert tiles["Найдём товар"]["url"] == (
-        reverse("admin:orders_order_changelist") + "?kind__exact=sourcing&processing=open"
-    )
+    # По клику — все заявки этого типа, и закрытые тоже: при счётчике 0 список не пустой
+    assert tiles["Найдём товар"]["url"] == reverse("admin:orders_order_changelist") + "?kind__exact=sourcing"
+    listing = client.get(tiles["Найдём товар"]["url"])
+    assert sorted(order.number for order in listing.context["cl"].result_list) == ["HT000004", "HT000005"]
     assert (tiles["Пользователи"]["value"], tiles["Пользователи"]["extra"]) == (1, 1)
     assert (tiles["Списки заявки (корзины)"]["value"], tiles["Списки заявки (корзины)"]["extra"]) == (1, 2)
     assert tiles["Неактуальные товары"]["value"] == 1
