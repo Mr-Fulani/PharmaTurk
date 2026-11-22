@@ -156,6 +156,13 @@ URL-кодировке), а предел сообщения считается �
 проверить»; итог считается один раз и передаётся в повтор (`drug_checks`). Покупателю и в чек не
 попадает. Сообщение покупателю не менялось (короткое, Markdown).
 
+В админке чек открывается не по ссылке CDN, а через `admin:orders_order_receipt_pdf`
+(`/admin/orders/order/<id>/receipt.pdf`, `OrderAdmin.receipt_pdf_view`): файл читается из R2 и
+отдаётся только сотруднику с правом просмотра заказов. Так же отдаётся фото клиента из заявки
+«Найдём товар» — `admin:orders_sourcingrequest_photo`. Покупателю PDF уходит вложением в письме.
+Поэтому публичный доступ к `receipts/` и `sourcing_requests/` на `cdn.mudaroba.com` сайту не нужен
+и закрывается правилом Cloudflare (22.11.2026).
+
 Режим заявок (`ORDER_ONLINE_PAYMENTS_ENABLED=false`, по умолчанию): у заказа
 `payment_method=manager`, администратор получает «📝 Новая заявка» с именем,
 телефоном, email, выбранным каналом связи (`contact_channel`: telegram /
