@@ -79,4 +79,3 @@ def test_view_answers_429_without_touching_storage(views):
     assert response['Retry-After'] == '60'
     storage.open.assert_not_called()
     storage.exists.assert_not_called()
-
