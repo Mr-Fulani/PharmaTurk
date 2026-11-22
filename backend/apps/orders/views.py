@@ -216,6 +216,7 @@ from .checkout_contract import (
     order_item_source_snapshot as _order_item_source_snapshot,
 )
 from .services import build_order_receipt_payload, render_receipt_html, get_order_customer_email
+from .sourcing import create_order_for_sourcing_request
 from .tasks import send_order_receipt_task, notify_new_order_telegram, notify_sourcing_request_telegram
 from .throttles import (
     SourcingRequestBurstThrottle,
@@ -1647,7 +1648,7 @@ class OrderViewSet(viewsets.ViewSet):
     def _get_order_for_user(self, user, number: str) -> Order:
         try:
             return (
-                Order.objects.filter(user=user, number=number)
+                Order.objects.filter(user=user, number=number, kind=Order.Kind.CART)
                 .select_related('user', 'shipping_address', 'promo_code')
                 .prefetch_related('items')
                 .get()
@@ -1686,7 +1687,7 @@ class OrderViewSet(viewsets.ViewSet):
         
         orders = (
             Order.objects
-            .filter(user=request.user)
+            .filter(user=request.user, kind=Order.Kind.CART)
             .select_related('promo_code')
             .prefetch_related(
                 Prefetch(
@@ -1700,7 +1701,7 @@ class OrderViewSet(viewsets.ViewSet):
         return Response(OrderSerializer(orders, many=True, context={'request': request}).data)
 
     def retrieve(self, request, pk: int | None = None):
-        order = Order.objects.filter(user=request.user, pk=pk).prefetch_related('items', 'items__product__translations').first()
+        order = Order.objects.filter(user=request.user, pk=pk, kind=Order.Kind.CART).prefetch_related('items', 'items__product__translations').first()
         if not order:
             raise Http404(_("Заказ не найден"))
         return Response(OrderSerializer(order, context={'request': request}).data)
@@ -2189,7 +2190,10 @@ class SourcingRequestCreateView(APIView):
         serializer = SourcingRequestCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = request.user if getattr(request.user, 'is_authenticated', False) else None
-        sourcing_request = serializer.save(user=user)
+        with transaction.atomic():
+            sourcing_request = serializer.save(user=user)
+            # Заявка сразу попадает в общий список «Заказы» с типом «Найти товар»
+            create_order_for_sourcing_request(sourcing_request)
         transaction.on_commit(
             lambda: _enqueue_notification(notify_sourcing_request_telegram, sourcing_request.pk)
         )

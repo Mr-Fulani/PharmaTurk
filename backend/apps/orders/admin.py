@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
@@ -349,6 +350,13 @@ class OrderItemInline(OrderItemLinksMixin, admin.TabularInline):
         'supplier_confirmation_required',
     )
 
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if obj is not None and obj.kind == Order.Kind.SOURCING:
+            # «Найти товар»: цену найденного товара вписывает менеджер, сумма считается сама
+            return tuple(name for name in fields if name != 'price')
+        return fields
+
     def get_queryset(self, request):
         return (
             super().get_queryset(request)
@@ -507,8 +515,10 @@ def _draft_item_name(item, locale) -> str:
 
 def _contact_links(obj, short=False):
     """Telegram / WhatsApp / звонок / email с черновиком сообщения; выбранный клиентом канал — жирным."""
-    sourcing = isinstance(obj, SourcingRequest)
-    number = obj.pk if sourcing else obj.number
+    if isinstance(obj, SourcingRequest):
+        sourcing, number = True, (obj.order.number if obj.order_id else obj.pk)
+    else:
+        sourcing, number = obj.kind == Order.Kind.SOURCING, obj.number
     locale = message_locale(obj.locale)
     items = () if sourcing else [_draft_item_name(item, locale) for item in obj.items.all()]
     hrefs = contact_links(
@@ -560,12 +570,13 @@ class ClientOrdersFilter(admin.SimpleListFilter):
 class OrderAdmin(admin.ModelAdmin):
     """Админка для заказов."""
     list_display = (
-        'number', 'processing_badge', 'assigned_to_name', 'import_restriction_badge', 'items_summary', 'user',
+        'number', 'kind_badge', 'processing_badge', 'assigned_to_name', 'import_restriction_badge',
+        'items_summary', 'user',
         'status', 'total_amount', 'currency', 'contact_phone', 'contact_channel', 'contact_links_short',
         'payment_method', 'created_at',
     )
     list_filter = (
-        ProcessingStatusFilter, FailReasonFilter, AssignedToFilter, ClientOrdersFilter,
+        'kind', ProcessingStatusFilter, FailReasonFilter, AssignedToFilter, ClientOrdersFilter,
         'status', 'currency', 'payment_method',
         'payment_status', 'promo_code', 'created_at',
     )
@@ -574,6 +585,7 @@ class OrderAdmin(admin.ModelAdmin):
     readonly_fields = (
         'number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url',
         'import_restriction_banner', 'processing_history', 'contact_links', 'client_orders_link', 'locale',
+        'kind', 'sourcing_details',
     )
     actions = (
         'take_in_work', 'mark_waiting_client', 'mark_price_sent', 'mark_agreed', 'mark_paid',
@@ -587,7 +599,7 @@ class OrderAdmin(admin.ModelAdmin):
         (_('Обработка заявки'), {'fields': (
             'processing_status', 'processing_fail_reason', 'assigned_to', 'processing_history',
         )}),
-        (None, {'fields': ('number', 'import_restriction_banner', 'user', 'status')}),
+        (None, {'fields': ('number', 'kind', 'import_restriction_banner', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': (
             'contact_links', 'client_orders_link',
@@ -636,8 +648,73 @@ class OrderAdmin(admin.ModelAdmin):
             rows,
         )
 
+    @staticmethod
+    def _is_sourcing(obj) -> bool:
+        return obj is not None and obj.kind == Order.Kind.SOURCING
+
+    @admin.display(description=_('Тип'), ordering='kind')
+    def kind_badge(self, obj):
+        if not self._is_sourcing(obj):
+            return obj.get_kind_display()
+        return format_html(
+            '<span style="padding:2px 8px;border-radius:6px;background:#e7f1ff;color:#084298;font-weight:600;'
+            'white-space:nowrap;">{}</span>', obj.get_kind_display(),
+        )
+
+    @admin.display(description=_('Что ищет клиент'))
+    def sourcing_details(self, obj):
+        req = SourcingRequest.objects.filter(order=obj).first() if obj and obj.pk else None
+        if req is None:
+            return '—'
+        rows = []
+        if req.source_url:
+            rows.append((_('Ссылка'), _new_tab_link(req.source_url, req.source_url)))
+        if req.image:
+            rows.append((_('Фото'), format_html(
+                '<a href="{0}" target="_blank" rel="noopener noreferrer">'
+                '<img src="{0}" alt="" style="max-height:240px;max-width:320px"></a>', req.image.url,
+            )))
+        if req.comment:
+            rows.append((_('Комментарий клиента'), req.comment))
+        rows.append((_('Количество'), req.quantity))
+        return format_html_join('', '<div style="margin:4px 0"><b>{}:</b> {}</div>', rows)
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if self._is_sourcing(obj):
+            # Ссылка, фото и слова клиента — сразу под блоком обработки
+            return (fieldsets[0], (_('Что ищет клиент'), {'fields': ('sourcing_details',)}), *fieldsets[1:])
+        return fieldsets
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if self._is_sourcing(obj):
+            # Валюту цены найденного товара выбирает менеджер
+            return tuple(name for name in fields if name != 'currency')
+        return fields
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        order = form.instance
+        if not self._is_sourcing(order):
+            return
+        # Цена позиций вписана вручную: суммы позиций и заявки считаем от неё
+        subtotal = Decimal('0')
+        for item in order.items.all():
+            total = item.price * item.quantity
+            if item.total != total:
+                item.total = total
+                item.save(update_fields=['total'])
+            subtotal += total
+        order.subtotal_amount = subtotal
+        order.total_amount = subtotal + order.shipping_amount - order.discount_amount
+        order.save(update_fields=['subtotal_amount', 'total_amount'])
+
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
+        if self._is_sourcing(obj) and 'contact_phone' in form.base_fields:
+            # В форме «Найдём товар» телефон необязателен, если клиент оставил ник
+            form.base_fields['contact_phone'].required = False
         field = form.base_fields.get('assigned_to')
         if field is not None:
             # Ответственный — по имени; создавать и править пользователей отсюда не нужно
@@ -828,8 +905,9 @@ class OrderAdmin(admin.ModelAdmin):
             obj, actor=request.user,
             old_status=old[0], old_assigned_to_id=old[1], old_reason=old[2],
         )
-        # Менеджер сменил статус — уведомляем клиента (Telegram/email) после коммита
-        if change and 'status' in getattr(form, 'changed_data', []):
+        # Менеджер сменил статус — уведомляем клиента (Telegram/email) после коммита.
+        # По заявке «Найти товар» клиенту автоматически ничего не уходит: её нет в его профиле
+        if change and 'status' in getattr(form, 'changed_data', []) and not self._is_sourcing(obj):
             order_id = obj.pk
             transaction.on_commit(lambda: notify_order_status_changed.delay(order_id))
 
@@ -944,17 +1022,30 @@ class PromoCodeAdmin(admin.ModelAdmin):
 class SourcingRequestAdmin(admin.ModelAdmin):
     """Заявки «Найдём товар по ссылке или фото»."""
 
-    list_display = ('id', 'status', 'contact_name', 'contact_phone', 'contact_channel', 'short_url', 'quantity', 'created_at')
+    list_display = ('id', 'state', 'contact_name', 'contact_phone', 'contact_channel', 'short_url', 'quantity', 'created_at')
     list_filter = ('status', 'contact_channel', 'created_at')
-    list_editable = ('status',)
+    list_select_related = ('order',)
     search_fields = ('contact_name', 'contact_phone', 'contact_email', 'contact_username', 'source_url', 'comment')
-    readonly_fields = ('user', 'image_preview', 'contact_links', 'locale', 'created_at', 'updated_at')
+    readonly_fields = ('user', 'image_preview', 'contact_links', 'locale', 'created_at', 'updated_at', 'state')
     fieldsets = (
-        (None, {'fields': ('status', 'manager_comment')}),
+        (None, {'fields': ('state', 'status', 'manager_comment')}),
         (_('Request'), {'fields': ('source_url', 'image', 'image_preview', 'comment', 'quantity')}),
         (_('Contact'), {'fields': ('contact_links', 'user', 'contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username')}),
         (_('Timestamps'), {'fields': ('locale', 'created_at', 'updated_at')}),
     )
+
+    @admin.display(description=_('Где ведётся'))
+    def state(self, obj):
+        """Новые заявки ведутся в «Заказах»: показываем их отметку и ссылку; у старых — прежний статус."""
+        if not obj or not obj.pk:
+            return '—'
+        if not obj.order_id:
+            return obj.get_status_display()
+        return format_html(
+            '<a href="{}">Заказы: №{}</a> — {}',
+            reverse('admin:orders_order_change', args=[obj.order_id]),
+            obj.order.number, obj.order.get_processing_status_display(),
+        )
 
     @admin.display(description=_('Ссылка'))
     def short_url(self, obj):

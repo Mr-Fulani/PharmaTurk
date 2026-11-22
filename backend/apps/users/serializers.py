@@ -279,7 +279,7 @@ class UserSerializer(serializers.ModelSerializer):
         from apps.orders.models import Order
 
         return Order.objects.filter(
-            user=obj
+            user=obj, kind=Order.Kind.CART
         ).exclude(
             status='cancelled'
         ).count()
@@ -290,7 +290,7 @@ class UserSerializer(serializers.ModelSerializer):
         from apps.orders.models import Order
         
         result = Order.objects.filter(
-            user=obj
+            user=obj, kind=Order.Kind.CART
         ).exclude(
             status='cancelled'
         ).aggregate(
@@ -482,7 +482,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         from apps.orders.models import Order
 
         return Order.objects.filter(
-            user=obj
+            user=obj, kind=Order.Kind.CART
         ).exclude(
             status='cancelled'
         ).count()

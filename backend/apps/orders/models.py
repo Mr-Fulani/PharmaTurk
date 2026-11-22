@@ -611,12 +611,18 @@ class Order(models.Model):
         DONE = "done", _("Завершена")
         CANCELLED = "cancelled", _("Не состоялась")
 
+    class Kind(models.TextChoices):
+        """Откуда заявка: из Списка на сайте или из формы «Найдём товар по ссылке или фото»."""
+        CART = "cart", _("Из Списка")
+        SOURCING = "sourcing", _("🔎 Найти товар")
+
     class FailReason(models.TextChoices):
         """Почему заявка не состоялась — для статистики; только при отметке «Не состоялась»."""
         NO_REPLY = "no_reply", _("Клиент не ответил")
         EXPENSIVE = "expensive", _("Дорого")
         SLOW = "slow", _("Долго")
         OUT_OF_STOCK = "out_of_stock", _("Нет в наличии")
+        NOT_FOUND = "not_found", _("Не нашли товар")
         CANNOT_DELIVER = (
             "cannot_deliver", _("Не можем доставить (страна, ограничение на ввоз, рецепт)")
         )
@@ -625,6 +631,9 @@ class Order(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Пользователь"))
     number = models.CharField(_("Номер заказа"), max_length=32, unique=True)
+    kind = models.CharField(
+        _("Тип заявки"), max_length=16, choices=Kind.choices, default=Kind.CART, db_index=True,
+    )
     status = models.CharField(_("Статус для клиента"), max_length=32, choices=OrderStatus.choices, default=OrderStatus.NEW)
     processing_status = models.CharField(
         _("Обработка"),
@@ -838,6 +847,12 @@ class SourcingRequest(models.Model):
     )
     contact_username = models.CharField(_("Юзернейм в Telegram/WhatsApp"), max_length=35, blank=True)
 
+    # Заявка в «Заказах», по которой менеджер ведёт поиск (docs/ORDER_PROCESSING.md);
+    # пусто у заявок, пришедших до объединения списков
+    order = models.OneToOneField(
+        Order, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sourcing_request", verbose_name=_("Заявка в «Заказах»"),
+    )
     status = models.CharField(_("Статус"), max_length=16, choices=Status.choices, default=Status.NEW)
     manager_comment = models.TextField(_("Комментарий менеджера"), blank=True)
     locale = models.CharField(_("Язык"), max_length=10, blank=True)
