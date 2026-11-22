@@ -13,6 +13,15 @@ from apps.users.models import User
 PASSWORD = "test-only-password-2fa"
 
 
+@pytest.fixture(autouse=True)
+def plain_staticfiles(settings):
+    # Страницы админки рендерят {% static %}: в тестах нет собранного манифеста.
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+
+
 @pytest.fixture
 def staff(db):
     return User.objects.create_user(
