@@ -3,7 +3,12 @@ from django.contrib import admin
 from django.contrib.auth import admin as auth_admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.admin.forms import AdminAuthenticationForm
+from django.db import transaction
 from django.utils.translation import gettext_lazy as _
+from django_otp import devices_for_user
+from django_otp.plugins.otp_static.models import StaticDevice
+
+from config.admin import admin_otp_required
 
 from .models import User, UserAddress, UserSession
 
@@ -11,7 +16,42 @@ from .models import User, UserAddress, UserSession
 class CustomAdminAuthenticationForm(AdminAuthenticationForm):
     """
     Кастомная форма входа в админку, поддерживающая вход по email, username или телефону.
+    Код второго фактора проверяется, если он нужен сотруднику (admin_otp_required).
     """
+    otp_token = forms.CharField(
+        label=_('Код из приложения'),
+        required=False,
+        widget=forms.TextInput(attrs={'autocomplete': 'one-time-code', 'inputmode': 'numeric'}),
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        user = self.get_user()
+        if user is not None and admin_otp_required(user):
+            token = (cleaned_data.get('otp_token') or '').replace(' ', '')
+            # django_otp по сигналу user_logged_in запишет устройство в сессию.
+            user.otp_device = self._verify_otp(user, token)
+        return cleaned_data
+
+    @staticmethod
+    def _verify_otp(user, token):
+        if not token:
+            raise forms.ValidationError(_('Введите код из приложения.'), code='token_required')
+        # Шесть цифр — код приложения; всё остальное — одноразовый запасной код.
+        wants_backup_code = not (token.isdigit() and len(token) == 6)
+        with transaction.atomic():
+            for device in devices_for_user(user, confirmed=True, for_verify=True):
+                if isinstance(device, StaticDevice) != wants_backup_code:
+                    continue
+                allowed, _extra = device.verify_is_allowed()
+                if allowed and device.verify_token(token):
+                    return device
+        # Ошибка — после транзакции: счётчик неудачных попыток должен сохраниться.
+        raise forms.ValidationError(
+            _('Неверный код. После нескольких ошибок подряд подождите минуту.'),
+            code='invalid_token',
+        )
+
     username = forms.CharField(
         label=_('Email, Username или Телефон'),
         widget=forms.TextInput(attrs={'autofocus': True, 'placeholder': 'email@example.com, username или +79991234567'})

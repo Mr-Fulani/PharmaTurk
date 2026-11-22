@@ -65,6 +65,10 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "corsheaders",
+    # Второй фактор входа в Django Admin (docs/ADMIN_TWO_FACTOR.md)
+    "django_otp",
+    "django_otp.plugins.otp_totp",
+    "django_otp.plugins.otp_static",
 
     # Проектные
     "api.apps.ApiConfig",
@@ -105,6 +109,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 
@@ -117,6 +122,11 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "config.urls"
+
+# Второй фактор Django Admin. Код спрашивается у сотрудника, у которого есть
+# подтверждённое устройство; ADMIN_OTP_REQUIRED=1 требует код у всех.
+ADMIN_OTP_REQUIRED = env.bool("ADMIN_OTP_REQUIRED", default=False)
+OTP_TOTP_ISSUER = "Mudaroba"
 
 TEMPLATES = [
     {
