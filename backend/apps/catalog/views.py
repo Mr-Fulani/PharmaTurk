@@ -3979,17 +3979,39 @@ def _proxy_image_cache_miss_allowed(request):
     client_ip = get_trusted_client_ip(request)
     if not client_ip:
         return False
+    return _cache_miss_within_limit('proxy_image_miss', client_ip, _PROXY_IMAGE_MISSES_PER_MINUTE)
+
+
+def _cache_miss_within_limit(prefix, client_ip, per_minute):
     from time import time
 
     bucket = int(time() // 60)
     digest = hashlib.sha256(client_ip.encode()).hexdigest()[:20]
-    key = f'proxy_image_miss:{bucket}:{digest}'
+    key = f'{prefix}:{bucket}:{digest}'
     if cache.add(key, 1, timeout=70):
         return True
     try:
-        return cache.incr(key) <= _PROXY_IMAGE_MISSES_PER_MINUTE
+        return cache.incr(key) <= per_minute
     except (ValueError, TypeError):
         return False
+
+
+_PROXY_MEDIA_MISSES_PER_MINUTE = 300
+
+
+def _proxy_media_cache_miss_allowed(request):
+    """До Django доходят только промахи кэша nginx (и видео): каждый — чтение из
+    R2 и пересжатие. Внутренние вызовы (SSR, next/image) приходят с частного
+    адреса без X-Real-IP и не ограничиваются."""
+    import ipaddress
+
+    client_ip = get_trusted_client_ip(request)
+    if not client_ip:
+        return False
+    address = ipaddress.ip_address(client_ip)
+    if address.is_private or address.is_loopback:
+        return True
+    return _cache_miss_within_limit('proxy_media_miss', client_ip, _PROXY_MEDIA_MISSES_PER_MINUTE)
 
 
 def _hostname_matches(hostname: str, domain: str) -> bool:
@@ -4140,6 +4162,11 @@ def proxy_media(request):
     r2_public = getattr(settings, 'R2_PUBLIC_URL', '') or ''
     if not r2_public:
         return JsonResponse({'error': 'R2 proxy not configured'}, status=503)
+
+    if not _proxy_media_cache_miss_allowed(request):
+        response = JsonResponse({'error': 'rate_limited'}, status=429)
+        response['Retry-After'] = '60'
+        return response
 
     # Готовые байты картинок в Django-кэш (Redis) не кладём: их кэширует nginx
     # (proxy_cache proxy_media, nginx/default.conf). Раньше ключи r2mw_q_*/r2webp_*
