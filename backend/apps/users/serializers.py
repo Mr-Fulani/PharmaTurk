@@ -172,6 +172,14 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(_("Пользователь с таким email уже существует"))
         return value
 
+    def update(self, instance, validated_data):
+        # Новый адрес ещё не подтверждён: иначе сменой email в профиле можно
+        # было бы забрать гостевые заявки чужого адреса (order_claims).
+        new_email = validated_data.get('email')
+        if new_email is not None and new_email.casefold() != (instance.email or '').casefold():
+            instance.is_verified = False
+        return super().update(instance, validated_data)
+
     def _normalize_phone(self, value):
         """Нормализация номера для сравнения (только цифры)"""
         if not value:
