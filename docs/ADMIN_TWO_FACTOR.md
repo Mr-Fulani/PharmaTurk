@@ -61,6 +61,9 @@ print('сброшено')
 - Проверка «сессия вошла с кодом» — `MudarobaAdminSite.has_permission`, страница включения —
   `MudarobaAdminSite.two_factor_view` (`backend/config/admin.py`), шаблон
   `backend/templates/admin/mudaroba_two_factor.html`.
-- Настройки: `django_otp` в `INSTALLED_APPS`, `OTPMiddleware`, `ADMIN_OTP_REQUIRED`, `OTP_TOTP_ISSUER`
+- Слой запроса — `config.admin.AdminOTPMiddleware`, а не штатный `OTPMiddleware`: штатный ставит
+  `user.is_verified()` и подменял бы поле `User.is_verified` («почта подтверждена») функцией у каждого
+  пользователя с сессией. Признак входа с кодом — `request.user.otp_device`.
+- Настройки: `django_otp` в `INSTALLED_APPS`, `ADMIN_OTP_REQUIRED`, `OTP_TOTP_ISSUER`
   (`backend/config/settings.py`).
 - Тесты — `backend/config/tests/test_admin_two_factor.py`.

@@ -139,3 +139,21 @@ def test_staff_enables_second_factor_only_with_a_valid_code(staff):
     # Эта же сессия остаётся в админке, новая — без кода не входит.
     assert client.get("/admin/").status_code == 200
     assert _login(Client()).status_code == 200
+
+
+@pytest.mark.django_db
+def test_session_user_keeps_the_email_verified_field(staff):
+    """Слой второго фактора не подменяет поле User.is_verified функцией."""
+    staff.is_verified = True
+    staff.save(update_fields=["is_verified"])
+    device = TOTPDevice.objects.create(user=staff, name="phone", confirmed=True)
+    client = Client()
+    assert _login(client, otp_token=_current_code(device)).status_code == 302
+
+    response = client.get("/admin/")
+    user = response.wsgi_request.user
+
+    assert user.is_verified is True
+    assert user.otp_device is not None
+    # Сохранение пользователя из запроса (смена своего пароля и т. п.) не падает.
+    user.save()
