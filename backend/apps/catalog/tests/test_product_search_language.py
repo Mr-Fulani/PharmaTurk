@@ -443,6 +443,10 @@ def test_purpose_finds_medicines_of_the_group(make_product, make_medicine):
     assert set(_ids({"search": "лекарство от кашля"})) == {herbal.pk, codeine.base_product_id}
     assert set(_ids({"search": "чем лечить кашель"})) == {herbal.pk, codeine.base_product_id}
     assert "search_info" not in _search("от головной боли")
+    # Основная группа назначения (N02B) — раньше второй (M01A), даже с более длинным названием.
+    sulindac = make_medicine("SULINDAC 200 мг", atc_code="M01AB02")
+    _rebuild()
+    assert _ids({"search": "от головной боли"})[-1] == sulindac.base_product_id
 
 
 def test_purpose_keys_are_stems_and_codes_are_atc():

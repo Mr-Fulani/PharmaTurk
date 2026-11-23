@@ -755,8 +755,18 @@ def order_by_relevance(queryset, search: str, *, prefix: str = "", plan: Optiona
             output_field=TextField(),
         )
     )
-    return queryset.annotate(search_tier=tier, search_name_length=Length("name")).order_by(
-        "search_tier", "search_name_length", "-is_available", "-created_at", "-id"
+    # Назначение («от головной боли»): группы ATC в порядке словаря — сначала основная
+    # (N02B, парацетамол), потом остальные; иначе первыми шли короткие названия любой группы
+    # (три SULINDAC, прод 24.11.2026).
+    stems = [stem(word) for word in _required_words(search_words(query)[1])]
+    codes = [code for _, span_codes in _purpose_spans(stems).values() for code in span_codes]
+    purpose = Case(
+        *(When(_word_start(text, code), then=Value(index)) for index, code in enumerate(codes)),
+        default=Value(len(codes)),
+        output_field=IntegerField(),
+    ) if codes else Value(0, output_field=IntegerField())
+    return queryset.annotate(search_tier=tier, search_purpose=purpose, search_name_length=Length("name")).order_by(
+        "search_tier", "search_purpose", "search_name_length", "-is_available", "-created_at", "-id"
     )
 
 
