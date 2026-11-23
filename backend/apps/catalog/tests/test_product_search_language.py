@@ -109,6 +109,28 @@ def test_medicine_trade_name_found_in_cyrillic(make_medicine):
     assert _ids({"search": "мажезик 100"}) == [majezik.base_product_id]
 
 
+def test_medicine_trade_name_in_cyrillic_after_ai_title(make_medicine):
+    """Обработанное лекарство: name — русское название с МНН в скобках, бренд для словаря
+    берётся из турецкого оригинала (21.11.2026: «тайлол» находил 6 карточек TYLOL из 14)."""
+    remember(BRAND_NAMESPACE, {
+        "TYLOL": {"ru": "Тайлол", "en": "TYLOL"}, "TYLOL HOT": {"ru": "Тайлол Хот", "en": "TYLOL HOT"},
+    })
+    stored = make_medicine("TYLOL (парацетамол) 500 мг, таблетки, 20 шт.", manufacturer="Nobel")
+    Product.objects.filter(pk=stored.base_product_id).update(external_data={"source_name": "TYLOL 500 MG 20 TABLET"})
+    # Оригинал не сохранён: название — строка вкладки аналогов с тем же штрихкодом.
+    listed = make_medicine("TYLOL HOT (парацетамол + фенилэфрин), порошок, 12 шт.", manufacturer="Nobel")
+    Product.objects.filter(pk=listed.base_product_id).update(external_data={"attributes": {
+        "barcode": "8699000000017",
+        "source_tabs": {"equivalents": {"text": "TYLOL HOT 12 POSET\nBARKOD: 8699000000017"}},
+    }})
+    _rebuild()
+
+    rows = dict(iter_search_rows([stored.base_product_id, listed.base_product_id]))
+    assert "тайлол" in rows[stored.base_product_id]["text"]
+    assert "тайлол" in rows[listed.base_product_id]["text"]
+    assert _ids({"search": "тайлол"}) == [stored.base_product_id, listed.base_product_id]
+
+
 def test_wrong_layout_and_latin_reading(make_product):
     paracetamol = make_product("Парацетамол 500 мг таблетки")
     sanofi = make_product("Product", brand=_brand("Sanofi"))
