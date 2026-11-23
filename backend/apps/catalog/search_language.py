@@ -340,12 +340,13 @@ def edit_distance(first: str, second: str) -> int:
     return rows[-1][-1]
 
 
-def closest_word(word: str, texts) -> str:
+def closest_word(word: str, texts, *, unfinished: bool = False) -> str:
     """Слово из текстов, отличное от ``word`` не больше чем на ``typo_limit`` букв.
 
     Из нескольких — с меньшим числом правок, затем встречающееся в большем числе товаров.
-    Целого слова нет — слово, начало которого отличается от ``word`` на одну букву: в подсказках
-    запрос приходит недописанным («нурафе» → «нурофен»).
+    Целого слова нет, а слово в запросе последнее (``unfinished``) — слово с той же первой буквой,
+    начало которого отличается от ``word`` на одну букву: в подсказках запрос приходит недописанным
+    («нурафе» → «нурофен»). Без первой буквы «пальто» дописывалось до «мальтодекстрин» (прод 23.11.2026).
     """
     limit = typo_limit(word)
     counts: dict[str, int] = {}
@@ -361,11 +362,11 @@ def closest_word(word: str, texts) -> str:
         key = (distance, -count, token)
         if distance <= limit and (best_key is None or key < best_key):
             best, best_key = token, key
-    if best:
+    if best or not unfinished:
         return best
     for token, count in counts.items():
         key = (-count, token)
-        if len(token) > len(word) and (best_key is None or key < best_key) and (
+        if len(token) > len(word) and token[0] == word[0] and (best_key is None or key < best_key) and (
             edit_distance(word, token[: len(word)]) == 1
         ):
             best, best_key = token, key
